@@ -1,0 +1,14 @@
+User-agent: *
+Disallow: /cart
+Disallow: /checkout
+Disallow: /edit-profile
+Disallow: /order-list
+Disallow: /wish-list
+Disallow: /search
+Disallow: /listingsearch
+Disallow: /blog/
+Disallow: /*?*
+
+Allow: /
+
+sitemap: https://watchizereg.com/sitemap.xml

@@ -1,0 +1,38 @@
+.home-slider .slick-slider{
+    position: relative;
+    width: 100% !important;
+    margin: 0 !important;
+    overflow: hidden;
+    border-radius: 10px;
+}
+.home-slider-image{
+    background: url('../../assets/images/banner5.jpg') no-repeat center center;
+    background-size: cover;
+}
+.home-slider .slick-slider .slick-arrow {
+    position: absolute !important;
+    top: 50% !important;
+    transform: translateY(-50%);
+    background-color: #00000010;
+    padding: 0 !important;
+    font-size: 20px;
+    color: white;
+    z-index: 100;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+
+}
+.slick-slider .slick-list {
+    width: 100% !important;
+}
+
+.slick-slider .slick-prev {
+    left: 10px !important;
+}
+.slick-slider .slick-next {
+    right: 10px !important;
+}

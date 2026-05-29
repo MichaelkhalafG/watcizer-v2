@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cat index.html)",
+      "Bash(ls -la public/)",
+      "Bash(cat public/robots.txt)",
+      "Bash(ls public/*.xml)",
+      "WebFetch(domain:watchesprime.com)",
+      "Bash(grep -v \"^.*//\")"
+    ]
+  }
+}
