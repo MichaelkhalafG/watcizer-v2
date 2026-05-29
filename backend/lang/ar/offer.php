@@ -1,0 +1,26 @@
+<?php
+
+return [
+    'add'                        => 'اضافة عرض',
+    'main_product_id'            => 'اسم المنتج الرئيسي',
+    'gift_product_ids'           => 'أسماء منتجات الهدايا',
+    'category_type_id'           => 'نوع الفئة',
+    'price'                      => 'سعر العرض',
+    'image'                      => 'صورة العرض',
+    'average_rate'               => 'متوسط ​​التقييمات',
+    'offer_name'                 => 'اسم العرض',
+    'stock'                      => 'المخزون',
+    'add_product'                => 'إضافة المنتج',
+    'edit_offer'                 => 'تعديل العرض',
+    'select'                     => 'اختر',
+    'wa_code'                    => 'wa كود',
+    'short_description'          => 'وصف مختصر',
+    'long_description'           => 'وصف طويل',
+    'selling_price'              => 'سعر البيع',
+    'sale_price_after_discount'  => 'سعر البيع بعد الخصم',
+    'in_season'                  => 'في الموسم',
+    'yes'                        => 'نعم',
+    'no'                         => 'لا',
+    'show_offer'                 => 'عرض العروض',
+    'offer_specifications'       => 'مواصفات العرض',
+];

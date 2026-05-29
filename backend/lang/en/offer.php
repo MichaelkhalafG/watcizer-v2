@@ -1,0 +1,26 @@
+<?php
+
+return [
+    'add'                       => 'Add Offer',
+    'main_product_id'           => 'Main Product Name',
+    'gift_product_ids'          => 'Gift Product Names',
+    'category_type_id'          => 'Category Type',
+    'price'                     => 'Offer price',
+    'image'                     => 'Offer Image',
+    'average_rate'              => 'Average Ratings',
+    'offer_name'                => 'Offer Name',
+    'stock'                     => 'Stock',
+    'add_product'               => 'Add Product',
+    'edit_offer'                => 'Edit Offer',
+    'select'                    => 'Select',
+    'wa_code'                   => 'wa Code',
+    'short_description'         => 'Short Description',
+    'long_description'          => 'Long Description',
+    'selling_price'             => 'Selling Price',
+    'sale_price_after_discount' => 'Sale price after discount',
+    'in_season'                 => 'In Season',
+    'yes'                       => 'Yes',
+    'no'                        => 'No',
+    'show_offer'                => 'Show Offers',
+    'offer_specifications'      => 'Offer Specifications',
+];

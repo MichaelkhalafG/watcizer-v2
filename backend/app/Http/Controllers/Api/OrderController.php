@@ -1,0 +1,482 @@
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Models\Cart;
+use App\Models\User;
+use App\Models\Offer;
+use App\Models\Order;
+use App\Models\Address;
+use App\Models\Product;
+use App\Models\CartItem;
+use App\Models\OrderItem;
+use App\Models\ShippingCity;
+use Illuminate\Http\Request;
+use App\Models\PaymentStatus;
+use App\Mail\OrderCreatedMail;
+use Illuminate\Support\Facades\DB;
+use App\Http\Controllers\Controller;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Cache;
+
+class OrderController extends Controller
+{
+    private array $adminEmails = [
+        'rawan.ebied@gmail.com',
+        'maikelkhalaf100@gmail.com',
+        'mina7makram@gmail.com',
+        'minaawadrezk@gmail.com',
+        'Watchizer303@gmail.com',
+    ];
+
+    // =========================================================================
+    //  Shipping Cities
+    // =========================================================================
+    public function ShowShippingCity()
+    {
+        try {
+            $shippingCities = Cache::remember('ShowShippingCity', now()->addMinutes(10), function () {
+                return ShippingCity::with('translations')->get();
+            });
+            return response()->json($shippingCities);
+        } catch (\Exception $e) {
+            return response()->json(['success' => false, 'message' => 'Error retrieving shipping cities', 'error' => $e->getMessage()], 500);
+        }
+    }
+
+    // =========================================================================
+    //  Address
+    // =========================================================================
+    public function AddAddress(Request $request)
+    {
+        try {
+            $request->validate([
+                'user_id'          => 'nullable|integer',
+                'shipping_city_id' => 'required|integer|exists:shipping_cities,id',
+                'address_line'     => 'required|string|min:3|max:500',
+                'phone_number_one' => 'required|string|min:7|max:20',
+                'phone_number_two' => 'nullable|string|max:20',
+            ]);
+
+            $userId = null;
+            if ($request->filled('user_id') && (int) $request->user_id > 0) {
+                $userId = (int) $request->user_id;
+            }
+
+            $address = Address::create([
+                'user_id'          => $userId,
+                'shipping_city_id' => (int) $request->shipping_city_id,
+                'address_line'     => trim($request->address_line),
+                'phone_number_one' => trim($request->phone_number_one),
+                'phone_number_two' => $request->phone_number_two ?? $request->phone_number_tow ?? null,
+            ]);
+
+            Cache::forget('ShowAddress');
+
+            return response()->json([
+                'success'    => true,
+                'message'    => 'Address added successfully',
+                'id'         => $address->id,
+                'address_id' => $address->id,
+            ], 200);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json(['success' => false, 'message' => 'Validation failed', 'errors' => $e->errors()], 422);
+        } catch (\Exception $e) {
+            return response()->json(['success' => false, 'message' => 'An error occurred while adding Address', 'error' => $e->getMessage()], 500);
+        }
+    }
+
+    public function ShowAddress()
+    {
+        try {
+            $address = Cache::remember('ShowAddress', now()->addMinutes(10), fn () => Address::all());
+            return response()->json($address);
+        } catch (\Exception $e) {
+            return response()->json(['success' => false, 'message' => 'Error retrieving addresses', 'error' => $e->getMessage()], 500);
+        }
+    }
+
+    // =========================================================================
+    //  Cart
+    // =========================================================================
+    public function AddToCart(Request $request)
+    {
+        try {
+            $request->validate([
+                'user_id'     => 'required|integer|exists:users,id',
+                'product_id'  => 'nullable|integer|exists:products,id',
+                'offer_id'    => 'nullable|integer|exists:offers,id',
+                'quantity'    => 'required|integer|min:1',
+                'piece_price' => 'required|integer|min:0',
+                'total_price' => 'required|integer|min:0',
+                'type_stock'  => 'nullable|in:Express,Market',
+                'color_band'  => 'nullable|string|max:7',
+                'color_dial'  => 'nullable|string|max:7',
+            ]);
+
+            $product = $request->product_id ? Product::find($request->product_id) : null;
+            $offer   = $request->offer_id   ? Offer::find($request->offer_id)     : null;
+
+            if ($product) {
+                $field = $request->type_stock === 'Express' ? 'stock' : 'market_stock';
+                if ($request->quantity > $product->{$field}) {
+                    return response()->json(['success' => false, 'message' => 'Requested quantity exceeds available stock'], 422);
+                }
+            }
+            if ($offer && $request->quantity > $offer->stock) {
+                return response()->json(['success' => false, 'message' => 'Requested quantity exceeds available offer stock'], 422);
+            }
+
+            $cart = Cart::firstOrCreate(['user_id' => $request->user_id]);
+            $cart->cart_item()->updateOrCreate(
+                [
+                    'product_id' => $request->product_id,
+                    'offer_id'   => $request->offer_id,
+                    'color_band' => $request->color_band,
+                    'color_dial' => $request->color_dial,
+                    'type_stock' => $request->type_stock,
+                ],
+                [
+                    'quantity'    => $request->quantity,
+                    'piece_price' => $request->piece_price,
+                    'total_price' => $request->total_price,
+                ]
+            );
+
+            return response()->json(['success' => true, 'message' => 'Cart updated successfully'], 200);
+        } catch (\Exception $e) {
+            return response()->json(['success' => false, 'message' => 'Error adding to cart', 'error' => $e->getMessage()], 500);
+        }
+    }
+
+    public function ShowCart()
+    {
+        try {
+            $cart = Cache::remember('AllCart', now()->addMinutes(10), function () {
+                return Cart::with('cart_item')->get();
+            });
+            return response()->json($cart);
+        } catch (\Exception $e) {
+            return response()->json(['success' => false, 'message' => 'Error retrieving cart', 'error' => $e->getMessage()], 500);
+        }
+    }
+
+    public function DeleteCart($id)
+    {
+        try {
+            CartItem::findOrFail($id)->delete();
+            return response()->json(['success' => true, 'message' => 'Cart item deleted'], 200);
+        } catch (\Exception $e) {
+            return response()->json(['success' => false, 'message' => 'Error deleting cart item', 'error' => $e->getMessage()], 500);
+        }
+    }
+
+    // =========================================================================
+    //  Order
+    // =========================================================================
+    public function AddOrder(Request $request)
+    {
+        DB::beginTransaction();
+
+        try {
+            $request->validate([
+                'user_id'               => 'nullable|integer',
+                'address_id'            => 'required|integer|exists:addresses,id',
+                'total_price_for_order' => 'required|integer|min:0',
+                'payment_method'        => 'required|in:cash,paymob,whatsapp',
+                'note'                  => 'nullable|string|max:1000',
+                'guest_name'            => 'nullable|string|max:255',
+                'guest_phone'           => 'nullable|string|max:20',
+                'guest_email'           => 'nullable|email|max:255',
+                'address_line'          => 'nullable|string',
+                'shipping_city_id'      => 'nullable|integer',
+                'items'                 => 'nullable|array',
+                'items.*.product_id'    => 'nullable|integer|exists:products,id',
+                'items.*.offer_id'      => 'nullable|integer|exists:offers,id',
+                'items.*.quantity'      => 'required_with:items|integer|min:1',
+                'items.*.piece_price'   => 'required_with:items|numeric|min:0',
+                'items.*.total_price'   => 'required_with:items|numeric|min:0',
+                'items.*.type_stock'    => 'nullable|in:Express,Market',
+                'items.*.color_band'    => 'nullable|string',
+                'items.*.color_dial'    => 'nullable|string',
+            ]);
+
+            $userId  = ($request->filled('user_id') && (int) $request->user_id > 0)
+                ? (int) $request->user_id
+                : null;
+            $isGuest = is_null($userId);
+
+            // ── Cart items ────────────────────────────────────────────────────
+            if (!$isGuest) {
+                $cart = Cart::where('user_id', $userId)->with('cart_item')->first();
+                if (!$cart || $cart->cart_item->isEmpty()) {
+                    DB::rollBack();
+                    return response()->json(['success' => false, 'message' => 'Cart is empty'], 422);
+                }
+                $cartItems = $cart->cart_item;
+            } else {
+                $cartItems = collect($request->input('items', []));
+                if ($cartItems->isEmpty()) {
+                    DB::rollBack();
+                    return response()->json(['success' => false, 'message' => 'Cart is empty'], 422);
+                }
+            }
+
+            // ── Order number ──────────────────────────────────────────────────
+            $latestNum   = DB::table('orders')->max('order_number');
+            $orderNumber = $latestNum
+                ? str_pad((int) $latestNum + 1, 4, '0', STR_PAD_LEFT)
+                : '0001';
+
+            // ── Create order ──────────────────────────────────────────────────
+            $order = Order::create([
+                'user_id'               => $userId,
+                'address_id'            => $request->address_id,
+                'total_price_for_order' => $request->total_price_for_order,
+                'payment_method'        => $request->payment_method,
+                'order_number'          => $orderNumber,
+                'note'                  => $request->note,
+                'status'                => $request->payment_method === 'cash' ? 'processing' : 'pending',
+                'guest_name'            => $request->guest_name  ?? null,
+                'guest_email'           => $request->guest_email ?? null,
+            ]);
+
+            // ── Order items + stock ───────────────────────────────────────────
+            foreach ($cartItems as $item) {
+                $itemData = is_array($item) ? (object) $item : $item;
+
+                OrderItem::create([
+                    'order_id'    => $order->id,
+                    'product_id'  => $itemData->product_id ?? null,
+                    'offer_id'    => $itemData->offer_id   ?? null,
+                    'quantity'    => $itemData->quantity,
+                    'piece_price' => $itemData->piece_price,
+                    'total_price' => $itemData->total_price,
+                    'type_stock'  => $itemData->type_stock  ?? null,
+                    'color_band'  => $itemData->color_band  ?? null,
+                    'color_dial'  => $itemData->color_dial  ?? null,
+                ]);
+
+                if (!empty($itemData->product_id)) {
+                    $product = Product::find($itemData->product_id);
+                    if ($product) {
+                        $field = ($itemData->type_stock ?? null) === 'Express' ? 'stock' : 'market_stock';
+                        $product->$field -= $itemData->quantity;
+                        if ($product->$field < 0) {
+                            DB::rollBack();
+                            return response()->json(['success' => false, 'message' => 'Insufficient product stock'], 422);
+                        }
+                        $product->save();
+                    }
+                } elseif (!empty($itemData->offer_id)) {
+                    $offer = Offer::find($itemData->offer_id);
+                    if ($offer) {
+                        $offer->stock -= $itemData->quantity;
+                        if ($offer->stock < 0) {
+                            DB::rollBack();
+                            return response()->json(['success' => false, 'message' => 'Insufficient offer stock'], 422);
+                        }
+                        $offer->save();
+                    }
+                }
+            }
+
+            // ── Clear DB cart for logged-in users ─────────────────────────────
+            if (!$isGuest && isset($cart)) {
+                $cart->cart_item()->delete();
+                $cart->delete();
+            }
+
+            DB::commit();
+
+            // ── Send Emails ───────────────────────────────────────────────────
+            if (in_array($request->payment_method, ['cash', 'whatsapp'])) {
+                $this->sendOrderEmails($order, $isGuest, $request->payment_method);
+            }
+
+            // ── Paymob ────────────────────────────────────────────────────────
+            if ($request->payment_method === 'paymob') {
+                return $this->handlePaymobPayment($order, $request, $isGuest);
+            }
+
+            return response()->json([
+                'success'      => true,
+                'message'      => 'Order placed successfully',
+                'order_number' => $order->order_number,
+            ], 200);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            DB::rollBack();
+            return response()->json(['success' => false, 'message' => 'Validation failed', 'errors' => $e->errors()], 422);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json([
+                'success' => false,
+                'message' => 'Error placing order',
+                'error'   => $e->getMessage(),
+                'line'    => $e->getLine(),
+                'file'    => $e->getFile(),
+            ], 500);
+        }
+    }
+
+    // =========================================================================
+    //  Send Emails Helper
+    // =========================================================================
+    private function sendOrderEmails(Order $order, bool $isGuest, string $paymentMethod): void
+    {
+        if ($paymentMethod === 'cash') {
+            $customerEmail = !$isGuest
+                ? optional($order->user)->email
+                : $order->guest_email;
+
+            if ($customerEmail) {
+                try {
+                    Mail::to($customerEmail)->send(new OrderCreatedMail($order, 'customer'));
+                    \Log::info('Customer email sent to: ' . $customerEmail . ' | Order: ' . $order->order_number);
+                } catch (\Exception $e) {
+                    \Log::error('Customer email FAILED | Order: ' . $order->order_number . ' | ' . $e->getMessage());
+                }
+            }
+        }
+
+        foreach ($this->adminEmails as $email) {
+            try {
+                Mail::to($email)->send(new OrderCreatedMail($order, 'admin'));
+                \Log::info('Admin email sent to: ' . $email . ' | Order: ' . $order->order_number);
+            } catch (\Exception $e) {
+                \Log::error('Admin email FAILED | To: ' . $email . ' | Order: ' . $order->order_number . ' | ' . $e->getMessage());
+            }
+        }
+    }
+
+    // =========================================================================
+    //  Paymob
+    // =========================================================================
+    private function handlePaymobPayment($order, $request, $isGuest)
+    {
+        try {
+            $authToken = env('PAYMOB_SECRET_KEY');
+            $publicKey = env('PAYMOB_PUBLIC_KEY');
+
+            if (!$authToken || !$publicKey) {
+                throw new \Exception('Paymob credentials not configured');
+            }
+
+            if (!$isGuest && $order->user) {
+                $firstName = $order->user->first_name ?? 'Guest';
+                $lastName  = $order->user->last_name  ?? 'User';
+                $email     = $order->user->email      ?? 'guest@example.com';
+            } else {
+                $parts     = explode(' ', trim($request->guest_name ?? 'Guest User'), 2);
+                $firstName = $parts[0] ?: 'Guest';
+                $lastName  = $parts[1] ?? 'User';
+                $email     = $request->guest_email ?? 'guest@example.com';
+            }
+
+            $address     = Address::with('shippingCity')->find($request->address_id);
+            $streetLine  = $address->address_line     ?? 'N/A';
+            $phoneNumber = $address->phone_number_one  ?? $request->guest_phone ?? '01000000000';
+
+            $cityName = 'Cairo';
+            if ($address && $address->shippingCity) {
+                try {
+                    $cityName = $address->shippingCity->translate('en')->city_name
+                                ?? $address->shippingCity->city_name
+                                ?? 'Cairo';
+                } catch (\Exception $ex) {
+                    $cityName = $address->shippingCity->city_name ?? 'Cairo';
+                }
+            }
+
+            $paymobResponse = Http::withHeaders([
+                'Authorization' => "Token $authToken",
+                'Content-Type'  => 'application/json',
+            ])->post('https://accept.paymob.com/v1/intention/', [
+                'amount'          => $order->total_price_for_order * 100,
+                'currency'        => 'EGP',
+                'payment_methods' => [4988969, 4627487, 3961568],
+                'billing_data'    => [
+                    'first_name'   => $firstName,
+                    'last_name'    => $lastName,
+                    'street'       => $streetLine,
+                    'phone_number' => $phoneNumber,
+                    'city'         => $cityName,
+                    'country'      => 'Egypt',
+                    'email'        => $email,
+                ],
+                'special_reference' => (string) $order->id,
+            ]);
+
+            if ($paymobResponse->successful()) {
+                return response()->json([
+                    'success'      => true,
+                    'order_number' => $order->order_number,
+                    'redirect_url' => 'https://accept.paymob.com/unifiedcheckout/?publicKey='
+                                      . $publicKey
+                                      . '&clientSecret='
+                                      . $paymobResponse['client_secret'],
+                ], 200);
+            }
+
+            $order->delete();
+            return response()->json([
+                'success'      => false,
+                'message'      => 'Failed to create Paymob session',
+                'paymob_error' => $paymobResponse->json(),
+            ], 500);
+
+        } catch (\Exception $e) {
+            $order->delete();
+            throw $e;
+        }
+    }
+
+    // =========================================================================
+    //  Paymob Callback
+    // =========================================================================
+    public function CallbackPayment(Request $request)
+    {
+        try {
+            PaymentStatus::create([
+                'order_id'           => $request->merchant_order_id,
+                'pay_order_id'       => $request->order,
+                'pay_transaction_id' => $request->id,
+                'amount_cents'       => $request->amount_cents,
+                'success'            => $request->success === 'true' || $request->success === true,
+            ]);
+
+            if ($request->merchant_order_id) {
+                $order = Order::find($request->merchant_order_id);
+                if ($order) {
+                    $isSuccess     = $request->success === 'true' || $request->success === true;
+                    $order->status = $isSuccess ? 'processing' : 'cancelled';
+                    $order->save();
+
+                    if ($isSuccess) {
+                        $isGuest = is_null($order->user_id);
+                        $this->sendOrderEmails($order, $isGuest, 'cash');
+                    }
+                }
+            }
+
+            return redirect('https://watchizereg.com/');
+        } catch (\Exception $e) {
+            return redirect('https://watchizereg.com/?payment_error=1');
+        }
+    }
+
+    // =========================================================================
+    //  Show Orders
+    // =========================================================================
+    public function ShowOrder()
+    {
+        try {
+            return response()->json(Order::with('order_item', 'address', 'user')->get());
+        } catch (\Exception $e) {
+            return response()->json(['success' => false, 'message' => 'Error retrieving orders', 'error' => $e->getMessage()], 500);
+        }
+    }
+}

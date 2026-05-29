@@ -1,0 +1,18 @@
+.upload-icon {
+    height: 100%;
+    width: 100%;
+    top: 0;
+    left: 0;
+    background: rgba(0, 0, 0, 0.5);
+    opacity: 0;
+    cursor: pointer;
+    transition: opacity 0.3s ease;
+}
+
+.upload-icon:hover {
+    opacity: 1;
+}
+
+.upload-icon svg {
+    color: white;
+}

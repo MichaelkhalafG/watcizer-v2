@@ -1,0 +1,71 @@
+.phone-nav-bar {
+    position: fixed;
+    bottom: 0;
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    z-index: 1000;
+}
+
+.nav-header .menu-button {
+    background: none;
+    border: none;
+    cursor: pointer;
+}
+
+.nav-header .logo {
+    flex-grow: 1;
+    text-align: center;
+    font-weight: bold;
+    text-decoration: none;
+    color: #000;
+}
+
+.cart-icon {
+    position: relative;
+    color: #000;
+}
+
+.cart-count {
+    position: absolute;
+    top: 0px;
+    right: 0px;
+    background: #ea2b0f;
+    color: #fff;
+    font-size: 12px;
+    border-radius: 50%;
+    padding: 2px 5px;
+}
+
+.menu-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+}
+
+.menu-content {
+    background: #fff;
+    padding: 20px;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 80%;
+    max-width: 300px;
+    height: 100%;
+    overflow-y: auto;
+}
+
+.menu-content a {
+    display: block;
+    padding: 10px;
+    color: #000;
+    text-decoration: none;
+}
+
+.total-price {
+    font-weight: bold;
+    padding: 10px 0;
+}

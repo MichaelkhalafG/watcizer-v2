@@ -1,0 +1,79 @@
+*{
+  margin: 0px;
+  padding: 0px;
+}
+.lato-regular {
+  font-family: "Lato", sans-serif;
+  font-weight: 400;
+  font-style: normal;
+}
+.bg-most-used {
+  background-color: #262626;
+}
+.bg-most-used-40 {
+  background-color: #26262670;
+
+}
+.bg-for-love{
+  background-color: #F2385A !important;
+}
+.color-most-used {
+  color: #262626 !important;
+}
+.bg-2{
+  background-color: #26262657;
+}
+.dosis-regular {
+  font-family: "Dosis", sans-serif;
+  font-optical-sizing: auto;
+  font-weight: 500;
+  font-style: normal;
+}
+
+.header {
+  display: none;
+  position: relative;
+  box-shadow: #262626 0px 0px 3px;
+}
+
+.phone-nav {
+  display: block;
+}
+
+@media (min-width: 768px) and (min-height: 500px) {
+  .header {
+    display: block;
+  }
+
+  .phone-nav {
+    display: none;
+  }
+}
+
+.loader-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  flex-direction: column;
+}
+
+.spinner {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+.loader-text {
+  margin-top: 10px;
+  font-size: 18px;
+  color: #333;
+}
