@@ -9,6 +9,7 @@ use Tymon\JWTAuth\Facades\JWTAuth;
 use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Intervention\Image\ImageManager;
 use Illuminate\Support\Facades\Validator;
 use Intervention\Image\Drivers\Gd\Driver;
@@ -23,7 +24,12 @@ class AuthController extends Controller
             return response()->json($user);
 
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => 'An error occurred while fetching user', 'error' => $e->getMessage()], 500);
+            Log::error($e);
+            return response()->json([
+                'success' => false,
+                'message' => 'An error occurred',
+                'ref'     => \Illuminate\Support\Str::uuid()
+            ], 500);
         }
     }
 
@@ -47,7 +53,12 @@ class AuthController extends Controller
             return response()->json($user);
 
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => 'An error occurred while login', 'error' => $e->getMessage()], 500);
+            Log::error($e);
+            return response()->json([
+                'success' => false,
+                'message' => 'An error occurred',
+                'ref'     => \Illuminate\Support\Str::uuid()
+            ], 500);
         }
     }
 
@@ -91,7 +102,12 @@ class AuthController extends Controller
             return response()->json(['success' => true, 'message' => 'something wrong'], 500);
 
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => 'An error occurred while fetching user', 'error' => $e->getMessage()], 500);
+            Log::error($e);
+            return response()->json([
+                'success' => false,
+                'message' => 'An error occurred',
+                'ref'     => \Illuminate\Support\Str::uuid()
+            ], 500);
         }
     }
 
@@ -108,7 +124,12 @@ class AuthController extends Controller
             return response()->json(['success' => true, 'message' => 'Logout successful'], 200);
 
         } catch (JWTException $e) {
-            return response()->json(['success' => false, 'message' => 'An error occurred while fetching user', 'error' => $e->getMessage()], 500);
+            Log::error($e);
+            return response()->json([
+                'success' => false,
+                'message' => 'An error occurred',
+                'ref'     => \Illuminate\Support\Str::uuid()
+            ], 500);
         }
     }
 

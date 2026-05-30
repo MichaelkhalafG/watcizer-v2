@@ -4,12 +4,10 @@
  * (c) 2024 Chart.js Contributors
  * Released under the MIT License
  */
-'use strict';
+"use strict";
 
-var helpers_segment = require('./chunks/helpers.segment.cjs');
-require('@kurkle/color');
-
-
+var helpers_segment = require("./chunks/helpers.segment.cjs");
+require("@kurkle/color");
 
 exports.HALF_PI = helpers_segment.HALF_PI;
 exports.INFINITY = helpers_segment.INFINITY;
@@ -40,7 +38,8 @@ exports._elementsEqual = helpers_segment._elementsEqual;
 exports._factorize = helpers_segment._factorize;
 exports._filterBetween = helpers_segment._filterBetween;
 exports._getParentNode = helpers_segment._getParentNode;
-exports._getStartAndCountOfVisiblePoints = helpers_segment._getStartAndCountOfVisiblePoints;
+exports._getStartAndCountOfVisiblePoints =
+    helpers_segment._getStartAndCountOfVisiblePoints;
 exports._int16Range = helpers_segment._int16Range;
 exports._isBetween = helpers_segment._isBetween;
 exports._isClickEvent = helpers_segment._isClickEvent;
@@ -54,7 +53,8 @@ exports._measureText = helpers_segment._measureText;
 exports._merger = helpers_segment._merger;
 exports._mergerIf = helpers_segment._mergerIf;
 exports._normalizeAngle = helpers_segment._normalizeAngle;
-exports._parseObjectDataRadialScale = helpers_segment._parseObjectDataRadialScale;
+exports._parseObjectDataRadialScale =
+    helpers_segment._parseObjectDataRadialScale;
 exports._pointInLine = helpers_segment._pointInLine;
 exports._readValueToProps = helpers_segment._readValueToProps;
 exports._rlookupByKey = helpers_segment._rlookupByKey;
@@ -116,7 +116,8 @@ exports.setsEqual = helpers_segment.setsEqual;
 exports.sign = helpers_segment.sign;
 exports.splineCurve = helpers_segment.splineCurve;
 exports.splineCurveMonotone = helpers_segment.splineCurveMonotone;
-exports.supportsEventListenerOptions = helpers_segment.supportsEventListenerOptions;
+exports.supportsEventListenerOptions =
+    helpers_segment.supportsEventListenerOptions;
 exports.throttled = helpers_segment.throttled;
 exports.toDegrees = helpers_segment.toDegrees;
 exports.toDimension = helpers_segment.toDimension;

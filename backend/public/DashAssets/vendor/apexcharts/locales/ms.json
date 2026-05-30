@@ -38,15 +38,7 @@
             "Jumaat",
             "Sabtu"
         ],
-        "shortDays": [
-            "Ahd",
-            "Isn",
-            "Sel",
-            "Rab",
-            "Kha",
-            "Jum",
-            "Sab"
-        ],
+        "shortDays": ["Ahd", "Isn", "Sel", "Rab", "Kha", "Jum", "Sab"],
         "toolbar": {
             "exportToSVG": "Muat turun SVG",
             "exportToPNG": "Muat turun PNG",

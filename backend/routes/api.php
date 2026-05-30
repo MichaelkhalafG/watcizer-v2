@@ -52,16 +52,20 @@ Route::middleware(['api', 'CheckApi'])->group(function () {
     // Orders //
     Route::get('show_shipping_city',   [OrderController::class, 'ShowShippingCity']);
     Route::post('add_address',         [OrderController::class, 'AddAddress']);
-    Route::get('show_address',         [OrderController::class, 'ShowAddress']);
+    // DEPRECATED: remove after P1 — replaced by authenticated GET me/addresses
+    // Route::get('show_address',         [OrderController::class, 'ShowAddress']);
     Route::post('add_to_cart',         [OrderController::class, 'AddToCart']);
-    Route::get('show_cart',            [OrderController::class, 'ShowCart']);
-    Route::get('show_cart/{user_id}',  [OrderController::class, 'ShowCart']);
+    // DEPRECATED: remove after P1 — replaced by authenticated GET me/cart
+    // Route::get('show_cart',            [OrderController::class, 'ShowCart']);
+    // Route::get('show_cart/{user_id}',  [OrderController::class, 'ShowCart']);
     Route::delete('delete_cart/{id}',  [OrderController::class, 'DeleteCart']);
     Route::post('add_order',           [OrderController::class, 'AddOrder']);
-    Route::get('show_order',           [OrderController::class, 'ShowOrder']);
+    // DEPRECATED: remove after P1 — replaced by authenticated GET me/orders
+    // Route::get('show_order',           [OrderController::class, 'ShowOrder']);
 
     // Auth //
-    Route::get('all_user',         [AuthController::class, 'AllUser']);
+    // DEPRECATED (P0-4): exposed all users publicly. Re-add behind an admin guard if the admin panel needs it.
+    // Route::get('all_user',         [AuthController::class, 'AllUser']);
     Route::post('register',        [AuthController::class, 'register']);
     Route::post('login',           [AuthController::class, 'login']);
     Route::post('logout',          [AuthController::class, 'logout']);
@@ -74,6 +78,13 @@ Route::middleware(['api', 'CheckApi'])->group(function () {
     Route::get('new_colors',                          [ProductVariantApiController::class, 'colors']);
     Route::get('new_sizes',                           [ProductVariantApiController::class, 'sizes']);
 
+});
+
+// Authenticated (JWT) endpoints — scoped to the logged-in caller
+Route::middleware(['api', 'CheckApi', 'auth:api'])->group(function () {
+    Route::get('me/orders',    [OrderController::class, 'ShowOrder']);
+    Route::get('me/addresses', [OrderController::class, 'ShowAddress']);
+    Route::get('me/cart',      [OrderController::class, 'ShowCart']);
 });
 
 // Category Hierarchy API (no auth - used by admin dashboard)

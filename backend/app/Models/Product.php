@@ -87,6 +87,16 @@ class Product extends Model implements TranslatableContract
         'extra_attributes',
     ];
 
+    protected $hidden = [
+        'purchase_price',
+        'wa_code',
+        'hs_code',
+        'sku_unique',
+        'created_by',
+        'updated_by',
+        'low_stock_threshold',
+    ];
+
     // ── Legacy relations ───────────────────────────────────
 
     public function category()

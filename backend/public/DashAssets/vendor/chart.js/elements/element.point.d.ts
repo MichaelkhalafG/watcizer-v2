@@ -1,7 +1,16 @@
-import Element from '../core/core.element.js';
-import type { CartesianParsedData, ChartArea, Point, PointHoverOptions, PointOptions } from '../types/index.js';
+import Element from "../core/core.element.js";
+import type {
+    CartesianParsedData,
+    ChartArea,
+    Point,
+    PointHoverOptions,
+    PointOptions,
+} from "../types/index.js";
 export type PointProps = Point;
-export default class PointElement extends Element<PointProps, PointOptions & PointHoverOptions> {
+export default class PointElement extends Element<
+    PointProps,
+    PointOptions & PointHoverOptions
+> {
     static id: string;
     parsed: CartesianParsedData;
     skip?: boolean;
@@ -26,7 +35,11 @@ export default class PointElement extends Element<PointProps, PointOptions & Poi
         borderColor: string;
     };
     constructor(cfg: any);
-    inRange(mouseX: number, mouseY: number, useFinalPosition?: boolean): boolean;
+    inRange(
+        mouseX: number,
+        mouseY: number,
+        useFinalPosition?: boolean,
+    ): boolean;
     inXRange(mouseX: number, useFinalPosition?: boolean): boolean;
     inYRange(mouseY: number, useFinalPosition?: boolean): boolean;
     getCenterPoint(useFinalPosition?: boolean): {

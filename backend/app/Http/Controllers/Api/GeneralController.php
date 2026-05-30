@@ -8,6 +8,7 @@ use App\Models\CategoryType;
 use App\Http\Controllers\Controller;
 use App\Models\Blog;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 
 class GeneralController extends Controller
 {
@@ -23,10 +24,11 @@ class GeneralController extends Controller
             return response()->json($categories);
 
         } catch (\Exception $e) {
+            Log::error($e);
             return response()->json([
                 'success' => false,
-                'message' => 'An error occurred while fetching categories',
-                'error'   => $e->getMessage()
+                'message' => 'An error occurred',
+                'ref'     => \Illuminate\Support\Str::uuid()
             ], 500);
         }
     }
@@ -43,10 +45,11 @@ class GeneralController extends Controller
             return response()->json($blogs);
 
         } catch (\Exception $e) {
+            Log::error($e);
             return response()->json([
                 'success' => false,
-                'message' => 'An error occurred while fetching blogs',
-                'error'   => $e->getMessage()
+                'message' => 'An error occurred',
+                'ref'     => \Illuminate\Support\Str::uuid()
             ], 500);
         }
     }

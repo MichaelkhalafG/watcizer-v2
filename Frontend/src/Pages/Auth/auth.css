@@ -1,10 +1,10 @@
-.login{
-    background: url(../../assets//images/Untitled.svg) no-repeat center center/cover;
-    background-color: #ffffff;
-    z-index: 10000;
+.login {
+  background: url(../../assets//images/Untitled.svg) no-repeat center center/cover;
+  background-color: #ffffff;
+  z-index: 10000;
 }
-.register{
-    background: url(../../assets//images/Untitled.svg) no-repeat center center/cover;
-    background-color: #ffffff;
-    z-index: 10000;
+.register {
+  background: url(../../assets//images/Untitled.svg) no-repeat center center/cover;
+  background-color: #ffffff;
+  z-index: 10000;
 }

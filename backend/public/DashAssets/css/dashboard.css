@@ -23,7 +23,9 @@
     background-color: #ffffff;
     border-radius: 10px;
     box-shadow: 0 5px 25px rgba(0, 0, 0, 0.1);
-    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    transition:
+        transform 0.3s ease,
+        box-shadow 0.3s ease;
     margin-bottom: 10px;
     position: relative; /* اضافة هذه الخاصية لضمان أن الكارت لا يؤثر على الـ z-index */
 }
@@ -36,7 +38,7 @@
 /* تخصيص الفلاتر بشكل أكثر دقة */
 .filter {
     position: relative;
-    z-index: 1050;  /* رفع z-index ليظهر فوق الكارت */
+    z-index: 1050; /* رفع z-index ليظهر فوق الكارت */
 }
 
 .filter .dropdown-menu {
@@ -44,9 +46,9 @@
     background-color: #ffffff;
     border: 1px solid #ddd;
     box-shadow: 0 6px 20px rgba(0, 0, 0, 0.1);
-    z-index: 1060;  /* رفع z-index أعلى من الكارت ليظهر الفلتر في المقدمة */
-    position: absolute;  /* اجعل الـ dropdown يظهر بشكل صحيح */
-    top: 100%;  /* اظهر الفلتر مباشرة أسفل الكارت */
+    z-index: 1060; /* رفع z-index أعلى من الكارت ليظهر الفلتر في المقدمة */
+    position: absolute; /* اجعل الـ dropdown يظهر بشكل صحيح */
+    top: 100%; /* اظهر الفلتر مباشرة أسفل الكارت */
     left: 0;
     transition: opacity 0.3s ease;
 }
@@ -71,4 +73,3 @@
 .filter .icon:hover {
     color: #0056b3;
 }
-

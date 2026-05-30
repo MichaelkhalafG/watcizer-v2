@@ -32,20 +32,20 @@ Watchizer is a **functional but architecturally fragile client-rendered SPA** (V
 
 1. **It downloads the entire catalog to the browser** (all products, all images, all ratings, all lookup tables) and transforms it **twice** (EN + AR) on the main thread. There is no server-side filtering, search, or pagination.
 2. **It is a pure client-rendered SPA with no SSR/SSG.** For a luxury store competing on Google, product pages ship an empty `<div id="root">` and a single shared `<title>` for the whole site.
-3. **It leaks its own JWT signing secret and all user PII to every visitor.** The "Api-Code" hardcoded in the JS bundle *is* `config('jwt.secret')`, and `/api/all_user` returns every customer record.
+3. **It leaks its own JWT signing secret and all user PII to every visitor.** The "Api-Code" hardcoded in the JS bundle _is_ `config('jwt.secret')`, and `/api/all_user` returns every customer record.
 
-The good news: the competitor (`watchesprime.com`) is **WordPress + WooCommerce** — heavy, plugin-laden, weak structured data, no SSR optimization either. They win today on *content, trust signals, and luxury feel*, not on engineering. **A properly built React SSR/ISR storefront can decisively outperform them on Core Web Vitals and SEO while matching their premium feel.**
+The good news: the competitor (`watchesprime.com`) is **WordPress + WooCommerce** — heavy, plugin-laden, weak structured data, no SSR optimization either. They win today on _content, trust signals, and luxury feel_, not on engineering. **A properly built React SSR/ISR storefront can decisively outperform them on Core Web Vitals and SEO while matching their premium feel.**
 
 **Verdict:** Do **not** attempt a cosmetic redesign on top of the current data layer. The transformation must be **incremental but foundational** — fix the security leaks immediately (hours), then introduce server-driven data + rendering (the unlock for everything else), then layer the luxury UX on top.
 
-| Pillar | Current Grade | Ceiling on current architecture | After roadmap |
-|---|---|---|---|
-| Security | 🔴 F | F (secret is shipped) | A |
-| SEO | 🔴 D | D (no SSR, shared meta) | A |
-| Performance | 🟠 D+ | C (full-catalog download) | A |
-| Accessibility | 🟠 C- | C | AA |
-| UX / Luxury feel | 🟡 C | B | A |
-| Scalability | 🔴 D | D (client does the DB's job) | A |
+| Pillar           | Current Grade | Ceiling on current architecture | After roadmap |
+| ---------------- | ------------- | ------------------------------- | ------------- |
+| Security         | 🔴 F          | F (secret is shipped)           | A             |
+| SEO              | 🔴 D          | D (no SSR, shared meta)         | A             |
+| Performance      | 🟠 D+         | C (full-catalog download)       | A             |
+| Accessibility    | 🟠 C-         | C                               | AA            |
+| UX / Luxury feel | 🟡 C          | B                               | A             |
+| Scalability      | 🔴 D          | D (client does the DB's job)    | A             |
 
 ---
 
@@ -91,7 +91,7 @@ That exact value is hardcoded in the frontend bundle in **at least 4 files** (`a
 
 ### 🔴 C6 — No SSR / per-page metadata
 
-`Helmet` appears **only in `App.jsx`** (confirmed: `grep Helmet` → 1 file). Every route — every product, every category — serves the *same* `<title>` and description. Combined with client-only rendering, product pages are effectively invisible to crawlers' first pass. This is the #1 SEO blocker.
+`Helmet` appears **only in `App.jsx`** (confirmed: `grep Helmet` → 1 file). Every route — every product, every category — serves the _same_ `<title>` and description. Combined with client-only rendering, product pages are effectively invisible to crawlers' first pass. This is the #1 SEO blocker.
 
 > **Second-pass additions (2026-05-29) — read full detail in [Section 15](#15-second-pass-findings-deep-dive).** Three new critical issues were found that outrank some of the above:
 
@@ -177,13 +177,13 @@ Beyond `all_user` (C2), three more endpoints return **entire tables** and the fr
 
 No production `dist/` exists yet, so these are static-analysis projections mapped to Core Web Vitals.
 
-| Metric | Current risk | Primary causes |
-|---|---|---|
-| **LCP** | 🔴 Poor | Hero `HomeSlider` (react-slick) + unoptimized banner JPG/WebP from origin; LCP image waits on full-catalog fetch + JS hydration; no `fetchpriority`/preload on hero. |
-| **CLS** | 🔴 Poor | Banner `<img>` without intrinsic width/height (`Home.jsx:137`), `aspectRatio` only on some; Google Font swap; sticky header; JS-decided desktop/mobile swap mid-render. |
-| **INP** | 🟠 Needs work | God-context re-renders on every interaction; client-side filtering over full array (`Listing.jsx`); resize listeners triggering global re-renders. |
-| **TTFB** | 🟡 OK-ish | Static SPA shell is fast, but it's empty — meaningful content is gated behind several large XHRs. |
-| **TBT/JS cost** | 🔴 Poor | Double `transformProductData` (EN+AR) on main thread; Bootstrap+MUI; AOS; legacy bundles. |
+| Metric          | Current risk  | Primary causes                                                                                                                                                          |
+| --------------- | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **LCP**         | 🔴 Poor       | Hero `HomeSlider` (react-slick) + unoptimized banner JPG/WebP from origin; LCP image waits on full-catalog fetch + JS hydration; no `fetchpriority`/preload on hero.    |
+| **CLS**         | 🔴 Poor       | Banner `<img>` without intrinsic width/height (`Home.jsx:137`), `aspectRatio` only on some; Google Font swap; sticky header; JS-decided desktop/mobile swap mid-render. |
+| **INP**         | 🟠 Needs work | God-context re-renders on every interaction; client-side filtering over full array (`Listing.jsx`); resize listeners triggering global re-renders.                      |
+| **TTFB**        | 🟡 OK-ish     | Static SPA shell is fast, but it's empty — meaningful content is gated behind several large XHRs.                                                                       |
+| **TBT/JS cost** | 🔴 Poor       | Double `transformProductData` (EN+AR) on main thread; Bootstrap+MUI; AOS; legacy bundles.                                                                               |
 
 ### Other findings
 
@@ -230,7 +230,7 @@ This is where the gap vs. a luxury competitor is widest — and most winnable.
 ### Where we can decisively beat them (engineering moat)
 
 - **Performance:** WooCommerce + plugins is heavy; a React SSR/ISR storefront with optimized images and a thin API can win every Core Web Vital.
-- **Structured data:** they have *none* visible — full Product/Breadcrumb/Review schema gets us rich results they can't easily match.
+- **Structured data:** they have _none_ visible — full Product/Breadcrumb/Review schema gets us rich results they can't easily match.
 - **Animation smoothness:** replace AOS/jQuery-era patterns with GPU-friendly Framer Motion micro-interactions.
 - **True bilingual SEO** with hreflang + localized URLs (they only have a toggle).
 
@@ -258,16 +258,16 @@ This is where the gap vs. a luxury competitor is widest — and most winnable.
 
 ### Security (consolidated)
 
-| ID | Issue | Severity |
-|---|---|---|
-| C1 | JWT secret == public Api-Code, shipped in bundle | 🔴 Critical |
-| C2 | `/api/all_user` returns all PII | 🔴 Critical |
-| C3 | `APP_DEBUG=true` in env.example | 🔴 High |
-| S4 | `purchase_price` (cost/margin) exposed to client | 🟠 High |
-| S5 | `user_id` taken from request body (IDOR on cart/orders) | 🟠 High |
-| S6 | No rate limiting on read/write APIs | 🟡 Medium |
-| S7 | No API Resources → raw model fields leak | 🟡 Medium |
-| S8 | Single static key for all read auth | 🟡 Medium |
+| ID  | Issue                                                   | Severity    |
+| --- | ------------------------------------------------------- | ----------- |
+| C1  | JWT secret == public Api-Code, shipped in bundle        | 🔴 Critical |
+| C2  | `/api/all_user` returns all PII                         | 🔴 Critical |
+| C3  | `APP_DEBUG=true` in env.example                         | 🔴 High     |
+| S4  | `purchase_price` (cost/margin) exposed to client        | 🟠 High     |
+| S5  | `user_id` taken from request body (IDOR on cart/orders) | 🟠 High     |
+| S6  | No rate limiting on read/write APIs                     | 🟡 Medium   |
+| S7  | No API Resources → raw model fields leak                | 🟡 Medium   |
+| S8  | Single static key for all read auth                     | 🟡 Medium   |
 
 ### Scalability
 
@@ -284,85 +284,85 @@ Ordered by priority. Each phase is independently shippable and non-breaking. Ear
 
 ### PHASE 0 — Security hotfix (do first, hours, no UX change)
 
-| Step | Objective | Files/Folders | Risk | Perf | SEO | UX |
-|---|---|---|---|---|---|---|
-| 0.1 | **Rotate JWT secret; separate it from the public API key.** Introduce a distinct, rotatable public read-key (or move to per-user tokens). | `backend/config/jwt.php`, `CheckApiMiddleware`, `.env`, FE `api.jsx`,`FetchTablesAndProducts.jsx`,`MyProvider.jsx` | Med | – | – | – |
-| 0.2 | **Remove `/api/all_user` usage from FE; restrict endpoint to admin/auth.** | `MyProvider.jsx:70`, `api.jsx:6`, `routes/api.php`, `AuthController` | Low | + | – | – |
-| 0.3 | **Force `APP_DEBUG=false` in prod; verify env.** | `backend/.env` | Low | – | – | – |
-| 0.4 | **Stop exposing `purchase_price`** via API Resource/hidden. | `DetailsProductController`, Product model/Resource | Low | – | – | – |
-| 0.5 | **Remove the two forced-reload timers.** | `App.jsx:83-92`, `FetchTablesAndProducts.jsx:385-389` | Low | + | + | **Critical+** |
-| **0.6** | **🔴 Verify Paymob callback HMAC** (NEW-8) — reject unsigned callbacks; move route inside auth. Stops free-order fraud. | `OrderController@CallbackPayment`, `routes/api.php` | Low | – | – | – |
-| **0.7** | **🔴 Lock down `ShowOrder`/`ShowAddress`/`ShowCart`/`all_user`** (NEW-7, C8) — scope to authenticated user only. | `OrderController`, `AuthController`, `routes/api.php` | Low | + | – | – |
-| **0.8** | **🔴 Fix the cart↔checkout disconnect** (NEW-1, C7) — pick ONE cart source of truth and wire checkout to it; send `items[]` in `AddOrder`. Restores the ability to buy. | `Checkout.jsx`, `cartStore.js`, `OrderController@AddOrder` | Med | – | – | **Revenue** |
-| **0.9** | **🟠 Add `$hidden` to `Product`** (NEW-9) — hide `purchase_price`, `created_by/updated_by`, `hs_code`, `wa_code`, internal IDs. | `app/Models/Product.php` | Low | – | – | – |
-| **0.10** | **🟠 Stop leaking `file`/`line` in error responses** (NEW-11). | `OrderController@AddOrder:319-320` | Low | – | – | – |
-| **0.11** | **🟠 Gate rating submission** (NEW-10) — require auth, validate `user_id`, one rating per user per product. | `DetailsProductController@AddProductRating/AddOfferRating` | Low | – | + | – |
+| Step     | Objective                                                                                                                                                               | Files/Folders                                                                                                      | Risk | Perf | SEO | UX            |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ | ---- | ---- | --- | ------------- |
+| 0.1      | **Rotate JWT secret; separate it from the public API key.** Introduce a distinct, rotatable public read-key (or move to per-user tokens).                               | `backend/config/jwt.php`, `CheckApiMiddleware`, `.env`, FE `api.jsx`,`FetchTablesAndProducts.jsx`,`MyProvider.jsx` | Med  | –    | –   | –             |
+| 0.2      | **Remove `/api/all_user` usage from FE; restrict endpoint to admin/auth.**                                                                                              | `MyProvider.jsx:70`, `api.jsx:6`, `routes/api.php`, `AuthController`                                               | Low  | +    | –   | –             |
+| 0.3      | **Force `APP_DEBUG=false` in prod; verify env.**                                                                                                                        | `backend/.env`                                                                                                     | Low  | –    | –   | –             |
+| 0.4      | **Stop exposing `purchase_price`** via API Resource/hidden.                                                                                                             | `DetailsProductController`, Product model/Resource                                                                 | Low  | –    | –   | –             |
+| 0.5      | **Remove the two forced-reload timers.**                                                                                                                                | `App.jsx:83-92`, `FetchTablesAndProducts.jsx:385-389`                                                              | Low  | +    | +   | **Critical+** |
+| **0.6**  | **🔴 Verify Paymob callback HMAC** (NEW-8) — reject unsigned callbacks; move route inside auth. Stops free-order fraud.                                                 | `OrderController@CallbackPayment`, `routes/api.php`                                                                | Low  | –    | –   | –             |
+| **0.7**  | **🔴 Lock down `ShowOrder`/`ShowAddress`/`ShowCart`/`all_user`** (NEW-7, C8) — scope to authenticated user only.                                                        | `OrderController`, `AuthController`, `routes/api.php`                                                              | Low  | +    | –   | –             |
+| **0.8**  | **🔴 Fix the cart↔checkout disconnect** (NEW-1, C7) — pick ONE cart source of truth and wire checkout to it; send `items[]` in `AddOrder`. Restores the ability to buy. | `Checkout.jsx`, `cartStore.js`, `OrderController@AddOrder`                                                         | Med  | –    | –   | **Revenue**   |
+| **0.9**  | **🟠 Add `$hidden` to `Product`** (NEW-9) — hide `purchase_price`, `created_by/updated_by`, `hs_code`, `wa_code`, internal IDs.                                         | `app/Models/Product.php`                                                                                           | Low  | –    | –   | –             |
+| **0.10** | **🟠 Stop leaking `file`/`line` in error responses** (NEW-11).                                                                                                          | `OrderController@AddOrder:319-320`                                                                                 | Low  | –    | –   | –             |
+| **0.11** | **🟠 Gate rating submission** (NEW-10) — require auth, validate `user_id`, one rating per user per product.                                                             | `DetailsProductController@AddProductRating/AddOfferRating`                                                         | Low  | –    | +   | –             |
 
 > **Impact: CRITICAL.** 0.1–0.4 close a breach; 0.5 is the biggest perceived-quality win; **0.6–0.8 are now the true top priority** — without 0.8 the store cannot take a single order, and 0.6/0.7 close active fraud/PII vectors. These are hotfixes, not migrations.
 
 ### PHASE 1 — Backend API reshape (the unlock)
 
-| Step | Objective | Files | Risk | Perf | SEO | UX |
-|---|---|---|---|---|---|---|
-| 1.1 | Add **paginated, filterable, server-shaped** product/listing endpoints (price/brand/category/grade/search, sort). Return pre-joined, localized DTOs via **API Resources**. | `Api/*Controller`, new Resources, routes | Med | **Critical** | + | + |
-| 1.2 | Add a **single PDP endpoint** returning one fully-shaped product + related + ratings. | `DetailsProductController` | Low | High | High | + |
-| 1.3 | Derive identity from token for cart/orders (kill body `user_id`); add rate limiting. | `OrderController`, middleware | Med | – | – | + |
-| 1.4 | Add **image transform/CDN** (on-the-fly resize + AVIF/WebP) in front of `Uploads_Images`. | infra + URL helper | Med | High | + | + |
-| **1.5** | **Add missing DB indexes** (NEW-12): composite/price/`active` indexes + FULLTEXT on `search_keywords`. FK columns are already indexed. | migration | Low | High | – | – |
-| **1.6** | **Fix order-number generation** (NEW-2) — sequence/`lockForUpdate`, not string `max()+1` (breaks at 10k orders). | `OrderController@AddOrder` | Med | – | – | + |
-| **1.7** | **Lock stock on decrement** (NEW-3) — `lockForUpdate` + restore stock on failed/abandoned Paymob (NEW-4). | `OrderController` | Med | – | – | + |
-| **1.8** | **Queue order emails** (NEW-5) — move 6 synchronous `Mail::send` off the checkout request. | `OrderController@sendOrderEmails` | Low | + | – | + |
-| **1.9** | **Guest cart token flow** (NEW-13 / [§15.2](#152-guest-cart-architecture--full-proposal)) — `guest_token` column, `GuestCartMiddleware`, `MergeGuestCart` on login, 7-day cleanup job. **Depends on 0.8 + 1.3.** | carts/cart_items migration, new middleware + service + job, FE interceptor | High | – | – | **Critical** |
+| Step    | Objective                                                                                                                                                                                                        | Files                                                                      | Risk | Perf         | SEO  | UX           |
+| ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- | ---- | ------------ | ---- | ------------ |
+| 1.1     | Add **paginated, filterable, server-shaped** product/listing endpoints (price/brand/category/grade/search, sort). Return pre-joined, localized DTOs via **API Resources**.                                       | `Api/*Controller`, new Resources, routes                                   | Med  | **Critical** | +    | +            |
+| 1.2     | Add a **single PDP endpoint** returning one fully-shaped product + related + ratings.                                                                                                                            | `DetailsProductController`                                                 | Low  | High         | High | +            |
+| 1.3     | Derive identity from token for cart/orders (kill body `user_id`); add rate limiting.                                                                                                                             | `OrderController`, middleware                                              | Med  | –            | –    | +            |
+| 1.4     | Add **image transform/CDN** (on-the-fly resize + AVIF/WebP) in front of `Uploads_Images`.                                                                                                                        | infra + URL helper                                                         | Med  | High         | +    | +            |
+| **1.5** | **Add missing DB indexes** (NEW-12): composite/price/`active` indexes + FULLTEXT on `search_keywords`. FK columns are already indexed.                                                                           | migration                                                                  | Low  | High         | –    | –            |
+| **1.6** | **Fix order-number generation** (NEW-2) — sequence/`lockForUpdate`, not string `max()+1` (breaks at 10k orders).                                                                                                 | `OrderController@AddOrder`                                                 | Med  | –            | –    | +            |
+| **1.7** | **Lock stock on decrement** (NEW-3) — `lockForUpdate` + restore stock on failed/abandoned Paymob (NEW-4).                                                                                                        | `OrderController`                                                          | Med  | –            | –    | +            |
+| **1.8** | **Queue order emails** (NEW-5) — move 6 synchronous `Mail::send` off the checkout request.                                                                                                                       | `OrderController@sendOrderEmails`                                          | Low  | +            | –    | +            |
+| **1.9** | **Guest cart token flow** (NEW-13 / [§15.2](#152-guest-cart-architecture--full-proposal)) — `guest_token` column, `GuestCartMiddleware`, `MergeGuestCart` on login, 7-day cleanup job. **Depends on 0.8 + 1.3.** | carts/cart_items migration, new middleware + service + job, FE interceptor | High | –            | –    | **Critical** |
 
-> **Why first among build work:** every frontend and SEO improvement depends on being able to fetch *small, shaped, localized* data. This kills C5.
+> **Why first among build work:** every frontend and SEO improvement depends on being able to fetch _small, shaped, localized_ data. This kills C5.
 
 ### PHASE 2 — Rendering & SEO foundation
 
-| Step | Objective | Files | Risk | Perf | SEO | UX |
-|---|---|---|---|---|---|---|
-| 2.1 | **Adopt SSR/ISR** — migrate the React app to **Next.js (App Router)** (or Remix), or add SSR prerender for PDP/category. Incremental: start with PDP + category routes. | new app shell, route migration | High | **Critical** | **Critical** | + |
-| 2.2 | **Per-page metadata**: unique title/description/canonical/OG per product, category, brand, blog. | metadata layer (replaces single Helmet) | Low | – | **Critical** | + |
-| 2.3 | **Structured data**: `Product`+`Offer`+`AggregateRating`, `BreadcrumbList`, keep `Store`/`Organization`. | PDP/category templates | Low | – | High | + |
-| 2.4 | **Localized URLs + `hreflang`** (`/en`, `/ar`) replacing client toggle. | routing, middleware | Med | – | High | + |
-| 2.5 | **Real `robots.txt` + dynamic `sitemap.xml`** served from origin. | server routes / `public` | Low | – | High | – |
+| Step | Objective                                                                                                                                                               | Files                                   | Risk | Perf         | SEO          | UX  |
+| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- | ---- | ------------ | ------------ | --- |
+| 2.1  | **Adopt SSR/ISR** — migrate the React app to **Next.js (App Router)** (or Remix), or add SSR prerender for PDP/category. Incremental: start with PDP + category routes. | new app shell, route migration          | High | **Critical** | **Critical** | +   |
+| 2.2  | **Per-page metadata**: unique title/description/canonical/OG per product, category, brand, blog.                                                                        | metadata layer (replaces single Helmet) | Low  | –            | **Critical** | +   |
+| 2.3  | **Structured data**: `Product`+`Offer`+`AggregateRating`, `BreadcrumbList`, keep `Store`/`Organization`.                                                                | PDP/category templates                  | Low  | –            | High         | +   |
+| 2.4  | **Localized URLs + `hreflang`** (`/en`, `/ar`) replacing client toggle.                                                                                                 | routing, middleware                     | Med  | –            | High         | +   |
+| 2.5  | **Real `robots.txt` + dynamic `sitemap.xml`** served from origin.                                                                                                       | server routes / `public`                | Low  | –            | High         | –   |
 
 > **Dependency:** 2.x depends on Phase 1 (needs shaped per-entity endpoints). 2.2–2.5 can ship the day SSR lands.
 
 ### PHASE 3 — Frontend architecture cleanup
 
-| Step | Objective | Files | Risk | Perf | SEO | UX |
-|---|---|---|---|---|---|---|
-| 3.1 | **Pick ONE design system** (recommend Tailwind + a headless lib, or MUI alone) and **remove Bootstrap**. | global, all components | High | High | – | High |
-| 3.2 | **Replace god-Context** with server state (TanStack Query) + small UI stores (Zustand). | `MyProvider`, consumers | Med | High | – | + |
-| 3.3 | **CSS-driven responsive layout**; remove `windowWidth` branching and duplicate phone/desktop components. | `App.jsx`, `Cart/PhoneCart`, etc. | Med | High | – | High |
-| 3.4 | Centralize config (API base, image base, keys) into one module. | new `config/` | Low | – | – | – |
-| 3.5 | Remove dead code, dedupe `getItemKey`, split `ProductDisplay`. | multiple | Low | + | – | – |
+| Step | Objective                                                                                                | Files                             | Risk | Perf | SEO | UX   |
+| ---- | -------------------------------------------------------------------------------------------------------- | --------------------------------- | ---- | ---- | --- | ---- |
+| 3.1  | **Pick ONE design system** (recommend Tailwind + a headless lib, or MUI alone) and **remove Bootstrap**. | global, all components            | High | High | –   | High |
+| 3.2  | **Replace god-Context** with server state (TanStack Query) + small UI stores (Zustand).                  | `MyProvider`, consumers           | Med  | High | –   | +    |
+| 3.3  | **CSS-driven responsive layout**; remove `windowWidth` branching and duplicate phone/desktop components. | `App.jsx`, `Cart/PhoneCart`, etc. | Med  | High | –   | High |
+| 3.4  | Centralize config (API base, image base, keys) into one module.                                          | new `config/`                     | Low  | –    | –   | –    |
+| 3.5  | Remove dead code, dedupe `getItemKey`, split `ProductDisplay`.                                           | multiple                          | Low  | +    | –   | –    |
 
 ### PHASE 4 — Performance & media
 
-| Step | Objective | Risk | Perf |
-|---|---|---|---|
-| 4.1 | Responsive `srcset`/`sizes`, AVIF/WebP, intrinsic dimensions everywhere; `fetchpriority` on LCP. | Low | **Critical** |
-| 4.2 | Preload hero + fonts (`font-display: swap`, self-host or correct preload); drop the `media=print` hack. | Low | High |
-| 4.3 | Drop `@vitejs/plugin-legacy` if browserslist allows; audit chunks. | Low | High |
-| 4.4 | Route prefetch on intent; SWR caching (replaces 10-min nuke). | Low | High |
+| Step | Objective                                                                                               | Risk | Perf         |
+| ---- | ------------------------------------------------------------------------------------------------------- | ---- | ------------ |
+| 4.1  | Responsive `srcset`/`sizes`, AVIF/WebP, intrinsic dimensions everywhere; `fetchpriority` on LCP.        | Low  | **Critical** |
+| 4.2  | Preload hero + fonts (`font-display: swap`, self-host or correct preload); drop the `media=print` hack. | Low  | High         |
+| 4.3  | Drop `@vitejs/plugin-legacy` if browserslist allows; audit chunks.                                      | Low  | High         |
+| 4.4  | Route prefetch on intent; SWR caching (replaces 10-min nuke).                                           | Low  | High         |
 
 ### PHASE 5 — Luxury UX layer (the visible payoff)
 
-| Step | Objective | Risk | UX |
-|---|---|---|---|
-| 5.1 | New design language: refined type scale, spacing system, dark luxe palette, generous whitespace. | Med | **Critical** |
-| 5.2 | Trust layer: returns/guarantee/secure-checkout badges, review counts, social proof, payment methods (match & exceed competitor). | Low | High |
-| 5.3 | Framer Motion micro-interactions (replace AOS); premium PDP gallery; smooth page transitions. | Med | High |
-| 5.4 | Redesigned PDP, category merchandising tiles, mega-menu, streamlined checkout. | Med | High |
-| **5.5** | **Full merchandising & discovery layer** ([§15.3](#153-merchandising-layer--full-proposal)): homepage category tiles, image-rich mega-menu, PDP "You may also like", trust layer. Some pieces (trust badges) can ship in Phase 0 since they're static. | Med | High |
+| Step    | Objective                                                                                                                                                                                                                                              | Risk | UX           |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---- | ------------ |
+| 5.1     | New design language: refined type scale, spacing system, dark luxe palette, generous whitespace.                                                                                                                                                       | Med  | **Critical** |
+| 5.2     | Trust layer: returns/guarantee/secure-checkout badges, review counts, social proof, payment methods (match & exceed competitor).                                                                                                                       | Low  | High         |
+| 5.3     | Framer Motion micro-interactions (replace AOS); premium PDP gallery; smooth page transitions.                                                                                                                                                          | Med  | High         |
+| 5.4     | Redesigned PDP, category merchandising tiles, mega-menu, streamlined checkout.                                                                                                                                                                         | Med  | High         |
+| **5.5** | **Full merchandising & discovery layer** ([§15.3](#153-merchandising-layer--full-proposal)): homepage category tiles, image-rich mega-menu, PDP "You may also like", trust layer. Some pieces (trust badges) can ship in Phase 0 since they're static. | Med  | High         |
 
 ---
 
 ## 11. Quick Wins (high impact, low risk, days)
 
-1. **Delete both reload timers** (C4) — instant UX credibility. *(0.5)*
-2. **Stop calling `/api/all_user`** from the client (C2) — closes PII leak, removes a wasteful request. *(0.2)*
+1. **Delete both reload timers** (C4) — instant UX credibility. _(0.5)_
+2. **Stop calling `/api/all_user`** from the client (C2) — closes PII leak, removes a wasteful request. _(0.2)_
 3. **Set `APP_DEBUG=false`** in prod (C3).
 4. **Fix the canonical bug** — per-page canonical instead of site-wide homepage URL (`App.jsx:124`). Stops active SEO self-harm.
 5. **Add `robots.txt` + a generated `sitemap.xml`** to the served root.
@@ -370,7 +370,7 @@ Ordered by priority. Each phase is independently shippable and non-breaking. Ear
 7. **Hide `purchase_price`** from API responses (S4) — stops leaking margins.
 8. **Descriptive alt text** on banners/products.
 
-> These can be done on the *current* architecture without the big migration — none of them require SSR.
+> These can be done on the _current_ architecture without the big migration — none of them require SSR.
 
 ---
 
@@ -426,7 +426,7 @@ Ordered by priority. Each phase is independently shippable and non-breaking. Ear
 - **Secrets stay on the server**; public read-key is rotatable and least-privilege; user actions use per-user tokens.
 - **Images via a transform/CDN layer**, never raw origin files.
 - **Bilingual = localized routes + hreflang**, not a client toggle.
-- **One cart, server-authoritative, guest-capable** *(added second pass)*: a `cart` keyed by **either** `user_id` **or** `guest_token`; the client holds an optimistic mirror but the server is the source of truth at checkout. On login, `MergeGuestCart` folds the guest cart into the user cart. A scheduled job reaps guest carts older than 7 days. This replaces today's broken sessionStorage-vs-server split (NEW-1) and is the structural prerequisite for guest checkout.
+- **One cart, server-authoritative, guest-capable** _(added second pass)_: a `cart` keyed by **either** `user_id` **or** `guest_token`; the client holds an optimistic mirror but the server is the source of truth at checkout. On login, `MergeGuestCart` folds the guest cart into the user cart. A scheduled job reaps guest carts older than 7 days. This replaces today's broken sessionStorage-vs-server split (NEW-1) and is the structural prerequisite for guest checkout.
 
 ```
   GUEST CART FLOW (new)
@@ -447,7 +447,7 @@ Ordered by priority. Each phase is independently shippable and non-breaking. Ear
 ### Suggested sequencing in one line
 
 **Phase 0 (security + kill reloads) → Phase 1 (API reshape) → Phase 2 (SSR + SEO) → Phase 3 (FE cleanup) → Phase 4 (perf/media) → Phase 5 (luxury UX).**
-Phases 0 and most Quick Wins are safe to do *today* on the existing codebase; the architectural unlock is Phase 1 → 2.
+Phases 0 and most Quick Wins are safe to do _today_ on the existing codebase; the architectural unlock is Phase 1 → 2.
 
 ---
 
@@ -455,7 +455,7 @@ Phases 0 and most Quick Wins are safe to do *today* on the existing codebase; th
 
 To confirm before the execution phase begins:
 
-- **Does production actually run `APP_DEBUG=true`** and the same `Api-Code`? (Only `.env.example` was visible.) This determines how urgent C1/C3 are *right now*.
+- **Does production actually run `APP_DEBUG=true`** and the same `Api-Code`? (Only `.env.example` was visible.) This determines how urgent C1/C3 are _right now_.
 - **SSR target preference** for Phase 2 — **Next.js (App Router)** vs **Remix** vs keeping Vite + a prerender layer. This is the single biggest architectural fork.
 - **Design system choice** for Phase 3 — **Tailwind + headless**, **MUI-only**, or a bespoke token system.
 
@@ -469,26 +469,26 @@ To confirm before the execution phase begins:
 
 **Index of new findings**
 
-| ID | Severity | Title | Phase |
-|---|---|---|---|
-| NEW-1 | 🔴 | The cart is schizophrenic: client cart vs server cart (checkout dead end) | 0 |
-| NEW-2 | 🔴 | Order numbers break at 10,000 orders (string `max()`) + race | 1 |
-| NEW-3 | 🟠 | Stock decrement has no lock → overselling under concurrency | 1 |
-| NEW-4 | 🟠 | Failed/abandoned Paymob payments permanently destroy stock | 1 |
-| NEW-5 | 🟠 | Checkout sends 6 synchronous emails inside the request | 1 |
-| NEW-6 | 🟠 | `DeleteCart` / `DeleteWishlist` are IDOR — delete anyone's items by id | 0/1 |
-| NEW-7 | 🔴 | `ShowOrder`/`ShowAddress`/`ShowCart` leak the entire customer base | 0 |
-| NEW-8 | 🔴 | Paymob callback has no HMAC verification → anyone can mark orders paid | 0 |
-| NEW-9 | 🟠 | `Product` model has no `$hidden` → cost/margin systemically exposed | 0 |
-| NEW-10 | 🟠 | Ratings are unauthenticated & undeduplicated → review fraud | 0 |
-| NEW-11 | 🟠 | Error responses leak `file` + `line` even with `APP_DEBUG=false` | 0 |
-| NEW-12 | 🟡 | Index gap is price/`active`/fulltext — **not** the FK columns (correction) | 1 |
-| NEW-13 | 🔴 | No guest cart at all; backend half-supports guest orders, frontend never sends items | 1 |
-| NEW-14 | 🟠 | `AllProduct` returns inactive products to the storefront | 1 |
-| NEW-15 | 🟡 | `CategoryNav` crashes when a brand/subtype lacks an `en` translation | 3 |
-| NEW-16 | 🟡 | Money handled as `parseInt`/`Math.floor`; backend validates `integer` → truncation | 1 |
-| NEW-17 | 🟡 | PDP "related products" is so strict it usually returns nothing | 5 |
-| NEW-18 | 🟢 | Api-Code literal duplicated across 26 files | 0/3 |
+| ID     | Severity | Title                                                                                | Phase |
+| ------ | -------- | ------------------------------------------------------------------------------------ | ----- |
+| NEW-1  | 🔴       | The cart is schizophrenic: client cart vs server cart (checkout dead end)            | 0     |
+| NEW-2  | 🔴       | Order numbers break at 10,000 orders (string `max()`) + race                         | 1     |
+| NEW-3  | 🟠       | Stock decrement has no lock → overselling under concurrency                          | 1     |
+| NEW-4  | 🟠       | Failed/abandoned Paymob payments permanently destroy stock                           | 1     |
+| NEW-5  | 🟠       | Checkout sends 6 synchronous emails inside the request                               | 1     |
+| NEW-6  | 🟠       | `DeleteCart` / `DeleteWishlist` are IDOR — delete anyone's items by id               | 0/1   |
+| NEW-7  | 🔴       | `ShowOrder`/`ShowAddress`/`ShowCart` leak the entire customer base                   | 0     |
+| NEW-8  | 🔴       | Paymob callback has no HMAC verification → anyone can mark orders paid               | 0     |
+| NEW-9  | 🟠       | `Product` model has no `$hidden` → cost/margin systemically exposed                  | 0     |
+| NEW-10 | 🟠       | Ratings are unauthenticated & undeduplicated → review fraud                          | 0     |
+| NEW-11 | 🟠       | Error responses leak `file` + `line` even with `APP_DEBUG=false`                     | 0     |
+| NEW-12 | 🟡       | Index gap is price/`active`/fulltext — **not** the FK columns (correction)           | 1     |
+| NEW-13 | 🔴       | No guest cart at all; backend half-supports guest orders, frontend never sends items | 1     |
+| NEW-14 | 🟠       | `AllProduct` returns inactive products to the storefront                             | 1     |
+| NEW-15 | 🟡       | `CategoryNav` crashes when a brand/subtype lacks an `en` translation                 | 3     |
+| NEW-16 | 🟡       | Money handled as `parseInt`/`Math.floor`; backend validates `integer` → truncation   | 1     |
+| NEW-17 | 🟡       | PDP "related products" is so strict it usually returns nothing                       | 5     |
+| NEW-18 | 🟢       | Api-Code literal duplicated across 26 files                                          | 0/3   |
 
 ---
 
@@ -511,13 +511,15 @@ To confirm before the execution phase begins:
 **File:** `backend/.../OrderController.php:228-231`
 
 **What's actually happening:**
+
 ```php
 $latestNum   = DB::table('orders')->max('order_number');   // order_number is a STRING column
 $orderNumber = $latestNum ? str_pad((int)$latestNum + 1, 4, '0', STR_PAD_LEFT) : '0001';
 ```
+
 `order_number` is stored as a zero-padded **string** (`'0001'`). `MAX()` on a string column is a **lexicographic** comparison. The moment `'10000'` exists, MySQL considers `'9999' > '10000'` (because `'9' > '1'`), so `max()` returns `'9999'` forever → every subsequent order is assigned `'10000'` again. Separately, `max()+1` outside a row lock means two concurrent checkouts read the same max and generate **duplicate order numbers**.
 
-**Why it matters:** "What breaks at 10,000?" — *this literally does.* Order numbering silently collides at scale, corrupting order references, customer emails, and Paymob's `special_reference`/`merchant_order_id` mapping (which keys payments to orders).
+**Why it matters:** "What breaks at 10,000?" — _this literally does._ Order numbering silently collides at scale, corrupting order references, customer emails, and Paymob's `special_reference`/`merchant_order_id` mapping (which keys payments to orders).
 
 **Proposed fix:** Use an auto-increment numeric `order_number` (or a DB sequence), or `selectRaw('MAX(CAST(order_number AS UNSIGNED))')` **inside** a `lockForUpdate` transaction. Format for display only.
 **Effort:** 0.5 day.
@@ -586,6 +588,7 @@ $orderNumber = $latestNum ? str_pad((int)$latestNum + 1, 4, '0', STR_PAD_LEFT) :
 **File:** `backend/.../OrderController.php:154-164`, `:91-99`, `:474-481`; consumed in `src/Pages/Checkout/Checkout.jsx:45,67`, `src/Pages/OrderList/OrderList.jsx`
 
 **What's actually happening:** These endpoints return **whole tables** and the frontend filters client-side:
+
 - `ShowOrder` → `Order::with('order_item','address','user')->get()` — **all orders, with each customer's address and full user record.**
 - `ShowAddress` → `Address::all()` — every address + phone number.
 - `ShowCart` → `Cart::with('cart_item')->get()` — every cart, cached 10 min under one key.
@@ -660,7 +663,8 @@ The first pass flagged `all_user` (C2) but **missed that orders, addresses, and 
 
 **File:** `database/migrations/2024_12_19_211150_create_products_table.php`, `2026_03_*` add-column migrations
 
-**What's actually happening:** The first audit assumed `brand_id`, `category_id`, etc. lacked indexes. **That was wrong** — they're declared with `->constrained()`, which auto-creates an index on each FK. The *real* gaps are:
+**What's actually happening:** The first audit assumed `brand_id`, `category_id`, etc. lacked indexes. **That was wrong** — they're declared with `->constrained()`, which auto-creates an index on each FK. The _real_ gaps are:
+
 - **No index on price columns** (`selling_price`, `sale_price_after_discount`) — the price-range filter (`[0,6000]` slider) forces a full scan once filtering moves server-side.
 - **No index on `active`** — the storefront should filter `active = 1` (see NEW-14) and will scan without it.
 - **`search_keywords` is `longText` with no `FULLTEXT` index** — server-side search will be unusable at scale.
@@ -669,12 +673,14 @@ The first pass flagged `all_user` (C2) but **missed that orders, addresses, and 
 **Why it matters:** When Phase 1 moves filtering/search to SQL, these are the columns that decide whether listing/search stays sub-100ms at 10k products.
 
 **Proposed fix (exact):**
+
 ```sql
 ALTER TABLE products ADD INDEX idx_active_price (active, sale_price_after_discount);
 ALTER TABLE products ADD INDEX idx_active_created (active, created_at);
 ALTER TABLE products ADD FULLTEXT idx_search (search_keywords);
 -- verify/add: main_category_id, sub_category_id, product_type_id
 ```
+
 **Effort:** 2 hours.
 **Roadmap phase:** 1 (step 1.5).
 
@@ -754,22 +760,22 @@ ALTER TABLE products ADD FULLTEXT idx_search (search_keywords);
 
 #### (1) Endpoints to replace with paginated + filtered + shaped versions
 
-| Today (returns full table) | Replace with | Notes |
-|---|---|---|
-| `GET /all_product` | `GET /products?page=&per_page=&brand_id[]=&sub_type_id[]=&category=&min_price=&max_price=&sort=&lang=` | server filters `active=1`, joins lookups, returns localized DTO + pagination meta |
-| `GET /all_product_image` | *(removed)* — images embedded in product DTO | client no longer joins images by id |
-| `GET /all_product_rating` | *(removed for lists)* — `rating`+`rating_count` in DTO; `GET /products/{id}/ratings?page=` for the PDP reviews tab | stops full-table fetch per PDP (NEW-17 / `ProductDisplay.jsx:213`) |
-| `GET /all_offer` | `GET /offers?in_season=&page=` | same shaping |
-| `GET /all_user` | **delete from public API**; `GET /me` (auth) | C2 |
-| `GET /show_cart` | `GET /me/cart` (auth or guest_token) | NEW-7 |
-| `GET /show_address` | `GET /me/addresses` (auth) | NEW-7 |
-| `GET /show_order` | `GET /me/orders?page=` (auth) | NEW-7 |
-| `GET /all_wishlist` | `GET /me/wishlist` (auth) | scope to user |
-| `GET /all_*` lookup tables (11×) | `GET /catalog/meta?lang=` (one cached, localized payload) | replaces 11 round-trips in `FetchTablesAndProducts.jsx:286-316` |
+| Today (returns full table)       | Replace with                                                                                                       | Notes                                                                             |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------- |
+| `GET /all_product`               | `GET /products?page=&per_page=&brand_id[]=&sub_type_id[]=&category=&min_price=&max_price=&sort=&lang=`             | server filters `active=1`, joins lookups, returns localized DTO + pagination meta |
+| `GET /all_product_image`         | _(removed)_ — images embedded in product DTO                                                                       | client no longer joins images by id                                               |
+| `GET /all_product_rating`        | _(removed for lists)_ — `rating`+`rating_count` in DTO; `GET /products/{id}/ratings?page=` for the PDP reviews tab | stops full-table fetch per PDP (NEW-17 / `ProductDisplay.jsx:213`)                |
+| `GET /all_offer`                 | `GET /offers?in_season=&page=`                                                                                     | same shaping                                                                      |
+| `GET /all_user`                  | **delete from public API**; `GET /me` (auth)                                                                       | C2                                                                                |
+| `GET /show_cart`                 | `GET /me/cart` (auth or guest_token)                                                                               | NEW-7                                                                             |
+| `GET /show_address`              | `GET /me/addresses` (auth)                                                                                         | NEW-7                                                                             |
+| `GET /show_order`                | `GET /me/orders?page=` (auth)                                                                                      | NEW-7                                                                             |
+| `GET /all_wishlist`              | `GET /me/wishlist` (auth)                                                                                          | scope to user                                                                     |
+| `GET /all_*` lookup tables (11×) | `GET /catalog/meta?lang=` (one cached, localized payload)                                                          | replaces 11 round-trips in `FetchTablesAndProducts.jsx:286-316`                   |
 
 #### (2) API Resource field policy (expose vs hide)
 
-**`ProductListResource`** (cards/listing) — *expose:* `id`, `slug`, `title` (localized), `brand` (localized), `image` (CDN url + srcset), `selling_price`, `sale_price_after_discount`, `percentage_discount`, `in_stock` (bool), `rating`, `rating_count`, `is_new`. *Hide everything else.*
+**`ProductListResource`** (cards/listing) — _expose:_ `id`, `slug`, `title` (localized), `brand` (localized), `image` (CDN url + srcset), `selling_price`, `sale_price_after_discount`, `percentage_discount`, `in_stock` (bool), `rating`, `rating_count`, `is_new`. _Hide everything else._
 
 **`ProductDetailResource`** (PDP) — list fields **plus** `images[]`, `long_description`/`short_description` (localized), `features[]`, `gender[]`, `dial_colors[]`/`band_colors[]`, spec block (case/band/movement/etc., localized), `warranty_years`, `seo_title`/`seo_meta_description`, `stock`+`market_stock` as a single `availability`.
 
@@ -780,25 +786,41 @@ ALTER TABLE products ADD FULLTEXT idx_search (search_keywords);
 #### (4) DTO shapes
 
 **Listing item** (`GET /products`):
+
 ```jsonc
 {
-  "data": [{
-    "id": 142, "slug": "tommy-hilfiger-1791xxx",
-    "title": "Tommy Hilfiger Chronograph",
-    "brand": "Tommy Hilfiger",
-    "image": "https://cdn.../142/card.avif",
-    "image_srcset": "…320w, …640w, …960w",
-    "price": { "was": 4500, "now": 3990, "discount_pct": 11, "currency": "EGP" },
-    "in_stock": true, "rating": 4.6, "rating_count": 23, "is_new": false
-  }],
+  "data": [
+    {
+      "id": 142,
+      "slug": "tommy-hilfiger-1791xxx",
+      "title": "Tommy Hilfiger Chronograph",
+      "brand": "Tommy Hilfiger",
+      "image": "https://cdn.../142/card.avif",
+      "image_srcset": "…320w, …640w, …960w",
+      "price": {
+        "was": 4500,
+        "now": 3990,
+        "discount_pct": 11,
+        "currency": "EGP",
+      },
+      "in_stock": true,
+      "rating": 4.6,
+      "rating_count": 23,
+      "is_new": false,
+    },
+  ],
   "meta": { "page": 1, "per_page": 20, "total": 184, "last_page": 10 },
-  "facets": { "brands": [{ "id": 3, "name": "Tommy Hilfiger", "count": 22 }],
-              "price_range": { "min": 900, "max": 5800 } }
+  "facets": {
+    "brands": [{ "id": 3, "name": "Tommy Hilfiger", "count": 22 }],
+    "price_range": { "min": 900, "max": 5800 },
+  },
 }
 ```
+
 **PDP** (`GET /products/{slug}`): the above `data[i]` **plus** `images[]`, `descriptions{short,long}`, `specs{…}`, `colors{dial[],band[]}`, `features[]`, `availability{express,market}`, `seo{title,meta_description}`, `related[]` (6 × listing items).
 
 #### (5) Guest cart at the DB level
+
 - **Storage:** `carts.user_id` → **nullable**; add `carts.guest_token CHAR(36) NULL UNIQUE`, `carts.expires_at TIMESTAMP NULL`. Exactly one of `user_id`/`guest_token` set (`CHECK`/app-enforced). Add unique composite on `cart_items (cart_id, product_id, offer_id, color_band, color_dial, type_stock)` so `updateOrCreate` is race-safe (today there's none — duplicate rows possible).
 - **Merge on login:** within a transaction, find guest cart by token; for each guest item `updateOrCreate` into the user cart summing quantities; delete the guest cart; clear the client token. (See `MergeGuestCart` pseudocode in §15.2.)
 - **Abandoned carts:** scheduled daily job deletes carts where `guest_token IS NOT NULL AND expires_at < now()` (TTL 7 days, refreshed on activity).
@@ -810,6 +832,7 @@ ALTER TABLE products ADD FULLTEXT idx_search (search_keywords);
 > Resolves NEW-1 (cart disconnect) and NEW-13 (no guest checkout). The backend's `AddOrder` already accepts a guest `items[]` + `guest_name/email/phone` branch (`OrderController.php:185-225`) — what's missing is a **persistent guest cart**, identity middleware, merge-on-login, and the frontend wiring. **Priority: Phase 1 (step 1.9), after the 0.8 hotfix restores basic checkout.**
 
 #### Frontend
+
 - **Token:** on first cart write with no JWT, generate `crypto.randomUUID()`, persist as `localStorage["wz_guest_token"]` (localStorage, **not** sessionStorage, so it survives refresh — note this also means the C4 reload no longer loses the cart once server-backed).
 - **Injection:** single axios instance in `api.jsx` (NEW-18) with a request interceptor:
   ```
@@ -821,6 +844,7 @@ ALTER TABLE products ADD FULLTEXT idx_search (search_keywords);
 - **After login/register:** call `POST /cart/merge` with the guest token, then **delete** `wz_guest_token` and refetch `/me/cart`.
 
 #### Backend (pseudocode / schema diff)
+
 ```diff
   // migration: carts
 - $table->foreignId('user_id')->constrained();
@@ -830,6 +854,7 @@ ALTER TABLE products ADD FULLTEXT idx_search (search_keywords);
   // migration: cart_items
 + $table->unique(['cart_id','product_id','offer_id','color_band','color_dial','type_stock'], 'uniq_cart_line');
 ```
+
 ```text
 middleware GuestCartMiddleware:
     if request has valid Bearer JWT: request->identity = ['user_id' => jwt.sub]
@@ -853,6 +878,7 @@ service MergeGuestCart(user_id, guest_token):
 job PruneGuestCarts (daily):
     Cart::whereNotNull('guest_token')->where('expires_at','<',now())->each(delete with items)
 ```
+
 **Effort:** 2–3 days (schema + middleware + merge + job + FE interceptor + checkout guest fields).
 
 ---
@@ -862,6 +888,7 @@ job PruneGuestCarts (daily):
 > Today's discovery surface is thin: the homepage is `Hero → grade sliders → offer slider → bottom banners` (`Home.jsx`), and the only "menu" is `CategoryNav` — a **text-only** hover list of subtypes→brands (`CategoryNav.jsx`), with the crash bug NEW-15. There are no category tiles, no image mega-menu, no trust layer, and PDP cross-sell is usually empty (NEW-17). Below is the layer to match and exceed watchesprime.com.
 
 #### 1) Homepage category tiles
+
 - **New component:** `src/Components/Merchandising/CategoryTiles.jsx`
 - **Modifies:** `src/Pages/Home/Home.jsx` (insert directly under the hero)
 - **Data source:** new `GET /catalog/meta` (§15.1) → categories/subtypes with `product_count` and a `tile_image`
@@ -870,6 +897,7 @@ job PruneGuestCarts (daily):
 - **Effort:** 1 day.
 
 #### 2) Mega menu (replaces `CategoryNav`)
+
 - **New component:** `src/Components/Header/MegaMenu.jsx` (replaces `CategoryNav.jsx`; fix NEW-15 along the way)
 - **Trigger:** hover/focus on a top-nav item (keyboard-accessible).
 - **Left column:** category/subtype list, each with a thumbnail.
@@ -879,6 +907,7 @@ job PruneGuestCarts (daily):
 - **Effort:** 2 days.
 
 #### 3) PDP "You may also like"
+
 - **New component:** `src/Components/Product/RelatedProducts.jsx`
 - **Modifies:** `src/Components/Product/ProductDisplay.jsx` (replace the `:238-248` filter; place **below product info, above reviews**)
 - **Logic:** server-side — same `sub_type` OR same `brand` OR same `main_category`, exclude current, `in_stock`, limit 6 (drop the color-overlap gate that empties it today).
@@ -887,18 +916,19 @@ job PruneGuestCarts (daily):
 - **Effort:** 1 day (reuses listing card + the new endpoint).
 
 #### 4) Trust layer (match & exceed competitor)
+
 - **New component:** `src/Components/Merchandising/TrustSignals.jsx` (variant prop: `pdp | cart | checkout`)
 - **Modifies:** PDP sidebar (`ProductDisplay.jsx`), cart drawer (`CartModal.jsx`), checkout header (`Checkout.jsx`)
 - **Signals:** 14-day returns, real guarantee/authenticity, "100% secure checkout", WhatsApp CTA (`wa.me/…`), review count + stars, "sold X times"/low-stock urgency, payment-method icons (InstaPay / Vodafone Cash / COD / card).
 - **Data source:** mostly **static config** (can ship in Phase 0); review count + sold-count from product DTO.
-- **Effort:** 1 day. *(The static badges are a Phase-0 quick win — they cost nothing and directly close the biggest UX gap vs. the competitor.)*
+- **Effort:** 1 day. _(The static badges are a Phase-0 quick win — they cost nothing and directly close the biggest UX gap vs. the competitor.)_
 
 ---
 
 ### 15.4 General Findings (race conditions, leaks, stale closures, etc.)
 
 - **Race conditions** — order number (NEW-2), stock (NEW-3), and `Cart::firstOrCreate(['user_id'])` with no unique index on `carts.user_id` (duplicate carts possible; fix in §15.2 schema). `cart_items` lacks the unique composite that `updateOrCreate` assumes.
-- **Memory / lifecycle** — the two `setInterval` reload timers (C4) are the real leak (each reload also discards warm caches). The resize listener in `MyProvider.jsx:355-371` *is* cleaned up correctly (good). `fetchRatings` in PDP re-creates on every `product` change and refetches the full ratings table (NEW-17 context).
+- **Memory / lifecycle** — the two `setInterval` reload timers (C4) are the real leak (each reload also discards warm caches). The resize listener in `MyProvider.jsx:355-371` _is_ cleaned up correctly (good). `fetchRatings` in PDP re-creates on every `product` change and refetches the full ratings table (NEW-17 context).
 - **Silent failures** — empty `catch {}` blocks swallow errors with no logging across `api.jsx`, `FetchTablesAndProducts.jsx`, `Checkout.jsx:61,81,153`, `ProductDisplay.jsx:225`. A failed cart/address/order fetch shows the user an empty state indistinguishable from "you have nothing," and leaves no telemetry. Add user-visible error states + a logger.
 - **Stale closures** — `Home.jsx:37-39` has an empty `useEffect(()=>{},[])` (dead). `handleAddToCart` deps include `cart` (whole object) so it re-creates on every cart change — acceptable but means the memoization buys little.
 - **Bilingual edge cases** — `.find(t=>t.locale===…)` without fallback appears in `CategoryNav` (NEW-15, crashes), and broadly in `FetchTablesAndProducts.jsx`/`api.jsx` (returns `null` names). Related-products compares **localized** brand strings (NEW-17), so behavior differs by language. Switching language re-runs the full EN+AR transform but the **server cart/order summaries** key off ids, so a mid-session switch can show mismatched localized names against id-based lines.
@@ -915,9 +945,9 @@ job PruneGuestCarts (daily):
 - **Already documented (skipped or only extended):** full-catalog download (C5), no SSR/meta (C6), god-context & `windowWidth` routing (§3), Bootstrap+MUI bloat, image pipeline, the two reload timers (C4), hardcoded Api-Code (extended as NEW-18), `purchase_price` leak (extended as NEW-9), generic "dump the table" API (made concrete in §15.1).
 - **Top 3 surprises (most likely to shock the team):**
   1. **Checkout cannot complete for logged-in users (NEW-1/C7).** Items live in sessionStorage; checkout reads the never-populated server cart and `AddOrder` returns "Cart is empty." The headline conversion path is broken right now.
-  2. **The Paymob callback is unauthenticated (NEW-8/C9)** — anyone can mark any order "paid" with a crafted GET, *and* abandoned card checkouts permanently destroy stock (NEW-4). Combined: free orders + phantom out-of-stocks.
+  2. **The Paymob callback is unauthenticated (NEW-8/C9)** — anyone can mark any order "paid" with a crafted GET, _and_ abandoned card checkouts permanently destroy stock (NEW-4). Combined: free orders + phantom out-of-stocks.
   3. **The entire order book + customer contact list is one request away (NEW-7/C8)** — `show_order`/`show_address`/`show_cart` return all rows, filtered client-side, behind the bundle-leaked key. And order numbering will **silently collide at the 10,000th order** (NEW-2).
 
 ---
 
-*End of audit. No code was modified in producing this document.*
+_End of audit. No code was modified in producing this document._

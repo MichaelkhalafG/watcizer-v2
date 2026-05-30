@@ -1,10 +1,10 @@
-import { defineConfig } from "vite";
-import react from "@vitejs/plugin-react";
-import imagePresets from "vite-plugin-image-presets";
-import legacy from "@vitejs/plugin-legacy";
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+import imagePresets from 'vite-plugin-image-presets'
+import legacy from '@vitejs/plugin-legacy'
 
 export default defineConfig({
-  base: "/",
+  base: '/',
   plugins: [
     react(),
     imagePresets({
@@ -17,31 +17,31 @@ export default defineConfig({
       },
     }),
     legacy({
-      targets: ["defaults", "not IE 11"],
-      additionalLegacyPolyfills: ["regenerator-runtime/runtime"],
-    })
+      targets: ['defaults', 'not IE 11'],
+      additionalLegacyPolyfills: ['regenerator-runtime/runtime'],
+    }),
   ],
 
   build: {
     polyfillDynamicImport: false,
     chunkSizeWarningLimit: 800,
-    minify: "esbuild",
+    minify: 'esbuild',
     sourcemap: false,
     cssCodeSplit: true,
-    outDir: "dist",
-    assetsDir: "assets",
+    outDir: 'dist',
+    assetsDir: 'assets',
     rollupOptions: {
       output: {
-        format: "es",
-        entryFileNames: "assets/[name].[hash].js",
-        chunkFileNames: "assets/[name].[hash].js",
-        assetFileNames: "assets/[name].[hash][extname]",
+        format: 'es',
+        entryFileNames: 'assets/[name].[hash].js',
+        chunkFileNames: 'assets/[name].[hash].js',
+        assetFileNames: 'assets/[name].[hash][extname]',
         manualChunks: {
-          react: ["react", "react-dom", "react-router-dom"],
-          mui: ["@mui/material", "@mui/icons-material", "@emotion/react", "@emotion/styled"],
-          utils: ["dompurify"],
-          reactSlick: ["react-slick", "slick-carousel"],
-          thirdParty: ["aos", "axios", "react-icons"],
+          react: ['react', 'react-dom', 'react-router-dom'],
+          mui: ['@mui/material', '@mui/icons-material', '@emotion/react', '@emotion/styled'],
+          utils: ['dompurify'],
+          reactSlick: ['react-slick', 'slick-carousel'],
+          thirdParty: ['aos', 'axios', 'react-icons'],
         },
       },
     },
@@ -49,14 +49,14 @@ export default defineConfig({
 
   resolve: {
     alias: {
-      react: "react",
-      "react-dom": "react-dom",
+      react: 'react',
+      'react-dom': 'react-dom',
     },
   },
 
   esbuild: {
     minify: true,
     treeShaking: true,
-    legalComments: "none",
+    legalComments: 'none',
   },
-});
+})

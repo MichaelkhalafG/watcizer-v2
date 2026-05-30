@@ -1,17 +1,14 @@
-import { useSyncExternalStore } from "react";
-import { cartStore } from "../Store/cartStore";
+import { useSyncExternalStore } from 'react'
+import { cartStore } from '../Store/cartStore'
 
 export const getItemKey = (item) => {
   return item.product_id !== null && item.product_id !== undefined
     ? `product_${item.product_id}`
-    : `offer_${item.offer_id}`;
-};
+    : `offer_${item.offer_id}`
+}
 
 const useCart = () => {
-  const cart = useSyncExternalStore(
-    cartStore.subscribe,
-    cartStore.getSnapshot
-  );
+  const cart = useSyncExternalStore(cartStore.subscribe, cartStore.getSnapshot)
 
   return {
     cart,
@@ -19,11 +16,10 @@ const useCart = () => {
     updateQuantity: cartStore.updateQuantity,
     removeItem: cartStore.removeItem,
     clearCart: cartStore.clearCart,
-  };
-};
+  }
+}
 
-export default useCart;
-
+export default useCart
 
 // import { useState, useEffect, useContext } from "react";
 // import { MyContext } from "../Context/Context";
@@ -39,8 +35,6 @@ export default useCart;
 //     ? `product_${item.product_id}`
 //     : `offer_${item.offer_id}`;
 // };
-
-
 
 // const createEmptyCart = (userId = null) => ({
 //   id: 1,

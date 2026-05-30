@@ -24,12 +24,13 @@
 **Why:** The string in `CheckApiMiddleware` is `config('jwt.secret')` and it is shipped in the JS bundle — anyone can forge JWTs for any user.
 **File:** `backend/app/Http/Middleware/CheckApiMiddleware.php` (`handle`), `backend/config/jwt.php`, `backend/.env`
 **Exact change:**
+
 - Add a new env var `PUBLIC_API_KEY` (fresh random 64 chars) distinct from `JWT_SECRET`.
 - In `CheckApiMiddleware`, compare against `config('services.public_api_key')` instead of `config('jwt.secret')`.
 - Run `php artisan jwt:secret` to rotate `JWT_SECRET` (invalidates existing tokens — acceptable).
-**Definition of done:** `CheckApiMiddleware` no longer references `jwt.secret`; `grep -r "jwt.secret" app/Http/Middleware` returns nothing; existing JWTs are invalidated; API still authorizes with the new `PUBLIC_API_KEY`.
-**Effort:** 2 h
-**Blocks:** P0-2 (frontend must use the new key)
+  **Definition of done:** `CheckApiMiddleware` no longer references `jwt.secret`; `grep -r "jwt.secret" app/Http/Middleware` returns nothing; existing JWTs are invalidated; API still authorizes with the new `PUBLIC_API_KEY`.
+  **Effort:** 2 h
+  **Blocks:** P0-2 (frontend must use the new key)
 
 ---
 
@@ -38,13 +39,14 @@
 **Why:** The key is copy-pasted in 26 files (NEW-18); rotation is impossible without one source.
 **File:** `Frontend/src/Context/api.jsx` line 1–4 (create instance); 25 consumer files
 **Exact change:**
+
 - In `api.jsx`, create `export const http = axios.create({ baseURL: import.meta.env.VITE_API_BASE })` with a request interceptor injecting `config.headers["Api-Code"] = import.meta.env.VITE_PUBLIC_API_KEY`.
 - Add `VITE_API_BASE` and `VITE_PUBLIC_API_KEY` to `Frontend/.env`.
 - Replace every literal `"NbmFylY0...0"` and inline `axios.get/post` with `http.get/post`. Affected files include `Checkout.jsx:44,64`, `ProductDisplay.jsx:219`, `FetchTablesAndProducts.jsx:283`, `MyProvider.jsx:324`, `OfferDisplay.jsx`, `ProductSlider.jsx`, `Login.jsx`, `Register.jsx`, `Cart.jsx`, `WishList.jsx`, `OrderList.jsx`, `EditProfile.jsx`, `Blog*.jsx`, `ProfileSpeed*.jsx`, `SearchPageForPhone.jsx`, `LoginModal.jsx`.
-**Definition of done:** `grep -rc "NbmFylY0" Frontend/src` returns 0; app boots and loads products with the key sourced from `.env`.
-**Effort:** 0.5 d
-**Blocks:** P1.5-4 (interceptor will also inject guest token)
-**Depends on:** P0-1
+  **Definition of done:** `grep -rc "NbmFylY0" Frontend/src` returns 0; app boots and loads products with the key sourced from `.env`.
+  **Effort:** 0.5 d
+  **Blocks:** P1.5-4 (interceptor will also inject guest token)
+  **Depends on:** P0-1
 
 ---
 
@@ -53,12 +55,13 @@
 **Why:** `CallbackPayment` trusts `request->success` with no signature check and sits outside auth — anyone can mark any order paid (NEW-8/C9).
 **File:** `backend/app/Http/Controllers/Api/OrderController.php` line 440–469; `backend/routes/api.php` (last line, `callback_payment`)
 **Exact change:**
+
 - Add `PAYMOB_HMAC_SECRET` to `.env`.
 - At the top of `CallbackPayment`, compute Paymob's HMAC over the documented ordered field set, compare to `request('hmac')`; on mismatch return `403` and do not touch the order.
 - Make it idempotent: skip if a `PaymentStatus` for `pay_transaction_id` already exists.
-**Definition of done:** A `curl` to `/api/callback_payment?merchant_order_id=X&success=true` **without** a valid `hmac` returns 403 and leaves the order status unchanged; a request with a correctly computed HMAC updates it.
-**Effort:** 1 d
-**Blocks:** nothing
+  **Definition of done:** A `curl` to `/api/callback_payment?merchant_order_id=X&success=true` **without** a valid `hmac` returns 403 and leaves the order status unchanged; a request with a correctly computed HMAC updates it.
+  **Effort:** 1 d
+  **Blocks:** nothing
 
 ---
 
@@ -67,13 +70,14 @@
 **Why:** Each returns the entire table; the frontend filters client-side, so the full order book + PII is one request away (NEW-7/C8, C2).
 **File:** `backend/app/Http/Controllers/Api/OrderController.php` lines 91–99, 154–164, 474–481; `backend/app/Http/Controllers/Api/AuthController.php` lines 19–28; `backend/routes/api.php`
 **Exact change:**
+
 - Add new auth-scoped routes `GET /me/orders`, `GET /me/addresses`, `GET /me/cart` resolving identity from the JWT (or guest token after P1.5).
 - Change `ShowOrder/ShowAddress/ShowCart` to `where('user_id', $authId)` and remove the cached `->get()` of all rows.
 - Delete `all_user` from the public group (move to an admin-guarded route).
 - Update callers: `Checkout.jsx:45` (`show_cart`) → `me/cart`; `Checkout.jsx:67` (`show_address`) → `me/addresses`; `OrderList.jsx` (`show_order`) → `me/orders`; remove `fetchUsers` from `MyProvider.jsx:70` and `api.jsx:6`.
-**Definition of done:** `curl /api/show_order` (old) is gone or returns only the authed user's rows; the response body never contains another user's record; `grep "all_user" Frontend/src` returns 0.
-**Effort:** 1.5 d
-**Blocks:** P1.5-5 (merge needs scoped cart)
+  **Definition of done:** `curl /api/show_order` (old) is gone or returns only the authed user's rows; the response body never contains another user's record; `grep "all_user" Frontend/src` returns 0.
+  **Effort:** 1.5 d
+  **Blocks:** P1.5-5 (merge needs scoped cart)
 
 ---
 
@@ -82,12 +86,13 @@
 **Why:** Items go to sessionStorage but checkout reads the never-populated server cart, so `AddOrder` returns "Cart is empty" — no order can complete (NEW-1/C7).
 **File:** `Frontend/src/Pages/Checkout/Checkout.jsx` lines 37, 45–62, 186–243; `backend/app/Http/Controllers/Api/OrderController.php` lines 212–225
 **Exact change:**
+
 - In `Checkout.jsx`, replace the `show_cart` fetch (`:45-62`) with `const { cart } = useCart()` and render `cart.cart_item`.
 - In `addOrder` (`:209`), add `items: cart.cart_item.map(i => ({ product_id:i.product_id, offer_id:i.offer_id, quantity:i.quantity, piece_price:i.piece_price, total_price:i.total_price, type_stock:i.type_stock, color_band:i.color_band, color_dial:i.color_dial }))`.
 - In `AddOrder` backend, make the **logged-in** branch (`:212-218`) accept `items[]` exactly like the guest branch when the DB cart is empty.
-**Definition of done:** A logged-in user adds 2 items, opens checkout, sees both in the summary, submits, and receives `{success:true, order_number}`; an `orders` row with 2 `order_items` exists.
-**Effort:** 0.5 d
-**Blocks:** P1.5 (durable cart supersedes this)
+  **Definition of done:** A logged-in user adds 2 items, opens checkout, sees both in the summary, submits, and receives `{success:true, order_number}`; an `orders` row with 2 `order_items` exists.
+  **Effort:** 0.5 d
+  **Blocks:** P1.5 (durable cart supersedes this)
 
 ---
 
@@ -96,11 +101,12 @@
 **Why:** Hard `window.location.reload()` every 10 min mid-browse/checkout destroys UX and can drop in-flight orders (C4).
 **File:** `Frontend/src/App.jsx` lines 83–92; `Frontend/src/Context/FetchTablesAndProducts.jsx` lines 385–392
 **Exact change:**
+
 - Delete the `setInterval(... localStorage.clear(); window.location.reload() ...)` block in `App.jsx`.
 - Delete the `setInterval(... window.location.reload() ...)` block in `FetchTablesAndProducts.jsx` (keep cache-write logic; let TTL expire naturally on next mount).
-**Definition of done:** App left open 15 min does not reload; `grep -rn "location.reload" Frontend/src` returns only intentional callers (none expected).
-**Effort:** 0.5 h
-**Blocks:** nothing
+  **Definition of done:** App left open 15 min does not reload; `grep -rn "location.reload" Frontend/src` returns only intentional callers (none expected).
+  **Effort:** 0.5 h
+  **Blocks:** nothing
 
 ---
 
@@ -109,12 +115,14 @@
 **Why:** No `$hidden` means `purchase_price` (cost), `wa_code`, `hs_code`, `created_by/updated_by`, `sku_unique` serialize to every client (NEW-9).
 **File:** `backend/app/Models/Product.php` (after the `$fillable` block, ends line 88)
 **Exact change:**
+
 ```php
 protected $hidden = [
     'purchase_price', 'wa_code', 'hs_code', 'sku_unique',
     'created_by', 'updated_by', 'low_stock_threshold',
 ];
 ```
+
 **Definition of done:** `curl /api/all_product` response contains no `purchase_price`/`wa_code`/`hs_code` keys.
 **Effort:** 0.5 h
 **Blocks:** superseded by P1-2 (ProductResource) but ship now as stopgap
@@ -126,11 +134,12 @@ protected $hidden = [
 **Why:** `AddOrder` returns absolute server paths in JSON regardless of `APP_DEBUG` (NEW-11).
 **File:** `backend/app/Http/Controllers/Api/OrderController.php` lines 313–322 (and other catch blocks echoing `$e->getMessage()`)
 **Exact change:**
+
 - Replace the catch body with `Log::error($e); return response()->json(['success'=>false,'message'=>'Error placing order','ref'=>$ref],500);` where `$ref = Str::uuid()`.
 - Remove `'error'`, `'line'`, `'file'` from all API JSON responses (grep `getLine\|getFile\|getMessage` in `app/Http/Controllers/Api`).
-**Definition of done:** Forcing an exception in checkout returns a generic message + `ref`, no path; full detail appears in `storage/logs`.
-**Effort:** 2 h
-**Blocks:** nothing
+  **Definition of done:** Forcing an exception in checkout returns a generic message + `ref`, no path; full detail appears in `storage/logs`.
+  **Effort:** 2 h
+  **Blocks:** nothing
 
 ---
 
@@ -139,11 +148,12 @@ protected $hidden = [
 **Why:** Both delete any row by id with no owner check (NEW-6 IDOR).
 **File:** `backend/app/Http/Controllers/Api/OrderController.php` lines 166–174; `backend/app/Http/Controllers/Api/DetailsProductController.php` lines 244–266
 **Exact change:**
+
 - `CartItem::whereHas('cart', fn($q)=>$q->where('user_id',$authId))->findOrFail($id)->delete();`
 - Same pattern for `WishlistItem` via its `wishlist`.
-**Definition of done:** Deleting another user's cart-item id returns 404; deleting your own returns 200.
-**Effort:** 2 h
-**Blocks:** nothing
+  **Definition of done:** Deleting another user's cart-item id returns 404; deleting your own returns 200.
+  **Effort:** 2 h
+  **Blocks:** nothing
 
 ---
 
@@ -152,11 +162,12 @@ protected $hidden = [
 **Why:** `AddProductRating`/`AddOfferRating` accept unauthenticated, unlimited ratings → review bombing (NEW-10).
 **File:** `backend/app/Http/Controllers/Api/DetailsProductController.php` lines 84–118, 160–194
 **Exact change:**
+
 - Require auth; take `user_id` from the token, not the body.
 - Add unique `(user_id, product_id)` / `(user_id, offer_id)` constraint via migration; switch `create` → `updateOrCreate`.
-**Definition of done:** A second rating from the same user updates rather than inserts; an unauthenticated POST returns 401.
-**Effort:** 0.5 d
-**Blocks:** nothing
+  **Definition of done:** A second rating from the same user updates rather than inserts; an unauthenticated POST returns 401.
+  **Effort:** 0.5 d
+  **Blocks:** nothing
 
 ---
 
@@ -165,11 +176,12 @@ protected $hidden = [
 **Why:** Zero trust signals today vs competitor's strong stack; static badges are zero-risk and close the biggest UX gap immediately (NEW / §15.3-4).
 **File:** new `Frontend/src/Components/Merchandising/TrustSignals.jsx`; mount in `ProductDisplay.jsx`, `CartModal.jsx`, `Checkout.jsx`
 **Exact change:**
+
 - Create component rendering: 14-day returns, authenticity guarantee, secure-checkout, WhatsApp CTA (`wa.me/201551096234`), payment icons (InstaPay/Vodafone Cash/COD/card). Content from a local `trust.config.js`.
 - Render `<TrustSignals variant="pdp" />` in the PDP sidebar, `variant="checkout"` in the checkout header.
-**Definition of done:** Badges visible on PDP and checkout on mobile + desktop; no API calls added.
-**Effort:** 1 d
-**Blocks:** nothing
+  **Definition of done:** Badges visible on PDP and checkout on mobile + desktop; no API calls added.
+  **Effort:** 1 d
+  **Blocks:** nothing
 
 ---
 
@@ -182,38 +194,58 @@ protected $hidden = [
 **Why:** `all_product` returns the whole table (incl. inactive — NEW-14); the client filters/paginates in memory (`Listing.jsx:87-144`).
 **File:** new `App\Http\Controllers\Api\ProductCatalogController@index`; `backend/routes/api.php`
 **Exact change — route:**
+
 ```php
 Route::get('products', [ProductCatalogController::class, 'index']);
 ```
+
 **Request params:**
+
 ```
 page (int, default 1), per_page (int, default 20, max 60),
 brand_id[] (int), sub_type_id[] (int), category (Watches|Fashion),
 grade_id[] (int), min_price (int), max_price (int),
 sort (newest|price_asc|price_desc|rating), q (string), lang (en|ar)
 ```
+
 **Response shape:**
+
 ```jsonc
 {
-  "data": [{
-    "id": 142, "slug": "tommy-hilfiger-chrono-1791",
-    "title": "Tommy Hilfiger Chronograph", "brand": "Tommy Hilfiger",
-    "image": "https://cdn.watchizereg.com/142/card.avif",
-    "image_srcset": "…320w, …640w, …960w",
-    "price": { "was": 4500, "now": 3990, "discount_pct": 11, "currency": "EGP" },
-    "in_stock": true, "rating": 4.6, "rating_count": 23, "is_new": false
-  }],
+  "data": [
+    {
+      "id": 142,
+      "slug": "tommy-hilfiger-chrono-1791",
+      "title": "Tommy Hilfiger Chronograph",
+      "brand": "Tommy Hilfiger",
+      "image": "https://cdn.watchizereg.com/142/card.avif",
+      "image_srcset": "…320w, …640w, …960w",
+      "price": {
+        "was": 4500,
+        "now": 3990,
+        "discount_pct": 11,
+        "currency": "EGP",
+      },
+      "in_stock": true,
+      "rating": 4.6,
+      "rating_count": 23,
+      "is_new": false,
+    },
+  ],
   "meta": { "page": 1, "per_page": 20, "total": 184, "last_page": 10 },
-  "facets": { "brands": [{ "id": 3, "name": "Tommy Hilfiger", "count": 22 }],
-              "price_range": { "min": 900, "max": 5800 } }
+  "facets": {
+    "brands": [{ "id": 3, "name": "Tommy Hilfiger", "count": 22 }],
+    "price_range": { "min": 900, "max": 5800 },
+  },
 }
 ```
+
 - Query: `Product::where('active',1)->with('translations','brand')->when(...filters)->orderBy(...)->paginate(...)`.
-**Frontend to update:** `Listing.jsx` (remove client filter `:87-118` + slice `:137-144`; call `/products` with query), `ListingGrades.jsx`, `ListingSearch.jsx`, `Listingoffers.jsx`.
-**Definition of done:** `curl '/api/products?brand_id[]=3&min_price=1000&sort=price_asc&page=2'` returns ≤20 shaped items + correct `meta`; no inactive products present; `Listing.jsx` renders from it with working pagination.
-**Effort:** 2 d
-**Blocks:** P1.5 (cart needs shaped product), P5-3 (recommendations reuse it)
-**Depends on:** P0-6
+  **Frontend to update:** `Listing.jsx` (remove client filter `:87-118` + slice `:137-144`; call `/products` with query), `ListingGrades.jsx`, `ListingSearch.jsx`, `Listingoffers.jsx`.
+  **Definition of done:** `curl '/api/products?brand_id[]=3&min_price=1000&sort=price_asc&page=2'` returns ≤20 shaped items + correct `meta`; no inactive products present; `Listing.jsx` renders from it with working pagination.
+  **Effort:** 2 d
+  **Blocks:** P1.5 (cart needs shaped product), P5-3 (recommendations reuse it)
+  **Depends on:** P0-6
 
 ---
 
@@ -235,6 +267,7 @@ sort (newest|price_asc|price_desc|rating), q (string), lang (en|ar)
 **File:** new `ProductCatalogController@show`; new `app/Http/Resources/ProductDetailResource.php`; `routes/api.php`
 **Route:** `Route::get('products/{slug}', [ProductCatalogController::class, 'show']);`
 **Response shape:** all `ProductListResource` fields **plus**
+
 ```jsonc
 {
   "images": ["https://cdn.../142/1.avif", "…"],
@@ -247,6 +280,7 @@ sort (newest|price_asc|price_desc|rating), q (string), lang (en|ar)
   "related": [ /* 6 × ProductListResource */ ]
 }
 ```
+
 **Frontend to update:** `ProductDisplay.jsx` — fetch `/products/{slug}` once; delete `fetchRatings` (`:213-228`) and the client-side `related` filter (`:238-248`); use `related` from the payload.
 **Definition of done:** Opening a PDP fires exactly **one** product request (verified in Network tab); ratings + related render from it.
 **Effort:** 1.5 d
@@ -260,16 +294,18 @@ sort (newest|price_asc|price_desc|rating), q (string), lang (en|ar)
 **File:** new `ProductCatalogController@meta`; `routes/api.php`
 **Route:** `Route::get('catalog/meta', [ProductCatalogController::class, 'meta']);` (params: `lang`)
 **Response shape:**
+
 ```jsonc
 { "brands": [{ "id":3, "name":"Tommy Hilfiger", "slug":"tommy-hilfiger", "product_count":22, "logo":"…" }],
   "sub_types": [{ "id":7, "name":"Chronograph", "slug":"chronograph", "product_count":40 }],
   "grades": [...], "categories": [...] }
 ```
+
 - Cache 30 min; return names already localized for `lang`.
-**Frontend to update:** `FetchTablesAndProducts.jsx` (replace 11 calls + transforms), `CategoryNav.jsx` (consume localized names — also fixes NEW-15).
-**Definition of done:** Homepage cold load makes 1 meta call instead of 11; nav renders from it; no `.find(locale==='en')` left in `CategoryNav.jsx`.
-**Effort:** 1.5 d
-**Blocks:** P5-1, P5-2 (tiles/megamenu feed from this)
+  **Frontend to update:** `FetchTablesAndProducts.jsx` (replace 11 calls + transforms), `CategoryNav.jsx` (consume localized names — also fixes NEW-15).
+  **Definition of done:** Homepage cold load makes 1 meta call instead of 11; nav renders from it; no `.find(locale==='en')` left in `CategoryNav.jsx`.
+  **Effort:** 1.5 d
+  **Blocks:** P5-1, P5-2 (tiles/megamenu feed from this)
 
 ---
 
@@ -278,6 +314,7 @@ sort (newest|price_asc|price_desc|rating), q (string), lang (en|ar)
 **Why:** Price filter + `active` filter + search will full-scan once moved server-side (NEW-12). FK columns are already indexed.
 **File:** new migration `database/migrations/XXXX_add_catalog_indexes.php`
 **Exact change:**
+
 ```php
 Schema::table('products', function (Blueprint $t) {
     $t->index(['active','sale_price_after_discount'], 'idx_active_price');
@@ -286,6 +323,7 @@ Schema::table('products', function (Blueprint $t) {
 });
 // verify main_category_id/sub_category_id/product_type_id are indexed; add if not
 ```
+
 **Definition of done:** `EXPLAIN` on the P1-1 listing query with a price filter shows `idx_active_price` used, not a full scan.
 **Effort:** 2 h
 **Depends on:** none (can run before P1-1, recommended)
@@ -297,10 +335,11 @@ Schema::table('products', function (Blueprint $t) {
 **Why:** String `max()+1` collides at 10,000 orders and races under concurrency (NEW-2).
 **File:** `backend/app/Http/Controllers/Api/OrderController.php` lines 228–231
 **Exact change:**
+
 - Replace with `selectRaw('MAX(CAST(order_number AS UNSIGNED)) as m')` inside the existing transaction with `->lockForUpdate()`, or add an auto-increment numeric column and format on display.
-**Definition of done:** Seeding 10,001 orders yields strictly increasing unique numbers; two concurrent `AddOrder` calls (parallel curl) produce different `order_number`s.
-**Effort:** 0.5 d
-**Depends on:** none
+  **Definition of done:** Seeding 10,001 orders yields strictly increasing unique numbers; two concurrent `AddOrder` calls (parallel curl) produce different `order_number`s.
+  **Effort:** 0.5 d
+  **Depends on:** none
 
 ---
 
@@ -309,11 +348,12 @@ Schema::table('products', function (Blueprint $t) {
 **Why:** Read-modify-write without lock oversells (NEW-3); abandoned Paymob permanently destroys stock (NEW-4).
 **File:** `backend/app/Http/Controllers/Api/OrderController.php` lines 262–283 (decrement), 358–435 (paymob), 440–469 (callback)
 **Exact change:**
+
 - Decrement atomically: `Product::where('id',$id)->where($field,'>=',$qty)->decrement($field,$qty)`; if 0 rows affected → rollback "insufficient stock".
 - For `paymob`: decrement **only after** verified-success callback, OR add a `RestoreStock` step on session-creation failure, on `cancelled` callback, and a job expiring `pending` paymob orders after 30 min.
-**Definition of done:** Two concurrent orders for the last unit → one succeeds, one gets "insufficient stock"; abandoning a Paymob checkout returns stock within the expiry window.
-**Effort:** 1 d
-**Depends on:** P0-3 (callback must be trustworthy first)
+  **Definition of done:** Two concurrent orders for the last unit → one succeeds, one gets "insufficient stock"; abandoning a Paymob checkout returns stock within the expiry window.
+  **Effort:** 1 d
+  **Depends on:** P0-3 (callback must be trustworthy first)
 
 ---
 
@@ -322,12 +362,13 @@ Schema::table('products', function (Blueprint $t) {
 **Why:** 6 synchronous `Mail::send` calls block the checkout response (NEW-5).
 **File:** `backend/app/Http/Controllers/Api/OrderController.php` lines 25–31 (admin list), 328–353 (`sendOrderEmails`)
 **Exact change:**
+
 - `Mail::to($x)->queue(new OrderCreatedMail(...))`; ensure `OrderCreatedMail implements ShouldQueue`.
 - Move `$adminEmails` to `config/order.php` / DB.
 - Configure a queue connection + worker (`php artisan queue:work`).
-**Definition of done:** `AddOrder` returns in <300 ms with mail server stopped; emails appear after the worker runs.
-**Effort:** 0.5 d (+ infra if no queue exists)
-**Depends on:** none
+  **Definition of done:** `AddOrder` returns in <300 ms with mail server stopped; emails appear after the worker runs.
+  **Effort:** 0.5 d (+ infra if no queue exists)
+  **Depends on:** none
 
 ---
 
@@ -336,11 +377,12 @@ Schema::table('products', function (Blueprint $t) {
 **Why:** `parseInt`/`Math.floor` truncate decimals and backend validates `integer`, so `.99` prices are lost (NEW-16).
 **File:** `Frontend/src/Components/Product/ProductDisplay.jsx` lines 73–74; `Frontend/src/Pages/Checkout/Checkout.jsx` lines 187–193; `backend/.../OrderController.php` lines 112–113, 187
 **Exact change:**
+
 - Store/transmit prices as integer **piastres** (EGP × 100) or switch backend validation to `numeric` and stop `parseInt`/`floor` on the client.
 - Server recomputes authoritative totals from `items` (also closes a price-tampering hole) — do not trust the client `total_price_for_order`.
-**Definition of done:** A product priced `3990.50` checks out at the correct total; backend rejects a client-tampered total.
-**Effort:** 1 d
-**Depends on:** P0-5
+  **Definition of done:** A product priced `3990.50` checks out at the correct total; backend rejects a client-tampered total.
+  **Effort:** 1 d
+  **Depends on:** P0-5
 
 ---
 
@@ -352,6 +394,7 @@ Schema::table('products', function (Blueprint $t) {
 
 **File:** new migration `XXXX_add_guest_support_to_carts.php`
 **Exact change:**
+
 ```php
 Schema::table('carts', function (Blueprint $t) {
     $t->foreignId('user_id')->nullable()->change();
@@ -362,6 +405,7 @@ Schema::table('cart_items', function (Blueprint $t) {
     $t->unique(['cart_id','product_id','offer_id','color_band','color_dial','type_stock'], 'uniq_cart_line');
 });
 ```
+
 **Definition of done:** A cart row can exist with `user_id NULL` + `guest_token` set; duplicate identical cart lines are rejected by `uniq_cart_line`.
 **Effort:** 3 h
 **Blocks:** P1.5-2..5
@@ -372,6 +416,7 @@ Schema::table('cart_items', function (Blueprint $t) {
 
 **File:** new `app/Http/Middleware/GuestCartMiddleware.php`; register in `routes/api.php` for cart/order routes
 **Pseudocode:**
+
 ```text
 handle(request):
     if valid Bearer JWT:        request->identity = ['user_id' => jwt.sub]
@@ -382,6 +427,7 @@ handle(request):
         response->header('X-Guest-Token', token)   // client stores it
     return next(request)
 ```
+
 **Definition of done:** A cart request with no auth and no token comes back with an `X-Guest-Token` response header; with the header, the same cart is resolved.
 **Effort:** 0.5 d
 **Depends on:** P1.5-1
@@ -392,14 +438,16 @@ handle(request):
 
 **File:** `OrderController` (or new `CartController`) `AddToCart` (`:104-152`), `me/cart` (P0-4)
 **Exact change:**
+
 ```text
 resolveCart(identity):
     return Cart::firstOrCreate(identity, ['expires_at' => identity.user_id ? null : now()->addDays(7)])
 ```
+
 - `AddToCart` uses `resolveCart($request->identity)` instead of `Cart::firstOrCreate(['user_id'=>...])`; drop the `user_id exists` validation rule.
-**Definition of done:** A guest can `POST /add_to_cart` with only `X-Guest-Token` and read it back from `GET /me/cart`.
-**Effort:** 0.5 d
-**Depends on:** P1.5-2, P0-4
+  **Definition of done:** A guest can `POST /add_to_cart` with only `X-Guest-Token` and read it back from `GET /me/cart`.
+  **Effort:** 0.5 d
+  **Depends on:** P1.5-2, P0-4
 
 ---
 
@@ -407,13 +455,14 @@ resolveCart(identity):
 
 **File:** `Frontend/src/Context/api.jsx` (the instance from P0-2); `Frontend/src/Store/cartStore.js`
 **Exact change:**
+
 - On first cart write with no JWT: `localStorage.setItem("wz_guest_token", crypto.randomUUID())` if absent.
 - Interceptor: `if jwt → Authorization: Bearer; else → X-Guest-Token: localStorage["wz_guest_token"]`.
 - Capture `X-Guest-Token` from responses and persist it.
 - Point `cartStore` writes at `/add_to_cart` (server) with the client mirror as optimistic state.
-**Definition of done:** Add to cart as guest → refresh page → cart persists (served from DB, not sessionStorage).
-**Effort:** 1 d
-**Depends on:** P0-2, P1.5-3
+  **Definition of done:** Add to cart as guest → refresh page → cart persists (served from DB, not sessionStorage).
+  **Effort:** 1 d
+  **Depends on:** P0-2, P1.5-3
 
 ---
 
@@ -421,6 +470,7 @@ resolveCart(identity):
 
 **File:** new `app/Services/MergeGuestCart.php`; called in `AuthController@login` and `@register`
 **Pseudocode:**
+
 ```text
 merge(user_id, guest_token):
     DB::transaction:
@@ -432,10 +482,11 @@ merge(user_id, guest_token):
                 {quantity: existing+gi.quantity, piece_price: gi.piece_price})
         guest.cart_item()->delete(); guest->delete()
 ```
+
 - Frontend: after successful login/register, send the guest token, then `localStorage.removeItem("wz_guest_token")` and refetch `/me/cart`.
-**Definition of done:** Guest adds 2 items → logs in → those items appear in the user cart; the guest cart row is gone; `wz_guest_token` cleared.
-**Effort:** 0.5 d
-**Depends on:** P1.5-3, P0-4
+  **Definition of done:** Guest adds 2 items → logs in → those items appear in the user cart; the guest cart row is gone; `wz_guest_token` cleared.
+  **Effort:** 0.5 d
+  **Depends on:** P1.5-3, P0-4
 
 ---
 
@@ -443,11 +494,13 @@ merge(user_id, guest_token):
 
 **File:** new `app/Console/Commands/PruneGuestCarts.php`; schedule in `app/Console/Kernel.php`
 **Exact change:**
+
 ```php
 Cart::whereNotNull('guest_token')->where('expires_at','<',now())
     ->each(fn($c)=>tap($c)->cart_item()->delete()->delete());
 // $schedule->command('carts:prune')->daily();
 ```
+
 **Definition of done:** `php artisan carts:prune` deletes guest carts with `expires_at` in the past; user carts untouched.
 **Effort:** 3 h
 **Depends on:** P1.5-1
@@ -458,11 +511,12 @@ Cart::whereNotNull('guest_token')->where('expires_at','<',now())
 
 **File:** `Frontend/src/Pages/Checkout/Checkout.jsx`; cart badge in `Header.jsx`
 **Exact change:**
+
 - When no JWT: show `guest_name`/`guest_phone`/`guest_email` fields and send them in `addOrder`; CTA copy "Checkout as guest" + secondary "Login to save your cart".
 - Cart badge counts from the (now server-backed) `useCart()` for both states.
-**Definition of done:** A logged-out user completes a full order with guest fields; logged-in user sees saved addresses instead.
-**Effort:** 0.5 d
-**Depends on:** P1.5-4, P0-5
+  **Definition of done:** A logged-out user completes a full order with guest fields; logged-in user sees saved addresses instead.
+  **Effort:** 0.5 d
+  **Depends on:** P1.5-4, P0-5
 
 ---
 
@@ -483,6 +537,7 @@ Cart::whereNotNull('guest_token')->where('expires_at','<',now())
 
 **File:** Next.js `generateMetadata` per segment (replaces the single `App.jsx:106-210` Helmet)
 **Exact templates:**
+
 ```
 Home:     "Watchizer | Luxury Watches & Accessories in Egypt"
 Listing:  "{Category} Watches | {brand?} | Watchizer" + count in description
@@ -490,10 +545,11 @@ PDP:      "{product.title} – {brand} | Watchizer"  desc = product.descriptions
 Brand:    "{Brand} Watches in Egypt | Watchizer"
 Category: "{Category} | Watchizer"
 ```
+
 - Per-page `canonical` = the page's own URL (fixes the site-wide homepage canonical at `App.jsx:124`).
-**Definition of done:** Each route type returns a unique `<title>`, `<meta description>`, and self-referencing `<link rel=canonical>`.
-**Effort:** 1 d
-**Depends on:** P2-1
+  **Definition of done:** Each route type returns a unique `<title>`, `<meta description>`, and self-referencing `<link rel=canonical>`.
+  **Effort:** 1 d
+  **Depends on:** P2-1
 
 ---
 
@@ -501,6 +557,7 @@ Category: "{Category} | Watchizer"
 
 **File:** PDP segment; listing/category segments
 **Exact blocks:**
+
 ```jsonc
 // Product (PDP)
 { "@context":"https://schema.org","@type":"Product","name":"{title}","brand":{"@type":"Brand","name":"{brand}"},
@@ -513,10 +570,11 @@ Category: "{Category} | Watchizer"
   {"@type":"ListItem","position":2,"name":"{category}","item":"{categoryUrl}"},
   {"@type":"ListItem","position":3,"name":"{title}","item":"{url}"}]}
 ```
+
 - Only emit `aggregateRating` when `rating_count > 0`.
-**Definition of done:** Google Rich Results Test passes for Product + Breadcrumb on a live PDP.
-**Effort:** 0.5 d
-**Depends on:** P2-1, P1-3
+  **Definition of done:** Google Rich Results Test passes for Product + Breadcrumb on a live PDP.
+  **Effort:** 0.5 d
+  **Depends on:** P2-1, P1-3
 
 ---
 
@@ -524,6 +582,7 @@ Category: "{Category} | Watchizer"
 
 **File:** `public/robots.txt`
 **Exact content:**
+
 ```
 User-agent: *
 Allow: /
@@ -535,6 +594,7 @@ Disallow: /login
 Disallow: /register
 Sitemap: https://watchizereg.com/sitemap.xml
 ```
+
 **Definition of done:** `curl https://watchizereg.com/robots.txt` returns the above.
 **Effort:** 0.5 h
 **Depends on:** none
@@ -687,9 +747,19 @@ Sitemap: https://watchizereg.com/sitemap.xml
 
 **File:** new `Frontend/src/Components/Merchandising/CategoryTiles.jsx`; mount in `Home.jsx` directly under the hero (`:69`)
 **Props interface:**
+
 ```ts
-{ tiles: Array<{ id:number; label:string; image:string; count:number; to:string }> }
+{
+  tiles: Array<{
+    id: number;
+    label: string;
+    image: string;
+    count: number;
+    to: string;
+  }>;
+}
 ```
+
 **Data source:** `GET /catalog/meta` (P1-4) → top categories/subtypes with `product_count` + tile image.
 **CSS Grid spec:** `grid-template-columns: repeat(auto-fill, minmax(220px,1fr)); gap:16px;` tile `aspect-ratio:4/5`; label+count in a bottom gradient overlay; link to `/subtypes/{slug}`.
 **Definition of done:** Homepage shows category tiles under the hero; each links to a filtered listing; counts match the API.
@@ -777,41 +847,41 @@ P0 ──► P1 ──► P1.5 ──► P2 ──► P3 ──► P4 ──► 
             P1.5 cart, P5 tiles/menu/recs, P4 image srcset
 ```
 
-| Task | Depends on | Blocks |
-|------|------------|--------|
-| P0-1 rotate secret | — | P0-2 |
-| P0-2 axios instance | P0-1 | P1.5-4 |
-| P0-3 callback HMAC | — | P1-7 |
-| P0-4 scope endpoints | — | P1.5-5 |
-| P0-5 cart hotfix | — | P1.5 (superseded), P1-9 |
-| P0-6 remove reloads | — | P1-1 (clean baseline) |
-| P1-1 listing endpoint | P0-6, P1-5 | P1-2, P1-3, P1.5, P2-5, P5-3 |
-| P1-3 PDP endpoint | P1-1, P1-2 | P2-3, P4-5, P5-3 |
-| P1-4 catalog/meta | — | P5-1, P5-2, P3-1 |
-| P1-7 stock locks | P0-3 | — |
-| P1.5-1 carts migration | — | P1.5-2..6 |
-| P1.5-5 merge cart | P1.5-3, P0-4 | — |
-| P2-1 Next.js scaffold | P1-1, P1-3 | P2-2..6, P4-3/4-4 |
-| P3-1 split context | P1-1, P1-4 | P3-2, P3-5 |
-| P3-2 remove windowWidth | P3-3 | — |
-| P3-5 remove Bootstrap | P3-1 | P5-5, P5-6, P5-7 |
-| P4-5 image CDN | P1-2, P1-3 | — |
-| P5-3 recommendations | P1-3 | — |
+| Task                    | Depends on   | Blocks                       |
+| ----------------------- | ------------ | ---------------------------- |
+| P0-1 rotate secret      | —            | P0-2                         |
+| P0-2 axios instance     | P0-1         | P1.5-4                       |
+| P0-3 callback HMAC      | —            | P1-7                         |
+| P0-4 scope endpoints    | —            | P1.5-5                       |
+| P0-5 cart hotfix        | —            | P1.5 (superseded), P1-9      |
+| P0-6 remove reloads     | —            | P1-1 (clean baseline)        |
+| P1-1 listing endpoint   | P0-6, P1-5   | P1-2, P1-3, P1.5, P2-5, P5-3 |
+| P1-3 PDP endpoint       | P1-1, P1-2   | P2-3, P4-5, P5-3             |
+| P1-4 catalog/meta       | —            | P5-1, P5-2, P3-1             |
+| P1-7 stock locks        | P0-3         | —                            |
+| P1.5-1 carts migration  | —            | P1.5-2..6                    |
+| P1.5-5 merge cart       | P1.5-3, P0-4 | —                            |
+| P2-1 Next.js scaffold   | P1-1, P1-3   | P2-2..6, P4-3/4-4            |
+| P3-1 split context      | P1-1, P1-4   | P3-2, P3-5                   |
+| P3-2 remove windowWidth | P3-3         | —                            |
+| P3-5 remove Bootstrap   | P3-1         | P5-5, P5-6, P5-7             |
+| P4-5 image CDN          | P1-2, P1-3   | —                            |
+| P5-3 recommendations    | P1-3         | —                            |
 
 ---
 
 ## Effort summary table
 
-| Phase | Tasks | Total effort | Parallelizable? |
-|-------|-------|-------------|-----------------|
-| P0    | 11    | ~5 days     | Mostly (P0-2 after P0-1; rest independent) |
-| P1    | 9     | ~9 days     | Yes (P1-2/3 after P1-1) |
-| P1.5  | 7     | ~4 days     | Sequential within phase |
-| P2    | 6     | ~3.5 weeks  | After scaffold, metadata tasks parallel |
-| P3    | 5     | ~2 weeks    | P3-3/3-4 parallel; P3-2/3-5 gated |
-| P4    | 5     | ~3.5 days   | Mostly parallel |
-| P5    | 7     | ~1.5 weeks  | Mostly parallel after endpoints |
-| **TOTAL** | **50** | **~9–10 weeks** (1 dev) / **~5–6 weeks** (2 devs) | |
+| Phase     | Tasks  | Total effort                                      | Parallelizable?                            |
+| --------- | ------ | ------------------------------------------------- | ------------------------------------------ |
+| P0        | 11     | ~5 days                                           | Mostly (P0-2 after P0-1; rest independent) |
+| P1        | 9      | ~9 days                                           | Yes (P1-2/3 after P1-1)                    |
+| P1.5      | 7      | ~4 days                                           | Sequential within phase                    |
+| P2        | 6      | ~3.5 weeks                                        | After scaffold, metadata tasks parallel    |
+| P3        | 5      | ~2 weeks                                          | P3-3/3-4 parallel; P3-2/3-5 gated          |
+| P4        | 5      | ~3.5 days                                         | Mostly parallel                            |
+| P5        | 7      | ~1.5 weeks                                        | Mostly parallel after endpoints            |
+| **TOTAL** | **50** | **~9–10 weeks** (1 dev) / **~5–6 weeks** (2 devs) |                                            |
 
 ---
 
@@ -827,3 +897,7 @@ P0 ──► P1 ──► P1.5 ──► P2 ──► P3 ──► P4 ──► 
 - [ ] `fetchpriority="high"` on hero slide — `HomeSlider.jsx` — 20 min (P4-2)
 - [ ] IDOR checks on delete — `OrderController.php:166-174`, `DetailsProductController.php:244-266` — 1 h (P0-9)
 - [ ] Remove `legacy()` plugin + polyfill — `vite.config.js:19-22`, `main.jsx:9` — 1 h (P4-4)
+
+## Discovered During Execution
+
+- [ ] Replace event-driven reloads with state updates — 7 `window.location.reload()` calls remain after P0-6 (which only removed the two forced-reload *timers*). These are intentional, user-triggered full-page reloads that should be reworked to update React context / re-fetch instead: `Footer.jsx:46` (language switch), `ProfileSpeed.jsx:28,35` & `ProfileSpeedPhone.jsx:51,58` (post-logout session clear), `LoginModal.jsx:59` (post-login refresh), `EditProfile.jsx:226` (after profile image update). Removing them naively breaks session/profile refresh, so each needs a proper state-update replacement. — discovered during P0-6

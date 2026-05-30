@@ -1,12 +1,11 @@
-export class Title extends Element<import("../types/basic.js").AnyObject, import("../types/basic.js").AnyObject> {
+export class Title extends Element<
+    import("../types/basic.js").AnyObject,
+    import("../types/basic.js").AnyObject
+> {
     /**
-       * @param {{ ctx: any; options: any; chart: any; }} config
-       */
-    constructor(config: {
-        ctx: any;
-        options: any;
-        chart: any;
-    });
+     * @param {{ ctx: any; options: any; chart: any; }} config
+     */
+    constructor(config: { ctx: any; options: any; chart: any });
     chart: any;
     options: any;
     ctx: any;

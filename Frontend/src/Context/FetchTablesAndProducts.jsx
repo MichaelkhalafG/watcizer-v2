@@ -1,36 +1,31 @@
-import { useEffect } from "react";
-import axios from "axios";
+import { useEffect } from 'react'
+import http from './api'
 
 const getTranslatedName = (translations, locale, fallback) => {
-  const translation = translations?.find((t) => t.locale === locale);
-  return translation && translation[fallback] ? translation[fallback] : null;
-};
+  const translation = translations?.find((t) => t.locale === locale)
+  return translation && translation[fallback] ? translation[fallback] : null
+}
 
 const getProductRating = (product, ratings) => {
-  const productRatings = (ratings || []).filter(
-    (r) => r.product_id === product.id,
-  );
+  const productRatings = (ratings || []).filter((r) => r.product_id === product.id)
   return productRatings.length > 0
-    ? productRatings.reduce((acc, r) => acc + r.rating, 0) /
-        productRatings.length
-    : null;
-};
+    ? productRatings.reduce((acc, r) => acc + r.rating, 0) / productRatings.length
+    : null
+}
 
 const getColors = (product, name) => {
   return (
     product[name]?.map((color) => ({
       color_id: color.id,
       color_value: color.color_value,
-      color_name_ar: color.translations.find((c) => c.locale === "ar")
-        ?.color_name,
-      color_name_en: color.translations.find((c) => c.locale === "en")
-        ?.color_name,
+      color_name_ar: color.translations.find((c) => c.locale === 'ar')?.color_name,
+      color_name_en: color.translations.find((c) => c.locale === 'en')?.color_name,
     })) || []
-  );
-};
+  )
+}
 
 const transformProductData = (products, tables, ratings, images, locale) => {
-  if (!Array.isArray(products)) return [];
+  if (!Array.isArray(products)) return []
 
   return products
     .map((product) => {
@@ -39,135 +34,94 @@ const transformProductData = (products, tables, ratings, images, locale) => {
           tables[table]?.find((item) => item.id === id)?.translations || [],
           locale,
           key,
-        );
+        )
 
       return {
         ...product,
         category_type: getCategoryData(
-          "categoryTypes",
+          'categoryTypes',
           product.category_type_id,
-          "category_type_name",
+          'category_type_name',
         ),
-        brand: getCategoryData("brands", product.brand_id, "brand_name"),
-        grade: getCategoryData("grades", product.grade_id, "grade_name"),
-        sub_type: getCategoryData(
-          "subTypes",
-          product.sub_type_id,
-          "sub_type_name",
-        ),
-        dial_colors: getColors(product, "dial_color"),
-        band_colors: getColors(product, "band_color"),
-        band_closure: getCategoryData(
-          "closureTypes",
-          product.band_closure_id,
-          "closure_type_name",
-        ),
-        case_size_type: getCategoryData(
-          "sizeTypes",
-          product.case_size_type_id,
-          "size_type_name",
-        ),
+        brand: getCategoryData('brands', product.brand_id, 'brand_name'),
+        grade: getCategoryData('grades', product.grade_id, 'grade_name'),
+        sub_type: getCategoryData('subTypes', product.sub_type_id, 'sub_type_name'),
+        dial_colors: getColors(product, 'dial_color'),
+        band_colors: getColors(product, 'band_color'),
+        band_closure: getCategoryData('closureTypes', product.band_closure_id, 'closure_type_name'),
+        case_size_type: getCategoryData('sizeTypes', product.case_size_type_id, 'size_type_name'),
         dial_display_type: getCategoryData(
-          "displayTypes",
+          'displayTypes',
           product.dial_display_type_id,
-          "display_type_name",
+          'display_type_name',
         ),
-        case_shape: getCategoryData(
-          "shapes",
-          product.case_shape_id,
-          "shape_name",
-        ),
+        case_shape: getCategoryData('shapes', product.case_shape_id, 'shape_name'),
         watch_movement: getCategoryData(
-          "movementTypes",
+          'movementTypes',
           product.watch_movement_id,
-          "movement_type_name",
+          'movement_type_name',
         ),
         dial_glass_material: getCategoryData(
-          "materials",
+          'materials',
           product.dial_glass_material_id,
-          "material_name",
+          'material_name',
         ),
         dial_case_material: getCategoryData(
-          "materials",
+          'materials',
           product.dial_case_material_id,
-          "material_name",
+          'material_name',
         ),
-        band_size_type: getCategoryData(
-          "sizeTypes",
-          product.band_size_type_id,
-          "size_type_name",
-        ),
+        band_size_type: getCategoryData('sizeTypes', product.band_size_type_id, 'size_type_name'),
         water_resistance_size_type: getCategoryData(
-          "sizeTypes",
+          'sizeTypes',
           product.water_resistance_size_type_id,
-          "size_type_name",
+          'size_type_name',
         ),
         band_width_size_type: getCategoryData(
-          "sizeTypes",
+          'sizeTypes',
           product.band_width_size_type_id,
-          "size_type_name",
+          'size_type_name',
         ),
         case_thickness_size_type: getCategoryData(
-          "sizeTypes",
+          'sizeTypes',
           product.case_thickness_size_type_id,
-          "size_type_name",
+          'size_type_name',
         ),
         watch_height_size_type: getCategoryData(
-          "sizeTypes",
+          'sizeTypes',
           product.watch_height_size_type_id,
-          "size_type_name",
+          'size_type_name',
         ),
         watch_width_size_type: getCategoryData(
-          "sizeTypes",
+          'sizeTypes',
           product.watch_width_size_type_id,
-          "size_type_name",
+          'size_type_name',
         ),
-        band_material: getCategoryData(
-          "materials",
-          product.band_material_id,
-          "material_name",
-        ),
+        band_material: getCategoryData('materials', product.band_material_id, 'material_name'),
         watch_length_size_type: getCategoryData(
-          "sizeTypes",
+          'sizeTypes',
           product.watch_length_size_type_id,
-          "size_type_name",
+          'size_type_name',
         ),
         rating: getProductRating(product, ratings),
         images: (images || [])
           .filter((img) => img.product_id === product.id)
           .map(
-            (img) =>
-              `https://dash.watchizereg.com/Uploads_Images/Product_image/${img.image}`,
+            (img) => `${import.meta.env.VITE_ASSET_BASE}/Uploads_Images/Product_image/${img.image}`,
           ),
         features: product.feature.map((f) =>
-          getTranslatedName(f.translations || [], locale, "feature_name"),
+          getTranslatedName(f.translations || [], locale, 'feature_name'),
         ),
         gender: product.gender.map((g) =>
-          getTranslatedName(g.translations || [], locale, "gender_name"),
+          getTranslatedName(g.translations || [], locale, 'gender_name'),
         ),
         band_length: product.band_length,
-        image: `https://dash.watchizereg.com/Uploads_Images/Product/${product.image}`,
-        product_title: getTranslatedName(
-          product.translations || [],
-          locale,
-          "product_title",
-        ),
-        name: getTranslatedName(
-          product.translations || [],
-          "en",
-          "product_title",
-        ),
-        model_name: getTranslatedName(
-          product.translations || [],
-          locale,
-          "model_name",
-        ),
-        country: getTranslatedName(
-          product.translations || [],
-          locale,
-          "country",
-        ),
-        stone: getTranslatedName(product.translations || [], locale, "stone"),
+        image: `${import.meta.env.VITE_ASSET_BASE}/Uploads_Images/Product/${product.image}`,
+        product_title: getTranslatedName(product.translations || [], locale, 'product_title'),
+        name: getTranslatedName(product.translations || [], 'en', 'product_title'),
+        model_name: getTranslatedName(product.translations || [], locale, 'model_name'),
+        country: getTranslatedName(product.translations || [], locale, 'country'),
+        stone: getTranslatedName(product.translations || [], locale, 'stone'),
         stock: product.stock ?? 0,
         market_stock: product.market_stock ?? 0,
         search_keywords: product.search_keywords,
@@ -186,120 +140,87 @@ const transformProductData = (products, tables, ratings, images, locale) => {
         case_thickness: product.case_thickness,
         band_width: product.band_width,
         water_resistance: product.water_resistance,
-        long_description: getTranslatedName(
-          product.translations || [],
-          locale,
-          "long_description",
-        ),
+        long_description: getTranslatedName(product.translations || [], locale, 'long_description'),
         short_description: getTranslatedName(
           product.translations || [],
           locale,
-          "short_description",
+          'short_description',
         ),
-        created_at: product.created_at
-          ? new Date(product.created_at)
-          : new Date(0),
-        updated_at: product.updated_at
-          ? new Date(product.updated_at)
-          : new Date(0),
-      };
+        created_at: product.created_at ? new Date(product.created_at) : new Date(0),
+        updated_at: product.updated_at ? new Date(product.updated_at) : new Date(0),
+      }
     })
     .sort((a, b) => {
-      if (a.market_stock === 0 && b.market_stock !== 0) return 1;
-      if (b.market_stock === 0 && a.market_stock !== 0) return -1;
-      return new Date(b.created_at) - new Date(a.created_at);
-    });
-};
+      if (a.market_stock === 0 && b.market_stock !== 0) return 1
+      if (b.market_stock === 0 && a.market_stock !== 0) return -1
+      return new Date(b.created_at) - new Date(a.created_at)
+    })
+}
 
-const CACHE_DURATION = 10 * 60 * 1000;
+const CACHE_DURATION = 10 * 60 * 1000
 const CACHE_KEYS = {
-  TABLES: "tablesCache",
-  TABLES_EXPIRATION: "tablesCacheExpiration",
-  PRODUCTS: "productsCache",
-  PRODUCTS_EXPIRATION: "productsCacheExpiration",
-  RATINGS: "ratingsCache",
-  RATINGS_EXPIRATION: "ratingsCacheExpiration",
-  IMAGES: "imagesCache",
-  IMAGES_EXPIRATION: "imagesCacheExpiration",
-};
+  TABLES: 'tablesCache',
+  TABLES_EXPIRATION: 'tablesCacheExpiration',
+  PRODUCTS: 'productsCache',
+  PRODUCTS_EXPIRATION: 'productsCacheExpiration',
+  RATINGS: 'ratingsCache',
+  RATINGS_EXPIRATION: 'ratingsCacheExpiration',
+  IMAGES: 'imagesCache',
+  IMAGES_EXPIRATION: 'imagesCacheExpiration',
+}
 
 const isCacheValid = (expirationKey) => {
-  const expiration = localStorage.getItem(expirationKey);
-  return expiration && new Date().getTime() < Number(expiration);
-};
+  const expiration = localStorage.getItem(expirationKey)
+  return expiration && new Date().getTime() < Number(expiration)
+}
 
 const getCachedData = (key) => {
-  const data = localStorage.getItem(key);
-  return data ? JSON.parse(data) : null;
-};
+  const data = localStorage.getItem(key)
+  return data ? JSON.parse(data) : null
+}
 
-const useFetchTablesAndProducts = (
-  setTables,
-  setRatings,
-  setProductsEn,
-  setProductsAr,
-) => {
+const useFetchTablesAndProducts = (setTables, setRatings, setProductsEn, setProductsAr) => {
   useEffect(() => {
     const fetchTablesAndProducts = async () => {
       try {
         if (
           Object.values(CACHE_KEYS).every((key) =>
-            key.includes("EXPIRATION") ? isCacheValid(key) : getCachedData(key),
+            key.includes('EXPIRATION') ? isCacheValid(key) : getCachedData(key),
           )
         ) {
           // console.log("Using cached data");
 
-          const cachedTables = getCachedData(CACHE_KEYS.TABLES);
-          const cachedProducts = getCachedData(CACHE_KEYS.PRODUCTS);
-          const cachedRatings = getCachedData(CACHE_KEYS.RATINGS);
-          const cachedImages = getCachedData(CACHE_KEYS.IMAGES);
+          const cachedTables = getCachedData(CACHE_KEYS.TABLES)
+          const cachedProducts = getCachedData(CACHE_KEYS.PRODUCTS)
+          const cachedRatings = getCachedData(CACHE_KEYS.RATINGS)
+          const cachedImages = getCachedData(CACHE_KEYS.IMAGES)
 
-          setTables(cachedTables);
-          setRatings(cachedRatings);
+          setTables(cachedTables)
+          setRatings(cachedRatings)
           setProductsEn(
-            transformProductData(
-              cachedProducts,
-              cachedTables,
-              cachedRatings,
-              cachedImages,
-              "en",
-            ),
-          );
+            transformProductData(cachedProducts, cachedTables, cachedRatings, cachedImages, 'en'),
+          )
           setProductsAr(
-            transformProductData(
-              cachedProducts,
-              cachedTables,
-              cachedRatings,
-              cachedImages,
-              "ar",
-            ),
-          );
-          return;
+            transformProductData(cachedProducts, cachedTables, cachedRatings, cachedImages, 'ar'),
+          )
+          return
         }
 
-        const headers = {
-          headers: {
-            "Api-Code":
-              "NbmFylY0vcwnhxUrm1udMgcX1MtPYb4QWXy1EKqVenm6uskufcXKeHh5W4TM5Iv0",
-          },
-        };
         const tableEndpoints = [
-          "all_category_type",
-          "all_brand",
-          "all_grade",
-          "all_sub_type",
-          "all_color",
-          "all_material",
-          "all_shape",
-          "all_size_type",
-          "all_display_type",
-          "all_closure_type",
-          "all_movement_type",
-        ].map((endpoint) => `https://dash.watchizereg.com/api/${endpoint}`);
+          'all_category_type',
+          'all_brand',
+          'all_grade',
+          'all_sub_type',
+          'all_color',
+          'all_material',
+          'all_shape',
+          'all_size_type',
+          'all_display_type',
+          'all_closure_type',
+          'all_movement_type',
+        ].map((endpoint) => `/${endpoint}`)
 
-        const tableResponses = await Promise.all(
-          tableEndpoints.map((url) => axios.get(url, headers)),
-        );
+        const tableResponses = await Promise.all(tableEndpoints.map((url) => http.get(url)))
 
         const tableData = {
           categoryTypes: tableResponses[0].data,
@@ -313,83 +234,41 @@ const useFetchTablesAndProducts = (
           displayTypes: tableResponses[8].data,
           closureTypes: tableResponses[9].data,
           movementTypes: tableResponses[10].data,
-        };
+        }
 
-        setTables(tableData);
-        localStorage.setItem(CACHE_KEYS.TABLES, JSON.stringify(tableData));
-        localStorage.setItem(
-          CACHE_KEYS.TABLES_EXPIRATION,
-          new Date().getTime() + CACHE_DURATION,
-        );
+        setTables(tableData)
+        localStorage.setItem(CACHE_KEYS.TABLES, JSON.stringify(tableData))
+        localStorage.setItem(CACHE_KEYS.TABLES_EXPIRATION, new Date().getTime() + CACHE_DURATION)
 
-        const [productResponse, ratingResponse, imageResponse] =
-          await Promise.all([
-            axios.get("https://dash.watchizereg.com/api/all_product", headers),
-            axios.get(
-              "https://dash.watchizereg.com/api/all_product_rating",
-              headers,
-            ),
-            axios.get(
-              "https://dash.watchizereg.com/api/all_product_image",
-              headers,
-            ),
-          ]);
+        const [productResponse, ratingResponse, imageResponse] = await Promise.all([
+          http.get('/all_product'),
+          http.get('/all_product_rating'),
+          http.get('/all_product_image'),
+        ])
 
-        const rawProducts = productResponse.data;
-        const ratingsData = ratingResponse.data;
-        const imagesData = imageResponse.data;
+        const rawProducts = productResponse.data
+        const ratingsData = ratingResponse.data
+        const imagesData = imageResponse.data
 
-        setRatings(ratingsData);
-        setProductsEn(
-          transformProductData(
-            rawProducts,
-            tableData,
-            ratingsData,
-            imagesData,
-            "en",
-          ),
-        );
-        setProductsAr(
-          transformProductData(
-            rawProducts,
-            tableData,
-            ratingsData,
-            imagesData,
-            "ar",
-          ),
-        );
+        setRatings(ratingsData)
+        setProductsEn(transformProductData(rawProducts, tableData, ratingsData, imagesData, 'en'))
+        setProductsAr(transformProductData(rawProducts, tableData, ratingsData, imagesData, 'ar'))
 
-        localStorage.setItem(CACHE_KEYS.PRODUCTS, JSON.stringify(rawProducts));
-        localStorage.setItem(
-          CACHE_KEYS.PRODUCTS_EXPIRATION,
-          new Date().getTime() + CACHE_DURATION,
-        );
+        localStorage.setItem(CACHE_KEYS.PRODUCTS, JSON.stringify(rawProducts))
+        localStorage.setItem(CACHE_KEYS.PRODUCTS_EXPIRATION, new Date().getTime() + CACHE_DURATION)
 
-        localStorage.setItem(CACHE_KEYS.RATINGS, JSON.stringify(ratingsData));
-        localStorage.setItem(
-          CACHE_KEYS.RATINGS_EXPIRATION,
-          new Date().getTime() + CACHE_DURATION,
-        );
+        localStorage.setItem(CACHE_KEYS.RATINGS, JSON.stringify(ratingsData))
+        localStorage.setItem(CACHE_KEYS.RATINGS_EXPIRATION, new Date().getTime() + CACHE_DURATION)
 
-        localStorage.setItem(CACHE_KEYS.IMAGES, JSON.stringify(imagesData));
-        localStorage.setItem(
-          CACHE_KEYS.IMAGES_EXPIRATION,
-          new Date().getTime() + CACHE_DURATION,
-        );
+        localStorage.setItem(CACHE_KEYS.IMAGES, JSON.stringify(imagesData))
+        localStorage.setItem(CACHE_KEYS.IMAGES_EXPIRATION, new Date().getTime() + CACHE_DURATION)
       } catch {
         // console.error("Error fetching data:", error);
       }
-    };
+    }
 
-    fetchTablesAndProducts();
-    const interval = setInterval(() => {
-      // console.log("Clearing cache and reloading...");
-      Object.values(CACHE_KEYS).forEach((key) => localStorage.removeItem(key));
-      window.location.reload();
-    }, CACHE_DURATION);
+    fetchTablesAndProducts()
+  }, [setTables, setRatings, setProductsEn, setProductsAr])
+}
 
-    return () => clearInterval(interval);
-  }, [setTables, setRatings, setProductsEn, setProductsAr]);
-};
-
-export default useFetchTablesAndProducts;
+export default useFetchTablesAndProducts

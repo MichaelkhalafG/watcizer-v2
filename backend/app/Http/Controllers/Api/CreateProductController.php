@@ -17,6 +17,7 @@ use App\Models\CategoryType;
 use App\Models\MovementType;
 use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 
 class CreateProductController extends Controller
 {
@@ -32,7 +33,12 @@ class CreateProductController extends Controller
             return response()->json($brand);
 
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => 'An error occurred while fetching brands', 'error' => $e->getMessage()], 500);
+            Log::error($e);
+            return response()->json([
+                'success' => false,
+                'message' => 'An error occurred',
+                'ref'     => \Illuminate\Support\Str::uuid()
+            ], 500);
         }
     }
 
@@ -48,7 +54,12 @@ class CreateProductController extends Controller
             return response()->json($grade);
 
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => 'An error occurred while fetching brands', 'error' => $e->getMessage()], 500);
+            Log::error($e);
+            return response()->json([
+                'success' => false,
+                'message' => 'An error occurred',
+                'ref'     => \Illuminate\Support\Str::uuid()
+            ], 500);
         }
     }
 
@@ -64,7 +75,12 @@ class CreateProductController extends Controller
             return response()->json($sub_type);
 
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => 'An error occurred while fetching brands', 'error' => $e->getMessage()], 500);
+            Log::error($e);
+            return response()->json([
+                'success' => false,
+                'message' => 'An error occurred',
+                'ref'     => \Illuminate\Support\Str::uuid()
+            ], 500);
         }
     }
 
@@ -80,7 +96,12 @@ class CreateProductController extends Controller
             return response()->json($category_type);
 
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => 'An error occurred while fetching brands', 'error' => $e->getMessage()], 500);
+            Log::error($e);
+            return response()->json([
+                'success' => false,
+                'message' => 'An error occurred',
+                'ref'     => \Illuminate\Support\Str::uuid()
+            ], 500);
         }
     }
 
@@ -96,7 +117,12 @@ class CreateProductController extends Controller
             return response()->json($color);
 
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => 'An error occurred while fetching brands', 'error' => $e->getMessage()], 500);
+            Log::error($e);
+            return response()->json([
+                'success' => false,
+                'message' => 'An error occurred',
+                'ref'     => \Illuminate\Support\Str::uuid()
+            ], 500);
         }
     }
 
@@ -112,7 +138,12 @@ class CreateProductController extends Controller
             return response()->json($closure_type);
 
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => 'An error occurred while fetching brands', 'error' => $e->getMessage()], 500);
+            Log::error($e);
+            return response()->json([
+                'success' => false,
+                'message' => 'An error occurred',
+                'ref'     => \Illuminate\Support\Str::uuid()
+            ], 500);
         }
     }
 
@@ -128,7 +159,12 @@ class CreateProductController extends Controller
             return response()->json($display_type);
 
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => 'An error occurred while fetching brands', 'error' => $e->getMessage()], 500);
+            Log::error($e);
+            return response()->json([
+                'success' => false,
+                'message' => 'An error occurred',
+                'ref'     => \Illuminate\Support\Str::uuid()
+            ], 500);
         }
     }
 
@@ -144,7 +180,12 @@ class CreateProductController extends Controller
             return response()->json($size_type);
 
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => 'An error occurred while fetching brands', 'error' => $e->getMessage()], 500);
+            Log::error($e);
+            return response()->json([
+                'success' => false,
+                'message' => 'An error occurred',
+                'ref'     => \Illuminate\Support\Str::uuid()
+            ], 500);
         }
     }
 
@@ -160,7 +201,12 @@ class CreateProductController extends Controller
             return response()->json($shape);
 
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => 'An error occurred while fetching brands', 'error' => $e->getMessage()], 500);
+            Log::error($e);
+            return response()->json([
+                'success' => false,
+                'message' => 'An error occurred',
+                'ref'     => \Illuminate\Support\Str::uuid()
+            ], 500);
         }
     }
 
@@ -176,7 +222,12 @@ class CreateProductController extends Controller
             return response()->json($material);
 
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => 'An error occurred while fetching brands', 'error' => $e->getMessage()], 500);
+            Log::error($e);
+            return response()->json([
+                'success' => false,
+                'message' => 'An error occurred',
+                'ref'     => \Illuminate\Support\Str::uuid()
+            ], 500);
         }
     }
 
@@ -192,7 +243,12 @@ class CreateProductController extends Controller
             return response()->json($feature);
 
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => 'An error occurred while fetching brands', 'error' => $e->getMessage()], 500);
+            Log::error($e);
+            return response()->json([
+                'success' => false,
+                'message' => 'An error occurred',
+                'ref'     => \Illuminate\Support\Str::uuid()
+            ], 500);
         }
     }
 
@@ -208,7 +264,12 @@ class CreateProductController extends Controller
             return response()->json($movement_type);
 
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => 'An error occurred while fetching brands', 'error' => $e->getMessage()], 500);
+            Log::error($e);
+            return response()->json([
+                'success' => false,
+                'message' => 'An error occurred',
+                'ref'     => \Illuminate\Support\Str::uuid()
+            ], 500);
         }
     }
 
@@ -224,7 +285,12 @@ class CreateProductController extends Controller
             return response()->json($gender);
 
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => 'An error occurred while fetching brands', 'error' => $e->getMessage()], 500);
+            Log::error($e);
+            return response()->json([
+                'success' => false,
+                'message' => 'An error occurred',
+                'ref'     => \Illuminate\Support\Str::uuid()
+            ], 500);
         }
     }
 }

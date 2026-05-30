@@ -27,5 +27,9 @@ declare namespace formatters {
      * @param ticks {object[]} the list of ticks being converted
      * @return {string} string representation of the tickValue parameter
      */
-    function logarithmic(tickValue: number, index: number, ticks: any[]): string;
+    function logarithmic(
+        tickValue: number,
+        index: number,
+        ticks: any[],
+    ): string;
 }

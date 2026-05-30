@@ -8,6 +8,7 @@ use App\Models\BannerBottom;
 use Illuminate\Http\Request;
 use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 
 class BannerController extends Controller
 {
@@ -23,7 +24,12 @@ class BannerController extends Controller
             return response()->json($all_banner_home);
 
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => 'An error occurred while fetching brands', 'error' => $e->getMessage()], 500);
+            Log::error($e);
+            return response()->json([
+                'success' => false,
+                'message' => 'An error occurred',
+                'ref'     => \Illuminate\Support\Str::uuid()
+            ], 500);
         }
     }
 
@@ -39,7 +45,12 @@ class BannerController extends Controller
             return response()->json($all_banner_side);
 
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => 'An error occurred while fetching brands', 'error' => $e->getMessage()], 500);
+            Log::error($e);
+            return response()->json([
+                'success' => false,
+                'message' => 'An error occurred',
+                'ref'     => \Illuminate\Support\Str::uuid()
+            ], 500);
         }
     }
 
@@ -55,7 +66,12 @@ class BannerController extends Controller
             return response()->json($all_banner_bottom);
 
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => 'An error occurred while fetching brands', 'error' => $e->getMessage()], 500);
+            Log::error($e);
+            return response()->json([
+                'success' => false,
+                'message' => 'An error occurred',
+                'ref'     => \Illuminate\Support\Str::uuid()
+            ], 500);
         }
     }
 }

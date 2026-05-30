@@ -1,17 +1,16 @@
-export class Legend extends Element<import("../types/basic.js").AnyObject, import("../types/basic.js").AnyObject> {
+export class Legend extends Element<
+    import("../types/basic.js").AnyObject,
+    import("../types/basic.js").AnyObject
+> {
     /**
-       * @param {{ ctx: any; options: any; chart: any; }} config
-       */
-    constructor(config: {
-        ctx: any;
-        options: any;
-        chart: any;
-    });
+     * @param {{ ctx: any; options: any; chart: any; }} config
+     */
+    constructor(config: { ctx: any; options: any; chart: any });
     _added: boolean;
     legendHitBoxes: any[];
     /**
-         * @private
-         */
+     * @private
+     */
     private _hoveredItem;
     doughnutMode: boolean;
     chart: any;
@@ -37,33 +36,38 @@ export class Legend extends Element<import("../types/basic.js").AnyObject, impor
     buildLabels(): void;
     fit(): void;
     /**
-       * @private
-       */
+     * @private
+     */
     private _fitRows;
-    _fitCols(titleHeight: any, labelFont: any, boxWidth: any, _itemHeight: any): any;
+    _fitCols(
+        titleHeight: any,
+        labelFont: any,
+        boxWidth: any,
+        _itemHeight: any,
+    ): any;
     adjustHitBoxes(): void;
     isHorizontal(): boolean;
     draw(): void;
     /**
-       * @private
-       */
+     * @private
+     */
     private _draw;
     /**
-       * @protected
-       */
+     * @protected
+     */
     protected drawTitle(): void;
     /**
-       * @private
-       */
+     * @private
+     */
     private _computeTitleHeight;
     /**
-       * @private
-       */
+     * @private
+     */
     private _getLegendItemAt;
     /**
-       * Handle an event
-       * @param {ChartEvent} e - The event to handle
-       */
+     * Handle an event
+     * @param {ChartEvent} e - The event to handle
+     */
     handleEvent(e: ChartEvent): void;
 }
 declare namespace _default {
@@ -110,5 +114,5 @@ declare namespace _default {
     }
 }
 export default _default;
-export type ChartEvent = import('../types/index.js').ChartEvent;
+export type ChartEvent = import("../types/index.js").ChartEvent;
 import Element from "../core/core.element.js";

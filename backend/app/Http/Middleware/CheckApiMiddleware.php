@@ -15,7 +15,7 @@ class CheckApiMiddleware
      */
     public function handle(Request $request, Closure $next): Response
     {
-        $apiPassword = config('jwt.secret');
+        $apiPassword = config('services.public_api_key');
 
         if ($request->header('Api-Code') == $apiPassword) {
             return $next($request);
