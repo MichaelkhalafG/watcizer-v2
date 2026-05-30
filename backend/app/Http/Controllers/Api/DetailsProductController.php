@@ -12,6 +12,7 @@ use Illuminate\Http\Request;
 use App\Models\ProductRating;
 use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 
 class DetailsProductController extends Controller
 {
@@ -33,10 +34,11 @@ class DetailsProductController extends Controller
             return response()->json($product);
 
         } catch (\Exception $e) {
+            Log::error($e);
             return response()->json([
                 'success' => false,
                 'message' => 'An error occurred while fetching products',
-                'error'   => $e->getMessage()
+                'ref'     => \Illuminate\Support\Str::uuid()
             ], 500);
         }
     }
@@ -53,10 +55,11 @@ class DetailsProductController extends Controller
             return response()->json($product_image);
 
         } catch (\Exception $e) {
+            Log::error($e);
             return response()->json([
                 'success' => false,
                 'message' => 'An error occurred while fetching product images',
-                'error'   => $e->getMessage()
+                'ref'     => \Illuminate\Support\Str::uuid()
             ], 500);
         }
     }
@@ -73,10 +76,11 @@ class DetailsProductController extends Controller
             return response()->json($product_rating);
 
         } catch (\Exception $e) {
+            Log::error($e);
             return response()->json([
                 'success' => false,
                 'message' => 'An error occurred while fetching product ratings',
-                'error'   => $e->getMessage()
+                'ref'     => \Illuminate\Support\Str::uuid()
             ], 500);
         }
     }
@@ -84,19 +88,20 @@ class DetailsProductController extends Controller
     public function AddProductRating(Request $request)
     {
         try {
+            if (!auth()->check()) {
+                return response()->json(['message' => 'Unauthenticated'], 401);
+            }
+
             $request->validate([
                 'product_id' => 'required|integer|exists:products,id',
                 'rating'     => 'required|numeric|min:1|max:5',
                 'comment'    => 'nullable|string',
             ]);
 
-            ProductRating::create([
-                'product_id' => $request->product_id,
-                'rating'     => $request->rating,
-                'comment'    => $request->comment,
-                'user_id'    => $request->user_id,
-                'date'       => date('Y-m-d H:i'),
-            ]);
+            ProductRating::updateOrCreate(
+                ['user_id' => auth()->id(), 'product_id' => $request->product_id],
+                ['rating'  => $request->rating, 'comment' => $request->comment]
+            );
 
             $product = Product::with('product_rating')->where('id', $request->product_id)->first();
 
@@ -109,10 +114,11 @@ class DetailsProductController extends Controller
             return response()->json(['success' => true, 'message' => 'Rating added successfully'], 200);
 
         } catch (\Exception $e) {
+            Log::error($e);
             return response()->json([
                 'success' => false,
                 'message' => 'An error occurred while adding rating',
-                'error'   => $e->getMessage()
+                'ref'     => \Illuminate\Support\Str::uuid()
             ], 500);
         }
     }
@@ -129,10 +135,11 @@ class DetailsProductController extends Controller
             return response()->json($all_offer);
 
         } catch (\Exception $e) {
+            Log::error($e);
             return response()->json([
                 'success' => false,
                 'message' => 'An error occurred while fetching offers',
-                'error'   => $e->getMessage()
+                'ref'     => \Illuminate\Support\Str::uuid()
             ], 500);
         }
     }
@@ -149,10 +156,11 @@ class DetailsProductController extends Controller
             return response()->json($offer_rating);
 
         } catch (\Exception $e) {
+            Log::error($e);
             return response()->json([
                 'success' => false,
                 'message' => 'An error occurred while fetching offer ratings',
-                'error'   => $e->getMessage()
+                'ref'     => \Illuminate\Support\Str::uuid()
             ], 500);
         }
     }
@@ -160,19 +168,20 @@ class DetailsProductController extends Controller
     public function AddOfferRating(Request $request)
     {
         try {
+            if (!auth()->check()) {
+                return response()->json(['message' => 'Unauthenticated'], 401);
+            }
+
             $request->validate([
                 'offer_id' => 'required|integer|exists:offers,id',
                 'rating'   => 'required|numeric|min:1|max:5',
                 'comment'  => 'nullable|string',
             ]);
 
-            OfferRating::create([
-                'offer_id' => $request->offer_id,
-                'rating'   => $request->rating,
-                'comment'  => $request->comment,
-                'user_id'  => $request->user_id,
-                'date'     => date('Y-m-d H:i'),
-            ]);
+            OfferRating::updateOrCreate(
+                ['user_id' => auth()->id(), 'offer_id' => $request->offer_id],
+                ['rating'  => $request->rating, 'comment' => $request->comment]
+            );
 
             $offer = Offer::with('offer_rating')->where('id', $request->offer_id)->first();
 
@@ -185,10 +194,11 @@ class DetailsProductController extends Controller
             return response()->json(['success' => true, 'message' => 'Rating added successfully'], 200);
 
         } catch (\Exception $e) {
+            Log::error($e);
             return response()->json([
                 'success' => false,
                 'message' => 'An error occurred while adding offer rating',
-                'error'   => $e->getMessage()
+                'ref'     => \Illuminate\Support\Str::uuid()
             ], 500);
         }
     }
@@ -213,10 +223,11 @@ class DetailsProductController extends Controller
             return response()->json(['success' => true, 'message' => 'Wishlist added successfully'], 200);
 
         } catch (\Exception $e) {
+            Log::error($e);
             return response()->json([
                 'success' => false,
                 'message' => 'An error occurred while adding wishlist',
-                'error'   => $e->getMessage()
+                'ref'     => \Illuminate\Support\Str::uuid()
             ], 500);
         }
     }
@@ -233,10 +244,11 @@ class DetailsProductController extends Controller
             return response()->json($wishlist);
 
         } catch (\Exception $e) {
+            Log::error($e);
             return response()->json([
                 'success' => false,
                 'message' => 'An error occurred while fetching wishlists',
-                'error'   => $e->getMessage()
+                'ref'     => \Illuminate\Support\Str::uuid()
             ], 500);
         }
     }
@@ -244,23 +256,23 @@ class DetailsProductController extends Controller
     public function DeleteWishlist($id)
     {
         try {
-            $wishlist_item = WishlistItem::find($id);
-
-            if (!$wishlist_item) {
-                return response()->json(['message' => 'Wishlist not found'], 404);
-            }
-
-            $wishlist_item->delete();
+            $authId = auth()->id();
+            WishlistItem::whereHas('wishlist', fn($q) => $q->where('user_id', $authId))
+                ->findOrFail($id)
+                ->delete();
 
             Cache::forget('AllWishlist');
 
-            return response()->json(['success' => true, 'message' => 'Wishlist deleted successfully'], 200);
+            return response()->json(['success' => true]);
 
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return response()->json(['success' => false, 'message' => 'Not found'], 404);
         } catch (\Exception $e) {
+            Log::error($e);
             return response()->json([
                 'success' => false,
                 'message' => 'An error occurred while deleting Wishlist',
-                'error'   => $e->getMessage()
+                'ref'     => \Illuminate\Support\Str::uuid()
             ], 500);
         }
     }

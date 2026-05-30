@@ -1,57 +1,51 @@
-import { Suspense, useEffect, lazy, useContext } from "react";
-import "./App.css";
-import { Route, Routes } from "react-router-dom";
-import Home from "./Pages/Home/Home";
-import Header from "./Components/Header/Header";
-import Footer from "./Components/Footer/Footer";
-import { useState } from "react";
-import Cart from "./Pages/Cart/Cart";
-import PhoneCart from "./Pages/Cart/PhoneCart";
-import Checkout from "./Pages/Checkout/Checkout";
-import ScrollToTop from "./Components/ScrollToTop/ScrollToTop";
-import PhoneNavBar from "./Components/Header/PhoneNavBar/PhoneNavBar";
-import { HelmetProvider, Helmet } from "react-helmet-async";
-import { MyContext } from "./Context/Context";
-import { MyProvider } from "./Context/MyProvider";
-import { Alert, Snackbar } from "@mui/material";
-import useCart from "./Hooks/useCart";
-import useFacebookPixel from "./scripts/useFacebookPixel";
-import CartModal from "./Pages/Cart/CartModal";
-const NotFound = lazy(() => import("./Pages/Not Found/NotFound"));
-const ProductDisplay = lazy(
-  () => import("./Components/Product/ProductDisplay"),
-);
-const Listing = lazy(() => import("./Pages/Listing/Listing"));
-const ListingSearch = lazy(() => import("./Pages/Listing/ListingSearch"));
-const ListingGrades = lazy(() => import("./Pages/Listing/ListingGrades"));
-const Listingoffers = lazy(() => import("./Pages/Listing/Listingoffers"));
-const ProfileSpeed = lazy(() => import("./Components/Header/Nav/ProfileSpeed"));
-const ProfileSpeedPhone = lazy(
-  () => import("./Components/Header/Nav/ProfileSpeedPhone"),
-);
-const EditProfile = lazy(() => import("./Pages/EditProfile/EditProfile"));
-const PhoneWishList = lazy(() => import("./Pages/WishList/PhoneWishList"));
-const WishList = lazy(() => import("./Pages/WishList/WishList"));
-const OrderList = lazy(() => import("./Pages/OrderList/OrderList"));
-const OfferDisplay = lazy(() => import("./Components/Product/OfferDisplay"));
-const Login = lazy(() => import("./Pages/Auth/Login/Login"));
-const Register = lazy(() => import("./Pages/Auth/Register/Register"));
+import { Suspense, useEffect, lazy, useContext } from 'react'
+import './App.css'
+import { Route, Routes } from 'react-router-dom'
+import Home from './Pages/Home/Home'
+import Header from './Components/Header/Header'
+import Footer from './Components/Footer/Footer'
+import { useState } from 'react'
+import Cart from './Pages/Cart/Cart'
+import PhoneCart from './Pages/Cart/PhoneCart'
+import Checkout from './Pages/Checkout/Checkout'
+import ScrollToTop from './Components/ScrollToTop/ScrollToTop'
+import PhoneNavBar from './Components/Header/PhoneNavBar/PhoneNavBar'
+import { HelmetProvider, Helmet } from 'react-helmet-async'
+import { MyContext } from './Context/Context'
+import { MyProvider } from './Context/MyProvider'
+import { Alert, Snackbar } from '@mui/material'
+import useCart from './Hooks/useCart'
+import useFacebookPixel from './scripts/useFacebookPixel'
+import CartModal from './Pages/Cart/CartModal'
+const NotFound = lazy(() => import('./Pages/Not Found/NotFound'))
+const ProductDisplay = lazy(() => import('./Components/Product/ProductDisplay'))
+const Listing = lazy(() => import('./Pages/Listing/Listing'))
+const ListingSearch = lazy(() => import('./Pages/Listing/ListingSearch'))
+const ListingGrades = lazy(() => import('./Pages/Listing/ListingGrades'))
+const Listingoffers = lazy(() => import('./Pages/Listing/Listingoffers'))
+const ProfileSpeed = lazy(() => import('./Components/Header/Nav/ProfileSpeed'))
+const ProfileSpeedPhone = lazy(() => import('./Components/Header/Nav/ProfileSpeedPhone'))
+const EditProfile = lazy(() => import('./Pages/EditProfile/EditProfile'))
+const PhoneWishList = lazy(() => import('./Pages/WishList/PhoneWishList'))
+const WishList = lazy(() => import('./Pages/WishList/WishList'))
+const OrderList = lazy(() => import('./Pages/OrderList/OrderList'))
+const OfferDisplay = lazy(() => import('./Components/Product/OfferDisplay'))
+const Login = lazy(() => import('./Pages/Auth/Login/Login'))
+const Register = lazy(() => import('./Pages/Auth/Register/Register'))
 const ProfileSpeedPhoneNotLogin = lazy(
-  () => import("./Components/Header/Nav/ProfileSpeedPhoneNotLogin"),
-);
-const SearchPageForPhone = lazy(
-  () => import("./Pages/SearchPageForPhone/SearchPageForPhone"),
-);
-const Blog = lazy(() => import("./Pages/Blog/Blog"));
-const Blogs = lazy(() => import("./Pages/Blog/Blogs"));
+  () => import('./Components/Header/Nav/ProfileSpeedPhoneNotLogin'),
+)
+const SearchPageForPhone = lazy(() => import('./Pages/SearchPageForPhone/SearchPageForPhone'))
+const Blog = lazy(() => import('./Pages/Blog/Blog'))
+const Blogs = lazy(() => import('./Pages/Blog/Blogs'))
 
 function App() {
-  useFacebookPixel("1611910119460872");
+  useFacebookPixel('1611910119460872')
   return (
     <MyProvider>
       <MainApp />
     </MyProvider>
-  );
+  )
 }
 
 function MainApp() {
@@ -64,50 +58,36 @@ function MainApp() {
     Loader,
     alertType,
     alertMessage,
-  } = useContext(MyContext);
-  const { cart } = useCart();
-  const [cartModalOpen, setCartModalOpen] = useState(false);
-  const [prevCartCount, setPrevCartCount] = useState(
-    cart?.cart_item?.length || 0,
-  );
+  } = useContext(MyContext)
+  const { cart } = useCart()
+  const [cartModalOpen, setCartModalOpen] = useState(false)
+  const [prevCartCount, setPrevCartCount] = useState(cart?.cart_item?.length || 0)
 
   useEffect(() => {
-    const currentCount = cart?.cart_item?.length || 0;
+    const currentCount = cart?.cart_item?.length || 0
     if (currentCount > prevCartCount) {
-      setCartModalOpen(true);
+      setCartModalOpen(true)
     }
-    setPrevCartCount(currentCount);
+    setPrevCartCount(currentCount)
     // eslint-disable-next-line
-  }, [cart?.cart_item?.length]);
+  }, [cart?.cart_item?.length])
 
-  useEffect(() => {
-    const interval = setInterval(
-      () => {
-        localStorage.clear();
-        window.location.reload();
-      },
-      10 * 60 * 1000,
-    );
-    return () => clearInterval(interval);
-  }, []);
   const renderProfileComponent = () => {
     if (user_id !== null) {
-      return windowWidth >= 768 ? <ProfileSpeed /> : <ProfileSpeedPhone />;
+      return windowWidth >= 768 ? <ProfileSpeed /> : <ProfileSpeedPhone />
     } else {
-      return windowWidth >= 768 ? null : <ProfileSpeedPhoneNotLogin />;
+      return windowWidth >= 768 ? null : <ProfileSpeedPhoneNotLogin />
     }
-  };
+  }
 
-  const showLoader = !products || products.length === 0;
+  const showLoader = !products || products.length === 0
 
   return (
     <>
       <HelmetProvider>
         <Helmet>
           {/* Basic SEO */}
-          <title>
-            Watchizer - أفخم الساعات والإكسسوارات | تسوق الآن بأسعار مميزة
-          </title>
+          <title>Watchizer - أفخم الساعات والإكسسوارات | تسوق الآن بأسعار مميزة</title>
           <meta
             name="description"
             content="اكتشف أفخم الساعات والإكسسوارات في Watchizer. تسوق الآن أرقى الساعات الفاخرة بتصاميم أنيقة وجودة عالمية بأسعار تنافسية."
@@ -135,11 +115,7 @@ function MainApp() {
 
           {/* Preload Fonts */}
           <link rel="preconnect" href="https://fonts.googleapis.com" />
-          <link
-            rel="preconnect"
-            href="https://fonts.gstatic.com"
-            crossOrigin="anonymous"
-          />
+          <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
           <link
             rel="preload"
             as="style"
@@ -158,52 +134,49 @@ function MainApp() {
           {/* Structured Data (Schema.org) */}
           <script type="application/ld+json">
             {JSON.stringify({
-              "@context": "https://schema.org/",
-              "@type": "Store",
-              name: "Watchizer - Luxury Watches & Accessories",
-              url: "https://watchizereg.com",
-              logo: "https://watchizereg.com/logo.svg",
-              image: "https://watchizereg.com/logo.svg",
+              '@context': 'https://schema.org/',
+              '@type': 'Store',
+              name: 'Watchizer - Luxury Watches & Accessories',
+              url: 'https://watchizereg.com',
+              logo: 'https://watchizereg.com/logo.svg',
+              image: 'https://watchizereg.com/logo.svg',
               description:
-                "Discover a premium collection of luxury watches and fashion accessories at Watchizer. Shop exclusive timepieces with elegant designs and unbeatable prices in Egypt.",
+                'Discover a premium collection of luxury watches and fashion accessories at Watchizer. Shop exclusive timepieces with elegant designs and unbeatable prices in Egypt.',
               address: {
-                "@type": "PostalAddress",
-                streetAddress: "اركديا مول . كورنيش النيل . امتداد ماسبيرو",
-                addressLocality: "Cairo",
-                addressRegion: "Cairo Governorate",
-                addressCountry: "EG",
+                '@type': 'PostalAddress',
+                streetAddress: 'اركديا مول . كورنيش النيل . امتداد ماسبيرو',
+                addressLocality: 'Cairo',
+                addressRegion: 'Cairo Governorate',
+                addressCountry: 'EG',
               },
               geo: {
-                "@type": "GeoCoordinates",
+                '@type': 'GeoCoordinates',
                 latitude: 30.0444,
                 longitude: 31.2357,
               },
               openingHoursSpecification: [
                 {
-                  "@type": "OpeningHoursSpecification",
+                  '@type': 'OpeningHoursSpecification',
                   dayOfWeek: [
-                    "Monday",
-                    "Tuesday",
-                    "Wednesday",
-                    "Thursday",
-                    "Friday",
-                    "Saturday",
-                    "Sunday",
+                    'Monday',
+                    'Tuesday',
+                    'Wednesday',
+                    'Thursday',
+                    'Friday',
+                    'Saturday',
+                    'Sunday',
                   ],
-                  opens: "10:00",
-                  closes: "22:00",
+                  opens: '10:00',
+                  closes: '22:00',
                 },
               ],
-              sameAs: [
-                "https://www.facebook.com/watchizer",
-                "https://www.instagram.com/watchizer",
-              ],
+              sameAs: ['https://www.facebook.com/watchizer', 'https://www.instagram.com/watchizer'],
               contactPoint: {
-                "@type": "ContactPoint",
-                telephone: "+201551096234",
-                contactType: "customer service",
-                areaServed: "EG",
-                availableLanguage: ["English", "Arabic"],
+                '@type': 'ContactPoint',
+                telephone: '+201551096234',
+                contactType: 'customer service',
+                areaServed: 'EG',
+                availableLanguage: ['English', 'Arabic'],
               },
             })}
           </script>
@@ -212,16 +185,16 @@ function MainApp() {
       {showLoader && (
         <div
           style={{
-            position: "fixed",
+            position: 'fixed',
             zIndex: 2000,
             top: 0,
             left: 0,
-            width: "100vw",
-            height: "100vh",
-            background: "rgba(255,255,255,0.85)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
+            width: '100vw',
+            height: '100vh',
+            background: 'rgba(255,255,255,0.85)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
           }}
         >
           <Loader />
@@ -233,11 +206,7 @@ function MainApp() {
       <div className="phone-nav">
         <PhoneNavBar />
       </div>
-      <CartModal
-        open={cartModalOpen}
-        onClose={() => setCartModalOpen(false)}
-        cart={cart}
-      />
+      <CartModal open={cartModalOpen} onClose={() => setCartModalOpen(false)} cart={cart} />
       {renderProfileComponent()}
       {/* {windowWidth >= 768 ? null : <Suspense fallback={<Loader />}><PhoneLogo /></Suspense>} */}
       <Snackbar
@@ -245,8 +214,8 @@ function MainApp() {
         autoHideDuration={3000}
         onClose={() => setOpenAlert(false)}
         anchorOrigin={{
-          vertical: windowWidth >= 768 ? "bottom" : "top",
-          horizontal: windowWidth >= 768 ? "right" : "left",
+          vertical: windowWidth >= 768 ? 'bottom' : 'top',
+          horizontal: windowWidth >= 768 ? 'right' : 'left',
         }}
       >
         <Alert severity={alertType} onClose={() => setOpenAlert(false)}>
@@ -280,10 +249,7 @@ function MainApp() {
             </Suspense>
           }
         />
-        <Route
-          path="/cart"
-          element={windowWidth >= 768 ? <Cart /> : <PhoneCart />}
-        />
+        <Route path="/cart" element={windowWidth >= 768 ? <Cart /> : <PhoneCart />} />
         <Route path="/checkout" element={<Checkout />} />
         <Route
           path="/category/:category"
@@ -426,7 +392,7 @@ function MainApp() {
         </Suspense>
       ) : null}
     </>
-  );
+  )
 }
 
-export default App;
+export default App

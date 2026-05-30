@@ -29,7 +29,10 @@ export default class Config {
      * @param {string} transition
      * @return {string[][]}
      */
-    datasetAnimationScopeKeys(datasetType: string, transition: string): string[][];
+    datasetAnimationScopeKeys(
+        datasetType: string,
+        transition: string,
+    ): string[][];
     /**
      * Returns the options scope keys for resolving element options that belong
      * to an dataset. These keys do not include the dataset itself, because it
@@ -38,7 +41,10 @@ export default class Config {
      * @param {string} elementType
      * @return {string[][]}
      */
-    datasetElementScopeKeys(datasetType: string, elementType: string): string[][];
+    datasetElementScopeKeys(
+        datasetType: string,
+        elementType: string,
+    ): string[][];
     /**
      * Returns the options scope keys for resolving plugin options.
      * @param {{id: string, additionalOptionScopes?: string[]}} plugin
@@ -58,7 +64,11 @@ export default class Config {
      * @param {string[][]} keyLists - The arrays of keys in resolution order
      * @param {boolean} [resetCache] - reset the cache for this mainScope
      */
-    getOptionScopes(mainScope: object, keyLists: string[][], resetCache?: boolean): any;
+    getOptionScopes(
+        mainScope: object,
+        keyLists: string[][],
+        resetCache?: boolean,
+    ): any;
     /**
      * Returns the option scopes for resolving chart options
      * @return {object[]}
@@ -71,16 +81,26 @@ export default class Config {
      * @param {string[]} [prefixes]
      * @return {object}
      */
-    resolveNamedOptions(scopes: object[], names: string[], context: Function | object, prefixes?: string[]): object;
+    resolveNamedOptions(
+        scopes: object[],
+        names: string[],
+        context: Function | object,
+        prefixes?: string[],
+    ): object;
     /**
      * @param {object[]} scopes
      * @param {object} [context]
      * @param {string[]} [prefixes]
      * @param {{scriptable: boolean, indexable: boolean, allKeys?: boolean}} [descriptorDefaults]
      */
-    createResolver(scopes: object[], context?: object, prefixes?: string[], descriptorDefaults?: {
-        scriptable: boolean;
-        indexable: boolean;
-        allKeys?: boolean;
-    }): any;
+    createResolver(
+        scopes: object[],
+        context?: object,
+        prefixes?: string[],
+        descriptorDefaults?: {
+            scriptable: boolean;
+            indexable: boolean;
+            allKeys?: boolean;
+        },
+    ): any;
 }

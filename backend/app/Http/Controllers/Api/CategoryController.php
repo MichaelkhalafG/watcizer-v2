@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Models\Category;
 use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 
 class CategoryController extends Controller
 {
@@ -30,7 +31,12 @@ class CategoryController extends Controller
 
         } catch (\Exception $e) {
 
-            return response()->json(['error' => $e->getMessage()], 500);
+            Log::error($e);
+            return response()->json([
+                'success' => false,
+                'message' => 'An error occurred',
+                'ref'     => \Illuminate\Support\Str::uuid()
+            ], 500);
 
         }
     }
@@ -58,7 +64,12 @@ class CategoryController extends Controller
 
         } catch (\Exception $e) {
 
-            return response()->json(['error' => $e->getMessage()], 500);
+            Log::error($e);
+            return response()->json([
+                'success' => false,
+                'message' => 'An error occurred',
+                'ref'     => \Illuminate\Support\Str::uuid()
+            ], 500);
 
         }
     }

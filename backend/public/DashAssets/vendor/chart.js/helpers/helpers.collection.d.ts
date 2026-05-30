@@ -5,11 +5,19 @@
  * @param cmp
  * @private
  */
-export declare function _lookup(table: number[], value: number, cmp?: (value: number) => boolean): {
+export declare function _lookup(
+    table: number[],
+    value: number,
+    cmp?: (value: number) => boolean,
+): {
     lo: number;
     hi: number;
 };
-export declare function _lookup<T>(table: T[], value: number, cmp: (value: number) => boolean): {
+export declare function _lookup<T>(
+    table: T[],
+    value: number,
+    cmp: (value: number) => boolean,
+): {
     lo: number;
     hi: number;
 };
@@ -21,7 +29,12 @@ export declare function _lookup<T>(table: T[], value: number, cmp: (value: numbe
  * @param last - lookup last index
  * @private
  */
-export declare const _lookupByKey: (table: Record<string, number>[], key: string, value: number, last?: boolean) => {
+export declare const _lookupByKey: (
+    table: Record<string, number>[],
+    key: string,
+    value: number,
+    last?: boolean,
+) => {
     lo: number;
     hi: number;
 };
@@ -32,7 +45,11 @@ export declare const _lookupByKey: (table: Record<string, number>[], key: string
  * @param value - value to find
  * @private
  */
-export declare const _rlookupByKey: (table: Record<string, number>[], key: string, value: number) => {
+export declare const _rlookupByKey: (
+    table: Record<string, number>[],
+    key: string,
+    value: number,
+) => {
     lo: number;
     hi: number;
 };
@@ -43,7 +60,11 @@ export declare const _rlookupByKey: (table: Record<string, number>[], key: strin
  * @param min - min value
  * @param max - max value
  */
-export declare function _filterBetween(values: number[], min: number, max: number): number[];
+export declare function _filterBetween(
+    values: number[],
+    min: number,
+    max: number,
+): number[];
 export interface ArrayListener<T> {
     _onDataPush?(...item: T[]): void;
     _onDataPop?(): void;
@@ -56,12 +77,18 @@ export interface ArrayListener<T> {
  * 'unshift') and notify the listener AFTER the array has been altered. Listeners are
  * called on the '_onData*' callbacks (e.g. _onDataPush, etc.) with same arguments.
  */
-export declare function listenArrayEvents<T>(array: T[], listener: ArrayListener<T>): void;
+export declare function listenArrayEvents<T>(
+    array: T[],
+    listener: ArrayListener<T>,
+): void;
 /**
  * Removes the given array event listener and cleanup extra attached properties (such as
  * the _chartjs stub and overridden methods) if array doesn't have any more listeners.
  */
-export declare function unlistenArrayEvents<T>(array: T[], listener: ArrayListener<T>): void;
+export declare function unlistenArrayEvents<T>(
+    array: T[],
+    listener: ArrayListener<T>,
+): void;
 /**
  * @param items
  */

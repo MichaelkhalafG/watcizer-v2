@@ -9,77 +9,77 @@ export class Registry {
     scales: TypedRegistry;
     _typedRegistries: TypedRegistry[];
     /**
-       * @param  {...any} args
-       */
+     * @param  {...any} args
+     */
     add(...args: any[]): void;
     remove(...args: any[]): void;
     /**
-       * @param  {...typeof DatasetController} args
-       */
+     * @param  {...typeof DatasetController} args
+     */
     addControllers(...args: (typeof DatasetController)[]): void;
     /**
-       * @param  {...typeof Element} args
-       */
+     * @param  {...typeof Element} args
+     */
     addElements(...args: (typeof Element)[]): void;
     /**
-       * @param  {...any} args
-       */
+     * @param  {...any} args
+     */
     addPlugins(...args: any[]): void;
     /**
-       * @param  {...typeof Scale} args
-       */
+     * @param  {...typeof Scale} args
+     */
     addScales(...args: (typeof Scale)[]): void;
     /**
-       * @param {string} id
-       * @returns {typeof DatasetController}
-       */
+     * @param {string} id
+     * @returns {typeof DatasetController}
+     */
     getController(id: string): typeof DatasetController;
     /**
-       * @param {string} id
-       * @returns {typeof Element}
-       */
+     * @param {string} id
+     * @returns {typeof Element}
+     */
     getElement(id: string): typeof Element;
     /**
-       * @param {string} id
-       * @returns {object}
-       */
+     * @param {string} id
+     * @returns {object}
+     */
     getPlugin(id: string): object;
     /**
-       * @param {string} id
-       * @returns {typeof Scale}
-       */
+     * @param {string} id
+     * @returns {typeof Scale}
+     */
     getScale(id: string): typeof Scale;
     /**
-       * @param  {...typeof DatasetController} args
-       */
+     * @param  {...typeof DatasetController} args
+     */
     removeControllers(...args: (typeof DatasetController)[]): void;
     /**
-       * @param  {...typeof Element} args
-       */
+     * @param  {...typeof Element} args
+     */
     removeElements(...args: (typeof Element)[]): void;
     /**
-       * @param  {...any} args
-       */
+     * @param  {...any} args
+     */
     removePlugins(...args: any[]): void;
     /**
-       * @param  {...typeof Scale} args
-       */
+     * @param  {...typeof Scale} args
+     */
     removeScales(...args: (typeof Scale)[]): void;
     /**
-       * @private
-       */
+     * @private
+     */
     private _each;
     /**
-       * @private
-       */
+     * @private
+     */
     private _exec;
     /**
-       * @private
-       */
+     * @private
+     */
     private _getRegistryForType;
     /**
-       * @private
-       */
+     * @private
+     */
     private _get;
 }
 declare const _default: Registry;

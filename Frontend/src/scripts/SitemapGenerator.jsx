@@ -55,7 +55,6 @@
 //     setSitemapContent(xmlContent);
 //   }, [products, tables.categories]);
 
-
 //   const downloadSitemap = () => {
 //     const blob = new Blob([sitemapContent], { type: "application/xml" });
 //     FileSaver.saveAs(blob, "sitemap.xml");

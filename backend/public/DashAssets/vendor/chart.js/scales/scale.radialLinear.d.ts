@@ -5,9 +5,9 @@ export default class RadialLinearScale extends LinearScaleBase {
      */
     static defaults: any;
     static defaultRoutes: {
-        'angleLines.color': string;
-        'pointLabels.color': string;
-        'ticks.color': string;
+        "angleLines.color": string;
+        "pointLabels.color": string;
+        "ticks.color": string;
     };
     static descriptors: {
         angleLines: {
@@ -25,17 +25,29 @@ export default class RadialLinearScale extends LinearScaleBase {
     _pointLabelItems: any[];
     _padding: import("../types.js").ChartArea;
     generateTickLabels(ticks: any): void;
-    setCenterPoint(leftMovement: any, rightMovement: any, topMovement: any, bottomMovement: any): void;
+    setCenterPoint(
+        leftMovement: any,
+        rightMovement: any,
+        topMovement: any,
+        bottomMovement: any,
+    ): void;
     getIndexAngle(index: any): number;
     getDistanceFromCenterForValue(value: any): number;
     getValueForDistanceFromCenter(distance: any): any;
     getPointLabelContext(index: any): any;
-    getPointPosition(index: any, distanceFromCenter: any, additionalAngle?: number): {
+    getPointPosition(
+        index: any,
+        distanceFromCenter: any,
+        additionalAngle?: number,
+    ): {
         x: number;
         y: number;
         angle: number;
     };
-    getPointPositionForValue(index: any, value: any): {
+    getPointPositionForValue(
+        index: any,
+        value: any,
+    ): {
         x: number;
         y: number;
         angle: number;
@@ -52,12 +64,12 @@ export default class RadialLinearScale extends LinearScaleBase {
         bottom: any;
     };
     /**
-       * @protected
-       */
+     * @protected
+     */
     protected drawGrid(): void;
     /**
-       * @protected
-       */
+     * @protected
+     */
     protected drawLabels(): void;
 }
 import LinearScaleBase from "./scale.linearbase.js";

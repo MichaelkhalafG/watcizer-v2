@@ -19,6 +19,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 
 class OrderController extends Controller
 {
@@ -41,7 +42,12 @@ class OrderController extends Controller
             });
             return response()->json($shippingCities);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => 'Error retrieving shipping cities', 'error' => $e->getMessage()], 500);
+            Log::error($e);
+            return response()->json([
+                'success' => false,
+                'message' => 'An error occurred',
+                'ref'     => \Illuminate\Support\Str::uuid()
+            ], 500);
         }
     }
 
@@ -84,17 +90,28 @@ class OrderController extends Controller
         } catch (\Illuminate\Validation\ValidationException $e) {
             return response()->json(['success' => false, 'message' => 'Validation failed', 'errors' => $e->errors()], 422);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => 'An error occurred while adding Address', 'error' => $e->getMessage()], 500);
+            Log::error($e);
+            return response()->json([
+                'success' => false,
+                'message' => 'An error occurred',
+                'ref'     => \Illuminate\Support\Str::uuid()
+            ], 500);
         }
     }
 
     public function ShowAddress()
     {
         try {
-            $address = Cache::remember('ShowAddress', now()->addMinutes(10), fn () => Address::all());
-            return response()->json($address);
+            $authId = auth('api')->id();
+            $addresses = Address::where('user_id', $authId)->get();
+            return response()->json($addresses);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => 'Error retrieving addresses', 'error' => $e->getMessage()], 500);
+            Log::error($e);
+            return response()->json([
+                'success' => false,
+                'message' => 'An error occurred',
+                'ref'     => \Illuminate\Support\Str::uuid()
+            ], 500);
         }
     }
 
@@ -147,29 +164,48 @@ class OrderController extends Controller
 
             return response()->json(['success' => true, 'message' => 'Cart updated successfully'], 200);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => 'Error adding to cart', 'error' => $e->getMessage()], 500);
+            Log::error($e);
+            return response()->json([
+                'success' => false,
+                'message' => 'An error occurred',
+                'ref'     => \Illuminate\Support\Str::uuid()
+            ], 500);
         }
     }
 
     public function ShowCart()
     {
         try {
-            $cart = Cache::remember('AllCart', now()->addMinutes(10), function () {
-                return Cart::with('cart_item')->get();
-            });
+            $authId = auth('api')->id();
+            $cart = Cart::where('user_id', $authId)->with('cart_item')->first();
             return response()->json($cart);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => 'Error retrieving cart', 'error' => $e->getMessage()], 500);
+            Log::error($e);
+            return response()->json([
+                'success' => false,
+                'message' => 'An error occurred',
+                'ref'     => \Illuminate\Support\Str::uuid()
+            ], 500);
         }
     }
 
     public function DeleteCart($id)
     {
         try {
-            CartItem::findOrFail($id)->delete();
-            return response()->json(['success' => true, 'message' => 'Cart item deleted'], 200);
+            $authId = auth()->id();
+            CartItem::whereHas('cart', fn($q) => $q->where('user_id', $authId))
+                ->findOrFail($id)
+                ->delete();
+            return response()->json(['success' => true]);
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return response()->json(['success' => false, 'message' => 'Not found'], 404);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => 'Error deleting cart item', 'error' => $e->getMessage()], 500);
+            Log::error($e);
+            return response()->json([
+                'success' => false,
+                'message' => 'An error occurred',
+                'ref'     => \Illuminate\Support\Str::uuid()
+            ], 500);
         }
     }
 
@@ -211,11 +247,16 @@ class OrderController extends Controller
             // ── Cart items ────────────────────────────────────────────────────
             if (!$isGuest) {
                 $cart = Cart::where('user_id', $userId)->with('cart_item')->first();
-                if (!$cart || $cart->cart_item->isEmpty()) {
+                if ($cart && $cart->cart_item->isNotEmpty()) {
+                    // Primary: server-side DB cart
+                    $cartItems = $cart->cart_item;
+                } elseif (!empty($request->input('items'))) {
+                    // Fallback: client-supplied items[] (session cart)
+                    $cartItems = collect($request->input('items'));
+                } else {
                     DB::rollBack();
                     return response()->json(['success' => false, 'message' => 'Cart is empty'], 422);
                 }
-                $cartItems = $cart->cart_item;
             } else {
                 $cartItems = collect($request->input('items', []));
                 if ($cartItems->isEmpty()) {
@@ -312,12 +353,11 @@ class OrderController extends Controller
             return response()->json(['success' => false, 'message' => 'Validation failed', 'errors' => $e->errors()], 422);
         } catch (\Exception $e) {
             DB::rollBack();
+            Log::error($e);
             return response()->json([
                 'success' => false,
-                'message' => 'Error placing order',
-                'error'   => $e->getMessage(),
-                'line'    => $e->getLine(),
-                'file'    => $e->getFile(),
+                'message' => 'An error occurred',
+                'ref'     => \Illuminate\Support\Str::uuid()
             ], 500);
         }
     }
@@ -337,7 +377,7 @@ class OrderController extends Controller
                     Mail::to($customerEmail)->send(new OrderCreatedMail($order, 'customer'));
                     \Log::info('Customer email sent to: ' . $customerEmail . ' | Order: ' . $order->order_number);
                 } catch (\Exception $e) {
-                    \Log::error('Customer email FAILED | Order: ' . $order->order_number . ' | ' . $e->getMessage());
+                    \Log::error('Customer email FAILED | Order: ' . $order->order_number, ['exception' => $e]);
                 }
             }
         }
@@ -347,7 +387,7 @@ class OrderController extends Controller
                 Mail::to($email)->send(new OrderCreatedMail($order, 'admin'));
                 \Log::info('Admin email sent to: ' . $email . ' | Order: ' . $order->order_number);
             } catch (\Exception $e) {
-                \Log::error('Admin email FAILED | To: ' . $email . ' | Order: ' . $order->order_number . ' | ' . $e->getMessage());
+                \Log::error('Admin email FAILED | To: ' . $email . ' | Order: ' . $order->order_number, ['exception' => $e]);
             }
         }
     }
@@ -440,6 +480,17 @@ class OrderController extends Controller
     public function CallbackPayment(Request $request)
     {
         try {
+            // ── Verify Paymob HMAC signature BEFORE touching any order ────────
+            if (! $this->isValidPaymobHmac($request)) {
+                return response()->json(['message' => 'Invalid signature'], 403);
+            }
+
+            // ── Idempotency: ignore replays of an already-processed txn ───────
+            $transactionId = $request->input('id');
+            if ($transactionId && PaymentStatus::where('pay_transaction_id', $transactionId)->exists()) {
+                return response()->json(['message' => 'Already processed'], 200);
+            }
+
             PaymentStatus::create([
                 'order_id'           => $request->merchant_order_id,
                 'pay_order_id'       => $request->order,
@@ -468,15 +519,86 @@ class OrderController extends Controller
         }
     }
 
+    /**
+     * Verify the HMAC signature Paymob sends with every transaction callback.
+     * Fails closed: a missing secret or missing/incorrect signature is rejected.
+     */
+    private function isValidPaymobHmac(Request $request): bool
+    {
+        $secret = env('PAYMOB_HMAC_SECRET');
+        if (! $secret) {
+            return false;
+        }
+
+        $received = $request->input('hmac');
+        if (! $received) {
+            return false;
+        }
+
+        // Documented Paymob field order for transaction-callback HMAC.
+        $keys = [
+            'amount_cents', 'created_at', 'currency', 'error_occured',
+            'has_parent_transaction', 'id', 'integration_id', 'is_3d_secure',
+            'is_auth', 'is_capture', 'is_refunded', 'is_standalone_payment',
+            'is_voided', 'order', 'owner', 'pending',
+            'source_data.pan', 'source_data.sub_type', 'source_data.type', 'success',
+        ];
+
+        $concatenated = '';
+        foreach ($keys as $key) {
+            $concatenated .= $this->paymobHmacField($request, $key);
+        }
+
+        $computed = hash_hmac('sha512', $concatenated, $secret);
+
+        return hash_equals($computed, (string) $received);
+    }
+
+    /**
+     * Read one HMAC field, tolerating both the nested server callback
+     * ("obj.order.id", "obj.source_data.pan") and the flattened redirect
+     * callback ("order", "source_data.pan" / "source_data_pan").
+     */
+    private function paymobHmacField(Request $request, string $key): string
+    {
+        if ($key === 'order') {
+            $candidates = ['obj.order.id', 'order.id', 'order'];
+        } elseif (str_starts_with($key, 'source_data.')) {
+            $suffix = substr($key, strlen('source_data.'));
+            $candidates = ['obj.' . $key, $key, 'source_data_' . $suffix];
+        } else {
+            $candidates = ['obj.' . $key, $key];
+        }
+
+        foreach ($candidates as $candidate) {
+            $value = $request->input($candidate);
+            if ($value !== null) {
+                if (is_bool($value)) {
+                    return $value ? 'true' : 'false';
+                }
+                return (string) $value;
+            }
+        }
+
+        return '';
+    }
+
     // =========================================================================
     //  Show Orders
     // =========================================================================
     public function ShowOrder()
     {
         try {
-            return response()->json(Order::with('order_item', 'address', 'user')->get());
+            $authId = auth('api')->id();
+            $orders = Order::where('user_id', $authId)->with('order_item')->get();
+            return response()->json($orders);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => 'Error retrieving orders', 'error' => $e->getMessage()], 500);
+            Log::error($e);
+            return response()->json([
+                'success' => false,
+                'message' => 'An error occurred',
+                'ref'     => \Illuminate\Support\Str::uuid()
+            ], 500);
         }
     }
 }

@@ -1,22 +1,32 @@
-export class Tooltip extends Element<import("../types/basic.js").AnyObject, import("../types/basic.js").AnyObject> {
+export class Tooltip extends Element<
+    import("../types/basic.js").AnyObject,
+    import("../types/basic.js").AnyObject
+> {
     /**
      * @namespace Chart.Tooltip.positioners
      */
     static positioners: {
         /**
-           * Average mode places the tooltip at the average position of the elements shown
-           */
-        average(items: any): false | {
-            x: number;
-            y: number;
-        };
+         * Average mode places the tooltip at the average position of the elements shown
+         */
+        average(items: any):
+            | false
+            | {
+                  x: number;
+                  y: number;
+              };
         /**
-           * Gets the tooltip position nearest of the item nearest to the event position
-           */
-        nearest(items: any, eventPosition: any): false | {
-            x: any;
-            y: any;
-        };
+         * Gets the tooltip position nearest of the item nearest to the event position
+         */
+        nearest(
+            items: any,
+            eventPosition: any,
+        ):
+            | false
+            | {
+                  x: any;
+                  y: any;
+              };
     };
     constructor(config: any);
     opacity: number;
@@ -41,7 +51,10 @@ export class Tooltip extends Element<import("../types/basic.js").AnyObject, impo
         dataset: any;
         dataIndex: number;
         datasetIndex: number;
-        element: Element<import("../types/basic.js").AnyObject, import("../types/basic.js").AnyObject>;
+        element: Element<
+            import("../types/basic.js").AnyObject,
+            import("../types/basic.js").AnyObject
+        >;
     }[];
     title: any;
     beforeBody: any;
@@ -61,12 +74,12 @@ export class Tooltip extends Element<import("../types/basic.js").AnyObject, impo
     labelTextColors: any[];
     initialize(options: any): void;
     /**
-       * @private
-       */
+     * @private
+     */
     private _resolveAnimations;
     /**
-       * @protected
-       */
+     * @protected
+     */
     protected getContext(): any;
     getTitle(context: any, options: any): any;
     getBeforeBody(tooltipItems: any, options: any): any;
@@ -74,12 +87,16 @@ export class Tooltip extends Element<import("../types/basic.js").AnyObject, impo
     getAfterBody(tooltipItems: any, options: any): any;
     getFooter(tooltipItems: any, options: any): any;
     /**
-       * @private
-       */
+     * @private
+     */
     private _createItems;
     update(changed: any, replay: any): void;
     drawCaret(tooltipPoint: any, ctx: any, size: any, options: any): void;
-    getCaretPosition(tooltipPoint: any, size: any, options: any): {
+    getCaretPosition(
+        tooltipPoint: any,
+        size: any,
+        options: any,
+    ): {
         x1: any;
         x2: any;
         x3: any;
@@ -89,16 +106,16 @@ export class Tooltip extends Element<import("../types/basic.js").AnyObject, impo
     };
     drawTitle(pt: any, ctx: any, options: any): void;
     /**
-       * @private
-       */
+     * @private
+     */
     private _drawColorBox;
     drawBody(pt: any, ctx: any, options: any): void;
     drawFooter(pt: any, ctx: any, options: any): void;
     drawBackground(pt: any, ctx: any, tooltipSize: any, options: any): void;
     /**
-       * Update x/y animation targets when _active elements are animating too
-       * @private
-       */
+     * Update x/y animation targets when _active elements are animating too
+     * @private
+     */
     private _updateAnimationTarget;
     /**
      * Determine if the tooltip will draw anything
@@ -107,42 +124,46 @@ export class Tooltip extends Element<import("../types/basic.js").AnyObject, impo
     _willRender(): boolean;
     draw(ctx: any): void;
     /**
-       * Get active elements in the tooltip
-       * @returns {Array} Array of elements that are active in the tooltip
-       */
+     * Get active elements in the tooltip
+     * @returns {Array} Array of elements that are active in the tooltip
+     */
     getActiveElements(): any[];
     /**
-       * Set active elements in the tooltip
-       * @param {array} activeElements Array of active datasetIndex/index pairs.
-       * @param {object} eventPosition Synthetic event position used in positioning
-       */
+     * Set active elements in the tooltip
+     * @param {array} activeElements Array of active datasetIndex/index pairs.
+     * @param {object} eventPosition Synthetic event position used in positioning
+     */
     setActiveElements(activeElements: any[], eventPosition: object): void;
     _ignoreReplayEvents: boolean;
     /**
-       * Handle an event
-       * @param {ChartEvent} e - The event to handle
-       * @param {boolean} [replay] - This is a replayed event (from update)
-       * @param {boolean} [inChartArea] - The event is inside chartArea
-       * @returns {boolean} true if the tooltip changed
-       */
-    handleEvent(e: ChartEvent, replay?: boolean, inChartArea?: boolean): boolean;
+     * Handle an event
+     * @param {ChartEvent} e - The event to handle
+     * @param {boolean} [replay] - This is a replayed event (from update)
+     * @param {boolean} [inChartArea] - The event is inside chartArea
+     * @returns {boolean} true if the tooltip changed
+     */
+    handleEvent(
+        e: ChartEvent,
+        replay?: boolean,
+        inChartArea?: boolean,
+    ): boolean;
     /**
-       * Helper for determining the active elements for event
-       * @param {ChartEvent} e - The event to handle
-       * @param {InteractionItem[]} lastActive - Previously active elements
-       * @param {boolean} [replay] - This is a replayed event (from update)
-       * @param {boolean} [inChartArea] - The event is inside chartArea
-       * @returns {InteractionItem[]} - Active elements
-       * @private
-       */
+     * Helper for determining the active elements for event
+     * @param {ChartEvent} e - The event to handle
+     * @param {InteractionItem[]} lastActive - Previously active elements
+     * @param {boolean} [replay] - This is a replayed event (from update)
+     * @param {boolean} [inChartArea] - The event is inside chartArea
+     * @returns {InteractionItem[]} - Active elements
+     * @private
+     */
     private _getActiveElements;
     /**
-       * Determine if the active elements + event combination changes the
-       * tooltip position
-       * @param {array} active - Active elements
-       * @param {ChartEvent} e - Event that triggered the position change
-       * @returns {boolean} True if the position has changed
-       */
+     * Determine if the active elements + event combination changes the
+     * tooltip position
+     * @param {array} active - Active elements
+     * @param {ChartEvent} e - Event that triggered the position change
+     * @returns {boolean} True if the position has changed
+     */
     _positionChanged(active: any[], e: ChartEvent): boolean;
 }
 declare namespace _default {
@@ -237,27 +258,35 @@ declare namespace _default {
     export const additionalOptionScopes: string[];
 }
 export default _default;
-export type Chart = import('../platform/platform.base.js').Chart;
-export type ChartEvent = import('../types/index.js').ChartEvent;
-export type ActiveElement = import('../types/index.js').ActiveElement;
-export type InteractionItem = import('../core/core.interaction.js').InteractionItem;
+export type Chart = import("../platform/platform.base.js").Chart;
+export type ChartEvent = import("../types/index.js").ChartEvent;
+export type ActiveElement = import("../types/index.js").ActiveElement;
+export type InteractionItem =
+    import("../core/core.interaction.js").InteractionItem;
 import Element from "../core/core.element.js";
 import Animations from "../core/core.animations.js";
 declare namespace positioners {
     /**
-       * Average mode places the tooltip at the average position of the elements shown
-       */
-    function average(items: any): false | {
-        x: number;
-        y: number;
-    };
+     * Average mode places the tooltip at the average position of the elements shown
+     */
+    function average(items: any):
+        | false
+        | {
+              x: number;
+              y: number;
+          };
     /**
-       * Gets the tooltip position nearest of the item nearest to the event position
-       */
-    function nearest(items: any, eventPosition: any): false | {
-        x: any;
-        y: any;
-    };
+     * Gets the tooltip position nearest of the item nearest to the event position
+     */
+    function nearest(
+        items: any,
+        eventPosition: any,
+    ):
+        | false
+        | {
+              x: any;
+              y: any;
+          };
 }
 declare namespace defaultCallbacks {
     export { noop as beforeTitle };

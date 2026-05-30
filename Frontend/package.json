@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "lint": "eslint 'src/**/*.{js,jsx}' --fix",
+    "lint": "eslint src --ext .js,.jsx --fix",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -38,6 +38,7 @@
     "@types/react": "^19.0.10",
     "@vitejs/plugin-react": "^4.3.4",
     "eslint": "^9.22.0",
+    "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-jsx-a11y": "^6.10.2",
     "eslint-plugin-react": "^7.37.4",
     "eslint-plugin-react-hooks": "^5.2.0",
@@ -51,17 +52,5 @@
     "not dead",
     "not ie <= 11"
   ],
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "core-js",
-      "cwebp-bin",
-      "esbuild",
-      "gifsicle",
-      "jpegtran-bin",
-      "mozjpeg",
-      "optipng-bin",
-      "pngquant-bin",
-      "sharp"
-    ]
-  }
+  "packageManager": "pnpm@11.5.0+sha256.a282871708f87a47b9cd72182dfdf9ee251c69100b8bac862a3d4f5e2145d8ff"
 }

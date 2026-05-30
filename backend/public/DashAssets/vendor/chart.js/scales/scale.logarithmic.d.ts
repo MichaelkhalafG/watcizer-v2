@@ -15,9 +15,9 @@ export default class LogarithmicScale extends Scale {
     _zero: boolean;
     handleTickRangeOptions(): void;
     /**
-       * @param {number} value
-       * @return {string}
-       */
+     * @param {number} value
+     * @return {string}
+     */
     getLabelForValue(value: number): string;
     getPixelForValue(value: any): number;
     getValueForPixel(pixel: any): number;

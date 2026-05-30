@@ -1,4 +1,7 @@
-export default class BarElement extends Element<import("../types/basic.js").AnyObject, import("../types/basic.js").AnyObject> {
+export default class BarElement extends Element<
+    import("../types/basic.js").AnyObject,
+    import("../types/basic.js").AnyObject
+> {
     static id: string;
     /**
      * @type {any}

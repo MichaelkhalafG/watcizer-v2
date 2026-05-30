@@ -3,9 +3,18 @@
  * @since 2.8.0
  * @private
  */
-import type { AnyObject } from '../types/basic.js';
-import type { ChartOptions } from '../types/index.js';
-export type TimeUnit = 'millisecond' | 'second' | 'minute' | 'hour' | 'day' | 'week' | 'month' | 'quarter' | 'year';
+import type { AnyObject } from "../types/basic.js";
+import type { ChartOptions } from "../types/index.js";
+export type TimeUnit =
+    | "millisecond"
+    | "second"
+    | "minute"
+    | "hour"
+    | "day"
+    | "week"
+    | "month"
+    | "quarter"
+    | "year";
 export interface DateAdapter<T extends AnyObject = AnyObject> {
     readonly options: T;
     /**
@@ -22,7 +31,11 @@ export interface DateAdapter<T extends AnyObject = AnyObject> {
      * @param value - the value to parse (usually comes from the data)
      * @param [format] - the expected data format
      */
-    parse(this: DateAdapter<T>, value: unknown, format?: TimeUnit): number | null;
+    parse(
+        this: DateAdapter<T>,
+        value: unknown,
+        format?: TimeUnit,
+    ): number | null;
     /**
      * Returns the formatted date in the specified `format` for a given `timestamp`.
      * @param timestamp - the timestamp to format
@@ -35,7 +48,12 @@ export interface DateAdapter<T extends AnyObject = AnyObject> {
      * @param amount - the amount to add
      * @param unit - the unit as string
      */
-    add(this: DateAdapter<T>, timestamp: number, amount: number, unit: TimeUnit): number;
+    add(
+        this: DateAdapter<T>,
+        timestamp: number,
+        amount: number,
+        unit: TimeUnit,
+    ): number;
     /**
      * Returns the number of `unit` between the given timestamps.
      * @param a - the input timestamp (reference)
@@ -50,13 +68,22 @@ export interface DateAdapter<T extends AnyObject = AnyObject> {
      * @param [weekday] - the ISO day of the week with 1 being Monday
      * and 7 being Sunday (only needed if param *unit* is `isoWeek`).
      */
-    startOf(this: DateAdapter<T>, timestamp: number, unit: TimeUnit | 'isoWeek', weekday?: number): number;
+    startOf(
+        this: DateAdapter<T>,
+        timestamp: number,
+        unit: TimeUnit | "isoWeek",
+        weekday?: number,
+    ): number;
     /**
      * Returns end of `unit` for the given `timestamp`.
      * @param timestamp - the input timestamp
      * @param unit - the unit as string
      */
-    endOf(this: DateAdapter<T>, timestamp: number, unit: TimeUnit | 'isoWeek'): number;
+    endOf(
+        this: DateAdapter<T>,
+        timestamp: number,
+        unit: TimeUnit | "isoWeek",
+    ): number;
 }
 /**
  * Date adapter (current used by the time scale)
@@ -75,7 +102,9 @@ declare class DateAdapterBase implements DateAdapter {
      *   }
      * })
      */
-    static override<T extends AnyObject = AnyObject>(members: Partial<Omit<DateAdapter<T>, 'options'>>): void;
+    static override<T extends AnyObject = AnyObject>(
+        members: Partial<Omit<DateAdapter<T>, "options">>,
+    ): void;
     readonly options: AnyObject;
     constructor(options: AnyObject);
     init(): void;

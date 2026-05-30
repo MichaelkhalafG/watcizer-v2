@@ -1,6 +1,6 @@
 export default Chart;
-export type ChartEvent = import('../types/index.js').ChartEvent;
-export type Point = import('../types/index.js').Point;
+export type ChartEvent = import("../types/index.js").ChartEvent;
+export type Point = import("../types/index.js").Point;
 declare class Chart {
     static defaults: import("./core.defaults.js").Defaults;
     static instances: {};
@@ -55,16 +55,16 @@ declare class Chart {
     get options(): any;
     get registry(): import("./core.registry.js").Registry;
     /**
-       * @private
-       */
+     * @private
+     */
     private _initialize;
     clear(): Chart;
     stop(): Chart;
     /**
-       * Resize the chart to its container or to explicit dimensions.
-       * @param {number} [width]
-       * @param {number} [height]
-       */
+     * Resize the chart to its container or to explicit dimensions.
+     * @param {number} [width]
+     * @param {number} [height]
+     */
     resize(width?: number, height?: number): void;
     _resizeBeforeDraw: {
         width: number;
@@ -73,26 +73,26 @@ declare class Chart {
     _resize(width: any, height: any): void;
     ensureScalesHaveIDs(): void;
     /**
-       * Builds a map of scale ID to scale object for future lookup.
-       */
+     * Builds a map of scale ID to scale object for future lookup.
+     */
     buildOrUpdateScales(): void;
     /**
-       * @private
-       */
+     * @private
+     */
     private _updateMetasets;
     /**
-       * @private
-       */
+     * @private
+     */
     private _removeUnreferencedMetasets;
     buildOrUpdateControllers(): any[];
     /**
-       * Reset the elements of all datasets
-       * @private
-       */
+     * Reset the elements of all datasets
+     * @private
+     */
     private _resetElements;
     /**
-      * Resets the chart back to its state before the initial animation
-      */
+     * Resets the chart back to its state before the initial animation
+     */
     reset(): void;
     update(mode: any): void;
     _minPadding: number;
@@ -113,45 +113,45 @@ declare class Chart {
      */
     private _getUniformDataChanges;
     /**
-       * Updates the chart layout unless a plugin returns `false` to the `beforeLayout`
-       * hook, in which case, plugins will not be called on `afterLayout`.
-       * @private
-       */
+     * Updates the chart layout unless a plugin returns `false` to the `beforeLayout`
+     * hook, in which case, plugins will not be called on `afterLayout`.
+     * @private
+     */
     private _updateLayout;
     /**
-       * Updates all datasets unless a plugin returns `false` to the `beforeDatasetsUpdate`
-       * hook, in which case, plugins will not be called on `afterDatasetsUpdate`.
-       * @private
-       */
+     * Updates all datasets unless a plugin returns `false` to the `beforeDatasetsUpdate`
+     * hook, in which case, plugins will not be called on `afterDatasetsUpdate`.
+     * @private
+     */
     private _updateDatasets;
     /**
-       * Updates dataset at index unless a plugin returns `false` to the `beforeDatasetUpdate`
-       * hook, in which case, plugins will not be called on `afterDatasetUpdate`.
-       * @private
-       */
+     * Updates dataset at index unless a plugin returns `false` to the `beforeDatasetUpdate`
+     * hook, in which case, plugins will not be called on `afterDatasetUpdate`.
+     * @private
+     */
     private _updateDataset;
     render(): void;
     draw(): void;
     /**
-       * @private
-       */
+     * @private
+     */
     private _getSortedDatasetMetas;
     /**
-       * Gets the visible dataset metas in drawing order
-       * @return {object[]}
-       */
+     * Gets the visible dataset metas in drawing order
+     * @return {object[]}
+     */
     getSortedVisibleDatasetMetas(): object[];
     /**
-       * Draws all datasets unless a plugin returns `false` to the `beforeDatasetsDraw`
-       * hook, in which case, plugins will not be called on `afterDatasetsDraw`.
-       * @private
-       */
+     * Draws all datasets unless a plugin returns `false` to the `beforeDatasetsDraw`
+     * hook, in which case, plugins will not be called on `afterDatasetsDraw`.
+     * @private
+     */
     private _drawDatasets;
     /**
-       * Draws dataset at index unless a plugin returns `false` to the `beforeDatasetDraw`
-       * hook, in which case, plugins will not be called on `afterDatasetDraw`.
-       * @private
-       */
+     * Draws dataset at index unless a plugin returns `false` to the `beforeDatasetDraw`
+     * hook, in which case, plugins will not be called on `afterDatasetDraw`.
+     * @private
+     */
     private _drawDataset;
     /**
      * Checks whether the given point is in the chart area.
@@ -159,7 +159,12 @@ declare class Chart {
      * @returns {boolean}
      */
     isPointInArea(point: Point): boolean;
-    getElementsAtEventForMode(e: any, mode: any, options: any, useFinalPosition: any): any;
+    getElementsAtEventForMode(
+        e: any,
+        mode: any,
+        options: any,
+        useFinalPosition: any,
+    ): any;
     getDatasetMeta(datasetIndex: any): any;
     getContext(): {
         chart: Chart;
@@ -171,21 +176,21 @@ declare class Chart {
     toggleDataVisibility(index: any): void;
     getDataVisibility(index: any): boolean;
     /**
-       * @private
-       */
+     * @private
+     */
     private _updateVisibility;
     hide(datasetIndex: any, dataIndex: any): void;
     show(datasetIndex: any, dataIndex: any): void;
     /**
-       * @private
-       */
+     * @private
+     */
     private _destroyDatasetMeta;
     _stop(): void;
     destroy(): void;
     toBase64Image(...args: any[]): any;
     /**
-       * @private
-       */
+     * @private
+     */
     private bindEvents;
     /**
      * @private
@@ -196,30 +201,34 @@ declare class Chart {
      */
     private bindResponsiveEvents;
     /**
-       * @private
-       */
+     * @private
+     */
     private unbindEvents;
     updateHoverStyle(items: any, mode: any, enabled: any): void;
     /**
-       * Get active (hovered) elements
-       * @returns array
-       */
+     * Get active (hovered) elements
+     * @returns array
+     */
     getActiveElements(): any[];
     /**
-       * Set active (hovered) elements
-       * @param {array} activeElements New active data points
-       */
+     * Set active (hovered) elements
+     * @param {array} activeElements New active data points
+     */
     setActiveElements(activeElements: any[]): void;
     /**
-       * Calls enabled plugins on the specified hook and with the given args.
-       * This method immediately returns as soon as a plugin explicitly returns false. The
-       * returned value can be used, for instance, to interrupt the current action.
-       * @param {string} hook - The name of the plugin method to call (e.g. 'beforeUpdate').
-       * @param {Object} [args] - Extra arguments to apply to the hook call.
+     * Calls enabled plugins on the specified hook and with the given args.
+     * This method immediately returns as soon as a plugin explicitly returns false. The
+     * returned value can be used, for instance, to interrupt the current action.
+     * @param {string} hook - The name of the plugin method to call (e.g. 'beforeUpdate').
+     * @param {Object} [args] - Extra arguments to apply to the hook call.
      * @param {import('./core.plugins.js').filterCallback} [filter] - Filtering function for limiting which plugins are notified
-       * @returns {boolean} false if any of the plugins return false, else returns true.
-       */
-    notifyPlugins(hook: string, args?: any, filter?: import('./core.plugins.js').filterCallback): boolean;
+     * @returns {boolean} false if any of the plugins return false, else returns true.
+     */
+    notifyPlugins(
+        hook: string,
+        args?: any,
+        filter?: import("./core.plugins.js").filterCallback,
+    ): boolean;
     /**
      * Check if a plugin with the specific ID is registered and enabled
      * @param {string} pluginId - The ID of the plugin of which to check if it is enabled
@@ -227,21 +236,21 @@ declare class Chart {
      */
     isPluginEnabled(pluginId: string): boolean;
     /**
-       * @private
-       */
+     * @private
+     */
     private _updateHoverStyles;
     /**
-       * @private
-       */
+     * @private
+     */
     private _eventHandler;
     /**
-       * Handle an event
-       * @param {ChartEvent} e the event to handle
-       * @param {boolean} [replay] - true if the event was replayed by `update`
+     * Handle an event
+     * @param {ChartEvent} e the event to handle
+     * @param {boolean} [replay] - true if the event was replayed by `update`
      * @param {boolean} [inChartArea] - true if the event is inside chartArea
-       * @return {boolean} true if the chart needs to re-render
-       * @private
-       */
+     * @return {boolean} true if the chart needs to re-render
+     * @private
+     */
     private _handleEvent;
     /**
      * @param {ChartEvent} e - The event
@@ -251,7 +260,12 @@ declare class Chart {
      * @returns {import('../types/index.js').ActiveElement[]} - The active elements
      * @pravate
      */
-    _getActiveElements(e: ChartEvent, lastActive: import('../types/index.js').ActiveElement[], inChartArea: boolean, useFinalPosition: boolean): import('../types/index.js').ActiveElement[];
+    _getActiveElements(
+        e: ChartEvent,
+        lastActive: import("../types/index.js").ActiveElement[],
+        inChartArea: boolean,
+        useFinalPosition: boolean,
+    ): import("../types/index.js").ActiveElement[];
 }
 import Config from "./core.config.js";
 import PluginService from "./core.plugins.js";

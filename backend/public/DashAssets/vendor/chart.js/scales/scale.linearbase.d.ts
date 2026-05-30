@@ -12,8 +12,8 @@ export default class LinearScaleBase extends Scale {
     handleTickRangeOptions(): void;
     getTickLimit(): number;
     /**
-       * @protected
-       */
+     * @protected
+     */
     protected computeTickLimit(): number;
     getLabelForValue(value: any): string;
 }
