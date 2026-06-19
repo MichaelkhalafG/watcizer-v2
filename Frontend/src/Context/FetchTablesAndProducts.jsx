@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import http from './api'
 
 const getTranslatedName = (translations, locale, fallback) => {
@@ -157,43 +157,89 @@ const transformProductData = (products, tables, ratings, images, locale) => {
     })
 }
 
-const CACHE_DURATION = 10 * 60 * 1000
-const CACHE_KEYS = {
-  TABLES: 'tablesCache',
-  TABLES_EXPIRATION: 'tablesCacheExpiration',
-  PRODUCTS: 'productsCache',
-  PRODUCTS_EXPIRATION: 'productsCacheExpiration',
-  RATINGS: 'ratingsCache',
-  RATINGS_EXPIRATION: 'ratingsCacheExpiration',
-  IMAGES: 'imagesCache',
-  IMAGES_EXPIRATION: 'imagesCacheExpiration',
+const CACHE_VERSION = 'v1'
+const CACHE_TTL = 10 * 60 * 1000 // 10 minutes
+
+// Versioned, self-healing localStorage cache.
+// - get/set treat null and empty arrays as "no cache" (the old bug: a cached []
+//   is truthy and used to pass the gate, leaving an empty catalog forever)
+// - each entry carries its own expiry; expired entries are pruned on read
+const cache = {
+  get(key) {
+    try {
+      const raw = localStorage.getItem(`wz_${CACHE_VERSION}_${key}`)
+      if (!raw) return null
+      const { data, expiresAt } = JSON.parse(raw)
+      if (Date.now() > expiresAt) {
+        localStorage.removeItem(`wz_${CACHE_VERSION}_${key}`)
+        return null
+      }
+      if (!data || (Array.isArray(data) && data.length === 0)) return null
+      return data
+    } catch {
+      return null
+    }
+  },
+  set(key, data) {
+    try {
+      if (!data || (Array.isArray(data) && data.length === 0)) return
+      localStorage.setItem(
+        `wz_${CACHE_VERSION}_${key}`,
+        JSON.stringify({ data, expiresAt: Date.now() + CACHE_TTL }),
+      )
+    } catch {
+      // localStorage full or blocked — fail silently
+    }
+  },
+  clear() {
+    Object.keys(localStorage)
+      .filter((k) => k.startsWith(`wz_${CACHE_VERSION}_`))
+      .forEach((k) => localStorage.removeItem(k))
+  },
 }
 
-const isCacheValid = (expirationKey) => {
-  const expiration = localStorage.getItem(expirationKey)
-  return expiration && new Date().getTime() < Number(expiration)
-}
-
-const getCachedData = (key) => {
-  const data = localStorage.getItem(key)
-  return data ? JSON.parse(data) : null
+// One-time cleanup of keys written by the previous (buggy) cache system.
+const LEGACY_KEYS = [
+  'productsCache',
+  'productsCacheExpiration',
+  'tablesCache',
+  'tablesCacheExpiration',
+  'ratingsCache',
+  'ratingsCacheExpiration',
+  'imagesCache',
+  'imagesCacheExpiration',
+  'bannersCache',
+  'bannersCacheExpiration',
+  'offersCache',
+  'offersCacheExpiration',
+  'catalog_meta_v2',
+]
+const purgeLegacyCache = () => {
+  try {
+    LEGACY_KEYS.forEach((k) => localStorage.removeItem(k))
+  } catch {
+    // ignore
+  }
 }
 
 const useFetchTablesAndProducts = (setTables, setRatings, setProductsEn, setProductsAr) => {
-  useEffect(() => {
-    const fetchTablesAndProducts = async () => {
-      try {
-        if (
-          Object.values(CACHE_KEYS).every((key) =>
-            key.includes('EXPIRATION') ? isCacheValid(key) : getCachedData(key),
-          )
-        ) {
-          // console.log("Using cached data");
+  const [isFetching, setIsFetching] = useState(true)
 
-          const cachedTables = getCachedData(CACHE_KEYS.TABLES)
-          const cachedProducts = getCachedData(CACHE_KEYS.PRODUCTS)
-          const cachedRatings = getCachedData(CACHE_KEYS.RATINGS)
-          const cachedImages = getCachedData(CACHE_KEYS.IMAGES)
+  useEffect(() => {
+    purgeLegacyCache()
+
+    const fetchAll = async () => {
+      setIsFetching(true)
+      try {
+        // Cache hit requires the two pieces the catalog can't render without:
+        // tables + a non-empty product set. Ratings/images are enrichment and
+        // default to [] (transformProductData handles empty gracefully).
+        const cachedTables = cache.get('tables')
+        const cachedProducts = cache.get('products')
+
+        if (cachedTables && cachedProducts) {
+          const cachedRatings = cache.get('ratings') || []
+          const cachedImages = cache.get('images') || []
 
           setTables(cachedTables)
           setRatings(cachedRatings)
@@ -237,8 +283,7 @@ const useFetchTablesAndProducts = (setTables, setRatings, setProductsEn, setProd
         }
 
         setTables(tableData)
-        localStorage.setItem(CACHE_KEYS.TABLES, JSON.stringify(tableData))
-        localStorage.setItem(CACHE_KEYS.TABLES_EXPIRATION, new Date().getTime() + CACHE_DURATION)
+        cache.set('tables', tableData)
 
         const [productResponse, ratingResponse, imageResponse] = await Promise.all([
           http.get('/all_product'),
@@ -254,21 +299,22 @@ const useFetchTablesAndProducts = (setTables, setRatings, setProductsEn, setProd
         setProductsEn(transformProductData(rawProducts, tableData, ratingsData, imagesData, 'en'))
         setProductsAr(transformProductData(rawProducts, tableData, ratingsData, imagesData, 'ar'))
 
-        localStorage.setItem(CACHE_KEYS.PRODUCTS, JSON.stringify(rawProducts))
-        localStorage.setItem(CACHE_KEYS.PRODUCTS_EXPIRATION, new Date().getTime() + CACHE_DURATION)
-
-        localStorage.setItem(CACHE_KEYS.RATINGS, JSON.stringify(ratingsData))
-        localStorage.setItem(CACHE_KEYS.RATINGS_EXPIRATION, new Date().getTime() + CACHE_DURATION)
-
-        localStorage.setItem(CACHE_KEYS.IMAGES, JSON.stringify(imagesData))
-        localStorage.setItem(CACHE_KEYS.IMAGES_EXPIRATION, new Date().getTime() + CACHE_DURATION)
-      } catch {
-        // console.error("Error fetching data:", error);
+        // cache.set is a no-op for empty arrays, so an empty catalog (or empty
+        // ratings/images) is never persisted.
+        cache.set('products', rawProducts)
+        cache.set('ratings', ratingsData)
+        cache.set('images', imagesData)
+      } catch (err) {
+        console.error('[FetchTablesAndProducts] fetch failed:', err)
+      } finally {
+        setIsFetching(false)
       }
     }
 
-    fetchTablesAndProducts()
+    fetchAll()
   }, [setTables, setRatings, setProductsEn, setProductsAr])
+
+  return isFetching
 }
 
 export default useFetchTablesAndProducts

@@ -33,4 +33,6 @@ return [
 
     'public_api_key' => env('PUBLIC_API_KEY'),
 
+    'asset_base' => env('ASSET_BASE', env('APP_URL')),
+
 ];

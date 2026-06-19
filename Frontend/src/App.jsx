@@ -52,7 +52,7 @@ function MainApp() {
   const {
     user_id,
     windowWidth,
-    products,
+    isFetching,
     openAlert,
     setOpenAlert,
     Loader,
@@ -80,7 +80,9 @@ function MainApp() {
     }
   }
 
-  const showLoader = !products || products.length === 0
+  // Gate the loader on the fetch lifecycle, not on products.length — an empty
+  // catalog (or empty DB) must still clear the loader once the fetch completes.
+  const showLoader = isFetching
 
   return (
     <>

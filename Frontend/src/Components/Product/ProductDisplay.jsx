@@ -25,15 +25,31 @@ function ProductDisplay() {
   const {
     language,
     users,
-    products,
     user_id,
     windowWidth,
     handleAddTowishlist,
     Loader,
     // offers, setCart, fetchCart
   } = useContext(MyContext)
-  const product = products.find((p) => p.name === name)
-  const [realetedProducts, setRelatedProducts] = useState([])
+  const [product, setProduct] = useState(null)
+  const [related, setRelated] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    setLoading(true)
+    setError(null)
+    http
+      .get(`products/by-name/${encodeURIComponent(name)}`)
+      .then(({ data }) => {
+        setProduct(data.product)
+        setRelated(data.related ?? [])
+      })
+      .catch((err) => {
+        setError(err.response?.status === 404 ? 'not_found' : 'error')
+      })
+      .finally(() => setLoading(false))
+  }, [name])
   const DialColor = product?.dial_color[0]?.color_value
   const BandColor = product?.band_color[0]?.color_value
   const [selectedDialColor, setSelectedDialColor] = useState(DialColor || null)
@@ -81,8 +97,8 @@ function ProductDisplay() {
   useEffect(() => {
     if (product) {
       product.category_type_name === 'Watches' ? setisfashion(false) : setisfashion(true)
-      setPrice(parseInt(product.sale_price_after_discount, 10))
-      setPriceBefore(parseInt(product.selling_price, 10))
+      setPrice(parseFloat(product.sale_price_after_discount))
+      setPriceBefore(parseFloat(product.selling_price))
     }
   }, [product])
 
@@ -144,7 +160,7 @@ function ProductDisplay() {
     showAlert(language === 'ar' ? 'تمت الإضافة إلى السلة!' : 'Added to cart!', 'success')
   }, [
     language,
-    product.id,
+    product?.id,
     price,
     quantity,
     selectedBandColor,
@@ -253,19 +269,8 @@ function ProductDisplay() {
     }
     if (product) {
       fetchRatings()
-      const related = (products || [])
-        .filter(
-          (p) =>
-            p.brand === product.brand &&
-            p.band_colors?.length > 0 &&
-            product.band_colors?.length > 0 &&
-            p.band_colors.some((color) =>
-              product.band_colors.some((pc) => pc.color_id === color.color_id),
-            ) &&
-            p.id !== product.id,
-        )
-        .slice(0, 20)
-      setRelatedProducts(related)
+      setSelectedDialColor(product.dial_color?.[0]?.color_value || null)
+      setSelectedBandColor(product.band_color?.[0]?.color_value || null)
       if (product?.stock && product.stock > 0) {
         setstock(parseInt(product.stock))
         settype_stock('Express')
@@ -276,7 +281,7 @@ function ProductDisplay() {
         setstock(0)
       }
     }
-  }, [product, products, fetchRatings])
+  }, [product, fetchRatings])
 
   useEffect(() => {
     if (ratings.length > 0) {
@@ -329,7 +334,21 @@ function ProductDisplay() {
     }
   }
 
-  if (!product) {
+  if (loading || !product) {
+    if (error === 'not_found') {
+      return (
+        <div className="container text-center py-5">
+          <h3 className="fw-bold">{language === 'ar' ? 'المنتج غير موجود' : 'Product not found'}</h3>
+        </div>
+      )
+    }
+    if (error) {
+      return (
+        <div className="container text-center py-5">
+          <h3 className="fw-bold">{language === 'ar' ? 'حدث خطأ ما' : 'Something went wrong'}</h3>
+        </div>
+      )
+    }
     return <Loader />
   } else {
     return (
@@ -811,7 +830,7 @@ function ProductDisplay() {
         </div>
         <div className="row justify-content-center">
           <div className="related-products col-md-11 lato-regular mt-4">
-            {realetedProducts && (
+            {related && (
               <ProductSlider
                 text={{
                   title: { en: 'Related Product', ar: 'المنتجات ذات الصلة' },
@@ -820,7 +839,7 @@ function ProductDisplay() {
                     ar: 'منتجات مشابهة للمنتج الذي اخترته',
                   },
                 }}
-                gradeproducts={realetedProducts}
+                gradeproducts={related}
               />
             )}
             {/* {console.log(realetedProducts)} */}

@@ -9,10 +9,13 @@ use App\Http\Controllers\Api\CreateProductController;
 use App\Http\Controllers\Api\DetailsProductController;
 use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\ProductVariantApiController;
+use App\Http\Controllers\Api\ProductListingController;
+use App\Http\Controllers\Api\CatalogMetaController;
 
 Route::middleware(['api', 'CheckApi'])->group(function () {
 
     // General //
+    Route::get('catalog/meta', [CatalogMetaController::class, 'index']);
     Route::get('all_category', [GeneralController::class, 'AllCategory']);
     Route::get('all_blog',     [GeneralController::class, 'AllBlog']);
 
@@ -37,6 +40,9 @@ Route::middleware(['api', 'CheckApi'])->group(function () {
     Route::get('all_gender',        [CreateProductController::class, 'AllGender']);
 
     // Details Product //
+    Route::get('products',                [ProductListingController::class, 'index']);
+    Route::get('products/by-name/{name}', [ProductListingController::class, 'showByName']);
+    Route::get('products/{id}',           [ProductListingController::class, 'show']);
     Route::get('all_product',             [DetailsProductController::class, 'AllProduct']);
     Route::get('all_product_image',       [DetailsProductController::class, 'AllProductImage']);
     Route::get('all_product_rating',      [DetailsProductController::class, 'AllProductRating']);
@@ -44,22 +50,22 @@ Route::middleware(['api', 'CheckApi'])->group(function () {
     Route::get('all_offer',               [DetailsProductController::class, 'AllOffer']);
     Route::get('all_offer_rating',        [DetailsProductController::class, 'AllOfferRating']);
     Route::post('add_offer_rating',       [DetailsProductController::class, 'AddOfferRating']);
-    Route::post('add_wishlist',           [DetailsProductController::class, 'AddWishlist']);
+    Route::post('add_wishlist',           [DetailsProductController::class, 'AddWishlist'])->middleware('guest.cart');
     Route::get('all_wishlist',            [DetailsProductController::class, 'AllWishlist']);
     Route::get('all_wishlist/{user_id}',  [DetailsProductController::class, 'AllWishlist']);
-    Route::delete('delete_wishlist/{id}', [DetailsProductController::class, 'DeleteWishlist']);
+    Route::delete('delete_wishlist/{id}', [DetailsProductController::class, 'DeleteWishlist'])->middleware('guest.cart');
 
     // Orders //
     Route::get('show_shipping_city',   [OrderController::class, 'ShowShippingCity']);
     Route::post('add_address',         [OrderController::class, 'AddAddress']);
     // DEPRECATED: remove after P1 — replaced by authenticated GET me/addresses
     // Route::get('show_address',         [OrderController::class, 'ShowAddress']);
-    Route::post('add_to_cart',         [OrderController::class, 'AddToCart']);
+    Route::post('add_to_cart',         [OrderController::class, 'AddToCart'])->middleware('guest.cart');
     // DEPRECATED: remove after P1 — replaced by authenticated GET me/cart
     // Route::get('show_cart',            [OrderController::class, 'ShowCart']);
     // Route::get('show_cart/{user_id}',  [OrderController::class, 'ShowCart']);
-    Route::delete('delete_cart/{id}',  [OrderController::class, 'DeleteCart']);
-    Route::post('add_order',           [OrderController::class, 'AddOrder']);
+    Route::delete('delete_cart/{id}',  [OrderController::class, 'DeleteCart'])->middleware('guest.cart');
+    Route::post('add_order',           [OrderController::class, 'AddOrder'])->middleware('guest.cart');
     // DEPRECATED: remove after P1 — replaced by authenticated GET me/orders
     // Route::get('show_order',           [OrderController::class, 'ShowOrder']);
 
@@ -84,6 +90,10 @@ Route::middleware(['api', 'CheckApi'])->group(function () {
 Route::middleware(['api', 'CheckApi', 'auth:api'])->group(function () {
     Route::get('me/orders',    [OrderController::class, 'ShowOrder']);
     Route::get('me/addresses', [OrderController::class, 'ShowAddress']);
+});
+
+// Cart read — guest-capable: guest.cart resolves either a JWT user or a guest token
+Route::middleware(['api', 'CheckApi', 'guest.cart'])->group(function () {
     Route::get('me/cart',      [OrderController::class, 'ShowCart']);
 });
 
