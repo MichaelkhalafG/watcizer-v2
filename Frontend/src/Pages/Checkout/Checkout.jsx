@@ -41,6 +41,9 @@ function Checkout() {
     address: '',
     city: shippingname,
     paymentMethod: 'cash',
+    guest_name: '',
+    guest_phone: '',
+    guest_email: '',
   })
   const [addresses, setAddresses] = useState([])
   const [loadingAddresses, setLoadingAddresses] = useState(true)
@@ -54,6 +57,7 @@ function Checkout() {
   const [alertType, setAlertType] = useState('info')
   const [openAlert, setOpenAlert] = useState(false)
   const { cart, removeItem } = useCart()
+  const isGuest = !sessionStorage.getItem('token')
   const showAlert = (message, type) => {
     setAlertMessage(message)
     setAlertType(type)
@@ -191,7 +195,7 @@ function Checkout() {
       return
     }
 
-    totalPriceForOrder = Math.floor(totalPriceForOrder)
+    totalPriceForOrder = parseFloat(totalPriceForOrder)
 
     const selectedAddress = addresses.find((address) => address.id === formData.address)
 
@@ -234,6 +238,13 @@ function Checkout() {
       payment_method: selectedPaymentMethod,
       note: orderNote,
       items,
+      ...(isGuest
+        ? {
+            guest_name: formData.guest_name,
+            guest_phone: formData.guest_phone,
+            guest_email: formData.guest_email,
+          }
+        : {}),
     }
 
     http
@@ -302,7 +313,41 @@ function Checkout() {
               </Select>
             </FormControl>
 
-            {loadingAddresses ? (
+            {isGuest ? (
+              <div style={{ marginTop: 20 }}>
+                <TextField
+                  fullWidth
+                  required
+                  name="guest_name"
+                  label={language === 'ar' ? 'الاسم الكامل' : 'Full Name'}
+                  value={formData.guest_name}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, guest_name: e.target.value }))}
+                  style={{ marginBottom: 16 }}
+                />
+                <TextField
+                  fullWidth
+                  required
+                  name="guest_phone"
+                  label={language === 'ar' ? 'رقم الهاتف' : 'Phone'}
+                  value={formData.guest_phone}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, guest_phone: e.target.value }))}
+                  style={{ marginBottom: 16 }}
+                />
+                <TextField
+                  fullWidth
+                  type="email"
+                  name="guest_email"
+                  label={language === 'ar' ? 'البريد الإلكتروني' : 'Email'}
+                  value={formData.guest_email}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, guest_email: e.target.value }))}
+                />
+                <a href="/login" style={{ display: 'inline-block', marginTop: 12 }}>
+                  {language === 'ar'
+                    ? 'سجّل الدخول لحفظ سلتك وتتبع طلباتك'
+                    : 'Login to save your cart & track orders'}
+                </a>
+              </div>
+            ) : loadingAddresses ? (
               <p>{language === 'ar' ? 'جاري تحميل العناوين...' : 'Loading addresses...'}</p>
             ) : addresses.length > 0 ? (
               <>
@@ -540,7 +585,13 @@ function Checkout() {
                   addOrder()
                 }}
               >
-                {language === 'ar' ? 'إرسال' : 'Submit'}
+                {isGuest
+                  ? language === 'ar'
+                    ? 'الدفع كزائر'
+                    : 'Checkout as Guest'
+                  : language === 'ar'
+                    ? 'إتمام الطلب'
+                    : 'Place Order'}
               </Button>
             </div>
           </div>

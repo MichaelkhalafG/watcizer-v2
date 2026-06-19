@@ -50,6 +50,13 @@ class AuthController extends Controller
             $user = Auth::guard('api')->user();
             $user->token = $token;
 
+            // Merge any guest cart into the now-authenticated user's cart.
+            // (register() delegates to login(), so this covers both flows.)
+            $guestToken = request()->header('X-Guest-Token');
+            if ($guestToken) {
+                (new \App\Services\MergeGuestCart())->merge($user->id, $guestToken);
+            }
+
             return response()->json($user);
 
         } catch (\Exception $e) {

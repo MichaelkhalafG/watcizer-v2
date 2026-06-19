@@ -1,3 +1,5 @@
+import http from '../Context/api'
+
 let listeners = new Set()
 let currentCart = null
 
@@ -96,6 +98,21 @@ export const cartStore = {
 
       return { ...cart, cart_item: updatedItems }
     })
+
+    // Sync to server (fire-and-forget, guest or logged-in) — additive to the
+    // optimistic local state above; failures are non-fatal.
+    http
+      .post('add_to_cart', {
+        product_id,
+        offer_id: offer_id ?? null,
+        quantity,
+        piece_price,
+        total_price: quantity * parseFloat(piece_price),
+        type_stock,
+        color_band: color_band ?? null,
+        color_dial: color_dial ?? null,
+      })
+      .catch((err) => console.warn('Cart sync failed:', err))
   },
 
   updateQuantity: (identifier, newQuantity) => {

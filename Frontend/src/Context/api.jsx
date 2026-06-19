@@ -6,11 +6,29 @@ const http = axios.create({
 
 http.interceptors.request.use((config) => {
   config.headers['Api-Code'] = import.meta.env.VITE_PUBLIC_API_KEY
-  const token = sessionStorage.getItem('token')
-  if (token) {
-    config.headers['Authorization'] = `Bearer ${token}`
+
+  const jwt = sessionStorage.getItem('token')
+  if (jwt) {
+    config.headers['Authorization'] = `Bearer ${jwt}`
+  } else {
+    // Guest: generate a token if absent and send it on every request
+    let guestToken = localStorage.getItem('wz_guest_token')
+    if (!guestToken) {
+      guestToken = crypto.randomUUID()
+      localStorage.setItem('wz_guest_token', guestToken)
+    }
+    config.headers['X-Guest-Token'] = guestToken
   }
   return config
+})
+
+// Capture the X-Guest-Token the server mints/echoes and persist it
+http.interceptors.response.use((response) => {
+  const serverToken = response.headers['x-guest-token']
+  if (serverToken && !sessionStorage.getItem('token')) {
+    localStorage.setItem('wz_guest_token', serverToken)
+  }
+  return response
 })
 
 export default http

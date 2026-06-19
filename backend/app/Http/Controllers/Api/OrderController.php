@@ -23,14 +23,6 @@ use Illuminate\Support\Facades\Log;
 
 class OrderController extends Controller
 {
-    private array $adminEmails = [
-        'rawan.ebied@gmail.com',
-        'maikelkhalaf100@gmail.com',
-        'mina7makram@gmail.com',
-        'minaawadrezk@gmail.com',
-        'Watchizer303@gmail.com',
-    ];
-
     // =========================================================================
     //  Shipping Cities
     // =========================================================================
@@ -118,16 +110,30 @@ class OrderController extends Controller
     // =========================================================================
     //  Cart
     // =========================================================================
+    /**
+     * Resolve the caller's cart from the identity set by GuestCartMiddleware
+     * (['user_id' => …] for logged-in users, ['guest_token' => …] for guests).
+     * Guest carts expire after 7 days; user carts never expire.
+     */
+    private function resolveCart(array $identity): Cart
+    {
+        $defaults = isset($identity['user_id'])
+            ? ['expires_at' => null]
+            : ['expires_at' => now()->addDays(7)];
+
+        return Cart::firstOrCreate($identity, $defaults);
+    }
+
     public function AddToCart(Request $request)
     {
         try {
             $request->validate([
-                'user_id'     => 'required|integer|exists:users,id',
+                // identity (user_id / guest_token) comes from GuestCartMiddleware
                 'product_id'  => 'nullable|integer|exists:products,id',
                 'offer_id'    => 'nullable|integer|exists:offers,id',
                 'quantity'    => 'required|integer|min:1',
-                'piece_price' => 'required|integer|min:0',
-                'total_price' => 'required|integer|min:0',
+                'piece_price' => 'required|numeric|min:0',
+                'total_price' => 'required|numeric|min:0',
                 'type_stock'  => 'nullable|in:Express,Market',
                 'color_band'  => 'nullable|string|max:7',
                 'color_dial'  => 'nullable|string|max:7',
@@ -146,7 +152,7 @@ class OrderController extends Controller
                 return response()->json(['success' => false, 'message' => 'Requested quantity exceeds available offer stock'], 422);
             }
 
-            $cart = Cart::firstOrCreate(['user_id' => $request->user_id]);
+            $cart = $this->resolveCart($request->identity);
             $cart->cart_item()->updateOrCreate(
                 [
                     'product_id' => $request->product_id,
@@ -173,11 +179,12 @@ class OrderController extends Controller
         }
     }
 
-    public function ShowCart()
+    public function ShowCart(Request $request)
     {
         try {
-            $authId = auth('api')->id();
-            $cart = Cart::where('user_id', $authId)->with('cart_item')->first();
+            $cart = Cart::where($request->identity)
+                        ->with('cart_item')
+                        ->first();
             return response()->json($cart);
         } catch (\Exception $e) {
             Log::error($e);
@@ -220,7 +227,7 @@ class OrderController extends Controller
             $request->validate([
                 'user_id'               => 'nullable|integer',
                 'address_id'            => 'required|integer|exists:addresses,id',
-                'total_price_for_order' => 'required|integer|min:0',
+                'total_price_for_order' => 'required|numeric|min:0',
                 'payment_method'        => 'required|in:cash,paymob,whatsapp',
                 'note'                  => 'nullable|string|max:1000',
                 'guest_name'            => 'nullable|string|max:255',
@@ -265,17 +272,50 @@ class OrderController extends Controller
                 }
             }
 
+            // ── Authoritative total (never trust the client) ──────────────────
+            // Recompute from the SAME items the order is built from ($cartItems),
+            // pricing products by sale-price-then-list, offers by their price,
+            // and add the server-side shipping cost for the chosen address.
+            $serverItemsTotal = $cartItems->sum(function ($item) {
+                $i = is_array($item) ? (object) $item : $item;
+                if (!empty($i->product_id)) {
+                    $p = Product::find($i->product_id);
+                    $price = $p?->sale_price_after_discount ?? $p?->selling_price ?? 0;
+                } elseif (!empty($i->offer_id)) {
+                    $price = optional(Offer::find($i->offer_id))->price ?? 0;
+                } else {
+                    $price = 0;
+                }
+                return (float) $price * (int) ($i->quantity ?? 0);
+            });
+
+            $shippingCost = (float) optional(
+                optional(Address::with('shippingCity')->find($request->address_id))->shippingCity
+            )->shipping_cost;
+
+            $serverTotal = $serverItemsTotal + $shippingCost;
+
+            if (abs($serverTotal - (float) $request->total_price_for_order) > 1) {
+                DB::rollBack();
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Price mismatch — please refresh and try again',
+                ], 422);
+            }
+
             // ── Order number ──────────────────────────────────────────────────
-            $latestNum   = DB::table('orders')->max('order_number');
-            $orderNumber = $latestNum
-                ? str_pad((int) $latestNum + 1, 4, '0', STR_PAD_LEFT)
-                : '0001';
+            $lastNumber = DB::table('orders')
+                ->lockForUpdate()
+                ->selectRaw('MAX(CAST(order_number AS UNSIGNED)) as m')
+                ->value('m') ?? 0;
+
+            $orderNumber = str_pad($lastNumber + 1, 6, '0', STR_PAD_LEFT);
 
             // ── Create order ──────────────────────────────────────────────────
             $order = Order::create([
                 'user_id'               => $userId,
                 'address_id'            => $request->address_id,
-                'total_price_for_order' => $request->total_price_for_order,
+                'total_price_for_order' => $serverTotal,
                 'payment_method'        => $request->payment_method,
                 'order_number'          => $orderNumber,
                 'note'                  => $request->note,
@@ -301,15 +341,21 @@ class OrderController extends Controller
                 ]);
 
                 if (!empty($itemData->product_id)) {
-                    $product = Product::find($itemData->product_id);
-                    if ($product) {
-                        $field = ($itemData->type_stock ?? null) === 'Express' ? 'stock' : 'market_stock';
-                        $product->$field -= $itemData->quantity;
-                        if ($product->$field < 0) {
-                            DB::rollBack();
-                            return response()->json(['success' => false, 'message' => 'Insufficient product stock'], 422);
-                        }
-                        $product->save();
+                    // Atomic conditional decrement: only succeeds if enough stock
+                    // remains, so concurrent orders cannot oversell (P1-7).
+                    $field = ($itemData->type_stock ?? null) === 'Express' ? 'stock' : 'market_stock';
+
+                    $updated = Product::where('id', $itemData->product_id)
+                        ->where($field, '>=', $itemData->quantity)
+                        ->decrement($field, $itemData->quantity);
+
+                    if ($updated === 0) {
+                        DB::rollBack();
+                        return response()->json([
+                            'success'    => false,
+                            'message'    => 'Insufficient stock',
+                            'product_id' => $itemData->product_id,
+                        ], 422);
                     }
                 } elseif (!empty($itemData->offer_id)) {
                     $offer = Offer::find($itemData->offer_id);
@@ -374,7 +420,7 @@ class OrderController extends Controller
 
             if ($customerEmail) {
                 try {
-                    Mail::to($customerEmail)->send(new OrderCreatedMail($order, 'customer'));
+                    Mail::to($customerEmail)->queue(new OrderCreatedMail($order, 'customer'));
                     \Log::info('Customer email sent to: ' . $customerEmail . ' | Order: ' . $order->order_number);
                 } catch (\Exception $e) {
                     \Log::error('Customer email FAILED | Order: ' . $order->order_number, ['exception' => $e]);
@@ -382,9 +428,9 @@ class OrderController extends Controller
             }
         }
 
-        foreach ($this->adminEmails as $email) {
+        foreach (config('order.admin_emails') as $email) {
             try {
-                Mail::to($email)->send(new OrderCreatedMail($order, 'admin'));
+                Mail::to($email)->queue(new OrderCreatedMail($order, 'admin'));
                 \Log::info('Admin email sent to: ' . $email . ' | Order: ' . $order->order_number);
             } catch (\Exception $e) {
                 \Log::error('Admin email FAILED | To: ' . $email . ' | Order: ' . $order->order_number, ['exception' => $e]);
@@ -461,14 +507,32 @@ class OrderController extends Controller
                 ], 200);
             }
 
+            // Session failed → restore the stock that AddOrder already committed.
+            foreach ($order->order_item as $item) {
+                if (empty($item->product_id)) {
+                    continue;
+                }
+                $field = $item->type_stock === 'Express' ? 'stock' : 'market_stock';
+                Product::where('id', $item->product_id)->increment($field, $item->quantity);
+            }
+
             $order->delete();
             return response()->json([
                 'success'      => false,
-                'message'      => 'Failed to create Paymob session',
+                'message'      => 'Payment session failed',
                 'paymob_error' => $paymobResponse->json(),
-            ], 500);
+            ], 422);
 
         } catch (\Exception $e) {
+            // Exception during session creation → restore committed stock too.
+            foreach ($order->order_item as $item) {
+                if (empty($item->product_id)) {
+                    continue;
+                }
+                $field = $item->type_stock === 'Express' ? 'stock' : 'market_stock';
+                Product::where('id', $item->product_id)->increment($field, $item->quantity);
+            }
+
             $order->delete();
             throw $e;
         }
@@ -509,6 +573,15 @@ class OrderController extends Controller
                     if ($isSuccess) {
                         $isGuest = is_null($order->user_id);
                         $this->sendOrderEmails($order, $isGuest, 'cash');
+                    } else {
+                        // Payment failed/abandoned → restore the reserved stock.
+                        foreach ($order->order_item as $item) {
+                            if (empty($item->product_id)) {
+                                continue;
+                            }
+                            $field = $item->type_stock === 'Express' ? 'stock' : 'market_stock';
+                            Product::where('id', $item->product_id)->increment($field, $item->quantity);
+                        }
                     }
                 }
             }
