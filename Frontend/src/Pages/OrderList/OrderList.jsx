@@ -16,9 +16,13 @@ import {
 import http from '../../Context/api'
 import emptyWishList from '../../assets/images/emptywishlist.svg'
 import { MyContext } from '../../Context/Context'
+import { useUIStore } from '../../Store/uiStore'
+import { useAuthStore } from '../../Store/authStore'
 
 function OrderList() {
-  const { language, user_id, products, offers } = useContext(MyContext)
+  const { products, offers } = useContext(MyContext)
+  const { language } = useUIStore()
+  const { userId: user_id } = useAuthStore()
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)

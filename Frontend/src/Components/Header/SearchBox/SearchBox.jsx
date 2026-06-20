@@ -2,10 +2,12 @@ import { IoIosSearch } from 'react-icons/io'
 import { Button } from '@mui/material'
 import { useContext, useState, useEffect } from 'react'
 import { MyContext } from '../../../Context/Context'
+import { useUIStore } from '../../../Store/uiStore'
 import { useNavigate } from 'react-router-dom'
 
 function SearchBox() {
-  const { language, products, setFilteredProducts } = useContext(MyContext)
+  const { products, setFilteredProducts } = useContext(MyContext)
+  const { language } = useUIStore()
   const [searchTerm, setSearchTerm] = useState('')
   const navigate = useNavigate()
 

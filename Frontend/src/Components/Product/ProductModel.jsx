@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useContext } from 'react'
 import useCart, { getItemKey } from '../../Hooks/useCart'
 import PropTypes from 'prop-types'
-import { Modal, Box, Button, Rating, Alert, Snackbar } from '@mui/material'
+import { Modal, Box, Button, Rating, Alert, Snackbar, useMediaQuery } from '@mui/material'
 import { MdClose } from 'react-icons/md'
 import InnerImageZoom from 'react-inner-image-zoom'
 import defimg from '../../assets/images/1.webp'
@@ -15,8 +15,8 @@ function ProductModel({ open, onClose, product, language }) {
   const {
     // fetchCart, products, offers, setCart, user_id,
     handleAddTowishlist,
-    windowWidth,
   } = useContext(MyContext)
+  const isDesktop = useMediaQuery('(min-width:768px)')
   const [selectedImage, setSelectedImage] = useState('')
   const [type_stock, settype_stock] = useState('')
   const [quantity, setQuantity] = useState(1)
@@ -230,8 +230,8 @@ function ProductModel({ open, onClose, product, language }) {
         autoHideDuration={3000}
         onClose={() => setOpenAlert(false)}
         anchorOrigin={{
-          vertical: windowWidth >= 768 ? 'bottom' : 'top',
-          horizontal: windowWidth >= 768 ? 'right' : 'left',
+          vertical: isDesktop ? 'bottom' : 'top',
+          horizontal: isDesktop ? 'right' : 'left',
         }}
       >
         <Alert severity={alertType} onClose={() => setOpenAlert(false)}>

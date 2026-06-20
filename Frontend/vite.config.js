@@ -1,7 +1,6 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import imagePresets from 'vite-plugin-image-presets'
-import legacy from '@vitejs/plugin-legacy'
 
 export default defineConfig({
   base: '/',
@@ -15,10 +14,6 @@ export default defineConfig({
           webp: { quality: 75 },
         },
       },
-    }),
-    legacy({
-      targets: ['defaults', 'not IE 11'],
-      additionalLegacyPolyfills: ['regenerator-runtime/runtime'],
     }),
   ],
 

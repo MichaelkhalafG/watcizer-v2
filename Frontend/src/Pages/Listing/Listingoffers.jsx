@@ -1,10 +1,11 @@
 import OffersSideBar from '../../Components/SideBar/OffersSideBar'
 import './Listing.css'
 import { MyContext } from '../../Context/Context'
+import { useUIStore } from '../../Store/uiStore'
 import { Link } from 'react-router-dom'
 import { LazyLoadImage } from 'react-lazy-load-image-component'
 import 'react-lazy-load-image-component/src/effects/blur.css'
-import { FormControl, Drawer, InputLabel, MenuItem, Select, Button } from '@mui/material'
+import { FormControl, Drawer, InputLabel, MenuItem, Select, Button, useMediaQuery } from '@mui/material'
 import { useContext, useState, useEffect } from 'react'
 import { BsFillGrid3X3GapFill } from 'react-icons/bs'
 import { IoGrid } from 'react-icons/io5'
@@ -15,16 +16,9 @@ import OfferModel from '../../Components/Product/OfferModel'
 import Pagination from '@mui/material/Pagination'
 
 function Listingoffers() {
-  const {
-    language,
-    offers,
-    windowWidth,
-    currentPage,
-    setCurrentPage,
-    offersfilters,
-    setOffersFilters,
-    handleAddTowishlist,
-  } = useContext(MyContext)
+  const { offers, handleAddTowishlist } = useContext(MyContext)
+  const { language, currentPage, setCurrentPage, offersFilters: offersfilters, setOffersFilters } = useUIStore()
+  const isDesktop = useMediaQuery('(min-width:768px)')
 
   const [filteredProducts, setFilteredProducts] = useState([])
   const [shownum, setShownum] = useState(10)
@@ -91,7 +85,7 @@ function Listingoffers() {
   return (
     <div className={`container product-listing ${isRTL ? 'rtl' : 'ltr'}`}>
       <div className="row">
-        {windowWidth <= 768 ? (
+        {!isDesktop ? (
           <Drawer open={open} onClose={toggleDrawer(false)}>
             <button className="btn btn-dark rounded-0" onClick={toggleDrawer(false)}>
               {language === 'ar' ? 'اغلاق الفلاتر' : 'Close Filters'}
@@ -125,14 +119,14 @@ function Listingoffers() {
               </div>
             </div>
           ) : (
-            <div className={`row ${windowWidth >= 768 ? 'pt-4' : ''}`}>
+            <div className={`row ${isDesktop ? 'pt-4' : ''}`}>
               <div className="col-12 px-4 bg-2 rounded-3 p-2">
                 <div className="row">
                   <div className="col-md-10 col-8 d-flex align-items-center">
                     <button
                       className="color-most-used btn px-1"
                       onClick={() => {
-                        windowWidth >= 768 ? setColselected('col-3') : setColselected('col-6')
+                        isDesktop ? setColselected('col-3') : setColselected('col-6')
                       }}
                     >
                       <BsFillGrid3X3GapFill className="fs-3" />
@@ -140,7 +134,7 @@ function Listingoffers() {
                     <button
                       className="color-most-used btn px-1"
                       onClick={() => {
-                        windowWidth >= 768 ? setColselected('col-4') : setColselected('col-12')
+                        isDesktop ? setColselected('col-4') : setColselected('col-12')
                       }}
                     >
                       <IoGrid className="fs-3" />
@@ -170,7 +164,7 @@ function Listingoffers() {
                 </div>
               </div>
               <div className="col-12 py-2">
-                {windowWidth <= 768 ? (
+                {!isDesktop ? (
                   <div className="row justify-content-center">
                     <button
                       className="btn btn-dark col-10"
@@ -191,7 +185,7 @@ function Listingoffers() {
                     >
                       <div className="card product-card border-0 rounded-3 shadow-sm d-flex flex-column position-relative">
                         <div className="action-menu position-absolute" style={{ zIndex: 1000 }}>
-                          {windowWidth >= 768 ? (
+                          {isDesktop ? (
                             <button
                               className="btn btn-dark rounded-circle"
                               onClick={() => handleProductClick(product)}
@@ -284,14 +278,14 @@ function Listingoffers() {
                             <div className="d-flex col-md-7 p-1 justify-content-center col-12 align-items-center">
                               <Rating
                                 name="read-only"
-                                className={`${windowWidth <= 768 ? 'col-12' : ''}`}
+                                className={`${!isDesktop ? 'col-12' : ''}`}
                                 value={Math.round(
                                   product.average_rate === null ? 5 : product.average_rate,
                                 )}
                                 size="small"
                                 readOnly
                               />
-                              <span className={` mx-1 ${windowWidth <= 768 ? 'd-none' : ''}`}>
+                              <span className={` mx-1 ${!isDesktop ? 'd-none' : ''}`}>
                                 (
                                 {Math.round(
                                   product.average_rate === null ? 5 : product.average_rate,

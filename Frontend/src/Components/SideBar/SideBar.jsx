@@ -5,6 +5,7 @@ import {
   // Fragment
 } from 'react'
 import { MyContext } from '../../Context/Context'
+import { useUIStore } from '../../Store/uiStore'
 import {
   Accordion,
   AccordionSummary,
@@ -21,7 +22,8 @@ function valuetext(value) {
 }
 
 function SideBar({ setFilters }) {
-  const { language, tables, sideBanners, setCurrentPage } = useContext(MyContext)
+  const { tables, sideBanners } = useContext(MyContext)
+  const { language, setCurrentPage } = useUIStore()
 
   const isRTL = language === 'ar'
   const direction = isRTL ? 'rtl' : 'ltr'

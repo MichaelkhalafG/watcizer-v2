@@ -2,14 +2,11 @@ import { useState, useContext } from 'react'
 import Button from '@mui/material/Button'
 import { FaAngleDown } from 'react-icons/fa'
 import LanguageDialog from './LanguageDialog'
-import { MyContext } from '../../Context/Context'
-
+import { useUIStore } from '../../Store/uiStore'
 export default function LanguageDropdown() {
+  const { language, setLanguage } = useUIStore()
   const [open, setOpen] = useState(false)
-  const { language, setLanguage } = useContext(MyContext)
-
   const handleClickOpen = () => setOpen(true)
-
   const handleClose = (value) => {
     setOpen(false)
     if (value) {
@@ -17,7 +14,6 @@ export default function LanguageDropdown() {
       document.documentElement.dir = value === 'ar' ? 'rtl' : 'ltr' // Change direction based on language
     }
   }
-
   return (
     <div>
       <Button className="lang-drop border border-2 rounded-3" onClick={handleClickOpen}>

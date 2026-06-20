@@ -9,13 +9,15 @@ import {
 } from 'react-icons/fa'
 import { useContext } from 'react'
 import { MyContext } from '../../Context/Context'
+import { useUIStore } from '../../Store/uiStore'
 import { Link, useNavigate } from 'react-router-dom'
 import { FaRegHeart } from 'react-icons/fa'
 import { RiBillLine } from 'react-icons/ri'
 import { IoIosPerson } from 'react-icons/io'
 
 function Footer() {
-  const { language, tables, setFilters } = useContext(MyContext)
+  const { tables } = useContext(MyContext)
+  const { language, setFilters } = useUIStore()
   const navigate = useNavigate()
   const half = Math.ceil((tables.brands?.length || 0) / 2)
   const firstHalfBrands = tables.brands?.slice(0, half) || []

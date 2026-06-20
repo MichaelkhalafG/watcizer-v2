@@ -5,10 +5,12 @@ import { MdOutlineLocalOffer, MdOutlineWatch, MdOutlineKeyboardArrowDown } from 
 import { IoShirtOutline } from 'react-icons/io5'
 import { useContext } from 'react'
 import { MyContext } from '../../../Context/Context'
+import { useUIStore } from '../../../Store/uiStore'
 import CategoryNav from './CategoryNav'
 
 function Nav() {
-  const { language, setCurrentPage, products, tables, setFilters } = useContext(MyContext)
+  const { products, tables } = useContext(MyContext)
+  const { language, setCurrentPage, setFilters } = useUIStore()
   const handleCategoryClick = (categoryName) => {
     const category = tables.categoryTypes.find(
       (category) => category.category_type_name === categoryName,

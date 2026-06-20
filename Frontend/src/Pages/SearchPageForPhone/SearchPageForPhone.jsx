@@ -1,10 +1,12 @@
 import { IoIosSearch } from 'react-icons/io'
 import { IoMdClose } from 'react-icons/io'
-import { Button, IconButton, Snackbar, Alert, Pagination } from '@mui/material'
+import { Button, IconButton, Snackbar, Alert, Pagination, useMediaQuery } from '@mui/material'
 import { useContext, useState, useEffect, useRef, Suspense } from 'react'
 import { LazyLoadImage } from 'react-lazy-load-image-component'
 import 'react-lazy-load-image-component/src/effects/blur.css'
 import { MyContext } from '../../Context/Context'
+import { useUIStore } from '../../Store/uiStore'
+import { useAuthStore } from '../../Store/authStore'
 import { Link, useNavigate } from 'react-router-dom'
 import http from '../../Context/api'
 import { FaRegHeart } from 'react-icons/fa'
@@ -12,18 +14,10 @@ import { SlSizeFullscreen } from 'react-icons/sl'
 import './Search.css'
 
 function SearchPageForPhone() {
-  const {
-    language,
-    products,
-    handleAddTowishlist,
-    currentPage,
-    setCurrentPage,
-    fetchCart,
-    offers,
-    setCart,
-    user_id,
-    Loader,
-  } = useContext(MyContext)
+  const { products, handleAddTowishlist, fetchCart, offers, setCart, Loader } = useContext(MyContext)
+  const { language, currentPage, setCurrentPage } = useUIStore()
+  const { userId: user_id } = useAuthStore()
+  const isDesktop = useMediaQuery('(min-width:768px)')
   const [searchTerm, setSearchTerm] = useState('')
   const [filteredResults, setFilteredResults] = useState([])
   const [alertMessage, setAlertMessage] = useState('')
@@ -234,8 +228,8 @@ function SearchPageForPhone() {
                       </span>
                     </div>
                     {/* <div className="col-12 p-1 justify-content-center col-12 align-items-center">
-                                                                <Rating name="read-only" className={`${windowWidth <= 768 ? "col-12" : ""}`} value={Math.round(product.rating === null ? 5 : product.rating)} size="small" readOnly />
-                                                                <span className={` mx-1 ${windowWidth <= 768 ? "d-none" : ""}`}>({Math.round(product.rating === null ? 5 : product.rating)})</span>
+                                                                <Rating name="read-only" className={`${!isDesktop ? "col-12" : ""}`} value={Math.round(product.rating === null ? 5 : product.rating)} size="small" readOnly />
+                                                                <span className={` mx-1 ${!isDesktop ? "d-none" : ""}`}>({Math.round(product.rating === null ? 5 : product.rating)})</span>
                                                             </div> */}
                   </div>
                   {user_id && user_id !== null ? (

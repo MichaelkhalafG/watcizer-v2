@@ -1,11 +1,13 @@
-import { startTransition, useCallback, useEffect, useState, useMemo } from 'react'
+import { useCallback, useEffect, useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { MyContext } from './Context'
-// import { BiLoaderCircle } from "react-icons/bi";
 import './loader.css'
 import useFetchTablesAndProducts from './FetchTablesAndProducts'
 import useCart, { getItemKey } from '../Hooks/useCart'
 import Loader from '../Components/Loader/Loader'
+import { useUIStore } from '../Store/uiStore'
+import { useAuthStore } from '../Store/authStore'
+import { useToastStore } from '../Store/toastStore'
 import http, {
   fetchShippingCities,
   fetchBanners,
@@ -16,13 +18,16 @@ import http, {
 
 export const MyProvider = ({ children }) => {
   const { cart, updateQuantity } = useCart()
+
+  // Cross-cutting state now lives in focused Zustand stores.
+  const language = useUIStore((s) => s.language)
+  const user_id = useAuthStore((s) => s.userId)
+  const showToast = useToastStore((s) => s.showToast)
+
   const [version, setVersion] = useState(0)
-  const [language, setLanguage] = useState('en')
   const [watches, setWatches] = useState([])
   const [fashion, setFashion] = useState([])
-  const [windowWidth, setwindowWidth] = useState()
   const [productsEn, setProductsEn] = useState([])
-  const [currentPage, setCurrentPage] = useState(1)
   const [productsAr, setProductsAr] = useState([])
   const [filteredProducts, setFilteredProducts] = useState([])
   const [ratings, setRatings] = useState([])
@@ -36,34 +41,11 @@ export const MyProvider = ({ children }) => {
   const [wishList, setwishList] = useState([])
   const [offers, setOffers] = useState([])
   const navigate = useNavigate()
-  const [user_id, setuser_id] = useState(null)
-  const [users, setusers] = useState([])
   const [total_cart_price, settotal_cart_price] = useState()
   const [shippingid, setShippingid] = useState('')
   const [shipping, setShipping] = useState('')
   const [shippingData, setShippingData] = useState([])
   const [shippingname, setShippingName] = useState('')
-  const [alertMessage, setAlertMessage] = useState('')
-  const [alertType, setAlertType] = useState('info')
-  const [openAlert, setOpenAlert] = useState(false)
-  const [filters, setFilters] = useState({
-    categories: [],
-    brands: [],
-    subTypes: [],
-    price: [0, 6000],
-  })
-  const [gradesfilters, setgradesfilters] = useState({
-    categories: [],
-    brands: [],
-    subTypes: [],
-    grades: [],
-    price: [0, 6000],
-  })
-  const [offersfilters, setOffersFilters] = useState({
-    categories: [],
-    price: [0, 6000],
-    ratings: [],
-  })
 
   const helperforsetingcategories = (setCategory, products, categoryTypeName) => {
     const filteredProducts = products.filter(
@@ -116,11 +98,6 @@ export const MyProvider = ({ children }) => {
       helperforsetingcategories(setFashion, products, 'Fashion')
     }
   }, [products])
-  useEffect(() => {
-    setuser_id(
-      sessionStorage.getItem('user_id') ? parseInt(sessionStorage.getItem('user_id')) : null,
-    )
-  }, [])
 
   useEffect(() => {
     if (user_id) {
@@ -128,23 +105,6 @@ export const MyProvider = ({ children }) => {
       fetchWishList(user_id, products, offers, language, setwishList)
     }
   }, [user_id, offers, products, language])
-
-  // useEffect(() => {
-  //     setProductsCount(cart.reduce((total, item) => total + (item.quantity || 0), 0));
-  //     setWishListCount(wishList.reduce((total) => total + 1, 0));
-  //     const calculateTotalCartPrice = () => {
-  //         const subtotal = cart.reduce((total, item) => {
-  //             const piecePrice = parseFloat(item.piece_price || 0);
-  //             const quantity = parseInt(item.quantity || 1, 10);
-  //             return total + piecePrice * quantity;
-  //         }, 0);
-  //         const shippingCost = parseFloat(shipping || 0);
-  //         const totalPrice = subtotal + shippingCost;
-
-  //         settotal_cart_price(totalPrice.toFixed(2));
-  //     };
-  //     calculateTotalCartPrice();
-  // }, [cart, wishList, shipping]);
 
   useEffect(() => {
     const cartItems = Array.isArray(cart.cart_item) ? cart.cart_item : []
@@ -171,12 +131,6 @@ export const MyProvider = ({ children }) => {
     calculateTotalCartPrice()
   }, [cart, wishList, shipping])
 
-  const showAlert = (message, type) => {
-    setAlertMessage(message)
-    setAlertType(type)
-    setOpenAlert(true)
-  }
-
   const handleQuantityChange = useCallback(
     (item, value) => {
       const currentQty = item.quantity || 1
@@ -193,7 +147,7 @@ export const MyProvider = ({ children }) => {
   const handleAddTowishlist = useCallback(
     (id, type) => {
       if (!user_id) {
-        showAlert(
+        showToast(
           language === 'ar' ? 'يجب تسجيل الدخول أولاً!' : 'You must login first!',
           'warning',
         )
@@ -207,15 +161,14 @@ export const MyProvider = ({ children }) => {
         http
           .post('/add_wishlist', payload)
           .then(() => {
-            showAlert(
+            showToast(
               language === 'ar' ? 'تمت الإضافة إلى المفضل!' : 'Added to the Wish List!',
               'success',
             )
             fetchWishList(user_id, products, offers, language, setwishList)
           })
           .catch(() => {
-            // console.error("Error adding to cart:", error);
-            showAlert(
+            showToast(
               language === 'ar'
                 ? 'حدث خطأ أثناء الإضافة إلى المفضل.'
                 : 'An error occurred while adding to the Wish List.',
@@ -224,80 +177,31 @@ export const MyProvider = ({ children }) => {
           })
       }
     },
-    [language, navigate, user_id, offers, products],
+    [language, navigate, user_id, offers, products, showToast],
   )
 
-  // const handleQuantityChange = useCallback((index, value) => {
-  //     setCart((prevCart) => {
-  //         const updatedCart = [...prevCart];
-  //         const item = updatedCart[index];
-  //         if (!item) return updatedCart;
-  //         const newQuantity = (item.quantity || 0) + value;
-  //         if (newQuantity > 0) {
-  //             item.quantity = newQuantity;
-  //         }
-  //         return updatedCart;
-  //     });
-  // }, []);
-
-  function getWindowWidth() {
-    return window.innerWidth || document.documentElement.clientWidth || document.body.clientWidth
-  }
-
-  useEffect(() => {
-    startTransition(() => {
-      setwindowWidth(getWindowWidth())
-    })
-
-    const handleResize = () => {
-      startTransition(() => {
-        setwindowWidth(getWindowWidth())
-      })
-    }
-
-    window.addEventListener('resize', handleResize)
-
-    return () => {
-      window.removeEventListener('resize', handleResize)
-    }
-  }, [])
   const values = useMemo(
     () => ({
-      // cart, setCart,
-      user_id,
-      setuser_id,
       wishList,
       setwishList,
-      language,
-      setLanguage,
       shippingid,
       setShippingid,
-      currentPage,
-      setCurrentPage,
       productsCount,
       setProductsCount,
       WishListCount,
       setWishListCount,
-      windowWidth,
       shipping,
       setShipping,
       filteredProducts,
       setFilteredProducts,
       total_cart_price,
       settotal_cart_price,
-      gradesfilters,
-      setgradesfilters,
-      offersfilters,
-      setOffersFilters,
       version,
       setVersion,
-      filters,
-      setFilters,
       fashion,
       setFashion,
       watches,
       setWatches,
-      users,
       handleAddTowishlist,
       fetchWishList,
       ratings,
@@ -315,47 +219,28 @@ export const MyProvider = ({ children }) => {
       setShippingName,
       offers,
       Loader,
-      alertMessage,
-      alertType,
-      openAlert,
-      setOpenAlert,
     }),
     [
-      // cart, setCart,
-      user_id,
-      setuser_id,
       wishList,
       setwishList,
-      language,
-      setLanguage,
       shippingid,
       setShippingid,
-      currentPage,
-      setCurrentPage,
       productsCount,
       setProductsCount,
       WishListCount,
       setWishListCount,
-      windowWidth,
       shipping,
       setShipping,
       filteredProducts,
       setFilteredProducts,
       total_cart_price,
       settotal_cart_price,
-      gradesfilters,
-      setgradesfilters,
-      offersfilters,
-      setOffersFilters,
       version,
       setVersion,
-      filters,
-      setFilters,
       fashion,
       setFashion,
       watches,
       setWatches,
-      users,
       handleAddTowishlist,
       ratings,
       shippingPrices,
@@ -370,11 +255,6 @@ export const MyProvider = ({ children }) => {
       shippingname,
       setShippingName,
       offers,
-      Loader,
-      alertMessage,
-      alertType,
-      openAlert,
-      setOpenAlert,
     ],
   )
   return <MyContext.Provider value={values}>{children}</MyContext.Provider>

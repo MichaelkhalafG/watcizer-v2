@@ -1,9 +1,9 @@
 import { memo, useContext, useEffect, lazy } from 'react'
-import { MyContext } from '../../Context/Context'
+import { useUIStore } from '../../Store/uiStore'
 import { IoIosArrowDroprightCircle, IoIosArrowDropleftCircle } from 'react-icons/io'
 const Slider = lazy(() => import('react-slick'))
-
 function HomeSlider({ banners }) {
+  const { language } = useUIStore()
   useEffect(() => {
     if (banners?.length > 0) {
       const firstBanner = banners[0].image
@@ -16,9 +16,6 @@ function HomeSlider({ banners }) {
       }
     }
   }, [banners])
-
-  const { language } = useContext(MyContext)
-
   function NextArrow({ onClick }) {
     return (
       <IoIosArrowDroprightCircle
@@ -36,7 +33,6 @@ function HomeSlider({ banners }) {
       />
     )
   }
-
   function PrevArrow({ onClick }) {
     return (
       <IoIosArrowDropleftCircle
@@ -54,7 +50,6 @@ function HomeSlider({ banners }) {
       />
     )
   }
-
   const settings = {
     dots: false,
     infinite: true,
@@ -68,7 +63,6 @@ function HomeSlider({ banners }) {
     nextArrow: <NextArrow />,
     prevArrow: <PrevArrow />,
   }
-
   return (
     <div style={{ position: 'relative', ariahidden: 'true' }}>
       <Slider {...settings}>
@@ -98,5 +92,4 @@ function HomeSlider({ banners }) {
     </div>
   )
 }
-
 export default memo(HomeSlider)

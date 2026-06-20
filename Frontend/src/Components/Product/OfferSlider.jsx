@@ -2,7 +2,7 @@ import { useContext, useState } from 'react'
 import PropTypes from 'prop-types'
 import { Link } from 'react-router-dom'
 import Slider from 'react-slick'
-import { Rating } from '@mui/material'
+import { Rating, useMediaQuery } from '@mui/material'
 import {
   IoIosArrowForward,
   IoIosArrowBack,
@@ -12,6 +12,7 @@ import {
 import { FaRegHeart } from 'react-icons/fa'
 import { SlSizeFullscreen } from 'react-icons/sl'
 import { MyContext } from '../../Context/Context'
+import { useUIStore } from '../../Store/uiStore'
 import './Product.css'
 import OfferModel from './OfferModel'
 
@@ -52,7 +53,9 @@ function PrevArrow({ onClick }) {
 }
 
 function OfferSlider({ text, products, to }) {
-  const { language, windowWidth, handleAddTowishlist } = useContext(MyContext)
+  const { handleAddTowishlist } = useContext(MyContext)
+  const { language } = useUIStore()
+  const isDesktop = useMediaQuery('(min-width:768px)')
   const [selectedProduct, setSelectedProduct] = useState(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
 
@@ -111,7 +114,7 @@ function OfferSlider({ text, products, to }) {
             <div key={product.id} className="p-2" style={{ height: '100%' }}>
               <div className="card product-card border-0 rounded-3 shadow-sm d-flex flex-column position-relative">
                 <div className="action-menu position-absolute">
-                  {windowWidth >= 768 ? (
+                  {isDesktop ? (
                     <button
                       className="btn btn-dark rounded-circle"
                       onClick={() => handleProductClick(product)}
@@ -191,12 +194,12 @@ function OfferSlider({ text, products, to }) {
                     <div className="d-flex col-md-7 p-1 justify-content-center col-12 align-items-center">
                       <Rating
                         name="read-only"
-                        className={`${windowWidth <= 768 ? 'col-12' : ''}`}
+                        className={`${!isDesktop ? 'col-12' : ''}`}
                         value={Math.round(product.average_rate === null ? 5 : product.average_rate)}
                         size="small"
                         readOnly
                       />
-                      <span className={` mx-1 ${windowWidth <= 768 ? 'd-none' : ''}`}>
+                      <span className={` mx-1 ${!isDesktop ? 'd-none' : ''}`}>
                         ({Math.round(product.average_rate === null ? 5 : product.average_rate)})
                       </span>
                     </div>

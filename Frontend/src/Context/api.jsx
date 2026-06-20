@@ -46,7 +46,6 @@ export const fetchShippingCities = async (setShippingData) => {
     localStorage.setItem('shippingCities', JSON.stringify(response.data))
     return
   } catch {
-    // console.error("Error fetching shipping cities:", error);
     return
   }
 }
@@ -101,7 +100,7 @@ export const fetchBanners = async (
     setHomeBannersPc(homeBannersPc)
     setHomeBannersMob(homeBannersMob)
   } catch {
-    // console.error("Error fetching banners:", error);
+    // intentionally ignored
   }
 }
 
@@ -178,7 +177,6 @@ export const fetchOffers = async (setOffers) => {
     localStorage.setItem(EXPIRATION_KEY, new Date().getTime() + CACHE_DURATION)
     return
   } catch {
-    // console.error("Error fetching offers:", error);
     return
   }
 }
@@ -188,13 +186,11 @@ export const fetchCart = async (user_id, products, offers, language, setCart) =>
     const response = await http.get(`/show_cart`)
 
     if (!response.data || !Array.isArray(response.data)) {
-      // console.error("Invalid cart data format:", response.data);
       return
     }
 
     const cartData = response.data.find((cart) => cart.user_id === user_id)
     if (!cartData || !Array.isArray(cartData.cart_item)) {
-      // console.warn("No cart data found for user:", user_id);
       setCart([])
       return
     }
@@ -225,9 +221,8 @@ export const fetchCart = async (user_id, products, offers, language, setCart) =>
     })
 
     setCart(formattedCartItems)
-    // console.log("🛒 Cart Data:", formattedCartItems);
   } catch {
-    // console.error("❌ Error fetching cart data:", error.message || error);
+    // intentionally ignored
   }
 }
 
@@ -260,7 +255,6 @@ export const fetchWishList = async (user_id, products, offers, language, setwish
       return
     }
   } catch {
-    // console.error("Error fetching wishlist data:", error);
     return
   }
 }

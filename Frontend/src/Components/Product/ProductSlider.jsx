@@ -1,7 +1,7 @@
 import React, { useContext, lazy, Suspense, useCallback, useState, useEffect } from 'react'
 import PropTypes from 'prop-types'
 import { Link } from 'react-router-dom'
-import { Button, Alert, Snackbar } from '@mui/material'
+import { Button, Alert, Snackbar, useMediaQuery } from '@mui/material'
 import { LazyLoadImage } from 'react-lazy-load-image-component'
 import 'react-lazy-load-image-component/src/effects/blur.css'
 import useCart from '../../Hooks/useCart'
@@ -15,6 +15,7 @@ import {
 import { FaRegHeart } from 'react-icons/fa'
 import { SlSizeFullscreen } from 'react-icons/sl'
 import { MyContext } from '../../Context/Context'
+import { useUIStore } from '../../Store/uiStore'
 import './Product.css'
 // import { use } from 'react';
 const ProductModel = lazy(() => import('./ProductModel'))
@@ -56,17 +57,10 @@ const PrevArrow = React.memo(({ onClick }) => (
 PrevArrow.displayName = 'PrevArrow'
 
 function ProductSlider({ text, gradeproducts, to, moreid }) {
-  const {
-    language,
-    Loader,
-    // fetchCart, products,user_id,
-    setCurrentPage,
-    setgradesfilters,
-    windowWidth,
-    // offers, setCart,
-    handleAddTowishlist,
-  } = useContext(MyContext)
+  const { Loader, handleAddTowishlist } = useContext(MyContext)
+  const { language, setCurrentPage, setGradesFilters: setgradesfilters } = useUIStore()
   const { addItem } = useCart()
+  const isDesktop = useMediaQuery('(min-width:768px)')
   const [selectedProduct, setSelectedProduct] = useState(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [filteredProducts, setFilteredProducts] = useState([])
@@ -179,7 +173,7 @@ function ProductSlider({ text, gradeproducts, to, moreid }) {
   //             });
   //     }
   // };
-  const isMobile = window.innerWidth < 768
+  const isMobile = !isDesktop
 
   const ActionMenu = ({ product }) => (
     <div className="action-menu">
@@ -220,8 +214,8 @@ function ProductSlider({ text, gradeproducts, to, moreid }) {
           autoHideDuration={3000}
           onClose={() => setOpenAlert(false)}
           anchorOrigin={{
-            vertical: windowWidth >= 768 ? 'bottom' : 'top',
-            horizontal: windowWidth >= 768 ? 'right' : 'left',
+            vertical: isDesktop ? 'bottom' : 'top',
+            horizontal: isDesktop ? 'right' : 'left',
           }}
         >
           <Alert
@@ -374,8 +368,8 @@ function ProductSlider({ text, gradeproducts, to, moreid }) {
                           </span>
                         </div>
                         {/* <div className="d-flex col-md-6 p-1 justify-content-center col-12 align-items-center">
-                                                <Rating name="read-only" className={`${windowWidth <= 768 ? "col-12" : ""}`} value={Math.round(product.rating === null ? 5 : product.rating)} size="small" readOnly />
-                                                <span className={` ms-2 ${windowWidth <= 768 ? "d-none" : ""}`}>
+                                                <Rating name="read-only" className={`${!isDesktop ? "col-12" : ""}`} value={Math.round(product.rating === null ? 5 : product.rating)} size="small" readOnly />
+                                                <span className={` ms-2 ${!isDesktop ? "d-none" : ""}`}>
                                                     ({Math.round(product.rating === null ? 5 : product.rating)})</span>
                                             </div> */}
                       </div>

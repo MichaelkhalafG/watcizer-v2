@@ -6,9 +6,11 @@ import { MdOutlineLocalOffer, MdOutlineWatch } from 'react-icons/md'
 import { IoSearch } from 'react-icons/io5'
 import './PhoneNavBar.css'
 import { MyContext } from '../../../Context/Context'
+import { useUIStore } from '../../../Store/uiStore'
 
 function PhoneNavBar() {
-  const { tables, setFilters, setCurrentPage, language, productsCount } = useContext(MyContext)
+  const { tables, productsCount } = useContext(MyContext)
+  const { setFilters, setCurrentPage, language } = useUIStore()
 
   const handleCategoryClick = (categoryName) => {
     const category = tables.categoryTypes.find(
