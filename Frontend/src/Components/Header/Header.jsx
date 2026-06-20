@@ -11,10 +11,14 @@ import { Button } from '@mui/material'
 import Nav from './Nav/Nav'
 import userimg from '../../assets/images/user.webp'
 import { MyContext } from '../../Context/Context'
+import { useUIStore } from '../../Store/uiStore'
+import { useAuthStore } from '../../Store/authStore'
 import { FaFacebookF, FaInstagram } from 'react-icons/fa'
 
 function Header() {
-  const { language, productsCount, users, user_id, total_cart_price } = useContext(MyContext)
+  const { productsCount, total_cart_price } = useContext(MyContext)
+  const { language } = useUIStore()
+  const { userId: user_id } = useAuthStore()
   return (
     <>
       <div className="header-strip rounded-bottom-4 bg-light d-md-block d-none border-bottom border-1 pb-3 lato-regular">
@@ -71,7 +75,7 @@ function Header() {
                         className="m-3 price color-most-used"
                         style={{ fontSize: '18px', fontWeight: '700' }}
                       >
-                        {users.find((u) => u.id === user_id)?.first_name}
+                        {[].find((u) => u.id === user_id)?.first_name}
                       </span>
                       <LazyLoadImage
                         src={

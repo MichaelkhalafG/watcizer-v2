@@ -12,31 +12,24 @@ import {
   DialogActions,
   Alert,
   Snackbar,
+  useMediaQuery,
   Radio,
   RadioGroup,
   FormControlLabel,
   FormLabel,
 } from '@mui/material'
 import { MyContext } from '../../Context/Context'
+import { useUIStore } from '../../Store/uiStore'
+import { useAuthStore } from '../../Store/authStore'
 import http from '../../Context/api'
 import useCart, { getItemKey } from '../../Hooks/useCart'
 import TrustSignals from '../../Components/Merchandising/TrustSignals'
 
 function Checkout() {
-  const {
-    language,
-    user_id,
-    windowWidth,
-    products,
-    offers,
-    shippingPrices,
-    shippingname,
-    shipping,
-    setShipping,
-    setShippingName,
-    shippingid,
-    setShippingid,
-  } = useContext(MyContext)
+  const { products, offers, shippingPrices, shippingname, shipping, setShipping, setShippingName, shippingid, setShippingid } = useContext(MyContext)
+  const { language } = useUIStore()
+  const { userId: user_id } = useAuthStore()
+  const isDesktop = useMediaQuery('(min-width:768px)')
   const [formData, setFormData] = useState({
     address: '',
     city: shippingname,
@@ -283,8 +276,8 @@ function Checkout() {
         autoHideDuration={3000}
         onClose={() => setOpenAlert(false)}
         anchorOrigin={{
-          vertical: windowWidth >= 768 ? 'bottom' : 'top',
-          horizontal: windowWidth >= 768 ? 'right' : 'left',
+          vertical: isDesktop ? 'bottom' : 'top',
+          horizontal: isDesktop ? 'right' : 'left',
         }}
       >
         <Alert severity={alertType} onClose={() => setOpenAlert(false)}>

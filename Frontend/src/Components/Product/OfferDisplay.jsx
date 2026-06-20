@@ -1,5 +1,5 @@
 import { useContext, useEffect, useState, useCallback } from 'react'
-import { Rating, Button, TextField, Typography, Alert, Snackbar } from '@mui/material'
+import { Rating, Button, TextField, Typography, Alert, Snackbar, useMediaQuery } from '@mui/material'
 import { useParams, Link } from 'react-router-dom'
 import { InnerImageZoom } from 'react-inner-image-zoom'
 import useCart, { getItemKey } from '../../Hooks/useCart'
@@ -8,22 +8,17 @@ import './Product.css'
 import PropTypes from 'prop-types'
 import DOMPurify from 'dompurify'
 import { MyContext } from '../../Context/Context'
+import { useUIStore } from '../../Store/uiStore'
+import { useAuthStore } from '../../Store/authStore'
 import http from '../../Context/api'
 import defimg from '../../assets/images/offer.webp'
 
 function OfferDisplay() {
   const { id } = useParams()
-  const {
-    language,
-    users,
-    offers,
-    products,
-    windowWidth,
-    handleAddTowishlist,
-    user_id,
-    tables,
-    // fetchCart, setCart
-  } = useContext(MyContext)
+  const isDesktop = useMediaQuery('(min-width:768px)')
+  const { offers, products, handleAddTowishlist, tables } = useContext(MyContext)
+  const { language } = useUIStore()
+  const { userId: user_id } = useAuthStore()
   const { cart, addItem, updateQuantity } = useCart()
   const [offer, setOffer] = useState(null)
   const [selectedImage, setSelectedImage] = useState('')
@@ -255,8 +250,8 @@ function OfferDisplay() {
         autoHideDuration={3000}
         onClose={() => setOpenAlert(false)}
         anchorOrigin={{
-          vertical: windowWidth >= 768 ? 'bottom' : 'top',
-          horizontal: windowWidth >= 768 ? 'right' : 'left',
+          vertical: isDesktop ? 'bottom' : 'top',
+          horizontal: isDesktop ? 'right' : 'left',
         }}
       >
         <Alert severity={alertType} onClose={() => setOpenAlert(false)}>
@@ -264,7 +259,7 @@ function OfferDisplay() {
         </Alert>
       </Snackbar>
       <div
-        className={`row ${windowWidth >= 768 ? 'border-bottom' : ''}  border-2 ps-1 p-4 pb-2 product-header mb-3`}
+        className={`row ${isDesktop ? 'border-bottom' : ''}  border-2 ps-1 p-4 pb-2 product-header mb-3`}
       >
         <div className={`col-12 ${language === 'ar' ? 'text-end' : 'text-start'}`}>
           <h3 className="fw-bold">
@@ -276,12 +271,12 @@ function OfferDisplay() {
             'Brand',
             'البراند',
             tables?.categoryTypes?.find((c) => c.id === offer.category_type_id)?.category_type_name,
-            windowWidth >= 768 ? 'Medium' : 'small',
+            isDesktop ? 'Medium' : 'small',
             'col-12',
           )}
         </div>
         {/* <div className="col-4">
-                    {renderDetail('Price', 'السعر', offer.sale_price_after_discount, windowWidth >= 768 ? "Medium" : "small", "col-12")}
+                    {renderDetail('Price', 'السعر', offer.sale_price_after_discount, isDesktop ? "Medium" : "small", "col-12")}
                 </div> */}
         <div className="col-4">
           <Rating
@@ -490,7 +485,7 @@ function OfferDisplay() {
                 <Rating name="read-only" value={rating.rating} readOnly size="small" />
                 <p>{rating.comment}</p>
                 <small className="me-3">
-                  by : {users?.find((u) => u.id === rating.user_id)?.first_name}
+                  by : {[].find((u) => u.id === rating.user_id)?.first_name}
                 </small>
                 <small>{new Date(rating.created_at).toLocaleDateString()}</small>
               </div>

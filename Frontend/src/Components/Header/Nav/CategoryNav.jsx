@@ -4,9 +4,11 @@ import { IoIosMenu } from 'react-icons/io'
 import { FaAngleDown, FaAngleRight } from 'react-icons/fa'
 import { Link } from 'react-router-dom'
 import { MyContext } from '../../../Context/Context'
+import { useUIStore } from '../../../Store/uiStore'
 
 const CategoryNav = () => {
-  const { language, setCurrentPage, products, tables, setFilters } = useContext(MyContext)
+  const { products, tables } = useContext(MyContext)
+  const { language, setCurrentPage, setFilters } = useUIStore()
   const [isHovered, setIsHovered] = useState(false)
   const [hoveredSubtype, setHoveredSubtype] = useState(null)
 

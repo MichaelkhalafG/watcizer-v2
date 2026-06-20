@@ -1,5 +1,5 @@
 import { useContext, useEffect, useState, useCallback } from 'react'
-import { Rating, Button, TextField, Typography, Alert, Snackbar } from '@mui/material'
+import { Rating, Button, TextField, Typography, Alert, Snackbar, useMediaQuery } from '@mui/material'
 import { useParams } from 'react-router-dom'
 import useCart, { getItemKey } from '../../Hooks/useCart'
 import InnerImageZoom from 'react-inner-image-zoom'
@@ -9,6 +9,8 @@ import PropTypes from 'prop-types'
 import ProductSlider from './ProductSlider'
 import DOMPurify from 'dompurify'
 import { MyContext } from '../../Context/Context'
+import { useUIStore } from '../../Store/uiStore'
+import { useAuthStore } from '../../Store/authStore'
 import http from '../../Context/api'
 import TrustSignals from '../Merchandising/TrustSignals'
 
@@ -22,15 +24,10 @@ function ProductDisplay() {
   const [pricebefore, setPriceBefore] = useState(0)
   const { name } = useParams()
   const { addItem, updateQuantity, cart } = useCart()
-  const {
-    language,
-    users,
-    user_id,
-    windowWidth,
-    handleAddTowishlist,
-    Loader,
-    // offers, setCart, fetchCart
-  } = useContext(MyContext)
+  const isDesktop = useMediaQuery('(min-width:768px)')
+  const { handleAddTowishlist, Loader } = useContext(MyContext)
+  const { language } = useUIStore()
+  const { userId: user_id } = useAuthStore()
   const [product, setProduct] = useState(null)
   const [related, setRelated] = useState([])
   const [loading, setLoading] = useState(true)
@@ -172,49 +169,6 @@ function ProductDisplay() {
     cart,
     stock,
   ])
-
-  // const handleAddToCart = () => {
-  //     if (!user_id) {
-  //         setAlertMessage(language === "ar" ? "يجب تسجيل الدخول أولاً!" : "You must login first!");
-  //         setAlertType("warning");
-  //         setOpenAlert(true);
-  //     } else {
-  //         const piecePrice = parseInt(price, 10);
-  //         const totalPrice = piecePrice * quantity;
-
-  //         if (isNaN(totalPrice) || totalPrice <= 0) {
-  //             setAlertMessage(language === "ar" ? "حدث خطأ في حساب السعر الإجمالي." : "There was an error calculating the total price.");
-  //             setAlertType("error");
-  //             setOpenAlert(true);
-  //             return;
-  //         }
-
-  //         const payload = {
-  //             user_id: user_id,
-  //             product_id: product.id,
-  //             quantity: quantity,
-  //             piece_price: piecePrice,
-  //             color_band: selectedBandColor,
-  //             color_dial: selectedDialColor,
-  //             type_stock: type_stock,
-  //             total_price: totalPrice,
-  //         };
-
-  //         http.post("/add_to_cart", payload)
-  //             .then(() => {
-  //                 setAlertMessage(language === "ar" ? "تمت الإضافة إلى السلة!" : "Added to the cart!");
-  //                 setAlertType("success");
-  //                 setOpenAlert(true);
-  //                 fetchCart(user_id, products, offers, language, setCart);
-  //             })
-  //             .catch(() => {
-  //                 // console.error("Error adding to cart:", error);
-  //                 setAlertMessage(language === "ar" ? "حدث خطأ أثناء الإضافة إلى السلة." : "An error occurred while adding to the cart.");
-  //                 setAlertType("error");
-  //                 setOpenAlert(true);
-  //             });
-  //     }
-  // };
 
   const renderColorDetail = (labelEn, labelAr, colors, fs, col, setColor) => (
     <div className={`${col} mb-2`}>
@@ -358,8 +312,8 @@ function ProductDisplay() {
           autoHideDuration={3000}
           onClose={() => setOpenAlert(false)}
           anchorOrigin={{
-            vertical: windowWidth >= 768 ? 'bottom' : 'top',
-            horizontal: windowWidth >= 768 ? 'right' : 'left',
+            vertical: isDesktop ? 'bottom' : 'top',
+            horizontal: isDesktop ? 'right' : 'left',
           }}
         >
           <Alert severity={alertType} onClose={() => setOpenAlert(false)}>
@@ -367,7 +321,7 @@ function ProductDisplay() {
           </Alert>
         </Snackbar>
         <div
-          className={`row ${windowWidth >= 768 ? 'border-bottom' : ''}  border-2 ps-1 p-4 pb-2 product-header mb-3`}
+          className={`row ${isDesktop ? 'border-bottom' : ''}  border-2 ps-1 p-4 pb-2 product-header mb-3`}
         >
           <div className={`col-12 ${language === 'ar' ? 'text-end' : 'text-start'}`}>
             <h3 className="fw-bold">{product?.product_title || '-'}</h3>
@@ -377,7 +331,7 @@ function ProductDisplay() {
               'Brand',
               'البراند',
               product?.brand,
-              windowWidth >= 768 ? 'Medium' : 'small',
+              isDesktop ? 'Medium' : 'small',
               'col-12',
             )}
           </div>
@@ -386,7 +340,7 @@ function ProductDisplay() {
               'Type',
               'النوع',
               product?.category_type,
-              windowWidth >= 768 ? 'Medium' : 'small',
+              isDesktop ? 'Medium' : 'small',
               'col-12',
             )}
           </div>
@@ -790,7 +744,7 @@ function ProductDisplay() {
                   <Rating name="read-only" value={rating.rating} readOnly size="small" />
                   <p>{rating.comment}</p>
                   <small className="me-3">
-                    by : {users.find((u) => u.id === rating.user_id)?.first_name}
+                    by : {[].find((u) => u.id === rating.user_id)?.first_name}
                   </small>
                   <small>{new Date(rating.created_at).toLocaleDateString()}</small>
                 </div>

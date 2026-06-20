@@ -6,14 +6,15 @@ import Header from './Components/Header/Header'
 import Footer from './Components/Footer/Footer'
 import { useState } from 'react'
 import Cart from './Pages/Cart/Cart'
-import PhoneCart from './Pages/Cart/PhoneCart'
 import Checkout from './Pages/Checkout/Checkout'
 import ScrollToTop from './Components/ScrollToTop/ScrollToTop'
 import PhoneNavBar from './Components/Header/PhoneNavBar/PhoneNavBar'
 import { HelmetProvider, Helmet } from 'react-helmet-async'
 import { MyContext } from './Context/Context'
 import { MyProvider } from './Context/MyProvider'
-import { Alert, Snackbar } from '@mui/material'
+import { useAuthStore } from './Store/authStore'
+import { useToastStore } from './Store/toastStore'
+import { Alert, Snackbar, useMediaQuery } from '@mui/material'
 import useCart from './Hooks/useCart'
 import useFacebookPixel from './scripts/useFacebookPixel'
 import CartModal from './Pages/Cart/CartModal'
@@ -24,9 +25,7 @@ const ListingSearch = lazy(() => import('./Pages/Listing/ListingSearch'))
 const ListingGrades = lazy(() => import('./Pages/Listing/ListingGrades'))
 const Listingoffers = lazy(() => import('./Pages/Listing/Listingoffers'))
 const ProfileSpeed = lazy(() => import('./Components/Header/Nav/ProfileSpeed'))
-const ProfileSpeedPhone = lazy(() => import('./Components/Header/Nav/ProfileSpeedPhone'))
 const EditProfile = lazy(() => import('./Pages/EditProfile/EditProfile'))
-const PhoneWishList = lazy(() => import('./Pages/WishList/PhoneWishList'))
 const WishList = lazy(() => import('./Pages/WishList/WishList'))
 const OrderList = lazy(() => import('./Pages/OrderList/OrderList'))
 const OfferDisplay = lazy(() => import('./Components/Product/OfferDisplay'))
@@ -49,17 +48,16 @@ function App() {
 }
 
 function MainApp() {
+  const { isFetching, Loader } = useContext(MyContext)
+  const { userId: user_id } = useAuthStore()
   const {
-    user_id,
-    windowWidth,
-    isFetching,
-    openAlert,
-    setOpenAlert,
-    Loader,
-    alertType,
-    alertMessage,
-  } = useContext(MyContext)
+    open: openAlert,
+    type: alertType,
+    message: alertMessage,
+    hideToast,
+  } = useToastStore()
   const { cart } = useCart()
+  const isDesktop = useMediaQuery('(min-width:768px)')
   const [cartModalOpen, setCartModalOpen] = useState(false)
   const [prevCartCount, setPrevCartCount] = useState(cart?.cart_item?.length || 0)
 
@@ -74,9 +72,9 @@ function MainApp() {
 
   const renderProfileComponent = () => {
     if (user_id !== null) {
-      return windowWidth >= 768 ? <ProfileSpeed /> : <ProfileSpeedPhone />
+      return <ProfileSpeed />
     } else {
-      return windowWidth >= 768 ? null : <ProfileSpeedPhoneNotLogin />
+      return isDesktop ? null : <ProfileSpeedPhoneNotLogin />
     }
   }
 
@@ -210,17 +208,16 @@ function MainApp() {
       </div>
       <CartModal open={cartModalOpen} onClose={() => setCartModalOpen(false)} cart={cart} />
       {renderProfileComponent()}
-      {/* {windowWidth >= 768 ? null : <Suspense fallback={<Loader />}><PhoneLogo /></Suspense>} */}
       <Snackbar
         open={openAlert}
         autoHideDuration={3000}
-        onClose={() => setOpenAlert(false)}
+        onClose={() => hideToast()}
         anchorOrigin={{
-          vertical: windowWidth >= 768 ? 'bottom' : 'top',
-          horizontal: windowWidth >= 768 ? 'right' : 'left',
+          vertical: isDesktop ? 'bottom' : 'top',
+          horizontal: isDesktop ? 'right' : 'left',
         }}
       >
-        <Alert severity={alertType} onClose={() => setOpenAlert(false)}>
+        <Alert severity={alertType} onClose={() => hideToast()}>
           {alertMessage}
         </Alert>
       </Snackbar>
@@ -251,7 +248,7 @@ function MainApp() {
             </Suspense>
           }
         />
-        <Route path="/cart" element={windowWidth >= 768 ? <Cart /> : <PhoneCart />} />
+        <Route path="/cart" element={<Cart />} />
         <Route path="/checkout" element={<Checkout />} />
         <Route
           path="/category/:category"
@@ -344,15 +341,9 @@ function MainApp() {
         <Route
           path="/wish-list"
           element={
-            windowWidth >= 768 ? (
-              <Suspense fallback={<Loader />}>
-                <WishList />
-              </Suspense>
-            ) : (
-              <Suspense fallback={<Loader />}>
-                <PhoneWishList />
-              </Suspense>
-            )
+            <Suspense fallback={<Loader />}>
+              <WishList />
+            </Suspense>
           }
         />
         <Route
@@ -388,7 +379,7 @@ function MainApp() {
           }
         />
       </Routes>
-      {windowWidth >= 768 ? (
+      {isDesktop ? (
         <Suspense fallback={<Loader />}>
           <Footer />
         </Suspense>

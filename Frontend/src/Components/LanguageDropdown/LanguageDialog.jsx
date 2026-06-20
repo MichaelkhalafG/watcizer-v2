@@ -8,24 +8,19 @@ import Dialog from '@mui/material/Dialog'
 import IconButton from '@mui/material/IconButton'
 import { FaTimes } from 'react-icons/fa'
 import { useContext } from 'react'
-import { MyContext } from '../../Context/Context'
-
+import { useUIStore } from '../../Store/uiStore'
 function LanguageDialog({ onClose, selectedValue, open }) {
-  const { language } = useContext(MyContext)
-
+  const { language } = useUIStore()
   const handleClose = () => {
     onClose(selectedValue)
   }
-
   const handleListItemClick = (value) => {
     onClose(value)
   }
-
   const languages = [
     { code: 'en', labelen: 'English', labelar: 'الإنجليزية' },
     { code: 'ar', labelen: 'Arabic', labelar: 'العربية' },
   ]
-
   return (
     <Dialog onClose={handleClose} open={open}>
       <div
@@ -53,11 +48,9 @@ function LanguageDialog({ onClose, selectedValue, open }) {
     </Dialog>
   )
 }
-
 LanguageDialog.propTypes = {
   onClose: PropTypes.func.isRequired,
   open: PropTypes.bool.isRequired,
   selectedValue: PropTypes.string.isRequired,
 }
-
 export default LanguageDialog

@@ -1,15 +1,13 @@
 import { useContext, useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { MyContext } from '../../Context/Context'
+import { useUIStore } from '../../Store/uiStore'
 import http from '../../Context/api'
 import { Container, Typography, Box, Grid } from '@mui/material'
-
 function Blog() {
-  const { language } = useContext(MyContext)
+  const { language } = useUIStore()
   const { name } = useParams()
   const [blogs, setBlogs] = useState([])
   const [blog, setBlog] = useState(null)
-
   useEffect(() => {
     http
       .get('/all_blog')
@@ -18,13 +16,11 @@ function Blog() {
       // (error) => console.error("Error fetching blogs:", error)
       ()
   }, [])
-
   useEffect(() => {
     const foundBlog = blogs.find(
       (blog) => blog?.translations?.find((t) => t.locale === 'en')?.title === name,
     )
     const translation = foundBlog?.translations?.find((t) => t.locale === language)
-
     if (foundBlog) {
       setBlog({
         title: translation?.title,
@@ -36,14 +32,12 @@ function Blog() {
       setBlog({ title: 'Blog Not Found', content: 'No content available.', images: [], image: '' })
     }
   }, [blogs, language, name])
-
   if (!blog)
     return (
       <Typography variant="h6" textAlign="center" mt={4}>
         Loading...
       </Typography>
     )
-
   return (
     <Container maxWidth="lg">
       {blog.image && (
@@ -61,11 +55,9 @@ function Blog() {
           />
         </Box>
       )}
-
       <Typography variant="h4" fontWeight="bold" textAlign="center" gutterBottom>
         {blog.title}
       </Typography>
-
       <Typography
         variant="body1"
         color="text.secondary"
@@ -73,7 +65,6 @@ function Blog() {
       >
         {blog.content}
       </Typography>
-
       <Grid container spacing={2} mt={4}>
         {blog.images.map((image, index) => (
           <Grid item xs={12} sm={6} key={index}>
@@ -93,5 +84,4 @@ function Blog() {
     </Container>
   )
 }
-
 export default Blog

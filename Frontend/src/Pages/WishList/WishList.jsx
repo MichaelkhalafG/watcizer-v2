@@ -1,5 +1,6 @@
 import { useContext } from 'react'
 import { MyContext } from '../../Context/Context'
+import { useUIStore } from '../../Store/uiStore'
 import { Button, Rating } from '@mui/material'
 import { FaEye } from 'react-icons/fa'
 import { CiCircleRemove } from 'react-icons/ci'
@@ -8,23 +9,22 @@ import { Link } from 'react-router-dom'
 import http from '../../Context/api'
 
 function WishList() {
-  const { language, wishList, WishListCount, setwishList } = useContext(MyContext)
+  const { wishList, WishListCount, setwishList } = useContext(MyContext)
+  const { language } = useUIStore()
   const handleRemoveItem = async (itemId) => {
     try {
       const response = await http.delete(`/delete_wishlist/${itemId}`)
 
       if (response.status === 200) {
         setwishList((prevCart) => prevCart.filter((item) => item.id !== itemId))
-      } else {
-        // console.error("Failed to remove item from wishlist", response.data);
       }
     } catch {
-      // console.error("Error removing item from wishlist:", error);
+      // intentionally ignored
     }
   }
   return (
-    <div className="cart container px-5">
-      <div className="row py-3 px-4">
+    <div className="cart container px-2 px-md-5">
+      <div className="row py-3 px-md-4">
         <div className="col-12 p-3">
           <h4 className="color-most-used fw-bold">
             {language === 'ar' ? 'قائمة الرغبات' : 'Your WishList'}
@@ -37,12 +37,14 @@ function WishList() {
         </div>
         {wishList.length > 0 ? (
           <div className="row justify-content-center">
-            <div className="col-9 p-3 pt-0">
+            <div className="col-12 col-md-9 p-3 pt-0">
               <div className="row align-items-center p-3 rounded-4 bg-most-used-40">
                 {['Product', 'Price', 'Actions'].map((label, idx) => (
                   <h6
                     key={idx}
-                    className={`color-most-used p-0 m-0 col-${idx === 0 ? 6 : 3} fw-bold `}
+                    className={`color-most-used p-0 m-0 fw-bold ${
+                      idx === 0 ? 'col-5 col-md-6' : idx === 1 ? 'col-3' : 'col-4 col-md-3'
+                    }`}
                   >
                     {language === 'ar' ? ['المنتج', 'السعر', 'الأفعال'][idx] : label}
                   </h6>
@@ -53,7 +55,7 @@ function WishList() {
                   key={index}
                   className="row align-items-center border-bottom border-1 rounded-4 bg-most-used-10 py-2"
                 >
-                  <div className="col-6 d-flex align-items-center">
+                  <div className="col-5 col-md-6 d-flex align-items-center">
                     {item.product_image && (
                       <img
                         src={item.product_image}
@@ -86,7 +88,7 @@ function WishList() {
                   <h6 className="color-most-used col-3">
                     {item.product_price || item.offer_price}
                   </h6>
-                  <div className="col-3 text-center">
+                  <div className="col-4 col-md-3 text-center">
                     {item.product_id && (
                       <Link to={`/product/${item.product_title}`}>
                         <Button
@@ -147,7 +149,7 @@ function EmptyWishListMessage({ language }) {
   return (
     <div className="row justify-content-center">
       <div className="col-12 d-flex justify-content-center">
-        <img src={emptyWishList} loading="lazy" alt="empty cart" className="col-2" />
+        <img src={emptyWishList} loading="lazy" alt="empty cart" className="col-6 col-md-2" />
       </div>
       <h4 className="text-center fw-bold color-most-used mt-1">
         {language === 'ar' ? 'قائمة الرغبات فارغة' : 'Your WishList is currently empty'}
@@ -158,7 +160,7 @@ function EmptyWishListMessage({ language }) {
           : 'Please choose the products you want to add'}
       </h6>
       <div className="col-12 d-flex justify-content-center mt-3">
-        <Link to="/" className="text-decoration-none col-3">
+        <Link to="/" className="text-decoration-none col-6 col-md-3">
           <Button variant="contained" className="rounded-pill bg-most-used text-light col-12 p-2">
             {language === 'ar' ? 'تسوق الآن' : 'Shop Now'}
           </Button>

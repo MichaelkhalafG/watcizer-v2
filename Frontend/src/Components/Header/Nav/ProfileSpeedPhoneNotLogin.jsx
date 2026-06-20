@@ -1,5 +1,5 @@
 import { useContext } from 'react'
-import { MyContext } from '../../../Context/Context'
+import { useUIStore } from '../../../Store/uiStore'
 import { Link } from 'react-router-dom'
 import SpeedDial from '@mui/material/SpeedDial'
 import SpeedDialAction from '@mui/material/SpeedDialAction'
@@ -7,14 +7,11 @@ import { FaLanguage } from 'react-icons/fa'
 import { IoPersonSharp } from 'react-icons/io5'
 import { IoMdLogIn } from 'react-icons/io'
 import logo from '../../../assets/images/logo.webp'
-
 export default function ProfileSpeedPhoneNotLogin() {
-  const { language, setLanguage } = useContext(MyContext)
-
+  const { language, setLanguage } = useUIStore()
   function toggleLang() {
     setLanguage(language === 'ar' ? 'en' : 'ar')
   }
-
   const actions = [
     {
       icon: <FaLanguage />,
@@ -23,7 +20,6 @@ export default function ProfileSpeedPhoneNotLogin() {
     },
     { icon: <IoMdLogIn />, name: language === 'ar' ? 'تسجيل الدخول' : 'Log in', to: '/login' },
   ]
-
   return (
     <>
       <div className="col-12 p-3 d-flex" style={{ position: 'relative', zIndex: 1000 }}>

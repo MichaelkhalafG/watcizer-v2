@@ -12,9 +12,11 @@ import { FaAngleDown } from 'react-icons/fa'
 import { ExpandMore } from '@mui/icons-material'
 import { Link } from 'react-router-dom'
 import { MyContext } from '../../../Context/Context'
+import { useUIStore } from '../../../Store/uiStore'
 
 const CategoryNavPhone = () => {
-  const { language, setCurrentPage, products, tables, setFilters } = useContext(MyContext)
+  const { products, tables } = useContext(MyContext)
+  const { language, setCurrentPage, setFilters } = useUIStore()
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [expandedAccordion, setExpandedAccordion] = useState(null) // Track expanded accordion
   const menuRef = useRef(null)

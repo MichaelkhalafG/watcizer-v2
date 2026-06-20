@@ -222,6 +222,25 @@ const purgeLegacyCache = () => {
   }
 }
 
+// Auto-retry a fetch that fails due to a transient network error, with a
+// linear backoff. Non-network errors (e.g. 4xx/5xx) are re-thrown immediately.
+const fetchWithRetry = async (fn, retries = 5, delay = 2000) => {
+  for (let i = 0; i < retries; i++) {
+    try {
+      return await fn()
+    } catch (err) {
+      const isNetworkError =
+        err?.code === 'ERR_NETWORK' || err?.message === 'Network Error' || !navigator.onLine
+      if (isNetworkError && i < retries - 1) {
+        console.warn(`[FetchTablesAndProducts] Network error, retry ${i + 1}/${retries}`)
+        await new Promise((r) => setTimeout(r, delay * (i + 1) * 1.5))
+        continue
+      }
+      throw err
+    }
+  }
+}
+
 const useFetchTablesAndProducts = (setTables, setRatings, setProductsEn, setProductsAr) => {
   const [isFetching, setIsFetching] = useState(true)
 
@@ -231,6 +250,14 @@ const useFetchTablesAndProducts = (setTables, setRatings, setProductsEn, setProd
     const fetchAll = async () => {
       setIsFetching(true)
       try {
+        // If we're offline, wait for the connection to come back before fetching.
+        if (!navigator.onLine) {
+          console.warn('[FetchTablesAndProducts] Offline — waiting for connection')
+          await new Promise((resolve) => {
+            window.addEventListener('online', resolve, { once: true })
+          })
+        }
+
         // Cache hit requires the two pieces the catalog can't render without:
         // tables + a non-empty product set. Ratings/images are enrichment and
         // default to [] (transformProductData handles empty gracefully).
@@ -266,7 +293,9 @@ const useFetchTablesAndProducts = (setTables, setRatings, setProductsEn, setProd
           'all_movement_type',
         ].map((endpoint) => `/${endpoint}`)
 
-        const tableResponses = await Promise.all(tableEndpoints.map((url) => http.get(url)))
+        const tableResponses = await fetchWithRetry(() =>
+          Promise.all(tableEndpoints.map((url) => http.get(url))),
+        )
 
         const tableData = {
           categoryTypes: tableResponses[0].data,
@@ -285,11 +314,13 @@ const useFetchTablesAndProducts = (setTables, setRatings, setProductsEn, setProd
         setTables(tableData)
         cache.set('tables', tableData)
 
-        const [productResponse, ratingResponse, imageResponse] = await Promise.all([
-          http.get('/all_product'),
-          http.get('/all_product_rating'),
-          http.get('/all_product_image'),
-        ])
+        const [productResponse, ratingResponse, imageResponse] = await fetchWithRetry(() =>
+          Promise.all([
+            http.get('/all_product'),
+            http.get('/all_product_rating'),
+            http.get('/all_product_image'),
+          ]),
+        )
 
         const rawProducts = productResponse.data
         const ratingsData = ratingResponse.data

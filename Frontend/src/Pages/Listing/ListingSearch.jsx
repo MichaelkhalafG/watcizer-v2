@@ -1,6 +1,7 @@
 import './Listing.css'
 import { MyContext } from '../../Context/Context'
-import { FormControl, InputLabel, MenuItem, Select, Snackbar, Alert } from '@mui/material'
+import { useUIStore } from '../../Store/uiStore'
+import { FormControl, InputLabel, MenuItem, Select, Snackbar, Alert, useMediaQuery } from '@mui/material'
 import { useContext, useState, useEffect, useCallback } from 'react'
 import { BsFillGrid3X3GapFill } from 'react-icons/bs'
 import useCart from '../../Hooks/useCart'
@@ -17,16 +18,10 @@ import ProductModel from '../../Components/Product/ProductModel'
 import Pagination from '@mui/material/Pagination'
 
 function ListingSearch() {
-  const {
-    language,
-    products,
-    // fetchCart, user_id, offers, setCart,
-    currentPage,
-    setCurrentPage,
-    windowWidth,
-    handleAddTowishlist,
-  } = useContext(MyContext)
+  const { products, handleAddTowishlist } = useContext(MyContext)
+  const { language, currentPage, setCurrentPage } = useUIStore()
   const { addItem } = useCart()
+  const isDesktop = useMediaQuery('(min-width:768px)')
   const [filteredProducts, setFilteredProducts] = useState([])
   const location = useLocation()
   const searchParams = new URLSearchParams(location.search)
@@ -152,8 +147,8 @@ function ListingSearch() {
         autoHideDuration={3000}
         onClose={() => setOpenAlert(false)}
         anchorOrigin={{
-          vertical: windowWidth >= 768 ? 'bottom' : 'top',
-          horizontal: windowWidth >= 768 ? 'right' : 'left',
+          vertical: isDesktop ? 'bottom' : 'top',
+          horizontal: isDesktop ? 'right' : 'left',
         }}
       >
         <Alert severity={alertType} onClose={() => setOpenAlert(false)}>
@@ -177,7 +172,7 @@ function ListingSearch() {
               </div>
             </div>
           ) : (
-            <div className={`row ${windowWidth >= 768 ? 'pt-4' : ''}`}>
+            <div className={`row ${isDesktop ? 'pt-4' : ''}`}>
               <div className="col-12 px-4 bg-2 rounded-3 p-2">
                 <div className="row">
                   <div className="col-md-10 col-8 d-flex align-items-center">
@@ -231,7 +226,7 @@ function ListingSearch() {
                     >
                       <div className="card product-card border-0 rounded-3 shadow-sm d-flex flex-column position-relative">
                         <div className="action-menu position-absolute" style={{ zIndex: 1000 }}>
-                          {windowWidth >= 768 ? (
+                          {isDesktop ? (
                             <button
                               className="btn btn-dark rounded-circle"
                               onClick={() => handleProductClick(product)}
@@ -342,8 +337,8 @@ function ListingSearch() {
                               </span>
                             </div>
                             {/* <div className="d-flex col-md-7 p-1 justify-content-center col-12 align-items-center">
-                                                                <Rating name="read-only" className={`${windowWidth <= 768 ? "col-12" : ""}`} value={Math.round(product.rating === null ? 5 : product.rating)} size="small" readOnly />
-                                                                <span className={` mx-1 ${windowWidth <= 768 ? "d-none" : ""}`}>({Math.round(product.rating === null ? 5 : product.rating)})</span>
+                                                                <Rating name="read-only" className={`${!isDesktop ? "col-12" : ""}`} value={Math.round(product.rating === null ? 5 : product.rating)} size="small" readOnly />
+                                                                <span className={` mx-1 ${!isDesktop ? "d-none" : ""}`}>({Math.round(product.rating === null ? 5 : product.rating)})</span>
                                                             </div> */}
                           </div>
                           <button

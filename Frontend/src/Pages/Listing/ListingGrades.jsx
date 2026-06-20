@@ -2,8 +2,10 @@ import GradeSideBar from '../../Components/SideBar/GradeSideBar'
 import useCart from '../../Hooks/useCart'
 import './Listing.css'
 import { MyContext } from '../../Context/Context'
+import { useUIStore } from '../../Store/uiStore'
 import {
   FormControl,
+  useMediaQuery,
   Drawer,
   InputLabel,
   MenuItem,
@@ -26,26 +28,15 @@ import Pagination from '@mui/material/Pagination'
 // import axios from "axios";
 
 function ListingGrades() {
-  const {
-    language,
-    products,
-    currentPage,
-    tables,
-    // offers, setCart, fetchCart, user_id,
-    watches,
-    fashion,
-    setCurrentPage,
-    gradesfilters,
-    windowWidth,
-    setgradesfilters,
-    handleAddTowishlist,
-  } = useContext(MyContext)
+  const { products, tables, watches, fashion, handleAddTowishlist } = useContext(MyContext)
+  const { language, currentPage, setCurrentPage, gradesFilters: gradesfilters, setGradesFilters: setgradesfilters } = useUIStore()
   const { addItem } = useCart()
+  const isDesktop = useMediaQuery('(min-width:768px)')
   const [filteredProducts, setFilteredProducts] = useState([])
   const [shownum, setShownum] = useState(10)
   const [selectedProduct, setSelectedProduct] = useState(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
-  const [colselected, setColselected] = useState(windowWidth >= 768 ? 'col-3' : 'col-6')
+  const [colselected, setColselected] = useState(isDesktop ? 'col-3' : 'col-6')
   const [open, setOpen] = useState(false)
   const [displayedProducts, setDisplayedProducts] = useState([])
   const [alertMessage, setAlertMessage] = useState('')
@@ -216,8 +207,8 @@ function ListingGrades() {
         autoHideDuration={3000}
         onClose={() => setOpenAlert(false)}
         anchorOrigin={{
-          vertical: windowWidth >= 768 ? 'bottom' : 'top',
-          horizontal: windowWidth >= 768 ? 'right' : 'left',
+          vertical: isDesktop ? 'bottom' : 'top',
+          horizontal: isDesktop ? 'right' : 'left',
         }}
       >
         <Alert severity={alertType} onClose={() => setOpenAlert(false)}>
@@ -225,7 +216,7 @@ function ListingGrades() {
         </Alert>
       </Snackbar>
       <div className="row">
-        {windowWidth <= 768 ? (
+        {!isDesktop ? (
           <Drawer open={open} onClose={toggleDrawer(false)}>
             <button className="btn btn-dark rounded-0" onClick={toggleDrawer(false)}>
               {language === 'ar' ? 'اغلاق الفلاتر' : 'Close Filters'}
@@ -265,14 +256,14 @@ function ListingGrades() {
               </div>
             </div>
           ) : (
-            <div className={`row ${windowWidth >= 768 ? 'pt-4' : ''}`}>
+            <div className={`row ${isDesktop ? 'pt-4' : ''}`}>
               <div className="col-12 px-4 bg-2 rounded-3 p-2">
                 <div className="row">
                   <div className="col-md-10 col-8 d-flex align-items-center">
                     <button
                       className="color-most-used btn px-1"
                       onClick={() => {
-                        windowWidth >= 768 ? setColselected('col-3') : setColselected('col-6')
+                        isDesktop ? setColselected('col-3') : setColselected('col-6')
                       }}
                     >
                       <BsFillGrid3X3GapFill className="fs-3" />
@@ -280,7 +271,7 @@ function ListingGrades() {
                     <button
                       className="color-most-used btn px-1"
                       onClick={() => {
-                        windowWidth >= 768 ? setColselected('col-4') : setColselected('col-12')
+                        isDesktop ? setColselected('col-4') : setColselected('col-12')
                       }}
                     >
                       <IoGrid className="fs-3" />
@@ -310,7 +301,7 @@ function ListingGrades() {
                 </div>
               </div>
               <div className="col-12 py-2">
-                {windowWidth <= 768 ? (
+                {!isDesktop ? (
                   <div className="row justify-content-center">
                     <button
                       className="btn btn-dark col-10"
@@ -440,8 +431,8 @@ function ListingGrades() {
                               </span>
                             </div>
                             {/* <div className="d-flex col-md-7 p-1 justify-content-center col-12 align-items-center">
-                                                                <Rating name="read-only" className={`${windowWidth <= 768 ? "col-12" : ""}`} value={Math.round(product.rating === null ? 5 : product.rating)} size="small" readOnly />
-                                                                <span className={` mx-1 ${windowWidth <= 768 ? "d-none" : ""}`}>({Math.round(product.rating === null ? 5 : product.rating)})</span>
+                                                                <Rating name="read-only" className={`${!isDesktop ? "col-12" : ""}`} value={Math.round(product.rating === null ? 5 : product.rating)} size="small" readOnly />
+                                                                <span className={` mx-1 ${!isDesktop ? "d-none" : ""}`}>({Math.round(product.rating === null ? 5 : product.rating)})</span>
                                                             </div> */}
                           </div>
                           <button

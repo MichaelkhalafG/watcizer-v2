@@ -4,8 +4,10 @@ import './Listing.css'
 import { LazyLoadImage } from 'react-lazy-load-image-component'
 import 'react-lazy-load-image-component/src/effects/blur.css'
 import { MyContext } from '../../Context/Context'
+import { useUIStore } from '../../Store/uiStore'
 import {
   FormControl,
+  useMediaQuery,
   Drawer,
   InputLabel,
   MenuItem,
@@ -27,22 +29,10 @@ import ProductModel from '../../Components/Product/ProductModel'
 import Pagination from '@mui/material/Pagination'
 
 function Listing() {
-  const {
-    language,
-    currentPage,
-    setCurrentPage,
-    tables,
-    watches,
-    fashion,
-    // offers, fetchCart, setCart,user_id,
-    Loader,
-    products,
-    windowWidth,
-    filters,
-    setFilters,
-    handleAddTowishlist,
-  } = useContext(MyContext)
+  const { tables, watches, fashion, Loader, products, handleAddTowishlist } = useContext(MyContext)
+  const { language, currentPage, setCurrentPage, filters, setFilters } = useUIStore()
   const { addItem } = useCart()
+  const isDesktop = useMediaQuery('(min-width:768px)')
   const [filteredProducts, setFilteredProducts] = useState([])
   const [displayedProducts, setDisplayedProducts] = useState([])
   const [shownum, setShownum] = useState(10)
@@ -239,8 +229,8 @@ function Listing() {
         autoHideDuration={3000}
         onClose={() => setOpenAlert(false)}
         anchorOrigin={{
-          vertical: windowWidth >= 768 ? 'bottom' : 'top',
-          horizontal: windowWidth >= 768 ? 'right' : 'left',
+          vertical: isDesktop ? 'bottom' : 'top',
+          horizontal: isDesktop ? 'right' : 'left',
         }}
       >
         <Alert severity={alertType} onClose={() => setOpenAlert(false)}>
@@ -248,7 +238,7 @@ function Listing() {
         </Alert>
       </Snackbar>
       <div className="row">
-        {windowWidth <= 768 ? (
+        {!isDesktop ? (
           <Drawer open={open} onClose={toggleDrawer(false)}>
             <button className="btn btn-dark rounded-0" onClick={toggleDrawer(false)}>
               {language === 'ar' ? 'اغلاق الفلاتر' : 'Close Filters'}
@@ -287,7 +277,7 @@ function Listing() {
               </div>
             </div>
           ) : (
-            <div className={`row ${windowWidth >= 768 ? 'pt-4' : ''}`}>
+            <div className={`row ${isDesktop ? 'pt-4' : ''}`}>
               <div className="col-12 px-4 bg-2 rounded-3 p-2">
                 <div className="row">
                   <div className="col-md-10 col-8 d-flex align-items-center">
@@ -332,7 +322,7 @@ function Listing() {
                 </div>
               </div>
               <div className="col-12 py-2">
-                {windowWidth <= 768 ? (
+                {!isDesktop ? (
                   <div className="row justify-content-center">
                     <button
                       className="btn btn-dark col-10"
@@ -353,7 +343,7 @@ function Listing() {
                     >
                       <div className="card product-card border-0 rounded-3 shadow-sm d-flex flex-column position-relative">
                         <div className="action-menu position-absolute" style={{ zIndex: 1000 }}>
-                          {windowWidth >= 768 ? (
+                          {isDesktop ? (
                             <button
                               className="btn btn-dark rounded-circle"
                               onClick={() => handleProductClick(product)}
@@ -466,8 +456,8 @@ function Listing() {
                               </span>
                             </div>
                             {/* <div className="col-12 p-1 justify-content-center col-12 align-items-center">
-                                                                <Rating name="read-only" className={`${windowWidth <= 768 ? "col-12" : ""}`} value={Math.round(product.rating === null ? 5 : product.rating)} size="small" readOnly />
-                                                                <span className={` mx-1 ${windowWidth <= 768 ? "d-none" : ""}`}>({Math.round(product.rating === null ? 5 : product.rating)})</span>
+                                                                <Rating name="read-only" className={`${!isDesktop ? "col-12" : ""}`} value={Math.round(product.rating === null ? 5 : product.rating)} size="small" readOnly />
+                                                                <span className={` mx-1 ${!isDesktop ? "d-none" : ""}`}>({Math.round(product.rating === null ? 5 : product.rating)})</span>
                                                             </div> */}
                           </div>
                           <button

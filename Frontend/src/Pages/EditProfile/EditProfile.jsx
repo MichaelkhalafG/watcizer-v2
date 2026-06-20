@@ -15,10 +15,13 @@ import {
   Alert,
   Snackbar,
   Avatar,
+  useMediaQuery,
 } from '@mui/material'
 import { CloudUpload } from '@mui/icons-material'
 import DOMPurify from 'dompurify'
 import { MyContext } from '../../Context/Context'
+import { useUIStore } from '../../Store/uiStore'
+import { useAuthStore } from '../../Store/authStore'
 import { Visibility, VisibilityOff } from '@mui/icons-material'
 import http from '../../Context/api'
 
@@ -44,16 +47,10 @@ CustomTabPanel.propTypes = {
 }
 
 function EditProfile() {
-  const {
-    language,
-    user_id,
-    windowWidth,
-    shippingid,
-    shippingPrices,
-    setShipping,
-    setShippingName,
-    setShippingid,
-  } = useContext(MyContext)
+  const { shippingid, shippingPrices, setShipping, setShippingName, setShippingid } = useContext(MyContext)
+  const { language } = useUIStore()
+  const { userId: user_id } = useAuthStore()
+  const isDesktop = useMediaQuery('(min-width:768px)')
 
   const [value, setValue] = useState(0)
   const [addresses, setAddresses] = useState([])
@@ -534,8 +531,8 @@ function EditProfile() {
         autoHideDuration={3000}
         onClose={() => setOpenAlert(false)}
         anchorOrigin={{
-          vertical: windowWidth >= 768 ? 'bottom' : 'top',
-          horizontal: windowWidth >= 768 ? 'right' : 'left',
+          vertical: isDesktop ? 'bottom' : 'top',
+          horizontal: isDesktop ? 'right' : 'left',
         }}
       >
         <Alert severity={alertType} onClose={() => setOpenAlert(false)}>

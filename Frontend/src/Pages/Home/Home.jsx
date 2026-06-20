@@ -1,4 +1,5 @@
 import { useContext, useState, useEffect } from 'react'
+import useMediaQuery from '@mui/material/useMediaQuery'
 import HomeSlider from './HomeSlider'
 import { LazyLoadImage } from 'react-lazy-load-image-component'
 import 'react-lazy-load-image-component/src/effects/blur.css'
@@ -6,20 +7,13 @@ import './home.css'
 import ProductSlider from '../../Components/Product/ProductSlider'
 import OfferSlider from '../../Components/Product/OfferSlider'
 import { MyContext } from '../../Context/Context'
+import { useUIStore } from '../../Store/uiStore'
 import CategoryNavPhone from '../../Components/Header/Nav/CategoryNavPhone'
 
 function Home() {
-  const {
-    products,
-    tables,
-    language,
-    windowWidth,
-    offers,
-    sideBanners,
-    bottomBanners,
-    HomeBannersPc,
-    HomeBannersMob,
-  } = useContext(MyContext)
+  const { products, tables, offers, sideBanners, bottomBanners, HomeBannersPc, HomeBannersMob } = useContext(MyContext)
+  const { language } = useUIStore()
+  const isDesktop = useMediaQuery('(min-width:768px)')
   const [grades, setGrades] = useState([])
   const [homeBanners, sethomeBanners] = useState([])
   const [filteredProducts, setFilteredProducts] = useState({})
@@ -27,12 +21,12 @@ function Home() {
   const [filteredOffers, setfilteredOffers] = useState([])
 
   useEffect(() => {
-    if (windowWidth >= 768) {
+    if (isDesktop) {
       sethomeBanners(HomeBannersPc)
     } else {
       sethomeBanners(HomeBannersMob)
     }
-  }, [HomeBannersPc, HomeBannersMob, windowWidth])
+  }, [HomeBannersPc, HomeBannersMob, isDesktop])
 
   useEffect(() => {
     setfilteredOffers(offers.filter((o) => o.in_season === 'yes'))
@@ -43,8 +37,6 @@ function Home() {
       setGrades(tables.grades)
     }
   }, [tables])
-
-  useEffect(() => {}, [])
 
   useEffect(() => {
     if (!products || !grades?.length) return
@@ -75,12 +67,12 @@ function Home() {
 
   return (
     <div className="home px-md-5 pb-md-0 pb-5 container-fluid">
-      {windowWidth <= 768 ? (
+      {!isDesktop ? (
         <div className="py-2">
           <CategoryNavPhone />
         </div>
       ) : null}
-      <div className={`home-slider ${windowWidth > 768 ? 'py-5' : 'pb-3'} `}>
+      <div className={`home-slider ${isDesktop ? 'py-5' : 'pb-3'} `}>
         <HomeSlider banners={homeBanners} />
       </div>
       <div className="row position-relative">
