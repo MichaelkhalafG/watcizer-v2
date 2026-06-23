@@ -22,6 +22,7 @@ import useCart, { getItemKey } from '../../Hooks/useCart'
 import LoginModal from '../Auth/Login/LoginModal'
 import http from '../../Context/api'
 import TrustSignals from '../../Components/Merchandising/TrustSignals'
+import { handleImgError } from '../../utils/imageUrl'
 
 function Cart() {
   const { shippingPrices, setShippingName, shipping, productsCount, total_cart_price, setShipping, shippingid, setShippingid, products, offers } = useContext(MyContext)
@@ -317,6 +318,7 @@ function Cart() {
                             loading="lazy"
                             className="me-3 col-2 rounded"
                             style={{ width: '50px', height: '50px', objectFit: 'cover' }}
+                            onError={handleImgError}
                           />
                         )}
                         {isOffer && offerdata && offerdata.image && (
@@ -477,6 +479,7 @@ function Cart() {
                               loading="lazy"
                               className="rounded"
                               style={{ width: '70px', height: '70px', objectFit: 'cover' }}
+                              onError={handleImgError}
                             />
                           )}
                           {isOffer && offerdata && offerdata.image && (

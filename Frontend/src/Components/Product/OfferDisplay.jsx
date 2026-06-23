@@ -1,6 +1,7 @@
 import { useContext, useEffect, useState, useCallback } from 'react'
 import { Rating, Button, TextField, Typography, Alert, Snackbar, useMediaQuery } from '@mui/material'
 import { useParams, Link } from 'react-router-dom'
+import { productUrl } from '../../utils/productUrl'
 import { InnerImageZoom } from 'react-inner-image-zoom'
 import useCart, { getItemKey } from '../../Hooks/useCart'
 import 'react-inner-image-zoom/lib/InnerImageZoom/styles.css'
@@ -218,7 +219,7 @@ function OfferDisplay() {
 
       return (
         <div className={`${col} p-1`} key={id}>
-          <Link to={`/product/${product?.product_title}`}>
+          <Link to={productUrl(product)}>
             <InnerImageZoom
               src={product?.image || defimg}
               zoomSrc={product?.image || defimg}
@@ -368,7 +369,7 @@ function OfferDisplay() {
               {language === 'ar' ? `المنتج الاساسي :` : `Main Product :`}
             </p>
             <Link
-              to={`/product/${product?.product_title}`}
+              to={productUrl(product)}
               className="col-12 d-flex justify-content-center"
               style={{
                 fontSize: 'small',

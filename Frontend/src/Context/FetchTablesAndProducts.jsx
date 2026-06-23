@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import http from './api'
+import { getImageUrl } from '../utils/imageUrl'
 
 const getTranslatedName = (translations, locale, fallback) => {
   const translation = translations?.find((t) => t.locale === locale)
@@ -106,17 +107,21 @@ const transformProductData = (products, tables, ratings, images, locale) => {
         rating: getProductRating(product, ratings),
         images: (images || [])
           .filter((img) => img.product_id === product.id)
-          .map(
-            (img) => `${import.meta.env.VITE_ASSET_BASE}/Uploads_Images/Product_image/${img.image}`,
-          ),
+          .map((img) => getImageUrl(img.image, 'Product_image'))
+          .filter(Boolean),
         features: product.feature.map((f) =>
           getTranslatedName(f.translations || [], locale, 'feature_name'),
         ),
         gender: product.gender.map((g) =>
           getTranslatedName(g.translations || [], locale, 'gender_name'),
         ),
+        // Always-English gender names — used for language-safe gender filtering
+        // (the localized `gender` array changes with the active language).
+        genders_en: product.gender
+          .map((g) => getTranslatedName(g.translations || [], 'en', 'gender_name'))
+          .filter(Boolean),
         band_length: product.band_length,
-        image: `${import.meta.env.VITE_ASSET_BASE}/Uploads_Images/Product/${product.image}`,
+        image: getImageUrl(product.image, 'Product'),
         product_title: getTranslatedName(product.translations || [], locale, 'product_title'),
         name: getTranslatedName(product.translations || [], 'en', 'product_title'),
         model_name: getTranslatedName(product.translations || [], locale, 'model_name'),

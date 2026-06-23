@@ -1,10 +1,10 @@
 import SideBar from '../../Components/SideBar/SideBar'
-import useCart from '../../Hooks/useCart'
 import './Listing.css'
-import { LazyLoadImage } from 'react-lazy-load-image-component'
-import 'react-lazy-load-image-component/src/effects/blur.css'
 import { MyContext } from '../../Context/Context'
 import { useUIStore } from '../../Store/uiStore'
+import { buildListingParams, parseListingParams, paramsKey } from '../../utils/listingParams'
+import { passesFilters } from '../../utils/filterPredicate'
+import ProductCard from '../../Components/Product/ProductCard'
 import {
   FormControl,
   useMediaQuery,
@@ -13,37 +13,32 @@ import {
   MenuItem,
   Select,
   Button,
-  Snackbar,
-  Alert,
 } from '@mui/material'
-import { useContext, useState, useEffect, useCallback, Suspense } from 'react'
+import { useContext, useState, useEffect, useMemo, useRef } from 'react'
 import { BsFillGrid3X3GapFill } from 'react-icons/bs'
 import { IoGrid } from 'react-icons/io5'
-import { FaRegHeart } from 'react-icons/fa'
-import { SlSizeFullscreen } from 'react-icons/sl'
-import { useParams } from 'react-router-dom'
-import { Link } from 'react-router-dom'
-// import axios from "axios";
-// import { Rating } from "@mui/material";
-import ProductModel from '../../Components/Product/ProductModel'
+import { useParams, useSearchParams, useLocation } from 'react-router-dom'
 import Pagination from '@mui/material/Pagination'
 
 function Listing() {
-  const { tables, watches, fashion, Loader, products, handleAddTowishlist } = useContext(MyContext)
+  const { tables, watches, fashion, products } = useContext(MyContext)
   const { language, currentPage, setCurrentPage, filters, setFilters } = useUIStore()
-  const { addItem } = useCart()
   const isDesktop = useMediaQuery('(min-width:768px)')
   const [filteredProducts, setFilteredProducts] = useState([])
   const [displayedProducts, setDisplayedProducts] = useState([])
   const [shownum, setShownum] = useState(10)
   const { suptype, brand, category } = useParams()
-  const [selectedProduct, setSelectedProduct] = useState(null)
-  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [searchParams, setSearchParams] = useSearchParams()
+  const location = useLocation()
+  // URL is the shareable source of truth on /listing; parse it (resolving slugs
+  // → ids via `tables`) on each searchParams/tables change.
+  const parsed = useMemo(() => parseListingParams(searchParams, tables), [searchParams, tables])
+  const onListing = location.pathname === '/listing'
+  // Slug↔id resolution needs the tables (loaded async). Gate the URL sync until
+  // they're ready so slug URLs aren't dropped on the first render.
+  const tablesReady = !!(tables && Object.keys(tables).length)
   const [colselected, setColselected] = useState('col-md-3 col-6')
   const [open, setOpen] = useState(false)
-  const [alertMessage, setAlertMessage] = useState('')
-  const [alertType, setAlertType] = useState('info')
-  const [openAlert, setOpenAlert] = useState(false)
 
   const toggleDrawer = (newOpen) => {
     return () => {
@@ -62,7 +57,7 @@ function Listing() {
       const subTypeObj = tables?.subTypes?.find((subty) => subty.sub_type_name === suptype)
       const categoryObj = tables?.categoryTypes?.find((cat) => cat.category_type_name === category)
 
-      let updatedFilters = { ...filters, price: [0, 6000] }
+      let updatedFilters = { ...filters, price: [0, 99999999] }
 
       if (brandObj) {
         updatedFilters.brands = [brandObj.id]
@@ -83,7 +78,7 @@ function Listing() {
             ...filters,
             brands: [brandObj.id],
             subTypes: [subTypeObj.id],
-            price: [0, 6000],
+            price: [0, 99999999],
           }
         }
       }
@@ -93,6 +88,45 @@ function Listing() {
       }
     }
   }, [filters, category, suptype, brand, tables, setFilters])
+
+  // Guards the store→URL effect from echoing a store change that was itself
+  // caused by the URL→store effect (which would otherwise wipe the URL on mount).
+  const skipStoreToUrl = useRef(false)
+
+  // ── URL → store: mirror the /listing query params into the store so the
+  // predicate (which reads the store) and the sidebar checkboxes both reflect
+  // the URL. Runs on first load, refresh, nav, and browser back/forward. ──
+  useEffect(() => {
+    if (!onListing || !tablesReady) return
+    skipStoreToUrl.current = true // this store change came FROM the URL — don't echo back
+    setFilters(parsed.filters)
+    setCurrentPage(parsed.page)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, onListing, tablesReady])
+
+  // ── store → URL: when the store changes from a user action (sidebar,
+  // pagination, MegaMenu), push it back into the URL so it stays shareable /
+  // refresh-safe. The ref guard skips changes that originated from the URL. ──
+  useEffect(() => {
+    if (!onListing || !tablesReady) return
+    if (skipStoreToUrl.current) {
+      skipStoreToUrl.current = false
+      return
+    }
+    const target = buildListingParams(
+      filters,
+      {
+        q: parsed.q,
+        sort: parsed.sort,
+        page: currentPage,
+      },
+      tables,
+    )
+    if (paramsKey(target) !== paramsKey(searchParams)) {
+      setSearchParams(target, { replace: false })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters, currentPage, onListing, tablesReady])
 
   const isRTL = language === 'ar'
   useEffect(() => {
@@ -118,29 +152,42 @@ function Listing() {
         thelisttofilter = products
       }
     }
-    const filtered = thelisttofilter.filter((product) => {
-      return (
-        (filters.brands.length === 0 || filters.brands.includes(product.brand_id)) &&
-        (filters.subTypes.length === 0 || filters.subTypes.includes(product.sub_type_id)) &&
-        filters.price[0] <= product.sale_price_after_discount &&
-        product.sale_price_after_discount <= filters.price[1]
+    // All filter dimensions (brands, subTypes, genders, offers, price, dial/band
+    // colors, material, movement, grade) via the shared predicate so the listing
+    // and the sidebar option counts stay in agreement.
+    let filtered = thelisttofilter.filter((product) => passesFilters(product, filters))
+
+    // Free-text search via the ?q= URL param (consolidates /listingsearch).
+    const q = parsed.q.trim().toLowerCase()
+    if (q) {
+      filtered = filtered.filter(
+        (p) =>
+          p.product_title?.toLowerCase().includes(q) ||
+          p.short_description?.toLowerCase().includes(q) ||
+          p.brand?.toLowerCase().includes(q) ||
+          p.search_keywords?.toLowerCase().includes(q),
       )
-    })
+    }
+
+    // Optional sort via the ?sort= URL param.
+    if (parsed.sort === 'price_asc') {
+      filtered = [...filtered].sort(
+        (a, b) => a.sale_price_after_discount - b.sale_price_after_discount,
+      )
+    } else if (parsed.sort === 'price_desc') {
+      filtered = [...filtered].sort(
+        (a, b) => b.sale_price_after_discount - a.sale_price_after_discount,
+      )
+    } else if (parsed.sort === 'newest') {
+      filtered = [...filtered].sort((a, b) => b.id - a.id)
+    }
 
     setFilteredProducts(filtered)
-  }, [filters, products, watches, fashion, tables, language])
+  }, [filters, products, watches, fashion, tables, language, parsed])
 
   const handleChange = (event) => {
     setShownum(event.target.value)
     setCurrentPage(1)
-  }
-  const handleProductClick = (product) => {
-    setSelectedProduct(product)
-    setIsModalOpen(true)
-  }
-  const handleModalClose = () => {
-    setIsModalOpen(false)
-    setSelectedProduct(null)
   }
   const handlePageChange = (event, value) => {
     setCurrentPage(value)
@@ -153,90 +200,8 @@ function Listing() {
     setDisplayedProducts(filteredProducts.slice((currentPage - 1) * shownum, currentPage * shownum))
   }, [currentPage, filters, filteredProducts, shownum])
 
-  const handleAddToCart = useCallback(
-    (product, type_stock) => {
-      const piecePrice = parseFloat(product.sale_price_after_discount || product.selling_price)
-
-      if (isNaN(piecePrice) || piecePrice <= 0) {
-        setAlertMessage(
-          language === 'ar'
-            ? 'حدث خطأ في حساب السعر.'
-            : 'There was an error calculating the price.',
-        )
-        setAlertType('error')
-        setOpenAlert(true)
-        return
-      }
-      addItem({
-        product_id: product.id,
-        quantity: 1,
-        piece_price: piecePrice,
-        type_stock: type_stock,
-      })
-
-      setAlertMessage(language === 'ar' ? 'تمت الإضافة إلى السلة!' : 'Added to the cart!')
-      setAlertType('success')
-      setOpenAlert(true)
-    },
-    [language, setAlertMessage, setAlertType, setOpenAlert, addItem],
-  )
-
-  // const handleAddToCart = (product, type_stock) => {
-  //     if (!user_id) {
-  //         setAlertMessage(language === "ar" ? "يجب تسجيل الدخول أولاً!" : "You must login first!");
-  //         setAlertType("warning");
-  //         setOpenAlert(true);
-  //     } else {
-  //         const piecePrice = parseInt(product.sale_price_after_discount, 10);
-  //         const totalPrice = piecePrice * 1;
-
-  //         if (isNaN(totalPrice) || totalPrice <= 0) {
-  //             setAlertMessage(language === "ar" ? "حدث خطأ في حساب السعر الإجمالي." : "There was an error calculating the total price.");
-  //             setAlertType("error");
-  //             setOpenAlert(true);
-  //             return;
-  //         }
-
-  //         const payload = {
-  //             user_id: user_id,
-  //             product_id: product.id,
-  //             quantity: 1,
-  //             piece_price: piecePrice,
-  //             type_stock: type_stock,
-  //             total_price: totalPrice,
-  //         };
-  //         // console.log(payload);
-
-  //         http.post("/add_to_cart", payload)
-  //             .then(() => {
-  //                 setAlertMessage(language === "ar" ? "تمت الإضافة إلى السلة!" : "Added to the cart!");
-  //                 setAlertType("success");
-  //                 setOpenAlert(true);
-  //                 fetchCart(user_id, products, offers, language, setCart);
-  //             })
-  //             .catch(() => {
-  //                 // console.error("Error adding to cart:", error);
-  //                 setAlertMessage(language === "ar" ? "حدث خطأ أثناء الإضافة إلى السلة." : "An error occurred while adding to the cart.");
-  //                 setAlertType("error");
-  //                 setOpenAlert(true);
-  //             });
-  //     }
-  // };
   return (
     <div className={`container product-listing ${isRTL ? 'rtl' : 'ltr'}`}>
-      <Snackbar
-        open={openAlert}
-        autoHideDuration={3000}
-        onClose={() => setOpenAlert(false)}
-        anchorOrigin={{
-          vertical: isDesktop ? 'bottom' : 'top',
-          horizontal: isDesktop ? 'right' : 'left',
-        }}
-      >
-        <Alert severity={alertType} onClose={() => setOpenAlert(false)}>
-          {alertMessage}
-        </Alert>
-      </Snackbar>
       <div className="row">
         {!isDesktop ? (
           <Drawer open={open} onClose={toggleDrawer(false)}>
@@ -268,7 +233,14 @@ function Listing() {
                       categories: [],
                       brands: [],
                       subTypes: [],
-                      price: [0, 6000],
+                      genders: [],
+                      offers: false,
+                      price: [0, 99999999],
+                      dialColors: [],
+                      bandColors: [],
+                      materials: [],
+                      movements: [],
+                      grades: [],
                     })
                   }
                 >
@@ -336,161 +308,8 @@ function Listing() {
                 ) : null}
                 <div className="row">
                   {displayedProducts.map((product) => (
-                    <div
-                      key={product.id}
-                      className={`p-2 ${colselected}`}
-                      style={{ height: '100%' }}
-                    >
-                      <div className="card product-card border-0 rounded-3 shadow-sm d-flex flex-column position-relative">
-                        <div className="action-menu position-absolute" style={{ zIndex: 1000 }}>
-                          {isDesktop ? (
-                            <button
-                              className="btn btn-dark rounded-circle"
-                              onClick={() => handleProductClick(product)}
-                            >
-                              <SlSizeFullscreen />
-                            </button>
-                          ) : (
-                            <Link
-                              to={`/product/${product.product_title}`}
-                              className="btn btn-dark rounded-circle"
-                            >
-                              <SlSizeFullscreen />
-                            </Link>
-                          )}
-                          <button
-                            className="btn mt-2 btn-danger rounded-circle"
-                            onClick={() => handleAddTowishlist(product.id, 'p')}
-                          >
-                            <FaRegHeart />
-                          </button>
-                        </div>
-                        <Link
-                          to={`/product/${product.product_title}`}
-                          className="product-img-container"
-                        >
-                          {/* <img
-                                                            src={product.image || "/placeholder.png"}
-                                                            alt={product.wa_code || "Product"}
-                                                            className="img-fluid rounded-top"
-                                                            loading="lazy"
-                                                        /> */}
-                          <Suspense fallback={<Loader />}>
-                            <LazyLoadImage
-                              src={product.image || '/placeholder.png'}
-                              alt={product.wa_code || 'Product'}
-                              srcSet={`${product.image}?w=400 400w, ${product.image}?w=800 800w`}
-                              effect="blur"
-                              width="100%"
-                              height="auto"
-                              className="img-fluid rounded-top"
-                            />
-                          </Suspense>
-                        </Link>
-                        <div className="card-body d-flex flex-column justify-content-between p-3">
-                          <h6
-                            className={`card-title ${language === 'ar' ? 'text-end' : ''} fs-large fw-bold mb-2`}
-                            style={{ fontSize: 'small' }}
-                          >
-                            {product.product_title.length > 30 ? (
-                              <>{product.product_title.slice(0, 30)}...</>
-                            ) : product.product_title.length <= 20 ? (
-                              <>
-                                {product.product_title}
-                                <br />
-                                <br />
-                              </>
-                            ) : (
-                              product.product_title
-                            )}
-                          </h6>
-                          <p
-                            className={`card-text ${language === 'ar' ? 'text-end' : ''}  text-secondary mb-3`}
-                            style={{ fontSize: '0.9rem' }}
-                          >
-                            {product.short_description.length > 100 ? (
-                              <>{product.short_description.slice(0, 100)}...</>
-                            ) : product.short_description.length <= 50 ? (
-                              <>
-                                {product.short_description}
-                                <br />
-                                <br />
-                              </>
-                            ) : (
-                              product.short_description
-                            )}
-                          </p>
-                          <div className="d-flex justify-content-center align-items-center mb-2">
-                            <span
-                              className="color-most-used fw-bold me-2 fs-large"
-                              style={{ fontSize: 'small' }}
-                            >
-                              {Math.round(product.sale_price_after_discount)}{' '}
-                              {language === 'ar' ? 'ج.م' : 'EGP'}
-                            </span>
-                            <span
-                              className="text-muted text-decoration-line-through fs-large"
-                              style={{ fontSize: 'small' }}
-                            >
-                              {Math.round(product.selling_price)}{' '}
-                              {language === 'ar' ? 'ج.م' : 'EGP'}
-                            </span>
-                          </div>
-
-                          <div className="row justify-content-between align-items-center">
-                            <div className="col-12 p-1">
-                              <span
-                                className={`badge ${parseInt(product.stock) > 0 ? 'bg-black' : parseInt(product.market_stock) > 0 ? 'bg-success' : 'bg-danger'} col-12`}
-                              >
-                                {language === 'ar'
-                                  ? parseInt(product.stock) > 0
-                                    ? 'اكسبريس'
-                                    : parseInt(product.market_stock) > 0
-                                      ? 'ماركت'
-                                      : 'غير متوفر'
-                                  : parseInt(product.stock) > 0
-                                    ? 'Express'
-                                    : parseInt(product.market_stock) > 0
-                                      ? 'Market Place'
-                                      : 'Out of Stock'}
-                              </span>
-                            </div>
-                            {/* <div className="col-12 p-1 justify-content-center col-12 align-items-center">
-                                                                <Rating name="read-only" className={`${!isDesktop ? "col-12" : ""}`} value={Math.round(product.rating === null ? 5 : product.rating)} size="small" readOnly />
-                                                                <span className={` mx-1 ${!isDesktop ? "d-none" : ""}`}>({Math.round(product.rating === null ? 5 : product.rating)})</span>
-                                                            </div> */}
-                          </div>
-                          <button
-                            onClick={() =>
-                              handleAddToCart(
-                                product,
-                                parseInt(product.stock) > 0 ? 'Express' : 'Market',
-                              )
-                            }
-                            className="btn btn-outline-dark rounded-4 mt-2"
-                            disabled={
-                              parseInt(product.stock) <= 0 && parseInt(product.market_stock) <= 0
-                            }
-                          >
-                            {language === 'ar' ? 'أضف إلى السلة' : 'Add to Cart'}
-                          </button>
-                          {/* {user_id && user_id !== null ?
-                                                            <Link onClick={() => handleAddToCart(product, (parseInt(product.stock) > 0 ? 'Express' : "Market"))}
-                                                                className="btn btn-outline-dark rounded-4 mt-2"
-                                                                disabled={parseInt(product.stock) <= 0}
-                                                            >
-                                                                {language === 'ar' ? 'أضف إلى السلة' : 'Add to Cart'}
-                                                            </Link>
-                                                            :
-                                                            <Link to={`/login`}
-                                                                className="btn btn-outline-dark rounded-4 mt-2"
-                                                                disabled={(parseInt(product.stock) <= 0 || parseInt(product.market_stock) <= 0)}
-                                                            >
-                                                                {language === 'ar' ? 'أضف إلى السلة' : 'Add to Cart'}
-                                                            </Link>
-                                                        } */}
-                        </div>
-                      </div>
+                    <div key={product.id} className={`p-2 ${colselected}`}>
+                      <ProductCard product={product} />
                     </div>
                   ))}
                 </div>
@@ -502,14 +321,6 @@ function Listing() {
                     color="primary"
                   />
                 </div>
-                {selectedProduct && (
-                  <ProductModel
-                    open={isModalOpen}
-                    onClose={handleModalClose}
-                    product={selectedProduct}
-                    language={language}
-                  />
-                )}
               </div>
             </div>
           )}

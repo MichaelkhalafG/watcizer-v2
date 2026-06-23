@@ -7,6 +7,8 @@ import InnerImageZoom from 'react-inner-image-zoom'
 import defimg from '../../assets/images/1.webp'
 import 'react-inner-image-zoom/lib/InnerImageZoom/styles.css'
 import { MyContext } from '../../Context/Context'
+import { handleImgError } from '../../utils/imageUrl'
+import { productUrl } from '../../utils/productUrl'
 // import axios from 'axios';
 import { Link } from 'react-router-dom'
 
@@ -305,6 +307,7 @@ function ProductModel({ open, onClose, product, language }) {
                     src={product.image}
                     alt="Main Thumbnail"
                     onClick={() => setSelectedImage(product.image)}
+                    onError={handleImgError}
                     style={{
                       width: '50px',
                       height: '50px',
@@ -327,6 +330,7 @@ function ProductModel({ open, onClose, product, language }) {
                     src={image}
                     alt={`Thumbnail ${index + 1}`}
                     onClick={() => setSelectedImage(image)}
+                    onError={handleImgError}
                     style={{
                       width: '50px',
                       height: '50px',
@@ -522,7 +526,7 @@ function ProductModel({ open, onClose, product, language }) {
                 >
                   {language === 'ar' ? 'أضف إلى السلة' : 'Add to Cart'}
                 </button>
-                <Link to={`/product/${product.product_title}`}>
+                <Link to={productUrl(product)}>
                   <button
                     className={`${language === 'ar' ? 'ms-2' : 'me-2'} btn btn-dark`}
                     title="More Details"

@@ -7,6 +7,16 @@
   z-index: 1000;
 }
 
+/* Smooth, non-jarring feedback on the bottom tab links */
+.phone-nav-bar .shadow-1 a {
+  transition:
+    color 0.2s ease,
+    transform 0.2s ease;
+}
+.phone-nav-bar .shadow-1 a:active {
+  transform: scale(0.92);
+}
+
 .nav-header .menu-button {
   background: none;
   border: none;

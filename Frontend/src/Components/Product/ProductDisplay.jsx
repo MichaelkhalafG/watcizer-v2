@@ -1,6 +1,9 @@
 import { useContext, useEffect, useState, useCallback } from 'react'
 import { Rating, Button, TextField, Typography, Alert, Snackbar, useMediaQuery } from '@mui/material'
-import { useParams } from 'react-router-dom'
+import { useParams, useNavigate, Link } from 'react-router-dom'
+import { toSlug } from '../../utils/slugs'
+import { getImageUrl, handleImgError } from '../../utils/imageUrl'
+import { buildListingParams } from '../../utils/listingParams'
 import useCart, { getItemKey } from '../../Hooks/useCart'
 import InnerImageZoom from 'react-inner-image-zoom'
 import 'react-inner-image-zoom/lib/InnerImageZoom/styles.css'
@@ -22,10 +25,11 @@ function ProductDisplay() {
   const [type_stock, settype_stock] = useState('')
   const [price, setPrice] = useState(0)
   const [pricebefore, setPriceBefore] = useState(0)
-  const { name } = useParams()
+  const { slug: routeParam } = useParams()
+  const navigate = useNavigate()
   const { addItem, updateQuantity, cart } = useCart()
   const isDesktop = useMediaQuery('(min-width:768px)')
-  const { handleAddTowishlist, Loader } = useContext(MyContext)
+  const { handleAddTowishlist, Loader, products, tables } = useContext(MyContext)
   const { language } = useUIStore()
   const { userId: user_id } = useAuthStore()
   const [product, setProduct] = useState(null)
@@ -33,11 +37,42 @@ function ProductDisplay() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
+  // Resolve the URL param to the exact ENGLISH product_title the API expects.
+  // The param may be: an English slug (rolex-submariner-date), a numeric id
+  // (backward compat), or a legacy raw title. Slugs/ids are resolved against the
+  // context product list (which carries `name` = English title + `id`); a raw
+  // title is passed straight through (the API matches the English product_title).
   useEffect(() => {
+    if (!routeParam) return
+    const param = decodeURIComponent(routeParam)
+    const isNumeric = /^\d+$/.test(param)
+    const isSlug = /^[a-z0-9-]+$/.test(param)
+    const all = products || []
+
+    let titleToFetch = null
+    if (isNumeric || isSlug) {
+      // Need the context list to map slug/id → English title.
+      if (!all.length) return // products not loaded yet — stay in loading state
+      const match =
+        (isNumeric && all.find((p) => p.id === Number(param))) ||
+        all.find((p) => toSlug(p.name || '') === param) ||
+        all.find((p) => toSlug(p.product_title || '') === param) ||
+        null
+      if (!match) {
+        setError('not_found')
+        setLoading(false)
+        return
+      }
+      titleToFetch = match.name || match.product_title
+    } else {
+      // Legacy raw-title URL → fetch directly.
+      titleToFetch = param
+    }
+
     setLoading(true)
     setError(null)
     http
-      .get(`products/by-name/${encodeURIComponent(name)}`)
+      .get(`products/by-name/${encodeURIComponent(titleToFetch)}`)
       .then(({ data }) => {
         setProduct(data.product)
         setRelated(data.related ?? [])
@@ -46,9 +81,19 @@ function ProductDisplay() {
         setError(err.response?.status === 404 ? 'not_found' : 'error')
       })
       .finally(() => setLoading(false))
-  }, [name])
-  const DialColor = product?.dial_color[0]?.color_value
-  const BandColor = product?.band_color[0]?.color_value
+  }, [routeParam, products])
+
+  // Keep the document title in sync with the loaded product.
+  useEffect(() => {
+    if (product) {
+      document.title = `${product.name_en || product.product_title || product.name || 'Product'} — Watchizer`
+    }
+    return () => {
+      document.title = 'Watchizer'
+    }
+  }, [product])
+  const DialColor = product?.dial_color?.[0]?.color_value
+  const BandColor = product?.band_color?.[0]?.color_value
   const [selectedDialColor, setSelectedDialColor] = useState(DialColor || null)
   const [selectedBandColor, setSelectedBandColor] = useState(BandColor || null)
   const [selectedImage, setSelectedImage] = useState('')
@@ -70,6 +115,51 @@ function ProductDisplay() {
     const words = desc.split(' ')
     if (words.length <= 10) return desc
     return words.slice(0, 10).join(' ') + '...'
+  }
+
+  // The PDP API (ProductResource) returns several fields as OBJECTS
+  // ({ id, name_en, name_ar, ... }) or arrays of objects — rendering one of
+  // those directly throws "Objects are not valid as a React child". safeStr
+  // coerces any value into a display string, picking the active language.
+  const safeStr = (val) => {
+    if (val === null || val === undefined) return ''
+    if (typeof val === 'string') return val
+    if (typeof val === 'number') return String(val)
+    if (Array.isArray(val)) return val.map(safeStr).filter(Boolean).join(', ')
+    if (typeof val === 'object') {
+      const localized =
+        language === 'ar' ? val.name_ar || val.color_name_ar : val.name_en || val.color_name_en
+      return (
+        localized ||
+        val.name_en ||
+        val.name_ar ||
+        val.brand_name ||
+        val.sub_type_name ||
+        val.category_type_name ||
+        val.grade_name ||
+        val.material_name ||
+        val.color_name ||
+        val.gender_name ||
+        val.feature_name ||
+        val.name ||
+        ''
+      )
+    }
+    return ''
+  }
+
+  // Product title is exposed both as flat strings and localized aliases.
+  const getProductName = (p) => {
+    if (!p) return ''
+    if (language === 'ar')
+      return p.name_ar || p.product_title_ar || p.product_title || p.name || ''
+    return p.name_en || p.product_title || p.name || ''
+  }
+
+  const formatPrice = (val) => {
+    const num = Number(val)
+    if (isNaN(num)) return '0'
+    return Math.round(num).toLocaleString(language === 'ar' ? 'ar-EG' : 'en-US')
   }
 
   const renderDetail = (labelEn, labelAr, value, fs, col) => (
@@ -293,6 +383,14 @@ function ProductDisplay() {
       return (
         <div className="container text-center py-5">
           <h3 className="fw-bold">{language === 'ar' ? 'المنتج غير موجود' : 'Product not found'}</h3>
+          <p className="text-secondary">
+            {language === 'ar'
+              ? 'المنتج الذي تبحث عنه غير موجود.'
+              : "The product you're looking for doesn't exist."}
+          </p>
+          <button className="btn btn-dark rounded-pill px-4 mt-2" onClick={() => navigate('/listing')}>
+            {language === 'ar' ? 'تصفح كل المنتجات' : 'Browse all products'}
+          </button>
         </div>
       )
     }
@@ -320,17 +418,58 @@ function ProductDisplay() {
             {alertMessage}
           </Alert>
         </Snackbar>
+
+        {/* Breadcrumb */}
+        <nav
+          className="d-flex flex-wrap align-items-center gap-1 px-2 py-3"
+          style={{ fontSize: '12px', color: 'rgba(0,0,0,0.55)' }}
+          dir={language === 'ar' ? 'rtl' : 'ltr'}
+        >
+          <Link to="/" className="text-decoration-none text-secondary">
+            {language === 'ar' ? 'الرئيسية' : 'Home'}
+          </Link>
+          <span>/</span>
+          <Link to="/listing" className="text-decoration-none text-secondary">
+            {language === 'ar' ? 'كل المنتجات' : 'All Products'}
+          </Link>
+          {product?.category_type &&
+            (() => {
+              const catObj = (tables?.categoryTypes || []).find((c) =>
+                (c.translations || []).some((t) => t.category_type_name === product.category_type),
+              )
+              const catHref = catObj
+                ? `/listing?${buildListingParams({ categories: [catObj.id] }, {}, tables).toString()}`
+                : null
+              return (
+                <>
+                  <span>/</span>
+                  {catHref ? (
+                    <Link to={catHref} className="text-decoration-none text-secondary">
+                      {safeStr(product.category_type)}
+                    </Link>
+                  ) : (
+                    <span>{safeStr(product.category_type)}</span>
+                  )}
+                </>
+              )
+            })()}
+          <span>/</span>
+          <span className="fw-semibold" style={{ color: '#262626' }}>
+            {getProductName(product)}
+          </span>
+        </nav>
+
         <div
           className={`row ${isDesktop ? 'border-bottom' : ''}  border-2 ps-1 p-4 pb-2 product-header mb-3`}
         >
           <div className={`col-12 ${language === 'ar' ? 'text-end' : 'text-start'}`}>
-            <h3 className="fw-bold">{product?.product_title || '-'}</h3>
+            <h3 className="fw-bold">{getProductName(product) || '-'}</h3>
           </div>
           <div className="col-4">
             {renderDetail(
               'Brand',
               'البراند',
-              product?.brand,
+              safeStr(product?.brand),
               isDesktop ? 'Medium' : 'small',
               'col-12',
             )}
@@ -339,7 +478,7 @@ function ProductDisplay() {
             {renderDetail(
               'Type',
               'النوع',
-              product?.category_type,
+              safeStr(product?.category_type),
               isDesktop ? 'Medium' : 'small',
               'col-12',
             )}
@@ -354,8 +493,8 @@ function ProductDisplay() {
             <div className="selected-image mb-3 d-flex justify-content-center">
               {selectedImage && (
                 <InnerImageZoom
-                  src={selectedImage}
-                  zoomSrc={selectedImage}
+                  src={getImageUrl(selectedImage)}
+                  zoomSrc={getImageUrl(selectedImage)}
                   alt="Selected Product"
                   style={{
                     width: '100%',
@@ -372,9 +511,10 @@ function ProductDisplay() {
             <div className="d-flex mt-3 gap-2 justify-content-center flex-wrap">
               {product?.image && (
                 <img
-                  src={product.image}
+                  src={getImageUrl(product.image)}
                   alt="Main Thumbnail"
                   onClick={() => setSelectedImage(product.image)}
+                  onError={handleImgError}
                   style={{
                     width: '60px',
                     height: '60px',
@@ -392,9 +532,10 @@ function ProductDisplay() {
               {product?.images?.map((image, index) => (
                 <img
                   key={index}
-                  src={image}
+                  src={getImageUrl(image)}
                   alt={`Thumbnail ${index + 1}`}
                   onClick={() => setSelectedImage(image)}
+                  onError={handleImgError}
                   style={{
                     width: '60px',
                     height: '60px',
@@ -440,23 +581,23 @@ function ProductDisplay() {
             </p>
             <div className="d-flex col-12 my-3 align-items-center">
               <span className="color-most-used fw-bold me-2 fs-large" style={{ fontSize: 'large' }}>
-                {Math.round(price)} {language === 'ar' ? 'ج.م' : 'EGP'}
+                {formatPrice(price)} {language === 'ar' ? 'ج.م' : 'EGP'}
               </span>
               <span
                 className="text-muted text-decoration-line-through fs-large"
                 style={{ fontSize: 'large' }}
               >
-                {Math.round(pricebefore)} {language === 'ar' ? 'ج.م' : 'EGP'}
+                {formatPrice(pricebefore)} {language === 'ar' ? 'ج.م' : 'EGP'}
               </span>
             </div>
             <div className="row">
               {product?.grade &&
-                renderDetail('Grade', 'التصنيف', product.grade, 'small', 'col-md-4 col-6')}
+                renderDetail('Grade', 'التصنيف', safeStr(product.grade), 'small', 'col-md-4 col-6')}
               {product?.sub_type &&
                 renderDetail(
                   'Sub Type',
                   'النوع الفرعي',
-                  product.sub_type,
+                  safeStr(product.sub_type),
                   'small',
                   'col-md-4 col-6',
                 )}
@@ -601,7 +742,7 @@ function ProductDisplay() {
                 renderDetail(
                   'Features',
                   'الميزات',
-                  product.features.join(', '),
+                  safeStr(product.features),
                   'small',
                   'col-md-4 col-6',
                 )}
@@ -609,7 +750,7 @@ function ProductDisplay() {
                 renderDetail(
                   'Gender',
                   'الجنس',
-                  product.gender.join(', '),
+                  safeStr(product.gender),
                   'small',
                   'col-md-4 col-6',
                 )}
@@ -619,7 +760,7 @@ function ProductDisplay() {
               >
                 {language === 'ar' ? 'اختر اللون' : 'Chosse colors'}
               </div>
-              {product?.dial_color.length > 0 &&
+              {product?.dial_color?.length > 0 &&
                 renderColorDetail(
                   'Dial Color',
                   'لون وجة الساعة',
@@ -628,7 +769,7 @@ function ProductDisplay() {
                   'col-md-4 col-6',
                   setSelectedDialColor,
                 )}
-              {product?.band_color.length > 0 && isfashion
+              {product?.band_color?.length > 0 && isfashion
                 ? renderColorDetail(
                     'Color',
                     'الون',

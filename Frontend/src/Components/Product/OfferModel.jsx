@@ -7,6 +7,7 @@ import InnerImageZoom from 'react-inner-image-zoom'
 import defimg from '../../assets/images/offer.webp'
 import 'react-inner-image-zoom/lib/InnerImageZoom/styles.css'
 import { MyContext } from '../../Context/Context'
+import { productUrl } from '../../utils/productUrl'
 // import axios from 'axios';
 import { Link } from 'react-router-dom'
 
@@ -57,7 +58,7 @@ function OfferModel({ open, onClose, product, language }) {
   const render_product_ids = (labelEn, ids, labelAr, col = 'col-3') =>
     ids.map((id) => (
       <div className={`${col} p-1`} key={id}>
-        <Link to={`/product/${product.product_title}`}>
+        <Link to={productUrl(product)}>
           <img
             className="col-12 border border-1 rounded-3"
             src={products.find((p) => p.id === id)?.image}
