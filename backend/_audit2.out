@@ -1,0 +1,48 @@
+Products per category_type: Array
+(
+    [0] => stdClass Object
+        (
+            [category_type_id] => 3
+            [total] => 72
+        )
+
+)
+Products per sub_type: Array
+(
+    [0] => stdClass Object
+        (
+            [sub_type_id] => 8
+            [total] => 12
+        )
+
+    [1] => stdClass Object
+        (
+            [sub_type_id] => 9
+            [total] => 17
+        )
+
+    [2] => stdClass Object
+        (
+            [sub_type_id] => 10
+            [total] => 5
+        )
+
+    [3] => stdClass Object
+        (
+            [sub_type_id] => 11
+            [total] => 24
+        )
+
+    [4] => stdClass Object
+        (
+            [sub_type_id] => 12
+            [total] => 4
+        )
+
+    [5] => stdClass Object
+        (
+            [sub_type_id] => 13
+            [total] => 10
+        )
+
+)

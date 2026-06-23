@@ -7,6 +7,8 @@ import { CiCircleRemove } from 'react-icons/ci'
 import emptyWishList from '../../assets/images/emptywishlist.svg'
 import { Link } from 'react-router-dom'
 import http from '../../Context/api'
+import { handleImgError } from '../../utils/imageUrl'
+import { productUrl } from '../../utils/productUrl'
 
 function WishList() {
   const { wishList, WishListCount, setwishList } = useContext(MyContext)
@@ -62,6 +64,7 @@ function WishList() {
                         alt={item.product_id}
                         loading="lazy"
                         className="col-3"
+                        onError={handleImgError}
                       />
                     )}
                     {item.offer_image && (
@@ -70,6 +73,7 @@ function WishList() {
                         alt={item.offer_id}
                         loading="lazy"
                         className="col-3"
+                        onError={handleImgError}
                       />
                     )}
                     <div className="col-9">
@@ -90,7 +94,7 @@ function WishList() {
                   </h6>
                   <div className="col-4 col-md-3 text-center">
                     {item.product_id && (
-                      <Link to={`/product/${item.product_title}`}>
+                      <Link to={productUrl(item)}>
                         <Button
                           className="rounded-circle color-most-used mx-2"
                           sx={{

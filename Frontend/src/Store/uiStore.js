@@ -14,9 +14,22 @@ export const useUIStore = create((set) => ({
     categories: [],
     brands: [],
     subTypes: [],
-    price: [0, 6000],
+    genders: [],
+    offers: false,
+    price: [0, 99999999],
+    // Extended filter dimensions (id-based). Colors are matched via the
+    // product's dial_colors/band_colors pivot arrays; material/movement are
+    // scalar product columns.
+    dialColors: [],
+    bandColors: [],
+    materials: [],
+    movements: [],
+    grades: [],
   },
-  setFilters: (f) => set({ filters: f }),
+  // Accept either a plain object or a functional updater (prev) => next, so
+  // consumers like SideBar that do setFilters((prev) => ({ ...prev })) work.
+  setFilters: (f) =>
+    set((s) => ({ filters: typeof f === 'function' ? f(s.filters) : f })),
 
   gradesFilters: {
     categories: [],

@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { getImageUrl } from '../utils/imageUrl'
 
 const http = axios.create({
   baseURL: import.meta.env.VITE_API_BASE,
@@ -150,7 +151,7 @@ export const fetchOffers = async (setOffers) => {
         selling_price: parseFloat(offer.selling_price),
         sale_price_after_discount: parseFloat(offer.sale_price_after_discount),
         stock: offer.stock,
-        image: `${import.meta.env.VITE_ASSET_BASE}/Uploads_Images/Offer/${offer.image}`,
+        image: getImageUrl(offer.image, 'Offer'),
         average_rate: offer.average_rate ? parseFloat(offer.average_rate) : null,
         created_at: offer.created_at,
         updated_at: offer.updated_at,

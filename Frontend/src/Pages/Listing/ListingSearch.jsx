@@ -10,6 +10,7 @@ import { FaRegHeart } from 'react-icons/fa'
 import { SlSizeFullscreen } from 'react-icons/sl'
 import { Link } from 'react-router-dom'
 import { useLocation } from 'react-router-dom'
+import { productUrl } from '../../utils/productUrl'
 import { LazyLoadImage } from 'react-lazy-load-image-component'
 // import axios from "axios";
 import 'react-lazy-load-image-component/src/effects/blur.css'
@@ -235,7 +236,7 @@ function ListingSearch() {
                             </button>
                           ) : (
                             <Link
-                              to={`/product/${product.product_title}`}
+                              to={productUrl(product)}
                               className="btn btn-dark rounded-circle"
                             >
                               <SlSizeFullscreen />
@@ -249,7 +250,7 @@ function ListingSearch() {
                           </button>
                         </div>
                         <Link
-                          to={`/product/${product.product_title}`}
+                          to={productUrl(product)}
                           className="product-img-container"
                         >
                           {/* <img

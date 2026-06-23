@@ -22,6 +22,7 @@ import { IoGrid } from 'react-icons/io5'
 import { FaRegHeart } from 'react-icons/fa'
 import { SlSizeFullscreen } from 'react-icons/sl'
 import { Link } from 'react-router-dom'
+import { productUrl } from '../../utils/productUrl'
 // import { Rating } from "@mui/material";
 import ProductModel from '../../Components/Product/ProductModel'
 import Pagination from '@mui/material/Pagination'
@@ -343,7 +344,7 @@ function ListingGrades() {
                           </button>
                         </div>
                         <Link
-                          to={`/product/${product.product_title}`}
+                          to={productUrl(product)}
                           className="product-img-container"
                         >
                           {/* <img

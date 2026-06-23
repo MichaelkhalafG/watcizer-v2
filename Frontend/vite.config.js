@@ -37,6 +37,8 @@ export default defineConfig({
           utils: ['dompurify'],
           reactSlick: ['react-slick', 'slick-carousel'],
           thirdParty: ['aos', 'axios', 'react-icons'],
+          three: ['three'],
+          'react-three': ['@react-three/fiber', '@react-three/drei'],
         },
       },
     },

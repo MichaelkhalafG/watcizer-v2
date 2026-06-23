@@ -1,4 +1,4 @@
-import { Suspense, useEffect, lazy, useContext } from 'react'
+import { Suspense, useEffect, lazy, useContext, Component } from 'react'
 import './App.css'
 import { Route, Routes } from 'react-router-dom'
 import Home from './Pages/Home/Home'
@@ -37,6 +37,94 @@ const ProfileSpeedPhoneNotLogin = lazy(
 const SearchPageForPhone = lazy(() => import('./Pages/SearchPageForPhone/SearchPageForPhone'))
 const Blog = lazy(() => import('./Pages/Blog/Blog'))
 const Blogs = lazy(() => import('./Pages/Blog/Blogs'))
+
+// Fallback shown while a lazy route chunk loads.
+const PageLoader = () => (
+  <div
+    style={{
+      width: '100%',
+      height: '60vh',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+    }}
+  >
+    <div
+      style={{
+        width: 40,
+        height: 40,
+        borderRadius: '50%',
+        border: '2px solid rgba(0,0,0,0.1)',
+        borderTopColor: '#262626',
+        animation: 'wzAppSpin 1s linear infinite',
+      }}
+    />
+    <style>{`@keyframes wzAppSpin { to { transform: rotate(360deg); } }`}</style>
+  </div>
+)
+
+// Catches render-time errors so a thrown component degrades to a graceful card
+// instead of a blank white screen.
+class ErrorBoundary extends Component {
+  constructor(props) {
+    super(props)
+    this.state = { hasError: false, error: null }
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error }
+  }
+
+  componentDidCatch(error, info) {
+    console.error('App Error:', error, info)
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div
+          style={{
+            width: '100%',
+            minHeight: '60vh',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 16,
+            padding: 32,
+            textAlign: 'center',
+          }}
+        >
+          <h2 style={{ fontFamily: 'Georgia, serif', fontWeight: 300, color: '#1a1a1a' }}>
+            Something went wrong
+          </h2>
+          <p style={{ color: 'rgba(0,0,0,0.5)', fontSize: 14 }}>
+            {this.state.error?.message || 'Unknown error'}
+          </p>
+          <button
+            onClick={() => {
+              this.setState({ hasError: false, error: null })
+              window.location.href = '/'
+            }}
+            style={{
+              padding: '10px 24px',
+              background: '#262626',
+              color: '#fff',
+              border: 'none',
+              cursor: 'pointer',
+              fontSize: 12,
+              letterSpacing: '0.1em',
+              textTransform: 'uppercase',
+            }}
+          >
+            Go Home
+          </button>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
 
 function App() {
   useFacebookPixel('1611910119460872')
@@ -112,21 +200,6 @@ function MainApp() {
           <meta name="theme-color" content="#000000" />
           <link rel="icon" href="/favicon.ico" />
           <link rel="apple-touch-icon" href="/logo.svg" />
-
-          {/* Preload Fonts */}
-          <link rel="preconnect" href="https://fonts.googleapis.com" />
-          <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-          <link
-            rel="preload"
-            as="style"
-            href="https://fonts.googleapis.com/css2?family=Dosis:wght@200..800&family=Lato:wght@100;300;400;700;900&display=swap"
-          />
-          <link
-            rel="stylesheet"
-            href="https://fonts.googleapis.com/css2?family=Dosis:wght@200..800&family=Lato:wght@100;300;400;700;900&display=swap"
-            media="print"
-            onLoad="this.media='all'"
-          />
 
           {/* Web Manifest for PWA */}
           <link rel="manifest" href="/manifest.json" />
@@ -222,8 +295,18 @@ function MainApp() {
         </Alert>
       </Snackbar>
       <ScrollToTop />
-      <Routes>
-        <Route path="/" exact element={<Home />} />
+      <ErrorBoundary>
+        <Suspense fallback={<PageLoader />}>
+          <Routes>
+            <Route path="/" exact element={<Home />} />
+        <Route
+          path="/listing"
+          element={
+            <Suspense fallback={<Loader />}>
+              <Listing />
+            </Suspense>
+          }
+        />
         <Route
           path="/products/:id"
           element={
@@ -233,7 +316,7 @@ function MainApp() {
           }
         />
         <Route
-          path="/product/:name"
+          path="/product/:slug"
           element={
             <Suspense fallback={<Loader />}>
               <ProductDisplay />
@@ -378,7 +461,9 @@ function MainApp() {
             </Suspense>
           }
         />
-      </Routes>
+          </Routes>
+        </Suspense>
+      </ErrorBoundary>
       {isDesktop ? (
         <Suspense fallback={<Loader />}>
           <Footer />

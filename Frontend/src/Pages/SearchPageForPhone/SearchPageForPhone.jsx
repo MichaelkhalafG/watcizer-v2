@@ -9,8 +9,10 @@ import { useUIStore } from '../../Store/uiStore'
 import { useAuthStore } from '../../Store/authStore'
 import { Link, useNavigate } from 'react-router-dom'
 import http from '../../Context/api'
+import { productUrl } from '../../utils/productUrl'
 import { FaRegHeart } from 'react-icons/fa'
 import { SlSizeFullscreen } from 'react-icons/sl'
+import { getImageUrl, handleImgError, PLACEHOLDER_IMG } from '../../utils/imageUrl'
 import './Search.css'
 
 function SearchPageForPhone() {
@@ -139,7 +141,7 @@ function SearchPageForPhone() {
               <div className="card border-0 rounded-3 shadow-sm position-relative">
                 <div className="action-menu position-absolute">
                   <Link
-                    to={`/product/${product.product_title}`}
+                    to={productUrl(product)}
                     className="btn btn-dark rounded-circle"
                   >
                     <SlSizeFullscreen />
@@ -151,12 +153,13 @@ function SearchPageForPhone() {
                     <FaRegHeart />
                   </button>
                 </div>
-                <Link to={`/product/${product.product_title}`}>
+                <Link to={productUrl(product)}>
                   <Suspense fallback={<Loader />}>
                     <LazyLoadImage
-                      src={product.image || '/placeholder.png'}
+                      src={getImageUrl(product.image) || PLACEHOLDER_IMG}
                       effect="blur"
                       className="img-fluid rounded-top"
+                      onError={handleImgError}
                     />
                   </Suspense>
                 </Link>

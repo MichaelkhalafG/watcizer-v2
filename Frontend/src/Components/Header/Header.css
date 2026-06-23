@@ -1,122 +1,1024 @@
-.lang-drop {
-  width: 150px;
-  height: 60px;
-  min-width: 150px;
-  color: #000 !important;
-  direction: inherit;
-}
-.searchbtn {
-  direction: inherit;
+/* ============================================================
+   Watchizer header — professional two-row layout (wz-*)
+   Strip #1a1a1a · Row 1 white · Row 2 (nav) #262626 · accent #ea2b0f
+   ============================================================ */
+
+/* ── Wrapper (sticky) ─────────────────────────────────────── */
+.wz-header {
+  position: sticky;
+  top: 0;
+  z-index: 1020;
+  background: #fff;
 }
 
-.label {
-  font-size: 12px;
-  text-transform: capitalize;
-  direction: inherit;
+/* ── SECTION A — announcement strip ───────────────────────── */
+.wz-strip {
+  background: #1a1a1a;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.wz-strip-inner {
+  position: relative;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 0 clamp(16px, 5vw, 64px);
 }
 
-.language {
+/* ── Scrolling marquee ──────────────────────────────────────── */
+.wz-marquee-wrapper {
+  overflow: hidden;
+  flex: 1;
+  /* leave room for the social icons pinned on the right */
+  padding-inline-end: 60px;
+  mask-image: linear-gradient(90deg, transparent 0%, black 8%, black 92%, transparent 100%);
+  -webkit-mask-image: linear-gradient(90deg, transparent 0%, black 8%, black 92%, transparent 100%);
+}
+.wz-marquee-track {
+  display: flex;
+  align-items: center;
+  width: max-content;
+  animation: wzMarquee 40s linear infinite;
+}
+.wz-marquee-track:hover {
+  animation-play-state: paused;
+}
+@keyframes wzMarquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+.wz-marquee-item {
+  white-space: nowrap;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.65);
+  padding: 0 4px;
+}
+.wz-marquee-sep {
+  color: rgba(255, 255, 255, 0.25);
+  font-size: 7px;
+  margin: 0 12px;
+  vertical-align: middle;
+}
+/* RTL: reverse the scroll direction */
+[dir='rtl'] .wz-marquee-track {
+  animation-direction: reverse;
+}
+.wz-strip-social {
+  position: absolute;
+  top: 50%;
+  inset-inline-end: clamp(16px, 5vw, 64px);
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.wz-strip-social a {
+  display: inline-flex;
+  color: #fff;
+  opacity: 0.65;
+  transition: opacity 0.2s ease;
+}
+.wz-strip-social a:hover {
+  opacity: 1;
+}
+
+/* ── SECTION B — main row ─────────────────────────────────── */
+.wz-row1 {
+  display: flex;
+  align-items: center;
+  gap: clamp(16px, 3vw, 40px);
+  height: 72px;
+  padding: 0 clamp(16px, 5vw, 64px);
+  background: #fff;
+  transition: box-shadow 0.3s ease;
+}
+.wz-scrolled .wz-row1 {
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.08);
+}
+
+/* Logo */
+.wz-logo {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+.wz-logo a {
+  display: inline-flex;
+  transition: opacity 0.2s ease;
+}
+.wz-logo a:hover {
+  opacity: 0.8;
+}
+.wz-logo img {
+  height: 46px !important;
+  width: auto !important;
+}
+
+/* Search slot (wrapper renamed wz-search-box to avoid clashing
+   with SearchBox's own internal .wz-search pill) */
+.wz-search-box {
+  flex: 1 1 auto;
+  display: flex;
+  justify-content: center;
+  min-width: 0;
+}
+
+/* SearchBox root pill (.wz-search lives in SearchBox.jsx — untouched JSX) */
+.wz-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  max-width: 560px;
+  height: 44px;
+  padding: 0 4px 0 18px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.04);
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease;
+}
+.wz-search:focus-within {
+  background: #fff;
+  border-color: rgba(0, 0, 0, 0.55);
+}
+.wz-search-input {
+  flex: 1 1 auto;
+  height: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: #262626;
   font-size: 14px;
-  text-transform: capitalize;
+  letter-spacing: 0.02em;
+  min-width: 0;
+}
+.wz-search-input::placeholder {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #262626;
+  opacity: 0.4;
+}
+/* Solid dark search button (Amazon / Watches-Prime style) */
+.wz-search-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 36px;
+  flex-shrink: 0;
+  margin-inline-start: 8px;
+  border: none;
+  border-radius: 999px;
+  background: #1a1a1a;
+  color: #fff;
+  font-size: 18px;
+  opacity: 1;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+.wz-search-btn:hover {
+  background: #262626;
+  opacity: 1;
+}
+
+/* ── Live search results dropdown (Watches-Prime style) ─────── */
+.wz-search-results {
+  position: absolute;
+  top: calc(100% + 8px);
+  inset-inline-start: 0;
+  inset-inline-end: 0;
+  z-index: 1100;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-top: 2px solid #262626;
+  border-radius: 6px;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.16);
+  max-height: 420px;
+  overflow-y: auto;
+  padding: 6px 0;
+  animation: wzDropIn 0.16s ease;
+}
+.wz-search-result {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 8px 16px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: start;
+  transition: background 0.15s ease;
+}
+.wz-search-result:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+.wz-search-result-img {
+  width: 48px;
+  height: 48px;
+  flex-shrink: 0;
+  object-fit: cover;
+  border-radius: 4px;
+  background: #f3f3f3;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+}
+.wz-search-result-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.wz-search-result-name {
+  font-size: 12px;
+  line-height: 1.3;
+  color: #262626;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.wz-search-result-price {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.wz-search-price-sale {
+  font-size: 13px;
   font-weight: 700;
-  direction: inherit;
+  color: #ea2b0f;
+}
+.wz-search-price-old {
+  font-size: 11px;
+  color: #999;
+  text-decoration: line-through;
+}
+.wz-search-viewall {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  padding: 11px 16px;
+  border: none;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  background: transparent;
+  color: #262626;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  text-align: center;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.wz-search-viewall:hover {
+  background: #262626;
+  color: #fff;
+}
+.wz-search-empty {
+  padding: 22px 16px;
+  text-align: center;
+  font-size: 12px;
+  color: #999;
 }
 
-.header-search button svg {
-  font-size: 20px;
-  direction: inherit;
-}
-
-.cart-tap button {
-  background: #fff1ee !important;
-  direction: inherit;
-}
-
-.cart-tap button svg {
-  color: #ea2b0f !important;
-  direction: inherit;
-}
-
-.all-cat-tap:hover {
-  background: #262626 !important;
-  direction: inherit;
-}
-
-.nav-ul li a {
-  font-size: 16px;
+/* ── Actions ──────────────────────────────────────────────── */
+.wz-actions {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
-  transition: all 0.3s ease-in-out;
-  border-radius: 25px;
-  direction: inherit;
+  gap: 6px;
 }
-.nav-ul li .a {
-  font-size: 16px;
+
+/* Round icon button (reused by cart link) */
+.wz-action-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  min-width: 42px;
+  border-radius: 50%;
+  background: transparent;
+  border: none;
+  color: #262626;
+  cursor: pointer;
+  transition:
+    background 0.2s ease,
+    transform 0.2s ease;
+}
+.wz-action-btn:hover {
+  background: rgba(0, 0, 0, 0.05);
+  transform: translateY(-1px);
+}
+
+/* Language toggle (LanguageDropdown JSX untouched) */
+.wz-lang {
+  display: inline-flex;
+  align-items: center;
+}
+.wz-lang .lang-drop {
+  width: auto !important;
+  min-width: auto !important;
+  height: 42px !important;
+  border: 0 !important;
+  background: transparent !important;
+  border-radius: 999px !important;
+  padding: 0 12px !important;
+  box-shadow: none !important;
+  transition: background 0.2s ease;
+}
+.wz-lang .lang-drop:hover {
+  background: rgba(0, 0, 0, 0.05) !important;
+}
+.wz-lang .lang-drop .label {
+  display: none;
+}
+.wz-lang .lang-drop .language {
+  font-size: 11px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  font-weight: 600;
+  color: #262626 !important;
+  opacity: 0.6;
+  transition: opacity 0.2s ease;
+}
+.wz-lang .lang-drop:hover .language {
+  opacity: 1;
+}
+.wz-lang .lang-drop svg {
+  color: #262626;
+  opacity: 0.6;
+  font-size: 12px;
+}
+
+/* Login — ghost pill */
+.wz-login {
+  display: inline-flex;
+  align-items: center;
+  height: 38px;
+  padding: 0 20px;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  border-radius: 999px;
+  background: transparent;
+  color: #262626;
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  transition:
+    border-color 0.2s ease,
+    background 0.2s ease;
+}
+.wz-login:hover {
+  border-color: #262626;
+  background: rgba(0, 0, 0, 0.03);
+  color: #262626;
+}
+
+/* Profile (logged in) */
+.wz-profile {
   display: flex;
   align-items: center;
-  transition: all 0.3s ease-in-out;
-  border-radius: 25px;
-  direction: inherit;
+  gap: 8px;
+}
+.wz-profile img {
+  width: 34px !important;
+  height: 34px !important;
+  min-width: 34px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+}
+.wz-profile .profile-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: #262626;
+}
+@media (max-width: 1200px) {
+  .wz-profile .profile-name {
+    display: none;
+  }
 }
 
-.nav-ul li a:hover {
-  background: #fff1ee !important;
-  color: #ea2b0f !important;
-  direction: inherit;
+/* Cart — bordered pill with price + icon + badge */
+.wz-cart {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 42px;
+  padding: 0 6px 0 16px;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  border-radius: 999px;
+  transition: border-color 0.2s ease;
 }
-.nav-ul li .a:hover {
-  background: #fff1ee !important;
-  color: #ea2b0f !important;
-  direction: inherit;
+.wz-cart:hover {
+  border-color: rgba(0, 0, 0, 0.35);
+}
+.wz-cart-price {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: #262626;
+  white-space: nowrap;
+}
+.wz-cart .wz-cart-link {
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  color: #262626;
+  text-decoration: none;
+}
+.wz-badge {
+  position: absolute;
+  top: -2px;
+  inset-inline-end: -4px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: #ea2b0f;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+  animation: wzCartPop 0.3s ease;
+}
+@keyframes wzCartPop {
+  0% {
+    transform: scale(0.6);
+  }
+  60% {
+    transform: scale(1.25);
+  }
+  100% {
+    transform: scale(1);
+  }
 }
 
+/* ── SECTION C — nav row (dark) ───────────────────────────── */
+.wz-row2 {
+  background: #262626;
+}
+.Nav {
+  background: #262626;
+}
+.nav-inner {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  min-height: 48px;
+  padding: 0 clamp(16px, 5vw, 64px);
+}
+.nav-ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+}
 .nav-ul li {
   position: relative;
+  display: flex;
+  align-items: stretch;
 }
+.nav-link-item {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 48px;
+  padding: 0 18px;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.72);
+  text-decoration: none;
+  background: none;
+  border: none;
+  cursor: pointer;
+  transition:
+    color 0.2s ease,
+    background 0.2s ease;
+}
+.nav-link-item:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.06);
+}
+.nav-link-item::after {
+  content: '';
+  position: absolute;
+  left: 18px;
+  right: 18px;
+  bottom: 0;
+  height: 2px;
+  background: #ea2b0f;
+  transform: scaleX(0);
+  transform-origin: center;
+  transition: transform 0.2s ease;
+}
+.nav-link-item:hover::after,
+.nav-link-item.active::after {
+  transform: scaleX(1);
+}
+.nav-link-item.active {
+  color: #fff;
+}
+
+/* Brands hover dropdown (current Nav.jsx — white popover) */
 .nav-ul li .sub-menu {
   position: absolute;
   top: 100%;
-  left: 0;
-  width: 200px;
-  max-height: 500px !important;
-  overflow: auto;
-  padding: 10px;
-  box-shadow: 0 10px 10px rgba(0, 0, 0, 0.1);
+  inset-inline-start: 0;
+  width: 240px;
+  max-height: 380px;
+  overflow-y: auto;
+  padding: 8px;
   background: #fff;
-  border-radius: 10px;
-  z-index: 999;
-  direction: inherit;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-top: 2px solid #ea2b0f;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.16);
+  border-radius: 0 0 6px 6px;
+  z-index: 1000;
   opacity: 0;
   visibility: hidden;
-  transition: all 0.3s ease-in-out;
-}
-.sub-menu-ar {
-  right: 0 !important;
+  transform: translateY(-8px);
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease;
 }
 .nav-ul li:hover .sub-menu {
   opacity: 1;
-  visibility: inherit;
-  direction: inherit;
+  visibility: visible;
+  transform: translateY(0);
 }
-.cat-nav {
+.sub-menu a {
+  display: block;
+  padding: 8px 10px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #262626;
+  opacity: 0.65;
+  text-decoration: none;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+  transition:
+    opacity 0.2s ease,
+    padding-inline-start 0.2s ease;
+}
+.sub-menu a:last-child {
+  border-bottom: none;
+}
+.sub-menu a:hover {
+  opacity: 1;
+  padding-inline-start: 18px;
+}
+
+/* ── Dynamic nav dropdowns (Nav.jsx) ──────────────────────── */
+/* Nav wrappers must never clip the dropdowns that escape their box… */
+.wz-row2 {
   position: relative;
-  direction: inherit;
+  overflow: visible;
 }
-.cat-nav .side-menu {
+.nav-ul,
+.nav-inner {
+  overflow: visible;
+}
+.nav-item {
+  position: relative;
+  overflow: visible;
+}
+/* …but the page itself must not scroll sideways if a menu reaches the edge. */
+body {
+  overflow-x: hidden;
+}
+
+/* Thin styled scrollbar for every scrollable dropdown (WebKit/Blink) */
+.nav-dropdown::-webkit-scrollbar,
+.nav-subdropdown::-webkit-scrollbar,
+.wz-shop-dropdown::-webkit-scrollbar {
+  width: 4px;
+}
+.nav-dropdown::-webkit-scrollbar-track,
+.nav-subdropdown::-webkit-scrollbar-track,
+.wz-shop-dropdown::-webkit-scrollbar-track {
+  background: transparent;
+}
+.nav-dropdown::-webkit-scrollbar-thumb,
+.nav-subdropdown::-webkit-scrollbar-thumb,
+.wz-shop-dropdown::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 2px;
+}
+
+/* Subtle fade at the bottom of a scrollable dropdown to hint at more content */
+.wz-dropdown-scrollable::after {
+  content: '';
+  position: sticky;
+  bottom: 0;
+  left: 0;
+  display: block;
+  height: 24px;
+  margin-top: -24px;
+  background: linear-gradient(transparent, rgba(255, 255, 255, 0.95));
+  pointer-events: none;
+}
+.nav-link-item {
+  font-family: inherit;
+}
+
+/* First-level dropdown panel */
+.nav-dropdown {
   position: absolute;
   top: 100%;
-  left: 0;
-  height: auto;
+  inset-inline-start: 0;
+  min-width: 240px;
+  padding: 8px;
   background: #fff;
-  z-index: 999;
-  transition: all 1s ease-in-out;
-  direction: inherit;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-top: 2px solid #ea2b0f;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.16);
+  z-index: 1000;
+  animation: wzNavFade 0.18s ease;
+  /* never run past the viewport bottom — scroll instead */
+  max-height: min(60vh, 480px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 0, 0, 0.15) transparent;
 }
-.side-menu-ar {
-  right: 0 !important;
+@keyframes wzNavFade {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
-.side-menu a button:hover {
-  background: #fff1ee !important;
-  color: #ea2b0f !important;
-  direction: inherit;
+
+/* Dropdown item (link or button) */
+.nav-dropdown-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 12px;
+  font-family: inherit;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-align: start;
+  color: #262626;
+  opacity: 0.7;
+  background: none;
+  border: none;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    opacity 0.2s ease,
+    padding-inline-start 0.2s ease,
+    background 0.2s ease;
+}
+.nav-dropdown-item:last-child {
+  border-bottom: none;
+}
+.nav-dropdown-item:hover {
+  opacity: 1;
+  padding-inline-start: 18px;
+  background: rgba(0, 0, 0, 0.03);
+}
+
+/* Brand name + optional logo cell inside dropdown items */
+.nav-brand-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.nav-brand-logo {
+  height: 22px;
+  width: auto;
+  max-width: 64px;
+  object-fit: contain;
+  flex-shrink: 0;
+  filter: grayscale(1);
+  opacity: 0.85;
+  transition:
+    filter 0.2s ease,
+    opacity 0.2s ease;
+}
+.nav-dropdown-item:hover .nav-brand-logo {
+  filter: grayscale(0);
+  opacity: 1;
+}
+
+/* ── Brand dropdown rows with fixed 36×36 logo box ─────────── */
+.wz-brand-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 16px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: start;
+  font-family: inherit;
+  transition: background 0.15s;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+}
+.wz-brand-item:last-child {
+  border-bottom: none;
+}
+.wz-brand-item:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+.wz-brand-logo-box {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.04);
+  border-radius: 3px;
+  overflow: hidden;
+  border: 1px solid rgba(0, 0, 0, 0.07);
+}
+.wz-brand-logo-box img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
+  padding: 4px;
+  filter: grayscale(100%);
+  transition: filter 0.2s;
+}
+.wz-brand-logo-initials {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #262626;
+  text-align: center;
+}
+.wz-brand-text {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: rgba(38, 38, 38, 0.75);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0; /* allow the text to shrink so ellipsis works in the flex row */
+  transition: color 0.15s;
+}
+.wz-brand-item:hover .wz-brand-logo-box img {
+  filter: grayscale(0%);
+}
+.wz-brand-item:hover .wz-brand-text {
+  color: #262626;
+}
+
+/* Brands dropdown grouped by category type. It inherits scroll from
+   .nav-dropdown (max-height + overflow-y:auto). The nested brand→gender flyout
+   would normally be clipped by that scroll container, so it is taken OUT of the
+   flow via position:fixed and placed by JS (see Nav.jsx) — that lets the list
+   scroll AND the flyout stay fully visible / flip near the screen edge. */
+/* Compact rows + smaller logo box so each scrollable row is dense. */
+.nav-dropdown-brands .wz-brand-item {
+  padding: 6px 14px;
+}
+.nav-dropdown-brands .wz-brand-logo-box {
+  width: 32px;
+  height: 32px;
+}
+.nav-brand-group-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px 6px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: rgba(38, 38, 38, 0.4);
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+}
+.nav-dropdown-brands > div:first-child .nav-brand-group-header {
+  border-top: none;
+}
+.nav-brand-group-icon {
+  display: flex;
+  align-items: center;
+  color: rgba(38, 38, 38, 0.55);
+}
+
+/* Brand row that owns a nested menu */
+.nav-dropdown-row {
+  position: relative;
+}
+.nav-row-caret {
+  font-size: 15px;
+  line-height: 1;
+  opacity: 0.4;
+}
+
+/* Nested dropdown — rendered position:fixed and placed by JS (Nav.jsx) so it can
+   escape the scrollable brands dropdown and flip to whichever side has room. */
+.nav-subdropdown {
+  position: fixed;
+  min-width: 200px;
+  max-width: 240px;
+  padding: 8px;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-top: 2px solid #262626;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.18);
+  z-index: 2001;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 0, 0, 0.15) transparent;
+  animation: wzNavFade 0.18s ease;
+}
+
+/* Invisible hover bridges so the pointer never loses hover when crossing the
+   gap from the trigger into a dropdown (vertical) or from a brand row into the
+   nested menu (horizontal). They're part of the dropdown subtree, so hovering
+   them keeps the menu open. */
+.nav-dropdown::before {
+  content: '';
+  position: absolute;
+  top: -8px;
+  left: 0;
+  right: 0;
+  height: 8px;
+  background: transparent;
+}
+/* ── Shop dropdown (grouped categories + sub-types) ─────────── */
+.wz-shop-dropdown {
+  position: absolute;
+  top: 100%;
+  inset-inline-start: 0;
+  width: 260px;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-top: 3px solid #262626;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.15);
+  z-index: 2000;
+  padding: 6px 0;
+  animation: wzDropIn 0.15s ease;
+  max-height: min(60vh, 480px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 0, 0, 0.15) transparent;
+}
+@keyframes wzDropIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+/* invisible hover bridge so the menu doesn't close crossing trigger → panel */
+.wz-shop-dropdown::before {
+  content: '';
+  position: absolute;
+  top: -8px;
+  left: 0;
+  right: 0;
+  height: 8px;
+  background: transparent;
+}
+.wz-shop-cat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 10px 16px 8px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #262626;
+  /* stay visible while its sub-types scroll past */
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #fff;
+  border: none;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  cursor: pointer;
+  text-align: start;
+  font-family: inherit;
+  transition: background 0.15s;
+}
+.wz-shop-cat-header:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+.wz-shop-cat-arrow {
+  font-size: 12px;
+  opacity: 0.4;
+  font-weight: 300;
+}
+.wz-shop-cat-divider {
+  height: 1px;
+  background: rgba(0, 0, 0, 0.08);
+  margin: 0 16px 4px;
+}
+.wz-shop-sub-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 7px 16px 7px 26px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: rgba(38, 38, 38, 0.6);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: start;
+  font-family: inherit;
+  transition: all 0.15s;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.wz-shop-sub-item:hover {
+  background: rgba(0, 0, 0, 0.03);
+  color: #262626;
+  padding-inline-start: 30px;
+}
+/* "See all (N)" row shown when a category has more than 8 sub-types */
+.wz-shop-see-all {
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #ea2b0f;
+  padding-inline-start: 26px;
+}
+.wz-shop-see-all:hover {
+  color: #ea2b0f;
+  background: rgba(234, 43, 15, 0.06);
+}
+.wz-shop-section-sep {
+  height: 6px;
+  background: rgba(0, 0, 0, 0.04);
+  margin: 4px 0;
+}
+
+/* ── Responsive (≤768px) ──────────────────────────────────── */
+@media (max-width: 768px) {
+  .wz-strip {
+    display: none;
+  }
+  .wz-row2 {
+    display: none;
+  }
+  .wz-row1 {
+    height: 56px;
+    gap: 12px;
+    padding: 0 16px;
+  }
+  .wz-logo img {
+    height: 32px !important;
+  }
+  .wz-search {
+    height: 40px;
+    max-width: none;
+  }
+  .wz-cart-price {
+    display: none;
+  }
+  .wz-login {
+    padding: 0 14px;
+  }
 }
