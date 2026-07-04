@@ -4,11 +4,8 @@
 
 /* Tweak the hero layout/crop from one place. */
 :root {
-  --hero-text-flex: 60%;
-  --hero-watch-flex: 40%;
-  --hero-iframe-top: -56px;
-  --hero-iframe-bottom: -50px;
-  --hero-overlay-h: 60px;
+  --hero-text-flex: 55%;
+  --hero-watch-flex: 45%;
 }
 
 .wz-hero {
@@ -78,7 +75,7 @@
 
 /* Headline */
 .wz-hero-headline {
-  font-family: Georgia, 'Times New Roman', serif;
+  font-family: var(--wz-serif);
   font-size: clamp(2.2rem, 4.5vw, 4rem);
   font-weight: 300;
   line-height: 1.08;
@@ -159,7 +156,8 @@
   padding: clamp(12px, 1.6vh, 16px) clamp(22px, 2.8vw, 36px);
   cursor: pointer;
   border-radius: 2px;
-  transition: all 0.25s;
+  transition: border-color var(--wz-duration) var(--wz-ease),
+    color var(--wz-duration) var(--wz-ease);
   white-space: nowrap;
 }
 
@@ -181,19 +179,19 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding-right: clamp(20px, 3vw, 40px);
-  border-right: 1px solid rgba(255, 255, 255, 0.08);
-  margin-right: clamp(20px, 3vw, 40px);
+  padding-inline-end: clamp(20px, 3vw, 40px);
+  border-inline-end: 1px solid rgba(255, 255, 255, 0.08);
+  margin-inline-end: clamp(20px, 3vw, 40px);
 }
 
 .wz-hero-stat:last-child {
-  border-right: none;
-  margin-right: 0;
-  padding-right: 0;
+  border-inline-end: none;
+  margin-inline-end: 0;
+  padding-inline-end: 0;
 }
 
 .wz-hero-stat-num {
-  font-family: Georgia, serif;
+  font-family: var(--wz-serif);
   font-size: clamp(1.3rem, 2.2vw, 2rem);
   font-weight: 300;
   color: #fff;
@@ -209,61 +207,43 @@
   font-weight: 400;
 }
 
-/* ── Right watch panel ── */
+/* ── Right watch panel (Three.js canvas) ── */
 .wz-hero-watch {
   flex: 0 0 var(--hero-watch-flex);
   position: relative;
   z-index: 1;
-  overflow: hidden; /* clips the shifted iframe edges (keep) */
-  padding-top: 8px;
-  padding-bottom: 8px;
+  overflow: hidden;
 }
 
-/* Wider-than-container (110%) so the model is centred and not clipped at the
-   sides in the narrower 40% panel; top/bottom shifts hide the Sketchfab UI. */
-.wz-hero-watch iframe {
-  position: absolute;
-  top: var(--hero-iframe-top);
-  left: -5%;
-  right: -5%;
-  bottom: var(--hero-iframe-bottom);
-  width: 110%;
-  height: calc(100% + 106px);
-  border: none;
+/* Three.js canvas fills the watch panel */
+.wz-hero-watch canvas {
+  width: 100% !important;
+  height: 100% !important;
+  outline: none;
+  cursor: grab;
+  /* the canvas owns touch: one finger rotates, two fingers pinch-zoom
+     (page scroll happens on the text area below, not on the watch) */
+  touch-action: none;
+}
+.wz-hero-watch canvas:active {
+  cursor: grabbing;
 }
 
-/* Gradient overlays to hide Sketchfab UI */
-.wz-hero-overlay-top {
+/* Fallback shown if the model / WebGL fails to load */
+.wz-hero-fallback {
   position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: var(--hero-overlay-h);
-  background: linear-gradient(180deg, #0a0a0a 25%, transparent 100%);
-  z-index: 10;
-  pointer-events: none;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #0a0a0a;
 }
-
-.wz-hero-overlay-bottom {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: var(--hero-overlay-h);
-  background: linear-gradient(0deg, #0a0a0a 25%, transparent 100%);
-  z-index: 10;
-  pointer-events: none;
-}
-
-.wz-hero-overlay-left {
-  position: absolute;
-  top: 0;
-  left: 0;
-  bottom: 0;
-  width: 40px;
-  background: linear-gradient(90deg, #0a0a0a 0%, transparent 100%);
-  z-index: 10;
-  pointer-events: none;
+.wz-hero-fallback img {
+  width: 60%;
+  max-width: 180px;
+  height: auto;
+  opacity: 0.85;
+  filter: brightness(0) invert(1);
 }
 
 /* ── Spinner ── */
@@ -301,27 +281,27 @@
 
 .wz-hero-corner-tl {
   top: 16px;
-  left: 16px;
+  inset-inline-start: 16px;
   border-top: 1px solid rgba(200, 164, 92, 0.35);
-  border-left: 1px solid rgba(200, 164, 92, 0.35);
+  border-inline-start: 1px solid rgba(200, 164, 92, 0.35);
 }
 .wz-hero-corner-tr {
   top: 16px;
-  right: 16px;
+  inset-inline-end: 16px;
   border-top: 1px solid rgba(200, 164, 92, 0.35);
-  border-right: 1px solid rgba(200, 164, 92, 0.35);
+  border-inline-end: 1px solid rgba(200, 164, 92, 0.35);
 }
 .wz-hero-corner-bl {
   bottom: 16px;
-  left: 16px;
+  inset-inline-start: 16px;
   border-bottom: 1px solid rgba(200, 164, 92, 0.35);
-  border-left: 1px solid rgba(200, 164, 92, 0.35);
+  border-inline-start: 1px solid rgba(200, 164, 92, 0.35);
 }
 .wz-hero-corner-br {
   bottom: 16px;
-  right: 16px;
+  inset-inline-end: 16px;
   border-bottom: 1px solid rgba(200, 164, 92, 0.35);
-  border-right: 1px solid rgba(200, 164, 92, 0.35);
+  border-inline-end: 1px solid rgba(200, 164, 92, 0.35);
 }
 
 /* ── Tablet ── */
@@ -340,42 +320,77 @@
 
 /* ── Mobile ── */
 @media (max-width: 768px) {
+  /* Fill the viewport below the 52px header; start with the exact header colour
+     (#0a0a0a) so the header→hero seam is invisible. Centre the column so the
+     watch + text sit with equal breathing room above, between and below. */
   .wz-hero {
     flex-direction: column;
-    height: auto;
-    min-height: unset;
-    max-height: unset;
+    justify-content: center;
+    align-items: center;
+    height: calc(100vh - 52px);
+    height: calc(100dvh - 52px); /* account for mobile address bar */
+    min-height: 320px;
+    max-height: none;
+    padding: 24px 20px;
+    gap: 16px;
+    background: #0a0a0a;
+    /* border-box so the 20px side padding is INCLUDED in width:100% — otherwise
+       it overflows the viewport and causes the horizontal scrollbar. */
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
   }
 
+  /* Watch needs an explicit height — its iframe is absolute, so flex:auto would
+     collapse the box. A vh height + clamps keeps it sized while it stays centred. */
   .wz-hero-watch {
-    flex: none;
+    flex: 0 0 auto;
     width: 100%;
-    height: 42vh;
-    min-height: 280px;
+    height: 36vh;
+    min-height: 220px;
+    max-height: 320px;
+    padding: 8px 0;
     order: 1;
   }
 
+  /* Natural height — no stretch, no internal centring, no bottom gap.
+     On mobile everything is centred (text + buttons). */
   .wz-hero-text {
-    flex: none;
+    flex: 0 0 auto;
     width: 100%;
     order: 2;
-    padding: 28px 20px 36px;
+    padding: 0;
     gap: 0;
-    background: linear-gradient(180deg, #0a0a0a 0%, #111 100%);
+    background: none;
+    text-align: center;
+  }
+
+  /* Tighten the vertical rhythm so the text feels snug, not floating */
+  .wz-hero-label {
+    justify-content: center;
+    margin-bottom: 8px;
   }
 
   .wz-hero-headline {
-    font-size: clamp(1.8rem, 6.5vw, 2.6rem);
+    font-size: clamp(1.5rem, 5.5vw, 2rem);
+    margin-bottom: 8px;
   }
 
   .wz-hero-body {
     font-size: 12px;
     max-width: none;
+    margin-bottom: 14px;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
   }
 
   .wz-hero-cta {
     flex-direction: column;
     align-items: stretch;
+    gap: 8px;
+    margin-bottom: 0;
   }
 
   .wz-hero-cta-primary,
@@ -385,36 +400,54 @@
   }
 
   .wz-hero-stats {
-    gap: 0;
-    flex-wrap: wrap;
-  }
-
-  .wz-hero-stat {
-    padding-right: 16px;
-    margin-right: 16px;
+    display: none;
   }
 
   .wz-hero-corner {
     display: none;
   }
+}
 
-  /* Left fade is only meaningful next to the text column on desktop */
-  .wz-hero-overlay-left {
+/* Short viewports: progressively shed content so the hero never overflows */
+@media (max-width: 768px) and (max-height: 640px) {
+  .wz-hero {
+    padding: 16px 20px;
+    gap: 12px;
+  }
+  .wz-hero-watch {
+    height: 32vh;
+    min-height: 180px;
+  }
+  .wz-hero-body,
+  .wz-hero-label {
     display: none;
   }
-
-  .wz-hero-watch iframe {
-    top: var(--hero-iframe-top);
-    bottom: var(--hero-iframe-bottom);
-    height: calc(100% + 106px);
+  .wz-hero-headline {
+    font-size: clamp(1.3rem, 5vw, 1.6rem);
+  }
+  .wz-hero-cta-primary,
+  .wz-hero-cta-secondary {
+    padding: 12px 20px;
+  }
+}
+@media (max-width: 768px) and (max-height: 520px) {
+  .wz-hero {
+    gap: 8px;
+  }
+  .wz-hero-watch {
+    height: 28vh;
+    min-height: 0;
+  }
+  .wz-hero-headline {
+    font-size: 1.3rem;
+  }
+  .wz-hero-cta-secondary {
+    display: none;
   }
 }
 
 /* ── Very small screens ── */
 @media (max-width: 400px) {
-  .wz-hero-watch {
-    height: 36vh;
-  }
   .wz-hero-stat-num {
     font-size: 1.2rem;
   }
@@ -429,5 +462,22 @@
     border-right: none;
     margin-right: 0;
     padding-right: 0;
+  }
+}
+
+/* ── RTL: hero text aligns right; the eyebrow's decorative line flips ── */
+/* ── RTL (desktop only) ──────────────────────────────────────────────────
+   Flip the two columns (text → right, watch → left), right-align the text and
+   put the eyebrow's gold line on the right. Scoped to ≥769px so the centred
+   mobile layout (text-align:center) is preserved in Arabic too. ──────────── */
+@media (min-width: 769px) {
+  [dir='rtl'] .wz-hero {
+    flex-direction: row-reverse;
+  }
+  [dir='rtl'] .wz-hero-text {
+    text-align: right;
+  }
+  [dir='rtl'] .wz-hero-label {
+    flex-direction: row-reverse;
   }
 }

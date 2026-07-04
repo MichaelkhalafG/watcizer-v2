@@ -194,7 +194,7 @@ const Loader = () => {
           color: '#C8A45C',
           fontSize: '1.2rem',
           letterSpacing: '0.5em',
-          fontFamily: "'Lato', 'Georgia', serif",
+          fontFamily: "Georgia, 'Times New Roman', serif",
           fontWeight: 300,
           margin: '0 0 8px 0',
           userSelect: 'none',

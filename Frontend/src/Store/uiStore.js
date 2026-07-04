@@ -24,6 +24,8 @@ export const useUIStore = create((set) => ({
     bandColors: [],
     materials: [],
     movements: [],
+    shapes: [],
+    displayTypes: [],
     grades: [],
   },
   // Accept either a plain object or a functional updater (prev) => next, so

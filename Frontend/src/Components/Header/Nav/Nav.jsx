@@ -1,4 +1,4 @@
-import { useState, useRef, useContext, useMemo, useLayoutEffect } from 'react'
+import { useState, useRef, useMemo, useLayoutEffect } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { MdOutlineKeyboardArrowDown, MdOutlineDiamond } from 'react-icons/md'
 // Watch / fashion / category icons (verified against react-icons@5.5.0)
@@ -25,7 +25,7 @@ import {
 import { BsSmartwatch, BsWatch } from 'react-icons/bs'
 import { TbShirt, TbShoppingBag, TbCategory, TbBuildingStore } from 'react-icons/tb'
 import { RiPercentLine } from 'react-icons/ri'
-import { MyContext } from '../../../Context/Context'
+import { useCatalog } from '../../../Hooks/queries/useCatalog'
 import { useUIStore } from '../../../Store/uiStore'
 import { getImageUrl } from '../../../utils/imageUrl'
 import { buildListingParams } from '../../../utils/listingParams'
@@ -103,7 +103,7 @@ const getCategoryIcon = (name, size = 16) => {
 }
 
 function Nav() {
-  const { products, tables } = useContext(MyContext)
+  const { products, tables } = useCatalog()
   const { language, setCurrentPage } = useUIStore()
   const location = useLocation()
   const navigate = useNavigate()

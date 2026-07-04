@@ -1,221 +1,150 @@
+import { memo } from 'react'
 import './Footer.css'
-import {
-  FaShippingFast,
-  FaPhoneVolume,
-  FaUndoAlt,
-  FaTag,
-  FaFacebookF,
-  FaInstagram,
-} from 'react-icons/fa'
-import { useContext } from 'react'
-import { MyContext } from '../../Context/Context'
-import { useUIStore } from '../../Store/uiStore'
 import { Link, useNavigate } from 'react-router-dom'
-import { FaRegHeart } from 'react-icons/fa'
-import { RiBillLine } from 'react-icons/ri'
-import { IoIosPerson } from 'react-icons/io'
+import { FaFacebook, FaInstagram, FaWhatsapp } from 'react-icons/fa'
+import { useUIStore } from '../../Store/uiStore'
+import LanguageDropdown from '../LanguageDropdown/LanguageDropdowen'
+import logo from '../../assets/images/logo.webp'
+
+const WHATSAPP_URL = 'https://wa.me/201274550956'
 
 function Footer() {
-  const { tables } = useContext(MyContext)
-  const { language, setFilters } = useUIStore()
+  const { language } = useUIStore()
   const navigate = useNavigate()
-  const half = Math.ceil((tables.brands?.length || 0) / 2)
-  const firstHalfBrands = tables.brands?.slice(0, half) || []
-  const secondHalfBrands = tables.brands?.slice(half) || []
+  const isRTL = language === 'ar'
+  const t = (en, ar) => (isRTL ? ar : en)
+  const year = new Date().getFullYear()
 
-  const profileActions = [
-    {
-      icon: <IoIosPerson />,
-      name: language === 'ar' ? 'تعديل الملف الشخصي' : 'Edit Profile',
-      to: '/edit-profile',
-    },
-    {
-      icon: <FaRegHeart />,
-      name: language === 'ar' ? 'قائمة الامنيات' : 'Wish List',
-      to: '/wish-list',
-    },
-    {
-      icon: <RiBillLine />,
-      name: language === 'ar' ? 'قائمة الاوردرات' : 'Order List',
-      to: '/order-list',
-    },
+  // Shop column → real listing routes only.
+  const shopLinks = [
+    { label: t('Watches', 'ساعات'), onClick: () => navigate('/category/Watches') },
+    { label: t('Fashion', 'أزياء'), onClick: () => navigate('/category/Fashion') },
+    { label: t('Offers', 'العروض'), onClick: () => navigate('/offers') },
+    { label: t('New Arrivals', 'وصل حديثاً'), onClick: () => navigate('/listing?sort=newest') },
+    { label: t('All Products', 'كل المنتجات'), onClick: () => navigate('/listing') },
   ]
 
-  const handleLogout = async () => {
-    sessionStorage.clear()
-    localStorage.clear()
-    navigate('/')
-    window.location.reload()
-  }
+  // Account column → real user/auth routes only.
+  const accountLinks = [
+    { label: t('Profile', 'الملف الشخصي'), to: '/account?tab=profile' },
+    { label: t('My Orders', 'طلباتي'), to: '/account?tab=orders' },
+    { label: t('Wishlist', 'قائمة الأمنيات'), to: '/account?tab=wishlist' },
+    { label: t('Cart', 'سلة المشتريات'), to: '/cart' },
+    { label: t('Sign In', 'تسجيل الدخول'), to: '/login' },
+  ]
 
   return (
-    <footer className="footer">
-      {/* Top Section with Features */}
-      <div className="top-features container py-4">
-        <div className="row py-4 border-bottom border-1 text-center">
-          <div
-            className={`col-6 col-md-3 ${language === 'ar' ? 'border-start' : 'border-end'}  border-1 feature-item`}
-          >
-            <p>
-              <FaShippingFast className="mx-2" style={{ fontSize: '1.5rem' }} />
-              {language === 'ar' ? 'شحن سريع ' : 'Fast Shipping'}
-            </p>
-          </div>
-          <div
-            className={`col-6 col-md-3 ${language === 'ar' ? 'border-start' : 'border-end'}  border-1 feature-item`}
-          >
-            <p>
-              <FaPhoneVolume className="mx-2" style={{ fontSize: '1.5rem' }} />
-              {language === 'ar' ? 'دعم فني 24/7' : '24/7 Customer Support'}
-            </p>
-          </div>
-          <div
-            className={`col-6 col-md-3 ${language === 'ar' ? 'border-start' : 'border-end'}  border-1 feature-item`}
-          >
-            <p>
-              <FaUndoAlt className="mx-2" style={{ fontSize: '1.5rem' }} />
-              {language === 'ar' ? 'سياسة إرجاع سهلة' : 'Easy Return Policy'}
-            </p>
-          </div>
-          <div className="col-6 col-md-3 feature-item">
-            <p>
-              <FaTag className="mx-2" style={{ fontSize: '1.5rem' }} />
-              {language === 'ar' ? 'أفضل العروض والأسعار' : 'Best Deals & Prices'}
-            </p>
-          </div>
-        </div>
-      </div>
+    <footer className="wz-foot" dir={isRTL ? 'rtl' : 'ltr'}>
+      <div className="wz-foot__accent" />
 
-      {/* Footer Categories */}
-      <div className="footer-categories container py-5">
-        <div className="row m-0">
-          <div className="col-6 col-lg-3 mb-4">
-            <h6 className="category-title">{language === 'ar' ? 'الفئات الفرعية' : 'SubTypes'}</h6>
-            <ul className="list-unstyled">
-              {tables.subTypes &&
-                tables.subTypes.map((subtype) => (
-                  <li key={subtype.id}>
-                    <Link
-                      to={`/subtypes/${subtype.sub_type_name}`}
-                      onClick={() =>
-                        setFilters({
-                          categories: [],
-                          brands: [],
-                          subTypes: [subtype.id],
-                          price: [0, 6000],
-                        })
-                      }
-                    >
-                      {subtype.translations.find((t) => t.locale === language)?.sub_type_name}
-                    </Link>
-                  </li>
-                ))}
-            </ul>
-          </div>
-          <div className="col-6 col-lg-3 mb-4">
-            <h6 className="category-title">{language === 'ar' ? 'العلامات التجارية' : 'Brands'}</h6>
-            <ul className="list-unstyled">
-              {firstHalfBrands.map((brand) => (
-                <li key={brand.id}>
-                  <Link
-                    to={`/brand/${brand.brand_name}`}
-                    onClick={() =>
-                      setFilters({
-                        categories: [],
-                        brands: [brand.id],
-                        subTypes: [],
-                        price: [0, 6000],
-                      })
-                    }
-                  >
-                    {brand.translations.find((t) => t.locale === language)?.brand_name}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </div>
-          <div className="col-6 col-lg-3 mb-4">
-            <h6 className="category-title">{language === 'ar' ? 'العلامات التجارية' : 'Brands'}</h6>
-            <ul className="list-unstyled">
-              {secondHalfBrands.map((brand) => (
-                <li key={brand.id}>
-                  <Link
-                    to={`/brand/${brand.brand_name}`}
-                    onClick={() =>
-                      setFilters({
-                        categories: [],
-                        brands: [brand.id],
-                        subTypes: [],
-                        price: [0, 6000],
-                      })
-                    }
-                  >
-                    {brand.translations.find((t) => t.locale === language)?.brand_name}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </div>
-          <div className="col-6 col-lg-3 mb-4">
-            <h6 className="category-title">{language === 'ar' ? 'افعال سريعة' : 'Fast Actions'}</h6>
-            <ul className="list-unstyled">
-              {profileActions.map((action) => (
-                <li key={action.to}>
-                  <Link to={action.to}>{action.name}</Link>
-                </li>
-              ))}
-              <li>
-                <Link to={'/cart'}>{language === 'ar' ? 'سلة المشتريات' : 'Cart'}</Link>
-              </li>
-              <li>
-                <Link to={'/blogs'}>{language === 'ar' ? 'المدونات' : 'Blogs'}</Link>
-              </li>
-              <li>
-                <button className="btn btn-link  p-0" onClick={handleLogout}>
-                  {language === 'ar' ? 'تسجيل الخروج' : 'Log Out'}
-                </button>
-              </li>
-            </ul>
-          </div>
-        </div>
-      </div>
-
-      {/* Footer Bottom */}
-      <div className="footer-bottom container py-3 text-center">
-        <div className="row align-items-center">
-          <div className="col-6">
-            <p className={`text-${language === 'ar' ? 'end' : 'start'}`}>
-              &copy; {new Date().getFullYear()}{' '}
-              {language === 'ar'
-                ? 'جميع الحقوق محفوظة لمايكل خلف'
-                : 'Watchizer All Rights Reserved For Michael Khalaf'}
-            </p>
-          </div>
-          <div
-            className={`col-6 d-flex ${language === 'ar' ? 'justify-content-start' : 'justify-content-end'} social-buttons`}
-          >
+      <div className="wz-foot__main">
+        {/* Column 1 — Brand */}
+        <div className="wz-foot__col wz-foot__brand">
+          <Link to="/" className="wz-foot__logo-link" aria-label="Watchizer">
+            <img src={logo} alt="Watchizer" className="wz-foot__logo" width="130" height="38" />
+          </Link>
+          <p className="wz-foot__tagline">
+            {t(
+              "Egypt's premier destination for authentic luxury timepieces",
+              'وجهتك الأولى للساعات الفاخرة الأصلية في مصر',
+            )}
+          </p>
+          <div className="wz-foot__social">
             <a
               href="https://www.facebook.com/profile.php?id=100076267296916"
               target="_blank"
               rel="noopener noreferrer"
               aria-label="Facebook"
-              className="mx-2"
+              className="wz-foot__social-btn"
             >
-              <FaFacebookF style={{ height: '20px', width: '20px' }} />
+              <FaFacebook />
             </a>
             <a
               href="https://www.instagram.com/watchizer_eg/"
               target="_blank"
               rel="noopener noreferrer"
               aria-label="Instagram"
+              className="wz-foot__social-btn"
             >
-              <FaInstagram style={{ height: '20px', width: '20px' }} />
+              <FaInstagram />
             </a>
           </div>
         </div>
+
+        {/* Column 2 — Shop */}
+        <div className="wz-foot__col">
+          <h3 className="wz-foot__title">{t('Shop', 'تسوق')}</h3>
+          <ul className="wz-foot__links">
+            {shopLinks.map((link) => (
+              <li key={link.label}>
+                <button type="button" className="wz-foot__link" onClick={link.onClick}>
+                  {link.label}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        {/* Column 3 — Account */}
+        <div className="wz-foot__col">
+          <h3 className="wz-foot__title">{t('Account', 'الحساب')}</h3>
+          <ul className="wz-foot__links">
+            {accountLinks.map((link) => (
+              <li key={link.to}>
+                <Link className="wz-foot__link" to={link.to}>
+                  {link.label}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        {/* Column 4 — Support */}
+        <div className="wz-foot__col">
+          <h3 className="wz-foot__title">{t('Support', 'الدعم')}</h3>
+          <ul className="wz-foot__links">
+            <li>
+              <Link className="wz-foot__link" to="/blogs">
+                {t('Blog', 'المدونة')}
+              </Link>
+            </li>
+            <li>
+              <Link className="wz-foot__link" to="/offers">
+                {t('Latest Offers', 'أحدث العروض')}
+              </Link>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      {/* Bottom bar */}
+      <div className="wz-foot__bottombar">
+        <div className="wz-foot__bottom-row">
+          <p className="wz-foot__copy">
+            {t(
+              `© ${year} Watchizer · All rights reserved`,
+              `© ${year} واتشايزر · جميع الحقوق محفوظة`,
+            )}
+          </p>
+          <div className="wz-foot__bottom-right">
+            <LanguageDropdown />
+          </div>
+        </div>
+
+        <p className="wz-foot__credit">
+          {t('Designed & developed by ', 'تصميم وتطوير بواسطة ')}
+          <a
+            className="wz-foot__credit-name"
+            href={WHATSAPP_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            {t('Michael Khalaf', 'مايكل خلف')}
+          </a>
+        </p>
       </div>
     </footer>
   )
 }
 
-export default Footer
+export default memo(Footer)

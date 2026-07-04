@@ -1,11 +1,20 @@
+import { Helmet } from 'react-helmet-async'
 import './NotFound.css'
 
 function NotFound() {
   return (
-    <div className="container">
-      <div className="row justify-content-center">
-        <div className="main_wrapper row">
-          <div className="main">
+    <div className="wz-404">
+      {/* Interim SEO for unknown paths. This SPA route still returns HTTP 200
+          (the server serves index.html for every path), so the "*" route paints
+          this 404 UI without a 404 status. `noindex` at least keeps crawlers from
+          indexing unknown URLs as valid pages. A REAL HTTP 404 status requires
+          host-level config (nginx/Cloudflare rule) or the SSR layer (STEP 42)
+          returning a 404 for unmatched routes. */}
+      <Helmet>
+        <meta name="robots" content="noindex, follow" />
+      </Helmet>
+      <div className="main_wrapper">
+        <div className="main">
             <div className="antenna">
               <div className="antenna_shadow" />
               <div className="a1" />
@@ -74,7 +83,6 @@ function NotFound() {
           </div>
         </div>
       </div>
-    </div>
   )
 }
 export default NotFound

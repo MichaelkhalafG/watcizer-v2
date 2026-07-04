@@ -2,67 +2,44 @@ import { useCallback, useEffect, useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { MyContext } from './Context'
 import './loader.css'
-import useFetchTablesAndProducts from './FetchTablesAndProducts'
-import useCart, { getItemKey } from '../Hooks/useCart'
-import Loader from '../Components/Loader/Loader'
+import useCart from '../Hooks/useCart'
 import { useUIStore } from '../Store/uiStore'
 import { useAuthStore } from '../Store/authStore'
 import { useToastStore } from '../Store/toastStore'
-import http, {
-  fetchShippingCities,
-  fetchBanners,
-  fetchOffers,
-  fetchCart,
-  fetchWishList,
-} from './api'
+import http, { fetchWishList } from './api'
+import { useTables } from '../Hooks/queries/useTables'
+import { useProducts } from '../Hooks/queries/useProducts'
+import { useOffers } from '../Hooks/queries/useOffers'
+import { useShipping } from '../Hooks/queries/useShipping'
 
 export const MyProvider = ({ children }) => {
-  const { cart, updateQuantity } = useCart()
+  const { cart } = useCart()
 
   // Cross-cutting state now lives in focused Zustand stores.
   const language = useUIStore((s) => s.language)
   const user_id = useAuthStore((s) => s.userId)
   const showToast = useToastStore((s) => s.showToast)
 
-  const [version, setVersion] = useState(0)
-  const [watches, setWatches] = useState([])
-  const [fashion, setFashion] = useState([])
-  const [productsEn, setProductsEn] = useState([])
-  const [productsAr, setProductsAr] = useState([])
   const [filteredProducts, setFilteredProducts] = useState([])
-  const [ratings, setRatings] = useState([])
-  const [tables, setTables] = useState({})
-  const [sideBanners, setSideBanners] = useState([])
-  const [bottomBanners, setBottomBanners] = useState([])
-  const [HomeBannersPc, setHomeBannersPc] = useState([])
-  const [HomeBannersMob, setHomeBannersMob] = useState([])
   const [productsCount, setProductsCount] = useState(0)
-  const [WishListCount, setWishListCount] = useState(0)
   const [wishList, setwishList] = useState([])
-  const [offers, setOffers] = useState([])
   const navigate = useNavigate()
   const [total_cart_price, settotal_cart_price] = useState()
   const [shippingid, setShippingid] = useState('')
   const [shipping, setShipping] = useState('')
-  const [shippingData, setShippingData] = useState([])
   const [shippingname, setShippingName] = useState('')
 
-  const helperforsetingcategories = (setCategory, products, categoryTypeName) => {
-    const filteredProducts = products.filter(
-      (product) => product.category_type === categoryTypeName,
-    )
-    setCategory(filteredProducts || [])
-  }
-
-  useEffect(() => {
-    ;(async () => {
-      fetchShippingCities(setShippingData)
-      fetchBanners(setSideBanners, setBottomBanners, setHomeBannersPc, setHomeBannersMob)
-      fetchOffers(setOffers)
-    })()
-  }, [])
-
-  const isFetching = useFetchTablesAndProducts(setTables, setRatings, setProductsEn, setProductsAr)
+  // Server data lives in TanStack Query and consumers read it directly from the
+  // query hooks (useCatalog/useOffers/…). MyProvider only pulls what it still
+  // needs INTERNALLY: the localized catalog + offers (for the wishlist fetch) and
+  // the shipping cities (for shippingPrices). Products/tables/offers/banners are
+  // NO LONGER exposed on context — see the trimmed `values` below.
+  const { data: tablesData } = useTables()
+  const catalog = useProducts(tablesData).data
+  const productsEn = catalog?.productsEn ?? []
+  const productsAr = catalog?.productsAr ?? []
+  const { data: offers = [] } = useOffers()
+  const { data: shippingData = [] } = useShipping()
 
   const shippingPrices = useMemo(() => {
     return shippingData.map((city) => ({
@@ -93,13 +70,6 @@ export const MyProvider = ({ children }) => {
   }, [language, productsEn, productsAr])
 
   useEffect(() => {
-    if (products.length > 0) {
-      helperforsetingcategories(setWatches, products, 'Watches')
-      helperforsetingcategories(setFashion, products, 'Fashion')
-    }
-  }, [products])
-
-  useEffect(() => {
     if (user_id) {
       // fetchCart(user_id, products, offers, language, setCart);
       fetchWishList(user_id, products, offers, language, setwishList)
@@ -112,8 +82,6 @@ export const MyProvider = ({ children }) => {
     setProductsCount(
       cartItems.reduce((total, item) => total + (parseInt(item.quantity, 10) || 0), 0),
     )
-
-    setWishListCount(wishList.reduce((total) => total + 1, 0))
 
     const calculateTotalCartPrice = () => {
       const subtotal = cartItems.reduce((total, item) => {
@@ -131,130 +99,87 @@ export const MyProvider = ({ children }) => {
     calculateTotalCartPrice()
   }, [cart, wishList, shipping])
 
-  const handleQuantityChange = useCallback(
-    (item, value) => {
-      const currentQty = item.quantity || 1
-      const newQty = currentQty + value
-
-      if (newQty > 0) {
-        const identifier = getItemKey(item)
-        updateQuantity(identifier, newQty)
-      }
-    },
-    [updateQuantity],
-  )
-
+  // Single toggle used by every heart button across the app. If the item is
+  // already wishlisted it is removed (DELETE by wishlist_item id); otherwise it
+  // is added. State updates immediately so all hearts stay in sync.
   const handleAddTowishlist = useCallback(
-    (id, type) => {
+    async (id, type) => {
       if (!user_id) {
         showToast(
           language === 'ar' ? 'يجب تسجيل الدخول أولاً!' : 'You must login first!',
           'warning',
         )
         navigate('/login')
-      } else {
-        const payload = {
-          user_id: user_id,
-          ...(type === 'p' ? { product_id: id } : { offer_id: id }),
-        }
+        return
+      }
 
-        http
-          .post('/add_wishlist', payload)
-          .then(() => {
-            showToast(
-              language === 'ar' ? 'تمت الإضافة إلى المفضل!' : 'Added to the Wish List!',
-              'success',
-            )
-            fetchWishList(user_id, products, offers, language, setwishList)
-          })
-          .catch(() => {
-            showToast(
-              language === 'ar'
-                ? 'حدث خطأ أثناء الإضافة إلى المفضل.'
-                : 'An error occurred while adding to the Wish List.',
-              'error',
-            )
-          })
+      const existing = wishList.find((w) =>
+        type === 'p'
+          ? Number(w.product_id) === Number(id)
+          : Number(w.offer_id) === Number(id),
+      )
+
+      try {
+        if (existing) {
+          // Remove — delete the wishlist_item row, then drop it from state.
+          await http.delete(`/delete_wishlist/${existing.id}`)
+          setwishList((prev) => prev.filter((w) => w.id !== existing.id))
+          showToast(
+            language === 'ar' ? 'تمت الإزالة من المفضلة' : 'Removed from the Wish List!',
+            'success',
+          )
+        } else {
+          // Add — then re-fetch so the new entry carries full product data.
+          const payload = {
+            user_id: user_id,
+            ...(type === 'p' ? { product_id: id } : { offer_id: id }),
+          }
+          await http.post('/add_wishlist', payload)
+          await fetchWishList(user_id, products, offers, language, setwishList)
+          showToast(
+            language === 'ar' ? 'تمت الإضافة إلى المفضلة' : 'Added to the Wish List!',
+            'success',
+          )
+        }
+      } catch {
+        showToast(
+          language === 'ar' ? 'حدث خطأ، حاول مرة أخرى.' : 'Something went wrong, please try again.',
+          'error',
+        )
       }
     },
-    [language, navigate, user_id, offers, products, showToast],
+    [language, navigate, user_id, offers, products, showToast, wishList],
   )
 
+  // Trimmed context value — ONLY the non-server state still read by consumers:
+  // wishlist, cart-derived counters, shipping selection + derived prices, and the
+  // listing-search setter. All server data (products/tables/offers/banners) now
+  // comes from the TanStack Query hooks, so it's intentionally not exposed here.
   const values = useMemo(
     () => ({
+      // Wishlist (stays in context)
       wishList,
       setwishList,
+      handleAddTowishlist,
+      // Cart-derived counters
+      productsCount,
+      total_cart_price,
+      // Shipping selection + derived city prices
       shippingid,
       setShippingid,
-      productsCount,
-      setProductsCount,
-      WishListCount,
-      setWishListCount,
-      shipping,
       setShipping,
-      filteredProducts,
-      setFilteredProducts,
-      total_cart_price,
-      settotal_cart_price,
-      version,
-      setVersion,
-      fashion,
-      setFashion,
-      watches,
-      setWatches,
-      handleAddTowishlist,
-      fetchWishList,
-      ratings,
-      fetchCart,
-      shippingPrices,
-      products,
-      isFetching,
-      tables,
-      sideBanners,
-      bottomBanners,
-      HomeBannersPc,
-      HomeBannersMob,
-      handleQuantityChange,
-      shippingname,
       setShippingName,
-      offers,
-      Loader,
+      shippingPrices,
+      // Listing search results setter (SearchBox writes; /listingsearch reads)
+      setFilteredProducts,
     }),
     [
       wishList,
-      setwishList,
-      shippingid,
-      setShippingid,
-      productsCount,
-      setProductsCount,
-      WishListCount,
-      setWishListCount,
-      shipping,
-      setShipping,
-      filteredProducts,
-      setFilteredProducts,
-      total_cart_price,
-      settotal_cart_price,
-      version,
-      setVersion,
-      fashion,
-      setFashion,
-      watches,
-      setWatches,
       handleAddTowishlist,
-      ratings,
+      productsCount,
+      total_cart_price,
+      shippingid,
       shippingPrices,
-      products,
-      isFetching,
-      tables,
-      sideBanners,
-      bottomBanners,
-      HomeBannersPc,
-      HomeBannersMob,
-      handleQuantityChange,
-      shippingname,
-      setShippingName,
-      offers,
     ],
   )
   return <MyContext.Provider value={values}>{children}</MyContext.Provider>

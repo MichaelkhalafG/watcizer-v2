@@ -84,25 +84,18 @@ class SitemapController extends Controller
         </image:image>";
             }
 
-            // English URL
+            // Canonical product URL — /product/{english-slug}, matching the SPA's
+            // productUrl()/toSlug() EXACTLY. Single canonical pattern only: the old
+            // raw-title URL (spaces %20) and the Arabic-title alternate both pointed
+            // at non-canonical URLs that would just 301 back here, so they're dropped.
+            $slug = $this->slugify($enTitle) ?: (string) $product->id;
             $urls[] = $this->makeUrl(
-                self::DOMAIN . '/product/' . rawurlencode($enTitle),
+                self::DOMAIN . '/product/' . $slug,
                 '0.8',
                 'weekly',
                 $product->updated_at?->toAtomString(),
                 $imageXml
             );
-
-            // ✅ Arabic alternate (same URL but signal via hreflang in page)
-            // We add the AR title as alternate if different
-            if ($arTitle && $arTitle !== $enTitle) {
-                $urls[] = $this->makeUrl(
-                    self::DOMAIN . '/product/' . rawurlencode($arTitle),
-                    '0.7',
-                    'weekly',
-                    $product->updated_at?->toAtomString()
-                );
-            }
         }
 
         // ── Brands ────────────────────────────────────────────────────────────
@@ -165,6 +158,22 @@ class SitemapController extends Controller
         $xml .= "\n</urlset>";
 
         return $xml;
+    }
+
+    /**
+     * Slugify an English title to match the SPA's toSlug() EXACTLY, so a sitemap
+     * URL equals the product's canonical (/product/{slug}). Mirrors slugs.js:
+     * lowercase · strip quotes/&  · keep [a-z0-9\s-] · spaces→- · collapse-  · trim-.
+     */
+    private function slugify(string $name): string
+    {
+        $s = mb_strtolower(trim($name));
+        $s = preg_replace("/['’`]/u", '', $s);
+        $s = str_replace('&', '', $s);
+        $s = preg_replace('/[^a-z0-9\s-]/', '', $s);
+        $s = preg_replace('/\s+/', '-', $s);
+        $s = preg_replace('/-+/', '-', $s);
+        return trim($s, '-');
     }
 
     private function makeUrl(string $loc, string $priority, string $changefreq, ?string $lastmod = null, string $imageXml = ''): string

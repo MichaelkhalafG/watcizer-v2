@@ -88,7 +88,7 @@ class DetailsProductController extends Controller
     public function AddProductRating(Request $request)
     {
         try {
-            if (!auth()->check()) {
+            if (!auth('api')->check()) {
                 return response()->json(['message' => 'Unauthenticated'], 401);
             }
 
@@ -99,7 +99,7 @@ class DetailsProductController extends Controller
             ]);
 
             ProductRating::updateOrCreate(
-                ['user_id' => auth()->id(), 'product_id' => $request->product_id],
+                ['user_id' => auth('api')->id(), 'product_id' => $request->product_id],
                 ['rating'  => $request->rating, 'comment' => $request->comment]
             );
 
@@ -168,7 +168,7 @@ class DetailsProductController extends Controller
     public function AddOfferRating(Request $request)
     {
         try {
-            if (!auth()->check()) {
+            if (!auth('api')->check()) {
                 return response()->json(['message' => 'Unauthenticated'], 401);
             }
 
@@ -179,7 +179,7 @@ class DetailsProductController extends Controller
             ]);
 
             OfferRating::updateOrCreate(
-                ['user_id' => auth()->id(), 'offer_id' => $request->offer_id],
+                ['user_id' => auth('api')->id(), 'offer_id' => $request->offer_id],
                 ['rating'  => $request->rating, 'comment' => $request->comment]
             );
 
@@ -206,13 +206,22 @@ class DetailsProductController extends Controller
     public function AddWishlist(Request $request)
     {
         try {
+            // Wishlist is a logged-in-only feature. Resolve the owner from the JWT
+            // (auth:api), never a client-supplied user_id — otherwise anyone could
+            // add to another user's wishlist. Guests are blocked here (401) and by
+            // the frontend heart's "log in first" prompt. DeleteWishlist is already
+            // scoped the same way via auth('api')->id().
+            $userId = auth('api')->id();
+            if (!$userId) {
+                return response()->json(['success' => false, 'message' => 'Unauthenticated'], 401);
+            }
+
             $request->validate([
-                'user_id'    => 'required|integer|exists:users,id',
                 'product_id' => 'nullable|integer|exists:products,id',
                 'offer_id'   => 'nullable|integer|exists:offers,id',
             ]);
 
-            $wishlist     = Wishlist::firstOrCreate(['user_id' => $request->user_id]);
+            $wishlist     = Wishlist::firstOrCreate(['user_id' => $userId]);
             $wishlistItem = $wishlist->wishlist_item()->updateOrCreate([
                 'product_id' => $request->product_id,
                 'offer_id'   => $request->offer_id,
@@ -256,7 +265,10 @@ class DetailsProductController extends Controller
     public function DeleteWishlist($id)
     {
         try {
-            $authId = auth()->id();
+            // The SPA authenticates with JWT, so resolve the id from the `api`
+            // guard. Plain auth()->id() uses the (session) web guard and returns
+            // null here, which made every delete match nothing → 404.
+            $authId = auth('api')->id();
             WishlistItem::whereHas('wishlist', fn($q) => $q->where('user_id', $authId))
                 ->findOrFail($id)
                 ->delete();

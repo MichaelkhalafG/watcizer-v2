@@ -1,7 +1,7 @@
-import { useState, useContext } from 'react'
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useMediaQuery } from '@mui/material'
-import { MyContext } from '../../Context/Context'
+import { useCatalog } from '../../Hooks/queries/useCatalog'
 import { useUIStore } from '../../Store/uiStore'
 
 // Adapted to the real legacy `tables` shape (camelCase `subTypes`/`brands`,
@@ -9,7 +9,7 @@ import { useUIStore } from '../../Store/uiStore'
 // (`/subtypes/:name`, `/brand/:name`). Light luxury theme, existing colors only.
 const MegaMenu = ({ tables }) => {
   const [open, setOpen] = useState(false)
-  const { products } = useContext(MyContext)
+  const { products } = useCatalog()
   const { language, setCurrentPage, setFilters } = useUIStore()
   const isMobile = useMediaQuery('(max-width:768px)')
 

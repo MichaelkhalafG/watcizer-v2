@@ -1,5 +1,5 @@
-import { useContext, useState, useMemo } from 'react'
-import { MyContext } from '../../Context/Context'
+import { memo, useState, useMemo } from 'react'
+import { useCatalog } from '../../Hooks/queries/useCatalog'
 import { useUIStore } from '../../Store/uiStore'
 import { passesFilters } from '../../utils/filterPredicate'
 import './SideBar.css'
@@ -82,7 +82,7 @@ function FilterSection({ title, items, selectedIds, onToggle, onClear, searchabl
 }
 
 function SideBar() {
-  const { tables, products } = useContext(MyContext)
+  const { tables, products } = useCatalog()
   const { language, filters, setFilters, setCurrentPage } = useUIStore()
   const isRTL = language === 'ar'
   const list = products || []
@@ -111,8 +111,34 @@ function SideBar() {
       bandColors: [],
       materials: [],
       movements: [],
+      shapes: [],
+      displayTypes: [],
+      grades: [],
     })
   }
+
+  // Gender is filtered by language-stable English NAME (genders_en), not a table
+  // id — so its items are derived from the products, with Arabic display labels.
+  const genderItems = useMemo(() => {
+    const AR = { Men: 'رجالي', Women: 'نسائي', Unisex: 'للجنسين', Kids: 'أطفال', Boys: 'أولاد', Girls: 'بنات' }
+    const ORDER = ['Men', 'Women', 'Unisex', 'Kids', 'Boys', 'Girls']
+    const seen = new Set()
+    list.forEach((p) => (p.genders_en || []).forEach((g) => g && seen.add(g)))
+    return [...seen]
+      .sort((a, b) => {
+        const ia = ORDER.indexOf(a)
+        const ib = ORDER.indexOf(b)
+        return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib)
+      })
+      .map((name) => ({
+        id: name, // English name doubles as the toggle key
+        name: isRTL ? AR[name] || name : name,
+        count: list.filter(
+          (p) => passesFilters(p, filters, 'genders') && (p.genders_en || []).includes(name),
+        ).length,
+      }))
+      .filter((g) => g.count > 0)
+  }, [list, filters, isRTL])
 
   // ── Dynamic option counts: for each section, count products that match this
   // option AND every OTHER active filter (faceted search). ──
@@ -138,20 +164,15 @@ function SideBar() {
         items: build(tables?.brands, 'brands', 'brand_name', (p, id) => p.brand_id === id),
       },
       {
-        title: isRTL ? 'الفئة' : 'Category',
-        key: 'categories',
-        items: build(
-          tables?.categoryTypes,
-          'categories',
-          'category_type_name',
-          (p, id) => p.category_type_id === id,
-        ),
-      },
-      {
         title: isRTL ? 'النوع الفرعي' : 'Sub Type',
         key: 'subTypes',
         searchable: true,
         items: build(tables?.subTypes, 'subTypes', 'sub_type_name', (p, id) => p.sub_type_id === id),
+      },
+      {
+        title: isRTL ? 'النوع' : 'Gender',
+        key: 'genders',
+        items: genderItems,
       },
       {
         title: isRTL ? 'لون الميناء' : 'Dial Color',
@@ -162,7 +183,7 @@ function SideBar() {
         ),
       },
       {
-        title: isRTL ? 'لون السوار' : 'Strap Color',
+        title: isRTL ? 'لون السوار' : 'Band Color',
         key: 'bandColors',
         searchable: true,
         items: build(tables?.colors, 'bandColors', 'color_name', (p, id) =>
@@ -170,13 +191,28 @@ function SideBar() {
         ),
       },
       {
-        title: isRTL ? 'خامة السوار' : 'Strap Material',
+        title: isRTL ? 'الخامة' : 'Material',
         key: 'materials',
         items: build(
           tables?.materials,
           'materials',
           'material_name',
           (p, id) => p.band_material_id === id,
+        ),
+      },
+      {
+        title: isRTL ? 'شكل العلبة' : 'Watch Shape',
+        key: 'shapes',
+        items: build(tables?.shapes, 'shapes', 'shape_name', (p, id) => p.case_shape_id === id),
+      },
+      {
+        title: isRTL ? 'نوع العرض' : 'Display Type',
+        key: 'displayTypes',
+        items: build(
+          tables?.displayTypes,
+          'displayTypes',
+          'display_type_name',
+          (p, id) => p.dial_display_type_id === id,
         ),
       },
       {
@@ -190,7 +226,7 @@ function SideBar() {
         ),
       },
     ]
-  }, [tables, list, filters, language, isRTL])
+  }, [tables, list, filters, language, isRTL, genderItems])
 
   // ── Price ──
   const priceMin = filters.price?.[0] ?? 0
@@ -215,6 +251,8 @@ function SideBar() {
     (filters.bandColors?.length || 0) +
     (filters.materials?.length || 0) +
     (filters.movements?.length || 0) +
+    (filters.shapes?.length || 0) +
+    (filters.displayTypes?.length || 0) +
     (filters.genders?.length || 0) +
     (filters.offers ? 1 : 0) +
     (priceMin > 0 || priceMaxRaw < 99999999 ? 1 : 0)
@@ -308,4 +346,4 @@ function SideBar() {
   )
 }
 
-export default SideBar
+export default memo(SideBar)

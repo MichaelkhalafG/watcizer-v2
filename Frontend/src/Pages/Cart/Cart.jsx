@@ -1,709 +1,525 @@
-import { useState, useContext } from 'react'
+import { memo, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate, Link } from 'react-router-dom'
+import {
+  FiX,
+  FiMinus,
+  FiPlus,
+  FiShoppingBag,
+  FiLock,
+  FiRefreshCw,
+  FiCheck,
+  FiChevronDown,
+} from 'react-icons/fi'
 import { MyContext } from '../../Context/Context'
+import { useCatalog } from '../../Hooks/queries/useCatalog'
+import { useOffers } from '../../Hooks/queries/useOffers'
 import { useUIStore } from '../../Store/uiStore'
 import { useAuthStore } from '../../Store/authStore'
-import {
-  Button,
-  Rating,
-  MenuItem,
-  Select,
-  FormControl,
-  Alert,
-  Snackbar,
-  useMediaQuery,
-} from '@mui/material'
-import CartProductModel from './CartProductModel'
-import CartOfferModel from './CartOfferModel'
-import { FaEye } from 'react-icons/fa'
-import { CiCircleRemove } from 'react-icons/ci'
-import emptyCart from '../../assets/images/emptyCart.svg'
-import { Link, useNavigate } from 'react-router-dom'
 import useCart, { getItemKey } from '../../Hooks/useCart'
-import LoginModal from '../Auth/Login/LoginModal'
-import http from '../../Context/api'
-import TrustSignals from '../../Components/Merchandising/TrustSignals'
-import { handleImgError } from '../../utils/imageUrl'
+import ProductSlider from '../../Components/Product/ProductSlider'
+import { getImageUrl, handleImgError, PLACEHOLDER_IMG } from '../../utils/imageUrl'
+import { productUrl, offerUrl } from '../../utils/productUrl'
+import './Cart.css'
 
+// ── Cart item ──────────────────────────────────────────────────────────────
+const CartItem = memo(function CartItem({
+  item,
+  d,
+  isRTL,
+  t,
+  fmt,
+  currency,
+  onQty,
+  onRemove,
+  onWishlist,
+  canWishlist,
+  navigate,
+}) {
+  const key = getItemKey(item)
+  const [qty, setQty] = useState(item.quantity)
+  useEffect(() => setQty(item.quantity), [item.quantity])
+
+  // Debounce the store/network sync; the local number updates instantly.
+  useEffect(() => {
+    if (qty === item.quantity) return
+    const id = setTimeout(() => onQty(key, qty), 300)
+    return () => clearTimeout(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [qty])
+
+  const unit = Number(item.piece_price)
+  const orig = d.selling
+  const hasSale = orig > unit + 0.01
+  const max = d.stock > 0 ? d.stock : d.entity ? 0 : 99
+  const unavailable = !!d.entity && d.stock <= 0
+  const lowStock = !!d.entity && d.stock > 0 && d.stock < qty
+  const currentPrice = d.sale > 0 && d.sale < d.selling ? d.sale : d.selling
+  const priceChanged = !!d.entity && currentPrice > 0 && Math.abs(currentPrice - unit) > 0.01
+  const lineTotal = unit * qty
+
+  return (
+    <div className={`wz-cart-item${unavailable ? ' is-unavailable' : ''}`}>
+      <button
+        className="wz-cart-item-remove"
+        onClick={() => onRemove(item)}
+        aria-label={t('Remove', 'حذف')}
+        title={t('Remove', 'حذف')}
+      >
+        <FiX />
+      </button>
+
+      <button className="wz-cart-item-img" onClick={() => navigate(d.url)} aria-label={d.name}>
+        <img src={d.image} alt={d.name} loading="lazy" onError={handleImgError} />
+      </button>
+
+      <div className="wz-cart-item-info">
+        {d.brand && <p className="wz-cart-item-brand">{d.brand}</p>}
+        <button className="wz-cart-item-name" onClick={() => navigate(d.url)}>
+          {d.name}
+        </button>
+
+        <div className="wz-cart-item-variant">
+          {item.type_stock && (
+            <span className={`wz-cart-stock wz-cart-stock--${unavailable ? 'out' : item.type_stock === 'Express' ? 'express' : 'market'}`}>
+              <span className="wz-cart-stock-dot" />
+              {unavailable
+                ? t('Unavailable', 'غير متوفر')
+                : item.type_stock === 'Express'
+                  ? t('Express', 'إكسبريس')
+                  : t('Market', 'ماركت')}
+            </span>
+          )}
+          {item.color_band && (
+            <span className="wz-cart-swatch" style={{ background: item.color_band }} title={t('Band', 'السوار')} />
+          )}
+          {item.color_dial && (
+            <span className="wz-cart-swatch" style={{ background: item.color_dial }} title={t('Dial', 'الميناء')} />
+          )}
+        </div>
+
+        <div className="wz-cart-item-price">
+          <span className="wz-cart-unit">
+            {fmt(unit)} {currency}
+          </span>
+          {hasSale && (
+            <span className="wz-cart-unit-orig">
+              {fmt(orig)} {currency}
+            </span>
+          )}
+        </div>
+
+        {lowStock && <p className="wz-cart-warn-text">{isRTL ? `باقي ${d.stock} فقط` : `Only ${d.stock} left`}</p>}
+        {priceChanged && !unavailable && (
+          <p className="wz-cart-warn-text">{t('Price updated', 'تم تحديث السعر')}</p>
+        )}
+        {unavailable && <p className="wz-cart-warn-text">{t('This item is unavailable', 'هذا المنتج غير متوفر')}</p>}
+
+        {canWishlist && (
+          <button className="wz-cart-item-wish" onClick={() => onWishlist(item)}>
+            {t('Move to wishlist', 'نقل للمفضلة')}
+          </button>
+        )}
+      </div>
+
+      <div className="wz-cart-item-side">
+        <div className="wz-cart-qty">
+          <button onClick={() => setQty((q) => Math.max(1, q - 1))} disabled={qty <= 1 || unavailable} aria-label={t('Decrease', 'تقليل')}>
+            <FiMinus />
+          </button>
+          <span>{qty}</span>
+          <button
+            onClick={() => setQty((q) => Math.min(max, q + 1))}
+            disabled={unavailable || qty >= max}
+            aria-label={t('Increase', 'زيادة')}
+          >
+            <FiPlus />
+          </button>
+        </div>
+        <div className="wz-cart-line-total">
+          {fmt(lineTotal)} {currency}
+        </div>
+      </div>
+    </div>
+  )
+})
+
+// ── Page ───────────────────────────────────────────────────────────────────
 function Cart() {
-  const { shippingPrices, setShippingName, shipping, productsCount, total_cart_price, setShipping, shippingid, setShippingid, products, offers } = useContext(MyContext)
+  // Server data from TanStack Query; wishlist toggle + shipping state stay in context.
+  const {
+    handleAddTowishlist,
+    shippingPrices,
+    shippingid,
+    setShippingid,
+    setShipping,
+    setShippingName,
+  } = useContext(MyContext)
+  const { products } = useCatalog()
+  const { data: offers = [] } = useOffers()
   const { language } = useUIStore()
-  const { userId: user_id } = useAuthStore()
-
-  const { cart, removeItem, updateQuantity } = useCart()
+  const isRTL = language === 'ar'
+  const t = (en, ar) => (isRTL ? ar : en)
   const navigate = useNavigate()
-  const isDesktop = useMediaQuery('(min-width:768px)')
+  const { userId } = useAuthStore()
+  const { cart, updateQuantity, removeItem, undoRemove, validateCart, lastRemoved } = useCart()
 
-  const [loginModalOpen, setLoginModalOpen] = useState(false)
+  const [processing, setProcessing] = useState(false)
+  const [warnDismissed, setWarnDismissed] = useState(false)
 
-  const [selectedProduct, setSelectedProduct] = useState()
-  const [selectedItem, setselectedItem] = useState()
-  const [isModalOpen, setIsModalOpen] = useState(false)
-  const [alertMessage, setAlertMessage] = useState('')
-  const [alertType, setAlertType] = useState('info')
-  const [openAlert, setOpenAlert] = useState(false)
+  const items = cart?.cart_item || []
+  const list = products || []
+  const offerList = offers || []
+  const loading = items.length > 0 && list.length === 0
 
-  const showAlert = (message, type) => {
-    setAlertMessage(message)
-    setAlertType(type)
-    setOpenAlert(true)
-  }
+  // Validate against live catalog when the cart opens (authoritative gate).
+  useEffect(() => {
+    if (items.length) validateCart()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
-  const handleQuantityChange = (item, value) => {
-    const currentQty = item.quantity || 1
-    const newQty = currentQty + value
-    if (newQty > 0) {
-      const identifier = getItemKey(item)
-      updateQuantity(identifier, newQty)
+  const resolve = useCallback(
+    (item) => {
+      if (item.product_id) {
+        const p = list.find((x) => x.id === item.product_id)
+        return {
+          entity: p,
+          name: p?.name || p?.product_title || '',
+          brand: typeof p?.brand === 'string' ? p.brand : p?.brand_name || '',
+          image: getImageUrl(p?.image) || PLACEHOLDER_IMG,
+          url: p ? productUrl(p) : '/listing',
+          stock: item.type_stock === 'Express' ? Number(p?.stock || 0) : Number(p?.market_stock || 0),
+          selling: Number(p?.selling_price || 0),
+          sale: Number(p?.sale_price_after_discount || 0),
+        }
+      }
+      const o = offerList.find((x) => String(x.id) === String(item.offer_id))
+      return {
+        entity: o,
+        name: o ? (isRTL ? o.offer_name_ar : o.offer_name_en) : '',
+        brand: '',
+        image: getImageUrl(o?.image) || PLACEHOLDER_IMG,
+        url: o ? offerUrl(o) : '/offers',
+        stock: Number(o?.stock || 0),
+        selling: Number(o?.selling_price || 0),
+        sale: Number(o?.sale_price_after_discount || 0),
+      }
+    },
+    [list, offerList, isRTL],
+  )
+
+  const { subtotal, savings, anyUnavailable, itemCount } = useMemo(() => {
+    let sub = 0
+    let sav = 0
+    let bad = false
+    let count = 0
+    for (const it of items) {
+      const unit = Number(it.piece_price)
+      sub += unit * it.quantity
+      count += it.quantity
+      const d = resolve(it)
+      if (d.selling > unit) sav += (d.selling - unit) * it.quantity
+      if (d.entity && d.stock <= 0) bad = true
     }
-  }
+    return { subtotal: sub, savings: sav, anyUnavailable: bad, itemCount: count }
+  }, [items, resolve])
 
-  const handleProductClick = (item) => {
-    const product = item.product_id
-      ? products.find((product) => product.id === item.product_id)
-      : offers.find((offer) => offer.id === item.offer_id)
-    setselectedItem(item)
-    setSelectedProduct(product)
-    setIsModalOpen(true)
-  }
+  // ── Shipping (always the selected governorate cost — no free shipping) ──
+  const cities = shippingPrices || []
+  const selectedCity = cities.find((c) => String(c.id) === String(shippingid)) || null
+  const shippingCost = selectedCity ? Number(selectedCity.Price) : 0
+  const citySelected = !!selectedCity
+  const total = subtotal + shippingCost
+  const fmt = useCallback((v) => Math.round(Number(v) || 0).toLocaleString(isRTL ? 'ar-EG' : 'en-US'), [isRTL])
+  const currency = isRTL ? 'ج.م' : 'EGP'
 
-  const handleModalClose = () => {
-    setIsModalOpen(false)
-    setSelectedProduct(null)
-  }
-  const getOfferRating = (offer, ratings) => {
-    const productRatings = (ratings || []).filter((r) => r.id === offer.id)
-    return productRatings.length > 0
-      ? productRatings.reduce((acc, r) => acc + r.rating, 0) / productRatings.length
-      : null
-  }
+  const onCityChange = useCallback(
+    (e) => {
+      const id = e.target.value
+      setShippingid(id)
+      const c = cities.find((x) => String(x.id) === String(id))
+      if (c) {
+        setShipping(String(c.Price))
+        setShippingName(isRTL ? c.GovernorateAr : c.GovernorateEn)
+      }
+    },
+    [cities, setShippingid, setShipping, setShippingName, isRTL],
+  )
 
-  const handleChange = (event) => {
-    const selectedId = event.target.value
-    setShippingid(selectedId)
-    const selectedShipping = shippingPrices.find((city) => city.id === selectedId)
-    if (selectedShipping) {
-      setShipping(selectedShipping.Price.toString())
-      setShippingName(
-        language === 'ar' ? selectedShipping.GovernorateAr : selectedShipping.GovernorateEn,
-      )
+  // ── Smart suggestions from the whole cart (lazy-rendered) ──
+  const cartSuggestions = useMemo(() => {
+    if (!items.length || !list.length) return []
+    const cartIds = new Set(items.map((i) => i.product_id).filter(Boolean))
+    return list
+      .filter((p) => !cartIds.has(p.id))
+      .map((p) => {
+        let score = 0
+        items.forEach((item) => {
+          const cp = list.find((x) => x.id === item.product_id)
+          if (!cp) return
+          if (p.brand_id === cp.brand_id) score += 2
+          if (p.sub_type_id === cp.sub_type_id) score += 2
+          if (p.category_type_id === cp.category_type_id) score += 1
+          const pg = Array.isArray(p.genders_en) ? p.genders_en : []
+          const cg = Array.isArray(cp.genders_en) ? cp.genders_en : []
+          if (pg.some((g) => cg.includes(g))) score += 1
+          if (p.sub_type_id !== cp.sub_type_id && p.category_type_id === cp.category_type_id) score += 1
+          const pp = Number(p.selling_price || 0)
+          const cpp = Number(cp.selling_price || 0)
+          if (pp > 0 && cpp > 0) {
+            const ratio = pp / cpp
+            if (ratio >= 0.5 && ratio <= 1.5) score += 1
+          }
+        })
+        return { product: p, score }
+      })
+      .filter((x) => x.score >= 2)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 12)
+      .map((x) => x.product)
+  }, [items, list])
+
+  const [showSuggest, setShowSuggest] = useState(false)
+  const suggestRef = useRef(null)
+  useEffect(() => {
+    const el = suggestRef.current
+    if (!el) return
+    const obs = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setShowSuggest(true)
+          obs.disconnect()
+        }
+      },
+      { rootMargin: '200px' },
+    )
+    obs.observe(el)
+    return () => obs.disconnect()
+  }, [items.length])
+
+  const hasWarnings = useMemo(
+    () =>
+      items.some((it) => {
+        const d = resolve(it)
+        if (!d.entity) return false
+        if (d.stock <= 0 || d.stock < it.quantity) return true
+        const cur = d.sale > 0 && d.sale < d.selling ? d.sale : d.selling
+        return cur > 0 && Math.abs(cur - Number(it.piece_price)) > 0.01
+      }),
+    [items, resolve],
+  )
+
+  const onQty = useCallback((key, q) => updateQuantity(key, q), [updateQuantity])
+  const onRemove = useCallback((item) => removeItem(getItemKey(item)), [removeItem])
+  const onWishlist = useCallback(
+    (item) => {
+      handleAddTowishlist(item.product_id || item.offer_id, item.product_id ? 'p' : 'o')
+      removeItem(getItemKey(item))
+    },
+    [handleAddTowishlist, removeItem],
+  )
+
+  const goToCheckout = useCallback(async () => {
+    if (processing) return
+    setProcessing(true)
+    const res = await validateCart()
+    setProcessing(false)
+    if (res && res.valid === false) {
+      setWarnDismissed(false)
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+      return
     }
-  }
+    navigate('/checkout')
+  }, [processing, validateCart, navigate])
 
-  const handleRemoveItem = (item) => {
-    const identifier = getItemKey(item)
-    removeItem(identifier)
-    showAlert(
-      language === 'ar' ? 'تم ازالة المنتج من السلة' : 'The product has been removed from the cart',
-      'success',
+  // ── Empty ──
+  if (!loading && items.length === 0) {
+    return (
+      <div className="wz-cartpage" dir={isRTL ? 'rtl' : 'ltr'}>
+        <div className="wz-cart-empty">
+          <FiShoppingBag className="wz-cart-empty-icon" />
+          <h2>{t('Your cart is empty', 'سلة التسوق فارغة')}</h2>
+          <p>{t('Discover luxury timepieces', 'اكتشف الساعات الفاخرة')}</p>
+          <button className="wz-cart-checkout" onClick={() => navigate('/listing')}>
+            {t('EXPLORE COLLECTION', 'تصفّح المجموعة')}
+          </button>
+          <Link to="/" className="wz-cart-continue">
+            {t('Continue shopping', 'متابعة التسوق')}
+          </Link>
+        </div>
+      </div>
     )
   }
 
-  const goToCheckout = async () => {
-    if (user_id === null) {
-      showAlert(
-        language === 'ar'
-          ? 'يجب عليك تسجيل الدخول للذهاب الي صفحة الدفع'
-          : 'You must log in to go to the checkout page',
-        'error',
-      )
-      navigate('/login')
-      return
-    }
-    if (shippingid === null) {
-      showAlert(
-        language === 'ar' ? 'يجب عليك اختيار مدينة الشحن' : 'You must select a shipping city',
-        'error',
-      )
-      return
-    }
-    try {
-      const userId = user_id
-
-      for (const item of cart.cart_item) {
-        const response = await http.post(`/add_to_cart`, {
-          user_id: userId,
-          product_id: item.product_id,
-          offer_id: item.offer_id,
-          quantity: item.quantity,
-          piece_price: parseInt(item.piece_price),
-          color_band: item.color_band,
-          type_stock: item.type_stock,
-          color_dial: item.color_dial,
-          total_price: item.piece_price * item.quantity,
-        })
-
-        if (response.status === 200) {
-          showAlert(`you can make order now`, 'success')
-        }
-      }
-      navigate('/checkout')
-    } catch {
-      // intentionally ignored
-    }
-  }
-
-  // Shared per-item derivation used by both the desktop and mobile layouts.
-  const deriveItem = (item) => {
-    let isProduct = false
-    let isOffer = false
-    let productdata = null
-    let offerdata = null
-    let rating = null
-    if (item.product_id !== null) {
-      productdata = products.find((product) => product.id === item.product_id)
-      rating = productdata && productdata.rating ? parseInt(productdata.rating) : 5
-      isProduct = true
-    } else {
-      offerdata = offers.find((offer) => String(offer.id) === String(item.offer_id))
-      rating =
-        offerdata && offerdata.offer_rating
-          ? parseInt(getOfferRating(offerdata, offerdata.offer_rating))
-          : 5
-      isOffer = true
-    }
-    const piecePrice = item.piece_price ? parseFloat(item.piece_price).toFixed(2) : '0.00'
-    const totalPrice = (parseFloat(item.piece_price || 0) * (item.quantity || 1)).toFixed(2)
-    return { isProduct, isOffer, productdata, offerdata, rating, piecePrice, totalPrice }
-  }
-
-  const plusDisabled = (isProduct, productdata, isOffer, offerdata, item) =>
-    (isProduct &&
-      productdata &&
-      typeof productdata.stock === 'number' &&
-      parseInt(productdata.stock) <= parseInt(item.quantity)) ||
-    (isProduct &&
-      productdata &&
-      typeof productdata.market_stock === 'number' &&
-      productdata.market_stock > 0 &&
-      parseInt(productdata.market_stock) <= parseInt(item.quantity)) ||
-    (isOffer &&
-      offerdata &&
-      typeof offerdata.stock === 'number' &&
-      parseInt(offerdata.stock) <= parseInt(item.quantity))
-
-  const TotalsPanel = () => (
-    <div className="row align-items-center px-3 border border-1 rounded-3">
-      <h6 className="color-most-used py-3 border-bottom border-1 col-12 fw-bold">
-        {language === 'ar' ? 'مجموع السلة' : 'CART TOTALS'}
-      </h6>
-      <div className="col-12 d-flex border-bottom border-1 justify-content-between py-2">
-        <h6 className="color-most-used col-6">{language === 'ar' ? 'المجموع الكلي' : 'Subtotal'}</h6>
-        <h6 className={`text-secondary col-6 ${language === 'ar' ? 'text-start' : 'text-end'}`}>
-          {language === 'ar' ? 'ج.م' : 'EGP'}
-          <span className="fw-bold mx-2 text-danger">{total_cart_price - shipping}</span>
-        </h6>
-      </div>
-      <div className="col-12 d-flex border-bottom border-1 justify-content-between py-2">
-        <h6 className="color-most-used d-flex align-items-center col-6">
-          {language === 'ar' ? 'الشحن الي' : 'Shipping to'}
-        </h6>
-        <div className="col-6">
-          <FormControl fullWidth>
-            <Select
-              labelId="governorate-select-label"
-              id="governorate-select"
-              value={shippingid}
-              onChange={handleChange}
-              fullWidth
-            >
-              {shippingPrices.map((city) => (
-                <MenuItem key={city.id} value={city.id}>
-                  {language === 'ar' ? city.GovernorateAr : city.GovernorateEn}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-        </div>
-      </div>
-      <div className="col-12 d-flex border-bottom border-1 justify-content-between py-2">
-        <h6 className="color-most-used col-6">{language === 'ar' ? 'الشحن' : 'Shipping'}</h6>
-        <h6 className={`text-secondary col-6 ${language === 'ar' ? 'text-start' : 'text-end'}`}>
-          {language === 'ar' ? 'ج.م' : 'EGP'}
-          <span className="fw-bold mx-2 text-danger">{shipping}</span>
-        </h6>
-      </div>
-      <div className="col-12 d-flex border-bottom border-1 justify-content-between py-2">
-        <h6 className="color-most-used col-6">{language === 'ar' ? 'المجموع الكلي' : 'Total'}</h6>
-        <h6 className={`text-secondary m-0 col-6 ${language === 'ar' ? 'text-start' : 'text-end'}`}>
-          {language === 'ar' ? 'ج.م' : 'EGP'}
-          <span className="fw-bold mx-2 text-danger">{total_cart_price}</span>
-        </h6>
-      </div>
-      <TrustSignals variant="cart" />
-      <div className="col-12 p-3">
-        {user_id === null ? (
-          <Button
-            variant="contained"
-            className="rounded-3 bg-most-used text-light col-12 p-2"
-            onClick={() => setLoginModalOpen(true)}
-          >
-            {language === 'ar' ? 'تسجيل الدخول' : 'Login'}
-          </Button>
-        ) : (
-          <Button
-            variant="contained"
-            className="rounded-3 bg-most-used text-light col-12 p-2"
-            onClick={() => goToCheckout()}
-          >
-            {language === 'ar' ? 'الدفع' : 'Checkout'}
-          </Button>
-        )}
-      </div>
-    </div>
-  )
-
   return (
-    <div className="cart container-fluid px-2 px-md-5">
-      <div className="row py-3 px-md-4">
-        <div className="col-12 p-3">
-          <h4 className="color-most-used fw-bold">
-            {language === 'ar' ? 'سلة المشتريات' : 'Your Cart'}
-          </h4>
-          <h6 className="text-secondary mt-2">
-            {language === 'ar' ? 'هناك عدد ' : 'There are '}
-            <span className="text-danger fw-bold">{productsCount}</span>
-            {language === 'ar' ? ' من المنتجات في سلتك.' : ' products in your cart.'}
-          </h6>
+    <div className="wz-cartpage" dir={isRTL ? 'rtl' : 'ltr'}>
+      <div className="wz-cart-inner">
+        {/* Warnings banner */}
+        {hasWarnings && !warnDismissed && (
+          <div className="wz-cart-banner">
+            <span>⚠ {t('Some items in your cart need attention', 'بعض المنتجات في سلتك تحتاج انتباهك')}</span>
+            <button onClick={() => setWarnDismissed(true)} aria-label={t('Dismiss', 'إغلاق')}>
+              <FiX />
+            </button>
+          </div>
+        )}
+
+        <div className="wz-cart-grid">
+          {/* Items */}
+          <div className="wz-cart-main">
+            <div className="wz-cart-head">
+              <h1 className="wz-cart-title">{t('Your Cart', 'سلة التسوق')}</h1>
+              <span className="wz-cart-count">
+                ({itemCount} {itemCount === 1 ? t('item', 'منتج') : t('items', 'منتجات')})
+              </span>
+            </div>
+
+            {loading ? (
+              <div className="wz-cart-skel-list">
+                {Array.from({ length: 2 }).map((_, i) => (
+                  <div className="wz-cart-skel-item" key={i}>
+                    <div className="wz-cart-skel-img" />
+                    <div className="wz-cart-skel-lines">
+                      <div className="wz-cart-skel-line w40" />
+                      <div className="wz-cart-skel-line w70" />
+                      <div className="wz-cart-skel-line w30" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              items.map((item) => (
+                <CartItem
+                  key={getItemKey(item)}
+                  item={item}
+                  d={resolve(item)}
+                  isRTL={isRTL}
+                  t={t}
+                  fmt={fmt}
+                  currency={currency}
+                  onQty={onQty}
+                  onRemove={onRemove}
+                  onWishlist={onWishlist}
+                  canWishlist={!!userId}
+                  navigate={navigate}
+                />
+              ))
+            )}
+
+            <Link to="/listing" className="wz-cart-continue wz-cart-continue--inline">
+              ← {t('Continue Shopping', 'متابعة التسوق')}
+            </Link>
+          </div>
+
+          {/* Summary */}
+          <aside className="wz-cart-summary-wrap">
+            <div className="wz-cart-summary">
+              <h2 className="wz-cart-summary-title">{t('Order Summary', 'ملخص الطلب')}</h2>
+
+              {/* Ship-to governorate */}
+              <div className="wz-cart-shipto">
+                <label className="wz-cart-shipto-label" htmlFor="wz-ship-city">
+                  {t('Ship to:', 'الشحن إلى:')}
+                </label>
+                <div className="wz-cart-select">
+                  <select id="wz-ship-city" value={shippingid || ''} onChange={onCityChange}>
+                    <option value="" disabled>
+                      {t('Select governorate', 'اختر المحافظة')}
+                    </option>
+                    {cities.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {isRTL
+                          ? `${c.GovernorateAr} — ${fmt(c.Price)} ج.م`
+                          : `${c.GovernorateEn} — ${fmt(c.Price)} EGP`}
+                      </option>
+                    ))}
+                  </select>
+                  <FiChevronDown className="wz-cart-select-icon" />
+                </div>
+              </div>
+
+              <div className="wz-cart-row">
+                <span>{t('Subtotal', 'المجموع الفرعي')}</span>
+                <span>{fmt(subtotal)} {currency}</span>
+              </div>
+              <div className="wz-cart-row">
+                <span>{t('Shipping', 'الشحن')}</span>
+                {citySelected ? (
+                  <span>{fmt(shippingCost)} {currency}</span>
+                ) : (
+                  <span>—</span>
+                )}
+              </div>
+
+              {savings > 0 && (
+                <div className="wz-cart-row wz-cart-savings">
+                  <span>{t('You save', 'وفرت')}</span>
+                  <span>
+                    {fmt(savings)} {currency}
+                  </span>
+                </div>
+              )}
+
+              <div className="wz-cart-divider" />
+
+              <div className="wz-cart-row wz-cart-total">
+                <span>{t('Total', 'الإجمالي')}</span>
+                <span>{fmt(total)} {currency}</span>
+              </div>
+
+              <button
+                className="wz-cart-checkout"
+                onClick={goToCheckout}
+                disabled={processing || anyUnavailable || !citySelected}
+              >
+                {processing ? (
+                  <>
+                    <span className="wz-cart-spinner" />
+                    {t('Processing...', 'جارٍ المعالجة...')}
+                  </>
+                ) : (
+                  t('CHECKOUT', 'إتمام الشراء')
+                )}
+              </button>
+              {!citySelected && (
+                <p className="wz-cart-select-hint">{t('Please select your city', 'يرجى اختيار مدينتك')}</p>
+              )}
+
+              <ul className="wz-cart-trust">
+                <li><FiLock /> {t('Secure checkout', 'دفع آمن')}</li>
+                <li><FiRefreshCw /> {t('Free returns within 30 days', 'إرجاع مجاني خلال 30 يوماً')}</li>
+                <li><FiCheck /> {t('100% authentic guarantee', 'أصالة مضمونة 100%')}</li>
+              </ul>
+            </div>
+          </aside>
         </div>
-        {Array.isArray(cart.cart_item) && cart.cart_item.length > 0 ? (
-          <>
-            {/* ───────────── Desktop layout (≥ md) ───────────── */}
-            <div className="row d-none d-md-flex">
-              <div className="col-9 p-3 pt-0">
-                <div className="row align-items-center p-3 rounded-4 bg-most-used-40">
-                  {[
-                    'Product',
-                    'Quantity',
-                    'Band Color',
-                    'Dial Color',
-                    'Price',
-                    'Subtotal',
-                    'Type',
-                    'Actions',
-                  ].map((label, idx) => (
-                    <h6
-                      key={idx}
-                      className={`color-most-used p-0 m-0 col-${idx === 0 ? 4 : idx === 1 ? 2 : 1} fw-bold ${
-                        idx === 6 ? 'text-center' : ''
-                      }`}
-                    >
-                      {language === 'ar'
-                        ? [
-                            'المنتج',
-                            'الكمية',
-                            'لون السوار',
-                            'لون الوجه',
-                            'السعر',
-                            'المجموع الكلي',
-                            'النوع',
-                            'الأفعال',
-                          ][idx]
-                        : label}
-                    </h6>
-                  ))}
-                </div>
-                {cart.cart_item.map((item, index) => {
-                  const { isProduct, isOffer, productdata, offerdata, rating, piecePrice, totalPrice } =
-                    deriveItem(item)
-                  return (
-                    <div
-                      key={index}
-                      className="row align-items-center border-bottom border-1 rounded-4 bg-most-used-10 py-3"
-                    >
-                      <div className="col-4 d-flex align-items-center">
-                        {isProduct && productdata && (
-                          <img
-                            src={productdata.image}
-                            alt={productdata.name}
-                            loading="lazy"
-                            className="me-3 col-2 rounded"
-                            style={{ width: '50px', height: '50px', objectFit: 'cover' }}
-                            onError={handleImgError}
-                          />
-                        )}
-                        {isOffer && offerdata && offerdata.image && (
-                          <img
-                            src={offerdata.image}
-                            alt={
-                              language === 'ar' ? offerdata.offer_name_ar : offerdata.offer_name_en
-                            }
-                            loading="lazy"
-                            className="me-3 col-2 rounded"
-                            style={{ width: '50px', height: '50px', objectFit: 'cover' }}
-                          />
-                        )}
-                        <div className="col-10">
-                          <h6 className="color-most-used fw-bold mb-1">
-                            {isProduct && productdata
-                              ? productdata.name
-                              : isOffer && offerdata
-                                ? language === 'ar'
-                                  ? offerdata.offer_name_ar
-                                  : offerdata.offer_name_en
-                                : ''}
-                          </h6>
-                          <Rating name="read-only" value={rating || 5} size="small" readOnly />
-                        </div>
-                      </div>
+      </div>
 
-                      {/* Quantity Controls */}
-                      <div className="col-2 d-flex align-items-center">
-                        <Button
-                          variant="outlined"
-                          size="small"
-                          onClick={() => handleQuantityChange(item, -1)}
-                          disabled={(item.quantity || 1) <= 1}
-                          sx={{ minWidth: '30px', padding: '5px' }}
-                        >
-                          -
-                        </Button>
-                        <input
-                          type="text"
-                          value={item.quantity || 1}
-                          readOnly
-                          className="mx-2 text-center"
-                          style={{
-                            width: '40px',
-                            border: '1px solid #ddd',
-                            borderRadius: '4px',
-                          }}
-                        />
-                        <Button
-                          variant="outlined"
-                          size="small"
-                          onClick={() => handleQuantityChange(item, 1)}
-                          disabled={plusDisabled(isProduct, productdata, isOffer, offerdata, item)}
-                          sx={{ minWidth: '30px', padding: '5px' }}
-                        >
-                          +
-                        </Button>
-                      </div>
-
-                      <div className="col-1 px-3">
-                        <div
-                          style={{
-                            backgroundColor: item.color_band || '#f0f0f0',
-                            width: '100%',
-                            height: '30px',
-                            borderRadius: '4px',
-                            display: 'flex',
-                            justifyContent: 'center',
-                            alignItems: 'center',
-                            border: '1px solid #ddd',
-                          }}
-                        >
-                          {!item.color_band && (
-                            <span style={{ fontSize: '12px', color: '#666' }}>
-                              {language === 'ar' ? 'لا لون' : 'No Color'}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      <div className="col-1 px-3">
-                        <div
-                          style={{
-                            backgroundColor: item.color_dial || '#f0f0f0',
-                            width: '100%',
-                            height: '30px',
-                            borderRadius: '4px',
-                            display: 'flex',
-                            justifyContent: 'center',
-                            alignItems: 'center',
-                            border: '1px solid #ddd',
-                          }}
-                        >
-                          {!item.color_dial && (
-                            <span style={{ fontSize: '12px', color: '#666' }}>
-                              {language === 'ar' ? 'لا لون' : 'No Color'}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Prices */}
-                      <h6 className="color-most-used col-1 text-center">{piecePrice}</h6>
-                      <h6 className="color-most-used col-1 text-center">{totalPrice}</h6>
-
-                      {/* Stock Type */}
-                      <div className="col-1 text-center">
-                        {item.type_stock && (
-                          <span
-                            className={`badge ${item.type_stock === 'Express' ? 'bg-black' : item.type_stock === 'Market' ? 'bg-success' : 'bg-danger'} col-12 p-2`}
-                          >
-                            {item.type_stock}
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Actions */}
-                      <div className="col-1 text-center">
-                        <Button
-                          className="rounded-circle color-most-used mx-2"
-                          sx={{ width: '40px', height: '40px', minWidth: '0', padding: 0 }}
-                          onClick={() => handleProductClick(item)}
-                        >
-                          <FaEye size={24} />
-                        </Button>
-                        <Button
-                          variant="contained"
-                          className="rounded-circle bg-danger text-light p-2"
-                          sx={{ width: '40px', height: '40px', minWidth: '0', padding: 0 }}
-                          onClick={() => handleRemoveItem(item)}
-                        >
-                          <CiCircleRemove size={24} />
-                        </Button>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-              <div className="col-3 p-3 pt-0">
-                <TotalsPanel />
-              </div>
+      {/* Smart suggestions (lazy, full-width band) */}
+      <div ref={suggestRef} className="wz-cart-suggest-anchor">
+        {showSuggest && cartSuggestions.length > 0 && (
+          <section className="wz-cart-suggest">
+            <div className="wz-cart-suggest-inner">
+              <ProductSlider
+                gradeproducts={cartSuggestions}
+                text={{
+                  title: { en: 'Complete Your Collection', ar: 'أكمل مجموعتك' },
+                  description: { en: 'Based on your cart', ar: 'بناءً على سلتك' },
+                }}
+              />
             </div>
-
-            {/* ───────────── Mobile layout (< md) ───────────── */}
-            <div className="d-block d-md-none">
-              <div className="row m-0 pb-5">
-                {cart.cart_item.map((item, index) => {
-                  const { isProduct, isOffer, productdata, offerdata, rating, piecePrice, totalPrice } =
-                    deriveItem(item)
-                  return (
-                    <div key={index} className="col-12 mb-3">
-                      <div className="card shadow-sm rounded-4 p-2 d-flex flex-row align-items-center">
-                        <div style={{ minWidth: 80, maxWidth: 80 }}>
-                          {isProduct && productdata && (
-                            <img
-                              src={productdata.image}
-                              alt={productdata.name}
-                              loading="lazy"
-                              className="rounded"
-                              style={{ width: '70px', height: '70px', objectFit: 'cover' }}
-                              onError={handleImgError}
-                            />
-                          )}
-                          {isOffer && offerdata && offerdata.image && (
-                            <img
-                              src={offerdata.image}
-                              alt={
-                                language === 'ar' ? offerdata.offer_name_ar : offerdata.offer_name_en
-                              }
-                              loading="lazy"
-                              className="rounded"
-                              style={{ width: '70px', height: '70px', objectFit: 'cover' }}
-                            />
-                          )}
-                        </div>
-                        <div className="flex-grow-1 ms-3">
-                          <h6 className="color-most-used fw-bold mb-1" style={{ fontSize: '1rem' }}>
-                            {isProduct && productdata
-                              ? productdata.name
-                              : isOffer && offerdata
-                                ? language === 'ar'
-                                  ? offerdata.offer_name_ar
-                                  : offerdata.offer_name_en
-                                : ''}
-                          </h6>
-                          <Rating name="read-only" value={rating || 5} size="small" readOnly />
-                          <div className="d-flex align-items-center mt-2">
-                            <span className="me-2">{language === 'ar' ? 'الكمية:' : 'Qty:'}</span>
-                            <Button
-                              variant="outlined"
-                              size="small"
-                              onClick={() => handleQuantityChange(item, -1)}
-                              disabled={(item.quantity || 1) <= 1}
-                              sx={{ minWidth: '30px', padding: '0px' }}
-                            >
-                              -
-                            </Button>
-                            <input
-                              type="text"
-                              value={item.quantity || 1}
-                              readOnly
-                              className="mx-2 text-center"
-                              style={{
-                                width: '35px',
-                                border: '1px solid #ddd',
-                                borderRadius: '4px',
-                              }}
-                            />
-                            <Button
-                              variant="outlined"
-                              size="small"
-                              onClick={() => handleQuantityChange(item, 1)}
-                              disabled={plusDisabled(isProduct, productdata, isOffer, offerdata, item)}
-                              sx={{ minWidth: '30px', padding: '0px' }}
-                            >
-                              +
-                            </Button>
-                          </div>
-                          <div className="d-flex mt-2">
-                            <div className="me-2">
-                              <span style={{ fontSize: 12 }}>
-                                {language === 'ar' ? 'لون السوار:' : 'Band:'}
-                              </span>
-                              <div
-                                style={{
-                                  backgroundColor: item.color_band || '#f0f0f0',
-                                  width: 24,
-                                  height: 24,
-                                  borderRadius: 4,
-                                  border: '1px solid #ddd',
-                                  display: 'inline-block',
-                                  marginLeft: 4,
-                                }}
-                              >
-                                {!item.color_band && (
-                                  <span style={{ fontSize: 10, color: '#666' }}>
-                                    {language === 'ar' ? 'لا لون' : 'No'}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                            <div>
-                              <span style={{ fontSize: 12 }}>
-                                {language === 'ar' ? 'لون الوجه:' : 'Dial:'}
-                              </span>
-                              <div
-                                style={{
-                                  backgroundColor: item.color_dial || '#f0f0f0',
-                                  width: 24,
-                                  height: 24,
-                                  borderRadius: 4,
-                                  border: '1px solid #ddd',
-                                  display: 'inline-block',
-                                  marginLeft: 4,
-                                }}
-                              >
-                                {!item.color_dial && (
-                                  <span style={{ fontSize: 10, color: '#666' }}>
-                                    {language === 'ar' ? 'لا لون' : 'No'}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                          <div className="d-flex align-items-center mt-2">
-                            <span className="me-2">{language === 'ar' ? 'السعر:' : 'Price:'}</span>
-                            <span className="fw-bold color-most-used" style={{ fontSize: 'small' }}>
-                              {piecePrice} {language === 'ar' ? 'ج.م' : 'EGP'}
-                            </span>
-                            <span className="mx-2">
-                              {language === 'ar' ? 'المجموع:' : 'Subtotal:'}
-                            </span>
-                            <span className="fw-bold text-danger" style={{ fontSize: 'small' }}>
-                              {totalPrice} {language === 'ar' ? 'ج.م' : 'EGP'}
-                            </span>
-                          </div>
-                          <div className="d-flex align-items-center mt-2">
-                            {item.type_stock && (
-                              <span
-                                className={`badge ${item.type_stock === 'Express' ? 'bg-black' : item.type_stock === 'Market' ? 'bg-success' : 'bg-danger'} p-2`}
-                              >
-                                {item.type_stock}
-                              </span>
-                            )}
-                            <Button
-                              variant="contained"
-                              className="rounded-circle ms-5 bg-danger text-light p-2"
-                              sx={{ width: '36px', height: '36px', minWidth: '0', padding: 0 }}
-                              onClick={() => handleRemoveItem(item)}
-                            >
-                              <CiCircleRemove size={20} />
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })}
-                <div className="col-12 mt-4 mb-5 pb-5">
-                  <TotalsPanel />
-                </div>
-              </div>
-            </div>
-
-            {/* Shared product/offer detail modal (desktop "eye" action) */}
-            {selectedProduct &&
-              (selectedItem.product_id !== null ? (
-                <CartProductModel
-                  open={isModalOpen}
-                  onClose={handleModalClose}
-                  product={selectedProduct}
-                  language={language}
-                  quantity={selectedItem.quantity}
-                  setQuantity={handleQuantityChange}
-                  index={
-                    Array.isArray(cart.cart_item)
-                      ? cart.cart_item.findIndex((item) => item.id === selectedItem.id)
-                      : -1
-                  }
-                />
-              ) : (
-                <CartOfferModel
-                  open={isModalOpen}
-                  onClose={handleModalClose}
-                  product={selectedProduct}
-                  language={language}
-                  quantity={selectedItem.quantity}
-                  setQuantity={handleQuantityChange}
-                  index={
-                    Array.isArray(cart.cart_item)
-                      ? cart.cart_item.findIndex((item) => item.id === selectedItem.id)
-                      : -1
-                  }
-                />
-              ))}
-          </>
-        ) : (
-          <EmptyCartMessage language={language} />
+          </section>
         )}
       </div>
-      <Snackbar
-        open={openAlert}
-        autoHideDuration={3000}
-        onClose={() => setOpenAlert(false)}
-        anchorOrigin={{
-          vertical: isDesktop ? 'bottom' : 'top',
-          horizontal: isDesktop ? 'right' : 'left',
-        }}
-      >
-        <Alert severity={alertType} onClose={() => setOpenAlert(false)}>
-          {alertMessage}
-        </Alert>
-      </Snackbar>
-      <LoginModal
-        open={loginModalOpen}
-        onClose={() => setLoginModalOpen(false)}
-        onLoginSuccess={() => setLoginModalOpen(false)}
-      />
+
+      {/* Undo toast */}
+      {lastRemoved && (
+        <div className="wz-cart-toast">
+          <span>{t('Item removed.', 'تم حذف المنتج.')}</span>
+          <button onClick={undoRemove}>{t('Undo', 'تراجع')}</button>
+        </div>
+      )}
     </div>
   )
 }
 
-function EmptyCartMessage({ language }) {
-  return (
-    <div className="row justify-content-center">
-      <div className="col-12 d-flex justify-content-center">
-        <img src={emptyCart} loading="lazy" alt="empty cart" className="col-6 col-md-2" />
-      </div>
-      <h4 className="text-center fw-bold color-most-used mt-1">
-        {language === 'ar' ? 'السلة فارغة' : 'Your Cart is currently empty'}
-      </h4>
-      <h6 className="text-center text-secondary">
-        {language === 'ar'
-          ? 'الرجاء اختيار المنتجات التي ترغب في شرائها'
-          : 'Please choose the products you want to buy'}
-      </h6>
-      <div className="col-12 d-flex justify-content-center mt-3">
-        <Link to={'/'} className="text-decoration-none col-6 col-md-3">
-          <Button variant="contained" className="rounded-pill bg-most-used text-light col-12 p-2">
-            {language === 'ar' ? 'تسوق الآن' : 'Shop Now'}
-          </Button>
-        </Link>
-      </div>
-    </div>
-  )
-}
-
-export default Cart
+export default memo(Cart)

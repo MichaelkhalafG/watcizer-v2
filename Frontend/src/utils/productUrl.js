@@ -13,4 +13,14 @@ export const productUrl = (product) => {
   return slug ? `/product/${slug}` : `/product/${product.id ?? ''}`
 }
 
+// Readable, language-stable offer URL. Offers carry a flat English name
+// (`offer_name_en`) rather than a translations[] array, so we slug that; the id
+// is the fallback when no usable English name exists.
+export const offerUrl = (offer) => {
+  if (!offer) return '/offers'
+  const englishName = offer.offer_name_en || offer.name_en || offer.name || ''
+  const slug = toSlug(englishName)
+  return slug ? `/offer/${slug}` : `/offer/${offer.id ?? ''}`
+}
+
 export default productUrl

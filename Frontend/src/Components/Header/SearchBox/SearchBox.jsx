@@ -1,6 +1,7 @@
 import { IoIosSearch } from 'react-icons/io'
 import { useContext, useState, useEffect, useRef, useMemo } from 'react'
 import { MyContext } from '../../../Context/Context'
+import { useCatalog } from '../../../Hooks/queries/useCatalog'
 import { useUIStore } from '../../../Store/uiStore'
 import { useNavigate } from 'react-router-dom'
 import { getImageUrl, handleImgError, PLACEHOLDER_IMG } from '../../../utils/imageUrl'
@@ -9,7 +10,9 @@ import { productUrl } from '../../../utils/productUrl'
 const MAX_RESULTS = 6
 
 function SearchBox() {
-  const { products, setFilteredProducts } = useContext(MyContext)
+  // setFilteredProducts is UI state (still in MyProvider); products from the shared catalog.
+  const { setFilteredProducts } = useContext(MyContext)
+  const { products } = useCatalog()
   const { language } = useUIStore()
   const [searchTerm, setSearchTerm] = useState('')
   const [open, setOpen] = useState(false)

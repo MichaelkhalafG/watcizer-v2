@@ -11,6 +11,7 @@ class Address extends Model
 
     protected $fillable = [
         'user_id',           // nullable — null = guest
+        'guest_token',       // nullable — ties a guest address to its cart session
         'shipping_city_id',
         'address_line',
         'phone_number_one',

@@ -19,6 +19,8 @@ class Order extends Model
         'note',
         'guest_name',   // ← جديد
         'guest_email',  // ← جديد
+        'guest_phone',
+        'guest_token',
     ];
 
     public function user()

@@ -33,15 +33,16 @@
   padding-inline-end: 60px;
   mask-image: linear-gradient(90deg, transparent 0%, black 8%, black 92%, transparent 100%);
   -webkit-mask-image: linear-gradient(90deg, transparent 0%, black 8%, black 92%, transparent 100%);
+  /* Informational ticker: not interactive. Ignoring pointer events on the
+     fast-moving text avoids hover hit-testing churn (and there's nothing to
+     click here). The social icons live in a sibling and stay clickable. */
+  pointer-events: none;
 }
 .wz-marquee-track {
   display: flex;
   align-items: center;
   width: max-content;
   animation: wzMarquee 40s linear infinite;
-}
-.wz-marquee-track:hover {
-  animation-play-state: paused;
 }
 @keyframes wzMarquee {
   from {
@@ -95,7 +96,6 @@
   gap: clamp(16px, 3vw, 40px);
   height: 72px;
   padding: 0 clamp(16px, 5vw, 64px);
-  background: #fff;
   transition: box-shadow 0.3s ease;
 }
 .wz-scrolled .wz-row1 {
@@ -291,183 +291,237 @@
 }
 
 /* ── Actions ──────────────────────────────────────────────── */
+/* ══════════════════════════════════════════════
+   HEADER ACTIONS — Luxury Watch Aesthetic
+   The search icon + inline SearchBox are left untouched.
+   ══════════════════════════════════════════════ */
+
+/* ═══════════════════════════════════════════════
+   HEADER ACTIONS — Luxury Watchizer Design
+   Curve: cubic-bezier(.4,0,.1,1) (expo-out)
+   ═══════════════════════════════════════════════ */
+
 .wz-actions {
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 0;
 }
 
-/* Round icon button (reused by cart link) */
-.wz-action-btn {
-  position: relative;
+/* ── Thin vertical separator ──────────────── */
+.wz-act-sep {
+  width: 1px;
+  height: 20px;
+  background: rgba(0, 0, 0, 0.1);
+  margin: 0 20px;
+  flex-shrink: 0;
+}
+
+/* ── Language: EN | ع (each letter its own button) ── */
+.wz-act-lang {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 42px;
-  height: 42px;
-  min-width: 42px;
-  border-radius: 50%;
-  background: transparent;
+  gap: 5px;
+}
+
+.wz-act-lang__btn {
+  background: none;
   border: none;
-  color: #262626;
+  padding: 0;
+  margin: 0;
   cursor: pointer;
-  transition:
-    background 0.2s ease,
-    transform 0.2s ease;
-}
-.wz-action-btn:hover {
-  background: rgba(0, 0, 0, 0.05);
-  transform: translateY(-1px);
+  font-size: 14px;
+  font-weight: 400;
+  color: #1a1a1a;
+  font-family: inherit;
+  line-height: 1;
+  transition: color 0.25s ease;
 }
 
-/* Language toggle (LanguageDropdown JSX untouched) */
-.wz-lang {
-  display: inline-flex;
-  align-items: center;
+.wz-act-lang__btn.is-active {
+  color: #c8a45c;
+  font-weight: 700;
 }
-.wz-lang .lang-drop {
-  width: auto !important;
-  min-width: auto !important;
-  height: 42px !important;
-  border: 0 !important;
-  background: transparent !important;
-  border-radius: 999px !important;
-  padding: 0 12px !important;
-  box-shadow: none !important;
-  transition: background 0.2s ease;
+
+.wz-act-lang__btn:not(.is-active):hover {
+  color: rgba(0, 0, 0, 0.45);
 }
-.wz-lang .lang-drop:hover {
-  background: rgba(0, 0, 0, 0.05) !important;
+
+/* The Arabic ع (always the last child) reads bold regardless of active state. */
+.wz-act-lang__btn:last-child {
+  font-weight: 700;
 }
-.wz-lang .lang-drop .label {
-  display: none;
-}
-.wz-lang .lang-drop .language {
-  font-size: 11px;
-  letter-spacing: 0.15em;
-  text-transform: uppercase;
-  font-weight: 600;
-  color: #262626 !important;
-  opacity: 0.6;
-  transition: opacity 0.2s ease;
-}
-.wz-lang .lang-drop:hover .language {
-  opacity: 1;
-}
-.wz-lang .lang-drop svg {
-  color: #262626;
-  opacity: 0.6;
+
+.wz-act-lang__pipe {
   font-size: 12px;
+  color: rgba(0, 0, 0, 0.12);
+  line-height: 1;
+  user-select: none;
 }
 
-/* Login — ghost pill */
-.wz-login {
-  display: inline-flex;
+/* ── Sign In / Register (logged out) ──────── */
+.wz-act-auth {
+  display: flex;
   align-items: center;
-  height: 38px;
-  padding: 0 20px;
-  border: 1px solid rgba(0, 0, 0, 0.2);
-  border-radius: 999px;
-  background: transparent;
-  color: #262626;
-  font-size: 10px;
+  gap: 20px;
+}
+.wz-act-auth__link {
+  position: relative;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  color: #1a1a1a;
+  padding: 4px 0;
+  font-family: inherit;
+  white-space: nowrap;
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  font-weight: 600;
-  text-decoration: none;
-  white-space: nowrap;
-  transition:
-    border-color 0.2s ease,
-    background 0.2s ease;
+  transition: color 0.32s cubic-bezier(0.4, 0, 0.1, 1);
 }
-.wz-login:hover {
-  border-color: #262626;
-  background: rgba(0, 0, 0, 0.03);
-  color: #262626;
+/* Gold underline draws in on hover */
+.wz-act-auth__link::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  inset-inline-start: 0;
+  width: 0;
+  height: 1px;
+  background: #c8a45c;
+  transition: width 0.32s cubic-bezier(0.4, 0, 0.1, 1);
 }
-
-/* Profile (logged in) */
-.wz-profile {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.wz-act-auth__link:hover {
+  color: #c8a45c;
 }
-.wz-profile img {
-  width: 34px !important;
-  height: 34px !important;
-  min-width: 34px;
-  border-radius: 50%;
-  border: 1px solid rgba(0, 0, 0, 0.2);
-}
-.wz-profile .profile-name {
-  font-size: 12px;
-  font-weight: 600;
-  color: #262626;
-}
-@media (max-width: 1200px) {
-  .wz-profile .profile-name {
-    display: none;
-  }
+.wz-act-auth__link:hover::after {
+  width: 100%;
 }
 
-/* Cart — bordered pill with price + icon + badge */
-.wz-cart {
+/* ── Identity: Avatar + Name (logged in) ──── */
+.wz-act-identity {
   display: flex;
   align-items: center;
-  gap: 4px;
-  height: 42px;
-  padding: 0 6px 0 16px;
-  border: 1px solid rgba(0, 0, 0, 0.15);
-  border-radius: 999px;
-  transition: border-color 0.2s ease;
+  gap: 10px;
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: inherit;
 }
-.wz-cart:hover {
-  border-color: rgba(0, 0, 0, 0.35);
-}
-.wz-cart-price {
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.03em;
-  color: #262626;
-  white-space: nowrap;
-}
-.wz-cart .wz-cart-link {
+.wz-act-ring {
   width: 32px;
   height: 32px;
-  min-width: 32px;
-  color: #262626;
-  text-decoration: none;
+  border-radius: 50%;
+  overflow: hidden;
+  flex-shrink: 0;
+  border: 1.5px solid rgba(0, 0, 0, 0.08);
+  transition: border-color 0.32s cubic-bezier(0.4, 0, 0.1, 1);
 }
-.wz-badge {
-  position: absolute;
-  top: -2px;
-  inset-inline-end: -4px;
-  min-width: 16px;
-  height: 16px;
-  padding: 0 4px;
-  display: inline-flex;
+.wz-act-identity:hover .wz-act-ring {
+  border-color: #c8a45c;
+}
+.wz-act-ring img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.wz-act-monogram {
+  width: 100%;
+  height: 100%;
+  display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 999px;
-  background: #ea2b0f;
-  color: #fff;
-  font-size: 9px;
-  font-weight: 700;
+  background: rgba(200, 164, 92, 0.06);
+  color: #c8a45c;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: var(--wz-serif);
+}
+.wz-act-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: #1a1a1a;
+  max-width: 80px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: color 0.32s cubic-bezier(0.4, 0, 0.1, 1);
+  position: relative;
+}
+/* Name underlines on hover */
+.wz-act-identity:hover .wz-act-name {
+  color: #c8a45c;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: #c8a45c;
+}
+
+/* ── Cart: Bag + Count + Price ────────────── */
+.wz-act-bag {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  font-family: inherit;
+  transition: transform 0.28s cubic-bezier(0.4, 0, 0.1, 1);
+}
+.wz-act-bag:hover {
+  transform: translateY(-1px);
+}
+.wz-act-bag__icon {
+  position: relative;
+  font-size: 22px;
+  color: #1a1a1a;
+  display: flex;
+  align-items: center;
   line-height: 1;
-  animation: wzCartPop 0.3s ease;
+  padding: 2px;
+  transition: color 0.32s cubic-bezier(0.4, 0, 0.1, 1);
 }
-@keyframes wzCartPop {
-  0% {
-    transform: scale(0.6);
-  }
-  60% {
-    transform: scale(1.25);
-  }
-  100% {
-    transform: scale(1);
-  }
+.wz-act-bag:hover .wz-act-bag__icon {
+  color: #c8a45c;
 }
+.wz-act-bag__info {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+}
+.wz-act-bag__count {
+  font-size: 9px;
+  font-weight: 600;
+  color: rgba(0, 0, 0, 0.35);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  line-height: 1;
+}
+/* The item-count NUMBER highlighted in gold — replaces the old seal badge. */
+.wz-act-bag__num {
+  color: #c8a45c;
+  font-weight: 700;
+}
+/* Price in serif for editorial weight */
+.wz-act-bag__price {
+  font-size: 13px;
+  font-weight: 700;
+  color: #1a1a1a;
+  white-space: nowrap;
+  font-family: var(--wz-serif);
+  letter-spacing: 0.01em;
+  line-height: 1.1;
+}
+
+/* NOTE: the desktop header is ALWAYS white (.wz-header { background:#fff }), so
+   desktop actions are ALWAYS dark #1a1a1a — no transparent override on desktop.
+   The .wz-bar-transparent (dark-hero) state only materializes on MOBILE, so all
+   its action overrides live inside the @media (max-width: 768px) block below.
+   (Top-level .wz-bar-transparent action rules were removed — they whitened the
+   desktop home actions on the white header.) */
 
 /* ── SECTION C — nav row (dark) ───────────────────────────── */
 .wz-row2 {
@@ -603,9 +657,11 @@
   position: relative;
   overflow: visible;
 }
-/* …but the page itself must not scroll sideways if a menu reaches the edge. */
+/* …but the page itself must not scroll sideways if a menu reaches the edge.
+   Use `clip` (not `hidden`) so this never establishes a scroll container that
+   would break the sticky header. */
 body {
-  overflow-x: hidden;
+  overflow-x: clip;
 }
 
 /* Thin styled scrollbar for every scrollable dropdown (WebKit/Blink) */
@@ -967,7 +1023,9 @@ body {
   cursor: pointer;
   text-align: start;
   font-family: inherit;
-  transition: all 0.15s;
+  transition: background-color var(--wz-duration-fast) var(--wz-ease),
+    color var(--wz-duration-fast) var(--wz-ease),
+    transform var(--wz-duration-fast) var(--wz-ease);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -975,7 +1033,10 @@ body {
 .wz-shop-sub-item:hover {
   background: rgba(0, 0, 0, 0.03);
   color: #262626;
-  padding-inline-start: 30px;
+  transform: translateX(4px);
+}
+[dir='rtl'] .wz-shop-sub-item:hover {
+  transform: translateX(-4px);
 }
 /* "See all (N)" row shown when a category has more than 8 sub-types */
 .wz-shop-see-all {
@@ -995,6 +1056,435 @@ body {
   margin: 4px 0;
 }
 
+/* ── Hamburger (mobile only) ──────────────────────────────── */
+.wz-burger {
+  display: none; /* hidden on desktop */
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  flex-shrink: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #262626;
+  font-size: 24px;
+  cursor: pointer;
+  border-radius: 8px;
+  transition:
+    background 0.2s ease,
+    color 0.3s ease;
+}
+.wz-burger:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+/* ── Mobile search icon (in actions) ──────────────────────── */
+.wz-search-icon {
+  display: none; /* hidden on desktop — inline SearchBox is used there */
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  min-width: 42px;
+  flex-shrink: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #262626;
+  font-size: 22px;
+  cursor: pointer;
+  border-radius: 50%;
+  transition:
+    background 0.2s ease,
+    color 0.3s ease;
+}
+.wz-search-icon:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+/* ── Mobile slide-down search bar ─────────────────────────────
+   The container matches the header surface (no seam); the form is the filled
+   field. Colours follow the header state via .wz-bar-transparent on <header>.
+   DEFAULT below = frosted-white (scrolled) state. ───────────────────────── */
+.wz-msearch {
+  display: none; /* only mounts visually on mobile */
+  overflow: hidden;
+  max-height: 0;
+  background: #fff;
+  transition:
+    max-height 0.2s ease,
+    background 0.3s ease;
+}
+.wz-msearch.is-open {
+  max-height: 64px;
+}
+.wz-msearch-form {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  margin: 8px 20px 12px;
+  padding: 0 12px 0 14px;
+  background: #f5f5f5;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 8px;
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease;
+}
+.wz-msearch-form:focus-within {
+  border-color: rgba(200, 164, 92, 0.5);
+}
+.wz-msearch-icon {
+  font-size: 18px;
+  color: rgba(0, 0, 0, 0.4);
+  flex-shrink: 0;
+}
+.wz-msearch-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 14px;
+  color: #1a1a1a;
+  text-align: start; /* aligns right under [dir=rtl] */
+}
+.wz-msearch-input::placeholder {
+  color: rgba(0, 0, 0, 0.35);
+}
+.wz-msearch-cancel {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  color: rgba(0, 0, 0, 0.5);
+  font-size: 20px;
+  cursor: pointer;
+  border-radius: 6px;
+}
+
+/* DARK state — search bar sitting over the dark hero */
+.wz-bar-transparent .wz-msearch {
+  background: #0a0a0a;
+}
+.wz-bar-transparent .wz-msearch-form {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+.wz-bar-transparent .wz-msearch-form:focus-within {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(200, 164, 92, 0.5);
+}
+.wz-bar-transparent .wz-msearch-icon {
+  color: rgba(255, 255, 255, 0.4);
+}
+.wz-bar-transparent .wz-msearch-input {
+  color: #fff;
+}
+.wz-bar-transparent .wz-msearch-input::placeholder {
+  color: rgba(255, 255, 255, 0.35);
+}
+.wz-bar-transparent .wz-msearch-cancel {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+/* ── Drawer separator ─────────────────────────────────────── */
+.wz-drawer-sep {
+  height: 1px;
+  margin: 8px 16px;
+  background: rgba(0, 0, 0, 0.1);
+}
+
+/* Mobile fixed-header spacer (hidden on desktop) */
+.wz-bar-spacer {
+  display: none;
+}
+
+/* ── Mobile drawer + overlay ──────────────────────────────── */
+.wz-drawer-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+  z-index: 3000;
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity 0.25s ease,
+    visibility 0.25s ease;
+}
+.wz-drawer-overlay.is-open {
+  opacity: 1;
+  visibility: visible;
+}
+
+.wz-drawer {
+  position: fixed;
+  top: 0;
+  inset-inline-start: 0;
+  width: 85vw;
+  max-width: 320px;
+  height: 100vh;
+  height: 100dvh;
+  background: #fff;
+  z-index: 3001;
+  display: flex;
+  flex-direction: column;
+  transform: translateX(-100%);
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.wz-drawer.is-open {
+  transform: translateX(0);
+  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.15);
+}
+/* RTL: the base `inset-inline-start: 0` already anchors the drawer to the RIGHT
+   edge in RTL — so only the off-screen transform must flip (to the right). The
+   previous inset override re-anchored it to the left, which left a visible
+   sliver on close. Keep just the transform here. */
+[dir='rtl'] .wz-drawer,
+.wz-drawer[dir='rtl'] {
+  transform: translateX(100%);
+}
+[dir='rtl'] .wz-drawer.is-open,
+.wz-drawer[dir='rtl'].is-open {
+  transform: translateX(0);
+  box-shadow: -4px 0 24px rgba(0, 0, 0, 0.15);
+}
+
+/* Drawer header */
+.wz-drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 52px;
+  padding: 0 14px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.07);
+  flex-shrink: 0;
+}
+.wz-drawer-logo img {
+  height: 24px;
+  width: auto;
+}
+.wz-drawer-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border: none;
+  background: transparent;
+  color: #262626;
+  font-size: 24px;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: background 0.2s ease;
+}
+.wz-drawer-close:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+/* Drawer search */
+.wz-drawer-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 16px;
+  height: 44px;
+  /* logical padding so it mirrors in RTL (text side gets the larger inset) */
+  padding-block: 0;
+  padding-inline-start: 16px;
+  padding-inline-end: 8px;
+  background: #f5f5f5;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+.wz-drawer-search input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 14px;
+  color: #1a1a1a;
+  text-align: start; /* right-aligns under [dir=rtl] */
+}
+.wz-drawer-search button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: rgba(0, 0, 0, 0.5);
+  font-size: 18px;
+  cursor: pointer;
+}
+
+/* Drawer nav */
+.wz-drawer-nav {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+}
+.wz-drawer-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  height: 52px;
+  padding: 0 16px;
+  border: none;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+  background: transparent;
+  color: #1a1a1a;
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  text-align: start;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.wz-drawer-link:hover {
+  background: rgba(0, 0, 0, 0.03);
+}
+.wz-drawer-caret {
+  font-size: 16px;
+  opacity: 0.5;
+  transition: transform 0.2s ease;
+}
+.wz-drawer-acc-head.is-open .wz-drawer-caret {
+  transform: rotate(180deg);
+}
+.wz-drawer-sub {
+  display: flex;
+  flex-direction: column;
+  background: #fafafa;
+  max-height: 320px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.wz-drawer-sublink {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 42px;
+  padding: 0 16px;
+  padding-inline-start: 24px;
+  border: none;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+  background: transparent;
+  color: rgba(0, 0, 0, 0.6);
+  font-size: 13px;
+  text-align: start;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    padding-inline-start 0.15s ease;
+}
+.wz-drawer-sublink:hover {
+  color: #c8a45c;
+  padding-inline-start: 28px;
+}
+
+/* Category section header inside the Shop accordion */
+.wz-drawer-group-head {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 40px;
+  padding: 0 16px;
+  border: none;
+  background: transparent;
+  color: #1a1a1a;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  text-align: start;
+  cursor: pointer;
+}
+.wz-drawer-group + .wz-drawer-group .wz-drawer-group-head {
+  border-top: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+/* Brand row with small logo */
+.wz-drawer-brand {
+  gap: 10px;
+}
+.wz-drawer-brand-logo {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.wz-drawer-brand-logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  padding: 2px;
+  filter: grayscale(1);
+}
+.wz-drawer-brand-ph {
+  font-size: 10px;
+  font-weight: 700;
+  color: rgba(0, 0, 0, 0.5);
+  text-transform: uppercase;
+}
+
+/* Drawer footer */
+.wz-drawer-foot {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 16px;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  flex-shrink: 0;
+}
+.wz-drawer-credit {
+  margin: 0;
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.45);
+}
+.wz-drawer-credit a {
+  color: #c8a45c;
+  font-weight: 600;
+  text-decoration: none;
+}
+.wz-drawer-credit a:hover {
+  text-decoration: underline;
+}
+
+/* Drawer never participates on desktop */
+@media (min-width: 769px) {
+  .wz-drawer,
+  .wz-drawer-overlay {
+    display: none;
+  }
+}
+
 /* ── Responsive (≤768px) ──────────────────────────────────── */
 @media (max-width: 768px) {
   .wz-strip {
@@ -1003,22 +1493,219 @@ body {
   .wz-row2 {
     display: none;
   }
-  .wz-row1 {
-    height: 56px;
-    gap: 12px;
-    padding: 0 16px;
+  .wz-burger {
+    display: inline-flex;
   }
-  .wz-logo img {
-    height: 32px !important;
+  .wz-search-icon {
+    display: inline-flex;
   }
-  .wz-search {
-    height: 40px;
-    max-width: none;
+  .wz-msearch {
+    display: block;
   }
-  .wz-cart-price {
+
+  /* Sticky header. DEFAULT (scrolled past hero / non-home) = frosted white. */
+  .wz-header {
+    position: sticky;
+    top: 0;
+    z-index: 1050;
+    background: rgba(255, 255, 255, 0.95);
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+    box-shadow: 0 1px 8px rgba(0, 0, 0, 0.04);
+    transition:
+      background 0.3s ease,
+      box-shadow 0.3s ease,
+      border-color 0.3s ease;
+  }
+  /* OVER THE HERO (home, before scrolling past it): same #0a0a0a as the hero,
+     no border, no shadow — header and hero read as one continuous dark surface. */
+  .wz-header.wz-bar-transparent {
+    background: #0a0a0a;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    border-bottom-color: transparent;
+    box-shadow: none;
+  }
+
+  /* Icon buttons: just the icon — no background, no circle, no border. The 8px
+     padding only provides a tap target. Colour follows the header state. */
+  .wz-burger,
+  .wz-search-icon {
+    width: auto;
+    height: auto;
+    min-width: 0;
+    padding: 8px;
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    font-size: 20px;
+    color: #1a1a1a;
+    transition: color 0.3s ease;
+  }
+  .wz-burger:hover,
+  .wz-search-icon:hover {
+    background: transparent;
+    transform: none;
+    color: #000;
+  }
+  /* Dark (over-hero) state → soft-white icons, full white on tap */
+  .wz-bar-transparent .wz-burger,
+  .wz-bar-transparent .wz-search-icon {
+    color: rgba(255, 255, 255, 0.85);
+  }
+  .wz-bar-transparent .wz-burger:hover,
+  .wz-bar-transparent .wz-search-icon:hover {
+    color: #fff;
+  }
+
+  /* The wrapper div around <Header> must not draw its own line on mobile */
+  .header {
+    box-shadow: none;
+  }
+  /* Sticky header reserves its own height in flow — no spacer needed */
+  .wz-bar-spacer {
     display: none;
   }
-  .wz-login {
-    padding: 0 14px;
+
+  /* Refined bar: hamburger left · logo centered · search + cart right */
+  .wz-row1 {
+    position: relative;
+    height: 52px;
+    gap: 8px;
+    padding: 0 20px;
+  }
+  .wz-logo {
+    position: static;
+    transform: none;
+    margin-inline-start: 4px;
+  }
+  .wz-logo img {
+    height: 26px !important;
+    transition:
+      filter 0.3s ease,
+      opacity 0.3s ease;
+  }
+  /* Over the hero: dimmed-white logo. Frosted-white state: normal dark logo. */
+  .wz-bar-transparent .wz-logo img {
+    filter: brightness(0) invert(1);
+    opacity: 0.9;
+  }
+  /* Mobile bar keeps: search icon · identity/login icon · cart. Only the
+     text-heavy bits are hidden. (.wz-act-lang is scoped to .wz-actions so the
+     DRAWER language toggle, which shares the class, stays visible on mobile.) */
+  .wz-search-box,
+  .wz-actions .wz-act-lang,
+  .wz-act-sep,
+  .wz-act-name {
+    display: none !important;
+  }
+
+  .wz-actions {
+    margin-inline-start: auto;
+    gap: 4px;
+  }
+
+  /* Logged in → show just the avatar ring (no name) */
+  .wz-act-identity {
+    display: flex !important;
+    padding: 0;
+    gap: 0;
+  }
+  .wz-act-ring {
+    width: 28px;
+    height: 28px;
+  }
+  .wz-act-monogram {
+    font-size: 12px;
+  }
+
+  /* Logged out → collapse the two links to a single user icon (SIGN IN) */
+  .wz-act-auth {
+    display: flex !important;
+  }
+  .wz-act-auth__link:last-child {
+    display: none !important;
+  }
+  .wz-act-auth__link:first-child {
+    font-size: 0;
+    padding: 8px;
+    position: relative;
+  }
+  .wz-act-auth__link:first-child::before {
+    content: '';
+    display: block;
+    width: 20px;
+    height: 20px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%231a1a1a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2'%3E%3C/path%3E%3Ccircle cx='12' cy='7' r='4'%3E%3C/circle%3E%3C/svg%3E");
+    background-size: contain;
+    background-repeat: no-repeat;
+  }
+  .wz-act-auth__link::after {
+    display: none !important;
+  }
+
+  /* Dark state (over the hero) for the avatar ring + login icon */
+  .wz-bar-transparent .wz-act-ring {
+    border-color: rgba(255, 255, 255, 0.2);
+  }
+  .wz-bar-transparent .wz-act-monogram {
+    background: rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.85);
+  }
+  .wz-bar-transparent .wz-act-auth__link:first-child::before {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2'%3E%3C/path%3E%3Ccircle cx='12' cy='7' r='4'%3E%3C/circle%3E%3C/svg%3E");
+  }
+
+  /* Cart: bag icon + compact count/price text on mobile */
+  .wz-act-bag {
+    padding: 6px 8px;
+    gap: 6px;
+  }
+  .wz-act-bag__icon {
+    font-size: 20px;
+    color: #1a1a1a;
+    transition: color 0.3s ease;
+  }
+  .wz-act-bag:hover {
+    transform: none;
+  }
+  .wz-act-bag__info {
+    display: flex !important;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1px;
+  }
+  .wz-act-bag__count {
+    font-size: 8px;
+  }
+  .wz-act-bag__price {
+    font-size: 11px;
+  }
+
+  /* ── DARK STATE: over the hero → white icon + text, gold number ── */
+  .wz-bar-transparent .wz-act-bag__icon {
+    color: rgba(255, 255, 255, 0.85);
+  }
+  .wz-bar-transparent .wz-act-bag:hover .wz-act-bag__icon {
+    color: #fff;
+  }
+  .wz-bar-transparent .wz-act-bag__count {
+    color: rgba(255, 255, 255, 0.5);
+  }
+  .wz-bar-transparent .wz-act-bag__num {
+    color: #c8a45c;
+  }
+  .wz-bar-transparent .wz-act-bag__price {
+    color: rgba(255, 255, 255, 0.85);
+  }
+
+  /* ── LIGHT STATE: scrolled past hero → dark icon (count/price use base dark) ── */
+  .wz-header:not(.wz-bar-transparent) .wz-act-bag__icon {
+    color: #1a1a1a;
+  }
+  /* Slide-down search sits under the fixed bar */
+  .wz-msearch.is-open {
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.06);
   }
 }

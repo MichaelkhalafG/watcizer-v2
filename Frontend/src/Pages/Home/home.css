@@ -2,6 +2,30 @@
   background: #fafafa;
 }
 
+/* ── Hero banner carousel (Embla, replaces react-slick) ───────────────── */
+.wz-hero-carousel-wrap {
+  position: relative;
+  width: 100%;
+}
+/* Full-bleed, one-slide-at-a-time hero */
+.wz-hero-carousel .wz-carousel-slide {
+  flex: 0 0 100%;
+  min-width: 0;
+}
+.wz-hero-img {
+  display: block;
+  width: 100%;
+  height: auto;
+  object-fit: cover;
+}
+/* Keep the arrows inside the frame and legible over imagery */
+.wz-hero-carousel .wz-carousel-prev {
+  inset-inline-start: 12px;
+}
+.wz-hero-carousel .wz-carousel-next {
+  inset-inline-end: 12px;
+}
+
 .wz-home-phonenav {
   padding: 8px 0;
 }
@@ -40,7 +64,7 @@
 }
 
 .wz-section-title {
-  font-family: Georgia, 'Times New Roman', serif;
+  font-family: var(--wz-serif);
   font-size: clamp(1.2rem, 2.5vw, 1.8rem);
   font-weight: 300;
   color: #1a1a1a;
@@ -57,7 +81,8 @@
   padding: 8px 16px;
   cursor: pointer;
   border-radius: 2px;
-  transition: all 0.2s;
+  transition: background-color var(--wz-duration) var(--wz-ease),
+    color var(--wz-duration) var(--wz-ease);
   white-space: nowrap;
   text-decoration: none;
 }
@@ -139,7 +164,7 @@
 }
 
 .wz-featured-name {
-  font-family: Georgia, serif;
+  font-family: var(--wz-serif);
   font-size: clamp(1.3rem, 3vw, 2.2rem);
   font-weight: 300;
   color: #fff;
@@ -188,7 +213,8 @@
   text-transform: uppercase;
   cursor: pointer;
   border-radius: 2px;
-  transition: all 0.25s;
+  transition: background-color var(--wz-duration) var(--wz-ease),
+    color var(--wz-duration) var(--wz-ease), outline-color var(--wz-duration) var(--wz-ease);
 }
 
 .wz-featured-btn:hover {
@@ -232,7 +258,8 @@
   border: none;
   cursor: pointer;
   padding: 0;
-  transition: all 0.2s;
+  transition: background-color var(--wz-duration) var(--wz-ease),
+    width var(--wz-duration) var(--wz-ease);
 }
 
 .wz-fdot-on {

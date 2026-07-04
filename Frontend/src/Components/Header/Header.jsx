@@ -1,39 +1,155 @@
-import { useContext, useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
+import { useContext, useState, useEffect, useRef } from 'react'
+import { Link, useNavigate, useLocation } from 'react-router-dom'
 import logo from '../../assets/images/logo.webp'
-import LanguageDropdown from '../LanguageDropdown/LanguageDropdowen'
 import { LazyLoadImage } from 'react-lazy-load-image-component'
 import 'react-lazy-load-image-component/src/effects/blur.css'
-import { IoBagOutline } from 'react-icons/io5'
+import { FiMenu, FiSearch, FiShoppingBag, FiX, FiChevronDown } from 'react-icons/fi'
 import './Header.css'
 import SearchBox from './SearchBox/SearchBox'
 import Nav from './Nav/Nav'
-import userimg from '../../assets/images/user.webp'
 import { MyContext } from '../../Context/Context'
 import { useUIStore } from '../../Store/uiStore'
 import { useAuthStore } from '../../Store/authStore'
+import { useCatalog } from '../../Hooks/queries/useCatalog'
+import { buildListingParams } from '../../utils/listingParams'
+import { getImageUrl } from '../../utils/imageUrl'
 import { FaFacebookF, FaInstagram } from 'react-icons/fa'
 
 function Header() {
+  // Cart-derived counters stay in context; server data (products/tables) comes
+  // from TanStack Query via useCatalog (shared, cached — no extra fetch).
   const { productsCount, total_cart_price } = useContext(MyContext)
-  const { language } = useUIStore()
-  const { userId: user_id } = useAuthStore()
+  const { products, tables } = useCatalog()
+  const { language, setLanguage } = useUIStore()
+  const { userId: user_id, user } = useAuthStore()
+  const navigate = useNavigate()
+  const location = useLocation()
   const [scrolled, setScrolled] = useState(false)
+  const [pastHero, setPastHero] = useState(false)
+  const isRTL = language === 'ar'
 
-  // Subtle depth on Row 1 once scrolled past 40px.
+  // The dark "blend with hero" state only applies on the home page (the route
+  // with the dark WatchHero filling the first viewport) and only until the user
+  // has scrolled most of the way past it — then the bar turns frosted white.
+  const heroPage = location.pathname === '/'
+  const transparent = heroPage && !pastHero
+
+  // ── Mobile drawer + search state ──
+  const [drawerOpen, setDrawerOpen] = useState(false)
+  const [openSection, setOpenSection] = useState(null) // 'shop' | 'brands' | null
+  const [mq, setMq] = useState('')
+  const [searchOpen, setSearchOpen] = useState(false)
+  const searchRef = useRef(null)
+
+  // Materialize the bar once scrolled past the hero (60px). rAF-throttled.
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 40)
+    let ticking = false
+    const onScroll = () => {
+      if (ticking) return
+      ticking = true
+      requestAnimationFrame(() => {
+        const y = window.scrollY
+        setScrolled(y > 60) // desktop row-1 shadow
+        setPastHero(y > window.innerHeight * 0.7) // mobile dark→frosted switch
+        ticking = false
+      })
+    }
     onScroll()
     window.addEventListener('scroll', onScroll, { passive: true })
     return () => window.removeEventListener('scroll', onScroll)
   }, [])
+
+  // Lock body scroll while the mobile drawer is open.
+  useEffect(() => {
+    document.body.style.overflow = drawerOpen ? 'hidden' : ''
+    return () => {
+      document.body.style.overflow = ''
+    }
+  }, [drawerOpen])
+
+  // Auto-focus the mobile search field when it slides open.
+  useEffect(() => {
+    if (searchOpen) searchRef.current?.focus()
+  }, [searchOpen])
+
+  // Localized label: current language → English → flat field.
+  const label = (item, key) =>
+    item?.translations?.find((t) => t.locale === language)?.[key] ??
+    item?.translations?.find((t) => t.locale === 'en')?.[key] ??
+    item?.[key] ??
+    ''
+
+  // Sub-types / brands that actually have products (no dead links).
+  const list = products || []
+  const categoryTypes = tables?.categoryTypes || []
+  const drawerSubTypes = (tables?.subTypes || []).filter((st) =>
+    list.some((p) => p.sub_type_id === st.id),
+  )
+  const drawerBrands = (tables?.brands || []).filter((b) => list.some((p) => p.brand_id === b.id))
+  // Sub-types grouped under the category type their products live in.
+  const subTypesForCat = (ct) =>
+    drawerSubTypes.filter((st) =>
+      list.some((p) => p.category_type_id === ct.id && p.sub_type_id === st.id),
+    )
+  const brandLogo = (b) => getImageUrl(b?.image, 'Brand')
+
+  const closeDrawer = () => {
+    setDrawerOpen(false)
+    setOpenSection(null)
+  }
+
+
+  // Encode filters into the /listing URL (Listing reads them back) — same model
+  // the desktop Nav uses, then close the drawer.
+  const go = (filters) => {
+    const params = buildListingParams(
+      {
+        categories: [],
+        brands: [],
+        subTypes: [],
+        genders: [],
+        offers: false,
+        price: [0, 99999999],
+        ...filters,
+      },
+      {},
+      tables,
+    )
+    const qs = params.toString()
+    closeDrawer()
+    navigate(qs ? `/listing?${qs}` : '/listing')
+  }
+
+  const goTo = (path) => {
+    closeDrawer()
+    navigate(path)
+  }
+
+  const submitSearch = (e) => {
+    e.preventDefault()
+    const q = mq.trim()
+    closeDrawer()
+    setSearchOpen(false)
+    navigate(q ? `/listing?q=${encodeURIComponent(q)}` : '/listing')
+    setMq('')
+  }
+
+  const toggleSection = (key) => setOpenSection((cur) => (cur === key ? null : key))
+
+  const handleLogout = () => {
+    closeDrawer()
+    sessionStorage.clear()
+    localStorage.clear()
+    navigate('/')
+    window.location.reload()
+  }
 
   // Scrolling announcement strip — trust signals, brands, Watchizer info.
   const englishItems = [
     'Authentic Luxury Watches — Certified & Guaranteed',
     '500+ Premium Timepieces In Stock',
     'Rolex · Omega · Cartier · TAG Heuer · Breitling',
-    'Free Shipping on Orders Over 5,000 EGP',
+    'Fast & Secure Delivery Across Egypt',
     "Watchizer — Egypt's Premier Watch Destination",
     'Patek Philippe · Audemars Piguet · IWC · Hublot',
     'Trusted by Watch Enthusiasts Since 2020',
@@ -43,7 +159,7 @@ function Header() {
     'ساعات فاخرة أصلية — معتمدة ومضمونة',
     'أكثر من 500 ساعة فاخرة متوفرة',
     'رولكس · أوميغا · كارتييه · تاغ هوير · بريتلينج',
-    'شحن مجاني للطلبات فوق 5,000 جنيه',
+    'توصيل سريع وآمن لجميع أنحاء مصر',
     'واتشايزر — وجهتك الأولى للساعات الفاخرة في مصر',
     'باتيك فيليب · أوديمار بيغيه · IWC · هوبلوت',
     'موثوق من عشاق الساعات منذ 2020',
@@ -52,7 +168,13 @@ function Header() {
   const marqueeItems = language === 'ar' ? arabicItems : englishItems
 
   return (
-    <header className={`wz-header lato-regular ${scrolled ? 'wz-scrolled' : ''}`}>
+    <>
+    <header
+      dir={isRTL ? 'rtl' : 'ltr'}
+      className={`wz-header ${scrolled ? 'wz-scrolled' : ''} ${
+        transparent ? 'wz-bar-transparent' : ''
+      }`}
+    >
       {/* ── SECTION A — announcement strip ─────────────────── */}
       <div className="wz-strip">
         <div className="wz-strip-inner">
@@ -96,6 +218,16 @@ function Header() {
 
       {/* ── SECTION B — main row: Logo | Search | Actions ──── */}
       <div className="wz-row1">
+        <button
+          type="button"
+          className="wz-burger"
+          aria-label={isRTL ? 'فتح القائمة' : 'Open menu'}
+          aria-expanded={drawerOpen}
+          onClick={() => setDrawerOpen(true)}
+        >
+          <FiMenu />
+        </button>
+
         <div className="wz-logo">
           <Link to={'/'}>
             <LazyLoadImage src={logo} alt="Watchizer-logo" effect="blur" width="150" height="46" />
@@ -107,52 +239,371 @@ function Header() {
         </div>
 
         <div className="wz-actions">
-          <div className="wz-lang">
-            <LanguageDropdown />
+          {/* ── Language: EN | ع (each letter its own button) ── */}
+          <div className="wz-act-lang">
+            <button
+              type="button"
+              className={`wz-act-lang__btn${language === 'en' ? ' is-active' : ''}`}
+              onClick={() => setLanguage('en')}
+            >
+              EN
+            </button>
+            <span className="wz-act-lang__pipe">|</span>
+            <button
+              type="button"
+              className={`wz-act-lang__btn${language === 'ar' ? ' is-active' : ''}`}
+              onClick={() => setLanguage('ar')}
+            >
+              ع
+            </button>
           </div>
 
+          <span className="wz-act-sep" aria-hidden="true" />
+
+          {/* ── Mobile search icon ────────────── */}
+          <button
+            type="button"
+            className="wz-search-icon"
+            onClick={() => setSearchOpen((o) => !o)}
+            aria-label={isRTL ? 'بحث' : 'Search'}
+            aria-expanded={searchOpen}
+          >
+            <FiSearch />
+          </button>
+
+          {/* ── Auth / Identity ───────────────── */}
           {user_id && user_id !== null ? (
-            <div className="wz-profile">
-              <span className="profile-name">{[].find((u) => u.id === user_id)?.first_name}</span>
-              <LazyLoadImage
-                src={
-                  sessionStorage.getItem('image') !== null
-                    ? sessionStorage.getItem('image')
-                    : userimg
-                }
-                alt="user"
-                className="rounded-circle"
-                effect="blur"
-              />
-            </div>
+            <button
+              type="button"
+              className="wz-act-identity"
+              onClick={() => navigate('/account')}
+              aria-label={isRTL ? 'حسابي' : 'My Account'}
+            >
+              <span className="wz-act-ring">
+                {user?.image ? (
+                  <img
+                    src={getImageUrl(user.image, 'User')}
+                    alt=""
+                    onError={(e) => {
+                      e.currentTarget.style.display = 'none'
+                      if (e.currentTarget.nextElementSibling)
+                        e.currentTarget.nextElementSibling.style.display = 'flex'
+                    }}
+                  />
+                ) : null}
+                <span
+                  className="wz-act-monogram"
+                  style={{ display: user?.image ? 'none' : 'flex' }}
+                >
+                  {(user?.first_name || user?.name || 'U').charAt(0).toUpperCase()}
+                </span>
+              </span>
+              <span className="wz-act-name">
+                {user?.first_name || user?.name?.split(' ')[0] || ''}
+              </span>
+            </button>
           ) : (
-            <Link to={'/login'} className="wz-login" title="Sign In">
-              {language === 'ar' ? 'تسجيل الدخول' : 'Sign In'}
-            </Link>
+            <div className="wz-act-auth">
+              <button
+                type="button"
+                className="wz-act-auth__link"
+                onClick={() => navigate('/login')}
+              >
+                {isRTL ? 'تسجيل' : 'SIGN IN'}
+              </button>
+              <button
+                type="button"
+                className="wz-act-auth__link"
+                onClick={() => navigate('/register')}
+              >
+                {isRTL ? 'حساب جديد' : 'REGISTER'}
+              </button>
+            </div>
           )}
 
-          <div className="wz-cart">
-            <span className="wz-cart-price">
-              {productsCount === 0 ? '0.00' : total_cart_price}
-              {language === 'ar' ? ' ج.م ' : ' EG '}
+          <span className="wz-act-sep" aria-hidden="true" />
+
+          {/* ── Cart: icon + count + price ────── */}
+          <button
+            type="button"
+            className="wz-act-bag"
+            onClick={() => navigate('/cart')}
+            aria-label={isRTL ? 'السلة' : 'Cart'}
+          >
+            <span className="wz-act-bag__icon">
+              <FiShoppingBag />
             </span>
-            <Link className="wz-action-btn wz-cart-link" to={'/cart'} title="cart">
-              <IoBagOutline style={{ fontSize: '22px' }} />
-              {productsCount > 0 && (
-                <span className="wz-badge" key={productsCount}>
-                  {productsCount}
-                </span>
-              )}
-            </Link>
-          </div>
+            <span className="wz-act-bag__info">
+              <span className="wz-act-bag__count">
+                <span className="wz-act-bag__num">{productsCount}</span>{' '}
+                {isRTL
+                  ? productsCount === 1
+                    ? 'منتج'
+                    : 'منتجات'
+                  : productsCount === 1
+                    ? 'ITEM'
+                    : 'ITEMS'}
+              </span>
+              <span className="wz-act-bag__price">
+                {isRTL
+                  ? `${Math.round(total_cart_price || 0).toLocaleString('ar-EG')} ج.م`
+                  : `EGP ${Math.round(total_cart_price || 0).toLocaleString()}`}
+              </span>
+            </span>
+          </button>
         </div>
+      </div>
+
+      {/* ── Mobile slide-down search ───────────────────────── */}
+      <div className={`wz-msearch ${searchOpen ? 'is-open' : ''}`}>
+        <form className="wz-msearch-form" onSubmit={submitSearch}>
+          <FiSearch className="wz-msearch-icon" />
+          <input
+            ref={searchRef}
+            type="search"
+            className="wz-msearch-input"
+            value={mq}
+            onChange={(e) => setMq(e.target.value)}
+            placeholder={isRTL ? 'ابحث عن منتج…' : 'Search products…'}
+            aria-label={isRTL ? 'بحث' : 'Search'}
+          />
+          <button
+            type="button"
+            className="wz-msearch-cancel"
+            onClick={() => setSearchOpen(false)}
+            aria-label={isRTL ? 'إلغاء' : 'Cancel'}
+          >
+            <FiX />
+          </button>
+        </form>
       </div>
 
       {/* ── SECTION C — nav row (dark) ─────────────────────── */}
       <div className="wz-row2">
         <Nav />
       </div>
+
+      {/* ── Mobile drawer (left, or right in RTL) ──────────── */}
+      <div
+        className={`wz-drawer-overlay ${drawerOpen ? 'is-open' : ''}`}
+        onClick={closeDrawer}
+        aria-hidden={!drawerOpen}
+      />
+      <aside
+        className={`wz-drawer ${drawerOpen ? 'is-open' : ''}`}
+        dir={isRTL ? 'rtl' : 'ltr'}
+        role="dialog"
+        aria-modal="true"
+        aria-label={isRTL ? 'قائمة التنقل' : 'Navigation menu'}
+      >
+        <div className="wz-drawer-head">
+          <Link to="/" onClick={closeDrawer} className="wz-drawer-logo" aria-label="Watchizer">
+            <img src={logo} alt="Watchizer" />
+          </Link>
+          <button
+            type="button"
+            className="wz-drawer-close"
+            onClick={closeDrawer}
+            aria-label={isRTL ? 'إغلاق' : 'Close'}
+          >
+            <FiX />
+          </button>
+        </div>
+
+        <form className="wz-drawer-search" onSubmit={submitSearch}>
+          <input
+            type="search"
+            value={mq}
+            onChange={(e) => setMq(e.target.value)}
+            placeholder={isRTL ? 'ابحث عن منتج…' : 'Search products…'}
+            aria-label={isRTL ? 'بحث' : 'Search'}
+          />
+          <button type="submit" aria-label={isRTL ? 'بحث' : 'Search'}>
+            <FiSearch />
+          </button>
+        </form>
+
+        <nav className="wz-drawer-nav">
+          <button type="button" className="wz-drawer-link" onClick={() => goTo('/')}>
+            {isRTL ? 'الرئيسية' : 'Home'}
+          </button>
+
+          {/* Shop accordion → sub-categories */}
+          {drawerSubTypes.length > 0 && (
+            <div className="wz-drawer-acc">
+              <button
+                type="button"
+                className={`wz-drawer-link wz-drawer-acc-head ${openSection === 'shop' ? 'is-open' : ''}`}
+                onClick={() => toggleSection('shop')}
+                aria-expanded={openSection === 'shop'}
+              >
+                {isRTL ? 'المتجر' : 'Shop'}
+                <FiChevronDown className="wz-drawer-caret" />
+              </button>
+              {openSection === 'shop' && (
+                <div className="wz-drawer-sub">
+                  {categoryTypes.map((ct) => {
+                    const subs = subTypesForCat(ct)
+                    if (!subs.length) return null
+                    return (
+                      <div key={ct.id} className="wz-drawer-group">
+                        <button
+                          type="button"
+                          className="wz-drawer-group-head"
+                          onClick={() => go({ categories: [ct.id] })}
+                        >
+                          {label(ct, 'category_type_name')}
+                        </button>
+                        {subs.map((st) => (
+                          <button
+                            key={st.id}
+                            type="button"
+                            className="wz-drawer-sublink"
+                            onClick={() => go({ categories: [ct.id], subTypes: [st.id] })}
+                          >
+                            {label(st, 'sub_type_name')}
+                          </button>
+                        ))}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Brands accordion */}
+          {drawerBrands.length > 0 && (
+            <div className="wz-drawer-acc">
+              <button
+                type="button"
+                className={`wz-drawer-link wz-drawer-acc-head ${openSection === 'brands' ? 'is-open' : ''}`}
+                onClick={() => toggleSection('brands')}
+                aria-expanded={openSection === 'brands'}
+              >
+                {isRTL ? 'العلامات التجارية' : 'All Brands'}
+                <FiChevronDown className="wz-drawer-caret" />
+              </button>
+              {openSection === 'brands' && (
+                <div className="wz-drawer-sub">
+                  {drawerBrands.map((b) => {
+                    const lg = brandLogo(b)
+                    return (
+                      <button
+                        key={b.id}
+                        type="button"
+                        className="wz-drawer-sublink wz-drawer-brand"
+                        onClick={() => go({ brands: [b.id] })}
+                      >
+                        <span className="wz-drawer-brand-logo">
+                          {lg ? (
+                            <img src={lg} alt="" loading="lazy" />
+                          ) : (
+                            <span className="wz-drawer-brand-ph">
+                              {(label(b, 'brand_name') || '?').charAt(0)}
+                            </span>
+                          )}
+                        </span>
+                        {label(b, 'brand_name')}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          <button type="button" className="wz-drawer-link" onClick={() => go({ offers: true })}>
+            {isRTL ? 'العروض' : 'Offers'}
+          </button>
+
+          <div className="wz-drawer-sep" />
+
+          {user_id && user_id !== null ? (
+            <>
+              <button
+                type="button"
+                className="wz-drawer-link"
+                onClick={() => goTo('/account?tab=profile')}
+              >
+                {isRTL ? 'حسابي' : 'My Account'}
+              </button>
+              <button
+                type="button"
+                className="wz-drawer-link"
+                onClick={() => goTo('/account?tab=wishlist')}
+              >
+                {isRTL ? 'قائمة الأمنيات' : 'Wishlist'}
+              </button>
+              <button
+                type="button"
+                className="wz-drawer-link"
+                onClick={() => goTo('/account?tab=orders')}
+              >
+                {isRTL ? 'طلباتي' : 'My Orders'}
+              </button>
+              <button type="button" className="wz-drawer-link" onClick={handleLogout}>
+                {isRTL ? 'تسجيل الخروج' : 'Log Out'}
+              </button>
+            </>
+          ) : (
+            <>
+              <button type="button" className="wz-drawer-link" onClick={() => goTo('/login')}>
+                {isRTL ? 'تسجيل الدخول' : 'Login'}
+              </button>
+              <button
+                type="button"
+                className="wz-drawer-link"
+                onClick={() => goTo('/account?tab=wishlist')}
+              >
+                {isRTL ? 'قائمة الأمنيات' : 'Wishlist'}
+              </button>
+            </>
+          )}
+        </nav>
+
+        <div className="wz-drawer-foot">
+          <div className="wz-act-lang">
+            <button
+              type="button"
+              className={`wz-act-lang__btn${language === 'en' ? ' is-active' : ''}`}
+              onClick={() => {
+                setLanguage('en')
+                closeDrawer()
+              }}
+            >
+              EN
+            </button>
+            <span className="wz-act-lang__pipe">|</span>
+            <button
+              type="button"
+              className={`wz-act-lang__btn${language === 'ar' ? ' is-active' : ''}`}
+              onClick={() => {
+                setLanguage('ar')
+                closeDrawer()
+              }}
+            >
+              ع
+            </button>
+          </div>
+          <p className="wz-drawer-credit">
+            {isRTL ? 'تصميم وتطوير ' : 'Designed by '}
+            <a
+              href="https://wa.me/201274550956"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {isRTL ? 'مايكل خلف' : 'Michael Khalaf'}
+            </a>
+          </p>
+        </div>
+      </aside>
     </header>
+
+    {/* Mobile spacer: the header is position:fixed on mobile, so reserve its
+        height on every page EXCEPT home (where the hero sits under it). */}
+    {!heroPage && <div className="wz-bar-spacer" aria-hidden="true" />}
+    </>
   )
 }
 

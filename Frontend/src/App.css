@@ -3,6 +3,125 @@
   padding: 0px;
 }
 
+/* ── Global Typography ──────────────────────────────────────────────────
+   English → Georgia EVERYWHERE. Arabic (dir=rtl) → El Messiri EVERYWHERE.
+   Serif headings resolve through --wz-serif, which flips to El Messiri under
+   [dir='rtl'] so no per-component edits are needed. No sans-serif web font. */
+:root {
+  --wz-serif: Georgia, 'Times New Roman', serif;
+}
+[dir='rtl'] {
+  --wz-serif: 'El Messiri', Georgia, 'Times New Roman', serif;
+}
+
+/* English: Georgia everywhere */
+body {
+  font-family: Georgia, 'Times New Roman', serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* English (dir=ltr): Georgia on body + all form controls */
+[dir='ltr'] body,
+[dir='ltr'] input,
+[dir='ltr'] select,
+[dir='ltr'] textarea,
+[dir='ltr'] button {
+  font-family: Georgia, 'Times New Roman', serif;
+}
+
+/* Arabic: El Messiri on body + all form controls */
+[dir='rtl'] body,
+[dir='rtl'] input,
+[dir='rtl'] select,
+[dir='rtl'] textarea,
+[dir='rtl'] button {
+  font-family: 'El Messiri', Georgia, 'Times New Roman', serif;
+}
+
+/* Form elements inherit the correct font (Georgia / El Messiri) from the body */
+input,
+select,
+textarea,
+button {
+  font-family: inherit;
+}
+
+/* All headings: uppercase + wider tracking */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* Arabic headings: El Messiri, tighter tracking (Arabic dislikes wide spacing) */
+[dir='rtl'] h1,
+[dir='rtl'] h2,
+[dir='rtl'] h3,
+[dir='rtl'] h4,
+[dir='rtl'] h5,
+[dir='rtl'] h6 {
+  font-family: 'El Messiri', var(--wz-serif);
+  letter-spacing: 0.02em;
+}
+
+/* Product names stay mixed-case — uppercase is too aggressive on names */
+.wz-pd-name,
+.wz-pd-ms-name,
+.wz-pc__title {
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+/* Contain stray horizontal overflow WITHOUT breaking position:sticky.
+   overflow-x: clip (unlike hidden) does NOT create a scroll container, so the
+   sticky header keeps working. Applied to #root only — never html/body, whose
+   overflow:hidden is what broke the sticky bar. Each overflowing component
+   (e.g. .wz-hero) also clips itself at the source. */
+#root {
+  overflow-x: clip;
+  /* 100% (not 100vw): 100vw includes the vertical scrollbar's width and would
+     itself trigger a 1px horizontal overflow. */
+  max-width: 100%;
+}
+
+/* Sticky header wrapper (replaces Bootstrap's rounded-bottom-4 + sticky-top). */
+.wz-header-wrapper {
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+  border-radius: 0 0 16px 16px;
+}
+
+/* ── Global motion tokens ───────────────────────────────────────────────
+   One consistent easing/duration vocabulary for every transition on the
+   site. Prefer transform/opacity (composite-only, 60fps) in all consumers. */
+:root {
+  --wz-ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --wz-ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --wz-ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --wz-ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --wz-duration-fast: 0.15s;
+  --wz-duration: 0.25s;
+  --wz-duration-slow: 0.35s;
+}
+
+/* Respect users who ask the OS to minimize motion — near-instant everywhere. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 /* ── Responsive show/hide (replaces JS width branching) ── */
 .mobile-only {
   display: block !important;
@@ -18,8 +137,9 @@
     display: block !important;
   }
 }
+/* Legacy utility class — maps to the site font (Georgia). */
 .lato-regular {
-  font-family: 'Lato', sans-serif;
+  font-family: Georgia, 'Times New Roman', serif;
   font-weight: 400;
   font-style: normal;
 }
@@ -38,31 +158,20 @@
 .bg-2 {
   background-color: #26262657;
 }
+/* Legacy utility class — maps to the site font (Georgia). */
 .dosis-regular {
-  font-family: 'Dosis', sans-serif;
-  font-optical-sizing: auto;
+  font-family: Georgia, 'Times New Roman', serif;
   font-weight: 500;
   font-style: normal;
 }
 
+/* Header is now fully responsive on its own (desktop rows + mobile bar/drawer),
+   so it must be visible at every width. The old rule hid it below 768px back
+   when mobile relied on the removed PhoneNavBar. */
 .header {
-  display: none;
+  display: block;
   position: relative;
   box-shadow: #262626 0px 0px 3px;
-}
-
-.phone-nav {
-  display: block;
-}
-
-@media (min-width: 768px) and (min-height: 500px) {
-  .header {
-    display: block;
-  }
-
-  .phone-nav {
-    display: none;
-  }
 }
 
 .loader-container {
@@ -91,4 +200,130 @@
   margin-top: 10px;
   font-size: 18px;
   color: #333;
+}
+
+/* ── Skeleton loading (global, progressive) ─────────────────────────────
+   Each section renders its own skeleton while its data is still fetching,
+   so the page is visible immediately (no full-page blocking loader). Uses a
+   subtle shimmer that matches the Listing page skeleton for consistency. */
+@keyframes wzSkel {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: 0 0;
+  }
+}
+
+.wz-skel-img,
+.wz-skel-line,
+.wz-skel-pill,
+.wz-skel-brand-item,
+.wz-skel-chip-circle,
+.wz-skel-chip-line {
+  background: linear-gradient(90deg, #ececec 25%, #f5f5f5 37%, #ececec 63%);
+  background-size: 400% 100%;
+  animation: wzSkel 1.4s ease infinite;
+}
+
+/* Card primitive (kept identical to the Listing skeleton so the class means
+   the same thing everywhere it's used). */
+.wz-skel-card {
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 12px;
+  padding: 0 0 14px;
+  overflow: hidden;
+}
+.wz-skel-card .wz-skel-img {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+}
+.wz-skel-card .wz-skel-line {
+  height: 12px;
+  margin: 10px 14px 0;
+  border-radius: 4px;
+}
+.wz-skel-card .wz-skel-brand {
+  width: 40%;
+  height: 8px;
+}
+.wz-skel-card .wz-skel-name {
+  width: 80%;
+}
+.wz-skel-card .wz-skel-price {
+  width: 50%;
+  height: 16px;
+}
+
+/* Slider skeleton — reuses .wz-slider-item sizing so it matches the real
+   slider exactly (no layout shift when content swaps in). */
+.wz-slider-skeleton {
+  display: flex;
+  gap: 14px;
+  overflow: hidden;
+  padding: 4px 0;
+}
+.wz-skel-title {
+  width: 180px;
+  max-width: 55%;
+  height: 20px;
+  border-radius: 4px;
+}
+
+/* Category chips skeleton — mirrors .wz-cat-chip (64px circle + label). */
+.wz-cats-skeleton {
+  gap: 16px;
+}
+.wz-skel-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: 80px;
+  flex-shrink: 0;
+}
+.wz-skel-chip-circle {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+}
+.wz-skel-chip-line {
+  width: 60px;
+  height: 10px;
+  border-radius: 4px;
+}
+
+/* Brand strip skeleton — mirrors the inline brand strip row. */
+.wz-brand-strip-skeleton {
+  display: flex;
+  gap: 32px;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 22px 16px;
+}
+.wz-skel-brand-item {
+  width: 90px;
+  height: 32px;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+
+/* Featured banner skeleton — matches the banner's block footprint. */
+.wz-featured-skeleton .wz-skel-img {
+  width: 100%;
+  aspect-ratio: auto;
+  height: clamp(220px, 30vw, 320px);
+  border-radius: 16px;
+}
+
+@media (max-width: 640px) {
+  .wz-skel-chip {
+    width: 68px;
+  }
+  .wz-skel-chip-circle {
+    width: 56px;
+    height: 56px;
+  }
 }

@@ -1,5 +1,6 @@
 import axios from 'axios'
 import { getImageUrl } from '../utils/imageUrl'
+import { useAuthStore } from '../Store/authStore'
 
 const http = axios.create({
   baseURL: import.meta.env.VITE_API_BASE,
@@ -23,31 +24,55 @@ http.interceptors.request.use((config) => {
   return config
 })
 
-// Capture the X-Guest-Token the server mints/echoes and persist it
-http.interceptors.response.use((response) => {
-  const serverToken = response.headers['x-guest-token']
-  if (serverToken && !sessionStorage.getItem('token')) {
-    localStorage.setItem('wz_guest_token', serverToken)
-  }
-  return response
-})
+// Capture the X-Guest-Token the server mints/echoes and persist it; also clear
+// auth on a 401 (expired/invalid JWT) so the app falls back to a guest session.
+http.interceptors.response.use(
+  (response) => {
+    const serverToken = response.headers['x-guest-token']
+    if (serverToken && !sessionStorage.getItem('token')) {
+      localStorage.setItem('wz_guest_token', serverToken)
+    }
+    return response
+  },
+  (error) => {
+    if (error.response?.status === 401 && sessionStorage.getItem('token')) {
+      useAuthStore.getState().logout()
+    }
+    return Promise.reject(error)
+  },
+)
 
 export default http
 
 export const fetchShippingCities = async (setShippingData) => {
+  // Versioned + TTL'd cache. The old `shippingCities` key never expired and
+  // would happily cache an empty `[]` (truthy as a string), so a session that
+  // loaded before the cities were seeded stayed empty forever. The new key
+  // forces every client to refetch, and an empty list is never treated as a hit.
+  const CACHE_KEY = 'wz_shipping_v2'
+  const TTL = 24 * 60 * 60 * 1000 // 24 hours
+
   try {
-    const cachedData = localStorage.getItem('shippingCities')
-    if (cachedData) {
-      setShippingData(JSON.parse(cachedData))
-      return
+    // drop the legacy never-expiring cache
+    localStorage.removeItem('shippingCities')
+
+    const raw = localStorage.getItem(CACHE_KEY)
+    if (raw) {
+      const { data, timestamp } = JSON.parse(raw)
+      if (Array.isArray(data) && data.length > 0 && Date.now() - timestamp < TTL) {
+        setShippingData(data)
+        return
+      }
     }
 
     const response = await http.get(`/show_shipping_city`)
-    setShippingData(response.data)
-    localStorage.setItem('shippingCities', JSON.stringify(response.data))
-    return
+    const data = Array.isArray(response.data) ? response.data : []
+    setShippingData(data)
+    if (data.length > 0) {
+      localStorage.setItem(CACHE_KEY, JSON.stringify({ data, timestamp: Date.now() }))
+    }
   } catch {
-    return
+    // keep whatever state already exists
   }
 }
 
@@ -231,7 +256,12 @@ export const fetchWishList = async (user_id, products, offers, language, setwish
   try {
     const response = await http.get(`/all_wishlist`)
 
-    const wishlistData = response.data.find((WishList) => WishList.user_id === user_id)
+    // The wishlist header's user_id comes back as an integer while the store's
+    // user_id is a string (sessionStorage) — compare numerically so the match
+    // actually succeeds (a strict === here silently left the wishlist empty).
+    const wishlistData = response.data.find(
+      (WishList) => Number(WishList.user_id) === Number(user_id),
+    )
     if (wishlistData) {
       const formattedWishListItems = wishlistData.wishlist_item.map((item) => {
         const product = products.find((p) => p.id === item.product_id)
@@ -240,7 +270,8 @@ export const fetchWishList = async (user_id, products, offers, language, setwish
         return {
           id: item.id,
           product_id: item.product_id,
-          product_image: product?.image || null,
+          // Build a usable src (products store a bare filename, not a URL).
+          product_image: getImageUrl(product?.image, 'Product'),
           product_title: product?.product_title || 'Unknown Product',
           product_rating: product?.average_rate || 0,
           offer_id: item.offer_id,
@@ -248,8 +279,9 @@ export const fetchWishList = async (user_id, products, offers, language, setwish
           offer_title:
             language === 'ar' ? offer?.offer_name_ar : offer?.offer_name_en || 'Unknown Offer',
           offer_rating: offer?.average_rate || 0,
-          product_price: product?.sale_price_after_discount,
-          offer_price: offer?.price,
+          // sale price is NULL when not discounted → fall back to selling price.
+          product_price: product?.sale_price_after_discount || product?.selling_price,
+          offer_price: offer?.sale_price_after_discount || offer?.selling_price,
         }
       })
       setwishList(formattedWishListItems)

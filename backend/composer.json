@@ -15,9 +15,11 @@
         "intervention/image": "^3.11",
         "laravel/framework": "^10.0",
         "laravel/sanctum": "^3.2",
+        "laravel/socialite": "^5.28",
         "laravel/tinker": "^2.8",
         "maatwebsite/excel": "^3.1",
         "mcamara/laravel-localization": "^2.0",
+        "socialiteproviders/microsoft": "^4.9",
         "tymon/jwt-auth": "^2.1"
     },
     "require-dev": {

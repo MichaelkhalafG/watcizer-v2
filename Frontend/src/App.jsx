@@ -1,42 +1,37 @@
-import { Suspense, useEffect, lazy, useContext, Component } from 'react'
+import { Suspense, useEffect, lazy, Component } from 'react'
 import './App.css'
-import { Route, Routes } from 'react-router-dom'
+import { Route, Routes, useLocation, Navigate } from 'react-router-dom'
 import Home from './Pages/Home/Home'
 import Header from './Components/Header/Header'
 import Footer from './Components/Footer/Footer'
 import { useState } from 'react'
 import Cart from './Pages/Cart/Cart'
-import Checkout from './Pages/Checkout/Checkout'
 import ScrollToTop from './Components/ScrollToTop/ScrollToTop'
-import PhoneNavBar from './Components/Header/PhoneNavBar/PhoneNavBar'
-import { HelmetProvider, Helmet } from 'react-helmet-async'
-import { MyContext } from './Context/Context'
+import ProtectedRoute from './Components/Auth/ProtectedRoute'
+import { Helmet } from 'react-helmet-async'
 import { MyProvider } from './Context/MyProvider'
-import { useAuthStore } from './Store/authStore'
 import { useToastStore } from './Store/toastStore'
-import { Alert, Snackbar, useMediaQuery } from '@mui/material'
+import { useUIStore } from './Store/uiStore'
+import Alert from '@mui/material/Alert'
+import Snackbar from '@mui/material/Snackbar'
+import useMediaQuery from '@mui/material/useMediaQuery'
 import useCart from './Hooks/useCart'
 import useFacebookPixel from './scripts/useFacebookPixel'
 import CartModal from './Pages/Cart/CartModal'
 const NotFound = lazy(() => import('./Pages/Not Found/NotFound'))
-const ProductDisplay = lazy(() => import('./Components/Product/ProductDisplay'))
+const ProductDetail = lazy(() => import('./Components/Product/ProductDetail'))
 const Listing = lazy(() => import('./Pages/Listing/Listing'))
-const ListingSearch = lazy(() => import('./Pages/Listing/ListingSearch'))
-const ListingGrades = lazy(() => import('./Pages/Listing/ListingGrades'))
-const Listingoffers = lazy(() => import('./Pages/Listing/Listingoffers'))
-const ProfileSpeed = lazy(() => import('./Components/Header/Nav/ProfileSpeed'))
-const EditProfile = lazy(() => import('./Pages/EditProfile/EditProfile'))
-const WishList = lazy(() => import('./Pages/WishList/WishList'))
-const OrderList = lazy(() => import('./Pages/OrderList/OrderList'))
-const OfferDisplay = lazy(() => import('./Components/Product/OfferDisplay'))
+// Unified account area — replaces the old EditProfile / WishList / OrderList pages.
+const Account = lazy(() => import('./Pages/Account/Account'))
 const Login = lazy(() => import('./Pages/Auth/Login/Login'))
 const Register = lazy(() => import('./Pages/Auth/Register/Register'))
-const ProfileSpeedPhoneNotLogin = lazy(
-  () => import('./Components/Header/Nav/ProfileSpeedPhoneNotLogin'),
-)
-const SearchPageForPhone = lazy(() => import('./Pages/SearchPageForPhone/SearchPageForPhone'))
+const AuthCallback = lazy(() => import('./Pages/Auth/AuthCallback'))
+const ForgotPassword = lazy(() => import('./Pages/Auth/ForgotPassword'))
+const ResetPassword = lazy(() => import('./Pages/Auth/ResetPassword'))
 const Blog = lazy(() => import('./Pages/Blog/Blog'))
 const Blogs = lazy(() => import('./Pages/Blog/Blogs'))
+const Checkout = lazy(() => import('./Pages/Checkout/Checkout'))
+const OrderConfirmation = lazy(() => import('./Pages/Checkout/OrderConfirmation'))
 
 // Fallback shown while a lazy route chunk loads.
 const PageLoader = () => (
@@ -135,9 +130,13 @@ function App() {
   )
 }
 
+// Routes that render full-bleed (no global header/footer/profile chrome).
+const AUTH_ROUTES = ['/login', '/register', '/forgot-password', '/reset-password', '/auth/callback']
+
 function MainApp() {
-  const { isFetching, Loader } = useContext(MyContext)
-  const { userId: user_id } = useAuthStore()
+  const { language } = useUIStore()
+  const location = useLocation()
+  const isAuthPage = AUTH_ROUTES.includes(location.pathname)
   const {
     open: openAlert,
     type: alertType,
@@ -158,22 +157,18 @@ function MainApp() {
     // eslint-disable-next-line
   }, [cart?.cart_item?.length])
 
-  const renderProfileComponent = () => {
-    if (user_id !== null) {
-      return <ProfileSpeed />
-    } else {
-      return isDesktop ? null : <ProfileSpeedPhoneNotLogin />
-    }
-  }
-
-  // Gate the loader on the fetch lifecycle, not on products.length — an empty
-  // catalog (or empty DB) must still clear the loader once the fetch completes.
-  const showLoader = isFetching
+  // Keep the whole document direction/lang in sync with the active language —
+  // canonical top-level place, so RTL applies even where the header toggle isn't.
+  useEffect(() => {
+    document.documentElement.dir = language === 'ar' ? 'rtl' : 'ltr'
+    document.documentElement.lang = language
+  }, [language])
 
   return (
     <>
-      <HelmetProvider>
-        <Helmet>
+      {/* Global SEO defaults — each page renders its own <Helmet> to override
+          title/description/canonical; anything not overridden falls back here. */}
+      <Helmet>
           {/* Basic SEO */}
           <title>Watchizer - أفخم الساعات والإكسسوارات | تسوق الآن بأسعار مميزة</title>
           <meta
@@ -198,8 +193,9 @@ function MainApp() {
 
           {/* Theme & Appearance */}
           <meta name="theme-color" content="#000000" />
-          <link rel="icon" href="/favicon.ico" />
-          <link rel="apple-touch-icon" href="/logo.svg" />
+          {/* Favicon/app icons live in index.html (static, cache-busted) — a
+              Helmet-injected icon is applied after React mounts and browsers
+              often ignore it for the initial favicon. */}
 
           {/* Web Manifest for PWA */}
           <link rel="manifest" href="/manifest.json" />
@@ -253,34 +249,13 @@ function MainApp() {
               },
             })}
           </script>
-        </Helmet>
-      </HelmetProvider>
-      {showLoader && (
-        <div
-          style={{
-            position: 'fixed',
-            zIndex: 2000,
-            top: 0,
-            left: 0,
-            width: '100vw',
-            height: '100vh',
-            background: 'rgba(255,255,255,0.85)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <Loader />
+      </Helmet>
+      {!isAuthPage && (
+        <div className="wz-header-wrapper">
+          <Header />
         </div>
       )}
-      <div className="header rounded-bottom-4 sticky-top ">
-        <Header />
-      </div>
-      <div className="phone-nav">
-        <PhoneNavBar />
-      </div>
       <CartModal open={cartModalOpen} onClose={() => setCartModalOpen(false)} cart={cart} />
-      {renderProfileComponent()}
       <Snackbar
         open={openAlert}
         autoHideDuration={3000}
@@ -302,7 +277,7 @@ function MainApp() {
         <Route
           path="/listing"
           element={
-            <Suspense fallback={<Loader />}>
+            <Suspense fallback={<PageLoader />}>
               <Listing />
             </Suspense>
           }
@@ -310,33 +285,34 @@ function MainApp() {
         <Route
           path="/products/:id"
           element={
-            <Suspense fallback={<Loader />}>
-              <Listing />
+            <Suspense fallback={<PageLoader />}>
+              <ProductDetail />
             </Suspense>
           }
         />
         <Route
           path="/product/:slug"
           element={
-            <Suspense fallback={<Loader />}>
-              <ProductDisplay />
+            <Suspense fallback={<PageLoader />}>
+              <ProductDetail />
             </Suspense>
           }
         />
         <Route
-          path="/offer/:id"
+          path="/offer/:slug"
           element={
-            <Suspense fallback={<Loader />}>
-              <OfferDisplay />
+            <Suspense fallback={<PageLoader />}>
+              <ProductDetail />
             </Suspense>
           }
         />
         <Route path="/cart" element={<Cart />} />
         <Route path="/checkout" element={<Checkout />} />
+        <Route path="/order-confirmation" element={<OrderConfirmation />} />
         <Route
           path="/category/:category"
           element={
-            <Suspense fallback={<Loader />}>
+            <Suspense fallback={<PageLoader />}>
               <Listing />
             </Suspense>
           }
@@ -344,7 +320,7 @@ function MainApp() {
         <Route
           path="/login"
           element={
-            <Suspense fallback={<Loader />}>
+            <Suspense fallback={<PageLoader />}>
               <Login />
             </Suspense>
           }
@@ -352,15 +328,39 @@ function MainApp() {
         <Route
           path="/register"
           element={
-            <Suspense fallback={<Loader />}>
+            <Suspense fallback={<PageLoader />}>
               <Register />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/forgot-password"
+          element={
+            <Suspense fallback={<PageLoader />}>
+              <ForgotPassword />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/reset-password"
+          element={
+            <Suspense fallback={<PageLoader />}>
+              <ResetPassword />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/auth/callback"
+          element={
+            <Suspense fallback={<PageLoader />}>
+              <AuthCallback />
             </Suspense>
           }
         />
         <Route
           path="/brand/:brand"
           element={
-            <Suspense fallback={<Loader />}>
+            <Suspense fallback={<PageLoader />}>
               <Listing />
             </Suspense>
           }
@@ -368,7 +368,7 @@ function MainApp() {
         <Route
           path="/subtypes/:subtype"
           element={
-            <Suspense fallback={<Loader />}>
+            <Suspense fallback={<PageLoader />}>
               <Listing />
             </Suspense>
           }
@@ -376,7 +376,7 @@ function MainApp() {
         <Route
           path="/:suptype/:brand"
           element={
-            <Suspense fallback={<Loader />}>
+            <Suspense fallback={<PageLoader />}>
               <Listing />
             </Suspense>
           }
@@ -384,63 +384,35 @@ function MainApp() {
         <Route
           path="/grade/:grade"
           element={
-            <Suspense fallback={<Loader />}>
-              <ListingGrades />
+            <Suspense fallback={<PageLoader />}>
+              <Listing />
             </Suspense>
           }
         />
+        {/* Legacy pages retired — Listing handles offers/search via URL params. */}
+        <Route path="/offers" element={<Navigate to="/listing?offers=true" replace />} />
+        <Route path="/listingsearch" element={<Navigate to="/listing" replace />} />
+        {/* Unified account area */}
         <Route
-          path="/offers"
+          path="/account"
           element={
-            <Suspense fallback={<Loader />}>
-              <Listingoffers />
-            </Suspense>
+            <ProtectedRoute>
+              <Suspense fallback={<PageLoader />}>
+                <Account />
+              </Suspense>
+            </ProtectedRoute>
           }
         />
-        <Route
-          path="/listingsearch"
-          element={
-            <Suspense fallback={<Loader />}>
-              <ListingSearch />
-            </Suspense>
-          }
-        />
-        <Route
-          path="/edit-profile"
-          element={
-            <Suspense fallback={<Loader />}>
-              <EditProfile />
-            </Suspense>
-          }
-        />
-        <Route
-          path="/Search"
-          element={
-            <Suspense fallback={<Loader />}>
-              <SearchPageForPhone />
-            </Suspense>
-          }
-        />
-        <Route
-          path="/wish-list"
-          element={
-            <Suspense fallback={<Loader />}>
-              <WishList />
-            </Suspense>
-          }
-        />
-        <Route
-          path="/order-list"
-          element={
-            <Suspense fallback={<Loader />}>
-              <OrderList />
-            </Suspense>
-          }
-        />
+        {/* Backward-compatible redirects for the old separate pages */}
+        <Route path="/edit-profile" element={<Navigate to="/account?tab=profile" replace />} />
+        <Route path="/order-list" element={<Navigate to="/account?tab=orders" replace />} />
+        <Route path="/wish-list" element={<Navigate to="/account?tab=wishlist" replace />} />
+        {/* Legacy mobile search page retired — the header search + /listing?q handle it. */}
+        <Route path="/Search" element={<Navigate to="/listing" replace />} />
         <Route
           path="/blogs"
           element={
-            <Suspense fallback={<Loader />}>
+            <Suspense fallback={<PageLoader />}>
               <Blogs />
             </Suspense>
           }
@@ -448,7 +420,7 @@ function MainApp() {
         <Route
           path="/blog/:name"
           element={
-            <Suspense fallback={<Loader />}>
+            <Suspense fallback={<PageLoader />}>
               <Blog />
             </Suspense>
           }
@@ -456,7 +428,7 @@ function MainApp() {
         <Route
           path="*"
           element={
-            <Suspense fallback={<Loader />}>
+            <Suspense fallback={<PageLoader />}>
               <NotFound />
             </Suspense>
           }
@@ -464,8 +436,8 @@ function MainApp() {
           </Routes>
         </Suspense>
       </ErrorBoundary>
-      {isDesktop ? (
-        <Suspense fallback={<Loader />}>
+      {!isAuthPage && isDesktop ? (
+        <Suspense fallback={<PageLoader />}>
           <Footer />
         </Suspense>
       ) : null}

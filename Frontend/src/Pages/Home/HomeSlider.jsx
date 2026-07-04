@@ -1,9 +1,8 @@
-import { memo, useContext, useEffect, lazy } from 'react'
-import { useUIStore } from '../../Store/uiStore'
-import { IoIosArrowDroprightCircle, IoIosArrowDropleftCircle } from 'react-icons/io'
-const Slider = lazy(() => import('react-slick'))
+import { memo, useEffect } from 'react'
+import { Carousel, CarouselSlide } from '../../Components/UI/Carousel'
+
 function HomeSlider({ banners }) {
-  const { language } = useUIStore()
+  // Preload the first banner image for LCP as soon as banner data arrives.
   useEffect(() => {
     if (banners?.length > 0) {
       const firstBanner = banners[0].image
@@ -16,80 +15,29 @@ function HomeSlider({ banners }) {
       }
     }
   }, [banners])
-  function NextArrow({ onClick }) {
-    return (
-      <IoIosArrowDroprightCircle
-        style={{
-          fontSize: '40px',
-          color: '#fff',
-          position: 'absolute',
-          top: '50%',
-          transform: 'translateY(-50%)',
-          right: '10px',
-          zIndex: 10,
-          cursor: 'pointer',
-        }}
-        onClick={onClick}
-      />
-    )
-  }
-  function PrevArrow({ onClick }) {
-    return (
-      <IoIosArrowDropleftCircle
-        style={{
-          fontSize: '40px',
-          color: '#fff',
-          position: 'absolute',
-          top: '50%',
-          transform: 'translateY(-50%)',
-          left: '10px',
-          zIndex: 10,
-          cursor: 'pointer',
-        }}
-        onClick={onClick}
-      />
-    )
-  }
-  const settings = {
-    dots: false,
-    infinite: true,
-    speed: 500,
-    autoplay: true,
-    autoplaySpeed: 3000,
-    slidesToShow: 1,
-    slidesToScroll: 1,
-    lazyLoad: 'anticipated',
-    rtl: language === 'ar',
-    nextArrow: <NextArrow />,
-    prevArrow: <PrevArrow />,
-  }
+
   return (
-    <div style={{ position: 'relative', ariahidden: 'true' }}>
-      <Slider {...settings}>
-        {banners.map((item, index) => (
-          <div
-            key={index}
-            className="col-12 home-slider-image"
-            style={{
-              width: '100%',
-            }}
-          >
+    <div className="wz-hero-carousel-wrap">
+      {/* Embla wrapper: loop + autoplay preserve the old react-slick behaviour;
+          drag/RTL are handled internally. */}
+      <Carousel loop autoplay showArrows showDots={false} gap={0} className="wz-hero-carousel">
+        {(banners || []).map((item, index) => (
+          <CarouselSlide key={index} className="wz-hero-slide">
             <img
               src={`${import.meta.env.VITE_ASSET_BASE}/Uploads_Images/Banner_home/${item.image}?format=webp`}
               alt={`banner${index + 1}`}
               loading={index === 0 ? 'eager' : 'lazy'}
               decoding="async"
-              ref={(img) => img && img.setAttribute('fetchpriority', 'high')}
+              // Only the first (LCP) slide gets high fetch priority.
+              ref={index === 0 ? (img) => img && img.setAttribute('fetchpriority', 'high') : undefined}
               width="100%"
-              style={{
-                objectFit: 'cover',
-                width: '100%',
-              }}
+              className="wz-hero-img"
             />
-          </div>
+          </CarouselSlide>
         ))}
-      </Slider>
+      </Carousel>
     </div>
   )
 }
+
 export default memo(HomeSlider)

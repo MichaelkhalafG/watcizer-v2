@@ -10,9 +10,14 @@ class WishlistItem extends Model
     use HasFactory;
 
     protected $fillable = [
-        'cart_id',
+        'wishlist_id',
         'product_id',
         'offer_id',
+        'notified_at',
+    ];
+
+    protected $casts = [
+        'notified_at' => 'datetime',
     ];
 
     public function wishlist()
@@ -22,6 +27,11 @@ class WishlistItem extends Model
 
     public function product()
     {
-        return $this->hasMany(Product::class);
+        return $this->belongsTo(Product::class);
+    }
+
+    public function offer()
+    {
+        return $this->belongsTo(Offer::class);
     }
 }

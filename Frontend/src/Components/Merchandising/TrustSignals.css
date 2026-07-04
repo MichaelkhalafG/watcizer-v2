@@ -1,0 +1,64 @@
+/* ══════════════════════════════════════════════
+   TRUST SIGNALS — dedicated styles (no Bootstrap)
+   ══════════════════════════════════════════════ */
+
+.wz-trust {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 16px 0;
+  color: rgba(0, 0, 0, 0.55);
+  font-size: 0.9rem;
+}
+
+/* Horizontal variants (cart/checkout) become a wrapping row on ≥576px. */
+.wz-trust--row {
+  gap: 8px;
+}
+@media (min-width: 576px) {
+  .wz-trust--row {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 16px;
+  }
+}
+
+/* Framed variants (checkout/pdp) get a border card. */
+.wz-trust--framed {
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 8px;
+  padding: 8px 16px;
+}
+.wz-trust--pdp {
+  padding: 16px;
+}
+
+.wz-trust-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: inherit;
+  text-decoration: none;
+}
+.wz-trust-item-icon {
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+/* Payment method chips (was badge bg-light text-dark border). */
+.wz-trust-payments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+.wz-trust-badge {
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.04);
+  color: #333;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+}

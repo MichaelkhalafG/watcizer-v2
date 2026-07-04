@@ -17,6 +17,8 @@ import {
   colorSlug,
   materialSlug,
   movementSlug,
+  shapeSlug,
+  displayTypeSlug,
   fromSlug,
 } from './slugs'
 
@@ -45,6 +47,8 @@ export function buildListingParams(filters = {}, extra = {}, tables = null) {
   appendSlugged('bandColor', filters.bandColors, tables?.colors, colorSlug)
   appendSlugged('material', filters.materials, tables?.materials, materialSlug)
   appendSlugged('movement', filters.movements, tables?.movementTypes, movementSlug)
+  appendSlugged('shape', filters.shapes, tables?.shapes, shapeSlug)
+  appendSlugged('displayType', filters.displayTypes, tables?.displayTypes, displayTypeSlug)
   ;(filters.grades || []).forEach((g) => p.append('grade', g)) // grade id (numeric)
   if (filters.offers) p.set('offers', 'true')
 
@@ -81,6 +85,8 @@ export function parseListingParams(searchParams, tables = null) {
       bandColors: resolveIds('bandColor', tables?.colors, colorSlug),
       materials: resolveIds('material', tables?.materials, materialSlug),
       movements: resolveIds('movement', tables?.movementTypes, movementSlug),
+      shapes: resolveIds('shape', tables?.shapes, shapeSlug),
+      displayTypes: resolveIds('displayType', tables?.displayTypes, displayTypeSlug),
       grades: searchParams.getAll('grade').map(Number).filter((n) => !Number.isNaN(n)),
       offers: searchParams.get('offers') === 'true',
       price: [

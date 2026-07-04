@@ -23,7 +23,7 @@
 }
 
 .wz-cats-title {
-  font-family: Georgia, 'Times New Roman', serif;
+  font-family: var(--wz-serif);
   font-size: clamp(1.1rem, 2vw, 1.5rem);
   font-weight: 300;
   color: #1a1a1a;
@@ -31,21 +31,17 @@
   letter-spacing: -0.01em;
 }
 
-/* ── Scrollable row ── */
+/* ── Row (skeleton only — the live row is an Embla Carousel) ── */
 .wz-cats-row {
   display: flex;
   gap: 16px;
-  overflow-x: auto;
-  scrollbar-width: none;
+  overflow: hidden;
   padding: 4px 2px 12px;
-  scroll-snap-type: x mandatory;
-  -webkit-overflow-scrolling: touch;
-  mask-image: linear-gradient(90deg, black 85%, transparent 100%);
-  -webkit-mask-image: linear-gradient(90deg, black 85%, transparent 100%);
 }
 
-.wz-cats-row::-webkit-scrollbar {
-  display: none;
+/* Each Embla slide wraps one chip and only needs to size to content. */
+.wz-cat-slide {
+  flex: 0 0 auto;
 }
 
 /* ── Each chip ── */
@@ -60,7 +56,6 @@
   padding: 0;
   flex-shrink: 0;
   width: 80px;
-  scroll-snap-align: start;
   transition: transform 0.2s;
 }
 
@@ -106,7 +101,7 @@
 }
 
 .wz-cat-chip-initial {
-  font-family: Georgia, serif;
+  font-family: var(--wz-serif);
   font-size: 1.4rem;
   font-weight: 300;
   color: rgba(0, 0, 0, 0.25);

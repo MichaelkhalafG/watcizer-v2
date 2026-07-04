@@ -35,4 +35,23 @@ return [
 
     'asset_base' => env('ASSET_BASE', env('APP_URL')),
 
+    // SPA base URL — resolved here (not via env() in app code) so it survives
+    // `php artisan config:cache`, which stops loading .env at runtime.
+    'frontend_url' => env('FRONTEND_URL', env('APP_URL')),
+
+    'google' => [
+        'client_id'     => env('GOOGLE_CLIENT_ID'),
+        'client_secret' => env('GOOGLE_CLIENT_SECRET'),
+        // Full URL read straight from env — must match Google Console exactly.
+        // (No APP_URL concatenation, which could produce a doubled path.)
+        'redirect'      => env('GOOGLE_REDIRECT_URI'),
+    ],
+
+    'microsoft' => [
+        'client_id'     => env('MICROSOFT_CLIENT_ID'),
+        'client_secret' => env('MICROSOFT_CLIENT_SECRET'),
+        'redirect'      => env('MICROSOFT_REDIRECT_URI', env('APP_URL') . '/api/auth/microsoft/callback'),
+        'tenant'        => env('MICROSOFT_TENANT_ID', 'common'),
+    ],
+
 ];

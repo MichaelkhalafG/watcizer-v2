@@ -1,15 +1,13 @@
-import { useRef, useState, useCallback } from 'react'
+import { memo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useUIStore } from '../../Store/uiStore'
+import { Carousel, CarouselSlide } from '../UI/Carousel'
 import ProductCard from './ProductCard'
 import './ProductSlider.css'
 
-const ProductSlider = ({ gradeproducts = [], text = {}, moreid }) => {
+const ProductSlider = ({ gradeproducts = [], text = {}, moreid, loading = false }) => {
   const navigate = useNavigate()
   const { language } = useUIStore()
-  const trackRef = useRef(null)
-  const [canLeft, setCanLeft] = useState(false)
-  const [canRight, setCanRight] = useState(true)
 
   const title =
     language === 'ar' ? text.title?.ar || text.title?.en || '' : text.title?.en || text.title?.ar || ''
@@ -19,37 +17,40 @@ const ProductSlider = ({ gradeproducts = [], text = {}, moreid }) => {
       ? text.description?.ar || text.description?.en || ''
       : text.description?.en || text.description?.ar || ''
 
-  const updateArrows = useCallback(() => {
-    const el = trackRef.current
-    if (!el) return
-    setCanLeft(el.scrollLeft > 8)
-    setCanRight(el.scrollLeft < el.scrollWidth - el.clientWidth - 8)
-  }, [])
-
-  const scroll = (dir) => {
-    const el = trackRef.current
-    if (!el) return
-    const card = el.querySelector('.wz-card')
-    const step = ((card?.offsetWidth || 240) + 16) * 2
-    el.scrollBy({
-      left: dir === 'left' ? -step : step,
-      behavior: 'smooth',
-    })
-    setTimeout(updateArrows, 420)
+  const handleViewAll = () => {
+    navigate(moreid ? `/listing?grade=${moreid}` : '/listing')
   }
 
-  const handleViewAll = () => {
-    if (moreid) {
-      navigate(`/listing?grade=${moreid}`)
-    } else {
-      navigate('/listing')
-    }
+  // Loading placeholder — parent owns the "still fetching" signal so a genuinely
+  // empty grade (loaded, zero products) stays null instead of shimmering forever.
+  if (loading) {
+    return (
+      <div className="wz-slider" dir={language === 'ar' ? 'rtl' : 'ltr'}>
+        <div className="wz-slider-header">
+          <div className="wz-slider-header-left">
+            <div className="wz-skel-line wz-skel-title" />
+          </div>
+        </div>
+        <div className="wz-slider-skeleton">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div className="wz-slider-item" key={i}>
+              <div className="wz-skel-card">
+                <div className="wz-skel-img" />
+                <div className="wz-skel-line wz-skel-brand" />
+                <div className="wz-skel-line wz-skel-name" />
+                <div className="wz-skel-line wz-skel-price" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
   }
 
   if (!gradeproducts.length) return null
 
   return (
-    <div className="wz-slider">
+    <div className="wz-slider" dir={language === 'ar' ? 'rtl' : 'ltr'}>
       {/* Header */}
       <div className="wz-slider-header">
         <div className="wz-slider-header-left">
@@ -61,34 +62,16 @@ const ProductSlider = ({ gradeproducts = [], text = {}, moreid }) => {
         </button>
       </div>
 
-      {/* Slider */}
-      <div className="wz-slider-wrap">
-        <button
-          className={`wz-slider-arrow wz-slider-arrow-l ${!canLeft ? 'wz-slider-arrow-hidden' : ''}`}
-          onClick={() => scroll('left')}
-          aria-label="Previous"
-        >
-          ‹
-        </button>
-
-        <div className="wz-slider-track" ref={trackRef} onScroll={updateArrows}>
-          {gradeproducts.map((p, i) => (
-            <div key={p.id || i} className="wz-slider-item">
-              <ProductCard product={p} />
-            </div>
-          ))}
-        </div>
-
-        <button
-          className={`wz-slider-arrow wz-slider-arrow-r ${!canRight ? 'wz-slider-arrow-hidden' : ''}`}
-          onClick={() => scroll('right')}
-          aria-label="Next"
-        >
-          ›
-        </button>
-      </div>
+      {/* Slider (Embla) */}
+      <Carousel gap={16} showArrows showDots={false}>
+        {gradeproducts.map((p, i) => (
+          <CarouselSlide key={p.id || i} className="wz-slider-slide">
+            <ProductCard product={p} />
+          </CarouselSlide>
+        ))}
+      </Carousel>
     </div>
   )
 }
 
-export default ProductSlider
+export default memo(ProductSlider)

@@ -1,35 +1,37 @@
-import { useState, useContext } from 'react'
-import Button from '@mui/material/Button'
-import { FaAngleDown } from 'react-icons/fa'
-import LanguageDialog from './LanguageDialog'
+import { useEffect } from 'react'
+import { MdLanguage } from 'react-icons/md'
 import { useUIStore } from '../../Store/uiStore'
+import './LanguageDropdowen.css'
+
+// Two languages only → a single button that shows the OTHER language and
+// switches to it on one click. No dropdown, no dialog.
 export default function LanguageDropdown() {
   const { language, setLanguage } = useUIStore()
-  const [open, setOpen] = useState(false)
-  const handleClickOpen = () => setOpen(true)
-  const handleClose = (value) => {
-    setOpen(false)
-    if (value) {
-      setLanguage(value)
-      document.documentElement.dir = value === 'ar' ? 'rtl' : 'ltr' // Change direction based on language
-    }
+
+  // Keep <html dir/lang> in sync whenever the language changes (covers initial
+  // mount + restored persisted language, not just the click handler).
+  useEffect(() => {
+    document.documentElement.dir = language === 'ar' ? 'rtl' : 'ltr'
+    document.documentElement.lang = language
+  }, [language])
+
+  const toggle = () => {
+    const next = language === 'ar' ? 'en' : 'ar'
+    setLanguage(next)
+    document.documentElement.dir = next === 'ar' ? 'rtl' : 'ltr'
+    document.documentElement.lang = next
   }
+
   return (
-    <div>
-      <Button className="lang-drop border border-2 rounded-3" onClick={handleClickOpen}>
-        <div className="dropdown-info text-start d-flex flex-column">
-          <span className="label text-secondary">
-            {language === 'ar' ? 'لغتك' : 'Your Language'}
-          </span>
-          <span className="language color-most-used">
-            {language === 'ar' ? 'العربية' : 'English'}
-          </span>
-        </div>
-        <span className="me-auto ms-3">
-          <FaAngleDown />
-        </span>
-      </Button>
-      <LanguageDialog selectedValue={language} open={open} onClose={handleClose} />
-    </div>
+    <button
+      type="button"
+      className="wz-lang-toggle"
+      onClick={toggle}
+      aria-label="Switch language"
+      title="Switch language / تغيير اللغة"
+    >
+      <MdLanguage className="wz-lang-toggle__icon" />
+      <span>{language === 'ar' ? 'EN' : 'عربي'}</span>
+    </button>
   )
 }

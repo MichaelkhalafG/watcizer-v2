@@ -1,179 +1,60 @@
-import { useContext, useState, useEffect, useMemo } from 'react'
-import useMediaQuery from '@mui/material/useMediaQuery'
+import { useMemo, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { Helmet } from 'react-helmet-async'
 import WatchHero from '../../Components/Hero/WatchHero'
 import './home.css'
 import ProductSlider from '../../Components/Product/ProductSlider'
 import OfferSlider from '../../Components/Product/OfferSlider'
-import { MyContext } from '../../Context/Context'
+import FeaturedBanner from '../../Components/Home/FeaturedBanner'
+import { useCatalog } from '../../Hooks/queries/useCatalog'
 import { useUIStore } from '../../Store/uiStore'
-import CategoryNavPhone from '../../Components/Header/Nav/CategoryNavPhone'
 import CategoryTiles from '../../Components/Merchandising/CategoryTiles'
-import { getImageUrl, handleImgError, PLACEHOLDER_IMG } from '../../utils/imageUrl'
-import { productUrl } from '../../utils/productUrl'
+import { getImageUrl } from '../../utils/imageUrl'
 import { buildListingParams } from '../../utils/listingParams'
 
-// Title can live in a translations[] array or be pre-localized on the catalog
-// object (product_title / name) — cover both.
-const getName = (p, lang) => {
-  if (p.translations?.length) {
-    const t =
-      p.translations.find((x) => x.locale === lang) || p.translations.find((x) => x.locale === 'en')
-    if (t?.product_title) return t.product_title
-  }
-  return lang === 'ar'
-    ? p.product_title_ar || p.name_ar || p.product_title || p.name || p.name_en || ''
-    : p.product_title || p.name || p.name_en || p.product_title_ar || p.name_ar || ''
-}
-
-// Rotating hero strip below WatchHero — 5 random (preferably on-sale) products.
-function FeaturedBanner({ products }) {
-  const [current, setCurrent] = useState(0)
-  const [visible, setVisible] = useState(true)
-  const { language } = useUIStore()
-  const navigate = useNavigate()
-  const isRTL = language === 'ar'
-
-  const featured = useMemo(() => {
-    const list = Array.isArray(products) ? products : []
-    const withSale = list.filter(
-      (p) =>
-        Number(p.sale_price_after_discount) > 0 &&
-        Number(p.sale_price_after_discount) < Number(p.selling_price) &&
-        p.image,
-    )
-    const pool = withSale.length >= 3 ? withSale : list.filter((p) => p.image)
-    return [...pool].sort(() => Math.random() - 0.5).slice(0, 5)
-  }, [products])
-
-  useEffect(() => {
-    if (featured.length <= 1) return
-    const id = setInterval(() => {
-      setVisible(false)
-      setTimeout(() => {
-        setCurrent((c) => (c + 1) % featured.length)
-        setVisible(true)
-      }, 350)
-    }, 5000)
-    return () => clearInterval(id)
-  }, [featured.length])
-
-  if (!featured.length) return null
-
-  const p = featured[current]
-  const name = getName(p, language)
-  const brand = typeof p.brand === 'string' ? p.brand : p.brand?.name_en || p.brand_name || ''
-  const price = Number(p.selling_price || 0)
-  const sale = Number(p.sale_price_after_discount || 0)
-  const hasSale = sale > 0 && sale < price
-  const pct = hasSale ? Math.round((1 - sale / price) * 100) : 0
-  const fmt = (v) => Math.round(Number(v) || 0).toLocaleString(isRTL ? 'ar-EG' : 'en-US')
-  const currency = isRTL ? 'ج.م' : 'EGP'
-
-  const jumpTo = (i) => {
-    setVisible(false)
-    setTimeout(() => {
-      setCurrent(i)
-      setVisible(true)
-    }, 350)
-  }
-
-  return (
-    <div className="wz-featured" dir={isRTL ? 'rtl' : 'ltr'}>
-      <div className="wz-featured-bg-grid" />
-      <div className={`wz-featured-inner ${visible ? 'wz-featured-show' : ''}`}>
-        <div className="wz-featured-text">
-          <span className="wz-featured-eyebrow">
-            {hasSale
-              ? isRTL
-                ? `لفترة محدودة — خصم ${pct}%`
-                : `Limited Time — ${pct}% OFF`
-              : isRTL
-                ? 'تشكيلة مميزة'
-                : 'Featured Collection'}
-          </span>
-          {brand && <p className="wz-featured-brand">{brand}</p>}
-          <h2 className="wz-featured-name">{name}</h2>
-          <div className="wz-featured-prices">
-            {hasSale ? (
-              <>
-                <span className="wz-fp-sale">
-                  {fmt(sale)} {currency}
-                </span>
-                <span className="wz-fp-orig">
-                  {fmt(price)} {currency}
-                </span>
-              </>
-            ) : (
-              <span className="wz-fp-price">
-                {fmt(price)} {currency}
-              </span>
-            )}
-          </div>
-          <button className="wz-featured-btn" onClick={() => navigate(productUrl(p))}>
-            {isRTL ? 'تسوق الآن' : 'Shop Now'}
-            <span>{isRTL ? '←' : '→'}</span>
-          </button>
-        </div>
-
-        <div className="wz-featured-img-box">
-          <img
-            src={getImageUrl(p.image) || PLACEHOLDER_IMG}
-            alt={name}
-            className="wz-featured-img"
-            onError={handleImgError}
-          />
-        </div>
-      </div>
-
-      <div className="wz-featured-dots">
-        {featured.map((_, i) => (
-          <button
-            key={i}
-            className={`wz-fdot ${i === current ? 'wz-fdot-on' : ''}`}
-            onClick={() => jumpTo(i)}
-            aria-label={`slide ${i + 1}`}
-          />
-        ))}
-      </div>
-    </div>
-  )
+// Module-level handler (stable identity, never recreated): hide a broken brand
+// logo and reveal its text fallback.
+const onBrandImgError = (e) => {
+  e.target.style.display = 'none'
+  if (e.target.nextSibling) e.target.nextSibling.style.display = 'block'
 }
 
 function Home() {
-  const { products, tables } = useContext(MyContext)
+  // Server data straight from TanStack Query (shared/cached) — Home no longer
+  // depends on MyContext at all.
+  const { products, tables, isFetching } = useCatalog()
   const { language } = useUIStore()
   const navigate = useNavigate()
-  const isDesktop = useMediaQuery('(min-width:768px)')
-  const [grades, setGrades] = useState([])
-  const [filteredProducts, setFilteredProducts] = useState({})
-  const [gradeText, setGradeText] = useState({})
 
-  // "Season Offers" now surfaces discounted PRODUCTS so the unified ProductCard
-  // renders correctly and matches the slider's "All Offers →" → /listing?offers=true.
+  // Single source of truth for "still loading" on the home page. Once the fetch
+  // settles, empty derived lists mean genuinely-empty (render nothing), not
+  // loading. Each section below shows its own skeleton while this is true.
+  const loading = isFetching && (!products || products.length === 0)
+
+  // "Season Offers" surfaces discounted PRODUCTS so the unified ProductCard
+  // renders correctly and matches "All Offers →" → /listing?offers=true.
   const offerProducts = useMemo(
     () => (products || []).filter((p) => Number(p.percentage_discount) > 0).slice(0, 15),
     [products],
   )
 
-  useEffect(() => {
-    if (tables && tables.grades) {
-      setGrades(tables.grades)
-    }
-  }, [tables])
+  // Derived directly from tables — no state/effect needed.
+  const grades = useMemo(() => tables?.grades || [], [tables])
 
-  useEffect(() => {
-    if (!products || !grades?.length) return
-
-    const productsByGrade = grades.reduce((acc, grade) => {
+  // Products grouped by grade. Pure derivation of products + grades.
+  const filteredProducts = useMemo(() => {
+    if (!products || !grades.length) return {}
+    return grades.reduce((acc, grade) => {
       const filtered = products.filter((product) => product.grade_id === grade.id)
       if (filtered.length > 0) acc[grade.id] = filtered
       return acc
     }, {})
+  }, [products, grades])
 
-    setFilteredProducts(productsByGrade)
-
-    const gradeTextObj = Object.fromEntries(
+  // Localized grade title/description map. Pure derivation of grades + language.
+  const gradeText = useMemo(() => {
+    if (!grades.length) return {}
+    return Object.fromEntries(
       grades.map((grade) => [
         grade.id,
         {
@@ -185,9 +66,7 @@ function Home() {
         },
       ]),
     )
-
-    setGradeText(gradeTextObj)
-  }, [products, grades, language])
+  }, [grades, language])
 
   const brands = tables?.brands || []
   const brandName = (b) =>
@@ -196,15 +75,58 @@ function Home() {
     b.brand_name ||
     ''
 
+  const handleBrandClick = useCallback(
+    (brandId) => {
+      navigate(`/listing?${buildListingParams({ brands: [brandId] }, {}, tables).toString()}`)
+    },
+    [navigate, tables],
+  )
+
   return (
-    <div className="wz-home">
-      {!isDesktop && (
-        <div className="wz-home-phonenav">
-          <CategoryNavPhone />
+    <div className="wz-home" dir={language === 'ar' ? 'rtl' : 'ltr'}>
+      <Helmet>
+        <title>Watchizer | Luxury Watches & Accessories in Egypt</title>
+        <meta
+          name="description"
+          content="Shop luxury watches and accessories at Watchizer — premium timepieces, elegant designs and unbeatable prices across Egypt."
+        />
+        <link rel="canonical" href="https://watchizereg.com/" />
+      </Helmet>
+      <WatchHero />
+
+      <section className="wz-home-section">
+        <div className="wz-container">
+          <CategoryTiles />
+        </div>
+      </section>
+
+      {offerProducts.length !== 0 ? (
+        <section className="wz-home-section">
+          <div className="wz-container">
+            <OfferSlider
+              text={{
+                title: { en: 'Season Offers', ar: 'عروض الموسم' },
+                description: { en: 'Season Offers', ar: 'عروض الموسم' },
+              }}
+              products={offerProducts}
+            />
+          </div>
+        </section>
+      ) : loading ? (
+        <section className="wz-home-section">
+          <div className="wz-container">
+            <OfferSlider loading products={[]} text={{}} />
+          </div>
+        </section>
+      ) : null}
+
+      {brands.length === 0 && loading && (
+        <div className="wz-brand-strip-skeleton">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div className="wz-skel-brand-item" key={i} />
+          ))}
         </div>
       )}
-
-      <WatchHero />
 
       {brands.length > 0 && (
         <div className="wz-brand-strip">
@@ -216,11 +138,7 @@ function Home() {
                 <button
                   key={`${b.id}-${i}`}
                   className="wz-brand-strip-item"
-                  onClick={() =>
-                    navigate(
-                      `/listing?${buildListingParams({ brands: [b.id] }, {}, tables).toString()}`,
-                    )
-                  }
+                  onClick={() => handleBrandClick(b.id)}
                   title={name}
                   type="button"
                 >
@@ -229,11 +147,10 @@ function Home() {
                       src={img}
                       alt={name}
                       className="wz-brand-strip-img"
+                      width="90"
+                      height="32"
                       loading="lazy"
-                      onError={(e) => {
-                        e.target.style.display = 'none'
-                        if (e.target.nextSibling) e.target.nextSibling.style.display = 'block'
-                      }}
+                      onError={onBrandImgError}
                     />
                   ) : null}
                   <span className="wz-brand-strip-name" style={{ display: img ? 'none' : 'block' }}>
@@ -246,15 +163,18 @@ function Home() {
         </div>
       )}
 
-      <section className="wz-home-section">
-        <div className="wz-container">
-          <CategoryTiles />
-        </div>
-      </section>
+      <FeaturedBanner products={products || []} loading={loading} />
 
-      <FeaturedBanner products={products || []} />
+      {loading &&
+        [0, 1].map((i) => (
+          <section className="wz-home-section" key={`grade-skel-${i}`}>
+            <div className="wz-container">
+              <ProductSlider loading />
+            </div>
+          </section>
+        ))}
 
-      {grades?.map((grade) => {
+      {grades.map((grade) => {
         const gradeProducts = filteredProducts?.[grade.id] ?? []
         const gradeLocalization = gradeText?.[grade.id]
         if (gradeProducts.length === 0) return null
@@ -280,20 +200,6 @@ function Home() {
           </section>
         )
       })}
-
-      {offerProducts.length !== 0 && (
-        <section className="wz-home-section">
-          <div className="wz-container">
-            <OfferSlider
-              text={{
-                title: { en: 'Season Offers', ar: 'عروض الموسم' },
-                description: { en: 'Season Offers', ar: 'عروض الموسم' },
-              }}
-              products={offerProducts}
-            />
-          </div>
-        </section>
-      )}
     </div>
   )
 }

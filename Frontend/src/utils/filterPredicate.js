@@ -42,6 +42,13 @@ export function passesFilters(p, f = {}, except = null) {
     return false
   if (on('movements') && f.movements?.length && !f.movements.includes(p.watch_movement_id))
     return false
+  if (on('shapes') && f.shapes?.length && !f.shapes.includes(p.case_shape_id)) return false
+  if (
+    on('displayTypes') &&
+    f.displayTypes?.length &&
+    !f.displayTypes.includes(p.dial_display_type_id)
+  )
+    return false
   if (on('grades') && f.grades?.length && !f.grades.includes(p.grade_id)) return false
 
   return true

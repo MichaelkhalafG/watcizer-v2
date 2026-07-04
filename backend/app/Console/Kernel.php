@@ -14,6 +14,10 @@ class Kernel extends ConsoleKernel
     {
         // $schedule->command('inspire')->hourly();
         $schedule->command('carts:prune')->daily();
+
+        // Re-engagement campaign — one pass per day; the command's own
+        // last_reengagement_at guard caps each user at one email per 30 days.
+        $schedule->command('emails:re-engagement')->dailyAt('10:00');
     }
 
     /**

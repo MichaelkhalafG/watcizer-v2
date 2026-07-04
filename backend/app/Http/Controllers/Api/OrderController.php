@@ -11,6 +11,7 @@ use App\Models\Product;
 use App\Models\CartItem;
 use App\Models\OrderItem;
 use App\Models\ShippingCity;
+use App\Services\MergeGuestCart;
 use Illuminate\Http\Request;
 use App\Models\PaymentStatus;
 use App\Mail\OrderCreatedMail;
@@ -57,8 +58,11 @@ class OrderController extends Controller
                 'phone_number_two' => 'nullable|string|max:20',
             ]);
 
-            $userId = null;
-            if ($request->filled('user_id') && (int) $request->user_id > 0) {
+            // Prefer the authenticated caller so a logged-in user's address is
+            // always tied to them (and can't be spoofed onto another user_id).
+            // Guests (no JWT) fall back to the optional user_id in the payload.
+            $userId = auth('api')->id();
+            if (!$userId && $request->filled('user_id') && (int) $request->user_id > 0) {
                 $userId = (int) $request->user_id;
             }
 
@@ -95,8 +99,34 @@ class OrderController extends Controller
     {
         try {
             $authId = auth('api')->id();
-            $addresses = Address::where('user_id', $authId)->get();
+            $addresses = Address::where('user_id', $authId)
+                ->with('shippingCity.translations')
+                ->get();
             return response()->json($addresses);
+        } catch (\Exception $e) {
+            Log::error($e);
+            return response()->json([
+                'success' => false,
+                'message' => 'An error occurred',
+                'ref'     => \Illuminate\Support\Str::uuid()
+            ], 500);
+        }
+    }
+
+    /**
+     * Delete one of the authenticated user's addresses. Scoped by user_id so a
+     * caller can never delete another user's address by guessing an id.
+     */
+    public function DeleteAddress(Request $request, $id)
+    {
+        try {
+            $authId = auth('api')->id();
+            $address = Address::where('user_id', $authId)->findOrFail($id);
+            $address->delete();
+            Cache::forget('ShowAddress');
+            return response()->json(['message' => 'Address deleted'], 200);
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return response()->json(['message' => 'Address not found'], 404);
         } catch (\Exception $e) {
             Log::error($e);
             return response()->json([
@@ -185,7 +215,9 @@ class OrderController extends Controller
             $cart = Cart::where($request->identity)
                         ->with('cart_item')
                         ->first();
-            return response()->json($cart);
+            // Keep the cart_item shape the frontend relies on, plus server-side
+            // totals and live stock/price warnings.
+            return response()->json($this->cartPayload($cart));
         } catch (\Exception $e) {
             Log::error($e);
             return response()->json([
@@ -196,11 +228,18 @@ class OrderController extends Controller
         }
     }
 
-    public function DeleteCart($id)
+    public function DeleteCart(Request $request, $id)
     {
         try {
-            $authId = auth()->id();
-            CartItem::whereHas('cart', fn($q) => $q->where('user_id', $authId))
+            // Owner comes from GuestCartMiddleware: ['user_id' => …] for logged-in
+            // users, ['guest_token' => …] for guests. Plain auth()->id() used the
+            // web guard and returned null for the JWT SPA (and never matched guests).
+            $identity = $request->input('identity');
+            if (empty($identity) || !is_array($identity)) {
+                return response()->json(['success' => false, 'message' => 'Not found'], 404);
+            }
+
+            CartItem::whereHas('cart', fn($q) => $q->where($identity))
                 ->findOrFail($id)
                 ->delete();
             return response()->json(['success' => true]);
@@ -217,6 +256,228 @@ class OrderController extends Controller
     }
 
     // =========================================================================
+    //  Cart validation / merge / totals
+    // =========================================================================
+
+    /**
+     * Validate the cart against the live catalog at checkout time: flags
+     * out-of-stock lines and price changes, and returns server-side totals.
+     */
+    public function validateCart(Request $request)
+    {
+        try {
+            $cart = Cart::where($request->identity)->with('cart_item')->first();
+
+            if (!$cart || $cart->cart_item->isEmpty()) {
+                return response()->json([
+                    'valid'    => true,
+                    'warnings' => [],
+                    'totals'   => $this->emptyTotals(),
+                ]);
+            }
+
+            $warnings = $this->cartWarnings($cart);
+
+            return response()->json([
+                'valid'    => empty($warnings),
+                'warnings' => $warnings,
+                'totals'   => $this->calculateTotals($cart),
+            ]);
+        } catch (\Exception $e) {
+            Log::error($e);
+            return response()->json([
+                'valid'   => false,
+                'message' => 'An error occurred',
+                'ref'     => \Illuminate\Support\Str::uuid(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Merge a guest cart into the authenticated user's cart. Delegates to the
+     * same MergeGuestCart service used on login (increments quantities), so the
+     * behaviour is identical across both entry points.
+     */
+    public function mergeCart(Request $request)
+    {
+        try {
+            $user = $request->user();
+            if (!$user) {
+                return response()->json(['error' => 'Must be authenticated'], 401);
+            }
+
+            $guestToken = $request->input('guest_token') ?: $request->header('X-Guest-Token');
+            if (!$guestToken) {
+                return response()->json(['message' => 'No guest cart to merge']);
+            }
+
+            $guestCart = Cart::where('guest_token', $guestToken)->first();
+            if (!$guestCart) {
+                return response()->json(['message' => 'Guest cart not found']);
+            }
+
+            (new MergeGuestCart())->merge((int) $user->id, $guestToken);
+
+            $userCart = Cart::where('user_id', $user->id)->with('cart_item')->first();
+
+            return response()->json([
+                'message' => 'Cart merged successfully',
+                'cart'    => $this->cartPayload($userCart),
+            ]);
+        } catch (\Exception $e) {
+            Log::error($e);
+            return response()->json([
+                'error' => 'An error occurred',
+                'ref'   => \Illuminate\Support\Str::uuid(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Cart JSON for the frontend: the raw cart (incl. cart_item) plus totals and
+     * live warnings. Returns a safe empty shape when there is no cart yet.
+     */
+    private function cartPayload(?Cart $cart): array
+    {
+        if (!$cart) {
+            return ['cart_item' => [], 'totals' => $this->emptyTotals(), 'warnings' => []];
+        }
+        $cart->loadMissing('cart_item');
+        return array_merge($cart->toArray(), [
+            'totals'   => $this->calculateTotals($cart),
+            'warnings' => $this->cartWarnings($cart),
+        ]);
+    }
+
+    /**
+     * Build id→model maps for the products/offers referenced by the cart's
+     * items (CartItem's eager relation is unusable, so we resolve manually).
+     */
+    private function cartCatalog($items): array
+    {
+        $products = Product::whereIn('id', $items->pluck('product_id')->filter()->unique())
+            ->get()->keyBy('id');
+        $offers = Offer::whereIn('id', $items->pluck('offer_id')->filter()->unique())
+            ->get()->keyBy('id');
+        return [$products, $offers];
+    }
+
+    /**
+     * Per-line stock / price warnings against the current catalog.
+     */
+    private function cartWarnings(Cart $cart): array
+    {
+        $items = $cart->cart_item;
+        [$products, $offers] = $this->cartCatalog($items);
+        $warnings = [];
+
+        foreach ($items as $item) {
+            $message = null;
+
+            if ($item->product_id) {
+                $product = $products->get($item->product_id);
+                if (!$product) {
+                    $message = 'Product no longer available';
+                } else {
+                    $currentStock = $item->type_stock === 'Express'
+                        ? (int) $product->stock
+                        : (int) $product->market_stock;
+                    $currentPrice = $product->sale_price_after_discount > 0
+                        ? (float) $product->sale_price_after_discount
+                        : (float) $product->selling_price;
+
+                    if ($currentStock < $item->quantity) {
+                        $message = "Only {$currentStock} available";
+                    } elseif (abs($currentPrice - (float) $item->piece_price) > 0.01) {
+                        $message = "Price changed to {$currentPrice}";
+                    }
+                }
+            } elseif ($item->offer_id) {
+                $offer = $offers->get($item->offer_id);
+                if (!$offer) {
+                    $message = 'Offer no longer available';
+                } else {
+                    $currentPrice = $offer->sale_price_after_discount > 0
+                        ? (float) $offer->sale_price_after_discount
+                        : (float) $offer->selling_price;
+
+                    if ((int) $offer->stock < $item->quantity) {
+                        $message = "Only {$offer->stock} available";
+                    } elseif (abs($currentPrice - (float) $item->piece_price) > 0.01) {
+                        $message = "Price changed to {$currentPrice}";
+                    }
+                }
+            }
+
+            if ($message) {
+                $warnings[] = ['item_id' => $item->id, 'message' => $message];
+            }
+        }
+
+        return $warnings;
+    }
+
+    /**
+     * Server-side totals: subtotal, shipping, savings. There is NO free-shipping
+     * rule — shipping is always the selected governorate's cost, but that is only
+     * known once an address is chosen at checkout, so it is 0 here and added in
+     * AddOrder (which uses the address's shipping_cost).
+     */
+    private function calculateTotals(Cart $cart): array
+    {
+        $items = $cart->cart_item;
+        $subtotal = $items->sum(fn ($item) => $item->quantity * (float) $item->piece_price);
+
+        return [
+            'subtotal'      => round($subtotal, 2),
+            'shipping'      => 0,
+            'shipping_note' => 'Shipping calculated at checkout by governorate',
+            'tax'           => 0,
+            'total'         => round($subtotal, 2),
+            'item_count'    => (int) $items->sum('quantity'),
+            'savings'       => $this->calculateSavings($items),
+        ];
+    }
+
+    /**
+     * Total saved vs. original prices across product + offer lines.
+     */
+    private function calculateSavings($items): float
+    {
+        [$products, $offers] = $this->cartCatalog($items);
+        $savings = 0;
+
+        foreach ($items as $item) {
+            $entity = $item->product_id
+                ? $products->get($item->product_id)
+                : $offers->get($item->offer_id);
+
+            if ($entity) {
+                $original = (float) $entity->selling_price;
+                $sale     = (float) $entity->sale_price_after_discount;
+                if ($sale > 0 && $sale < $original) {
+                    $savings += ($original - $sale) * $item->quantity;
+                }
+            }
+        }
+
+        return round($savings, 2);
+    }
+
+    private function emptyTotals(): array
+    {
+        return [
+            'subtotal'      => 0,
+            'shipping'      => 0,
+            'shipping_note' => 'Shipping calculated at checkout by governorate',
+            'tax'           => 0,
+            'total'         => 0,
+            'item_count'    => 0,
+            'savings'       => 0,
+        ];
+    }
+
+    // =========================================================================
     //  Order
     // =========================================================================
     public function AddOrder(Request $request)
@@ -226,15 +487,18 @@ class OrderController extends Controller
         try {
             $request->validate([
                 'user_id'               => 'nullable|integer',
-                'address_id'            => 'required|integer|exists:addresses,id',
+                // Either an existing address_id OR inline address fields (guests).
+                'address_id'            => 'required_without:address_line|nullable|integer|exists:addresses,id',
+                'address_line'          => 'required_without:address_id|nullable|string|min:3|max:500',
+                'shipping_city_id'      => 'required_without:address_id|nullable|integer|exists:shipping_cities,id',
+                'phone'                 => 'required_without:address_id|nullable|string|min:7|max:20',
                 'total_price_for_order' => 'required|numeric|min:0',
-                'payment_method'        => 'required|in:cash,paymob,whatsapp',
+                // 'card' is the user-facing label for the Paymob (card) flow.
+                'payment_method'        => 'required|in:cash,card,paymob,whatsapp',
                 'note'                  => 'nullable|string|max:1000',
                 'guest_name'            => 'nullable|string|max:255',
                 'guest_phone'           => 'nullable|string|max:20',
                 'guest_email'           => 'nullable|email|max:255',
-                'address_line'          => 'nullable|string',
-                'shipping_city_id'      => 'nullable|integer',
                 'items'                 => 'nullable|array',
                 'items.*.product_id'    => 'nullable|integer|exists:products,id',
                 'items.*.offer_id'      => 'nullable|integer|exists:offers,id',
@@ -250,6 +514,28 @@ class OrderController extends Controller
                 ? (int) $request->user_id
                 : null;
             $isGuest = is_null($userId);
+
+            // Map the user-facing 'card' option to the internal Paymob flow.
+            $paymentMethod = $request->payment_method === 'card'
+                ? 'paymob'
+                : $request->payment_method;
+
+            // ── Resolve / create shipping address ─────────────────────────────
+            // Logged-in users pass an existing address_id; guests pass inline
+            // fields, which we persist (tied to their guest token) so the order
+            // and the Paymob billing data have a real address row to reference.
+            if (!$request->filled('address_id')) {
+                $guestToken = $request->identity['guest_token'] ?? $request->header('X-Guest-Token');
+                $address = Address::create([
+                    'user_id'          => $userId,
+                    'guest_token'      => $userId ? null : $guestToken,
+                    'shipping_city_id' => (int) $request->shipping_city_id,
+                    'address_line'     => trim($request->address_line),
+                    'phone_number_one' => trim($request->phone ?? $request->guest_phone ?? ''),
+                ]);
+                // Downstream (totals, order row, Paymob) all read $request->address_id.
+                $request->merge(['address_id' => $address->id]);
+            }
 
             // ── Cart items ────────────────────────────────────────────────────
             if (!$isGuest) {
@@ -272,34 +558,68 @@ class OrderController extends Controller
                 }
             }
 
-            // ── Authoritative total (never trust the client) ──────────────────
-            // Recompute from the SAME items the order is built from ($cartItems),
-            // pricing products by sale-price-then-list, offers by their price,
-            // and add the server-side shipping cost for the chosen address.
-            $serverItemsTotal = $cartItems->sum(function ($item) {
+            // ── Authoritative per-line pricing (never trust the client) ───────
+            // Recompute EACH line from DB catalog prices and remember the result
+            // keyed by the cart-item's position, so the OrderItem rows below store
+            // SERVER prices — the client's piece_price / total_price are ignored.
+            // Money columns are DECIMAL(12,2); round to 2dp so .99 / .50 survive.
+            $serverLines      = [];
+            $serverItemsTotal = 0.0;
+
+            foreach ($cartItems as $idx => $item) {
                 $i = is_array($item) ? (object) $item : $item;
+
+                // Resolve the catalog entity for this line.
                 if (!empty($i->product_id)) {
-                    $p = Product::find($i->product_id);
-                    $price = $p?->sale_price_after_discount ?? $p?->selling_price ?? 0;
+                    $entity = Product::find($i->product_id);
                 } elseif (!empty($i->offer_id)) {
-                    $price = optional(Offer::find($i->offer_id))->price ?? 0;
+                    $entity = Offer::find($i->offer_id);
                 } else {
-                    $price = 0;
+                    $entity = null;
                 }
-                return (float) $price * (int) ($i->quantity ?? 0);
-            });
 
-            $shippingCost = (float) optional(
+                $qty = (int) ($i->quantity ?? 0);
+                if (!$entity || $qty < 1) {
+                    DB::rollBack();
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'One of the items is no longer available.',
+                    ], 422);
+                }
+
+                // Price each line the SAME way the catalog / cartWarnings() and the
+                // storefront do: the discounted price when there is one, otherwise the
+                // list price. NOTE: offers store selling_price / sale_price_after_discount
+                // (no `price` column) — priced identically to products here.
+                $sale      = (float) $entity->sale_price_after_discount;
+                $piece     = round($sale > 0 ? $sale : (float) $entity->selling_price, 2);
+                $lineTotal = round($piece * $qty, 2);
+
+                $serverLines[$idx] = ['piece_price' => $piece, 'total_price' => $lineTotal];
+                $serverItemsTotal += $lineTotal;
+            }
+
+            $serverItemsTotal = round($serverItemsTotal, 2);
+
+            $shippingCost = round((float) optional(
                 optional(Address::with('shippingCity')->find($request->address_id))->shippingCity
-            )->shipping_cost;
+            )->shipping_cost, 2);
 
-            $serverTotal = $serverItemsTotal + $shippingCost;
+            // Authoritative order total — computed entirely server-side from DB
+            // prices + the address's shipping cost. This is what we STORE, so a
+            // tampered client value can never change the charged amount.
+            $serverTotal = round($serverItemsTotal + $shippingCost, 2);
 
-            if (abs($serverTotal - (float) $request->total_price_for_order) > 1) {
+            // Reject a tampered / stale client total (beyond a 1-cent rounding
+            // epsilon). Prices now match exactly for a fresh cart; a real mismatch
+            // means the client's totals are out of date and must be re-confirmed.
+            $clientTotal = round((float) $request->input('total_price_for_order'), 2);
+            if (abs($clientTotal - $serverTotal) > 0.01) {
                 DB::rollBack();
                 return response()->json([
-                    'success' => false,
-                    'message' => 'Price mismatch — please refresh and try again',
+                    'success'      => false,
+                    'message'      => 'Order total mismatch — your cart may be out of date. Please review and try again.',
+                    'server_total' => $serverTotal,
                 ], 422);
             }
 
@@ -316,25 +636,41 @@ class OrderController extends Controller
                 'user_id'               => $userId,
                 'address_id'            => $request->address_id,
                 'total_price_for_order' => $serverTotal,
-                'payment_method'        => $request->payment_method,
+                'payment_method'        => $paymentMethod,
                 'order_number'          => $orderNumber,
                 'note'                  => $request->note,
-                'status'                => $request->payment_method === 'cash' ? 'processing' : 'pending',
+                'status'                => $paymentMethod === 'cash' ? 'processing' : 'pending',
                 'guest_name'            => $request->guest_name  ?? null,
                 'guest_email'           => $request->guest_email ?? null,
+                'guest_phone'           => $request->guest_phone ?? $request->phone ?? null,
+                'guest_token'           => $isGuest
+                    ? ($request->identity['guest_token'] ?? $request->header('X-Guest-Token'))
+                    : null,
             ]);
 
             // ── Order items + stock ───────────────────────────────────────────
-            foreach ($cartItems as $item) {
+            foreach ($cartItems as $idx => $item) {
                 $itemData = is_array($item) ? (object) $item : $item;
+
+                // Server-computed line prices from the pass above (same $cartItems,
+                // same keys). Never store the client-sent piece_price / total_price.
+                $line = $serverLines[$idx] ?? null;
+                if ($line === null) {
+                    DB::rollBack();
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Pricing error',
+                        'ref'     => \Illuminate\Support\Str::uuid(),
+                    ], 500);
+                }
 
                 OrderItem::create([
                     'order_id'    => $order->id,
                     'product_id'  => $itemData->product_id ?? null,
                     'offer_id'    => $itemData->offer_id   ?? null,
                     'quantity'    => $itemData->quantity,
-                    'piece_price' => $itemData->piece_price,
-                    'total_price' => $itemData->total_price,
+                    'piece_price' => $line['piece_price'],
+                    'total_price' => $line['total_price'],
                     'type_stock'  => $itemData->type_stock  ?? null,
                     'color_band'  => $itemData->color_band  ?? null,
                     'color_dial'  => $itemData->color_dial  ?? null,
@@ -379,12 +715,12 @@ class OrderController extends Controller
             DB::commit();
 
             // ── Send Emails ───────────────────────────────────────────────────
-            if (in_array($request->payment_method, ['cash', 'whatsapp'])) {
-                $this->sendOrderEmails($order, $isGuest, $request->payment_method);
+            if (in_array($paymentMethod, ['cash', 'whatsapp'])) {
+                $this->sendOrderEmails($order, $isGuest, $paymentMethod);
             }
 
             // ── Paymob ────────────────────────────────────────────────────────
-            if ($request->payment_method === 'paymob') {
+            if ($paymentMethod === 'paymob') {
                 return $this->handlePaymobPayment($order, $request, $isGuest);
             }
 
@@ -420,20 +756,25 @@ class OrderController extends Controller
 
             if ($customerEmail) {
                 try {
+                    // Queued (OrderCreatedMail implements ShouldQueue): pushes a job
+                    // to the `jobs` table and returns immediately — checkout never
+                    // blocks on SMTP. A worker MUST run to deliver it:
+                    //   php artisan queue:work   (Supervisor in production)
                     Mail::to($customerEmail)->queue(new OrderCreatedMail($order, 'customer'));
-                    \Log::info('Customer email sent to: ' . $customerEmail . ' | Order: ' . $order->order_number);
+                    \Log::info('Customer email queued to: ' . $customerEmail . ' | Order: ' . $order->order_number);
                 } catch (\Exception $e) {
-                    \Log::error('Customer email FAILED | Order: ' . $order->order_number, ['exception' => $e]);
+                    \Log::error('Customer email queue FAILED | Order: ' . $order->order_number, ['exception' => $e]);
                 }
             }
         }
 
+        // Admin recipients live in config/order.php (config('order.admin_emails')).
         foreach (config('order.admin_emails') as $email) {
             try {
                 Mail::to($email)->queue(new OrderCreatedMail($order, 'admin'));
-                \Log::info('Admin email sent to: ' . $email . ' | Order: ' . $order->order_number);
+                \Log::info('Admin email queued to: ' . $email . ' | Order: ' . $order->order_number);
             } catch (\Exception $e) {
-                \Log::error('Admin email FAILED | To: ' . $email . ' | Order: ' . $order->order_number, ['exception' => $e]);
+                \Log::error('Admin email queue FAILED | To: ' . $email . ' | Order: ' . $order->order_number, ['exception' => $e]);
             }
         }
     }
@@ -493,7 +834,12 @@ class OrderController extends Controller
                     'country'      => 'Egypt',
                     'email'        => $email,
                 ],
-                'special_reference' => (string) $order->id,
+                // Paymob requires special_reference to be globally unique FOREVER —
+                // reusing the raw order id collides ("An Order with ref: N already
+                // exists") on any retry or id reuse. Suffix a nonce for uniqueness;
+                // the numeric order-id prefix is preserved so the callback's
+                // Order::find(merchant_order_id) still resolves it via int coercion.
+                'special_reference' => $order->id . '-' . time(),
             ]);
 
             if ($paymobResponse->successful()) {
@@ -507,7 +853,10 @@ class OrderController extends Controller
                 ], 200);
             }
 
-            // Session failed → restore the stock that AddOrder already committed.
+            // Session failed → restore the stock that AddOrder already committed and
+            // CANCEL the order (don't delete — order_items / payment_statuses
+            // reference it with ON DELETE RESTRICT, so a delete throws 1451; the
+            // cancelled record is also kept for debugging/audit).
             foreach ($order->order_item as $item) {
                 if (empty($item->product_id)) {
                     continue;
@@ -516,15 +865,19 @@ class OrderController extends Controller
                 Product::where('id', $item->product_id)->increment($field, $item->quantity);
             }
 
-            $order->delete();
+            $order->update(['status' => 'cancelled']);
             return response()->json([
                 'success'      => false,
                 'message'      => 'Payment session failed',
+                'order_number' => $order->order_number,
                 'paymob_error' => $paymobResponse->json(),
             ], 422);
 
         } catch (\Exception $e) {
-            // Exception during session creation → restore committed stock too.
+            // Exception during session creation → restore committed stock and cancel
+            // the order. Return a clean error instead of re-throwing (which became a
+            // 500) so the client gets an actionable message.
+            Log::error($e);
             foreach ($order->order_item as $item) {
                 if (empty($item->product_id)) {
                     continue;
@@ -533,8 +886,12 @@ class OrderController extends Controller
                 Product::where('id', $item->product_id)->increment($field, $item->quantity);
             }
 
-            $order->delete();
-            throw $e;
+            $order->update(['status' => 'cancelled']);
+            return response()->json([
+                'success'      => false,
+                'message'      => 'Payment could not be initiated. Please try again or choose Cash on Delivery.',
+                'order_number' => $order->order_number,
+            ], 422);
         }
     }
 
@@ -663,7 +1020,12 @@ class OrderController extends Controller
     {
         try {
             $authId = auth('api')->id();
-            $orders = Order::where('user_id', $authId)->with('order_item')->get();
+            // Eager-load the address + its shipping city so the account page can
+            // show the delivery governorate; newest orders first.
+            $orders = Order::where('user_id', $authId)
+                ->with(['order_item', 'address.shippingCity.translations'])
+                ->orderByDesc('id')
+                ->get();
             return response()->json($orders);
         } catch (\Exception $e) {
             Log::error($e);

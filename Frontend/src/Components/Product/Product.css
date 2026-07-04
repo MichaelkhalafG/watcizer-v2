@@ -2,7 +2,8 @@
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  transition: all 0.3s ease-in-out;
+  transition: transform var(--wz-duration-slow) var(--wz-ease),
+    box-shadow var(--wz-duration-slow) var(--wz-ease);
   height: 100%;
   box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1);
   background-color: #fff;
@@ -20,17 +21,21 @@
   position: absolute;
   will-change: transform;
   top: 10px;
-  right: -40px;
+  right: 10px;
   display: flex;
   z-index: 1000;
   flex-direction: column;
   opacity: 0;
-  transition: all 0.5s ease-in-out;
+  /* Slide in from the right using transform (composite-only) instead of the
+     `right` offset, which forced a layout on every frame. */
+  transform: translateX(48px);
+  transition: opacity var(--wz-duration-slow) var(--wz-ease),
+    transform var(--wz-duration-slow) var(--wz-ease);
 }
 
 .product-card:hover .action-menu {
   opacity: 1;
-  right: 10px;
+  transform: translateX(0);
 }
 .product-img-container {
   height: 250px;
@@ -65,7 +70,6 @@
   line-clamp: 2;
   overflow: hidden;
   text-overflow: ellipsis;
-  transition: max-height 0.3s ease;
 }
 
 .card-body .badge {
@@ -90,17 +94,19 @@
   height: 60px;
   object-fit: cover;
   border-radius: 4px;
-  border: 1px solid #ddd;
+  /* Constant 2px border → only the color animates, so selecting/hovering never
+     nudges layout by 1px. */
+  border: 2px solid #ddd;
   cursor: pointer;
-  transition: border 0.2s ease-in-out;
+  transition: border-color var(--wz-duration) var(--wz-ease);
 }
 
 .thumbnail-img:hover {
-  border: 2px solid #007bff;
+  border-color: #007bff;
 }
 
 .thumbnail-img.selected {
-  border: 2px solid #262626;
+  border-color: #262626;
 }
 @media (min-width: 768px) {
   .fs-large {

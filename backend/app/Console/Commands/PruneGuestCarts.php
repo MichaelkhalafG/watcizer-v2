@@ -28,8 +28,12 @@ class PruneGuestCarts extends Command
     {
         $count = 0;
 
+        // Prune guest carts that have either expired OR sat abandoned for 30+ days.
         Cart::whereNotNull('guest_token')
-            ->where('expires_at', '<', now())
+            ->where(function ($q) {
+                $q->where('expires_at', '<', now())
+                  ->orWhere('updated_at', '<', now()->subDays(30));
+            })
             ->each(function (Cart $cart) use (&$count) {
                 $cart->cart_item()->delete();
                 $cart->delete();
