@@ -1,8 +1,9 @@
-import { Component, Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import { Component, Suspense, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Canvas, useFrame } from '@react-three/fiber'
 import { OrbitControls, Environment, useGLTF } from '@react-three/drei'
-import * as THREE from 'three'
+import { Box3, Vector3 } from 'three'
 import { useUIStore } from '../../Store/uiStore'
+import { hasWebGL } from '../../utils/hasWebGL'
 import logo from '../../assets/images/logo.webp'
 
 // Draco-compressed model. drei's useGLTF attaches the Draco decoder by default,
@@ -48,9 +49,9 @@ function WatchModel({ onIntroDone, onLoaded, modelX }) {
   // group below, so centring is preserved and rotation is around the centre).
   const { obj, scale } = useMemo(() => {
     const obj = scene.clone(true)
-    const box = new THREE.Box3().setFromObject(obj)
-    const size = box.getSize(new THREE.Vector3())
-    const center = box.getCenter(new THREE.Vector3())
+    const box = new Box3().setFromObject(obj)
+    const size = box.getSize(new Vector3())
+    const center = box.getCenter(new Vector3())
     obj.position.sub(center) // geometric centre → world origin
     const maxDim = Math.max(size.x, size.y, size.z) || 1
     obj.traverse((o) => {
@@ -87,9 +88,20 @@ function WatchModel({ onIntroDone, onLoaded, modelX }) {
 // If the model (or WebGL) fails, fall back to a clean branded panel instead of
 // a broken/empty canvas.
 class ModelErrorBoundary extends Component {
-  state = { hasError: false }
+  state = { hasError: false, hasWebGLError: false }
   static getDerivedStateFromError() {
     return { hasError: true }
+  }
+  componentDidCatch(error) {
+    // WebGL / context-creation failures are expected on some devices and during
+    // rapid HMR — flag them and keep showing the static fallback instead of
+    // letting the error propagate and crash the tree. (Defining this method at
+    // all stops React from re-throwing; getDerivedStateFromError already swaps in
+    // the fallback for any error, WebGL-related or not.)
+    const msg = String(error?.message || error || '')
+    if (/webgl|context/i.test(msg)) {
+      this.setState({ hasError: true, hasWebGLError: true })
+    }
   }
   render() {
     if (this.state.hasError) return this.props.fallback
@@ -97,7 +109,81 @@ class ModelErrorBoundary extends Component {
   }
 }
 
-export default function WatchCanvas() {
+// The <Canvas> + scene, isolated in a MEMOIZED component so unrelated parent
+// re-renders (e.g. the modelLoaded/opacity fade, language state) never remount
+// the canvas — a remount leaks the old WebGL context and, across HMR/renders,
+// walks into the browser's context cap ("context creation blocked"). Only the
+// props below can change it, and R3F applies those in place without recreating
+// the renderer.
+const Scene = memo(function Scene({ frameloop, introComplete, modelX, onIntroDone, onLoaded }) {
+  return (
+    <Canvas
+      frameloop={frameloop}
+      dpr={[1, 1.5]}
+      gl={{
+        alpha: true,
+        antialias: true,
+        powerPreference: 'high-performance',
+        failIfMajorPerformanceCaveat: false,
+        preserveDrawingBuffer: false,
+      }}
+      camera={{ fov: 38, near: 0.1, far: 100, position: [0, 0.2, CAMERA_Z] }}
+      onCreated={({ gl, invalidate }) => {
+        // Make a lost context recoverable instead of fatal: preventDefault lets
+        // the browser restore it, and we repaint once it's back.
+        const el = gl.domElement
+        el.addEventListener('webglcontextlost', (e) => e.preventDefault(), false)
+        el.addEventListener('webglcontextrestored', () => invalidate(), false)
+      }}
+    >
+      {/* Lighting — env does most of the gold reflection work */}
+      <ambientLight intensity={0.3} />
+      <directionalLight position={[5, 5, 5]} intensity={1.5} color="#fff5e0" />
+      <directionalLight position={[-5, 2, 2]} intensity={0.5} color="#dfe9ff" />
+      <directionalLight position={[0, 3, -5]} intensity={0.9} color="#ffffff" />
+
+      {/* HDR environment for realistic gold reflections (own Suspense so a
+          slow/failed env load never blocks the model) */}
+      <Suspense fallback={null}>
+        <Environment preset="studio" />
+      </Suspense>
+
+      <Suspense fallback={null}>
+        <WatchModel onIntroDone={onIntroDone} onLoaded={onLoaded} modelX={modelX} />
+      </Suspense>
+
+      {/* target defaults to the origin — which is the model's centre, so the
+          watch spins around itself like a turntable. */}
+      <OrbitControls
+        makeDefault
+        enabled={introComplete}
+        enableRotate
+        enableZoom
+        enablePan={false}
+        enableDamping
+        dampingFactor={0.08}
+        rotateSpeed={0.5}
+        zoomSpeed={0.8}
+        autoRotate={false}
+        minDistance={MIN_DIST}
+        maxDistance={MAX_DIST}
+        minPolarAngle={Math.PI * 0.2} /* ~36° — no flipping over the top */
+        maxPolarAngle={Math.PI * 0.8} /* ~144° — no flipping under */
+      />
+    </Canvas>
+  )
+})
+
+// Static branded fallback — used when WebGL is unavailable AND when the renderer
+// throws (via ModelErrorBoundary). Design unchanged; the panel is opaque so it
+// fully covers the hero poster behind it.
+const HeroFallback = (
+  <div className="wz-hero-fallback">
+    <img src={logo} alt="Watchizer" width="180" height="55" loading="lazy" />
+  </div>
+)
+
+export default function WatchCanvas({ onReady }) {
   // OrbitControls stay disabled until the intro animation finishes.
   const [introComplete, setIntroComplete] = useState(false)
   const { language } = useUIStore()
@@ -105,6 +191,11 @@ export default function WatchCanvas() {
   // Canvas stays transparent (dark hero shows through) until the model is ready,
   // then fades in — so loading time never shows a spinner or affects LCP/CLS.
   const [modelLoaded, setModelLoaded] = useState(false)
+
+  // Probe WebGL up front. If the browser can't grant a context (blocked, cap
+  // reached, unsupported), show the static fallback and NEVER mount <Canvas> — so
+  // the WebGLRenderer that would throw during commit is never constructed.
+  const webglOk = hasWebGL()
 
   // ── GPU throttle ──────────────────────────────────────────────────────────
   // The Canvas defaults to frameloop="always" (renders 60fps forever). Left on,
@@ -123,14 +214,24 @@ export default function WatchCanvas() {
     return () => obs.disconnect()
   }, [])
 
+  // No WebGL → the static fallback is the final state; tell the parent so the
+  // hero poster crossfades out (the opaque fallback panel covers it regardless).
+  useEffect(() => {
+    if (!webglOk) onReady?.()
+  }, [webglOk, onReady])
+
+  // Stable callbacks so the memoized <Scene> only re-renders on real prop changes
+  // (not on the modelLoaded opacity flip), which keeps the canvas from remounting.
+  const handleIntroDone = useCallback(() => setIntroComplete(true), [])
+  const handleLoaded = useCallback(() => {
+    setModelLoaded(true)
+    onReady?.()
+  }, [onReady])
+
+  if (!webglOk) return HeroFallback
+
   return (
-    <ModelErrorBoundary
-      fallback={
-        <div className="wz-hero-fallback">
-          <img src={logo} alt="Watchizer" />
-        </div>
-      }
-    >
+    <ModelErrorBoundary fallback={HeroFallback}>
       <div
         ref={wrapRef}
         className="wz-hero-canvas-wrap"
@@ -141,51 +242,13 @@ export default function WatchCanvas() {
           transition: 'opacity 0.6s ease',
         }}
       >
-        <Canvas
+        <Scene
           frameloop={inView ? 'always' : 'never'}
-          dpr={[1, 1.5]}
-          gl={{ alpha: true, antialias: true }}
-          camera={{ fov: 38, near: 0.1, far: 100, position: [0, 0.2, CAMERA_Z] }}
-        >
-        {/* Lighting — env does most of the gold reflection work */}
-        <ambientLight intensity={0.3} />
-        <directionalLight position={[5, 5, 5]} intensity={1.5} color="#fff5e0" />
-        <directionalLight position={[-5, 2, 2]} intensity={0.5} color="#dfe9ff" />
-        <directionalLight position={[0, 3, -5]} intensity={0.9} color="#ffffff" />
-
-        {/* HDR environment for realistic gold reflections (own Suspense so a
-            slow/failed env load never blocks the model) */}
-        <Suspense fallback={null}>
-          <Environment preset="studio" />
-        </Suspense>
-
-        <Suspense fallback={null}>
-          <WatchModel
-            onIntroDone={() => setIntroComplete(true)}
-            onLoaded={() => setModelLoaded(true)}
-            modelX={modelX}
-          />
-        </Suspense>
-
-        {/* target defaults to the origin — which is the model's centre, so the
-            watch spins around itself like a turntable. */}
-        <OrbitControls
-          makeDefault
-          enabled={introComplete}
-          enableRotate
-          enableZoom
-          enablePan={false}
-          enableDamping
-          dampingFactor={0.08}
-          rotateSpeed={0.5}
-          zoomSpeed={0.8}
-          autoRotate={false}
-          minDistance={MIN_DIST}
-          maxDistance={MAX_DIST}
-          minPolarAngle={Math.PI * 0.2} /* ~36° — no flipping over the top */
-          maxPolarAngle={Math.PI * 0.8} /* ~144° — no flipping under */
+          introComplete={introComplete}
+          modelX={modelX}
+          onIntroDone={handleIntroDone}
+          onLoaded={handleLoaded}
         />
-        </Canvas>
       </div>
     </ModelErrorBoundary>
   )

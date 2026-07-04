@@ -20,6 +20,13 @@ function CartModal({ open, onClose, cart }) {
   const t = (en, ar) => (isRTL ? ar : en)
   const navigate = useNavigate()
   const timer = useRef(null)
+  const asideRef = useRef(null)
+  const triggerRef = useRef(null)
+  // Latest onClose without re-running the focus-trap effect on every App render.
+  const onCloseRef = useRef(onClose)
+  useEffect(() => {
+    onCloseRef.current = onClose
+  }, [onClose])
 
   const items = cart?.cart_item || []
   // The most-recently added/updated line sits last in the array.
@@ -35,6 +42,53 @@ function CartModal({ open, onClose, cart }) {
   const cancelAuto = () => {
     if (timer.current) clearTimeout(timer.current)
   }
+
+  // ── Focus management ──────────────────────────────────────────────────────
+  // On open: remember the trigger, move focus into the drawer, trap Tab and
+  // close on Escape. On close (effect cleanup): restore focus to the trigger.
+  // (When closed the drawer is `inert`, so it's already out of the tab order.)
+  useEffect(() => {
+    if (!open) return
+    triggerRef.current = document.activeElement
+    const node = asideRef.current
+    if (!node) return
+
+    const focusablesIn = () =>
+      Array.from(
+        node.querySelectorAll(
+          'a[href], button:not([disabled]), input:not([disabled]), select, textarea, [tabindex]:not([tabindex="-1"])',
+        ),
+      ).filter((el) => el.offsetParent !== null)
+
+    // Move focus into the drawer (first focusable = the close button).
+    ;(focusablesIn()[0] || node).focus()
+
+    const onKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        onCloseRef.current?.()
+        return
+      }
+      if (e.key !== 'Tab') return
+      const f = focusablesIn()
+      if (!f.length) return
+      const first = f[0]
+      const last = f[f.length - 1]
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault()
+        last.focus()
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault()
+        first.focus()
+      }
+    }
+    node.addEventListener('keydown', onKeyDown)
+
+    return () => {
+      node.removeEventListener('keydown', onKeyDown)
+      const trigger = triggerRef.current
+      if (trigger && typeof trigger.focus === 'function') trigger.focus()
+    }
+  }, [open])
 
   const currency = isRTL ? 'ج.م' : 'EGP'
   const fmt = (v) => Math.round(Number(v) || 0).toLocaleString(isRTL ? 'ar-EG' : 'en-US')
@@ -68,9 +122,14 @@ function CartModal({ open, onClose, cart }) {
     <>
       <div className={`wz-cartmodal-overlay${open ? ' is-open' : ''}`} onClick={onClose} />
       <aside
+        ref={asideRef}
         className={`wz-cartmodal${open ? ' is-open' : ''}`}
         dir={isRTL ? 'rtl' : 'ltr'}
-        aria-hidden={!open}
+        role="dialog"
+        aria-modal="true"
+        aria-label={t('Cart', 'السلة')}
+        tabIndex={-1}
+        inert={!open ? '' : undefined}
         onMouseEnter={cancelAuto}
         onTouchStart={cancelAuto}
       >
@@ -93,7 +152,7 @@ function CartModal({ open, onClose, cart }) {
               <div className="wz-cartmodal-added">
                 <span className="wz-cartmodal-added-label">✓ {t('Just added', 'تمت الإضافة')}</span>
                 <div className="wz-cartmodal-added-item">
-                  <img src={d.image} alt={d.name} onError={handleImgError} />
+                  <img src={d.image} alt={d.name} width="56" height="56" loading="lazy" onError={handleImgError} />
                   <div className="wz-cartmodal-added-info">
                     <p className="wz-cartmodal-item-name">{d.name}</p>
                     <span className="wz-cartmodal-item-price">
@@ -113,7 +172,7 @@ function CartModal({ open, onClose, cart }) {
                 const d = resolve(item)
                 return (
                   <li className="wz-cartmodal-row" key={`${item.product_id || 'o'}-${item.offer_id || ''}-${item.id}`}>
-                    <img src={d.image} alt={d.name} onError={handleImgError} />
+                    <img src={d.image} alt={d.name} width="48" height="48" loading="lazy" onError={handleImgError} />
                     <div className="wz-cartmodal-row-info">
                       <p className="wz-cartmodal-row-name">{d.name}</p>
                       <span className="wz-cartmodal-row-meta">

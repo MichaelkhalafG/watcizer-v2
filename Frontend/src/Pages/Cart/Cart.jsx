@@ -69,7 +69,7 @@ const CartItem = memo(function CartItem({
       </button>
 
       <button className="wz-cart-item-img" onClick={() => navigate(d.url)} aria-label={d.name}>
-        <img src={d.image} alt={d.name} loading="lazy" onError={handleImgError} />
+        <img src={d.image} alt={d.name} width="100" height="100" loading="lazy" onError={handleImgError} />
       </button>
 
       <div className="wz-cart-item-info">

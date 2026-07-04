@@ -68,7 +68,7 @@ const OrderSummary = memo(function OrderSummary({
           const d = resolve(item)
           return (
             <div className="wz-checkout-item" key={`${item.product_id || 'o'}-${item.offer_id || ''}-${item.id}`}>
-              <img className="wz-checkout-item-img" src={d.image} alt={d.name} onError={handleImgError} />
+              <img className="wz-checkout-item-img" src={d.image} alt={d.name} width="48" height="48" loading="lazy" onError={handleImgError} />
               <div className="wz-checkout-item-info">
                 <p className="wz-checkout-item-name">{d.name}</p>
                 <span className="wz-checkout-item-meta">

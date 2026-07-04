@@ -97,6 +97,31 @@ h6 {
   border-radius: 0 0 16px 16px;
 }
 
+/* ── Skip link (a11y) — off-screen until focused, then slides into view ── */
+.wz-skip-link {
+  position: fixed;
+  inset-inline-start: 8px;
+  top: -60px;
+  z-index: 3000;
+  padding: 10px 18px;
+  background: #1a1a1a;
+  color: #fff;
+  font-size: 14px;
+  text-decoration: none;
+  border-radius: 6px;
+  transition: top 0.16s ease;
+}
+.wz-skip-link:focus {
+  top: 8px;
+  outline: 2px solid #c8a45c;
+  outline-offset: 2px;
+}
+/* Programmatic focus on the main region (skip-link target + route change) — no
+   outline box around the whole page; the scroll/navigation is the visible cue. */
+#main-content:focus {
+  outline: none;
+}
+
 /* ── Global motion tokens ───────────────────────────────────────────────
    One consistent easing/duration vocabulary for every transition on the
    site. Prefer transform/opacity (composite-only, 60fps) in all consumers. */

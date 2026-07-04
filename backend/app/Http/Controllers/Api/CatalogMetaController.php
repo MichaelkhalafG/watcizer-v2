@@ -5,11 +5,18 @@ namespace App\Http\Controllers\Api;
 use App\Models\Brand;
 use App\Models\Color;
 use App\Models\Grade;
+use App\Models\Shape;
 use App\Models\Gender;
 use App\Models\Feature;
 use App\Models\SubType;
 use App\Models\Category;
+use App\Models\Material;
+use App\Models\SizeType;
 use App\Models\BannerHome;
+use App\Models\ClosureType;
+use App\Models\DisplayType;
+use App\Models\CategoryType;
+use App\Models\MovementType;
 use App\Models\ShippingCity;
 use Illuminate\Http\Request;
 use App\Http\Controllers\Controller;
@@ -26,7 +33,7 @@ class CatalogMetaController extends Controller
         // (this route runs CheckApi only, so auth('api') is null unless a
         // valid JWT is supplied; non-admin types never trigger the forget).
         if ($request->boolean('bust') && optional(auth('api')->user())->type === 'admin') {
-            Cache::forget('catalog_meta');
+            Cache::forget('catalog_meta_v2');
         }
 
         $assetBase = rtrim((string) config('services.asset_base'), '/');
@@ -41,11 +48,28 @@ class CatalogMetaController extends Controller
             'name_ar' => optional($m->translate('ar'))->{$attr},
         ])->values()->all();
 
-        $data = Cache::remember('catalog_meta', 3600, function () use ($img, $named) {
+        $data = Cache::remember('catalog_meta_v2', 3600, function () use ($img, $named) {
             // Same Color table backs both dial & band swatches (as in the legacy frontend)
             $colors = Color::with('translations')->get();
 
             return [
+                // Raw lookup tables — each row carries a translations[] array, the
+                // exact shape transformProductData + the SPA filters/nav consume.
+                // This ONE payload replaces the 11 separate all_* table fetches.
+                'tables' => [
+                    'categoryTypes' => CategoryType::with('translations')->get(),
+                    'brands'        => Brand::with('translations')->get(),
+                    'grades'        => Grade::with('translations')->get(),
+                    'subTypes'      => SubType::with('translations')->get(),
+                    'colors'        => $colors,
+                    'materials'     => Material::with('translations')->get(),
+                    'shapes'        => Shape::with('translations')->get(),
+                    'sizeTypes'     => SizeType::with('translations')->get(),
+                    'displayTypes'  => DisplayType::with('translations')->get(),
+                    'closureTypes'  => ClosureType::with('translations')->get(),
+                    'movementTypes' => MovementType::with('translations')->get(),
+                ],
+
                 'brands' => Brand::with('translations')->get()->map(fn ($b) => [
                     'id'       => $b->id,
                     'name_en'  => optional($b->translate('en'))->brand_name,

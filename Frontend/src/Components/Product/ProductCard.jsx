@@ -1,7 +1,7 @@
 import { memo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useUIStore } from '../../Store/uiStore'
-import { getImageUrl, handleImgError, PLACEHOLDER_IMG } from '../../utils/imageUrl'
+import { getResponsiveImageUrl, handleImgError, PLACEHOLDER_IMG } from '../../utils/imageUrl'
 import { productUrl } from '../../utils/productUrl'
 import useCart from '../../Hooks/useCart'
 import './ProductCard.css'
@@ -62,8 +62,9 @@ const ProductCard = ({ product, showBrand = true, showRating = true }) => {
   const rating = Number(product.average_rating || product.ratings_avg || product.rating || 0)
   const reviews = Number(product.ratings_count || product.reviews_count || 0)
 
-  /* ── Image ── */
-  const imgSrc = getImageUrl(product.image) || PLACEHOLDER_IMG
+  /* ── Image (srcset-ready via the CDN builder; passthrough until a CDN is set) ── */
+  const imgData = getResponsiveImageUrl(product.image, 'Product')
+  const imgSrc = imgData.src || PLACEHOLDER_IMG
 
   /* ── Stock status descriptor ── */
   const stock = isExpress
@@ -108,6 +109,8 @@ const ProductCard = ({ product, showBrand = true, showRating = true }) => {
       <div className="wz-pc__media">
         <img
           src={imgSrc}
+          srcSet={imgData.srcSet || undefined}
+          sizes={imgData.sizes || undefined}
           alt={name}
           className="wz-pc__img"
           width="300"

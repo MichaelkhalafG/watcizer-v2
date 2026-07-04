@@ -117,7 +117,7 @@ const PasswordField = ({ label, value, onChange, visible, onToggle }) => (
 const Avatar = ({ src, first, last, size }) => (
   <div className="wz-acc-avatar" style={{ width: size, height: size }}>
     {src ? (
-      <img src={src} alt={[first, last].filter(Boolean).join(' ') || 'Profile photo'} onError={handleImgError} />
+      <img src={src} alt={[first, last].filter(Boolean).join(' ') || 'Profile photo'} loading="lazy" onError={handleImgError} />
     ) : (
       <span style={{ fontSize: size * 0.36 }}>{initialsOf(first, last)}</span>
     )}
@@ -474,7 +474,7 @@ const OrderCard = memo(function OrderCard({ order, resolveItem, user, isRTL, t }
           return (
             <div className="wz-acc-order-item" key={it.id}>
               <div className="wz-acc-order-thumb">
-                {info.image ? <img src={info.image} alt={info.name} onError={handleImgError} /> : null}
+                {info.image ? <img src={info.image} alt={info.name} width="48" height="48" loading="lazy" onError={handleImgError} /> : null}
               </div>
               <div className="wz-acc-order-item-info">
                 <span className="wz-acc-order-name">{info.name}</span>
@@ -874,7 +874,7 @@ function WishlistTab({ t, isRTL }) {
         {items.map((it) => (
           <div className="wz-acc-card wz-acc-wishitem" key={it.key}>
             <Link to={it.to} className="wz-acc-wishitem-media">
-              {it.image ? <img src={it.image} alt={it.title} onError={handleImgError} /> : null}
+              {it.image ? <img src={it.image} alt={it.title} width="72" height="72" loading="lazy" onError={handleImgError} /> : null}
             </Link>
             <div className="wz-acc-wishitem-body">
               <Link to={it.to} className="wz-acc-wishitem-title">

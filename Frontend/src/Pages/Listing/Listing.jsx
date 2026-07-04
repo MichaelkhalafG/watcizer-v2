@@ -550,7 +550,7 @@ function Listing() {
       <aside
         className={`wz-fdrawer${drawerOpen ? ' is-open' : ''}`}
         dir={isRTL ? 'rtl' : 'ltr'}
-        aria-hidden={!drawerOpen}
+        inert={!drawerOpen ? '' : undefined}
       >
         <div className="wz-fdrawer-head">
           <span className="wz-fdrawer-title">{isRTL ? 'الفلاتر' : 'Filters'}</span>

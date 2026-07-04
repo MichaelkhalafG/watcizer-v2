@@ -877,7 +877,7 @@ function ProductDetail() {
                       onClick={() => setActiveImg(i)}
                       aria-label={`Image ${i + 1}`}
                     >
-                      <img src={img} alt={`${name} - image ${i + 1}`} onError={handleImgError} />
+                      <img src={img} alt={`${name} - image ${i + 1}`} width="48" height="48" loading="lazy" onError={handleImgError} />
                     </button>
                   ))}
                 </div>
@@ -904,6 +904,9 @@ function ProductDetail() {
                       src={brandLogo}
                       alt=""
                       className="wz-pd-brand-logo"
+                      width="28"
+                      height="28"
+                      loading="lazy"
                       onError={(e) => {
                         e.target.style.display = 'none'
                       }}

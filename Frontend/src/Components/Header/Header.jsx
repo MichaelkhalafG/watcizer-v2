@@ -284,6 +284,9 @@ function Header() {
                   <img
                     src={getImageUrl(user.image, 'User')}
                     alt=""
+                    width="32"
+                    height="32"
+                    loading="lazy"
                     onError={(e) => {
                       e.currentTarget.style.display = 'none'
                       if (e.currentTarget.nextElementSibling)
@@ -395,10 +398,11 @@ function Header() {
         role="dialog"
         aria-modal="true"
         aria-label={isRTL ? 'قائمة التنقل' : 'Navigation menu'}
+        inert={!drawerOpen ? '' : undefined}
       >
         <div className="wz-drawer-head">
           <Link to="/" onClick={closeDrawer} className="wz-drawer-logo" aria-label="Watchizer">
-            <img src={logo} alt="Watchizer" />
+            <img src={logo} alt="Watchizer" width="150" height="46" loading="lazy" />
           </Link>
           <button
             type="button"
@@ -497,7 +501,7 @@ function Header() {
                       >
                         <span className="wz-drawer-brand-logo">
                           {lg ? (
-                            <img src={lg} alt="" loading="lazy" />
+                            <img src={lg} alt="" width="24" height="24" loading="lazy" />
                           ) : (
                             <span className="wz-drawer-brand-ph">
                               {(label(b, 'brand_name') || '?').charAt(0)}

@@ -15,7 +15,7 @@ export default function AuthShell({ title, subtitle, children }) {
         <div className="wz-auth-brand-grid" />
         <div className="wz-auth-brand-inner">
           <Link to="/" aria-label="Watchizer">
-            <img src={logo} alt="Watchizer" className="wz-auth-brand-logo" />
+            <img src={logo} alt="Watchizer" className="wz-auth-brand-logo" width="190" height="58" loading="lazy" />
           </Link>
           <span className="wz-auth-brand-rule" />
           <p className="wz-auth-brand-tagline">

@@ -166,6 +166,11 @@ function MainApp() {
 
   return (
     <>
+      {/* Skip link — the FIRST focusable element; lets keyboard/AT users jump
+          straight to the main landmark, past the header/nav. Hidden until focused. */}
+      <a href="#main-content" className="wz-skip-link">
+        {language === 'ar' ? 'تخطَّ إلى المحتوى الرئيسي' : 'Skip to main content'}
+      </a>
       {/* Global SEO defaults — each page renders its own <Helmet> to override
           title/description/canonical; anything not overridden falls back here. */}
       <Helmet>
@@ -272,6 +277,7 @@ function MainApp() {
       <ScrollToTop />
       <ErrorBoundary>
         <Suspense fallback={<PageLoader />}>
+          <main id="main-content" tabIndex={-1}>
           <Routes>
             <Route path="/" exact element={<Home />} />
         <Route
@@ -434,6 +440,7 @@ function MainApp() {
           }
         />
           </Routes>
+          </main>
         </Suspense>
       </ErrorBoundary>
       {!isAuthPage && isDesktop ? (

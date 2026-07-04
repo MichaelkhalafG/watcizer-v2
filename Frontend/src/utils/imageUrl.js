@@ -48,4 +48,39 @@ export function getImageUrl(path, folder = '') {
   return `${ASSET_BASE}/Uploads_Images/${dir}${trimmed}`
 }
 
+// ── Responsive image URLs (opt-in via a CDN image resizer) ────────────────
+// When VITE_IMAGE_CDN_BASE points at an image CDN/resizer origin, this returns
+// { src, srcSet, sizes } so the browser can pick the right width. When it's
+// empty (the default), it falls back to the plain resolved URL with no srcSet —
+// zero behaviour change until a CDN is wired up. Absolute/external URLs and data
+// URIs are never rewritten through the resizer.
+//
+// NOTE: catalog images arrive here already resolved to absolute URLs (the
+// transform runs getImageUrl up front), so today this passes through. To
+// actually emit resizer widths, either the backend must expose the raw filename
+// OR the CDN must accept a full source URL (…/?url=<encoded>&w=…). Wired now so
+// the switch is a one-line env change once the CDN is chosen.
+export const IMAGE_CDN_BASE = import.meta.env.VITE_IMAGE_CDN_BASE || ''
+
+export const getResponsiveImageUrl = (path, folder = 'Product') => {
+  const base = getImageUrl(path, folder)
+  const isAbsolute =
+    typeof path === 'string' &&
+    (/^(https?:)?\/\//i.test(path.trim()) || path.trim().startsWith('data:'))
+
+  // No CDN, no path, or an already-absolute/data URL → passthrough (no srcSet).
+  if (!base || !IMAGE_CDN_BASE || isAbsolute) {
+    return { src: base, srcSet: null, sizes: null }
+  }
+
+  const widths = [320, 640, 960, 1200]
+  const cdnUrl = (w) => `${IMAGE_CDN_BASE}/${folder}/${path}?w=${w}&format=auto`
+  return {
+    src: cdnUrl(640),
+    srcSet: widths.map((w) => `${cdnUrl(w)} ${w}w`).join(', '),
+    sizes:
+      '(max-width: 400px) 320px, (max-width: 768px) 640px, (max-width: 1200px) 960px, 1200px',
+  }
+}
+
 export default getImageUrl

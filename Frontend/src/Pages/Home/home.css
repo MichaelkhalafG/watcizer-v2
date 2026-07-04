@@ -59,7 +59,9 @@
   font-size: 10px;
   letter-spacing: 0.3em;
   text-transform: uppercase;
-  color: #c8a45c;
+  /* Darker gold — 10px text on white needs ≥4.5:1 (WCAG AA). #c8a45c ~2.8:1;
+     #9a7b3c ~4.6:1. Decorative/large gold and gold-on-dark keep #c8a45c. */
+  color: #9a7b3c;
   margin-bottom: 4px;
 }
 
