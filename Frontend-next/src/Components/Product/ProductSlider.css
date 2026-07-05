@@ -1,0 +1,82 @@
+/* ══════════════════════════════════
+   PRODUCT SLIDER (Embla-powered)
+   Drag/scroll/arrows now come from the shared Carousel + Embla; this file
+   only styles the header and the per-slide widths.
+══════════════════════════════════ */
+
+.wz-slider {
+  width: 100%;
+}
+
+.wz-slider-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  padding-bottom: 16px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.07);
+}
+
+.wz-slider-header-left {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+/* ── Slide widths (4 up desktop → 2 up mobile), gap = 16px from Carousel ── */
+.wz-slider-slide {
+  flex: 0 0 calc(25% - 12px);
+  min-width: 200px;
+}
+@media (max-width: 1024px) {
+  .wz-slider-slide {
+    flex: 0 0 calc(33.333% - 11px);
+  }
+}
+@media (max-width: 768px) {
+  .wz-slider-slide {
+    flex: 0 0 calc(50% - 8px);
+    min-width: 150px;
+  }
+}
+@media (max-width: 400px) {
+  .wz-slider-slide {
+    flex: 0 0 calc(50% - 6px);
+    min-width: 140px;
+  }
+}
+
+/* Skeleton items reuse this width while loading (static flex row, not Embla). */
+.wz-slider-item {
+  flex: 0 0 calc(25% - 11px);
+  min-width: 190px;
+  max-width: 260px;
+}
+@media (max-width: 1100px) {
+  .wz-slider-item {
+    flex: 0 0 calc(33.33% - 10px);
+  }
+}
+@media (max-width: 768px) {
+  .wz-slider-item {
+    flex: 0 0 calc(50% - 7px);
+    min-width: 0;
+    max-width: none;
+  }
+}
+
+/* ── Offer accent ── */
+.wz-label-red {
+  color: #ea2b0f !important;
+}
+
+.wz-action-red {
+  color: #ea2b0f !important;
+  border-color: rgba(234, 43, 15, 0.25) !important;
+}
+
+.wz-action-red:hover {
+  background: #ea2b0f !important;
+  color: #fff !important;
+  border-color: #ea2b0f !important;
+}

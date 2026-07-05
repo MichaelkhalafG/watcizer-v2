@@ -1,0 +1,510 @@
+/* ══════════════════════════════════
+   WATCH HERO BANNER
+══════════════════════════════════ */
+
+/* Tweak the hero layout/crop from one place. */
+:root {
+  --hero-text-flex: 55%;
+  --hero-watch-flex: 45%;
+}
+
+.wz-hero {
+  position: relative;
+  width: 100%;
+  height: 50vh;
+  min-height: 400px;
+  max-height: 600px;
+  background:
+    radial-gradient(ellipse 70% 80% at 65% 50%, rgba(200, 164, 92, 0.05) 0%, transparent 65%),
+    radial-gradient(ellipse 40% 60% at 20% 50%, rgba(200, 164, 92, 0.03) 0%, transparent 55%),
+    linear-gradient(135deg, #0a0a0a 0%, #111 50%, #0d0d0d 100%);
+  display: flex;
+  align-items: stretch;
+  overflow: hidden;
+}
+
+/* Subtle grid texture */
+.wz-hero::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(200, 164, 92, 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(200, 164, 92, 0.025) 1px, transparent 1px);
+  background-size: 48px 48px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ── Text Panel ── */
+.wz-hero-text {
+  flex: 0 0 var(--hero-text-flex);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0;
+  padding: clamp(32px, 5vw, 80px) clamp(28px, 5vw, 72px);
+  position: relative;
+  z-index: 2;
+}
+
+/* Top label */
+.wz-hero-label {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: clamp(16px, 2.5vh, 28px);
+}
+
+.wz-hero-label-line {
+  display: block;
+  width: 32px;
+  height: 1px;
+  background: var(--wz-gold);
+  flex-shrink: 0;
+}
+
+.wz-hero-label-text {
+  font-size: clamp(9px, 0.85vw, 11px);
+  letter-spacing: 0.35em;
+  text-transform: uppercase;
+  color: var(--wz-gold);
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+/* Headline */
+.wz-hero-headline {
+  font-family: var(--wz-serif);
+  font-size: clamp(2.2rem, 4.5vw, 4rem);
+  font-weight: 300;
+  line-height: 1.08;
+  color: #fff;
+  margin: 0 0 clamp(14px, 2vh, 24px);
+  letter-spacing: -0.02em;
+}
+
+.wz-hero-headline-accent {
+  color: var(--wz-gold);
+  font-style: italic;
+}
+
+/* Body copy */
+.wz-hero-body {
+  font-size: clamp(11px, 1.1vw, 14px);
+  line-height: 1.7;
+  color: rgba(255, 255, 255, 0.45);
+  margin: 0 0 clamp(20px, 3vh, 36px);
+  max-width: 38ch;
+  font-weight: 300;
+  letter-spacing: 0.01em;
+}
+
+/* CTA buttons */
+.wz-hero-cta {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: clamp(24px, 3.5vh, 44px);
+  flex-wrap: wrap;
+}
+
+.wz-hero-cta-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--wz-gold);
+  color: #080808;
+  border: 1px solid var(--wz-gold);
+  font-size: clamp(9px, 0.85vw, 11px);
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  padding: clamp(12px, 1.6vh, 16px) clamp(22px, 2.8vw, 36px);
+  cursor: pointer;
+  border-radius: 2px;
+  transition:
+    background 0.25s,
+    color 0.25s;
+  white-space: nowrap;
+}
+
+.wz-hero-cta-primary:hover {
+  background: transparent;
+  color: var(--wz-gold);
+}
+
+.wz-hero-cta-arrow {
+  font-size: 14px;
+  transition: transform 0.2s;
+}
+
+.wz-hero-cta-primary:hover .wz-hero-cta-arrow {
+  transform: translateX(4px);
+}
+
+.wz-hero-cta-secondary {
+  display: inline-flex;
+  align-items: center;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  font-size: clamp(9px, 0.85vw, 11px);
+  font-weight: 500;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  padding: clamp(12px, 1.6vh, 16px) clamp(22px, 2.8vw, 36px);
+  cursor: pointer;
+  border-radius: 2px;
+  transition: border-color var(--wz-duration) var(--wz-ease),
+    color var(--wz-duration) var(--wz-ease);
+  white-space: nowrap;
+}
+
+.wz-hero-cta-secondary:hover {
+  border-color: rgba(200, 164, 92, 0.45);
+  color: var(--wz-gold);
+}
+
+/* Stats */
+.wz-hero-stats {
+  display: flex;
+  align-items: flex-start;
+  gap: 0;
+  padding-top: clamp(18px, 2.5vh, 28px);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.wz-hero-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-inline-end: clamp(20px, 3vw, 40px);
+  border-inline-end: 1px solid rgba(255, 255, 255, 0.08);
+  margin-inline-end: clamp(20px, 3vw, 40px);
+}
+
+.wz-hero-stat:last-child {
+  border-inline-end: none;
+  margin-inline-end: 0;
+  padding-inline-end: 0;
+}
+
+.wz-hero-stat-num {
+  font-family: var(--wz-serif);
+  font-size: clamp(1.3rem, 2.2vw, 2rem);
+  font-weight: 300;
+  color: #fff;
+  line-height: 1;
+  letter-spacing: -0.01em;
+}
+
+.wz-hero-stat-label {
+  font-size: clamp(7px, 0.7vw, 9px);
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.28);
+  font-weight: 400;
+}
+
+/* ── Right watch panel (Three.js canvas) ── */
+.wz-hero-watch {
+  flex: 0 0 var(--hero-watch-flex);
+  position: relative;
+  z-index: 1;
+  overflow: hidden;
+}
+
+/* Three.js canvas fills the watch panel */
+.wz-hero-watch canvas {
+  width: 100% !important;
+  height: 100% !important;
+  outline: none;
+  cursor: grab;
+  /* the canvas owns touch: one finger rotates, two fingers pinch-zoom
+     (page scroll happens on the text area below, not on the watch) */
+  touch-action: none;
+}
+.wz-hero-watch canvas:active {
+  cursor: grabbing;
+}
+
+/* Fallback shown if the model / WebGL fails to load */
+.wz-hero-fallback {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #0a0a0a;
+}
+.wz-hero-fallback img {
+  width: 60%;
+  max-width: 180px;
+  height: auto;
+  opacity: 0.85;
+  filter: brightness(0) invert(1);
+}
+
+/* Preloaded static poster — the hero's first paint in the watch slot (cheap LCP).
+   Mirrors the fallback's centered white wordmark; crossfades out when the 3D model
+   is ready. Absolutely positioned so it never adds height → zero layout shift. */
+.wz-hero-poster {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 60%;
+  max-width: 180px;
+  height: auto;
+  object-fit: contain;
+  opacity: 0.85;
+  filter: brightness(0) invert(1);
+  transition: opacity 0.6s ease;
+  pointer-events: none;
+  z-index: 0;
+}
+.wz-hero-poster.is-hidden {
+  opacity: 0;
+}
+/* The 3D canvas layers ABOVE the poster so the model covers it as it fades in. */
+.wz-hero-canvas-wrap {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+
+/* ── Spinner ── */
+.wz-hero-spinner {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.wz-hero-spin-ring {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1px solid rgba(200, 164, 92, 0.2);
+  border-top-color: var(--wz-gold);
+  animation: wzHeroSpin 1.5s linear infinite;
+}
+
+@keyframes wzHeroSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ── Corner brackets ── */
+.wz-hero-corner {
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  z-index: 20;
+  pointer-events: none;
+}
+
+.wz-hero-corner-tl {
+  top: 16px;
+  inset-inline-start: 16px;
+  border-top: 1px solid rgba(200, 164, 92, 0.35);
+  border-inline-start: 1px solid rgba(200, 164, 92, 0.35);
+}
+.wz-hero-corner-tr {
+  top: 16px;
+  inset-inline-end: 16px;
+  border-top: 1px solid rgba(200, 164, 92, 0.35);
+  border-inline-end: 1px solid rgba(200, 164, 92, 0.35);
+}
+.wz-hero-corner-bl {
+  bottom: 16px;
+  inset-inline-start: 16px;
+  border-bottom: 1px solid rgba(200, 164, 92, 0.35);
+  border-inline-start: 1px solid rgba(200, 164, 92, 0.35);
+}
+.wz-hero-corner-br {
+  bottom: 16px;
+  inset-inline-end: 16px;
+  border-bottom: 1px solid rgba(200, 164, 92, 0.35);
+  border-inline-end: 1px solid rgba(200, 164, 92, 0.35);
+}
+
+/* ── Tablet ── */
+@media (max-width: 1024px) and (min-width: 769px) {
+  .wz-hero {
+    height: 55vh;
+    min-height: 380px;
+  }
+  .wz-hero-text {
+    flex: 0 0 55%;
+  }
+  .wz-hero-watch {
+    flex: 0 0 45%;
+  }
+}
+
+/* ── Mobile ── */
+@media (max-width: 768px) {
+  /* Fill the viewport below the 52px header; start with the exact header colour
+     (#0a0a0a) so the header→hero seam is invisible. Centre the column so the
+     watch + text sit with equal breathing room above, between and below. */
+  .wz-hero {
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    height: calc(100vh - 52px);
+    height: calc(100dvh - 52px); /* account for mobile address bar */
+    min-height: 320px;
+    max-height: none;
+    padding: 24px 20px;
+    gap: 16px;
+    background: #0a0a0a;
+    /* border-box so the 20px side padding is INCLUDED in width:100% — otherwise
+       it overflows the viewport and causes the horizontal scrollbar. */
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  /* Watch needs an explicit height — its iframe is absolute, so flex:auto would
+     collapse the box. A vh height + clamps keeps it sized while it stays centred. */
+  .wz-hero-watch {
+    flex: 0 0 auto;
+    width: 100%;
+    height: 36vh;
+    min-height: 220px;
+    max-height: 320px;
+    padding: 8px 0;
+    order: 1;
+  }
+
+  /* Natural height — no stretch, no internal centring, no bottom gap.
+     On mobile everything is centred (text + buttons). */
+  .wz-hero-text {
+    flex: 0 0 auto;
+    width: 100%;
+    order: 2;
+    padding: 0;
+    gap: 0;
+    background: none;
+    text-align: center;
+  }
+
+  /* Tighten the vertical rhythm so the text feels snug, not floating */
+  .wz-hero-label {
+    justify-content: center;
+    margin-bottom: 8px;
+  }
+
+  .wz-hero-headline {
+    font-size: clamp(1.5rem, 5.5vw, 2rem);
+    margin-bottom: 8px;
+  }
+
+  .wz-hero-body {
+    font-size: 12px;
+    max-width: none;
+    margin-bottom: 14px;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .wz-hero-cta {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    margin-bottom: 0;
+  }
+
+  .wz-hero-cta-primary,
+  .wz-hero-cta-secondary {
+    justify-content: center;
+    width: 100%;
+  }
+
+  .wz-hero-stats {
+    display: none;
+  }
+
+  .wz-hero-corner {
+    display: none;
+  }
+}
+
+/* Short viewports: progressively shed content so the hero never overflows */
+@media (max-width: 768px) and (max-height: 640px) {
+  .wz-hero {
+    padding: 16px 20px;
+    gap: 12px;
+  }
+  .wz-hero-watch {
+    height: 32vh;
+    min-height: 180px;
+  }
+  .wz-hero-body,
+  .wz-hero-label {
+    display: none;
+  }
+  .wz-hero-headline {
+    font-size: clamp(1.3rem, 5vw, 1.6rem);
+  }
+  .wz-hero-cta-primary,
+  .wz-hero-cta-secondary {
+    padding: 12px 20px;
+  }
+}
+@media (max-width: 768px) and (max-height: 520px) {
+  .wz-hero {
+    gap: 8px;
+  }
+  .wz-hero-watch {
+    height: 28vh;
+    min-height: 0;
+  }
+  .wz-hero-headline {
+    font-size: 1.3rem;
+  }
+  .wz-hero-cta-secondary {
+    display: none;
+  }
+}
+
+/* ── Very small screens ── */
+@media (max-width: 400px) {
+  .wz-hero-stat-num {
+    font-size: 1.2rem;
+  }
+  .wz-hero-stats {
+    flex-wrap: wrap;
+    row-gap: 14px;
+  }
+  .wz-hero-stat:nth-child(odd) {
+    border-right: 1px solid rgba(255, 255, 255, 0.08);
+  }
+  .wz-hero-stat:nth-child(even) {
+    border-right: none;
+    margin-right: 0;
+    padding-right: 0;
+  }
+}
+
+/* ── RTL: hero text aligns right; the eyebrow's decorative line flips ── */
+/* ── RTL (desktop only) ──────────────────────────────────────────────────
+   Flip the two columns (text → right, watch → left), right-align the text and
+   put the eyebrow's gold line on the right. Scoped to ≥769px so the centred
+   mobile layout (text-align:center) is preserved in Arabic too. ──────────── */
+@media (min-width: 769px) {
+  [dir='rtl'] .wz-hero {
+    flex-direction: row-reverse;
+  }
+  [dir='rtl'] .wz-hero-text {
+    text-align: right;
+  }
+  [dir='rtl'] .wz-hero-label {
+    flex-direction: row-reverse;
+  }
+}

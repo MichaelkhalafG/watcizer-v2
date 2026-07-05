@@ -1,0 +1,1711 @@
+/* ============================================================
+   Watchizer header — professional two-row layout (wz-*)
+   Strip #1a1a1a · Row 1 white · Row 2 (nav) #262626 · accent #ea2b0f
+   ============================================================ */
+
+/* ── Wrapper (sticky) ─────────────────────────────────────── */
+.wz-header {
+  position: sticky;
+  top: 0;
+  z-index: 1020;
+  background: #fff;
+}
+
+/* ── SECTION A — announcement strip ───────────────────────── */
+.wz-strip {
+  background: var(--wz-ink-soft);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.wz-strip-inner {
+  position: relative;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 0 clamp(16px, 5vw, 64px);
+}
+
+/* ── Scrolling marquee ──────────────────────────────────────── */
+.wz-marquee-wrapper {
+  overflow: hidden;
+  flex: 1;
+  /* leave room for the social icons pinned on the right */
+  padding-inline-end: 60px;
+  mask-image: linear-gradient(90deg, transparent 0%, black 8%, black 92%, transparent 100%);
+  -webkit-mask-image: linear-gradient(90deg, transparent 0%, black 8%, black 92%, transparent 100%);
+  /* Informational ticker: not interactive. Ignoring pointer events on the
+     fast-moving text avoids hover hit-testing churn (and there's nothing to
+     click here). The social icons live in a sibling and stay clickable. */
+  pointer-events: none;
+}
+.wz-marquee-track {
+  display: flex;
+  align-items: center;
+  width: max-content;
+  animation: wzMarquee 40s linear infinite;
+}
+@keyframes wzMarquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+.wz-marquee-item {
+  white-space: nowrap;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.65);
+  padding: 0 4px;
+}
+.wz-marquee-sep {
+  color: rgba(255, 255, 255, 0.25);
+  font-size: 7px;
+  margin: 0 12px;
+  vertical-align: middle;
+}
+/* RTL: reverse the scroll direction */
+[dir='rtl'] .wz-marquee-track {
+  animation-direction: reverse;
+}
+.wz-strip-social {
+  position: absolute;
+  top: 50%;
+  inset-inline-end: clamp(16px, 5vw, 64px);
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.wz-strip-social a {
+  display: inline-flex;
+  color: #fff;
+  opacity: 0.65;
+  transition: opacity 0.2s ease;
+}
+.wz-strip-social a:hover {
+  opacity: 1;
+}
+
+/* ── SECTION B — main row ─────────────────────────────────── */
+.wz-row1 {
+  display: flex;
+  align-items: center;
+  gap: clamp(16px, 3vw, 40px);
+  height: 72px;
+  padding: 0 clamp(16px, 5vw, 64px);
+  transition: box-shadow 0.3s ease;
+}
+.wz-scrolled .wz-row1 {
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.08);
+}
+
+/* Logo */
+.wz-logo {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+.wz-logo a {
+  display: inline-flex;
+  transition: opacity 0.2s ease;
+}
+.wz-logo a:hover {
+  opacity: 0.8;
+}
+.wz-logo img {
+  height: 46px !important;
+  width: auto !important;
+}
+
+/* Search slot (wrapper renamed wz-search-box to avoid clashing
+   with SearchBox's own internal .wz-search pill) */
+.wz-search-box {
+  flex: 1 1 auto;
+  display: flex;
+  justify-content: center;
+  min-width: 0;
+}
+
+/* SearchBox root pill (.wz-search lives in SearchBox.jsx — untouched JSX) */
+.wz-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  max-width: 560px;
+  height: 44px;
+  padding: 0 4px 0 18px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.04);
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease;
+}
+.wz-search:focus-within {
+  background: #fff;
+  border-color: rgba(0, 0, 0, 0.55);
+}
+.wz-search-input {
+  flex: 1 1 auto;
+  height: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--wz-charcoal);
+  font-size: 14px;
+  letter-spacing: 0.02em;
+  min-width: 0;
+}
+.wz-search-input::placeholder {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--wz-charcoal);
+  opacity: 0.4;
+}
+/* Solid dark search button (Amazon / Watches-Prime style) */
+.wz-search-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 36px;
+  flex-shrink: 0;
+  margin-inline-start: 8px;
+  border: none;
+  border-radius: 999px;
+  background: var(--wz-ink-soft);
+  color: #fff;
+  font-size: 18px;
+  opacity: 1;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+.wz-search-btn:hover {
+  background: var(--wz-charcoal);
+  opacity: 1;
+}
+
+/* ── Live search results dropdown (Watches-Prime style) ─────── */
+.wz-search-results {
+  position: absolute;
+  top: calc(100% + 8px);
+  inset-inline-start: 0;
+  inset-inline-end: 0;
+  z-index: 1100;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-top: 2px solid var(--wz-charcoal);
+  border-radius: 6px;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.16);
+  max-height: 420px;
+  overflow-y: auto;
+  padding: 6px 0;
+  animation: wzDropIn 0.16s ease;
+}
+.wz-search-result {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 8px 16px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: start;
+  transition: background 0.15s ease;
+}
+.wz-search-result:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+.wz-search-result-img {
+  width: 48px;
+  height: 48px;
+  flex-shrink: 0;
+  object-fit: cover;
+  border-radius: 4px;
+  background: #f3f3f3;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+}
+.wz-search-result-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.wz-search-result-name {
+  font-size: 12px;
+  line-height: 1.3;
+  color: var(--wz-charcoal);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.wz-search-result-price {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.wz-search-price-sale {
+  font-size: 13px;
+  font-weight: 700;
+  color: #ea2b0f;
+}
+.wz-search-price-old {
+  font-size: 11px;
+  color: #999;
+  text-decoration: line-through;
+}
+.wz-search-viewall {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  padding: 11px 16px;
+  border: none;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  background: transparent;
+  color: var(--wz-charcoal);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  text-align: center;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.wz-search-viewall:hover {
+  background: var(--wz-charcoal);
+  color: #fff;
+}
+.wz-search-empty {
+  padding: 22px 16px;
+  text-align: center;
+  font-size: 12px;
+  color: #999;
+}
+
+/* ── Actions ──────────────────────────────────────────────── */
+/* ══════════════════════════════════════════════
+   HEADER ACTIONS — Luxury Watch Aesthetic
+   The search icon + inline SearchBox are left untouched.
+   ══════════════════════════════════════════════ */
+
+/* ═══════════════════════════════════════════════
+   HEADER ACTIONS — Luxury Watchizer Design
+   Curve: cubic-bezier(.4,0,.1,1) (expo-out)
+   ═══════════════════════════════════════════════ */
+
+.wz-actions {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+
+/* ── Thin vertical separator ──────────────── */
+.wz-act-sep {
+  width: 1px;
+  height: 20px;
+  background: rgba(0, 0, 0, 0.1);
+  margin: 0 20px;
+  flex-shrink: 0;
+}
+
+/* ── Language: EN | ع (each letter its own button) ── */
+.wz-act-lang {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.wz-act-lang__btn {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--wz-ink-soft);
+  font-family: inherit;
+  line-height: 1;
+  transition: color 0.25s ease;
+}
+
+.wz-act-lang__btn.is-active {
+  color: var(--wz-gold);
+  font-weight: 700;
+}
+
+.wz-act-lang__btn:not(.is-active):hover {
+  color: rgba(0, 0, 0, 0.45);
+}
+
+/* The Arabic ع (always the last child) reads bold regardless of active state. */
+.wz-act-lang__btn:last-child {
+  font-weight: 700;
+}
+
+.wz-act-lang__pipe {
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.12);
+  line-height: 1;
+  user-select: none;
+}
+
+/* ── Sign In / Register (logged out) ──────── */
+.wz-act-auth {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+.wz-act-auth__link {
+  position: relative;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--wz-ink-soft);
+  padding: 4px 0;
+  font-family: inherit;
+  white-space: nowrap;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  transition: color 0.32s cubic-bezier(0.4, 0, 0.1, 1);
+}
+/* Gold underline draws in on hover */
+.wz-act-auth__link::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  inset-inline-start: 0;
+  width: 0;
+  height: 1px;
+  background: var(--wz-gold);
+  transition: width 0.32s cubic-bezier(0.4, 0, 0.1, 1);
+}
+.wz-act-auth__link:hover {
+  color: var(--wz-gold);
+}
+.wz-act-auth__link:hover::after {
+  width: 100%;
+}
+
+/* ── Identity: Avatar + Name (logged in) ──── */
+.wz-act-identity {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: inherit;
+}
+.wz-act-ring {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  overflow: hidden;
+  flex-shrink: 0;
+  border: 1.5px solid rgba(0, 0, 0, 0.08);
+  transition: border-color 0.32s cubic-bezier(0.4, 0, 0.1, 1);
+}
+.wz-act-identity:hover .wz-act-ring {
+  border-color: var(--wz-gold);
+}
+.wz-act-ring img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.wz-act-monogram {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(200, 164, 92, 0.06);
+  color: var(--wz-gold);
+  font-size: 14px;
+  font-weight: 600;
+  font-family: var(--wz-serif);
+}
+.wz-act-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--wz-ink-soft);
+  max-width: 80px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: color 0.32s cubic-bezier(0.4, 0, 0.1, 1);
+  position: relative;
+}
+/* Name underlines on hover */
+.wz-act-identity:hover .wz-act-name {
+  color: var(--wz-gold);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--wz-gold);
+}
+
+/* ── Cart: Bag + Count + Price ────────────── */
+.wz-act-bag {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  font-family: inherit;
+  transition: transform 0.28s cubic-bezier(0.4, 0, 0.1, 1);
+}
+.wz-act-bag:hover {
+  transform: translateY(-1px);
+}
+.wz-act-bag__icon {
+  position: relative;
+  font-size: 22px;
+  color: var(--wz-ink-soft);
+  display: flex;
+  align-items: center;
+  line-height: 1;
+  padding: 2px;
+  transition: color 0.32s cubic-bezier(0.4, 0, 0.1, 1);
+}
+.wz-act-bag:hover .wz-act-bag__icon {
+  color: var(--wz-gold);
+}
+.wz-act-bag__info {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+}
+.wz-act-bag__count {
+  font-size: 9px;
+  font-weight: 600;
+  color: rgba(0, 0, 0, 0.35);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  line-height: 1;
+}
+/* The item-count NUMBER highlighted in gold — replaces the old seal badge. */
+.wz-act-bag__num {
+  color: var(--wz-gold);
+  font-weight: 700;
+}
+/* Price in serif for editorial weight */
+.wz-act-bag__price {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--wz-ink-soft);
+  white-space: nowrap;
+  font-family: var(--wz-serif);
+  letter-spacing: 0.01em;
+  line-height: 1.1;
+}
+
+/* NOTE: the desktop header is ALWAYS white (.wz-header { background:#fff }), so
+   desktop actions are ALWAYS dark #1a1a1a — no transparent override on desktop.
+   The .wz-bar-transparent (dark-hero) state only materializes on MOBILE, so all
+   its action overrides live inside the @media (max-width: 768px) block below.
+   (Top-level .wz-bar-transparent action rules were removed — they whitened the
+   desktop home actions on the white header.) */
+
+/* ── SECTION C — nav row (dark) ───────────────────────────── */
+.wz-row2 {
+  background: var(--wz-charcoal);
+}
+.Nav {
+  background: var(--wz-charcoal);
+}
+.nav-inner {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  min-height: 48px;
+  padding: 0 clamp(16px, 5vw, 64px);
+}
+.nav-ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+}
+.nav-ul li {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+}
+.nav-link-item {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 48px;
+  padding: 0 18px;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.72);
+  text-decoration: none;
+  background: none;
+  border: none;
+  cursor: pointer;
+  transition:
+    color 0.2s ease,
+    background 0.2s ease;
+}
+.nav-link-item:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.06);
+}
+.nav-link-item::after {
+  content: '';
+  position: absolute;
+  left: 18px;
+  right: 18px;
+  bottom: 0;
+  height: 2px;
+  background: #ea2b0f;
+  transform: scaleX(0);
+  transform-origin: center;
+  transition: transform 0.2s ease;
+}
+.nav-link-item:hover::after,
+.nav-link-item.active::after {
+  transform: scaleX(1);
+}
+.nav-link-item.active {
+  color: #fff;
+}
+
+/* Brands hover dropdown (current Nav.jsx — white popover) */
+.nav-ul li .sub-menu {
+  position: absolute;
+  top: 100%;
+  inset-inline-start: 0;
+  width: 240px;
+  max-height: 380px;
+  overflow-y: auto;
+  padding: 8px;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-top: 2px solid #ea2b0f;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.16);
+  border-radius: 0 0 6px 6px;
+  z-index: 1000;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-8px);
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease;
+}
+.nav-ul li:hover .sub-menu {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+.sub-menu a {
+  display: block;
+  padding: 8px 10px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--wz-charcoal);
+  opacity: 0.65;
+  text-decoration: none;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+  transition:
+    opacity 0.2s ease,
+    padding-inline-start 0.2s ease;
+}
+.sub-menu a:last-child {
+  border-bottom: none;
+}
+.sub-menu a:hover {
+  opacity: 1;
+  padding-inline-start: 18px;
+}
+
+/* ── Dynamic nav dropdowns (Nav.jsx) ──────────────────────── */
+/* Nav wrappers must never clip the dropdowns that escape their box… */
+.wz-row2 {
+  position: relative;
+  overflow: visible;
+}
+.nav-ul,
+.nav-inner {
+  overflow: visible;
+}
+.nav-item {
+  position: relative;
+  overflow: visible;
+}
+/* …but the page itself must not scroll sideways if a menu reaches the edge.
+   Use `clip` (not `hidden`) so this never establishes a scroll container that
+   would break the sticky header. */
+body {
+  overflow-x: clip;
+}
+
+/* Thin styled scrollbar for every scrollable dropdown (WebKit/Blink) */
+.nav-dropdown::-webkit-scrollbar,
+.nav-subdropdown::-webkit-scrollbar,
+.wz-shop-dropdown::-webkit-scrollbar {
+  width: 4px;
+}
+.nav-dropdown::-webkit-scrollbar-track,
+.nav-subdropdown::-webkit-scrollbar-track,
+.wz-shop-dropdown::-webkit-scrollbar-track {
+  background: transparent;
+}
+.nav-dropdown::-webkit-scrollbar-thumb,
+.nav-subdropdown::-webkit-scrollbar-thumb,
+.wz-shop-dropdown::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 2px;
+}
+
+/* Subtle fade at the bottom of a scrollable dropdown to hint at more content */
+.wz-dropdown-scrollable::after {
+  content: '';
+  position: sticky;
+  bottom: 0;
+  left: 0;
+  display: block;
+  height: 24px;
+  margin-top: -24px;
+  background: linear-gradient(transparent, rgba(255, 255, 255, 0.95));
+  pointer-events: none;
+}
+.nav-link-item {
+  font-family: inherit;
+}
+
+/* First-level dropdown panel */
+.nav-dropdown {
+  position: absolute;
+  top: 100%;
+  inset-inline-start: 0;
+  min-width: 240px;
+  padding: 8px;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-top: 2px solid #ea2b0f;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.16);
+  z-index: 1000;
+  animation: wzNavFade 0.18s ease;
+  /* never run past the viewport bottom — scroll instead */
+  max-height: min(60vh, 480px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 0, 0, 0.15) transparent;
+}
+@keyframes wzNavFade {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Dropdown item (link or button) */
+.nav-dropdown-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 12px;
+  font-family: inherit;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-align: start;
+  color: var(--wz-charcoal);
+  opacity: 0.7;
+  background: none;
+  border: none;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    opacity 0.2s ease,
+    padding-inline-start 0.2s ease,
+    background 0.2s ease;
+}
+.nav-dropdown-item:last-child {
+  border-bottom: none;
+}
+.nav-dropdown-item:hover {
+  opacity: 1;
+  padding-inline-start: 18px;
+  background: rgba(0, 0, 0, 0.03);
+}
+
+/* Brand name + optional logo cell inside dropdown items */
+.nav-brand-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.nav-brand-logo {
+  height: 22px;
+  width: auto;
+  max-width: 64px;
+  object-fit: contain;
+  flex-shrink: 0;
+  filter: grayscale(1);
+  opacity: 0.85;
+  transition:
+    filter 0.2s ease,
+    opacity 0.2s ease;
+}
+.nav-dropdown-item:hover .nav-brand-logo {
+  filter: grayscale(0);
+  opacity: 1;
+}
+
+/* ── Brand dropdown rows with fixed 36×36 logo box ─────────── */
+.wz-brand-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 16px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: start;
+  font-family: inherit;
+  transition: background 0.15s;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+}
+.wz-brand-item:last-child {
+  border-bottom: none;
+}
+.wz-brand-item:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+.wz-brand-logo-box {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.04);
+  border-radius: 3px;
+  overflow: hidden;
+  border: 1px solid rgba(0, 0, 0, 0.07);
+}
+.wz-brand-logo-box img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
+  padding: 4px;
+  filter: grayscale(100%);
+  transition: filter 0.2s;
+}
+.wz-brand-logo-initials {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--wz-charcoal);
+  text-align: center;
+}
+.wz-brand-text {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: rgba(38, 38, 38, 0.75);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0; /* allow the text to shrink so ellipsis works in the flex row */
+  transition: color 0.15s;
+}
+.wz-brand-item:hover .wz-brand-logo-box img {
+  filter: grayscale(0%);
+}
+.wz-brand-item:hover .wz-brand-text {
+  color: var(--wz-charcoal);
+}
+
+/* Brands dropdown grouped by category type. It inherits scroll from
+   .nav-dropdown (max-height + overflow-y:auto). The nested brand→gender flyout
+   would normally be clipped by that scroll container, so it is taken OUT of the
+   flow via position:fixed and placed by JS (see Nav.jsx) — that lets the list
+   scroll AND the flyout stay fully visible / flip near the screen edge. */
+/* Compact rows + smaller logo box so each scrollable row is dense. */
+.nav-dropdown-brands .wz-brand-item {
+  padding: 6px 14px;
+}
+.nav-dropdown-brands .wz-brand-logo-box {
+  width: 32px;
+  height: 32px;
+}
+.nav-brand-group-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px 6px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: rgba(38, 38, 38, 0.4);
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+}
+.nav-dropdown-brands > div:first-child .nav-brand-group-header {
+  border-top: none;
+}
+.nav-brand-group-icon {
+  display: flex;
+  align-items: center;
+  color: rgba(38, 38, 38, 0.55);
+}
+
+/* Brand row that owns a nested menu */
+.nav-dropdown-row {
+  position: relative;
+}
+.nav-row-caret {
+  font-size: 15px;
+  line-height: 1;
+  opacity: 0.4;
+}
+
+/* Nested dropdown — rendered position:fixed and placed by JS (Nav.jsx) so it can
+   escape the scrollable brands dropdown and flip to whichever side has room. */
+.nav-subdropdown {
+  position: fixed;
+  min-width: 200px;
+  max-width: 240px;
+  padding: 8px;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-top: 2px solid var(--wz-charcoal);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.18);
+  z-index: 2001;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 0, 0, 0.15) transparent;
+  animation: wzNavFade 0.18s ease;
+}
+
+/* Invisible hover bridges so the pointer never loses hover when crossing the
+   gap from the trigger into a dropdown (vertical) or from a brand row into the
+   nested menu (horizontal). They're part of the dropdown subtree, so hovering
+   them keeps the menu open. */
+.nav-dropdown::before {
+  content: '';
+  position: absolute;
+  top: -8px;
+  left: 0;
+  right: 0;
+  height: 8px;
+  background: transparent;
+}
+/* ── Shop dropdown (grouped categories + sub-types) ─────────── */
+.wz-shop-dropdown {
+  position: absolute;
+  top: 100%;
+  inset-inline-start: 0;
+  width: 260px;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-top: 3px solid var(--wz-charcoal);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.15);
+  z-index: 2000;
+  padding: 6px 0;
+  animation: wzDropIn 0.15s ease;
+  max-height: min(60vh, 480px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 0, 0, 0.15) transparent;
+}
+@keyframes wzDropIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+/* invisible hover bridge so the menu doesn't close crossing trigger → panel */
+.wz-shop-dropdown::before {
+  content: '';
+  position: absolute;
+  top: -8px;
+  left: 0;
+  right: 0;
+  height: 8px;
+  background: transparent;
+}
+.wz-shop-cat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 10px 16px 8px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--wz-charcoal);
+  /* stay visible while its sub-types scroll past */
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #fff;
+  border: none;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  cursor: pointer;
+  text-align: start;
+  font-family: inherit;
+  transition: background 0.15s;
+}
+.wz-shop-cat-header:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+.wz-shop-cat-arrow {
+  font-size: 12px;
+  opacity: 0.4;
+  font-weight: 300;
+}
+.wz-shop-cat-divider {
+  height: 1px;
+  background: rgba(0, 0, 0, 0.08);
+  margin: 0 16px 4px;
+}
+.wz-shop-sub-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 7px 16px 7px 26px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: rgba(38, 38, 38, 0.6);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: start;
+  font-family: inherit;
+  transition: background-color var(--wz-duration-fast) var(--wz-ease),
+    color var(--wz-duration-fast) var(--wz-ease),
+    transform var(--wz-duration-fast) var(--wz-ease);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.wz-shop-sub-item:hover {
+  background: rgba(0, 0, 0, 0.03);
+  color: var(--wz-charcoal);
+  transform: translateX(4px);
+}
+[dir='rtl'] .wz-shop-sub-item:hover {
+  transform: translateX(-4px);
+}
+/* "See all (N)" row shown when a category has more than 8 sub-types */
+.wz-shop-see-all {
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #ea2b0f;
+  padding-inline-start: 26px;
+}
+.wz-shop-see-all:hover {
+  color: #ea2b0f;
+  background: rgba(234, 43, 15, 0.06);
+}
+.wz-shop-section-sep {
+  height: 6px;
+  background: rgba(0, 0, 0, 0.04);
+  margin: 4px 0;
+}
+
+/* ── Hamburger (mobile only) ──────────────────────────────── */
+.wz-burger {
+  display: none; /* hidden on desktop */
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  flex-shrink: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--wz-charcoal);
+  font-size: 24px;
+  cursor: pointer;
+  border-radius: 8px;
+  transition:
+    background 0.2s ease,
+    color 0.3s ease;
+}
+.wz-burger:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+/* ── Mobile search icon (in actions) ──────────────────────── */
+.wz-search-icon {
+  display: none; /* hidden on desktop — inline SearchBox is used there */
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  min-width: 42px;
+  flex-shrink: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--wz-charcoal);
+  font-size: 22px;
+  cursor: pointer;
+  border-radius: 50%;
+  transition:
+    background 0.2s ease,
+    color 0.3s ease;
+}
+.wz-search-icon:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+/* ── Mobile slide-down search bar ─────────────────────────────
+   The container matches the header surface (no seam); the form is the filled
+   field. Colours follow the header state via .wz-bar-transparent on <header>.
+   DEFAULT below = frosted-white (scrolled) state. ───────────────────────── */
+.wz-msearch {
+  display: none; /* only mounts visually on mobile */
+  overflow: hidden;
+  max-height: 0;
+  background: #fff;
+  transition:
+    max-height 0.2s ease,
+    background 0.3s ease;
+}
+.wz-msearch.is-open {
+  max-height: 64px;
+}
+.wz-msearch-form {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  margin: 8px 20px 12px;
+  padding: 0 12px 0 14px;
+  background: #f5f5f5;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 8px;
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease;
+}
+.wz-msearch-form:focus-within {
+  border-color: rgba(200, 164, 92, 0.5);
+}
+.wz-msearch-icon {
+  font-size: 18px;
+  color: rgba(0, 0, 0, 0.4);
+  flex-shrink: 0;
+}
+.wz-msearch-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 14px;
+  color: var(--wz-ink-soft);
+  text-align: start; /* aligns right under [dir=rtl] */
+}
+.wz-msearch-input::placeholder {
+  color: rgba(0, 0, 0, 0.35);
+}
+.wz-msearch-cancel {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  color: rgba(0, 0, 0, 0.5);
+  font-size: 20px;
+  cursor: pointer;
+  border-radius: 6px;
+}
+
+/* DARK state — search bar sitting over the dark hero */
+.wz-bar-transparent .wz-msearch {
+  background: #0a0a0a;
+}
+.wz-bar-transparent .wz-msearch-form {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+.wz-bar-transparent .wz-msearch-form:focus-within {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(200, 164, 92, 0.5);
+}
+.wz-bar-transparent .wz-msearch-icon {
+  color: rgba(255, 255, 255, 0.4);
+}
+.wz-bar-transparent .wz-msearch-input {
+  color: #fff;
+}
+.wz-bar-transparent .wz-msearch-input::placeholder {
+  color: rgba(255, 255, 255, 0.35);
+}
+.wz-bar-transparent .wz-msearch-cancel {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+/* ── Drawer separator ─────────────────────────────────────── */
+.wz-drawer-sep {
+  height: 1px;
+  margin: 8px 16px;
+  background: rgba(0, 0, 0, 0.1);
+}
+
+/* Mobile fixed-header spacer (hidden on desktop) */
+.wz-bar-spacer {
+  display: none;
+}
+
+/* ── Mobile drawer + overlay ──────────────────────────────── */
+.wz-drawer-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+  z-index: 3000;
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity 0.25s ease,
+    visibility 0.25s ease;
+}
+.wz-drawer-overlay.is-open {
+  opacity: 1;
+  visibility: visible;
+}
+
+.wz-drawer {
+  position: fixed;
+  top: 0;
+  inset-inline-start: 0;
+  width: 85vw;
+  max-width: 320px;
+  height: 100vh;
+  height: 100dvh;
+  background: #fff;
+  z-index: 3001;
+  display: flex;
+  flex-direction: column;
+  transform: translateX(-100%);
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.wz-drawer.is-open {
+  transform: translateX(0);
+  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.15);
+}
+/* RTL: the base `inset-inline-start: 0` already anchors the drawer to the RIGHT
+   edge in RTL — so only the off-screen transform must flip (to the right). The
+   previous inset override re-anchored it to the left, which left a visible
+   sliver on close. Keep just the transform here. */
+[dir='rtl'] .wz-drawer,
+.wz-drawer[dir='rtl'] {
+  transform: translateX(100%);
+}
+[dir='rtl'] .wz-drawer.is-open,
+.wz-drawer[dir='rtl'].is-open {
+  transform: translateX(0);
+  box-shadow: -4px 0 24px rgba(0, 0, 0, 0.15);
+}
+
+/* Drawer header */
+.wz-drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 52px;
+  padding: 0 14px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.07);
+  flex-shrink: 0;
+}
+.wz-drawer-logo img {
+  height: 24px;
+  width: auto;
+}
+.wz-drawer-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border: none;
+  background: transparent;
+  color: var(--wz-charcoal);
+  font-size: 24px;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: background 0.2s ease;
+}
+.wz-drawer-close:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+/* Drawer search */
+.wz-drawer-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 16px;
+  height: 44px;
+  /* logical padding so it mirrors in RTL (text side gets the larger inset) */
+  padding-block: 0;
+  padding-inline-start: 16px;
+  padding-inline-end: 8px;
+  background: #f5f5f5;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+.wz-drawer-search input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 14px;
+  color: var(--wz-ink-soft);
+  text-align: start; /* right-aligns under [dir=rtl] */
+}
+.wz-drawer-search button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: rgba(0, 0, 0, 0.5);
+  font-size: 18px;
+  cursor: pointer;
+}
+
+/* Drawer nav */
+.wz-drawer-nav {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+}
+.wz-drawer-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  height: 52px;
+  padding: 0 16px;
+  border: none;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+  background: transparent;
+  color: var(--wz-ink-soft);
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  text-align: start;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.wz-drawer-link:hover {
+  background: rgba(0, 0, 0, 0.03);
+}
+.wz-drawer-caret {
+  font-size: 16px;
+  opacity: 0.5;
+  transition: transform 0.2s ease;
+}
+.wz-drawer-acc-head.is-open .wz-drawer-caret {
+  transform: rotate(180deg);
+}
+.wz-drawer-sub {
+  display: flex;
+  flex-direction: column;
+  background: #fafafa;
+  max-height: 320px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.wz-drawer-sublink {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 42px;
+  padding: 0 16px;
+  padding-inline-start: 24px;
+  border: none;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+  background: transparent;
+  color: rgba(0, 0, 0, 0.6);
+  font-size: 13px;
+  text-align: start;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    padding-inline-start 0.15s ease;
+}
+.wz-drawer-sublink:hover {
+  color: var(--wz-gold);
+  padding-inline-start: 28px;
+}
+
+/* Category section header inside the Shop accordion */
+.wz-drawer-group-head {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 40px;
+  padding: 0 16px;
+  border: none;
+  background: transparent;
+  color: var(--wz-ink-soft);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  text-align: start;
+  cursor: pointer;
+}
+.wz-drawer-group + .wz-drawer-group .wz-drawer-group-head {
+  border-top: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+/* Brand row with small logo */
+.wz-drawer-brand {
+  gap: 10px;
+}
+.wz-drawer-brand-logo {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.wz-drawer-brand-logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  padding: 2px;
+  filter: grayscale(1);
+}
+.wz-drawer-brand-ph {
+  font-size: 10px;
+  font-weight: 700;
+  color: rgba(0, 0, 0, 0.5);
+  text-transform: uppercase;
+}
+
+/* Drawer footer */
+.wz-drawer-foot {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 16px;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  flex-shrink: 0;
+}
+.wz-drawer-credit {
+  margin: 0;
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.45);
+}
+.wz-drawer-credit a {
+  color: var(--wz-gold);
+  font-weight: 600;
+  text-decoration: none;
+}
+.wz-drawer-credit a:hover {
+  text-decoration: underline;
+}
+
+/* Drawer never participates on desktop */
+@media (min-width: 769px) {
+  .wz-drawer,
+  .wz-drawer-overlay {
+    display: none;
+  }
+}
+
+/* ── Responsive (≤768px) ──────────────────────────────────── */
+@media (max-width: 768px) {
+  .wz-strip {
+    display: none;
+  }
+  .wz-row2 {
+    display: none;
+  }
+  .wz-burger {
+    display: inline-flex;
+  }
+  .wz-search-icon {
+    display: inline-flex;
+  }
+  .wz-msearch {
+    display: block;
+  }
+
+  /* Sticky header. DEFAULT (scrolled past hero / non-home) = frosted white. */
+  .wz-header {
+    position: sticky;
+    top: 0;
+    z-index: 1050;
+    background: rgba(255, 255, 255, 0.95);
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+    box-shadow: 0 1px 8px rgba(0, 0, 0, 0.04);
+    transition:
+      background 0.3s ease,
+      box-shadow 0.3s ease,
+      border-color 0.3s ease;
+  }
+  /* OVER THE HERO (home, before scrolling past it): same #0a0a0a as the hero,
+     no border, no shadow — header and hero read as one continuous dark surface. */
+  .wz-header.wz-bar-transparent {
+    background: #0a0a0a;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    border-bottom-color: transparent;
+    box-shadow: none;
+  }
+
+  /* Icon buttons: just the icon — no background, no circle, no border. The 8px
+     padding only provides a tap target. Colour follows the header state. */
+  .wz-burger,
+  .wz-search-icon {
+    width: auto;
+    height: auto;
+    min-width: 0;
+    padding: 8px;
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    font-size: 20px;
+    color: var(--wz-ink-soft);
+    transition: color 0.3s ease;
+  }
+  .wz-burger:hover,
+  .wz-search-icon:hover {
+    background: transparent;
+    transform: none;
+    color: #000;
+  }
+  /* Dark (over-hero) state → soft-white icons, full white on tap */
+  .wz-bar-transparent .wz-burger,
+  .wz-bar-transparent .wz-search-icon {
+    color: rgba(255, 255, 255, 0.85);
+  }
+  .wz-bar-transparent .wz-burger:hover,
+  .wz-bar-transparent .wz-search-icon:hover {
+    color: #fff;
+  }
+
+  /* The wrapper div around <Header> must not draw its own line on mobile */
+  .header {
+    box-shadow: none;
+  }
+  /* Sticky header reserves its own height in flow — no spacer needed */
+  .wz-bar-spacer {
+    display: none;
+  }
+
+  /* Refined bar: hamburger left · logo centered · search + cart right */
+  .wz-row1 {
+    position: relative;
+    height: 52px;
+    gap: 8px;
+    padding: 0 20px;
+  }
+  .wz-logo {
+    position: static;
+    transform: none;
+    margin-inline-start: 4px;
+  }
+  .wz-logo img {
+    height: 26px !important;
+    transition:
+      filter 0.3s ease,
+      opacity 0.3s ease;
+  }
+  /* Over the hero: dimmed-white logo. Frosted-white state: normal dark logo. */
+  .wz-bar-transparent .wz-logo img {
+    filter: brightness(0) invert(1);
+    opacity: 0.9;
+  }
+  /* Mobile bar keeps: search icon · identity/login icon · cart. Only the
+     text-heavy bits are hidden. (.wz-act-lang is scoped to .wz-actions so the
+     DRAWER language toggle, which shares the class, stays visible on mobile.) */
+  .wz-search-box,
+  .wz-actions .wz-act-lang,
+  .wz-act-sep,
+  .wz-act-name {
+    display: none !important;
+  }
+
+  .wz-actions {
+    margin-inline-start: auto;
+    gap: 4px;
+  }
+
+  /* Logged in → show just the avatar ring (no name) */
+  .wz-act-identity {
+    display: flex !important;
+    padding: 0;
+    gap: 0;
+  }
+  .wz-act-ring {
+    width: 28px;
+    height: 28px;
+  }
+  .wz-act-monogram {
+    font-size: 12px;
+  }
+
+  /* Logged out → collapse the two links to a single user icon (SIGN IN) */
+  .wz-act-auth {
+    display: flex !important;
+  }
+  .wz-act-auth__link:last-child {
+    display: none !important;
+  }
+  .wz-act-auth__link:first-child {
+    font-size: 0;
+    padding: 8px;
+    position: relative;
+  }
+  .wz-act-auth__link:first-child::before {
+    content: '';
+    display: block;
+    width: 20px;
+    height: 20px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%231a1a1a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2'%3E%3C/path%3E%3Ccircle cx='12' cy='7' r='4'%3E%3C/circle%3E%3C/svg%3E");
+    background-size: contain;
+    background-repeat: no-repeat;
+  }
+  .wz-act-auth__link::after {
+    display: none !important;
+  }
+
+  /* Dark state (over the hero) for the avatar ring + login icon */
+  .wz-bar-transparent .wz-act-ring {
+    border-color: rgba(255, 255, 255, 0.2);
+  }
+  .wz-bar-transparent .wz-act-monogram {
+    background: rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.85);
+  }
+  .wz-bar-transparent .wz-act-auth__link:first-child::before {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2'%3E%3C/path%3E%3Ccircle cx='12' cy='7' r='4'%3E%3C/circle%3E%3C/svg%3E");
+  }
+
+  /* Cart: bag icon + compact count/price text on mobile */
+  .wz-act-bag {
+    padding: 6px 8px;
+    gap: 6px;
+  }
+  .wz-act-bag__icon {
+    font-size: 20px;
+    color: var(--wz-ink-soft);
+    transition: color 0.3s ease;
+  }
+  .wz-act-bag:hover {
+    transform: none;
+  }
+  .wz-act-bag__info {
+    display: flex !important;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1px;
+  }
+  .wz-act-bag__count {
+    font-size: 8px;
+  }
+  .wz-act-bag__price {
+    font-size: 11px;
+  }
+
+  /* ── DARK STATE: over the hero → white icon + text, gold number ── */
+  .wz-bar-transparent .wz-act-bag__icon {
+    color: rgba(255, 255, 255, 0.85);
+  }
+  .wz-bar-transparent .wz-act-bag:hover .wz-act-bag__icon {
+    color: #fff;
+  }
+  .wz-bar-transparent .wz-act-bag__count {
+    color: rgba(255, 255, 255, 0.5);
+  }
+  .wz-bar-transparent .wz-act-bag__num {
+    color: var(--wz-gold);
+  }
+  .wz-bar-transparent .wz-act-bag__price {
+    color: rgba(255, 255, 255, 0.85);
+  }
+
+  /* ── LIGHT STATE: scrolled past hero → dark icon (count/price use base dark) ── */
+  .wz-header:not(.wz-bar-transparent) .wz-act-bag__icon {
+    color: var(--wz-ink-soft);
+  }
+  /* Slide-down search sits under the fixed bar */
+  .wz-msearch.is-open {
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.06);
+  }
+}

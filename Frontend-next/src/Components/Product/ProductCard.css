@@ -1,0 +1,376 @@
+/* ══════════════════════════════════════════════
+   PRODUCT CARD — luxury watch storefront
+   ══════════════════════════════════════════════ */
+
+.wz-pc {
+  --pc-gold: #c8a45c;
+  --pc-ink: #15130f;
+  --pc-muted: #8a857c;
+  --pc-line: rgba(0, 0, 0, 0.08);
+  --pc-red: #d4341a;
+
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: #fff;
+  border: 1px solid var(--pc-line);
+  border-radius: 12px;
+  overflow: hidden;
+  cursor: pointer;
+  outline: none;
+  /* Composite-only: animate transform (GPU). box-shadow / border-color still
+     change on hover but snap instantly — transitioning them repaints every card
+     and thrashed paint during hover. */
+  transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@media (hover: hover) {
+  .wz-pc:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
+    border-color: rgba(200, 164, 92, 0.4);
+  }
+}
+
+.wz-pc:focus-visible {
+  outline: 2px solid var(--pc-gold);
+  outline-offset: 3px;
+}
+
+.wz-pc--out {
+  opacity: 0.92;
+}
+
+/* ── Media ───────────────────────────────────── */
+.wz-pc__media {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  overflow: hidden;
+  background: radial-gradient(circle at 50% 38%, #fbfaf8 0%, #efece6 100%);
+}
+
+.wz-pc__img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
+  display: block;
+  transition: transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@media (hover: hover) {
+  .wz-pc:hover .wz-pc__img {
+    transform: scale(1.06);
+  }
+}
+
+/* ── Badges — small independent pills ────────── */
+.wz-pc__badge {
+  position: absolute;
+  top: 10px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 9px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  line-height: 1;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.14);
+}
+
+.wz-pc__badge--new {
+  left: 10px;
+  background: var(--pc-ink);
+  color: #fff;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.wz-pc__badge--sale {
+  right: 10px;
+  background: var(--pc-red);
+  color: #fff;
+  font-weight: 800;
+}
+
+[dir='rtl'] .wz-pc__badge--new {
+  left: auto;
+  right: 10px;
+}
+
+[dir='rtl'] .wz-pc__badge--sale {
+  right: auto;
+  left: 10px;
+}
+
+/* ── Sold out overlay ────────────────────────── */
+.wz-pc__soldout {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(250, 249, 247, 0.55);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+
+.wz-pc__soldout span {
+  padding: 8px 22px;
+  background: rgba(21, 19, 15, 0.82);
+  color: #fff;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+/* ── Body ────────────────────────────────────── */
+.wz-pc__body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  gap: 6px;
+  padding: 12px 14px 14px;
+}
+
+.wz-pc__brand {
+  margin: 0 0 3px;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+  color: var(--pc-gold);
+}
+
+.wz-pc__title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--wz-ink);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  /* exactly two lines (2 × 1.4 line-height) — short names padded, long clamped */
+  min-height: 2.8em;
+  max-height: 2.8em;
+  word-break: break-word;
+}
+
+/* ── Rating — gold partial fill ──────────────── */
+.wz-pc__rating {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.wz-pc__stars {
+  position: relative;
+  font-size: 13px;
+  line-height: 1;
+  letter-spacing: 1px;
+  color: rgba(0, 0, 0, 0.14);
+  background: linear-gradient(
+    90deg,
+    var(--pc-gold) calc(var(--rating, 0) / 5 * 100%),
+    rgba(0, 0, 0, 0.14) calc(var(--rating, 0) / 5 * 100%)
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+[dir='rtl'] .wz-pc__stars {
+  background: linear-gradient(
+    -90deg,
+    var(--pc-gold) calc(var(--rating, 0) / 5 * 100%),
+    rgba(0, 0, 0, 0.14) calc(var(--rating, 0) / 5 * 100%)
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+
+.wz-pc__reviews {
+  font-size: 10px;
+  color: var(--pc-muted);
+}
+
+/* ── Prices — always two rows tall (placeholder when no sale) ── */
+.wz-pc__prices {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 4px;
+}
+
+.wz-pc__price-main {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+/* Reserves the strikethrough line's space even when there is no sale */
+.wz-pc__price-orig-row {
+  min-height: 15px;
+  line-height: 15px;
+}
+
+.wz-pc__price-ph {
+  display: block;
+  height: 15px;
+}
+
+.wz-pc__price {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--pc-ink);
+}
+
+.wz-pc__price--sale {
+  color: var(--pc-red);
+}
+
+.wz-pc__price--orig {
+  font-size: 11px;
+  font-weight: 500;
+  color: rgba(0, 0, 0, 0.28);
+  text-decoration: line-through;
+}
+
+/* ── Bottom block — stock + button, always pinned to the card bottom ── */
+.wz-pc__bottom {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+/* ── Stock status ────────────────────────────── */
+.wz-pc__stock {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.wz-pc__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.wz-pc__stock-text {
+  font-size: 11px;
+  font-weight: 500;
+  color: rgba(0, 0, 0, 0.55);
+}
+
+.wz-pc__stock--express .wz-pc__dot {
+  background: #16a34a;
+  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.16);
+}
+.wz-pc__stock--market .wz-pc__dot {
+  background: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.16);
+}
+.wz-pc__stock--out .wz-pc__dot {
+  background: var(--pc-red);
+  box-shadow: 0 0 0 3px rgba(212, 52, 26, 0.16);
+}
+
+/* ── Add to cart (inside .wz-pc__bottom, which carries the auto margin) ── */
+.wz-pc__add {
+  width: 100%;
+  height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 4px;
+  background: #f5f5f5;
+  color: var(--wz-ink-soft);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+
+@media (hover: hover) {
+  .wz-pc__add:hover:not(:disabled) {
+    background: var(--wz-ink-soft);
+    color: #fff;
+  }
+}
+
+.wz-pc__add:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.wz-pc__add.is-added {
+  background: var(--pc-gold) !important;
+  color: #fff !important;
+}
+
+.wz-pc__add:disabled {
+  background: #f0f0f0;
+  color: rgba(0, 0, 0, 0.3);
+  cursor: not-allowed;
+}
+
+/* ── Responsive (mobile) ─────────────────────── */
+@media (max-width: 768px) {
+  .wz-pc {
+    border-radius: 10px;
+  }
+  .wz-pc__body {
+    gap: 5px;
+    padding: 10px 12px 12px;
+  }
+  .wz-pc__brand {
+    font-size: 9px;
+  }
+  .wz-pc__title {
+    font-size: 12px; /* min/max-height of 2.8em from the base rule scales with this */
+  }
+  .wz-pc__stars {
+    font-size: 10px;
+  }
+  .wz-pc__reviews {
+    font-size: 9px;
+  }
+  .wz-pc__price {
+    font-size: 13px;
+  }
+  .wz-pc__price--orig {
+    font-size: 10px;
+  }
+  .wz-pc__stock-text {
+    font-size: 10px;
+  }
+  .wz-pc__badge {
+    font-size: 8px;
+    padding: 3px 6px;
+  }
+  .wz-pc__add {
+    height: 42px;
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    border: 1px solid rgba(0, 0, 0, 0.12);
+    border-radius: 4px;
+    background: #f5f5f5;
+  }
+}
