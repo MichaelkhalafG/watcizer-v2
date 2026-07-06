@@ -1,0 +1,1181 @@
+/* ══════════════════════════════════════════════
+   PRODUCT / OFFER DETAIL — luxury PDP
+   Palette: #111 ink · #C8A45C gold · #fafafa bg
+   Headings: Georgia serif · restrained, generous
+   ══════════════════════════════════════════════ */
+
+.wz-pd {
+  --pd-ink: #111;
+  --pd-gold: #c8a45c;
+  --pd-line: rgba(0, 0, 0, 0.08);
+  --pd-muted: rgba(0, 0, 0, 0.4);
+  background: #fafafa;
+  min-height: 60vh;
+  padding: 0 0 72px;
+}
+
+.wz-pd-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 48px;
+  animation: wzPdFade 0.45s ease both;
+}
+@keyframes wzPdFade {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ── Breadcrumb ───────────────────────────────── */
+.wz-pd-bc {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 28px 0 22px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--pd-muted);
+}
+.wz-pd-bc-link {
+  color: var(--pd-muted);
+  text-decoration: none;
+  transition: color 0.2s;
+}
+.wz-pd-bc-link:hover {
+  color: var(--pd-ink);
+}
+.wz-pd-bc-sep {
+  color: rgba(0, 0, 0, 0.18);
+}
+.wz-pd-bc-current {
+  color: var(--pd-ink);
+  font-weight: 600;
+}
+
+/* Mobile-only product summary (shown via the responsive block below) */
+.wz-pd-mobile-summary {
+  display: none;
+}
+
+/* ── Main two-column layout ───────────────────── */
+.wz-pd-grid {
+  display: grid;
+  grid-template-columns: 55% 1fr;
+  gap: 56px;
+  align-items: start;
+}
+
+/* ── Gallery ──────────────────────────────────── */
+.wz-pd-gallery {
+  position: sticky;
+  top: 92px;
+}
+.wz-pd-main {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  padding: 24px;
+  box-sizing: border-box;
+  background: #f8f8f8;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 12px;
+  overflow: hidden;
+  cursor: zoom-in;
+}
+.wz-pd-main-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+  transition: transform 0.25s ease, transform-origin 0.1s ease;
+  animation: wzPdImgFade 0.25s ease;
+}
+@keyframes wzPdImgFade {
+  from {
+    opacity: 0.4;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.wz-pd-discount {
+  position: absolute;
+  top: 18px;
+  inset-inline-start: 18px;
+  z-index: 2;
+  padding: 5px 11px;
+  border-radius: 999px;
+  background: var(--wz-danger);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+/* ── Main image hover-zoom (custom ImageZoom — no external library) ── */
+.wz-pd-main-img-zoom {
+  width: 100%;
+  max-width: 600px;
+  aspect-ratio: 1;
+  margin: 0 auto;
+}
+
+@media (max-width: 768px) {
+  .wz-pd-main-img-zoom {
+    max-width: 100%;
+    border-radius: 0;
+  }
+}
+
+.wz-pd-thumbs {
+  display: flex;
+  gap: 12px;
+  margin-top: 16px;
+  flex-wrap: wrap;
+}
+.wz-pd-thumb {
+  width: 48px;
+  height: 48px;
+  padding: 4px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: #f8f8f8;
+  overflow: hidden;
+  cursor: pointer;
+  opacity: 0.5;
+  transition: opacity 0.2s ease, border-color 0.2s ease;
+}
+.wz-pd-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+.wz-pd-thumb:hover {
+  opacity: 1;
+}
+.wz-pd-thumb.is-active {
+  opacity: 1;
+  border-color: var(--pd-gold);
+}
+
+.wz-pd-dots {
+  display: none;
+  justify-content: center;
+  gap: 7px;
+}
+.wz-pd-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.2);
+  cursor: pointer;
+  transition: background 0.2s, transform 0.2s;
+}
+.wz-pd-dot.is-active {
+  background: var(--pd-gold);
+  transform: scale(1.2);
+}
+
+/* ── Info column ──────────────────────────────── */
+.wz-pd-info {
+  display: flex;
+  flex-direction: column;
+  padding-top: 4px;
+}
+
+.wz-pd-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  margin-bottom: 8px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--pd-gold);
+  text-decoration: none;
+}
+.wz-pd-brand-logo {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+  border-radius: 50%;
+  background: #fff;
+}
+
+.wz-pd-name {
+  margin: 0 0 16px;
+  font-family: var(--wz-serif);
+  font-size: clamp(1.6rem, 3vw, 2.2rem);
+  font-weight: 300;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  color: var(--wz-ink);
+}
+
+.wz-pd-rating {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+.wz-pd-stars {
+  position: relative;
+  font-size: 12px;
+  line-height: 1;
+  letter-spacing: 2px;
+  background: linear-gradient(
+    90deg,
+    var(--pd-gold) calc(var(--rating, 0) / 5 * 100%),
+    rgba(0, 0, 0, 0.12) calc(var(--rating, 0) / 5 * 100%)
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+[dir='rtl'] .wz-pd-stars {
+  background: linear-gradient(
+    -90deg,
+    var(--pd-gold) calc(var(--rating, 0) / 5 * 100%),
+    rgba(0, 0, 0, 0.12) calc(var(--rating, 0) / 5 * 100%)
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+.wz-pd-rating-num {
+  font-size: 11px;
+  color: var(--pd-muted);
+}
+
+.wz-pd-divider {
+  width: 100%;
+  height: 1px;
+  background: var(--pd-line);
+  margin: 20px 0;
+}
+
+/* ── Price ────────────────────────────────────── */
+.wz-pd-prices {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.wz-pd-price {
+  font-size: clamp(1.4rem, 2.5vw, 1.8rem);
+  font-weight: 700;
+  color: var(--wz-ink);
+  letter-spacing: -0.01em;
+}
+.wz-pd-price-orig {
+  font-size: 15px;
+  font-weight: 500;
+  color: rgba(0, 0, 0, 0.3);
+  text-decoration: line-through;
+}
+.wz-pd-save {
+  align-self: center;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: rgba(220, 38, 38, 0.1);
+  color: var(--wz-danger);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+/* ── Stock ────────────────────────────────────── */
+.wz-pd-stock {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 24px;
+  font-size: 12px;
+}
+.wz-pd-stock-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.wz-pd-stock--express .wz-pd-stock-dot {
+  background: #16a34a;
+  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.14);
+}
+.wz-pd-stock--market .wz-pd-stock-dot {
+  background: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14);
+}
+.wz-pd-stock--out .wz-pd-stock-dot {
+  background: var(--wz-danger);
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.14);
+}
+.wz-pd-stock-text {
+  color: rgba(0, 0, 0, 0.55);
+}
+.wz-pd-stock-low {
+  color: var(--wz-danger);
+  font-weight: 700;
+}
+
+/* ── Colors ───────────────────────────────────── */
+.wz-pd-colors {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+.wz-pd-colors-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--pd-muted);
+  min-width: 84px;
+}
+.wz-pd-swatches {
+  display: flex;
+  gap: 8px;
+}
+.wz-pd-swatch {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.14);
+  cursor: pointer;
+  padding: 0;
+  transition: box-shadow 0.15s;
+}
+.wz-pd-swatch.is-active {
+  box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--pd-ink);
+}
+
+/* ── Actions ──────────────────────────────────── */
+.wz-pd-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 8px;
+}
+.wz-pd-qty {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  border: 1px solid rgba(0, 0, 0, 0.14);
+  border-radius: 6px;
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+.wz-pd-qty button {
+  width: 40px;
+  height: 40px;
+  border: none;
+  background: #fff;
+  font-size: 18px;
+  color: var(--wz-ink);
+  cursor: pointer;
+  transition: background 0.15s, transform 0.08s;
+}
+.wz-pd-qty button:hover:not(:disabled) {
+  background: #f1ede5;
+}
+.wz-pd-qty button:active:not(:disabled) {
+  transform: scale(0.9);
+}
+.wz-pd-qty button:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+.wz-pd-qty span {
+  width: 40px;
+  text-align: center;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+/* The action row holds: [qty] then add + wish + share stacked below.
+   We use a wrapper layout: qty inline above, then full-width buttons. */
+.wz-pd-add {
+  width: 100%;
+  height: 54px;
+  border: none;
+  border-radius: 6px;
+  background: var(--wz-ink);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background-color var(--wz-duration) var(--wz-ease),
+    transform var(--wz-duration-fast) var(--wz-ease);
+}
+.wz-pd-add:hover:not(:disabled) {
+  background: var(--pd-gold);
+}
+.wz-pd-add:active:not(:disabled) {
+  transform: scale(0.98);
+}
+.wz-pd-add.is-added {
+  background: var(--pd-gold);
+}
+.wz-pd-add:disabled {
+  background: #e5e5e5;
+  color: rgba(0, 0, 0, 0.3);
+  cursor: not-allowed;
+}
+
+.wz-pd-wish {
+  width: 100%;
+  height: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--wz-ink);
+  font-size: 18px;
+  cursor: pointer;
+  transition: border-color 0.25s ease, color 0.25s ease;
+}
+.wz-pd-wish:hover {
+  border-color: var(--pd-gold);
+  color: var(--pd-gold);
+}
+.wz-pd-wish.is-on {
+  color: var(--pd-gold);
+  border-color: var(--pd-gold);
+}
+
+.wz-pd-share {
+  width: fit-content;
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 2px;
+  padding: 6px 8px;
+  border: none;
+  background: none;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  color: var(--pd-muted);
+  cursor: pointer;
+  transition: color 0.2s;
+}
+.wz-pd-share::after {
+  content: 'Share';
+}
+[dir='rtl'] .wz-pd-share::after {
+  content: 'مشاركة';
+}
+.wz-pd-share:hover {
+  color: var(--wz-ink);
+}
+
+.wz-pd-short {
+  margin: 18px 0 0;
+  font-size: 14px;
+  line-height: 1.7;
+  color: rgba(0, 0, 0, 0.6);
+}
+
+/* ── Section scaffolding (specs / description / ratings) ── */
+.wz-pd-section {
+  margin-top: 44px;
+}
+.wz-pd-section-head,
+.wz-pd-section-title {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  margin: 0 0 22px;
+  padding: 0 0 12px;
+  background: none;
+  border: none;
+  cursor: default;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+  color: var(--wz-ink);
+}
+/* gold underline accent */
+.wz-pd-section-head::after,
+.wz-pd-section-title::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  inset-inline-start: 0;
+  width: 40px;
+  height: 2px;
+  background: var(--pd-gold);
+}
+.wz-pd-acc-icon {
+  display: none;
+  font-size: 22px;
+  font-weight: 400;
+  line-height: 1;
+  color: rgba(0, 0, 0, 0.4);
+  transform: rotate(0deg);
+  transition: transform 0.25s ease;
+}
+.wz-pd-acc-icon.is-open {
+  transform: rotate(90deg);
+}
+[dir='rtl'] .wz-pd-acc-icon {
+  transform: rotate(180deg);
+}
+[dir='rtl'] .wz-pd-acc-icon.is-open {
+  transform: rotate(90deg);
+}
+.wz-pd-section-body {
+  display: block;
+}
+
+/* ── Specs (catalog-style data cards) ─────────── */
+.wz-pd-specs .wz-pd-section-body {
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 12px;
+  padding: 28px;
+  background: #fff;
+}
+.wz-pd-spec-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 22px 40px;
+}
+.wz-pd-spec-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.wz-pd-spec-label {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(0, 0, 0, 0.4);
+}
+.wz-pd-spec-value {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--wz-ink);
+}
+
+/* ── Description ──────────────────────────────── */
+.wz-pd-desc-content {
+  max-width: 70ch;
+  font-size: 14px;
+  line-height: 1.8;
+  color: rgba(0, 0, 0, 0.6);
+}
+.wz-pd-desc-content p {
+  margin: 0 0 12px;
+}
+
+/* ── Ratings ──────────────────────────────────── */
+.wz-pd-ratings-summary {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  padding: 22px 28px;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 12px;
+  background: #fff;
+  margin-bottom: 24px;
+  width: fit-content;
+}
+.wz-pd-ratings-avg {
+  font-family: var(--wz-serif);
+  font-size: 3rem;
+  font-weight: 400;
+  line-height: 1;
+  color: var(--wz-ink);
+}
+.wz-pd-ratings-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.wz-pd-ratings-count {
+  margin: 0;
+  font-size: 12px;
+  color: var(--pd-muted);
+}
+
+.wz-pd-starset {
+  display: inline-flex;
+  gap: 2px;
+  line-height: 1;
+}
+.wz-pd-star {
+  color: rgba(0, 0, 0, 0.12);
+}
+.wz-pd-star.is-on {
+  color: var(--pd-gold);
+}
+.wz-pd-star.is-click {
+  cursor: pointer;
+  transition: transform 0.12s, text-shadow 0.12s;
+}
+.wz-pd-star.is-click:hover {
+  transform: scale(1.18);
+  text-shadow: 0 0 10px rgba(200, 164, 92, 0.6);
+}
+
+.wz-pd-reviews {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 28px;
+}
+.wz-pd-review {
+  padding: 16px 0;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+.wz-pd-review-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 7px;
+}
+.wz-pd-review-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--wz-ink);
+}
+.wz-pd-review-date {
+  font-size: 11px;
+  color: var(--pd-muted);
+  margin-inline-start: auto;
+}
+.wz-pd-review-text {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: rgba(0, 0, 0, 0.6);
+}
+
+.wz-pd-review-form {
+  max-width: 560px;
+  padding: 24px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 12px;
+  background: #fff;
+}
+.wz-pd-review-form h3 {
+  margin: 0 0 14px;
+  font-family: var(--wz-serif);
+  font-size: 16px;
+  font-weight: 400;
+  color: var(--wz-ink);
+}
+.wz-pd-review-input {
+  width: 100%;
+  margin: 14px 0;
+  padding: 12px 14px;
+  border: 1px solid rgba(0, 0, 0, 0.14);
+  border-radius: 8px;
+  font-size: 14px;
+  font-family: inherit;
+  resize: vertical;
+  outline: none;
+  box-sizing: border-box;
+  color: var(--wz-ink);
+}
+.wz-pd-review-input:focus {
+  border-color: var(--pd-gold);
+}
+.wz-pd-review-submit {
+  height: 46px;
+  padding: 0 28px;
+  border: none;
+  border-radius: 6px;
+  background: var(--wz-ink);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 0.25s ease;
+}
+.wz-pd-review-submit:hover {
+  background: var(--pd-gold);
+}
+.wz-pd-review-login {
+  font-size: 13px;
+  color: var(--pd-muted);
+}
+
+/* ── Related (full-width band) ────────────────── */
+.wz-pd-related-band {
+  margin-top: 56px;
+  padding: 48px 0;
+  background: #f7f7f7;
+  border-top: 1px solid rgba(0, 0, 0, 0.05);
+}
+.wz-pd-related-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 48px;
+}
+/* space between the "More from [Brand]" and "Similar" sliders */
+.wz-pd-related-inner .wz-slider + .wz-slider {
+  margin-top: 44px;
+}
+
+/* ── Mobile sticky buy bar ────────────────────── */
+.wz-pd-sticky {
+  position: fixed;
+  bottom: 0;
+  inset-inline: 0;
+  /* Must sit BELOW the nav drawer. The drawer (z 3000/3001) lives inside the
+     sticky header whose own stacking context is z 1020, so anything ≥1020 in the
+     root context would paint over it. 50 keeps the bar above page content only. */
+  z-index: 50;
+  display: none;
+  align-items: center;
+  gap: 16px;
+  height: 68px;
+  padding: 0 20px;
+  background: rgba(255, 255, 255, 0.95);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.04);
+  transform: translateY(100%);
+  transition: transform 0.3s ease;
+}
+.wz-pd-sticky.is-visible {
+  transform: translateY(0);
+}
+/* When a drawer/modal locks body scroll (overflow:hidden), hide the buy bar
+   entirely so it never bleeds over the overlay. */
+body[style*='overflow: hidden'] .wz-pd-sticky,
+body[style*='overflow:hidden'] .wz-pd-sticky {
+  display: none !important;
+}
+.wz-pd-sticky-price {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+}
+.wz-pd-sticky-amount {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--wz-ink);
+}
+.wz-pd-sticky-orig {
+  font-size: 11px;
+  color: rgba(0, 0, 0, 0.32);
+  text-decoration: line-through;
+}
+.wz-pd-sticky-add {
+  flex: 1;
+  height: 48px;
+  border: none;
+  border-radius: 999px;
+  background: var(--wz-ink);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 0.25s;
+}
+.wz-pd-sticky-add:hover:not(:disabled) {
+  background: var(--pd-gold);
+}
+.wz-pd-sticky-add:disabled {
+  background: #e5e5e5;
+  color: rgba(0, 0, 0, 0.3);
+}
+
+/* ── 404 ──────────────────────────────────────── */
+.wz-pd-notfound {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 12px;
+  padding: 96px 24px;
+  min-height: 50vh;
+}
+.wz-pd-notfound h2 {
+  margin: 0;
+  font-family: var(--wz-serif);
+  font-size: 26px;
+  font-weight: 400;
+  color: var(--wz-ink);
+}
+.wz-pd-notfound p {
+  margin: 0;
+  color: var(--pd-muted);
+}
+.wz-pd-notfound-btn {
+  margin-top: 10px;
+  height: 48px;
+  padding: 0 30px;
+  border: none;
+  border-radius: 6px;
+  background: var(--wz-ink);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 0.25s;
+}
+.wz-pd-notfound-btn:hover {
+  background: var(--pd-gold);
+}
+
+/* ── Loading skeleton ─────────────────────────── */
+.wz-pd-skel-bc {
+  height: 14px;
+  width: 220px;
+  margin: 28px 0 22px;
+  border-radius: 4px;
+}
+.wz-pd-skel-gallery .wz-pd-skel-main {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border-radius: 12px;
+}
+.wz-pd-skel-thumbs {
+  display: flex;
+  gap: 12px;
+  margin-top: 16px;
+}
+.wz-pd-skel-thumb {
+  width: 48px;
+  height: 48px;
+  border-radius: 8px;
+}
+.wz-pd-skel-info {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding-top: 6px;
+}
+.wz-pd-skel-line {
+  height: 18px;
+  border-radius: 4px;
+}
+.wz-pd-skel-line.w30 {
+  width: 30%;
+}
+.wz-pd-skel-line.w40 {
+  width: 40%;
+}
+.wz-pd-skel-line.w60 {
+  width: 60%;
+}
+.wz-pd-skel-line.w80 {
+  width: 80%;
+}
+.wz-pd-skel-block {
+  height: 80px;
+  border-radius: 8px;
+}
+.wz-pd-skel-btn {
+  height: 54px;
+  border-radius: 6px;
+}
+.wz-pd-skel-bc,
+.wz-pd-skel-main,
+.wz-pd-skel-thumb,
+.wz-pd-skel-line,
+.wz-pd-skel-block,
+.wz-pd-skel-btn {
+  background: linear-gradient(90deg, #ececec 25%, #f5f5f5 37%, #ececec 63%);
+  background-size: 400% 100%;
+  animation: wzPdSkel 1.4s ease infinite;
+}
+@keyframes wzPdSkel {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: 0 0;
+  }
+}
+
+/* ══════════ Responsive ══════════ */
+@media (max-width: 900px) {
+  /* Info shown in the mobile summary above the image is hidden in the
+     below-image column so nothing appears twice. Hidden at the same breakpoint
+     the summary becomes visible (≤900) to avoid duplicates on tablets. */
+  .wz-pd-hide-mobile {
+    display: none !important;
+  }
+  .wz-pd-inner {
+    padding: 0 20px;
+  }
+  /* Tight breadcrumb so the image starts almost immediately under the navbar */
+  .wz-pd-bc {
+    padding: 10px 0 6px;
+    margin: 0;
+    font-size: 11px;
+    line-height: 1.4;
+  }
+  .wz-pd-bc-link,
+  .wz-pd-bc-current,
+  .wz-pd-bc-sep {
+    font-size: 11px;
+  }
+
+  /* Product summary fills the space between breadcrumb and image */
+  .wz-pd-mobile-summary {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 8px 0 14px;
+    background: transparent;
+  }
+  .wz-pd-ms-brand {
+    margin: 0;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    color: var(--pd-gold);
+  }
+  .wz-pd-ms-name {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 500;
+    color: var(--wz-ink);
+    line-height: 1.3;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .wz-pd-ms-price {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 2px;
+  }
+  .wz-pd-ms-sale,
+  .wz-pd-ms-regular {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--wz-ink);
+  }
+  .wz-pd-ms-orig {
+    font-size: 12px;
+    color: rgba(0, 0, 0, 0.35);
+    text-decoration: line-through;
+  }
+  .wz-pd-ms-discount {
+    font-size: 9px;
+    font-weight: 700;
+    background: #ea2b0f;
+    color: #fff;
+    padding: 2px 6px;
+    border-radius: 3px;
+    letter-spacing: 0.05em;
+  }
+  [dir='rtl'] .wz-pd-mobile-summary {
+    text-align: right;
+  }
+  [dir='rtl'] .wz-pd-ms-price {
+    flex-direction: row-reverse;
+    justify-content: flex-end;
+  }
+
+  .wz-pd-grid {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+  .wz-pd-gallery {
+    position: relative;
+    /* full-bleed to the screen edges */
+    margin-inline: -20px;
+  }
+  .wz-pd-main {
+    /* natural height — no forced shape. Swipe gallery, so cap very tall images
+       at 65vh (DISCOVERY rule) while short/wide images take their own height. */
+    aspect-ratio: unset;
+    height: auto;
+    min-height: unset;
+    max-height: unset;
+    border-radius: 0;
+    border-inline: none;
+    padding: 0;
+    cursor: grab;
+    /* let the page scroll vertically while the gallery captures horizontal swipe */
+    touch-action: pan-y;
+    will-change: transform;
+  }
+  .wz-pd-main-img {
+    width: 100%;
+    height: auto;
+    max-height: 65vh;
+    aspect-ratio: unset;
+    min-height: unset;
+    object-fit: contain;
+    display: block;
+  }
+  .wz-pd-thumbs {
+    display: none;
+  }
+  .wz-pd-dots {
+    display: flex;
+    position: absolute;
+    inset-inline: 0;
+    bottom: 12px;
+  }
+
+  /* Tighter, spacious header rhythm */
+  .wz-pd-info {
+    padding-top: 4px;
+  }
+  .wz-pd-name {
+    font-size: 1.4rem;
+    line-height: 1.2;
+  }
+
+  /* Specs / description / reviews → tap-to-expand accordions (start closed) */
+  .wz-pd-section {
+    margin-top: 0;
+  }
+  .wz-pd-section-head {
+    height: 52px;
+    margin: 0;
+    padding: 0;
+    cursor: pointer;
+    border-top: 1px solid rgba(0, 0, 0, 0.06);
+    font-size: 11px;
+    letter-spacing: 0.2em;
+  }
+  /* the gold underline accent is desktop-only; accordions use the chevron */
+  .wz-pd-section-head::after {
+    display: none;
+  }
+  .wz-pd-acc-icon {
+    display: block;
+  }
+  /* Smooth accordion via the grid-template-rows 0fr→1fr trick (composite-safe,
+     no max-height stutter). Each body wraps a single child that carries the
+     padding and overflow so it collapses cleanly. */
+  .wz-pd-specs .wz-pd-section-body,
+  .wz-pd-desc .wz-pd-section-body,
+  .wz-pd-ratings .wz-pd-section-body {
+    display: grid;
+    grid-template-rows: 0fr;
+    overflow: hidden;
+    padding: 0;
+    border: none;
+    transition: grid-template-rows var(--wz-duration-slow) var(--wz-ease);
+  }
+  .wz-pd-specs .wz-pd-section-body.is-open,
+  .wz-pd-desc .wz-pd-section-body.is-open,
+  .wz-pd-ratings .wz-pd-section-body.is-open {
+    grid-template-rows: 1fr;
+  }
+  .wz-pd-specs .wz-pd-section-body > *,
+  .wz-pd-desc .wz-pd-section-body > *,
+  .wz-pd-ratings .wz-pd-section-body > * {
+    min-height: 0;
+    overflow: hidden;
+    padding-bottom: 20px;
+  }
+  .wz-pd-specs .wz-pd-section-body > * {
+    padding-top: 4px;
+  }
+  .wz-pd-spec-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+
+  .wz-pd-related-inner {
+    padding: 0 20px;
+  }
+  .wz-pd-related-band {
+    padding: 32px 0;
+    margin-top: 32px;
+  }
+
+  /* Sticky bar (mobile only) — generous, notch-safe */
+  .wz-pd-sticky {
+    display: flex;
+    height: calc(68px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  /* keep content clear of the sticky bar + home indicator */
+  .wz-pd {
+    padding-bottom: calc(84px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+@media (max-width: 480px) {
+  .wz-pd-ratings-summary {
+    width: 100%;
+  }
+  .wz-pd-ratings-avg {
+    font-size: 2.4rem;
+  }
+}
+
+/* Desktop never shows the sticky bar */
+@media (min-width: 901px) {
+  .wz-pd-sticky {
+    display: none !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .wz-pd-gallery {
+    position: static;
+    top: auto;
+  }
+
+  .wz-pd-main {
+    aspect-ratio: unset;
+    padding: 0;
+    border: none;
+    border-radius: 0;
+    background: #f8f8f8;
+  }
+
+  .wz-pd-main-img {
+    width: 100%;
+    height: auto;
+    object-fit: contain;
+  }
+
+  .wz-pd-discount {
+    top: 12px;
+    inset-inline-start: 12px;
+  }
+
+  .wz-pd-thumbs {
+    display: none;
+  }
+
+  .wz-pd-dots {
+    display: flex;
+    padding: 12px 0;
+  }
+}

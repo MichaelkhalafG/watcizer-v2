@@ -39,13 +39,18 @@ const transformOffers = (data) =>
     }
   })
 
+// Shared query fn: client `http` by default; the SERVER passes serverFetch so the
+// SSR prefetch reuses the exact same fetch + transform + return shape (queryKey
+// ['offers'] and the data stay identical → client cache-hits, no refetch).
+export const offersQueryFn = (client = http) => async () => {
+  const { data } = await client.get('/all_offer')
+  return transformOffers(data)
+}
+
 export const useOffers = () =>
   useQuery({
     queryKey: ['offers'],
-    queryFn: async () => {
-      const { data } = await http.get('/all_offer')
-      return transformOffers(data)
-    },
+    queryFn: offersQueryFn(),
     staleTime: 5 * 60 * 1000, // 5 min
   })
 
