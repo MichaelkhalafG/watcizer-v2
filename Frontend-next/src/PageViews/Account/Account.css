@@ -1,0 +1,952 @@
+/* ══════════════════════════════════════════════════════════════════════
+   MY ACCOUNT — unified account area (no MUI, no Bootstrap)
+   Uses global motion tokens (--wz-ease / --wz-duration) from App.css.
+   ══════════════════════════════════════════════════════════════════════ */
+.wz-account-page {
+  --acc-gold: #c8a45c;
+  --acc-ink: #111;
+  --acc-line: rgba(0, 0, 0, 0.06);
+  --acc-border: rgba(0, 0, 0, 0.12);
+  --acc-muted: rgba(0, 0, 0, 0.4);
+  background: #fafafa;
+  min-height: 70vh;
+}
+
+.wz-account {
+  display: flex;
+  gap: 32px;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  min-height: 70vh;
+  align-items: flex-start;
+}
+
+/* ── Sidebar ─────────────────────────────────────────────────────────── */
+.wz-account-sidebar {
+  width: 280px;
+  flex-shrink: 0;
+  position: sticky;
+  top: 124px;
+  background: #fff;
+  border: 1px solid var(--acc-line);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.wz-acc-usercard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 4px;
+  padding: 24px;
+  border-bottom: 1px solid var(--acc-line);
+}
+.wz-acc-usercard-info {
+  min-width: 0;
+  width: 100%;
+}
+.wz-acc-usercard-name {
+  margin: 8px 0 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--acc-ink);
+}
+.wz-acc-usercard-email {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--acc-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wz-acc-usercard-since {
+  margin: 4px 0 0;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: rgba(0, 0, 0, 0.3);
+  text-transform: uppercase;
+}
+
+/* Avatar (shared) */
+.wz-acc-avatar {
+  border-radius: 50%;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(200, 164, 92, 0.08);
+  color: var(--acc-gold);
+  font-family: var(--wz-serif);
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.wz-acc-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.wz-acc-nav {
+  display: flex;
+  flex-direction: column;
+  padding: 8px 0;
+}
+.wz-acc-navlink {
+  height: 46px;
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: none;
+  border: none;
+  border-inline-start: 3px solid transparent;
+  cursor: pointer;
+  font-size: 13px;
+  color: #333;
+  text-align: start;
+  transition: background-color var(--wz-duration-fast) var(--wz-ease),
+    color var(--wz-duration-fast) var(--wz-ease);
+}
+.wz-acc-navlink-icon {
+  display: inline-flex;
+  font-size: 16px;
+  color: rgba(0, 0, 0, 0.35);
+  transition: color var(--wz-duration-fast) var(--wz-ease);
+}
+.wz-acc-navlink:hover {
+  background: rgba(0, 0, 0, 0.02);
+}
+.wz-acc-navlink.is-active {
+  border-inline-start-color: var(--acc-gold);
+  color: var(--acc-gold);
+  background: rgba(200, 164, 92, 0.04);
+}
+.wz-acc-navlink.is-active .wz-acc-navlink-icon {
+  color: var(--acc-gold);
+}
+.wz-acc-nav-sep {
+  height: 1px;
+  background: var(--acc-line);
+  margin: 8px 24px;
+}
+.wz-acc-navlink-danger {
+  color: #b91c1c;
+}
+.wz-acc-navlink-danger .wz-acc-navlink-icon {
+  color: #b91c1c;
+}
+.wz-acc-navlink-danger:hover {
+  background: rgba(185, 28, 28, 0.05);
+}
+
+/* ── Content ─────────────────────────────────────────────────────────── */
+.wz-account-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.wz-acc-sectitle {
+  margin-bottom: 24px;
+}
+.wz-acc-sectitle h2 {
+  margin: 0;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+  color: var(--acc-ink);
+  font-family: inherit;
+}
+.wz-acc-sectitle-rule {
+  display: block;
+  width: 40px;
+  height: 2px;
+  margin-top: 10px;
+  background: var(--acc-gold);
+}
+
+/* Cards */
+.wz-acc-card {
+  background: #fff;
+  border: 1px solid var(--acc-line);
+  border-radius: 10px;
+  padding: 20px;
+  margin-bottom: 12px;
+}
+
+/* ── Forms ───────────────────────────────────────────────────────────── */
+.wz-acc-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px 20px;
+}
+.wz-acc-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.wz-acc-field-full {
+  grid-column: 1 / -1;
+}
+.wz-acc-field label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(0, 0, 0, 0.55);
+}
+.wz-acc-field input,
+.wz-acc-field select {
+  height: 48px;
+  padding: 0 14px;
+  border: 1px solid var(--acc-border);
+  border-radius: 6px;
+  font-size: 14px;
+  font-family: inherit;
+  background: #fff;
+  color: var(--acc-ink);
+  width: 100%;
+  transition: border-color var(--wz-duration) var(--wz-ease);
+}
+.wz-acc-field input:focus,
+.wz-acc-field select:focus {
+  outline: none;
+  border-color: var(--acc-gold);
+}
+.wz-acc-field input:disabled {
+  background: #f6f6f6;
+  color: rgba(0, 0, 0, 0.5);
+  cursor: not-allowed;
+}
+.wz-acc-input-locked {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.wz-acc-input-locked svg {
+  position: absolute;
+  inset-inline-end: 12px;
+  color: rgba(0, 0, 0, 0.3);
+  pointer-events: none;
+}
+.wz-acc-input-pw {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.wz-acc-input-pw input {
+  padding-inline-end: 44px;
+}
+.wz-acc-input-pw button {
+  position: absolute;
+  inset-inline-end: 8px;
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: none;
+  color: rgba(0, 0, 0, 0.4);
+  cursor: pointer;
+}
+.wz-acc-field-error {
+  margin: 0;
+  font-size: 12px;
+  color: #b91c1c;
+}
+
+/* Social-auth info card (Set Password tab) */
+.wz-acc-social-note {
+  margin: 0;
+  background: rgba(200, 164, 92, 0.06);
+  border: 1px solid rgba(200, 164, 92, 0.18);
+  border-radius: 8px;
+  padding: 12px 16px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: rgba(0, 0, 0, 0.6);
+}
+
+/* Small "Signed in via Google" hint under the email field */
+.wz-acc-social-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+  font-size: 11px;
+  color: rgba(0, 0, 0, 0.45);
+}
+
+.wz-acc-form-foot {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 24px;
+}
+.wz-acc-form-foot-split {
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* Primary button */
+.wz-acc-btn {
+  min-width: 200px;
+  height: 46px;
+  padding: 0 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: none;
+  border-radius: 6px;
+  background: var(--acc-ink);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background-color var(--wz-duration) var(--wz-ease);
+}
+.wz-acc-btn:hover:not(:disabled) {
+  background: var(--acc-gold);
+}
+.wz-acc-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.wz-acc-btn.is-saved {
+  background: #16a34a;
+}
+
+/* Text/link buttons */
+.wz-acc-linkbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--acc-gold);
+  padding: 4px 0;
+}
+.wz-acc-linkbtn-danger {
+  color: #b91c1c;
+}
+
+/* ── Avatar area (profile) ───────────────────────────────────────────── */
+.wz-acc-avatar-area {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 28px;
+}
+.wz-acc-avatar-actions {
+  display: flex;
+  gap: 18px;
+}
+
+/* ── Orders ──────────────────────────────────────────────────────────── */
+.wz-acc-order-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+.wz-acc-order-head-main {
+  min-width: 0;
+}
+.wz-acc-order-num {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--acc-ink);
+}
+.wz-acc-order-datebadge {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 5px;
+  flex-wrap: wrap;
+}
+.wz-acc-order-date {
+  font-size: 12px;
+  color: var(--acc-muted);
+}
+.wz-acc-order-count {
+  font-size: 12px;
+  color: var(--acc-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.wz-acc-order-items {
+  margin: 14px 0;
+  padding: 14px 0;
+  border-top: 1px solid var(--acc-line);
+  border-bottom: 1px solid var(--acc-line);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.wz-acc-order-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.wz-acc-order-thumb {
+  width: 48px;
+  height: 48px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #f5f5f5;
+  flex-shrink: 0;
+}
+.wz-acc-order-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.wz-acc-order-item-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.wz-acc-order-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  color: #222;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.wz-acc-order-item-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+.wz-acc-order-qty {
+  font-size: 12px;
+  color: var(--acc-muted);
+}
+.wz-acc-order-price {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--acc-ink);
+  white-space: nowrap;
+}
+.wz-acc-order-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 16px;
+}
+.wz-acc-order-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.wz-acc-order-total {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.wz-acc-order-total span {
+  font-size: 12px;
+  color: var(--acc-muted);
+}
+.wz-acc-order-total strong {
+  font-size: 16px;
+  color: var(--acc-ink);
+}
+.wz-acc-order-meta {
+  margin: 0;
+  font-size: 11px;
+  color: var(--acc-muted);
+}
+.wz-acc-track {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 18px;
+  flex-shrink: 0;
+  background: #25d366;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: background-color var(--wz-duration) var(--wz-ease);
+}
+.wz-acc-track:hover {
+  background: #1eb955;
+}
+
+/* Status badges (scoped name — `.wz-badge` alone collides with the global
+   position:absolute cart-count badge in Header.css) */
+.wz-acc-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 10px;
+  padding: 3px 10px;
+  border-radius: 99px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+.wz-acc-badge-pending {
+  background: #fef3c7;
+  color: #92400e;
+}
+.wz-acc-badge-processing {
+  background: #dbeafe;
+  color: #1e40af;
+}
+.wz-acc-badge-completed {
+  background: #d1fae5;
+  color: #065f46;
+}
+.wz-acc-badge-cancelled {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+/* ── Addresses ───────────────────────────────────────────────────────── */
+.wz-acc-address {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+.wz-acc-address-line {
+  margin: 0;
+  font-size: 14px;
+  color: var(--acc-ink);
+  line-height: 1.5;
+}
+.wz-acc-address-city {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: rgba(0, 0, 0, 0.55);
+}
+.wz-acc-address-phone {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: rgba(0, 0, 0, 0.55);
+}
+.wz-acc-add-address {
+  width: 100%;
+  height: 52px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px dashed rgba(0, 0, 0, 0.15);
+  border-radius: 10px;
+  background: none;
+  color: var(--acc-muted);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color var(--wz-duration) var(--wz-ease),
+    color var(--wz-duration) var(--wz-ease);
+}
+.wz-acc-add-address:hover {
+  border-color: var(--acc-gold);
+  color: var(--acc-gold);
+}
+.wz-acc-addr-form {
+  margin-top: 12px;
+}
+
+/* ── Wishlist ────────────────────────────────────────────────────────── */
+.wz-acc-wishgrid {
+  display: grid;
+  /* Fills the wider desktop content area (≈3 columns) and reflows down. */
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 12px;
+}
+.wz-acc-wishitem {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px;
+}
+.wz-acc-wishitem-media {
+  width: 72px;
+  height: 72px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #f2f0eb;
+  flex-shrink: 0;
+}
+.wz-acc-wishitem-media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.wz-acc-wishitem-body {
+  flex: 1;
+  min-width: 0;
+}
+.wz-acc-wishitem-title {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--acc-ink);
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.wz-acc-wishitem-title:hover {
+  color: var(--acc-gold);
+}
+.wz-acc-wishitem-price {
+  margin: 6px 0 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--acc-gold);
+}
+.wz-acc-wishitem-remove {
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--acc-line);
+  border-radius: 8px;
+  background: #fff;
+  color: rgba(0, 0, 0, 0.4);
+  cursor: pointer;
+  transition: color var(--wz-duration) var(--wz-ease),
+    border-color var(--wz-duration) var(--wz-ease);
+}
+.wz-acc-wishitem-remove:hover {
+  color: #b91c1c;
+  border-color: rgba(185, 28, 28, 0.4);
+}
+
+/* ── Password strength ───────────────────────────────────────────────── */
+.wz-acc-strength {
+  height: 4px;
+  border-radius: 99px;
+  background: rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+}
+.wz-acc-strength span {
+  display: block;
+  height: 100%;
+  width: 100%;
+  transform: scaleX(0);
+  transform-origin: left center;
+  border-radius: 99px;
+  transition: transform var(--wz-duration) var(--wz-ease),
+    background-color var(--wz-duration) var(--wz-ease);
+}
+[dir='rtl'] .wz-acc-strength span {
+  transform-origin: right center;
+}
+.wz-acc-strength-weak span {
+  transform: scaleX(0.33);
+  background: var(--wz-danger);
+}
+.wz-acc-strength-medium span {
+  transform: scaleX(0.66);
+  background: #f5a623;
+}
+.wz-acc-strength-strong span {
+  transform: scaleX(1);
+  background: #16a34a;
+}
+.wz-acc-pwchecks {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+}
+.wz-acc-pwchecks li {
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.4);
+}
+.wz-acc-pwchecks li.ok {
+  color: #16a34a;
+}
+
+/* ── Empty & loading states ──────────────────────────────────────────── */
+.wz-acc-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 14px;
+  padding: 56px 20px;
+  background: #fff;
+  border: 1px solid var(--acc-line);
+  border-radius: 12px;
+}
+.wz-acc-empty-icon {
+  display: inline-flex;
+  font-size: 34px;
+  color: rgba(0, 0, 0, 0.18);
+}
+.wz-acc-empty-title {
+  margin: 0;
+  font-size: 15px;
+  color: #333;
+  font-family: var(--wz-serif);
+}
+.wz-acc-loading {
+  display: flex;
+  justify-content: center;
+  padding: 56px 0;
+}
+.wz-acc-spinner {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 2px solid rgba(0, 0, 0, 0.1);
+  border-top-color: var(--acc-ink);
+  animation: wzAccSpin 0.8s linear infinite;
+}
+@keyframes wzAccSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Mobile-only sign-out button (desktop uses the sidebar link) */
+.wz-acc-mobile-logout {
+  display: none;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   RESPONSIVE — phones & small tablets (rewritten; uses the real class
+   names, and later same-specificity rules win over the desktop ones, so
+   no !important is needed).
+   ══════════════════════════════════════════════════════════════════════ */
+@media (max-width: 768px) {
+  /* Page + shell → full-bleed single column (no side gutters on the shell;
+     each section supplies its own padding). */
+  .wz-account-page {
+    min-height: auto;
+  }
+  .wz-account {
+    flex-direction: column;
+    gap: 0;
+    padding: 0;
+    min-height: auto;
+    max-width: 100%;
+  }
+
+  /* Sidebar → flat, full-width tab bar (drop the card box that was clipping
+     the tabs) */
+  .wz-account-sidebar {
+    width: 100%;
+    position: static;
+    top: auto;
+    background: #fff;
+    border: none;
+    border-bottom: 1px solid var(--acc-line);
+    border-radius: 0;
+    overflow: visible;
+  }
+  .wz-acc-usercard {
+    display: none;
+  }
+
+  /* Nav → horizontal, scrollable tabs */
+  .wz-acc-nav {
+    flex-direction: row;
+    overflow-x: auto;
+    overflow-y: hidden;
+    gap: 2px;
+    padding: 0 8px;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .wz-acc-nav::-webkit-scrollbar {
+    display: none;
+  }
+  .wz-acc-navlink {
+    height: 48px;
+    flex-shrink: 0;
+    white-space: nowrap;
+    padding: 0 16px;
+    gap: 8px;
+    font-size: 12px;
+    background: none;
+    border: none;
+    border-inline-start: none;
+    border-bottom: 2px solid transparent;
+    border-radius: 0;
+  }
+  /* Flat underline indicator only — no pill background/radius */
+  .wz-acc-navlink.is-active {
+    color: var(--acc-gold);
+    background: none;
+    border-inline-start: none;
+    border-bottom: 2px solid var(--acc-gold);
+  }
+  /* Sign-out moves to a dedicated button under the content on mobile */
+  .wz-acc-nav-sep,
+  .wz-acc-navlink-danger {
+    display: none;
+  }
+
+  /* Content → full width with its own padding. Extra bottom padding so the
+     SAVE button (form footer) + mobile sign-out clear the viewport edge. */
+  .wz-account-content {
+    width: 100%;
+    min-width: 0;
+    padding: 20px 16px 80px;
+    box-sizing: border-box;
+  }
+  .wz-acc-card {
+    padding: 16px;
+  }
+
+  /* Profile / password forms → single column; primary buttons full width */
+  .wz-acc-form {
+    grid-template-columns: 1fr;
+    gap: 14px;
+    max-width: 100%;
+  }
+  /* Inputs fit their cell exactly (border-box) so the 14px side padding can't
+     push them past the viewport → no horizontal overflow on mobile. */
+  .wz-acc-field input,
+  .wz-acc-field select,
+  .wz-acc-field textarea,
+  .wz-acc-input-pw input {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+  .wz-acc-form-foot .wz-acc-btn,
+  .wz-acc-btn {
+    width: 100%;
+  }
+  /* keep the address form's Cancel/Save split on one row */
+  .wz-acc-form-foot-split .wz-acc-btn {
+    width: auto;
+  }
+
+  /* Orders → item name stacks over qty/price; footer stacks; full-width CTA */
+  .wz-acc-order-item-info {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+  .wz-acc-order-item-meta {
+    width: 100%;
+    justify-content: space-between;
+  }
+  .wz-acc-order-foot {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+  .wz-acc-track {
+    width: 100%;
+    height: 44px;
+  }
+  /* Empty state a touch tighter on phones */
+  .wz-acc-empty {
+    padding: 40px 20px;
+  }
+
+  /* Addresses → stack body over actions */
+  .wz-acc-address {
+    flex-direction: column;
+    gap: 10px;
+  }
+  .wz-acc-address-actions {
+    align-self: flex-end;
+  }
+
+  /* Wishlist → 2-up vertical cards (the horizontal card is too cramped here) */
+  .wz-acc-wishgrid {
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .wz-acc-wishitem {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    padding: 10px;
+  }
+  .wz-acc-wishitem-media {
+    width: 100%;
+    height: 130px;
+  }
+  .wz-acc-wishitem-remove {
+    position: absolute;
+    top: 8px;
+    inset-inline-end: 8px;
+  }
+
+  /* Dedicated mobile sign-out */
+  .wz-acc-mobile-logout {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin: 8px 16px 28px;
+    padding: 14px;
+    background: transparent;
+    border: 1px solid rgba(220, 38, 38, 0.25);
+    border-radius: 8px;
+    color: var(--wz-danger);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+}
+
+/* ── Small phones (≤400px) ───────────────────────────────────────────── */
+@media (max-width: 400px) {
+  .wz-account-content {
+    padding: 16px 12px;
+  }
+  .wz-acc-navlink {
+    padding: 0 13px;
+    font-size: 11px;
+  }
+  .wz-acc-order-thumb {
+    width: 40px;
+    height: 40px;
+  }
+  .wz-acc-order-name {
+    font-size: 12px;
+  }
+  .wz-acc-order-total strong {
+    font-size: 14px;
+  }
+  .wz-acc-wishitem-media {
+    height: 110px;
+  }
+}
