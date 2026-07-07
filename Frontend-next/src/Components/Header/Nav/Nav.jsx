@@ -1,7 +1,7 @@
 'use client'
 import { useState, useRef, useMemo, useLayoutEffect } from 'react'
 import Link from 'next/link'
-import { useRouter, usePathname } from 'next/navigation'
+import { usePathname } from 'next/navigation'
 import { MdOutlineKeyboardArrowDown, MdOutlineDiamond } from 'react-icons/md'
 // Watch / fashion / category icons (verified against react-icons@5.5.0)
 import {
@@ -108,7 +108,6 @@ function Nav() {
   const { products, tables } = useCatalog()
   const { language, setCurrentPage } = useUIStore()
   const pathname = usePathname()
-  const router = useRouter()
 
   // Which top-level dropdown is open, and which brand row's nested menu is open.
   const [openKey, setOpenKey] = useState(null)
@@ -244,11 +243,13 @@ function Nav() {
     }
   }, [openBrand, isRTL])
 
-  // ── navigation: encode the selected filters into the /listing URL (the
-  // Listing page reads them back from the URL — shareable & refresh-safe). ──
-  const go = (newFilters) => {
-    if (closeTimer.current) clearTimeout(closeTimer.current)
-    if (brandTimer.current) clearTimeout(brandTimer.current)
+  // ── navigation: encode the selected filters into a /listing URL. These render
+  // as <Link href> (NOT router.push) so Next PREFETCHES them on hover — otherwise
+  // each click is a blocking server round-trip (the Listing page re-renders on the
+  // server per query string), which is what made filtering feel frozen for
+  // seconds. The URL stays the shareable, refresh-safe source of truth (the
+  // Listing page reads the filters back from it). ──
+  const hrefFor = (newFilters) => {
     const params = buildListingParams(
       {
         categories: [],
@@ -262,10 +263,15 @@ function Nav() {
       {},
       tables,
     )
+    const qs = params.toString()
+    return qs ? `/listing?${qs}` : '/listing'
+  }
+  // Close any open dropdown when a filter link is clicked.
+  const closeMenus = () => {
+    if (closeTimer.current) clearTimeout(closeTimer.current)
+    if (brandTimer.current) clearTimeout(brandTimer.current)
     setOpenKey(null)
     setOpenBrand(null)
-    const qs = params.toString()
-    router.push(qs ? `/listing?${qs}` : '/listing')
   }
 
   const goHome = () => {
@@ -273,13 +279,13 @@ function Nav() {
     setOpenKey(null)
     setOpenBrand(null)
   }
-  const selectCategory = (ct) => go({ categories: [ct.id] })
-  const selectCatSub = (ct, st) => go({ categories: [ct.id], subTypes: [st.id] })
-  const selectGender = (g) => go({ genders: [g.en] })
-  const selectGenderBrand = (g, b) => go({ genders: [g.en], brands: [b.id] })
-  const selectBrand = (b) => go({ brands: [b.id] })
-  const selectBrandGender = (b, g) => go({ brands: [b.id], genders: [g.en] })
-  const selectOffers = () => go({ offers: true })
+  const catHref = (ct) => hrefFor({ categories: [ct.id] })
+  const catSubHref = (ct, st) => hrefFor({ categories: [ct.id], subTypes: [st.id] })
+  const genderHref = (g) => hrefFor({ genders: [g.en] })
+  const genderBrandHref = (g, b) => hrefFor({ genders: [g.en], brands: [b.id] })
+  const brandHref = (b) => hrefFor({ brands: [b.id] })
+  const brandGenderHref = (b, g) => hrefFor({ brands: [b.id], genders: [g.en] })
+  const offersHref = () => hrefFor({ offers: true })
 
   const linkClass = (path) => `nav-link-item${pathname === path ? ' active' : ''}`
 
@@ -364,10 +370,10 @@ function Nav() {
                   const subs = subTypesFor(ct)
                   return (
                     <div key={`shop-${ct.id}`}>
-                      <button
-                        type="button"
+                      <Link
+                        href={catHref(ct)}
                         className="wz-shop-cat-header"
-                        onClick={() => selectCategory(ct)}
+                        onClick={closeMenus}
                       >
                         <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                           <span
@@ -381,14 +387,14 @@ function Nav() {
                           <span>{label(ct, 'category_type_name')}</span>
                         </span>
                         <span className="wz-shop-cat-arrow">{isRTL ? '‹' : '›'}</span>
-                      </button>
+                      </Link>
                       {subs.length > 0 && <div className="wz-shop-cat-divider" />}
                       {subs.slice(0, 8).map((st) => (
-                        <button
+                        <Link
                           key={`shop-st-${st.id}`}
-                          type="button"
+                          href={catSubHref(ct, st)}
                           className="wz-shop-sub-item"
-                          onClick={() => selectCatSub(ct, st)}
+                          onClick={closeMenus}
                         >
                           <span
                             style={{
@@ -406,16 +412,16 @@ function Nav() {
                             {getSubTypeIcon(enName(st, 'sub_type_name') || label(st, 'sub_type_name'), 14)}
                           </span>
                           <span>{label(st, 'sub_type_name')}</span>
-                        </button>
+                        </Link>
                       ))}
                       {subs.length > 8 && (
-                        <button
-                          type="button"
+                        <Link
+                          href={catHref(ct)}
                           className="wz-shop-sub-item wz-shop-see-all"
-                          onClick={() => selectCategory(ct)}
+                          onClick={closeMenus}
                         >
                           {isRTL ? `عرض الكل (${subs.length})` : `See all (${subs.length})`}
-                        </button>
+                        </Link>
                       )}
                       {idx < categoryTypes.length - 1 && <div className="wz-shop-section-sep" />}
                     </div>
@@ -435,10 +441,10 @@ function Nav() {
                 onMouseEnter={() => openMenu(`ct-${ct.id}`)}
                 onMouseLeave={scheduleClose}
               >
-                <button type="button" className="nav-link-item" onClick={() => selectCategory(ct)}>
+                <Link href={catHref(ct)} className="nav-link-item" onClick={closeMenus}>
                   {label(ct, 'category_type_name')}
                   {subs.length > 0 && <MdOutlineKeyboardArrowDown style={{ fontSize: '15px' }} />}
-                </button>
+                </Link>
                 {subs.length > 0 && openKey === `ct-${ct.id}` && (
                   <div
                     ref={dropRef}
@@ -446,14 +452,14 @@ function Nav() {
                     onMouseEnter={() => openMenu(`ct-${ct.id}`)}
                   >
                     {subs.map((st) => (
-                      <button
+                      <Link
                         key={`st-${st.id}`}
-                        type="button"
+                        href={catSubHref(ct, st)}
                         className="nav-dropdown-item"
-                        onClick={() => selectCatSub(ct, st)}
+                        onClick={closeMenus}
                       >
                         {label(st, 'sub_type_name')}
-                      </button>
+                      </Link>
                     ))}
                   </div>
                 )}
@@ -469,10 +475,10 @@ function Nav() {
               onMouseEnter={() => openMenu(`g-${g.en}`)}
               onMouseLeave={scheduleClose}
             >
-              <button type="button" className="nav-link-item" onClick={() => selectGender(g)}>
+              <Link href={genderHref(g)} className="nav-link-item" onClick={closeMenus}>
                 {g.label}
                 {brands.length > 0 && <MdOutlineKeyboardArrowDown style={{ fontSize: '15px' }} />}
-              </button>
+              </Link>
               {brands.length > 0 && openKey === `g-${g.en}` && (
                 <div
                   ref={dropRef}
@@ -480,14 +486,14 @@ function Nav() {
                   onMouseEnter={() => openMenu(`g-${g.en}`)}
                 >
                   {brands.map((b) => (
-                    <button
+                    <Link
                       key={`gb-${b.id}`}
-                      type="button"
+                      href={genderBrandHref(g, b)}
                       className="wz-brand-item"
-                      onClick={() => selectGenderBrand(g, b)}
+                      onClick={closeMenus}
                     >
                       {brandCell(b, forGenderNode(label(b, 'brand_name'), g))}
-                    </button>
+                    </Link>
                   ))}
                 </div>
               )}
@@ -533,36 +539,36 @@ function Nav() {
                           onMouseEnter={() => openBrandMenu(b.id)}
                           onMouseLeave={scheduleBrandClose}
                         >
-                          <button
-                            type="button"
+                          <Link
+                            href={brandHref(b)}
                             className="wz-brand-item nav-dropdown-parent"
-                            onClick={() => selectBrand(b)}
+                            onClick={closeMenus}
                           >
                             {brandCell(b, bn)}
                             <span className="nav-row-caret">{isRTL ? '‹' : '›'}</span>
-                          </button>
+                          </Link>
                           {openBrand === b.id && (
                             <div
                               ref={nestedRef}
                               className="nav-subdropdown"
                               onMouseEnter={() => openBrandMenu(b.id)}
                             >
-                              <button
-                                type="button"
+                              <Link
+                                href={brandHref(b)}
                                 className="wz-brand-item"
-                                onClick={() => selectBrand(b)}
+                                onClick={closeMenus}
                               >
                                 {brandCell(b, isRTL ? `كل ${bn}` : `All ${bn}`)}
-                              </button>
+                              </Link>
                               {genders.map((g) => (
-                                <button
+                                <Link
                                   key={`bg-${b.id}-${g.en}`}
-                                  type="button"
+                                  href={brandGenderHref(b, g)}
                                   className="wz-brand-item"
-                                  onClick={() => selectBrandGender(b, g)}
+                                  onClick={closeMenus}
                                 >
                                   {brandCell(b, forGenderNode(bn, g))}
-                                </button>
+                                </Link>
                               ))}
                             </div>
                           )}
@@ -577,10 +583,10 @@ function Nav() {
 
           {/* 5 — OFFERS (discounted products only) */}
           <li className="nav-item">
-            <button type="button" className="nav-link-item" onClick={selectOffers}>
+            <Link href={offersHref()} className="nav-link-item" onClick={closeMenus}>
               <RiPercentLine size={14} style={{ color: '#ea2b0f' }} />
               {isRTL ? 'العروض' : 'Offers'}
-            </button>
+            </Link>
           </li>
         </ul>
       </div>

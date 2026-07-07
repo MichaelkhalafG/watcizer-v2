@@ -6,6 +6,7 @@ import {
   fetchProductByName,
 } from '@/src/lib/serverCatalog'
 import { buildProductSeo } from '@/src/lib/detailSeo'
+import { toSlug } from '@/src/utils/slugs'
 import ProductDetailClient from '@/src/Components/Product/ProductDetailClient'
 
 // ISR: server-render the PDP (with product data + JSON-LD in the HTML for SEO),
@@ -24,14 +25,36 @@ async function resolveProduct(param) {
     // catalog unreachable → fall through to the by-name endpoint
   }
   const byName = await fetchProductByName(param)
-  if (byName) return { product: byName, ratings: [], tables: null }
-  return null
+  if (!byName) return null
+  // Strict match: the by-name endpoint can return a FUZZY/near match for an
+  // unknown slug (a soft-200 of the wrong product). Only accept it when the
+  // requested param genuinely identifies THIS product — its numeric id, or a slug
+  // that normalizes to the product's own slug (so legit legacy raw-title URLs
+  // still resolve, then canonical-redirect). Otherwise treat it as not-found.
+  let decoded = param
+  try {
+    decoded = decodeURIComponent(param)
+  } catch {
+    // malformed %-escape → compare the raw param
+  }
+  const requested = toSlug(decoded)
+  const identifies =
+    (/^\d+$/.test(param) && Number(param) === Number(byName.id)) ||
+    requested === toSlug(byName.name || '') ||
+    requested === toSlug(byName.product_title || '') ||
+    requested === toSlug(byName.name_en || '')
+  if (!identifies) return null
+  return { product: byName, ratings: [], tables: null }
 }
 
 export async function generateMetadata({ params }) {
   const { slug } = await params
   const resolved = await resolveProduct(slug)
-  if (!resolved) return {} // unknown product → not-found handles the response
+  // notFound() HERE (in generateMetadata, before the page streams) is what sets a
+  // real 404 status. The route has a loading.jsx boundary, so once the page body
+  // starts streaming the status is locked at 200 — calling notFound() only in the
+  // page renders the 404 UI but keeps the 200. Metadata runs first, so this 404s.
+  if (!resolved) notFound()
   return buildProductSeo(resolved.product, {
     ratings: resolved.ratings,
     tables: resolved.tables,

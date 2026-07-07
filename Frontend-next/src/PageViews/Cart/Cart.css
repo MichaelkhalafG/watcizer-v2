@@ -277,12 +277,12 @@
 /* ── Summary ──────────────────────────────────── */
 .wz-cart-summary-wrap {
   position: sticky;
-  /* clears the ~112px sticky header (32px strip + nav) so the card isn't
+  /* clears the 152px desktop header (32px strip + 72px row1 + 48px nav) + 16px gap so the card isn't
      tucked underneath it; align-self:start keeps the grid item at its natural
      height so sticky has room to scroll within the taller items column. */
-  top: 124px;
+  top: 168px;
   align-self: start;
-  max-height: calc(100vh - 144px);
+  max-height: calc(100vh - 180px);
   overflow-y: auto;
   scrollbar-width: none;
 }

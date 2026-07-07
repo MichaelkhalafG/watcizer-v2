@@ -22,7 +22,7 @@ export default function NotFound() {
         padding: '4rem 1.5rem',
       }}
     >
-      <p style={{ fontSize: '3.5rem', fontWeight: 700, margin: 0, letterSpacing: '0.02em' }}>404</p>
+      <p style={{ fontSize: '3.5rem', fontWeight: 700, margin: 0, letterSpacing: '0.02em', color: '#C8A45C', fontFamily: 'Georgia, serif' }}>404</p>
       <h1 style={{ fontSize: '1.4rem', fontWeight: 600, margin: 0 }}>
         We couldn&apos;t find that page
       </h1>

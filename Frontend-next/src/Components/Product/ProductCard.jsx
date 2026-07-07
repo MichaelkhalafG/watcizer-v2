@@ -1,8 +1,9 @@
 'use client'
 import { memo, useState } from 'react'
+import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { useUIStore } from '../../Store/uiStore'
-import { getResponsiveImageUrl, handleImgError, PLACEHOLDER_IMG } from '../../utils/imageUrl'
+import { getImageUrl, PLACEHOLDER_IMG } from '../../utils/imageUrl'
 import { productUrl } from '../../utils/productUrl'
 import useCart from '../../Hooks/useCart'
 import './ProductCard.css'
@@ -64,9 +65,9 @@ const ProductCard = ({ product, showBrand = true, showRating = true }) => {
   const rating = Number(product.average_rating || product.ratings_avg || product.rating || 0)
   const reviews = Number(product.ratings_count || product.reviews_count || 0)
 
-  /* ── Image (srcset-ready via the CDN builder; passthrough until a CDN is set) ── */
-  const imgData = getResponsiveImageUrl(product.image, 'Product')
-  const imgSrc = imgData.src || PLACEHOLDER_IMG
+  /* ── Image — next/image (auto AVIF/WebP + per-device srcset). Falls back to the
+     inline gray SVG placeholder when the product has no image. ── */
+  const imgSrc = getImageUrl(product.image, 'Product') || PLACEHOLDER_IMG
 
   /* ── Stock status descriptor ── */
   const stock = isExpress
@@ -114,16 +115,14 @@ const ProductCard = ({ product, showBrand = true, showRating = true }) => {
     >
       {/* ── Media ── */}
       <div className="wz-pc__media">
-        <img
+        <Image
           src={imgSrc}
-          srcSet={imgData.srcSet || undefined}
-          sizes={imgData.sizes || undefined}
           alt={name}
+          fill
+          sizes="(max-width: 400px) 50vw, (max-width: 768px) 33vw, (max-width: 1200px) 25vw, 300px"
+          quality={80}
           className="wz-pc__img"
-          width="300"
-          height="300"
-          loading="lazy"
-          onError={handleImgError}
+          style={{ objectFit: 'contain' }}
         />
 
         {/* Badges — independent small pills, can coexist */}

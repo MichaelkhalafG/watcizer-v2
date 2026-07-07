@@ -335,11 +335,11 @@
 /* ── Summary ─────────────────────────────────────────────────────────────── */
 .wz-checkout-summary {
   position: sticky;
-  /* clears the ~112px sticky header; align-self:start keeps the card at its
+  /* clears the 152px desktop header (strip 32 + row1 72 + nav 48) + 16px gap; align-self:start keeps the card at its
      natural height inside the grid so it can stick as the form scrolls. */
-  top: 124px;
+  top: 168px;
   align-self: start;
-  max-height: calc(100vh - 144px);
+  max-height: calc(100vh - 180px);
   overflow-y: auto;
   scrollbar-width: none;
   background: #fff;

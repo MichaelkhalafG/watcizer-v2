@@ -29,8 +29,13 @@ async function resolveOffer(param) {
 
 export async function generateMetadata({ params }) {
   const { slug } = await params
+  // notFound() HERE (in generateMetadata, before the page streams past its
+  // loading.jsx boundary) is what sets a real 404 status for unknown offers —
+  // calling it only in the page body renders the 404 UI but leaves the streamed
+  // status at 200. Offer resolution is already strict (findOfferInCatalog matches
+  // an exact slug or numeric id — there's no fuzzy by-name fallback like products).
   const resolved = await resolveOffer(slug)
-  if (!resolved) return {}
+  if (!resolved) notFound()
   return buildOfferSeo(resolved.offer, resolved.offerProduct).metadata
 }
 

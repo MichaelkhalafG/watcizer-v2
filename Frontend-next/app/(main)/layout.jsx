@@ -1,7 +1,5 @@
 import { QueryClient, dehydrate, HydrationBoundary } from '@tanstack/react-query'
-import serverHttp from '@/src/lib/serverFetch'
-import { tablesQueryFn } from '@/src/Hooks/queries/useTables'
-import { productsQueryFn } from '@/src/Hooks/queries/useProducts'
+import { getServerCatalog } from '@/src/lib/serverCatalog'
 import { MyProvider } from '@/src/Context/MyProvider'
 import Header from '@/src/Components/Header/Header'
 import CartModalHost from '../cart-modal-host'
@@ -21,14 +19,11 @@ import DesktopFooter from './desktop-footer'
 export default async function MainLayout({ children }) {
   const qc = new QueryClient()
   try {
-    const tables = await qc.fetchQuery({
-      queryKey: ['tables'],
-      queryFn: tablesQueryFn(serverHttp),
-    })
-    await qc.prefetchQuery({
-      queryKey: ['products'],
-      queryFn: productsQueryFn(tables, serverHttp),
-    })
+    // getServerCatalog is process-cached (5-min TTL) and shared with the listing
+    // page + generateMetadata, so this is ONE Laravel round-trip, not one per nav.
+    const { tables, ratings, productsEn, productsAr } = await getServerCatalog()
+    qc.setQueryData(['tables'], tables)
+    qc.setQueryData(['products'], { ratings, productsEn, productsAr })
   } catch {
     // Catalog unreachable server-side → client fetches + shows error/retry.
   }

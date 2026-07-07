@@ -403,3 +403,15 @@ h6 {
     opacity: 0.45;
   }
 }
+
+/* Form controls: border-box so width:100% + padding stays inside the container.
+   The global reset above only zeroes margin/padding (no box-sizing), which left
+   padded inputs overflowing their columns on Checkout/Account. Scoped to form
+   controls — deliberately NOT forcing width:100% here (that would stretch
+   checkboxes, radios, the header search pill and quantity steppers). */
+input,
+select,
+textarea {
+  box-sizing: border-box;
+  max-width: 100%;
+}

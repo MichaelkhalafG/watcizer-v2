@@ -790,6 +790,18 @@ body {
 }
 
 /* ── Brand dropdown rows with fixed 36×36 logo box ─────────── */
+/* These nav filter controls render as <Link> (<a>) so Next can prefetch them.
+   Anchors default to underline + link-blue; neutralize that since they were
+   originally <button>s (nav-link-item / nav-dropdown-item already reset their own). */
+.wz-brand-item,
+.wz-shop-cat-header,
+.wz-shop-sub-item {
+  text-decoration: none;
+}
+.wz-brand-item {
+  color: inherit;
+}
+
 .wz-brand-item {
   display: flex;
   align-items: center;

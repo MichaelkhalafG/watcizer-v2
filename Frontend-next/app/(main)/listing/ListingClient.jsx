@@ -526,7 +526,7 @@ export default function ListingClient({ seedParams = null }) {
       <aside
         className={`wz-fdrawer${drawerOpen ? ' is-open' : ''}`}
         dir={isRTL ? 'rtl' : 'ltr'}
-        inert={!drawerOpen ? '' : undefined}
+        inert={!drawerOpen ? true : undefined}
       >
         <div className="wz-fdrawer-head">
           <span className="wz-fdrawer-title">{isRTL ? 'الفلاتر' : 'Filters'}</span>

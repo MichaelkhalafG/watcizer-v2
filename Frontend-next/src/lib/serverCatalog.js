@@ -13,11 +13,36 @@ import { toSlug } from '../utils/slugs'
 // same ones the client hooks use (tablesQueryFn / productsQueryFn / offersQueryFn),
 // so the shape is identical and the client cache-hits after hydration.
 
-// { tables, ratings, productsEn, productsAr }
-export const getServerCatalog = cache(async () => {
+// The full catalog fetch (tables + products) — one Laravel round-trip.
+const fetchCatalog = async () => {
   const tables = await tablesQueryFn(serverHttp)()
   const products = await productsQueryFn(tables, serverHttp)()
   return { tables, ...products }
+}
+
+// CROSS-REQUEST cache. React `cache()` alone only dedupes within ONE request, so
+// — because serverHttp is axios (which bypasses Next's fetch Data Cache) — the
+// full catalog was re-fetched from Laravel on EVERY /listing?… navigation, which
+// is what froze the page for seconds per filter click. A process-level memo of
+// the in-flight/resolved promise (5-min TTL) means subsequent navigations reuse
+// the already-fetched catalog instead of hammering Laravel again. The promise is
+// cleared on error so the next request retries; concurrent requests dedupe onto
+// the one in-flight promise.
+const CATALOG_TTL = 300_000 // 5 min — parity with the routes' `revalidate = 300`
+let _catalogPromise = null
+let _catalogAt = 0
+
+// { tables, ratings, productsEn, productsAr }
+export const getServerCatalog = cache(async () => {
+  const now = Date.now()
+  if (!_catalogPromise || now - _catalogAt >= CATALOG_TTL) {
+    _catalogAt = now
+    _catalogPromise = fetchCatalog().catch((e) => {
+      _catalogPromise = null
+      throw e
+    })
+  }
+  return _catalogPromise
 })
 
 // Transformed offers array (same shape as the useOffers hook).

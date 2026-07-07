@@ -1,6 +1,7 @@
 'use client'
 import { memo, useContext, useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import Link from 'next/link'
+import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { FiShare2 } from 'react-icons/fi'
 import ImageZoom from '../UI/ImageZoom'
@@ -16,7 +17,7 @@ import ProductSlider from './ProductSlider'
 import TrustSignals from '../Merchandising/TrustSignals'
 import BackToTop from '../BackToTop/BackToTop'
 import { trackViewContent } from '../../scripts/pixels'
-import { getImageUrl, handleImgError, PLACEHOLDER_IMG } from '../../utils/imageUrl'
+import { getImageUrl, PLACEHOLDER_IMG } from '../../utils/imageUrl'
 import { toSlug } from '../../utils/slugs'
 import { buildListingParams } from '../../utils/listingParams'
 import http from '../../Context/api'
@@ -818,7 +819,7 @@ function ProductDetailClient({ param, isOffer = false }) {
                       onClick={() => setActiveImg(i)}
                       aria-label={`Image ${i + 1}`}
                     >
-                      <img src={img} alt={`${name} - image ${i + 1}`} width="48" height="48" loading="lazy" onError={handleImgError} />
+                      <Image src={img} alt={`${name} - image ${i + 1}`} width={48} height={48} quality={70} />
                     </button>
                   ))}
                 </div>
@@ -841,16 +842,13 @@ function ProductDetailClient({ param, isOffer = false }) {
               (brandHref ? (
                 <Link href={brandHref} className="wz-pd-brand wz-pd-hide-mobile">
                   {brandLogo && (
-                    <img
+                    <Image
                       src={brandLogo}
                       alt=""
                       className="wz-pd-brand-logo"
-                      width="28"
-                      height="28"
-                      loading="lazy"
-                      onError={(e) => {
-                        e.target.style.display = 'none'
-                      }}
+                      width={28}
+                      height={28}
+                      quality={80}
                     />
                   )}
                   <span>{brandLabel}</span>

@@ -1,5 +1,6 @@
 'use client'
 import { memo } from 'react'
+import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { useCatalog } from '../../Hooks/queries/useCatalog'
 import { useUIStore } from '../../Store/uiStore'
@@ -70,10 +71,14 @@ const CategoryTiles = () => {
               <button className="wz-cat-chip" onClick={() => handleClick(sub)} title={name}>
                 <div className={`wz-cat-chip-img${img ? '' : ' wz-cat-chip-img-fallback'}`}>
                   {img ? (
-                    <img
+                    <Image
                       src={img}
                       alt={name}
-                      loading="lazy"
+                      width={80}
+                      height={80}
+                      quality={75}
+                      sizes="80px"
+                      className="wz-cat-img"
                       onError={(e) => {
                         e.target.onerror = null
                         e.target.style.display = 'none'

@@ -1,6 +1,7 @@
 'use client'
 import { useContext, useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
+import Image from 'next/image'
 import { useRouter, usePathname } from 'next/navigation'
 import { FiMenu, FiSearch, FiShoppingBag, FiX, FiChevronDown } from 'react-icons/fi'
 
@@ -233,7 +234,9 @@ function Header() {
 
         <div className="wz-logo">
           <Link href={'/'}>
-            <img src={logo} alt="Watchizer-logo" width="150" height="46" />
+            {/* LCP-critical: priority preloads it, no lazy-loading. Kept at the
+                logo's true 150×46 aspect; CSS renders it height:46 / width:auto. */}
+            <Image src={logo} alt="Watchizer-logo" width={150} height={46} priority quality={90} />
           </Link>
         </div>
 

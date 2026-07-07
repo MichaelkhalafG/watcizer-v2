@@ -1,5 +1,6 @@
 'use client'
 import { useMemo, useCallback } from 'react'
+import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import WatchHero from '@/src/Components/Hero/WatchHero'
 import '@/src/Components/Home/home.css'
@@ -181,13 +182,14 @@ export default function HomeClient() {
                   type="button"
                 >
                   {img ? (
-                    <img
+                    <Image
                       src={img}
                       alt={name}
                       className="wz-brand-strip-img"
-                      width="90"
-                      height="32"
-                      loading="lazy"
+                      width={90}
+                      height={32}
+                      quality={70}
+                      sizes="90px"
                       onError={onBrandImgError}
                     />
                   ) : null}
