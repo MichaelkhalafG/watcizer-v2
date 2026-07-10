@@ -1,7 +1,7 @@
 'use client'
 import { memo, useState } from 'react'
 import Image from 'next/image'
-import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { useUIStore } from '../../Store/uiStore'
 import { getImageUrl, PLACEHOLDER_IMG } from '../../utils/imageUrl'
 import { productUrl } from '../../utils/productUrl'
@@ -11,7 +11,6 @@ import './ProductCard.css'
 const NEW_WINDOW_MS = 30 * 24 * 60 * 60 * 1000
 
 const ProductCard = ({ product, showBrand = true, showRating = true }) => {
-  const router = useRouter()
   const { language } = useUIStore()
   const { addItem } = useCart()
   const [added, setAdded] = useState(false)
@@ -88,9 +87,8 @@ const ProductCard = ({ product, showBrand = true, showRating = true }) => {
       : { tone: 'out', label: isRTL ? 'غير متوفر' : 'Out of stock' }
 
   /* ── Handlers ── */
-  const goToProduct = () => router.push(productUrl(product))
-
   const handleAdd = async (e) => {
+    e.preventDefault()
     e.stopPropagation()
     if (!inStock || added || pending) return
     setPending(true)
@@ -111,13 +109,19 @@ const ProductCard = ({ product, showBrand = true, showRating = true }) => {
   return (
     <article
       className={`wz-pc ${!inStock ? 'wz-pc--out' : ''}`}
-      onClick={goToProduct}
-      onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && goToProduct()}
-      role="button"
-      tabIndex={0}
       dir={isRTL ? 'rtl' : 'ltr'}
-      aria-label={name}
     >
+      {/* Stretched-overlay anchor — makes the whole card a real crawlable,
+          keyboard-focusable link WITHOUT nesting the inner <button> inside an
+          <a> (invalid HTML). The interactive controls below sit at a higher
+          stacking level so they receive clicks instead of the anchor. */}
+      <Link
+        href={productUrl(product)}
+        aria-label={name}
+        className="wz-pc__link"
+        style={{ position: 'absolute', inset: 0, zIndex: 1 }}
+      />
+
       {/* ── Media ── */}
       <div className="wz-pc__media">
         <Image
@@ -200,6 +204,7 @@ const ProductCard = ({ product, showBrand = true, showRating = true }) => {
             disabled={!inStock || pending}
             aria-busy={pending}
             aria-label={isRTL ? 'أضف إلى السلة' : 'Add to cart'}
+            style={{ position: 'relative', zIndex: 2 }}
           >
             {!inStock
               ? isRTL

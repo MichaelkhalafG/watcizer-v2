@@ -6,7 +6,6 @@ Disallow: /order-list
 Disallow: /wish-list
 Disallow: /search
 Disallow: /listingsearch
-Disallow: /blog/
 Disallow: /*?*
 
 Allow: /
