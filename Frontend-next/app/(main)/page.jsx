@@ -5,11 +5,37 @@ import HomeClient from './HomeClient'
 export const revalidate = 300
 
 // Home metadata (overrides the layout defaults) — ported from Home.jsx's <Helmet>.
+// The layout's OpenGraph/Twitter defaults are Arabic (ar_EG); override them here so
+// the social cards match this page's English title/description (en_US).
+const HOME_TITLE = 'Watchizer | Luxury Watches & Accessories in Egypt'
+const HOME_DESC =
+  'Shop luxury watches and accessories at Watchizer — premium timepieces, elegant designs and unbeatable prices across Egypt.'
+
 export const metadata = {
-  title: 'Watchizer | Luxury Watches & Accessories in Egypt',
-  description:
-    'Shop luxury watches and accessories at Watchizer — premium timepieces, elegant designs and unbeatable prices across Egypt.',
+  title: HOME_TITLE,
+  description: HOME_DESC,
   alternates: { canonical: 'https://watchizereg.com/' },
+  openGraph: {
+    title: HOME_TITLE,
+    description: HOME_DESC,
+    url: 'https://watchizereg.com/',
+    siteName: 'Watchizer',
+    type: 'website',
+    locale: 'en_US',
+    images: [
+      {
+        url: 'https://watchizereg.com/logo.svg',
+        width: 1200,
+        height: 630,
+        alt: 'Watchizer — Luxury Watches',
+      },
+    ],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: HOME_TITLE,
+    description: HOME_DESC,
+  },
 }
 
 // Organization/Store schema — emitted here (was App.jsx global) so it is in the
