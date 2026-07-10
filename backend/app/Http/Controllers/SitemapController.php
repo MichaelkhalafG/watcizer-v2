@@ -19,6 +19,8 @@ namespace App\Http\Controllers;
 use App\Models\Product;
 use App\Models\Brand;
 use App\Models\CategoryType;
+use App\Models\SubType;
+use App\Models\Grade;
 use App\Models\Blog;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -119,6 +121,39 @@ class SitemapController extends Controller
             if (!$enName) continue;
             $urls[] = $this->makeUrl(
                 self::DOMAIN . '/category/' . rawurlencode($enName),
+                '0.7',
+                'weekly'
+            );
+        }
+
+        // ── Sub-Types ─────────────────────────────────────────────────────────
+        // /subtypes/{slug} — slug matches the SPA's subTypeSlug()/toSlug() so the
+        // sitemap URL equals the facet route's canonical.
+        $subTypes = SubType::with('translations')->get();
+        foreach ($subTypes as $subType) {
+            $enName = $subType->translations->where('locale', 'en')->first()?->sub_type_name
+                   ?? $subType->sub_type_name;
+            if (!$enName) continue;
+            $slug = $this->slugify($enName);
+            if (!$slug) continue;
+            $urls[] = $this->makeUrl(
+                self::DOMAIN . '/subtypes/' . $slug,
+                '0.7',
+                'weekly'
+            );
+        }
+
+        // ── Grades ────────────────────────────────────────────────────────────
+        // /grade/{slug} — slug matches the SPA grade resolver (toSlug of grade_name).
+        $grades = Grade::with('translations')->get();
+        foreach ($grades as $grade) {
+            $enName = $grade->translations->where('locale', 'en')->first()?->grade_name
+                   ?? $grade->grade_name;
+            if (!$enName) continue;
+            $slug = $this->slugify($enName);
+            if (!$slug) continue;
+            $urls[] = $this->makeUrl(
+                self::DOMAIN . '/grade/' . $slug,
                 '0.7',
                 'weekly'
             );
