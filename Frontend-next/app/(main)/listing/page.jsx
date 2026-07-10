@@ -1,5 +1,4 @@
 import { Suspense } from 'react'
-import { QueryClient, dehydrate, HydrationBoundary } from '@tanstack/react-query'
 import { getServerCatalog } from '@/src/lib/serverCatalog'
 import { parseListingParams } from '@/src/utils/listingParams'
 import { objectToSearchParams, listingMetadata, listingBreadcrumbLd } from '@/src/lib/listingSeo'
@@ -38,19 +37,12 @@ export default async function ListingPage({ searchParams }) {
   const { tables, filters } = await loadContext(searchParams)
   const breadcrumbLd = listingBreadcrumbLd({ tables, filters, pathname: '/listing' })
 
-  // Seed a QueryClient from the SAME cached catalog fetch so ListingClient reads
-  // hydrated tables/products and server-renders the filtered count + first page.
-  const qc = new QueryClient()
-  try {
-    const { tables: tbl, ratings, productsEn, productsAr } = await getServerCatalog()
-    qc.setQueryData(['tables'], tbl)
-    qc.setQueryData(['products'], { ratings, productsEn, productsAr })
-  } catch {
-    // catalog was unreachable → client fetches + shows the inline error/retry.
-  }
-
+  // The (main) layout already prefetches + hydrates the catalog for every page, so
+  // this page does NOT re-dehydrate it — a second copy just doubled the HTML (C-1).
+  // ListingClient reads the layout-hydrated catalog and still server-renders the
+  // filtered count + first page.
   return (
-    <HydrationBoundary state={dehydrate(qc)}>
+    <>
       {/* BreadcrumbList structured data — in the initial HTML for scrapers. */}
       <script
         type="application/ld+json"
@@ -60,6 +52,6 @@ export default async function ListingPage({ searchParams }) {
       <Suspense fallback={null}>
         <ListingClient />
       </Suspense>
-    </HydrationBoundary>
+    </>
   )
 }

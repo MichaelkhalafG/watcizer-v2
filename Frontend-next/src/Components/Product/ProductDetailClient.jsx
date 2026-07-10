@@ -124,16 +124,26 @@ function ProductDetailClient({ param, isOffer = false }) {
   const [apiProduct, setApiProduct] = useState(null)
   const [fetchState, setFetchState] = useState('idle') // idle | loading | done | notfound | error
 
-  // API by-name fallback (legacy raw-title URLs / context miss).
+  // Full product record (specs, gallery images, colour names, descriptions) lives
+  // in ProductResource — NOT in the lightweight catalog card. Fetch it by id when the
+  // catalog resolved the product (fast path), else by english name for legacy raw-title
+  // URLs / a catalog miss. Both endpoints return { product: ProductResource, related }.
+  // The catalog card (contextProduct) still drives the instant SSR/above-the-fold view;
+  // this promotes to the full record once it arrives.
   useEffect(() => {
-    if (isOffer || !param || contextProduct) return
-    if (!products || !products.length) return // wait for context
+    if (isOffer || !param) return
+    const byId = contextProduct?.id ?? (/^\d+$/.test(param) ? param : null)
+    // No id yet AND the catalog hasn't loaded → wait (avoids a premature by-name
+    // call / false 404 before the catalog can resolve the slug).
+    if (!byId && (!products || !products.length)) return
     let alive = true
     // Fetch-status sync for an external API call — intentional effect setState.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setFetchState('loading')
-    http
-      .get(`products/by-name/${encodeURIComponent(decodeURIComponent(param))}`)
+    const req = byId
+      ? http.get(`products/${byId}`)
+      : http.get(`products/by-name/${encodeURIComponent(decodeURIComponent(param))}`)
+    req
       .then(({ data }) => {
         if (!alive) return
         setApiProduct(data.product)
@@ -165,7 +175,16 @@ function ProductDetailClient({ param, isOffer = false }) {
     [isOffer, offer, products],
   )
 
-  const product = isOffer ? null : contextProduct || apiProduct
+  // Prefer the full API record, but ONLY when it matches the currently-resolved
+  // product — otherwise (mid-navigation, before the new record arrives) the catalog
+  // card carries the view, so there's no stale-product flash. A catalog miss (legacy
+  // raw-title URL) still resolves via the by-name apiProduct.
+  const product = isOffer
+    ? null
+    : apiProduct &&
+        (apiProduct.id === contextProduct?.id || String(apiProduct.id) === String(param))
+      ? apiProduct
+      : contextProduct || apiProduct
   const item = isOffer ? offer : product
 
   // Loading grace: wait for context before declaring a 404 (fixes refresh bug).

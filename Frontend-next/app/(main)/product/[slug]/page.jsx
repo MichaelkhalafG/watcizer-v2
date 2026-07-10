@@ -1,5 +1,4 @@
 import { notFound, permanentRedirect } from 'next/navigation'
-import { QueryClient, dehydrate, HydrationBoundary } from '@tanstack/react-query'
 import {
   getServerCatalog,
   findProductInCatalog,
@@ -75,19 +74,13 @@ export default async function ProductPage({ params }) {
     permanentRedirect(canonicalPath)
   }
 
-  // Seed a QueryClient from the SAME cached catalog fetch (no extra network) so
-  // ProductDetailClient resolves the product from hydrated cache with no refetch.
-  const qc = new QueryClient()
-  try {
-    const { tables: tbl, ratings: r, productsEn, productsAr } = await getServerCatalog()
-    qc.setQueryData(['tables'], tbl)
-    qc.setQueryData(['products'], { ratings: r, productsEn, productsAr })
-  } catch {
-    // catalog was unreachable server-side → client fetches + resolves by-name
-  }
-
+  // The (main) layout already hydrates the (light) catalog for every page, so this
+  // page does NOT re-dehydrate it (that duplicated a ~9 MB copy — C-1). ProductDetailClient
+  // resolves the slug from the layout-hydrated catalog, then fetches the FULL record by
+  // id for specs/gallery. JSON-LD/metadata above use the server-side full catalog, so
+  // SEO is unaffected.
   return (
-    <HydrationBoundary state={dehydrate(qc)}>
+    <>
       {/* Product + BreadcrumbList structured data — in the initial HTML so
           scrapers see it without executing JS (the core SEO deliverable). */}
       <script
@@ -99,6 +92,6 @@ export default async function ProductPage({ params }) {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbLd) }}
       />
       <ProductDetailClient param={slug} isOffer={false} />
-    </HydrationBoundary>
+    </>
   )
 }

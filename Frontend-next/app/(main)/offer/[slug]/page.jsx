@@ -52,19 +52,15 @@ export default async function OfferPage({ params }) {
     permanentRedirect(canonicalPath)
   }
 
-  // Seed offers + catalog so ProductDetailClient (useOffers + useCatalog) resolves
-  // from hydrated cache with no refetch.
+  // Seed ONLY offers here (the (main) layout doesn't hydrate offers). The catalog is
+  // already hydrated by the layout, so we don't re-dehydrate it (that duplicated a
+  // ~9 MB copy — C-1). ProductDetailClient resolves the offer's main product from the
+  // layout-hydrated catalog (card fields); when offers are seeded, the offer detail
+  // should fetch that product's full record by id like the product page does.
   const qc = new QueryClient()
   try {
     const offers = await getServerOffers()
     qc.setQueryData(['offers'], offers)
-  } catch {
-    /* client refetches */
-  }
-  try {
-    const { tables, ratings, productsEn, productsAr } = await getServerCatalog()
-    qc.setQueryData(['tables'], tables)
-    qc.setQueryData(['products'], { ratings, productsEn, productsAr })
   } catch {
     /* client refetches */
   }

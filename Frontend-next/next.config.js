@@ -1,3 +1,28 @@
+// ── Build-time asset-base guard (I-2) ───────────────────────────────────────
+// Every crawlable image URL (og:image, twitter:image, JSON-LD image[], next/image
+// src) is built from NEXT_PUBLIC_ASSET_BASE (src/lib/env.js → getImageUrl). A
+// production build MUST have it set and MUST NOT point at localhost, or crawlers
+// get unresolvable image URLs. Missing = hard fail; localhost-in-prod = loud warn
+// (a LOCAL prod build legitimately has it via the dev-only .env.local, which is
+// absent on the deploy server where .env.production's HTTPS host wins).
+const _assetBase = process.env.NEXT_PUBLIC_ASSET_BASE || ''
+if (process.env.NODE_ENV === 'production') {
+  if (!_assetBase) {
+    throw new Error(
+      'NEXT_PUBLIC_ASSET_BASE is not set for a production build. Set it in .env.production ' +
+        '(e.g. https://dash.watchizereg.com) so image URLs resolve. Aborting build.',
+    )
+  }
+  if (/localhost|127\.0\.0\.1/.test(_assetBase)) {
+    console.warn(
+      `\n⚠  NEXT_PUBLIC_ASSET_BASE="${_assetBase}" points at localhost during a production build.\n` +
+        '   og:image / JSON-LD image[] would be unresolvable for crawlers. Expected for a LOCAL prod\n' +
+        '   build (.env.local shadows .env.production); on the deploy server .env.local is absent so the\n' +
+        "   HTTPS host in .env.production is used. If this shows in CI/deploy, fix NEXT_PUBLIC_ASSET_BASE.\n",
+    )
+  }
+}
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,

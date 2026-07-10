@@ -34,6 +34,9 @@ dev.log
 
 # env files (can opt-in for committing if needed)
 .env*
+# ...except the production env: it holds only the public CDN/site hosts (no secrets)
+# and MUST reach the deploy server so image URLs resolve to the HTTPS CDN (I-2).
+!.env.production
 
 # vercel
 .vercel
