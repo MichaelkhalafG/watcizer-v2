@@ -1,0 +1,106 @@
+`next lint` is deprecated and will be removed in Next.js 16.
+For new projects, use create-next-app to choose your preferred linter.
+For existing projects, migrate to the ESLint CLI:
+npx @next/codemod@canary next-lint-to-eslint-cli .
+
+
+./app/(main)/blog/[name]/BlogClient.jsx
+30:11  Warning: Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+56:13  Warning: Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+./src/Components/Auth/AuthShell.jsx
+21:13  Warning: Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+./src/Components/Cart/CartModal.jsx
+157:19  Warning: Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+177:21  Warning: Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+./src/Components/Footer/Footer.jsx
+47:13  Warning: Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+./src/Components/Header/Header.jsx
+307:19  Warning: Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+428:13  Warning: Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+527:29  Warning: Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+./src/Components/Header/Nav/Nav.jsx
+302:11  Warning: Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+./src/Components/Header/SearchBox/SearchBox.jsx
+124:21  Warning: Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+./src/Components/Hero/WatchCanvas.jsx
+217:5  Warning: Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+./src/Components/Hero/WatchHero.jsx
+93:9  Warning: Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+./src/Components/Listing/SmartSuggestions.jsx
+72:9  Warning: The 'list' logical expression could make the dependencies of useMemo Hook (at line 104) change on every render. To fix this, wrap the initialization of 'list' in its own useMemo() Hook.  react-hooks/exhaustive-deps
+72:9  Warning: The 'list' logical expression could make the dependencies of useMemo Hook (at line 120) change on every render. To fix this, wrap the initialization of 'list' in its own useMemo() Hook.  react-hooks/exhaustive-deps
+72:9  Warning: The 'list' logical expression could make the dependencies of useMemo Hook (at line 141) change on every render. To fix this, wrap the initialization of 'list' in its own useMemo() Hook.  react-hooks/exhaustive-deps
+
+./src/Components/Product/ProductCard.jsx
+62:3  Warning: Unused eslint-disable directive (no problems were reported from 'react-hooks/purity').
+64:7  Error: Error: Cannot call impure function during render
+
+`Date.now` is an impure function. Calling an impure function can produce unstable results that update unpredictably when the component happens to re-render. (https://react.dev/reference/rules/components-and-hooks-must-be-pure#components-and-hooks-must-be-idempotent).
+
+  62 |   // eslint-disable-next-line react-hooks/purity
+  63 |   const isNew = product.created_at
+> 64 |     ? Date.now() - new Date(product.created_at).getTime() < NEW_WINDOW_MS
+     |       ^^^^^^^^^^ Cannot call impure function
+  65 |     : false
+  66 |
+  67 |   /* ── Rating ── */  react-hooks/purity
+
+./src/Components/Product/ProductDetailClient.jsx
+434:6  Warning: React Hook useMemo has an unnecessary dependency: 'safeStr'. Either exclude it or remove the dependency array. Outer scope values like 'safeStr' aren't valid dependencies because mutating them doesn't re-render the component.  react-hooks/exhaustive-deps
+
+./src/Components/SideBar/SideBar.jsx
+89:9  Warning: The 'list' logical expression could make the dependencies of useMemo Hook (at line 142) change on every render. To fix this, wrap the initialization of 'list' in its own useMemo() Hook.  react-hooks/exhaustive-deps
+89:9  Warning: The 'list' logical expression could make the dependencies of useMemo Hook (at line 230) change on every render. To fix this, wrap the initialization of 'list' in its own useMemo() Hook.  react-hooks/exhaustive-deps
+
+./src/Components/UI/ImageZoom.jsx
+68:7  Warning: Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+./src/PageViews/Account/Account.jsx
+122:7  Warning: Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+481:31  Warning: Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+885:27  Warning: Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+./src/PageViews/Auth/ForgotPassword.jsx
+39:5  Warning: React Hook useCallback has a missing dependency: 't'. Either include it or remove the dependency array.  react-hooks/exhaustive-deps
+
+./src/PageViews/Auth/Login/Login.jsx
+66:6  Warning: React Hook useCallback has a missing dependency: 't'. Either include it or remove the dependency array.  react-hooks/exhaustive-deps
+108:5  Warning: React Hook useCallback has missing dependencies: 'showToast' and 't'. Either include them or remove the dependency array.  react-hooks/exhaustive-deps
+
+./src/PageViews/Auth/Register/Register.jsx
+78:6  Warning: React Hook useCallback has a missing dependency: 't'. Either include it or remove the dependency array.  react-hooks/exhaustive-deps
+119:5  Warning: React Hook useCallback has a missing dependency: 't'. Either include it or remove the dependency array.  react-hooks/exhaustive-deps
+
+./src/PageViews/Auth/ResetPassword.jsx
+66:5  Warning: React Hook useCallback has a missing dependency: 't'. Either include it or remove the dependency array.  react-hooks/exhaustive-deps
+
+./src/PageViews/Cart/Cart.jsx
+78:9  Warning: Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+177:9  Warning: The 'items' logical expression could make the dependencies of useMemo Hook (at line 232) change on every render. To fix this, wrap the initialization of 'items' in its own useMemo() Hook.  react-hooks/exhaustive-deps
+177:9  Warning: The 'items' logical expression could make the dependencies of useMemo Hook (at line 287) change on every render. To fix this, wrap the initialization of 'items' in its own useMemo() Hook.  react-hooks/exhaustive-deps
+177:9  Warning: The 'items' logical expression could make the dependencies of useMemo Hook (at line 316) change on every render. To fix this, wrap the initialization of 'items' in its own useMemo() Hook.  react-hooks/exhaustive-deps
+178:9  Warning: The 'list' logical expression could make the dependencies of useCallback Hook (at line 215) change on every render. To fix this, wrap the initialization of 'list' in its own useMemo() Hook.  react-hooks/exhaustive-deps
+178:9  Warning: The 'list' logical expression could make the dependencies of useMemo Hook (at line 287) change on every render. To fix this, wrap the initialization of 'list' in its own useMemo() Hook.  react-hooks/exhaustive-deps
+179:9  Warning: The 'offerList' logical expression could make the dependencies of useCallback Hook (at line 215) change on every render. Move it inside the useCallback callback. Alternatively, wrap the initialization of 'offerList' in its own useMemo() Hook.  react-hooks/exhaustive-deps
+235:9  Warning: The 'cities' logical expression could make the dependencies of useCallback Hook (at line 253) change on every render. To fix this, wrap the initialization of 'cities' in its own useMemo() Hook.  react-hooks/exhaustive-deps
+
+./src/PageViews/Checkout/Checkout.jsx
+76:15  Warning: Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+161:9  Warning: The 't' function makes the dependencies of useCallback Hook (at line 414) change on every render. To fix this, wrap the definition of 't' in its own useCallback() Hook.  react-hooks/exhaustive-deps
+178:9  Warning: The 'items' logical expression could make the dependencies of useMemo Hook (at line 252) change on every render. To fix this, wrap the initialization of 'items' in its own useMemo() Hook.  react-hooks/exhaustive-deps
+178:9  Warning: The 'items' logical expression could make the dependencies of useMemo Hook (at line 267) change on every render. To fix this, wrap the initialization of 'items' in its own useMemo() Hook.  react-hooks/exhaustive-deps
+178:9  Warning: The 'items' logical expression could make the dependencies of useCallback Hook (at line 414) change on every render. To fix this, wrap the initialization of 'items' in its own useMemo() Hook.  react-hooks/exhaustive-deps
+
+./src/PageViews/Checkout/OrderConfirmation.jsx
+26:9  Warning: The 't' function makes the dependencies of useCallback Hook (at line 92) change on every render. To fix this, wrap the definition of 't' in its own useCallback() Hook.  react-hooks/exhaustive-deps
+
+info  - Need to disable some ESLint rules? Learn more here: https://nextjs.org/docs/app/api-reference/config/eslint#disabling-rules

@@ -1,5 +1,5 @@
 'use client'
-import { useContext, useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { useRouter, usePathname } from 'next/navigation'
@@ -11,18 +11,35 @@ const logo = '/logo.webp'
 import './Header.css'
 import SearchBox from './SearchBox/SearchBox'
 import Nav from './Nav/Nav'
-import { MyContext } from '../../Context/Context'
 import { useUIStore } from '../../Store/uiStore'
 import { useAuthStore } from '../../Store/authStore'
+import { useShippingStore } from '../../Store/shippingStore'
+import useCart from '../../Hooks/useCart'
 import { useCatalog } from '../../Hooks/queries/useCatalog'
 import { buildListingParams } from '../../utils/listingParams'
 import { getImageUrl } from '../../utils/imageUrl'
 import { FaFacebookF, FaInstagram } from 'react-icons/fa'
 
 function Header() {
-  // Cart-derived counters stay in context; server data (products/tables) comes
-  // from TanStack Query via useCatalog (shared, cached — no extra fetch).
-  const { productsCount, total_cart_price } = useContext(MyContext)
+  // Cart-derived counters (were MyProvider state) are derived here from the cart
+  // + selected shipping. Server data (products/tables) comes from TanStack Query
+  // via useCatalog (shared, cached — no extra fetch).
+  const { cart } = useCart()
+  const shipping = useShippingStore((s) => s.shipping)
+  const { productsCount, total_cart_price } = useMemo(() => {
+    const cartItems = Array.isArray(cart?.cart_item) ? cart.cart_item : []
+    const count = cartItems.reduce(
+      (total, item) => total + (parseInt(item.quantity, 10) || 0),
+      0,
+    )
+    const subtotal = cartItems.reduce((total, item) => {
+      const piecePrice = parseFloat(item.piece_price || 0)
+      const quantity = parseInt(item.quantity || 1, 10)
+      return total + piecePrice * quantity
+    }, 0)
+    const total = (subtotal + parseFloat(shipping || 0)).toFixed(2)
+    return { productsCount: count, total_cart_price: total }
+  }, [cart, shipping])
   const { products, tables } = useCatalog()
   const { language, setLanguage } = useUIStore()
   const { userId: user_id, user } = useAuthStore()

@@ -670,7 +670,7 @@
 }
 .wz-acc-strength-weak span {
   transform: scaleX(0.33);
-  background: #dc2626;
+  background: var(--wz-danger);
 }
 .wz-acc-strength-medium span {
   transform: scaleX(0.66);
@@ -920,7 +920,7 @@
     background: transparent;
     border: 1px solid rgba(220, 38, 38, 0.25);
     border-radius: 8px;
-    color: #dc2626;
+    color: var(--wz-danger);
     font-size: 13px;
     font-weight: 600;
     cursor: pointer;

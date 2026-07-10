@@ -6,6 +6,7 @@ import { useOffers } from '../../Hooks/queries/useOffers'
 import { useUIStore } from '../../Store/uiStore'
 import { getImageUrl, handleImgError, PLACEHOLDER_IMG } from '../../utils/imageUrl'
 import { productUrl, offerUrl } from '../../utils/productUrl'
+import TrustSignals from '../../Components/Merchandising/TrustSignals'
 import './Cart.css'
 
 // Slide-in "added to cart" drawer. Same props as before ({ open, onClose, cart })
@@ -188,6 +189,7 @@ function CartModal({ open, onClose, cart }) {
 
         {/* Footer */}
         <div className="wz-cartmodal-foot">
+          <TrustSignals variant="cart" isRTL={isRTL} />
           <div className="wz-cartmodal-subtotal">
             <span>{t('Subtotal', 'المجموع الفرعي')}</span>
             <span className="wz-cartmodal-subtotal-val">

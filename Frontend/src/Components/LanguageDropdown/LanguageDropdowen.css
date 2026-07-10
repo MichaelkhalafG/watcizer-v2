@@ -10,7 +10,7 @@
   background: transparent;
   border: 1px solid currentColor;
   border-radius: 6px;
-  color: #1a1a1a;
+  color: var(--wz-ink-soft);
   font-size: 13px;
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -24,12 +24,12 @@
 }
 
 .wz-lang-toggle:hover {
-  background: #1a1a1a;
+  background: var(--wz-ink-soft);
   color: #fff;
-  border-color: #1a1a1a;
+  border-color: var(--wz-ink-soft);
 }
 
 .wz-lang-toggle:focus-visible {
-  outline: 2px solid #c8a45c;
+  outline: 2px solid var(--wz-gold);
   outline-offset: 2px;
 }

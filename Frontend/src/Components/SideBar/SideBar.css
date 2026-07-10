@@ -42,7 +42,7 @@
   font-weight: 700;
   letter-spacing: 0.15em;
   text-transform: uppercase;
-  color: #1a1a1a;
+  color: var(--wz-ink-soft);
 }
 
 .wz-sidebar-clear-all {
@@ -75,7 +75,7 @@
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: #1a1a1a;
+  color: var(--wz-ink-soft);
   flex: 1;
   text-align: start;
 }
@@ -89,7 +89,7 @@
 
 .wz-fs-clear {
   font-size: 9px;
-  color: #c8a45c;
+  color: var(--wz-gold);
   border: 1px solid rgba(200, 164, 92, 0.3);
   border-radius: 10px;
   padding: 2px 7px;
@@ -124,12 +124,12 @@
   font-size: 11px;
   margin-bottom: 8px;
   outline: none;
-  color: #1a1a1a;
+  color: var(--wz-ink-soft);
   box-sizing: border-box;
 }
 
 .wz-fs-search:focus {
-  border-color: #262626;
+  border-color: var(--wz-charcoal);
 }
 
 /* Items list */
@@ -156,14 +156,14 @@
 .wz-fs-item input[type='checkbox'] {
   width: 13px;
   height: 13px;
-  accent-color: #262626;
+  accent-color: var(--wz-charcoal);
   cursor: pointer;
   flex-shrink: 0;
 }
 
 .wz-fs-item-name {
   font-size: 12px;
-  color: #262626;
+  color: var(--wz-charcoal);
   flex: 1;
   line-height: 1.4;
 }
@@ -177,7 +177,7 @@
 .wz-fs-show-more {
   margin-top: 6px;
   font-size: 11px;
-  color: #262626;
+  color: var(--wz-charcoal);
   background: none;
   border: none;
   cursor: pointer;
@@ -212,7 +212,7 @@
   position: absolute;
   top: 0;
   bottom: 0;
-  background: #262626;
+  background: var(--wz-charcoal);
 }
 
 .wz-price-input {
@@ -235,7 +235,7 @@
   height: 14px;
   border-radius: 50%;
   background: #fff;
-  border: 2px solid #262626;
+  border: 2px solid var(--wz-charcoal);
   cursor: pointer;
   pointer-events: all;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
@@ -246,7 +246,7 @@
   height: 14px;
   border-radius: 50%;
   background: #fff;
-  border: 2px solid #262626;
+  border: 2px solid var(--wz-charcoal);
   cursor: pointer;
   pointer-events: all;
 }

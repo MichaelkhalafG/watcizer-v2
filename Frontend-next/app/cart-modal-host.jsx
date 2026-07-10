@@ -12,6 +12,8 @@ export default function CartModalHost() {
 
   useEffect(() => {
     const count = cart?.cart_item?.length || 0
+    // Auto-open the drawer when the cart line count rises — intentional.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (count > prevCount) setOpen(true)
     setPrevCount(count)
     // eslint-disable-next-line react-hooks/exhaustive-deps

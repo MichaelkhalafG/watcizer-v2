@@ -226,6 +226,7 @@
 }
 
 .wz-featured-img-box {
+  position: relative; /* anchor for next/image fill */
   flex: 0 0 clamp(160px, 28%, 300px);
   aspect-ratio: 1 / 1;
   overflow: hidden;

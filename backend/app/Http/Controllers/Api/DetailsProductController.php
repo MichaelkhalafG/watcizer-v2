@@ -21,14 +21,73 @@ class DetailsProductController extends Controller
         try {
             $cacheKey = 'AllProduct';
 
+            // Memory/payload optimisation (keeps the exact SSR-catalog contract):
+            //  1. select() only the product columns the frontend transform actually
+            //     reads (src/utils/transformProduct.js) — dropping ~17 unused columns
+            //     (extra_attributes, seo_*, tags, model_number, audit cols, …) shrinks
+            //     both the query result and the JSON payload.
+            //  2. Cache ->toArray() (plain arrays) instead of the Eloquent collection.
+            //     response()->json() serialises a collection via toArray() anyway, so
+            //     the JSON is byte-identical, but the FileStore blob is far lighter to
+            //     serialise/store — this is where the 128M OOM happened.
+            // Relations are loaded UNCHANGED (feature/gender/dialColor/bandColor/
+            // translations) so localized names + colors are preserved exactly.
             $product = Cache::remember($cacheKey, now()->addMinutes(10), function () {
-                return Product::with(
-                    'feature',
-                    'gender',
-                    'dialColor',
-                    'bandColor',
-                    'translations'
-                )->get();
+                return Product::query()
+                    ->select([
+                        'id',
+                        'category_type_id',
+                        'brand_id',
+                        'grade_id',
+                        'sub_type_id',
+                        'band_closure_id',
+                        'dial_display_type_id',
+                        'case_size_type_id',
+                        'case_shape_id',
+                        'band_material_id',
+                        'watch_movement_id',
+                        'band_length',
+                        'band_size_type_id',
+                        'water_resistance',
+                        'water_resistance_size_type_id',
+                        'band_width',
+                        'band_width_size_type_id',
+                        'case_thickness',
+                        'case_thickness_size_type_id',
+                        'dial_case_material_id',
+                        'dial_glass_material_id',
+                        'watch_height',
+                        'watch_height_size_type_id',
+                        'watch_width',
+                        'watch_width_size_type_id',
+                        'watch_length',
+                        'watch_length_size_type_id',
+                        'image',
+                        'warranty_years',
+                        'interchangeable_dial',
+                        'interchangeable_strap',
+                        'average_rate',
+                        'purchase_price',
+                        'selling_price',
+                        'sale_price_after_discount',
+                        'percentage_discount',
+                        'stock',
+                        'market_stock',
+                        'search_keywords',
+                        'watch_box',
+                        'active',
+                        'created_at',
+                        'updated_at',
+                    ])
+                    ->with(
+                        'feature',
+                        'gender',
+                        'dialColor',
+                        'bandColor',
+                        'translations'
+                    )
+                    ->get()
+                    ->toArray();
             });
 
             return response()->json($product);

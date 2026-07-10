@@ -2,6 +2,7 @@ import { memo, useContext, useEffect, useMemo, useState, useCallback, useRef } f
 import { useParams, useLocation, useNavigate, Navigate, Link } from 'react-router-dom'
 import { Helmet } from 'react-helmet-async'
 import { FiShare2 } from 'react-icons/fi'
+import ImageZoom from '../UI/ImageZoom'
 import DOMPurify from 'dompurify'
 import { MyContext } from '../../Context/Context'
 import { useCatalog } from '../../Hooks/queries/useCatalog'
@@ -11,6 +12,9 @@ import { useAuthStore } from '../../Store/authStore'
 import { useToastStore } from '../../Store/toastStore'
 import useCart, { getItemKey } from '../../Hooks/useCart'
 import ProductSlider from './ProductSlider'
+import TrustSignals from '../Merchandising/TrustSignals'
+import BackToTop from '../BackToTop/BackToTop'
+import { trackViewContent } from '../../scripts/pixels'
 import { getImageUrl, handleImgError, PLACEHOLDER_IMG } from '../../utils/imageUrl'
 import { toSlug } from '../../utils/slugs'
 import { productUrl, offerUrl } from '../../utils/productUrl'
@@ -55,7 +59,7 @@ function ProductDetail() {
 
   // Server data from the shared TanStack Query cache; wishlist stays in context.
   const { handleAddTowishlist, wishList } = useContext(MyContext)
-  const { products, tables } = useCatalog()
+  const { products, tables, isError: catalogIsError, refetch: refetchCatalog } = useCatalog()
   const { data: offers = [] } = useOffers()
   const { language } = useUIStore()
   const isRTL = language === 'ar'
@@ -225,18 +229,10 @@ function ProductDetail() {
 
   const [activeImg, setActiveImg] = useState(0)
   useEffect(() => setActiveImg(0), [param, isOffer])
-  const [zoom, setZoom] = useState({ active: false, x: 50, y: 50 })
+  // Horizontal-swipe gallery on mouse/touch. (Zoom itself is handled in-place by
+  // the custom ImageZoom component below — hover on desktop, touch-drag on mobile.)
   const touchX = useRef(null)
 
-  const onZoomMove = (e) => {
-    const r = e.currentTarget.getBoundingClientRect()
-    setZoom({
-      active: true,
-      x: ((e.clientX - r.left) / r.width) * 100,
-      y: ((e.clientY - r.top) / r.height) * 100,
-    })
-  }
-  const onZoomLeave = () => setZoom((z) => ({ ...z, active: false }))
   const onTouchStart = (e) => {
     touchX.current = e.touches[0].clientX
   }
@@ -256,30 +252,34 @@ function ProductDetail() {
   const changeQty = (d) => setQuantity((q) => Math.max(1, Math.min(q + d, maxStock || 1)))
 
   const [isAdding, setIsAdding] = useState(false)
-  const handleAdd = useCallback(() => {
+  const handleAdd = useCallback(async () => {
     if (isAdding || !inStock) return
     setIsAdding(true)
-    if (isOffer) {
-      const key = `offer_${offer.id}`
-      const existing = cart?.cart_item?.find((i) => getItemKey(i) === key)
-      if (existing) updateQuantity(key, existing.quantity + quantity)
-      else addItem({ offer_id: offer.id, quantity, piece_price: finalPrice, type_stock: 'Express' })
-    } else {
-      const key = `product_${product.id}`
-      const existing = cart?.cart_item?.find((i) => getItemKey(i) === key)
-      if (existing) updateQuantity(key, existing.quantity + quantity)
-      else
-        addItem({
-          product_id: product.id,
-          quantity,
-          piece_price: finalPrice,
-          type_stock: expressStock > 0 ? 'Express' : 'Market',
-          color_band: selectedBand || null,
-          color_dial: selectedDial || null,
-        })
+    try {
+      if (isOffer) {
+        const key = `offer_${offer.id}`
+        const existing = cart?.cart_item?.find((i) => getItemKey(i) === key)
+        if (existing) await updateQuantity(key, existing.quantity + quantity)
+        else
+          await addItem({ offer_id: offer.id, quantity, piece_price: finalPrice, type_stock: 'Express' })
+      } else {
+        const key = `product_${product.id}`
+        const existing = cart?.cart_item?.find((i) => getItemKey(i) === key)
+        if (existing) await updateQuantity(key, existing.quantity + quantity)
+        else
+          await addItem({
+            product_id: product.id,
+            quantity,
+            piece_price: finalPrice,
+            type_stock: expressStock > 0 ? 'Express' : 'Market',
+            color_band: selectedBand || null,
+            color_dial: selectedDial || null,
+          })
+      }
+      showToast(isRTL ? 'تمت الإضافة إلى السلة!' : 'Added to cart!', 'success')
+    } finally {
+      setIsAdding(false)
     }
-    showToast(isRTL ? 'تمت الإضافة إلى السلة!' : 'Added to cart!', 'success')
-    setTimeout(() => setIsAdding(false), 1500)
   }, [
     isAdding,
     inStock,
@@ -311,14 +311,21 @@ function ProductDetail() {
     )
   }, [wishList, isOffer, offer, product])
 
-  const handleWishlist = useCallback(() => {
+  const [wishlistPending, setWishlistPending] = useState(false)
+  const handleWishlist = useCallback(async () => {
     if (!userId) {
       showToast(isRTL ? 'يجب تسجيل الدخول أولاً' : 'Please login first', 'warning')
       navigate('/login')
       return
     }
-    handleAddTowishlist(isOffer ? offer.id : product.id, isOffer ? 'o' : 'p')
-  }, [userId, isOffer, offer, product, handleAddTowishlist, navigate, showToast, isRTL])
+    if (wishlistPending) return
+    setWishlistPending(true)
+    try {
+      await handleAddTowishlist(isOffer ? offer.id : product.id, isOffer ? 'o' : 'p')
+    } finally {
+      setWishlistPending(false)
+    }
+  }, [userId, isOffer, offer, product, handleAddTowishlist, navigate, showToast, isRTL, wishlistPending])
 
   // ── SEO ─────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -331,6 +338,14 @@ function ProductDetail() {
       document.title = 'Watchizer'
     }
   }, [item, getName, getBrand])
+
+  // ── Analytics: ViewContent (fires once per resolved product/offer) ────────
+  const viewedId = isOffer ? offer?.id : product?.id
+  useEffect(() => {
+    if (viewedId == null) return
+    trackViewContent({ id: viewedId, name: getName(item, 'en'), value: finalPrice })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewedId])
 
   // ── Brand breadcrumb link ───────────────────────────────────────────────
   const brandHref = useMemo(() => {
@@ -593,6 +608,27 @@ function ProductDetail() {
     }
   }, [isOffer, offer, product, language, getName, showToast, isRTL])
 
+  // ── Render: catalog fetch failed (the product resolves from the catalog, so a
+  //    fetch failure means we can't load it) → inline error + retry, shown
+  //    immediately instead of a skeleton that decays into a wrong "not found". ──
+  if (catalogIsError && !item) {
+    return (
+      <div className="wz-pd">
+        <div className="wz-pd-notfound" role="alert">
+          <h2>{isRTL ? 'تعذّر تحميل المنتج' : "Couldn't load this product"}</h2>
+          <p>
+            {isRTL
+              ? 'تحقّق من اتصالك وحاول مرة أخرى.'
+              : 'Check your connection and try again.'}
+          </p>
+          <button className="wz-pd-notfound-btn" onClick={refetchCatalog}>
+            {isRTL ? 'إعادة المحاولة' : 'Retry'}
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   // ── Render: loading ───────────────────────────────────────────────────
   if (isLoading) {
     return (
@@ -656,8 +692,8 @@ function ProductDetail() {
       : 'Out of Stock'
     : isAdding
       ? isRTL
-        ? '✓ تمت الإضافة'
-        : '✓ Added'
+        ? 'جارٍ الإضافة…'
+        : 'Adding…'
       : !isOffer && expressStock <= 0 && marketStock > 0
         ? isRTL
           ? 'اطلب مسبقاً'
@@ -849,20 +885,19 @@ function ProductDetail() {
           <div className="wz-pd-gallery">
             <div
               className="wz-pd-main"
-              onMouseMove={onZoomMove}
-              onMouseLeave={onZoomLeave}
               onTouchStart={onTouchStart}
               onTouchEnd={onTouchEnd}
             >
-              <img
+              {/* key forces a clean remount when the selected image changes so
+                  the hover-zoom always targets the current main image. */}
+              <ImageZoom
+                key={images[activeImg]}
                 src={images[activeImg]}
                 alt={name}
-                className="wz-pd-main-img"
-                onError={handleImgError}
-                style={{
-                  transform: zoom.active ? 'scale(1.8)' : 'scale(1)',
-                  transformOrigin: `${zoom.x}% ${zoom.y}%`,
-                }}
+                width={600}
+                height={600}
+                zoomScale={2.5}
+                className="wz-pd-main-img-zoom"
               />
               {hasSale && <span className="wz-pd-discount wz-pd-hide-mobile">−{discount}%</span>}
             </div>
@@ -1022,7 +1057,8 @@ function ProductDetail() {
                 ref={cartBtnRef}
                 className={`wz-pd-add${isAdding ? ' is-added' : ''}`}
                 onClick={handleAdd}
-                disabled={!inStock}
+                disabled={!inStock || isAdding}
+                aria-busy={isAdding}
               >
                 {cartLabel}
               </button>
@@ -1030,6 +1066,9 @@ function ProductDetail() {
               <button
                 className={`wz-pd-wish${isWishlisted ? ' is-on' : ''}`}
                 onClick={handleWishlist}
+                disabled={wishlistPending}
+                aria-busy={wishlistPending}
+                style={wishlistPending ? { opacity: 0.55, cursor: 'wait' } : undefined}
                 aria-label={
                   isWishlisted
                     ? isRTL ? 'إزالة من قائمة الرغبات' : 'Remove from wishlist'
@@ -1068,6 +1107,15 @@ function ProductDetail() {
                 )}
               </p>
             )}
+
+            {/* Trust badges + live social proof / low-stock urgency */}
+            <TrustSignals
+              variant="pdp"
+              rating={avgRating}
+              reviewCount={reviewCount}
+              stockLeft={inStock ? maxStock : null}
+              isRTL={isRTL}
+            />
           </div>
         </div>
 
@@ -1246,10 +1294,17 @@ function ProductDetail() {
             </span>
           )}
         </div>
-        <button className="wz-pd-sticky-add" onClick={handleAdd} disabled={!inStock}>
+        <button
+          className="wz-pd-sticky-add"
+          onClick={handleAdd}
+          disabled={!inStock || isAdding}
+          aria-busy={isAdding}
+        >
           {cartLabel}
         </button>
       </div>
+
+      <BackToTop />
     </div>
   )
 }

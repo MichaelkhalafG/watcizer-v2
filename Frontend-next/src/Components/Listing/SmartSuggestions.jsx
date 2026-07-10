@@ -1,5 +1,6 @@
 'use client'
 import { memo, useMemo } from 'react'
+import Image from 'next/image'
 import { useCatalog } from '../../Hooks/queries/useCatalog'
 import { useUIStore } from '../../Store/uiStore'
 import { passesFilters } from '../../utils/filterPredicate'
@@ -42,11 +43,14 @@ function Chip({ active, label, count, logo, onClick }) {
       aria-pressed={active}
     >
       {logo ? (
-        <img
+        <Image
           className="wz-sg-chip-logo"
           src={logo}
           alt=""
-          loading="lazy"
+          width={20}
+          height={20}
+          quality={75}
+          sizes="20px"
           onError={(e) => {
             e.target.style.display = 'none'
           }}

@@ -18,18 +18,37 @@ class ProductResource extends JsonResource
         $p = $this->resource;
 
         $assetBase = rtrim((string) config('services.asset_base'), '/');
-        $url = fn (?string $folder, ?string $file) => $file
-            ? $assetBase . '/Uploads_Images/' . $folder . '/' . $file
-            : null;
+
+        // Idempotent image-URL builder (ported from ProductListResource). A stored
+        // value may be a bare filename (normal), an already-full URL, or — from
+        // older seeder runs — one that already carries a folder segment (e.g.
+        // "Product/x.webp"). Only prepend the folder for bare filenames, so we
+        // never emit the doubled "Product_image/Product/" path or glue a folder
+        // onto an http(s) URL. The $folder default (Product) is overridden for
+        // non-product images (e.g. Brand logos) whose bare filenames live elsewhere.
+        $imgUrl = function (?string $file, string $folder = 'Product') use ($assetBase) {
+            if (! $file) {
+                return null;
+            }
+            if (preg_match('#^https?://#i', $file)) {
+                return $file;
+            }
+            $file = ltrim($file, '/');
+            if (str_contains($file, '/')) {
+                return $assetBase . '/Uploads_Images/' . $file;
+            }
+
+            return $assetBase . '/Uploads_Images/' . $folder . '/' . $file;
+        };
 
         // ── Images: main image + ordered gallery ─────────────────────────────
         $images = [];
         if ($p->image) {
-            $images[] = $url('Product', $p->image);
+            $images[] = $imgUrl($p->image);
         }
         foreach ($p->productImages as $img) {
             if ($img->image) {
-                $images[] = $url('Product_image', $img->image);
+                $images[] = $imgUrl($img->image);
             }
         }
 
@@ -78,7 +97,7 @@ class ProductResource extends JsonResource
                 'id'       => $p->brand->id,
                 'name_en'  => optional($p->brand->translate('en'))->brand_name,
                 'name_ar'  => optional($p->brand->translate('ar'))->brand_name,
-                'logo_url' => $url('Brand', $p->brand->image),
+                'logo_url' => $imgUrl($p->brand->image, 'Brand'),
             ] : null,
             'main_category'  => $named($p->mainCategory, 'name'),
             'sub_type'       => $named($p->sub_type, 'sub_type_name'),
@@ -103,7 +122,7 @@ class ProductResource extends JsonResource
             'short_description_ar'      => optional($p->translate('ar'))->short_description,
             'long_description'          => optional($p->translate('en'))->long_description,
             'long_description_ar'       => optional($p->translate('ar'))->long_description,
-            'image'                     => $url('Product', $p->image),
+            'image'                     => $imgUrl($p->image),
             'stock'                     => (int) ($p->stock ?? 0),
             'market_stock'              => (int) ($p->market_stock ?? 0),
             'brand_name'                => optional($p->brand?->translate('en'))->brand_name,

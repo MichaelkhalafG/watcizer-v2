@@ -1,8 +1,9 @@
 'use client'
 import { memo, useState, useEffect, useMemo, useCallback } from 'react'
+import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { useUIStore } from '../../Store/uiStore'
-import { getImageUrl, handleImgError, PLACEHOLDER_IMG } from '../../utils/imageUrl'
+import { getImageUrl, PLACEHOLDER_IMG } from '../../utils/imageUrl'
 import { productUrl } from '../../utils/productUrl'
 
 // Title can live in a translations[] array or be pre-localized on the catalog
@@ -24,6 +25,9 @@ const getName = (p, lang) => {
 function FeaturedBanner({ products, loading = false }) {
   const [current, setCurrent] = useState(0)
   const [visible, setVisible] = useState(true)
+  // Broken-image guard: swap the current slide's image for the inline placeholder
+  // once next/image reports a load error (reset whenever the slide changes).
+  const [imgBroken, setImgBroken] = useState(false)
   const { language } = useUIStore()
   const router = useRouter()
   const isRTL = language === 'ar'
@@ -45,6 +49,8 @@ function FeaturedBanner({ products, loading = false }) {
   // 5 in order, then shuffle for variety AFTER mount (client-only, post-hydration).
   const [featured, setFeatured] = useState(() => pool.slice(0, 5))
   useEffect(() => {
+    // Post-hydration shuffle (avoids SSR/client Math.random mismatch) — intentional.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setFeatured([...pool].sort(() => Math.random() - 0.5).slice(0, 5))
   }, [pool])
 
@@ -59,6 +65,12 @@ function FeaturedBanner({ products, loading = false }) {
     }, 5000)
     return () => clearInterval(id)
   }, [featured.length])
+
+  // Reset the broken-image flag when the visible slide (or the pool) changes.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setImgBroken(false)
+  }, [current, featured])
 
   const jumpTo = useCallback((i) => {
     setVisible(false)
@@ -128,14 +140,16 @@ function FeaturedBanner({ products, loading = false }) {
         </div>
 
         <div className="wz-featured-img-box">
-          <img
-            src={getImageUrl(p.image) || PLACEHOLDER_IMG}
+          {/* fill inside the aspect-ratio 1:1 box → next/image sizes itself to the
+              container, so there is zero CLS regardless of the source dimensions. */}
+          <Image
+            src={imgBroken ? PLACEHOLDER_IMG : getImageUrl(p.image) || PLACEHOLDER_IMG}
             alt={name}
+            fill
+            sizes="(max-width: 768px) 55vw, 300px"
+            quality={80}
             className="wz-featured-img"
-            width="320"
-            height="320"
-            loading="lazy"
-            onError={handleImgError}
+            onError={() => setImgBroken(true)}
           />
         </div>
       </div>

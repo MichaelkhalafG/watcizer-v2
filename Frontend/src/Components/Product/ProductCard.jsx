@@ -13,6 +13,7 @@ const ProductCard = ({ product, showBrand = true, showRating = true }) => {
   const { language } = useUIStore()
   const { addItem } = useCart()
   const [added, setAdded] = useState(false)
+  const [pending, setPending] = useState(false)
   const isRTL = language === 'ar'
 
   if (!product) return null
@@ -82,15 +83,20 @@ const ProductCard = ({ product, showBrand = true, showRating = true }) => {
   /* ── Handlers ── */
   const goToProduct = () => navigate(productUrl(product))
 
-  const handleAdd = (e) => {
+  const handleAdd = async (e) => {
     e.stopPropagation()
-    if (!inStock || added) return
-    addItem({
-      product_id: product.id,
-      quantity: 1,
-      piece_price: hasSale ? salePrice : price,
-      type_stock: isExpress ? 'Express' : 'Market',
-    })
+    if (!inStock || added || pending) return
+    setPending(true)
+    try {
+      await addItem({
+        product_id: product.id,
+        quantity: 1,
+        piece_price: hasSale ? salePrice : price,
+        type_stock: isExpress ? 'Express' : 'Market',
+      })
+    } finally {
+      setPending(false)
+    }
     setAdded(true)
     setTimeout(() => setAdded(false), 1400)
   }
@@ -186,20 +192,25 @@ const ProductCard = ({ product, showBrand = true, showRating = true }) => {
             type="button"
             className={`wz-pc__add ${added ? 'is-added' : ''}`}
             onClick={handleAdd}
-            disabled={!inStock}
+            disabled={!inStock || pending}
+            aria-busy={pending}
             aria-label={isRTL ? 'أضف إلى السلة' : 'Add to cart'}
           >
             {!inStock
               ? isRTL
                 ? 'غير متوفر'
                 : 'Unavailable'
-              : added
+              : pending
                 ? isRTL
-                  ? '✓ تمت الإضافة'
-                  : '✓ Added'
-                : isRTL
-                  ? 'أضف إلى السلة'
-                  : 'Add to Cart'}
+                  ? 'جارٍ الإضافة…'
+                  : 'Adding…'
+                : added
+                  ? isRTL
+                    ? '✓ تمت الإضافة'
+                    : '✓ Added'
+                  : isRTL
+                    ? 'أضف إلى السلة'
+                    : 'Add to Cart'}
           </button>
         </div>
       </div>

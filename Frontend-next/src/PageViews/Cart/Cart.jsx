@@ -1,5 +1,5 @@
 'use client'
-import { memo, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
@@ -12,11 +12,13 @@ import {
   FiCheck,
   FiChevronDown,
 } from 'react-icons/fi'
-import { MyContext } from '../../Context/Context'
 import { useCatalog } from '../../Hooks/queries/useCatalog'
 import { useOffers } from '../../Hooks/queries/useOffers'
 import { useUIStore } from '../../Store/uiStore'
 import { useAuthStore } from '../../Store/authStore'
+import { useShippingStore } from '../../Store/shippingStore'
+import { useShippingPrices } from '../../Hooks/useShippingPrices'
+import { useWishlist } from '../../Hooks/useWishlist'
 import useCart, { getItemKey } from '../../Hooks/useCart'
 import ProductSlider from '../../Components/Product/ProductSlider'
 import { getImageUrl, handleImgError, PLACEHOLDER_IMG } from '../../utils/imageUrl'
@@ -39,6 +41,8 @@ const CartItem = memo(function CartItem({
 }) {
   const key = getItemKey(item)
   const [qty, setQty] = useState(item.quantity)
+  // Keep local qty in sync when the store quantity changes — intentional.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => setQty(item.quantity), [item.quantity])
 
   // Debounce the store/network sync; the local number updates instantly.
@@ -147,15 +151,14 @@ const CartItem = memo(function CartItem({
 
 // ── Page ───────────────────────────────────────────────────────────────────
 function Cart() {
-  // Server data from TanStack Query; wishlist toggle + shipping state stay in context.
-  const {
-    handleAddTowishlist,
-    shippingPrices,
-    shippingid,
-    setShippingid,
-    setShipping,
-    setShippingName,
-  } = useContext(MyContext)
+  // Server data from TanStack Query; wishlist toggle from Zustand (useWishlist),
+  // shipping selection from Zustand + the derived city-price list from the query.
+  const { handleAddTowishlist } = useWishlist()
+  const shippingPrices = useShippingPrices()
+  const shippingid = useShippingStore((s) => s.shippingid)
+  const setShippingid = useShippingStore((s) => s.setShippingid)
+  const setShipping = useShippingStore((s) => s.setShipping)
+  const setShippingName = useShippingStore((s) => s.setShippingName)
   const { products } = useCatalog()
   const { data: offers = [] } = useOffers()
   const { language } = useUIStore()

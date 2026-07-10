@@ -19,17 +19,43 @@ const onBrandImgError = (e) => {
   if (e.target.nextSibling) e.target.nextSibling.style.display = 'block'
 }
 
+// Inline styles for the section-level fetch-error + retry affordance (kept inline
+// so no shared CSS/App.css file is touched for this change).
+const sectionErrorStyle = {
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  gap: '14px',
+  padding: '48px 24px',
+  textAlign: 'center',
+  color: 'rgba(0,0,0,0.6)',
+}
+const sectionRetryStyle = {
+  padding: '10px 28px',
+  background: '#262626',
+  color: '#fff',
+  border: 'none',
+  borderRadius: '4px',
+  fontSize: '13px',
+  letterSpacing: '0.08em',
+  textTransform: 'uppercase',
+  cursor: 'pointer',
+}
+
 function Home() {
   // Server data straight from TanStack Query (shared/cached) — Home no longer
   // depends on MyContext at all.
-  const { products, tables, isFetching } = useCatalog()
+  const { products, tables, isFetching, isError, refetch } = useCatalog()
   const { language } = useUIStore()
   const navigate = useNavigate()
+  const isRTL = language === 'ar'
 
   // Single source of truth for "still loading" on the home page. Once the fetch
   // settles, empty derived lists mean genuinely-empty (render nothing), not
   // loading. Each section below shows its own skeleton while this is true.
   const loading = isFetching && (!products || products.length === 0)
+  // Fetch failed AND we have nothing to show → an inline error beats a blank gap.
+  const catalogError = isError && (!products || products.length === 0)
 
   // "Season Offers" surfaces discounted PRODUCTS so the unified ProductCard
   // renders correctly and matches "All Offers →" → /listing?offers=true.
@@ -99,6 +125,26 @@ function Home() {
           <CategoryTiles />
         </div>
       </section>
+
+      {/* Catalog fetch failed → inline error + retry (not a blank page). The
+          product sliders below derive from the (empty) catalog, so they render
+          nothing on error; this block gives the user a way to recover. */}
+      {catalogError && (
+        <section className="wz-home-section">
+          <div className="wz-container">
+            <div style={sectionErrorStyle} role="alert">
+              <p style={{ margin: 0 }}>
+                {isRTL
+                  ? 'تعذّر تحميل المنتجات. تحقّق من اتصالك وحاول مرة أخرى.'
+                  : "Couldn't load products. Check your connection and try again."}
+              </p>
+              <button type="button" style={sectionRetryStyle} onClick={refetch}>
+                {isRTL ? 'إعادة المحاولة' : 'Retry'}
+              </button>
+            </div>
+          </div>
+        </section>
+      )}
 
       {offerProducts.length !== 0 ? (
         <section className="wz-home-section">

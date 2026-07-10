@@ -6,7 +6,6 @@ import {
   useMemo,
   useCallback,
   useRef,
-  useContext,
 } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams, usePathname } from 'next/navigation'
@@ -27,12 +26,13 @@ import {
 } from 'react-icons/fi'
 import { FaWhatsapp } from 'react-icons/fa'
 import { FcGoogle } from 'react-icons/fc'
-import { MyContext } from '../../Context/Context'
 import { useCatalog } from '../../Hooks/queries/useCatalog'
 import { useOffers } from '../../Hooks/queries/useOffers'
 import { useUIStore } from '../../Store/uiStore'
 import { useAuthStore } from '../../Store/authStore'
 import { useToastStore } from '../../Store/toastStore'
+import { useShippingStore } from '../../Store/shippingStore'
+import { useShippingPrices } from '../../Hooks/useShippingPrices'
 import http from '../../Context/api'
 import { getImageUrl, handleImgError } from '../../utils/imageUrl'
 import { productUrl } from '../../utils/productUrl'
@@ -204,15 +204,17 @@ function ProfileTab({ t, isRTL }) {
   const avatarUrl = useAuthStore((s) => s.avatarUrl)
   const showToast = useToastStore((s) => s.showToast)
 
-  const original = useRef({
+  // Baseline captured once at mount (used for the dirty check). Held in state so
+  // it's safe to read during render; reset via setOriginal after a save.
+  const [original, setOriginal] = useState(() => ({
     first_name: user?.first_name || '',
     last_name: user?.last_name || '',
     phone_number: user?.phone_number || '',
-  })
+  }))
 
-  const [firstName, setFirstName] = useState(original.current.first_name)
-  const [lastName, setLastName] = useState(original.current.last_name)
-  const [phone, setPhone] = useState(original.current.phone_number)
+  const [firstName, setFirstName] = useState(original.first_name)
+  const [lastName, setLastName] = useState(original.last_name)
+  const [phone, setPhone] = useState(original.phone_number)
   const [imageFile, setImageFile] = useState(null)
   const [preview, setPreview] = useState(user?.image || '')
   const [saving, setSaving] = useState(false)
@@ -222,9 +224,9 @@ function ProfileTab({ t, isRTL }) {
   const hasPhoto = Boolean(preview)
 
   const isDirty =
-    firstName !== original.current.first_name ||
-    lastName !== original.current.last_name ||
-    (phone || '') !== (original.current.phone_number || '') ||
+    firstName !== original.first_name ||
+    lastName !== original.last_name ||
+    (phone || '') !== (original.phone_number || '') ||
     imageFile !== null
 
   const onPickFile = useCallback(async (e) => {
@@ -282,7 +284,7 @@ function ProfileTab({ t, isRTL }) {
         phone_number: phone || '',
         ...(updatedImage ? { image: avatarUrl(updatedImage) } : {}),
       })
-      original.current = { first_name: firstName, last_name: lastName, phone_number: phone || '' }
+      setOriginal({ first_name: firstName, last_name: lastName, phone_number: phone || '' })
       setImageFile(null)
       if (updatedImage) setPreview(avatarUrl(updatedImage))
       setSaved(true)
@@ -608,8 +610,11 @@ const AddressCard = memo(function AddressCard({ address, cityName, onDelete, isR
 })
 
 function AddressesTab({ t, isRTL }) {
-  const { shippingPrices, shippingid, setShippingid, setShipping, setShippingName } =
-    useContext(MyContext)
+  const shippingPrices = useShippingPrices()
+  const shippingid = useShippingStore((s) => s.shippingid)
+  const setShippingid = useShippingStore((s) => s.setShippingid)
+  const setShipping = useShippingStore((s) => s.setShipping)
+  const setShippingName = useShippingStore((s) => s.setShippingName)
   const { language } = useUIStore()
   const showToast = useToastStore((s) => s.showToast)
 
@@ -798,8 +803,9 @@ function AddressesTab({ t, isRTL }) {
 //  TAB: Wishlist
 // =============================================================================
 function WishlistTab({ t, isRTL }) {
-  // Wishlist state stays in context; products/offers from the shared query cache.
-  const { wishList, setwishList } = useContext(MyContext)
+  // Wishlist state from Zustand (uiStore); products/offers from the shared query cache.
+  const wishList = useUIStore((s) => s.wishList)
+  const setwishList = useUIStore((s) => s.setWishList)
   const { products } = useCatalog()
   const { data: offers = [] } = useOffers()
   const router = useRouter()

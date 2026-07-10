@@ -110,7 +110,7 @@ export const transformProductData = (products, tables, ratings, images, locale) 
         rating: getProductRating(product, ratings),
         images: (images || [])
           .filter((img) => img.product_id === product.id)
-          .map((img) => getImageUrl(img.image, 'Product_image'))
+          .map((img) => getImageUrl(img.image, 'Product'))
           .filter(Boolean),
         features: product.feature.map((f) =>
           getTranslatedName(f.translations || [], locale, 'feature_name'),

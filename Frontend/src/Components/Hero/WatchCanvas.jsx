@@ -109,6 +109,23 @@ class ModelErrorBoundary extends Component {
   }
 }
 
+// Isolates the HDR environment. If the .hdr fails to load (missing file, offline,
+// decode error), render the scene WITHOUT it — the watch just loses the env-map
+// reflections and looks a touch darker, rather than the failure bubbling up to
+// ModelErrorBoundary and replacing the whole canvas with the static fallback.
+class EnvBoundary extends Component {
+  state = { failed: false }
+  static getDerivedStateFromError() {
+    return { failed: true }
+  }
+  // Defining this (even empty) stops React from re-throwing the caught error.
+  componentDidCatch() {}
+  render() {
+    if (this.state.failed) return null
+    return this.props.children
+  }
+}
+
 // The <Canvas> + scene, isolated in a MEMOIZED component so unrelated parent
 // re-renders (e.g. the modelLoaded/opacity fade, language state) never remount
 // the canvas — a remount leaks the old WebGL context and, across HMR/renders,
@@ -142,11 +159,15 @@ const Scene = memo(function Scene({ frameloop, introComplete, modelX, onIntroDon
       <directionalLight position={[-5, 2, 2]} intensity={0.5} color="#dfe9ff" />
       <directionalLight position={[0, 3, -5]} intensity={0.9} color="#ffffff" />
 
-      {/* HDR environment for realistic gold reflections (own Suspense so a
-          slow/failed env load never blocks the model) */}
-      <Suspense fallback={null}>
-        <Environment preset="studio" />
-      </Suspense>
+      {/* HDR environment for realistic gold reflections. Loaded from a LOCAL
+          copy in /public (no raw.githubusercontent.com runtime dependency, so it
+          works offline / on slow networks). EnvBoundary + own Suspense mean a
+          slow OR failed env load never blocks or crashes the model. */}
+      <EnvBoundary>
+        <Suspense fallback={null}>
+          <Environment files="/studio_small_03_1k.hdr" />
+        </Suspense>
+      </EnvBoundary>
 
       <Suspense fallback={null}>
         <WatchModel onIntroDone={onIntroDone} onLoaded={onLoaded} modelX={modelX} />

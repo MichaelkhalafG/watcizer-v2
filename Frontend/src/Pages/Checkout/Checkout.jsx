@@ -18,6 +18,7 @@ import { useAuthStore } from '../../Store/authStore'
 import http from '../../Context/api'
 import useCart, { getGuestToken } from '../../Hooks/useCart'
 import { getImageUrl, handleImgError, PLACEHOLDER_IMG } from '../../utils/imageUrl'
+import TrustSignals from '../../Components/Merchandising/TrustSignals'
 import './Checkout.css'
 
 // Card logos / Paymob availability. Vite exposes import.meta.env at build time;
@@ -356,7 +357,14 @@ function Checkout() {
                 ? entity.offer_name_ar
                 : entity.offer_name_en
               : '—'
-          return { name, qty: i.quantity, lineTotal: Number(i.piece_price) * i.quantity }
+          return {
+            name,
+            qty: i.quantity,
+            lineTotal: Number(i.piece_price) * i.quantity,
+            // Carried for the Purchase pixel event on the confirmation page.
+            id: i.product_id ?? i.offer_id ?? null,
+            price: Number(i.piece_price),
+          }
         })
         cleanupAfterOrder()
         navigate('/order-confirmation', {
@@ -424,6 +432,8 @@ function Checkout() {
       <div className="wz-checkout-inner">
         <h1 className="wz-checkout-title">{t('Checkout', 'إتمام الطلب')}</h1>
         <p className="wz-checkout-sub">{t('Complete your order below', 'أكمل طلبك بالأسفل')}</p>
+
+        <TrustSignals variant="checkout" isRTL={isRTL} />
 
         <div className="wz-checkout-grid">
           {/* ─── LEFT: form ─────────────────────────────────────────────── */}

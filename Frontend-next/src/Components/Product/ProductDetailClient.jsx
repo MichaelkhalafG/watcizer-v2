@@ -1,12 +1,12 @@
 'use client'
-import { memo, useContext, useEffect, useMemo, useState, useCallback, useRef } from 'react'
+import { memo, useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { FiShare2 } from 'react-icons/fi'
 import ImageZoom from '../UI/ImageZoom'
 import DOMPurify from 'dompurify'
-import { MyContext } from '../../Context/Context'
+import { useWishlist } from '../../Hooks/useWishlist'
 import { useCatalog } from '../../Hooks/queries/useCatalog'
 import { useOffers } from '../../Hooks/queries/useOffers'
 import { useUIStore } from '../../Store/uiStore'
@@ -44,6 +44,17 @@ function Stars({ value = 0, size = 14, onSelect }) {
   )
 }
 
+// Recursively flatten an attribute value (string/number/array/object) to a
+// display string. Hoisted to module scope so its self-reference is a stable
+// module binding (not a hook-local that the react-hooks/immutability rule flags).
+function safeStr(val) {
+  if (!val) return ''
+  if (typeof val === 'string') return val
+  if (typeof val === 'number') return String(val)
+  if (Array.isArray(val)) return val.map((v) => safeStr(v)).filter(Boolean).join(', ')
+  return val.name_en || val.name || val.color_name || val.material_name || val.brand_name || ''
+}
+
 // Unified product / offer detail page. Mode is derived from the path:
 //   /product/:slug  /products/:id  → product mode
 //   /offer/:slug                   → offer mode
@@ -57,8 +68,8 @@ function Stars({ value = 0, size = 14, onSelect }) {
 function ProductDetailClient({ param, isOffer = false }) {
   const router = useRouter()
 
-  // Server data from the shared TanStack Query cache; wishlist stays in context.
-  const { handleAddTowishlist, wishList } = useContext(MyContext)
+  // Server data from the shared TanStack Query cache; wishlist from Zustand.
+  const { handleAddTowishlist, wishList } = useWishlist()
   const { products, tables, isError: catalogIsError, refetch: refetchCatalog } = useCatalog()
   const { data: offers = [] } = useOffers()
   const { language } = useUIStore()
@@ -97,18 +108,6 @@ function ProductDetailClient({ param, isOffer = false }) {
     return it.brand?.brand_name || it.brand?.name_en || it.brand_name || ''
   }, [])
 
-  const safeStr = useCallback((val) => {
-    if (!val) return ''
-    if (typeof val === 'string') return val
-    if (typeof val === 'number') return String(val)
-    if (Array.isArray(val))
-      return val
-        .map((v) => safeStr(v))
-        .filter(Boolean)
-        .join(', ')
-    return val.name_en || val.name || val.color_name || val.material_name || val.brand_name || ''
-  }, [])
-
   // ── Data loading ────────────────────────────────────────────────────────
   const contextProduct = useMemo(() => {
     if (isOffer || !param) return null
@@ -130,6 +129,8 @@ function ProductDetailClient({ param, isOffer = false }) {
     if (isOffer || !param || contextProduct) return
     if (!products || !products.length) return // wait for context
     let alive = true
+    // Fetch-status sync for an external API call — intentional effect setState.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setFetchState('loading')
     http
       .get(`products/by-name/${encodeURIComponent(decodeURIComponent(param))}`)
@@ -170,6 +171,8 @@ function ProductDetailClient({ param, isOffer = false }) {
   // Loading grace: wait for context before declaring a 404 (fixes refresh bug).
   const [grace, setGrace] = useState(false)
   useEffect(() => {
+    // Reset the 404 grace window whenever the route changes — intentional.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setGrace(false)
     const t = setTimeout(() => setGrace(true), 4000)
     return () => clearTimeout(t)
@@ -208,12 +211,23 @@ function ProductDetailClient({ param, isOffer = false }) {
   const [selectedDial, setSelectedDial] = useState(null)
   const [selectedBand, setSelectedBand] = useState(null)
   useEffect(() => {
+    // Seed the default dial/band selection when the item changes — intentional.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSelectedDial(dialColors?.[0]?.color_value || null)
     setSelectedBand(bandColors?.[0]?.color_value || null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [item])
 
   // ── Images ──────────────────────────────────────────────────────────────
+  // Catalog MAIN image (same source the product cards use — resolved from the
+  // 'Product' folder, which is populated in seed data). The gallery images live
+  // under a different folder that can be missing, so this is the reliable
+  // fallback for every broken gallery entry (and the whole gallery if empty).
+  const catalogImg = useMemo(
+    () => getImageUrl((isOffer ? offerProduct : product)?.image, 'Product'),
+    [isOffer, offerProduct, product],
+  )
+
   const images = useMemo(() => {
     const list = []
     const push = (v) => {
@@ -224,10 +238,31 @@ function ProductDetailClient({ param, isOffer = false }) {
     if (item?.image) push(item.image)
     if (isOffer && offerProduct?.image) push(offerProduct.image)
     const uniq = [...new Set(list.filter(Boolean))]
-    return uniq.length ? uniq : [PLACEHOLDER_IMG]
-  }, [item, offerProduct, isOffer])
+    // Empty gallery → show the reliable catalog image, then the placeholder.
+    return uniq.length ? uniq : [catalogImg || PLACEHOLDER_IMG]
+  }, [item, offerProduct, isOffer, catalogImg])
+
+  // Graceful image fallback for the gallery (main image + thumbnails). A broken
+  // gallery URL first swaps to the catalog image, then to the inline placeholder.
+  // The `fbStage` dataset flag prevents an infinite onError loop: each element
+  // advances at most one stage per failure, and the placeholder detaches onerror.
+  const handleGalleryImgError = useCallback(
+    (e) => {
+      const img = e.currentTarget
+      if (img.dataset.fbStage !== 'catalog' && catalogImg && img.src !== catalogImg) {
+        img.dataset.fbStage = 'catalog'
+        img.src = catalogImg
+        return
+      }
+      img.onerror = null // stop: placeholder is a data URI that cannot 404
+      img.src = PLACEHOLDER_IMG
+    },
+    [catalogImg],
+  )
 
   const [activeImg, setActiveImg] = useState(0)
+  // Reset gallery to the first image on route change — intentional.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => setActiveImg(0), [param, isOffer])
   // Horizontal-swipe gallery on mouse/touch. (Zoom itself is handled in-place by
   // the custom ImageZoom component below — hover on desktop, touch-drag on mobile.)
@@ -248,6 +283,8 @@ function ProductDetailClient({ param, isOffer = false }) {
 
   // ── Cart ────────────────────────────────────────────────────────────────
   const [quantity, setQuantity] = useState(1)
+  // Reset quantity to 1 on route change — intentional.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => setQuantity(1), [param, isOffer])
   const changeQty = (d) => setQuantity((q) => Math.max(1, Math.min(q + d, maxStock || 1)))
 
@@ -420,6 +457,8 @@ function ProductDetailClient({ param, isOffer = false }) {
   // SEO-critical description already ships in the server meta + JSON-LD.)
   const [descHtml, setDescHtml] = useState('')
   useEffect(() => {
+    // Client-only DOMPurify sanitize after mount (no SSR DOM) — intentional.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setDescHtml(description ? DOMPurify.sanitize(description) : '')
   }, [description])
 
@@ -535,6 +574,8 @@ function ProductDetailClient({ param, isOffer = false }) {
         const aBrand = a.product.brand_id === base.brand_id ? 1 : 0
         const bBrand = b.product.brand_id === base.brand_id ? 1 : 0
         if (bBrand !== aBrand) return bBrand - aBrand
+        // Random tie-break for equally-scored related products — intentional variety.
+        // eslint-disable-next-line react-hooks/purity
         return Math.random() - 0.5
       })
       .map((x) => x.product)
@@ -805,6 +846,7 @@ function ProductDetailClient({ param, isOffer = false }) {
                 height={600}
                 zoomScale={2.5}
                 className="wz-pd-main-img-zoom"
+                onError={handleGalleryImgError}
               />
               {hasSale && <span className="wz-pd-discount wz-pd-hide-mobile">−{discount}%</span>}
             </div>
@@ -819,7 +861,14 @@ function ProductDetailClient({ param, isOffer = false }) {
                       onClick={() => setActiveImg(i)}
                       aria-label={`Image ${i + 1}`}
                     >
-                      <Image src={img} alt={`${name} - image ${i + 1}`} width={48} height={48} quality={70} />
+                      <Image
+                        src={img}
+                        alt={`${name} - image ${i + 1}`}
+                        width={48}
+                        height={48}
+                        quality={70}
+                        onError={handleGalleryImgError}
+                      />
                     </button>
                   ))}
                 </div>

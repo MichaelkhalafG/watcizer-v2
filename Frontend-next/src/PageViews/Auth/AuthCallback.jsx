@@ -24,6 +24,8 @@ export default function AuthCallback() {
     const token = params.get('token')
     const error = params.get('error')
     if (error || !token) {
+      // One-time OAuth-callback failure handling — intentional.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setFailed(true)
       setTimeout(() => router.replace('/login'), 1500)
       return

@@ -36,6 +36,8 @@ function Login() {
   useEffect(() => {
     const saved = localStorage.getItem('wz_remember_email')
     if (saved) {
+      // Hydrate remembered email from localStorage after mount — intentional.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setEmail(saved)
       setRemember(true)
     }

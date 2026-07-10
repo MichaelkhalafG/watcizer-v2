@@ -1,4 +1,5 @@
 import http from '../Context/api'
+import { trackAddToCart } from '../scripts/pixels'
 
 let listeners = new Set()
 let currentCart = null
@@ -66,9 +67,11 @@ const setExtra = (patch) => {
   notify()
 }
 
-// Fire-and-forget server sync for one line. The backend AddToCart OVERWRITES the
-// line quantity to the value sent, so we always pass the absolute quantity.
-const syncLine = (item, quantity) => {
+// Server sync for one line. The backend AddToCart OVERWRITES the line quantity to
+// the value sent, so we always pass the absolute quantity. Returns the promise so
+// callers that want an in-flight/pending UI can await it (errors are swallowed —
+// the local optimistic update already succeeded, so the sync never rejects).
+const syncLine = (item, quantity) =>
   http
     .post('add_to_cart', {
       product_id: item.product_id ?? null,
@@ -81,7 +84,6 @@ const syncLine = (item, quantity) => {
       color_dial: item.color_dial ?? null,
     })
     .catch((err) => console.warn('Cart sync failed:', err))
-}
 
 export const cartStore = {
   getSnapshot: () => currentCart ?? (currentCart = readCart()),
@@ -133,7 +135,19 @@ export const cartStore = {
       }
       return { ...cart, cart_item: items }
     })
-    syncLine({ product_id, offer_id, piece_price, type_stock, color_band, color_dial }, absoluteQty)
+    const synced = syncLine(
+      { product_id, offer_id, piece_price, type_stock, color_band, color_dial },
+      absoluteQty,
+    )
+    // Analytics: AddToCart on both pixels. `quantity` is the amount just added
+    // (the delta), so value reflects this action, not the whole line.
+    trackAddToCart({
+      id: product_id ?? offer_id,
+      value: parseFloat(piece_price) * quantity,
+      quantity,
+    })
+    // Return the sync promise so callers can await it for a pending/disabled UI.
+    return synced
   },
 
   updateQuantity: (identifier, newQuantity) => {
@@ -153,7 +167,8 @@ export const cartStore = {
       })
       return { ...cart, cart_item: items }
     })
-    if (synced) syncLine(synced, newQuantity) // backend overwrites to absolute qty
+    // backend overwrites to absolute qty; return the promise for a pending UI
+    return synced ? syncLine(synced, newQuantity) : Promise.resolve()
   },
 
   removeItem: (identifier) => {

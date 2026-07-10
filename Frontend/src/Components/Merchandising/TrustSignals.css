@@ -46,6 +46,48 @@
   line-height: 1;
 }
 
+/* ── Live social-proof + urgency row (PDP) ── */
+.wz-trust-live {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  margin-bottom: 4px;
+}
+/* In the horizontal cart/checkout variants, keep the live row on its own line. */
+.wz-trust--row .wz-trust-live {
+  flex-basis: 100%;
+}
+.wz-trust-rating {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: rgba(0, 0, 0, 0.7);
+}
+.wz-trust-stars {
+  color: var(--wz-gold);
+  letter-spacing: 1px;
+  line-height: 1;
+}
+.wz-trust-rating-num {
+  font-weight: 600;
+}
+.wz-trust-reviews {
+  color: rgba(0, 0, 0, 0.5);
+}
+.wz-trust-urgent {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #9a3b2f;
+  background: rgba(200, 60, 40, 0.08);
+  border: 1px solid rgba(200, 60, 40, 0.18);
+  border-radius: 999px;
+  padding: 3px 10px;
+}
+
 /* Payment method chips (was badge bg-light text-dark border). */
 .wz-trust-payments {
   display: flex;

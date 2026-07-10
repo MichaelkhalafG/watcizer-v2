@@ -49,8 +49,9 @@ const storeJsonLd = {
   },
 }
 
-// The catalog is prefetched + hydrated by the (main) layout (above MyProvider),
-// so this page just renders the client tree + the homepage Store JSON-LD.
+// The catalog is prefetched + hydrated by the (main) layout (inside the
+// HydrationBoundary), so this page just renders the client tree + the homepage
+// Store JSON-LD.
 export default function HomePage() {
   return (
     <>

@@ -19,6 +19,25 @@ class ProductListResource extends JsonResource
 
         $assetBase = rtrim((string) config('services.asset_base'), '/');
 
+        // Idempotent product-image URL builder. A stored value may be a bare
+        // filename (normal), an already-full URL, or — from older seeder runs —
+        // one that already carries a folder segment (e.g. "Product/x.webp").
+        // Only prepend the Product/ folder when the value is a bare filename, so
+        // we never emit the doubled "Product/Product/" path again.
+        $imgUrl = function ($img) use ($assetBase) {
+            if (! $img) {
+                return null;
+            }
+            if (preg_match('#^https?://#i', $img)) {
+                return $img;
+            }
+            $img = ltrim($img, '/');
+            if (str_contains($img, '/')) {
+                return $assetBase . '/Uploads_Images/' . $img;
+            }
+            return $assetBase . '/Uploads_Images/Product/' . $img;
+        };
+
         // Provided by withAvg()/withCount() in the controller; fall back to the
         // loaded relation if for some reason they are absent.
         $avg = $p->product_rating_avg_rating
@@ -33,7 +52,7 @@ class ProductListResource extends JsonResource
             'slug'             => $p->seo_slug ?: (string) $p->id,
             'price'            => $p->selling_price !== null ? (float) $p->selling_price : null,
             'sale_price'       => $p->sale_price_after_discount !== null ? (float) $p->sale_price_after_discount : null,
-            'main_image_url'   => $p->image ? $assetBase . '/Uploads_Images/Product/' . $p->image : null,
+            'main_image_url'   => $imgUrl($p->image),
             'brand_name_en'    => optional(optional($p->brand)->translate('en'))->brand_name,
             'brand_name_ar'    => optional(optional($p->brand)->translate('ar'))->brand_name,
             'category_name_en' => optional(optional($p->mainCategory)->translate('en'))->name,
@@ -55,7 +74,7 @@ class ProductListResource extends JsonResource
             'sale_price_after_discount' => $p->sale_price_after_discount !== null ? (float) $p->sale_price_after_discount : null,
             'short_description'         => optional($p->translate('en'))->short_description,
             'short_description_ar'      => optional($p->translate('ar'))->short_description,
-            'image'                     => $p->image ? $assetBase . '/Uploads_Images/Product/' . $p->image : null,
+            'image'                     => $imgUrl($p->image),
             'stock'                     => (int) ($p->stock ?? 0),
             'market_stock'              => (int) ($p->market_stock ?? 0),
             'active'                    => (int) ($p->active ?? 0),

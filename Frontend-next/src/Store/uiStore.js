@@ -10,6 +10,20 @@ export const useUIStore = create((set) => ({
   currentPage: 1,
   setCurrentPage: (page) => set({ currentPage: page }),
 
+  // Wishlist entries (formerly MyProvider state). Kept as cross-cutting client
+  // state so every heart button across the app stays in sync. The fetch/refresh
+  // effect lives in <AppStateBridge/>; the add/remove toggle lives in the
+  // useWishlist() hook — both write here. setWishList accepts a value or a
+  // functional updater (prev) => next, matching the old useState setter.
+  wishList: [],
+  setWishList: (v) =>
+    set((s) => ({ wishList: typeof v === 'function' ? v(s.wishList) : v })),
+
+  // Search results setter used by SearchBox (was MyProvider's setFilteredProducts).
+  filteredProducts: [],
+  setFilteredProducts: (v) =>
+    set((s) => ({ filteredProducts: typeof v === 'function' ? v(s.filteredProducts) : v })),
+
   filters: {
     categories: [],
     brands: [],

@@ -4,7 +4,7 @@ import http from '../../Context/api'
 // All 11 lookup tables in ONE cached call (catalog/meta) instead of 11 separate
 // all_* requests. The `tables` payload is the raw Eloquent shape — each row
 // carries a translations[] array — exactly what transformProductData and the
-// SPA filters/nav (SideBar, Nav, MegaMenu) already consume. Rarely change →
+// SPA filters/nav (SideBar, Nav) already consume. Rarely change →
 // long staleTime.
 export const useTables = () =>
   useQuery({

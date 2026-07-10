@@ -85,6 +85,8 @@ export default function ListingClient({ seedParams = null }) {
   // then true — handing the source of truth to the client store.
   const [hydrated, setHydrated] = useState(false)
   useEffect(() => {
+    // One-shot SSR hydration flag flip — intentional.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setHydrated(true)
   }, [])
 

@@ -14,6 +14,14 @@ import '../auth.css'
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
+// A password-criterion pill. Module-scoped (not defined inside Register) so it
+// isn't re-created on every render — react-hooks/static-components.
+const Criterion = ({ met, label }) => (
+  <span className={`wz-auth-crit${met ? ' is-met' : ''}`}>
+    {met ? <FiCheck /> : <FiX />} {label}
+  </span>
+)
+
 function Register() {
   const { language } = useUIStore()
   const isRTL = language === 'ar'
@@ -112,12 +120,6 @@ function Register() {
   )
 
   const canSubmit = name.trim() && email.trim() && password && confirm && !loading
-
-  const Criterion = ({ met, label }) => (
-    <span className={`wz-auth-crit${met ? ' is-met' : ''}`}>
-      {met ? <FiCheck /> : <FiX />} {label}
-    </span>
-  )
 
   return (
     <AuthShell

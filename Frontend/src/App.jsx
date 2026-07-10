@@ -16,7 +16,6 @@ import Alert from '@mui/material/Alert'
 import Snackbar from '@mui/material/Snackbar'
 import useMediaQuery from '@mui/material/useMediaQuery'
 import useCart from './Hooks/useCart'
-import useFacebookPixel from './scripts/useFacebookPixel'
 import CartModal from './Pages/Cart/CartModal'
 const NotFound = lazy(() => import('./Pages/Not Found/NotFound'))
 const ProductDetail = lazy(() => import('./Components/Product/ProductDetail'))
@@ -122,7 +121,9 @@ class ErrorBoundary extends Component {
 }
 
 function App() {
-  useFacebookPixel('1611910119460872')
+  // FB + TikTok pixels are bootstrapped once in index.html (init + PageView).
+  // The old useFacebookPixel hook did a SECOND fbq init + PageView here — removed
+  // to avoid the duplicate init / double PageView.
   return (
     <MyProvider>
       <MainApp />

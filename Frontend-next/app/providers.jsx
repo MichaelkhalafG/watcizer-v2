@@ -43,10 +43,11 @@ export default function Providers({ children }) {
       }),
   )
 
-  // NOTE: MyProvider is intentionally NOT here. It reads the catalog (useTables/
-  // useProducts), so it must sit BELOW the per-route HydrationBoundary (in the
-  // (main) layout) — otherwise it would create pending query observers before
-  // hydration and the server render would show skeletons instead of the data.
+  // NOTE: <AppStateBridge/> (the former MyProvider effects) is intentionally NOT
+  // here. It reads the catalog (useTables/useProducts), so it must sit BELOW the
+  // per-route HydrationBoundary (in the (main) layout) — otherwise it would create
+  // pending query observers before hydration and the server render would show
+  // skeletons instead of the data.
   return (
     <QueryClientProvider client={queryClient}>
       <AuthHydrator />

@@ -142,8 +142,25 @@ class LuxuryWatchSeeder extends Seeder
                     $this->imageCount++;
                 }
 
+                // Products must be Men or Women only — never Unisex. If a catalog
+                // row (or a future edit) specifies Unisex, remap it to one concrete
+                // gender using the same sub-type lean as the data backfill.
+                $genderName = $gender;
+                if ($genderName === 'Unisex') {
+                    $s = strtolower($sub);
+                    if (in_array($s, ['diver', 'chronograph', 'gmt', 'pilot', 'sports', 'caps', 'wallets'])) {
+                        $genderName = rand(1, 100) <= 80 ? 'Men' : 'Women';
+                    } elseif (in_array($s, ['jewelry', 'scarves', 'bracelets', 'perfumes'])) {
+                        $genderName = rand(1, 100) <= 75 ? 'Women' : 'Men';
+                    } elseif (in_array($s, ['dress', 'bags', 'sunglasses', 'keychains', 'belts'])) {
+                        $genderName = rand(0, 1) ? 'Men' : 'Women';
+                    } else {
+                        $genderName = rand(1, 100) <= 60 ? 'Men' : 'Women';
+                    }
+                }
+
                 DB::table('gender_product')->insert([
-                    'gender_id' => $genders[$gender], 'product_id' => $productId,
+                    'gender_id' => $genders[$genderName], 'product_id' => $productId,
                 ]);
                 DB::table('color_dial_product')->insert([
                     'color_id' => $colors[$dial], 'product_id' => $productId,

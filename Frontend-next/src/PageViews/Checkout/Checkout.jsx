@@ -1,6 +1,7 @@
 'use client'
-import { memo, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import {
   FiCheck,
   FiChevronDown,
@@ -11,11 +12,12 @@ import {
   FiShield,
   FiUser,
 } from 'react-icons/fi'
-import { MyContext } from '../../Context/Context'
 import { useCatalog } from '../../Hooks/queries/useCatalog'
 import { useOffers } from '../../Hooks/queries/useOffers'
 import { useUIStore } from '../../Store/uiStore'
 import { useAuthStore } from '../../Store/authStore'
+import { useShippingStore } from '../../Store/shippingStore'
+import { useShippingPrices } from '../../Hooks/useShippingPrices'
 import http from '../../Context/api'
 import useCart, { getGuestToken } from '../../Hooks/useCart'
 import { getImageUrl, handleImgError, PLACEHOLDER_IMG } from '../../utils/imageUrl'
@@ -145,14 +147,13 @@ const OrderSummary = memo(function OrderSummary({
 })
 
 function Checkout() {
-  // Server data from TanStack Query; shipping state stays in context.
-  const {
-    shippingPrices,
-    shippingid,
-    setShippingid,
-    setShipping,
-    setShippingName,
-  } = useContext(MyContext)
+  // Server data from TanStack Query; shipping selection from Zustand, the derived
+  // city-price list from the shared shipping query.
+  const shippingPrices = useShippingPrices()
+  const shippingid = useShippingStore((s) => s.shippingid)
+  const setShippingid = useShippingStore((s) => s.setShippingid)
+  const setShipping = useShippingStore((s) => s.setShipping)
+  const setShippingName = useShippingStore((s) => s.setShippingName)
   const { products } = useCatalog()
   const { data: offers = [] } = useOffers()
   const { language } = useUIStore()
@@ -167,6 +168,8 @@ function Checkout() {
   // lands post-mount and re-runs the address fetch below.
   const [isLoggedIn, setIsLoggedIn] = useState(false)
   useEffect(() => {
+    // Read auth from sessionStorage after mount (unavailable during SSR) — intentional.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setIsLoggedIn(!!sessionStorage.getItem('token'))
   }, [])
   const isGuest = !isLoggedIn
@@ -509,7 +512,7 @@ function Checkout() {
                   </div>
                   <p className="wz-checkout-hint">
                     {t('Already have an account?', 'لديك حساب بالفعل؟')}{' '}
-                    <a href="/login">{t('Sign in', 'تسجيل الدخول')}</a>
+                    <Link href="/login">{t('Sign in', 'تسجيل الدخول')}</Link>
                   </p>
                 </>
               )}

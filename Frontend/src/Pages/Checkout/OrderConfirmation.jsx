@@ -1,6 +1,7 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import DOMPurify from 'dompurify'
+import { trackPurchase } from '../../scripts/pixels'
 import { useUIStore } from '../../Store/uiStore'
 import { useAuthStore } from '../../Store/authStore'
 import { useToastStore } from '../../Store/toastStore'
@@ -86,6 +87,22 @@ function OrderConfirmation() {
 
   // No state (direct hit / refresh) → graceful fallback.
   const hasOrder = useMemo(() => Boolean(orderNumber), [orderNumber])
+
+  // ── Analytics: Purchase (FB) / CompletePayment (TikTok). Deduped per order
+  //    inside trackPurchase, so a remount / back-forward never double-counts. ──
+  useEffect(() => {
+    if (!orderNumber) return
+    trackPurchase({
+      orderNumber,
+      value: total,
+      contents: items.map((it) => ({
+        id: it.id,
+        name: it.name,
+        quantity: it.qty,
+        price: it.price ?? (it.qty ? Number(it.lineTotal) / it.qty : 0),
+      })),
+    })
+  }, [orderNumber, total, items])
 
   return (
     <div className="wz-oc" dir={isRTL ? 'rtl' : 'ltr'}>

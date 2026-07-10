@@ -9,6 +9,46 @@
    [dir='rtl'] so no per-component edits are needed. No sans-serif web font. */
 :root {
   --wz-serif: Georgia, 'Times New Roman', serif;
+
+  /* ── Design tokens ─────────────────────────────────────────────────────
+     Centralized palette / spacing / type scale. Each value is IDENTICAL to
+     the hardcoded literal it replaces (hex is case-insensitive, so e.g.
+     var(--wz-gold) === #C8A45C === #c8a45c). Definitions only — consumers
+     opt in by referencing the var; nothing here changes rendering. */
+
+  /* Palette */
+  --wz-ink: #111;
+  --wz-ink-soft: #1a1a1a;
+  --wz-charcoal: #262626;
+  --wz-gold: #C8A45C;
+  --wz-gold-dark: #9A7B3C;
+  --wz-danger: #dc2626;
+  --wz-success: #16a34a;
+  --wz-bone: #f8f6f3;
+  --wz-line: rgba(0, 0, 0, 0.06);
+  --wz-line-strong: rgba(0, 0, 0, 0.12);
+  --wz-muted: rgba(0, 0, 0, 0.45);
+
+  /* Spacing */
+  --wz-sp-2: 2px;
+  --wz-sp-4: 4px;
+  --wz-sp-8: 8px;
+  --wz-sp-12: 12px;
+  --wz-sp-16: 16px;
+  --wz-sp-24: 24px;
+  --wz-sp-32: 32px;
+  --wz-sp-48: 48px;
+  --wz-sp-64: 64px;
+
+  /* Type scale */
+  --wz-fs-xs: 10px;
+  --wz-fs-sm: 12px;
+  --wz-fs-base: 14px;
+  --wz-fs-md: 16px;
+  --wz-fs-lg: 20px;
+  --wz-fs-xl: 24px;
+  --wz-fs-2xl: 32px;
+  --wz-fs-3xl: 40px;
 }
 [dir='rtl'] {
   --wz-serif: 'El Messiri', Georgia, 'Times New Roman', serif;
@@ -104,7 +144,7 @@ h6 {
   top: -60px;
   z-index: 3000;
   padding: 10px 18px;
-  background: #1a1a1a;
+  background: var(--wz-ink-soft);
   color: #fff;
   font-size: 14px;
   text-decoration: none;
@@ -113,7 +153,7 @@ h6 {
 }
 .wz-skip-link:focus {
   top: 8px;
-  outline: 2px solid #c8a45c;
+  outline: 2px solid var(--wz-gold);
   outline-offset: 2px;
 }
 /* Programmatic focus on the main region (skip-link target + route change) — no
@@ -169,7 +209,7 @@ h6 {
   font-style: normal;
 }
 .bg-most-used {
-  background-color: #262626;
+  background-color: var(--wz-charcoal);
 }
 .bg-most-used-40 {
   background-color: #26262670;
@@ -178,7 +218,7 @@ h6 {
   background-color: #f2385a !important;
 }
 .color-most-used {
-  color: #262626 !important;
+  color: var(--wz-charcoal) !important;
 }
 .bg-2 {
   background-color: #26262657;

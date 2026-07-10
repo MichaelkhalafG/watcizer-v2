@@ -57,8 +57,13 @@ const ProductCard = ({ product, showBrand = true, showRating = true }) => {
   const isExpress = expressStock > 0
 
   /* ── Flags ── */
+  // Date.now() is impure but harmless here (drives only the "New" badge); the
+  // value doesn't need to be stable across renders. Hoisted onto its own line so
+  // the scoped disable targets the impure call directly.
+  // eslint-disable-next-line react-hooks/purity
+  const nowMs = Date.now()
   const isNew = product.created_at
-    ? Date.now() - new Date(product.created_at).getTime() < NEW_WINDOW_MS
+    ? nowMs - new Date(product.created_at).getTime() < NEW_WINDOW_MS
     : false
 
   /* ── Rating ── */

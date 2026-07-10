@@ -49,6 +49,8 @@ function Carousel({
 
   useEffect(() => {
     if (!emblaApi) return
+    // Sync carousel state from the Embla instance on init — external-system sync.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     onSelect()
     setScrollSnaps(emblaApi.scrollSnapList())
     emblaApi.on('select', onSelect)

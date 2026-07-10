@@ -31,7 +31,7 @@ export const handleImgError = (e) => {
  * @param {string} folder  sub-folder under /Uploads_Images for bare filenames
  * @returns {string|null}
  */
-export function getImageUrl(path, folder = '') {
+export function getImageUrl(path, folder = 'Product') {
   if (!path || typeof path !== 'string') return path ?? null
 
   const trimmed = path.trim()
@@ -40,12 +40,17 @@ export function getImageUrl(path, folder = '') {
   // Absolute URL (http/https/protocol-relative) or data URI → use verbatim.
   if (/^(https?:)?\/\//i.test(trimmed) || trimmed.startsWith('data:')) return trimmed
 
-  // Root-relative backend path (e.g. /storage/foo.jpg) → just prepend the base.
+  // Root-relative backend path (e.g. /storage/foo.jpg, /Uploads_Images/…) →
+  // prepend the base as-is (never double the /Uploads_Images segment).
   if (trimmed.startsWith('/')) return `${ASSET_BASE}${trimmed}`
 
-  // Bare filename → ASSET_BASE + /Uploads_Images/[folder/]filename
-  const dir = folder ? `${folder}/` : ''
-  return `${ASSET_BASE}/Uploads_Images/${dir}${trimmed}`
+  // Idempotent: a value that already carries a folder segment (e.g.
+  // "Product/x.webp", from older seeder runs) is treated as Uploads_Images-
+  // relative — the default folder is NOT prepended again, so we never emit the
+  // doubled "Product_image/Product/…" path. Bare filenames get the folder.
+  if (trimmed.includes('/')) return `${ASSET_BASE}/Uploads_Images/${trimmed}`
+
+  return `${ASSET_BASE}/Uploads_Images/${folder}/${trimmed}`
 }
 
 // ── Responsive image URLs (opt-in via a CDN image resizer) ────────────────

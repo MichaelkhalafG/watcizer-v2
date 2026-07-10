@@ -106,7 +106,7 @@
 }
 
 .thumbnail-img.selected {
-  border-color: #262626;
+  border-color: var(--wz-charcoal);
 }
 @media (min-width: 768px) {
   .fs-large {

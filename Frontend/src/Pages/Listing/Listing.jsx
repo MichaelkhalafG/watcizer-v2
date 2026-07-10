@@ -9,6 +9,7 @@ import { passesFilters } from '../../utils/filterPredicate'
 import ProductCard from '../../Components/Product/ProductCard'
 import SideBar from '../../Components/SideBar/SideBar'
 import SmartSuggestions from '../../Components/Listing/SmartSuggestions'
+import BackToTop from '../../Components/BackToTop/BackToTop'
 import './Listing.css'
 
 const PAGE_SIZE = 24
@@ -37,7 +38,7 @@ function pageList(current, total) {
 }
 
 function Listing() {
-  const { tables, products, isFetching } = useCatalog()
+  const { tables, products, isFetching, isError, refetch } = useCatalog()
   const { language, currentPage, setCurrentPage, filters, setFilters } = useUIStore()
   const navigate = useNavigate()
   const isRTL = language === 'ar'
@@ -460,7 +461,7 @@ function Listing() {
               </div>
             )}
 
-            {/* Grid / skeleton / empty */}
+            {/* Grid / skeleton / fetch-error / empty */}
             {showSkeleton ? (
               <div className="wz-listing-grid">
                 {Array.from({ length: 8 }).map((_, i) => (
@@ -471,6 +472,21 @@ function Listing() {
                     <div className="wz-skel-line wz-skel-price" />
                   </div>
                 ))}
+              </div>
+            ) : isError && resultCount === 0 ? (
+              /* Fetch failure ≠ "no products match filters" — show the real
+                 reason + a retry, not the empty-filter state. */
+              <div className="wz-empty" role="alert">
+                <FiX className="wz-empty-icon" />
+                <h3 className="wz-empty-title">
+                  {isRTL ? 'تعذّر تحميل المنتجات' : "Couldn't load products"}
+                </h3>
+                <p className="wz-empty-sub">
+                  {isRTL ? 'تحقّق من اتصالك وحاول مرة أخرى' : 'Check your connection and try again'}
+                </p>
+                <button className="wz-empty-btn" onClick={refetch}>
+                  {isRTL ? 'إعادة المحاولة' : 'Retry'}
+                </button>
               </div>
             ) : resultCount === 0 ? (
               <div className="wz-empty">
@@ -574,6 +590,8 @@ function Listing() {
           </button>
         </div>
       </aside>
+
+      <BackToTop />
     </div>
   )
 }

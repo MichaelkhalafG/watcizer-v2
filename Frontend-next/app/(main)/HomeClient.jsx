@@ -13,6 +13,14 @@ import CategoryTiles from '@/src/Components/Merchandising/CategoryTiles'
 import { getImageUrl } from '@/src/utils/imageUrl'
 import { buildListingParams } from '@/src/utils/listingParams'
 
+// Per-section render caps. The (main) layout prefetches the FULL catalog (~2k
+// products) into React Query for listing/search, but rendering all of them on the
+// home page cost ~13s Total Blocking Time. So each home rail renders only a small
+// visible slice — SSR still emits these cards for SEO. Max home total: 12 offers
+// + (4 grades × 8) = 44 cards, well below the previous ~2137.
+const OFFERS_RAIL_CAP = 12
+const GRADE_RAIL_CAP = 8
+
 // Module-level handler (stable identity, never recreated): hide a broken brand
 // logo and reveal its text fallback.
 const onBrandImgError = (e) => {
@@ -61,7 +69,7 @@ export default function HomeClient() {
   // "Season Offers" surfaces discounted PRODUCTS so the unified ProductCard
   // renders correctly and matches "All Offers →" → /listing?offers=true.
   const offerProducts = useMemo(
-    () => (products || []).filter((p) => Number(p.percentage_discount) > 0).slice(0, 15),
+    () => (products || []).filter((p) => Number(p.percentage_discount) > 0).slice(0, OFFERS_RAIL_CAP),
     [products],
   )
 
@@ -232,7 +240,7 @@ export default function HomeClient() {
                     ar: gradeLocalization?.description ?? '',
                   },
                 }}
-                gradeproducts={gradeProducts}
+                gradeproducts={gradeProducts.slice(0, GRADE_RAIL_CAP)}
                 to={`/grade/${grade?.translations?.find((t) => t.locale === 'en')?.grade_name}`}
                 moreid={grade.id}
               />

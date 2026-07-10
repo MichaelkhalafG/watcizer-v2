@@ -111,11 +111,26 @@
   z-index: 2;
   padding: 5px 11px;
   border-radius: 999px;
-  background: #dc2626;
+  background: var(--wz-danger);
   color: #fff;
   font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.04em;
+}
+
+/* ── Main image hover-zoom (custom ImageZoom — no external library) ── */
+.wz-pd-main-img-zoom {
+  width: 100%;
+  max-width: 600px;
+  aspect-ratio: 1;
+  margin: 0 auto;
+}
+
+@media (max-width: 768px) {
+  .wz-pd-main-img-zoom {
+    max-width: 100%;
+    border-radius: 0;
+  }
 }
 
 .wz-pd-thumbs {
@@ -203,7 +218,7 @@
   font-weight: 300;
   letter-spacing: -0.02em;
   line-height: 1.15;
-  color: #111;
+  color: var(--wz-ink);
 }
 
 .wz-pd-rating {
@@ -258,7 +273,7 @@
 .wz-pd-price {
   font-size: clamp(1.4rem, 2.5vw, 1.8rem);
   font-weight: 700;
-  color: #111;
+  color: var(--wz-ink);
   letter-spacing: -0.01em;
 }
 .wz-pd-price-orig {
@@ -272,7 +287,7 @@
   padding: 3px 9px;
   border-radius: 999px;
   background: rgba(220, 38, 38, 0.1);
-  color: #dc2626;
+  color: var(--wz-danger);
   font-size: 11px;
   font-weight: 800;
 }
@@ -300,14 +315,14 @@
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14);
 }
 .wz-pd-stock--out .wz-pd-stock-dot {
-  background: #dc2626;
+  background: var(--wz-danger);
   box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.14);
 }
 .wz-pd-stock-text {
   color: rgba(0, 0, 0, 0.55);
 }
 .wz-pd-stock-low {
-  color: #dc2626;
+  color: var(--wz-danger);
   font-weight: 700;
 }
 
@@ -365,7 +380,7 @@
   border: none;
   background: #fff;
   font-size: 18px;
-  color: #111;
+  color: var(--wz-ink);
   cursor: pointer;
   transition: background 0.15s, transform 0.08s;
 }
@@ -393,7 +408,7 @@
   height: 54px;
   border: none;
   border-radius: 6px;
-  background: #111;
+  background: var(--wz-ink);
   color: #fff;
   font-size: 12px;
   font-weight: 700;
@@ -428,7 +443,7 @@
   border: 1px solid rgba(0, 0, 0, 0.12);
   border-radius: 6px;
   background: transparent;
-  color: #111;
+  color: var(--wz-ink);
   font-size: 18px;
   cursor: pointer;
   transition: border-color 0.25s ease, color 0.25s ease;
@@ -465,7 +480,7 @@
   content: 'مشاركة';
 }
 .wz-pd-share:hover {
-  color: #111;
+  color: var(--wz-ink);
 }
 
 .wz-pd-short {
@@ -495,7 +510,7 @@
   font-weight: 700;
   letter-spacing: 0.25em;
   text-transform: uppercase;
-  color: #111;
+  color: var(--wz-ink);
 }
 /* gold underline accent */
 .wz-pd-section-head::after,
@@ -556,7 +571,7 @@
 .wz-pd-spec-value {
   font-size: 13px;
   font-weight: 500;
-  color: #111;
+  color: var(--wz-ink);
 }
 
 /* ── Description ──────────────────────────────── */
@@ -587,7 +602,7 @@
   font-size: 3rem;
   font-weight: 400;
   line-height: 1;
-  color: #111;
+  color: var(--wz-ink);
 }
 .wz-pd-ratings-meta {
   display: flex;
@@ -639,7 +654,7 @@
 .wz-pd-review-name {
   font-size: 13px;
   font-weight: 700;
-  color: #111;
+  color: var(--wz-ink);
 }
 .wz-pd-review-date {
   font-size: 11px;
@@ -665,7 +680,7 @@
   font-family: var(--wz-serif);
   font-size: 16px;
   font-weight: 400;
-  color: #111;
+  color: var(--wz-ink);
 }
 .wz-pd-review-input {
   width: 100%;
@@ -678,7 +693,7 @@
   resize: vertical;
   outline: none;
   box-sizing: border-box;
-  color: #111;
+  color: var(--wz-ink);
 }
 .wz-pd-review-input:focus {
   border-color: var(--pd-gold);
@@ -688,7 +703,7 @@
   padding: 0 28px;
   border: none;
   border-radius: 6px;
-  background: #111;
+  background: var(--wz-ink);
   color: #fff;
   font-size: 12px;
   font-weight: 700;
@@ -761,7 +776,7 @@ body[style*='overflow:hidden'] .wz-pd-sticky {
 .wz-pd-sticky-amount {
   font-size: 16px;
   font-weight: 700;
-  color: #111;
+  color: var(--wz-ink);
 }
 .wz-pd-sticky-orig {
   font-size: 11px;
@@ -773,7 +788,7 @@ body[style*='overflow:hidden'] .wz-pd-sticky {
   height: 48px;
   border: none;
   border-radius: 999px;
-  background: #111;
+  background: var(--wz-ink);
   color: #fff;
   font-size: 12px;
   font-weight: 700;
@@ -808,7 +823,7 @@ body[style*='overflow:hidden'] .wz-pd-sticky {
   font-family: var(--wz-serif);
   font-size: 26px;
   font-weight: 400;
-  color: #111;
+  color: var(--wz-ink);
 }
 .wz-pd-notfound p {
   margin: 0;
@@ -820,7 +835,7 @@ body[style*='overflow:hidden'] .wz-pd-sticky {
   padding: 0 30px;
   border: none;
   border-radius: 6px;
-  background: #111;
+  background: var(--wz-ink);
   color: #fff;
   font-size: 12px;
   font-weight: 700;
@@ -948,7 +963,7 @@ body[style*='overflow:hidden'] .wz-pd-sticky {
     margin: 0;
     font-size: 16px;
     font-weight: 500;
-    color: #111;
+    color: var(--wz-ink);
     line-height: 1.3;
     white-space: nowrap;
     overflow: hidden;
@@ -965,7 +980,7 @@ body[style*='overflow:hidden'] .wz-pd-sticky {
   .wz-pd-ms-regular {
     font-size: 15px;
     font-weight: 700;
-    color: #111;
+    color: var(--wz-ink);
   }
   .wz-pd-ms-orig {
     font-size: 12px;

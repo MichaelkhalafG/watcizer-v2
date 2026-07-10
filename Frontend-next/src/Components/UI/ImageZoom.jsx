@@ -12,6 +12,7 @@ export default function ImageZoom({
   height = 600,
   zoomScale = 2.5,
   className = '',
+  onError,
 }) {
   const containerRef = useRef(null)
   const [zooming, setZooming] = useState(false)
@@ -70,6 +71,7 @@ export default function ImageZoom({
         width={width}
         height={height}
         draggable={false}
+        onError={onError}
         className="wz-img-zoom__img"
         style={
           zooming
