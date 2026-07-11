@@ -28,7 +28,7 @@ export default function LanguageDropdown() {
       type="button"
       className="wz-lang-toggle"
       onClick={toggle}
-      aria-label="Switch language"
+      aria-label={language === 'ar' ? 'Switch language to EN' : 'Switch language to عربي'}
       title="Switch language / تغيير اللغة"
     >
       <MdLanguage className="wz-lang-toggle__icon" />

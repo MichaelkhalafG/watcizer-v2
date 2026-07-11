@@ -1,4 +1,5 @@
 import './globals.css'
+import { cookies } from 'next/headers'
 import { El_Messiri } from 'next/font/google'
 import Providers from './providers'
 import Analytics from './analytics'
@@ -62,11 +63,19 @@ export const viewport = {
   themeColor: '#000000',
 }
 
-export default function RootLayout({ children }) {
-  // Default lang/dir = English/LTR; <HtmlDirSync/> (in Providers) flips to Arabic
-  // RTL on the client from uiStore.language — same behaviour as App.jsx:164-165.
+export default async function RootLayout({ children }) {
+  // Read the wz-lang cookie (written by uiStore.setLanguage) so the FIRST server
+  // paint already matches the user's chosen language — no English flash on hard
+  // reload, and the client store is initialised from the same cookie in Providers
+  // so there is no hydration mismatch. <HtmlDirSync/> still keeps <html> in sync
+  // on subsequent client-side language toggles.
+  //
+  // TRADEOFF: reading cookies() in the ROOT layout opts the whole app OUT of
+  // static rendering — home/blog routes become dynamic (ƒ) instead of static (○).
+  const lang = (await cookies()).get('wz-lang')?.value === 'ar' ? 'ar' : 'en'
+  const dir = lang === 'ar' ? 'rtl' : 'ltr'
   return (
-    <html lang="en" dir="ltr" className={elMessiri.variable}>
+    <html lang={lang} dir={dir} className={elMessiri.variable}>
       <body>
         <Providers>
           {children}

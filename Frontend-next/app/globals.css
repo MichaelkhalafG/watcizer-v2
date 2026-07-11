@@ -415,3 +415,19 @@ textarea {
   box-sizing: border-box;
   max-width: 100%;
 }
+
+/* ── Error Boundary (FIX I1) ────────────────────── */
+.wz-error { display: flex; justify-content: center; align-items: center; min-height: 60vh; padding: 32px 16px; text-align: center; }
+.wz-error-inner { max-width: 480px; }
+.wz-error-title { font-size: 24px; font-weight: 700; color: #1a1a1a; margin-bottom: 12px; font-family: Georgia, serif; text-transform: uppercase; letter-spacing: 0.06em; }
+.wz-error-text { font-size: 15px; color: rgba(0,0,0,0.55); margin-bottom: 24px; line-height: 1.6; }
+.wz-error-actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+.wz-error-retry { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; color: #fff; background: #1a1a1a; border: none; padding: 12px 32px; border-radius: 4px; cursor: pointer; transition: background 0.2s ease; }
+.wz-error-retry:hover { background: #C8A45C; }
+.wz-error-home, .wz-error-browse { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; color: #1a1a1a; text-decoration: none; padding: 12px 32px; border: 1px solid rgba(0,0,0,0.12); border-radius: 4px; transition: border-color 0.2s ease, color 0.2s ease; }
+.wz-error-home:hover, .wz-error-browse:hover { border-color: #C8A45C; color: #C8A45C; }
+.wz-error--auth { background: #0a0a0a; }
+.wz-error--auth .wz-error-title { color: #fff; }
+.wz-error--auth .wz-error-text { color: rgba(255,255,255,0.55); }
+.wz-error--auth .wz-error-retry { background: #C8A45C; color: #fff; }
+.wz-error--auth .wz-error-retry:hover { background: #b08d3e; }

@@ -5,7 +5,16 @@ import { create } from 'zustand'
 // filters.categories.length, filters.price[0], etc. — bare defaults would crash.
 export const useUIStore = create((set) => ({
   language: 'en',
-  setLanguage: (lang) => set({ language: lang }),
+  // Persist language to a COOKIE (not localStorage) so the server can read it in
+  // the root layout and render the correct <html lang/dir> on the FIRST paint —
+  // no English flash on hard reload, no hydration mismatch. See app/layout.jsx
+  // (cookies() read) and app/providers.jsx (init-from-cookie effect).
+  setLanguage: (lang) => {
+    set({ language: lang })
+    if (typeof document !== 'undefined') {
+      document.cookie = `wz-lang=${lang};path=/;max-age=${60 * 60 * 24 * 365};SameSite=Lax`
+    }
+  },
 
   currentPage: 1,
   setCurrentPage: (page) => set({ currentPage: page }),

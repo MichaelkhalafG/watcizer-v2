@@ -43,7 +43,7 @@
 .wz-cart-count {
   font-size: 13px;
   font-weight: 400;
-  color: rgba(0, 0, 0, 0.45);
+  color: rgba(0, 0, 0, 0.55);
 }
 
 /* ── Item card ────────────────────────────────── */
@@ -182,7 +182,7 @@
 }
 .wz-cart-unit-orig {
   font-size: 11px;
-  color: rgba(0, 0, 0, 0.3);
+  color: rgba(0, 0, 0, 0.55);
   text-decoration: line-through;
 }
 .wz-cart-warn-text {
@@ -198,7 +198,7 @@
   border: none;
   background: none;
   font-size: 11px;
-  color: rgba(0, 0, 0, 0.45);
+  color: rgba(0, 0, 0, 0.55);
   cursor: pointer;
   text-decoration: underline;
 }
@@ -327,7 +327,7 @@
 .wz-cart-ship-note {
   margin: -8px 0 14px;
   font-size: 11px;
-  color: rgba(0, 0, 0, 0.4);
+  color: rgba(0, 0, 0, 0.55);
 }
 .wz-cart-savings > span {
   color: #16a34a !important;
@@ -409,7 +409,7 @@
   justify-content: center;
   gap: 8px;
   font-size: 11px;
-  color: rgba(0, 0, 0, 0.4);
+  color: rgba(0, 0, 0, 0.55);
 }
 .wz-cart-trust svg {
   font-size: 14px;
@@ -468,7 +468,7 @@
 .wz-cart-empty p {
   margin: 0 0 14px;
   font-size: 13px;
-  color: rgba(0, 0, 0, 0.45);
+  color: rgba(0, 0, 0, 0.55);
 }
 .wz-cart-empty .wz-cart-checkout {
   width: auto;
@@ -689,7 +689,7 @@
   color: var(--wz-ink);
 }
 .wz-cartmodal-count {
-  color: rgba(0, 0, 0, 0.4);
+  color: rgba(0, 0, 0, 0.55);
   font-weight: 500;
 }
 .wz-cartmodal-close {

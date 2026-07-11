@@ -37,7 +37,8 @@ function Header() {
       const quantity = parseInt(item.quantity || 1, 10)
       return total + piecePrice * quantity
     }, 0)
-    const total = (subtotal + parseFloat(shipping || 0)).toFixed(2)
+    // Empty cart → total is 0 (do NOT add the default shipping fee to nothing).
+    const total = (count > 0 ? subtotal + parseFloat(shipping || 0) : 0).toFixed(2)
     return { productsCount: count, total_cart_price: total }
   }, [cart, shipping])
   const { products, tables } = useCatalog()

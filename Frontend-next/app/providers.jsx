@@ -18,8 +18,26 @@ function AuthHydrator() {
 
 // Keep <html dir/lang> in sync with the active language. Replaces the effect at
 // App.jsx:164-165 in the Vite app. Client-only (touches document). Renders nothing.
+//
+// Also initialises the store from the wz-lang cookie ONCE on mount: the server
+// renders <html lang/dir> from that same cookie (see app/layout.jsx), so seeding
+// the client store from it keeps the two in agreement — no hydration mismatch and
+// no English flash. The store default is 'en'; if the cookie says 'ar' we flip it.
 function HtmlDirSync() {
   const language = useUIStore((s) => s.language)
+  const setLanguage = useUIStore((s) => s.setLanguage)
+
+  // Run-once init from the cookie. Reads the current store language via getState()
+  // (not the reactive `language` above) so this effect has no changing deps and
+  // cannot loop when setLanguage updates the store.
+  useEffect(() => {
+    const match = document.cookie.match(/(?:^|;\s*)wz-lang=(ar|en)/)
+    const cookieLang = match ? match[1] : null
+    if (cookieLang && cookieLang !== useUIStore.getState().language) {
+      setLanguage(cookieLang)
+    }
+  }, [setLanguage])
+
   useEffect(() => {
     document.documentElement.dir = language === 'ar' ? 'rtl' : 'ltr'
     document.documentElement.lang = language

@@ -8,7 +8,7 @@
   --pd-ink: #111;
   --pd-gold: #c8a45c;
   --pd-line: rgba(0, 0, 0, 0.08);
-  --pd-muted: rgba(0, 0, 0, 0.4);
+  --pd-muted: rgba(0, 0, 0, 0.55);
   background: #fafafa;
   min-height: 60vh;
   padding: 0 0 72px;
@@ -279,7 +279,7 @@
 .wz-pd-price-orig {
   font-size: 15px;
   font-weight: 500;
-  color: rgba(0, 0, 0, 0.3);
+  color: rgba(0, 0, 0, 0.55);
   text-decoration: line-through;
 }
 .wz-pd-save {
@@ -566,7 +566,7 @@
   font-size: 11px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: rgba(0, 0, 0, 0.4);
+  color: rgba(0, 0, 0, 0.55);
 }
 .wz-pd-spec-value {
   font-size: 13px;
@@ -984,7 +984,7 @@ body[style*='overflow:hidden'] .wz-pd-sticky {
   }
   .wz-pd-ms-orig {
     font-size: 12px;
-    color: rgba(0, 0, 0, 0.35);
+    color: rgba(0, 0, 0, 0.55);
     text-decoration: line-through;
   }
   .wz-pd-ms-discount {

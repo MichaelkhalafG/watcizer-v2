@@ -355,7 +355,7 @@
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: rgba(0, 0, 0, 0.35);
+  color: rgba(0, 0, 0, 0.55);
   white-space: nowrap;
   transition: color 0.2s;
 }

@@ -184,6 +184,14 @@ export function listingMetadata({ tables = {}, products = [], filters = {}, q = 
   const description = `Browse ${resultCount} ${crumb} at Watchizer — luxury watches and accessories with premium designs and unbeatable prices in Egypt.`
   const canonical = `${SEO_DOMAIN}${pathname}`
 
+  // Social preview image: prefer the first catalog product's image (already a
+  // fully-resolved absolute URL from the transform's getImageUrl); fall back to
+  // the site logo so every facet page always emits an og:image / twitter:image.
+  const ogImage =
+    products?.[0]?.image && /^https?:\/\//.test(products[0].image)
+      ? products[0].image
+      : `${SEO_DOMAIN}/logo.svg`
+
   return {
     title,
     description,
@@ -194,11 +202,13 @@ export function listingMetadata({ tables = {}, products = [], filters = {}, q = 
       description,
       url: canonical,
       siteName: 'Watchizer',
+      images: [{ url: ogImage, width: 600, height: 600, alt: title }],
     },
     twitter: {
       card: 'summary_large_image',
       title,
       description,
+      images: [ogImage],
     },
   }
 }
