@@ -120,6 +120,10 @@ export function listingCrumbEn(tables = {}, filters = {}) {
     const b = tables.brands?.find((i) => i.id === filters.brands[0])
     if (b) return nameEn(b, 'brand_name')
   }
+  if (one(filters.grades)) {
+    const g = tables.grades?.find((i) => i.id === filters.grades[0])
+    if (g) return nameEn(g, 'grade_name')
+  }
   return 'All Products'
 }
 
@@ -163,12 +167,17 @@ export function listingMetadata({ tables = {}, products = [], filters = {}, q = 
   const brandId = (filters.brands || []).length === 1 ? filters.brands[0] : null
   const catId = (filters.categories || []).length === 1 ? filters.categories[0] : null
   const subId = (filters.subTypes || []).length === 1 ? filters.subTypes[0] : null
+  const gradeId = (filters.grades || []).length === 1 ? filters.grades[0] : null
   const activeCount =
-    (filters.brands?.length || 0) + (filters.categories?.length || 0) + (filters.subTypes?.length || 0)
+    (filters.brands?.length || 0) +
+    (filters.categories?.length || 0) +
+    (filters.subTypes?.length || 0) +
+    (filters.grades?.length || 0)
 
   const brandName = brandId && tables.brands?.find((i) => i.id === brandId)
   const catName = catId && tables.categoryTypes?.find((i) => i.id === catId)
   const subName = subId && tables.subTypes?.find((i) => i.id === subId)
+  const gradeName = gradeId && tables.grades?.find((i) => i.id === gradeId)
 
   let title
   if (activeCount === 1 && brandName) {
@@ -177,6 +186,8 @@ export function listingMetadata({ tables = {}, products = [], filters = {}, q = 
     title = `${nameEn(catName, 'category_type_name')} | Watchizer`
   } else if (activeCount === 1 && subName) {
     title = `${nameEn(subName, 'sub_type_name')} Watches | Watchizer`
+  } else if (activeCount === 1 && gradeName) {
+    title = `${nameEn(gradeName, 'grade_name')} Watches | Watchizer`
   } else {
     title = 'Shop All Luxury Watches & Accessories | Watchizer'
   }

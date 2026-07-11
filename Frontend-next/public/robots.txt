@@ -1,13 +1,24 @@
 User-agent: *
+Allow: /
+
+# Block private/auth pages
 Disallow: /cart
 Disallow: /checkout
+Disallow: /account
+Disallow: /login
+Disallow: /register
+Disallow: /forgot-password
+Disallow: /reset-password
+Disallow: /auth/
 Disallow: /edit-profile
 Disallow: /order-list
 Disallow: /wish-list
+
+# Block internal search with no SEO value
 Disallow: /search
-Disallow: /listingsearch
-Disallow: /*?*
+Disallow: /Search
 
-Allow: /
+# Allow filtered listings (important for SEO)
+# /listing?brand=rolex, /listing?category=fashion, /listing?offers=true
 
-sitemap: https://watchizereg.com/sitemap.xml
+Sitemap: https://watchizereg.com/sitemap.xml

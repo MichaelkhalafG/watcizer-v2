@@ -62,10 +62,24 @@ export function buildProductSeo(product, { ratings = [], tables = null } = {}) {
   const priceNow = hasSale ? sale : price
   const inStock = Number(product.stock || 0) > 0 || Number(product.market_stock || 0) > 0
 
-  const seoDesc = stripDesc(
-    product.short_description_en || product.short_description || product.short_description_ar,
-    `${name}${brand ? ` – ${brand}` : ''} — shop this timepiece at Watchizer.`,
-  )
+  // Price-led meta description (reused for OG/Twitter via toMetadata). Null-guarded:
+  // when no valid price is present we fall back to the short-description blurb.
+  const priceDesc =
+    price > 0
+      ? `Buy ${name}${brand ? ` by ${brand}` : ''}. ${
+          hasSale
+            ? `Now EGP ${Math.round(priceNow).toLocaleString()} (was EGP ${Math.round(
+                price,
+              ).toLocaleString()})`
+            : `EGP ${Math.round(price).toLocaleString()}`
+        }. Authentic luxury, certified & guaranteed. Free delivery across Egypt.`
+      : null
+  const seoDesc =
+    priceDesc ||
+    stripDesc(
+      product.short_description_en || product.short_description || product.short_description_ar,
+      `${name}${brand ? ` – ${brand}` : ''} — shop this timepiece at Watchizer.`,
+    )
 
   const canonicalPath = productUrl(product)
   const canonicalUrl = `${SEO_DOMAIN}${canonicalPath}`
