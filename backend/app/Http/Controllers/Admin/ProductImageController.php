@@ -10,9 +10,13 @@ use Illuminate\Support\Facades\Cache;
 
 class ProductImageController extends Controller
 {
-    // ── OLD methods (unchanged) ──────────────────────────
-    public function index() { return view('Dashboard.product_image.index'); }
-    public function create() { return view('Dashboard.product_image.create'); }
+    // ── OLD methods ──────────────────────────────────────
+    // Image management is now per-product (see manageImages / product.images.*),
+    // and the product_image.index view expects a single $product + $images that
+    // this global entry point cannot provide. Redirect to the product list where
+    // each product exposes its own gallery-management screen.
+    public function index() { return redirect()->route('product.index'); }
+    public function create() { return redirect()->route('product.index'); }
     public function store(Request $request) { return back(); }
     public function edit(ProductImage $product_image) { return back(); }
     public function update(Request $request, ProductImage $product_image) { return back(); }

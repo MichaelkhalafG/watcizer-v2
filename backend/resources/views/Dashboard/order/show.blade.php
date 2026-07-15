@@ -30,12 +30,16 @@
                                 <div class="row shadow p-3 mb-4 bg-body-tertiary rounded">
                                     <div class="col-6"><b>{{ trans('order.order_number') }}</b> : {{ $order->order_number }}</div>
                                     <div class="col-6"><b>{{ trans('order.name_user') }}</b> : {{ $order->user ? $order->user->first_name . ' ' . $order->user->last_name : ($order->guest_name ?? '—') }}</div>
-                                    <div class="col-6"><b>{{ trans('order.phone_number') }}</b> : {{ $order->address->phone_number_one }}
-                                        @if ($order->address->phone_number_two)
+                                    <div class="col-6"><b>{{ trans('order.phone_number') }}</b> : {{ optional($order->address)->phone_number_one ?? '—' }}
+                                        @if (optional($order->address)->phone_number_two)
                                             {{   ' - ' . $order->address->phone_number_two }}
                                         @endif
                                     </div>
-                                    <div class="col-6"><b>{{ trans('order.address') }}</b> : {{ $order->address->address_line . ' - ' . $order->address->shipping_city->city_name }}</div>
+                                    @php
+                                        $oAddr = $order->address;
+                                        $oCity = $oAddr ? optional($oAddr->shipping_city)->city_name : null;
+                                    @endphp
+                                    <div class="col-6"><b>{{ trans('order.address') }}</b> : {{ $oAddr ? trim($oAddr->address_line . ($oCity ? ' - ' . $oCity : '')) : '—' }}</div>
                                     <div class="col-6"><b>{{ trans('order.total_price_for_order') }}</b> : {{ $order->total_price_for_order*1 }} {{ trans('mainBtn.pounds') }}</div>
                                     <div class="col-6"><b>
                                         {{ trans('order.status') }}</b> :

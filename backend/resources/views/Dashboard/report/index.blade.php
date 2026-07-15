@@ -106,9 +106,13 @@
                                     @foreach ($orders as $item)
                                         <tr>
                                             <td>{{ $item->order_number }}</td>
-                                            <td>{{ $item->user->first_name . ' ' . $item->user->last_name}}</td>
+                                            <td>{{ $item->user ? $item->user->first_name . ' ' . $item->user->last_name : ($item->guest_name ?? '—') }}</td>
                                             <td>
-                                                {{ $item->address->address_line . ' - ' . $item->address->shipping_city->city_name }}
+                                                @php
+                                                    $rAddr = $item->address;
+                                                    $rCity = $rAddr ? optional($rAddr->shipping_city)->city_name : null;
+                                                @endphp
+                                                {{ $rAddr ? trim($rAddr->address_line . ($rCity ? ' - ' . $rCity : '')) : '—' }}
                                             </td>
                                             <td>{{ $item->total_price_for_order*1 }} {{ trans('mainBtn.pounds') }}</td>
                                             <td>
@@ -134,7 +138,7 @@
                                                     </span>
                                                 @endif
                                             </td>
-                                            <td>{{ $item->address->phone_number_one }}</td>
+                                            <td>{{ optional($item->address)->phone_number_one ?? '—' }}</td>
                                             <td>{{ \Carbon\Carbon::parse($item->created_at)->format('Y-m-d h:i A') }}</td>
                                             <td>
                                                 <div class="d-flex justify-content-center">
