@@ -153,6 +153,12 @@ class ProductController extends Controller
         $product->translateOrNew('en')->stone             = $request['stone']['en'] ?? null;
         $product->created_by                              = auth()->user()->id;
 
+        // ── SEO + stock (NEW fields) ───────────────────────────
+        $product->seo_title                               = $request->input('seo_title');
+        $product->seo_slug                                = $request->input('seo_slug');
+        $product->seo_meta_description                    = $request->input('seo_meta_description');
+        $product->low_stock_threshold                     = $request->input('low_stock_threshold', 5);
+
         // ── Main image ────────────────────────────────────────
         $image   = $request->file('image');
         $NewName = time() . '_' . date('Y-m-d_') . uniqid() . '.webp';
@@ -209,8 +215,8 @@ class ProductController extends Controller
         $product->load(['productImages', 'dialColor', 'bandColor', 'feature', 'gender']);
 
         $data = [
-            'product'       => $product,
-            'category'      => Category::all(['id']),
+            'product'         => $product,
+            'main_categories' => Category::where('is_active', true)->whereNull('parent_id')->where('level', 1)->orderBy('sort_order')->get(),
             'category_type' => CategoryType::all(['id']),
             'brand'         => Brand::all(['id']),
             'grade'         => Grade::all(['id']),
@@ -235,13 +241,20 @@ class ProductController extends Controller
             $this->authorize('AnyAction');
         }
 
-        $product->main_category_id = $request->input('main_category_id');
-
-        $subIds = array_filter((array) $request->input('sub_category_id', []));
-        $product->sub_category_id = count($subIds) >= 1 ? $subIds[0] : null;
-
-        $typeIds = array_filter((array) $request->input('product_type_id', []));
-        $product->product_type_id = count($typeIds) >= 1 ? $typeIds[0] : null;
+        // Only touch the 3-level category assignment when the form actually
+        // submitted it — otherwise an edit that omits these inputs would wipe
+        // the product's existing main/sub/product-type category.
+        if ($request->has('main_category_id')) {
+            $product->main_category_id = $request->input('main_category_id');
+        }
+        if ($request->has('sub_category_id')) {
+            $subIds = array_filter((array) $request->input('sub_category_id', []));
+            $product->sub_category_id = count($subIds) >= 1 ? $subIds[0] : null;
+        }
+        if ($request->has('product_type_id')) {
+            $typeIds = array_filter((array) $request->input('product_type_id', []));
+            $product->product_type_id = count($typeIds) >= 1 ? $typeIds[0] : null;
+        }
 
         $product->translateOrNew('ar')->product_title     = $request['product_title']['ar'];
         $product->translateOrNew('en')->product_title     = $request['product_title']['en'];
@@ -298,6 +311,12 @@ class ProductController extends Controller
         $product->translateOrNew('ar')->stone             = $request['stone']['ar'] ?? null;
         $product->translateOrNew('en')->stone             = $request['stone']['en'] ?? null;
         $product->updated_by                              = auth()->user()->id;
+
+        // ── SEO + stock (NEW fields) ───────────────────────────
+        $product->seo_title                               = $request->input('seo_title');
+        $product->seo_slug                                = $request->input('seo_slug');
+        $product->seo_meta_description                    = $request->input('seo_meta_description');
+        $product->low_stock_threshold                     = $request->input('low_stock_threshold', $product->low_stock_threshold ?? 5);
 
         // ── Main image ────────────────────────────────────────
         if ($image = $request->file('image')) {

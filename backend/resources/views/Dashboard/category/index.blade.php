@@ -46,8 +46,10 @@
                             <thead>
                                 <tr>
                                     <th>#</th>
-                                    <th>{{ trans('category.category_name') }}</th>
-                                    <th>{{ trans('category.color_value') }}</th>
+                                    <th>{{ trans('category.name') }}</th>
+                                    <th>{{ trans('category.parent') }}</th>
+                                    <th>{{ trans('category.level') }}</th>
+                                    <th>{{ trans('category.is_active') }}</th>
                                     <th>{{ trans('category.category_image') }}</th>
                                     <th>{{ trans('mainBtn.action') }}</th>
                                 </tr>
@@ -56,12 +58,22 @@
                                 @foreach ($category as $item)
                                     <tr>
                                         <td>{{ $loop->iteration }}</td>
-                                        <td>{{ $item->category_name }}</td>
+                                        <td>{{ $item->name }}</td>
+                                        <td>{{ optional($item->parent)->name ?? '—' }}</td>
+                                        <td>{{ $item->level }}</td>
                                         <td>
-                                            <p class="border rounded m-auto" style="background:{{ $item->color_value }}; height: 60px; width: 60px;"></p>
+                                            @if ($item->is_active)
+                                                <span class="badge bg-success">{{ trans('category.is_active') }}</span>
+                                            @else
+                                                <span class="badge bg-secondary">—</span>
+                                            @endif
                                         </td>
                                         <td>
-                                            <a data-lightbox="single-image" href="{{ asset('Uploads_Images/Category/' . $item->category_image) }}"><img src="{{ asset('Uploads_Images/Category/' . $item->category_image) }}" height="100px" width="100px" alt=""></a>
+                                            @if ($item->image)
+                                                <a data-lightbox="single-image" href="{{ asset('Uploads_Images/Category/' . $item->image) }}"><img src="{{ asset('Uploads_Images/Category/' . $item->image) }}" height="100px" width="100px" alt=""></a>
+                                            @else
+                                                <span class="text-muted">—</span>
+                                            @endif
                                         </td>
                                         <td>
                                             @can('AnyAction')

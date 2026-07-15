@@ -29,7 +29,7 @@
 
                                 <div class="row shadow p-3 mb-4 bg-body-tertiary rounded">
                                     <div class="col-6"><b>{{ trans('order.order_number') }}</b> : {{ $order->order_number }}</div>
-                                    <div class="col-6"><b>{{ trans('order.name_user') }}</b> : {{ $order->user->first_name . ' ' . $order->user->last_name}}</div>
+                                    <div class="col-6"><b>{{ trans('order.name_user') }}</b> : {{ $order->user ? $order->user->first_name . ' ' . $order->user->last_name : ($order->guest_name ?? '—') }}</div>
                                     <div class="col-6"><b>{{ trans('order.phone_number') }}</b> : {{ $order->address->phone_number_one }}
                                         @if ($order->address->phone_number_two)
                                             {{   ' - ' . $order->address->phone_number_two }}

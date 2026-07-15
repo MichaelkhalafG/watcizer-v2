@@ -44,7 +44,11 @@ class OrderController extends Controller
         $order->status = $request->status;
 
         if ($request->status == 'processing' && $order->payment_method == 'card') {
-            Mail::to($order->user->email)->send(new OrderCreatedMail($order));
+            // Guest orders have no linked user — fall back to the guest email.
+            $customerEmail = $order->user?->email ?? $order->guest_email;
+            if ($customerEmail) {
+                Mail::to($customerEmail)->send(new OrderCreatedMail($order));
+            }
             Mail::to('maikelkhalaf100@gmail.com')->send(new OrderCreatedMail($order));
             Mail::to('mina7makram@gmail.com')->send(new OrderCreatedMail($order));
             Mail::to('minaawadrezk@gmail.com')->send(new OrderCreatedMail($order));

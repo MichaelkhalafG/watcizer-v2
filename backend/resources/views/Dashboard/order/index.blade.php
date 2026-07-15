@@ -94,7 +94,7 @@
                                         @foreach ($order as $item)
                                             <tr>
                                                 <td>{{ $item->order_number }}</td>
-                                                <td>{{ $item->user->first_name . ' ' . $item->user->last_name}}</td>
+                                                <td>{{ $item->user ? $item->user->first_name . ' ' . $item->user->last_name : ($item->guest_name ?? '—') }}</td>
                                                 <td>
                                                     {{ $item->address->address_line . ' - ' . $item->address->shipping_city->city_name }}
                                                 </td>

@@ -30,34 +30,79 @@
                             @csrf
                             @method('PUT')
 
-                            <div class="col-12">
-                                <label for="category_name[ar]" class="form-label">{{ trans('category.category_name') }}</label>
-                                <input type="text" class="form-control" name="category_name[ar]" id="category_name[ar]" value="{{ old('category_name.ar' , $category->translate('ar')->category_name) }}">
-                                @error('category_name.ar')
+                            <div class="col-12 mb-2">
+                                <label for="name_ar" class="form-label">{{ trans('category.name') }} (ar)</label>
+                                <input type="text" class="form-control" name="name[ar]" id="name_ar" value="{{ old('name.ar', optional($category->translate('ar'))->name) }}">
+                                @error('name.ar')
                                     <p class="text-danger">{{ $message }}</p>
                                 @enderror
                             </div>
 
-                            <div class="col-12">
-                                <label for="category_name[en]" class="form-label">{{ trans('category.category_name') }} en</label>
-                                <input type="text" class="form-control" name="category_name[en]" id="category_name[en]" value="{{ old('category_name.en' , $category->translate('en')->category_name) }}">
-                                @error('category_name.en')
+                            <div class="col-12 mb-2">
+                                <label for="name_en" class="form-label">{{ trans('category.name') }} (en)</label>
+                                <input type="text" class="form-control" name="name[en]" id="name_en" value="{{ old('name.en', optional($category->translate('en'))->name) }}">
+                                @error('name.en')
                                     <p class="text-danger">{{ $message }}</p>
                                 @enderror
                             </div>
 
-                            <div class="col-12">
-                                <label for="color_value" class="form-label">{{ trans('category.color_value') }}</label>
-                                <input type="color" class="form-control form-control-color mb-2" data-name="color_value" name="color_value" id="color_value" value="{{ old('color_value' , $category->color_value) }}">
-                                @error('color_value')
+                            <div class="col-12 mb-2">
+                                <label for="description_ar" class="form-label">{{ trans('category.description') }} (ar)</label>
+                                <textarea class="form-control" name="description[ar]" id="description_ar" rows="2">{{ old('description.ar', optional($category->translate('ar'))->description) }}</textarea>
+                            </div>
+
+                            <div class="col-12 mb-2">
+                                <label for="description_en" class="form-label">{{ trans('category.description') }} (en)</label>
+                                <textarea class="form-control" name="description[en]" id="description_en" rows="2">{{ old('description.en', optional($category->translate('en'))->description) }}</textarea>
+                            </div>
+
+                            <div class="col-12 mb-2">
+                                <label for="parent_id" class="form-label">{{ trans('category.parent') }}</label>
+                                <select class="form-select" name="parent_id" id="parent_id">
+                                    <option value="">{{ trans('category.none_parent') }}</option>
+                                    @foreach ($parents as $parent)
+                                        <option value="{{ $parent->id }}" {{ old('parent_id', $category->parent_id) == $parent->id ? 'selected' : '' }}>
+                                            {{ str_repeat('— ', max(0, $parent->level - 1)) }}{{ $parent->name }}
+                                        </option>
+                                    @endforeach
+                                </select>
+                                @error('parent_id')
                                     <p class="text-danger">{{ $message }}</p>
                                 @enderror
                             </div>
 
-                            <div class="col-12">
-                                <label for="category_image" class="form-label">{{ trans('category.category_image') }}</label>
-                                <input type="file" class="form-control" data-name="category_image" name="category_image" id="category_image">
-                                @error('category_image')
+                            <div class="col-12 mb-2">
+                                <label for="slug" class="form-label">{{ trans('category.slug') }}</label>
+                                <input type="text" class="form-control" name="slug" id="slug" value="{{ old('slug', $category->slug) }}">
+                                @error('slug')
+                                    <p class="text-danger">{{ $message }}</p>
+                                @enderror
+                            </div>
+
+                            <div class="col-12 mb-2">
+                                <label for="sort_order" class="form-label">{{ trans('category.sort_order') }}</label>
+                                <input type="number" min="0" class="form-control" name="sort_order" id="sort_order" value="{{ old('sort_order', $category->sort_order) }}">
+                                @error('sort_order')
+                                    <p class="text-danger">{{ $message }}</p>
+                                @enderror
+                            </div>
+
+                            <div class="col-12 mb-2 form-check">
+                                <input type="hidden" name="is_active" value="0">
+                                <input type="checkbox" class="form-check-input" name="is_active" id="is_active" value="1" {{ old('is_active', $category->is_active) ? 'checked' : '' }}>
+                                <label class="form-check-label" for="is_active">{{ trans('category.is_active') }}</label>
+                            </div>
+
+                            @if ($category->image)
+                                <div class="col-12 mb-2">
+                                    <img src="{{ asset('Uploads_Images/Category/' . $category->image) }}" height="100px" width="100px" alt="">
+                                </div>
+                            @endif
+
+                            <div class="col-12 mb-2">
+                                <label for="image" class="form-label">{{ trans('category.category_image') }}</label>
+                                <input type="file" class="form-control" name="image" id="image">
+                                @error('image')
                                     <p class="text-danger">{{ $message }}</p>
                                 @enderror
                             </div>
