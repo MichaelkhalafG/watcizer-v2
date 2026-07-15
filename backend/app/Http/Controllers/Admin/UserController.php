@@ -16,6 +16,16 @@ class UserController extends Controller
         return view('Dashboard.user.index' , compact('user'));
     }
 
+    /**
+     * User creation is handled by a modal embedded in the index page, so the
+     * resource `create` route has no dedicated view/method. Redirect to the
+     * list (where the "Add User" modal lives) instead of 500-ing.
+     */
+    public function create()
+    {
+        return redirect()->route('user.index');
+    }
+
     public function store(Request $request)
     {
         $request->validate([

@@ -33,6 +33,16 @@ class Address extends Model
         return $this->belongsTo(ShippingCity::class, 'shipping_city_id');
     }
 
+    /**
+     * snake_case alias for the shipping city relation. The admin dashboard
+     * (OrderController + order views) references `shipping_city`, while the
+     * frontend uses `shippingCity`. Keeping both avoids breaking either side.
+     */
+    public function shipping_city()
+    {
+        return $this->belongsTo(ShippingCity::class, 'shipping_city_id');
+    }
+
     public function orders()
     {
         return $this->hasMany(Order::class);
