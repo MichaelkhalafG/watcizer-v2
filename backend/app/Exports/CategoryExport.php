@@ -10,24 +10,25 @@ use PhpOffice\PhpSpreadsheet\Worksheet\Drawing;
 
 class CategoryExport implements FromArray , WithHeadings ,WithDrawings
 {
-    private $imagePaths;
+    private $imagePaths = [];
 
     public function array():array
     {
         $list = [];
-        $imagePaths  = [];
 
-        $data = Category::all();
+        $data = Category::with('parent')->orderBy('level')->orderBy('sort_order')->get();
 
         $num = 2;
         foreach ($data as $item) {
             $list[] = [
-                $item->translate('en')->category_name,
-                $item->translate('ar')->category_name,
-                $item->color_value,
-                'D'.$num++,
+                optional($item->translate('en'))->name,
+                optional($item->translate('ar'))->name,
+                optional($item->parent)->slug,
+                $item->slug,
+                $item->is_active ? 1 : 0,
+                'F' . $num++,
             ];
-            $this->imagePaths[] = public_path('Uploads_Images/Category/' . $item->category_image) ;
+            $this->imagePaths[] = public_path('Uploads_Images/Category/' . $item->image);
         }
 
         return $list;
@@ -35,14 +36,14 @@ class CategoryExport implements FromArray , WithHeadings ,WithDrawings
 
     public function headings(): array
     {
-
         return [
-            'Name Category',
+            'Name Category (EN)',
             'اسم الفئة',
-            'Color Value',
+            'Parent Slug',
+            'Slug',
+            'Active',
             'Category Image',
         ];
-
     }
 
     public function drawings()
@@ -53,9 +54,9 @@ class CategoryExport implements FromArray , WithHeadings ,WithDrawings
                 $drawing = new Drawing();
                 $drawing->setName('Category Image');
                 $drawing->setDescription('Image for category');
-                $drawing->setPath($imagePath); // Path to the image file
-                $drawing->setHeight(50); // Adjust the image height as needed
-                $drawing->setCoordinates('D' . ($index + 2)); // Start from column F, row 2
+                $drawing->setPath($imagePath);
+                $drawing->setHeight(50);
+                $drawing->setCoordinates('F' . ($index + 2));
                 $drawings[] = $drawing;
             }
         }

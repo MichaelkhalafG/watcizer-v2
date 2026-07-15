@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use App\Exports\CategoryExport;
 use App\Imports\CategoryImport;
 use Illuminate\Validation\Rule;
+use Illuminate\Support\Str;
 use App\Http\Controllers\Controller;
 use Intervention\Image\ImageManager;
 use Maatwebsite\Excel\Facades\Excel;
@@ -19,96 +20,134 @@ class CategoryController extends Controller
 {
     public function index()
     {
-        $category = Category::all();
-        return view('Dashboard.category.index' , compact('category'));
+        $category = Category::with('parent')->orderBy('level')->orderBy('sort_order')->orderBy('id')->get();
+        return view('Dashboard.category.index', compact('category'));
     }
 
     public function create()
     {
-        return view('Dashboard.category.create');
+        // Parents to choose from (any existing category can be a parent).
+        $parents = Category::with('parent')->orderBy('level')->orderBy('sort_order')->orderBy('id')->get();
+        return view('Dashboard.category.create', compact('parents'));
     }
 
     public function store(Request $request)
     {
         $request->validate([
-            'category_name.en' => 'required|min:2|max:255|unique:category_translations,category_name',
-            'category_name.ar' => 'required|min:2|max:255|unique:category_translations,category_name',
-            'color_value'      => 'required|min:2|max:255|hex_color',
-            'category_image'   => 'required|image|mimes:png,jpg,webp,gif|max:5120',
+            'name.en'        => 'required|min:2|max:255',
+            'name.ar'        => 'required|min:2|max:255',
+            'description.en' => 'nullable|max:2000',
+            'description.ar' => 'nullable|max:2000',
+            'parent_id'      => 'nullable|exists:categories,id',
+            'slug'           => 'nullable|min:2|max:255|unique:categories,slug',
+            'sort_order'     => 'nullable|integer|min:0',
+            'image'          => 'nullable|image|mimes:png,jpg,jpeg,webp,gif|max:5120',
         ]);
 
         $category = new Category;
 
-        $category->translateOrNew('ar')->category_name = $request['category_name']['ar'];
-        $category->translateOrNew('en')->category_name = $request['category_name']['en'];
-        $category->color_value                                 = $request['color_value'];
+        $category->translateOrNew('en')->name        = $request->input('name.en');
+        $category->translateOrNew('ar')->name        = $request->input('name.ar');
+        $category->translateOrNew('en')->description = $request->input('description.en');
+        $category->translateOrNew('ar')->description = $request->input('description.ar');
 
-        $image   = $request->file('category_image');
-        $NewName = time() . '_' . date('Y-m-d_') . uniqid() . '.webp';
-        $manager = new ImageManager(new Driver());
-        $img     = $manager->read($image);
-        $img->toWebp()->save(public_path('/Uploads_Images/Category/' . $NewName));
+        $parentId = $request->filled('parent_id') ? (int) $request->input('parent_id') : null;
+        $category->parent_id  = $parentId;
+        $category->level      = $parentId ? (optional(Category::find($parentId))->level ?? 0) + 1 : 1;
+        $category->sort_order = (int) $request->input('sort_order', 0);
+        $category->is_active  = $request->boolean('is_active');
 
-        $category->category_image = $NewName;
+        if ($request->filled('slug')) {
+            $category->slug = Str::slug($request->input('slug'));
+        }
+
+        if ($image = $request->file('image')) {
+            $NewName = time() . '_' . uniqid() . '.webp';
+            $manager = new ImageManager(new Driver());
+            $manager->read($image)->toWebp()->save(public_path('/Uploads_Images/Category/' . $NewName));
+            $category->image = $NewName;
+        }
 
         $category->save();
 
         Cache::forget('AllCategory');
 
-        return redirect(route('category.index'))->with('success' , trans('messages.add'));
+        return redirect(route('category.index'))->with('success', trans('messages.add'));
     }
 
     public function edit(Category $category)
     {
-        return view('Dashboard.category.edit' , compact('category'));
+        // Any category except itself may be selected as the parent.
+        $parents = Category::with('parent')
+            ->where('id', '!=', $category->id)
+            ->orderBy('level')->orderBy('sort_order')->orderBy('id')->get();
+
+        return view('Dashboard.category.edit', compact('category', 'parents'));
     }
 
     public function update(Request $request, Category $category)
     {
         $request->validate([
-            'category_name.en' => ['required' , 'min:2' , 'max:255' , Rule::unique('category_translations','category_name')->ignore($category->translate('en')->id)],
-            'category_name.ar' => ['required' , 'min:2' , 'max:255' , Rule::unique('category_translations','category_name')->ignore($category->translate('ar')->id)],
-            'color_value'      => 'required|min:2|max:255|hex_color',
-            'category_image'   => 'nullable|image|mimes:png,jpg,webp,gif|max:5120',
+            'name.en'        => 'required|min:2|max:255',
+            'name.ar'        => 'required|min:2|max:255',
+            'description.en' => 'nullable|max:2000',
+            'description.ar' => 'nullable|max:2000',
+            'parent_id'      => 'nullable|exists:categories,id',
+            'slug'           => ['nullable', 'min:2', 'max:255', Rule::unique('categories', 'slug')->ignore($category->id)],
+            'sort_order'     => 'nullable|integer|min:0',
+            'image'          => 'nullable|image|mimes:png,jpg,jpeg,webp,gif|max:5120',
         ]);
 
-        $category->translateOrNew('ar')->category_name = $request['category_name']['ar'];
-        $category->translateOrNew('en')->category_name = $request['category_name']['en'];
-        $category->color_value                                 = $request['color_value'];
+        $category->translateOrNew('en')->name        = $request->input('name.en');
+        $category->translateOrNew('ar')->name        = $request->input('name.ar');
+        $category->translateOrNew('en')->description = $request->input('description.en');
+        $category->translateOrNew('ar')->description = $request->input('description.ar');
 
-        if ($image = $request->file('category_image')) {
-            $oldImage = public_path('Uploads_Images/Category/' . $category->category_image);
-            if (file_exists($oldImage))
-            {
+        // Guard against selecting itself as its own parent.
+        $parentId = $request->filled('parent_id') ? (int) $request->input('parent_id') : null;
+        if ($parentId === $category->id) {
+            $parentId = $category->parent_id;
+        }
+        $category->parent_id  = $parentId;
+        $category->level      = $parentId ? (optional(Category::find($parentId))->level ?? 0) + 1 : 1;
+        $category->sort_order = (int) $request->input('sort_order', 0);
+        $category->is_active  = $request->boolean('is_active');
+
+        if ($request->filled('slug')) {
+            $category->slug = Str::slug($request->input('slug'));
+        }
+
+        if ($image = $request->file('image')) {
+            $oldImage = public_path('Uploads_Images/Category/' . $category->image);
+            if ($category->image && file_exists($oldImage)) {
                 unlink($oldImage);
             }
-            $NewName = time() . '_' . date('Y-m-d_')  . uniqid() . '.webp';
+            $NewName = time() . '_' . uniqid() . '.webp';
             $manager = new ImageManager(new Driver());
-            $img     = $manager->read($image);
-            $img->toWebp()->save(public_path('/Uploads_Images/Category/' . $NewName));
-
-            $category->category_image = $NewName;
+            $manager->read($image)->toWebp()->save(public_path('/Uploads_Images/Category/' . $NewName));
+            $category->image = $NewName;
         }
 
         $category->save();
 
         Cache::forget('AllCategory');
 
-        return redirect(route('category.index'))->with('success' , trans('messages.edit'));
+        return redirect(route('category.index'))->with('success', trans('messages.edit'));
     }
 
     public function destroy(Category $category)
     {
-        $oldImage = public_path('Uploads_Images/Category/' . $category->category_image);
-        if (file_exists($oldImage))
-        {
-            unlink($oldImage);
+        if ($category->image) {
+            $oldImage = public_path('Uploads_Images/Category/' . $category->image);
+            if (file_exists($oldImage)) {
+                unlink($oldImage);
+            }
         }
         $category->delete();
 
         Cache::forget('AllCategory');
 
-        return back()->with('success' , trans('messages.delete'));
+        return back()->with('success', trans('messages.delete'));
     }
 
     public function export()
@@ -126,13 +165,13 @@ class CategoryController extends Controller
             $file     = $request->file('import');
             $filePath = $file->storeAs('temp', uniqid() . '.' . $file->getClientOriginalExtension());
 
-            Excel::import(new CategoryImport(storage_path('app/' . $filePath)) , storage_path('app/' . $filePath));
+            Excel::import(new CategoryImport(storage_path('app/' . $filePath)), storage_path('app/' . $filePath));
 
             Storage::delete($filePath);
 
             Cache::forget('AllCategory');
 
-            return back()->with('success' , trans('messages.import_mes'));
+            return back()->with('success', trans('messages.import_mes'));
 
         } catch (ValidationException $e) {
             $failures = $e->failures();
@@ -144,7 +183,5 @@ class CategoryController extends Controller
 
             return back()->with('validationErrors', $errorMessages);
         }
-
     }
-
 }

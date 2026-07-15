@@ -3,7 +3,7 @@
 namespace App\Imports;
 
 use App\Models\Category;
-use App\Models\CategoryTranslation;
+use Illuminate\Support\Str;
 use Maatwebsite\Excel\Concerns\ToModel;
 use Maatwebsite\Excel\Concerns\WithStartRow;
 use Maatwebsite\Excel\Concerns\WithValidation;
@@ -11,6 +11,15 @@ use PhpOffice\PhpSpreadsheet\Reader\Xlsx;
 use Intervention\Image\ImageManager;
 use Intervention\Image\Drivers\Gd\Driver;
 
+/**
+ * Category import aligned with the restructured categories schema:
+ *   col 0 = Name (EN)  → translation `name`
+ *   col 1 = Name (AR)  → translation `name`
+ *   col 2 = Parent slug (optional) → resolves parent_id / level
+ *   col 3 = Slug (optional; auto-generated from EN name when blank)
+ *   col 4 = Active (0/1)
+ *   col 5 = Image cell coordinate (e.g. F2) — the embedded drawing
+ */
 class CategoryImport implements ToModel , WithValidation , WithStartRow
 {
     private $filePath;
@@ -27,43 +36,53 @@ class CategoryImport implements ToModel , WithValidation , WithStartRow
 
     public function model(array $row)
     {
-        // Check if the category already exists
-        $categoryExists = CategoryTranslation::where('category_name', '=', $row[1])
-            ->orWhere('category_name', '=', $row[0])
-            ->exists();
+        $nameEn = trim((string) ($row[0] ?? ''));
+        $nameAr = trim((string) ($row[1] ?? ''));
+        $slug   = trim((string) ($row[3] ?? '')) ?: Str::slug($nameEn);
 
-        if (!$categoryExists) {
-            $path        = $this->filePath;
+        // Skip if a category with this slug already exists.
+        if (Category::where('slug', $slug)->exists()) {
+            return null;
+        }
+
+        // Resolve parent from its slug (optional).
+        $parent   = null;
+        $parentSlug = trim((string) ($row[2] ?? ''));
+        if ($parentSlug !== '') {
+            $parent = Category::where('slug', $parentSlug)->first();
+        }
+
+        $category = new Category;
+        $category->translateOrNew('en')->name = $nameEn;
+        $category->translateOrNew('ar')->name = $nameAr;
+        $category->slug       = $slug;
+        $category->parent_id  = $parent?->id;
+        $category->level      = $parent ? $parent->level + 1 : 1;
+        $category->is_active  = (bool) ($row[4] ?? true);
+        $category->sort_order = 0;
+
+        // Embedded image (optional).
+        $imageCoord = trim((string) ($row[5] ?? ''));
+        if ($imageCoord !== '') {
             $reader      = new Xlsx();
-            $spreadsheet = $reader->load($path);
+            $spreadsheet = $reader->load($this->filePath);
             $sheet       = $spreadsheet->getActiveSheet();
-            $drawings    = $sheet->getDrawingCollection();
-
-            // Find the drawing associated with the current row
-            foreach ($drawings as $drawing) {
-                // Associate the image with the current row
-                if ($drawing->getCoordinates() == $row[3]) { // Example: Ensure image matches row coordinates
-                    $drawing_path = $drawing->getPath();
+            foreach ($sheet->getDrawingCollection() as $drawing) {
+                if ($drawing->getCoordinates() == $imageCoord) {
                     $drawing->setResizeProportional(true);
-
-                    $image_name = uniqid() . '_' . time() . '.' . 'webp';
-
-                    $contents = file_get_contents($drawing_path);
-                    $manager = new ImageManager(new Driver());
-                    $img     = $manager->read($contents);
-                    $img->toWebp()->save(public_path('/Uploads_Images/Category/' . $image_name));
-
-
-                    // Save the row and image
-                    $data = new Category;
-                    $data->translateOrNew('en')->category_name = $row[0];
-                    $data->translateOrNew('ar')->category_name = $row[1];
-                    $data->color_value    = $row[2];
-                    $data->category_image = $image_name; // Save image name
-                    $data->save();
+                    $image_name = uniqid() . '_' . time() . '.webp';
+                    $contents   = file_get_contents($drawing->getPath());
+                    $manager    = new ImageManager(new Driver());
+                    $manager->read($contents)->toWebp()
+                        ->save(public_path('/Uploads_Images/Category/' . $image_name));
+                    $category->image = $image_name;
                 }
             }
         }
+
+        $category->save();
+
+        return null;
     }
 
     public function rules(): array
@@ -71,9 +90,6 @@ class CategoryImport implements ToModel , WithValidation , WithStartRow
         return [
             '0' => ['required', 'min:2', 'max:255'],
             '1' => ['required', 'min:2', 'max:255'],
-            '2' => ['required', 'min:2', 'max:255', 'hex_color',],
-            '3' => ['required'],
         ];
     }
-
 }
