@@ -364,6 +364,27 @@ class OrderController extends Controller
     }
 
     /**
+     * The price the storefront actually charges for a catalog entity (product or
+     * offer): the sale price ONLY when it is a REAL discount (0 < sale < selling),
+     * otherwise the selling price.
+     *
+     * This MUST mirror the frontend exactly (ProductCard / ProductDetailClient /
+     * Checkout all use `sale > 0 && sale < selling ? sale : selling`). The old
+     * server rule (`sale > 0 ? sale : selling`) diverged whenever
+     * sale_price_after_discount was ≥ selling_price (e.g. set equal, or a bad
+     * data entry), so the server total didn't match the client's and every
+     * checkout was rejected with "Order total mismatch". Kept in one place so
+     * AddOrder pricing and cartWarnings() can never drift apart again.
+     */
+    private function catalogPrice($entity): float
+    {
+        $selling = (float) $entity->selling_price;
+        $sale    = (float) $entity->sale_price_after_discount;
+
+        return round(($sale > 0 && $sale < $selling) ? $sale : $selling, 2);
+    }
+
+    /**
      * Per-line stock / price warnings against the current catalog.
      */
     private function cartWarnings(Cart $cart): array
@@ -383,9 +404,7 @@ class OrderController extends Controller
                     $currentStock = $item->type_stock === 'Express'
                         ? (int) $product->stock
                         : (int) $product->market_stock;
-                    $currentPrice = $product->sale_price_after_discount > 0
-                        ? (float) $product->sale_price_after_discount
-                        : (float) $product->selling_price;
+                    $currentPrice = $this->catalogPrice($product);
 
                     if ($currentStock < $item->quantity) {
                         $message = "Only {$currentStock} available";
@@ -398,9 +417,7 @@ class OrderController extends Controller
                 if (!$offer) {
                     $message = 'Offer no longer available';
                 } else {
-                    $currentPrice = $offer->sale_price_after_discount > 0
-                        ? (float) $offer->sale_price_after_discount
-                        : (float) $offer->selling_price;
+                    $currentPrice = $this->catalogPrice($offer);
 
                     if ((int) $offer->stock < $item->quantity) {
                         $message = "Only {$offer->stock} available";
@@ -588,12 +605,11 @@ class OrderController extends Controller
                     ], 422);
                 }
 
-                // Price each line the SAME way the catalog / cartWarnings() and the
-                // storefront do: the discounted price when there is one, otherwise the
-                // list price. NOTE: offers store selling_price / sale_price_after_discount
-                // (no `price` column) — priced identically to products here.
-                $sale      = (float) $entity->sale_price_after_discount;
-                $piece     = round($sale > 0 ? $sale : (float) $entity->selling_price, 2);
+                // Price each line the SAME way the storefront does (see catalogPrice()):
+                // the sale price ONLY when it is a real discount (0 < sale < selling),
+                // otherwise the selling price. Offers store selling_price /
+                // sale_price_after_discount (no `price` column) — priced identically.
+                $piece     = $this->catalogPrice($entity);
                 $lineTotal = round($piece * $qty, 2);
 
                 $serverLines[$idx] = ['piece_price' => $piece, 'total_price' => $lineTotal];
