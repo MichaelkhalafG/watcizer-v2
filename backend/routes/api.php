@@ -78,6 +78,10 @@ Route::middleware(['api', 'CheckApi'])->group(function () {
     // Route::get('show_cart',            [OrderController::class, 'ShowCart']);
     // Route::get('show_cart/{user_id}',  [OrderController::class, 'ShowCart']);
     Route::delete('delete_cart/{id}',  [OrderController::class, 'DeleteCart'])->middleware('guest.cart');
+    // Remove a line by product_id/offer_id (keeps the DB cart in sync when a
+    // shopper removes an item on the frontend). POST (not DELETE) so the body is
+    // parsed reliably across all PHP/proxy setups.
+    Route::post('remove_from_cart',    [OrderController::class, 'RemoveFromCart'])->middleware('guest.cart');
     Route::post('add_order',           [OrderController::class, 'AddOrder'])->middleware('guest.cart');
     // DEPRECATED: remove after P1 — replaced by authenticated GET me/orders
     // Route::get('show_order',           [OrderController::class, 'ShowOrder']);

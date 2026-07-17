@@ -256,6 +256,60 @@ class OrderController extends Controller
         }
     }
 
+    /**
+     * Remove a line from the caller's cart by product/offer (delete-by-attributes).
+     *
+     * The old frontend removed items from local state only, leaving orphan
+     * cart_items rows in the DB that later inflated the server order total
+     * ("Order total mismatch"). The frontend keys a cart line by product_id /
+     * offer_id (see getItemKey), and the UI shows one merged line per
+     * product/offer, so removing "product 5" deletes EVERY cart_items row for
+     * product 5 in this cart. Scoped to the caller's identity (JWT user or guest
+     * token) so nobody can delete another cart's rows. Idempotent.
+     */
+    public function RemoveFromCart(Request $request)
+    {
+        try {
+            $request->validate([
+                'product_id' => 'nullable|integer',
+                'offer_id'   => 'nullable|integer',
+            ]);
+
+            // Identity injected by GuestCartMiddleware: ['user_id'=>…] | ['guest_token'=>…].
+            $identity = $request->input('identity');
+            if (empty($identity) || !is_array($identity)) {
+                return response()->json(['success' => false, 'message' => 'Not found'], 404);
+            }
+
+            if (!$request->filled('product_id') && !$request->filled('offer_id')) {
+                return response()->json(['success' => false, 'message' => 'product_id or offer_id required'], 422);
+            }
+
+            $cart = Cart::where($identity)->first();
+            if ($cart) {
+                $query = $cart->cart_item();
+                if ($request->filled('product_id')) {
+                    $query->where('product_id', (int) $request->product_id);
+                } else {
+                    $query->where('offer_id', (int) $request->offer_id);
+                }
+                $query->delete();
+            }
+
+            // Removing a line that is already gone is still a success (idempotent).
+            return response()->json(['success' => true], 200);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json(['success' => false, 'message' => 'Validation failed', 'errors' => $e->errors()], 422);
+        } catch (\Exception $e) {
+            Log::error($e);
+            return response()->json([
+                'success' => false,
+                'message' => 'An error occurred',
+                'ref'     => \Illuminate\Support\Str::uuid()
+            ], 500);
+        }
+    }
+
     // =========================================================================
     //  Cart validation / merge / totals
     // =========================================================================
@@ -556,14 +610,21 @@ class OrderController extends Controller
             }
 
             // ── Cart items ────────────────────────────────────────────────────
+            // The client-sent items[] is the authoritative SET of what the shopper
+            // actually sees and intends to buy. Prices are still recomputed
+            // server-side below (catalogPrice + atomic stock checks), so trusting
+            // the client for the item *set* is not a security regression — it
+            // mirrors the guest flow. Using it as the source of truth means a line
+            // the shopper removed on the frontend can never be resurrected by a
+            // stale/phantom DB cart row — the historical cause of the recurring
+            // "Order total mismatch" 422. The DB cart is only a fallback for a
+            // client that somehow posted no items.
             if (!$isGuest) {
                 $cart = Cart::where('user_id', $userId)->with('cart_item')->first();
-                if ($cart && $cart->cart_item->isNotEmpty()) {
-                    // Primary: server-side DB cart
-                    $cartItems = $cart->cart_item;
-                } elseif (!empty($request->input('items'))) {
-                    // Fallback: client-supplied items[] (session cart)
+                if (!empty($request->input('items'))) {
                     $cartItems = collect($request->input('items'));
+                } elseif ($cart && $cart->cart_item->isNotEmpty()) {
+                    $cartItems = $cart->cart_item;
                 } else {
                     DB::rollBack();
                     return response()->json(['success' => false, 'message' => 'Cart is empty'], 422);
@@ -723,10 +784,24 @@ class OrderController extends Controller
                 }
             }
 
-            // ── Clear DB cart for logged-in users ─────────────────────────────
-            if (!$isGuest && isset($cart)) {
-                $cart->cart_item()->delete();
-                $cart->delete();
+            // ── Clear the DB cart so ordered/removed items never linger and
+            //    inflate the NEXT order's server total ──────────────────────────
+            if (!$isGuest) {
+                if (isset($cart) && $cart) {
+                    $cart->cart_item()->delete();
+                    $cart->delete();
+                }
+            } else {
+                // Guests: wipe the guest cart tied to this token too (previously
+                // only the logged-in cart was cleared, so guest carts accumulated).
+                $guestToken = $request->identity['guest_token'] ?? $request->header('X-Guest-Token');
+                if ($guestToken) {
+                    $guestCart = Cart::where('guest_token', $guestToken)->first();
+                    if ($guestCart) {
+                        $guestCart->cart_item()->delete();
+                        $guestCart->delete();
+                    }
+                }
             }
 
             DB::commit();
