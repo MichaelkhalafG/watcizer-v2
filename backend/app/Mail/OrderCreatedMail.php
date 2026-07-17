@@ -4,22 +4,18 @@ namespace App\Mail;
 
 use App\Models\Order;
 use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Mail\Mailable;
 use Illuminate\Queue\SerializesModels;
 
 /**
- * Order confirmation email.
+ * Legacy order email (single template that branches on $type).
  *
- * QUEUED: implements ShouldQueue so it never blocks the checkout response on
- * SMTP — the job is pushed to the `jobs` table (QUEUE_CONNECTION=database) and
- * sent by a worker. A worker MUST be running for emails to actually go out:
- *   local/dev:  php artisan queue:work
- *   production: run it under Supervisor (or `queue:work --daemon`)
- * The restock (ProductObserver) and re-engagement (SendReEngagementEmails)
- * mail already depend on this same worker.
+ * Superseded by App\Mail\OrderConfirmation + App\Mail\AdminOrderNotification,
+ * which the order flow now uses. Kept for backward compatibility. No longer
+ * implements ShouldQueue — emails send synchronously (QUEUE_CONNECTION=sync),
+ * so there is no worker/cron dependency.
  */
-class OrderCreatedMail extends Mailable implements ShouldQueue
+class OrderCreatedMail extends Mailable
 {
     use Queueable, SerializesModels;
 
