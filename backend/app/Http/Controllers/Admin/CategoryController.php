@@ -8,12 +8,11 @@ use App\Exports\CategoryExport;
 use App\Imports\CategoryImport;
 use Illuminate\Validation\Rule;
 use Illuminate\Support\Str;
+use App\Services\ImageService;
 use App\Http\Controllers\Controller;
-use Intervention\Image\ImageManager;
 use Maatwebsite\Excel\Facades\Excel;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
-use Intervention\Image\Drivers\Gd\Driver;
 use Maatwebsite\Excel\Validators\ValidationException;
 
 class CategoryController extends Controller
@@ -41,7 +40,7 @@ class CategoryController extends Controller
             'parent_id'      => 'nullable|exists:categories,id',
             'slug'           => 'nullable|min:2|max:255|unique:categories,slug',
             'sort_order'     => 'nullable|integer|min:0',
-            'image'          => 'nullable|image|mimes:png,jpg,jpeg,webp,gif|max:5120',
+            'image'          => 'nullable|image|mimes:png,jpg,jpeg,webp,gif|max:3072',
         ]);
 
         $category = new Category;
@@ -62,10 +61,12 @@ class CategoryController extends Controller
         }
 
         if ($image = $request->file('image')) {
-            $NewName = time() . '_' . uniqid() . '.webp';
-            $manager = new ImageManager(new Driver());
-            $manager->read($image)->toWebp()->save(public_path('/Uploads_Images/Category/' . $NewName));
-            $category->image = $NewName;
+            // Category image: max 600x600, WebP q80.
+            $category->image = (new ImageService)->process($image, 'Category', [
+                'max_width'  => 600,
+                'max_height' => 600,
+                'quality'    => 80,
+            ]);
         }
 
         $category->save();
@@ -95,7 +96,7 @@ class CategoryController extends Controller
             'parent_id'      => 'nullable|exists:categories,id',
             'slug'           => ['nullable', 'min:2', 'max:255', Rule::unique('categories', 'slug')->ignore($category->id)],
             'sort_order'     => 'nullable|integer|min:0',
-            'image'          => 'nullable|image|mimes:png,jpg,jpeg,webp,gif|max:5120',
+            'image'          => 'nullable|image|mimes:png,jpg,jpeg,webp,gif|max:3072',
         ]);
 
         $category->translateOrNew('en')->name        = $request->input('name.en');
@@ -122,10 +123,12 @@ class CategoryController extends Controller
             if ($category->image && file_exists($oldImage)) {
                 unlink($oldImage);
             }
-            $NewName = time() . '_' . uniqid() . '.webp';
-            $manager = new ImageManager(new Driver());
-            $manager->read($image)->toWebp()->save(public_path('/Uploads_Images/Category/' . $NewName));
-            $category->image = $NewName;
+            // Category image: max 600x600, WebP q80.
+            $category->image = (new ImageService)->process($image, 'Category', [
+                'max_width'  => 600,
+                'max_height' => 600,
+                'quality'    => 80,
+            ]);
         }
 
         $category->save();

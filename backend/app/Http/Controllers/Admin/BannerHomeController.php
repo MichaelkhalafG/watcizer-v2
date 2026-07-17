@@ -6,9 +6,8 @@ use App\Models\Offer;
 use App\Models\BannerHome;
 use Illuminate\Http\Request;
 use App\Http\Controllers\Controller;
-use Intervention\Image\ImageManager;
+use App\Services\ImageService;
 use Illuminate\Support\Facades\Cache;
-use Intervention\Image\Drivers\Gd\Driver;
 
 class BannerHomeController extends Controller
 {
@@ -35,16 +34,16 @@ class BannerHomeController extends Controller
             'offer_id'     => 'nullable|exists:offers,id',
         ]);
 
+        $imageService = new ImageService;
         foreach ($request->file('image') as $img)
         {
             BannerHome::create([
-
-                $NewName = time() . '_' . date('Y-m-d_') . uniqid() . '.' . 'webp',
-                $manager = new ImageManager(new Driver()),
-                $img     = $manager->read($img),
-                $img->toWebp()->save(public_path('/Uploads_Images/Banner_home/' . $NewName)),
-
-                'image'     => $NewName,
+                // Banners: max 1920x800, WebP q85.
+                'image'     => $imageService->process($img, 'Banner_home', [
+                    'max_width'  => 1920,
+                    'max_height' => 800,
+                    'quality'    => 85,
+                ]),
                 'type_show' => $request->type_show,
                 'offer_id'  => $request->offer_id,
             ]);
@@ -76,12 +75,11 @@ class BannerHomeController extends Controller
             {
                 unlink($oldImage);
             }
-            $NewName = time() . '_' . date('Y-m-d_') . uniqid() . '.' . 'webp';
-            $manager = new ImageManager(new Driver());
-            $img     = $manager->read($image);
-            $img->toWebp()->save(public_path('/Uploads_Images/Banner_home/' . $NewName));
-
-            $banner_home->image       = $NewName;
+            $banner_home->image = (new ImageService)->process($image, 'Banner_home', [
+                'max_width'  => 1920,
+                'max_height' => 800,
+                'quality'    => 85,
+            ]);
         }
         $banner_home->type_show   = $request->type_show;
         $banner_home->offer_id    = $request->offer_id;

@@ -7,11 +7,10 @@ use Illuminate\Http\Request;
 use App\Exports\SubTypeExport;
 use App\Imports\SubTypeImport;
 use Illuminate\Validation\Rule;
+use App\Services\ImageService;
 use App\Http\Controllers\Controller;
-use Intervention\Image\ImageManager;
 use Maatwebsite\Excel\Facades\Excel;
 use Illuminate\Support\Facades\Cache;
-use Intervention\Image\Drivers\Gd\Driver;
 use Maatwebsite\Excel\Validators\ValidationException;
 
 class SubTypeController extends Controller
@@ -32,7 +31,7 @@ class SubTypeController extends Controller
         $request->validate([
             'sub_type_name.en' => 'required|string|min:2|max:255|unique:sub_type_translations,sub_type_name',
             'sub_type_name.ar' => 'required|string|min:2|max:255|unique:sub_type_translations,sub_type_name',
-            'image'            => 'nullable|image|mimes:png,jpg,webp,gif|max:5120',
+            'image'            => 'nullable|image|mimes:png,jpg,jpeg,webp,gif|max:3072',
         ]);
 
         $sub_type = new SubType;
@@ -41,12 +40,12 @@ class SubTypeController extends Controller
         $sub_type->translateOrNew('en')->sub_type_name = $request['sub_type_name']['en'];
 
         if ($image = $request->file('image')) {
-            $NewName = time() . '_' . date('Y-m-d_') . uniqid() . '.webp';
-            $manager = new ImageManager(new Driver());
-            $img     = $manager->read($image);
-            $img->toWebp()->save(public_path('/Uploads_Images/Sub_type/' . $NewName));
-
-            $sub_type->image = $NewName;
+            // Sub type image: max 600x600, WebP q80.
+            $sub_type->image = (new ImageService)->process($image, 'Sub_type', [
+                'max_width'  => 600,
+                'max_height' => 600,
+                'quality'    => 80,
+            ]);
         } else {
             unset($sub_type->image);
         }
@@ -68,7 +67,7 @@ class SubTypeController extends Controller
         $request->validate([
             'sub_type_name.en' => ['required' , 'string' , 'min:2' , 'max:255' , Rule::unique('sub_type_translations','sub_type_name')->ignore($sub_type->translate('en')->id)],
             'sub_type_name.ar' => ['required' , 'string' , 'min:2' , 'max:255' , Rule::unique('sub_type_translations','sub_type_name')->ignore($sub_type->translate('ar')->id)],
-            'image'            => 'nullable|image|mimes:png,jpg,webp,gif|max:5120',
+            'image'            => 'nullable|image|mimes:png,jpg,jpeg,webp,gif|max:3072',
         ]);
 
         $sub_type->translateOrNew('ar')->sub_type_name = $request['sub_type_name']['ar'];
@@ -84,12 +83,12 @@ class SubTypeController extends Controller
                 }
             }
 
-            $NewName = time() . '_' . date('Y-m-d_') . uniqid() . '.webp';
-            $manager = new ImageManager(new Driver());
-            $img     = $manager->read($image);
-            $img->toWebp()->save(public_path('/Uploads_Images/Sub_type/' . $NewName));
-
-            $sub_type->image = $NewName;
+            // Sub type image: max 600x600, WebP q80.
+            $sub_type->image = (new ImageService)->process($image, 'Sub_type', [
+                'max_width'  => 600,
+                'max_height' => 600,
+                'quality'    => 80,
+            ]);
         } else {
             unset($sub_type->image);
         }

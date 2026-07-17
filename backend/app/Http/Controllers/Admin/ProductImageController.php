@@ -4,8 +4,7 @@ use App\Models\Product;
 use App\Models\ProductImage;
 use Illuminate\Http\Request;
 use App\Http\Controllers\Controller;
-use Intervention\Image\ImageManager;
-use Intervention\Image\Drivers\Gd\Driver;
+use App\Services\ImageService;
 use Illuminate\Support\Facades\Cache;
 
 class ProductImageController extends Controller
@@ -43,12 +42,16 @@ class ProductImageController extends Controller
             'images.*' => 'required|image|mimes:jpg,jpeg,png,webp,gif|max:5120',
         ]);
 
-        $manager   = new ImageManager(new Driver());
-        $sortStart = $product->product_image()->max('sort') + 1;
+        $imageService = new ImageService;
+        $sortStart    = $product->product_image()->max('sort') + 1;
 
         foreach ($request->file('images') as $index => $file) {
-            $newName = time() . '_' . $index . '_' . uniqid() . '.webp';
-            $manager->read($file)->toWebp()->save(public_path('Uploads_Images/Product_image/' . $newName));
+            // Product gallery images: max 1200x1200, WebP q85.
+            $newName = $imageService->process($file, 'Product_image', [
+                'max_width'  => 1200,
+                'max_height' => 1200,
+                'quality'    => 85,
+            ]);
             ProductImage::create([
                 'product_id' => $product->id,
                 'image'      => $newName,

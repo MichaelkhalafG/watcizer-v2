@@ -6,9 +6,8 @@ use App\Models\BannerSide;
 use Illuminate\Http\Request;
 use App\Http\Controllers\Controller;
 use App\Models\Offer;
-use Intervention\Image\ImageManager;
+use App\Services\ImageService;
 use Illuminate\Support\Facades\Cache;
-use Intervention\Image\Drivers\Gd\Driver;
 
 class BannerSideController extends Controller
 {
@@ -34,16 +33,16 @@ class BannerSideController extends Controller
             'offer_id'     => 'nullable|exists:offers,id',
         ]);
 
+        $imageService = new ImageService;
         foreach ($request->file('image') as $img)
         {
             BannerSide::create([
-
-                $NewName = time() . '_' . date('Y-m-d_') . uniqid() . '.' . 'webp',
-                $manager = new ImageManager(new Driver()),
-                $img     = $manager->read($img),
-                $img->toWebp()->save(public_path('/Uploads_Images/Banner_Side/' . $NewName)),
-
-                'image'      => $NewName,
+                // Banners: max 1920x800, WebP q85.
+                'image'      => $imageService->process($img, 'Banner_Side', [
+                    'max_width'  => 1920,
+                    'max_height' => 800,
+                    'quality'    => 85,
+                ]),
                 'offer_id'  => $request->offer_id,
             ]);
         }
@@ -73,12 +72,11 @@ class BannerSideController extends Controller
             {
                 unlink($oldImage);
             }
-            $NewName = time() . '_' . date('Y-m-d_') . uniqid() . '.' . 'webp';
-            $manager = new ImageManager(new Driver());
-            $img     = $manager->read($image);
-            $img->toWebp()->save(public_path('/Uploads_Images/Banner_Side/' . $NewName));
-
-            $banner_side->image       = $NewName;
+            $banner_side->image = (new ImageService)->process($image, 'Banner_Side', [
+                'max_width'  => 1920,
+                'max_height' => 800,
+                'quality'    => 85,
+            ]);
         }
         $banner_side->offer_id  = $request->offer_id;
 
