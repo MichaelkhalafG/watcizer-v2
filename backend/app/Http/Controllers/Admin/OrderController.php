@@ -6,8 +6,9 @@ use App\Models\Order;
 use App\Models\Address;
 use App\Models\ShippingCity;
 use Illuminate\Http\Request;
-use App\Mail\OrderCreatedMail;
+use App\Mail\OrderStatusUpdate;
 use App\Http\Controllers\Controller;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 
 class OrderController extends Controller
@@ -41,21 +42,23 @@ class OrderController extends Controller
             'status' => 'required|in:pending,processing,completed,cancelled'
         ]);
 
-        $order->status = $request->status;
+        $previousStatus = $order->status;
+        $order->status  = $request->status;
+        $order->save();
 
-        if ($request->status == 'processing' && $order->payment_method == 'card') {
-            // Guest orders have no linked user — fall back to the guest email.
+        // Notify the customer of the new status (guest-safe). Synchronous send,
+        // wrapped so an SMTP failure never breaks the dashboard save.
+        if ($previousStatus !== $order->status) {
             $customerEmail = $order->user?->email ?? $order->guest_email;
             if ($customerEmail) {
-                Mail::to($customerEmail)->send(new OrderCreatedMail($order));
+                try {
+                    Mail::to($customerEmail)->send(new OrderStatusUpdate($order));
+                    Log::info('Status update email sent to: ' . $customerEmail . ' | Order: ' . $order->order_number . ' | Status: ' . $order->status);
+                } catch (\Throwable $e) {
+                    Log::error('Status update email FAILED | Order: ' . $order->order_number, ['exception' => $e->getMessage()]);
+                }
             }
-            Mail::to('maikelkhalaf100@gmail.com')->send(new OrderCreatedMail($order));
-            Mail::to('mina7makram@gmail.com')->send(new OrderCreatedMail($order));
-            Mail::to('minaawadrezk@gmail.com')->send(new OrderCreatedMail($order));
-            Mail::to('Watchizer303@gmail.com')->send(new OrderCreatedMail($order));
-            }
-
-        $order->save();
+        }
 
         return redirect(route('order.index'))->with('success' , trans('messages.edit'));
     }

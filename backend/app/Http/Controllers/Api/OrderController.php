@@ -14,7 +14,8 @@ use App\Models\ShippingCity;
 use App\Services\MergeGuestCart;
 use Illuminate\Http\Request;
 use App\Models\PaymentStatus;
-use App\Mail\OrderCreatedMail;
+use App\Mail\OrderConfirmation;
+use App\Mail\AdminOrderNotification;
 use Illuminate\Support\Facades\DB;
 use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\Http;
@@ -749,6 +750,15 @@ class OrderController extends Controller
     // =========================================================================
     private function sendOrderEmails(Order $order, bool $isGuest, string $paymentMethod): void
     {
+        // Emails send SYNCHRONOUSLY (QUEUE_CONNECTION=sync, mailables no longer
+        // implement ShouldQueue) so the customer/admins are notified the instant
+        // an order is placed — no worker/cron needed. Each send is wrapped so an
+        // SMTP failure only logs and NEVER breaks the order response (this runs
+        // after DB::commit(), so the order is already safely persisted).
+
+        // ── Customer confirmation ─────────────────────────────────────────────
+        // Only once payment is settled: COD orders, or a successful Paymob
+        // payment (CallbackPayment calls this with 'cash'). Guest-safe.
         if ($paymentMethod === 'cash') {
             $customerEmail = !$isGuest
                 ? optional($order->user)->email
@@ -756,25 +766,22 @@ class OrderController extends Controller
 
             if ($customerEmail) {
                 try {
-                    // Queued (OrderCreatedMail implements ShouldQueue): pushes a job
-                    // to the `jobs` table and returns immediately — checkout never
-                    // blocks on SMTP. A worker MUST run to deliver it:
-                    //   php artisan queue:work   (Supervisor in production)
-                    Mail::to($customerEmail)->queue(new OrderCreatedMail($order, 'customer'));
-                    \Log::info('Customer email queued to: ' . $customerEmail . ' | Order: ' . $order->order_number);
-                } catch (\Exception $e) {
-                    \Log::error('Customer email queue FAILED | Order: ' . $order->order_number, ['exception' => $e]);
+                    Mail::to($customerEmail)->send(new OrderConfirmation($order));
+                    \Log::info('Customer confirmation sent to: ' . $customerEmail . ' | Order: ' . $order->order_number);
+                } catch (\Throwable $e) {
+                    \Log::error('Customer confirmation FAILED | Order: ' . $order->order_number, ['exception' => $e->getMessage()]);
                 }
             }
         }
 
-        // Admin recipients live in config/order.php (config('order.admin_emails')).
-        foreach (config('order.admin_emails') as $email) {
+        // ── Admin notifications ───────────────────────────────────────────────
+        // Recipients: config('watchizer.admin_emails') (the 4 admins, env-overridable).
+        foreach (config('watchizer.admin_emails', []) as $email) {
             try {
-                Mail::to($email)->queue(new OrderCreatedMail($order, 'admin'));
-                \Log::info('Admin email queued to: ' . $email . ' | Order: ' . $order->order_number);
-            } catch (\Exception $e) {
-                \Log::error('Admin email queue FAILED | To: ' . $email . ' | Order: ' . $order->order_number, ['exception' => $e]);
+                Mail::to($email)->send(new AdminOrderNotification($order));
+                \Log::info('Admin notification sent to: ' . $email . ' | Order: ' . $order->order_number);
+            } catch (\Throwable $e) {
+                \Log::error('Admin notification FAILED | To: ' . $email . ' | Order: ' . $order->order_number, ['exception' => $e->getMessage()]);
             }
         }
     }
