@@ -7,11 +7,10 @@ use App\Exports\GradeExport;
 use App\Imports\GradeImport;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use App\Services\ImageService;
 use App\Http\Controllers\Controller;
-use Intervention\Image\ImageManager;
 use Maatwebsite\Excel\Facades\Excel;
 use Illuminate\Support\Facades\Cache;
-use Intervention\Image\Drivers\Gd\Driver;
 use Maatwebsite\Excel\Validators\ValidationException;
 
 class GradeController extends Controller
@@ -34,7 +33,7 @@ class GradeController extends Controller
             'grade_name.ar'  => 'required|string|min:2|max:255|unique:grade_translations,grade_name',
             'description.en' => 'required|string',
             'description.ar' => 'required|string',
-            'image'          => 'nullable|image|mimes:png,jpg,webp,gif|max:5120',
+            'image'          => 'nullable|image|mimes:png,jpg,jpeg,webp,gif|max:3072',
 
         ]);
 
@@ -46,12 +45,12 @@ class GradeController extends Controller
         $grade->translateOrNew('en')->description = $request['description']['en'];
 
         if ($image = $request->file('image')) {
-            $NewName = time() . '_' . date('Y-m-d_') . uniqid() . '.webp';
-            $manager = new ImageManager(new Driver());
-            $img     = $manager->read($image);
-            $img->toWebp()->save(public_path('/Uploads_Images/Grade/' . $NewName));
-
-            $grade->image = $NewName;
+            // Grade image: max 600x600, WebP q80.
+            $grade->image = (new ImageService)->process($image, 'Grade', [
+                'max_width'  => 600,
+                'max_height' => 600,
+                'quality'    => 80,
+            ]);
         } else {
             unset($grade->image);
         }
@@ -75,7 +74,7 @@ class GradeController extends Controller
             'grade_name.ar' => ['required' , 'string' , 'min:2' , 'max:255' , Rule::unique('grade_translations','grade_name')->ignore($grade->translate('ar')->id)],
             'description.en' => 'required|string',
             'description.ar' => 'required|string',
-            'image'          => 'nullable|image|mimes:png,jpg,webp,gif|max:5120',
+            'image'          => 'nullable|image|mimes:png,jpg,jpeg,webp,gif|max:3072',
 
         ]);
 
@@ -94,12 +93,12 @@ class GradeController extends Controller
                 }
             }
 
-            $NewName = time() . '_' . date('Y-m-d_') . uniqid() . '.webp';
-            $manager = new ImageManager(new Driver());
-            $img     = $manager->read($image);
-            $img->toWebp()->save(public_path('/Uploads_Images/Grade/' . $NewName));
-
-            $grade->image = $NewName;
+            // Grade image: max 600x600, WebP q80.
+            $grade->image = (new ImageService)->process($image, 'Grade', [
+                'max_width'  => 600,
+                'max_height' => 600,
+                'quality'    => 80,
+            ]);
         } else {
             unset($grade->image);
         }

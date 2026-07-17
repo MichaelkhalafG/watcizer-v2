@@ -6,9 +6,8 @@ use App\Models\Offer;
 use App\Models\BannerBottom;
 use Illuminate\Http\Request;
 use App\Http\Controllers\Controller;
-use Intervention\Image\ImageManager;
+use App\Services\ImageService;
 use Illuminate\Support\Facades\Cache;
-use Intervention\Image\Drivers\Gd\Driver;
 
 class BannerBottomController extends Controller
 {
@@ -34,16 +33,16 @@ class BannerBottomController extends Controller
             'offer_id'     => 'nullable|exists:offers,id',
         ]);
 
+        $imageService = new ImageService;
         foreach ($request->file('image') as $img)
         {
             BannerBottom::create([
-
-                $NewName = time() . '_' . date('Y-m-d_') . uniqid() . '.' . 'webp',
-                $manager = new ImageManager(new Driver()),
-                $img     = $manager->read($img),
-                $img->toWebp()->save(public_path('/Uploads_Images/Banner_Bottom/' . $NewName)),
-
-                'image'      => $NewName,
+                // Banners: max 1920x800, WebP q85.
+                'image'      => $imageService->process($img, 'Banner_Bottom', [
+                    'max_width'  => 1920,
+                    'max_height' => 800,
+                    'quality'    => 85,
+                ]),
                 'offer_id'   => $request->offer_id,
             ]);
         }
@@ -73,12 +72,11 @@ class BannerBottomController extends Controller
             {
                 unlink($oldImage);
             }
-            $NewName = time() . '_' . date('Y-m-d_') . uniqid() . '.' . 'webp';
-            $manager = new ImageManager(new Driver());
-            $img     = $manager->read($image);
-            $img->toWebp()->save(public_path('/Uploads_Images/Banner_Bottom/' . $NewName));
-
-            $banner_bottom->image       = $NewName;
+            $banner_bottom->image = (new ImageService)->process($image, 'Banner_Bottom', [
+                'max_width'  => 1920,
+                'max_height' => 800,
+                'quality'    => 85,
+            ]);
         }
         $banner_bottom->offer_id  = $request->offer_id;
 

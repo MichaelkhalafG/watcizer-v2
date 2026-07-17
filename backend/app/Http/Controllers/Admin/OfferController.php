@@ -10,9 +10,8 @@ use App\Models\CategoryType;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use App\Http\Controllers\Controller;
-use Intervention\Image\ImageManager;
+use App\Services\ImageService;
 use Illuminate\Support\Facades\Cache;
-use Intervention\Image\Drivers\Gd\Driver;
 
 class OfferController extends Controller
 {
@@ -43,7 +42,7 @@ class OfferController extends Controller
             'sale_price_after_discount' => 'required|numeric|min:0',
             'stock'                     => 'required|numeric|min:0',
             'in_season'                 => 'required|in:yes,no',
-            'image'                     => 'required|image|mimes:png,jpg,webp,gif|max:5120',
+            'image'                     => 'required|image|mimes:png,jpg,jpeg,webp,gif|max:3072',
             'wa_code'                   => 'required|unique:products,wa_code|unique:offers,wa_code|string|min:2|max:255',
             'long_description.ar'       => 'required|string',
             'long_description.en'       => 'required|string',
@@ -68,13 +67,12 @@ class OfferController extends Controller
         $offer->translateOrNew('en')->long_description  = $request['long_description']['en'];
 
 
-        $image   = $request->file('image');
-        $NewName = time() . '_' . date('Y-m-d_') . uniqid() . '.webp';
-        $manager = new ImageManager(new Driver());
-        $img     = $manager->read($image);
-        $img->toWebp()->save(public_path('/Uploads_Images/Offer/' . $NewName));
-
-        $offer->image = $NewName;
+        // Offer image: max 1200x800, WebP q85.
+        $offer->image = (new ImageService)->process($request->file('image'), 'Offer', [
+            'max_width'  => 1200,
+            'max_height' => 800,
+            'quality'    => 85,
+        ]);
 
         $offer->save();
 
@@ -109,7 +107,7 @@ class OfferController extends Controller
             'sale_price_after_discount' => 'required|numeric|min:0',
             'stock'                     => 'required|numeric|min:0',
             'in_season'                 => 'required|in:yes,no',
-            'image'                     => 'nullable|image|mimes:png,jpg,webp,gif|max:5120',
+            'image'                     => 'nullable|image|mimes:png,jpg,jpeg,webp,gif|max:3072',
             'wa_code'                   => ['required' , 'string' , 'min:2' , 'max:255' , Rule::unique('offers','wa_code')->ignore($offer->id)],
             'long_description.ar'       => 'required|string',
             'long_description.en'       => 'required|string',
@@ -137,12 +135,11 @@ class OfferController extends Controller
             {
                 unlink($oldImage);
             }
-            $NewName = time() . '_' . date('Y-m-d_')  . uniqid() . '.webp';
-            $manager = new ImageManager(new Driver());
-            $img     = $manager->read($image);
-            $img->toWebp()->save(public_path('/Uploads_Images/Offer/' . $NewName));
-
-            $offer->image = $NewName;
+            $offer->image = (new ImageService)->process($image, 'Offer', [
+                'max_width'  => 1200,
+                'max_height' => 800,
+                'quality'    => 85,
+            ]);
         }
 
         $offer->save();

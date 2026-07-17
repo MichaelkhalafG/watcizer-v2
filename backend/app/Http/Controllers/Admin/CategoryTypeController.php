@@ -7,11 +7,10 @@ use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use App\Exports\CategoryTypeExport;
 use App\Imports\CategoryTypeImport;
+use App\Services\ImageService;
 use App\Http\Controllers\Controller;
-use Intervention\Image\ImageManager;
 use Maatwebsite\Excel\Facades\Excel;
 use Illuminate\Support\Facades\Cache;
-use Intervention\Image\Drivers\Gd\Driver;
 use Maatwebsite\Excel\Validators\ValidationException;
 
 class CategoryTypeController extends Controller
@@ -32,7 +31,7 @@ class CategoryTypeController extends Controller
         $request->validate([
             'category_type_name.en' => 'required|string|min:2|max:255|unique:category_type_translations,category_type_name',
             'category_type_name.ar' => 'required|string|min:2|max:255|unique:category_type_translations,category_type_name',
-            'image'                 => 'nullable|image|mimes:png,jpg,webp,gif|max:5120',
+            'image'                 => 'nullable|image|mimes:png,jpg,jpeg,webp,gif|max:3072',
 
         ]);
 
@@ -42,12 +41,12 @@ class CategoryTypeController extends Controller
         $category_type->translateOrNew('en')->category_type_name = $request['category_type_name']['en'];
 
         if ($image = $request->file('image')) {
-            $NewName = time() . '_' . date('Y-m-d_') . uniqid() . '.webp';
-            $manager = new ImageManager(new Driver());
-            $img     = $manager->read($image);
-            $img->toWebp()->save(public_path('/Uploads_Images/Category_type/' . $NewName));
-
-            $category_type->image = $NewName;
+            // Category type image: max 600x600, WebP q80.
+            $category_type->image = (new ImageService)->process($image, 'Category_type', [
+                'max_width'  => 600,
+                'max_height' => 600,
+                'quality'    => 80,
+            ]);
         } else {
             unset($category_type->image);
         }
@@ -69,7 +68,7 @@ class CategoryTypeController extends Controller
         $request->validate([
             'category_type_name.en' => ['required' , 'string' , 'min:2' , 'max:255' , Rule::unique('category_type_translations','category_type_name')->ignore($category_type->translate('en')->id)],
             'category_type_name.ar' => ['required' , 'string' , 'min:2' , 'max:255' , Rule::unique('category_type_translations','category_type_name')->ignore($category_type->translate('ar')->id)],
-            'image'            => 'nullable|image|mimes:png,jpg,webp,gif|max:5120',
+            'image'            => 'nullable|image|mimes:png,jpg,jpeg,webp,gif|max:3072',
         ]);
 
         $category_type->translateOrNew('ar')->category_type_name = $request['category_type_name']['ar'];
@@ -85,12 +84,12 @@ class CategoryTypeController extends Controller
                 }
             }
 
-            $NewName = time() . '_' . date('Y-m-d_') . uniqid() . '.webp';
-            $manager = new ImageManager(new Driver());
-            $img     = $manager->read($image);
-            $img->toWebp()->save(public_path('/Uploads_Images/Category_type/' . $NewName));
-
-            $category_type->image = $NewName;
+            // Category type image: max 600x600, WebP q80.
+            $category_type->image = (new ImageService)->process($image, 'Category_type', [
+                'max_width'  => 600,
+                'max_height' => 600,
+                'quality'    => 80,
+            ]);
         } else {
             unset($category_type->image);
         }

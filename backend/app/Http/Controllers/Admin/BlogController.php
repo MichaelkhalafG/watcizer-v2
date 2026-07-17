@@ -6,9 +6,8 @@ use App\Models\Blog;
 use Illuminate\Http\Request;
 use App\Http\Controllers\Controller;
 use App\Models\BlogImage;
-use Intervention\Image\ImageManager;
+use App\Services\ImageService;
 use Illuminate\Support\Facades\Cache;
-use Intervention\Image\Drivers\Gd\Driver;
 
 class BlogController extends Controller
 {
@@ -42,13 +41,14 @@ class BlogController extends Controller
         $blog->translateOrNew('ar')->text  = $request['text']['ar'];
         $blog->translateOrNew('en')->text  = $request['text']['en'];
 
-        $image   = $request->file('image');
-        $NewName = time() . '_' . date('Y-m-d_') . uniqid() . '.webp';
-        $manager = new ImageManager(new Driver());
-        $img     = $manager->read($image);
-        $img->toWebp()->save(public_path('/Uploads_Images/Blog/' . $NewName));
+        $imageService = new ImageService;
 
-        $blog->image = $NewName;
+        // Blog cover: max 1200x800, WebP q85.
+        $blog->image = $imageService->process($request->file('image'), 'Blog', [
+            'max_width'  => 1200,
+            'max_height' => 800,
+            'quality'    => 85,
+        ]);
 
         $blog->save();
 
@@ -56,13 +56,11 @@ class BlogController extends Controller
         {
             BlogImage::create([
                 'blog_id' => $blog->id,
-
-                $NewName = time() . '_' . date('Y-m-d_') . uniqid() . '.' . 'webp',
-                $manager = new ImageManager(new Driver()),
-                $img     = $manager->read($img),
-                $img->toWebp()->save(public_path('/Uploads_Images/Blog_image/' . $NewName)),
-
-                'image' => $NewName,
+                'image'   => $imageService->process($img, 'Blog_image', [
+                    'max_width'  => 1200,
+                    'max_height' => 800,
+                    'quality'    => 85,
+                ]),
             ]);
         }
 
@@ -99,18 +97,20 @@ class BlogController extends Controller
         $blog->translateOrNew('ar')->text  = $request['text']['ar'];
         $blog->translateOrNew('en')->text  = $request['text']['en'];
 
+        $imageService = new ImageService;
+
         if ($image = $request->file('image')) {
             $oldImage = public_path('Uploads_Images/Blog/' . $blog->image);
             if (file_exists($oldImage))
             {
                 unlink($oldImage);
             }
-            $NewName = time() . '_' . date('Y-m-d_')  . uniqid() . '.webp';
-            $manager = new ImageManager(new Driver());
-            $img     = $manager->read($image);
-            $img->toWebp()->save(public_path('/Uploads_Images/Blog/' . $NewName));
-
-            $blog->image = $NewName;
+            // Blog cover: max 1200x800, WebP q85.
+            $blog->image = $imageService->process($image, 'Blog', [
+                'max_width'  => 1200,
+                'max_height' => 800,
+                'quality'    => 85,
+            ]);
         }
 
         $blog->save();
@@ -130,13 +130,11 @@ class BlogController extends Controller
             {
                 BlogImage::create([
                     'blog_id' => $blog->id,
-
-                    $NewName = time() . '_' . date('Y-m-d_') . uniqid() . '.' . 'webp',
-                    $manager = new ImageManager(new Driver()),
-                    $img     = $manager->read($img),
-                    $img->toWebp()->save(public_path('/Uploads_Images/Blog_image/' . $NewName)),
-
-                    'image' => $NewName,
+                    'image'   => $imageService->process($img, 'Blog_image', [
+                        'max_width'  => 1200,
+                        'max_height' => 800,
+                        'quality'    => 85,
+                    ]),
                 ]);
             }
         }

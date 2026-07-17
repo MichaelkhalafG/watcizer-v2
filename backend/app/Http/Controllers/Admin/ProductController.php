@@ -25,6 +25,7 @@ use App\Models\ProductImage;
 use Illuminate\Http\Request;
 use App\Exports\ProductExport;
 use App\Imports\ProductImport;
+use App\Services\ImageService;
 use App\Http\Controllers\Controller;
 use Intervention\Image\ImageManager;
 use Maatwebsite\Excel\Facades\Excel;
@@ -159,13 +160,12 @@ class ProductController extends Controller
         $product->seo_meta_description                    = $request->input('seo_meta_description');
         $product->low_stock_threshold                     = $request->input('low_stock_threshold', 5);
 
-        // ── Main image ────────────────────────────────────────
-        $image   = $request->file('image');
-        $NewName = time() . '_' . date('Y-m-d_') . uniqid() . '.webp';
-        $manager = new ImageManager(new Driver());
-        $img     = $manager->read($image);
-        $img->toWebp()->save(public_path('/Uploads_Images/Product/' . $NewName));
-        $product->image = $NewName;
+        // ── Main image (max 1200x1200, WebP q85) ───────────────
+        $product->image = (new ImageService)->process($request->file('image'), 'Product', [
+            'max_width'  => 1200,
+            'max_height' => 1200,
+            'quality'    => 85,
+        ]);
 
         $product->save();
 
@@ -181,7 +181,9 @@ class ProductController extends Controller
             foreach ($request->input('gallery_base64', []) as $sort => $base64) {
                 try {
                     $galleryName = time() . '_g' . $sort . '_' . uniqid() . '.webp';
-                    $galleryManager->read($base64)->toWebp()
+                    $galleryManager->read($base64)
+                        ->scaleDown(1200, 1200)
+                        ->toWebp(85)
                         ->save(public_path('/Uploads_Images/Product_image/' . $galleryName));
                     ProductImage::create([
                         'product_id' => $product->id,
@@ -323,11 +325,11 @@ class ProductController extends Controller
             if ($product->image && file_exists(public_path('Uploads_Images/Product/' . $product->image))) {
                 unlink(public_path('Uploads_Images/Product/' . $product->image));
             }
-            $NewName = time() . '_' . date('Y-m-d_') . uniqid() . '.webp';
-            $manager = new ImageManager(new Driver());
-            $img     = $manager->read($image);
-            $img->toWebp()->save(public_path('/Uploads_Images/Product/' . $NewName));
-            $product->image = $NewName;
+            $product->image = (new ImageService)->process($image, 'Product', [
+                'max_width'  => 1200,
+                'max_height' => 1200,
+                'quality'    => 85,
+            ]);
         } else {
             unset($product['image']);
         }
@@ -348,7 +350,9 @@ class ProductController extends Controller
                 if ($currentCount >= 10) break;
                 try {
                     $galleryName = time() . '_g' . $sort . '_' . uniqid() . '.webp';
-                    $galleryManager->read($base64)->toWebp()
+                    $galleryManager->read($base64)
+                        ->scaleDown(1200, 1200)
+                        ->toWebp(85)
                         ->save(public_path('/Uploads_Images/Product_image/' . $galleryName));
                     ProductImage::create([
                         'product_id' => $product->id,

@@ -7,11 +7,10 @@ use App\Exports\BrandExport;
 use App\Imports\BrandImport;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use App\Services\ImageService;
 use App\Http\Controllers\Controller;
-use Intervention\Image\ImageManager;
 use Maatwebsite\Excel\Facades\Excel;
 use Illuminate\Support\Facades\Cache;
-use Intervention\Image\Drivers\Gd\Driver;
 use Maatwebsite\Excel\Validators\ValidationException;
 
 class BrandController extends Controller
@@ -32,7 +31,7 @@ class BrandController extends Controller
         $request->validate([
             'brand_name.en' => 'required|string|min:2|max:255|unique:brand_translations,brand_name',
             'brand_name.ar' => 'required|string|min:2|max:255|unique:brand_translations,brand_name',
-            'image'         => 'nullable|image|mimes:png,jpg,webp,gif|max:5120',
+            'image'         => 'nullable|image|mimes:png,jpg,jpeg,webp,gif|max:2048',
         ]);
 
         $brand = new Brand;
@@ -41,12 +40,13 @@ class BrandController extends Controller
         $brand->translateOrNew('en')->brand_name = $request['brand_name']['en'];
 
         if ($image = $request->file('image')) {
-            $NewName = time() . '_' . date('Y-m-d_') . uniqid() . '.webp';
-            $manager = new ImageManager(new Driver());
-            $img     = $manager->read($image);
-            $img->toWebp()->save(public_path('/Uploads_Images/Brand/' . $NewName));
-
-            $brand->image = $NewName;
+            // Brand logos: transparent background, max 400x400.
+            $brand->image = (new ImageService)->process($image, 'Brand', [
+                'max_width'   => 400,
+                'max_height'  => 400,
+                'quality'     => 85,
+                'transparent' => true,
+            ]);
         } else {
             unset($brand->image);
         }
@@ -68,7 +68,7 @@ class BrandController extends Controller
         $request->validate([
             'brand_name.en' => ['required' , 'string' , 'min:2' , 'max:255' , Rule::unique('brand_translations','brand_name')->ignore($brand->translate('en')->id)],
             'brand_name.ar' => ['required' , 'string' , 'min:2' , 'max:255' , Rule::unique('brand_translations','brand_name')->ignore($brand->translate('ar')->id)],
-            'image'         => 'nullable|image|mimes:png,jpg,webp,gif|max:5120',
+            'image'         => 'nullable|image|mimes:png,jpg,jpeg,webp,gif|max:2048',
         ]);
 
         $brand->translateOrNew('ar')->brand_name = $request['brand_name']['ar'];
@@ -84,12 +84,13 @@ class BrandController extends Controller
                 }
             }
 
-            $NewName = time() . '_' . date('Y-m-d_') . uniqid() . '.webp';
-            $manager = new ImageManager(new Driver());
-            $img     = $manager->read($image);
-            $img->toWebp()->save(public_path('/Uploads_Images/Brand/' . $NewName));
-
-            $brand->image = $NewName;
+            // Brand logos: transparent background, max 400x400.
+            $brand->image = (new ImageService)->process($image, 'Brand', [
+                'max_width'   => 400,
+                'max_height'  => 400,
+                'quality'     => 85,
+                'transparent' => true,
+            ]);
         } else {
             unset($brand->image);
         }
