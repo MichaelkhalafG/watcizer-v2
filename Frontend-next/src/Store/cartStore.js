@@ -90,6 +90,19 @@ const syncLine = (item, quantity) =>
     })
     .catch((err) => console.warn('Cart sync failed:', err))
 
+// Server delete for a removed line. Mirrors syncLine: fire-and-forget, errors are
+// swallowed. The line is keyed by product_id/offer_id (same as getItemKey), so the
+// backend removes every cart_items row for that product/offer in this cart. This is
+// what keeps the DB cart in sync — before, removal was local-only, leaving phantom
+// rows that inflated the next order's server total ("Order total mismatch").
+const syncRemove = (item) =>
+  http
+    .post('remove_from_cart', {
+      product_id: item.product_id ?? null,
+      offer_id: item.offer_id ?? null,
+    })
+    .catch((err) => console.warn('Cart remove sync failed:', err))
+
 // Stable references for the SSR render (useSyncExternalStore requires a
 // getServerSnapshot; returning a fresh object each call would loop forever).
 const SERVER_EMPTY_CART = createEmptyCart()
@@ -191,12 +204,14 @@ export const cartStore = {
       return { ...cart, cart_item: cart.cart_item.filter((i) => getItemKey(i) !== identifier) }
     })
     if (removed) {
+      // Delete the row from the DB cart too (was local-only before, which left
+      // phantom cart_items that inflated the next order's server total). Undo
+      // re-adds the line via syncLine, which recreates the row.
+      syncRemove(removed)
       if (undoTimer) clearTimeout(undoTimer)
       setExtra({ lastRemoved: removed })
       undoTimer = setTimeout(() => setExtra({ lastRemoved: null }), 5000)
     }
-    // NOTE: there is no reliable server delete-by-attributes endpoint, so removal
-    // is local-only; the line is reconciled at checkout / next merge.
   },
 
   undoRemove: () => {
