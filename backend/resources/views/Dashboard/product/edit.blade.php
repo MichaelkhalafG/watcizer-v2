@@ -40,31 +40,6 @@
 {{-- ── CLASSIFICATION ──────────────────────────────────── --}}
 <div class="col-12 mt-1"><div class="sec-title">Classification</div></div>
 
-{{-- 3-level category system (new) --}}
-<div class="col-4">
-    <label class="form-label">{{ trans('product.main_category') }} <span class="badge bg-primary">L1</span></label>
-    <select class="form-select select2" name="main_category_id" id="cat1">
-        <option value="">{{ trans('product.select') }}…</option>
-        @foreach($main_categories as $c)
-            <option value="{{ $c->id }}" data-slug="{{ $c->slug }}"
-                    @selected(old('main_category_id', $product->main_category_id) == $c->id)>{{ $c->name }}</option>
-        @endforeach
-    </select>
-    @error('main_category_id')<p class="err">{{ $message }}</p>@enderror
-</div>
-<div class="col-4">
-    <label class="form-label">{{ trans('product.sub_category') }} <span class="badge bg-secondary">L2</span></label>
-    <select class="form-select select2" name="sub_category_id[]" id="cat2" multiple disabled></select>
-    <div id="load2" class="d-none"><div class="spinner-border spinner-border-sm"></div></div>
-    @error('sub_category_id')<p class="err">{{ $message }}</p>@enderror
-</div>
-<div class="col-4">
-    <label class="form-label">{{ trans('product.product_type') }} <span class="badge bg-info">L3</span></label>
-    <select class="form-select select2" name="product_type_id[]" id="cat3" multiple disabled></select>
-    <div id="load3" class="d-none"><div class="spinner-border spinner-border-sm"></div></div>
-    @error('product_type_id')<p class="err">{{ $message }}</p>@enderror
-</div>
-
 <div class="col-3">
     <label class="form-label">{{ trans('product.sub_type_id') }}</label>
     <select class="form-select select2" name="sub_type_id">
@@ -571,65 +546,6 @@ $(document).ready(function(){
 
     // ── Select2 ──────────────────────────────────────────
     $('.select2').select2({ theme:'bootstrap-5', width:'100%' });
-
-    // ── 3-level category cascade (new system) ────────────
-    var CAT_API = '/api/categories';
-    var curSub  = {{ $product->sub_category_id ?? 'null' }};
-    var curType = {{ $product->product_type_id ?? 'null' }};
-
-    function catOptions($sel, data, preselect){
-        var loc = $('html').attr('lang') || 'en';
-        $sel.empty();
-        $.each(data, function(_, it){
-            var nm = loc === 'ar' ? (it.name_ar || it.name_en || it.name) : (it.name_en || it.name);
-            $sel.append('<option value="'+it.id+'" data-slug="'+(it.slug||'')+'">'+nm+'</option>');
-        });
-        $sel.prop('disabled', data.length === 0);
-        if (preselect) { $sel.val([String(preselect)]); }
-        $sel.trigger('change.select2');
-    }
-
-    // Pre-load the current product's sub/type chain on page load.
-    (function initCatCascade(){
-        var mainId = $('#cat1').val();
-        if (!mainId) return;
-        $('#load2').removeClass('d-none');
-        $.getJSON(CAT_API + '/' + mainId + '/children').done(function(subs){
-            $('#load2').addClass('d-none');
-            catOptions($('#cat2'), subs, curSub);
-            if (curSub) {
-                $('#load3').removeClass('d-none');
-                $.getJSON(CAT_API + '/' + curSub + '/children').done(function(types){
-                    $('#load3').addClass('d-none');
-                    catOptions($('#cat3'), types, curType);
-                }).fail(function(){ $('#load3').addClass('d-none'); });
-            }
-        }).fail(function(){ $('#load2').addClass('d-none'); });
-    })();
-
-    // Manual re-selection cascade.
-    $('#cat1').on('change', function(){
-        var id = $(this).val();
-        catOptions($('#cat2'), [], null);
-        catOptions($('#cat3'), [], null);
-        if (!id) return;
-        $('#load2').removeClass('d-none');
-        $.getJSON(CAT_API + '/' + id + '/children').done(function(subs){
-            $('#load2').addClass('d-none');
-            catOptions($('#cat2'), subs, null);
-        }).fail(function(){ $('#load2').addClass('d-none'); });
-    });
-    $('#cat2').on('change', function(){
-        var vals = $(this).val() || [];
-        var last = vals[vals.length - 1];
-        catOptions($('#cat3'), [], null);
-        if (!last) return;
-        $('#load3').removeClass('d-none');
-        $.getJSON(CAT_API + '/' + last + '/children').done(function(types){
-            $('#load3').addClass('d-none');
-            catOptions($('#cat3'), types, null);
-        }).fail(function(){ $('#load3').addClass('d-none'); });
-    });
 
     $('.colorSelect').select2({
         theme: 'bootstrap-5',

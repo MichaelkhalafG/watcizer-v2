@@ -44,47 +44,30 @@
 ═══════════════════════════════════════════ --}}
 <div class="col-12 mt-1"><div class="sec-title">{{ trans('product.section_classification') }}</div></div>
 
-<div class="col-12">
-    <div id="cat-bc" class="cat-bc d-none">
-        <i class="bi bi-diagram-3"></i>&nbsp;
-        <span id="bc-1"></span><span id="bc-sep1" class="bc-arr d-none"> › </span>
-        <span id="bc-2" class="d-none"></span><span id="bc-sep2" class="bc-arr d-none"> › </span>
-        <span id="bc-3" class="d-none"></span>
-    </div>
-</div>
-
 <div class="col-4">
-    <label class="form-label">{{ trans('product.main_category') }} <span class="req">*</span> <span class="lvl-badge bg-primary">L1</span></label>
-    <select class="form-select select2" name="main_category_id" id="cat1">
+    <label class="form-label">{{ trans('product.category_type_id') }}</label>
+    <select class="form-select select2" name="category_type_id" id="category_type_sel">
         <option value="">{{ trans('product.select') }}…</option>
-        @foreach($main_categories as $c)
-            <option value="{{ $c->id }}" data-slug="{{ $c->slug }}"
-                    data-name="{{ $c->translate('en')->name ?? $c->name }}"
-                    @selected(old('main_category_id') == $c->id)>{{ $c->name }}</option>
+        @foreach($category_type as $item)
+            <option value="{{ $item->id }}" @selected(old('category_type_id') == $item->id)>{{ $item->category_type_name }}</option>
         @endforeach
     </select>
-    @error('main_category_id')<div class="err">{{ $message }}</div>@enderror
+    @error('category_type_id')<div class="err">{{ $message }}</div>@enderror
 </div>
 
 <div class="col-4">
-    <label class="form-label">{{ trans('product.sub_category') }} <span class="lvl-badge bg-secondary">L2</span> <span class="multi-hint">multi</span></label>
-    <select class="form-select select2" name="sub_category_id[]" id="cat2" multiple disabled>
-        <option value="">— {{ trans('product.select_main_first') }} —</option>
+    <label class="form-label">{{ trans('product.type_id') }}</label>
+    <select class="form-select select2" name="sub_type_id" id="sub_type_sel">
+        <option value="">{{ trans('product.select') }}…</option>
+        @foreach($sub_type as $item)
+            <option value="{{ $item->id }}"
+                    data-slug="{{ \Illuminate\Support\Str::slug($item->translate('en')->sub_type_name ?? $item->sub_type_name) }}"
+                    @selected(old('sub_type_id') == $item->id)>{{ $item->sub_type_name }}</option>
+        @endforeach
     </select>
-    <div id="load2" class="ldr d-none"><div class="spinner-border spinner-border-sm"></div></div>
-    @error('sub_category_id')<div class="err">{{ $message }}</div>@enderror
 </div>
 
 <div class="col-4">
-    <label class="form-label">{{ trans('product.product_type') }} <span class="lvl-badge bg-info">L3</span> <span class="multi-hint">multi</span></label>
-    <select class="form-select select2" name="product_type_id[]" id="cat3" multiple disabled>
-        <option value="">— {{ trans('product.select_sub_first') }} —</option>
-    </select>
-    <div id="load3" class="ldr d-none"><div class="spinner-border spinner-border-sm"></div></div>
-    @error('product_type_id')<div class="err">{{ $message }}</div>@enderror
-</div>
-
-<div class="col-6">
     <label class="form-label">{{ trans('product.gender_id') }} <span class="req">*</span></label>
     <select class="form-select select2" name="gender_id[]" multiple>
         @foreach($gender as $item)
@@ -92,16 +75,6 @@
         @endforeach
     </select>
     @error('gender_id')<div class="err">{{ $message }}</div>@enderror
-</div>
-
-<div class="col-6">
-    <label class="form-label">{{ trans('product.type_id') }}</label>
-    <select class="form-select select2" name="sub_type_id">
-        <option value="">{{ trans('product.select') }}…</option>
-        @foreach($sub_type as $item)
-            <option value="{{ $item->id }}" @selected(old('sub_type_id') == $item->id)>{{ $item->sub_type_name }}</option>
-        @endforeach
-    </select>
 </div>
 
 {{-- ═══════════════════════════════════════════
@@ -826,32 +799,47 @@ $(document).ready(function(){
     /* ── SKU generator ── */
     window.genSKU=function(){
         var rand=Math.random().toString(36).substring(2,8).toUpperCase();
-        var prefix=$('#cat1').find(':selected').text().substring(0,3).toUpperCase()||'PRD';
+        var prefix=($('#sub_type_sel').find(':selected').text().trim().substring(0,3).toUpperCase())||'PRD';
         $('#sku_field').val(prefix+'-'+rand);
     };
 
     /* ══════════════════════════════════════════
-       3-LEVEL DYNAMIC CATEGORIES
+       ATTRIBUTE GROUPS — shown/hidden by SUB TYPE
+       (was gated by the removed Main Category cascade; the `.cat-fields`
+        groups are keyed by product family via their data-cat, so we map each
+        sub type → family and reveal the matching group.)
     ══════════════════════════════════════════ */
-    const API='/api/categories';
-    const slugMap={
-        'watches':'watches,smart-watches,wall-clocks',
-        'smart-watches':'watches,smart-watches,wall-clocks',
-        'wall-clocks':'watches,smart-watches,wall-clocks',
-        'bags':'bags','wallets':'wallets','belts':'belts,caps,bracelets,accessories-spare-parts',
-        'caps':'belts,caps,bracelets,accessories-spare-parts',
-        'bracelets':'belts,caps,bracelets,accessories-spare-parts',
-        'perfumes':'perfumes','electronics':'electronics',
-        'accessories-spare-parts':'belts,caps,bracelets,accessories-spare-parts',
+    // Sub type slug → product family (must match a token in a .cat-fields data-cat).
+    const SUBTYPE_FAMILY={
+        // Watches
+        'diver':'watches','chronograph':'watches','dress':'watches','sport':'watches',
+        'pilot':'watches','gmt':'watches','field':'watches','racing':'watches',
+        'skeleton':'watches','tourbillon':'watches','military':'watches','casual':'watches',
+        'smart-watch':'watches','digital-watch':'watches',
+        // Fashion
+        'bags':'bags','wallets':'wallets','perfumes':'perfumes',
+        'caps':'accessories','belts':'accessories','bracelets':'accessories',
+        'sunglasses':'accessories','jewelry':'accessories','scarves':'accessories',
+        'keychains':'accessories','ties':'accessories','cufflinks':'accessories','pen':'accessories',
+    };
+    // Family → the data-cat tokens that identify its .cat-fields block.
+    const FAMILY_CATS={
+        'watches':['watches','smart-watches','wall-clocks'],
+        'bags':['bags'],
+        'wallets':['wallets'],
+        'accessories':['belts','caps','bracelets','accessories-spare-parts'],
+        'perfumes':['perfumes'],
+        'electronics':['electronics'],
     };
 
-    function showAttr(slug){
+    function showAttr(subSlug){
         $('.cat-fields').addClass('d-none');
-        if(!slug)return;
-        var t=slugMap[slug]||'bundles,outlet,toys,uncategorized';
-        var list=t.split(',');
+        if(!subSlug)return;
+        var fam=SUBTYPE_FAMILY[subSlug];
+        var list=FAMILY_CATS[fam]||[];
+        if(!list.length)return;
         $('.cat-fields').each(function(){
-            var cats=$(this).data('cat').split(',');
+            var cats=$(this).data('cat').toString().split(',');
             if(cats.some(function(c){return list.includes(c.trim());})){
                 $(this).removeClass('d-none');
                 $(this).find('.select2:not(.colorSel)').select2({theme:'bootstrap-5',width:'100%'});
@@ -860,54 +848,14 @@ $(document).ready(function(){
         });
     }
 
-    function updateBC(n1,n2,n3){
-        if(!n1){$('#cat-bc').addClass('d-none');return;}
-        $('#cat-bc').removeClass('d-none');
-        $('#bc-1').text(n1);
-        n2?($('#bc-2').text(n2).removeClass('d-none'),$('#bc-sep1').removeClass('d-none')):($('#bc-2').addClass('d-none'),$('#bc-sep1').addClass('d-none'));
-        n3?($('#bc-3').text(n3).removeClass('d-none'),$('#bc-sep2').removeClass('d-none')):($('#bc-3').addClass('d-none'),$('#bc-sep2').addClass('d-none'));
-    }
-
-    function resetMs($s,ph){
-        if($s.hasClass('select2-hidden-accessible')){$s.val(null).trigger('change');}
-        $s.empty().prop('disabled',true);
-    }
-
-    function loadCh(pid,$s,$l,ph){
-        $l.removeClass('d-none');resetMs($s,ph);
-        $.getJSON(API+'/'+pid+'/children').done(function(data){
-            $l.addClass('d-none');$s.empty();
-            var loc=$('html').attr('lang')||'en';
-            $.each(data,function(_,it){
-                var nm=loc==='ar'?(it.name_ar||it.name_en):(it.name_en||it.name);
-                $s.append('<option value="'+it.id+'" data-slug="'+it.slug+'" data-name="'+nm+'">'+nm+'</option>');
-            });
-            if(data.length){$s.prop('disabled',false).select2({theme:'bootstrap-5',width:'100%',placeholder:ph,allowClear:true});}
-        }).fail(function(){$l.addClass('d-none');});
-    }
-
-    $('#cat1').on('change',function(){
-        var id=$(this).val(),slug=$(this).find(':selected').data('slug')||'';
-        var name=$(this).find(':selected').data('name')||$(this).find(':selected').text();
-        resetMs($('#cat2'));resetMs($('#cat3'));
-        updateBC(name,null,null);showAttr(slug);autoSEO();
-        if(!id)return;
-        loadCh(id,$('#cat2'),$('#load2'),'{{ trans("product.sub_category") }}');
+    // Reveal the right attribute group as the Sub Type changes, and refresh SEO.
+    $('#sub_type_sel').on('change',function(){
+        var slug=$(this).find(':selected').data('slug')||'';
+        showAttr(slug);autoSEO();
     });
-    $('#cat2').on('change',function(){
-        var vals=$(this).val()||[];var last=vals[vals.length-1];
-        var names=[];$(this).find(':selected').each(function(){names.push($(this).data('name')||$(this).text());});
-        var bc1=$('#cat1').find(':selected').data('name')||'';
-        resetMs($('#cat3'));updateBC(bc1,names.join(', '),null);
-        if(!last)return;
-        loadCh(last,$('#cat3'),$('#load3'),'{{ trans("product.product_type") }}');
-    });
-    $('#cat3').on('change',function(){
-        var names=[];$(this).find(':selected').each(function(){names.push($(this).data('name')||$(this).text());});
-        var bc1=$('#cat1').find(':selected').data('name')||'';
-        var bc2=[];$('#cat2').find(':selected').each(function(){bc2.push($(this).data('name')||$(this).text());});
-        updateBC(bc1,bc2.join(', '),names.join(', '));
-    });
+    // Reflect the current selection on initial load (e.g. after a validation error
+    // repopulates the form with old() input).
+    showAttr($('#sub_type_sel').find(':selected').data('slug')||'');
 
     /* ══════════════════════════════════════════
        SEO AUTO-GENERATION
@@ -915,7 +863,7 @@ $(document).ready(function(){
     window.autoSEO=function(force){
         var titleEn=$('#title_en').val().trim();
         var brand=$('#sel_brand').find(':selected').data('name')||'';
-        var cat=$('#cat1').find(':selected').text().trim();
+        var cat=$('#sub_type_sel').find(':selected').text().trim();
 
         if(!titleEn)return;
 

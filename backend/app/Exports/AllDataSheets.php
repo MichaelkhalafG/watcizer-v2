@@ -73,8 +73,10 @@ class AllDataSheets implements FromArray , WithHeadings , WithTitle
 
         public function headings(): array
         {
+            // NOTE: 12 headings to match the 12 data columns below. The old
+            // 'Categories' heading (from the removed standalone categories lookup)
+            // was dropped — it shifted every label one column to the right.
             return [
-                'Categories',
                 'Category Types',
                 'Brands',
                 'Grades',

@@ -31,6 +31,7 @@ import { useCatalog } from '../../../Hooks/queries/useCatalog'
 import { useUIStore } from '../../../Store/uiStore'
 import { getImageUrl } from '../../../utils/imageUrl'
 import { buildListingParams } from '../../../utils/listingParams'
+import { subTypesByName } from '../../../utils/subTypeGroups'
 
 // Map a sub-type name (English key) to a React Icon. Falls back to a generic
 // category icon. Exact match first, then partial (substring) match.
@@ -137,12 +138,16 @@ function Nav() {
   // Brand logo URL (full URL as-is, or relative filename → asset base + Brand folder).
   const brandLogo = (b) => getImageUrl(b?.image, 'Brand')
 
-  // Sub-types that actually have products inside a given category type
-  // (derived from the product set — no assumption about sub_type schema).
-  const subTypesFor = (ct) =>
-    allSubTypes.filter((st) =>
+  // Sub-types that actually have products inside a given category type (derived
+  // from the product set — no assumption about sub_type schema). When a category
+  // type has no products yet (fresh catalog), fall back to classifying sub-types
+  // by their English name so the Watches / Fashion dropdowns still populate.
+  const subTypesFor = (ct) => {
+    const byProducts = allSubTypes.filter((st) =>
       list.some((p) => p.category_type_id === ct.id && p.sub_type_id === st.id),
     )
+    return byProducts.length ? byProducts : subTypesByName(ct, allSubTypes)
+  }
   // Brands that have at least one product (avoids dead filter links).
   const brands = allBrands.filter((b) => list.some((p) => p.brand_id === b.id))
 

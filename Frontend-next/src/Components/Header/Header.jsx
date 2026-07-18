@@ -17,6 +17,7 @@ import { useShippingStore } from '../../Store/shippingStore'
 import useCart from '../../Hooks/useCart'
 import { useCatalog } from '../../Hooks/queries/useCatalog'
 import { buildListingParams } from '../../utils/listingParams'
+import { subTypesByName } from '../../utils/subTypeGroups'
 import { getImageUrl } from '../../utils/imageUrl'
 import { FaFacebookF, FaInstagram } from 'react-icons/fa'
 
@@ -58,7 +59,7 @@ function Header() {
 
   // ── Mobile drawer + search state ──
   const [drawerOpen, setDrawerOpen] = useState(false)
-  const [openSection, setOpenSection] = useState(null) // 'shop' | 'brands' | null
+  const [openSection, setOpenSection] = useState(null) // 'shop' | 'brands' | `ct-${id}` | null
   const [mq, setMq] = useState('')
   const [searchOpen, setSearchOpen] = useState(false)
   const searchRef = useRef(null)
@@ -104,15 +105,19 @@ function Header() {
   // Sub-types / brands that actually have products (no dead links).
   const list = products || []
   const categoryTypes = tables?.categoryTypes || []
-  const drawerSubTypes = (tables?.subTypes || []).filter((st) =>
-    list.some((p) => p.sub_type_id === st.id),
-  )
+  const allSubTypes = tables?.subTypes || []
   const drawerBrands = (tables?.brands || []).filter((b) => list.some((p) => p.brand_id === b.id))
-  // Sub-types grouped under the category type their products live in.
-  const subTypesForCat = (ct) =>
-    drawerSubTypes.filter((st) =>
+  // Sub-types grouped under the category type their products live in. When a
+  // category type has no products yet (fresh catalog), fall back to classifying
+  // sub-types by their English name so the Watches / Fashion menus still populate.
+  const subTypesForCat = (ct) => {
+    const byProducts = allSubTypes.filter((st) =>
       list.some((p) => p.category_type_id === ct.id && p.sub_type_id === st.id),
     )
+    return byProducts.length ? byProducts : subTypesByName(ct, allSubTypes)
+  }
+  // Whether any category type has sub-types to show (drives the Shop accordion).
+  const hasAnySubTypes = categoryTypes.some((ct) => subTypesForCat(ct).length > 0)
   const brandLogo = (b) => getImageUrl(b?.image, 'Brand')
 
   const closeDrawer = () => {
@@ -457,7 +462,7 @@ function Header() {
           </button>
 
           {/* Shop accordion → sub-categories */}
-          {drawerSubTypes.length > 0 && (
+          {hasAnySubTypes && (
             <div className="wz-drawer-acc">
               <button
                 type="button"
@@ -499,6 +504,41 @@ function Header() {
               )}
             </div>
           )}
+
+          {/* Category-type accordions (Watches / Fashion) → their sub-types.
+              Mirrors the desktop nav's top-level category items. */}
+          {categoryTypes.map((ct) => {
+            const subs = subTypesForCat(ct)
+            if (!subs.length) return null
+            const key = `ct-${ct.id}`
+            return (
+              <div className="wz-drawer-acc" key={key}>
+                <button
+                  type="button"
+                  className={`wz-drawer-link wz-drawer-acc-head ${openSection === key ? 'is-open' : ''}`}
+                  onClick={() => toggleSection(key)}
+                  aria-expanded={openSection === key}
+                >
+                  {label(ct, 'category_type_name')}
+                  <FiChevronDown className="wz-drawer-caret" />
+                </button>
+                {openSection === key && (
+                  <div className="wz-drawer-sub">
+                    {subs.map((st) => (
+                      <button
+                        key={st.id}
+                        type="button"
+                        className="wz-drawer-sublink"
+                        onClick={() => go({ categories: [ct.id], subTypes: [st.id] })}
+                      >
+                        {label(st, 'sub_type_name')}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )
+          })}
 
           {/* Brands accordion */}
           {drawerBrands.length > 0 && (
