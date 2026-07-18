@@ -66,7 +66,6 @@ class ProductController extends Controller
     public function create()
     {
         $data = [
-            'main_categories' => Category::where('is_active', true)->whereNull('parent_id')->where('level', 1)->orderBy('sort_order')->get(),
             'category_type'   => CategoryType::all(['id']),
             'brand'           => Brand::all(['id']),
             'grade'           => Grade::all(['id']),
@@ -88,14 +87,11 @@ class ProductController extends Controller
     {
         $product = new Product;
 
-        // ── 3-level category ─────────────────────────────────
-        $product->main_category_id = $request->input('main_category_id');
-
-        $subIds = array_filter((array) $request->input('sub_category_id', []));
-        $product->sub_category_id = count($subIds) >= 1 ? $subIds[0] : null;
-
-        $typeIds = array_filter((array) $request->input('product_type_id', []));
-        $product->product_type_id = count($typeIds) >= 1 ? $typeIds[0] : null;
+        // ── Classification ────────────────────────────────────
+        // The 3-level `categories` taxonomy (main/sub/product category) was
+        // removed from the product form; the storefront navigates by
+        // category_type_id + sub_type_id only. Those columns stay nullable in the
+        // DB and are intentionally left unset here.
 
         // ── Core fields ───────────────────────────────────────
         $product->translateOrNew('ar')->product_title     = $request['product_title']['ar'];
@@ -218,7 +214,6 @@ class ProductController extends Controller
 
         $data = [
             'product'         => $product,
-            'main_categories' => Category::where('is_active', true)->whereNull('parent_id')->where('level', 1)->orderBy('sort_order')->get(),
             'category_type' => CategoryType::all(['id']),
             'brand'         => Brand::all(['id']),
             'grade'         => Grade::all(['id']),
@@ -243,20 +238,10 @@ class ProductController extends Controller
             $this->authorize('AnyAction');
         }
 
-        // Only touch the 3-level category assignment when the form actually
-        // submitted it — otherwise an edit that omits these inputs would wipe
-        // the product's existing main/sub/product-type category.
-        if ($request->has('main_category_id')) {
-            $product->main_category_id = $request->input('main_category_id');
-        }
-        if ($request->has('sub_category_id')) {
-            $subIds = array_filter((array) $request->input('sub_category_id', []));
-            $product->sub_category_id = count($subIds) >= 1 ? $subIds[0] : null;
-        }
-        if ($request->has('product_type_id')) {
-            $typeIds = array_filter((array) $request->input('product_type_id', []));
-            $product->product_type_id = count($typeIds) >= 1 ? $typeIds[0] : null;
-        }
+        // The 3-level `categories` taxonomy (main/sub/product category) was removed
+        // from the product form. These columns stay nullable in the DB and are no
+        // longer written here; existing values on already-saved products are left
+        // untouched (the inputs are simply absent from the submitted form).
 
         $product->translateOrNew('ar')->product_title     = $request['product_title']['ar'];
         $product->translateOrNew('en')->product_title     = $request['product_title']['en'];
