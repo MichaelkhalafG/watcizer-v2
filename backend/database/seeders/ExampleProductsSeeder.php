@@ -19,8 +19,6 @@ use App\Models\DisplayType;
 use App\Models\ClosureType;
 use App\Models\SizeType;
 use App\Models\Feature;
-use App\Models\NewColor;
-use App\Models\NewSize;
 use App\Models\ProductVariant;
 use App\Models\User;
 
@@ -178,13 +176,12 @@ class ExampleProductsSeeder extends Seeder
             ['image' => 'placeholder_watch_back.webp',  'is_cover' => 0, 'sort' => 3, 'alt_en' => 'Rolex Submariner case back', 'alt_ar' => 'ظهر ساعة رولكس سابمارينر'],
         ]);
 
-        // ── Variants (price stored as modifier vs base selling_price) ──
-        $base = 485000.00;
-        $this->addVariants($product, $base, [
-            ['color' => 'Black', 'size' => '41mm', 'price' => 485000, 'stock' => 2, 'sku' => 'ROL-SUB-BLK-41'],
-            ['color' => 'Blue',  'size' => '41mm', 'price' => 492000, 'stock' => 1, 'sku' => 'ROL-SUB-BLU-41'],
-            ['color' => 'Green', 'size' => '41mm', 'price' => 498000, 'stock' => 1, 'sku' => 'ROL-SUB-GRN-41'],
-        ], 'watch');
+        // ── Variants (flat: name / price / stock / sku) ──
+        $this->addVariants($product, [
+            ['name' => 'Black / 41mm', 'price' => 485000, 'stock' => 2, 'sku' => 'ROL-SUB-BLK-41'],
+            ['name' => 'Blue / 41mm',  'price' => 492000, 'stock' => 1, 'sku' => 'ROL-SUB-BLU-41'],
+            ['name' => 'Green / 41mm', 'price' => 498000, 'stock' => 1, 'sku' => 'ROL-SUB-GRN-41'],
+        ]);
 
         $this->command?->info('• Created WATCH: Rolex Submariner Date 126610LN (+3 images, +3 variants).');
     }
@@ -286,16 +283,15 @@ class ExampleProductsSeeder extends Seeder
             ['image' => 'placeholder_belt_box.webp',    'is_cover' => 0, 'sort' => 3, 'alt_en' => 'Gucci belt box and dust bag', 'alt_ar' => 'علبة وكيس حزام غوتشي'],
         ]);
 
-        // ── Variants (belt: all priced at base → modifier 0) ──
-        $base = 18500.00;
-        $this->addVariants($product, $base, [
-            ['color' => 'Black', 'size' => '85cm', 'price' => 18500, 'stock' => 3, 'sku' => 'GUC-BELT-BLK-85'],
-            ['color' => 'Black', 'size' => '90cm', 'price' => 18500, 'stock' => 2, 'sku' => 'GUC-BELT-BLK-90'],
-            ['color' => 'Black', 'size' => '95cm', 'price' => 18500, 'stock' => 2, 'sku' => 'GUC-BELT-BLK-95'],
-            ['color' => 'Brown', 'size' => '85cm', 'price' => 18500, 'stock' => 3, 'sku' => 'GUC-BELT-BRN-85'],
-            ['color' => 'Brown', 'size' => '90cm', 'price' => 18500, 'stock' => 2, 'sku' => 'GUC-BELT-BRN-90'],
-            ['color' => 'Brown', 'size' => '95cm', 'price' => 18500, 'stock' => 1, 'sku' => 'GUC-BELT-BRN-95'],
-        ], 'belt');
+        // ── Variants (flat: name / price / stock / sku) ──
+        $this->addVariants($product, [
+            ['name' => 'Black / 85cm', 'price' => 18500, 'stock' => 3, 'sku' => 'GUC-BELT-BLK-85'],
+            ['name' => 'Black / 90cm', 'price' => 18500, 'stock' => 2, 'sku' => 'GUC-BELT-BLK-90'],
+            ['name' => 'Black / 95cm', 'price' => 18500, 'stock' => 2, 'sku' => 'GUC-BELT-BLK-95'],
+            ['name' => 'Brown / 85cm', 'price' => 18500, 'stock' => 3, 'sku' => 'GUC-BELT-BRN-85'],
+            ['name' => 'Brown / 90cm', 'price' => 18500, 'stock' => 2, 'sku' => 'GUC-BELT-BRN-90'],
+            ['name' => 'Brown / 95cm', 'price' => 18500, 'stock' => 1, 'sku' => 'GUC-BELT-BRN-95'],
+        ]);
 
         $this->command?->info('• Created FASHION: Gucci GG Marmont Belt (+3 images, +6 variants).');
     }
@@ -312,22 +308,24 @@ class ExampleProductsSeeder extends Seeder
     }
 
     /**
-     * @param  array<int, array{color:string,size:string,price:float|int,stock:int,sku:string}>  $rows
+     * Insert product variants. The product_variants table is a flat structure:
+     *   id, product_id, name, price, stock, sku, image
+     * (no color_id/size_id/price_modifier). We assign properties directly rather
+     * than via create() because the model's $fillable still lists the old columns.
+     *
+     * @param  array<int, array{name:string,price:float|int,stock:int,sku:string}>  $rows
      */
-    private function addVariants(Product $product, float $basePrice, array $rows, string $sizeContext): void
+    private function addVariants(Product $product, array $rows): void
     {
         foreach ($rows as $row) {
-            ProductVariant::create([
-                'product_id'     => $product->id,
-                'color_id'       => $this->newColorId($row['color']),
-                'size_id'        => $this->newSizeId($row['size'], $sizeContext),
-                'stock'          => $row['stock'],
-                'sku'            => $row['sku'],
-                // product_variants has no absolute price column — it stores a
-                // modifier added to the product's base selling_price.
-                'price_modifier' => round($row['price'] - $basePrice, 2),
-                'is_active'      => true,
-            ]);
+            $variant = new ProductVariant();
+            $variant->product_id = $product->id;
+            $variant->name       = $row['name'];
+            $variant->price      = $row['price'];
+            $variant->stock      = $row['stock'];
+            $variant->sku        = $row['sku'];
+            $variant->image      = null;
+            $variant->save();
         }
     }
 
@@ -413,36 +411,6 @@ class ExampleProductsSeeder extends Seeder
         $material->translateOrNew('ar')->material_name = $ar;
         $material->save();
         return $material->id;
-    }
-
-    // ── Variant lookups (new_colors / new_sizes) ──────────────────────────
-
-    private function newColorId(string $nameEn): int
-    {
-        return $this->req(NewColor::where('name_en', $nameEn)->value('id'), "Variant color '{$nameEn}' (new_colors)");
-    }
-
-    /**
-     * Resolve a variant size by EN name; create it if absent. Watch sizes (e.g.
-     * "41mm") ship with MasterDataSeeder; belt sizes ("85cm"…) do not, so they're
-     * created here as type 'general'.
-     */
-    private function newSizeId(string $nameEn, string $context): int
-    {
-        $id = NewSize::where('name_en', $nameEn)->value('id');
-        if ($id) {
-            return $id;
-        }
-        $type   = $context === 'watch' ? 'watch' : 'general';
-        // "85cm" → "85 سم" for the Arabic label.
-        $nameAr = preg_replace('/\s*cm$/i', ' سم', preg_replace('/\s*mm$/i', ' مم', $nameEn));
-        $size = NewSize::create([
-            'name_en'   => $nameEn,
-            'name_ar'   => $nameAr,
-            'type'      => $type,
-            'is_active' => true,
-        ]);
-        return $size->id;
     }
 
     /** Guard: fail loudly with a clear message if reference data is missing. */
