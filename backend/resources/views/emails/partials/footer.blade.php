@@ -1,11 +1,11 @@
-@php($logo = $logo ?? config('watchizer.brand.logo'))
 @php($whatsappUrl = $whatsappUrl ?? 'https://wa.me/201551096234')
 @php($copyright = $copyright ?? config('watchizer.brand.copyright'))
-{{-- Shared dark footer: WhatsApp support + copyright + logo mark.
-     Developer credit is intentionally NOT here — it lives on the frontend. --}}
+{{-- Shared dark footer: WhatsApp support + copyright + WATCHIZER wordmark.
+     Text wordmark (not <img>) so it stays visible on the #111 background — see
+     header.blade.php. Developer credit is intentionally NOT here — frontend only. --}}
 <tr>
     <td style="background:#111111;padding:28px 32px;text-align:center;font-family:'Segoe UI',Tahoma,Arial,sans-serif;">
-        <img src="{{ $logo }}" alt="Watchizer" width="92" style="display:block;margin:0 auto 16px;max-width:92px;height:auto;border:0;">
+        <span style="display:block;margin:0 auto 16px;font-size:18px;font-weight:700;letter-spacing:3px;color:#ffffff;text-transform:uppercase;line-height:1;">WATCH<span style="color:#C8A45C;">IZER</span></span>
 
         {{-- WhatsApp support (Unicode icon — inline SVG is stripped by Gmail) --}}
         <a href="{{ $whatsappUrl }}" style="display:inline-block;text-decoration:none;color:#C8A45C;font-size:14px;font-weight:600;line-height:1.5;">

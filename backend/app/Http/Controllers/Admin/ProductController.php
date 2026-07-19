@@ -114,8 +114,9 @@ class ProductController extends Controller
         $product->case_shape_id                           = $request['case_shape_id'];
         $product->band_material_id                        = $request['band_material_id'];
         $product->watch_movement_id                       = $request['watch_movement_id'];
-        $product->stock                                   = $request['stock'];
-        $product->market_stock                            = $request['market_stock'];
+        // Stock is optional — default both tiers to 0 when left blank.
+        $product->stock                                   = $request['stock'] ?? 0;
+        $product->market_stock                            = $request['market_stock'] ?? 0;
         $product->band_length                             = $request['band_length'];
         $product->band_size_type_id                       = $request['band_size_type_id'];
         $product->water_resistance                        = $request['water_resistance'];
@@ -263,8 +264,9 @@ class ProductController extends Controller
         $product->case_shape_id                           = $request['case_shape_id'];
         $product->band_material_id                        = $request['band_material_id'];
         $product->watch_movement_id                       = $request['watch_movement_id'];
-        $product->stock                                   = $request['stock'];
-        $product->market_stock                            = $request['market_stock'];
+        // Stock is optional — default both tiers to 0 when left blank.
+        $product->stock                                   = $request['stock'] ?? 0;
+        $product->market_stock                            = $request['market_stock'] ?? 0;
         $product->band_length                             = $request['band_length'];
         $product->band_size_type_id                       = $request['band_size_type_id'];
         $product->water_resistance                        = $request['water_resistance'];

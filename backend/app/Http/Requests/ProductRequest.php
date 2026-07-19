@@ -43,7 +43,8 @@ class ProductRequest extends FormRequest
             'percentage_discount'           => 'nullable|numeric|min:0|max:100',
 
             // ── Stock ─────────────────────────────────────────
-            'stock'                         => 'required|numeric|min:0',
+            // Both stock tiers are optional; the controller defaults them to 0.
+            'stock'                         => 'nullable|numeric|min:0',
             'market_stock'                  => 'nullable|numeric|min:0',
             'low_stock_threshold'           => 'nullable|numeric|min:0',
 
@@ -163,7 +164,6 @@ class ProductRequest extends FormRequest
             'brand_id.required'          => 'Please select a brand.',
             'gender_id.required'         => 'Please select at least one gender.',
             'gender_id.min'              => 'Please select at least one gender.',
-            'stock.required'             => 'Express stock is required.',
             'selling_price.required'     => 'Selling price is required.',
             'purchase_price.required'    => 'Purchase price is required.',
             'short_description.ar.required' => 'الوصف المختصر بالعربي مطلوب.',
