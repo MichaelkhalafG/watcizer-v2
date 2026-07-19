@@ -108,9 +108,13 @@ export const transformProductData = (products, tables, ratings, images, locale) 
           'size_type_name',
         ),
         rating: getProductRating(product, ratings),
+        // Gallery images (the product_images table, served by AllProductImage) are
+        // stored in Uploads_Images/Product_image/ — NOT Product/. The bare filenames
+        // must be resolved with that folder or every gallery URL 404s. The MAIN
+        // product image (`image` below) genuinely lives in Product/.
         images: (images || [])
           .filter((img) => img.product_id === product.id)
-          .map((img) => getImageUrl(img.image, 'Product'))
+          .map((img) => getImageUrl(img.image, 'Product_image'))
           .filter(Boolean),
         features: product.feature.map((f) =>
           getTranslatedName(f.translations || [], locale, 'feature_name'),
