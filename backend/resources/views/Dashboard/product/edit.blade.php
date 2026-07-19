@@ -145,7 +145,7 @@
 </div>
 
 <div class="col-3">
-    <label class="form-label">{{ trans('product.stock') }} <span class="req">*</span></label>
+    <label class="form-label">{{ trans('product.stock') }}</label>
     <input class="form-control" name="stock" oninput="this.value=this.value.replace(/[^0-9.]/g,'')"
            value="{{ old('stock', $product->stock) }}">
     @error('stock')<p class="err">{{ $message }}</p>@enderror

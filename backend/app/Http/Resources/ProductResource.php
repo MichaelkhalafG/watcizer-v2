@@ -44,11 +44,16 @@ class ProductResource extends JsonResource
         // ── Images: main image + ordered gallery ─────────────────────────────
         $images = [];
         if ($p->image) {
+            // Main/cover image is stored under Uploads_Images/Product/ (default folder).
             $images[] = $imgUrl($p->image);
         }
+        // Gallery images are stored under Uploads_Images/Product_image/ (see
+        // ProductImageController::uploadImages + ProductImage::getUrlAttribute).
+        // They MUST be built with that folder — the default 'Product' folder made
+        // every gallery URL 404, so only the cover ever showed on the PDP.
         foreach ($p->productImages as $img) {
             if ($img->image) {
-                $images[] = $imgUrl($img->image);
+                $images[] = $imgUrl($img->image, 'Product_image');
             }
         }
 

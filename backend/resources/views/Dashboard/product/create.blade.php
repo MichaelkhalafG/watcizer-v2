@@ -128,7 +128,7 @@
 <div class="col-12 mt-1"><div class="sec-title">{{ trans('product.section_stock') }}</div></div>
 
 <div class="col-3">
-    <label class="form-label">{{ trans('product.stock') }} <span class="req">*</span></label>
+    <label class="form-label">{{ trans('product.stock') }}</label>
     <input class="form-control num-only" name="stock" id="stock_field" value="{{ old('stock') }}" placeholder="0" oninput="checkLowStock()">
     @error('stock')<div class="err">{{ $message }}</div>@enderror
 </div>
