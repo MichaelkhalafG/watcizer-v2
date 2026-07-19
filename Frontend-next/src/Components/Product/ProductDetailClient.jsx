@@ -55,6 +55,27 @@ function safeStr(val) {
   return val.name_en || val.name || val.color_name || val.material_name || val.brand_name || ''
 }
 
+// Colour arrays reach the PDP in more than one shape depending on the source:
+//   • catalog transform (transformProduct.js) → { color_id, color_value, color_name_en, color_name_ar }
+//   • ProductResource `dial_color`/`band_color` → { id, color_value, color_name_en, color_name_ar }
+//   • ProductResource `dial_colors`/`band_colors` → { id, name_en, name_ar }   (NO color_value!)
+// The PDP promotes the catalog card to the full ProductResource record, whose
+// `dial_colors` omits color_value — so the swatches lost their background and the
+// spec rows went blank once the full record arrived. Normalise to one shape and
+// prefer whichever source actually carries a color_value (the swatch fill).
+function normalizeColorList(arr) {
+  return (arr || []).map((c) => ({
+    id: c.id ?? c.color_id ?? null,
+    color_value: c.color_value ?? null,
+    color_name_en: c.color_name_en ?? c.name_en ?? c.name ?? '',
+    color_name_ar: c.color_name_ar ?? c.name_ar ?? '',
+  }))
+}
+function resolveColorList(...sources) {
+  const lists = sources.map(normalizeColorList)
+  return lists.find((l) => l.some((c) => c.color_value)) || lists.find((l) => l.length) || []
+}
+
 // Unified product / offer detail page. Mode is derived from the path:
 //   /product/:slug  /products/:id  → product mode
 //   /offer/:slug                   → offer mode
@@ -225,8 +246,10 @@ function ProductDetailClient({ param, isOffer = false }) {
     ? Number(offer?.average_rate || 0)
     : Number(product?.rating || product?.average_rating || 0)
 
-  const dialColors = product?.dial_colors || product?.dial_color || []
-  const bandColors = product?.band_colors || product?.band_color || []
+  // Prefer the source that carries color_value (see resolveColorList) so the
+  // full ProductResource record doesn't drop the swatches.
+  const dialColors = resolveColorList(product?.dial_color, product?.dial_colors)
+  const bandColors = resolveColorList(product?.band_color, product?.band_colors)
   const [selectedDial, setSelectedDial] = useState(null)
   const [selectedBand, setSelectedBand] = useState(null)
   useEffect(() => {
@@ -419,7 +442,7 @@ function ProductDetailClient({ param, isOffer = false }) {
     }
     const colorNames = (arr) =>
       (arr || [])
-        .map((c) => (isRTL ? c.color_name_ar : c.color_name_en))
+        .map((c) => (isRTL ? c.color_name_ar || c.name_ar : c.color_name_en || c.name_en))
         .filter(Boolean)
         .join(isRTL ? '، ' : ', ')
 
@@ -530,7 +553,7 @@ function ProductDetailClient({ param, isOffer = false }) {
     } catch {
       showToast(isRTL ? 'تعذّر إرسال التقييم' : 'Could not submit review', 'error')
     }
-  }, [userId, newReview, isOffer, offer, product, fetchRatings, showToast, isRTL, router])
+  }, [userId, newReview, setNewReview, isOffer, offer, product, fetchRatings, showToast, isRTL, router])
 
   // ── Related products: relevance scoring (lazy-rendered when scrolled near) ──
   // For offers, scoring runs against the offer's linked product so we recommend
@@ -643,9 +666,17 @@ function ProductDetailClient({ param, isOffer = false }) {
   }, [item?.id])
 
   // ── Accordions (mobile) ──
-  const [specsOpen, setSpecsOpen] = useState(false)
-  const [descOpen, setDescOpen] = useState(false)
-  const [reviewsOpen, setReviewsOpen] = useState(false)
+  // Exclusive accordion (mobile): only one section open at a time — tapping a
+  // header collapses the others. Desktop shows every section regardless (the
+  // collapse styling is mobile-only), so this only changes the phone view.
+  const [openSection, setOpenSection] = useState(null) // 'specs' | 'desc' | 'reviews' | null
+  const toggleSection = useCallback(
+    (id) => setOpenSection((cur) => (cur === id ? null : id)),
+    [],
+  )
+  const specsOpen = openSection === 'specs'
+  const descOpen = openSection === 'desc'
+  const reviewsOpen = openSection === 'reviews'
 
   // ── Share ──
   const handleShare = useCallback(async () => {
@@ -1096,7 +1127,7 @@ function ProductDetailClient({ param, isOffer = false }) {
           <section className="wz-pd-section wz-pd-specs">
             <button
               className="wz-pd-section-head"
-              onClick={() => setSpecsOpen((o) => !o)}
+              onClick={() => toggleSection('specs')}
               aria-expanded={specsOpen}
             >
               <span>{isRTL ? 'المواصفات' : 'Specifications'}</span>
@@ -1120,7 +1151,7 @@ function ProductDetailClient({ param, isOffer = false }) {
           <section className="wz-pd-section wz-pd-desc">
             <button
               className="wz-pd-section-head"
-              onClick={() => setDescOpen((o) => !o)}
+              onClick={() => toggleSection('desc')}
               aria-expanded={descOpen}
             >
               <span>{isRTL ? 'الوصف' : 'Description'}</span>
@@ -1139,7 +1170,7 @@ function ProductDetailClient({ param, isOffer = false }) {
         <section className="wz-pd-section wz-pd-ratings">
           <button
             className="wz-pd-section-head"
-            onClick={() => setReviewsOpen((o) => !o)}
+            onClick={() => toggleSection('reviews')}
             aria-expanded={reviewsOpen}
           >
             <span>

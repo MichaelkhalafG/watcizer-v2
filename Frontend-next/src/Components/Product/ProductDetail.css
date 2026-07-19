@@ -529,17 +529,13 @@
   font-weight: 400;
   line-height: 1;
   color: rgba(0, 0, 0, 0.4);
-  transform: rotate(0deg);
+  /* Chevron (›) points DOWN when the section is closed and UP when open.
+     Down/up is direction-symmetric, so no separate RTL rotation is needed. */
+  transform: rotate(90deg);
   transition: transform 0.25s ease;
 }
 .wz-pd-acc-icon.is-open {
-  transform: rotate(90deg);
-}
-[dir='rtl'] .wz-pd-acc-icon {
-  transform: rotate(180deg);
-}
-[dir='rtl'] .wz-pd-acc-icon.is-open {
-  transform: rotate(90deg);
+  transform: rotate(-90deg);
 }
 .wz-pd-section-body {
   display: block;
