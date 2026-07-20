@@ -47,6 +47,17 @@ return [
         'redirect'      => env('GOOGLE_REDIRECT_URI'),
     ],
 
+    // Paymob credentials — resolved here (not via env() in app code) so they
+    // survive `php artisan config:cache`, which stops loading .env at runtime.
+    // env() would return NULL once the config is cached, silently breaking
+    // checkout (missing auth token) and the HMAC callback check (fails closed).
+    'paymob' => [
+        'api_key'     => env('PAYMOB_API_KEY'),
+        'secret_key'  => env('PAYMOB_SECRET_KEY'),
+        'public_key'  => env('PAYMOB_PUBLIC_KEY'),
+        'hmac_secret' => env('PAYMOB_HMAC_SECRET'),
+    ],
+
     'microsoft' => [
         'client_id'     => env('MICROSOFT_CLIENT_ID'),
         'client_secret' => env('MICROSOFT_CLIENT_SECRET'),

@@ -28,13 +28,13 @@ export const metadata = {
   robots: 'index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1',
   alternates: { canonical: 'https://watchizereg.com' },
   manifest: '/manifest.json',
-  icons: {
-    icon: [
-      { url: '/logo.png?v=2', type: 'image/png' },
-      { url: '/logo.svg?v=2', type: 'image/svg+xml' },
-    ],
-    apple: '/logo.png?v=2',
-  },
+  // NOTE: no `icons` key here on purpose. The icons come from the Next.js file
+  // conventions app/favicon.ico + app/icon.png + app/apple-icon.png, which Next
+  // hashes and injects itself. Declaring them here too used to point the browser
+  // at /logo.png — the full LANDSCAPE lockup, which Google rejects/letterboxes as
+  // a favicon — while app/favicon.ico was still the create-next-app default, so
+  // Google showed the Next.js mark. The file-convention assets are the square
+  // Watchizer "W" monogram generated from public/logo.png.
   verification: { google: 'ySFGJkGj9eU9lzj8qAvuoqI9xt4Wcaswa_Q0Ke4Uoqg' },
   openGraph: {
     type: 'website',

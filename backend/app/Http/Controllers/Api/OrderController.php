@@ -883,8 +883,10 @@ class OrderController extends Controller
     private function handlePaymobPayment($order, $request, $isGuest)
     {
         try {
-            $authToken = env('PAYMOB_SECRET_KEY');
-            $publicKey = env('PAYMOB_PUBLIC_KEY');
+            // config(), never env(): env() returns NULL once `php artisan
+            // config:cache` has run, which would break every card payment.
+            $authToken = config('services.paymob.secret_key');
+            $publicKey = config('services.paymob.public_key');
 
             if (!$authToken || !$publicKey) {
                 throw new \Exception('Paymob credentials not configured');
@@ -1053,7 +1055,9 @@ class OrderController extends Controller
      */
     private function isValidPaymobHmac(Request $request): bool
     {
-        $secret = env('PAYMOB_HMAC_SECRET');
+        // config(), never env(): with a cached config env() returns NULL, and
+        // this check fails closed — every Paymob callback would be rejected.
+        $secret = config('services.paymob.hmac_secret');
         if (! $secret) {
             return false;
         }
