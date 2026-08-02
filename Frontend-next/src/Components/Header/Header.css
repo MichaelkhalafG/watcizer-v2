@@ -829,7 +829,12 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.04);
+  /* Opaque white — brand logos are genuinely transparent WebP now, so the box
+     must supply its own light backing. A translucent tint let the (fixed-
+     position) submenu flyout's context show through and rendered the logos as
+     dark squares. Applies to BOTH the top-level rows and the submenu items,
+     which share this class. */
+  background: #fff;
   border-radius: 3px;
   overflow: hidden;
   border: 1px solid rgba(0, 0, 0, 0.07);
