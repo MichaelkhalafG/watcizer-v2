@@ -323,6 +323,35 @@ function ProductDetailClient({ param, isOffer = false }) {
     touchX.current = null
   }
 
+  // ── Mobile gallery (< md): native scroll-snap carousel, no zoom ──────────
+  // The dot indicator is driven by an IntersectionObserver watching the slides.
+  // The desktop zoom gallery is untouched; both render and CSS shows one.
+  const carouselRef = useRef(null)
+  const slideRefs = useRef([])
+  useEffect(() => {
+    const root = carouselRef.current
+    if (!root) return
+    const slides = slideRefs.current.filter(Boolean)
+    if (slides.length < 2) return
+    const obs = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting && entry.intersectionRatio >= 0.5) {
+            const idx = Number(entry.target.dataset.idx)
+            if (!Number.isNaN(idx)) setActiveImg(idx)
+          }
+        })
+      },
+      { root, threshold: [0.5, 0.75] },
+    )
+    slides.forEach((s) => obs.observe(s))
+    return () => obs.disconnect()
+  }, [images.length])
+  const scrollToSlide = useCallback((i) => {
+    const root = carouselRef.current
+    if (root) root.scrollTo({ left: i * root.clientWidth, behavior: 'smooth' })
+  }, [])
+
   // ── Cart ────────────────────────────────────────────────────────────────
   const [quantity, setQuantity] = useState(1)
   // Reset quantity to 1 on route change — intentional.
@@ -881,28 +910,29 @@ function ProductDetailClient({ param, isOffer = false }) {
         <div className="wz-pd-grid">
           {/* ── Gallery ── */}
           <div className="wz-pd-gallery">
-            <div
-              className="wz-pd-main"
-              onTouchStart={onTouchStart}
-              onTouchEnd={onTouchEnd}
-            >
-              {/* key forces a clean remount when the selected image changes so
-                  the hover-zoom always targets the current main image. */}
-              <ImageZoom
-                key={images[activeImg]}
-                src={images[activeImg]}
-                alt={name}
-                width={600}
-                height={600}
-                zoomScale={2.5}
-                className="wz-pd-main-img-zoom"
-                onError={handleGalleryImgError}
-              />
-              {hasSale && <span className="wz-pd-discount wz-pd-hide-mobile">−{discount}%</span>}
-            </div>
+            {/* DESKTOP (md+): in-place hover/zoom + thumbnails — unchanged. */}
+            <div className="wz-pd-gallery-desktop">
+              <div
+                className="wz-pd-main"
+                onTouchStart={onTouchStart}
+                onTouchEnd={onTouchEnd}
+              >
+                {/* key forces a clean remount when the selected image changes so
+                    the hover-zoom always targets the current main image. */}
+                <ImageZoom
+                  key={images[activeImg]}
+                  src={images[activeImg]}
+                  alt={name}
+                  width={600}
+                  height={600}
+                  zoomScale={2.5}
+                  className="wz-pd-main-img-zoom"
+                  onError={handleGalleryImgError}
+                />
+                {hasSale && <span className="wz-pd-discount">−{discount}%</span>}
+              </div>
 
-            {images.length > 1 && (
-              <>
+              {images.length > 1 && (
                 <div className="wz-pd-thumbs">
                   {images.map((img, i) => (
                     <button
@@ -922,17 +952,46 @@ function ProductDetailClient({ param, isOffer = false }) {
                     </button>
                   ))}
                 </div>
+              )}
+            </div>
+
+            {/* MOBILE (< md): native scroll-snap carousel, no zoom/lightbox. */}
+            <div className="wz-pd-gallery-mobile">
+              <div className="wz-pd-carousel" ref={carouselRef}>
+                {images.map((img, i) => (
+                  <div
+                    className="wz-pd-slide"
+                    key={img + i}
+                    data-idx={i}
+                    ref={(el) => {
+                      slideRefs.current[i] = el
+                    }}
+                  >
+                    <Image
+                      src={img}
+                      alt={`${name} - image ${i + 1}`}
+                      width={600}
+                      height={600}
+                      quality={80}
+                      className="wz-pd-slide-img"
+                      onError={handleGalleryImgError}
+                    />
+                    {hasSale && i === 0 && <span className="wz-pd-discount">−{discount}%</span>}
+                  </div>
+                ))}
+              </div>
+              {images.length > 1 && (
                 <div className="wz-pd-dots">
                   {images.map((_, i) => (
                     <span
                       key={i}
                       className={`wz-pd-dot${i === activeImg ? ' is-active' : ''}`}
-                      onClick={() => setActiveImg(i)}
+                      onClick={() => scrollToSlide(i)}
                     />
                   ))}
                 </div>
-              </>
-            )}
+              )}
+            </div>
           </div>
 
           {/* ── Info ── */}

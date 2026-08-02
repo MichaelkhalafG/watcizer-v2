@@ -17,7 +17,7 @@
 <div class="row"><div class="col-lg-12"><div class="card"><div class="card-body">
 <h5 class="card-title">{{ trans('product.edit_product') }}</h5>
 
-<form action="{{ route('product.update', $product->id) }}" class="row g-3" method="POST" enctype="multipart/form-data">
+<form action="{{ route('product.update', $product->id) }}" class="row g-3" method="POST" enctype="multipart/form-data" id="product-form">
 @csrf
 @method('PUT')
 
@@ -491,9 +491,11 @@
         <p class="mb-0 mt-1">Add more gallery images</p>
         <small class="text-muted">JPG · PNG · WEBP — max 5MB each</small>
     </div>
+    {{-- New gallery images upload LIVE (multipart) to product.images.store as
+         soon as they're picked — no base64, and nothing gallery-related rides in
+         the main update POST, so it stays small and WAF-safe. --}}
     <input type="file" class="d-none" id="gallery_input_edit" accept="image/*" multiple>
-    <div id="gallery-base64-inputs-edit"></div>
-    <div class="gallery-grid mt-3" id="new-gallery-grid"></div>
+    <div id="gallery-size-error-edit" class="alert alert-danger py-2 px-3 mt-2 d-none"></div>
     @endif
 </div>
 
@@ -638,93 +640,115 @@ $(document).ready(function(){
         $('#new-img-remove').addClass('d-none');
     };
 
-    // ── Gallery images — new upload ───────────────────────
-    var MAX_GAL = 10;
+    // ── Gallery images — live multipart upload (Issue 5) ──────────────────
+    var MAX_GAL       = 10;
     var existingCount = {{ ($product->productImages ?? collect())->count() }};
-    var gFiles = [];
+    var PER_IMAGE_MAX = 5 * 1024 * 1024;  // 5 MB per image (matches server rule)
+    var GAL_UPLOAD_URL = '{{ route('product.images.store', $product->id) }}';
+    var GAL_DELETE_TPL = '{{ route('product.images.destroy', ['image' => '__ID__']) }}';
+    var CSRF = document.querySelector('meta[name=csrf-token]').content;
+
+    function galErr(msg){ var e=document.getElementById('gallery-size-error-edit'); if(e){ e.textContent=msg; e.classList.remove('d-none'); } }
+    function galErrClear(){ var e=document.getElementById('gallery-size-error-edit'); if(e){ e.classList.add('d-none'); e.textContent=''; } }
 
     var galDrop = document.getElementById('gallery-drop-edit');
     if(galDrop){
         galDrop.addEventListener('dragover', function(e){e.preventDefault();this.classList.add('drag');});
         galDrop.addEventListener('dragleave', function(){this.classList.remove('drag');});
-        galDrop.addEventListener('drop', function(e){
-            e.preventDefault();this.classList.remove('drag');
-            addGalFiles(e.dataTransfer.files);
-        });
+        galDrop.addEventListener('drop', function(e){ e.preventDefault();this.classList.remove('drag'); addGalFiles(e.dataTransfer.files); });
     }
-
-    document.getElementById('gallery_input_edit')?.addEventListener('change', function(){
-        addGalFiles(this.files);
-        this.value = '';
-    });
+    document.getElementById('gallery_input_edit')?.addEventListener('change', function(){ addGalFiles(this.files); this.value=''; });
 
     function addGalFiles(files){
-        for(var i = 0; i < files.length; i++){
-            if((existingCount + gFiles.length) >= MAX_GAL) break;
-            if(!files[i].type.startsWith('image/')) continue;
-            gFiles.push(files[i]);
-            renderNewGal(files[i], gFiles.length - 1);
-        }
-        syncGal(); updateGalCount();
-    }
-
-    function renderNewGal(file, idx){
-        var g = document.getElementById('new-gallery-grid');
-        if(!g) return;
-        var d = document.createElement('div');
-        d.className = 'gal-item'; d.dataset.idx = idx;
-        var r = new FileReader();
-        r.onload = function(e){
-            d.innerHTML = '<img src="'+e.target.result+'">'
-                +'<button type="button" class="gal-remove" onclick="removeNewGal(this)"><i class="bi bi-x"></i></button>'
-                +'<span class="gal-n">'+(existingCount + idx + 1)+'</span>';
-        };
-        r.readAsDataURL(file);
-        g.appendChild(d);
-    }
-
-    window.removeNewGal = function(btn){
-        var item = btn.closest('.gal-item');
-        gFiles.splice(parseInt(item.dataset.idx), 1);
-        document.getElementById('new-gallery-grid').innerHTML = '';
-        gFiles.forEach(function(f, i){ renderNewGal(f, i); });
-        syncGal(); updateGalCount();
-    };
-
-    window.syncGal = function(){
-        var container = document.getElementById('gallery-base64-inputs-edit');
-        container.innerHTML = '';
-        gFiles.forEach(function(f, i){
-            var r = new FileReader();
-            r.onload = function(e){
-                var inp = document.createElement('input');
-                inp.type = 'hidden';
-                inp.name = 'gallery_base64[]';
-                inp.value = e.target.result;
-                container.appendChild(inp);
-            };
-            r.readAsDataURL(f);
+        galErrClear();
+        Array.prototype.forEach.call(files, function(file){
+            if(existingCount >= MAX_GAL){ galErr('Maximum '+MAX_GAL+' images reached.'); return; }
+            if(!file.type.startsWith('image/')) return;
+            if(file.size > PER_IMAGE_MAX){ galErr('“'+file.name+'” exceeds 5 MB and was not uploaded.'); return; }
+            uploadGalleryImage(file);
         });
-    };
+    }
+
+    // The existing-gallery grid is only server-rendered when the product already
+    // has images; create it on first upload otherwise.
+    function ensureExistingGrid(){
+        var g = document.getElementById('existing-gallery');
+        if(g) return g;
+        g = document.createElement('div'); g.className='gallery-grid mb-3'; g.id='existing-gallery';
+        var anchor = document.getElementById('gallery-drop-edit');
+        anchor.parentNode.insertBefore(g, anchor);
+        return g;
+    }
+
+    function uploadGalleryImage(file){
+        existingCount++; updateGalCount();            // optimistic reserve against MAX
+        var cell = document.createElement('div'); cell.className='gal-item';
+        cell.innerHTML = '<div class="d-flex align-items-center justify-content-center" style="width:100%;height:100%;min-height:90px"><span class="spinner-border spinner-border-sm text-secondary"></span></div>';
+        ensureExistingGrid().appendChild(cell);
+
+        var fd = new FormData();
+        fd.append('images[]', file);
+        fd.append('_token', CSRF);
+        fetch(GAL_UPLOAD_URL, {
+            method:'POST', body:fd, credentials:'same-origin',
+            headers:{'Accept':'application/json','X-Requested-With':'XMLHttpRequest'}
+        })
+        .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
+        .then(function(d){
+            var img = d && d.images && d.images[0];
+            if(!img) throw new Error('bad response');
+            cell.innerHTML =
+                '<img src="'+img.url+'" alt="gallery image">' +
+                '<button type="button" class="gal-remove" onclick="deleteGalleryImage('+img.id+', this)" title="Delete"><i class="bi bi-x"></i></button>';
+        })
+        .catch(function(){
+            cell.remove(); existingCount--; updateGalCount();
+            galErr('Upload failed for “'+file.name+'”. Please try again.');
+        });
+    }
 
     function updateGalCount(){
-        var total = existingCount + gFiles.length;
-        $('#gallery-count-edit').text(total + ' / ' + MAX_GAL);
+        $('#gallery-count-edit').text(existingCount + ' / ' + MAX_GAL);
+        var drop = document.getElementById('gallery-drop-edit');
+        if(drop){ if(existingCount >= MAX_GAL){ drop.style.opacity=.4; drop.style.pointerEvents='none'; } else { drop.style.opacity=''; drop.style.pointerEvents=''; } }
     }
 
-    // ── Delete existing gallery image via AJAX ────────────
-    // ✅ تم تعديل الرابط هنا لاستخدام route name بدلاً من الـ locale prefix
+    // ── Delete a gallery image (async — no page reload, so unsaved field edits
+    //    on the form are NOT lost) ──────────────────────────────────────────
     window.deleteGalleryImage = function(imgId, btn){
-    if(!confirm('Delete this image?')) return;
-    var form = document.createElement('form');
-    form.method = 'POST';
-    form.action = '{{ route("product.images.destroy", ":id") }}'.replace(':id', imgId);
-    form.innerHTML = '<input type="hidden" name="_token" value="{{ csrf_token() }}">'
-                   + '<input type="hidden" name="_method" value="DELETE">';
-    document.body.appendChild(form);
-    form.submit();
-};
+        if(!confirm('Delete this image?')) return;
+        var cell = btn.closest('.gal-item');
+        fetch(GAL_DELETE_TPL.replace('__ID__', imgId), {
+            method:'DELETE', credentials:'same-origin',
+            headers:{
+                'Accept':'application/json',
+                'X-Requested-With':'XMLHttpRequest',
+                'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content
+            }
+        })
+        .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
+        .then(function(){ if(cell) cell.remove(); existingCount = Math.max(0, existingCount - 1); updateGalCount(); })
+        .catch(function(){ galErr('Could not delete the image. Please try again.'); });
+    };
+
+    // ── Pre-submit size guard for the MAIN image (gallery is uploaded live
+    //    above, so it never rides in this POST). Capture phase → runs first. ──
+    document.getElementById('product-form').addEventListener('submit', function(e){
+        var over = false;
+        document.querySelectorAll('#product-form input[name=image]').forEach(function(inp){
+            var f = inp.files && inp.files[0];
+            if(f && f.size > 5 * 1024 * 1024) over = true;
+        });
+        if(over){
+            e.preventDefault(); e.stopImmediatePropagation();
+            var box = document.getElementById('gallery-size-error-edit');
+            if(box){ box.textContent = 'Main image exceeds 5 MB — choose a smaller file.'; box.classList.remove('d-none'); box.scrollIntoView({behavior:'smooth', block:'center'}); }
+            else { alert('Main image exceeds 5 MB.'); }
+        }
+    }, true);
 
 });
 </script>
+@include('Dashboard.partials.form_autosave', ['draftKey' => 'product-edit:'.$product->id, 'formId' => 'product-form'])
+@include('Dashboard.partials.admin_keepalive')
 @endsection

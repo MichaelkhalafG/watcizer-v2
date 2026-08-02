@@ -46,6 +46,14 @@ Route::get('/', function () {
 
 Route::prefix('admin')->middleware(['auth', 'IsAdminOrSuperAdmin'])->group(function () {
 
+    // Keep-alive: long product-entry forms ping this every ~5 min. Touching the
+    // session resets its idle timer (file driver, SESSION_LIFETIME min) so the
+    // form's CSRF token can't go stale while the tab sits open, and returns the
+    // current token so the client can refresh it defensively.
+    Route::get('/keep-alive', function () {
+        return response()->json(['ok' => true, 'csrf' => csrf_token()]);
+    })->name('keep_alive');
+
     //// Dashboard Route ////
     Route::controller(DashboardController::class)->group(function () {
         Route::get('/dashboard',                                'index')->name('dashboard');

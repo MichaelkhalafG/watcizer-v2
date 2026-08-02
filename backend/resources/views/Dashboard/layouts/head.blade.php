@@ -1,3 +1,6 @@
+<!-- CSRF token — read by admin fetch() calls (gallery upload, keep-alive). -->
+<meta name="csrf-token" content="{{ csrf_token() }}">
+
 <!-- Title -->
 <title> @yield('title-head')  </title>
 

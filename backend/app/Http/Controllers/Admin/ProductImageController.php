@@ -45,22 +45,37 @@ class ProductImageController extends Controller
         $imageService = new ImageService;
         $sortStart    = $product->product_image()->max('sort') + 1;
 
+        $created = [];
         foreach ($request->file('images') as $index => $file) {
-            // Product gallery images: max 1200x1200, WebP q85.
+            // Product gallery images: padded onto a 1200x1200 white square, WebP q85.
             $newName = $imageService->process($file, 'Product_image', [
                 'max_width'  => 1200,
                 'max_height' => 1200,
                 'quality'    => 85,
+                'pad_square' => true,
             ]);
-            ProductImage::create([
+            $img = ProductImage::create([
                 'product_id' => $product->id,
                 'image'      => $newName,
                 'is_cover'   => false,
                 'sort'       => $sortStart + $index,
             ]);
+            $created[] = [
+                'id'  => $img->id,
+                'url' => asset('Uploads_Images/Product_image/' . $newName),
+            ];
         }
 
         Cache::forget('AllProductImage');
+
+        // The edit form uploads gallery images with fetch() and needs the new
+        // ids + URLs back to render thumbnails (with delete buttons) in place.
+        // The standalone gallery-manager screen still posts a normal form, so it
+        // keeps getting the redirect-with-flash it expects.
+        if ($request->expectsJson()) {
+            return response()->json(['success' => true, 'images' => $created]);
+        }
+
         return back()->with('success', trans('messages.add'));
     }
 
@@ -81,12 +96,19 @@ class ProductImageController extends Controller
         return response()->json(['success' => true]);
     }
 
-    public function destroyImage(ProductImage $image)
+    public function destroyImage(Request $request, ProductImage $image)
     {
         $path = public_path('Uploads_Images/Product_image/' . $image->image);
         if (file_exists($path)) unlink($path);
         $image->delete();
         Cache::forget('AllProductImage');
+
+        // The edit form deletes gallery images with fetch() (no page reload, so
+        // unsaved field edits survive) and expects JSON back.
+        if ($request->expectsJson()) {
+            return response()->json(['success' => true]);
+        }
+
         return back()->with('success', trans('messages.delete'));
     }
 }

@@ -130,5 +130,23 @@
             'wrapAround': false,
             'albumLabel': "",
         });
+
+        // Product create/update succeeds by redirecting HERE. If a submit was in
+        // flight (marker set by the form), that submit reached success → clear its
+        // saved draft. A validation bounce lands on the form (not here) and a WAF
+        // "Forbidden" never reaches here, so in those cases the draft is kept.
+        (function () {
+            try {
+                var raw = sessionStorage.getItem('wz_draft_submitting');
+                if (raw) {
+                    sessionStorage.removeItem('wz_draft_submitting');
+                    var m = JSON.parse(raw);
+                    // Honor only a fresh marker (a real submit→redirect is seconds).
+                    if (m && m.k && (Date.now() - (m.t || 0)) < 30000) {
+                        localStorage.removeItem(m.k);
+                    }
+                }
+            } catch (e) {}
+        })();
     </script>
 @endsection

@@ -64,7 +64,10 @@ const CategoryTiles = () => {
       <Carousel gap={10} showArrows showDots={false}>
         {subTypes.map((sub) => {
           const name = getName(sub)
-          const img = getImageUrl(sub.image)
+          // Prefer the absolute image_url the API now appends; fall back to the
+          // bare filename resolved with the correct Sub_type folder (the old code
+          // used the default Product folder here → every sub-type image 404'd).
+          const img = sub.image_url || getImageUrl(sub.image, 'Sub_type')
 
           return (
             <CarouselSlide key={sub.id} className="wz-cat-slide">

@@ -33,6 +33,9 @@ class ImageService
         'max_height'  => 1200,
         'quality'     => 85,
         'transparent' => false,
+        // Product images only: letterbox onto a solid square canvas (see process()).
+        'pad_square'  => false,
+        'pad_color'   => 'ffffff',
     ];
 
     /**
@@ -57,8 +60,18 @@ class ImageService
             // No EXIF / unsupported — safe to ignore.
         }
 
-        // Shrink to fit the max box, keeping aspect ratio. scaleDown never enlarges.
-        $image->scaleDown((int) $opt['max_width'], (int) $opt['max_height']);
+        if (! empty($opt['pad_square'])) {
+            // Product images: letterbox onto a solid (white) square canvas so a
+            // catalog of mixed aspect ratios renders uniformly and nothing is
+            // cropped. padDown fits the image WITHIN the box AND pads out to the
+            // exact WxH, and — unlike pad() — never upscales the source. Output is
+            // therefore always exactly max_width x max_height (the reprocess
+            // command relies on that as its idempotency marker).
+            $image->padDown((int) $opt['max_width'], (int) $opt['max_height'], (string) $opt['pad_color']);
+        } else {
+            // Shrink to fit the max box, keeping aspect ratio. scaleDown never enlarges.
+            $image->scaleDown((int) $opt['max_width'], (int) $opt['max_height']);
+        }
 
         // Logos: ensure a transparent background (alpha kept as-is for PNG/WebP,
         // solid background stripped for opaque sources such as JPG).
@@ -76,6 +89,49 @@ class ImageService
         $image->toWebp((int) $opt['quality'])->save($dir . '/' . $filename);
 
         return $filename;
+    }
+
+    /**
+     * Re-pad an EXISTING on-disk image onto a solid white square, in place.
+     *
+     * Used by `images:reprocess-products` to bring already-uploaded product +
+     * gallery images up to the new pad-to-square standard without touching the
+     * database (same path, same filename). Encodes back to the file's own format
+     * so the extension — and therefore the stored URL — stays valid.
+     *
+     * Idempotent: a file already exactly $size x $size is left untouched and
+     * reported as skipped (our pipeline always emits $size x $size, so that is a
+     * cheap, exact "already processed" marker).
+     *
+     * @return array{old_w:int, old_h:int, new_w:int, new_h:int, skipped:bool}
+     */
+    public function padExistingToSquare(string $absPath, int $size = 1200, int $quality = 85, bool $dryRun = false): array
+    {
+        $manager = new ImageManager(new Driver());
+        $image   = $manager->read($absPath);
+
+        $ow = $image->width();
+        $oh = $image->height();
+
+        // Exact-size skip marker — do NOT re-encode already-square files.
+        if ($ow === $size && $oh === $size) {
+            return ['old_w' => $ow, 'old_h' => $oh, 'new_w' => $ow, 'new_h' => $oh, 'skipped' => true];
+        }
+
+        $image->padDown($size, $size, 'ffffff');
+
+        if (! $dryRun) {
+            $ext     = strtolower(pathinfo($absPath, PATHINFO_EXTENSION));
+            $encoded = match ($ext) {
+                'jpg', 'jpeg' => $image->toJpeg($quality),
+                'png'         => $image->toPng(),
+                'gif'         => $image->toGif(),
+                default       => $image->toWebp($quality),
+            };
+            $encoded->save($absPath);
+        }
+
+        return ['old_w' => $ow, 'old_h' => $oh, 'new_w' => $image->width(), 'new_h' => $image->height(), 'skipped' => false];
     }
 
     /**
