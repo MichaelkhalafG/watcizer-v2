@@ -46,11 +46,28 @@ class ImageService
      * @param  array         $options ['max_width' => int, 'max_height' => int, 'quality' => int, 'transparent' => bool]
      * @return string                 Relative file name saved, e.g. '1700000000_2026-01-01_abc123.webp'.
      */
+    /**
+     * Build the Intervention manager, preferring Imagick when it is installed.
+     *
+     * Imagick preserves the alpha channel through a WebP encode more reliably
+     * than GD, which is exactly what the logo pipeline needs (Issue 3). Where
+     * Imagick is unavailable we fall back to GD; the logo background-removal path
+     * (removeBackground) works under either driver by bridging to a GD handle.
+     */
+    protected function manager(): ImageManager
+    {
+        if (extension_loaded('imagick')) {
+            return new ImageManager(new \Intervention\Image\Drivers\Imagick\Driver());
+        }
+
+        return new ImageManager(new Driver());
+    }
+
     public function process(UploadedFile $file, string $folder, array $options = []): string
     {
         $opt = array_merge($this->defaults, $options);
 
-        $manager = new ImageManager(new Driver());
+        $manager = $this->manager();
         $image   = $manager->read($file);
 
         // Respect the camera/phone orientation stored in EXIF before we resize.
@@ -107,7 +124,7 @@ class ImageService
      */
     public function padExistingToSquare(string $absPath, int $size = 1200, int $quality = 85, bool $dryRun = false): array
     {
-        $manager = new ImageManager(new Driver());
+        $manager = $this->manager();
         $image   = $manager->read($absPath);
 
         $ow = $image->width();
@@ -185,7 +202,10 @@ class ImageService
      */
     protected function removeBackground(ImageInterface $image): ImageInterface
     {
-        $gd = $image->core()->native();
+        // Bridge to a GD handle derived from the encoded image (PNG keeps alpha)
+        // so this raw-GD flood fill runs regardless of the active driver — the
+        // pipeline now prefers Imagick, whose native handle is not a GdImage.
+        $gd = imagecreatefromstring((string) $image->toPng());
 
         if (! ($gd instanceof \GdImage)) {
             throw new \RuntimeException('GD image handle unavailable for background removal.');
@@ -258,7 +278,14 @@ class ImageService
             $stack[] = [$x, $y - 1];
         }
 
-        return $image;
+        // Re-wrap the modified GD (encode as PNG to carry the new alpha) back into
+        // an Intervention image so the caller's driver keeps working end-to-end.
+        ob_start();
+        imagepng($gd);
+        $png = (string) ob_get_clean();
+        imagedestroy($gd);
+
+        return $this->manager()->read($png);
     }
 
     /**
