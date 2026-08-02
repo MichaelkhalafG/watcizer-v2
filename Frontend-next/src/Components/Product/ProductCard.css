@@ -48,7 +48,10 @@
   width: 100%;
   aspect-ratio: 1 / 1;
   overflow: hidden;
-  background: radial-gradient(circle at 50% 38%, #fbfaf8 0%, #efece6 100%);
+  /* White so the backend's 1200x1200 white-padded product squares sit seamlessly
+     inside the card (object-contain, no crop). The breathing room around each
+     watch comes from that server-side square padding. */
+  background: #fff;
 }
 
 .wz-pc__img {

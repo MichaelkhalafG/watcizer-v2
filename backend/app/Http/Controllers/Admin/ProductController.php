@@ -27,12 +27,10 @@ use App\Exports\ProductExport;
 use App\Imports\ProductImport;
 use App\Services\ImageService;
 use App\Http\Controllers\Controller;
-use Intervention\Image\ImageManager;
 use Maatwebsite\Excel\Facades\Excel;
 use App\Http\Requests\ProductRequest;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
-use Intervention\Image\Drivers\Gd\Driver;
 use Maatwebsite\Excel\Validators\ValidationException;
 
 class ProductController extends Controller
@@ -157,11 +155,12 @@ class ProductController extends Controller
         $product->seo_meta_description                    = $request->input('seo_meta_description');
         $product->low_stock_threshold                     = $request->input('low_stock_threshold', 5);
 
-        // ── Main image (max 1200x1200, WebP q85) ───────────────
+        // ── Main image (padded onto a 1200x1200 white square, WebP q85) ──────
         $product->image = (new ImageService)->process($request->file('image'), 'Product', [
             'max_width'  => 1200,
             'max_height' => 1200,
             'quality'    => 85,
+            'pad_square' => true,
         ]);
 
         $product->save();
@@ -172,25 +171,32 @@ class ProductController extends Controller
         $product->bandColor()->sync($request->input('band_color_id', []));
         $product->dialColor()->sync($request->input('dial_color_id', []));
 
-        // ── Gallery images (Base64) ───────────────────────────
-        if ($request->has('gallery_base64')) {
-            $galleryManager = new ImageManager(new Driver());
-            foreach ($request->input('gallery_base64', []) as $sort => $base64) {
-                try {
-                    $galleryName = time() . '_g' . $sort . '_' . uniqid() . '.webp';
-                    $galleryManager->read($base64)
-                        ->scaleDown(1200, 1200)
-                        ->toWebp(85)
-                        ->save(public_path('/Uploads_Images/Product_image/' . $galleryName));
-                    ProductImage::create([
-                        'product_id' => $product->id,
-                        'image'      => $galleryName,
-                        'is_cover'   => $sort === 0,
-                        'sort'       => $sort,
-                    ]);
-                } catch (\Exception $e) {
-                    \Log::error('Gallery store error: ' . $e->getMessage());
-                }
+        // ── Gallery images (multipart file uploads — WAF-safe) ────────────────
+        // Previously the gallery arrived as inline base64 strings in this same
+        // POST (gallery_base64[]). That fat, data-URI-looking payload was what
+        // Hostinger's ModSecurity rejected with a bare "Forbidden" page. Gallery
+        // images now come as ordinary multipart files (gallery_images[], already
+        // validated in ProductRequest) and go through the same ImageService as
+        // the main image — no base64 anywhere.
+        foreach ($request->file('gallery_images', []) as $sort => $file) {
+            if ($sort >= 10) {
+                break;
+            }
+            try {
+                $galleryName = (new ImageService)->process($file, 'Product_image', [
+                    'max_width'  => 1200,
+                    'max_height' => 1200,
+                    'quality'    => 85,
+                    'pad_square' => true,
+                ]);
+                ProductImage::create([
+                    'product_id' => $product->id,
+                    'image'      => $galleryName,
+                    'is_cover'   => $sort === 0,
+                    'sort'       => $sort,
+                ]);
+            } catch (\Exception $e) {
+                \Log::error('Gallery store error: ' . $e->getMessage());
             }
         }
 
@@ -316,6 +322,7 @@ class ProductController extends Controller
                 'max_width'  => 1200,
                 'max_height' => 1200,
                 'quality'    => 85,
+                'pad_square' => true,
             ]);
         } else {
             unset($product['image']);
@@ -329,30 +336,13 @@ class ProductController extends Controller
         $product->bandColor()->sync($request->input('band_color_id', []));
         $product->dialColor()->sync($request->input('dial_color_id', []));
 
-        // ── Gallery images (Base64) during edit ───────────────
-        if ($request->has('gallery_base64')) {
-            $currentCount   = $product->productImages()->count();
-            $galleryManager = new ImageManager(new Driver());
-            foreach ($request->input('gallery_base64', []) as $sort => $base64) {
-                if ($currentCount >= 10) break;
-                try {
-                    $galleryName = time() . '_g' . $sort . '_' . uniqid() . '.webp';
-                    $galleryManager->read($base64)
-                        ->scaleDown(1200, 1200)
-                        ->toWebp(85)
-                        ->save(public_path('/Uploads_Images/Product_image/' . $galleryName));
-                    ProductImage::create([
-                        'product_id' => $product->id,
-                        'image'      => $galleryName,
-                        'is_cover'   => 0,
-                        'sort'       => $currentCount + $sort,
-                    ]);
-                    $currentCount++;
-                } catch (\Exception $e) {
-                    \Log::error('Gallery update error: ' . $e->getMessage());
-                }
-            }
-        }
+        // ── Gallery images during edit ────────────────────────────────────────
+        // No gallery handling in the main update POST anymore. On the edit screen
+        // newly-added gallery images are uploaded live, as ordinary multipart
+        // files, to ProductImageController::uploadImages (product.images.store) —
+        // and existing ones are deleted live too. That keeps this POST small
+        // (fields only) so it never trips the WAF, and means a failed field save
+        // never loses already-uploaded images.
 
         Cache::forget('AllProduct');
         Cache::forget('AllProductImage');

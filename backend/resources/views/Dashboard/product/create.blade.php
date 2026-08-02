@@ -686,11 +686,14 @@
         <p class="mb-0 mt-1">{{ trans('product.add_gallery_images') }}</p>
         <small class="text-muted">{{ trans('product.upload_formats') }}</small>
     </div>
-    <!-- ============= التعديل هنا ============= -->
+    {{-- Gallery is submitted as ordinary MULTIPART files (gallery_images[]),
+         never base64 — the base64 payload is what tripped the WAF. #gallery_input
+         is the visible picker; the hidden #gallery-file-input is what the form
+         actually posts, kept in sync from gFiles via DataTransfer in syncGal(). --}}
     <input type="file" class="d-none" id="gallery_input" accept="image/*" multiple>
-    <div id="gallery-base64-inputs"></div>
+    <input type="file" class="d-none" name="gallery_images[]" id="gallery-file-input" multiple>
+    <div id="gallery-size-error" class="alert alert-danger py-2 px-3 mt-2 d-none"></div>
     <div class="gallery-grid mt-3" id="gallery-grid"></div>
-    <!-- ===================================== -->
 </div>
 
 {{-- ═══════════════════════════════════════════
@@ -1001,24 +1004,15 @@ $(document).ready(function(){
         syncGal();updateGalCount();
     };
     
-    /* ============= التعديل هنا ============= */
+    /* Sync gFiles → the real multipart file input (no base64). DataTransfer lets
+       us build a FileList the <input type=file> can carry, so the form posts
+       gallery_images[] as normal binary uploads. */
     window.syncGal = function(){
-        var container = document.getElementById('gallery-base64-inputs');
-        container.innerHTML = '';
-        gFiles.forEach(function(f, i){
-            var r = new FileReader();
-            r.onload = function(e){
-                var inp = document.createElement('input');
-                inp.type = 'hidden';
-                inp.name = 'gallery_base64[]';
-                inp.value = e.target.result;
-                container.appendChild(inp);
-            };
-            r.readAsDataURL(f);
-        });
+        var dt = new DataTransfer();
+        gFiles.forEach(function(f){ dt.items.add(f); });
+        document.getElementById('gallery-file-input').files = dt.files;
     };
-    /* ===================================== */
-    
+
     function updateGalCount(){
         document.getElementById('gallery-count').textContent=gFiles.length+' / '+MAX;
         var z=document.getElementById('gallery-drop');
@@ -1026,6 +1020,33 @@ $(document).ready(function(){
         else{z.style.opacity='';z.style.pointerEvents='';}
     }
 
+    /* ── Pre-submit size guard ──────────────────────────────────────────────
+       Catch oversized uploads in the browser BEFORE the POST, so the user gets
+       a clear inline message instead of a server-level rejection mid-submit
+       (which would drop them on an error page and lose the flow). Assumes the
+       server is provisioned for: upload_max_filesize ≥ 8M, post_max_size ≥ 64M,
+       max_file_uploads ≥ 20 (see deploy notes). Capture phase so it runs first. */
+    var PER_IMAGE_MAX = 5 * 1024 * 1024;   // 5 MB per image (matches server rule)
+    var TOTAL_MAX     = 50 * 1024 * 1024;  // ~50 MB whole POST (headroom < post_max_size)
+    document.getElementById('product-form').addEventListener('submit', function(e){
+        var err = document.getElementById('gallery-size-error');
+        err.classList.add('d-none'); err.innerHTML = '';
+        var problems = [], total = 0;
+        var main = document.getElementById('img_input').files[0];
+        if(main){ total += main.size; if(main.size > PER_IMAGE_MAX) problems.push('Main image exceeds 5 MB.'); }
+        gFiles.forEach(function(f,i){ total += f.size; if(f.size > PER_IMAGE_MAX) problems.push('Gallery image '+(i+1)+' exceeds 5 MB.'); });
+        if(gFiles.length > MAX) problems.push('Maximum '+MAX+' gallery images.');
+        if(total > TOTAL_MAX) problems.push('Total upload is ~'+Math.round(total/1048576)+' MB, over the 50 MB limit — remove some images or add them from the edit page after saving.');
+        if(problems.length){
+            e.preventDefault(); e.stopImmediatePropagation();
+            err.innerHTML = problems.join('<br>');
+            err.classList.remove('d-none');
+            err.scrollIntoView({behavior:'smooth', block:'center'});
+        }
+    }, true);
+
 });
 </script>
+@include('Dashboard.partials.form_autosave', ['draftKey' => 'product-create', 'formId' => 'product-form'])
+@include('Dashboard.partials.admin_keepalive')
 @endsection
