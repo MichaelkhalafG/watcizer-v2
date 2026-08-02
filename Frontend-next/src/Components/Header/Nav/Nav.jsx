@@ -537,11 +537,16 @@ function Nav() {
                     </div>
                     {catBrands.map((b) => {
                       const bn = label(b, 'brand_name')
+                      // Composite key: the SAME brand can appear under multiple
+                      // category types (e.g. Tommy in Watches AND Fashion). Keying
+                      // the open state by brand id alone opened every instance's
+                      // flyout at once — scope it to this category+brand row.
+                      const rowKey = `${category.id}-${b.id}`
                       return (
                         <div
-                          key={`b-${b.id}`}
+                          key={rowKey}
                           className="nav-dropdown-row"
-                          onMouseEnter={() => openBrandMenu(b.id)}
+                          onMouseEnter={() => openBrandMenu(rowKey)}
                           onMouseLeave={scheduleBrandClose}
                         >
                           <Link
@@ -552,11 +557,11 @@ function Nav() {
                             {brandCell(b, bn)}
                             <span className="nav-row-caret">{isRTL ? '‹' : '›'}</span>
                           </Link>
-                          {openBrand === b.id && (
+                          {openBrand === rowKey && (
                             <div
                               ref={nestedRef}
                               className="nav-subdropdown"
-                              onMouseEnter={() => openBrandMenu(b.id)}
+                              onMouseEnter={() => openBrandMenu(rowKey)}
                             >
                               <Link
                                 href={brandHref(b)}
