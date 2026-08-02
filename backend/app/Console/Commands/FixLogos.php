@@ -58,6 +58,19 @@ class FixLogos extends Command
             return self::FAILURE;
         }
 
+        // Determinism (Issue 3 bug fix): force single-threaded ImageMagick so the
+        // flood fill is bit-identical every run. With multiple OpenMP threads a
+        // borderline flood can flip between "background only" and "whole image"
+        // from run to run — that is exactly why the dry run and the real run
+        // disagreed. Combined with the FIXED flood target in tryKeyOut(), the
+        // command is now fully deterministic: dry-run == real-run, always.
+        try {
+            \Imagick::setResourceLimit(\Imagick::RESOURCETYPE_THREAD, 1);
+        } catch (\Throwable $e) {
+            // Older Imagick without this limit — the fixed-target keying below is
+            // still deterministic on a single-threaded build.
+        }
+
         $dry = (bool) $this->option('dry-run');
         $this->line('<info>' . ($dry ? '[DRY RUN] ' : '') . 'images:fix-logos — repairing logos to real transparency</info>');
         $this->newLine();
@@ -110,9 +123,15 @@ class FixLogos extends Command
                     $rows[] = [$rel, 'CHECKERBOARD', 'skip → manual', 'greys unresolved'];
                     continue;
                 }
-                $gap  = $a['checker_grays'][0] - $a['checker_grays'][1];
-                $frac = ($gap + 30) / 255.0;   // fuzz bridges BOTH grid greys
-                [$ok, $tf] = $this->tryKeyOut($path, $ext, $frac, $dry);
+                // Fixed midpoint-grey target + symmetric fuzz that just spans the
+                // two checker greys (plus a small margin). A fixed target — not a
+                // colour sampled from the half-keyed image — keeps this
+                // deterministic and stops the flood bleeding into the artwork.
+                $light = $a['checker_grays'][0];
+                $dark  = $a['checker_grays'][1];
+                $mid   = intdiv($light + $dark, 2);
+                $frac  = (($light - $dark) / 2 + 12) / 255.0;
+                [$ok, $tf] = $this->tryKeyOut($path, $ext, [$mid, $mid, $mid], $frac, $dry);
                 if ($ok) {
                     $fixed++;
                     $rows[] = [$rel, 'CHECKERBOARD', $dry ? 'WOULD-FIX (keyed)' : 'FIXED (keyed)', sprintf('transparent %.0f%%', $tf * 100)];
@@ -138,7 +157,7 @@ class FixLogos extends Command
                 continue;
             }
             // logo on a solid near-white background → key white to transparent
-            [$ok, $tf] = $this->tryKeyOut($path, $ext, 28 / 255.0, $dry);
+            [$ok, $tf] = $this->tryKeyOut($path, $ext, [255, 255, 255], 28 / 255.0, $dry);
             if ($ok) {
                 $fixed++;
                 $rows[] = [$rel, 'NO_ALPHA', $dry ? 'WOULD-FIX (white→α)' : 'FIXED (white→α)', sprintf('transparent %.0f%%', $tf * 100)];
@@ -185,7 +204,7 @@ class FixLogos extends Command
      *
      * @return array{0:bool,1:float}
      */
-    private function tryKeyOut(string $path, string $ext, float $fuzzFraction, bool $dry): array
+    private function tryKeyOut(string $path, string $ext, array $targetRgb, float $fuzzFraction, bool $dry): array
     {
         try {
             $im = new \Imagick();
@@ -198,16 +217,23 @@ class FixLogos extends Command
             $fuzz = $fuzzFraction * $qr;
             $fill = new \ImagickPixel('transparent');
 
+            // FIXED target colour from the analysis (checker midpoint-grey, or
+            // white) — deliberately NOT sampled from the image, which mutates as
+            // we flood: a sampled seed could read 'transparent' after an earlier
+            // flood and then match/eat the dark artwork, driving results toward
+            // 100%. floodFillPaintImage fills only pixels matching $target within
+            // $fuzz that are connected to the seed, so a seed landing on artwork
+            // fills nothing. Fixed target ⇒ deterministic and artwork-safe.
+            $target = new \ImagickPixel(sprintf('rgb(%d,%d,%d)', $targetRgb[0], $targetRgb[1], $targetRgb[2]));
+
             // Seed from every edge midpoint + corner so the whole edge-connected
-            // background is caught, while interior artwork (not reachable from an
-            // edge without crossing the artwork) is preserved.
+            // background is caught while interior artwork is preserved.
             $seeds = [
                 [0, 0], [$w - 1, 0], [0, $h - 1], [$w - 1, $h - 1],
                 [intdiv($w, 2), 0], [intdiv($w, 2), $h - 1],
                 [0, intdiv($h, 2)], [$w - 1, intdiv($h, 2)],
             ];
             foreach ($seeds as [$x, $y]) {
-                $target = $im->getImagePixelColor($x, $y);
                 try {
                     $im->floodFillPaintImage($fill, $fuzz, $target, $x, $y, false);
                 } catch (\Throwable $e) {
