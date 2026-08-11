@@ -109,6 +109,13 @@ class Product extends Model implements TranslatableContract
         return $this->hasOne(Brand::class, 'id', 'brand_id');
     }
 
+    // Admin who created this product (used by the product index to avoid an
+    // N+1 User lookup per row).
+    public function creator()
+    {
+        return $this->belongsTo(User::class, 'created_by');
+    }
+
     public function category_type()
     {
         return $this->hasOne(CategoryType::class, 'id', 'category_type_id');

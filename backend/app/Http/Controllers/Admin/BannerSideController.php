@@ -6,7 +6,6 @@ use App\Models\BannerSide;
 use Illuminate\Http\Request;
 use App\Http\Controllers\Controller;
 use App\Models\Offer;
-use App\Services\ImageService;
 use Illuminate\Support\Facades\Cache;
 
 class BannerSideController extends Controller
@@ -33,17 +32,21 @@ class BannerSideController extends Controller
             'offer_id'     => 'nullable|exists:offers,id',
         ]);
 
-        $imageService = new ImageService;
         foreach ($request->file('image') as $img)
         {
+            // Banners: max 1920x800, WebP q85. Skip (and log) any image that
+            // fails to process rather than 500-ing the whole batch.
+            $name = $this->tryProcessImage($img, 'Banner_Side', [
+                'max_width'  => 1920,
+                'max_height' => 800,
+                'quality'    => 85,
+            ]);
+            if ($name === null) {
+                continue;
+            }
             BannerSide::create([
-                // Banners: max 1920x800, WebP q85.
-                'image'      => $imageService->process($img, 'Banner_Side', [
-                    'max_width'  => 1920,
-                    'max_height' => 800,
-                    'quality'    => 85,
-                ]),
-                'offer_id'  => $request->offer_id,
+                'image'    => $name,
+                'offer_id' => $request->offer_id,
             ]);
         }
         Cache::forget('AllBannerSide');
@@ -67,16 +70,11 @@ class BannerSideController extends Controller
 
 
         if ($image = $request->file('image')) {
-            $oldImage = public_path('Uploads_Images/Banner_Side/' . $banner_side->image);
-            if (file_exists($oldImage))
-            {
-                unlink($oldImage);
-            }
-            $banner_side->image = (new ImageService)->process($image, 'Banner_Side', [
+            $banner_side->image = $this->processImageOrFail($image, 'Banner_Side', [
                 'max_width'  => 1920,
                 'max_height' => 800,
                 'quality'    => 85,
-            ]);
+            ], $banner_side->image);
         }
         $banner_side->offer_id  = $request->offer_id;
 

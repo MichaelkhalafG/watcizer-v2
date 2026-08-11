@@ -7,7 +7,6 @@ use App\Exports\BrandExport;
 use App\Imports\BrandImport;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
-use App\Services\ImageService;
 use App\Http\Controllers\Controller;
 use Maatwebsite\Excel\Facades\Excel;
 use Illuminate\Support\Facades\Cache;
@@ -41,7 +40,7 @@ class BrandController extends Controller
 
         if ($image = $request->file('image')) {
             // Brand logos: transparent background, max 400x400.
-            $brand->image = (new ImageService)->process($image, 'Brand', [
+            $brand->image = $this->processImageOrFail($image, 'Brand', [
                 'max_width'   => 400,
                 'max_height'  => 400,
                 'quality'     => 85,
@@ -75,22 +74,14 @@ class BrandController extends Controller
         $brand->translateOrNew('en')->brand_name = $request['brand_name']['en'];
 
         if ($image = $request->file('image')) {
-
-            if ($brand->image) {
-                $oldImage = public_path('Uploads_Images/Brand/' . $brand->image);
-                if (file_exists($oldImage))
-                {
-                    unlink($oldImage);
-                }
-            }
-
-            // Brand logos: transparent background, max 400x400.
-            $brand->image = (new ImageService)->process($image, 'Brand', [
+            // Brand logos: transparent background, max 400x400. Process new first,
+            // delete old only on success (HandlesImageUploads).
+            $brand->image = $this->processImageOrFail($image, 'Brand', [
                 'max_width'   => 400,
                 'max_height'  => 400,
                 'quality'     => 85,
                 'transparent' => true,
-            ]);
+            ], $brand->image);
         } else {
             unset($brand->image);
         }
@@ -151,6 +142,14 @@ class BrandController extends Controller
             }
 
             return back()->with('validationErrors', $errorMessages);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            // Real file-field validation (wrong type/size) — let the framework
+            // render those errors instead of the generic message below.
+            throw $e;
+        } catch (\Throwable $e) {
+            \Log::error('Excel import failed: ' . $e->getMessage());
+
+            return back()->with('error', 'The file could not be imported — it may be too large or malformed. Please try a smaller CSV/XLSX and check the column format.');
         }
     }
 }

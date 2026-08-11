@@ -71,6 +71,11 @@ class NewColorController extends Controller
 
     public function destroy(NewColor $color)
     {
+        // Don't delete a color that product variants still reference.
+        if ($color->variants()->exists()) {
+            return back()->with('error', trans('messages.undelete'));
+        }
+
         $color->delete();
         return back()->with('success', 'Color deleted');
     }

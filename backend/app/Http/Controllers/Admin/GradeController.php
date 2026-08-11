@@ -7,7 +7,6 @@ use App\Exports\GradeExport;
 use App\Imports\GradeImport;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
-use App\Services\ImageService;
 use App\Http\Controllers\Controller;
 use Maatwebsite\Excel\Facades\Excel;
 use Illuminate\Support\Facades\Cache;
@@ -46,7 +45,7 @@ class GradeController extends Controller
 
         if ($image = $request->file('image')) {
             // Grade image: max 600x600, WebP q80.
-            $grade->image = (new ImageService)->process($image, 'Grade', [
+            $grade->image = $this->processImageOrFail($image, 'Grade', [
                 'max_width'  => 600,
                 'max_height' => 600,
                 'quality'    => 80,
@@ -84,21 +83,13 @@ class GradeController extends Controller
         $grade->translateOrNew('en')->description = $request['description']['en'];
 
         if ($image = $request->file('image')) {
-
-            if ($grade->image) {
-                $oldImage = public_path('Uploads_Images/Grade/' . $grade->image);
-                if (file_exists($oldImage))
-                {
-                    unlink($oldImage);
-                }
-            }
-
-            // Grade image: max 600x600, WebP q80.
-            $grade->image = (new ImageService)->process($image, 'Grade', [
+            // Grade image: max 600x600, WebP q80. Process new first, delete old
+            // only on success (HandlesImageUploads).
+            $grade->image = $this->processImageOrFail($image, 'Grade', [
                 'max_width'  => 600,
                 'max_height' => 600,
                 'quality'    => 80,
-            ]);
+            ], $grade->image);
         } else {
             unset($grade->image);
         }
@@ -158,6 +149,14 @@ class GradeController extends Controller
             }
 
             return back()->with('validationErrors', $errorMessages);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            // Real file-field validation (wrong type/size) — let the framework
+            // render those errors instead of the generic message below.
+            throw $e;
+        } catch (\Throwable $e) {
+            \Log::error('Excel import failed: ' . $e->getMessage());
+
+            return back()->with('error', 'The file could not be imported — it may be too large or malformed. Please try a smaller CSV/XLSX and check the column format.');
         }
     }
 }

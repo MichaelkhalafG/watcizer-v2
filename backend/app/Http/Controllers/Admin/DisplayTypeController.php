@@ -107,6 +107,14 @@ class DisplayTypeController extends Controller
             }
 
             return back()->with('validationErrors', $errorMessages);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            // Real file-field validation (wrong type/size) — let the framework
+            // render those errors instead of the generic message below.
+            throw $e;
+        } catch (\Throwable $e) {
+            \Log::error('Excel import failed: ' . $e->getMessage());
+
+            return back()->with('error', 'The file could not be imported — it may be too large or malformed. Please try a smaller CSV/XLSX and check the column format.');
         }
     }
 }

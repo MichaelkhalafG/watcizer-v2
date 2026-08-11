@@ -12,7 +12,7 @@ class ProductRatingController extends Controller
 {
     public function index()
     {
-        $product_rating = ProductRating::all();
+        $product_rating = ProductRating::paginate(50)->withQueryString();
         return view('Dashboard.product_rating.index' , compact('product_rating'));
     }
 

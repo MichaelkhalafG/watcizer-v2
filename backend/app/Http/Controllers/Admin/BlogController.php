@@ -6,8 +6,8 @@ use App\Models\Blog;
 use Illuminate\Http\Request;
 use App\Http\Controllers\Controller;
 use App\Models\BlogImage;
-use App\Services\ImageService;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 
 class BlogController extends Controller
 {
@@ -41,28 +41,40 @@ class BlogController extends Controller
         $blog->translateOrNew('ar')->text  = $request['text']['ar'];
         $blog->translateOrNew('en')->text  = $request['text']['en'];
 
-        $imageService = new ImageService;
-
         // Blog cover: max 1200x800, WebP q85.
-        $blog->image = $imageService->process($request->file('image'), 'Blog', [
+        $blog->image = $this->processImageOrFail($request->file('image'), 'Blog', [
             'max_width'  => 1200,
             'max_height' => 800,
             'quality'    => 85,
         ]);
 
-        $blog->save();
-
+        // Process every gallery file to a filename FIRST (file writes are not
+        // covered by the DB transaction below). Skip (and log) any that fail.
+        $galleryNames = [];
         foreach ($request->file('many_image') as $img)
         {
-            BlogImage::create([
-                'blog_id' => $blog->id,
-                'image'   => $imageService->process($img, 'Blog_image', [
-                    'max_width'  => 1200,
-                    'max_height' => 800,
-                    'quality'    => 85,
-                ]),
+            $name = $this->tryProcessImage($img, 'Blog_image', [
+                'max_width'  => 1200,
+                'max_height' => 800,
+                'quality'    => 85,
             ]);
+            if ($name === null) {
+                continue;
+            }
+            $galleryNames[] = $name;
         }
+
+        // Blog row + its gallery rows commit or roll back together.
+        DB::transaction(function () use ($blog, $galleryNames) {
+            $blog->save();
+
+            foreach ($galleryNames as $name) {
+                BlogImage::create([
+                    'blog_id' => $blog->id,
+                    'image'   => $name,
+                ]);
+            }
+        });
 
         Cache::forget('AllBlog');
 
@@ -97,46 +109,56 @@ class BlogController extends Controller
         $blog->translateOrNew('ar')->text  = $request['text']['ar'];
         $blog->translateOrNew('en')->text  = $request['text']['en'];
 
-        $imageService = new ImageService;
-
         if ($image = $request->file('image')) {
-            $oldImage = public_path('Uploads_Images/Blog/' . $blog->image);
-            if (file_exists($oldImage))
-            {
-                unlink($oldImage);
-            }
-            // Blog cover: max 1200x800, WebP q85.
-            $blog->image = $imageService->process($image, 'Blog', [
+            // Blog cover: max 1200x800, WebP q85. Process new first, delete old
+            // only on success (HandlesImageUploads).
+            $blog->image = $this->processImageOrFail($image, 'Blog', [
                 'max_width'  => 1200,
                 'max_height' => 800,
                 'quality'    => 85,
-            ]);
+            ], $blog->image);
         }
 
-        $blog->save();
-
-
+        // Process ALL new gallery images first (file writes, outside the txn);
+        // only swap out the old set once we have at least one successful new
+        // image (never delete-then-fail).
+        $newNames = [];
         if ($many_image = $request->file('many_image')) {
-            $blogImages = BlogImage::where('blog_id', $blog->id)->get();
-
-            foreach ($blogImages as $image) {
-                $imagePath = public_path('Uploads_Images/Blog_image/' . $image->image);
-                if (file_exists($imagePath)) {
-                    unlink($imagePath);
-                }
-                $image->delete();
-            }
-            foreach ($request->file('many_image') as $img)
-            {
-                BlogImage::create([
-                    'blog_id' => $blog->id,
-                    'image'   => $imageService->process($img, 'Blog_image', [
-                        'max_width'  => 1200,
-                        'max_height' => 800,
-                        'quality'    => 85,
-                    ]),
+            foreach ($many_image as $img) {
+                $name = $this->tryProcessImage($img, 'Blog_image', [
+                    'max_width'  => 1200,
+                    'max_height' => 800,
+                    'quality'    => 85,
                 ]);
+                if ($name !== null) {
+                    $newNames[] = $name;
+                }
             }
+        }
+
+        // Blog fields + (optional) gallery replacement commit atomically. Old
+        // gallery FILES are unlinked only AFTER the txn commits, so a rollback
+        // never orphans DB rows whose files were already deleted.
+        $oldGalleryFiles = [];
+        DB::transaction(function () use ($blog, $newNames, &$oldGalleryFiles) {
+            $blog->save();
+
+            if (! empty($newNames)) {
+                foreach (BlogImage::where('blog_id', $blog->id)->get() as $old) {
+                    $oldGalleryFiles[] = $old->image;
+                    $old->delete();
+                }
+                foreach ($newNames as $name) {
+                    BlogImage::create([
+                        'blog_id' => $blog->id,
+                        'image'   => $name,
+                    ]);
+                }
+            }
+        });
+
+        foreach ($oldGalleryFiles as $file) {
+            $this->deleteUploadedImage('Blog_image', $file);
         }
 
         Cache::forget('AllBlog');

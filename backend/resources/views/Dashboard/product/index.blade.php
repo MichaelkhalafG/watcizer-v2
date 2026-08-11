@@ -44,7 +44,8 @@
 
                             <form method="GET" action="{{ route('product.index') }}" class="align-items-end gy-2 gx-3 d-flex justify-content-center col-6">
 
-                                <div class="col-md-4 input-group">
+                                <div class="col-md-7 input-group">
+                                    <input type="text" class="form-control" name="q" value="{{ request('q') }}" placeholder="Search title / model / SKU">
                                     <input type="number" class="form-control" name="quantity" id="quantity" value="{{ old('quantity', $quantity) }}" placeholder="{{ trans('product.qty_filter') }}" min="0">
                                     <button type="submit" class="btn btn-primary">
                                         <i class="bi bi-funnel-fill"></i> {{ trans('product.filter') }}
@@ -60,7 +61,7 @@
                         </div>
 
                         <!-- Table with stripped rows -->
-                        <table class="table table-striped table-bordered" id="myTable">
+                        <table class="table table-striped table-bordered" id="serverTable">
                             <thead>
                                 <tr>
                                     <th>#</th>
@@ -111,6 +112,7 @@
                                 @endforeach
                             </tbody>
                         </table>
+                        {{ $product->links() }}
                         <!-- End Table with stripped rows -->
 
                     </div>

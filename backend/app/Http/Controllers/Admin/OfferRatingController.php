@@ -12,7 +12,7 @@ class OfferRatingController extends Controller
 {
     public function index()
     {
-        $offer_rating = OfferRating::all();
+        $offer_rating = OfferRating::paginate(50)->withQueryString();
         return view('Dashboard.offer_rating.index' , compact('offer_rating'));
     }
 

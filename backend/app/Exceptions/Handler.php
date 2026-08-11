@@ -49,12 +49,26 @@ class Handler extends ExceptionHandler
 
     public function render($request, Throwable $exception)
     {
+        // An admin image upload that couldn't be processed → graceful redirect
+        // back to the form with the input preserved and a friendly message,
+        // instead of a raw 500 that loses the data entry team's work.
+        if ($exception instanceof ImageProcessingException) {
+            return back()->withInput()->withErrors([$exception->field => $exception->getMessage()]);
+        }
+
         if ($exception instanceof AuthorizationException) {
             return response()->view('errors.403', [], 403);
         }
 
+        // Render the status-specific error view when one exists, instead of
+        // forcing EVERY HttpException to the 404 page (the old behaviour hid the
+        // real status — a 419/405/500 all showed "404"). Falls through to the
+        // framework otherwise, which also picks up errors/419 + errors/500.
         if ($this->isHttpException($exception)) {
-                return response()->view('errors.404', [], 404);
+            $status = $exception->getStatusCode();
+            if (view()->exists("errors.{$status}")) {
+                return response()->view("errors.{$status}", ['exception' => $exception], $status);
+            }
         }
 
         return parent::render($request, $exception);

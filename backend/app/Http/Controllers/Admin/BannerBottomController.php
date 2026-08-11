@@ -6,7 +6,6 @@ use App\Models\Offer;
 use App\Models\BannerBottom;
 use Illuminate\Http\Request;
 use App\Http\Controllers\Controller;
-use App\Services\ImageService;
 use Illuminate\Support\Facades\Cache;
 
 class BannerBottomController extends Controller
@@ -33,17 +32,21 @@ class BannerBottomController extends Controller
             'offer_id'     => 'nullable|exists:offers,id',
         ]);
 
-        $imageService = new ImageService;
         foreach ($request->file('image') as $img)
         {
+            // Banners: max 1920x800, WebP q85. Skip (and log) any image that
+            // fails to process rather than 500-ing the whole batch.
+            $name = $this->tryProcessImage($img, 'Banner_Bottom', [
+                'max_width'  => 1920,
+                'max_height' => 800,
+                'quality'    => 85,
+            ]);
+            if ($name === null) {
+                continue;
+            }
             BannerBottom::create([
-                // Banners: max 1920x800, WebP q85.
-                'image'      => $imageService->process($img, 'Banner_Bottom', [
-                    'max_width'  => 1920,
-                    'max_height' => 800,
-                    'quality'    => 85,
-                ]),
-                'offer_id'   => $request->offer_id,
+                'image'    => $name,
+                'offer_id' => $request->offer_id,
             ]);
         }
         Cache::forget('AllBannerBottom');
@@ -67,16 +70,11 @@ class BannerBottomController extends Controller
 
 
         if ($image = $request->file('image')) {
-            $oldImage = public_path('Uploads_Images/Banner_Bottom/' . $banner_bottom->image);
-            if (file_exists($oldImage))
-            {
-                unlink($oldImage);
-            }
-            $banner_bottom->image = (new ImageService)->process($image, 'Banner_Bottom', [
+            $banner_bottom->image = $this->processImageOrFail($image, 'Banner_Bottom', [
                 'max_width'  => 1920,
                 'max_height' => 800,
                 'quality'    => 85,
-            ]);
+            ], $banner_bottom->image);
         }
         $banner_bottom->offer_id  = $request->offer_id;
 

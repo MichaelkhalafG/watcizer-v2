@@ -46,24 +46,43 @@ class ProductImageController extends Controller
         $sortStart    = $product->product_image()->max('sort') + 1;
 
         $created = [];
+        $failed  = 0;
         foreach ($request->file('images') as $index => $file) {
-            // Product gallery images: padded onto a 1200x1200 white square, WebP q85.
-            $newName = $imageService->process($file, 'Product_image', [
-                'max_width'  => 1200,
-                'max_height' => 1200,
-                'quality'    => 85,
-                'pad_square' => true,
-            ]);
-            $img = ProductImage::create([
-                'product_id' => $product->id,
-                'image'      => $newName,
-                'is_cover'   => false,
-                'sort'       => $sortStart + $index,
-            ]);
-            $created[] = [
-                'id'  => $img->id,
-                'url' => asset('Uploads_Images/Product_image/' . $newName),
-            ];
+            try {
+                // Product gallery images: padded onto a 1200x1200 white square, WebP q85.
+                $newName = $imageService->process($file, 'Product_image', [
+                    'max_width'  => 1200,
+                    'max_height' => 1200,
+                    'quality'    => 85,
+                    'pad_square' => true,
+                ]);
+                $img = ProductImage::create([
+                    'product_id' => $product->id,
+                    'image'      => $newName,
+                    'is_cover'   => false,
+                    'sort'       => $sortStart + $index,
+                ]);
+                $created[] = [
+                    'id'  => $img->id,
+                    'url' => asset('Uploads_Images/Product_image/' . $newName),
+                ];
+            } catch (\Throwable $e) {
+                // One heavy/oversized image must not 500 the upload endpoint.
+                $failed++;
+                \Log::error('Gallery upload processing failed: ' . $e->getMessage());
+            }
+        }
+
+        // Nothing processed → clean, recoverable error (the edit page shows it
+        // inline) instead of a raw 500.
+        if (empty($created) && $failed > 0) {
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'The image could not be processed (it may be too large). Try a smaller JPG/PNG under ~4 MB.',
+                ], 422);
+            }
+            return back()->with('error', 'The image could not be processed. Try a smaller file.');
         }
 
         Cache::forget('AllProductImage');

@@ -7,7 +7,6 @@ use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use App\Exports\CategoryTypeExport;
 use App\Imports\CategoryTypeImport;
-use App\Services\ImageService;
 use App\Http\Controllers\Controller;
 use Maatwebsite\Excel\Facades\Excel;
 use Illuminate\Support\Facades\Cache;
@@ -42,7 +41,7 @@ class CategoryTypeController extends Controller
 
         if ($image = $request->file('image')) {
             // Category type image: max 600x600, WebP q80.
-            $category_type->image = (new ImageService)->process($image, 'Category_type', [
+            $category_type->image = $this->processImageOrFail($image, 'Category_type', [
                 'max_width'  => 600,
                 'max_height' => 600,
                 'quality'    => 80,
@@ -75,21 +74,13 @@ class CategoryTypeController extends Controller
         $category_type->translateOrNew('en')->category_type_name = $request['category_type_name']['en'];
 
         if ($image = $request->file('image')) {
-
-            if ($category_type->image) {
-                $oldImage = public_path('Uploads_Images/Category_type/' . $category_type->image);
-                if (file_exists($oldImage))
-                {
-                    unlink($oldImage);
-                }
-            }
-
-            // Category type image: max 600x600, WebP q80.
-            $category_type->image = (new ImageService)->process($image, 'Category_type', [
+            // Category type image: max 600x600, WebP q80. Process new first, delete
+            // old only on success (HandlesImageUploads).
+            $category_type->image = $this->processImageOrFail($image, 'Category_type', [
                 'max_width'  => 600,
                 'max_height' => 600,
                 'quality'    => 80,
-            ]);
+            ], $category_type->image);
         } else {
             unset($category_type->image);
         }
@@ -150,6 +141,14 @@ class CategoryTypeController extends Controller
             }
 
             return back()->with('validationErrors', $errorMessages);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            // Real file-field validation (wrong type/size) — let the framework
+            // render those errors instead of the generic message below.
+            throw $e;
+        } catch (\Throwable $e) {
+            \Log::error('Excel import failed: ' . $e->getMessage());
+
+            return back()->with('error', 'The file could not be imported — it may be too large or malformed. Please try a smaller CSV/XLSX and check the column format.');
         }
     }
 }

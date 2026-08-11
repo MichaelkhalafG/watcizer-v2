@@ -6,6 +6,7 @@ use App\Models\NewColor;
 use App\Models\NewSize;
 use App\Models\ProductVariant;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use App\Http\Controllers\Controller;
 
 class ProductVariantController extends Controller
@@ -96,6 +97,7 @@ class ProductVariantController extends Controller
             'stock'          => 'required|integer|min:0',
             'price_modifier' => 'nullable|numeric',
             'is_active'      => 'boolean',
+            'sku'            => ['nullable', 'string', Rule::unique('product_variants', 'sku')->ignore($variant->id)],
         ]);
 
         $variant->update($request->only('stock', 'price_modifier', 'is_active', 'sku'));

@@ -6,7 +6,6 @@ use App\Models\Offer;
 use App\Models\BannerHome;
 use Illuminate\Http\Request;
 use App\Http\Controllers\Controller;
-use App\Services\ImageService;
 use Illuminate\Support\Facades\Cache;
 
 class BannerHomeController extends Controller
@@ -34,16 +33,20 @@ class BannerHomeController extends Controller
             'offer_id'     => 'nullable|exists:offers,id',
         ]);
 
-        $imageService = new ImageService;
         foreach ($request->file('image') as $img)
         {
+            // Banners: max 1920x800, WebP q85. Skip (and log) any image that
+            // fails to process rather than 500-ing the whole batch.
+            $name = $this->tryProcessImage($img, 'Banner_home', [
+                'max_width'  => 1920,
+                'max_height' => 800,
+                'quality'    => 85,
+            ]);
+            if ($name === null) {
+                continue;
+            }
             BannerHome::create([
-                // Banners: max 1920x800, WebP q85.
-                'image'     => $imageService->process($img, 'Banner_home', [
-                    'max_width'  => 1920,
-                    'max_height' => 800,
-                    'quality'    => 85,
-                ]),
+                'image'     => $name,
                 'type_show' => $request->type_show,
                 'offer_id'  => $request->offer_id,
             ]);
@@ -70,16 +73,11 @@ class BannerHomeController extends Controller
 
 
         if ($image = $request->file('image')) {
-            $oldImage = public_path('Uploads_Images/Banner_home/' . $banner_home->image);
-            if (file_exists($oldImage))
-            {
-                unlink($oldImage);
-            }
-            $banner_home->image = (new ImageService)->process($image, 'Banner_home', [
+            $banner_home->image = $this->processImageOrFail($image, 'Banner_home', [
                 'max_width'  => 1920,
                 'max_height' => 800,
                 'quality'    => 85,
-            ]);
+            ], $banner_home->image);
         }
         $banner_home->type_show   = $request->type_show;
         $banner_home->offer_id    = $request->offer_id;
