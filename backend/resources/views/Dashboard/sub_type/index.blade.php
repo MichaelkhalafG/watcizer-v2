@@ -83,8 +83,7 @@
                                     </tr>
                                 @endforeach
                             </tbody>
-                        </table>
-                        <!-- End Table with stripped rows -->
+                        </table>                        <!-- End Table with stripped rows -->
 
                     </div>
                 </div>

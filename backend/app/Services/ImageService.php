@@ -65,6 +65,13 @@ class ImageService
 
     public function process(UploadedFile $file, string $folder, array $options = []): string
     {
+        // Image work is memory- and time-heavy, and shared hosting defaults are
+        // low — a large phone photo could otherwise exhaust memory (fatal 500) or
+        // hit max_execution_time. Raise both best-effort for this request only;
+        // @ silently no-ops where the host disallows ini_set.
+        @ini_set('memory_limit', '512M');
+        @set_time_limit(180);
+
         $opt = array_merge($this->defaults, $options);
 
         $manager = $this->manager();

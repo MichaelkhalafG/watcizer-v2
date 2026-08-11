@@ -31,7 +31,10 @@ return [
     |
     */
 
-    'lifetime' => env('SESSION_LIFETIME', 120),
+    // 8 hours: data-entry sessions stay open a long time between submits. A short
+    // lifetime is the main cause of "419 Page Expired" on submit. The production
+    // .env must also set SESSION_LIFETIME=480 (env overrides this default).
+    'lifetime' => env('SESSION_LIFETIME', 480),
 
     'expire_on_close' => false,
 

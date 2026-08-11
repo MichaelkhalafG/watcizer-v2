@@ -13,9 +13,23 @@ use Illuminate\Support\Facades\Mail;
 
 class OrderController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        $order = Order::with('address.shipping_city' , 'paymentStatus')->orderBy('order_number', 'desc')->get();
+        // Server-side text search (?q=) — the client DataTable is disabled on this
+        // paginated page, so search runs in the query.
+        $q = trim((string) $request->input('q'));
+
+        $order = Order::with('address.shipping_city' , 'paymentStatus')
+            ->when($q !== '', function ($query) use ($q) {
+                $query->where(function ($sub) use ($q) {
+                    $sub->where('order_number', 'like', "%{$q}%")
+                        ->orWhere('guest_name', 'like', "%{$q}%")
+                        ->orWhere('guest_email', 'like', "%{$q}%")
+                        ->orWhere('guest_phone', 'like', "%{$q}%");
+                });
+            })
+            ->orderBy('order_number', 'desc')
+            ->paginate(50)->withQueryString();
 
         $pendingCount       = Order::where('status', 'pending')->count();
         $processingCount    = Order::where('status', 'processing')->count();

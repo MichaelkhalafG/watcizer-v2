@@ -10,7 +10,6 @@ use App\Models\CategoryType;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use App\Http\Controllers\Controller;
-use App\Services\ImageService;
 use Illuminate\Support\Facades\Cache;
 
 class OfferController extends Controller
@@ -68,7 +67,7 @@ class OfferController extends Controller
 
 
         // Offer image: max 1200x800, WebP q85.
-        $offer->image = (new ImageService)->process($request->file('image'), 'Offer', [
+        $offer->image = $this->processImageOrFail($request->file('image'), 'Offer', [
             'max_width'  => 1200,
             'max_height' => 800,
             'quality'    => 85,
@@ -130,16 +129,11 @@ class OfferController extends Controller
         $offer->translateOrNew('en')->long_description  = $request['long_description']['en'];
 
         if ($image = $request->file('image')) {
-            $oldImage = public_path('Uploads_Images/Offer/' . $offer->image);
-            if (file_exists($oldImage))
-            {
-                unlink($oldImage);
-            }
-            $offer->image = (new ImageService)->process($image, 'Offer', [
+            $offer->image = $this->processImageOrFail($image, 'Offer', [
                 'max_width'  => 1200,
                 'max_height' => 800,
                 'quality'    => 85,
-            ]);
+            ], $offer->image);
         }
 
         $offer->save();

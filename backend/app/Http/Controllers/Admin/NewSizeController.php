@@ -53,6 +53,11 @@ class NewSizeController extends Controller
 
     public function destroy(NewSize $size)
     {
+        // Don't delete a size that product variants still reference.
+        if ($size->variants()->exists()) {
+            return back()->with('error', trans('messages.undelete'));
+        }
+
         $size->delete();
         return back()->with('success', 'Size deleted');
     }

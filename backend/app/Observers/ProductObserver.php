@@ -2,6 +2,7 @@
 
 namespace App\Observers;
 
+use App\Models\Offer;
 use App\Models\Product;
 use App\Models\WishlistItem;
 use App\Mail\WishlistRestockMail;
@@ -10,6 +11,41 @@ use Illuminate\Support\Facades\Log;
 
 class ProductObserver
 {
+    /**
+     * Fires just before a product is deleted. Prune this product's id from every
+     * offer's `gift_product_ids` JSON array so offers never point at a product
+     * that no longer exists. Runs inside the same request as the delete; if the
+     * delete is wrapped in a transaction this cleanup rolls back with it.
+     */
+    public function deleting(Product $product): void
+    {
+        $offers = Offer::whereJsonContains('gift_product_ids', $product->id)
+            ->orWhereJsonContains('gift_product_ids', (string) $product->id)
+            ->get();
+
+        foreach ($offers as $offer) {
+            // gift_product_ids is array-cast on the model, but guard against a
+            // raw JSON string / null in case the cast is ever removed.
+            $ids = $offer->gift_product_ids;
+            if (is_string($ids)) {
+                $ids = json_decode($ids, true) ?: [];
+            }
+            if (! is_array($ids)) {
+                continue;
+            }
+
+            // Drop the deleted id (compare loosely so '5' and 5 both match).
+            $filtered = array_values(array_filter($ids, function ($id) use ($product) {
+                return (int) $id !== (int) $product->id;
+            }));
+
+            if (count($filtered) !== count($ids)) {
+                $offer->gift_product_ids = $filtered;
+                $offer->save();
+            }
+        }
+    }
+
     /**
      * Fires on Eloquent model updates (e.g. an admin restocking a product).
      * NOTE: the order flow adjusts stock with query-builder increment()/

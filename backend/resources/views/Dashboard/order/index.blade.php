@@ -32,7 +32,7 @@
                                         <i class="bi bi-minecart-loaded"></i>
                                     </div>
                                     <div class="ps-3">
-                                    <h6>{{ $order->count() }}</h6>
+                                    <h6>{{ $order->total() }}</h6>
                                     </div>
                                 </div>
                                 </div>
@@ -75,8 +75,16 @@
                         <div class="card-body table-responsive">
                                 <h5 class="card-title">{{ trans('sidebar.order') }}</h5>
 
+                                <form method="GET" action="{{ route('order.index') }}" class="mb-3 d-flex gap-2" style="max-width:460px">
+                                    <input type="text" class="form-control" name="q" value="{{ request('q') }}" placeholder="Search order # / name / email / phone">
+                                    <button type="submit" class="btn btn-primary"><i class="bi bi-search"></i></button>
+                                    @if(request('q'))
+                                        <a href="{{ route('order.index') }}" class="btn btn-outline-secondary">Clear</a>
+                                    @endif
+                                </form>
+
                                 <!-- Table with stripped rows -->
-                                <table class="table table-striped table-bordered" id="myTable">
+                                <table class="table table-striped table-bordered" id="serverTable">
                                     <thead>
                                         <tr>
                                             <th>{{ trans('order.order_number') }}</th>
@@ -138,6 +146,7 @@
                                         @endforeach
                                     </tbody>
                                 </table>
+                                {{ $order->links() }}
                                 <!-- End Table with stripped rows -->
 
                         </div>

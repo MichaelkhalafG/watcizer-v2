@@ -30,7 +30,7 @@
                                 <h5 class="card-title">{{ trans('sidebar.product_rating') }}</h5>
 
                                 <!-- Table with stripped rows -->
-                                <table class="table table-striped table-bordered" id="myTable">
+                                <table class="table table-striped table-bordered" id="serverTable">
                                     <thead>
                                         <tr>
                                             <th>#</th>
@@ -72,6 +72,7 @@
                                         @endforeach
                                     </tbody>
                                 </table>
+                                {{ $product_rating->links() }}
                                 <!-- End Table with stripped rows -->
 
                         </div>

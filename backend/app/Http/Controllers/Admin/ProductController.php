@@ -30,6 +30,7 @@ use App\Http\Controllers\Controller;
 use Maatwebsite\Excel\Facades\Excel;
 use App\Http\Requests\ProductRequest;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Maatwebsite\Excel\Validators\ValidationException;
 
@@ -52,10 +53,27 @@ class ProductController extends Controller
             });
         }
 
-        $product = $query->get();
+        // Eager-load the creator (belongsTo User) so the loop below never fires a
+        // per-row User query (was 2 queries per product). Paginate to keep the
+        // page light; withQueryString preserves the quantity filter across pages.
+        // Server-side text search (?q=) — the client DataTable is disabled on this
+        // paginated page, so search runs in the query across title + identifiers.
+        $q = trim((string) $request->input('q'));
+        if ($q !== '') {
+            $query->where(function ($sub) use ($q) {
+                $sub->whereHas('translations', function ($t) use ($q) {
+                        $t->where('product_title', 'like', "%{$q}%");
+                    })
+                    ->orWhere('model_number', 'like', "%{$q}%")
+                    ->orWhere('sku_unique', 'like', "%{$q}%")
+                    ->orWhere('wa_code', 'like', "%{$q}%");
+            });
+        }
+
+        $product = $query->with('creator')->paginate(50)->withQueryString();
         foreach ($product as $item) {
-            $item->created_by_first_name = User::where('id', $item->created_by)->value('first_name');
-            $item->created_by_last_name  = User::where('id', $item->created_by)->value('last_name');
+            $item->created_by_first_name = $item->creator?->first_name;
+            $item->created_by_last_name  = $item->creator?->last_name;
         }
 
         return view('Dashboard.product.index', compact('product', 'quantity'));
@@ -156,20 +174,23 @@ class ProductController extends Controller
         $product->low_stock_threshold                     = $request->input('low_stock_threshold', 5);
 
         // ── Main image (padded onto a 1200x1200 white square, WebP q85) ──────
-        $product->image = (new ImageService)->process($request->file('image'), 'Product', [
-            'max_width'  => 1200,
-            'max_height' => 1200,
-            'quality'    => 85,
-            'pad_square' => true,
-        ]);
-
-        $product->save();
-
-        // ── Sync relations ────────────────────────────────────
-        $product->feature()->sync($request->input('feature_id', []));
-        $product->gender()->sync($request->input('gender_id', []));
-        $product->bandColor()->sync($request->input('band_color_id', []));
-        $product->dialColor()->sync($request->input('dial_color_id', []));
+        // Image processing is memory-heavy (Imagick) and can fail on very large
+        // uploads on shared hosting. Catch it so data entry gets a clear,
+        // recoverable message with their input preserved — NOT a raw 500 that
+        // loses the whole product they just typed.
+        try {
+            $product->image = (new ImageService)->process($request->file('image'), 'Product', [
+                'max_width'  => 1200,
+                'max_height' => 1200,
+                'quality'    => 85,
+                'pad_square' => true,
+            ]);
+        } catch (\Throwable $e) {
+            \Log::error('Product main image processing failed (store): ' . $e->getMessage());
+            return back()->withInput()->withErrors([
+                'image' => 'We could not process this image (it may be too large or an unsupported format). Please upload a JPG or PNG under ~4 MB and try again — the rest of your entries are kept.',
+            ]);
+        }
 
         // ── Gallery images (multipart file uploads — WAF-safe) ────────────────
         // Previously the gallery arrived as inline base64 strings in this same
@@ -178,6 +199,12 @@ class ProductController extends Controller
         // images now come as ordinary multipart files (gallery_images[], already
         // validated in ProductRequest) and go through the same ImageService as
         // the main image — no base64 anywhere.
+        //
+        // Image FILE processing is NOT covered by the DB transaction below, so
+        // process every gallery file to a filename FIRST (outside the txn); the
+        // DB rows are then written inside the transaction. A single failed image
+        // is logged and skipped — it never aborts the whole save.
+        $galleryRows = [];
         foreach ($request->file('gallery_images', []) as $sort => $file) {
             if ($sort >= 10) {
                 break;
@@ -189,16 +216,37 @@ class ProductController extends Controller
                     'quality'    => 85,
                     'pad_square' => true,
                 ]);
-                ProductImage::create([
-                    'product_id' => $product->id,
-                    'image'      => $galleryName,
-                    'is_cover'   => $sort === 0,
-                    'sort'       => $sort,
-                ]);
-            } catch (\Exception $e) {
+                $galleryRows[] = [
+                    'image'    => $galleryName,
+                    'is_cover' => $sort === 0,
+                    'sort'     => $sort,
+                ];
+            } catch (\Throwable $e) {
                 \Log::error('Gallery store error: ' . $e->getMessage());
             }
         }
+
+        // ── Persist everything atomically ─────────────────────
+        // The model + translations + pivot syncs + gallery rows either all
+        // commit or all roll back, so a mid-save failure never leaves a
+        // half-written product.
+        DB::transaction(function () use ($product, $request, $galleryRows) {
+            $product->save();
+
+            $product->feature()->sync($request->input('feature_id', []));
+            $product->gender()->sync($request->input('gender_id', []));
+            $product->bandColor()->sync($request->input('band_color_id', []));
+            $product->dialColor()->sync($request->input('dial_color_id', []));
+
+            foreach ($galleryRows as $row) {
+                ProductImage::create([
+                    'product_id' => $product->id,
+                    'image'      => $row['image'],
+                    'is_cover'   => $row['is_cover'],
+                    'sort'       => $row['sort'],
+                ]);
+            }
+        });
 
         Cache::forget('AllProduct');
         Cache::forget('AllProductImage');
@@ -315,26 +363,43 @@ class ProductController extends Controller
 
         // ── Main image ────────────────────────────────────────
         if ($image = $request->file('image')) {
-            if ($product->image && file_exists(public_path('Uploads_Images/Product/' . $product->image))) {
-                unlink(public_path('Uploads_Images/Product/' . $product->image));
+            // Process the NEW image first; only delete the old file once that
+            // succeeds. Catch failures so a too-large upload returns a clear,
+            // recoverable message (input preserved) instead of a raw 500 — and
+            // never leaves the product with its old image already deleted.
+            try {
+                $newImage = (new ImageService)->process($image, 'Product', [
+                    'max_width'  => 1200,
+                    'max_height' => 1200,
+                    'quality'    => 85,
+                    'pad_square' => true,
+                ]);
+            } catch (\Throwable $e) {
+                \Log::error('Product main image processing failed (update): ' . $e->getMessage());
+                return back()->withInput()->withErrors([
+                    'image' => 'We could not process this image (it may be too large or an unsupported format). Please upload a JPG or PNG under ~4 MB and try again — the rest of your entries are kept.',
+                ]);
             }
-            $product->image = (new ImageService)->process($image, 'Product', [
-                'max_width'  => 1200,
-                'max_height' => 1200,
-                'quality'    => 85,
-                'pad_square' => true,
-            ]);
+            if ($product->image && file_exists(public_path('Uploads_Images/Product/' . $product->image))) {
+                @unlink(public_path('Uploads_Images/Product/' . $product->image));
+            }
+            $product->image = $newImage;
         } else {
             unset($product['image']);
         }
 
-        $product->save();
+        // ── Persist fields + relations atomically ─────────────
+        // Model + translations + pivot syncs commit or roll back together (the
+        // new main image, if any, was already processed above — file writes are
+        // outside the txn by design and are cleaned up on their own failure path).
+        DB::transaction(function () use ($product, $request) {
+            $product->save();
 
-        // ── Sync relations ────────────────────────────────────
-        $product->feature()->sync($request->input('feature_id', []));
-        $product->gender()->sync($request->input('gender_id', []));
-        $product->bandColor()->sync($request->input('band_color_id', []));
-        $product->dialColor()->sync($request->input('dial_color_id', []));
+            $product->feature()->sync($request->input('feature_id', []));
+            $product->gender()->sync($request->input('gender_id', []));
+            $product->bandColor()->sync($request->input('band_color_id', []));
+            $product->dialColor()->sync($request->input('dial_color_id', []));
+        });
 
         // ── Gallery images during edit ────────────────────────────────────────
         // No gallery handling in the main update POST anymore. On the edit screen
@@ -411,6 +476,14 @@ class ProductController extends Controller
                 $errorMessages[] = "Row {$failure->row()} : " . implode(', ', $failure->errors());
             }
             return back()->with('validationErrors', $errorMessages);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            // Real file-field validation (wrong type/size) — let the framework
+            // render those errors instead of the generic message below.
+            throw $e;
+        } catch (\Throwable $e) {
+            \Log::error('Excel import failed: ' . $e->getMessage());
+
+            return back()->with('error', 'The file could not be imported — it may be too large or malformed. Please try a smaller CSV/XLSX and check the column format.');
         }
     }
 }
