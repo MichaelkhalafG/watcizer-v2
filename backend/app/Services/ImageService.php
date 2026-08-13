@@ -87,11 +87,18 @@ class ImageService
         if (! empty($opt['pad_square'])) {
             // Product images: letterbox onto a solid (white) square canvas so a
             // catalog of mixed aspect ratios renders uniformly and nothing is
-            // cropped. padDown fits the image WITHIN the box AND pads out to the
-            // exact WxH, and — unlike pad() — never upscales the source. Output is
-            // therefore always exactly max_width x max_height (the reprocess
-            // command relies on that as its idempotency marker).
-            $image->padDown((int) $opt['max_width'], (int) $opt['max_height'], (string) $opt['pad_color']);
+            // cropped. scaleDown fits the image WITHIN the box preserving aspect
+            // ratio and NEVER upscales a smaller source; resizeCanvas then pads it
+            // out to exactly WxH with the background colour, centred. Because
+            // scaleDown guarantees the image is already <= WxH, resizeCanvas only
+            // ever pads (never crops), so output is always exactly max_width x
+            // max_height (the reprocess command relies on that as its idempotency
+            // marker). NOTE: Intervention Image v3 has no padDown(); pad() would
+            // work but upscales in some paths, so we keep the guard explicit.
+            $w = (int) $opt['max_width'];
+            $h = (int) $opt['max_height'];
+            $image->scaleDown($w, $h)
+                  ->resizeCanvas($w, $h, (string) $opt['pad_color'], 'center');
         } else {
             // Shrink to fit the max box, keeping aspect ratio. scaleDown never enlarges.
             $image->scaleDown((int) $opt['max_width'], (int) $opt['max_height']);
@@ -142,7 +149,13 @@ class ImageService
             return ['old_w' => $ow, 'old_h' => $oh, 'new_w' => $ow, 'new_h' => $oh, 'skipped' => true];
         }
 
-        $image->padDown($size, $size, 'ffffff');
+        // scaleDown fits within the square without ever enlarging a smaller
+        // source; resizeCanvas pads it out to exactly $size x $size (centred,
+        // white). Since scaleDown guarantees width/height <= $size, resizeCanvas
+        // only ever pads — never crops — so the result is always $size x $size,
+        // the exact-size marker this command treats as "already processed".
+        $image->scaleDown($size, $size)
+              ->resizeCanvas($size, $size, 'ffffff', 'center');
 
         if (! $dryRun) {
             $ext     = strtolower(pathinfo($absPath, PATHINFO_EXTENSION));
