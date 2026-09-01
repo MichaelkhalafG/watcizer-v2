@@ -5,6 +5,18 @@ use Illuminate\Database\Eloquent\Model;
 class ProductImage extends Model
 {
     use HasFactory;
+
+    /**
+     * Single source of truth for the gallery sub-folder under public/Uploads_Images/.
+     *
+     * SAVE (ProductImageController::uploadImages, ProductController::store gallery),
+     * DISPLAY (getUrlAttribute + views) and DELETE paths all reference THIS constant
+     * so the upload folder and the display folder can never drift apart again — the
+     * drift that made gallery uploads "succeed but never appear". Match the exact
+     * on-disk casing: Product_image (lowercase i).
+     */
+    public const FOLDER = 'Product_image';
+
     protected $fillable = [
         'product_id',
         'image',
@@ -30,6 +42,6 @@ class ProductImage extends Model
     }
     public function getUrlAttribute(): string
     {
-        return asset('Uploads_Images/Product_image/' . $this->image);
+        return asset('Uploads_Images/' . self::FOLDER . '/' . $this->image);
     }
 }

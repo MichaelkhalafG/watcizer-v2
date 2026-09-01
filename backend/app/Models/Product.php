@@ -20,6 +20,14 @@ class Product extends Model implements TranslatableContract
         'short_description',
     ];
 
+    // `extra_attributes` holds the per-family structured specs for non-watch
+    // products (bag/wallet/perfume/electronics). Cast to array so the controller
+    // can assign a plain array and the API/resource reads it back as one — the
+    // column is JSON. (Seeders assign arrays directly, NOT json_encode()d strings.)
+    protected $casts = [
+        'extra_attributes' => 'array',
+    ];
+
     protected $fillable = [
         // ── Legacy fields ──────────────────────────────
         'category_type_id',

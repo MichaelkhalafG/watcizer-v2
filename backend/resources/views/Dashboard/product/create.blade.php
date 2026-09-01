@@ -175,7 +175,7 @@
 </div>
 
 {{-- ── WATCHES ── --}}
-<div class="cat-fields d-none" data-cat="watches,smart-watches,wall-clocks">
+<fieldset class="cat-fields d-none" data-cat="watches,smart-watches,wall-clocks" disabled>
 <div class="row g-3">
 <div class="col-12"><div class="attr-title"><i class="bi bi-watch me-1"></i>{{ trans('product.watch_attributes') }}</div></div>
 
@@ -244,7 +244,16 @@
 </div>
 
 {{-- Sizes --}}
-@foreach([['case_size','case_size_type_id','product.case_size'],['water_resistance','water_resistance_size_type_id','product.water_resistance'],['band_width','band_width_size_type_id','product.band_width'],['case_thickness','case_thickness_size_type_id','product.case_thickness']] as [$v,$u,$l])
+@foreach([
+    ['case_size','case_size_type_id','product.case_size'],
+    ['water_resistance','water_resistance_size_type_id','product.water_resistance'],
+    ['band_width','band_width_size_type_id','product.band_width'],
+    ['case_thickness','case_thickness_size_type_id','product.case_thickness'],
+    ['band_length','band_size_type_id','product.band_length'],
+    ['watch_height','watch_height_size_type_id','product.watch_height'],
+    ['watch_width','watch_width_size_type_id','product.watch_width'],
+    ['watch_length','watch_length_size_type_id','product.watch_length'],
+] as [$v,$u,$l])
 <div class="col-3">
     <label class="form-label">{{ trans($l) }}</label>
     <div class="input-group">
@@ -311,13 +320,6 @@
     </select>
 </div>
 <div class="col-4">
-    <label class="form-label">{{ trans('product.grade_id') }}</label>
-    <select class="form-select select2" name="grade_id">
-        <option value="">{{ trans('product.select') }}</option>
-        @foreach($grade as $item)<option value="{{ $item->id }}" @selected(old('grade_id') == $item->id)>{{ $item->grade_name }}</option>@endforeach
-    </select>
-</div>
-<div class="col-4">
     <label class="form-label">{{ trans('product.stone') }} (AR/EN)</label>
     <div class="input-group">
         <input type="text" class="form-control" name="stone[ar]" placeholder="AR" value="{{ old('stone.ar') }}">
@@ -325,10 +327,10 @@
     </div>
 </div>
 </div>
-</div>
+</fieldset>
 
 {{-- ── BAGS ── --}}
-<div class="cat-fields d-none" data-cat="bags">
+<fieldset class="cat-fields d-none" data-cat="bags" disabled>
 <div class="row g-3">
 <div class="col-12"><div class="attr-title">{{ trans('product.bag_attributes') }}</div></div>
 <div class="col-3">
@@ -382,11 +384,12 @@
         <option value="0" @selected(old('waterproof')=='0')>{{ trans('product.no') }}</option>
     </select>
 </div>
+@include('Dashboard.product._dimensions')
 </div>
-</div>
+</fieldset>
 
 {{-- ── WALLETS ── --}}
-<div class="cat-fields d-none" data-cat="wallets">
+<fieldset class="cat-fields d-none" data-cat="wallets" disabled>
 <div class="row g-3">
 <div class="col-12"><div class="attr-title">{{ trans('product.wallet_attributes') }}</div></div>
 <div class="col-3">
@@ -429,11 +432,12 @@
         @foreach($closure_type as $item)<option value="{{ $item->id }}" @selected(old('band_closure_id') == $item->id)>{{ $item->closure_type_name }}</option>@endforeach
     </select>
 </div>
+@include('Dashboard.product._dimensions')
 </div>
-</div>
+</fieldset>
 
 {{-- ── BELTS / CAPS / BRACELETS / STRAPS ── --}}
-<div class="cat-fields d-none" data-cat="belts,caps,bracelets,accessories-spare-parts">
+<fieldset class="cat-fields d-none" data-cat="belts,caps,bracelets,accessories-spare-parts" disabled>
 <div class="row g-3">
 <div class="col-12"><div class="attr-title">{{ trans('product.accessory_attributes') }}</div></div>
 <div class="col-3">
@@ -463,11 +467,12 @@
         @foreach($closure_type as $item)<option value="{{ $item->id }}" @selected(old('band_closure_id') == $item->id)>{{ $item->closure_type_name }}</option>@endforeach
     </select>
 </div>
+@include('Dashboard.product._dimensions')
 </div>
-</div>
+</fieldset>
 
 {{-- ── PERFUMES ── --}}
-<div class="cat-fields d-none" data-cat="perfumes">
+<fieldset class="cat-fields d-none" data-cat="perfumes" disabled>
 <div class="row g-3">
 <div class="col-12"><div class="attr-title">{{ trans('product.perfume_attributes') }}</div></div>
 <div class="col-3">
@@ -496,10 +501,10 @@
     </div>
 </div>
 </div>
-</div>
+</fieldset>
 
 {{-- ── ELECTRONICS ── --}}
-<div class="cat-fields d-none" data-cat="electronics">
+<fieldset class="cat-fields d-none" data-cat="electronics" disabled>
 <div class="row g-3">
 <div class="col-12"><div class="attr-title">{{ trans('product.electronics_attributes') }}</div></div>
 <div class="col-3">
@@ -527,10 +532,10 @@
     </select>
 </div>
 </div>
-</div>
+</fieldset>
 
 {{-- ── GENERIC FALLBACK ── --}}
-<div class="cat-fields d-none" data-cat="bundles,outlet,toys,uncategorized">
+<fieldset class="cat-fields d-none" data-cat="bundles,outlet,toys,uncategorized" disabled>
 <div class="row g-3">
 <div class="col-3">
     <label class="form-label">{{ trans('product.color') }}</label>
@@ -545,7 +550,7 @@
     </select>
 </div>
 </div>
-</div>
+</fieldset>
 
 {{-- ═══════════════════════════════════════════
      § 6  PRODUCT VARIANTS
@@ -737,7 +742,10 @@
 .multi-hint{font-size:10px;color:#6c757d;font-style:italic}
 .cat-bc{background:#f0f5ff;border:1px solid #c8d8ff;border-radius:8px;padding:7px 14px;font-size:13px;color:#2a5bd7}
 .bc-arr{color:#aaa;margin:0 3px}
-.cat-fields{width:100%}.cat-fields.d-none{display:none!important}
+/* cat-fields are <fieldset> (disabled server-side); reset native fieldset chrome
+   so they lay out exactly like the divs they replaced. */
+.cat-fields{width:100%;border:0;margin:0;padding:0;min-width:0}
+.cat-fields.d-none{display:none!important}
 .ldr{margin-top:4px}
 /* Images */
 .img-section-label{font-size:12px;font-weight:600;color:#555;margin-bottom:8px;display:flex;align-items:center;flex-wrap:wrap;gap:4px}
@@ -836,7 +844,20 @@ $(document).ready(function(){
     };
 
     function showAttr(subSlug){
-        $('.cat-fields').addClass('d-none');
+        // CRITICAL: hide AND disable every category block. Many field names
+        // (band_material_id, case_shape_id, band_closure_id, warranty_years,
+        // country[…], case_size_type_id, …) are repeated across the watches / bags
+        // / wallets / accessories / perfumes / electronics blocks. All blocks post
+        // together, and PHP keeps the LAST occurrence of a scalar field — which was
+        // an EMPTY select in a hidden block, silently nulling what the user typed in
+        // the visible block.
+        //
+        // Each block is a <fieldset> rendered `disabled` server-side, so a disabled
+        // fieldset's controls are NEVER submitted even if this JS never runs (no
+        // regression to the silent-override without JS). Here we just enable the one
+        // matching block and re-disable the rest by toggling the fieldset itself
+        // (disabled cascades to every control inside it).
+        $('.cat-fields').addClass('d-none').prop('disabled', true);
         if(!subSlug)return;
         var fam=SUBTYPE_FAMILY[subSlug];
         var list=FAMILY_CATS[fam]||[];
@@ -844,7 +865,7 @@ $(document).ready(function(){
         $('.cat-fields').each(function(){
             var cats=$(this).data('cat').toString().split(',');
             if(cats.some(function(c){return list.includes(c.trim());})){
-                $(this).removeClass('d-none');
+                $(this).removeClass('d-none').prop('disabled', false);
                 $(this).find('.select2:not(.colorSel)').select2({theme:'bootstrap-5',width:'100%'});
                 initColor($(this));
             }
