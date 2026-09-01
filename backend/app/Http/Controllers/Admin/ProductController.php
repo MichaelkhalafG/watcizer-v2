@@ -99,6 +99,56 @@ class ProductController extends Controller
         return view('Dashboard.product.create', $data);
     }
 
+    /**
+     * Collect the per-family structured specs (bag/wallet/perfume/electronics)
+     * into the JSON `extra_attributes` column. These fields are validated in
+     * ProductRequest and have inputs in the category-specific blocks of the
+     * create form, but are NOT first-class columns — without this they were
+     * silently dropped on every save. Only non-empty keys are kept, and the
+     * hidden category blocks' inputs are disabled client-side so a bag never
+     * carries an empty perfume key (and vice-versa). Returns null when empty so
+     * we never persist an empty object.
+     */
+    private function extraAttributesFrom(Request $request): ?array
+    {
+        $keys = [
+            // Physical dimensions for fashion items (bags/wallets/accessories) — cm.
+            // Stored in extra_attributes (no watch-only columns are reused).
+            'width_cm', 'height_cm', 'depth_cm', 'strap_length_cm',
+            'bag_strap_type', 'bag_compartments', 'laptop_compartment', 'waterproof',
+            'wallet_card_slots', 'rfid_protection', 'coin_pocket',
+            'perfume_volume', 'perfume_type', 'perfume_scent',
+            'elec_battery_capacity', 'elec_connectivity',
+        ];
+
+        $extra = [];
+        foreach ($keys as $key) {
+            $value = $request->input($key);
+            if ($value !== null && $value !== '') {
+                $extra[$key] = $value;
+            }
+        }
+
+        return $extra ?: null;
+    }
+
+    /**
+     * Merge any manually-typed features (the "Add feature" free-text field on the
+     * edit form) into search_keywords, so they aren't lost — the UI hint promises
+     * they're saved as keywords but nothing wired them through before.
+     */
+    private function mergedSearchKeywords(Request $request): ?string
+    {
+        $keywords = trim((string) $request->input('search_keywords', ''));
+        $manual   = trim((string) $request->input('manual_features', ''));
+
+        if ($manual !== '') {
+            $keywords = $keywords !== '' ? $keywords . ', ' . $manual : $manual;
+        }
+
+        return $keywords !== '' ? $keywords : null;
+    }
+
     public function store(ProductRequest $request)
     {
         $product = new Product;
@@ -160,7 +210,7 @@ class ProductController extends Controller
         $product->active                                  = $request['active'];
         $product->watch_box                               = $request['watch_box'];
         $product->wa_code                                 = $request['wa_code'];
-        $product->search_keywords                         = $request['search_keywords'];
+        $product->search_keywords                         = $this->mergedSearchKeywords($request);
         $product->translateOrNew('ar')->country           = $request['country']['ar'] ?? null;
         $product->translateOrNew('en')->country           = $request['country']['en'] ?? null;
         $product->translateOrNew('ar')->stone             = $request['stone']['ar'] ?? null;
@@ -172,6 +222,9 @@ class ProductController extends Controller
         $product->seo_slug                                = $request->input('seo_slug');
         $product->seo_meta_description                    = $request->input('seo_meta_description');
         $product->low_stock_threshold                     = $request->input('low_stock_threshold', 5);
+
+        // ── Per-family structured specs (bag/wallet/perfume/electronics) ───────
+        $product->extra_attributes                        = $this->extraAttributesFrom($request);
 
         // ── Main image (padded onto a 1200x1200 white square, WebP q85) ──────
         // Image processing is memory-heavy (Imagick) and can fail on very large
@@ -210,7 +263,7 @@ class ProductController extends Controller
                 break;
             }
             try {
-                $galleryName = (new ImageService)->process($file, 'Product_image', [
+                $galleryName = (new ImageService)->process($file, ProductImage::FOLDER, [
                     'max_width'  => 1200,
                     'max_height' => 1200,
                     'quality'    => 85,
@@ -250,6 +303,16 @@ class ProductController extends Controller
 
         Cache::forget('AllProduct');
         Cache::forget('AllProductImage');
+
+        // "Save & Duplicate": the product is saved; send the user back to a fresh
+        // create form pre-filled with everything they just entered, EXCEPT the
+        // fields that must be unique (wa_code, SKU, SEO slug) and the files (which
+        // can't be re-flashed) — so they tweak a couple of values and save again.
+        if ($request->input('action') === 'save_duplicate') {
+            return redirect(route('product.create'))
+                ->withInput($request->except(['wa_code', 'sku_unique', 'seo_slug', 'image', 'gallery_images', '_token', 'action']))
+                ->with('success', trans('messages.add'));
+        }
 
         return redirect(route('product.index'))->with('success', trans('messages.add'));
     }
@@ -297,6 +360,38 @@ class ProductController extends Controller
         // from the product form. These columns stay nullable in the DB and are no
         // longer written here; existing values on already-saved products are left
         // untouched (the inputs are simply absent from the submitted form).
+
+        // ── Partial-update safety (no null-overwrite) ─────────────────────────
+        // update() assigns every field from the request, so a key the request
+        // OMITS entirely would be read as null and wipe an existing value. The
+        // admin edit form always submits every field (present as an empty string
+        // when the user clears it — that still overwrites, which is intended), so
+        // this only affects requests that omit a key outright: fall those back to
+        // the product's current value so nothing is silently nulled.
+        foreach ([
+            'category_type_id', 'brand_id', 'sku_unique', 'purchase_price', 'selling_price',
+            'sale_price_after_discount', 'percentage_discount', 'grade_id', 'sub_type_id',
+            'band_closure_id', 'dial_display_type_id', 'case_size', 'case_size_type_id',
+            'case_shape_id', 'band_material_id', 'watch_movement_id', 'stock', 'market_stock',
+            'band_length', 'band_size_type_id', 'water_resistance', 'water_resistance_size_type_id',
+            'band_width', 'band_width_size_type_id', 'case_thickness', 'case_thickness_size_type_id',
+            'dial_case_material_id', 'dial_glass_material_id', 'watch_height', 'watch_height_size_type_id',
+            'watch_width', 'watch_width_size_type_id', 'model_number', 'watch_length',
+            'watch_length_size_type_id', 'warranty_years', 'interchangeable_dial', 'interchangeable_strap',
+            'active', 'watch_box', 'wa_code', 'search_keywords', 'seo_title', 'seo_slug', 'seo_meta_description',
+        ] as $col) {
+            if (! $request->has($col)) {
+                $request->merge([$col => $product->{$col}]);
+            }
+        }
+        foreach (['product_title', 'short_description', 'long_description', 'model_name', 'country', 'stone'] as $t) {
+            if (! $request->has($t)) {
+                $request->merge([$t => [
+                    'ar' => optional($product->translate('ar'))->{$t},
+                    'en' => optional($product->translate('en'))->{$t},
+                ]]);
+            }
+        }
 
         $product->translateOrNew('ar')->product_title     = $request['product_title']['ar'];
         $product->translateOrNew('en')->product_title     = $request['product_title']['en'];
@@ -348,7 +443,7 @@ class ProductController extends Controller
         $product->active                                  = $request['active'];
         $product->watch_box                               = $request['watch_box'];
         $product->wa_code                                 = $request['wa_code'];
-        $product->search_keywords                         = $request['search_keywords'];
+        $product->search_keywords                         = $this->mergedSearchKeywords($request);
         $product->translateOrNew('ar')->country           = $request['country']['ar'] ?? null;
         $product->translateOrNew('en')->country           = $request['country']['en'] ?? null;
         $product->translateOrNew('ar')->stone             = $request['stone']['ar'] ?? null;
@@ -360,6 +455,12 @@ class ProductController extends Controller
         $product->seo_slug                                = $request->input('seo_slug');
         $product->seo_meta_description                    = $request->input('seo_meta_description');
         $product->low_stock_threshold                     = $request->input('low_stock_threshold', $product->low_stock_threshold ?? 5);
+
+        // ── Per-family structured specs (bag/wallet/perfume/electronics) ───────
+        // Preserve existing extras when the request carries NONE of the extra keys
+        // (the current edit form has no bag/perfume inputs, so a fashion product's
+        // extras must not be wiped just because they weren't re-submitted).
+        $product->extra_attributes                        = $this->extraAttributesFrom($request) ?? $product->extra_attributes;
 
         // ── Main image ────────────────────────────────────────
         if ($image = $request->file('image')) {
@@ -424,8 +525,8 @@ class ProductController extends Controller
 
         $image = ProductImage::where('product_id', $product->id)->get();
         foreach ($image as $img) {
-            if (file_exists(public_path('Uploads_Images/Product_image/' . $img->image))) {
-                unlink(public_path('Uploads_Images/Product_image/' . $img->image));
+            if (file_exists(public_path('Uploads_Images/' . ProductImage::FOLDER . '/' . $img->image))) {
+                unlink(public_path('Uploads_Images/' . ProductImage::FOLDER . '/' . $img->image));
             }
         }
 

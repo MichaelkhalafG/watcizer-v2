@@ -111,6 +111,12 @@ class ProductRequest extends FormRequest
             'seo_slug'                      => 'nullable|string|max:255',
             'seo_meta_description'          => 'nullable|string|max:160',
 
+            // ── Fashion dimensions (bags/wallets/accessories) — cm, stored in extra_attributes ─
+            'width_cm'                      => 'nullable|numeric|min:0|max:1000',
+            'height_cm'                     => 'nullable|numeric|min:0|max:1000',
+            'depth_cm'                      => 'nullable|numeric|min:0|max:1000',
+            'strap_length_cm'               => 'nullable|numeric|min:0|max:1000',
+
             // ── Extra attributes (bag/wallet/perfume/electronics) ─
             'bag_strap_type'                => 'nullable|string|max:255',
             'bag_compartments'              => 'nullable|numeric|min:0',

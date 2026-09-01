@@ -98,7 +98,8 @@
 
                                                 @can('AnyAction')
                                                     <form class="mb-0" action="{{ route('product.destroy', $item->id) }}"
-                                                        method="post">
+                                                        method="post"
+                                                        onsubmit="return confirm('{{ trans('mainBtn.delete') }} — {{ $item->wa_code }}?');">
                                                         @csrf
                                                         @method('delete')
                                                         <button type="submit"

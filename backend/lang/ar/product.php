@@ -163,4 +163,12 @@ return [
     'perfume_scent'                 => 'عائلة العطر',
     'elec_battery_capacity'         => 'سعة البطارية',
     'elec_connectivity'             => 'التوصيل',
+
+    // أبعاد المنتجات (الحقائب/المحافظ/الإكسسوارات) — تُحفظ في extra_attributes.
+    'dimensions_cm'                 => 'الأبعاد (سم)',
+    'width_cm'                      => 'العرض (سم)',
+    'height_cm'                     => 'الارتفاع (سم)',
+    'depth_cm'                      => 'العمق (سم)',
+    'strap_length_cm'               => 'طول الحزام (سم)',
+    'additional_attributes'         => 'خصائص إضافية (حقائب / محافظ / عطور / إلكترونيات)',
 ];

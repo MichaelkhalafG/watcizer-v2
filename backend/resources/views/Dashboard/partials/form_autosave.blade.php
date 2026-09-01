@@ -45,6 +45,21 @@
     function collect() {
       var data = {};
       fields().forEach(function (el) {
+        // Skip disabled controls. The product create form renders each category
+        // block as a <fieldset disabled> and only enables the active one, so many
+        // field names (warranty_years, band_material_id, case_shape_id, country[…],
+        // …) are repeated across the hidden blocks. Capturing the disabled copies
+        // would let an empty hidden-block value overwrite the value the user typed
+        // in the visible block (last-write-wins), losing it on restore. Only the
+        // active block's (enabled) values are the real draft.
+        //
+        // NOTE: el.disabled reflects only the control's OWN disabled attribute, NOT
+        // an ancestor <fieldset disabled>. The :disabled pseudo-class (and an
+        // explicit disabled-fieldset ancestor check) is what actually catches
+        // fieldset-disabled controls — matching what the browser omits on submit.
+        if (el.disabled) return;
+        if (el.matches && el.matches(':disabled')) return;
+        if (el.closest && el.closest('fieldset[disabled], fieldset:disabled')) return;
         var n = el.name;
         if (el.type === 'checkbox') {
           if (!Array.isArray(data[n])) data[n] = [];

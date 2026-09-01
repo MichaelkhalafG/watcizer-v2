@@ -375,6 +375,65 @@
     <input type="text" class="form-control" name="search_keywords" value="{{ old('search_keywords', $product->search_keywords) }}">
 </div>
 
+{{-- ── ADDITIONAL / FASHION ATTRIBUTES (extra_attributes JSON) ───────────────
+     The watch fields above are always shown. Non-watch products (bags, wallets,
+     accessories, perfume, electronics) store their specs — including physical
+     dimensions — in extra_attributes; these inputs make them editable here
+     (the create form scopes them per category; the flat edit form surfaces the
+     full set, blank for a watch). --}}
+@php $ea = $product->extra_attributes ?? []; @endphp
+<div class="col-12 mt-1"><div class="sec-title">{{ trans('product.additional_attributes') }}</div></div>
+
+@include('Dashboard.product._dimensions', ['dims' => $ea])
+
+<div class="col-3">
+    <label class="form-label">{{ trans('product.bag_strap_type') }}</label>
+    <input type="text" class="form-control" name="bag_strap_type" value="{{ old('bag_strap_type', $ea['bag_strap_type'] ?? '') }}">
+</div>
+<div class="col-3">
+    <label class="form-label">{{ trans('product.bag_compartments') }}</label>
+    <input type="text" class="form-control num-int" name="bag_compartments" value="{{ old('bag_compartments', $ea['bag_compartments'] ?? '') }}">
+</div>
+<div class="col-3">
+    <label class="form-label">{{ trans('product.wallet_card_slots') }}</label>
+    <input type="text" class="form-control num-int" name="wallet_card_slots" value="{{ old('wallet_card_slots', $ea['wallet_card_slots'] ?? '') }}">
+</div>
+<div class="col-3">
+    <label class="form-label">{{ trans('product.perfume_volume') }} (ml)</label>
+    <input type="text" class="form-control num-int" name="perfume_volume" value="{{ old('perfume_volume', $ea['perfume_volume'] ?? '') }}">
+</div>
+<div class="col-3">
+    <label class="form-label">{{ trans('product.perfume_type') }}</label>
+    <input type="text" class="form-control" name="perfume_type" value="{{ old('perfume_type', $ea['perfume_type'] ?? '') }}">
+</div>
+<div class="col-3">
+    <label class="form-label">{{ trans('product.perfume_scent') }}</label>
+    <input type="text" class="form-control" name="perfume_scent" value="{{ old('perfume_scent', $ea['perfume_scent'] ?? '') }}">
+</div>
+<div class="col-3">
+    <label class="form-label">{{ trans('product.elec_battery_capacity') }}</label>
+    <input type="text" class="form-control num-int" name="elec_battery_capacity" value="{{ old('elec_battery_capacity', $ea['elec_battery_capacity'] ?? '') }}">
+</div>
+<div class="col-3">
+    <label class="form-label">{{ trans('product.elec_connectivity') }}</label>
+    <input type="text" class="form-control" name="elec_connectivity" value="{{ old('elec_connectivity', $ea['elec_connectivity'] ?? '') }}">
+</div>
+@foreach([
+    ['laptop_compartment','product.laptop_compartment'],
+    ['waterproof','product.waterproof'],
+    ['rfid_protection','product.rfid_protection'],
+    ['coin_pocket','product.coin_pocket'],
+] as [$k,$lbl])
+<div class="col-3">
+    <label class="form-label">{{ trans($lbl) }}</label>
+    <select class="form-select" name="{{ $k }}">
+        <option value="">{{ trans('product.select') }}…</option>
+        <option value="1" @selected((string) old($k, $ea[$k] ?? '') === '1')>{{ trans('product.yes') }}</option>
+        <option value="0" @selected((string) old($k, $ea[$k] ?? '') === '0')>{{ trans('product.no') }}</option>
+    </select>
+</div>
+@endforeach
+
 {{-- ── SEO (new fields) ─────────────────────────────────── --}}
 <div class="col-12 mt-1"><div class="sec-title">SEO</div></div>
 <div class="col-12">

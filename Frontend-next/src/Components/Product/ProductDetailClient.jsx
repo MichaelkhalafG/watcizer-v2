@@ -460,49 +460,141 @@ function ProductDetailClient({ param, isOffer = false }) {
 
   // ── Specifications (built from the watch — the offer's main product in offer mode) ──
   const specSource = isOffer ? offerProduct : product
+  // Fashion vs watch. category_type is the top-level "Watches"/"Fashion" label:
+  // ProductResource exposes it (EN) as category_type / category_type_name. Fashion
+  // items reuse the band_* columns for their single colour/material, so we relabel
+  // the colour + drop watch-only spec rows for them.
+  const isFashion = useMemo(() => {
+    const ct = safeStr(specSource?.category_type || specSource?.category_type_name)
+    return /fashion/i.test(ct)
+  }, [specSource])
+
   const specs = useMemo(() => {
     const it = specSource
     if (!it) return []
     const rows = []
+    // Locale-aware value picker: the full record ships an `_ar` sibling for FK
+    // names; the catalog transform instead ships one already-localized value.
+    // Prefer the `_ar` sibling in Arabic, else fall back to the base key.
+    const pick = (key) => (isRTL ? (it[key + '_ar'] ?? it[key]) : it[key])
     const add = (en, ar, val) => {
       const v = safeStr(val)
       if (v && !['null', 'undefined', 'N/A'].includes(v))
         rows.push({ label: isRTL ? ar : en, value: v })
+    }
+    const sized = (val, unit) =>
+      val || val === 0 ? `${val} ${safeStr(unit) || ''}`.trim() : ''
+    const boolLabel = (v) => {
+      if (v === null || v === undefined || v === '') return ''
+      const yes = v === 1 || v === '1' || v === true
+      return yes ? (isRTL ? 'نعم' : 'Yes') : isRTL ? 'لا' : 'No'
     }
     const colorNames = (arr) =>
       (arr || [])
         .map((c) => (isRTL ? c.color_name_ar || c.name_ar : c.color_name_en || c.name_en))
         .filter(Boolean)
         .join(isRTL ? '، ' : ', ')
+    // Locale-aware name for a related model. The full record ships nested objects
+    // ({name_en, name_ar}); the catalog transform ships one already-localized
+    // string. Objects → pick the current locale (never blindly name_en, which is
+    // what safeStr did — that showed English brand/type/grade/gender in Arabic).
+    const locName = (v) =>
+      v && typeof v === 'object' ? (isRTL ? v.name_ar || v.name_en : v.name_en || v.name_ar) : v
+    // Join a list of related models (or a single one) as localized names, with an
+    // optional pre-joined string fallback (the resource's *_string aliases).
+    const listNames = (v, fallbackStr) =>
+      Array.isArray(v)
+        ? v.map(locName).filter(Boolean).join(isRTL ? '، ' : ', ')
+        : locName(v) || fallbackStr || ''
 
-    add('Brand', 'الماركة', it.brand)
-    add('Category', 'الفئة', it.category_type)
-    add('Type', 'النوع', it.sub_type)
-    add('Gender', 'الجنس', it.gender)
-    add('Grade', 'التصنيف', it.grade)
-    add('Case Material', 'خامة العلبة', it.dial_case_material)
+    // ── Shared (watch + fashion) ──
+    add('Brand', 'الماركة', locName(it.brand))
+    add('Category', 'الفئة', pick('category_type'))
+    add('Type', 'النوع', locName(it.sub_type))
+    add('Gender', 'الجنس', listNames(it.gender, it.gender_string))
+    add('Grade', 'التصنيف', locName(it.grade) || it.grade_string)
+    add('Model Name', 'اسم الموديل', pick('model_name'))
+    add('Model Number', 'رقم الموديل', it.model_number)
+    // Features render for both watch + fashion. Prefer `features` (objects carry
+    // name_en/name_ar); the catalog ships localized strings under the same key.
+    add('Features', 'المميزات', listNames(it.features || it.feature, it.feature_string))
+
+    if (isFashion) {
+      // Fashion: single colour + material, no watch jargon.
+      add('Color', 'اللون', colorNames(it.band_colors || it.band_color))
+      add('Material', 'الخامة', pick('band_material'))
+      add('Closure', 'الإغلاق', pick('band_closure'))
+      add('Country', 'بلد المنشأ', pick('country'))
+      add('Stone', 'الحجر', pick('stone'))
+      add(
+        'Warranty',
+        'الضمان',
+        it.warranty_years ? `${it.warranty_years} ${isRTL ? 'سنة' : 'yrs'}` : '',
+      )
+      // Structured extra specs (bag/wallet/perfume/electronics + dimensions) →
+      // readable rows. Known keys get friendly bilingual labels; anything else
+      // falls back to a humanized key.
+      const EXTRA_LABELS = {
+        width_cm:         { en: 'Width', ar: 'العرض', unit: 'cm' },
+        height_cm:        { en: 'Height', ar: 'الارتفاع', unit: 'cm' },
+        depth_cm:         { en: 'Depth', ar: 'العمق', unit: 'cm' },
+        strap_length_cm:  { en: 'Strap Length', ar: 'طول الحزام', unit: 'cm' },
+        bag_strap_type:   { en: 'Strap Type', ar: 'نوع الحزام' },
+        bag_compartments: { en: 'Compartments', ar: 'الأقسام' },
+        laptop_compartment: { en: 'Laptop Compartment', ar: 'جيب لابتوب' },
+        waterproof:       { en: 'Waterproof', ar: 'مقاوم للماء' },
+        wallet_card_slots:{ en: 'Card Slots', ar: 'جيوب البطاقات' },
+        rfid_protection:  { en: 'RFID Protection', ar: 'حماية RFID' },
+        coin_pocket:      { en: 'Coin Pocket', ar: 'جيب نقود' },
+        perfume_volume:   { en: 'Volume', ar: 'الحجم', unit: 'ml' },
+        perfume_type:     { en: 'Type', ar: 'النوع' },
+        perfume_scent:    { en: 'Scent', ar: 'الرائحة' },
+        elec_battery_capacity: { en: 'Battery', ar: 'البطارية', unit: 'mAh' },
+        elec_connectivity:{ en: 'Connectivity', ar: 'الاتصال' },
+      }
+      const extra = it.extra_attributes
+      if (extra && typeof extra === 'object') {
+        Object.entries(extra).forEach(([k, v]) => {
+          const map = EXTRA_LABELS[k]
+          const en = map ? map.en : k.replace(/_/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase())
+          const ar = map ? map.ar : en
+          const val = typeof v === 'boolean' ? boolLabel(v) : map?.unit ? `${v} ${map.unit}` : v
+          add(en, ar, val)
+        })
+      }
+      return rows
+    }
+
+    // ── Watch specs ──
+    add('Case Material', 'خامة العلبة', pick('dial_case_material') || pick('case_material'))
     add('Dial Color', 'لون الميناء', colorNames(it.dial_colors || it.dial_color))
-    add('Band Material', 'خامة السوار', it.band_material)
+    add('Band Material', 'خامة السوار', pick('band_material'))
     add('Band Color', 'لون السوار', colorNames(it.band_colors || it.band_color))
-    add('Movement', 'الحركة', it.watch_movement)
-    add('Display Type', 'نوع العرض', it.dial_display_type)
-    add('Shape', 'الشكل', it.case_shape)
-    add(
-      'Water Resistance',
-      'مقاومة المياه',
-      it.water_resistance
-        ? `${it.water_resistance} ${it.water_resistance_size_type || ''}`.trim()
-        : '',
-    )
-    add('Glass Material', 'مادة الزجاج', it.dial_glass_material)
+    add('Movement', 'الحركة', pick('watch_movement'))
+    add('Display Type', 'نوع العرض', pick('dial_display_type'))
+    add('Shape', 'الشكل', pick('case_shape'))
+    add('Closure Type', 'نوع القفل', pick('band_closure'))
+    add('Case Size', 'حجم العلبة', sized(it.case_size, it.case_size_type))
+    add('Case Thickness', 'سماكة العلبة', sized(it.case_thickness, it.case_thickness_size_type))
+    add('Band Width', 'عرض السوار', sized(it.band_width, it.band_width_size_type))
+    add('Band Length', 'طول السوار', sized(it.band_length, it.band_size_type))
+    add('Watch Height', 'ارتفاع الساعة', sized(it.watch_height, it.watch_height_size_type))
+    add('Watch Width', 'عرض الساعة', sized(it.watch_width, it.watch_width_size_type))
+    add('Watch Length', 'طول الساعة', sized(it.watch_length, it.watch_length_size_type))
+    add('Water Resistance', 'مقاومة المياه', sized(it.water_resistance, it.water_resistance_size_type))
+    add('Glass Material', 'مادة الزجاج', pick('dial_glass_material') || pick('glass_material'))
+    add('Interchangeable Dial', 'ميناء قابل للتبديل', boolLabel(it.interchangeable_dial))
+    add('Interchangeable Strap', 'سوار قابل للتبديل', boolLabel(it.interchangeable_strap))
+    add('Watch Box', 'علبة الساعة', boolLabel(it.watch_box))
     add(
       'Warranty',
       'الضمان',
       it.warranty_years ? `${it.warranty_years} ${isRTL ? 'سنة' : 'yrs'}` : '',
     )
-    add('Country', 'بلد المنشأ', it.country)
+    add('Country', 'بلد المنشأ', pick('country'))
+    add('Stone', 'الحجر', pick('stone'))
     return rows
-  }, [specSource, isRTL, safeStr])
+  }, [specSource, isFashion, isRTL])
 
   // ── Description ──
   const description = useMemo(() => {
@@ -1059,8 +1151,10 @@ function ProductDetailClient({ param, isOffer = false }) {
               )}
             </div>
 
-            {/* Colors (products only) */}
-            {!isOffer && dialColors.length > 0 && (
+            {/* Colors (products only). Fashion items reuse band_color as their single
+                product colour — hide the watch-only "Dial Color" and relabel the band
+                swatch as plain "Color" so bags/belts don't show watch terminology. */}
+            {!isOffer && !isFashion && dialColors.length > 0 && (
               <div className="wz-pd-colors">
                 <span className="wz-pd-colors-label">{isRTL ? 'لون الميناء' : 'Dial Color'}</span>
                 <div className="wz-pd-swatches">
@@ -1079,7 +1173,9 @@ function ProductDetailClient({ param, isOffer = false }) {
             )}
             {!isOffer && bandColors.length > 0 && (
               <div className="wz-pd-colors">
-                <span className="wz-pd-colors-label">{isRTL ? 'لون السوار' : 'Band Color'}</span>
+                <span className="wz-pd-colors-label">
+                  {isFashion ? (isRTL ? 'اللون' : 'Color') : isRTL ? 'لون السوار' : 'Band Color'}
+                </span>
                 <div className="wz-pd-swatches">
                   {bandColors.map((c, i) => (
                     <button

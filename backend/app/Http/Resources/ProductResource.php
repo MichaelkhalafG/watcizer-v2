@@ -53,7 +53,7 @@ class ProductResource extends JsonResource
         // every gallery URL 404, so only the cover ever showed on the PDP.
         foreach ($p->productImages as $img) {
             if ($img->image) {
-                $images[] = $imgUrl($img->image, 'Product_image');
+                $images[] = $imgUrl($img->image, \App\Models\ProductImage::FOLDER);
             }
         }
 
@@ -222,6 +222,33 @@ class ProductResource extends JsonResource
             // Gender / features as joined strings (ProductDisplay .join()s them)
             'gender_string'  => $p->gender->map(fn ($g) => optional($g->translate('en'))->gender_name)->filter()->join(', '),
             'feature_string' => $p->feature->map(fn ($f) => optional($f->translate('en'))->feature_name)->filter()->join(', '),
+
+            // ── Raw FK ids (P-FIX) ───────────────────────────────────────────
+            // The catalog card (transformProduct) carries these; the full record
+            // did not, so once the PDP promoted to this resource the brand
+            // link/logo AND the "related products" scoring (which key off raw ids)
+            // went blank. Expose them so every id-based consumer works on the full
+            // record too. (Safe: ids, not sensitive columns.)
+            'brand_id'          => $p->brand_id,
+            'sub_type_id'       => $p->sub_type_id,
+            'category_type_id'  => $p->category_type_id,
+            'grade_id'          => $p->grade_id,
+            'watch_movement_id' => $p->watch_movement_id,
+            'case_shape_id'     => $p->case_shape_id,
+            'band_material_id'  => $p->band_material_id,
+
+            // ── Spec fields the PDP renders but the resource omitted (P-FIX) ──
+            'case_size'             => $p->case_size,
+            'warranty_years'        => $p->warranty_years,
+            'interchangeable_dial'  => $p->interchangeable_dial,
+            'interchangeable_strap' => $p->interchangeable_strap,
+            'watch_box'             => $p->watch_box,
+            'model_name'            => optional($p->translate('en'))->model_name,
+            'model_name_ar'         => optional($p->translate('ar'))->model_name,
+
+            // Non-watch structured specs (bags/wallets/perfume/electronics).
+            // Cast to array on the model → an object here (or null).
+            'extra_attributes'      => $p->extra_attributes,
         ];
     }
 }

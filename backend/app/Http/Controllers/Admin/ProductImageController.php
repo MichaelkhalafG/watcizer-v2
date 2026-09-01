@@ -21,7 +21,7 @@ class ProductImageController extends Controller
     public function update(Request $request, ProductImage $product_image) { return back(); }
     public function destroy(ProductImage $product_image)
     {
-        $path = public_path('Uploads_Images/Product_image/' . $product_image->image);
+        $path = public_path('Uploads_Images/' . ProductImage::FOLDER . '/' . $product_image->image);
         if (file_exists($path)) unlink($path);
         $product_image->delete();
         Cache::forget('AllProductImage');
@@ -31,8 +31,10 @@ class ProductImageController extends Controller
     // ── NEW: Gallery management ──────────────────────────
     public function manageImages(Product $product)
     {
-        $images = $product->product_image()->ordered()->get();
-        return view('Dashboard.product_image.manage', compact('product', 'images'));
+        // The `product_image.manage` view was never created, so this 500'd. Gallery
+        // management now lives inline on the product edit screen (live multipart
+        // upload/delete), so send the user there instead of rendering a missing view.
+        return redirect()->route('product.edit', $product->id);
     }
 
     public function uploadImages(Request $request, Product $product)
@@ -50,7 +52,7 @@ class ProductImageController extends Controller
         foreach ($request->file('images') as $index => $file) {
             try {
                 // Product gallery images: padded onto a 1200x1200 white square, WebP q85.
-                $newName = $imageService->process($file, 'Product_image', [
+                $newName = $imageService->process($file, ProductImage::FOLDER, [
                     'max_width'  => 1200,
                     'max_height' => 1200,
                     'quality'    => 85,
@@ -64,7 +66,7 @@ class ProductImageController extends Controller
                 ]);
                 $created[] = [
                     'id'  => $img->id,
-                    'url' => asset('Uploads_Images/Product_image/' . $newName),
+                    'url' => asset('Uploads_Images/' . ProductImage::FOLDER . '/' . $newName),
                 ];
             } catch (\Throwable $e) {
                 // One heavy/oversized image must not 500 the upload endpoint.
@@ -117,7 +119,7 @@ class ProductImageController extends Controller
 
     public function destroyImage(Request $request, ProductImage $image)
     {
-        $path = public_path('Uploads_Images/Product_image/' . $image->image);
+        $path = public_path('Uploads_Images/' . ProductImage::FOLDER . '/' . $image->image);
         if (file_exists($path)) unlink($path);
         $image->delete();
         Cache::forget('AllProductImage');

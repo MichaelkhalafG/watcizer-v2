@@ -136,13 +136,14 @@ class ExampleProductsSeeder extends Seeder
         $product->search_keywords      = 'rolex, submariner, date, 126610LN, automatic, luxury watch, swiss, diving watch, ساعة رولكس, سابمارينر, ساعة غوص, ساعات فاخرة';
 
         // ── Extra (non-watch structured attributes) ───────
-        $product->extra_attributes = json_encode([
+        // Assigned as a plain array — Product casts `extra_attributes` to array.
+        $product->extra_attributes = [
             'bezel'         => 'Unidirectional Cerachrom',
             'calibre'       => '3235',
             'power_reserve' => '70 hours',
             'certification' => 'COSC Chronometer',
             'crystal'       => 'Scratch-resistant sapphire',
-        ], JSON_UNESCAPED_UNICODE);
+        ];
 
         // ── Translations (EN + AR) ────────────────────────
         $product->translateOrNew('en')->product_title = 'Rolex Submariner Date 126610LN Black Dial Oystersteel';
@@ -243,14 +244,15 @@ class ExampleProductsSeeder extends Seeder
         $product->search_keywords      = 'gucci, belt, GG marmont, reversible, leather, حزام غوتشي, جي جي مارمونت, حزام جلد, أحزمة ماركات, اكسسوارات رجالية';
 
         // ── Extra (belt structured attributes) ────────────
-        $product->extra_attributes = json_encode([
+        // Assigned as a plain array — Product casts `extra_attributes` to array.
+        $product->extra_attributes = [
             'width_cm'   => 4,
             'reversible' => true,
             'buckle'     => 'Antiqued gold-tone Double G',
             'material'   => 'Calfskin leather',
             'made_in'    => 'Italy',
             'includes'   => 'Dust bag + box',
-        ], JSON_UNESCAPED_UNICODE);
+        ];
 
         // ── Translations (EN + AR) ────────────────────────
         $product->translateOrNew('en')->product_title = 'Gucci GG Marmont Reversible Leather Belt 4cm Black/Brown';

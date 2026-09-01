@@ -165,4 +165,12 @@ return [
     'perfume_scent'                 => 'Scent Family',
     'elec_battery_capacity'         => 'Battery Capacity',
     'elec_connectivity'             => 'Connectivity',
+
+    // Fashion physical dimensions (bags/wallets/accessories) — stored in extra_attributes.
+    'dimensions_cm'                 => 'Dimensions (cm)',
+    'width_cm'                      => 'Width (cm)',
+    'height_cm'                     => 'Height (cm)',
+    'depth_cm'                      => 'Depth (cm)',
+    'strap_length_cm'               => 'Strap / Belt Length (cm)',
+    'additional_attributes'         => 'Additional Attributes (bags / wallets / perfume / electronics)',
 ];
