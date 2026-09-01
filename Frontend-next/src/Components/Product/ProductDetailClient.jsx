@@ -1273,6 +1273,7 @@ function ProductDetailClient({ param, isOffer = false }) {
               reviewCount={reviewCount}
               stockLeft={inStock ? maxStock : null}
               isRTL={isRTL}
+              isFashion={isFashion}
             />
           </div>
         </div>
