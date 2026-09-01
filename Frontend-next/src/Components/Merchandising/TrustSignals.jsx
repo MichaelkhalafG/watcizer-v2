@@ -30,6 +30,30 @@ Signal.propTypes = {
   href: PropTypes.string,
 }
 
+// PDP returns row: a product-type-aware, bilingual returns policy (same icon/row
+// styling as the other signals) with a small muted condition note beneath it.
+// Fashion items are exchange/return within 4 days; watches add a 14-day exchange.
+function ReturnsSignal({ isFashion, isRTL }) {
+  const { icon, policy, condition } = trustSignals.returns
+  const p = isFashion ? policy.fashion : policy.watch
+  return (
+    <div className="wz-trust-returns">
+      <span className="wz-trust-item">
+        <span className="wz-trust-item-icon" aria-hidden="true">
+          {icon}
+        </span>
+        <span>{isRTL ? p.ar : p.en}</span>
+      </span>
+      <small className="wz-trust-note">{isRTL ? condition.ar : condition.en}</small>
+    </div>
+  )
+}
+
+ReturnsSignal.propTypes = {
+  isFashion: PropTypes.bool,
+  isRTL: PropTypes.bool,
+}
+
 // Live "social proof" row — rating stars + review count, and a low-stock urgency
 // pill. Only rendered when the caller passes real data (e.g. the PDP), so cart /
 // checkout, which span multiple items, never show a misleading single-item stat.
@@ -79,7 +103,7 @@ LiveSignals.propTypes = {
 // row on top — the PDP passes real product data; cart/checkout omit them.
 // Styled with dedicated wz-trust-* classes (no Bootstrap). Responsive: collapses
 // to a vertical stack on mobile via the .wz-trust--row media query.
-function TrustSignals({ variant = 'pdp', rating = 0, reviewCount = 0, stockLeft = null, isRTL = false }) {
+function TrustSignals({ variant = 'pdp', rating = 0, reviewCount = 0, stockLeft = null, isRTL = false, isFashion = false }) {
   const { returns, guarantee, secure, whatsapp, payments } = trustSignals
 
   const live = (
@@ -111,7 +135,7 @@ function TrustSignals({ variant = 'pdp', rating = 0, reviewCount = 0, stockLeft 
   return (
     <div className="wz-trust wz-trust--framed wz-trust--pdp">
       {live}
-      <Signal {...returns} />
+      <ReturnsSignal isFashion={isFashion} isRTL={isRTL} />
       <Signal {...guarantee} />
       <Signal {...secure} />
       <Signal {...whatsapp} />
@@ -132,6 +156,7 @@ TrustSignals.propTypes = {
   reviewCount: PropTypes.number,
   stockLeft: PropTypes.number,
   isRTL: PropTypes.bool,
+  isFashion: PropTypes.bool,
 }
 
 export default TrustSignals

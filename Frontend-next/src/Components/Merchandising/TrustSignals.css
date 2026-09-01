@@ -46,6 +46,20 @@
   line-height: 1;
 }
 
+/* PDP returns: policy row + a subtle condition footnote beneath it. */
+.wz-trust-returns {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.wz-trust-note {
+  font-size: 0.75rem;
+  color: rgba(0, 0, 0, 0.45);
+  line-height: 1.2;
+  /* Inset under the label, past the icon + gap; direction-aware for RTL. */
+  padding-inline-start: calc(1.1rem + 8px);
+}
+
 /* ── Live social-proof + urgency row (PDP) ── */
 .wz-trust-live {
   display: flex;
