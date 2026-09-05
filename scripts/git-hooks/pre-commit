@@ -1,0 +1,226 @@
+#!/usr/bin/env bash
+# ---------------------------------------------------------------------------
+# pre-commit guard for a PUBLIC repository (see 'new branding/AGENTS.md' §3).
+#
+# Blocks a commit when staged files include:
+#   1. a database dump / archive: *.sql (except *_structure_only.sql), *.sql.gz, *.zip
+#   2. anything under "new branding/" that is not in ALLOWLIST_NEW_BRANDING
+#   3. a planning document anywhere: *STUDY*.md, *DRIFT_REPORT*.md
+#   4. an environment file: .env, .env.*, *.env (except *.example and ENV_ALLOWLIST)
+#   4b. an agent/planning file named AGENTS.md or CLAUDE.md at ANY path
+#      (solo-developer policy: these exist on the developer's machine only;
+#      no allowlist applies to them, ever)
+#   5. added content containing: "BEGIN RSA", "BEGIN OPENSSH", a bcrypt hash
+#      ($2a$/$2b$/$2y$), a Paymob key WITH a value, or more than PHONE_LIMIT
+#      distinct Egyptian mobile numbers (01xxxxxxxxx) in one file.
+#      Content rules skip scripts/git-hooks/* only (the guard defines the
+#      patterns, so its own source would always match); name rules still apply.
+#
+# Bypass (loud): FORCE_COMMIT=1 git commit ...
+# Self-test:     scripts/git-hooks/pre-commit --test   (stages nothing)
+# Install:       scripts/install-hooks.ps1
+# ---------------------------------------------------------------------------
+set -u
+
+# Paths (relative to the repo root, prefix match) under "new branding/" that MAY
+# be committed. Empty today: the folder is fully non-committable. Add e.g.
+#   "new branding/core/"
+# only after the developer decides that code ships from there.
+ALLOWLIST_NEW_BRANDING=()
+
+# .env-style files that are public-by-design client configuration
+# (developer decision 2026-09-05: NEXT_PUBLIC_* keys are intentionally public).
+ENV_ALLOWLIST=(
+  "Frontend-next/.env.production"
+)
+
+PHONE_LIMIT=20
+
+failures=()
+add_fail() { failures+=("$1"); }
+reset_failures() { failures=(); }
+
+# ---- rule set --------------------------------------------------------------
+
+check_name() { # $1 = repo-relative path
+  local p="$1" base="${1##*/}" a ok
+
+  # 1. dumps / archives
+  case "$p" in
+    *_structure_only.sql) ;;
+    *.sql)    add_fail "$p :: database dump (.sql) — only *_structure_only.sql may be committed" ;;
+    *.sql.gz) add_fail "$p :: compressed database dump (.sql.gz)" ;;
+    *.zip)    add_fail "$p :: archive (.zip) — archives never enter the repo" ;;
+  esac
+
+  # 2. planning folder
+  case "$p" in
+    "new branding/"*)
+      ok=0
+      for a in "${ALLOWLIST_NEW_BRANDING[@]:-}"; do
+        [[ -n "$a" && "$p" == "$a"* ]] && ok=1
+      done
+      (( ok )) || add_fail "$p :: under 'new branding/' (planning material, public repo) — not in ALLOWLIST_NEW_BRANDING"
+      ;;
+  esac
+
+  # 3. planning documents anywhere
+  case "$base" in
+    *STUDY*.md)        add_fail "$p :: planning study — never committed" ;;
+    *DRIFT_REPORT*.md) add_fail "$p :: schema drift report (contains production facts) — never committed" ;;
+  esac
+
+  # 4b. agent/planning files — blocked at any path, no allowlist
+  case "$base" in
+    AGENTS.md) add_fail "$p :: AGENTS.md is never published (solo-developer policy) — keep it on disk only" ;;
+    CLAUDE.md) add_fail "$p :: CLAUDE.md is never published (solo-developer policy) — keep it on disk only" ;;
+  esac
+
+  # 4. environment files
+  case "$base" in
+    .env|.env.*|*.env)
+      case "$base" in *.example) return ;; esac
+      ok=0
+      for a in "${ENV_ALLOWLIST[@]:-}"; do
+        [[ -n "$a" && "$p" == "$a" ]] && ok=1
+      done
+      (( ok )) || add_fail "$p :: environment file (.env*) — secrets never enter the repo"
+      ;;
+  esac
+}
+
+check_content() { # $1 = repo-relative path, $2 = added text (staged '+' lines)
+  local p="$1" txt="$2" n
+
+  # The guard's own source legitimately contains every pattern it defines
+  # (rule regexes and self-test fixtures). Exempt exactly that path prefix from
+  # the CONTENT scan; name rules above still apply to it. This is deliberately
+  # not a general allowlist: no other path may be added here.
+  case "$p" in
+    scripts/git-hooks/*) return ;;
+  esac
+
+  grep -q -- 'BEGIN RSA'     <<<"$txt" && add_fail "$p :: private key material ('BEGIN RSA')"
+  grep -q -- 'BEGIN OPENSSH' <<<"$txt" && add_fail "$p :: private key material ('BEGIN OPENSSH')"
+
+  # bcrypt: $2a$/$2b$/$2y$ + cost + 53 chars of salt+hash
+  grep -qE -- '\$2[aby]\$[0-9]{2}\$[./A-Za-z0-9]{53}' <<<"$txt" \
+    && add_fail "$p :: bcrypt password hash (\$2y\$/\$2a\$) — customer credential material"
+
+  # Paymob key WITH a literal value (env('PAYMOB_API_KEY') and empty example
+  # lines are fine; a real token is not).
+  grep -qiE -- 'PAYMOB[A-Z0-9_]*KEY[[:space:]]*[=:>]+[[:space:]]*["'"'"']?[A-Za-z0-9+/=_-]{16,}' <<<"$txt" \
+    && add_fail "$p :: Paymob key with a literal value — payment credentials are developer-handled"
+
+  # Bulk customer data: many distinct Egyptian mobile numbers in one file.
+  # tokenise on non-alphanumerics so glued digits/letters (SVG paths, hashes) do not count
+  n=$(tr -c '[:alnum:]' '\n' <<<"$txt" | grep -oE '^01[0-9]{9}$' | sort -u | wc -l | tr -d ' ')
+  (( n > PHONE_LIMIT )) \
+    && add_fail "$p :: $n distinct Egyptian phone numbers in one file (> $PHONE_LIMIT) — bulk customer data signature"
+}
+
+# ---- self-test -------------------------------------------------------------
+
+selftest() {
+  local pass=0 fail=0
+  expect() { # $1 = PASS-if-blocked? (block|allow), $2 = label, then the check already ran
+    local want="$1" label="$2" got
+    if (( ${#failures[@]} > 0 )); then got=block; else got=allow; fi
+    if [[ "$got" == "$want" ]]; then
+      printf 'PASS  %-9s %s\n' "$want" "$label"; ((pass++))
+    else
+      printf 'FAIL  %-9s %s  (got: %s)\n' "$want" "$label" "$got"; ((fail++))
+    fi
+    reset_failures
+  }
+  local phones21 phones5 i
+  phones21=""; for i in $(seq 100 120); do phones21+="010000${i}00 "; done
+  phones5="";  for i in $(seq 100 104); do phones5+="010000${i}00 "; done
+
+  echo "== name rules =="
+  check_name "backup/u591083448_watchizer (2).sql";                 expect block "*.sql data dump"
+  check_name "docs/schema/watchizer_prod_schema_2026-09-05_structure_only.sql"; expect allow "*_structure_only.sql exception"
+  check_name "backup/dump.sql.gz";                                  expect block "*.sql.gz"
+  check_name "backend.zip";                                         expect block "*.zip"
+  check_name "new branding/CLEAN_CORE_STUDY.md";                    expect block "new branding/ study"
+  check_name "new branding/bf-archive/sitemap_urls.csv";            expect block "new branding/ any file"
+  check_name "new branding/design/approved/home.png";               expect block "new branding/design"
+  check_name "docs/SCHEMA_DRIFT_REPORT.md";                         expect block "*DRIFT_REPORT*.md anywhere"
+  check_name "notes/MULTI_BRAND_ARCHITECTURE_STUDY.md";             expect block "*STUDY*.md anywhere"
+  check_name "backend/.env";                                        expect block ".env"
+  check_name "backend/.env.testing";                                expect block ".env.*"
+  check_name "core/production.env";                                 expect block "*.env"
+  check_name "backend/.env.example";                                expect allow ".env.example"
+  check_name "backend/.env.production.example";                     expect allow ".env.*.example"
+  check_name "Frontend-next/.env.production";                       expect allow "ENV_ALLOWLIST (public NEXT_PUBLIC_* config)"
+  check_name "core/app/Services/InventoryService.php";              expect allow "ordinary source file"
+  check_name "CLAUDE.md";                                           expect block "CLAUDE.md at repo root"
+  check_name "new branding/AGENTS.md";                              expect block "AGENTS.md under new branding/"
+  check_name "core/AGENTS.md";                                      expect block "AGENTS.md at any other path"
+  check_name "core/CLAUDE.md";                                      expect block "CLAUDE.md at any other path"
+  check_name "docs/agents-guide.md";                                expect allow "similar name is not the rule"
+
+  echo "== content rules =="
+  check_content "keys/id_rsa"        "-----BEGIN RSA PRIVATE KEY-----";                        expect block "BEGIN RSA"
+  check_content "keys/id_ed25519"    "-----BEGIN OPENSSH PRIVATE KEY-----";                    expect block "BEGIN OPENSSH"
+  check_content "seed/users.sql"     "'\$2y\$10\$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi'"; expect block "bcrypt hash"
+  check_content "config/paymob.php"  "'api_key' => 'ZXlKMGVYQWlPaUpLVjFRaUxDSmhiR2NpT2lKSVV6VXhNaUo5'"; expect allow "paymob-looking value without PAYMOB/KEY words"
+  check_content "config/paymob.php"  "PAYMOB_API_KEY=ZXlKMGVYQWlPaUpLVjFRaUxDSmhiR2NpT2lKSVV6VXhNaUo5"; expect block "PAYMOB_*KEY with literal value"
+  check_content "config/services.php" "'api_key' => env('PAYMOB_API_KEY'),";                    expect allow "env('PAYMOB_API_KEY') reference"
+  check_content ".env.production.example" "PAYMOB_SECRET_KEY=                    # YOUR PAYMOB SECRET KEY"; expect allow "empty example value"
+  check_content "export/customers.csv" "$phones21";                                            expect block "21 distinct Egyptian phones"
+  check_content "seed/cities.php"      "$phones5";                                             expect allow "5 phones (below limit)"
+  check_content "assets/icon.svg"      "M0100000000010000000001100000000L01000000000 01000000000";  expect allow "digits glued to other digits/letters do not count"
+
+  echo "== self-exemption =="
+  local self_src; self_src=$(cat "${BASH_SOURCE[0]}")
+  check_content "scripts/git-hooks/pre-commit" "$self_src";                    expect allow "the guard's own source at scripts/git-hooks/ passes the content scan"
+  check_content "core/tools/pre-commit-copy"   "$self_src";                    expect block "identical content at any other path is still blocked"
+  check_name    "scripts/git-hooks/pre-commit";                                 expect allow "name rules still evaluated for the guard's own path"
+
+  echo
+  echo "self-test: $pass passed, $fail failed"
+  (( fail == 0 ))
+}
+
+if [[ "${1:-}" == "--test" ]]; then
+  selftest
+  exit $?
+fi
+
+# ---- real run --------------------------------------------------------------
+
+root=$(git rev-parse --show-toplevel 2>/dev/null) || { echo "pre-commit: not inside a git repository" >&2; exit 1; }
+cd "$root" || exit 1
+
+while IFS= read -r -d '' f; do
+  check_name "$f"
+  # skip binary files for content checks
+  if git diff --cached --numstat -- "$f" | grep -q '^-'; then
+    continue
+  fi
+  added=$(git diff --cached -U0 --no-color -- "$f" | grep '^+' | grep -v '^+++' | cut -c2-)
+  [[ -n "$added" ]] && check_content "$f" "$added"
+done < <(git diff --cached --name-only --diff-filter=ACMR -z)
+
+if (( ${#failures[@]} == 0 )); then
+  exit 0
+fi
+
+echo "==========================================================================" >&2
+echo " pre-commit guard: COMMIT BLOCKED (${#failures[@]} problem(s))" >&2
+echo "==========================================================================" >&2
+for m in "${failures[@]}"; do echo "  ✗ $m" >&2; done
+echo "--------------------------------------------------------------------------" >&2
+echo " Unstage the file(s) (git restore --staged <file>) or fix the content." >&2
+echo " Rules: 'new branding/AGENTS.md' §3 and the header of scripts/git-hooks/pre-commit." >&2
+
+if [[ "${FORCE_COMMIT:-0}" == "1" ]]; then
+  echo "" >&2
+  echo " !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" >&2
+  echo " !!  FORCE_COMMIT=1 set — the guard was BYPASSED. This repo is PUBLIC.  !!" >&2
+  echo " !!  You are committing the files listed above on your own authority.   !!" >&2
+  echo " !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" >&2
+  exit 0
+fi
+exit 1
