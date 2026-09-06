@@ -3,7 +3,6 @@
 namespace App\Transform;
 
 use App\Models\Storefront\Storefront;
-use App\Support\LegacySlug;
 use App\Transform\Steps\Step04Colors;
 
 /**
@@ -134,7 +133,9 @@ final class Reconciliation
 
         // 18–19 storefront product + placements (+ A-17 twin redirects)
         $this->check('storefront_product', 'products', '= one row per product (storefront '.$sf.')', $products, $db->table('storefront_product')->where('storefront_id', $sf)->count());
-        $this->check('storefront_redirects[legacy_twin]', 'EN-title slug collision groups (A-17)', '= one row per group', $this->slugCollisionGroups(), $db->table('storefront_redirects')->where('storefront_id', $sf)->where('source', 'legacy_twin')->count());
+        $twins = ProductSlugs::plan($legacy);
+        $this->check('storefront_redirects[legacy_twin]', sprintf('A-17 collision groups whose kept slug differs from the plain URL (%d groups, %d non-identity)', count($twins->keepers), count($twins->nonIdentityTwins())), '= one row per non-identity group', count($twins->nonIdentityTwins()), $db->table('storefront_redirects')->where('storefront_id', $sf)->where('source', 'legacy_twin')->count());
+        $this->check('storefront_product[slug plan]', 'ProductSlugs::plan()', '= slug on every row', $products, $this->slugsMatch($twins));
         $this->check('storefront_product[visible]', 'products', '= all visible', $products, $db->table('storefront_product')->where('storefront_id', $sf)->where('is_visible', 1)->count());
         $typed = $legacy->table('products')->whereNotNull('category_type_id')->count();
         $paired = $legacy->table('products')->whereNotNull('category_type_id')->whereNotNull('sub_type_id')->count();
@@ -146,6 +147,11 @@ final class Reconciliation
         $this->check('inventory_movements[express sum]', 'SUM(products.stock)', '= ledger sum', (int) $legacy->table('products')->sum('stock'), (int) $db->table('inventory_movements')->where('reason', 'transform')->where('bucket', 'express')->sum('quantity_after'));
         $this->check('inventory_movements[market sum]', 'SUM(products.market_stock)', '= ledger sum', (int) $legacy->table('products')->sum('market_stock'), (int) $db->table('inventory_movements')->where('reason', 'transform')->where('bucket', 'market')->sum('quantity_after'));
         $this->check('catalog_products[stock mirror]', 'products.stock / market_stock', '= stock_express / stock_market on every row', $products, $this->stockMirrorMatches());
+
+        // soft-deleted rows: legacy has NO soft-delete column on any of its 65 tables (audit X-07), and the
+        // transform never sets deleted_at, so the clean side must hold zero trashed rows after a run.
+        $this->check('catalog_products[soft-deleted]', 'legacy has no deleted_at column (0 trashed)', '= trashed rows on both sides', 0, $db->table('catalog_products')->whereNotNull('deleted_at')->count());
+        $this->check('catalog_products[live]', 'products', '= rows with deleted_at IS NULL', $products, $db->table('catalog_products')->whereNull('deleted_at')->count());
 
         // 21 search
         $this->check('catalog_product_search', 'products × 2 locales', '= 2×', 2 * $products, $count('catalog_product_search'));
@@ -194,21 +200,17 @@ final class Reconciliation
         return $ok;
     }
 
-    /** Number of un-suffixed EN-title slugs shared by more than one product (A-17 groups). */
-    private function slugCollisionGroups(): int
+    /** Rows whose storefront_product.slug equals the planned slug. */
+    private function slugsMatch(ProductSlugs $plan): int
     {
-        $titles = [];
-        foreach ($this->ctx->legacy->table('product_translations')->select(['product_id', 'product_title'])->where('locale', 'en')->orderBy('product_id')->cursor() as $t) {
-            $titles[Row::int($t, 'product_id')] = trim(Row::str($t, 'product_title'));
-        }
-        $perSlug = [];
-        foreach ($this->ctx->legacy->table('products')->select(['id'])->orderBy('id')->cursor() as $p) {
-            $id = Row::int($p, 'id');
-            $slug = LegacySlug::orId($titles[$id] ?? '', $id);
-            $perSlug[$slug] = ($perSlug[$slug] ?? 0) + 1;
+        $ok = 0;
+        foreach ($this->ctx->db->table('storefront_product')->select(['product_id', 'slug'])->where('storefront_id', $this->ctx->storefrontId)->orderBy('product_id')->cursor() as $row) {
+            if (Row::str($row, 'slug') === $plan->slug(Row::int($row, 'product_id'))) {
+                $ok++;
+            }
         }
 
-        return count(array_filter($perSlug, fn (int $n) => $n > 1));
+        return $ok;
     }
 
     private function stockMirrorMatches(): int

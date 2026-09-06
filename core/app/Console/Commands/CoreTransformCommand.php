@@ -16,6 +16,7 @@ use App\Transform\TransformOptions;
 use App\Transform\Writer;
 use Illuminate\Console\Command;
 use Illuminate\Console\ConfirmableTrait;
+use Illuminate\Database\Connection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Throwable;
@@ -84,6 +85,35 @@ final class CoreTransformCommand extends Command
         $db = DB::connection();
         $legacy = new LegacySource;
         $this->banner($db->getConfig('host'), $db->getDatabaseName(), $legacy, $options);
+
+        // Exactly one transform at a time per database (re-verification 2026-09-07: two concurrent
+        // runs doubled the inventory_movements baseline — the ledger has no natural unique key, and
+        // find-then-insert races). Server-side named lock, released at the end or when the connection drops.
+        if (! self::acquireRunLock($db)) {
+            $this->error('Another core:transform is running against this database (named lock '.self::RUN_LOCK.' is held). Refusing to start.');
+
+            return self::FAILURE;
+        }
+        try {
+            return $this->transform($db, $legacy, $options, $config, $startedAt);
+        } finally {
+            $db->selectOne('SELECT RELEASE_LOCK(?) AS released', [self::RUN_LOCK]);
+        }
+    }
+
+    public const RUN_LOCK = 'core:transform';
+
+    public static function acquireRunLock(Connection $db): bool
+    {
+        $row = $db->selectOne('SELECT GET_LOCK(?, 0) AS ok', [self::RUN_LOCK]);
+        $ok = is_object($row) && property_exists($row, 'ok') ? $row->ok : null;
+
+        return (int) (is_scalar($ok) ? $ok : 0) === 1;
+    }
+
+    /** @param  array<string, mixed>  $config */
+    private function transform(Connection $db, LegacySource $legacy, TransformOptions $options, array $config, float $startedAt): int
+    {
 
         if (! Schema::hasTable(IdMap::TABLE)) {
             $this->error('transform_id_map is missing — run `php artisan migrate` (M1b) first.');
