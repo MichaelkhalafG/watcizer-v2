@@ -26,3 +26,7 @@ Homestead.json
 Homestead.yaml
 Thumbs.db
 /.fleet
+
+# The root .gitignore ignores `audit/` (the legacy archive folder); with core.ignorecase on
+# Windows that rule also swallowed app/Transform/Audit/. Re-include it explicitly.
+!app/Transform/Audit/

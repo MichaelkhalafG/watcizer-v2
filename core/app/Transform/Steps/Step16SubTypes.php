@@ -33,6 +33,50 @@ final class Step16SubTypes implements Step
         return 'storefront_categories (depth 2), storefront_category_translations';
     }
 
+    /**
+     * The placement plan, computed from legacy facts only (no clean-table state): every product
+     * (type, sub type) pair, then every orphan sub type under its pinned parent — or, if unpinned,
+     * under the type with the most DISTINCT sub types (tie → lowest id). Pins therefore decide on
+     * the FIRST run (switch night gets exactly one).
+     *
+     * @param  array<int, array<int, int>>  $pairs  type id => sub type id => product count
+     * @param  list<int>  $subTypeIds
+     * @param  array<int, int>  $overrides  sub type id => type id
+     * @return list<array{type: int, sub: int, orphan: bool, pinned: bool}>
+     */
+    public static function plan(array $pairs, array $subTypeIds, array $overrides): array
+    {
+        $majorityType = null;
+        $best = -1;
+        foreach ($pairs as $typeId => $subs) {
+            if (count($subs) > $best) {
+                $best = count($subs);
+                $majorityType = $typeId;
+            }
+        }
+        $desired = [];
+        $placed = [];
+        foreach ($pairs as $typeId => $subs) {
+            foreach (array_keys($subs) as $subId) {
+                $desired[] = ['type' => $typeId, 'sub' => $subId, 'orphan' => false, 'pinned' => false];
+                $placed[$subId] = true;
+            }
+        }
+        foreach ($subTypeIds as $subId) {
+            if (isset($placed[$subId])) {
+                continue;
+            }
+            $typeId = $overrides[$subId] ?? $majorityType;
+            if ($typeId === null) {
+                throw new RuntimeException("Cannot place orphan sub_type $subId: no product pairs exist to derive a majority type and no override is configured.");
+            }
+            $desired[] = ['type' => $typeId, 'sub' => $subId, 'orphan' => true, 'pinned' => isset($overrides[$subId])];
+        }
+        usort($desired, fn (array $a, array $b) => [$a['type'], $a['sub']] <=> [$b['type'], $b['sub']]);
+
+        return $desired;
+    }
+
     public function run(TransformContext $ctx, StepResult $result): void
     {
         $nodes = new CategoryNodes($ctx);
@@ -52,15 +96,6 @@ final class Step16SubTypes implements Step
             $pairs[Row::int($row, 'category_type_id')][Row::int($row, 'sub_type_id')] = Row::int($row, 'n');
         }
 
-        // Majority rule for orphans: the type with the most DISTINCT sub types (tie → lowest id).
-        $majorityType = null;
-        $best = -1;
-        foreach ($pairs as $typeId => $subs) {
-            if (count($subs) > $best) {
-                $best = count($subs);
-                $majorityType = $typeId;
-            }
-        }
         $overrides = $ctx->configIntMap('orphan_sub_type_parents');
 
         /** @var array<int, array{image: string|null, created_at: string|null, updated_at: string|null}> */
@@ -70,38 +105,25 @@ final class Step16SubTypes implements Step
             $result->read++;
         }
 
-        // Desired nodes: every product pair, then orphans.
-        /** @var list<array{type: int, sub: int, orphan: bool}> */
-        $desired = [];
-        $placed = [];
-        foreach ($pairs as $typeId => $subs) {
+        foreach ($pairs as $subs) {
             foreach ($subs as $subId => $n) {
                 if (! isset($subTypes[$subId])) {
                     throw new RuntimeException("products reference sub_type_id $subId which does not exist (A-24 should have caught this).");
                 }
-                $desired[] = ['type' => $typeId, 'sub' => $subId, 'orphan' => false];
-                $placed[$subId] = true;
                 if ($n === 1) {
                     $result->count('pair_used_once');                // A-15 (informational)
                 }
             }
         }
-        foreach ($subTypes as $subId => $_) {
-            if (isset($placed[$subId])) {
-                continue;
+        $desired = self::plan($pairs, array_keys($subTypes), $overrides);
+        foreach ($desired as $d) {
+            if ($d['orphan']) {
+                if (! isset($typeNames[$d['type']])) {
+                    throw new RuntimeException("Orphan sub_type {$d['sub']}: override/majority category_type_id {$d['type']} does not exist.");
+                }
+                $result->count($d['pinned'] ? 'orphan_placed_by_override' : 'orphan_placed_by_majority_rule');
             }
-            $typeId = $overrides[$subId] ?? $majorityType;
-            if ($typeId === null) {
-                throw new RuntimeException("Cannot place orphan sub_type $subId: no product pairs exist to derive a majority type and no override is configured.");
-            }
-            if (! isset($typeNames[$typeId])) {
-                throw new RuntimeException("Orphan sub_type $subId: override/majority category_type_id $typeId does not exist.");
-            }
-            $desired[] = ['type' => $typeId, 'sub' => $subId, 'orphan' => true];
-            $result->count(isset($overrides[$subId]) ? 'orphan_placed_by_override' : 'orphan_placed_by_majority_rule');
         }
-
-        usort($desired, fn (array $a, array $b) => [$a['type'], $a['sub']] <=> [$b['type'], $b['sub']]);
 
         $position = [];
         foreach ($desired as $d) {
@@ -144,7 +166,7 @@ final class Step16SubTypes implements Step
 
             $ctx->idMap->remember('sub_types:'.$typeId, $subId, 'storefront_categories', $node['id']);
             if ($d['orphan']) {
-                $result->note(sprintf('orphan sub_type %d [%s] mirrored under category_type %d [%s] (%s)', $subId, $en, $typeId, trim($typeNames[$typeId]['en'] ?? ''), isset($overrides[$subId]) ? 'override' : 'majority rule'));
+                $result->note(sprintf('orphan sub_type %d [%s] mirrored under category_type %d [%s] (%s)', $subId, $en, $typeId, trim($typeNames[$typeId]['en'] ?? ''), $d['pinned'] ? 'override' : 'majority rule'));
             }
         }
     }
