@@ -2,8 +2,11 @@
 
 namespace App\Providers;
 
+use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -30,5 +33,9 @@ class AppServiceProvider extends ServiceProvider
         // including the local copy. migrate:fresh / migrate:refresh / migrate:reset /
         // db:wipe would drop the legacy tables, so they are prohibited unconditionally.
         DB::prohibitDestructiveCommands();
+
+        // Per-IP limiter for every /api route (v2, compat and proxied). The legacy app throttles
+        // 60/min per IP; the edge cache carries the read load, this is only abuse protection.
+        RateLimiter::for('api', fn (Request $request) => Limit::perMinute(120)->by($request->ip() ?? 'unknown'));
     }
 }

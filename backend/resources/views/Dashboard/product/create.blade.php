@@ -49,7 +49,9 @@
     <select class="form-select select2" name="category_type_id" id="category_type_sel">
         <option value="">{{ trans('product.select') }}…</option>
         @foreach($category_type as $item)
-            <option value="{{ $item->id }}" @selected(old('category_type_id') == $item->id)>{{ $item->category_type_name }}</option>
+            <option value="{{ $item->id }}"
+                    data-en="{{ \Illuminate\Support\Str::slug($item->translate('en')->category_type_name ?? $item->category_type_name) }}"
+                    @selected(old('category_type_id') == $item->id)>{{ $item->category_type_name }}</option>
         @endforeach
     </select>
     @error('category_type_id')<div class="err">{{ $message }}</div>@enderror
@@ -833,6 +835,12 @@ $(document).ready(function(){
         'sunglasses':'accessories','jewelry':'accessories','scarves':'accessories',
         'keychains':'accessories','ties':'accessories','cufflinks':'accessories','pen':'accessories',
     };
+    // The parent CATEGORY decides the watch family — a newly-added watch sub type then
+    // needs no code change here (sub_types has no category_type_id FK, so the category
+    // select on this form is the only parent signal available). The sub type map above
+    // still refines the Fashion side, which the category type alone cannot distinguish.
+    // Mirrors core/config/transform.php `family.watch_category_type_names`.
+    const WATCH_CATEGORY_SLUGS=['watches'];
     // Family → the data-cat tokens that identify its .cat-fields block.
     const FAMILY_CATS={
         'watches':['watches','smart-watches','wall-clocks'],
@@ -843,7 +851,7 @@ $(document).ready(function(){
         'electronics':['electronics'],
     };
 
-    function showAttr(subSlug){
+    function showAttr(subSlug,catSlug){
         // CRITICAL: hide AND disable every category block. Many field names
         // (band_material_id, case_shape_id, band_closure_id, warranty_years,
         // country[…], case_size_type_id, …) are repeated across the watches / bags
@@ -858,8 +866,7 @@ $(document).ready(function(){
         // matching block and re-disable the rest by toggling the fieldset itself
         // (disabled cascades to every control inside it).
         $('.cat-fields').addClass('d-none').prop('disabled', true);
-        if(!subSlug)return;
-        var fam=SUBTYPE_FAMILY[subSlug];
+        var fam=WATCH_CATEGORY_SLUGS.includes(catSlug)?'watches':SUBTYPE_FAMILY[subSlug];
         var list=FAMILY_CATS[fam]||[];
         if(!list.length)return;
         $('.cat-fields').each(function(){
@@ -872,14 +879,15 @@ $(document).ready(function(){
         });
     }
 
-    // Reveal the right attribute group as the Sub Type changes, and refresh SEO.
-    $('#sub_type_sel').on('change',function(){
-        var slug=$(this).find(':selected').data('slug')||'';
-        showAttr(slug);autoSEO();
-    });
+    // Reveal the right attribute group as either the Category Type or the Sub Type
+    // changes, and refresh SEO on sub type change.
+    function currentSub(){return $('#sub_type_sel').find(':selected').data('slug')||'';}
+    function currentCat(){return $('#category_type_sel').find(':selected').data('en')||'';}
+    $('#sub_type_sel').on('change',function(){showAttr(currentSub(),currentCat());autoSEO();});
+    $('#category_type_sel').on('change',function(){showAttr(currentSub(),currentCat());});
     // Reflect the current selection on initial load (e.g. after a validation error
     // repopulates the form with old() input).
-    showAttr($('#sub_type_sel').find(':selected').data('slug')||'');
+    showAttr(currentSub(),currentCat());
 
     /* ══════════════════════════════════════════
        SEO AUTO-GENERATION
