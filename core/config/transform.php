@@ -57,6 +57,15 @@ return [
             'perfumes' => 'perfume',
         ],
         'default' => 'fashion',
+
+        /*
+        | Best-effort word lists for audit code A-27 (WARNING, never blocking): they only decide
+        | whether a PIN in `orphan_sub_type_parents` deserves a second look, never where anything
+        | is placed. A name matching both lists (or neither) is treated as ambiguous and is not
+        | reported. Substring match on the lower-cased EN and AR names.
+        */
+        'watch_sub_type_name_hints' => ['watch', 'automatic', 'chronograph', 'chronometer', 'diver', 'pilot', 'gmt', 'tourbillon', 'skeleton', 'moonphase', 'quartz', 'mechanical', 'ساعة', 'ساعات', 'اوتوماتيك', 'أوتوماتيك'],
+        'fashion_sub_type_name_hints' => ['bag', 'wallet', 'perfume', 'cap', 'belt', 'sunglass', 'scarf', 'keychain', 'cufflink', 'jewel', 'bracelet', 'shoe', 'حقيبة', 'حقائب', 'محفظة', 'عطر', 'حزام', 'أحزمة', 'نظارة', 'مجوهرات'],
     ],
 
     /*
@@ -68,9 +77,15 @@ return [
     // Pinned 2026-09-06 (developer decision after rehearsal #1, audit A-15): watch-natured
     // sub types under Watches (1), the rest under Fashion (2). A sub type that gains products
     // later is placed by its real (type, sub type) pair and this map stops mattering for it.
-    // Pinned 2026-09-08 (milestone audit): 28 Automatic is watch-natured and goes under Watches;
-    // 29 and 30 stay Fashion. Audit code A-26 BLOCKS the run for any orphan sub type missing from
-    // this map — a new sub type is never placed by the majority rule, which cannot read the name.
+    // Corrected 2026-09-08 against the fresh production dump (rehearsal #2). The team's only new
+    // sub type is id 29 `Automatic` (اوتوماتيك) — a watch complication, so it is pinned to Watches.
+    // The earlier 28/30 pins were written against a previous session's placeholder ids and pointed
+    // at sub types that do not exist (28 was created and deleted by the team; 30 was never used);
+    // they are gone, and A-26 now BLOCKS on such a phantom pin instead of ignoring it.
+    // A-26 also BLOCKS any orphan sub type missing from this map — a new sub type is never placed
+    // by the majority rule, which cannot read what the name means (and whose answer flipped from
+    // Fashion to Watches between rehearsals #1 and #2). A-27 warns when a pin looks inconsistent
+    // with the sub type's name.
     'orphan_sub_type_parents' => [
         1 => 1,   // Diver
         3 => 1,   // Dress
@@ -92,9 +107,7 @@ return [
         25 => 2,  // Ties
         26 => 2,  // Cufflinks
         27 => 2,  // Pen
-        28 => 1,  // Automatic  — watch-natured (decision 2026-09-08; arrives with the Saturday dump)
-        29 => 2,  // (Fashion — decision 2026-09-08; re-confirm the name against the fresh dump)
-        30 => 2,  // (Fashion — decision 2026-09-08; re-confirm the name against the fresh dump)
+        29 => 1,  // Automatic (اوتوماتيك) — watch complication, verified in the 2026-09-08 dump
     ],
 
     // Hidden root that holds the dormant legacy `categories` tree (step 17).
