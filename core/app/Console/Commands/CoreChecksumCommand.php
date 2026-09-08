@@ -5,19 +5,30 @@ namespace App\Console\Commands;
 use App\Transform\LegacySource;
 use App\Transform\Row;
 use Illuminate\Console\Command;
+use Illuminate\Database\Connection;
 use Illuminate\Support\Facades\DB;
 
 /**
- * core:checksum — CHECKSUM TABLE over the legacy set, the clean set, or both, plus one
- * combined digest. Read-only. Used by the rehearsal protocol to prove that a dry-run
- * (or a real run) left every legacy table byte-identical and that a second real run
- * left every clean table byte-identical.
+ * core:checksum — a content digest of the legacy set, the clean set, or both, plus one combined
+ * sha1. Read-only. The rehearsal protocol uses it to prove that a run left every legacy table
+ * byte-identical and that a second real run left every clean table byte-identical.
+ *
+ * Two methods, chosen per table:
+ *
+ *  • `CHECKSUM TABLE` for ordinary tables — fast, and stable for them.
+ *  • an explicit column digest for tables carrying a GENERATED (virtual) column.
+ *
+ * The second method exists because rehearsal #2 caught `CHECKSUM TABLE` returning two different
+ * values for `storefront_category_product` while its 928 rows were provably identical column by
+ * column: the table gained a virtual column in M1d (`primary_guard`), and MariaDB's row-image
+ * checksum follows the physical layout, which a rolled-back insert (every test suite run) leaves
+ * different. A digest that reads the real columns in primary-key order cannot drift that way.
  */
 final class CoreChecksumCommand extends Command
 {
     protected $signature = 'core:checksum {--set=legacy : legacy | clean | all} {--json : machine-readable output}';
 
-    protected $description = 'CHECKSUM TABLE digest of the legacy and/or clean tables (read-only)';
+    protected $description = 'Content digest of the legacy and/or clean tables (read-only)';
 
     /** @var list<string> */
     public const CLEAN_TABLES = [
@@ -58,7 +69,7 @@ final class CoreChecksumCommand extends Command
             return self::SUCCESS;
         }
 
-        $this->table(['table', 'rows', 'checksum'], array_map(fn (array $r) => [$r['table'], $r['rows'], $r['checksum']], $result['tables']));
+        $this->table(['table', 'rows', 'checksum', 'method'], array_map(fn (array $r) => [$r['table'], $r['rows'], $r['checksum'], $r['method']], $result['tables']));
         $this->info("combined sha1 ({$set}, ".count($tables).' tables): '.$result['digest']);
 
         return self::SUCCESS;
@@ -66,21 +77,123 @@ final class CoreChecksumCommand extends Command
 
     /**
      * @param  list<string>  $tables
-     * @return array{digest: string, tables: list<array{table: string, rows: int, checksum: string}>}
+     * @return array{digest: string, tables: list<array{table: string, rows: int, checksum: string, method: string}>}
      */
     public static function compute(array $tables): array
     {
         $db = DB::connection();
+        $generated = self::generatedColumnTables($db, $tables);
         $rows = [];
         $parts = [];
         foreach ($tables as $table) {
-            $row = $db->selectOne('CHECKSUM TABLE `'.str_replace('`', '', $table).'`');
-            $checksum = is_object($row) && property_exists($row, 'Checksum') && is_scalar($row->Checksum) ? (string) $row->Checksum : 'n/a';
+            $name = str_replace('`', '', $table);
             $count = Row::int((object) ['n' => $db->table($table)->count()], 'n');
-            $rows[] = ['table' => $table, 'rows' => $count, 'checksum' => $checksum];
+            if (isset($generated[$name])) {
+                $checksum = 'md5:'.self::columnDigest($db, $name, $generated[$name]);
+                $method = 'columns';
+            } else {
+                $row = $db->selectOne('CHECKSUM TABLE `'.$name.'`');
+                $checksum = is_object($row) && property_exists($row, 'Checksum') && is_scalar($row->Checksum) ? (string) $row->Checksum : 'n/a';
+                $method = 'CHECKSUM TABLE';
+            }
+            $rows[] = ['table' => $table, 'rows' => $count, 'checksum' => $checksum, 'method' => $method];
             $parts[] = "$table:$count:$checksum";
         }
 
         return ['digest' => sha1(implode('|', $parts)), 'tables' => $rows];
+    }
+
+    /**
+     * Tables (of the given set) that carry at least one GENERATED column, mapped to their REAL
+     * columns in ordinal order. A generated column is a pure function of the real ones, so
+     * leaving it out loses nothing and removes the storage-layout sensitivity.
+     *
+     * @param  list<string>  $tables
+     * @return array<string, list<string>>
+     */
+    private static function generatedColumnTables(Connection $db, array $tables): array
+    {
+        if ($tables === []) {
+            return [];
+        }
+        $names = array_values(array_unique(array_map(fn (string $t) => str_replace('`', '', $t), $tables)));
+        $rows = $db->table('information_schema.COLUMNS')
+            ->select(['TABLE_NAME', 'COLUMN_NAME', 'EXTRA', 'ORDINAL_POSITION'])
+            ->where('TABLE_SCHEMA', $db->getDatabaseName())
+            ->whereIn('TABLE_NAME', $names)
+            ->orderBy('TABLE_NAME')->orderBy('ORDINAL_POSITION')
+            ->get();
+
+        $real = [];
+        $hasGenerated = [];
+        foreach ($rows as $row) {
+            $table = Row::str($row, 'TABLE_NAME');
+            $column = Row::str($row, 'COLUMN_NAME');
+            if (str_contains(strtoupper(Row::nstr($row, 'EXTRA') ?? ''), 'GENERATED')) {
+                $hasGenerated[$table] = true;
+
+                continue;
+            }
+            $real[$table][] = $column;
+        }
+
+        $out = [];
+        foreach (array_keys($hasGenerated) as $table) {
+            $out[$table] = $real[$table] ?? [];
+        }
+
+        return $out;
+    }
+
+    /**
+     * md5 of every row's real columns, in primary-key order (falling back to every column when a
+     * table has no primary key). Streamed with a cursor and hashed incrementally, so the digest
+     * costs one pass and no memory, and does not depend on GROUP_CONCAT limits.
+     *
+     * @param  list<string>  $columns
+     */
+    private static function columnDigest(Connection $db, string $table, array $columns): string
+    {
+        if ($columns === []) {
+            return md5('');
+        }
+        $order = self::primaryKeyColumns($db, $table);
+        $order = $order === [] ? $columns : $order;
+
+        $query = $db->table($table)->select($columns);
+        foreach ($order as $column) {
+            $query->orderBy($column);
+        }
+
+        $hash = hash_init('md5');
+        foreach ($query->cursor() as $row) {
+            $values = [];
+            foreach ($columns as $column) {
+                $value = property_exists($row, $column) ? $row->{$column} : null;
+                $values[] = $value === null ? "\0NULL" : (is_scalar($value) ? (string) $value : '?');
+            }
+            hash_update($hash, implode("\x1f", $values)."\x1e");
+        }
+
+        return hash_final($hash);
+    }
+
+    /** @return list<string> */
+    private static function primaryKeyColumns(Connection $db, string $table): array
+    {
+        $rows = $db->table('information_schema.STATISTICS')
+            ->select(['COLUMN_NAME'])
+            ->where('TABLE_SCHEMA', $db->getDatabaseName())
+            ->where('TABLE_NAME', $table)
+            ->where('INDEX_NAME', 'PRIMARY')
+            ->orderBy('SEQ_IN_INDEX')
+            ->get();
+
+        $out = [];
+        foreach ($rows as $row) {
+            $out[] = Row::str($row, 'COLUMN_NAME');
+        }
+
+        return $out;
     }
 }

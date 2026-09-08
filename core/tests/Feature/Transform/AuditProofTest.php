@@ -195,15 +195,46 @@ it('re-verification 2026-09-07: A-19 fires on a fresh injection of my own (gende
  * does not exist is caught as well.
  */
 
+/** @param  array<int, string>  $subTypes  id => EN/AR name */
+function injectOrphanSubTypes(array $subTypes): void
+{
+    shadow('sub_types', function (callable $q) use ($subTypes): void {
+        foreach (array_keys($subTypes) as $id) {
+            $q()->insert(['id' => $id, 'image' => null, 'created_at' => now(), 'updated_at' => now()]);
+        }
+    });
+    shadow('sub_type_translations', function (callable $q) use ($subTypes): void {
+        foreach ($subTypes as $id => $name) {
+            $q()->insert(['locale' => 'en', 'sub_type_id' => $id, 'sub_type_name' => $name]);
+            $q()->insert(['locale' => 'ar', 'sub_type_id' => $id, 'sub_type_name' => $name]);
+        }
+    });
+}
+
 function injectOrphanSubType(int $id, string $name): void
 {
-    shadow('sub_types', function (callable $q) use ($id): void {
-        $q()->insert(['id' => $id, 'image' => null, 'created_at' => now(), 'updated_at' => now()]);
-    });
-    shadow('sub_type_translations', function (callable $q) use ($id, $name): void {
-        $q()->insert(['locale' => 'en', 'sub_type_id' => $id, 'sub_type_name' => $name]);
-        $q()->insert(['locale' => 'ar', 'sub_type_id' => $id, 'sub_type_name' => $name]);
-    });
+    injectOrphanSubTypes([$id => $name]);
+}
+
+/**
+ * The category type the majority rule would guess right now: the one carrying the most DISTINCT
+ * sub types among products. Derived, never hard-coded — the answer flipped from Fashion to
+ * Watches between rehearsals #1 and #2 as the team added watches, and a literal here would have
+ * turned this proof into a data-dependent flake.
+ */
+function majorityCategoryTypeName(): string
+{
+    $rows = DB::connection('legacy')->table('products')
+        ->selectRaw('category_type_id, COUNT(DISTINCT sub_type_id) AS n')
+        ->whereNotNull('category_type_id')->whereNotNull('sub_type_id')
+        ->groupBy('category_type_id')->orderByDesc('n')->orderBy('category_type_id')
+        ->first();
+    $id = $rows === null ? 0 : Row::int($rows, 'category_type_id');
+
+    $name = DB::connection('legacy')->table('category_type_translations')
+        ->where('category_type_id', $id)->where('locale', 'en')->value('category_type_name');
+
+    return is_string($name) ? $name : '';
 }
 
 it('A-26 BLOCKS on a new sub type that no pin covers, naming it and the category type the majority rule would have guessed', function () {
@@ -220,7 +251,59 @@ it('A-26 BLOCKS on a new sub type that no pin covers, naming it and the category
         ->and($details)->toContain('sub_types:9101')
         ->and($details)->toContain('Automatic')
         ->and($details)->toContain('no pin')
-        ->and($details)->toContain('Fashion');                   // the silent fallback it prevents
+        ->and($details)->toContain(majorityCategoryTypeName());  // the silent fallback it prevents, whichever it is today
+});
+
+it('A-26 BLOCKS on a pin whose sub type does not exist in legacy (the rehearsal #2 phantom pins)', function () {
+    expect(finding(audit(), 'A-26')->count())->toBe(0);
+
+    $pins = config('transform.orphan_sub_type_parents');
+    config(['transform.orphan_sub_type_parents' => (is_array($pins) ? $pins : []) + [9401 => 1, 9402 => 2]]);
+
+    $f = finding(audit(), 'A-26');
+    $details = implode(' | ', array_map(fn (array $row) => $row['entity'].':'.$row['id'].':'.$row['detail'], $f->rows));
+
+    expect($f->count())->toBe(2)
+        ->and($f->blocks())->toBeTrue()
+        ->and($details)->toContain('config:9401')
+        ->and($details)->toContain('does not exist in legacy')
+        ->and($details)->toContain('delete the pin');
+});
+
+it('A-26 and A-27 stay quiet on the corrected pin map', function () {
+    $report = audit();
+
+    expect(finding($report, 'A-26')->count())->toBe(0)
+        ->and(finding($report, 'A-26')->blocks())->toBeFalse()
+        ->and(finding($report, 'A-27')->count())->toBe(0);
+
+    // …and the pin that rehearsal #2 corrected is the one in force: Automatic under Watches.
+    $note = finding($report, 'A-26')->note;
+    $automatic = DB::connection('legacy')->table('sub_type_translations')->where('locale', 'en')->where('sub_type_name', 'Automatic')->value('sub_type_id');
+    if (is_int($automatic)) {
+        expect($note)->toContain($automatic.' [Automatic] → 1 [Watches]');
+    }
+});
+
+it('A-27 warns (without blocking) when a pin contradicts the sub type name, in either direction', function () {
+    $pins = config('transform.orphan_sub_type_parents');
+    $pins = is_array($pins) ? $pins : [];
+
+    injectOrphanSubTypes([9501 => 'Chronograph Automatic', 9502 => 'Leather Wallet']);   // one reads as a watch, one as fashion
+    config(['transform.orphan_sub_type_parents' => $pins + [9501 => 2, 9502 => 1]]);   // both pinned the wrong way
+
+    $f = finding(audit(), 'A-27');
+    $details = implode(' | ', array_map(fn (array $row) => $row['entity'].':'.$row['id'].':'.$row['detail'], $f->rows));
+
+    expect($f->count())->toBe(2)
+        ->and($f->blocking)->toBeFalse()
+        ->and($f->blocks())->toBeFalse()                         // a warning never stops a run
+        ->and($details)->toContain('reads as a WATCH sub type but is pinned to category_type 2')
+        ->and($details)->toContain('reads as a FASHION sub type but is pinned to category_type 1');
+
+    // The same names pinned the right way round produce nothing.
+    config(['transform.orphan_sub_type_parents' => $pins + [9501 => 1, 9502 => 2]]);
+    expect(finding(audit(), 'A-27')->count())->toBe(0);
 });
 
 it('A-26 goes quiet once the sub type is pinned, and the pin is echoed in the note', function () {
@@ -246,16 +329,21 @@ it('A-26 catches a pin that points at a category type which does not exist', fun
         ->and($f->rows[0]['detail'])->toContain('pinned to category_type 4242, which does not exist');
 });
 
-it('the real Saturday rows are already pinned: 28 → Watches, 29 and 30 → Fashion', function () {
+it('every pin in the map names a sub type that exists, and the real Automatic row is pinned to Watches', function () {
     $pins = config('transform.orphan_sub_type_parents');
     $pins = is_array($pins) ? $pins : [];
+    $existing = DB::connection('legacy')->table('sub_types')->pluck('id')->map(fn (mixed $v) => (int) (is_numeric($v) ? $v : 0))->all();
 
-    expect($pins[28] ?? null)->toBe(1)
-        ->and($pins[29] ?? null)->toBe(2)
-        ->and($pins[30] ?? null)->toBe(2);
+    expect($pins)->not->toBeEmpty();
+    foreach (array_keys($pins) as $subId) {
+        expect((int) $subId)->toBeIn($existing);                 // no phantom pins (rehearsal #2)
+    }
 
-    // …and with those rows present but unpinned, A-26 would have blocked the rehearsal.
-    injectOrphanSubType(28, 'Automatic');
-    config(['transform.orphan_sub_type_parents' => array_diff_key($pins, [28 => null])]);
+    $automatic = DB::connection('legacy')->table('sub_type_translations')->where('locale', 'en')->where('sub_type_name', 'Automatic')->value('sub_type_id');
+    $automatic = is_int($automatic) ? $automatic : 0;
+    expect($pins[$automatic] ?? null)->toBe(1);                  // watch complication → Watches
+
+    // …and with that row present but unpinned, A-26 blocks the rehearsal.
+    config(['transform.orphan_sub_type_parents' => array_diff_key($pins, [$automatic => null])]);
     expect(finding(audit(), 'A-26')->blocks())->toBeTrue();
-});
+})->skip(fn () => DB::connection('legacy')->table('sub_type_translations')->where('locale', 'en')->where('sub_type_name', 'Automatic')->value('sub_type_id') === null, 'no Automatic sub type in this dump');

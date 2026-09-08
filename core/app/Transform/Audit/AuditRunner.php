@@ -91,6 +91,7 @@ final class AuditRunner
         $this->a24($r);
         $this->a25($r);
         $this->a26($r);
+        $this->a27($r);
         $this->extras($r);
         $this->x07($r);
 
@@ -350,7 +351,7 @@ final class AuditRunner
             }
             $override = $overrides[$id] ?? null;
             $target = is_int($override) ? $override : $majority;
-            $f->add('sub_types', $id, sprintf('[%s] has no products → will sit under category_type %s [%s] (%s)', $subNames[$id]['en'] ?? '', var_export($target, true), $target === null ? '' : ($typeNames[$target]['en'] ?? ''), is_int($override) ? 'config override' : 'majority rule'));
+            $f->add('sub_types', $id, sprintf('%s → category_type %s [%s] | [%s] has no products', is_int($override) ? 'PINNED BY CONFIG' : 'NO PIN, MAJORITY RULE GUESSED', var_export($target, true), $target === null ? '' : ($typeNames[$target]['en'] ?? ''), $subNames[$id]['en'] ?? ''));
         }
         $f->note = 'Majority rule = the category type with the most DISTINCT sub types among products ('.implode(', ', array_map(fn (int $t, int $n) => "type $t: $n sub types", array_keys($perType), array_values($perType))).'). Check every orphan row: the rule is blind to what the sub type NAME means.';
     }
@@ -557,9 +558,22 @@ final class AuditRunner
             }
         }
 
-        $pins = [];
+        $existingSubTypes = [];
         foreach ($this->legacy->table('sub_types')->select(['id'])->orderBy('id')->get() as $row) {
-            $id = Row::int($row, 'id');
+            $existingSubTypes[Row::int($row, 'id')] = true;
+        }
+
+        // A pin for a sub type that is not in legacy at all: the id was never used, or the team
+        // deleted the row. Either way the pin is a stale assumption about production, which is
+        // exactly how rehearsal #2 found `Automatic` filed under Fashion. Loud, not silent.
+        foreach ($overrides as $subId => $typeId) {
+            if (! isset($existingSubTypes[$subId])) {
+                $f->add('config', $subId, sprintf('transform.orphan_sub_type_parents pins sub_type %d → category_type %d, but sub_type %d does not exist in legacy — delete the pin (or fix its id)', $subId, $typeId, $subId));
+            }
+        }
+
+        $pins = [];
+        foreach (array_keys($existingSubTypes) as $id) {
             if (isset($used[$id])) {
                 continue;                                   // has products → placed by its real (type, sub type) pair
             }
@@ -579,6 +593,92 @@ final class AuditRunner
         }
 
         $f->note = 'Pins in force: '.($pins === [] ? 'none' : implode('; ', $pins)).'. A sub type that HAS products is placed by its real pair and needs no pin. Family is a separate map (config transform.family): a product under the Watches category type is family = watch whatever its sub type is called.';
+    }
+
+    /**
+     * A-27 (rehearsal #2, 2026-09-08) — WARNING, never blocking. A-26 proves every orphan is
+     * pinned; it cannot tell whether the pin is RIGHT. This reads the sub type's name against two
+     * word lists (config `transform.family.*_sub_type_name_hints`) and reports a pin that points
+     * the other way — the check that would have caught `Automatic → Fashion` on sight. A name that
+     * matches both lists, or neither, is ambiguous and is never reported: the heuristic only ever
+     * asks a human to look, and it decides nothing.
+     */
+    private function a27(AuditReport $r): void
+    {
+        $f = $r->add(new AuditFinding('A-27', 'pinned placement that disagrees with the sub type NAME (heuristic warning)', false, 'WARNING only — confirm the pin in config transform.orphan_sub_type_parents, or ignore if the name is misleading'));
+
+        $family = is_array($this->config['family'] ?? null) ? $this->config['family'] : [];
+        $watchWords = self::words($family['watch_sub_type_name_hints'] ?? null);
+        $fashionWords = self::words($family['fashion_sub_type_name_hints'] ?? null);
+        $watchTypeNames = self::words($family['watch_category_type_names'] ?? null);
+        if ($watchWords === [] && $fashionWords === []) {
+            $f->note = 'No name hints configured (transform.family.watch_sub_type_name_hints / fashion_sub_type_name_hints) — check skipped.';
+
+            return;
+        }
+
+        $subNames = $this->names('sub_type_translations', 'sub_type_id', 'sub_type_name');
+        $typeNames = $this->names('category_type_translations', 'category_type_id', 'category_type_name');
+        /** @var array<int, int> $overrides */
+        $overrides = [];
+        foreach (is_array($this->config['orphan_sub_type_parents'] ?? null) ? $this->config['orphan_sub_type_parents'] : [] as $sub => $type) {
+            if (is_numeric($sub) && is_int($type)) {
+                $overrides[(int) $sub] = $type;
+            }
+        }
+
+        $checked = 0;
+        foreach ($overrides as $subId => $typeId) {
+            $names = $subNames[$subId] ?? null;
+            if ($names === null) {
+                continue;                                   // phantom pin — A-26 owns that finding
+            }
+            $haystack = mb_strtolower(trim(($names['en'] ?? '').' '.($names['ar'] ?? '')));
+            if ($haystack === '') {
+                continue;
+            }
+            $looksWatch = self::matchesAny($haystack, $watchWords);
+            $looksFashion = self::matchesAny($haystack, $fashionWords);
+            if ($looksWatch === $looksFashion) {
+                continue;                                   // ambiguous or unknown: say nothing
+            }
+            $checked++;
+            $targetIsWatch = in_array(mb_strtolower(trim($typeNames[$typeId]['en'] ?? '')), $watchTypeNames, true);
+            if ($looksWatch && ! $targetIsWatch) {
+                $f->add('sub_types', $subId, sprintf('[%s] reads as a WATCH sub type but is pinned to category_type %d [%s]', trim($names['en'] ?? ''), $typeId, $typeNames[$typeId]['en'] ?? ''));
+            } elseif ($looksFashion && $targetIsWatch) {
+                $f->add('sub_types', $subId, sprintf('[%s] reads as a FASHION sub type but is pinned to category_type %d [%s]', trim($names['en'] ?? ''), $typeId, $typeNames[$typeId]['en'] ?? ''));
+            }
+        }
+
+        $f->note = sprintf('Heuristic, non-blocking: %d of %d pins had a name clear enough to judge; the rest were ambiguous and left alone. Word lists live in config transform.family.{watch,fashion}_sub_type_name_hints.', $checked, count($overrides));
+    }
+
+    /**
+     * @return list<string>
+     */
+    private static function words(mixed $value): array
+    {
+        $out = [];
+        foreach (is_array($value) ? $value : [] as $word) {
+            if (is_string($word) && trim($word) !== '') {
+                $out[] = mb_strtolower(trim($word));
+            }
+        }
+
+        return $out;
+    }
+
+    /** @param  list<string>  $words */
+    private static function matchesAny(string $haystack, array $words): bool
+    {
+        foreach ($words as $word) {
+            if (str_contains($haystack, $word)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function extras(AuditReport $r): void

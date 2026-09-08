@@ -58,6 +58,24 @@ function productsIn(int $nodeId): array
     return array_values(DB::table('storefront_category_product')->where('storefront_category_id', $nodeId)->orderBy('product_id')->pluck('product_id')->map(fn (mixed $v) => (int) (is_numeric($v) ? $v : 0))->all());
 }
 
+/**
+ * How many nodes the rule MUST light up, derived from legacy rather than hard-coded: every
+ * (category type, sub type) pair that carries a product, plus every category type that carries
+ * one. Hard-coding this broke on the first fresh dump (rehearsal #2: 9 became 13), which hid the
+ * assertion instead of testing it.
+ */
+function expectedVisibleNodeCount(): int
+{
+    $pairs = DB::connection('legacy')->table('products')
+        ->whereNotNull('category_type_id')->whereNotNull('sub_type_id')
+        ->distinct()->count(DB::raw('CONCAT(category_type_id, ":", sub_type_id)'));
+    $types = DB::connection('legacy')->table('products')
+        ->whereNotNull('category_type_id')
+        ->distinct()->count('category_type_id');
+
+    return $types + $pairs;
+}
+
 it('hides zero-product nodes and shows them the moment a visible product is placed there', function () {
     transformForVisibility();
 
@@ -72,7 +90,7 @@ it('hides zero-product nodes and shows them the moment a visible product is plac
         ->and($visible)->toContain($chronograph)
         ->and($visible)->not->toContain($diver)
         ->and($visible)->not->toContain($legacyRoot)
-        ->and(count($visible))->toBe(2 + 7);      // 2 category types + the 7 (type, sub type) pairs with products
+        ->and(count($visible))->toBe(expectedVisibleNodeCount());   // every populated category type + every populated pair, from the data
 
     $productId = productsIn($chronograph)[0];
     DB::table('storefront_category_product')->insert([
