@@ -197,11 +197,16 @@ final class CompatProducts
         foreach ($ids as $id) {
             $out[$id] = ['type' => null, 'sub' => null];
         }
-        $rows = DB::table('storefront_category_product')
-            ->select(['product_id', 'storefront_category_id', 'is_primary'])
-            ->where('storefront_id', $this->storefrontId)
-            ->whereIn('product_id', $ids)
-            ->orderBy('storefront_category_id')
+        // Deterministic order (milestone audit 🔴-2): primary rows first, then the deepest node,
+        // then the lowest node id. M1d guarantees at most one primary per product, so the first
+        // depth-≥2 row this loop sees IS the primary; the tie-breaks only matter for legacy data
+        // that predates the constraint.
+        $rows = DB::table('storefront_category_product as scp')
+            ->join('storefront_categories as c', 'c.id', '=', 'scp.storefront_category_id')
+            ->select(['scp.product_id', 'scp.storefront_category_id', 'scp.is_primary'])
+            ->where('scp.storefront_id', $this->storefrontId)
+            ->whereIn('scp.product_id', $ids)
+            ->orderByDesc('scp.is_primary')->orderByDesc('c.depth')->orderBy('c.id')
             ->get();
         foreach ($rows as $r) {
             $node = $categories->node(Row::int($r, 'storefront_category_id'));

@@ -15,6 +15,20 @@ use RuntimeException;
  * category-type node row is_primary = 0; products with neither → A-18 (unplaced).
  * Existing placements that no longer match legacy are NEVER deleted (additive
  * transform) — they are counted and listed as `stale_placements`.
+ *
+ * ONE PRIMARY PER PRODUCT (milestone audit 🔴-2, 2026-09-08). A product whose legacy sub
+ * type changed used to keep the old primary row AND gain a new one, so the emitted
+ * category depended on row order. The step now runs in two phases:
+ *
+ *   1. Read the legacy (product → desired primary node) map, then DEMOTE every existing
+ *      primary row that disagrees with it (is_primary = 0; the row itself survives).
+ *   2. Write the placements.
+ *
+ * The order matters twice over. `storefront_category_product` now carries a second unique
+ * key (`scp_one_primary_unique`, M1d): if a stale primary were still flagged when the new
+ * primary row is inserted, MariaDB's `INSERT … ON DUPLICATE KEY UPDATE` would match THAT
+ * key and quietly update the wrong row. Demoting first leaves `scp_category_product_unique`
+ * as the only reachable conflict.
  */
 final class Step19Placements implements Step
 {
@@ -56,9 +70,24 @@ final class Step19Placements implements Step
             return $nodeCache[$key];
         };
 
+        // Phase 1 — the primary each product SHOULD have, straight from legacy.
+        /** @var array<int, int> product id => node id */
+        $desiredPrimary = [];
+        $ctx->chunkLegacy('products', ['id', 'category_type_id', 'sub_type_id'], function (Collection $rows) use ($resolve, &$desiredPrimary): void {
+            foreach ($rows as $row) {
+                $typeId = Row::nint($row, 'category_type_id');
+                $subId = Row::nint($row, 'sub_type_id');
+                if ($typeId !== null && $subId !== null) {
+                    $desiredPrimary[Row::int($row, 'id')] = $resolve('sub_type', $subId, $typeId);
+                }
+            }
+        });
+        $this->demoteDisagreeingPrimaries($ctx, $result, $desiredPrimary);
+
         /** @var array<string, true> desired "category:product" */
         $desired = [];
 
+        // Phase 2 — write the placements.
         $ctx->chunkLegacy('products', ['id', 'category_type_id', 'sub_type_id', 'created_at', 'updated_at'], function (Collection $rows) use ($ctx, $result, $resolve, &$desired): void {
             $out = [];
             foreach ($rows as $row) {
@@ -102,6 +131,38 @@ final class Step19Placements implements Step
         }
         if ($stale > 0) {
             $result->count('stale_placements', $stale);
+        }
+    }
+
+    /**
+     * Clear is_primary on every row that is flagged primary but is not the product's desired
+     * primary node (including products that lost their sub type entirely). The rows survive —
+     * only the flag moves, so the transform stays additive.
+     *
+     * @param  array<int, int>  $desiredPrimary  product id => node id
+     */
+    private function demoteDisagreeingPrimaries(TransformContext $ctx, StepResult $result, array $desiredPrimary): void
+    {
+        $demote = [];
+        $rows = $ctx->db->table('storefront_category_product')
+            ->select(['id', 'product_id', 'storefront_category_id'])
+            ->where('storefront_id', $ctx->storefrontId)
+            ->where('is_primary', 1)
+            ->orderBy('id')
+            ->cursor();
+        foreach ($rows as $row) {
+            $productId = Row::int($row, 'product_id');
+            $nodeId = Row::int($row, 'storefront_category_id');
+            if (($desiredPrimary[$productId] ?? null) !== $nodeId) {
+                $demote[] = Row::int($row, 'id');
+                $ctx->diff('PRIMARY', 'storefront_category_product', $productId, "node $nodeId was is_primary = 1", 'demoted to 0 — the product\'s legacy sub type points elsewhere now (row kept)');
+            }
+        }
+        foreach (array_chunk($demote, 500) as $chunk) {
+            $ctx->db->table('storefront_category_product')->whereIn('id', $chunk)->update(['is_primary' => 0]);
+        }
+        if ($demote !== []) {
+            $result->count('primary_demoted', count($demote));
         }
     }
 

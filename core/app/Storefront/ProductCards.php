@@ -215,22 +215,25 @@ final class ProductCards
         if ($ids === []) {
             return $out;
         }
-        $rows = DB::table('storefront_category_product')
-            ->select(['product_id', 'storefront_category_id', 'is_primary'])
-            ->where('storefront_id', $this->ctx->id())
-            ->whereIn('product_id', $ids)
-            ->orderByDesc('is_primary')->orderBy('storefront_category_id')
+        // Deterministic order (milestone audit 🔴-2): primary first, then deepest, then lowest id —
+        // the same rule the compat layer and the transform use, so all three name one category.
+        $rows = DB::table('storefront_category_product as scp')
+            ->join('storefront_categories as c', 'c.id', '=', 'scp.storefront_category_id')
+            ->select(['scp.product_id', 'scp.storefront_category_id'])
+            ->where('scp.storefront_id', $this->ctx->id())
+            ->whereIn('scp.product_id', $ids)
+            ->orderByDesc('scp.is_primary')->orderByDesc('c.depth')->orderBy('c.id')
             ->get();
         foreach ($rows as $r) {
             $pid = Row::int($r, 'product_id');
+            if (isset($out[$pid])) {
+                continue;                                   // the first row per product already won
+            }
             $node = $this->tree->node(Row::int($r, 'storefront_category_id'));
             if ($node === null) {
                 continue;                                   // invisible node: never a public reference
             }
-            $current = isset($out[$pid]) ? $this->tree->node($out[$pid]) : null;
-            if ($current === null || (Row::bool($r, 'is_primary') && Val::int($node, 'depth') > Val::int($current, 'depth'))) {
-                $out[$pid] = Val::int($node, 'id');
-            }
+            $out[$pid] = Val::int($node, 'id');
         }
 
         return $out;
