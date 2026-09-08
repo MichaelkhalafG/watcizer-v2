@@ -90,6 +90,7 @@ final class AuditRunner
         $this->a23($r);
         $this->a24($r);
         $this->a25($r);
+        $this->a26($r);
         $this->extras($r);
         $this->x07($r);
 
@@ -504,6 +505,82 @@ final class AuditRunner
     }
 
     /** Findings the checklist did not anticipate — added by rehearsal #1. */
+    /**
+     * A-26 (milestone audit, 2026-09-08) — a sub type with no products has nothing in the data
+     * that says where it belongs, so the majority rule guesses: it files the sub type under the
+     * category type that carries the most distinct sub types, which on this catalog is Fashion.
+     * A watch-natured sub type added by the team (the real 28 "Automatic" is exactly this case)
+     * would therefore land under Fashion silently. Every orphan must be pinned in
+     * config `transform.orphan_sub_type_parents`, and this code BLOCKS the run until it is.
+     */
+    private function a26(AuditReport $r): void
+    {
+        $f = $r->add(new AuditFinding(
+            'A-26',
+            'sub types with no products that are NOT pinned in config transform.orphan_sub_type_parents',
+            true,
+            'BLOCKS — pin each one (watch-natured → the Watches category type, otherwise Fashion). The majority rule is blind to what the name means and must never decide a new sub type.'
+        ));
+
+        $subNames = $this->names('sub_type_translations', 'sub_type_id', 'sub_type_name');
+        $typeNames = $this->names('category_type_translations', 'category_type_id', 'category_type_name');
+
+        $used = [];
+        $perType = [];
+        foreach ($this->products()->selectRaw('category_type_id, sub_type_id')->whereNotNull('sub_type_id')->distinct()->get() as $row) {
+            $sub = Row::int($row, 'sub_type_id');
+            $used[$sub] = true;
+            $type = Row::nint($row, 'category_type_id');
+            if ($type !== null) {
+                $perType[$type] = ($perType[$type] ?? 0) + 1;
+            }
+        }
+        $majority = null;
+        $best = -1;
+        foreach ($perType as $type => $n) {
+            if ($n > $best) {
+                $best = $n;
+                $majority = $type;
+            }
+        }
+
+        $types = [];
+        foreach ($this->legacy->table('category_types')->select(['id'])->orderBy('id')->get() as $row) {
+            $types[Row::int($row, 'id')] = true;
+        }
+
+        /** @var array<int, int> $overrides */
+        $overrides = [];
+        foreach (is_array($this->config['orphan_sub_type_parents'] ?? null) ? $this->config['orphan_sub_type_parents'] : [] as $sub => $type) {
+            if (is_numeric($sub) && is_int($type)) {
+                $overrides[(int) $sub] = $type;
+            }
+        }
+
+        $pins = [];
+        foreach ($this->legacy->table('sub_types')->select(['id'])->orderBy('id')->get() as $row) {
+            $id = Row::int($row, 'id');
+            if (isset($used[$id])) {
+                continue;                                   // has products → placed by its real (type, sub type) pair
+            }
+            $name = trim($subNames[$id]['en'] ?? '') !== '' ? $subNames[$id]['en'] : ($subNames[$id]['ar'] ?? '');
+            $pin = $overrides[$id] ?? null;
+            if ($pin === null) {
+                $f->add('sub_types', $id, sprintf('[%s] has no products and no pin — the majority rule would file it under category_type %s [%s]', $name, var_export($majority, true), $majority === null ? '' : ($typeNames[$majority]['en'] ?? '')));
+
+                continue;
+            }
+            if (! isset($types[$pin])) {
+                $f->add('sub_types', $id, sprintf('[%s] is pinned to category_type %d, which does not exist', $name, $pin));
+
+                continue;
+            }
+            $pins[] = sprintf('%d [%s] → %d [%s]', $id, $name, $pin, $typeNames[$pin]['en'] ?? '');
+        }
+
+        $f->note = 'Pins in force: '.($pins === [] ? 'none' : implode('; ', $pins)).'. A sub type that HAS products is placed by its real pair and needs no pin. Family is a separate map (config transform.family): a product under the Watches category type is family = watch whatever its sub type is called.';
+    }
+
     private function extras(AuditReport $r): void
     {
         $x1 = $r->add(new AuditFinding('X-01', 'product_images rows flagged is_cover = 1 (legacy meaning: first gallery upload, NOT the PDP cover)', false, 'flag dropped; the PDP cover stays products.image (step 9)'));

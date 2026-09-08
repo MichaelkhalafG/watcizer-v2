@@ -115,11 +115,7 @@ final class TransformContext
     /** Family of a product; falls back to the clean table when step 6 did not run in this process. */
     public function family(int $productId): string
     {
-        if ($this->families === []) {
-            foreach ($this->db->table('catalog_products')->select(['id', 'family'])->orderBy('id')->cursor() as $row) {
-                $this->families[Row::int($row, 'id')] = Row::str($row, 'family');
-            }
-        }
+        $this->primeFamilies();
 
         return $this->families[$productId] ?? throw new RuntimeException("No family known for product $productId — run step 6 first.");
     }
@@ -127,11 +123,25 @@ final class TransformContext
     /** @return array<int, string> */
     public function families(): array
     {
-        if ($this->families === []) {
-            $this->family(-1);
-        }
+        $this->primeFamilies();
 
         return $this->families;
+    }
+
+    /**
+     * Load the family of every clean product once. Priming used to go through family(-1), which
+     * threw for the sentinel id whenever step 6 had not run in the same process — so any
+     * `--only=` run that skipped step 6 crashed in the reconciliation (found 2026-09-08 while
+     * writing the one-primary regression test, which runs `--only=19`).
+     */
+    private function primeFamilies(): void
+    {
+        if ($this->families !== []) {
+            return;
+        }
+        foreach ($this->db->table('catalog_products')->select(['id', 'family'])->orderBy('id')->cursor() as $row) {
+            $this->families[Row::int($row, 'id')] = Row::str($row, 'family');
+        }
     }
 
     public function diff(string $code, string $entity, int|string $id, string $legacy, string $clean): void

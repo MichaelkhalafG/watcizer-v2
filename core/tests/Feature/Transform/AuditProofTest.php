@@ -187,3 +187,75 @@ it('re-verification 2026-09-07: A-19 fires on a fresh injection of my own (gende
         ->and($details)->toContain('color_band_product:')
         ->and($details)->toContain('duplicate × 2');
 });
+
+/*
+ * A-26 (milestone audit 2026-09-08) — a new sub type with no products must never be placed by the
+ * majority rule. The proof injects one into a shadow of `sub_types` (+ its translations) and shows
+ * the code fires and BLOCKS; pinning it in config silences the code; a pin to a category type that
+ * does not exist is caught as well.
+ */
+
+function injectOrphanSubType(int $id, string $name): void
+{
+    shadow('sub_types', function (callable $q) use ($id): void {
+        $q()->insert(['id' => $id, 'image' => null, 'created_at' => now(), 'updated_at' => now()]);
+    });
+    shadow('sub_type_translations', function (callable $q) use ($id, $name): void {
+        $q()->insert(['locale' => 'en', 'sub_type_id' => $id, 'sub_type_name' => $name]);
+        $q()->insert(['locale' => 'ar', 'sub_type_id' => $id, 'sub_type_name' => $name]);
+    });
+}
+
+it('A-26 BLOCKS on a new sub type that no pin covers, naming it and the category type the majority rule would have guessed', function () {
+    expect(finding(audit(), 'A-26')->count())->toBe(0);          // every orphan on today's data is pinned
+
+    injectOrphanSubType(9101, 'Automatic');
+
+    $f = finding(audit(), 'A-26');
+    $details = implode(' | ', array_map(fn (array $row) => $row['entity'].':'.$row['id'].':'.$row['detail'], $f->rows));
+
+    expect($f->count())->toBe(1)
+        ->and($f->blocking)->toBeTrue()
+        ->and($f->blocks())->toBeTrue()                          // a run would abort before writing anything
+        ->and($details)->toContain('sub_types:9101')
+        ->and($details)->toContain('Automatic')
+        ->and($details)->toContain('no pin')
+        ->and($details)->toContain('Fashion');                   // the silent fallback it prevents
+});
+
+it('A-26 goes quiet once the sub type is pinned, and the pin is echoed in the note', function () {
+    injectOrphanSubType(9102, 'Chronometer');
+    expect(finding(audit(), 'A-26')->count())->toBe(1);
+
+    $pins = config('transform.orphan_sub_type_parents');
+    config(['transform.orphan_sub_type_parents' => (is_array($pins) ? $pins : []) + [9102 => 1]]);
+
+    $f = finding(audit(), 'A-26');
+    expect($f->count())->toBe(0)
+        ->and($f->blocks())->toBeFalse()
+        ->and($f->note)->toContain('9102 [Chronometer] → 1 [Watches]');
+});
+
+it('A-26 catches a pin that points at a category type which does not exist', function () {
+    injectOrphanSubType(9103, 'Sandglass');
+    $pins = config('transform.orphan_sub_type_parents');
+    config(['transform.orphan_sub_type_parents' => (is_array($pins) ? $pins : []) + [9103 => 4242]]);
+
+    $f = finding(audit(), 'A-26');
+    expect($f->count())->toBe(1)
+        ->and($f->rows[0]['detail'])->toContain('pinned to category_type 4242, which does not exist');
+});
+
+it('the real Saturday rows are already pinned: 28 → Watches, 29 and 30 → Fashion', function () {
+    $pins = config('transform.orphan_sub_type_parents');
+    $pins = is_array($pins) ? $pins : [];
+
+    expect($pins[28] ?? null)->toBe(1)
+        ->and($pins[29] ?? null)->toBe(2)
+        ->and($pins[30] ?? null)->toBe(2);
+
+    // …and with those rows present but unpinned, A-26 would have blocked the rehearsal.
+    injectOrphanSubType(28, 'Automatic');
+    config(['transform.orphan_sub_type_parents' => array_diff_key($pins, [28 => null])]);
+    expect(finding(audit(), 'A-26')->blocks())->toBeTrue();
+});

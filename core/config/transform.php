@@ -68,6 +68,9 @@ return [
     // Pinned 2026-09-06 (developer decision after rehearsal #1, audit A-15): watch-natured
     // sub types under Watches (1), the rest under Fashion (2). A sub type that gains products
     // later is placed by its real (type, sub type) pair and this map stops mattering for it.
+    // Pinned 2026-09-08 (milestone audit): 28 Automatic is watch-natured and goes under Watches;
+    // 29 and 30 stay Fashion. Audit code A-26 BLOCKS the run for any orphan sub type missing from
+    // this map — a new sub type is never placed by the majority rule, which cannot read the name.
     'orphan_sub_type_parents' => [
         1 => 1,   // Diver
         3 => 1,   // Dress
@@ -89,6 +92,9 @@ return [
         25 => 2,  // Ties
         26 => 2,  // Cufflinks
         27 => 2,  // Pen
+        28 => 1,  // Automatic  — watch-natured (decision 2026-09-08; arrives with the Saturday dump)
+        29 => 2,  // (Fashion — decision 2026-09-08; re-confirm the name against the fresh dump)
+        30 => 2,  // (Fashion — decision 2026-09-08; re-confirm the name against the fresh dump)
     ],
 
     // Hidden root that holds the dormant legacy `categories` tree (step 17).

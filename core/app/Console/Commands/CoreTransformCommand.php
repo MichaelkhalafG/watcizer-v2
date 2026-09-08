@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Storefront\StorefrontCache;
 use App\Transform\Audit\AuditReport;
 use App\Transform\Audit\AuditRunner;
 use App\Transform\Config;
@@ -222,6 +223,7 @@ final class CoreTransformCommand extends Command
             }
             $this->error(get_class($e).': '.$e->getMessage());
             $this->line($e->getTraceAsString());
+            $this->bumpStorefrontCache($options, $ctx);
             $this->writeSummary($options, $startedAt, $report, $results, $reconciliation, $ctx, $auditMs, 'error: '.$e->getMessage());
 
             return 2;
@@ -235,6 +237,8 @@ final class CoreTransformCommand extends Command
             $this->info("legacy checksum identical before/after: $legacyAfter");
         }
 
+        $this->bumpStorefrontCache($options, $ctx);
+
         $inserted = array_sum(array_map(fn (StepResult $r) => $r->writes->inserted, $results));
         $updated = array_sum(array_map(fn (StepResult $r) => $r->writes->updated, $results));
         $this->info(sprintf('totals: inserted %d, updated %d, unchanged %d — %s', $inserted, $updated, array_sum(array_map(fn (StepResult $r) => $r->writes->unchanged, $results)), $inserted + $updated === 0 ? 'ZERO NET CHANGES (idempotent re-run)' : 'changes applied'));
@@ -243,6 +247,26 @@ final class CoreTransformCommand extends Command
         $this->writeSummary($options, $startedAt, $report, $results, $reconciliation, $ctx, $auditMs, $exit === self::SUCCESS ? ($options->dryRun ? 'dry-run ok' : 'ok') : 'failed');
 
         return $exit;
+    }
+
+    /**
+     * The transform is the only writer of the clean tables today, so it is also the only thing
+     * that can invalidate the read layer (milestone audit). One version bump per storefront
+     * retires every meta / tree / lookups / listing-count / product / sitemap key at once
+     * (StorefrontCache::INVALIDATION_MAP), the compat payloads included — otherwise a rehearsal
+     * or a switch-night run keeps serving the previous catalog for up to an hour.
+     *
+     * Every REAL run bumps, whatever the exit code: a run that failed its reconciliation, or
+     * threw half way, still committed the steps that ran, so the cached view is stale either way.
+     * A dry run rolls everything back and must NOT bump.
+     */
+    private function bumpStorefrontCache(TransformOptions $options, TransformContext $ctx): void
+    {
+        if ($options->dryRun) {
+            return;
+        }
+        $version = app(StorefrontCache::class)->flush($ctx->storefrontId);
+        $this->info(sprintf('storefront %d cache version bumped to v%d (meta, tree, lookups, counts, products, sitemaps, compat payloads)', $ctx->storefrontId, $version));
     }
 
     /** @param  array<string, mixed>  $config */
