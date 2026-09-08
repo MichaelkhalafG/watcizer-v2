@@ -21,6 +21,21 @@ final class ProductListing
 {
     public const SORTS = ['position', 'newest', 'price_asc', 'price_desc', 'rating', 'featured'];
 
+    /**
+     * Driving table + index per sort for the index-ordered page (review 🟠-5): storefront-wide
+     * listings and large subtrees (> `storefront.listing.indexed_subtree`) use it; small subtrees
+     * let the optimizer drive from the placement rows. Ordering columns follow the index (plus
+     * the implicit primary key), so the plan has no temp table and no filesort at any offset.
+     */
+    public const PLANS = [
+        'position' => 'sp:sp_list_sort_idx',
+        'price_asc' => 'sp:sp_list_price_idx',
+        'price_desc' => 'sp:sp_list_price_idx',
+        'featured' => 'sp:sp_featured_idx',
+        'newest' => 'p:cp_active_created_idx',
+        'rating' => 'p:cp_rating_idx',
+    ];
+
     public function __construct(
         private readonly StorefrontContext $ctx,
         private readonly StorefrontCache $cache,
@@ -62,8 +77,9 @@ final class ProductListing
             'q' => self::str($input['q'] ?? null),
         ];
 
-        $query = $this->cards->base();
-        $this->applyFilters($query, $filters, $node);
+        $indexed = self::indexed($node);
+        $query = $this->cards->base($indexed ? self::PLANS[$sort] : null);
+        $this->applyFilters($query, $filters, $node, $indexed);
         $hash = sha1(json_encode([$filters, $this->ctx->locale], JSON_THROW_ON_ERROR));
         $cap = config()->integer('storefront.listing.count_cap');
         $total = $this->cache->remember($this->ctx->id(), 'count', $hash, config()->integer('storefront.ttl.count'), function () use ($query, $cap): int {
@@ -110,13 +126,23 @@ final class ProductListing
     }
 
     /**
+     * Storefront-wide, or a subtree bigger than the threshold → index-ordered plan.
+     *
+     * @param  array<string, mixed>|null  $node
+     */
+    private static function indexed(?array $node): bool
+    {
+        return $node === null || Val::int($node, 'product_count') > config()->integer('storefront.listing.indexed_subtree');
+    }
+
+    /**
      * @param  array<string, mixed>  $f
      * @param  array<string, mixed>|null  $node
      */
-    private function applyFilters(Builder $query, array $f, ?array $node): void
+    private function applyFilters(Builder $query, array $f, ?array $node, bool $indexed): void
     {
         if ($node !== null) {
-            $this->cards->placedIn($query, $this->tree->subtreeIds(Val::int($node, 'id')));
+            $this->cards->placedIn($query, $this->tree->subtreeIds(Val::int($node, 'id')), $indexed);
         }
         /** @var list<string> $brands */
         $brands = $f['brand'];
@@ -171,7 +197,7 @@ final class ProductListing
         $terms = preg_split('/\s+/u', $q) ?: [];
         $tokens = [];
         foreach ($terms as $term) {
-            $term = (string) preg_replace('/[+\-<>()~*"@]/u', '', $term);
+            $term = (string) preg_replace('/[^\p{L}\p{N}]+/u', '', $term);   // letters and digits only: every FTS operator and wildcard is stripped
             if (mb_strlen($term) >= 3) {
                 $tokens[] = '+'.$term.'*';
             }
@@ -189,12 +215,14 @@ final class ProductListing
 
     private function applySort(Builder $query, string $sort): void
     {
+        // Tie-breakers are the primary key the index implicitly ends with (sp.id / p.id), so the
+        // order is total AND index-served. NULL ratings sort last under DESC.
         match ($sort) {
             'position' => $query->orderBy('sp.sort_order')->orderBy('sp.product_id'),
-            'price_asc' => $query->orderBy('sp.effective_price')->orderBy('sp.product_id'),
-            'price_desc' => $query->orderByDesc('sp.effective_price')->orderBy('sp.product_id'),
-            'rating' => $query->orderByRaw('p.rating_avg IS NULL')->orderByDesc('p.rating_avg')->orderByDesc('p.rating_count')->orderBy('sp.product_id'),
-            'featured' => $query->orderByDesc('sp.is_featured')->orderBy('sp.sort_order')->orderBy('sp.product_id'),
+            'price_asc' => $query->orderBy('sp.effective_price')->orderBy('sp.id'),
+            'price_desc' => $query->orderByDesc('sp.effective_price')->orderByDesc('sp.id'),
+            'rating' => $query->orderByDesc('p.rating_avg')->orderByDesc('p.id'),
+            'featured' => $query->orderByDesc('sp.is_featured')->orderBy('sp.sort_order')->orderBy('sp.id'),
             default => $query->orderByDesc('p.created_at')->orderByDesc('p.id'),
         };
     }
@@ -292,11 +320,14 @@ final class ProductListing
             return null;
         }
         $filters = ['category' => null, 'brand' => self::strList($input['brand'] ?? null), 'gender' => [], 'color' => [], 'material' => [], 'grade' => [], 'price_min' => null, 'price_max' => null, 'in_stock' => self::bool($input['in_stock'] ?? null), 'q' => null];
-        $query = $this->cards->base();
-        $this->applyFilters($query, $filters, $node);
         $sort = self::str($input['sort'] ?? null);
-        $this->applySort($query, in_array($sort, self::SORTS, true) ? $sort : ($node !== null ? 'position' : 'newest'));
-        $query->select(ProductCards::columns())->limit(24);
+        $sort = in_array($sort, self::SORTS, true) ? $sort : ($node !== null ? 'position' : 'newest');
+        $indexed = self::indexed($node) || ($input['force_indexed'] ?? false) === true;
+        $query = $this->cards->base($indexed ? self::PLANS[$sort] : null);
+        $this->applyFilters($query, $filters, $node, $indexed);
+        $this->applySort($query, $sort);
+        $offset = self::intIn($input['offset'] ?? null, 0, 1000000, 0);
+        $query->select(ProductCards::columns())->offset($offset)->limit(24);
 
         /** @var list<mixed> $bindings */
         $bindings = $query->getBindings();

@@ -10,7 +10,7 @@ use RuntimeException;
 
 /**
  * Step 5 — new_sizes → catalog_sizes (+translations). catalog_sizes has no other
- * source, so new_sizes.id is carried over unchanged (recorded in transform_id_map
+ * source, so new_sizes.id is carried over unchanged (recorded in core_transform_id_map
  * all the same); `sort` is the row's position within its `type` by legacy id.
  */
 final class Step05Sizes implements Step
@@ -27,7 +27,7 @@ final class Step05Sizes implements Step
 
     public function target(): string
     {
-        return 'catalog_sizes, catalog_size_translations, transform_id_map';
+        return 'catalog_sizes, catalog_size_translations, core_transform_id_map';
     }
 
     public function run(TransformContext $ctx, StepResult $result): void

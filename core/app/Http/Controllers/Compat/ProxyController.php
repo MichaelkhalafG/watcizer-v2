@@ -7,19 +7,20 @@ use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Http;
+use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 /**
- * Reverse proxy for every legacy `/api/*` path the core does not own yet (auth, offers, blogs,
- * wishlist, ratings, cart, orders, addresses, payment callback — CLEAN_CORE_STUDY §3.3 "proxy"
- * rows). Method, query string, headers and body pass through unchanged; `X-Forwarded-*` carry
- * the client address so the legacy host can rate-limit and log per client (its TrustProxies
- * must trust the core host for that — switch-night item).
+ * Reverse proxy for the legacy `/api/*` paths the core does not own yet (CLEAN_CORE_STUDY §3.3
+ * "proxy" rows, pinned in config `compat.proxy_paths`; any other path is 404 here and never
+ * reaches the legacy host). Method, query string, headers and body pass through unchanged;
+ * `X-Forwarded-*` carry the client address so the legacy host can rate-limit and log per
+ * client (its TrustProxies must trust the core host for that — switch-night item F-08).
  */
 class ProxyController extends Controller
 {
-    /** Response headers copied back verbatim (the rest is hop-by-hop or host-specific). */
+    /** Response headers copied back verbatim (plus every `access-control-*`); the rest is hop-by-hop or host-specific. */
     private const PASS_HEADERS = [
-        'content-type', 'cache-control', 'etag', 'expires', 'last-modified', 'location', 'vary',
+        'content-type', 'content-disposition', 'cache-control', 'etag', 'expires', 'last-modified', 'location', 'vary',
         'set-cookie', 'www-authenticate', 'retry-after', 'x-ratelimit-limit', 'x-ratelimit-remaining',
     ];
 
@@ -28,8 +29,13 @@ class ProxyController extends Controller
 
     public function __invoke(Request $request, string $path): Response
     {
+        $path = ltrim($path, '/');
+        if (! self::allowed($path)) {
+            throw new NotFoundHttpException('Not Found');
+        }
+
         $base = rtrim(config()->string('compat.legacy_base'), '/');
-        $url = $base.'/api/'.ltrim($path, '/');
+        $url = $base.'/api/'.$path;
         $query = $request->getQueryString();
         if ($query !== null && $query !== '') {
             $url .= '?'.$query;
@@ -64,13 +70,28 @@ class ProxyController extends Controller
 
         $response = new Response($upstream->body(), $upstream->status());
         foreach ($upstream->headers() as $name => $values) {
-            if (! in_array(strtolower($name), self::PASS_HEADERS, true) || ! is_array($values)) {
+            $lower = strtolower($name);
+            if ((! in_array($lower, self::PASS_HEADERS, true) && ! str_starts_with($lower, 'access-control-')) || ! is_array($values)) {
                 continue;
             }
-            $response->headers->set($name, array_values(array_filter($values, 'is_string')), strtolower($name) !== 'set-cookie');
+            $response->headers->set($name, array_values(array_filter($values, 'is_string')), $lower !== 'set-cookie');
         }
         $response->headers->set('X-Proxied-By', 'core');
 
         return $response;
+    }
+
+    /** The proxy whitelist: fnmatch patterns from config, matched against the path after /api/. */
+    public static function allowed(string $path): bool
+    {
+        /** @var list<string> $patterns */
+        $patterns = config()->array('compat.proxy_paths');
+        foreach ($patterns as $pattern) {
+            if (fnmatch($pattern, $path, FNM_PATHNAME) || $pattern === $path) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

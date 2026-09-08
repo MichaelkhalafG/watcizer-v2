@@ -10,8 +10,8 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Database\Query\JoinClause;
+use Illuminate\Support\Facades\DB;
 
 /**
  * `storefront_categories` — per-storefront tree with a materialised `path` ("/12/57/").
@@ -56,24 +56,52 @@ class StorefrontCategory extends Model implements TranslatableContract
      */
     public function scopeVisibleInMenu(Builder $query, int $storefrontId): Builder
     {
+        $ids = self::nodeIdsWithVisibleProducts($storefrontId);
+
         return $query
             ->where('storefront_categories.storefront_id', $storefrontId)
             ->where('storefront_categories.is_active', true)
             ->where('storefront_categories.show_in_menu', true)
-            ->whereExists(function (QueryBuilder $q) use ($storefrontId): void {
-                $q->selectRaw('1')
-                    ->from('storefront_category_product as scp')
-                    ->join('storefront_categories as node', 'node.id', '=', 'scp.storefront_category_id')
-                    ->join('storefront_product as sp', function (JoinClause $j) use ($storefrontId): void {
-                        $j->on('sp.product_id', '=', 'scp.product_id')->where('sp.storefront_id', '=', $storefrontId);
-                    })
-                    ->join('catalog_products as cp', 'cp.id', '=', 'sp.product_id')
-                    ->where('scp.storefront_id', $storefrontId)
-                    ->where('sp.is_visible', true)
-                    ->where('cp.is_active', true)
-                    ->whereNull('cp.deleted_at')
-                    ->whereRaw("node.path LIKE CONCAT(storefront_categories.path, '%')");
-            });
+            ->whereIn('storefront_categories.id', $ids === [] ? [-1] : $ids);
+    }
+
+    /**
+     * The set-based half of the rule (review 🟠-6): ONE join over placements × storefront pivot ×
+     * products returns the distinct materialised paths of the nodes that directly hold a visible,
+     * active, live product; every id on such a path is that node or one of its ancestors, so the
+     * ancestor closure is read off the path strings — no per-node dependent subquery, no LIKE join.
+     *
+     * @return list<int>
+     */
+    public static function nodeIdsWithVisibleProducts(int $storefrontId): array
+    {
+        $paths = DB::table('storefront_category_product as scp')
+            ->join('storefront_categories as node', 'node.id', '=', 'scp.storefront_category_id')
+            ->join('storefront_product as sp', function (JoinClause $j) use ($storefrontId): void {
+                $j->on('sp.product_id', '=', 'scp.product_id')->where('sp.storefront_id', '=', $storefrontId);
+            })
+            ->join('catalog_products as cp', 'cp.id', '=', 'sp.product_id')
+            ->where('scp.storefront_id', $storefrontId)
+            ->where('node.storefront_id', $storefrontId)
+            ->where('sp.is_visible', true)
+            ->where('cp.is_active', true)
+            ->whereNull('cp.deleted_at')
+            ->distinct()
+            ->pluck('node.path');
+
+        $ids = [];
+        foreach ($paths as $path) {
+            if (! is_string($path)) {
+                continue;
+            }
+            foreach (explode('/', trim($path, '/')) as $segment) {
+                if ($segment !== '' && ctype_digit($segment)) {
+                    $ids[(int) $segment] = true;
+                }
+            }
+        }
+
+        return array_keys($ids);
     }
 
     /** @return BelongsTo<Storefront, $this> */

@@ -15,7 +15,7 @@ use RuntimeException;
  *
  * Ids: gallery rows preserve product_images.id (step 10), so cover rows live at
  * cover_image_id_offset + product id — deterministic, collision-free, recorded in
- * transform_id_map. Tripwire: abort if a legacy gallery id ever reaches the offset.
+ * core_transform_id_map. Tripwire: abort if a legacy gallery id ever reaches the offset.
  */
 final class Step09CoverImages implements Step
 {
@@ -34,7 +34,7 @@ final class Step09CoverImages implements Step
 
     public function target(): string
     {
-        return 'catalog_product_images (covers), transform_id_map';
+        return 'catalog_product_images (covers), core_transform_id_map';
     }
 
     public function run(TransformContext $ctx, StepResult $result): void

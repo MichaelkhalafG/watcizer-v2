@@ -6,13 +6,13 @@ use Illuminate\Database\Connection;
 
 /**
  * Legacy id → clean id memory for rows whose id is NOT preserved (study §2.9.2
- * step 4: `transform_id_map(source_table, source_id, target_id)`). Loaded from the
+ * step 4: `core_transform_id_map(source_table, source_id, target_id)`). Loaded from the
  * table at the start of a run and flushed at the end, so every rehearsal hands the
  * same legacy row the same clean id.
  */
 final class IdMap
 {
-    public const TABLE = 'transform_id_map';
+    public const TABLE = 'core_transform_id_map';
 
     /** @var list<string> */
     private const COLUMNS = ['source_table', 'source_id', 'target_table', 'target_id'];

@@ -34,8 +34,8 @@ class AppServiceProvider extends ServiceProvider
         // db:wipe would drop the legacy tables, so they are prohibited unconditionally.
         DB::prohibitDestructiveCommands();
 
-        // Per-IP limiter for every /api route (v2, compat and proxied). The legacy app throttles
-        // 60/min per IP; the edge cache carries the read load, this is only abuse protection.
-        RateLimiter::for('api', fn (Request $request) => Limit::perMinute(120)->by($request->ip() ?? 'unknown'));
+        // Per-IP limiter for every /api route (v2, compat and proxied): 60/min, the legacy app's
+        // `throttle:api` value (review 🟡-7); the edge cache carries the read load.
+        RateLimiter::for('api', fn (Request $request) => Limit::perMinute(60)->by($request->ip() ?? 'unknown'));
     }
 }

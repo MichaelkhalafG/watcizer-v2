@@ -14,6 +14,7 @@ return [
         'per_page' => 24,
         'max_per_page' => 96,
         'count_cap' => 10001,      // COUNT(*) is bounded (§5.1): the header never counts a 20k category
+        'indexed_subtree' => 500,  // subtrees larger than this page through an index-ordered scan (ProductListing::PLANS)
         'related' => 8,
     ],
 

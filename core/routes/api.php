@@ -30,8 +30,9 @@ Route::prefix('v2/{storefront}')->middleware(['storefront', 'http.cache'])->wher
 });
 
 // ── 2. compat (legacy paths, legacy shapes) ───────────────────────────────
-Route::middleware(['api.code', 'legacy.locale'])->group(function (): void {
-    Route::middleware('cache.headers:public;max_age=1800;etag')->group(function (): void {
+Route::middleware('api.code')->group(function (): void {
+    // meta + shipping: the legacy cache holds Eloquent models, so these still localise per request (F-18).
+    Route::middleware(['cache.headers:public;max_age=1800;etag', 'legacy.locale'])->group(function (): void {
         Route::get('catalog/meta', [CatalogCompatController::class, 'meta']);
         Route::get('show_shipping_city', [CatalogCompatController::class, 'shippingCities']);
     });

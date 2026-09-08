@@ -116,7 +116,7 @@ final class CoreTransformCommand extends Command
     {
 
         if (! Schema::hasTable(IdMap::TABLE)) {
-            $this->error('transform_id_map is missing — run `php artisan migrate` (M1b) first.');
+            $this->error('core_transform_id_map is missing — run `php artisan migrate` (M1b/M1c) first.');
 
             return self::FAILURE;
         }
@@ -167,7 +167,7 @@ final class CoreTransformCommand extends Command
         }
 
         try {
-            $this->line(sprintf('id map: %d pairs loaded from transform_id_map', $idMap->load()));
+            $this->line(sprintf('id map: %d pairs loaded from core_transform_id_map', $idMap->load()));
             $this->newLine();
             $this->line(str_pad('step', 6).str_pad('name', 24).str_pad('read', 8).str_pad('ins', 8).str_pad('upd', 8).str_pad('same', 8).'ms');
 

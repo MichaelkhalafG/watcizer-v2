@@ -31,7 +31,7 @@ final class CoreChecksumCommand extends Command
         'catalog_product_feature', 'catalog_product_gender', 'catalog_product_color', 'catalog_product_variants',
         'catalog_product_search', 'storefronts', 'storefront_product', 'storefront_categories',
         'storefront_category_translations', 'storefront_category_product', 'storefront_banners', 'storefront_redirects',
-        'inventory_movements', 'integration_outbox', 'transform_id_map',
+        'inventory_movements', 'integration_outbox', 'core_transform_id_map',
     ];
 
     public function handle(): int
