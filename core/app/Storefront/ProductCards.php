@@ -27,13 +27,28 @@ final class ProductCards
         private readonly CategoryTree $tree,
     ) {}
 
-    /** The base listing query (visible placement ⨝ active product), no filters, no order. */
-    public function base(): Builder
+    /**
+     * The base listing query (visible placement ⨝ active product), no filters, no order.
+     *
+     * `$plan` (ProductListing::PLANS) pins the driving table and index for an index-ordered
+     * page at depth (review 🟠-5): `sp` + a storefront_product index for position/price/featured,
+     * `p` + a catalog_products index for newest/rating. Null lets the optimizer choose (small
+     * result sets, where its semijoin + filesort over a handful of rows is the cheaper plan).
+     */
+    public function base(?string $plan = null): Builder
     {
         $sf = $this->ctx->id();
 
-        return DB::table('storefront_product as sp')
-            ->join('catalog_products as p', 'p.id', '=', 'sp.product_id')
+        $query = match ($plan) {
+            'sp:sp_list_sort_idx' => DB::table(DB::raw('`storefront_product` as `sp` FORCE INDEX (`sp_list_sort_idx`)'))->join('catalog_products as p', 'p.id', '=', 'sp.product_id'),
+            'sp:sp_list_price_idx' => DB::table(DB::raw('`storefront_product` as `sp` FORCE INDEX (`sp_list_price_idx`)'))->join('catalog_products as p', 'p.id', '=', 'sp.product_id'),
+            'sp:sp_featured_idx' => DB::table(DB::raw('`storefront_product` as `sp` FORCE INDEX (`sp_featured_idx`)'))->join('catalog_products as p', 'p.id', '=', 'sp.product_id'),
+            'p:cp_active_created_idx' => DB::table(DB::raw('`catalog_products` as `p` FORCE INDEX (`cp_active_created_idx`)'))->join('storefront_product as sp', 'sp.product_id', '=', 'p.id'),
+            'p:cp_rating_idx' => DB::table(DB::raw('`catalog_products` as `p` FORCE INDEX (`cp_rating_idx`)'))->join('storefront_product as sp', 'sp.product_id', '=', 'p.id'),
+            default => DB::table('storefront_product as sp')->join('catalog_products as p', 'p.id', '=', 'sp.product_id'),
+        };
+
+        return $query
             ->where('sp.storefront_id', $sf)
             ->where('sp.is_visible', 1)
             ->where(function (Builder $q): void {
@@ -222,13 +237,27 @@ final class ProductCards
     }
 
     /**
-     * Placement subquery: products placed on any of the given nodes.
+     * Placement filter: products placed on any of the given nodes.
+     *
+     * Small subtrees: an IN-subquery the optimizer may turn into a semijoin driven from the
+     * placement table (a few rows, then a cheap filesort). Large subtrees (`$indexed`): a correlated
+     * EXISTS with LIMIT 1 — MariaDB never rewrites it into a semijoin, so the driving table stays
+     * the index-ordered `sp` scan and membership is one unique-index probe per candidate row.
      *
      * @param  list<int>  $nodeIds
      */
-    public function placedIn(Builder $query, array $nodeIds): Builder
+    public function placedIn(Builder $query, array $nodeIds, bool $indexed = false): Builder
     {
         $sf = $this->ctx->id();
+        if ($indexed) {
+            return $query->whereExists(function (Builder $sub) use ($nodeIds, $sf): void {
+                $sub->selectRaw('1')->from('storefront_category_product as scp')
+                    ->whereColumn('scp.product_id', 'sp.product_id')
+                    ->where('scp.storefront_id', $sf)
+                    ->whereIn('scp.storefront_category_id', $nodeIds)
+                    ->limit(1);
+            });
+        }
 
         return $query->whereIn('sp.product_id', function (Builder $sub) use ($nodeIds, $sf): void {
             $sub->select('scp.product_id')->from('storefront_category_product as scp')

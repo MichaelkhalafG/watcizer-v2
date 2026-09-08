@@ -13,7 +13,7 @@ use RuntimeException;
  *
  * new_colors rows carry no legacy relation (nothing references them today). A new_colors
  * row whose (EN name, hex) equals a legacy colors row is MAPPED onto that legacy id in
- * transform_id_map instead of being inserted as a duplicate (rehearsal #1 finding X-02:
+ * core_transform_id_map instead of being inserted as a duplicate (rehearsal #1 finding X-02:
  * new_colors 1–16 are a verbatim copy of colors 1–16). A genuinely new colour gets
  * catalog_colors.id = new_color_id_offset + new_colors.id.
  */
@@ -31,7 +31,7 @@ final class Step04Colors implements Step
 
     public function target(): string
     {
-        return 'catalog_colors, catalog_color_translations, transform_id_map';
+        return 'catalog_colors, catalog_color_translations, core_transform_id_map';
     }
 
     public static function normaliseHex(?string $value): ?string

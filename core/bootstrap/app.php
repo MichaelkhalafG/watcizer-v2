@@ -27,8 +27,8 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'storefront' => ResolveStorefront::class,
             'api.code' => CheckApiCode::class,
-            'legacy.locale' => NegotiateLegacyLocale::class,
             'http.cache' => HttpCacheHeaders::class,
+            'legacy.locale' => NegotiateLegacyLocale::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

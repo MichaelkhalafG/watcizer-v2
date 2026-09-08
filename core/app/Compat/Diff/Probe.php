@@ -8,9 +8,11 @@ use Illuminate\Support\Facades\Http;
 use RuntimeException;
 
 /**
- * Fetches one DiffCase from a host. A base URL is fetched over HTTP (no redirects followed,
- * no exceptions on 4xx/5xx); the literal `inproc` base runs the request through this
- * application's kernel — the compat side needs no server for a local run.
+ * Fetches one DiffCase from a host over real HTTP (no redirects followed, no exceptions on
+ * 4xx/5xx, every response header kept). The literal `inproc` base runs the request through this
+ * application's kernel instead — it is BLIND to everything the web server and the global HTTP
+ * stack add (CORS answers, Vary, rate-limit headers), so it exists for local debugging only
+ * (review 🟠-3b); the command requires an explicit --inproc flag to use it.
  *
  * @phpstan-type Response array{status: int, content_type: string, headers: array<string, string>, body: string}
  */
@@ -26,22 +28,22 @@ final class Probe
     /** @return array{status: int, content_type: string, headers: array<string, string>, body: string} */
     public function fetch(DiffCase $case): array
     {
-        $headers = ['Accept' => 'application/json'] + $case->headers;
+        $headers = $case->headers;
+        if ($case->accept !== null) {
+            $headers = ['Accept' => $case->accept] + $headers;
+        }
         if ($case->apiCode) {
             $headers['Api-Code'] = $this->apiKey;
         }
-        if ($case->kind === 'xml' || $case->kind === 'redirect') {
-            $headers['Accept'] = '*/*';
-        }
 
-        return $this->isInProcess() ? $this->inProcess($case->path, $headers) : $this->http($case->path, $headers);
+        return $this->isInProcess() ? $this->inProcess($case->method, $case->path, $headers) : $this->http($case->method, $case->path, $headers);
     }
 
     /**
      * @param  array<string, string>  $headers
      * @return array{status: int, content_type: string, headers: array<string, string>, body: string}
      */
-    private function http(string $path, array $headers): array
+    private function http(string $method, string $path, array $headers): array
     {
         $url = rtrim($this->base, '/').'/'.ltrim($path, '/');
         for ($attempt = 1; $attempt <= 3; $attempt++) {
@@ -51,7 +53,7 @@ final class Probe
             $response = Http::withHeaders($headers)
                 ->withOptions(['http_errors' => false, 'allow_redirects' => false, 'decode_content' => true])
                 ->timeout(60)
-                ->get($url);
+                ->send($method, $url);
             if ($response->status() === 429 && $attempt < 3) {
                 $retry = $response->header('Retry-After');
                 sleep(max(1, min(65, is_numeric($retry) ? (int) $retry : 5)));
@@ -75,13 +77,13 @@ final class Probe
      * @param  array<string, string>  $headers
      * @return array{status: int, content_type: string, headers: array<string, string>, body: string}
      */
-    private function inProcess(string $path, array $headers): array
+    private function inProcess(string $method, string $path, array $headers): array
     {
         $server = [];
         foreach ($headers as $name => $value) {
             $server['HTTP_'.strtoupper(str_replace('-', '_', $name))] = $value;
         }
-        $request = Request::create('/'.ltrim($path, '/'), 'GET', [], [], [], $server);
+        $request = Request::create('/'.ltrim($path, '/'), $method, [], [], [], $server);
         /** @var Kernel $kernel */
         $kernel = app(Kernel::class);
         $response = $kernel->handle($request);

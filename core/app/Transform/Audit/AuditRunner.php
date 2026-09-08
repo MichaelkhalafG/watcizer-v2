@@ -516,7 +516,7 @@ final class AuditRunner
         }
         $x1->note .= " Rows whose file equals products.image: $sameFile.";
 
-        $x2 = $r->add(new AuditFinding('X-02', 'new_colors rows identical (EN name + hex) to a legacy colors row', false, 'mapped onto the legacy id in transform_id_map instead of inserting a duplicate'));
+        $x2 = $r->add(new AuditFinding('X-02', 'new_colors rows identical (EN name + hex) to a legacy colors row', false, 'mapped onto the legacy id in core_transform_id_map instead of inserting a duplicate'));
         $legacy = [];
         $colorNames = $this->names('color_translations', 'color_id', 'color_name');
         foreach ($this->legacy->table('colors')->select(['id', 'color_value'])->orderBy('id')->get() as $row) {

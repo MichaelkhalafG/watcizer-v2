@@ -8,8 +8,14 @@ use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * Sets the application locale the way the legacy host does for every request (see
- * LegacyLocaleNegotiator). Compat routes only; v2 routes never read Accept-Language.
+ * Sets the application locale the way the legacy host does — negotiated from Accept-Language
+ * on every request (mcamara/laravel-localization, ported in LegacyLocaleNegotiator).
+ *
+ * Applied ONLY to the compat endpoints whose legacy cache holds Eloquent models and therefore
+ * still localises the appended attributes at serialisation time on every request:
+ * `catalog/meta` (Cache::remember of model collections) and `show_shipping_city`. `all_product`
+ * caches `->toArray()` and is locale-blind on the legacy host → pinned to EN instead (D-13).
+ * Verified against the running legacy app with a file cache on 2026-09-08 (flag F-18).
  */
 class NegotiateLegacyLocale
 {

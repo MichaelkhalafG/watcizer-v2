@@ -1,12 +1,18 @@
 <?php
 
+use App\Http\Controllers\Compat\CatalogCompatController;
+use App\Http\Controllers\Compat\ProxyController;
 use App\Storefront\StorefrontCache;
-use Illuminate\Http\Client\Request;
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Client\Request as ClientRequest;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Testing\TestResponse;
 use Symfony\Component\HttpFoundation\Response;
 
+use function Pest\Laravel\call;
 use function Pest\Laravel\get;
 use function Pest\Laravel\getJson;
 use function Pest\Laravel\withHeaders;
@@ -69,16 +75,19 @@ it('rejects a missing or wrong Api-Code with the legacy body', function () {
     withHeaders(['Api-Code' => ''])->getJson('/api/catalog/meta')->assertStatus(401);   // an empty key never opens the door
 });
 
-it('serves catalog/meta in the legacy shape with the current-locale appended attribute', function () {
+it('serves catalog/meta in the legacy shape; meta follows Accept-Language like legacy, all_product is pinned to EN (D-13 / F-18)', function () {
     $en = compat('catalog/meta')->assertOk()->assertHeader('Cache-Control', 'max-age=1800, public');
     $en->assertJsonStructure(['tables' => ['categoryTypes', 'brands', 'grades', 'subTypes', 'colors', 'materials', 'shapes', 'sizeTypes', 'displayTypes', 'closureTypes', 'movementTypes'], 'brands', 'categories', 'sub_types', 'genders', 'grades', 'dial_colors', 'band_colors', 'features', 'banners', 'shipping_cities']);
     $brand = arr($en->json('tables.brands.0'));
     expect(array_keys($brand))->toBe(['id', 'image', 'created_at', 'updated_at', 'brand_name', 'translations'])
         ->and($brand['brand_name'])->toBe(translation($brand['translations'], 'en')['brand_name']);
 
+    // meta: the legacy cache holds models → serialised per request locale (F-18); compat negotiates the same way.
     $ar = compat('catalog/meta', ['Accept-Language' => 'ar-EG,ar;q=0.9,en;q=0.8'])->assertOk();
     expect($ar->json('tables.brands.0.brand_name'))->toBe(translation($brand['translations'], 'ar')['brand_name']);
     expect(compat('catalog/meta', ['Accept-Language' => 'fr'])->json('tables.brands.0.brand_name'))->toBe($brand['brand_name']);
+    // all_product: the legacy cache holds arrays → locale-blind; compat pins EN (D-13).
+    expect(compat('all_product', ['Accept-Language' => 'ar'])->json('0.product_title'))->toBe(compat('all_product')->json('0.product_title'));
 
     // Only visible sub types (study §3.3): every listed id has at least one visible product.
     foreach (arr($en->json('tables.subTypes')) as $sub) {
@@ -132,8 +141,61 @@ it('serves products/{id} and by-name with the legacy ProductResource keys and th
     $title = DB::table('catalog_product_translations')->where('product_id', $id)->where('locale', 'en')->value('title');
     compat('products/by-name/'.rawurlencode(is_string($title) ? $title : ''))->assertOk()->assertJsonPath('product.id', $id);
 
-    compat('products/999999')->assertNotFound()->assertJsonPath('message', 'No query results for model [App\\Models\\Product] 999999');
-    compat('products/by-name/nope')->assertNotFound()->assertJsonPath('message', 'No query results for model [App\\Models\\Product].');
+    // Generic, leak-free 404s (review 🟡-11): no model class, no path, no id echoed, small body.
+    config(['app.debug' => false]);
+    foreach (['products/999999', 'products/by-name/nope', 'products/abc', 'products/4.5'] as $miss) {
+        $res = compat($miss)->assertNotFound()->assertExactJson(['message' => 'Not Found']);
+        $body = (string) $res->getContent();
+        expect(strlen($body))->toBeLessThan(200);
+        expect($body)->not->toContain('App'.chr(92));
+        expect($body)->not->toContain('D:'.chr(92));
+        expect($body)->not->toContain('exception');
+    }
+});
+
+it('coerces the id segment like the legacy findOrFail (MySQL loose string→number)', function () {
+    $id = DB::table('storefront_product')->where('storefront_id', 1)->orderBy('product_id')->value('product_id');
+    $id = is_numeric($id) ? (int) $id : 0;
+    foreach (["{$id}.0", '0'.$id, "{$id}abc", " {$id}", "{$id}e0"] as $variant) {
+        compat('products/'.rawurlencode($variant))->assertOk()->assertJsonPath('product.id', $id);
+    }
+    foreach (["{$id}.5", 'abc', '0', "-{$id}", '99999999999999999999'] as $miss) {
+        compat('products/'.rawurlencode($miss))->assertNotFound();
+    }
+    expect(CatalogCompatController::legacyId('4.0'))->toBe(4)
+        ->and(CatalogCompatController::legacyId('4abc'))->toBe(4)
+        ->and(CatalogCompatController::legacyId('4.5'))->toBeNull()
+        ->and(CatalogCompatController::legacyId('abc'))->toBeNull();
+});
+
+it('enforces the curated CORS origin list on every /api path, moved and proxied alike', function () {
+    Http::fake(['legacy.test/*' => Http::response('[]', 200, ['Content-Type' => 'application/json'])]);
+    $storefront = 'https://watchizereg.com';
+    $evil = 'https://evil.example.com';
+
+    $ok = withHeaders(['Api-Code' => API_KEY, 'Origin' => $storefront])->getJson('/api/catalog/meta')->assertOk();
+    expect($ok->headers->get('Access-Control-Allow-Origin'))->toBe($storefront);
+    $no = withHeaders(['Api-Code' => API_KEY, 'Origin' => $evil])->getJson('/api/catalog/meta')->assertOk();
+    expect($no->headers->get('Access-Control-Allow-Origin'))->toBeNull();
+
+    $proxied = withHeaders(['Api-Code' => API_KEY, 'Origin' => $evil])->getJson('/api/all_offer')->assertOk();
+    expect($proxied->headers->get('Access-Control-Allow-Origin'))->toBeNull();
+
+    $preflight = call('OPTIONS', '/api/all_product', [], [], [], ['HTTP_ORIGIN' => $evil, 'HTTP_ACCESS_CONTROL_REQUEST_METHOD' => 'GET', 'HTTP_ACCESS_CONTROL_REQUEST_HEADERS' => 'api-code']);
+    expect($preflight->headers->get('Access-Control-Allow-Origin'))->toBeNull();
+    $preflightOk = call('OPTIONS', '/api/all_product', [], [], [], ['HTTP_ORIGIN' => $storefront, 'HTTP_ACCESS_CONTROL_REQUEST_METHOD' => 'GET', 'HTTP_ACCESS_CONTROL_REQUEST_HEADERS' => 'api-code']);
+    expect($preflightOk->headers->get('Access-Control-Allow-Origin'))->toBe($storefront);
+    expect(config('cors.allowed_origins'))->not->toContain('*');
+});
+
+it('throttles /api at the legacy rate of 60 per minute', function () {
+    $limiter = RateLimiter::limiter('api');
+    expect($limiter)->not->toBeNull();
+    $limits = $limiter === null ? null : $limiter(Request::create('/api/catalog/meta'));
+    expect($limits)->toBeInstanceOf(Limit::class);
+    if ($limits instanceof Limit) {
+        expect($limits->maxAttempts)->toBe(60);
+    }
 });
 
 it('retires the never-called legacy paths with 410', function () {
@@ -149,16 +211,25 @@ it('proxies every other /api path to the legacy host with the client address for
     $res = withHeaders(['Api-Code' => API_KEY])->get('/api/all_offer?x=1');
     $res->assertOk()->assertHeader('Content-Type', 'application/json')->assertHeader('ETag', '"abc"')->assertHeader('X-Proxied-By', 'core');
     expect($res->headers->get('X-Powered-By'))->not->toBe('PHP');
-    Http::assertSent(fn (Request $request) => $request->url() === 'http://legacy.test/api/all_offer?x=1'
+    Http::assertSent(fn (ClientRequest $request) => $request->url() === 'http://legacy.test/api/all_offer?x=1'
         && $request->hasHeader('Api-Code', API_KEY)
         && $request->hasHeader('X-Forwarded-For')
         && $request->method() === 'GET');
 
     withHeaders(['Api-Code' => API_KEY])->post('/api/add_to_cart', ['product_id' => 1])->assertOk();
-    Http::assertSent(fn (Request $request) => $request->url() === 'http://legacy.test/api/add_to_cart' && $request->method() === 'POST');
+    Http::assertSent(fn (ClientRequest $request) => $request->url() === 'http://legacy.test/api/add_to_cart' && $request->method() === 'POST');
 
     get('/api/v2/nope/meta')->assertNotFound();                  // v2 misses are never proxied
-    Http::assertNotSent(fn (Request $request) => str_contains($request->url(), 'v2/'));
+    Http::assertNotSent(fn (ClientRequest $request) => str_contains($request->url(), 'v2/'));
+
+    // Whitelist (review 🟡-8): only the study's proxy rows reach the legacy host.
+    foreach (['definitely/not/a/route', 'admin', 'auth', 'me', 'all_offers'] as $refused) {
+        withHeaders(['Api-Code' => API_KEY])->getJson('/api/'.$refused)->assertNotFound();
+    }
+    Http::assertNotSent(fn (ClientRequest $request) => str_contains($request->url(), 'definitely') || str_ends_with($request->url(), '/api/admin') || str_ends_with($request->url(), '/api/me'));
+    foreach (['auth/me', 'me/orders', 'me/addresses/5', 'all_wishlist/3', 'delete_cart/9', 'callback_payment'] as $allowed) {
+        expect(ProxyController::allowed($allowed))->toBeTrue($allowed);
+    }
 });
 
 it('serves the legacy sitemap contract: bare path 302s to the negotiated locale, /{locale}/sitemap.xml serves XML', function () {

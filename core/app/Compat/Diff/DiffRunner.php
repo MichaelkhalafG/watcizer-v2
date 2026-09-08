@@ -6,10 +6,19 @@ namespace App\Compat\Diff;
  * Runs every DiffCase against the legacy and compat probes and classifies each finding as
  * byte-identical, sanctioned (absorbed by a DeviationRules entry) or UNEXPLAINED.
  *
- * @phpstan-type CaseResult array{name: string, path: string, kind: string, group: string, legacy_status: int, compat_status: int, legacy_bytes: int, compat_bytes: int, identical: bool, content_type_equal: bool, cache_control: array{legacy: string, compat: string}, findings: int, sanctioned: array<string, int>, unexplained: list<array{path: string, kind: string, legacy: mixed, compat: mixed}>, note: string}
+ * Compared per case: status, body (structurally for JSON, by `<url>` block for XML), the full
+ * Content-Type string, every `Access-Control-*` header and `Vary` (review 🟠-3b — the CORS answer
+ * is part of the contract), and the Location path for redirects.
  */
 final class DiffRunner
 {
+    /** Response headers that are part of the contract (compared verbatim, case-insensitive names). */
+    public const COMPARED_HEADERS = [
+        'content-type', 'vary',
+        'access-control-allow-origin', 'access-control-allow-credentials', 'access-control-allow-methods',
+        'access-control-allow-headers', 'access-control-expose-headers', 'access-control-max-age',
+    ];
+
     public function __construct(private readonly Probe $legacy, private readonly Probe $compat) {}
 
     /**
@@ -52,32 +61,37 @@ final class DiffRunner
         ];
     }
 
-    /** @return array{name: string, path: string, kind: string, group: string, legacy_status: int, compat_status: int, legacy_bytes: int, compat_bytes: int, identical: bool, content_type_equal: bool, cache_control: array{legacy: string, compat: string}, findings: int, sanctioned: array<string, int>, unexplained: list<array{path: string, kind: string, legacy: mixed, compat: mixed}>, note: string} */
+    /** @return array{name: string, path: string, kind: string, group: string, legacy_status: int, compat_status: int, legacy_bytes: int, compat_bytes: int, identical: bool, content_type_equal: bool, headers: array{legacy: array<string, string>, compat: array<string, string>}, findings: int, sanctioned: array<string, int>, unexplained: list<array{path: string, kind: string, legacy: mixed, compat: mixed}>, note: string} */
     private function one(DiffCase $case): array
     {
         $a = $this->legacy->fetch($case);
         $b = $this->compat->fetch($case);
-        $identical = $a['status'] === $b['status'] && $a['body'] === $b['body'] && self::mime($a['content_type']) === self::mime($b['content_type']);
         $findings = [];
         $note = '';
-        if (! $identical) {
-            if ($a['status'] !== $b['status']) {
-                $findings[] = ['path' => 'status', 'kind' => 'value', 'legacy' => $a['status'], 'compat' => $b['status']];
+
+        if ($a['status'] !== $b['status']) {
+            $findings[] = ['path' => 'status', 'kind' => 'value', 'legacy' => $a['status'], 'compat' => $b['status']];
+        }
+        foreach (self::COMPARED_HEADERS as $h) {
+            $ha = self::header($a['headers'], $h);
+            $hb = self::header($b['headers'], $h);
+            if ($ha !== $hb) {
+                $findings[] = ['path' => "header:{$h}", 'kind' => 'value', 'legacy' => $ha, 'compat' => $hb];
             }
-            if (self::mime($a['content_type']) !== self::mime($b['content_type'])) {
-                $findings[] = ['path' => 'content_type', 'kind' => 'value', 'legacy' => $a['content_type'], 'compat' => $b['content_type']];
+        }
+
+        $bodiesEqual = $a['body'] === $b['body'];
+        if ($case->kind === 'redirect') {
+            $la = self::locationPath($a['headers']['location'] ?? '');
+            $lb = self::locationPath($b['headers']['location'] ?? '');
+            if ($la !== $lb) {
+                $findings[] = ['path' => 'location', 'kind' => 'value', 'legacy' => $la, 'compat' => $lb];
             }
-            if ($case->kind === 'redirect') {
-                $la = self::locationPath($a['headers']['location'] ?? '');
-                $lb = self::locationPath($b['headers']['location'] ?? '');
-                if ($la !== $lb) {
-                    $findings[] = ['path' => 'location', 'kind' => 'value', 'legacy' => $la, 'compat' => $lb];
-                }
-                $identical = $findings === [];
-                $note = 'redirect: status + Location path compared (hosts differ by construction)';
-            } elseif ($case->kind === 'xml') {
+            $note = 'redirect: status, headers and Location path compared (hosts differ by construction)';
+        } elseif (! $bodiesEqual) {
+            if ($case->kind === 'xml') {
                 $findings = array_merge($findings, XmlDiff::compare($a['body'], $b['body']));
-            } elseif ($case->kind === 'json' && $a['status'] === $b['status']) {
+            } elseif ($case->kind === 'json' && $a['status'] === $b['status'] && self::isJson($a['content_type']) && self::isJson($b['content_type'])) {
                 $ja = json_decode($a['body'], true);
                 $jb = json_decode($b['body'], true);
                 if (json_last_error() !== JSON_ERROR_NONE || ! is_array($ja) || ! is_array($jb)) {
@@ -85,7 +99,7 @@ final class DiffRunner
                 } else {
                     $structural = JsonDiff::compare($ja, $jb);
                     $findings = array_merge($findings, $structural);
-                    if ($structural === [] && $a['body'] !== $b['body']) {
+                    if ($structural === []) {
                         $findings[] = ['path' => 'body', 'kind' => 'bytes', 'legacy' => strlen($a['body']), 'compat' => strlen($b['body'])];
                         $note = 'same structure, different bytes (encoding/whitespace)';
                     }
@@ -94,6 +108,8 @@ final class DiffRunner
                 $findings[] = ['path' => 'body', 'kind' => 'value', 'legacy' => mb_substr($a['body'], 0, 120), 'compat' => mb_substr($b['body'], 0, 120)];
             }
         }
+        $identical = $findings === [];
+
         $sanctioned = [];
         $unexplained = [];
         foreach ($findings as $f) {
@@ -116,8 +132,8 @@ final class DiffRunner
             'legacy_bytes' => strlen($a['body']),
             'compat_bytes' => strlen($b['body']),
             'identical' => $identical,
-            'content_type_equal' => self::mime($a['content_type']) === self::mime($b['content_type']),
-            'cache_control' => ['legacy' => $a['headers']['cache-control'] ?? '', 'compat' => $b['headers']['cache-control'] ?? ''],
+            'content_type_equal' => self::header($a['headers'], 'content-type') === self::header($b['headers'], 'content-type'),
+            'headers' => ['legacy' => self::picked($a['headers']), 'compat' => self::picked($b['headers'])],
             'findings' => count($findings),
             'sanctioned' => $sanctioned,
             'unexplained' => array_slice($unexplained, 0, 50),
@@ -125,9 +141,31 @@ final class DiffRunner
         ];
     }
 
-    private static function mime(string $contentType): string
+    /** @param  array<string, string>  $headers */
+    private static function header(array $headers, string $name): string
     {
-        return strtolower(trim(explode(';', $contentType)[0]));
+        return strtolower(trim($headers[$name] ?? ''));
+    }
+
+    /**
+     * @param  array<string, string>  $headers
+     * @return array<string, string>
+     */
+    private static function picked(array $headers): array
+    {
+        $out = [];
+        foreach (array_merge(self::COMPARED_HEADERS, ['cache-control', 'etag', 'x-ratelimit-limit', 'location']) as $h) {
+            if (isset($headers[$h])) {
+                $out[$h] = $headers[$h];
+            }
+        }
+
+        return $out;
+    }
+
+    private static function isJson(string $contentType): bool
+    {
+        return str_contains(strtolower($contentType), 'json');
     }
 
     private static function locationPath(string $location): string

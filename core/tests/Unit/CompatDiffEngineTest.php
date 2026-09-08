@@ -38,6 +38,12 @@ it('absorbs only listed deviations and fails anything else', function () {
         ->and(DeviationRules::match('meta', ['path' => '$.tables.colors[18].color_value', 'kind' => 'value', 'legacy' => '#ff80c0', 'compat' => '#FF80C0']))->toBe('D-07')
         ->and(DeviationRules::match('meta', ['path' => '$.tables.colors[18].color_value', 'kind' => 'value', 'legacy' => '#ff80c0', 'compat' => '#000000']))->toBeNull()
         ->and(DeviationRules::match('gone:all_brand', ['path' => 'status', 'kind' => 'value', 'legacy' => 200, 'compat' => 410]))->toBe('D-08')
+        ->and(DeviationRules::match('product:404', ['path' => '$.message', 'kind' => 'value', 'legacy' => 'No query results…', 'compat' => 'Not Found']))->toBe('D-15')
+        ->and(DeviationRules::match('product:404:no-accept', ['path' => 'header:content-type', 'kind' => 'value', 'legacy' => 'text/html; charset=utf-8', 'compat' => 'application/json']))->toBe('D-14')
+        ->and(DeviationRules::match('product:404', ['path' => 'header:content-type', 'kind' => 'value', 'legacy' => 'text/html; charset=utf-8', 'compat' => 'application/json']))->toBeNull()
+        ->and(DeviationRules::match('meta', ['path' => 'header:access-control-allow-origin', 'kind' => 'value', 'legacy' => '', 'compat' => '*']))->toBeNull()
+        ->and(DeviationRules::match('all_product:ar', ['path' => '$[3].product_title', 'kind' => 'value', 'legacy' => 'ساعة', 'compat' => 'Watch']))->toBe('D-13')
+        ->and(DeviationRules::match('all_product', ['path' => '$[3].product_title', 'kind' => 'value', 'legacy' => 'ساعة', 'compat' => 'Watch']))->toBeNull()
         ->and(DeviationRules::match('all_product', ['path' => 'status', 'kind' => 'value', 'legacy' => 200, 'compat' => 410]))->toBeNull();
 });
 

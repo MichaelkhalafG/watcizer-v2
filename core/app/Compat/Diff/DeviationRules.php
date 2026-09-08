@@ -3,13 +3,12 @@
 namespace App\Compat\Diff;
 
 /**
- * The sanctioned-deviations table of the compat layer (CLEAN_CORE_STUDY §3.5.1 "documented
- * deltas", §3.3 visibility rule, wave 1 X-01, and the reality findings of 2026-09-07). Every
- * finding the differ produces is either absorbed by exactly one rule here or is a failure.
+ * The sanctioned-deviations table of the compat layer (CLEAN_CORE_STUDY §3.7.3): every finding
+ * the differ produces is either absorbed by exactly one rule here or is a failure.
  *
- * A rule matches by case name (fnmatch), normalised JSON path (fnmatch, indices as `[*]`,
- * `**` = any prefix) and finding kind; `ci` rules additionally require the two values to be
- * equal case-insensitively.
+ * A rule matches by case name (fnmatch), normalised JSON path (indices as `[*]`, `**` = any
+ * prefix, `*` within a segment) and finding kind; `ci` rules additionally require the two
+ * values to be equal case-insensitively.
  *
  * @phpstan-type Rule array{id: string, cases: string, paths: list<string>, kinds: list<string>, why: string, ci?: bool}
  */
@@ -21,7 +20,7 @@ final class DeviationRules
         return [
             [
                 'id' => 'D-01', 'cases' => 'all_product*', 'paths' => ['$[*].percentage_discount'], 'kinds' => ['value', 'type'],
-                'why' => 'Stored `percentage_discount` dropped (study §2.2, A-22): compat derives round((selling-sale)/selling*100) as a 2-decimal string ("21.00"); the storefront only tests `> 0`. 329/341 legacy values differ from the derivation (see flag F-03).',
+                'why' => 'Stored `percentage_discount` dropped (study §2.2, A-22): compat derives round((selling-sale)/selling*100) as a 2-decimal string ("21.00"); the storefront only tests `> 0`. 330 of 341 legacy values differ from the derivation (329 rounded differently, 1 NULL — flag F-03).',
             ],
             [
                 'id' => 'D-02', 'cases' => '*', 'paths' => ['**translations[*].id'], 'kinds' => ['value'],
@@ -52,7 +51,7 @@ final class DeviationRules
                 'why' => 'Colour hex normalised to upper case by the transform (step 4); CSS colours are case-insensitive.',
             ],
             [
-                'id' => 'D-08', 'cases' => 'gone:*', 'paths' => ['status', 'body'], 'kinds' => ['value', 'type'],
+                'id' => 'D-08', 'cases' => 'gone:*', 'paths' => ['status', 'body', 'header:content-type'], 'kinds' => ['value', 'type'],
                 'why' => 'Legacy paths the storefront never calls are retired with 410 (study §3.3, last row) instead of being reimplemented on frozen data.',
             ],
             [
@@ -70,6 +69,26 @@ final class DeviationRules
             [
                 'id' => 'D-12', 'cases' => 'all_product*', 'paths' => ['$[*].warranty_years'], 'kinds' => ['type'],
                 'why' => 'Non-numeric `warranty_years` becomes NULL (A-07). None today.',
+            ],
+            [
+                'id' => 'D-13', 'cases' => '*:ar', 'paths' => ['$[*].product_title', '$[*].model_name', '$[*].country', '$[*].stone', '$[*].long_description', '$[*].short_description', '$[*].feature[*].feature_name', '$[*].gender[*].gender_name', '$[*].dial_color[*].color_name', '$[*].band_color[*].color_name', '$.tables.*[*].*_name', '$.tables.*[*].description', '$[*].city_name'], 'kinds' => ['value', 'type'],
+                'why' => 'The appended current-locale attributes are pinned to EN on compat (`compat.pinned_locale`, decision 2026-09-08 on review 🟠-2): the legacy host negotiates a locale per request but serves `catalog/meta`, `all_product` and `show_shipping_city` from locale-blind caches, i.e. whichever locale warmed them (EN in practice: the SSR prefetch sends no Accept-Language). A legacy host whose cache was warmed by an Arabic browser answers Arabic here for up to an hour; compat never does. The storefront reads `translations[]`, never these attributes; pinning EN also keeps `all_product` 687 KB (32 %) smaller than its Arabic rendering against the §5.5 budget.',
+            ],
+            [
+                'id' => 'D-14', 'cases' => '*:404:no-accept', 'paths' => ['header:content-type', 'body'], 'kinds' => ['value'],
+                'why' => 'Without a JSON Accept header the legacy host renders its Blade error page (text/html) for a 404; compat answers `application/json` for every /api path (Laravel `shouldRenderJsonWhen`). Only the status is contract; the storefront (axios) always sends `application/json, text/plain, */*` and gets JSON from both.',
+            ],
+            [
+                'id' => 'D-14', 'cases' => '*:404:any-accept', 'paths' => ['header:content-type', 'body'], 'kinds' => ['value'],
+                'why' => 'Same as above for a native-fetch `Accept: */*` (review 🟠-3a).',
+            ],
+            [
+                'id' => 'D-14', 'cases' => '*:404:unrouted', 'paths' => ['header:content-type', 'body'], 'kinds' => ['value'],
+                'why' => 'A path that matches NO legacy route (an unknown /api path, or a by-name segment the legacy route pattern rejects, e.g. one holding a backslash) gets the legacy HTML 404 page even when JSON is accepted (route-level miss, verified live); compat answers `{"message":"Not Found"}` with the same 404 status.',
+            ],
+            [
+                'id' => 'D-15', 'cases' => 'product:*', 'paths' => ['$.message'], 'kinds' => ['value'],
+                'why' => 'Compat 404 bodies are generic (`{"message":"Not Found"}`, review 🟡-11); the legacy body echoes its model class and the raw id (`No query results for model [App\\Models\\Product] 999999`). The storefront reads the status only (serverCatalog.js catches and returns null).',
             ],
         ];
     }

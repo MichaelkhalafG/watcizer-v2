@@ -157,7 +157,7 @@ final class Reconciliation
         $this->check('catalog_product_search', 'products × 2 locales', '= 2×', 2 * $products, $count('catalog_product_search'));
 
         // id map
-        $this->check('transform_id_map', "new_colors + new_sizes + covers ($covers) + category nodes (types + pairs + orphans + categories)", '=', $legacy->count('new_colors') + $legacy->count('new_sizes') + $covers + $types + $pairs + $orphans + $categories, $count('transform_id_map'));
+        $this->check('core_transform_id_map', "new_colors + new_sizes + covers ($covers) + category nodes (types + pairs + orphans + categories)", '=', $legacy->count('new_colors') + $legacy->count('new_sizes') + $covers + $types + $pairs + $orphans + $categories, $count('core_transform_id_map'));
 
         return $this;
     }
