@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Compat\Diff\CartCases;
 use App\Compat\Diff\DefaultCases;
 use App\Compat\Diff\DiffCase;
 use App\Compat\Diff\DiffReport;
@@ -77,7 +78,18 @@ class CompatDiffCommand extends Command
         }
 
         $this->info(sprintf('compat:diff — %d cases, legacy=%s compat=%s', count($cases), $legacyBase, $compatBase));
-        $runner = new DiffRunner(new Probe($legacyBase, $apiKey, $pace), new Probe($compatBase, $apiKey));
+
+        $legacyProbe = new Probe($legacyBase, $apiKey, $pace);
+        $compatProbe = new Probe($compatBase, $apiKey);
+
+        $preflight = self::tokenPreflight($legacyProbe, $compatProbe);
+        if ($preflight !== null) {
+            $this->error($preflight);
+
+            return self::FAILURE;
+        }
+
+        $runner = new DiffRunner($legacyProbe, $compatProbe);
         $started = microtime(true);
         $result = $runner->run($cases, fn (string $line) => $this->line('  '.$line));
         $seconds = round(microtime(true) - $started, 1);
@@ -104,5 +116,50 @@ class CompatDiffCommand extends Command
         $this->info($result['verdict']);
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Pre-flight (review 🟡-6): do BOTH hosts accept the same minted token?
+     *
+     * The authenticated cases are only meaningful if the two sides share a `JWT_SECRET`. When
+     * they do not, every one of them answers 401 on one host and 200 on the other, and the run
+     * ends in a dozen identical "status 401 vs 200" findings that say nothing about the compat
+     * layer and bury whatever real difference was in the same report. One request to each host
+     * settles it before the first case runs.
+     *
+     * Returns null when the run may proceed, or the single message explaining why it may not.
+     */
+    private static function tokenPreflight(Probe $legacy, Probe $compat): ?string
+    {
+        $reader = CartCases::readOnlyUser();
+        if ($reader === null) {
+            return null;                      // no secret configured, or no user: the authenticated cases skip themselves
+        }
+
+        $case = new DiffCase('preflight:token', 'api/me/orders', 'json', ['Authorization' => 'Bearer '.$reader['token']]);
+        $legacyStatus = $legacy->fetch($case)['status'];
+        $compatStatus = $compat->fetch($case)['status'];
+
+        if ($legacyStatus === 401 && $compatStatus === 401) {
+            return 'Pre-flight: BOTH hosts rejected the harness token (401/401). They do not share a JWT_SECRET, '
+                .'or the token subject is not a user on this database. Every authenticated case would be a false '
+                .'difference, so the run is stopped before it starts.';
+        }
+        if ($legacyStatus === 401 || $compatStatus === 401) {
+            $accepted = $legacyStatus === 401 ? 'compat' : 'legacy';
+            $rejected = $legacyStatus === 401 ? 'legacy' : 'compat';
+
+            return "Pre-flight: only the {$rejected} host rejected the harness token "
+                ."(legacy {$legacyStatus}, compat {$compatStatus}). The two hosts are not signing with the same "
+                ."JWT_SECRET — the {$accepted} host accepted it and the {$rejected} host did not. Fix the secret "
+                .'rather than reading a dozen authenticated cases as compat differences.';
+        }
+        if ($legacyStatus !== $compatStatus) {
+            return 'Pre-flight: the two hosts answered the same authenticated request differently before any case '
+                ."ran (legacy {$legacyStatus}, compat {$compatStatus}). That is an environment problem, not a "
+                .'compat difference; fix it first.';
+        }
+
+        return null;
     }
 }

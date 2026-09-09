@@ -1,6 +1,8 @@
 <?php
 
 use App\Http\Middleware\CheckApiCode;
+use App\Http\Middleware\CompatAuth;
+use App\Http\Middleware\CompatGuestCart;
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\HttpCacheHeaders;
 use App\Http\Middleware\NegotiateLegacyLocale;
@@ -29,6 +31,8 @@ return Application::configure(basePath: dirname(__DIR__))
             'api.code' => CheckApiCode::class,
             'http.cache' => HttpCacheHeaders::class,
             'legacy.locale' => NegotiateLegacyLocale::class,
+            'compat.guest' => CompatGuestCart::class,
+            'compat.auth' => CompatAuth::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

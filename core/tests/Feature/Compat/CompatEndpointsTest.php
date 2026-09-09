@@ -216,8 +216,10 @@ it('proxies every other /api path to the legacy host with the client address for
         && $request->hasHeader('X-Forwarded-For')
         && $request->method() === 'GET');
 
-    withHeaders(['Api-Code' => API_KEY])->post('/api/add_to_cart', ['product_id' => 1])->assertOk();
-    Http::assertSent(fn (ClientRequest $request) => $request->url() === 'http://legacy.test/api/add_to_cart' && $request->method() === 'POST');
+    // A POST still on the proxy. `add_to_cart` used to be the example here; wave 3 MOVED it, so
+    // the example is now a wishlist write, which stays proxied until the auth wave.
+    withHeaders(['Api-Code' => API_KEY])->post('/api/add_wishlist', ['product_id' => 1])->assertOk();
+    Http::assertSent(fn (ClientRequest $request) => $request->url() === 'http://legacy.test/api/add_wishlist' && $request->method() === 'POST');
 
     get('/api/v2/nope/meta')->assertNotFound();                  // v2 misses are never proxied
     Http::assertNotSent(fn (ClientRequest $request) => str_contains($request->url(), 'v2/'));
@@ -227,9 +229,36 @@ it('proxies every other /api path to the legacy host with the client address for
         withHeaders(['Api-Code' => API_KEY])->getJson('/api/'.$refused)->assertNotFound();
     }
     Http::assertNotSent(fn (ClientRequest $request) => str_contains($request->url(), 'definitely') || str_ends_with($request->url(), '/api/admin') || str_ends_with($request->url(), '/api/me'));
-    foreach (['auth/me', 'me/orders', 'me/addresses/5', 'all_wishlist/3', 'delete_cart/9', 'callback_payment'] as $allowed) {
+    foreach (['auth/me', 'login', 'updateProfile', 'all_wishlist/3', 'all_offer', 'all_blog', 'add_product_rating'] as $allowed) {
         expect(ProxyController::allowed($allowed))->toBeTrue($allowed);
     }
+
+    // …and every wave-3 path is now OFF the whitelist: it is answered here, never forwarded.
+    foreach (['add_to_cart', 'remove_from_cart', 'delete_cart/9', 'me/cart', 'cart/validate', 'cart/merge',
+        'add_order', 'callback_payment', 'me/orders', 'me/addresses', 'me/addresses/5', 'add_address'] as $moved) {
+        expect(ProxyController::allowed($moved))->toBeFalse($moved);
+    }
+});
+
+it('answers all twelve wave-3 paths itself, and forwards none of them', function () {
+    Http::fake(['legacy.test/*' => Http::response('[]', 200)]);
+
+    // Every one of them resolves to a compat controller — a 404 here would mean the proxy
+    // catch-all swallowed it, which is how a "moved" path silently stays on the legacy host.
+    $paths = [
+        ['GET', '/api/me/cart'], ['POST', '/api/add_to_cart'], ['POST', '/api/remove_from_cart'],
+        ['DELETE', '/api/delete_cart/1'], ['POST', '/api/cart/validate'], ['POST', '/api/cart/merge'],
+        ['POST', '/api/add_order'], ['GET', '/api/callback_payment'], ['GET', '/api/me/orders'],
+        ['GET', '/api/me/addresses'], ['DELETE', '/api/me/addresses/1'], ['POST', '/api/add_address'],
+    ];
+    foreach ($paths as [$method, $path]) {
+        $route = app('router')->getRoutes()->match(Request::create($path, $method));
+        $action = $route->getActionName();
+        $where = "{$method} {$path} => {$action}";
+        expect($where)->toContain('Compat\\')->and($where)->not->toContain('ProxyController');
+    }
+
+    Http::assertNothingSent();
 });
 
 it('serves the legacy sitemap contract: bare path 302s to the negotiated locale, /{locale}/sitemap.xml serves XML', function () {

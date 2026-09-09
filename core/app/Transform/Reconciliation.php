@@ -142,10 +142,19 @@ final class Reconciliation
         $this->check('storefront_category_product', "products with type ($typed) + products with pair ($paired)", '=', $typed + $paired, $db->table('storefront_category_product')->where('storefront_id', $sf)->count());
         $this->check('storefront_category_product[primary]', 'products with pair', '= is_primary rows', $paired, $db->table('storefront_category_product')->where('storefront_id', $sf)->where('is_primary', 1)->count());
 
-        // 20 ledger baseline
-        $this->check('inventory_movements[transform]', 'products × 2 buckets', '= 2×', 2 * $products, $db->table('inventory_movements')->where('reason', 'transform')->count());
-        $this->check('inventory_movements[express sum]', 'SUM(products.stock)', '= ledger sum', (int) $legacy->table('products')->sum('stock'), (int) $db->table('inventory_movements')->where('reason', 'transform')->where('bucket', 'express')->sum('quantity_after'));
-        $this->check('inventory_movements[market sum]', 'SUM(products.market_stock)', '= ledger sum', (int) $legacy->table('products')->sum('market_stock'), (int) $db->table('inventory_movements')->where('reason', 'transform')->where('bucket', 'market')->sum('quantity_after'));
+        // 20 ledger baseline. The ledger is APPEND-ONLY (wave 3), so a re-baselined product has
+        // MORE than one transform row and `quantity_after` no longer sums to anything meaningful.
+        // The invariants that survive — and that are stronger — are: every (product, bucket) pair
+        // is opened exactly once, and the DELTAS telescope to the legacy quantity.
+        $this->check('inventory_movements[transform buckets]', 'products × 2 buckets', '= distinct (product, bucket)', 2 * $products, $this->distinctTransformBuckets());
+        $this->check('inventory_movements[express deltas]', 'SUM(products.stock)', '= Σ transform quantity_delta', (int) $legacy->table('products')->sum('stock'), (int) $db->table('inventory_movements')->where('reason', 'transform')->where('bucket', 'express')->sum('quantity_delta'));
+        $this->check('inventory_movements[market deltas]', 'SUM(products.market_stock)', '= Σ transform quantity_delta', (int) $legacy->table('products')->sum('market_stock'), (int) $db->table('inventory_movements')->where('reason', 'transform')->where('bucket', 'market')->sum('quantity_delta'));
+
+        // …and the invariant `inventory:verify` runs on nightly: the ledger's own answer for a
+        // bucket equals the column. Summed over ALL reasons, so a stray non-transform movement
+        // (which the run lock's pre-flight already refuses) would show up here too.
+        $this->check('inventory_movements[express = column]', 'Σ quantity_delta, all reasons', '= SUM(catalog_products.stock_express)', (int) $db->table('catalog_products')->sum('stock_express'), (int) $db->table('inventory_movements')->where('bucket', 'express')->sum('quantity_delta'));
+        $this->check('inventory_movements[market = column]', 'Σ quantity_delta, all reasons', '= SUM(catalog_products.stock_market)', (int) $db->table('catalog_products')->sum('stock_market'), (int) $db->table('inventory_movements')->where('bucket', 'market')->sum('quantity_delta'));
         $this->check('catalog_products[stock mirror]', 'products.stock / market_stock', '= stock_express / stock_market on every row', $products, $this->stockMirrorMatches());
 
         // soft-deleted rows: legacy has NO soft-delete column on any of its 65 tables (audit X-07), and the
@@ -165,6 +174,17 @@ final class Reconciliation
     private function check(string $table, string $source, string $relation, int $expected, int $actual): void
     {
         $this->rows[] = ['table' => $table, 'source' => $source, 'relation' => $relation, 'expected' => $expected, 'actual' => $actual, 'ok' => $expected === $actual];
+    }
+
+    /** Distinct (product_id, bucket) pairs the transform has opened in the append-only ledger. */
+    private function distinctTransformBuckets(): int
+    {
+        $seen = [];
+        foreach ($this->ctx->db->table('inventory_movements')->select(['product_id', 'bucket'])->where('reason', 'transform')->cursor() as $row) {
+            $seen[Row::int($row, 'product_id').':'.Row::str($row, 'bucket')] = true;
+        }
+
+        return count($seen);
     }
 
     private function sharedIds(string $legacyTable, string $cleanTable): int

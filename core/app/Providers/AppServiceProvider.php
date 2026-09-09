@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Domain\Inventory\StockWriteGuard;
 use App\Support\LegacyReadOnly;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Database\Eloquent\Model;
@@ -40,6 +41,13 @@ class AppServiceProvider extends ServiceProvider
         // Per-IP limiter for every /api route (v2, compat and proxied): 60/min, the legacy app's
         // `throttle:api` value (review 🟡-7); the edge cache carries the read load.
         RateLimiter::for('api', fn (Request $request) => Limit::perMinute(60)->by($request->ip() ?? 'unknown'));
+
+        // Wave 3: no statement outside InventoryService (or the transform, which opens its own
+        // window) may write a stock column. Armed outside production, exactly as study §4.2
+        // scopes it; production relies on the nightly `inventory:verify` reconciliation instead.
+        if (! $this->app->isProduction()) {
+            StockWriteGuard::arm();
+        }
 
         // The `legacy` connection is read-only at the SESSION level, so raw SQL cannot write to a
         // legacy table either (milestone audit; see App\Support\LegacyReadOnly for why the test

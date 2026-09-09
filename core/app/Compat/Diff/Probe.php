@@ -18,7 +18,22 @@ use RuntimeException;
  */
 final class Probe
 {
+    /** @var array<string, string> per-host placeholder values ({guest}, {jwt}) */
+    private array $variables = [];
+
     public function __construct(private readonly string $base, private readonly string $apiKey, private readonly int $paceMs = 0) {}
+
+    /**
+     * Bind this host's placeholder values. Each host gets its OWN guest token, so a stateful
+     * sequence builds a separate cart on each side instead of both hosts fighting over one row
+     * in the shared `carts` table.
+     *
+     * @param  array<string, string>  $variables
+     */
+    public function withVariables(array $variables): void
+    {
+        $this->variables = $variables;
+    }
 
     public function isInProcess(): bool
     {
@@ -36,24 +51,64 @@ final class Probe
             $headers['Api-Code'] = $this->apiKey;
         }
 
-        return $this->isInProcess() ? $this->inProcess($case->method, $case->path, $headers) : $this->http($case->method, $case->path, $headers);
+        $headers = array_map(fn (string $v): string => $this->substitute($v), $headers);
+        $path = $this->substitute($case->path);
+        $body = $case->body === null ? null : $this->substituteDeep($case->body);
+        if ($body !== null) {
+            $headers['Content-Type'] = 'application/json';
+        }
+
+        return $this->isInProcess() ? $this->inProcess($case->method, $path, $headers, $body) : $this->http($case->method, $path, $headers, $body);
+    }
+
+    /** Replace `{guest}` / `{jwt}` with this host's values. */
+    private function substitute(string $value): string
+    {
+        foreach ($this->variables as $name => $replacement) {
+            $value = str_replace('{'.$name.'}', $replacement, $value);
+        }
+
+        return $value;
+    }
+
+    /**
+     * @param  array<mixed>  $value
+     * @return array<mixed>
+     */
+    private function substituteDeep(array $value): array
+    {
+        $out = [];
+        foreach ($value as $key => $item) {
+            if (is_string($item)) {
+                $out[$key] = $this->substitute($item);
+            } elseif (is_array($item)) {
+                $out[$key] = $this->substituteDeep($item);
+            } else {
+                $out[$key] = $item;
+            }
+        }
+
+        return $out;
     }
 
     /**
      * @param  array<string, string>  $headers
+     * @param  array<mixed>|null  $body
      * @return array{status: int, content_type: string, headers: array<string, string>, body: string}
      */
-    private function http(string $method, string $path, array $headers): array
+    private function http(string $method, string $path, array $headers, ?array $body = null): array
     {
         $url = rtrim($this->base, '/').'/'.ltrim($path, '/');
         for ($attempt = 1; $attempt <= 3; $attempt++) {
             if ($this->paceMs > 0) {
                 usleep($this->paceMs * 1000);
             }
-            $response = Http::withHeaders($headers)
+            $request = Http::withHeaders($headers)
                 ->withOptions(['http_errors' => false, 'allow_redirects' => false, 'decode_content' => true])
-                ->timeout(60)
-                ->send($method, $url);
+                ->timeout(60);
+            $response = $body === null
+                ? $request->send($method, $url)
+                : $request->send($method, $url, ['json' => $body]);
             if ($response->status() === 429 && $attempt < 3) {
                 $retry = $response->header('Retry-After');
                 sleep(max(1, min(65, is_numeric($retry) ? (int) $retry : 5)));
@@ -75,15 +130,19 @@ final class Probe
 
     /**
      * @param  array<string, string>  $headers
+     * @param  array<mixed>|null  $body
      * @return array{status: int, content_type: string, headers: array<string, string>, body: string}
      */
-    private function inProcess(string $method, string $path, array $headers): array
+    private function inProcess(string $method, string $path, array $headers, ?array $body = null): array
     {
         $server = [];
         foreach ($headers as $name => $value) {
             $server['HTTP_'.strtoupper(str_replace('-', '_', $name))] = $value;
         }
-        $request = Request::create('/'.ltrim($path, '/'), $method, [], [], [], $server);
+        if ($body !== null) {
+            $server['CONTENT_TYPE'] = 'application/json';
+        }
+        $request = Request::create('/'.ltrim($path, '/'), $method, [], [], [], $server, $body === null ? null : (string) json_encode($body));
         /** @var Kernel $kernel */
         $kernel = app(Kernel::class);
         $response = $kernel->handle($request);

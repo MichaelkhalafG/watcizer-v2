@@ -17,6 +17,10 @@ use Illuminate\Support\Facades\DB;
  *
  * Ids are resolved from the local database when none are given (`--ids=`), so the same list
  * can be replayed against staging/production URLs where the harness has no database.
+ *
+ * Wave 3 appends {@see CartCases}: the cart, checkout and account paths, including POST bodies
+ * and stateful sequences. Those are the only cases that write, and CartCases documents what that
+ * costs and how it is bounded.
  */
 final class DefaultCases
 {
@@ -97,7 +101,9 @@ final class DefaultCases
         $cases[] = new DiffCase('sitemap:redirect', 'sitemap.xml', 'redirect', [], false, 'compat', null);
         $cases[] = new DiffCase('sitemap:redirect:ar', 'sitemap.xml', 'redirect', $ar, false, 'compat', null);
 
-        return $cases;
+        // Wave 3: cart, checkout and account. Kept in their own class because they are the only
+        // cases that WRITE, and the rules that makes necessary are worth reading in one place.
+        return array_merge($cases, CartCases::build());
     }
 
     /**
