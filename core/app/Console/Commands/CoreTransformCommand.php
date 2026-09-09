@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Domain\Inventory\StockWriteGuard;
 use App\Storefront\StorefrontCache;
 use App\Transform\Audit\AuditReport;
 use App\Transform\Audit\AuditRunner;
@@ -96,7 +97,10 @@ final class CoreTransformCommand extends Command
             return self::FAILURE;
         }
         try {
-            return $this->transform($db, $legacy, $options, $config, $startedAt);
+            // The transform WRITES stock columns (step 6 mirrors legacy quantities into
+            // catalog_products, step 20 opens the ledger), so it is one of the two sanctioned
+            // writers and opens the guard window for its whole run.
+            return StockWriteGuard::allow(fn (): int => $this->transform($db, $legacy, $options, $config, $startedAt));
         } finally {
             $db->selectOne('SELECT RELEASE_LOCK(?) AS released', [self::RUN_LOCK]);
         }
@@ -120,6 +124,27 @@ final class CoreTransformCommand extends Command
             $this->error('core_transform_id_map is missing — run `php artisan migrate` (M1b/M1c) first.');
 
             return self::FAILURE;
+        }
+
+        // ── ledger pre-flight (wave 3) ────────────────────────────────────────────
+        // Step 20 re-baselines `inventory_movements` from legacy `products.stock`. That is only
+        // meaningful while the ledger holds nothing but transform rows. The moment a real sale,
+        // cancellation or dashboard adjustment has been written, legacy stock is no longer the
+        // truth and a re-baseline would silently contradict the movements that ARE the truth.
+        // There is no --force for this: the answer is the drop-and-rebuild of §3.4 step 3b, which
+        // drops the ledger with the rest of the clean tables.
+        if (! $options->auditOnly && Schema::hasTable('inventory_movements')) {
+            $foreign = $db->table('inventory_movements')->where('reason', '!=', 'transform')
+                ->selectRaw('reason, COUNT(*) AS n')->groupBy('reason')->orderBy('reason')->get();
+            if ($foreign->isNotEmpty()) {
+                $breakdown = $foreign->map(fn (object $r): string => (string) (property_exists($r, 'reason') && is_scalar($r->reason) ? $r->reason : '?').' × '.(string) (property_exists($r, 'n') && is_scalar($r->n) ? $r->n : '?'))->implode(', ');
+                $this->error('inventory_movements holds movements the transform did not write ('.$breakdown.').');
+                $this->line('  Real stock has moved since the ledger was opened, so legacy products.stock is no longer the source of truth');
+                $this->line('  and re-baselining it would contradict the ledger. Rebuild instead (CLEAN_CORE_STUDY §3.4 step 3b):');
+                $this->line('  drop the clean tables, migrate, then run the transform against an empty ledger. There is no override.');
+
+                return self::FAILURE;
+            }
         }
 
         // Database-level read-only for the legacy session (skipped only when a harness already

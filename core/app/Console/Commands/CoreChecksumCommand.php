@@ -26,9 +26,26 @@ use Illuminate\Support\Facades\DB;
  */
 final class CoreChecksumCommand extends Command
 {
-    protected $signature = 'core:checksum {--set=legacy : legacy | clean | all} {--json : machine-readable output}';
+    protected $signature = 'core:checksum {--set=legacy : legacy | frozen | clean | all} {--json : machine-readable output}';
 
     protected $description = 'Content digest of the legacy and/or clean tables (read-only)';
+
+    /**
+     * The shared COMMERCE tables (study §2.6). They live in the legacy set for historical reasons
+     * — the transform still writes none of them — but from wave 3 the CORE application writes
+     * them: a cart, an order, an address or a payment status created through the compat layer
+     * lands here, and `offers.stock` is decremented here by `InventoryService::adjustOffer()`.
+     *
+     * So "the legacy tables did not change" stopped being true for these six the moment the
+     * checkout moved, and a rehearsal that runs the harness (which really places orders) must
+     * compare the FROZEN set instead. `--set=legacy` still digests all 65 and is still what the
+     * transform asserts before and after its own run.
+     *
+     * @var list<string>
+     */
+    public const SHARED_COMMERCE_TABLES = [
+        'addresses', 'carts', 'cart_items', 'orders', 'order_items', 'payment_statuses', 'offers',
+    ];
 
     /** @var list<string> */
     public const CLEAN_TABLES = [
@@ -51,12 +68,13 @@ final class CoreChecksumCommand extends Command
         $set = is_string($set) ? $set : 'legacy';
         $tables = match ($set) {
             'legacy' => LegacySource::TABLES,
+            'frozen' => self::frozenTables(),
             'clean' => self::CLEAN_TABLES,
             'all' => array_merge(LegacySource::TABLES, self::CLEAN_TABLES),
             default => null,
         };
         if ($tables === null) {
-            $this->error("--set must be legacy, clean or all (got [$set]).");
+            $this->error("--set must be legacy, frozen, clean or all (got [$set]).");
 
             return self::INVALID;
         }
@@ -73,6 +91,17 @@ final class CoreChecksumCommand extends Command
         $this->info("combined sha1 ({$set}, ".count($tables).' tables): '.$result['digest']);
 
         return self::SUCCESS;
+    }
+
+    /**
+     * The legacy tables NOTHING in core may write: the 65 minus the shared commerce ones. This
+     * is the set a rehearsal asserts unchanged end to end once the run includes a harness pass.
+     *
+     * @return list<string>
+     */
+    public static function frozenTables(): array
+    {
+        return array_values(array_diff(LegacySource::TABLES, self::SHARED_COMMERCE_TABLES));
     }
 
     /**

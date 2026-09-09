@@ -63,10 +63,21 @@ return [
         'all_offer', 'all_offer_rating', 'all_blog', 'all_banner_home', 'all_banner_side', 'all_banner_bottom',
         // wishlist + ratings (post-season auth wave)
         'all_wishlist', 'all_wishlist/*', 'add_wishlist', 'delete_wishlist/*', 'add_product_rating', 'add_offer_rating',
-        // cart / checkout / account (move in wave 3)
-        'add_to_cart', 'remove_from_cart', 'delete_cart/*', 'me/cart', 'cart/validate', 'cart/merge',
-        'add_order', 'callback_payment', 'me/orders', 'me/addresses', 'me/addresses/*', 'add_address',
+        // (wave 3 moved every cart / checkout / account row off this list — nothing left here)
     ],
+
+    /*
+    | Legacy JWT verification (wave 3). Core only VERIFIES: issuance, refresh and logout stay on
+    | the legacy host for the whole compat period, so this is the shared HS256 secret and nothing
+    | else. It is read from the environment and has NO default — an unset secret means every
+    | authenticated compat path answers 401, which is the safe direction.
+    */
+    'jwt_secret' => env('JWT_SECRET'),
+    'jwt_algo' => env('JWT_ALGO', 'HS256'),
+    'jwt_leeway' => (int) env('JWT_LEEWAY', 0),
+
+    // Where callback_payment sends the shopper back to, hard-coded in the legacy controller.
+    'payment_return_url' => env('COMPAT_PAYMENT_RETURN_URL', 'https://watchizereg.com/'),
 
     // Application-cache TTLs (seconds) — the legacy app used 3600 / 600 for the same payloads.
     'ttl' => [

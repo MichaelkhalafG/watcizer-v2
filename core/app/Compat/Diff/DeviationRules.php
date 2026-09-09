@@ -6,15 +6,23 @@ namespace App\Compat\Diff;
  * The sanctioned-deviations table of the compat layer (CLEAN_CORE_STUDY §3.7.3): every finding
  * the differ produces is either absorbed by exactly one rule here or is a failure.
  *
- * A rule matches by case name (fnmatch), normalised JSON path (indices as `[*]`, `**` = any
- * prefix, `*` within a segment) and finding kind; `ci` rules additionally require the two
- * values to be equal case-insensitively.
+ * A rule matches by case name (one or more `|`-separated fnmatch patterns), normalised JSON path
+ * (indices as `[*]`, `**` = any prefix, `*` within a segment) and finding kind. Two optional
+ * predicates narrow it further, and both exist so a rule can absorb a field's VOLATILITY without
+ * absorbing its CORRECTNESS:
  *
- * @phpstan-type Rule array{id: string, cases: string, paths: list<string>, kinds: list<string>, why: string, ci?: bool}
+ *  - `ci`   the two values must be equal case-insensitively.
+ *  - `both` both values must satisfy a named shape (positive_int, timestamp, uuid, guest_token,
+ *           order_number). A rule carrying `both` never absorbs a null-vs-value or a
+ *           malformed-vs-well-formed difference; those stay UNEXPLAINED.
+ *  - `direction` the difference must run one specific way (compat_lower_int, compat_newer), so
+ *           absorbing a deviation never absorbs its mirror image — which would be a bug.
+ *
+ * @phpstan-type Rule array{id: string, cases: string, paths: list<string>, kinds: list<string>, why: string, ci?: bool, both?: string, direction?: string}
  */
 final class DeviationRules
 {
-    /** @return list<array{id: string, cases: string, paths: list<string>, kinds: list<string>, why: string, ci?: bool}> */
+    /** @return list<array{id: string, cases: string, paths: list<string>, kinds: list<string>, why: string, ci?: bool, both?: string, direction?: string}> */
     public static function all(): array
     {
         return [
@@ -90,6 +98,39 @@ final class DeviationRules
                 'id' => 'D-15', 'cases' => 'product:*', 'paths' => ['$.message'], 'kinds' => ['value'],
                 'why' => 'Compat 404 bodies are generic (`{"message":"Not Found"}`, review 🟡-11); the legacy body echoes its model class and the raw id (`No query results for model [App\\Models\\Product] 999999`). The storefront reads the status only (serverCatalog.js catches and returns null).',
             ],
+            // -- wave 3: the five fields a stateful sequence CANNOT match, and nothing else --
+            // Each host runs the cart script under its own guest token, so it builds its own
+            // rows. These rules absorb only the identity of those rows; every price, quantity,
+            // total, warning and message is still compared byte for byte, and each absorption is
+            // counted in the report so an over-broad rule would show up as a spike.
+            [
+                'id' => 'D-16', 'cases' => 'cart:*|checkout:*|address:*', 'paths' => ['$.id', '$.address_id', '$.cart_id', '$.cart_item[*].id', '$.cart_item[*].cart_id', '$.warnings[*].item_id', '$.cart.id', '$.cart.cart_item[*].id', '$.cart.cart_item[*].cart_id', '$.cart.warnings[*].item_id'], 'kinds' => ['value'], 'both' => 'positive_int',
+                'why' => 'Row identity. The two hosts insert into the SHARED carts/cart_items/addresses tables under different guest tokens, so their auto-increment ids differ by construction. Both sides must still be a positive integer; the id linkage INSIDE each payload is asserted by tests/Feature/Compat/CartOwnershipTest.php, not by the differ.',
+            ],
+            [
+                'id' => 'D-17', 'cases' => 'cart:*|checkout:*|address:*', 'paths' => ['**created_at', '**updated_at', '**expires_at'], 'kinds' => ['value'], 'both' => 'timestamp',
+                'why' => 'Row timestamps: the two hosts write their rows milliseconds apart. Both sides must still parse as a timestamp of the same shape - ISO-8601 with microseconds for created_at/updated_at, the raw column string for expires_at, which the legacy model does not cast.',
+            ],
+            [
+                'id' => 'D-18', 'cases' => 'cart:*|checkout:*', 'paths' => ['$.guest_token', '$.cart.guest_token', 'header:x-guest-token'], 'kinds' => ['value'], 'both' => 'guest_token',
+                'why' => 'The per-host guest token itself. Both sides must echo a 36-character token; that each host echoes the one it was SENT is proven by the sequence continuing to resolve the same cart across its later steps.',
+            ],
+            [
+                'id' => 'D-19', 'cases' => '*', 'paths' => ['$.ref'], 'kinds' => ['value'], 'both' => 'uuid',
+                'why' => 'The legacy 500 body carries Str::uuid() as a correlation id, generated fresh per response, so it can never match. Both sides must emit a UUID. AddToCart reaches this branch on a VALIDATION failure, because it catches \\Exception - see CartCompatController.',
+            ],
+            [
+                'id' => 'D-20', 'cases' => 'checkout:*', 'paths' => ['$.order_number'], 'kinds' => ['value'], 'both' => 'order_number',
+                'why' => 'The order number is MAX(CAST(order_number AS UNSIGNED))+1 over the shared orders table, so the second host to place an order necessarily takes the next one. Both sides must be a zero-padded 6-digit string.',
+            ],
+            [
+                'id' => 'D-22', 'cases' => 'all_product*', 'paths' => ['$[*].stock', '$[*].market_stock'], 'kinds' => ['value'], 'direction' => 'compat_lower_int',
+                'why' => 'A sale the compat layer has already applied and the legacy host has not yet noticed. `StockChanged` bumps the storefront cache version, so core re-renders `all_product` the moment stock moves; the legacy endpoint caches its payload for 600 s and has no invalidation at all, so it keeps serving the pre-sale number for up to ten minutes. Directional ON PURPOSE: it absorbs compat being LOWER (core saw the sale first) and never compat being HIGHER, which would mean core failed to decrement. The real guard on stock equality is the transform reconciliation `catalog_products[stock mirror]`, which compares every row, not a cached page.',
+            ],
+            [
+                'id' => 'D-22', 'cases' => 'all_product*|sitemap*', 'paths' => ['$[*].updated_at', 'url:/product/*'], 'kinds' => ['value'], 'direction' => 'compat_newer',
+                'why' => 'The `updated_at` (and the sitemap `lastmod` derived from it) of a product whose stock the harness just moved: the ledger touches `updated_at` exactly as the legacy decrement did, and core re-renders while the legacy cache still holds the old page. Directional: compat may be NEWER, never older.',
+            ],
         ];
     }
 
@@ -101,7 +142,7 @@ final class DeviationRules
     {
         $path = JsonDiff::normalise($finding['path']);
         foreach (self::all() as $rule) {
-            if (! fnmatch($rule['cases'], $caseName, FNM_NOESCAPE)) {
+            if (! self::caseMatches($rule['cases'], $caseName)) {
                 continue;
             }
             if (! in_array($finding['kind'], $rule['kinds'], true)) {
@@ -112,6 +153,14 @@ final class DeviationRules
                     if (($rule['ci'] ?? false) && ! (is_string($finding['legacy']) && is_string($finding['compat']) && strcasecmp($finding['legacy'], $finding['compat']) === 0)) {
                         continue;
                     }
+                    $both = $rule['both'] ?? null;
+                    if ($both !== null && ! (self::shaped($both, $finding['legacy']) && self::shaped($both, $finding['compat']))) {
+                        continue;
+                    }
+                    $direction = $rule['direction'] ?? null;
+                    if ($direction !== null && ! self::directed($direction, $finding['legacy'], $finding['compat'])) {
+                        continue;
+                    }
 
                     return $rule['id'];
                 }
@@ -119,6 +168,67 @@ final class DeviationRules
         }
 
         return null;
+    }
+
+    /** One or more `|`-separated fnmatch patterns; the rule fires when any of them matches. */
+    public static function caseMatches(string $patterns, string $caseName): bool
+    {
+        foreach (explode('|', $patterns) as $pattern) {
+            if (fnmatch($pattern, $caseName, FNM_NOESCAPE)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Does the difference run the ONE way the rule allows?
+     *
+     * A directional rule is how a deviation can be absorbed without the reverse deviation being
+     * absorbed with it: `compat_lower_int` says core may hold LESS stock than a stale legacy
+     * cache (it saw the sale first) and says nothing about core holding more, which would be a
+     * failed decrement and stays UNEXPLAINED.
+     */
+    public static function directed(string $direction, mixed $legacy, mixed $compat): bool
+    {
+        return match ($direction) {
+            'compat_lower_int' => is_int($legacy) && is_int($compat) && $compat < $legacy && $compat >= 0,
+            'compat_newer' => is_string($legacy) && is_string($compat) && self::instant($compat) !== null
+                && self::instant($legacy) !== null && self::instant($compat) > self::instant($legacy),
+            default => false,
+        };
+    }
+
+    /** The first ISO-8601 instant in a string (a bare value, or one inside a `<lastmod>` element). */
+    private static function instant(string $value): ?int
+    {
+        if (preg_match('/\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:Z|[+-]\\d{2}:\\d{2})/', $value, $m) !== 1) {
+            return null;
+        }
+        $time = strtotime($m[0]);
+
+        return $time === false ? null : $time;
+    }
+
+    /**
+     * Is a value of the shape a `both` predicate names? Deliberately strict: an absorbed
+     * difference must still be a WELL-FORMED value of the right type on BOTH sides, so a rule
+     * can never hide a null, an empty string or a wrong type.
+     */
+    public static function shaped(string $shape, mixed $value): bool
+    {
+        return match ($shape) {
+            'positive_int' => is_int($value) && $value > 0,
+            'timestamp' => is_string($value) && (
+                preg_match('/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{6}Z$/', $value) === 1
+                || preg_match('/^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$/', $value) === 1
+            ),
+            'uuid' => is_string($value) && preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $value) === 1,
+            'guest_token' => is_string($value) && strlen($value) === 36,
+            'order_number' => is_string($value) && preg_match('/^\\d{6,}$/', $value) === 1,
+            default => false,
+        };
     }
 
     /**

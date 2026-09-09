@@ -2,6 +2,7 @@
 
 namespace App\Compat;
 
+use App\Domain\Inventory\InventoryService;
 use App\Storefront\StorefrontCache;
 
 /**
@@ -26,7 +27,13 @@ final class CompatServices
 
     public readonly CompatSitemap $sitemap;
 
-    public function __construct(StorefrontCache $cache)
+    public readonly CompatCart $cart;
+
+    public readonly CompatCheckout $checkout;
+
+    public readonly CompatAccount $account;
+
+    public function __construct(StorefrontCache $cache, InventoryService $inventory)
     {
         $this->storefrontId = config()->integer('compat.storefront_id');
         $this->names = new CompatNames($cache, $this->storefrontId);
@@ -36,5 +43,8 @@ final class CompatServices
         $this->meta = new CompatMeta($cache, $this->names, $this->categories, $this->storefrontId);
         $this->detail = new CompatProductDetail($this->names, $this->categories, $this->products, $this->storefrontId);
         $this->sitemap = new CompatSitemap($this->names, $this->categories, $this->products);
+        $this->cart = new CompatCart($this->storefrontId);
+        $this->checkout = new CompatCheckout($this->cart, $inventory, $this->storefrontId);
+        $this->account = new CompatAccount;
     }
 }

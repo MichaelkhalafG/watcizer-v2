@@ -35,4 +35,20 @@ return [
         ],
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Paymob
+    |--------------------------------------------------------------------------
+    | Mirrors backend/config/services.php. The KEYS ARE DEVELOPER-HANDLED and are never written
+    | into this repo (AGENTS §3): every one is an env() read with no default, and with them unset
+    | the checkout's card branch takes the same "credentials not configured" path the legacy code
+    | takes — a 422, never a silent success. `payment_methods` is the legacy integration-id list,
+    | moved out of the controller so it is configuration rather than three magic numbers.
+    */
+    'paymob' => [
+        'secret_key' => env('PAYMOB_SECRET_KEY'),
+        'public_key' => env('PAYMOB_PUBLIC_KEY'),
+        'hmac_secret' => env('PAYMOB_HMAC_SECRET'),
+        'payment_methods' => array_values(array_filter(array_map('intval', explode(',', (string) env('PAYMOB_PAYMENT_METHODS', '4988969,4627487,3961568'))))),
+    ],
 ];

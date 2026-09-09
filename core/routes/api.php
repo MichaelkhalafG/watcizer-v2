@@ -1,6 +1,9 @@
 <?php
 
+use App\Http\Controllers\Compat\AccountCompatController;
+use App\Http\Controllers\Compat\CartCompatController;
 use App\Http\Controllers\Compat\CatalogCompatController;
+use App\Http\Controllers\Compat\CheckoutCompatController;
 use App\Http\Controllers\Compat\GoneController;
 use App\Http\Controllers\Compat\ProxyController;
 use App\Http\Controllers\V2\CategoryController;
@@ -47,12 +50,42 @@ Route::middleware('api.code')->group(function (): void {
         Route::get('products/{id}', [CatalogCompatController::class, 'show']);
     });
 
+    // ── cart, checkout and account (wave 3) ───────────────────────────────
+    // Never HTTP-cached: the legacy app puts every guest.cart / auth:api endpoint in its own
+    // group for exactly that reason, and a cached cart would be one shopper's cart served to
+    // the next. `compat.guest` mints and echoes the X-Guest-Token; `compat.auth` is the core
+    // equivalent of `auth:api`, validating the legacy JWT with the shared secret.
+    Route::middleware('compat.guest')->group(function (): void {
+        Route::post('add_to_cart', [CartCompatController::class, 'add']);
+        Route::post('remove_from_cart', [CartCompatController::class, 'remove']);
+        Route::delete('delete_cart/{id}', [CartCompatController::class, 'destroy']);
+        Route::get('me/cart', [CartCompatController::class, 'show']);
+        Route::post('cart/validate', [CartCompatController::class, 'validateCart']);
+        Route::post('add_order', [CheckoutCompatController::class, 'addOrder']);
+    });
+    Route::middleware('compat.auth')->group(function (): void {
+        Route::post('cart/merge', [CartCompatController::class, 'merge']);
+        // The account reads carry the same locale negotiation as show_shipping_city: the legacy
+        // RouteServiceProvider calls LaravelLocalization::setLocale() on every request, so the
+        // nested shipping-city name follows the request locale there too (F-18).
+        Route::middleware('legacy.locale')->group(function (): void {
+            Route::get('me/orders', [AccountCompatController::class, 'orders']);
+            Route::get('me/addresses', [AccountCompatController::class, 'addresses']);
+        });
+        Route::delete('me/addresses/{id}', [AccountCompatController::class, 'deleteAddress']);
+    });
+    Route::post('add_address', [AccountCompatController::class, 'addAddress']);
+
     /** @var list<string> $gone */
     $gone = config()->array('compat.gone');
     foreach ($gone as $path) {
         Route::get($path, GoneController::class);
     }
 });
+// Paymob calls this one; it carries no Api-Code header, and the legacy app registers it
+// OUTSIDE the CheckApi group for that reason. HMAC is the authentication.
+Route::get('callback_payment', [CheckoutCompatController::class, 'callbackPayment']);
+
 Route::any('categories/{any}', GoneController::class)->where('any', '.*');
 
 // ── 3. proxy (everything else under /api that is not v2) ──────────────────

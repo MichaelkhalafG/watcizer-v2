@@ -21,10 +21,22 @@ final class JsonDiff
     /** @var list<array{path: string, kind: string, legacy: mixed, compat: mixed}> */
     private array $findings = [];
 
-    /** @return list<array{path: string, kind: string, legacy: mixed, compat: mixed}> */
-    public static function compare(mixed $legacy, mixed $compat): array
+    /** @var list<string> normalised paths whose lists are paired by index, not by id */
+    private array $positional = [];
+
+    /**
+     * @param  list<string>  $positional  normalised paths whose lists are paired BY INDEX rather
+     *                                    than by id. Wave 3 needs it for `$.cart_item`: the two
+     *                                    hosts build their own rows under their own guest tokens,
+     *                                    so the ids differ by construction and id-pairing would
+     *                                    report every line as one missing plus one extra instead
+     *                                    of comparing the two field by field.
+     * @return list<array{path: string, kind: string, legacy: mixed, compat: mixed}>
+     */
+    public static function compare(mixed $legacy, mixed $compat, array $positional = []): array
     {
         $d = new self;
+        $d->positional = $positional;
         $d->walk($legacy, $compat, '$');
 
         return $d->findings;
@@ -107,7 +119,7 @@ final class JsonDiff
      */
     private function walkList(array $a, array $b, string $path): void
     {
-        $key = self::keyField($a) ?? self::keyField($b);
+        $key = in_array(self::normalise($path), $this->positional, true) ? null : (self::keyField($a) ?? self::keyField($b));
         if ($key !== null && self::allKeyed($a, $key) && self::allKeyed($b, $key)) {
             $this->walkKeyed($a, $b, $path, $key);
 
