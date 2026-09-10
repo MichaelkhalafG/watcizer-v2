@@ -5,6 +5,7 @@ use App\Domain\Inventory\StockTarget;
 use App\Transform\Row;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
+use Tests\Support\LedgerState;
 use Tests\Support\T;
 
 /*
@@ -35,6 +36,7 @@ it('refuses to run when the ledger holds a movement the transform did not write'
 });
 
 it('names every foreign reason and its count', function () {
+    LedgerState::skipIfDirty();                                     // the counts below are exact
     $productId = T::int(DB::table('catalog_products')->whereNull('deleted_at')->orderBy('id')->value('id'));
     $service = app(InventoryService::class);
     $service->adjust(StockTarget::product($productId), 'market', 1, 'restock');
@@ -57,7 +59,7 @@ it('still allows --audit, which writes nothing', function () {
 });
 
 it('runs normally while the ledger holds only transform rows', function () {
-    expect(DB::table('inventory_movements')->where('reason', '!=', 'transform')->count())->toBe(0);
+    LedgerState::skipIfDirty();                                     // this IS the precondition
 
     $exit = Artisan::call('core:transform', ['--force' => true, '--only' => '20']);
 
@@ -69,6 +71,7 @@ it('appends a re-baseline row instead of editing the opening one when legacy sto
     // The milestone audit caught step 20 UPDATING its baseline row in place, which made the
     // ledger a mutable snapshot instead of a ledger. Simulate a drifted ledger and prove the
     // step corrects it by APPENDING.
+    LedgerState::skipIfDirty();                                     // step 20 must be allowed to run
     $productId = T::int(DB::table('catalog_products')->whereNull('deleted_at')->orderBy('id')->value('id'));
     $legacyStock = T::int(DB::connection('legacy')->table('products')->where('id', $productId)->value('stock'));
 
@@ -95,7 +98,8 @@ it('appends a re-baseline row instead of editing the opening one when legacy sto
 });
 
 it('writes nothing on a second pass once the ledger agrees again', function () {
-    Artisan::call('core:transform', ['--force' => true, '--only' => '20']);
+    LedgerState::skipIfDirty();                                     // else BOTH runs are refused and
+    Artisan::call('core:transform', ['--force' => true, '--only' => '20']);   // this passes vacuously
     $rows = DB::table('inventory_movements')->count();
 
     Artisan::call('core:transform', ['--force' => true, '--only' => '20']);
