@@ -312,7 +312,11 @@ class CheckoutCompatController extends Controller
      * The client-sent `items[]`, normalised. This is the authoritative SET of lines; prices are
      * always recomputed, so trusting the client for the set is not a pricing hole.
      *
-     * @return array<int, array{product_id: int|null, offer_id: int|null, quantity: int, type_stock: string|null, color_band: string|null, color_dial: string|null}>
+     * Wave 3.5: `variant_id` is deliberately NOT read from the request. The legacy frontend has
+     * no concept of a variant, so a compat line is always variant-free; that is the invariant, and
+     * accepting the field would create the one thing the invariant forbids.
+     *
+     * @return array<int, array{product_id: int|null, variant_id: int|null, offer_id: int|null, quantity: int, type_stock: string|null, color_band: string|null, color_dial: string|null}>
      */
     private function requestLines(Request $request): array
     {
@@ -328,6 +332,7 @@ class CheckoutCompatController extends Controller
             /** @var array<string, mixed> $item */
             $lines[] = [
                 'product_id' => Val::nint($item, 'product_id'),
+                'variant_id' => null,
                 'offer_id' => Val::nint($item, 'offer_id'),
                 'quantity' => Val::int($item, 'quantity'),
                 'type_stock' => Val::nstr($item, 'type_stock'),
@@ -342,7 +347,7 @@ class CheckoutCompatController extends Controller
     /**
      * The DB cart, used only when a logged-in client posted no `items[]` at all.
      *
-     * @return array<int, array{product_id: int|null, offer_id: int|null, quantity: int, type_stock: string|null, color_band: string|null, color_dial: string|null}>
+     * @return array<int, array{product_id: int|null, variant_id: int|null, offer_id: int|null, quantity: int, type_stock: string|null, color_band: string|null, color_dial: string|null}>
      */
     private function cartLines(int $cartId): array
     {
@@ -350,6 +355,7 @@ class CheckoutCompatController extends Controller
         foreach ($this->compat->cart->items($cartId) as $item) {
             $lines[] = [
                 'product_id' => Row::nint($item, 'product_id'),
+                'variant_id' => Row::nint($item, 'variant_id'),
                 'offer_id' => Row::nint($item, 'offer_id'),
                 'quantity' => Row::int($item, 'quantity'),
                 'type_stock' => Row::nstr($item, 'type_stock'),

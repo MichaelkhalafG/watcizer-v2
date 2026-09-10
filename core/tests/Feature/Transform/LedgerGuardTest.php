@@ -1,6 +1,7 @@
 <?php
 
 use App\Domain\Inventory\InventoryService;
+use App\Domain\Inventory\StockTarget;
 use App\Transform\Row;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
@@ -20,7 +21,7 @@ use Tests\Support\T;
 
 it('refuses to run when the ledger holds a movement the transform did not write', function () {
     $productId = T::int(DB::table('catalog_products')->whereNull('deleted_at')->orderBy('id')->value('id'));
-    app(InventoryService::class)->adjust($productId, 'market', 1, 'restock');
+    app(InventoryService::class)->adjust(StockTarget::product($productId), 'market', 1, 'restock');
 
     $exit = Artisan::call('core:transform', ['--force' => true]);
     $output = Artisan::output();
@@ -36,9 +37,9 @@ it('refuses to run when the ledger holds a movement the transform did not write'
 it('names every foreign reason and its count', function () {
     $productId = T::int(DB::table('catalog_products')->whereNull('deleted_at')->orderBy('id')->value('id'));
     $service = app(InventoryService::class);
-    $service->adjust($productId, 'market', 1, 'restock');
-    $service->adjust($productId, 'market', 1, 'manual');
-    $service->adjust($productId, 'market', 1, 'manual');
+    $service->adjust(StockTarget::product($productId), 'market', 1, 'restock');
+    $service->adjust(StockTarget::product($productId), 'market', 1, 'manual');
+    $service->adjust(StockTarget::product($productId), 'market', 1, 'manual');
 
     Artisan::call('core:transform', ['--force' => true]);
 
@@ -47,7 +48,7 @@ it('names every foreign reason and its count', function () {
 
 it('still allows --audit, which writes nothing', function () {
     $productId = T::int(DB::table('catalog_products')->whereNull('deleted_at')->orderBy('id')->value('id'));
-    app(InventoryService::class)->adjust($productId, 'market', 1, 'restock');
+    app(InventoryService::class)->adjust(StockTarget::product($productId), 'market', 1, 'restock');
 
     $exit = Artisan::call('core:transform', ['--audit' => true, '--force' => true]);
 

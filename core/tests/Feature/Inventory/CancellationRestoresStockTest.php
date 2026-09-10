@@ -1,6 +1,7 @@
 <?php
 
 use App\Domain\Inventory\InventoryService;
+use App\Domain\Inventory\StockTarget;
 use App\Transform\Row;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
@@ -63,7 +64,7 @@ it('gives the stock back when an order is cancelled the way the Blade dashboard 
 
     expect(T::int(DB::table('catalog_products')->where('id', $f['product'])->value('stock_express')))->toBe($f['before'])
         ->and($service->isReleased($f['order']))->toBeTrue()
-        ->and($service->ledgerQuantity($f['product'], 'express'))->toBe($f['before']);
+        ->and($service->ledgerQuantity(StockTarget::product($f['product']), 'express'))->toBe($f['before']);
 
     $movement = T::row(DB::table('inventory_movements')
         ->where('reference_type', 'orders')->where('reference_id', $f['order'])->where('reason', 'order_cancel')->first());

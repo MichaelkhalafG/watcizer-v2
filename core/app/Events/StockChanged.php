@@ -25,7 +25,14 @@ final class StockChanged
         public readonly ?Reference $reference = null,
         public readonly ?int $storefrontId = null,
         public readonly ?string $externalRef = null,
+        public readonly ?int $variantId = null,
     ) {}
+
+    /** Did this movement address a variant rather than the product itself? */
+    public function isVariant(): bool
+    {
+        return $this->variantId !== null;
+    }
 
     public function quantityBefore(): int
     {

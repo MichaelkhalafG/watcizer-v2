@@ -42,6 +42,39 @@ trait CreatesProbeProduct
         ]));
     }
 
+    /**
+     * N variants on a probe product, each opened at zero.
+     *
+     * It lives here rather than in the probe command because inserting a row that CARRIES stock
+     * columns is a stock write, and StockWriteGuard is right to say so — it caught this on the
+     * first run. The write window belongs to the fixture helper, which keeps the census of files
+     * allowed to open it at the same four.
+     *
+     * @return list<int>
+     */
+    protected function createProbeVariants(int $productId, int $count): array
+    {
+        return StockWriteGuard::allow(function () use ($productId, $count): array {
+            $ids = [];
+            for ($i = 1; $i <= $count; $i++) {
+                $ids[] = (int) DB::table('catalog_product_variants')->insertGetId([
+                    'product_id' => $productId,
+                    'sku' => null,
+                    'label' => "probe size {$i}",
+                    'price_delta' => '0.00',
+                    'stock_express' => 0,
+                    'stock_market' => 0,
+                    'is_active' => 1,
+                    'sort' => $i,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+            }
+
+            return $ids;
+        });
+    }
+
     protected function deleteProbeProduct(int $productId): void
     {
         StockWriteGuard::allow(fn () => DB::table('catalog_products')->where('id', $productId)->delete());

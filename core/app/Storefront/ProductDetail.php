@@ -118,6 +118,7 @@ final class ProductDetail
             ],
             'categories' => $categories,
             'breadcrumb' => $breadcrumb,
+            'variants' => $this->variants($productId, $card),
             'meta' => ['title' => $tr['meta_title'] ?? [], 'description' => $tr['meta_description'] ?? []],
         ];
 
@@ -147,6 +148,68 @@ final class ProductDetail
         $rows = $query->select(ProductCards::columns())->orderByDesc('p.created_at')->orderByDesc('p.id')->limit(config()->integer('storefront.listing.related'))->get()->all();
 
         return $this->cards->build($rows);
+    }
+
+    /**
+     * The product's buyable variants (wave 3.5), each with its OWN availability.
+     *
+     * An empty list means "this product has no variants" and the card's product-level
+     * `stock` is what the shopper buys against — which is every watch and every bag today, and
+     * exactly the pre-wave-3.5 behaviour. When the list is NOT empty the card's `stock` is the
+     * maintained AGGREGATE of these rows and nothing may be bought at product level; the frontend
+     * must make the shopper pick one.
+     *
+     * `price` is resolved per variant as the product's effective price plus the variant's
+     * `price_delta`, through the same {@see StorefrontPricing} helper every other price goes
+     * through, so a variant can carry a surcharge without a second pricing rule existing.
+     *
+     * INACTIVE variants are omitted: they are not buyable. Their units still count toward the
+     * product's quantity (they exist in the warehouse and the ledger balances on them) but never
+     * toward `in_stock` — see §3.10.
+     *
+     * @param  array<string, mixed>  $card
+     * @return list<array<string, mixed>>
+     */
+    private function variants(int $productId, array $card): array
+    {
+        $rows = DB::table('catalog_product_variants')
+            ->where('product_id', $productId)->where('is_active', 1)
+            ->orderBy('sort')->orderBy('id')
+            ->get(['id', 'sku', 'label', 'color_id', 'size_id', 'price_delta', 'stock_express', 'stock_market']);
+        if ($rows->isEmpty()) {
+            return [];
+        }
+
+        /** @var array<string, mixed> $price */
+        $price = is_array($card['price'] ?? null) ? $card['price'] : [];
+        $base = is_numeric($price['amount'] ?? null) ? (float) $price['amount'] : 0.0;
+        $sale = is_numeric($price['sale_amount'] ?? null) ? (float) $price['sale_amount'] : null;
+        $currency = is_string($price['currency'] ?? null) ? $price['currency'] : 'EGP';
+
+        $out = [];
+        foreach ($rows as $row) {
+            $delta = (float) Row::money($row, 'price_delta');
+            $express = Row::int($row, 'stock_express');
+            $market = Row::int($row, 'stock_market');
+            $colorId = Row::nint($row, 'color_id');
+            $sizeId = Row::nint($row, 'size_id');
+
+            $out[] = [
+                'id' => Row::int($row, 'id'),
+                'sku' => Row::nstr($row, 'sku'),
+                'label' => Row::str($row, 'label'),
+                'size' => $sizeId === null ? null : $this->lookups->ref('sizes', $sizeId),
+                'color' => $colorId === null ? null : $this->lookups->ref('colors', $colorId),
+                'price' => StorefrontPricing::resolve(
+                    number_format($base + $delta, 2, '.', ''),
+                    $sale === null ? null : number_format($sale + $delta, 2, '.', ''),
+                    $currency,
+                ),
+                'stock' => ['express' => $express, 'market' => $market, 'in_stock' => $express > 0 || $market > 0],
+            ];
+        }
+
+        return $out;
     }
 
     /** @return array{features: list<int>, genders: list<int>, dial: list<int>, band: list<int>, main: list<int>} */

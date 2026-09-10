@@ -4,6 +4,7 @@ use App\Domain\Inventory\Actor;
 use App\Domain\Inventory\InsufficientStock;
 use App\Domain\Inventory\InventoryService;
 use App\Domain\Inventory\Reference;
+use App\Domain\Inventory\StockTarget;
 use App\Domain\Inventory\StockWriteGuard;
 use App\Events\StockChanged;
 use App\Listeners\EnqueueStockChangedOutbox;
@@ -44,7 +45,7 @@ it('decrements the column, appends one movement and reads quantity_after back in
     $id = stockedProductId();
     $before = bucketValue($id, 'express');
 
-    $movement = $service->adjust($id, 'express', -2, 'order', Reference::order(4242), Actor::user(7), 1);
+    $movement = $service->adjust(StockTarget::product($id), 'express', -2, 'order', Reference::order(4242), Actor::user(7), 1);
 
     expect(bucketValue($id, 'express'))->toBe($before - 2)
         ->and($movement->quantity_delta)->toBe(-2)
@@ -63,7 +64,7 @@ it('refuses a decrement the bucket cannot cover, and changes nothing when it doe
     $before = bucketValue($id, 'express');
     $movements = DB::table('inventory_movements')->where('product_id', $id)->count();
 
-    expect(fn () => $service->adjust($id, 'express', -($before + 1), 'order'))
+    expect(fn () => $service->adjust(StockTarget::product($id), 'express', -($before + 1), 'order'))
         ->toThrow(InsufficientStock::class);
 
     expect(bucketValue($id, 'express'))->toBe($before)
@@ -74,8 +75,8 @@ it('never updates a movement: a correction is a new row with the opposite delta'
     $service = app(InventoryService::class);
     $id = stockedProductId();
 
-    $down = $service->adjust($id, 'express', -1, 'order', Reference::order(1));
-    $up = $service->adjust($id, 'express', 1, 'order_cancel', Reference::order(1));
+    $down = $service->adjust(StockTarget::product($id), 'express', -1, 'order', Reference::order(1));
+    $up = $service->adjust(StockTarget::product($id), 'express', 1, 'order_cancel', Reference::order(1));
 
     expect($up->id)->not->toBe($down->id)
         ->and($down->quantity_delta + $up->quantity_delta)->toBe(0)
@@ -86,28 +87,28 @@ it('keeps Σ quantity_delta equal to the column after a run of movements', funct
     $service = app(InventoryService::class);
     $id = stockedProductId();
 
-    $service->adjust($id, 'express', -1, 'order');
-    $service->adjust($id, 'market', -1, 'order');
-    $service->adjust($id, 'express', 1, 'order_cancel');
-    $service->adjust($id, 'market', 5, 'restock');
+    $service->adjust(StockTarget::product($id), 'express', -1, 'order');
+    $service->adjust(StockTarget::product($id), 'market', -1, 'order');
+    $service->adjust(StockTarget::product($id), 'express', 1, 'order_cancel');
+    $service->adjust(StockTarget::product($id), 'market', 5, 'restock');
 
-    expect($service->ledgerQuantity($id, 'express'))->toBe(bucketValue($id, 'express'))
-        ->and($service->ledgerQuantity($id, 'market'))->toBe(bucketValue($id, 'market'));
+    expect($service->ledgerQuantity(StockTarget::product($id), 'express'))->toBe(bucketValue($id, 'express'))
+        ->and($service->ledgerQuantity(StockTarget::product($id), 'market'))->toBe(bucketValue($id, 'market'));
 });
 
 it('maintains in_stock as "either bucket has something"', function () {
     $service = app(InventoryService::class);
     $id = stockedProductId();
 
-    $service->set($id, 'express', 0, 'manual');
-    $service->set($id, 'market', 0, 'manual');
+    $service->set(StockTarget::product($id), 'express', 0, 'manual');
+    $service->set(StockTarget::product($id), 'market', 0, 'manual');
     expect(T::int(DB::table('catalog_products')->where('id', $id)->value('in_stock')))->toBe(0);
 
-    $service->set($id, 'market', 3, 'restock');
+    $service->set(StockTarget::product($id), 'market', 3, 'restock');
     expect(T::int(DB::table('catalog_products')->where('id', $id)->value('in_stock')))->toBe(1);
 
-    $service->set($id, 'market', 0, 'manual');
-    $service->set($id, 'express', 2, 'restock');
+    $service->set(StockTarget::product($id), 'market', 0, 'manual');
+    $service->set(StockTarget::product($id), 'express', 2, 'restock');
     expect(T::int(DB::table('catalog_products')->where('id', $id)->value('in_stock')))->toBe(1);
 });
 
@@ -117,7 +118,7 @@ it('set() writes nothing when the bucket already holds that quantity', function 
     $current = bucketValue($id, 'express');
     $movements = DB::table('inventory_movements')->count();
 
-    expect($service->set($id, 'express', $current, 'import'))->toBeNull()
+    expect($service->set(StockTarget::product($id), 'express', $current, 'import'))->toBeNull()
         ->and(DB::table('inventory_movements')->count())->toBe($movements);
 });
 
@@ -125,9 +126,9 @@ it('rejects an unknown bucket, an unknown reason and a zero delta', function () 
     $service = app(InventoryService::class);
     $id = stockedProductId();
 
-    expect(fn () => $service->adjust($id, 'warehouse', -1, 'order'))->toThrow(InvalidArgumentException::class)
-        ->and(fn () => $service->adjust($id, 'express', -1, 'shrinkage'))->toThrow(InvalidArgumentException::class)
-        ->and(fn () => $service->adjust($id, 'express', 0, 'order'))->toThrow(InvalidArgumentException::class);
+    expect(fn () => $service->adjust(StockTarget::product($id), 'warehouse', -1, 'order'))->toThrow(InvalidArgumentException::class)
+        ->and(fn () => $service->adjust(StockTarget::product($id), 'express', -1, 'shrinkage'))->toThrow(InvalidArgumentException::class)
+        ->and(fn () => $service->adjust(StockTarget::product($id), 'express', 0, 'order'))->toThrow(InvalidArgumentException::class);
 });
 
 it('fires StockChanged once per movement, with the before value derivable', function () {
@@ -135,7 +136,7 @@ it('fires StockChanged once per movement, with the before value derivable', func
     $id = stockedProductId();
     $before = bucketValue($id, 'express');
 
-    app(InventoryService::class)->adjust($id, 'express', -1, 'order');
+    app(InventoryService::class)->adjust(StockTarget::product($id), 'express', -1, 'order');
 
     Event::assertDispatchedTimes(StockChanged::class, 1);
     Event::assertDispatched(StockChanged::class, fn (StockChanged $e): bool => $e->productId === $id
@@ -149,7 +150,7 @@ it('writes exactly one outbox row per movement (proving the listener is register
     $id = stockedProductId();
     $before = DB::table('integration_outbox')->where('channel', EnqueueStockChangedOutbox::CHANNEL)->count();
 
-    app(InventoryService::class)->adjust($id, 'express', -1, 'order');
+    app(InventoryService::class)->adjust(StockTarget::product($id), 'express', -1, 'order');
 
     $rows = DB::table('integration_outbox')->where('channel', EnqueueStockChangedOutbox::CHANNEL)->orderByDesc('id')->get();
     expect($rows->count() - $before)->toBe(1);
@@ -173,7 +174,7 @@ it('bumps the storefront cache version of every storefront the product is placed
         $before[$sf] = $cache->version($sf);
     }
 
-    app(InventoryService::class)->adjust($id, 'express', -1, 'order');
+    app(InventoryService::class)->adjust(StockTarget::product($id), 'express', -1, 'order');
 
     foreach ($storefronts as $sf) {
         expect($cache->version($sf))->toBeGreaterThan($before[$sf]);
@@ -217,13 +218,13 @@ it('rebase() corrects the ledger onto the column without moving the column', fun
 
     // Simulate a rogue writer: the column moved, the ledger did not.
     StockWriteGuard::allow(fn () => DB::table('catalog_products')->where('id', $id)->update(['stock_express' => $column + 4]));
-    expect($service->ledgerQuantity($id, 'express'))->toBe($column);
+    expect($service->ledgerQuantity(StockTarget::product($id), 'express'))->toBe($column);
 
-    $movement = $service->rebase($id, 'express', 'test');
+    $movement = $service->rebase(StockTarget::product($id), 'express', 'test');
 
     expect($movement)->not->toBeNull()
         ->and(bucketValue($id, 'express'))->toBe($column + 4)          // column untouched
-        ->and($service->ledgerQuantity($id, 'express'))->toBe($column + 4)
+        ->and($service->ledgerQuantity(StockTarget::product($id), 'express'))->toBe($column + 4)
         ->and($movement?->reason)->toBe('adjustment')
         ->and($movement?->quantity_delta)->toBe(4);
 });

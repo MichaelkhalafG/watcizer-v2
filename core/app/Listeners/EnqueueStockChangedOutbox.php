@@ -31,6 +31,10 @@ final class EnqueueStockChangedOutbox
             'aggregate_id' => $event->productId,
             'payload' => (string) json_encode([
                 'product_id' => $event->productId,
+                // Wave 3.5: the level the units actually moved at. NULL means the product itself;
+                // an ERP that only knows products can ignore the key, one that carries sizes needs
+                // it, and without it a "stock.changed" for a shirt would not say WHICH size moved.
+                'variant_id' => $event->variantId,
                 'bucket' => $event->bucket,
                 'quantity_delta' => $event->delta,
                 'quantity_after' => $event->quantityAfter,

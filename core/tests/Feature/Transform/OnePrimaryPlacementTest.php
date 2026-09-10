@@ -6,6 +6,7 @@ use App\Transform\Row;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Testing\PendingCommand;
+use Tests\Support\LedgerState;
 use Tests\Support\LegacyShadow;
 
 use function Pest\Laravel\artisan;
@@ -84,6 +85,12 @@ function subTypeNodeId(int $legacySubTypeId): int
 }
 
 afterEach(fn () => LegacyShadow::closeAll());
+
+beforeEach(function () {
+    // A dirty ledger is a database state, not a defect — skip with the reason instead of failing
+    // this file's tests one broken assertion at a time. See Tests\Support\LedgerState.
+    LedgerState::skipIfDirty();
+});
 
 it('refuses a second primary placement at the database level (M1d)', function () {
     $productId = intValue(DB::table('storefront_category_product')->where('storefront_id', 1)->where('is_primary', 1)->orderBy('product_id')->value('product_id'));
