@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Domain\Inventory\Actor;
 use App\Domain\Inventory\InventoryService;
+use App\Domain\Inventory\StockTarget;
 use App\Domain\Inventory\StockWriteGuard;
 use App\Listeners\EnqueueStockChangedOutbox;
 use App\Transform\Row;
@@ -84,7 +85,7 @@ final class InventoryProveReleaseRaceCommand extends Command
                 ->where('reference_type', 'orders')->where('reference_id', $orderId)
                 ->whereIn('reason', InventoryService::RELEASE_REASONS)->count();
             $after = $this->stock($productId);
-            $ledger = $inventory->ledgerQuantity($productId, 'express');
+            $ledger = $inventory->ledgerQuantity(StockTarget::product($productId), 'express');
 
             $this->newLine();
             $this->table(['what', 'expected', 'actual'], [

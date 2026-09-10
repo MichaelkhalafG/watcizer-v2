@@ -175,6 +175,9 @@ final class CompatAccount
             'id' => Row::int($item, 'id'),
             'order_id' => Row::int($item, 'order_id'),
             'product_id' => Row::nint($item, 'product_id'),
+            // M1f added this column to the SHARED table, so the legacy `order_item` relation
+            // serialises it here too, in this position.
+            'variant_id' => Row::nint($item, 'variant_id'),
             'offer_id' => Row::nint($item, 'offer_id'),
             'quantity' => Row::int($item, 'quantity'),
             'piece_price' => Row::money($item, 'piece_price'),

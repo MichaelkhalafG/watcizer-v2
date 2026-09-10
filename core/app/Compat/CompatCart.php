@@ -83,14 +83,18 @@ final class CompatCart
      * is part of the key, so the lookup uses `IS NULL` exactly as Eloquent's `where(col, null)`
      * does. Quantity is REPLACED, not incremented — only the merge path adds.
      *
-     * @param  array{product_id: int|null, offer_id: int|null, quantity: int, piece_price: string, total_price: string, type_stock: string|null, color_band: string|null, color_dial: string|null}  $line
+     * Wave 3.5: the key gains `variant_id`, so the same shirt in two sizes is two lines. The
+     * database index does NOT enforce this key (M1f explains why it never has), so this
+     * select-then-insert is the whole of the enforcement.
+     *
+     * @param  array{product_id: int|null, variant_id: int|null, offer_id: int|null, quantity: int, piece_price: string, total_price: string, type_stock: string|null, color_band: string|null, color_dial: string|null}  $line
      */
     public function upsertItem(int $cartId, array $line): void
     {
         DB::transaction(function () use ($cartId, $line): void {
             $now = now();
             $query = DB::table('cart_items')->where('cart_id', $cartId);
-            foreach (['product_id', 'offer_id', 'color_band', 'color_dial', 'type_stock'] as $key) {
+            foreach (['product_id', 'variant_id', 'offer_id', 'color_band', 'color_dial', 'type_stock'] as $key) {
                 $value = $line[$key];
                 $value === null ? $query->whereNull($key) : $query->where($key, $value);
             }
@@ -105,6 +109,7 @@ final class CompatCart
             DB::table('cart_items')->insert($values + [
                 'cart_id' => $cartId,
                 'product_id' => $line['product_id'],
+                'variant_id' => $line['variant_id'],
                 'offer_id' => $line['offer_id'],
                 'color_band' => $line['color_band'],
                 'color_dial' => $line['color_dial'],
@@ -162,7 +167,7 @@ final class CompatCart
             foreach ($this->items($guestCartId) as $item) {
                 $now = now();
                 $query = DB::table('cart_items')->where('cart_id', $userCartId);
-                foreach (['product_id', 'offer_id', 'color_band', 'color_dial', 'type_stock'] as $key) {
+                foreach (['product_id', 'variant_id', 'offer_id', 'color_band', 'color_dial', 'type_stock'] as $key) {
                     $value = $item->{$key} ?? null;
                     $value === null ? $query->whereNull($key) : $query->where($key, $value);
                 }
@@ -182,6 +187,7 @@ final class CompatCart
                 DB::table('cart_items')->insert([
                     'cart_id' => $userCartId,
                     'product_id' => Row::nint($item, 'product_id'),
+                    'variant_id' => Row::nint($item, 'variant_id'),
                     'offer_id' => Row::nint($item, 'offer_id'),
                     'quantity' => $quantity,
                     'piece_price' => Row::money($item, 'piece_price'),
@@ -211,10 +217,14 @@ final class CompatCart
      *
      * @param  list<int>  $productIds
      * @param  list<int>  $offerIds
-     * @return array{products: array<int, array{selling: string, sale: string|null, express: int, market: int}>, offers: array<int, array{selling: string, sale: string|null, stock: int}>}
+     * @return array{products: array<int, array{selling: string, sale: string|null, express: int, market: int, has_variants: bool}>, offers: array<int, array{selling: string, sale: string|null, stock: int}>}
      */
     public function catalog(array $productIds, array $offerIds): array
     {
+        $variantProducts = $productIds === [] ? [] : DB::table('catalog_product_variants')
+            ->whereIn('product_id', $productIds)->distinct()->pluck('product_id')
+            ->map(fn (mixed $v): int => (int) (is_numeric($v) ? $v : 0))->all();
+
         $products = [];
         if ($productIds !== []) {
             $rows = DB::table('catalog_products as cp')
@@ -235,6 +245,9 @@ final class CompatCart
                     'sale' => $onStorefront ? Row::nmoney($row, 'effective_sale_price') : Row::nmoney($row, 'sale_price'),
                     'express' => Row::int($row, 'stock_express'),
                     'market' => Row::int($row, 'stock_market'),
+                    // Wave 3.5: a product with variants has no sellable product-level stock, and
+                    // the compat layer cannot choose a variant. See hasVariants() below.
+                    'has_variants' => in_array(Row::int($row, 'id'), $variantProducts, true),
                 ];
             }
         }
@@ -255,6 +268,15 @@ final class CompatCart
         }
 
         return ['products' => $products, 'offers' => $offers];
+    }
+
+    /**
+     * Does this product sell through variants? The compat layer cannot pick one, so it must not
+     * sell the product at all (wave 3.5 invariant — see CartCompatController).
+     */
+    public function hasVariants(int $productId): bool
+    {
+        return DB::table('catalog_product_variants')->where('product_id', $productId)->exists();
     }
 
     /**
@@ -312,6 +334,10 @@ final class CompatCart
                 'id' => Row::int($item, 'id'),
                 'cart_id' => Row::int($item, 'cart_id'),
                 'product_id' => Row::nint($item, 'product_id'),
+                // M1f added this column to the SHARED table, so the LEGACY app's `$cart->toArray()`
+                // emits it here too, in this position. Both hosts changed together; the harness
+                // proves it.
+                'variant_id' => Row::nint($item, 'variant_id'),
                 'offer_id' => Row::nint($item, 'offer_id'),
                 'quantity' => Row::int($item, 'quantity'),
                 'piece_price' => Row::money($item, 'piece_price'),
@@ -456,7 +482,7 @@ final class CompatCart
 
     /**
      * @param  Collection<int, stdClass>  $items
-     * @return array{products: array<int, array{selling: string, sale: string|null, express: int, market: int}>, offers: array<int, array{selling: string, sale: string|null, stock: int}>}
+     * @return array{products: array<int, array{selling: string, sale: string|null, express: int, market: int, has_variants: bool}>, offers: array<int, array{selling: string, sale: string|null, stock: int}>}
      */
     private function catalogFor(Collection $items): array
     {

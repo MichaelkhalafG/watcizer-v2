@@ -1,6 +1,7 @@
 <?php
 
 use App\Domain\Inventory\InventoryService;
+use App\Domain\Inventory\StockTarget;
 use App\Domain\Inventory\StockWriteGuard;
 use Illuminate\Support\Facades\DB;
 use Tests\Support\T;
@@ -72,7 +73,7 @@ it('lets the service through, and closes the window again afterwards', function 
     $id = T::int(DB::table('catalog_products')->whereNull('deleted_at')->orderBy('id')->value('id'));
 
     expect(StockWriteGuard::permitted())->toBeFalse();
-    app(InventoryService::class)->adjust($id, 'market', 1, 'restock');
+    app(InventoryService::class)->adjust(StockTarget::product($id), 'market', 1, 'restock');
     expect(StockWriteGuard::permitted())->toBeFalse();
 
     // …and the guard is still armed after the service used it.
@@ -84,7 +85,7 @@ it('counts nesting, so a transform step calling the service does not close the w
     $id = T::int(DB::table('catalog_products')->whereNull('deleted_at')->orderBy('id')->value('id'));
 
     StockWriteGuard::allow(function () use ($id): void {
-        app(InventoryService::class)->adjust($id, 'market', 1, 'restock');   // opens and closes an inner window
+        app(InventoryService::class)->adjust(StockTarget::product($id), 'market', 1, 'restock');   // opens and closes an inner window
         expect(StockWriteGuard::permitted())->toBeTrue();                     // the outer one is still open
         DB::table('catalog_products')->where('id', $id)->update(['stock_market' => DB::raw('`stock_market` + 0')]);
     });

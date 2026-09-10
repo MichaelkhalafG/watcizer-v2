@@ -100,5 +100,54 @@ final class Step13Variants implements Step
             }
             $result->writes->add($ctx->writer->upsert('catalog_product_variants', self::CLEAN, ['id'], ['product_id', 'sku', 'label', 'price_delta', 'stock_express', 'sort', 'updated_at'], $out));
         });
+
+        $this->syncParentAggregates($ctx, $result);
+    }
+
+    /**
+     * Wave 3.5: a product that has variants keeps its own `stock_*` as the SUM of them, and its
+     * `in_stock` as "some ACTIVE variant has stock".
+     *
+     * This runs after the variants are written and before step 20 opens the ledger, so the
+     * baseline step sees the final numbers. It is the one place in the transform that writes a
+     * product stock column from something other than legacy `products.stock`, and it only ever
+     * touches products that actually have variants — every watch and every bag in today's
+     * catalogue is left exactly as step 6 wrote it.
+     *
+     * A no-op on the current data: legacy `product_variants` is empty, so there is nothing to
+     * aggregate. The path is proven by `VariantTransformTest` against injected legacy fixtures.
+     */
+    private function syncParentAggregates(TransformContext $ctx, StepResult $result): void
+    {
+        $rows = $ctx->db->table('catalog_product_variants')
+            ->selectRaw('product_id, SUM(stock_express) AS e, SUM(stock_market) AS m, MAX(CASE WHEN is_active = 1 AND (stock_express > 0 OR stock_market > 0) THEN 1 ELSE 0 END) AS any_active')
+            ->groupBy('product_id')->orderBy('product_id')->get();
+
+        foreach ($rows as $row) {
+            $productId = Row::int($row, 'product_id');
+            $express = (int) (Row::nfloat($row, 'e') ?? 0.0);
+            $market = (int) (Row::nfloat($row, 'm') ?? 0.0);
+            $inStock = (int) (Row::nfloat($row, 'any_active') ?? 0.0);
+
+            $current = $ctx->db->table('catalog_products')->where('id', $productId)->first(['stock_express', 'stock_market', 'in_stock']);
+            if (! $current instanceof \stdClass) {
+                continue;
+            }
+            if (Row::int($current, 'stock_express') === $express
+                && Row::int($current, 'stock_market') === $market
+                && (Row::bool($current, 'in_stock') ? 1 : 0) === $inStock) {
+                $result->writes->unchanged++;
+
+                continue;
+            }
+
+            $ctx->writer->updateById('catalog_products', $productId, ['stock_express', 'stock_market', 'in_stock'], [
+                'stock_express' => $express,
+                'stock_market' => $market,
+                'in_stock' => $inStock,
+            ]);
+            $result->writes->updated++;
+            $result->count('parent_aggregate_synced');
+        }
     }
 }

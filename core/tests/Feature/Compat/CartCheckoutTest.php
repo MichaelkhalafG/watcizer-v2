@@ -3,6 +3,7 @@
 use App\Compat\CompatCart;
 use App\Compat\Diff\HarnessJwt;
 use App\Domain\Inventory\InventoryService;
+use App\Domain\Inventory\StockTarget;
 use App\Transform\Row;
 use Illuminate\Database\Query\JoinClause;
 use Illuminate\Support\Collection;
@@ -340,7 +341,7 @@ it('places a cash order: stock down, ledger movement written, cart gone', functi
     expect(DB::table('order_items')->where('order_id', $orderId)->count())->toBe(1)
         ->and(T::int(DB::table('catalog_products')->where('id', $product['id'])->value('stock_express')))->toBe($stockBefore - 2)
         ->and($service->isCommitted($orderId))->toBeTrue()
-        ->and($service->ledgerQuantity($product['id'], 'express'))->toBe($stockBefore - 2);
+        ->and($service->ledgerQuantity(StockTarget::product($product['id']), 'express'))->toBe($stockBefore - 2);
 
     $movement = T::row(DB::table('inventory_movements')->where('reference_type', 'orders')->where('reference_id', $orderId)->first());
     expect(Row::int($movement, 'quantity_delta'))->toBe(-2)

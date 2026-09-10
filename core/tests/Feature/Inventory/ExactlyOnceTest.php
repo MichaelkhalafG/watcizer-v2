@@ -3,6 +3,7 @@
 use App\Domain\Inventory\Actor;
 use App\Domain\Inventory\InventoryService;
 use App\Domain\Inventory\Reference;
+use App\Domain\Inventory\StockTarget;
 use App\Transform\Row;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
@@ -96,7 +97,7 @@ it('refuses a second movement for the SAME line and reason at the database level
     // Reach around the service's own lock to prove layer 2 stands alone: the index refuses this
     // whatever the caller believed about the state.
     expect(fn () => $service->adjust(
-        $f['product'], 'express', -2, 'order',
+        StockTarget::product($f['product']), 'express', -2, 'order',
         Reference::orderLine($f['order'], $f['lines'][0]), Actor::system(), 1,
     ))->toThrow(QueryException::class);
 
@@ -112,13 +113,13 @@ it('refuses a second RELEASE for the same line, and leaves the stock where it wa
     expect(T::int(DB::table('catalog_products')->where('id', $f['product'])->value('stock_express')))->toBe($f['before']);
 
     expect(fn () => $service->adjust(
-        $f['product'], 'express', 2, 'order_cancel',
+        StockTarget::product($f['product']), 'express', 2, 'order_cancel',
         Reference::orderLine($f['order'], $f['lines'][0]), Actor::system(), 1,
     ))->toThrow(QueryException::class);
 
     // The stock did NOT go one release higher than the real quantity.
     expect(T::int(DB::table('catalog_products')->where('id', $f['product'])->value('stock_express')))->toBe($f['before'])
-        ->and($service->ledgerQuantity($f['product'], 'express'))->toBe($f['before']);
+        ->and($service->ledgerQuantity(StockTarget::product($f['product']), 'express'))->toBe($f['before']);
 });
 
 it('still lets a cancel and a payment failure be told apart on the same line', function () {
@@ -130,7 +131,7 @@ it('still lets a cancel and a payment failure be told apart on the same line', f
     $service->releaseOrder($f['order'], 'payment_failed', Actor::system(), 1);
 
     $second = $service->adjust(
-        $f['product'], 'express', 0 + 2, 'order_cancel',
+        StockTarget::product($f['product']), 'express', 0 + 2, 'order_cancel',
         Reference::orderLine($f['order'], $f['lines'][0]), Actor::system(), 1,
     );
 
@@ -145,9 +146,9 @@ it('leaves every legitimate repeat reason completely unconstrained', function (s
     $service = app(InventoryService::class);
     $before = DB::table('inventory_movements')->where('product_id', $id)->where('reason', $reason)->count();
 
-    $service->adjust($id, 'market', 1, $reason);
-    $service->adjust($id, 'market', 1, $reason);
-    $service->adjust($id, 'market', 1, $reason);
+    $service->adjust(StockTarget::product($id), 'market', 1, $reason);
+    $service->adjust(StockTarget::product($id), 'market', 1, $reason);
+    $service->adjust(StockTarget::product($id), 'market', 1, $reason);
 
     expect(DB::table('inventory_movements')->where('product_id', $id)->where('reason', $reason)->count())->toBe($before + 3);
 })->with(['restock', 'manual', 'adjustment', 'import', 'erp_sync']);

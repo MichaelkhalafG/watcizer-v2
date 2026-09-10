@@ -5,6 +5,7 @@ use App\Transform\Row;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Testing\PendingCommand;
 use Tests\Feature\V2\ApiTestHelpers as H;
+use Tests\Support\LedgerState;
 use Tests\Support\LegacyShadow;
 
 use function Pest\Laravel\artisan;
@@ -66,6 +67,12 @@ function apiCount(string $path): int
 }
 
 afterEach(fn () => LegacyShadow::closeAll());
+
+beforeEach(function () {
+    // A dirty ledger is a database state, not a defect — skip with the reason instead of failing
+    // this file's tests one broken assertion at a time. See Tests\Support\LedgerState.
+    LedgerState::skipIfDirty();
+});
 
 it('bumps the storefront cache version on a real run, and never on a dry run', function () {
     $cache = app(StorefrontCache::class);

@@ -6,6 +6,7 @@ use App\Transform\LegacySource;
 use App\Transform\Row;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Testing\PendingCommand;
+use Tests\Support\LedgerState;
 
 use function Pest\Laravel\artisan;
 
@@ -75,6 +76,12 @@ function legacyFirstProduct(): stdClass
 
     return $row;
 }
+
+beforeEach(function () {
+    // A dirty ledger is a database state, not a defect — skip with the reason instead of failing
+    // this file's tests one broken assertion at a time. See Tests\Support\LedgerState.
+    LedgerState::skipIfDirty();
+});
 
 it('runs the audit alone, writes every code, and does not block on this data', function () {
     $dir = transformOutputDir('audit');

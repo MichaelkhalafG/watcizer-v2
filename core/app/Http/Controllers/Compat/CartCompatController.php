@@ -58,6 +58,13 @@ class CartCompatController extends Controller
 
             if ($productId !== null) {
                 $product = $catalog['products'][$productId] ?? null;
+                if ($product !== null && $product['has_variants']) {
+                    // Wave 3.5 invariant: the legacy frontend cannot choose a size, so a product
+                    // that sells through variants is not addable here at all. Unreachable on
+                    // Watchizer (no storefront-1 product has variants) and a loud refusal rather
+                    // than a product-level decrement that no variant backs.
+                    return response()->json(['success' => false, 'message' => 'This product requires selecting an option'], 422);
+                }
                 if ($product !== null) {
                     $available = $typeStock === 'Express' ? $product['express'] : $product['market'];
                     if ($quantity > $available) {
@@ -75,6 +82,7 @@ class CartCompatController extends Controller
             $cart = $this->compat->cart->resolve($this->identity($request));
             $this->compat->cart->upsertItem(Row::int($cart, 'id'), [
                 'product_id' => $productId,
+                'variant_id' => null,          // the compat layer never sets one (wave 3.5)
                 'offer_id' => $offerId,
                 'quantity' => $quantity,
                 'piece_price' => Val::str($data, 'piece_price'),

@@ -48,7 +48,13 @@ final class CompatCheckout
     /**
      * A resolved, server-priced line: what the order will actually store.
      *
-     * @param  array<int, array{product_id: int|null, offer_id: int|null, quantity: int, type_stock: string|null, color_band: string|null, color_dial: string|null}>  $lines
+     * Wave 3.5: a line naming a product that SELLS THROUGH VARIANTS is refused here. The compat
+     * layer has no way to choose a size, and selling such a product at product level would
+     * decrement an aggregate no variant backs. Unreachable on Watchizer — no storefront-1 product
+     * has variants, asserted by `CompatVariantInvariantTest` — and a loud refusal if that ever
+     * changes, rather than a silent oversell.
+     *
+     * @param  array<int, array{product_id: int|null, variant_id: int|null, offer_id: int|null, quantity: int, type_stock: string|null, color_band: string|null, color_dial: string|null}>  $lines
      * @return array{lines: list<array<string, mixed>>, total: float}|array{error: array<string, mixed>, status: int}
      */
     public function priceLines(array $lines): array
@@ -75,6 +81,9 @@ final class CompatCheckout
             }
             $qty = $line['quantity'];
             if ($entity === null || $qty < 1) {
+                return ['error' => ['success' => false, 'message' => 'One of the items is no longer available.'], 'status' => 422];
+            }
+            if ($line['product_id'] !== null && ($catalog['products'][$line['product_id']]['has_variants'] ?? false)) {
                 return ['error' => ['success' => false, 'message' => 'One of the items is no longer available.'], 'status' => 422];
             }
             $piece = CompatCart::catalogPrice($entity['selling'], $entity['sale']);
@@ -151,6 +160,7 @@ final class CompatCheckout
             DB::table('order_items')->insert([
                 'order_id' => $orderId,
                 'product_id' => Val::nint($line, 'product_id'),
+                'variant_id' => Val::nint($line, 'variant_id'),
                 'offer_id' => Val::nint($line, 'offer_id'),
                 'quantity' => Val::int($line, 'quantity'),
                 'piece_price' => Val::str($line, 'piece_price'),

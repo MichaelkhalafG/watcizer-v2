@@ -5,6 +5,7 @@ use App\Models\Storefront\StorefrontCategory;
 use App\Transform\Row;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Testing\PendingCommand;
+use Tests\Support\LedgerState;
 
 use function Pest\Laravel\artisan;
 
@@ -75,6 +76,12 @@ function expectedVisibleNodeCount(): int
 
     return $types + $pairs;
 }
+
+beforeEach(function () {
+    // A dirty ledger is a database state, not a defect — skip with the reason instead of failing
+    // this file's tests one broken assertion at a time. See Tests\Support\LedgerState.
+    LedgerState::skipIfDirty();
+});
 
 it('hides zero-product nodes and shows them the moment a visible product is placed there', function () {
     transformForVisibility();

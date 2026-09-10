@@ -146,16 +146,50 @@ final class Reconciliation
         // MORE than one transform row and `quantity_after` no longer sums to anything meaningful.
         // The invariants that survive — and that are stronger — are: every (product, bucket) pair
         // is opened exactly once, and the DELTAS telescope to the legacy quantity.
-        $this->check('inventory_movements[transform buckets]', 'products × 2 buckets', '= distinct (product, bucket)', 2 * $products, $this->distinctTransformBuckets());
-        $this->check('inventory_movements[express deltas]', 'SUM(products.stock)', '= Σ transform quantity_delta', (int) $legacy->table('products')->sum('stock'), (int) $db->table('inventory_movements')->where('reason', 'transform')->where('bucket', 'express')->sum('quantity_delta'));
-        $this->check('inventory_movements[market deltas]', 'SUM(products.market_stock)', '= Σ transform quantity_delta', (int) $legacy->table('products')->sum('market_stock'), (int) $db->table('inventory_movements')->where('reason', 'transform')->where('bucket', 'market')->sum('quantity_delta'));
+        //
+        // Wave 3.5 scopes all three to products WITHOUT variants. For a product that sells through
+        // variants the ledger is opened at variant level and its own columns are an aggregate, so
+        // comparing it against legacy `products.stock` would be comparing two different things —
+        // and would have turned this table permanently red the day the first size arrived. The
+        // variant side of the same arithmetic is asserted by the four checks below; nothing is
+        // dropped, the two halves just meet their own source.
+        $variantProductIds = $this->variantProductIds();
+        $variantProducts = count($variantProductIds);
+        $plain = $products - $variantProducts;
+        $this->check('inventory_movements[transform buckets]', "products without variants ($plain) × 2 buckets", '= distinct (product, bucket), product-level rows', 2 * $plain, $this->distinctTransformBuckets());
+        $this->check('inventory_movements[express deltas]', 'SUM(products.stock) over products without variants', '= Σ transform quantity_delta, product-level rows', (int) $legacy->table('products')->whereNotIn('id', $variantProductIds)->sum('stock'), (int) $db->table('inventory_movements')->where('reason', 'transform')->whereNull('variant_id')->where('bucket', 'express')->sum('quantity_delta'));
+        $this->check('inventory_movements[market deltas]', 'SUM(products.market_stock) over products without variants', '= Σ transform quantity_delta, product-level rows', (int) $legacy->table('products')->whereNotIn('id', $variantProductIds)->sum('market_stock'), (int) $db->table('inventory_movements')->where('reason', 'transform')->whereNull('variant_id')->where('bucket', 'market')->sum('quantity_delta'));
 
         // …and the invariant `inventory:verify` runs on nightly: the ledger's own answer for a
         // bucket equals the column. Summed over ALL reasons, so a stray non-transform movement
         // (which the run lock's pre-flight already refuses) would show up here too.
         $this->check('inventory_movements[express = column]', 'Σ quantity_delta, all reasons', '= SUM(catalog_products.stock_express)', (int) $db->table('catalog_products')->sum('stock_express'), (int) $db->table('inventory_movements')->where('bucket', 'express')->sum('quantity_delta'));
         $this->check('inventory_movements[market = column]', 'Σ quantity_delta, all reasons', '= SUM(catalog_products.stock_market)', (int) $db->table('catalog_products')->sum('stock_market'), (int) $db->table('inventory_movements')->where('bucket', 'market')->sum('quantity_delta'));
-        $this->check('catalog_products[stock mirror]', 'products.stock / market_stock', '= stock_express / stock_market on every row', $products, $this->stockMirrorMatches());
+        $this->check('catalog_products[stock mirror]', 'products.stock / market_stock, products without variants', '= stock_express / stock_market on every row', $plain, $this->stockMirrorMatches($variantProductIds));
+
+        // 13 + 20, wave 3.5: variants. All four are trivially satisfied on today's data (legacy
+        // product_variants is empty), which is exactly why they are asserted rather than assumed —
+        // the day a variant appears, a silent regression here would put stock on the wrong level.
+        // They are proven against injected legacy fixtures by `VariantTransformTest`.
+        $variants = $db->table('catalog_product_variants')->count();
+        $this->check('catalog_product_variants[baselines]', 'variants × 2 buckets', '= distinct (variant, bucket) in the ledger', 2 * $variants, $this->distinctVariantBuckets());
+        $this->check('catalog_product_variants[ledger = column]', 'Σ quantity_delta per variant', '= variant stock columns', $this->variantColumnTotal(), $this->variantLedgerTotal());
+        $this->check('catalog_products[variant aggregate]', 'products with variants', '= rows whose stock equals Σ of their variants', $variantProducts, $this->variantAggregateMatches());
+        $this->check('catalog_products[no product-level movement on a variant product]', 'products with variants', '= rows with zero product-level movements', $variantProducts, $this->variantProductsWithoutProductMovements());
+
+        // The EXTERNAL anchor for variant quantities (review 2026-09-10 🟡-5). Every other variant
+        // check above is internally consistent — ledger against column, column against aggregate —
+        // so all four would still pass if step 13 had written the WRONG number into every variant.
+        // This one leaves the clean side entirely and compares against legacy `product_variants`,
+        // the source the numbers came from.
+        //
+        // Legacy's variant table is usable for exactly this and no more: the flat shape confirmed
+        // in production (A-23) has ONE `stock` column and no second bucket, which is why step 13
+        // maps `stock_express = stock` and `stock_market = 0` — so the anchor asserts precisely
+        // that pair. Moot on today's data (the table is empty); correct the day sizes arrive, which
+        // is the only day it could ever be wrong.
+        $mirror = $this->variantStockMirror();
+        $this->check('catalog_product_variants[stock mirror]', 'product_variants.stock (legacy), variants with a legacy row', '= stock_express, with stock_market 0', $mirror['legacy_backed'], $mirror['matching']);
 
         // soft-deleted rows: legacy has NO soft-delete column on any of its 65 tables (audit X-07), and the
         // transform never sets deleted_at, so the clean side must hold zero trashed rows after a run.
@@ -176,11 +210,124 @@ final class Reconciliation
         $this->rows[] = ['table' => $table, 'source' => $source, 'relation' => $relation, 'expected' => $expected, 'actual' => $actual, 'ok' => $expected === $actual];
     }
 
-    /** Distinct (product_id, bucket) pairs the transform has opened in the append-only ledger. */
+    /**
+     * Clean variants that came from a legacy row, and how many still mirror it exactly.
+     *
+     * Row COUNT is already covered by `catalog_product_variants` above (`= (ids preserved)`), so
+     * this speaks only about quantities: a legacy variant the transform dropped is absent from
+     * both numbers here and is caught there.
+     *
+     * @return array{legacy_backed: int, matching: int}
+     */
+    private function variantStockMirror(): array
+    {
+        /** @var array<int, array{int, int}> $clean */
+        $clean = [];
+        foreach ($this->ctx->db->table('catalog_product_variants')->select(['id', 'stock_express', 'stock_market'])->orderBy('id')->cursor() as $row) {
+            $clean[Row::int($row, 'id')] = [Row::int($row, 'stock_express'), Row::int($row, 'stock_market')];
+        }
+
+        $backed = 0;
+        $matching = 0;
+        foreach ($this->ctx->legacy->table('product_variants')->select(['id', 'stock'])->orderBy('id')->cursor() as $row) {
+            $c = $clean[Row::int($row, 'id')] ?? null;
+            if ($c === null) {
+                continue;
+            }
+            $backed++;
+            if ($c[0] === (Row::nint($row, 'stock') ?? 0) && $c[1] === 0) {
+                $matching++;
+            }
+        }
+
+        return ['legacy_backed' => $backed, 'matching' => $matching];
+    }
+
+    /** Distinct (variant_id, bucket) pairs the ledger has opened. */
+    private function distinctVariantBuckets(): int
+    {
+        $seen = [];
+        foreach ($this->ctx->db->table('inventory_movements')->select(['variant_id', 'bucket'])->whereNotNull('variant_id')->cursor() as $row) {
+            $seen[Row::int($row, 'variant_id').':'.Row::str($row, 'bucket')] = true;
+        }
+
+        return count($seen);
+    }
+
+    /** Σ of every variant's two stock columns. */
+    private function variantColumnTotal(): int
+    {
+        return (int) $this->ctx->db->table('catalog_product_variants')->sum('stock_express')
+            + (int) $this->ctx->db->table('catalog_product_variants')->sum('stock_market');
+    }
+
+    /** Σ quantity_delta over every variant-level movement. */
+    private function variantLedgerTotal(): int
+    {
+        return (int) $this->ctx->db->table('inventory_movements')->whereNotNull('variant_id')->sum('quantity_delta');
+    }
+
+    /** Products whose own stock columns equal the sum of their variants'. */
+    private function variantAggregateMatches(): int
+    {
+        $matches = 0;
+        $rows = $this->ctx->db->table('catalog_product_variants')
+            ->selectRaw('product_id, SUM(stock_express) AS e, SUM(stock_market) AS m')
+            ->groupBy('product_id')->cursor();
+        foreach ($rows as $row) {
+            $product = $this->ctx->db->table('catalog_products')->where('id', Row::int($row, 'product_id'))->first(['stock_express', 'stock_market']);
+            if (! $product instanceof \stdClass) {
+                continue;
+            }
+            if (Row::int($product, 'stock_express') === (int) (Row::nfloat($row, 'e') ?? 0.0)
+                && Row::int($product, 'stock_market') === (int) (Row::nfloat($row, 'm') ?? 0.0)) {
+                $matches++;
+            }
+        }
+
+        return $matches;
+    }
+
+    /** Products with variants that carry NO product-level movement — the drift the guard prevents. */
+    private function variantProductsWithoutProductMovements(): int
+    {
+        $clean = 0;
+        foreach ($this->ctx->db->table('catalog_product_variants')->distinct()->pluck('product_id') as $value) {
+            $productId = (int) (is_numeric($value) ? $value : 0);
+            if (! $this->ctx->db->table('inventory_movements')->where('product_id', $productId)->whereNull('variant_id')->exists()) {
+                $clean++;
+            }
+        }
+
+        return $clean;
+    }
+
+    /**
+     * Clean product ids that sell through variants — the products every product-level stock check
+     * must skip, because for them the ledger lives one level down.
+     *
+     * @return list<int>
+     */
+    private function variantProductIds(): array
+    {
+        $ids = [];
+        foreach ($this->ctx->db->table('catalog_product_variants')->select(['product_id'])->distinct()->orderBy('product_id')->cursor() as $row) {
+            $ids[] = Row::int($row, 'product_id');
+        }
+
+        return $ids;
+    }
+
+    /**
+     * Distinct (product_id, bucket) pairs the transform has opened at PRODUCT level in the
+     * append-only ledger. Variant rows carry a product_id too, so without the NULL filter a
+     * variant product would keep this count whole while its product-level baseline was missing —
+     * the check would pass for the wrong reason.
+     */
     private function distinctTransformBuckets(): int
     {
         $seen = [];
-        foreach ($this->ctx->db->table('inventory_movements')->select(['product_id', 'bucket'])->where('reason', 'transform')->cursor() as $row) {
+        foreach ($this->ctx->db->table('inventory_movements')->select(['product_id', 'bucket'])->where('reason', 'transform')->whereNull('variant_id')->cursor() as $row) {
             $seen[Row::int($row, 'product_id').':'.Row::str($row, 'bucket')] = true;
         }
 
@@ -233,14 +380,19 @@ final class Reconciliation
         return $ok;
     }
 
-    private function stockMirrorMatches(): int
+    /** @param  list<int>  $skip  products whose columns are a variant aggregate, not a legacy mirror */
+    private function stockMirrorMatches(array $skip = []): int
     {
+        $skipSet = array_fill_keys($skip, true);
         $clean = [];
         foreach ($this->ctx->db->table('catalog_products')->select(['id', 'stock_express', 'stock_market'])->orderBy('id')->cursor() as $row) {
             $clean[Row::int($row, 'id')] = [Row::int($row, 'stock_express'), Row::int($row, 'stock_market')];
         }
         $ok = 0;
         foreach ($this->ctx->legacy->table('products')->select(['id', 'stock', 'market_stock'])->orderBy('id')->cursor() as $row) {
+            if (isset($skipSet[Row::int($row, 'id')])) {
+                continue;
+            }
             $c = $clean[Row::int($row, 'id')] ?? null;
             if ($c !== null && $c[0] === Row::int($row, 'stock') && $c[1] === (Row::nint($row, 'market_stock') ?? 0)) {
                 $ok++;
