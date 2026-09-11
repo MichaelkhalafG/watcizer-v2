@@ -14,6 +14,18 @@ interface Stat {
     hint: string;
 }
 
+interface StorefrontRow {
+    id: number;
+    code: string;
+    name: string;
+    is_active: boolean;
+    visible: number;
+    hidden: number;
+    not_added: number;
+    unplaced: number;
+    no_arabic: number;
+}
+
 interface Inventory {
     out_of_stock: number;
     low_stock: number;
@@ -39,13 +51,21 @@ function StatCard({ stat }: { stat: Stat }) {
     );
 }
 
-export default function Home({ stats, inventory }: { stats: Stat[]; inventory: Inventory }) {
+export default function Home({
+    stats,
+    inventory,
+    storefronts,
+}: {
+    stats: Stat[];
+    inventory: Inventory;
+    storefronts: StorefrontRow[];
+}) {
     const { auth } = usePage<SharedProps>().props;
 
     return (
         <ManageLayout title="الرئيسية" crumbs={[{ label: 'الرئيسية' }]}>
             <Alert tone="info" title={`أهلاً ${auth.user?.name ?? ''}`}>
-                هذه المرحلة (4A) تبني الهيكل والصلاحيات فقط. شاشات المنتجات والتصنيفات والطلبات تأتي في المراحل 4B و4C.
+                الكتالوج مشترك بين المتاجر: المنتج واحد، وما يختلف هو الظهور والتصنيفات والترتيب في كل متجر. الأرقام بالأسفل تفصّل ذلك لكل متجر.
             </Alert>
 
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -53,6 +73,67 @@ export default function Home({ stats, inventory }: { stats: Stat[]; inventory: I
                     <StatCard key={stat.key} stat={stat} />
                 ))}
             </div>
+
+            {/* ── the catalogue as each SITE sees it (task 1) ──────────────────────────────
+                The totals above are catalogue-wide, which is right — the catalogue is shared.
+                This is the number the team actually works from: what is live on each storefront
+                and what is holding the rest back. `غير مضاف` and `مخفي` are separated because a
+                product that was never offered to a site and one somebody decided against need
+                different actions. ──────────────────────────────────────────────────────── */}
+            <Card>
+                <CardHeader className="gap-1">
+                    <CardTitle>الكتالوج على كل متجر</CardTitle>
+                    <p className="text-xs text-muted-foreground">
+                        كل منتج يُضاف تلقائيًا إلى كل متجر مفعّل وهو ظاهر، والفريق يخفي ما لا يناسب كل موقع. إعادة التحديث لا تُعيد إظهار ما أخفيتَه.
+                    </p>
+                </CardHeader>
+                <CardContent className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                        <thead>
+                            <tr className="border-b text-start text-xs text-muted-foreground">
+                                <th className="py-2 text-start font-medium">المتجر</th>
+                                <th className="py-2 text-start font-medium">ظاهر</th>
+                                <th className="py-2 text-start font-medium">مخفي</th>
+                                <th className="py-2 text-start font-medium">غير مضاف</th>
+                                <th className="py-2 text-start font-medium">بلا تصنيف</th>
+                                <th className="py-2 text-start font-medium">ظاهر بعربي ناقص</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {storefronts.map((row) => (
+                                <tr key={row.id} className="border-b last:border-0">
+                                    <td className="py-2">
+                                        <span className="font-medium">{row.name}</span>{' '}
+                                        <span className="text-xs text-muted-foreground" dir="ltr">
+                                            {row.code}
+                                        </span>
+                                        {row.is_active ? null : (
+                                            <Badge variant="neutral" className="ms-2">
+                                                غير مفعّل
+                                            </Badge>
+                                        )}
+                                    </td>
+                                    <td className="py-2 tabular-nums" dir="ltr">
+                                        {nf.format(row.visible)}
+                                    </td>
+                                    <td className="py-2 tabular-nums" dir="ltr">
+                                        {nf.format(row.hidden)}
+                                    </td>
+                                    <td className="py-2 tabular-nums" dir="ltr">
+                                        {row.not_added === 0 ? '0' : <Badge variant="warning">{nf.format(row.not_added)}</Badge>}
+                                    </td>
+                                    <td className="py-2 tabular-nums" dir="ltr">
+                                        {row.unplaced === 0 ? '0' : <Badge variant="warning">{nf.format(row.unplaced)}</Badge>}
+                                    </td>
+                                    <td className="py-2 tabular-nums" dir="ltr">
+                                        {row.no_arabic === 0 ? '0' : <Badge variant="destructive">{nf.format(row.no_arabic)}</Badge>}
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </CardContent>
+            </Card>
 
             <div className="grid gap-4 lg:grid-cols-3">
                 <Card className="lg:col-span-2">

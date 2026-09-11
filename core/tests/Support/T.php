@@ -2,6 +2,10 @@
 
 namespace Tests\Support;
 
+use App\Transform\Row;
+use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
+use Illuminate\Database\Query\Builder as QueryBuilder;
+use Illuminate\Support\ViewErrorBag;
 use PHPUnit\Framework\Assert;
 use stdClass;
 
@@ -72,5 +76,46 @@ final class T
         }
 
         return $out;
+    }
+
+    /**
+     * One row of a query, asserted to exist — `T::row($query->first())` in one call.
+     *
+     * The 4B tests read a lot of single rows, and `->first()` is `mixed` to PHPStan at level 10,
+     * so without this every assertion would carry its own null check.
+     *
+     * @param  QueryBuilder|EloquentBuilder<covariant \Illuminate\Database\Eloquent\Model>  $query
+     */
+    public static function one(QueryBuilder|EloquentBuilder $query): stdClass
+    {
+        return self::row($query->first());
+    }
+
+    /**
+     * Several rows of a query, each narrowed — the list twin of {@see self::one()}.
+     *
+     * @param  QueryBuilder|EloquentBuilder<covariant \Illuminate\Database\Eloquent\Model>  $query
+     * @return list<stdClass>
+     */
+    public static function many(QueryBuilder|EloquentBuilder $query): array
+    {
+        $out = [];
+        foreach ($query->get() as $row) {
+            // Every row of a query builder IS an object; `Row::cast()` is what narrows it, and
+            // asserting it again would only tell PHPStan something it already knows.
+            $out[] = Row::cast($row);
+        }
+
+        return $out;
+    }
+
+    /** The first session error under a key, as a string. */
+    public static function err(string $key): string
+    {
+        $errors = session('errors');
+        Assert::assertNotNull($errors, "the session carries no errors, so none under [{$key}]");
+
+        /** @var ViewErrorBag $errors */
+        return self::str($errors->first($key));
     }
 }

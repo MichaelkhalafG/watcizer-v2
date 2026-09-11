@@ -182,6 +182,15 @@ final class CoreTransformCommand extends Command
         $idMap = new IdMap($db, $writer);
         $ctx = new TransformContext($legacy, $db, $writer, $idMap, $options, $config);
 
+        /*
+         * Is this a FRESH REBUILD or an ADDITIVE re-run? Measured HERE, before a single step runs,
+         * because the reconciliation asks two different questions of the two cases and a step's
+         * own report is not evidence: on a fresh rebuild every placement row is an insert, so
+         * "every row is visible" is a real assertion; on a re-run a hidden row is the team's
+         * decision and asserting it away would make the insert-only rule unprovable.
+         */
+        $ctx->freshRebuild = $db->table('storefront_product')->count() === 0;
+
         /** @var list<StepResult> */
         $results = [];
         $reconciliation = null;
@@ -281,6 +290,11 @@ final class CoreTransformCommand extends Command
      * (StorefrontCache::INVALIDATION_MAP), the compat payloads included — otherwise a rehearsal
      * or a switch-night run keeps serving the previous catalog for up to an hour.
      *
+     * EVERY ACTIVE STOREFRONT, since 2026-09-11: the run now writes Brand Fashion's tree and its
+     * placements too, so bumping only Watchizer would leave the second site serving a cached
+     * catalogue that no longer exists. The cache is versioned per storefront, so this is one
+     * increment each and not a shared flush.
+     *
      * Every REAL run bumps, whatever the exit code: a run that failed its reconciliation, or
      * threw half way, still committed the steps that ran, so the cached view is stale either way.
      * A dry run rolls everything back and must NOT bump.
@@ -290,8 +304,11 @@ final class CoreTransformCommand extends Command
         if ($options->dryRun) {
             return;
         }
-        $version = app(StorefrontCache::class)->flush($ctx->storefrontId);
-        $this->info(sprintf('storefront %d cache version bumped to v%d (meta, tree, lookups, counts, products, sitemaps, compat payloads)', $ctx->storefrontId, $version));
+        $cache = app(StorefrontCache::class);
+        foreach ($ctx->activeStorefrontIds() as $storefrontId) {
+            $version = $cache->flush($storefrontId);
+            $this->info(sprintf('storefront %d cache version bumped to v%d (meta, tree, lookups, counts, products, sitemaps, compat payloads)', $storefrontId, $version));
+        }
     }
 
     /** @param  array<string, mixed>  $config */
@@ -363,6 +380,31 @@ final class CoreTransformCommand extends Command
             $rows[] = [$r['table'], mb_substr($r['source'], 0, 48), mb_substr($r['relation'], 0, 34), $r['expected'], $r['actual'], $r['ok'] ? 'OK' : 'MISMATCH'];
         }
         $this->table(['clean table', 'legacy source', 'relation', 'expected', 'actual', 'status'], $rows);
+
+        /*
+         * The per-storefront coverage lines again, on their own, after the 80-row table.
+         *
+         * Not a duplicate for the sake of it: this is the number the developer reads at 02:00 on
+         * switch night and at the end of every rehearsal — "464 / 464 on every storefront" — and
+         * asking someone to find three rows in an eighty-row table for it is how a check that
+         * exists stops being a check that is read.
+         */
+        $coverage = array_values(array_filter($rec->rows, fn (array $r): bool => str_starts_with($r['table'], 'COVERAGE ')));
+        if ($coverage !== []) {
+            $this->newLine();
+            $this->line('<options=bold>placement coverage per storefront</> (every live product placed, one primary each, no cross-storefront node)');
+            foreach ($coverage as $r) {
+                $this->line(sprintf(
+                    '  %s %-58s %d / %d',
+                    $r['ok'] ? '<info>OK</info>  ' : '<error>FAIL</error>',
+                    $r['table'],
+                    $r['actual'],
+                    $r['expected'],
+                ));
+            }
+            $this->newLine();
+        }
+
         if ($rec->passed()) {
             $this->info('reconciliation: ALL COUNTS RECONCILE ('.count($rec->rows).' checks).');
         } else {

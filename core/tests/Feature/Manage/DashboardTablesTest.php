@@ -23,12 +23,25 @@ use Tests\Support\LedgerState;
  */
 
 it('keeps every dashboard-authored table out of the drop list', function () {
-    foreach (CoreChecksumCommand::DASHBOARD_TABLES as $table) {
-        expect(CoreChecksumCommand::CLEAN_TABLES)->not->toContain(
-            $table,
-            "{$table} is authored in the dashboard: dropping it on switch night destroys human work",
-        );
-    }
+    // `toContain($needle, $more)` takes MORE NEEDLES, never a message. Under `->not->` the
+    // original assertion happened to stay correct (it asserted the absence of both the table AND
+    // the sentence, and the table is the one that matters), but it read as a message and was not
+    // one — corrected 2026-09-11 while auditing the same trap in wave 4B.
+    //
+    // It is written as an INTERSECTION rather than a loop of `in_array` for two reasons: it names
+    // every offender at once instead of stopping at the first, and a per-table `in_array` over two
+    // constant lists is something PHPStan can answer at analysis time, which made it report the
+    // assertion as impossible — a test whose result the analyser already knows is not a test.
+    $overlap = array_values(array_intersect(
+        CoreChecksumCommand::DASHBOARD_TABLES,
+        CoreChecksumCommand::CLEAN_TABLES,
+    ));
+
+    expect($overlap)->toBe(
+        [],
+        'these tables are authored in the dashboard: dropping them on switch night destroys human work — '
+        .implode(', ', $overlap),
+    );
 });
 
 it('names the three tables the dashboard authors today', function () {
@@ -86,7 +99,8 @@ it('still INSERTS storefront 1 on a fresh install, at its deterministic id', fun
     DB::table('storefront_redirects')->where('storefront_id', Storefront::WATCHIZER_ID)->delete();
     DB::table('core_user_roles')->whereNotNull('storefront_id')->delete();
     DB::table('storefronts')->where('id', Storefront::WATCHIZER_ID)->delete();
-    expect(Storefront::query()->count())->toBe(0);
+    // Storefront 1 only: Brand Fashion (id 2) is seeded too and is not what this test is about.
+    expect(Storefront::query()->whereKey(Storefront::WATCHIZER_ID)->count())->toBe(0);
 
     $created = StorefrontSeeder::ensure(StorefrontSeeder::WATCHIZER);
 

@@ -11,14 +11,38 @@ use Illuminate\Support\Collection;
 use RuntimeException;
 
 /**
- * Step 18 — one storefront_product row per legacy product for storefront 1, key
- * (storefront_id, product_id). is_visible = 1 (the legacy storefront shows everything —
- * A-16 lists active = 0), slug from ProductSlugs (slugify(EN title), id fallback, "-{id}"
+ * Step 18 — one storefront_product row per legacy product **per ACTIVE storefront**, key
+ * (storefront_id, product_id). slug from ProductSlugs (slugify(EN title), id fallback, "-{id}"
  * on collision — A-17), effective_price = selling, effective_sale_price = the valid sale,
  * published_at NULL.
  *
- * Dashboard-owned columns (is_visible, is_featured, sort_order, price overrides,
- * published_at) are written on INSERT only, never refreshed by a re-run.
+ * ── VISIBLE BY DEFAULT, ON EVERY STOREFRONT (developer decision 2026-09-11) ──────────────────
+ *
+ * `is_visible = 1` on first insert, for every active storefront. The reasoning is the team's
+ * workflow: the shared catalogue is one catalogue, and it is far faster to HIDE the few hundred
+ * products that do not belong on a given site than to hand-place seven thousand that do. So the
+ * transform opens everything and the dashboard closes what does not fit.
+ *
+ * ── AND THAT IS WHY INSERT-ONLY IS ABSOLUTE HERE ─────────────────────────────────────────────
+ *
+ * A visible-by-default rule that ran on every transform would be a NIGHTLY RE-ENABLE: the team
+ * hides a product on Brand Fashion, the next rehearsal un-hides it, and nobody can tell whether
+ * they are looking at a decision or at a default. Dashboard-owned columns — `is_visible`,
+ * `is_featured`, `sort_order`, both price overrides, `published_at` — are therefore written on
+ * INSERT only and never appear in the upsert's update list. `CatalogSafetyTest` and
+ * `MultiStorefrontTest` both prove it by hiding a product and re-running.
+ *
+ * **`slug` is insert-only too**, and it was not always: the upsert used to refresh it from the
+ * legacy EN title on every run. That is a URL, the dashboard can edit it, and editing it writes a
+ * 301 redirect — so refreshing it would revert a deliberate change AND leave a redirect pointing
+ * at a slug that no longer exists. Switch night is a fresh rebuild, where every row is an INSERT,
+ * so the `storefront_product[slug plan]` reconciliation still holds exactly; on an ADDITIVE
+ * rehearsal a legacy rename now shows up as a reported divergence instead of silently moving a
+ * live URL, which is the more useful of the two behaviours.
+ *
+ * What a re-run DOES refresh is `effective_price` / `effective_sale_price`: those are a projection
+ * of the legacy price rather than a decision, and a stale price on a rehearsal database would be a
+ * worse lie than a moved one.
  */
 final class Step18StorefrontProduct implements Step
 {
@@ -55,13 +79,27 @@ final class Step18StorefrontProduct implements Step
             }
         }
 
-        $ctx->chunkLegacy('products', ['id', 'selling_price', 'sale_price_after_discount', 'active', 'created_at', 'updated_at'], function (Collection $rows) use ($ctx, $result, $plan): void {
+        $ctx->eachStorefront(function (int $storefrontId, bool $primary) use ($ctx, $result, $plan): void {
+            $before = $ctx->db->table('storefront_product')->where('storefront_id', $storefrontId)->count();
+            $this->syncStorefront($ctx, $result, $plan, $primary);
+            $after = $ctx->db->table('storefront_product')->where('storefront_id', $storefrontId)->count();
+            $result->count('storefront_'.$storefrontId.'_rows', $after - $before);
+            $result->note(sprintf('storefront %d: %d storefront_product rows (%+d this run)', $storefrontId, $after, $after - $before));
+        });
+    }
+
+    /** One storefront's rows. `$ctx->storefrontId` already points at it. */
+    private function syncStorefront(TransformContext $ctx, StepResult $result, ProductSlugs $plan, bool $primary): void
+    {
+        $ctx->chunkLegacy('products', ['id', 'selling_price', 'sale_price_after_discount', 'active', 'created_at', 'updated_at'], function (Collection $rows) use ($ctx, $result, $plan, $primary): void {
             $out = [];
             foreach ($rows as $row) {
                 $id = Row::int($row, 'id');
-                $result->read++;
-                if (! Row::bool($row, 'active')) {
-                    $result->count('inactive_but_visible');                     // A-16
+                if ($primary) {
+                    $result->read++;
+                    if (! Row::bool($row, 'active')) {
+                        $result->count('inactive_but_visible');                 // A-16
+                    }
                 }
                 $selling = Row::money($row, 'selling_price');
                 $sale = Row::nmoney($row, 'sale_price_after_discount');
@@ -84,11 +122,23 @@ final class Step18StorefrontProduct implements Step
                     'updated_at' => Row::nstr($row, 'updated_at'),
                 ];
             }
-            $result->writes->add($ctx->writer->upsert('storefront_product', self::COLUMNS, ['storefront_id', 'product_id'], ['slug', 'effective_price', 'effective_sale_price', 'updated_at'], $out));
+            $result->writes->add($ctx->writer->upsert('storefront_product', self::COLUMNS, ['storefront_id', 'product_id'], self::REFRESHED, $out));
         });
 
-        $this->seedTwinRedirects($ctx, $result, $plan);
+        $this->seedTwinRedirects($ctx, $result, $plan, $primary);
     }
+
+    /**
+     * The columns a RE-RUN is allowed to refresh on an existing row.
+     *
+     * Never `is_visible`, `is_featured`, `sort_order`, `slug`, the price overrides or
+     * `published_at` — every one of those is the team's from the moment the row exists, and
+     * refreshing them would turn the visible-by-default rule into a nightly re-enable and a typed
+     * URL into a moving target.
+     *
+     * @var list<string>
+     */
+    private const REFRESHED = ['effective_price', 'effective_sale_price', 'updated_at'];
 
     /**
      * One storefront_redirects row, or NULL when source and target are the same path after
@@ -125,7 +175,7 @@ final class Step18StorefrontProduct implements Step
      * natively — so on today's data no row is seeded; the rows appear only if a kept
      * product's canonical slug ever differs from the plain one. hits/last_hit_at untouched.
      */
-    private function seedTwinRedirects(TransformContext $ctx, StepResult $result, ProductSlugs $plan): void
+    private function seedTwinRedirects(TransformContext $ctx, StepResult $result, ProductSlugs $plan, bool $primary): void
     {
         $rows = [];
         foreach ($plan->keepers as $plain => $keeperId) {
@@ -134,8 +184,10 @@ final class Step18StorefrontProduct implements Step
             $stamp = $ctx->legacy->table('products')->select(['created_at', 'updated_at'])->where('id', $keeperId)->first();
             $row = self::redirectRow($ctx->storefrontId, $from, $to, $stamp === null ? null : Row::nstr($stamp, 'created_at'), $stamp === null ? null : Row::nstr($stamp, 'updated_at'));
             if ($row === null) {
-                $result->count('twin_redirect_identity_skipped');
-                $ctx->diff('A-17', 'products', $keeperId, "twins share $from", 'kept product answers it natively — no redirect row (identity guard)');
+                if ($primary) {
+                    $result->count('twin_redirect_identity_skipped');
+                    $ctx->diff('A-17', 'products', $keeperId, "twins share $from", 'kept product answers it natively — no redirect row (identity guard)');
+                }
 
                 continue;
             }

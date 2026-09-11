@@ -7,9 +7,14 @@ use Illuminate\Database\Seeder;
 use RuntimeException;
 
 /**
- * Inserts the Watchizer storefront with a DETERMINISTIC id (CLEAN_CORE_STUDY §2.9.2 step 14,
- * §2.9.3): every storefront row carries an explicit id so rehearsal and production agree,
- * and Watchizer is always id 1. Idempotent; aborts loudly on any id/code disagreement.
+ * Inserts the storefront rows with DETERMINISTIC ids (CLEAN_CORE_STUDY §2.9.2 step 14, §2.9.3):
+ * every row carries an explicit id so rehearsal, local and production agree — Watchizer is always
+ * id 1 and Brand Fashion always id 2. Idempotent; aborts loudly on any id/code disagreement.
+ *
+ * **INSERT-ONLY, and that is the whole contract** (§2.20): `ensure()` guarantees the row EXISTS
+ * with the right id and code and then leaves it alone. What it CONTAINS — name, domain, locales,
+ * currency, is_active — belongs to the storefront-settings screen from the moment it is inserted.
+ * This used to `forceFill($row)->save()` and reverted that screen on every transform run.
  */
 class StorefrontSeeder extends Seeder
 {
@@ -25,9 +30,42 @@ class StorefrontSeeder extends Seeder
         'is_active' => true,
     ];
 
+    /**
+     * Brand Fashion — the second storefront (wave 4B, 2026-09-11).
+     *
+     * `name` is the ARABIC name, because it is what the dashboard shows a team member in every
+     * storefront picker and every card title; the machine-readable handle is `code`. Watchizer's
+     * row predates that reasoning and keeps its Latin name — it is dashboard-owned and insert-only,
+     * so changing it here would do nothing to the existing row anyway (§2.20).
+     *
+     * @var array<string, mixed>
+     */
+    public const BRAND_FASHION = [
+        'id' => Storefront::BRAND_FASHION_ID,
+        'code' => 'brandfashion',
+        'name' => 'Brand Fashion',
+        'domain' => 'brandfashionegy.com',
+        'locales' => ['ar', 'en'],
+        'default_locale' => 'ar',
+        'currency' => 'EGP',
+        'is_active' => true,
+    ];
+
+    /**
+     * Every storefront this application seeds, in id order.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public static function all(): array
+    {
+        return [self::WATCHIZER, self::BRAND_FASHION];
+    }
+
     public function run(): void
     {
-        self::ensure(self::WATCHIZER);
+        foreach (self::all() as $row) {
+            self::ensure($row);
+        }
     }
 
     /**

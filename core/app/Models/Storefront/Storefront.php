@@ -27,6 +27,36 @@ class Storefront extends Model
 {
     public const WATCHIZER_ID = 1;
 
+    /**
+     * Brand Fashion — the second storefront, launching before the mid-October 2026 season
+     * (AGENTS §1). The id is EXPLICIT and deterministic for the same reason Watchizer's is
+     * (study §2.9.3): rehearsal, local and production must agree on it, because
+     * `storefront_categories.path`, every `storefront_product` row and every URL a team member
+     * bookmarks carry it.
+     */
+    public const BRAND_FASHION_ID = 2;
+
+    /**
+     * The active storefronts, lowest id first — the list every per-storefront write iterates.
+     *
+     * Read from the DATABASE, never from a constant: a storefront can be deactivated from the
+     * settings screen, and a transform that kept writing placements for a switched-off channel
+     * would be inventing rows nobody asked for.
+     *
+     * @return list<int>
+     */
+    public static function activeIds(): array
+    {
+        $out = [];
+        foreach (self::query()->where('is_active', true)->orderBy('id')->pluck('id') as $id) {
+            if (is_numeric($id)) {
+                $out[] = (int) $id;
+            }
+        }
+
+        return $out;
+    }
+
     protected $table = 'storefronts';
 
     /** @var list<string> */

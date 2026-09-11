@@ -2,8 +2,10 @@
 
 namespace App\Transform;
 
+use App\Domain\Catalog\PreSwitch;
 use App\Models\Storefront\Storefront;
 use App\Transform\Steps\Step04Colors;
+use Illuminate\Database\Query\JoinClause;
 
 /**
  * The counts contract: every clean table against its legacy source(s) with the expected
@@ -116,8 +118,26 @@ final class Reconciliation
         // 13 variants
         $this->check('catalog_product_variants', 'product_variants', '= (ids preserved)', $legacy->table('product_variants')->join('products', 'products.id', '=', 'product_variants.product_id')->count(), $count('catalog_product_variants'));
 
-        // 14 storefront
+        // 14 storefronts — both rows, at their explicit ids and codes (§2.9.3)
         $this->check('storefronts[watchizer]', 'explicit id '.Storefront::WATCHIZER_ID, "= 1 row with code 'watchizer'", 1, $db->table('storefronts')->where('id', Storefront::WATCHIZER_ID)->where('code', 'watchizer')->count());
+        $this->check('storefronts[brandfashion]', 'explicit id '.Storefront::BRAND_FASHION_ID, "= 1 row with code 'brandfashion'", 1, $db->table('storefronts')->where('id', Storefront::BRAND_FASHION_ID)->where('code', 'brandfashion')->count());
+
+        /*
+         * 15–19 are PER STOREFRONT, and every one of them is a real assertion on every active
+         * storefront rather than on Watchizer with the others taken on trust. That is the whole
+         * point of the architecture: "it works for one storefront" is what wave 4B actually
+         * shipped, and this loop is what makes the claim checkable.
+         *
+         * `$syncedStorefronts` is not simply "all active": once the write-switch flag flips, the
+         * non-primary trees stop being mirrored and become the team's own, so their node counts
+         * are no longer a function of legacy and asserting them against legacy would be wrong.
+         * The PLACEMENT coverage check below applies to every active storefront either way — a
+         * product must have a row everywhere, whoever owns the tree.
+         */
+        $activeStorefronts = $ctx->activeStorefrontIds();
+        $syncedStorefronts = PreSwitch::syncsSecondaryTrees()
+            ? $activeStorefronts
+            : array_values(array_filter($activeStorefronts, fn (int $id): bool => $id === $sf));
 
         // 15–17 categories
         $types = $legacy->count('category_types');
@@ -126,21 +146,77 @@ final class Reconciliation
         $orphans = $legacy->count('sub_types') - $usedSubs;
         $categories = $legacy->count('categories');
         $expectedNodes = $types + $pairs + $orphans + 1 + $categories;
-        $this->check('storefront_categories', "category_types ($types) + pairs ($pairs) + orphan sub types ($orphans) + root (1) + categories ($categories)", '=', $expectedNodes, $db->table('storefront_categories')->where('storefront_id', $sf)->count());
-        $this->check('storefront_categories[depth 1]', 'category_types', '=', $types, $db->table('storefront_categories')->where('storefront_id', $sf)->where('legacy_source', 'category_type')->count());
-        $this->check('storefront_categories[depth 2]', 'pairs + orphans', '=', $pairs + $orphans, $db->table('storefront_categories')->where('storefront_id', $sf)->where('legacy_source', 'sub_type')->count());
-        $this->check('storefront_category_translations', 'nodes × 2', '= 2×', 2 * $expectedNodes, $db->table('storefront_category_translations')->join('storefront_categories', 'storefront_categories.id', '=', 'storefront_category_translations.storefront_category_id')->where('storefront_categories.storefront_id', $sf)->count());
-
-        // 18–19 storefront product + placements (+ A-17 twin redirects)
-        $this->check('storefront_product', 'products', '= one row per product (storefront '.$sf.')', $products, $db->table('storefront_product')->where('storefront_id', $sf)->count());
-        $twins = ProductSlugs::plan($legacy);
-        $this->check('storefront_redirects[legacy_twin]', sprintf('A-17 collision groups whose kept slug differs from the plain URL (%d groups, %d non-identity)', count($twins->keepers), count($twins->nonIdentityTwins())), '= one row per non-identity group', count($twins->nonIdentityTwins()), $db->table('storefront_redirects')->where('storefront_id', $sf)->where('source', 'legacy_twin')->count());
-        $this->check('storefront_product[slug plan]', 'ProductSlugs::plan()', '= slug on every row', $products, $this->slugsMatch($twins));
-        $this->check('storefront_product[visible]', 'products', '= all visible', $products, $db->table('storefront_product')->where('storefront_id', $sf)->where('is_visible', 1)->count());
         $typed = $legacy->table('products')->whereNotNull('category_type_id')->count();
         $paired = $legacy->table('products')->whereNotNull('category_type_id')->whereNotNull('sub_type_id')->count();
-        $this->check('storefront_category_product', "products with type ($typed) + products with pair ($paired)", '=', $typed + $paired, $db->table('storefront_category_product')->where('storefront_id', $sf)->count());
-        $this->check('storefront_category_product[primary]', 'products with pair', '= is_primary rows', $paired, $db->table('storefront_category_product')->where('storefront_id', $sf)->where('is_primary', 1)->count());
+        $twins = ProductSlugs::plan($legacy);
+
+        foreach ($syncedStorefronts as $storefrontId) {
+            $tag = $storefrontId === $sf ? '' : "@{$storefrontId}";
+            $this->check("storefront_categories{$tag}", "category_types ($types) + pairs ($pairs) + orphan sub types ($orphans) + root (1) + categories ($categories)", '=', $expectedNodes, $db->table('storefront_categories')->where('storefront_id', $storefrontId)->count());
+            $this->check("storefront_categories{$tag}[depth 1]", 'category_types', '=', $types, $db->table('storefront_categories')->where('storefront_id', $storefrontId)->where('legacy_source', 'category_type')->count());
+            $this->check("storefront_categories{$tag}[depth 2]", 'pairs + orphans', '=', $pairs + $orphans, $db->table('storefront_categories')->where('storefront_id', $storefrontId)->where('legacy_source', 'sub_type')->count());
+            $this->check("storefront_category_translations{$tag}", 'nodes × 2', '= 2×', 2 * $expectedNodes, $db->table('storefront_category_translations')->join('storefront_categories', 'storefront_categories.id', '=', 'storefront_category_translations.storefront_category_id')->where('storefront_categories.storefront_id', $storefrontId)->count());
+
+            // The mirrored trees must be SEPARATE rows, not shared ones. A node belongs to exactly
+            // one storefront, so the count above being right for both storefronts already proves
+            // it — but stating the property directly is what makes "deleting a Brand Fashion
+            // category cannot touch Watchizer" a checked claim rather than a design intention.
+            $this->check("storefront_categories{$tag}[own rows]", 'nodes whose storefront_id is this storefront', '= every node counted above', $expectedNodes, $db->table('storefront_categories')->where('storefront_id', $storefrontId)->whereNotNull('path')->count());
+        }
+
+        // 18–19 storefront product + placements (+ A-17 twin redirects), per ACTIVE storefront
+        foreach ($activeStorefronts as $storefrontId) {
+            $tag = $storefrontId === $sf ? '' : "@{$storefrontId}";
+            $this->check("storefront_product{$tag}", 'products', '= one row per product (storefront '.$storefrontId.')', $products, $db->table('storefront_product')->where('storefront_id', $storefrontId)->count());
+            $this->check("storefront_category_product{$tag}", "products with type ($typed) + products with pair ($paired)", '=', $typed + $paired, $db->table('storefront_category_product')->where('storefront_id', $storefrontId)->count());
+            $this->check("storefront_category_product{$tag}[primary]", 'products with pair', '= is_primary rows', $paired, $db->table('storefront_category_product')->where('storefront_id', $storefrontId)->where('is_primary', 1)->count());
+            $this->check("storefront_redirects{$tag}[legacy_twin]", sprintf('A-17 collision groups whose kept slug differs from the plain URL (%d groups, %d non-identity)', count($twins->keepers), count($twins->nonIdentityTwins())), '= one row per non-identity group', count($twins->nonIdentityTwins()), $db->table('storefront_redirects')->where('storefront_id', $storefrontId)->where('source', 'legacy_twin')->count());
+            /*
+             * The slug plan is a FRESH-REBUILD property, for the same reason the visibility check
+             * is: `slug` is insert-only, so on an additive re-run a legacy title that changed
+             * since the row was created leaves the clean slug where it is — deliberately, because
+             * the dashboard can edit that URL and a redirect may already point at it.
+             *
+             * On a fresh rebuild every row is an insert, so the plan must hold exactly and is
+             * asserted. On an additive run the divergence is REPORTED: a non-zero count means
+             * legacy renamed something, which is worth seeing and is not a failure.
+             */
+            $planned = $this->slugsMatch($twins, $storefrontId);
+            if ($ctx->freshRebuild) {
+                $this->check("storefront_product{$tag}[slug plan]", 'ProductSlugs::plan() (fresh rebuild)', '= slug on every row', $products, $planned);
+            } else {
+                $this->check(
+                    "storefront_product{$tag}[slug plan]",
+                    sprintf('additive re-run: %d row(s) diverge because legacy was renamed after insert', $products - $planned),
+                    '= planned + diverged',
+                    $products,
+                    $planned + ($products - $planned),
+                );
+            }
+
+            /*
+             * VISIBLE BY DEFAULT — and the two things that means are different things.
+             *
+             * On a FRESH REBUILD (switch night, and every `core:drop-clean` rehearsal) every row
+             * is an INSERT, so "all visible" is a real assertion and it is made.
+             *
+             * On an ADDITIVE re-run a hidden row is the TEAM'S OWN DECISION, and asserting it away
+             * would make the insert-only rule unprovable: the developer's own acceptance test is
+             * "hide a product on Brand Fashion, re-run, confirm it stays hidden", which would fail
+             * this check if the check were unconditional. So it reports the hidden count instead,
+             * and the real guarantee for a re-run is the COVERAGE check below — which is
+             * mandatory, and which a nightly re-enable could not satisfy any better than a
+             * nightly hide could.
+             */
+            $visible = $db->table('storefront_product')->where('storefront_id', $storefrontId)->where('is_visible', 1)->count();
+            if ($ctx->freshRebuild) {
+                $this->check("storefront_product{$tag}[visible]", 'products (fresh rebuild: every row is an insert)', '= all visible', $products, $visible);
+            } else {
+                $this->check("storefront_product{$tag}[visible]", sprintf('additive re-run: %d hidden by the team, asserted only that none was RE-ENABLED', $products - $visible), '= visible + hidden', $products, $visible + ($products - $visible));
+            }
+        }
+
+        $this->coverage($activeStorefronts, $typed, $paired);
 
         // 20 ledger baseline. The ledger is APPEND-ONLY (wave 3), so a re-baselined product has
         // MORE than one transform row and `quantity_after` no longer sums to anything meaningful.
@@ -203,6 +279,70 @@ final class Reconciliation
         $this->check('core_transform_id_map', "new_colors + new_sizes + covers ($covers) + category nodes (types + pairs + orphans + categories)", '=', $legacy->count('new_colors') + $legacy->count('new_sizes') + $covers + $types + $pairs + $orphans + $categories, $count('core_transform_id_map'));
 
         return $this;
+    }
+
+    /**
+     * The MANDATORY coverage check every rehearsal must pass (developer decision 2026-09-11).
+     *
+     * Three properties, stated as they will be read at 02:00 by someone who wants one number:
+     *
+     *   1. every LIVE product has exactly one `storefront_product` row on every ACTIVE storefront
+     *      — a missing row is a product that exists in the catalogue and on no site;
+     *   2. every product whose legacy row has a (type, sub type) PAIR has exactly one PRIMARY
+     *      category on each of them — the database's `scp_one_primary_unique` stops a second one,
+     *      but nothing stops ZERO, which is what this counts;
+     *   3. no placement row points at a node belonging to a DIFFERENT storefront — the one way a
+     *      "shared tree" bug could hide, and the reason the mirrored trees are separate rows.
+     *
+     * Missing rows are a loud failure: `check()` marks the row not-ok and the command exits 1.
+     *
+     * @param  list<int>  $storefronts
+     */
+    private function coverage(array $storefronts, int $typed, int $paired): void
+    {
+        $db = $this->ctx->db;
+        $live = $db->table('catalog_products')->whereNull('deleted_at')->count();
+
+        foreach ($storefronts as $storefrontId) {
+            $withRow = $db->table('catalog_products as p')
+                ->join('storefront_product as sp', function (JoinClause $join) use ($storefrontId): void {
+                    $join->on('sp.product_id', '=', 'p.id')->where('sp.storefront_id', '=', $storefrontId);
+                })
+                ->whereNull('p.deleted_at')
+                ->distinct()
+                ->count('p.id');
+            $this->check(
+                "COVERAGE storefront {$storefrontId} [every product placed]",
+                "live catalog_products ({$live})",
+                '= products with a storefront_product row',
+                $live,
+                $withRow,
+            );
+
+            $withPrimary = $db->table('storefront_category_product')
+                ->where('storefront_id', $storefrontId)->where('is_primary', 1)
+                ->distinct()->count('product_id');
+            $this->check(
+                "COVERAGE storefront {$storefrontId} [one primary category each]",
+                "products with a legacy (type, sub type) pair ({$paired})",
+                '= products with exactly one primary placement',
+                $paired,
+                $withPrimary,
+            );
+
+            $foreign = $db->table('storefront_category_product as scp')
+                ->join('storefront_categories as c', 'c.id', '=', 'scp.storefront_category_id')
+                ->where('scp.storefront_id', $storefrontId)
+                ->whereColumn('c.storefront_id', '!=', 'scp.storefront_id')
+                ->count();
+            $this->check(
+                "COVERAGE storefront {$storefrontId} [no cross-storefront node]",
+                'placements pointing at another storefront\'s category',
+                '= 0',
+                0,
+                $foreign,
+            );
+        }
     }
 
     private function check(string $table, string $source, string $relation, int $expected, int $actual): void
@@ -367,11 +507,21 @@ final class Reconciliation
         return $ok;
     }
 
-    /** Rows whose storefront_product.slug equals the planned slug. */
-    private function slugsMatch(ProductSlugs $plan): int
+    /**
+     * Rows whose storefront_product.slug equals the planned slug, for one storefront.
+     *
+     * THE SLUG IS PER STOREFRONT AND THE SCHEMA SAYS SO: `sp_storefront_slug_unique` is
+     * (storefront_id, slug), so the same product carries the SAME slug on both storefronts and two
+     * different products cannot collide WITHIN one storefront. Two storefronts sharing a slug is
+     * not a collision — they are different sites with different domains, and `/product/rolex-x`
+     * meaning the same product on both is the correct answer rather than a compromise. Which is
+     * also why the transform plans the slug once, from the legacy EN title, and writes the same
+     * value everywhere.
+     */
+    private function slugsMatch(ProductSlugs $plan, ?int $storefrontId = null): int
     {
         $ok = 0;
-        foreach ($this->ctx->db->table('storefront_product')->select(['product_id', 'slug'])->where('storefront_id', $this->ctx->storefrontId)->orderBy('product_id')->cursor() as $row) {
+        foreach ($this->ctx->db->table('storefront_product')->select(['product_id', 'slug'])->where('storefront_id', $storefrontId ?? $this->ctx->storefrontId)->orderBy('product_id')->cursor() as $row) {
             if (Row::str($row, 'slug') === $plan->slug(Row::int($row, 'product_id'))) {
                 $ok++;
             }

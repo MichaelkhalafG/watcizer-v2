@@ -28,14 +28,15 @@ use InvalidArgumentException;
  *   $table = TableQuery::for($request)
  *       ->sortable(['id', 'wa_code', 'stock_express', 'created_at'], default: 'created_at', direction: 'desc')
  *       ->searchable(['wa_code', 'sku'])                       // LIKE over these columns
- *       ->filterable(['family' => ['watch', 'bag'], 'is_active' => ['0', '1']])
+ *       ->filterable(['family' => ['watch', 'bag'], 'is_active' => ['0', '1'], 'flag' => ['low_stock']])
+ *       ->virtual(['flag'])                                    // declared, applied by the caller
  *       ->perPage(default: 25, max: 100);
  *
  *   return Inertia::render('Products/Index', [
  *       'table' => $table->paginate($query, fn (object $row): array => [...]),
  *   ]);
  *
- * @phpstan-type TableMeta array{page: int, per_page: int, total: int, last_page: int, from: int|null, to: int|null, sort: string|null, direction: string, search: string|null, filters: array<string, string|null>, sortable: list<string>, filterable: list<string>}
+ * @phpstan-type TableMeta array{page: int, per_page: int, total: int, last_page: int, from: int|null, to: int|null, sort: string|null, direction: string, search: string|null, filters: array<string, string|null>, sortable: list<string>, filterable: list<string>, virtual: list<string>}
  */
 final class TableQuery
 {
@@ -51,6 +52,26 @@ final class TableQuery
 
     /** @var array<string, list<string>|null> column => allowed values, or null for "any scalar" */
     private array $filterable = [];
+
+    /**
+     * Declared filters that are NOT columns.
+     *
+     * A screen sometimes filters by something the query builder cannot express as
+     * `where(column, value)` — wave 4B's product list filters by a whole BRANCH of the category
+     * tree (resolved through the materialised path) and by a `flag` whose values are four
+     * different predicates. Those still need everything `filterable()` gives them: a whitelist,
+     * a place in the query string, a seat in the reset button, and an entry in the payload the
+     * React table renders its controls from.
+     *
+     * What they must NOT get is `apply()`'s automatic `where()`, which emitted
+     * `where('flag', 'no_arabic')` and came back as a 1054 the first time the list ran.
+     *
+     * So they are declared alongside the columns and listed here; `apply()` skips them and the
+     * CALLER applies them, with the resolved value from {@see self::resolvedFilters()}.
+     *
+     * @var list<string>
+     */
+    private array $virtual = [];
 
     private int $perPageDefault = 25;
 
@@ -111,6 +132,24 @@ final class TableQuery
         $this->filterable = $filters;
 
         return $this;
+    }
+
+    /**
+     * Mark declared filters as VIRTUAL: validated and reported, never applied as a column.
+     *
+     * @param  list<string>  $keys  keys that also appear in `filterable()`
+     */
+    public function virtual(array $keys): self
+    {
+        $this->virtual = $keys;
+
+        return $this;
+    }
+
+    /** Is this declared filter a column `apply()` may use, or the caller's own business? */
+    public function isVirtual(string $key): bool
+    {
+        return in_array($key, $this->virtual, true);
     }
 
     public function perPage(int $default = 25, int $max = 100): self
@@ -224,7 +263,9 @@ final class TableQuery
         }
 
         foreach ($this->resolvedFilters() as $column => $value) {
-            if ($value !== null) {
+            // A virtual filter is the caller's to apply: it is declared here so the whitelist,
+            // the URL and the reset button know about it, but it is not a column.
+            if ($value !== null && ! $this->isVirtual($column)) {
                 $query->where($column, $value);
             }
         }
@@ -251,20 +292,48 @@ final class TableQuery
      *
      * @param  TQuery  $query
      * @param  callable(object): array<string, mixed>  $map  one row of the response per DB row
+     * @param  (callable(list<object>): void)|null  $prepare  run ONCE with the page's raw rows,
+     *                                                        before `$map` — see below
      * @return array{data: list<array<string, mixed>>, meta: TableMeta}
      */
-    public function paginate(EloquentBuilder|QueryBuilder $query, callable $map): array
+    public function paginate(EloquentBuilder|QueryBuilder $query, callable $map, ?callable $prepare = null): array
     {
         $perPage = $this->resolvedPerPage();
         $page = $this->resolvedPage();
 
         $paginator = $this->apply($query)->paginate(perPage: $perPage, page: $page);
 
-        $rows = [];
+        $items = [];
         foreach ($paginator->items() as $item) {
             if (! is_object($item)) {
                 throw new InvalidArgumentException('A table row must be an object (model or stdClass).');
             }
+            $items[] = $item;
+        }
+
+        /*
+         * `$prepare` is where a screen resolves the per-row extras a LIST QUERY must not carry:
+         * a cover image, a child count — anything that would otherwise be a correlated sub-select
+         * in the SELECT list.
+         *
+         * The reason is measured, not stylistic. A sub-select in the SELECT list is evaluated for
+         * every row the query PRODUCES, and "produces" is not "returns": as soon as a filter makes
+         * the plan sort (`Using filesort`), every matching row is built before the LIMIT applies.
+         * Wave 4B's category-branch filter is exactly that case — at 7 000 products with ~7 200
+         * placements in the branch, two sub-selects ran ~4 000 times each for a page of 25 and the
+         * query took 194 ms. Removing them halved it on the spot (measured: 92 ms); fixing the
+         * plan on top took it to 8 ms (`docs/wave4b/EXPLAIN_2026-09-11.md`).
+         *
+         * With `prepare` the caller reads those extras for the PAGE — one query each, 25 ids —
+         * after the page is known, which is the discipline the storefront read layer already
+         * follows for its lookups (study §5.1).
+         */
+        if ($prepare !== null) {
+            $prepare($items);
+        }
+
+        $rows = [];
+        foreach ($items as $item) {
             $rows[] = $map($item);
         }
 
@@ -283,6 +352,7 @@ final class TableQuery
                 'filters' => $this->resolvedFilters(),
                 'sortable' => $this->sortable,
                 'filterable' => array_keys($this->filterable),
+                'virtual' => $this->virtual,
             ],
         ];
     }

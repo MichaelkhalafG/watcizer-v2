@@ -10,9 +10,15 @@ use Illuminate\Support\Collection;
 use RuntimeException;
 
 /**
- * Step 19 — products.category_type_id / sub_type_id → storefront_category_product, key
- * (storefront_category_id, product_id): the sub-type node row is_primary = 1, the
- * category-type node row is_primary = 0; products with neither → A-18 (unplaced).
+ * Step 19 — products.category_type_id / sub_type_id → storefront_category_product, **per ACTIVE
+ * storefront**, key (storefront_category_id, product_id): the sub-type node row is_primary = 1,
+ * the category-type node row is_primary = 0; products with neither → A-18 (unplaced).
+ *
+ * Each storefront is placed into ITS OWN nodes, resolved by the LEGACY ORIGIN KEY the mirrored
+ * copy carries (`legacy_source`, `legacy_id`, `legacy_parent_id`) — never by node id, which
+ * differs between storefronts by construction. So a product's primary category on Brand Fashion
+ * is the copy-equivalent of its primary category on Watchizer, and the one-primary-per-storefront
+ * database invariant (`scp_one_primary_unique`, M1d) holds on each of them independently.
  * Existing placements that no longer match legacy are NEVER deleted (additive
  * transform) — they are counted and listed as `stale_placements`.
  *
@@ -52,6 +58,17 @@ final class Step19Placements implements Step
 
     public function run(TransformContext $ctx, StepResult $result): void
     {
+        $ctx->eachStorefront(function (int $storefrontId, bool $primary) use ($ctx, $result): void {
+            $this->syncStorefront($ctx, $result, $primary);
+            $placed = $ctx->db->table('storefront_category_product')->where('storefront_id', $storefrontId)->count();
+            $primaries = $ctx->db->table('storefront_category_product')->where('storefront_id', $storefrontId)->where('is_primary', 1)->count();
+            $result->note(sprintf('storefront %d: %d placements, %d primary', $storefrontId, $placed, $primaries));
+        });
+    }
+
+    /** One storefront's placements. `$ctx->storefrontId` already points at it. */
+    private function syncStorefront(TransformContext $ctx, StepResult $result, bool $primary): void
+    {
         $nodes = new CategoryNodes($ctx);
         /** @var array<string, int> */
         $nodeCache = [];
@@ -59,8 +76,8 @@ final class Step19Placements implements Step
             $key = "$source:$legacyId:".($legacyParentId ?? 'null');
             if (! isset($nodeCache[$key])) {
                 $id = $source === 'category_type'
-                    ? ($ctx->idMap->get('category_types', $legacyId, 'storefront_categories') ?? $nodes->find($source, $legacyId, null))
-                    : ($ctx->idMap->get('sub_types:'.$legacyParentId, $legacyId, 'storefront_categories') ?? $nodes->find($source, $legacyId, $legacyParentId));
+                    ? ($ctx->nodeId('category_types', $legacyId) ?? $nodes->find($source, $legacyId, null))
+                    : ($ctx->nodeId('sub_types:'.$legacyParentId, $legacyId) ?? $nodes->find($source, $legacyId, $legacyParentId));
                 if ($id === null) {
                     throw new RuntimeException("No storefront_categories node for $source $legacyId (parent ".($legacyParentId ?? 'NULL').') — run steps 15/16 first.');
                 }
@@ -88,16 +105,20 @@ final class Step19Placements implements Step
         $desired = [];
 
         // Phase 2 — write the placements.
-        $ctx->chunkLegacy('products', ['id', 'category_type_id', 'sub_type_id', 'created_at', 'updated_at'], function (Collection $rows) use ($ctx, $result, $resolve, &$desired): void {
+        $ctx->chunkLegacy('products', ['id', 'category_type_id', 'sub_type_id', 'created_at', 'updated_at'], function (Collection $rows) use ($ctx, $result, $resolve, &$desired, $primary): void {
             $out = [];
             foreach ($rows as $row) {
                 $id = Row::int($row, 'id');
-                $result->read++;
+                if ($primary) {
+                    $result->read++;
+                }
                 $typeId = Row::nint($row, 'category_type_id');
                 $subId = Row::nint($row, 'sub_type_id');
                 if ($typeId === null && $subId === null) {
-                    $result->count('unplaced');                          // A-18
-                    $ctx->diff('A-18', 'products', $id, 'category_type_id=NULL sub_type_id=NULL', 'unplaced');
+                    if ($primary) {
+                        $result->count('unplaced');                      // A-18
+                        $ctx->diff('A-18', 'products', $id, 'category_type_id=NULL sub_type_id=NULL', 'unplaced');
+                    }
 
                     continue;
                 }
@@ -108,8 +129,10 @@ final class Step19Placements implements Step
                 }
                 if ($subId !== null) {
                     if ($typeId === null) {
-                        $result->count('sub_type_without_type');       // A-18 variant: cannot pair
-                        $ctx->diff('A-18', 'products', $id, "sub_type_id=$subId category_type_id=NULL", 'sub type placement skipped (no pair)');
+                        if ($primary) {
+                            $result->count('sub_type_without_type');  // A-18 variant: cannot pair
+                            $ctx->diff('A-18', 'products', $id, "sub_type_id=$subId category_type_id=NULL", 'sub type placement skipped (no pair)');
+                        }
                     } else {
                         $node = $resolve('sub_type', $subId, $typeId);
                         $out[] = $this->row($ctx, $node, $id, 1, $row);

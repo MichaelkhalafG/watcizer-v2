@@ -2,6 +2,7 @@
 
 namespace App\Transform\Steps;
 
+use App\Domain\Catalog\PreSwitch;
 use App\Transform\CategoryNodes;
 use App\Transform\Row;
 use App\Transform\StepResult;
@@ -31,6 +32,19 @@ final class Step17LegacyCategories implements Step
     }
 
     public function run(TransformContext $ctx, StepResult $result): void
+    {
+        $ctx->eachStorefront(function (int $storefrontId, bool $primary) use ($ctx, $result): void {
+            if (! $primary && ! PreSwitch::syncsSecondaryTrees()) {
+                $result->count('tree_sync_skipped_post_switch');
+
+                return;
+            }
+            $this->syncStorefront($ctx, $result, $primary);
+        });
+    }
+
+    /** One storefront's copy of the dormant legacy `categories` tree, under its own hidden root. */
+    private function syncStorefront(TransformContext $ctx, StepResult $result, bool $primary): void
     {
         $nodes = new CategoryNodes($ctx);
         $nodes->prime();
@@ -66,7 +80,9 @@ final class Step17LegacyCategories implements Step
             ->get();
         foreach ($rows as $row) {
             $id = Row::int($row, 'id');
-            $result->read++;
+            if ($primary) {
+                $result->read++;
+            }
             $legacyParent = Row::nint($row, 'parent_id');
             $parentNode = $legacyParent === null ? $root['id'] : ($nodeIds[$legacyParent] ?? null);
             if ($parentNode === null) {
@@ -76,11 +92,15 @@ final class Step17LegacyCategories implements Step
             $ar = trim($names[$id]['ar'] ?? '');
             if ($ar === '') {
                 $ar = $en;
-                $result->count('ar_copied_from_en');
+                if ($primary) {
+                    $result->count('ar_copied_from_en');
+                }
             }
             if ($en === '') {
                 $en = $ar !== '' ? $ar : "Category $id";
-                $result->count('en_missing');
+                if ($primary) {
+                    $result->count('en_missing');
+                }
             }
             $image = Row::nstr($row, 'image');
             $slug = trim(Row::str($row, 'slug'));
@@ -104,8 +124,10 @@ final class Step17LegacyCategories implements Step
             ], ['en' => $en, 'ar' => $ar, 'description_en' => $descriptions[$id]['en'] ?? null, 'description_ar' => $descriptions[$id]['ar'] ?? null], $result);
 
             $nodeIds[$id] = $node['id'];
-            $ctx->idMap->remember('categories', $id, 'storefront_categories', $node['id']);
+            $ctx->rememberNode('categories', $id, $node['id']);
         }
-        $result->note("hidden root [{$root['slug']}] id {$root['id']}");
+        if ($primary) {
+            $result->note("hidden root [{$root['slug']}] id {$root['id']}");
+        }
     }
 }

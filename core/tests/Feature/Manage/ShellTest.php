@@ -72,15 +72,34 @@ it('gives an admin the settings group and a data-entry user none of it', functio
 it('marks unbuilt screens with their wave instead of linking to them', function () {
     $byKey = Props::navItems(actingAs(Staff::admin())->get('/manage'));
 
-    expect($byKey['products']['wave'])->toBe('4B')
-        ->and($byKey['products']['href'])->toBeNull('a stub must not link anywhere')
-        ->and($byKey['orders']['wave'])->toBe('4C')
+    expect($byKey['orders']['wave'])->toBe('4C')
+        ->and($byKey['orders']['href'])->toBeNull('a stub must not link anywhere')
         ->and($byKey['payments']['wave'])->toBe('4D')
         ->and($byKey['users']['wave'])->toBe('4C', 'the users-and-roles screen moved to 4C on 2026-09-11')
         // …and what IS built has a link and no wave badge.
         ->and($byKey['storefronts']['href'])->not->toBeNull()
         ->and($byKey['storefronts']['wave'])->toBeNull()
         ->and($byKey['home']['active'])->toBeTrue();
+
+    // Wave 4B turned four stubs into screens, so the assertion flips for them: a built item MUST
+    // carry a link and MUST NOT carry a wave badge. This is the test that would have caught a
+    // shipped screen the sidebar still calls "coming in 4B".
+    foreach (['products', 'categories', 'placement', 'lookups'] as $built) {
+        expect($byKey[$built]['wave'])->toBeNull("{$built} is built in 4B and must not still be a stub")
+            ->and($byKey[$built]['href'])->not->toBeNull("{$built} must link somewhere");
+    }
+
+    // The storefront-scoped links carry the storefront segment: a nav link that dropped it would
+    // 404 on every click (the scope middleware needs the id to check the grant).
+    expect($byKey['products']['href'])->toContain('/manage/storefronts/')
+        ->and($byKey['products']['href'])->toContain('/products')
+        ->and($byKey['categories']['href'])->toContain('/categories')
+        ->and($byKey['placement']['href'])->toContain('/placement')
+        ->and($byKey['lookups']['href'])->toContain('/manage/lookups/brands');
+
+    // And there is deliberately no "variants" item: the panel lives inside the product form, so a
+    // nav entry would promise a screen that does not exist.
+    expect($byKey)->not->toHaveKey('variants');
 });
 
 it('lights the active nav item from the route name, not the URL', function () {
