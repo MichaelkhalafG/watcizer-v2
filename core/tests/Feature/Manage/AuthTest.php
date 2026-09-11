@@ -3,12 +3,16 @@
 use App\Console\Commands\CoreChecksumCommand;
 use App\Models\User;
 use App\Transform\LegacySource;
+use Dotenv\Dotenv;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Routing\Route;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
+use RecursiveDirectoryIterator;
+use RecursiveIteratorIterator;
+use SplFileInfo;
 use Tests\Support\Staff;
 use Tests\Support\T;
 
@@ -195,12 +199,45 @@ it('keeps the bcrypt cost PRODUCTION will use equal to the production hash cost'
 it('does not let .env.example reintroduce a different cost', function () {
     // The committed example is what a new machine copies, and it is exactly what rotted: it said
     // 12 while the config comment claimed 10.
-    $example = file_get_contents(base_path('.env.example'));
-    expect($example)->toBeString();
+    //
+    // Review 🟡-B: this used to `preg_match('/^BCRYPT_ROUNDS=(\d+)$/m', …)` inside an `if`, which
+    // is two vacuous passes in one line — `BCRYPT_ROUNDS="12"` (the quoted form Dotenv accepts and
+    // the framework honours) does not match `\d+`, and neither does a DELETED key. Both walk past
+    // the `if` and the test reports safety it never checked. So parse the file the way the
+    // framework parses it, and require the key to be there.
+    $values = Dotenv::createArrayBacked(base_path(), '.env.example')->load();
 
-    if (preg_match('/^BCRYPT_ROUNDS=(\d+)$/m', (string) $example, $matches) === 1) {
-        expect((int) $matches[1])->toBe(10, '.env.example must not set a cost other than the production one');
+    // (`toHaveKey($key, $value)` takes an expected VALUE as its second argument, not a message —
+    // the same trap as `toContain` — so the presence check is spelled out.)
+    expect(array_key_exists('BCRYPT_ROUNDS', $values))
+        ->toBeTrue('.env.example must pin the cost; without the key a new machine hashes at the framework default of 12')
+        ->and(T::str($values['BCRYPT_ROUNDS']))->toBe('10', '.env.example must not set a cost other than the production one');
+
+    // And the parser really is the one that would be fooled: prove it sees the quoted form the
+    // regex missed, so this assertion is not passing for the old reason.
+    $quoted = Dotenv::parse('BCRYPT_ROUNDS="12"');
+    expect($quoted['BCRYPT_ROUNDS'])->toBe('12');
+});
+
+it('has no call site for logoutOtherDevices — the one remaining framework write to users.password', function () {
+    // 🟡-C. `SessionGuard::logoutOtherDevices()` re-hashes the password to invalidate other
+    // sessions, i.e. it UPDATEs a legacy table (study §3.11.14). Nothing in core calls it, and this
+    // asserts that stays true: a grep over the source, excluding this file's own mention of it.
+    $offenders = [];
+    foreach (['app', 'config', 'database', 'routes', 'bootstrap'] as $directory) {
+        $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator(base_path($directory)));
+        /** @var SplFileInfo $file */
+        foreach ($iterator as $file) {
+            if ($file->getExtension() !== 'php') {
+                continue;
+            }
+            if (str_contains((string) file_get_contents($file->getPathname()), 'logoutOtherDevices')) {
+                $offenders[] = $file->getPathname();
+            }
+        }
     }
+
+    expect($offenders)->toBe([], 'logoutOtherDevices() writes users.password — a legacy table (AGENTS §3)');
 });
 
 it('refuses a real account that has no dashboard role, and does not leave it signed in', function () {
