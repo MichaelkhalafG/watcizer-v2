@@ -2,6 +2,8 @@
 
 namespace App\Providers;
 
+use App\Domain\Access\Abilities;
+use App\Domain\Access\Roles;
 use App\Domain\Inventory\StockWriteGuard;
 use App\Support\LegacyReadOnly;
 use Illuminate\Cache\RateLimiting\Limit;
@@ -20,7 +22,9 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        // One instance per request: Roles memoises grants, and two instances would mean two
+        // queries and — worse — two answers if a grant changed mid-request.
+        $this->app->singleton(Roles::class);
     }
 
     /**
@@ -48,6 +52,10 @@ class AppServiceProvider extends ServiceProvider
         if (! $this->app->isProduction()) {
             StockWriteGuard::arm();
         }
+
+        // Wave 4A: dashboard abilities (admin | data-entry). Registered here rather than in a
+        // policy so `can:` route middleware, `Gate::allows()` and the nav filter are one source.
+        Abilities::register();
 
         // The `legacy` connection is read-only at the SESSION level, so raw SQL cannot write to a
         // legacy table either (milestone audit; see App\Support\LegacyReadOnly for why the test

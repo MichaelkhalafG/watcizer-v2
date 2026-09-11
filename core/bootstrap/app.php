@@ -26,6 +26,11 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->throttleApi();
 
+        // The dashboard's login route is `manage.login`, not the framework's default `login`.
+        // Without this, `auth` throws RouteNotFoundException for a guest — a 500 where a redirect
+        // belongs (caught by RouteAuthorizationTest on its first run).
+        $middleware->redirectGuestsTo(fn () => route('manage.login'));
+
         $middleware->alias([
             'storefront' => ResolveStorefront::class,
             'api.code' => CheckApiCode::class,

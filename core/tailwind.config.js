@@ -30,6 +30,18 @@ export default {
                 accent: { DEFAULT: 'hsl(var(--accent))', foreground: 'hsl(var(--accent-foreground))' },
                 popover: { DEFAULT: 'hsl(var(--popover))', foreground: 'hsl(var(--popover-foreground))' },
                 card: { DEFAULT: 'hsl(var(--card))', foreground: 'hsl(var(--card-foreground))' },
+                // Dashboard accent (TailAdmin brand-500), wave 4A
+                brand: {
+                    DEFAULT: 'hsl(var(--brand))',
+                    foreground: 'hsl(var(--brand-foreground))',
+                    muted: 'hsl(var(--brand-muted))',
+                    strong: 'hsl(var(--brand-strong))',
+                },
+            },
+            spacing: {
+                sidebar: 'var(--sidebar-width)',
+                'sidebar-rail': 'var(--sidebar-rail)',
+                header: 'var(--header-height)',
             },
             borderRadius: {
                 lg: 'var(--radius)',
@@ -39,4 +51,5 @@ export default {
         },
     },
     plugins: [animate],
+    // `content` above already covers resources/js; nothing scans the TailAdmin reference tree.
 };

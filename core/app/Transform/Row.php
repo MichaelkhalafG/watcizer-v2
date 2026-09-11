@@ -12,6 +12,18 @@ use stdClass;
  */
 final class Row
 {
+    /**
+     * Narrow an `object` to the `stdClass` the helpers below take.
+     *
+     * A query-builder row IS a stdClass, but a callback typed `object` (the dashboard's table
+     * mapper, which must also accept Eloquent models) is not narrow enough for PHPStan. One
+     * loud conversion here beats a cast at every call site.
+     */
+    public static function cast(object $row): stdClass
+    {
+        return $row instanceof stdClass ? $row : (object) get_object_vars($row);
+    }
+
     private static function raw(stdClass $row, string $column): mixed
     {
         if (! property_exists($row, $column)) {
