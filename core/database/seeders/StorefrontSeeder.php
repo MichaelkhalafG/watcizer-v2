@@ -60,7 +60,17 @@ class StorefrontSeeder extends Seeder
             ));
         }
 
-        $storefront = $byId ?? new Storefront;
+        if ($byId !== null) {
+            // INSERT-ONLY for dashboard-owned columns (study §2.9.6, and the other half of the
+            // wave-4A finding): `forceFill($row)->save()` here used to rewrite name, domain,
+            // locales, default_locale, currency and is_active on EVERY transform run, so the
+            // storefront-settings screen's saves would have been reverted by the next rehearsal
+            // even without the drop. The transform's job is to guarantee the row EXISTS with the
+            // right id and code; what it contains afterwards belongs to the dashboard.
+            return $byId;
+        }
+
+        $storefront = new Storefront;
         $storefront->forceFill($row)->save();
 
         return $storefront;

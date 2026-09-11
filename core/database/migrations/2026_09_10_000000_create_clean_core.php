@@ -229,7 +229,10 @@ return new class extends Migration
         DB::statement('ALTER TABLE catalog_product_search ADD FULLTEXT INDEX cps_body_ft (body)');
 
         // ── storefronts ──────────────────────────────────────────────────
-        Schema::create('storefronts', function (Blueprint $t) {
+        // Dashboard-authored (CoreChecksumCommand::DASHBOARD_TABLES): the rebuild recipe does NOT
+        // drop this table, so a re-run of M1 after a rebuild must find it already there and leave
+        // its rows alone. Same for `storefront_banners` below.
+        Schema::hasTable('storefronts') or Schema::create('storefronts', function (Blueprint $t) {
             $t->id();
             $t->string('code', 32)->unique();
             $t->string('name', 100);
@@ -306,7 +309,7 @@ return new class extends Migration
             $t->index(['storefront_id', 'product_id', 'is_primary'], 'scp_storefront_product_idx');
         });
 
-        Schema::create('storefront_banners', function (Blueprint $t) {
+        Schema::hasTable('storefront_banners') or Schema::create('storefront_banners', function (Blueprint $t) {
             $t->id();
             $t->foreignId('storefront_id')->constrained('storefronts')->cascadeOnDelete();
             $t->string('placement', 32);

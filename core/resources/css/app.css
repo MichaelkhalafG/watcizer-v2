@@ -25,8 +25,21 @@
         --destructive-foreground: 0 0% 98%;
         --border: 240 5.9% 90%;
         --input: 240 5.9% 90%;
-        --ring: 240 10% 3.9%;
+        --ring: 232 100% 64%;
         --radius: 0.5rem;
+
+        /* Accent from the TailAdmin reference (brand-500 #465fff), expressed as a shadcn token so
+           every primitive picks it up. Surfaces stay zinc; only actions and active state are brand. */
+        --brand: 232 100% 64%;
+        --brand-foreground: 0 0% 100%;
+        --brand-muted: 226 100% 96%;
+        --brand-strong: 236 89% 58%;
+
+        /* Shell metrics, from the reference's rhythm. Kept as variables so the collapsed rail and
+           the content offset can never drift apart. */
+        --sidebar-width: 17rem;
+        --sidebar-rail: 4.75rem;
+        --header-height: 4rem;
     }
 
     .dark {
@@ -48,7 +61,11 @@
         --destructive-foreground: 0 0% 98%;
         --border: 240 3.7% 15.9%;
         --input: 240 3.7% 15.9%;
-        --ring: 240 4.9% 83.9%;
+        --ring: 232 100% 70%;
+        --brand: 232 100% 70%;
+        --brand-foreground: 240 10% 3.9%;
+        --brand-muted: 236 30% 18%;
+        --brand-strong: 232 100% 76%;
     }
 
     * {
@@ -57,5 +74,38 @@
 
     body {
         @apply bg-background text-foreground antialiased;
+    }
+}
+
+@layer base {
+    /* Arabic-first: the dashboard ships one font stack that renders Arabic and Latin digits
+       cleanly on Windows, macOS and Android without a webfont download. A bundled Arabic
+       webfont is deferred (AGENTS §6, wave 4 backlog). */
+    html[dir='rtl'] body {
+        font-family: 'Segoe UI', 'Noto Naskh Arabic', 'Geeza Pro', 'Tahoma', system-ui, sans-serif;
+    }
+
+    /* The team lives here all day and uses the keyboard: never remove the focus ring, and make it
+       visible on every surface including the dark sidebar. */
+    :focus-visible {
+        @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+    }
+}
+
+@layer utilities {
+    /* Scrollable panels inside the shell keep their scrollbar out of the layout. */
+    .scrollbar-thin {
+        scrollbar-width: thin;
+        scrollbar-color: hsl(var(--border)) transparent;
+    }
+
+    .scrollbar-thin::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+    }
+
+    .scrollbar-thin::-webkit-scrollbar-thumb {
+        background-color: hsl(var(--border));
+        border-radius: 9999px;
     }
 }

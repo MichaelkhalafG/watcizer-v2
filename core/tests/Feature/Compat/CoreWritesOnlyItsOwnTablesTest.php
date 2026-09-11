@@ -34,7 +34,7 @@ it('writes only clean tables and the shared commerce ones, across every wave-3 e
     config(['compat.api_key' => WRITES_API_KEY, 'compat.jwt_secret' => 'writes-test-secret', 'compat.jwt_algo' => 'HS256']);
 
     $allowed = array_merge(
-        CoreChecksumCommand::CLEAN_TABLES,
+        CoreChecksumCommand::CORE_TABLES,
         CoreChecksumCommand::SHARED_COMMERCE_TABLES,
         // Framework-owned tables that are not part of either set.
         ['cache', 'cache_locks', 'sessions', 'core_migrations'],

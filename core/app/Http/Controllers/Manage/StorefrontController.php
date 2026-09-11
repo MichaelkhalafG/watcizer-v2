@@ -1,0 +1,166 @@
+<?php
+
+namespace App\Http\Controllers\Manage;
+
+use App\Models\Storefront\Storefront;
+use App\Support\Table\TableQuery;
+use App\Transform\Row;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
+use Inertia\Inertia;
+use Inertia\Response;
+
+/**
+ * /manage/storefronts — the admin-only storefront list and settings form (wave 4A, scope item 7).
+ *
+ * Creating and disabling a storefront is admin-only per AGENTS §2.7, and so is editing: the route
+ * group carries `can:manage-storefronts`, which no data-entry grant includes.
+ *
+ * ── A LOUD FINDING this screen surfaced (reported, not worked around) ─────────────────────────
+ *
+ * `storefronts` is in `CoreChecksumCommand::CLEAN_TABLES`, so switch night's drop-and-rebuild
+ * (§3.4 step 3b) DROPS it and `StorefrontSeeder::ensure()` recreates the row from a hard-coded
+ * constant. Anything an admin edits here — name, domain, locales, currency, the settings JSON, and
+ * the per-storefront logo the branding indirection is built for — is therefore LOST on the night
+ * the team goes live, silently, and replaced by the seeder's values.
+ *
+ * That is a real contradiction between "wave 4 ships storefront settings" and "switch night is a
+ * drop-and-rebuild", and it is not this screen's place to invent a scheme for it. Two options for
+ * the developer, in the wave-4A report:
+ *
+ *   (a) take `storefronts` out of the DROP list (the transform only ever *ensures* the row; it
+ *       derives nothing from legacy, so dropping it buys nothing), or
+ *   (b) make the rebuild recipe dump and restore the dashboard-owned columns.
+ *
+ * Until one is picked, the screen states it on the page rather than letting an admin discover it
+ * in October.
+ */
+final class StorefrontController
+{
+    public function index(Request $request): Response
+    {
+        $table = TableQuery::for($request)
+            ->sortable(['id', 'code', 'name', 'is_active', 'created_at'], default: 'id')
+            ->searchable(['code', 'name', 'domain'])
+            ->filterable(['is_active' => ['0', '1']])
+            ->perPage(default: 25, max: 100);
+
+        $query = DB::table('storefronts')->select(['id', 'code', 'name', 'domain', 'locales', 'default_locale', 'currency', 'is_active', 'updated_at']);
+
+        return Inertia::render('Manage/Storefronts/Index', [
+            // `Row` is the app's existing narrowing helper for raw query rows (the transform uses
+            // it everywhere); a dashboard screen has no business inventing a second convention.
+            'table' => $table->paginate($query, function (object $raw): array {
+                $row = Row::cast($raw);
+
+                return [
+                    'id' => Row::int($row, 'id'),
+                    'code' => Row::str($row, 'code'),
+                    'name' => Row::str($row, 'name'),
+                    'domain' => Row::nstr($row, 'domain'),
+                    'locales' => self::locales(Row::nstr($row, 'locales')),
+                    'default_locale' => Row::str($row, 'default_locale'),
+                    'currency' => Row::str($row, 'currency'),
+                    'is_active' => Row::bool($row, 'is_active'),
+                    'updated_at' => Row::nstr($row, 'updated_at'),
+                ];
+            }),
+            // The finding above, on the screen. It is a fact about the deployment procedure, so it
+            // belongs where the person editing can read it.
+            'rebuild_warning' => 'إعدادات المتجر تُعاد من ملف التهيئة عند إعادة بناء الجداول ليلة التحويل (§3.4). أبلِغ المطوّر قبل الاعتماد عليها.',
+        ]);
+    }
+
+    public function edit(Storefront $storefront): Response
+    {
+        return Inertia::render('Manage/Storefronts/Edit', [
+            'storefront' => [
+                'id' => $storefront->id,
+                'code' => $storefront->code,
+                'name' => $storefront->name,
+                'domain' => $storefront->domain,
+                'locales' => $storefront->locales,
+                'default_locale' => $storefront->default_locale,
+                'currency' => $storefront->currency,
+                'is_active' => $storefront->is_active,
+            ],
+            'locale_options' => [
+                ['value' => 'ar', 'label' => 'العربية'],
+                ['value' => 'en', 'label' => 'English'],
+            ],
+        ]);
+    }
+
+    public function update(Request $request, Storefront $storefront): RedirectResponse
+    {
+        $request->validate([
+            'name' => ['required', 'string', 'max:100'],
+            'domain' => ['nullable', 'string', 'max:255'],
+            'locales' => ['required', 'array', 'min:1'],
+            'locales.*' => ['string', 'size:2', Rule::in(['ar', 'en'])],
+            'default_locale' => ['required', 'string', 'size:2', Rule::in(['ar', 'en'])],
+            'currency' => ['required', 'string', 'size:3'],
+            'is_active' => ['required', 'boolean'],
+        ]);
+
+        $locales = self::stringList($request->input('locales'));
+        $defaultLocale = $request->string('default_locale')->toString();
+
+        if (! in_array($defaultLocale, $locales, true)) {
+            return back()->withErrors(['default_locale' => 'اللغة الافتراضية يجب أن تكون من اللغات المفعّلة.'])->withInput();
+        }
+
+        // `code` is NOT editable: it is the storefront's identity in every URL, cache key and
+        // compat payload (`/api/v2/{storefront}/…`), and the transform's deterministic-id guard
+        // refuses a code/id disagreement. Renaming one is a migration, not a form field.
+        $domain = $request->string('domain')->toString();
+
+        $storefront->fill([
+            'name' => $request->string('name')->toString(),
+            'domain' => $domain === '' ? null : $domain,
+            'locales' => $locales,
+            'default_locale' => $defaultLocale,
+            'currency' => $request->string('currency')->upper()->toString(),
+            'is_active' => $request->boolean('is_active'),
+        ]);
+        $storefront->save();
+
+        return redirect()
+            ->route('manage.storefronts.index')
+            ->with('status', "تم حفظ إعدادات متجر {$storefront->name}.");
+    }
+
+    /**
+     * `locales` is a JSON column on a MariaDB longtext, so a RAW row hands it back as a string
+     * while the model casts it to an array. This screen reads raw rows for the list (no model
+     * hydration for a table), hence the decode.
+     *
+     * @return list<string>
+     */
+    private static function locales(?string $value): array
+    {
+        if ($value === null || $value === '') {
+            return [];
+        }
+
+        return self::stringList(json_decode($value, true));
+    }
+
+    /** @return list<string> */
+    private static function stringList(mixed $value): array
+    {
+        if (! is_array($value)) {
+            return [];
+        }
+        $out = [];
+        foreach ($value as $item) {
+            if (is_scalar($item)) {
+                $out[] = (string) $item;
+            }
+        }
+
+        return array_values(array_unique($out));
+    }
+}

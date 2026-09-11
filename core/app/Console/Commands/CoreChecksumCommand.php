@@ -48,6 +48,45 @@ final class CoreChecksumCommand extends Command
     ];
 
     /** @var list<string> */
+    /**
+     * Core-owned tables whose content is AUTHORED IN THE DASHBOARD, not produced by the transform.
+     *
+     * **These are never dropped.** Switch night's drop-and-rebuild (study §3.4 step 3b) exists to
+     * throw away transform OUTPUT and rebuild it from legacy; a row a human typed into the
+     * dashboard has no legacy source to rebuild from, so dropping it is pure data loss at the worst
+     * possible moment. Wave 4A found this the hard way: `storefronts` was in the drop list, so the
+     * storefront-settings screen's every save — name, domain, locales, currency, settings JSON, the
+     * per-storefront logo — would have vanished on the night the team went live.
+     *
+     * The rule this list encodes (AGENTS §2.20, decided 2026-09-11): **if the dashboard authors it,
+     * it is not in the drop list.** That covers `storefronts` and `storefront_banners` today,
+     * `core_user_roles` (which would have locked every administrator out), and the payment
+     * provider/method tables when 4C builds them (§3.9.1).
+     *
+     * `storefronts` is the one table BOTH sides touch: the transform `ensure()`s row 1 exists so a
+     * fresh install has a storefront, and the dashboard owns its columns afterwards — which is why
+     * `StorefrontSeeder::ensure()` is insert-only for those columns (§2.9.6).
+     *
+     * @var list<string>
+     */
+    public const DASHBOARD_TABLES = [
+        'storefronts', 'storefront_banners', 'core_user_roles',
+    ];
+
+    /**
+     * Every table core owns: transform output PLUS dashboard-authored. This is the set for
+     * "may core write this?" and for a digest that covers the whole clean side.
+     *
+     * @var list<string>
+     */
+    public const CORE_TABLES = [...self::CLEAN_TABLES, ...self::DASHBOARD_TABLES];
+
+    /**
+     * Transform OUTPUT — the tables §3.4 step 3b drops and rebuilds. Dashboard-authored tables are
+     * deliberately absent; see {@see self::DASHBOARD_TABLES}.
+     *
+     * @var list<string>
+     */
     public const CLEAN_TABLES = [
         'catalog_brands', 'catalog_brand_translations', 'catalog_grades', 'catalog_grade_translations',
         'catalog_colors', 'catalog_color_translations', 'catalog_sizes', 'catalog_size_translations',
@@ -57,8 +96,8 @@ final class CoreChecksumCommand extends Command
         'catalog_features', 'catalog_feature_translations', 'catalog_genders', 'catalog_gender_translations',
         'catalog_products', 'catalog_product_translations', 'catalog_product_watch_specs', 'catalog_product_images',
         'catalog_product_feature', 'catalog_product_gender', 'catalog_product_color', 'catalog_product_variants',
-        'catalog_product_search', 'storefronts', 'storefront_product', 'storefront_categories',
-        'storefront_category_translations', 'storefront_category_product', 'storefront_banners', 'storefront_redirects',
+        'catalog_product_search', 'storefront_product', 'storefront_categories',
+        'storefront_category_translations', 'storefront_category_product', 'storefront_redirects',
         'inventory_movements', 'integration_outbox', 'core_transform_id_map',
     ];
 
@@ -69,12 +108,14 @@ final class CoreChecksumCommand extends Command
         $tables = match ($set) {
             'legacy' => LegacySource::TABLES,
             'frozen' => self::frozenTables(),
-            'clean' => self::CLEAN_TABLES,
-            'all' => array_merge(LegacySource::TABLES, self::CLEAN_TABLES),
+            'clean' => self::CORE_TABLES,
+            'transform' => self::CLEAN_TABLES,
+            'dashboard' => self::DASHBOARD_TABLES,
+            'all' => array_merge(LegacySource::TABLES, self::CORE_TABLES),
             default => null,
         };
         if ($tables === null) {
-            $this->error("--set must be legacy, frozen, clean or all (got [$set]).");
+            $this->error("--set must be legacy, frozen, clean, transform, dashboard or all (got [$set]).");
 
             return self::INVALID;
         }

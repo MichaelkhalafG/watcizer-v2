@@ -6,9 +6,22 @@ use App\Models\Catalog\Product;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Carbon;
 
 /**
  * `storefronts` — a sales channel (Watchizer = id 1, Brand Fashion, Nile Fashion). Never "brand" (D5).
+ *
+ * @property int $id
+ * @property string $code
+ * @property string $name
+ * @property string|null $domain
+ * @property list<string> $locales
+ * @property string $default_locale
+ * @property string $currency
+ * @property bool $is_active
+ * @property array<string, mixed>|null $settings
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
  */
 class Storefront extends Model
 {

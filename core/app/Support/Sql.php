@@ -80,6 +80,28 @@ final class Sql
         );
     }
 
+    /**
+     * `(stock_express + stock_market) <= low_stock_threshold` — the dashboard's "low stock" test.
+     *
+     * Here rather than in the controller for the same reason every other fragment is: this file
+     * is the ONE construction site for SQL text built from column names, and it is the only one
+     * with the whitelist. No caller-supplied string reaches it.
+     *
+     * The `literal-string` return type is what lets `whereRaw()` accept it at PHPStan level 10:
+     * the value is a constant in the source, not something assembled from input.
+     *
+     * @return literal-string
+     */
+    public static function belowLowStockThreshold(): string
+    {
+        $columns = ['stock_express', 'stock_market'];
+        foreach ($columns as $column) {
+            self::column($column);
+        }
+
+        return '(`stock_express` + `stock_market`) <= `low_stock_threshold`';
+    }
+
     private static function column(string $column): string
     {
         if (! in_array($column, self::COLUMNS, true)) {
