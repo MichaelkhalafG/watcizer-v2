@@ -155,7 +155,14 @@ it('still lets the team rename and MOVE an existing category', function () {
         ->where('storefront_category_id', $watches)->where('locale', 'ar')->value('name')))->toBe('ساعات (تدريب)');
 });
 
-it('still lets the team place, hide, feature and re-slug — the placement screen entire', function () {
+it('still lets the team place, hide, feature and sort — but NOT re-slug (review 🟠-3)', function () {
+    /*
+     * This test used to assert that the slug could be changed pre-switch, and that was the
+     * dishonest part of the screen: the field promised a permanent 301, and the next rebuild
+     * deletes both the hand-typed slug and the redirect written for it. The developer's call was
+     * to make the screen honest by disabling the field, so the rule under test is now: everything
+     * else on this screen keeps working, and the slug is refused BY NAME with a reason.
+     */
     $productId = T::int(DB::table('catalog_products as cp')
         ->join('storefront_product as sp', 'sp.product_id', '=', 'cp.id')
         ->whereNull('cp.deleted_at')->orderBy('cp.id')->value('cp.id'));
@@ -165,7 +172,6 @@ it('still lets the team place, hide, feature and re-slug — the placement scree
         'is_visible' => false,
         'is_featured' => true,
         'sort_order' => 77,
-        'slug' => 'training-slug-'.bin2hex(random_bytes(3)),
         'category_ids' => [$watches],
         'primary_category_id' => $watches,
     ])->assertSessionHasNoErrors();
@@ -175,6 +181,38 @@ it('still lets the team place, hide, feature and re-slug — the placement scree
 
     expect(Row::bool($row, 'is_featured'))->toBeTrue()
         ->and(Row::int($row, 'sort_order'))->toBe(77);
+
+    // The slug: refused, on the slug field, in Arabic, and the stored value is untouched.
+    $before = T::str(DB::table('storefront_product')
+        ->where('product_id', $productId)->where('storefront_id', 1)->value('slug'));
+
+    actingAs(Staff::dataEntry())->put("/manage/storefronts/1/placement/{$productId}", [
+        'is_visible' => false,
+        'is_featured' => true,
+        'sort_order' => 77,
+        'slug' => 'training-slug-'.bin2hex(random_bytes(3)),
+        'category_ids' => [$watches],
+        'primary_category_id' => $watches,
+    ])->assertSessionHasErrors('slug');
+
+    expect(T::err('slug'))->toMatch('/\p{Arabic}/u')
+        ->and(T::str(DB::table('storefront_product')
+            ->where('product_id', $productId)->where('storefront_id', 1)->value('slug')))->toBe($before);
+
+    // After the switch the same request is accepted — one flag, and this is the screen it opens.
+    config()->set('transform.write_switch_completed', true);
+    $wanted = 'post-switch-slug-'.bin2hex(random_bytes(3));
+    actingAs(Staff::dataEntry())->put("/manage/storefronts/1/placement/{$productId}", [
+        'is_visible' => false,
+        'is_featured' => true,
+        'sort_order' => 77,
+        'slug' => $wanted,
+        'category_ids' => [$watches],
+        'primary_category_id' => $watches,
+    ])->assertSessionHasNoErrors();
+
+    expect(T::str(DB::table('storefront_product')
+        ->where('product_id', $productId)->where('storefront_id', 1)->value('slug')))->toBe($wanted);
 });
 
 it('still lets the team add and reorder IMAGES on an existing product', function () {
@@ -228,16 +266,23 @@ it('covers every table the 4B writers can insert into', function () {
     $missing = array_values(array_diff($writable, array_keys(PreSwitch::tableMap())));
     expect($missing)->toBe([], 'a table a 4B screen writes is not declared in PreSwitch::CREATIONS');
 
-    // …and the pivots the product form replaces. They carry no independent row of their own —
-    // a pivot exists only for a product that exists — which is why they are not in the list.
+    /*
+     * …including the three pure pivots (review 🟡-6). They used to be left OUT on the grounds that
+     * a pivot row is not an entity of its own — which is true, and which is exactly why they are
+     * ALLOWED — but leaving them out made `nonTransformTables()` pass for the wrong reason: a
+     * table the product form writes was simply undeclared, so "the declared list is complete" was
+     * not a claim anybody had checked. Declared and allowed says the same thing and can be tested.
+     */
     foreach (['catalog_product_feature', 'catalog_product_gender', 'catalog_product_color'] as $pivot) {
-        expect(PreSwitch::tableMap())->not->toHaveKey($pivot);
+        expect(PreSwitch::tableMap())->toHaveKey($pivot);
+        expect(PreSwitch::tableMap()[$pivot]['blocked'])->toBeFalse("[{$pivot}] is a set on an existing product, not an entity");
     }
 });
 
 it('flips as ONE flag, not per action and not on a date', function () {
-    // Four actions blocked, five allowed, one switch. The decision was explicit that it must not
-    // be a date guess: the switch happens when it happens.
+    // Four actions blocked, six allowed, one switch (the sixth is `attributes`, declared for
+    // review 🟡-6). The decision was explicit that it must not be a date guess: the switch happens
+    // when it happens.
     $blocked = [];
     $allowed = [];
     $reasons = [];
@@ -253,7 +298,7 @@ it('flips as ONE flag, not per action and not on a date', function () {
     expect(array_values(array_unique($reasons)))->toHaveCount(count(PreSwitch::CREATIONS));
 
     expect($blocked)->toBe(['product', 'variant', 'category', 'lookup'])
-        ->and($allowed)->toBe(['product_image', 'placement', 'storefront_product', 'watch_specs', 'redirect']);
+        ->and($allowed)->toBe(['product_image', 'placement', 'storefront_product', 'watch_specs', 'redirect', 'attributes']);
 
     // One flag: flipping it opens every blocked action at once.
     foreach ($blocked as $action) {

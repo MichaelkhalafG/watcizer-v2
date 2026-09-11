@@ -84,24 +84,50 @@ it('ignores a primary that is not one of the chosen categories', function () {
         ->and(DB::table('storefront_category_product')->where('product_id', $productId)->count())->toBe(1);
 });
 
-it('silently drops a category that belongs to another storefront', function () {
-    // Not an error message naming it — study §3.11.14: never confirm that another storefront's
-    // row exists. It is simply not in the set.
+it('REFUSES a category that belongs to another storefront, without confirming it exists', function () {
+    /*
+     * This test asserted the opposite until review 🟠-1: the foreign id was SILENTLY DROPPED, on
+     * the reasoning that §3.11.14 forbids telling the caller another storefront's row exists.
+     *
+     * Dropping it was the hole. `place()` filtered the id out as foreign, was left with an empty
+     * desired set, and deleted every placement the product already had — a payload naming
+     * storefront 2 wiped storefront 1's own data. Refusing at the field is both safe and silent:
+     * the validator's answer for a foreign id is identical to its answer for an id that never
+     * existed, so nothing is confirmed (the sibling assertion below is what holds that).
+     */
     $other = CatalogFixture::secondStorefront();
     $foreign = CatalogFixture::anyNodeOf($other);
     $watches = CatalogFixture::watchesRoot();
     $productId = CatalogFixture::product();
     CatalogFixture::onStorefront($productId);
+    CatalogFixture::place($productId, $watches);
 
     actingAs(Staff::admin())->put("/manage/storefronts/1/placement/{$productId}", [
         'is_visible' => false,
         'is_featured' => false,
         'category_ids' => [$watches, $foreign],
         'primary_category_id' => $watches,
-    ])->assertSessionHasNoErrors();
+    ])->assertSessionHasErrors('category_ids.1');
 
+    $foreignMessage = T::err('category_ids.1');
+
+    // The placement it already had is still there: a refused save writes nothing.
     $placed = DB::table('storefront_category_product')->where('product_id', $productId)->pluck('storefront_category_id')->all();
     expect(array_map(fn (mixed $v): int => T::int($v), $placed))->toBe([$watches]);
+
+    // §3.11.14 held: an id of another storefront and an id of nobody read the same.
+    $ghost = T::int(DB::table('storefront_categories')->max('id')) + 9000;
+    actingAs(Staff::admin())->put("/manage/storefronts/1/placement/{$productId}", [
+        'is_visible' => false,
+        'is_featured' => false,
+        'category_ids' => [$watches, $ghost],
+        'primary_category_id' => $watches,
+    ])->assertSessionHasErrors('category_ids.1');
+
+    expect(T::err('category_ids.1'))->toBe($foreignMessage,
+        'a foreign node must be indistinguishable from a non-existent one (§3.11.14)')
+        ->and($foreignMessage)->not->toContain((string) $foreign)
+        ->and($foreignMessage)->not->toContain((string) $other);
 });
 
 it('removes a placement the payload no longer names', function () {
@@ -129,6 +155,12 @@ it('removes a placement the payload no longer names', function () {
 });
 
 it('writes a 301 when a product slug changes, and keeps the old URL working', function () {
+    // Post-switch, and the test says so out loud (review 🟠-3): pre-switch the slug field is
+    // LOCKED precisely because the rebuild deletes both the slug and this redirect. The 301
+    // machinery is what the screen does once the flag is flipped — `PreSwitchTest` drives the
+    // refusal in the flag's default state.
+    CatalogFixture::assumeSwitched();
+
     $productId = CatalogFixture::product();
     CatalogFixture::onStorefront($productId);
     $oldSlug = T::str(DB::table('storefront_product')->where('product_id', $productId)->value('slug'));

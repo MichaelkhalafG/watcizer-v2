@@ -342,7 +342,15 @@ final class CategoryTreeWriter
     {
         $node = StorefrontCategory::query()->where('storefront_id', $storefrontId)->find($nodeId);
         if (! $node instanceof StorefrontCategory) {
-            throw new RuntimeException("Category node {$nodeId} does not exist in storefront {$storefrontId}.");
+            /*
+             * Arabic, because `CategoryController` puts this straight on the screen — the most
+             * ordinary way to reach it is two people on the same tree: one deletes a category, the
+             * other clicks delete (or move) on the row their page still shows (review 🟡-7).
+             *
+             * It says "refresh", because that is the whole remedy, and it does NOT say whether the
+             * id exists somewhere else: "not yours" and "not there" stay one answer (§3.11.14).
+             */
+            throw new RuntimeException('هذا التصنيف غير موجود — ربما حذفه شخص آخر. حدّث الصفحة لرؤية الشجرة الحالية.');
         }
 
         return $node;
@@ -469,7 +477,12 @@ final class CategoryTreeWriter
     private static function assertPathShape(string $path): void
     {
         if (preg_match('#^/(?:\d+/)*$#', $path) !== 1) {
-            throw new RuntimeException("Refusing to build SQL from a malformed tree path [{$path}].");
+            // Arabic for the operator, with the bad value kept verbatim for whoever they call:
+            // this is a corrupted row, not something they did, and no retry will fix it.
+            throw new RuntimeException(
+                'مسار هذا التصنيف غير سليم في قاعدة البيانات، ولا يمكن تنفيذ العملية عليه. '
+                ."أبلغ المطوّر بهذه القيمة: [{$path}]"
+            );
         }
     }
 

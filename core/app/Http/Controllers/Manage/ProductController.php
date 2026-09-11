@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Manage;
 
 use App\Domain\Catalog\ConversionGuard;
 use App\Domain\Catalog\FamilyForCategory;
+use App\Domain\Catalog\FieldRefusal;
 use App\Domain\Catalog\PlacementWriter;
 use App\Domain\Catalog\PreSwitch;
 use App\Domain\Catalog\ProductIndexer;
@@ -651,6 +652,9 @@ final class ProductController
              * (AGENTS §2.4: the product CONTENT is shared and only these are not).
              */
             'sections' => $sections,
+            // Slug editing is one rule for every storefront (it is the flag, not the storefront),
+            // so it is shipped once rather than per section.
+            'slug_lock' => PreSwitch::slugState(),
             'missing_arabic' => $productId === null ? [] : $this->placements->missingArabic($productId),
             // The storefront whose primary category decides the family and therefore the spec
             // block, named so the screen can say it out loud.
@@ -745,15 +749,14 @@ final class ProductController
              * flat `is_visible`/`category_ids`/… payload is folded into `storefronts[<url id>]`
              * before validation, which is what keeps the form, the API-less console paths and the
              * tests speaking the same language instead of two.
+             *
+             * The two CATEGORY ID keys are not here: they are generated per section key below,
+             * because the rule they need is `exists … where storefront_id = <that section>` and a
+             * `storefronts.*` wildcard cannot know which storefront it is standing in. That gap is
+             * precisely what review 🟠-1 found.
              */
             'storefronts' => ['required', 'array', 'min:1'],
             'storefronts.*.category_ids' => ['nullable', 'array', 'max:30'],
-            'storefronts.*.category_ids.*' => ['integer', 'min:1'],
-            // `required_with` and `in:` together are the hard stop of task 4.2: choosing
-            // categories and no primary is refused at the field, and a primary that is not one of
-            // the chosen categories is refused too — the one-primary DB invariant is about a row
-            // that EXISTS, so a primary outside the set could only ever become an SQL error.
-            'storefronts.*.primary_category_id' => ['nullable', 'integer', 'min:1'],
             'storefronts.*.is_visible' => ['required', 'boolean'],
             'storefronts.*.is_featured' => ['required', 'boolean'],
             'storefronts.*.sort_order' => ['nullable', 'integer', 'min:-2147483648', 'max:2147483647'],
@@ -761,6 +764,23 @@ final class ProductController
         ];
 
         self::foldFlatStorefront($request);
+
+        /*
+         * The category ids are validated FIRST, on their own, and the order is the fix rather than
+         * a tidiness preference (review 🟠-1).
+         *
+         * The family has to be resolved before the main rules are assembled, because the spec
+         * block's rules depend on it — and resolving it means asking `FamilyForCategory` about a
+         * node id that came straight from the request. With a stale or foreign id that resolver
+         * throws `Category node N does not exist`, which reached the browser as a **500**: the
+         * exact symptom the reviewer staged by deleting a category with a form open. Scoping the
+         * ids is only half the answer; they have to be scoped BEFORE anything reads them.
+         */
+        $scopeRules = self::categoryScopeRules($request);
+        if ($scopeRules !== []) {
+            $request->validate($scopeRules);
+        }
+        $base = array_merge($base, $scopeRules);
 
         // The family the server will actually store, derived from the category the form chose ON
         // THE STOREFRONT THAT DECIDES (the primary one). Validating the block for the REQUESTED
@@ -827,7 +847,10 @@ final class ProductController
                  * storefronts and one bad slug, "this slug is taken" without saying WHERE is a
                  * puzzle, and the operator's next move is to guess.
                  */
-                $field = str_contains($e->getMessage(), 'الرابط') ? 'slug' : 'is_visible';
+                // The refusal carries its own field since review 🟡-4's message landed on the
+                // wrong one ({@see FieldRefusal}); a plain RuntimeException is action-level and
+                // keeps the visibility toggle as its home.
+                $field = FieldRefusal::fieldOf($e);
                 throw ValidationException::withMessages([
                     "storefronts.{$storefrontId}.{$field}" => $e->getMessage(),
                 ]);
@@ -839,6 +862,41 @@ final class ProductController
         // order explicit: place everywhere, then re-derive once — the family is one column on a
         // shared product and follows the PRIMARY storefront (FamilyForCategory::primaryNodeFor).
         $this->products->update($productId, self::currentPayload($productId, []), null);
+    }
+
+    /**
+     * `exists` rules for the category ids of EVERY submitted section, scoped to that section's
+     * storefront (review 🟠-1).
+     *
+     * ── Why per key and not `storefronts.*.category_ids.*` ──────────────────────────────────
+     *
+     * The check that was missing is not "does this node exist" but "does it exist IN THIS
+     * STOREFRONT", and a wildcard rule has no way to name the storefront it is validating. The
+     * consequences were two shapes of the same hole: a node deleted while a form was open was
+     * accepted (and the write then failed or silently dropped it), and a crafted payload could put
+     * ANOTHER storefront's node id into this storefront's section — at which point `place()`
+     * filtered it out as foreign, saw an empty desired set, and deleted every existing placement
+     * for that product. A write scoped to storefront 1 wiped storefront 1's data because the
+     * attacker named storefront 2.
+     *
+     * A section key that is not a storefront id at all gets `storefront_id = 0`, so the rule fails
+     * closed: no node can exist there. The id came from the caller, so refusing it confirms nothing
+     * (§3.11.14).
+     *
+     * @return array<string, list<mixed>>
+     */
+    private static function categoryScopeRules(Request $request): array
+    {
+        $rules = [];
+        foreach (array_keys(Coerce::arr($request->input('storefronts'))) as $key) {
+            $storefrontId = is_numeric($key) ? (int) $key : 0;
+            $scoped = Rule::exists('storefront_categories', 'id')->where('storefront_id', $storefrontId);
+
+            $rules["storefronts.{$key}.category_ids.*"] = ['integer', 'min:1', $scoped];
+            $rules["storefronts.{$key}.primary_category_id"] = ['nullable', 'integer', 'min:1', $scoped];
+        }
+
+        return $rules;
     }
 
     /**
@@ -1428,18 +1486,16 @@ final class ProductController
      *
      * @return array{pre_switch: bool, message: string}|null
      */
+    /**
+     * Delegated to `PreSwitch::noticeFor()` since review 🟠-3, which found this screen's generic
+     * sentence doing duty on the placement screen where it named none of the work that screen
+     * actually loses. One home for the wording, one per-screen switch inside it.
+     *
+     * @return array{pre_switch: bool, message: string}|null
+     */
     private static function preSwitchNotice(): ?array
     {
-        if (ConversionGuard::writeSwitchCompleted()) {
-            return null;
-        }
-
-        return [
-            'pre_switch' => true,
-            'message' => 'قبل ليلة التحويل: جداول الكتالوج تُبنى من النظام القديم في كل تجربة وفي ليلة التحويل '
-                .'(core:drop-clean ثم migrate ثم core:transform)، فأي منتج أو تعديل يُكتب هنا الآن يُستبدل بما في النظام القديم. '
-                .'استخدم هذه الشاشات للتدريب، وأدخل البيانات الحقيقية من الداشبورد القديم حتى التحويل.',
-        ];
+        return PreSwitch::noticeFor('product');
     }
 
     private static function escapeLike(string $value): string

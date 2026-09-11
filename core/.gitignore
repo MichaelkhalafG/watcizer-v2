@@ -30,3 +30,10 @@ Thumbs.db
 # The root .gitignore ignores `audit/` (the legacy archive folder); with core.ignorecase on
 # Windows that rule also swallowed app/Transform/Audit/. Re-include it explicitly.
 !app/Transform/Audit/
+
+# npm is the package manager here (`packageManager` in package.json pins it).
+# A pnpm run in this directory during wave 4B wrote both of these and they were committed in
+# 3f1d418; two lockfiles in one project is a CI trap, so a stray run can no longer be staged.
+/pnpm-lock.yaml
+/pnpm-workspace.yaml
+/yarn.lock

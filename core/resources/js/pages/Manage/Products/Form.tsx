@@ -154,6 +154,8 @@ interface Props {
     missing_arabic: string[];
     /** The storefront whose primary category decides the shared family (and the spec block). */
     family_storefront: number;
+    /** Whether slug editing is open yet, and the reason when it is not (review 🟠-3). */
+    slug_lock: PreSwitchState;
     family: FamilyExplanation;
     blocks: Record<string, SpecBlockDef>;
     lookups: Record<string, Option[]>;
@@ -200,6 +202,7 @@ export default function ProductForm({
     product,
     sections,
     missing_arabic,
+    slug_lock,
     family,
     blocks,
     lookups,
@@ -475,6 +478,7 @@ export default function ProductForm({
                         data={form.data.storefronts[String(section.storefront.id)]}
                         errors={errors}
                         canBeVisible={hasArabicTitle}
+                        slugLock={slug_lock}
                         missingArabic={missing_arabic}
                         onChange={(patch) => setSection(String(section.storefront.id), patch)}
                         onToggleCategory={(id, on) => toggleCategory(String(section.storefront.id), id, on)}
@@ -620,6 +624,7 @@ function StorefrontFields({
     data,
     errors,
     canBeVisible,
+    slugLock,
     missingArabic,
     onChange,
     onToggleCategory,
@@ -628,6 +633,7 @@ function StorefrontFields({
     data: StorefrontSectionData | undefined;
     errors: Record<string, string>;
     canBeVisible: boolean;
+    slugLock: PreSwitchState;
     missingArabic: string[];
     onChange: (patch: Partial<StorefrontSectionData>) => void;
     onToggleCategory: (id: number, on: boolean) => void;
@@ -734,14 +740,18 @@ function StorefrontFields({
                     <TextField
                         label="الرابط (slug)"
                         dir="ltr"
-                        hint="يُولّد من العنوان الإنجليزي إن تُرك فارغًا."
+                        // Locked until the write-switch, with the reason ON the field: the 301 a
+                        // change would promise is deleted by the next rebuild together with the
+                        // slug itself, so the field refuses instead of warning (review 🟠-3).
+                        disabled={slugLock.blocked}
+                        hint={slugLock.blocked ? (slugLock.message ?? undefined) : 'يُولّد من العنوان الإنجليزي إن تُرك فارغًا.'}
                         error={error('slug')}
                         value={data.slug}
                         onChange={(value) => onChange({ slug: value })}
                     />
                 </div>
 
-                {data.slug.trim() !== '' && data.slug !== section.placement.slug ? (
+                {!slugLock.blocked && data.slug.trim() !== '' && data.slug !== section.placement.slug ? (
                     <Alert tone="warning" title="ستُغيّر رابط المنتج على هذا المتجر">
                         الرابط الحالي <code dir="ltr">/product/{section.placement.slug}</code> وسيصبح{' '}
                         <code dir="ltr">/product/{data.slug.trim()}</code>. الرابط القديم لن يتوقف: يُنشأ تحويل 301 تلقائيًا،

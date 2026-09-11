@@ -265,10 +265,18 @@ export default function CategoriesIndex({ storefront, storefronts, nodes, max_de
                                         <Badge variant="outline">{node.products} منتجًا ظاهرًا</Badge>
                                     )}
                                     {node.products_any !== node.products ? <Badge variant="neutral">{node.products_any} مرتبطًا</Badge> : null}
-                                    {/* The family this node would give a product — same resolver as the transform. */}
-                                    <Badge variant="neutral" title="العائلة التي يحصل عليها المنتج الموضوع هنا — بقاعدة التحويل نفسها">
-                                        {node.family}
-                                    </Badge>
+                                    {/* The family this node would give a product — same resolver as the transform.
+                                        Empty means the node's stored `path` is malformed and no family can be
+                                        derived from it; the screen says so rather than showing a blank badge. */}
+                                    {node.family === '' ? (
+                                        <Badge variant="warning" title="مسار هذا التصنيف غير سليم في قاعدة البيانات — لا يمكن اشتقاق العائلة منه">
+                                            عائلة غير معروفة
+                                        </Badge>
+                                    ) : (
+                                        <Badge variant="neutral" title="العائلة التي يحصل عليها المنتج الموضوع هنا — بقاعدة التحويل نفسها">
+                                            {node.family}
+                                        </Badge>
+                                    )}
                                     {node.legacy_source === null ? (
                                         <Badge variant="outline">أُنشئ من اللوحة</Badge>
                                     ) : (

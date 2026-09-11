@@ -1,5 +1,6 @@
 {
     "private": true,
+    "packageManager": "npm@11.13.0",
     "type": "module",
     "scripts": {
         "build": "vite build",

@@ -139,7 +139,23 @@ final class PreSwitch
             'label' => 'تحويل 301 بعد تغيير رابط',
             'blocked' => false,
             'why' => 'A consequence of an allowed edit, never typed directly. Blocking it would leave a renamed '
-                .'slug with no redirect, which is worse than a row the rebuild replaces.',
+                .'slug with no redirect, which is worse than a row the rebuild replaces. Pre-switch it is '
+                .'unreachable anyway, because slug EDITING is locked until the flag flips '
+                .'(see self::mayEditSlug()): the rebuild deletes the redirect along with the slug that '
+                .'produced it.',
+        ],
+        'attributes' => [
+            // The three pure pivots, added after review 🟡-4 found them MISSING from this map. Their
+            // absence made `nonTransformTables()` pass for the wrong reason: a table the UI writes
+            // was simply not declared, so the "complete declared list" was not complete. Allowed for
+            // the same reason as the other four — each row is a property of a product that already
+            // exists, so a rebuild REVERTS the set rather than deleting an entity.
+            'tables' => ['catalog_product_feature', 'catalog_product_gender', 'catalog_product_color'],
+            'label' => 'خصائص وفئات وألوان منتج قائم',
+            'blocked' => false,
+            'why' => 'Features, genders and colour roles are attribute SETS on a product that already exists, '
+                .'written by the product form as replace-in-place. The transform rebuilds them from legacy, so '
+                .'the effect of a rebuild is a revert and never a deletion.',
         ],
     ];
 
@@ -212,6 +228,107 @@ final class PreSwitch
         }
 
         throw new RuntimeException(self::treeMessage());
+    }
+
+    /**
+     * May the dashboard CHANGE a product's slug yet?
+     *
+     * ── The contradiction this closes (review 🟠-3) ──────────────────────────────────────────
+     *
+     * The slug field promised a permanent redirect: "تغييره ينشئ تحويلًا 301 من الرابط القديم".
+     * Before the write-switch that promise cannot be kept, and not approximately —
+     * `storefront_product` and `storefront_redirects` are BOTH transform output, so the next
+     * rebuild deletes the typed slug AND the 301 that was written to protect it. The operator
+     * would have done careful work, been told a redirect exists, and been left with neither.
+     *
+     * A caveat at the field was the other option and was rejected: §2.27 says a rule that really is
+     * a rule is enforced in the form rather than explained next to it, and "this will be undone" is
+     * not a caveat — it is a refusal in a softer voice. So the field is LOCKED until the flag flips,
+     * which costs the team nothing: the transform derives every slug from the legacy EN title on
+     * insert, so a hand-typed one was always transient.
+     *
+     * Everything else on the placement screen stays editable. Visibility, order, featured and the
+     * category set are reverted by a rebuild too, but reverting a DECISION is recoverable by making
+     * it again, while a slug change leaves a broken promise behind it — which is exactly the line
+     * §2.23 draws between an edit and a creation.
+     */
+    public static function mayEditSlug(): bool
+    {
+        return self::completed();
+    }
+
+    /**
+     * @throws RuntimeException
+     */
+    public static function assertMayEditSlug(): void
+    {
+        if (self::mayEditSlug()) {
+            return;
+        }
+
+        // Declares its field, so the screen puts it beside the slug box rather than beside the
+        // visibility toggle ({@see FieldRefusal}).
+        throw new FieldRefusal('slug', self::slugMessage());
+    }
+
+    /** The refusal for a slug change, in the dashboard's language. */
+    public static function slugMessage(): string
+    {
+        return 'تغيير الروابط موقوف حتى ليلة التحويل: الرابط وتحويل 301 الذي يُنشأ معه يُعاد بناؤهما من '
+            .'النظام القديم في كل تحديث، فلو غيّرته الآن ستفقد الرابط الجديد والتحويل معه ويعود الرابط '
+            .'القديم بلا تحويل. غيّر الروابط من الداشبورد القديم حتى التحويل، أو من هنا بعده.';
+    }
+
+    /**
+     * What a screen needs to render its slug field honestly.
+     *
+     * @return array{write_switch_completed: bool, blocked: bool, message: string|null, label: string}
+     */
+    public static function slugState(): array
+    {
+        $blocked = ! self::mayEditSlug();
+
+        return [
+            'write_switch_completed' => self::completed(),
+            'blocked' => $blocked,
+            'message' => $blocked ? self::slugMessage() : null,
+            'label' => 'الرابط (slug)',
+        ];
+    }
+
+    /**
+     * The banner a catalogue screen shows before the write-switch, worded for WHAT THAT SCREEN
+     * actually loses (review 🟠-3).
+     *
+     * One generic sentence used to serve every screen, and on the placement screen it was close to
+     * useless: it spoke about "any product or edit" while the work a placement operator does is
+     * categories, visibility, order, featured and slugs — each of which is recreated from legacy on
+     * the next rebuild, and none of which the sentence named. An operator who cannot tell whether
+     * their afternoon survives will assume that it does.
+     *
+     * @return array{pre_switch: bool, message: string}|null null once the switch has happened
+     */
+    public static function noticeFor(string $screen): ?array
+    {
+        if (self::completed()) {
+            return null;
+        }
+
+        $rebuild = 'جداول الكتالوج تُبنى من النظام القديم في كل تجربة وفي ليلة التحويل '
+            .'(core:drop-clean ثم migrate ثم core:transform). ';
+
+        $message = match ($screen) {
+            'placement' => 'قبل ليلة التحويل: '.$rebuild
+                .'كل ما تضبطه في هذه الشاشة يُعاد بناؤه من النظام القديم: ربط المنتجات بالتصنيفات، '
+                .'وقرارات الإظهار والإخفاء، والترتيب، والتمييز، والروابط المكتوبة يدويًا وتحويلات 301 '
+                .'التي أُنشئت معها. استخدم الشاشة للتدريب، واضبط العرض الحقيقي من الداشبورد القديم حتى '
+                .'التحويل. (تغيير الروابط موقوف أصلًا لأن تحويل 301 لا ينجو من إعادة البناء.)',
+            default => 'قبل ليلة التحويل: '.$rebuild
+                .'فأي منتج أو تعديل يُكتب هنا الآن يُستبدل بما في النظام القديم. '
+                .'استخدم هذه الشاشات للتدريب، وأدخل البيانات الحقيقية من الداشبورد القديم حتى التحويل.',
+        };
+
+        return ['pre_switch' => true, 'message' => $message];
     }
 
     /** The refusal for a secondary tree, in the dashboard's language. */

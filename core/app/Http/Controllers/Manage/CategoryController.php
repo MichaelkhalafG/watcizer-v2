@@ -158,6 +158,13 @@ final class CategoryController
      *   • `family` — what a product placed here would become, from the same resolver the transform
      *     uses. The team can see that "Bags" yields `bag` BEFORE they put 200 products in it.
      *
+     * The family is derived for the WHOLE TREE AT ONCE (review 🟠-2). It used to call
+     * `FamilyForCategory::forNode()` inside the row loop, and that method spends two queries per
+     * call — the node's path, then the English names — so a 300-node tree cost 600 queries and the
+     * screen got slower every time the team added a category. `explainMany()` is the same rule with
+     * the same resolver, batched: two queries for any number of nodes. Total query count for this
+     * screen is now a constant.
+     *
      * @return list<array<string, mixed>>
      */
     private static function tree(int $storefrontId): array
@@ -206,7 +213,11 @@ final class CategoryController
                 'ar.name as name_ar', 'en.name as name_en',
             ]);
 
-        $families = new FamilyForCategory;
+        $ids = [];
+        foreach ($rows as $raw) {
+            $ids[] = Row::int(Row::cast($raw), 'id');
+        }
+        $families = (new FamilyForCategory)->explainMany($ids);
 
         $out = [];
         foreach ($rows as $raw) {
@@ -248,8 +259,10 @@ final class CategoryController
                     default => 'ظاهر',
                 },
                 // Derived with the transform's own rule and config, so the answer here and the
-                // answer a product save computes are the same answer.
-                'family' => $families->forNode($id),
+                // answer a product save computes are the same answer. A node whose `path` is
+                // malformed carries NO family — same as the product form's dropdown — because a
+                // guessed family on this screen is worse than a visible gap.
+                'family' => isset($families[$id]) ? $families[$id]['family'] : '',
                 'may_delete' => $kids === 0 && $any === 0 && $legacySource === null,
             ];
         }
