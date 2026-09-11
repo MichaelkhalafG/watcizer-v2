@@ -8,6 +8,7 @@ use App\Support\Coerce;
 use App\Support\LegacySlug;
 use App\Transform\Row;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use RuntimeException;
 
 /**
@@ -247,6 +248,31 @@ final class PlacementWriter
      * @return list<string>
      */
     /**
+     * The refusal for a name that yields no slug, with a suggestion when one can be offered.
+     *
+     * The rule being explained is the legacy one: a Watchizer URL is `[a-z0-9-]`, so Arabic,
+     * emoji and punctuation contribute nothing. `Str::slug()` transliterates roughly
+     * («ساعة رولكس» → `saaa-rolks`), which is not good enough to STORE but is a fine starting
+     * point for a person who can then correct it — which is the difference between a dead end and
+     * a next step.
+     */
+    private static function unslugifiable(string $requested): string
+    {
+        $suggestion = Str::slug($requested);
+
+        $base = 'لا يمكن تحويل «'.$requested.'» إلى رابط: روابط المتجر تُكتب بحروف إنجليزية وأرقام '
+            .'وشرطات فقط، والحروف العربية والرموز لا تدخل فيها. ';
+
+        if ($suggestion === '') {
+            return $base.'اكتب رابطًا بالإنجليزية (مثل rolex-submariner)، أو اترك الخانة فارغة '
+                .'ليُولّد من العنوان الإنجليزي تلقائيًا.';
+        }
+
+        return $base.'اقتراح قريب من الاسم: «'.$suggestion.'» — عدّله كما يناسبك واكتبه في الخانة، '
+            .'أو اتركها فارغة ليُولّد من العنوان الإنجليزي تلقائيًا.';
+    }
+
+    /**
      * A product with NO image may not be visible.
      *
      * Not a taste rule: a listing card is an image and a price, and an empty frame reads as a
@@ -333,11 +359,23 @@ final class PlacementWriter
     /**
      * The slug to store.
      *
-     * A REQUESTED slug that is already taken on this storefront is REFUSED, by name (task 4.2). It
-     * used to be silently suffixed: the operator typed `rolex-daytona`, got `rolex-daytona-2`, and
-     * found out by reading the URL later — the same class of surprise as a warning nobody reads.
-     * A DERIVED slug (from the EN title, when the field is left empty) is still suffixed, because
-     * there the suffix is the answer rather than a surprise, and it is what the transform does.
+     * Three refusals and one derivation, and the three refusals are the point: a slug is a live URL,
+     * so every way of getting it wrong has to stop rather than be corrected quietly.
+     *
+     *  1. **Taken inside this storefront** → refused by name (task 4.2). It used to be silently
+     *     suffixed: the operator typed `rolex-daytona`, got `rolex-daytona-2`, and found out by
+     *     reading the URL later — the same class of surprise as a warning nobody reads.
+     *  2. **Unslugifiable** → refused, with a transliterated SUGGESTION where one exists (review
+     *     🟡-4). This used to fall back to the numeric product id, so typing an Arabic name — the
+     *     likeliest real input on an Arabic-first dashboard — silently produced `/product/1234`.
+     *     `LegacySlug` keeps ASCII-only behaviour on purpose (its docblock forbids transliteration,
+     *     because the transform derives every live URL with it), so the suggestion is built with
+     *     Laravel's `Str::slug()` for the MESSAGE ONLY and is never stored.
+     *  3. **Changing an existing slug before the write-switch** → refused (review 🟠-3). The 301
+     *     this would promise does not survive a rebuild; see `PreSwitch::mayEditSlug()`.
+     *
+     * A DERIVED slug (the field left empty) is still suffixed on collision, because there the
+     * suffix is the answer rather than a surprise, and it is what the transform does.
      *
      * @param  array<string, mixed>  $data
      */
@@ -345,14 +383,30 @@ final class PlacementWriter
     {
         $requested = Coerce::str($data['slug'] ?? null);
         if ($requested !== '') {
-            $slug = LegacySlug::make($requested) ?: (string) $productId;
+            $slug = LegacySlug::make($requested);
+            if ($slug === '') {
+                throw new FieldRefusal('slug', self::unslugifiable($requested));
+            }
+
+            /*
+             * The pre-switch lock applies to a CHANGE, not to every save. The product form echoes
+             * the stored slug back in its payload on an ordinary edit, so refusing any non-empty
+             * slug here would refuse every save the screen makes — and a rule that blocks unrelated
+             * work is a rule the team routes around. A brand-new `storefront_product` row is also
+             * allowed to carry a typed slug: there is no old URL, so there is no 301 to promise.
+             */
+            if ($current !== null && $current !== '' && $slug !== $current) {
+                PreSwitch::assertMayEditSlug();
+            }
+
             $taken = DB::table('storefront_product')
                 ->where('storefront_id', $storefrontId)
                 ->where('slug', $slug)
                 ->where('product_id', '!=', $productId)
                 ->exists();
             if ($taken) {
-                throw new RuntimeException(
+                throw new FieldRefusal(
+                    'slug',
                     'الرابط «'.$slug.'» مستخدم بالفعل لمنتج آخر في هذا المتجر. '
                     .'الروابط لا تتكرر داخل المتجر الواحد. اكتب رابطًا مختلفًا، أو اترك الخانة فارغة '
                     .'ليُولّد من العنوان الإنجليزي تلقائيًا.'
@@ -393,7 +447,7 @@ final class PlacementWriter
             $slug = $suffix === 2 ? $base.'-'.$productId : $base.'-'.$productId.'-'.$suffix;
             $suffix++;
             if ($suffix > 50) {
-                throw new RuntimeException("تعذّر توليد رابط فريد من «{$base}».");
+                throw new FieldRefusal('slug', "تعذّر توليد رابط فريد من «{$base}».");
             }
         }
 

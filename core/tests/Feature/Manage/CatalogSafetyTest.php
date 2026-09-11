@@ -214,6 +214,10 @@ it('bumps the storefront cache version from the UI path, so v2 cannot serve a st
 
 it('serves the edited product through the v2 API, not a cached copy', function () {
     // End to end: edit through the dashboard, read through the public API, see the new value.
+    // The edit sets a slug, which is a post-switch action (review 🟠-3) — and post-switch is also
+    // when this path matters, because before it the storefront still reads the legacy tables.
+    CatalogFixture::assumeSwitched();
+
     $productId = CatalogFixture::product();
     CatalogFixture::onStorefront($productId);
     $watches = CatalogFixture::watchesRoot();

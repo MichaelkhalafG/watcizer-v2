@@ -125,6 +125,65 @@ it('refuses an unknown media type and a non-image', function () {
     ])->assertStatus(422)->assertJsonValidationErrors('file');
 });
 
+/*
+ * REVIEW 🟡-5 — the endpoint answered 500 for a file it could not decode.
+ *
+ * `mimes:` runs on the GUESSED type, and the guesser reads the first bytes. A file that starts with
+ * PNG magic and continues with rubbish passes validation and dies in `imagecreatefromstring()`,
+ * which used to surface as a 500: an operator with a truncated download was told the dashboard was
+ * broken. It is the FILE that is broken, and 422 is how this application says so everywhere else.
+ */
+
+/**
+ * A file that SNIFFS as a PNG and cannot be decoded — a truncated download, in other words.
+ *
+ * The magic bytes alone are NOT enough: `finfo` calls eight bytes of signature plus rubbish
+ * `application/octet-stream`, which the validator would refuse and this test would then be proving
+ * the validator instead of the decode path. A complete signature and IHDR chunk (100×100, RGBA)
+ * followed by a corrupt body sniffs as `image/png`, passes `mimes:`, and still returns false from
+ * `imagecreatefromstring()` — measured, not assumed, and asserted in the test below.
+ */
+function halfBakedPng(): UploadedFile
+{
+    $header = "\x89PNG\r\n\x1a\n"
+        .pack('N', 13).'IHDR'.pack('NN', 100, 100)."\x08\x06\x00\x00\x00".pack('N', 0);
+    $path = tempnam(sys_get_temp_dir(), 'media').'.png';
+    file_put_contents($path, $header.str_repeat('garbage', 100));
+
+    return new UploadedFile($path, 'photo.png', 'image/png', null, true);
+}
+
+it('answers 422, not 500, for a file whose bytes are not an image', function () {
+    // The guesser must really let it through, or the test would be proving the validator instead
+    // of the decode path.
+    expect(halfBakedPng()->guessExtension())->toBe('png', 'the probe must pass the mimes: rule');
+
+    $response = actingAs(Staff::dataEntry())
+        ->postJson('/manage/media', ['type' => 'product', 'file' => halfBakedPng()]);
+
+    $response->assertStatus(422)->assertJsonValidationErrors('file');
+
+    // Arabic, and it names what to do instead — this message reaches a non-technical operator.
+    expect(T::str($response->json('message')))->toContain('ليس صورة صالحة');
+});
+
+it('still answers 500 when the HOST cannot do the work', function () {
+    /*
+     * The other half of the split: an unwritable target is not the operator's fault and must keep
+     * its 500. `MediaStore::directory()` throws a plain RuntimeException for that, and the catch
+     * order in the controller is what decides — so the two cases are asserted together, because a
+     * catch written the other way round would turn every host fault into a 422 and hide an outage.
+     *
+     * (An `is_subclass_of()` check stood here and was removed: PHPStan answers it at analysis
+     * time, so it was not a test. The behaviour below is.)
+     */
+    config()->set('media.root', 'Z:/definitely-not-mounted-'.uniqid());
+
+    actingAs(Staff::dataEntry())
+        ->postJson('/manage/media', ['type' => 'product', 'file' => fakeUpload(300, 300)])
+        ->assertStatus(500);
+});
+
 it('declares one folder per type, and they are the legacy folders', function () {
     $folders = array_map(fn (string $type): string => MediaStore::typeConfig($type)['folder'], MediaStore::types());
 

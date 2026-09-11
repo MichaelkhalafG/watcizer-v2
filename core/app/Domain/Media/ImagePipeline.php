@@ -97,16 +97,22 @@ final class ImagePipeline
         ];
     }
 
-    /** Decode whatever the browser sent; the extension is not trusted, the bytes are. */
+    /**
+     * Decode whatever the browser sent; the extension is not trusted, the bytes are.
+     *
+     * Both refusals here are about the FILE, not the host, so they throw {@see UnreadableUpload}
+     * and the endpoint answers 422 (review 🟡-5). A host fault keeps throwing plain
+     * `RuntimeException` and keeps its 500.
+     */
     private function read(string $path): GdImage
     {
         $data = @file_get_contents($path);
         if ($data === false || $data === '') {
-            throw new RuntimeException("Cannot read the uploaded file at [{$path}].");
+            throw new UnreadableUpload("Cannot read the uploaded file at [{$path}].");
         }
         $image = @imagecreatefromstring($data);
         if ($image === false) {
-            throw new RuntimeException('The uploaded file is not an image GD can decode.');
+            throw new UnreadableUpload('The uploaded file is not an image GD can decode.');
         }
         imagealphablending($image, false);
         imagesavealpha($image, true);

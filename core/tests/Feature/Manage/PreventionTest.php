@@ -174,6 +174,10 @@ it('REFUSES a duplicate slug inside one storefront, by name, instead of silently
      *
      * A DERIVED slug (the field left empty) is still suffixed — there the suffix is the answer.
      */
+    // A hand-typed slug is only possible post-switch (review 🟠-3), and the rule under test here
+    // is the duplicate refusal, not the lock.
+    CatalogFixture::assumeSwitched();
+
     $first = CatalogFixture::product();
     $second = CatalogFixture::product();
     CatalogFixture::place($first, CatalogFixture::watchesRoot());

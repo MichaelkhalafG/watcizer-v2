@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Input, Select } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
-import type { SharedProps, TablePayload } from '@/types';
+import type { PreSwitchState, SharedProps, TablePayload } from '@/types';
 
 interface PlacementRow {
     product_id: number;
@@ -35,6 +35,10 @@ interface Props {
     categories: Array<{ value: string; label: string }>;
     table: TablePayload<PlacementRow>;
     slug_warning: string;
+    /** Whether slug editing is open yet, and the reason when it is not. */
+    slug_lock: PreSwitchState;
+    /** The pre-switch banner, worded for what THIS screen loses. */
+    pre_switch_notice: { pre_switch: boolean; message: string } | null;
 }
 
 /**
@@ -56,7 +60,15 @@ interface Props {
  * Bulk show/hide REPORTS what it skipped. A bulk action that silently dropped half a selection is
  * how a team finds out in October that twelve products were never published.
  */
-export default function PlacementIndex({ storefront, storefronts, categories, table, slug_warning }: Props) {
+export default function PlacementIndex({
+    storefront,
+    storefronts,
+    categories,
+    table,
+    slug_warning,
+    slug_lock,
+    pre_switch_notice,
+}: Props) {
     const { errors } = usePage<SharedProps>().props;
     const [slugs, setSlugs] = useState<Record<number, string>>({});
     const [sorts, setSorts] = useState<Record<number, string>>({});
@@ -173,6 +185,10 @@ export default function PlacementIndex({ storefront, storefronts, categories, ta
                     dir="ltr"
                     className="min-w-[10rem]"
                     aria-label={`رابط ${row.title.ar || row.wa_code}`}
+                    // Locked until the write-switch: the 301 this would promise does not survive
+                    // the next rebuild, so the field refuses rather than warning (review 🟠-3).
+                    disabled={slug_lock.blocked}
+                    title={slug_lock.blocked ? (slug_lock.message ?? undefined) : undefined}
                     value={slugs[row.product_id] ?? row.slug}
                     onChange={(event) => setSlugs((current) => ({ ...current, [row.product_id]: event.target.value }))}
                     onBlur={() => {
@@ -219,6 +235,18 @@ export default function PlacementIndex({ storefront, storefronts, categories, ta
             <Alert tone="warning" title="قبل تغيير أي رابط">
                 {slug_warning}
             </Alert>
+
+            {pre_switch_notice === null ? null : (
+                <Alert tone="warning" title="قبل ليلة التحويل — كل ما تضبطه هنا يُعاد بناؤه">
+                    {pre_switch_notice.message}
+                </Alert>
+            )}
+
+            {errors.slug ? (
+                <Alert tone="error" title="تعذّر حفظ الرابط">
+                    {errors.slug}
+                </Alert>
+            ) : null}
 
             {errors.is_visible ? (
                 <Alert tone="error" title="تعذّر الإظهار">

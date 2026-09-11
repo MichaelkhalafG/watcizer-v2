@@ -17,6 +17,20 @@ use stdClass;
  * (worse) hide a null behind `(int)`. These helpers narrow ONCE and FAIL LOUDLY: a null where a
  * row was expected is a broken fixture, and a test should say so rather than silently compare
  * zero against zero.
+ *
+ * ── Why the suite's ASSERTION TOTAL moves and the test count does not (review 🔵) ─────────────
+ *
+ * Each narrowing below is a real `PHPUnit\Framework\Assert` call — that is what "fail loudly"
+ * means — so it is COUNTED. A test that walks whatever the local catalogue copy holds (every
+ * category option on the form, every lookup row, every variant of a product) therefore spends
+ * assertions in proportion to the DATA:
+ *
+ *   `CategoryChangesFamilyTest`, measured — 285 assertions; four extra category rows → 305; the
+ *   rows removed again → 285. Five per node, same seven tests.
+ *
+ * So two batteries reporting 601 tests / 8 661 and 601 / 8 635 have NOT diverged: the legacy copy
+ * behind them differed by a few nodes. Do not "stabilise" this by silencing the assertions — the
+ * loud narrowing is the feature. Quote the TEST count as evidence (AGENTS §4).
  */
 final class T
 {

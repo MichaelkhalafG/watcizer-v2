@@ -64,6 +64,31 @@ function assertTreeConsistent(int $storefrontId = 1): void
     expect($broken)->toBe([], 'the tree is inconsistent between parent_id, path and depth');
 }
 
+/*
+ * REVIEW 🟡-7 — every refusal these screens can show has to be Arabic. Two were English, and the
+ * ordinary way to reach one was two operators on the same tree.
+ *
+ * The guard below is deliberately not a match on those two sentences: it asserts that what lands
+ * in the session is Arabic and carries no English words, which also catches the NEXT message
+ * somebody adds without translating it.
+ */
+it('shows a stale delete and a stale move in Arabic, not in English', function () {
+    CatalogFixture::assumeSwitched();
+    $doomed = CatalogFixture::child(CatalogFixture::fashionRoot(), 'Doomed', 'محكوم');
+
+    actingAs(Staff::admin())->delete('/manage/storefronts/1/categories/'.$doomed['id'])->assertSessionHasNoErrors();
+
+    // The second operator's page still shows the row. Both buttons on it must speak Arabic.
+    actingAs(Staff::admin())->delete('/manage/storefronts/1/categories/'.$doomed['id'])
+        ->assertSessionHasErrors('tree');
+    expect(T::err('tree'))->toMatch('/\p{Arabic}/u')
+        ->and(T::err('tree'))->not->toMatch('/[A-Za-z]{4,}/');
+
+    actingAs(Staff::admin())->put('/manage/storefronts/1/categories/'.$doomed['id'].'/move', ['parent_id' => null])
+        ->assertSessionHasErrors('tree');
+    expect(T::err('tree'))->toMatch('/\p{Arabic}/u');
+});
+
 it('starts from a consistent tree — the transform built one', function () {
     // If this fails, nothing below means anything: it is the baseline the whole file compares to.
     assertTreeConsistent();

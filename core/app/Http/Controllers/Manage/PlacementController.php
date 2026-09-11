@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers\Manage;
 
+use App\Domain\Catalog\FieldRefusal;
 use App\Domain\Catalog\PlacementWriter;
+use App\Domain\Catalog\PreSwitch;
 use App\Models\Storefront\Storefront;
 use App\Storefront\ImageUrl;
 use App\Support\Coerce;
@@ -14,6 +16,7 @@ use Illuminate\Database\Query\JoinClause;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -112,7 +115,20 @@ final class PlacementController
             }, function (array $rows) use (&$extras, $storefront): void {
                 $extras = self::pageExtras($rows, $storefront->id);
             }),
-            'slug_warning' => 'تغيير الرابط ينشئ تحويلًا 301 من الرابط القديم تلقائيًا، لكن الروابط المنشورة والمشاركة ستمر عبر التحويل. لا تغيّره بلا سبب.',
+            /*
+             * Two different sentences, and which one shows depends on the flag (review 🟠-3).
+             *
+             * Post-switch the 301 is real and the caveat is the honest one: the redirect works, but
+             * published links start travelling through it. Pre-switch the field is LOCKED, so the
+             * screen says why instead of promising a redirect the next rebuild deletes.
+             */
+            'slug_warning' => PreSwitch::mayEditSlug()
+                ? 'تغيير الرابط ينشئ تحويلًا 301 من الرابط القديم تلقائيًا، لكن الروابط المنشورة والمشاركة ستمر عبر التحويل. لا تغيّره بلا سبب.'
+                : PreSwitch::slugMessage(),
+            'slug_lock' => PreSwitch::slugState(),
+            // Worded for what THIS screen loses: placements, visibility, order, featured, and any
+            // hand-typed slug together with the 301 written for it.
+            'pre_switch_notice' => PreSwitch::noticeFor('placement'),
         ]);
     }
 
@@ -129,14 +145,19 @@ final class PlacementController
             abort(404);
         }
 
+        // Every category id must be a node OF THIS STOREFRONT (review 🟠-1). Without the scope a
+        // crafted payload naming another storefront's node was accepted here too, and `place()`
+        // then deleted this storefront's placements because the desired set came out empty.
+        $ofThisStorefront = Rule::exists('storefront_categories', 'id')->where('storefront_id', $storefront->id);
+
         $data = $request->validate([
             'is_visible' => ['required', 'boolean'],
             'is_featured' => ['required', 'boolean'],
             'sort_order' => ['nullable', 'integer', 'min:-2147483648', 'max:2147483647'],
             'slug' => ['nullable', 'string', 'max:191'],
             'category_ids' => ['nullable', 'array', 'max:30'],
-            'category_ids.*' => ['integer', 'min:1'],
-            'primary_category_id' => ['nullable', 'integer', 'min:1'],
+            'category_ids.*' => ['integer', 'min:1', $ofThisStorefront],
+            'primary_category_id' => ['nullable', 'integer', 'min:1', $ofThisStorefront],
         ]);
 
         $payload = Coerce::arr($data);
@@ -152,8 +173,16 @@ final class PlacementController
             }
             $this->placements->save($storefront->id, $product, $payload);
         } catch (RuntimeException $e) {
-            // The Arabic gate lands here, naming the missing field.
-            throw ValidationException::withMessages(['is_visible' => $e->getMessage()]);
+            /*
+             * Route the refusal to the FIELD it is about. Three different rules land here — the
+             * Arabic/image/placement gates, a duplicate or unslugifiable slug, and the pre-switch
+             * slug lock — and an operator who is told "cannot show this product" while the real
+             * problem is the slug they typed will change the wrong thing.
+             */
+            // The field travels WITH the refusal ({@see FieldRefusal}) — matching on the wording
+            // put review 🟡-4's new slug message on the visibility toggle, which told the operator
+            // the wrong thing about their own save.
+            throw ValidationException::withMessages([FieldRefusal::fieldOf($e) => $e->getMessage()]);
         }
 
         return back()->with('status', 'تم حفظ العرض والترتيب.');
