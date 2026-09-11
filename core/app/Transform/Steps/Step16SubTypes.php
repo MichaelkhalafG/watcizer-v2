@@ -2,6 +2,7 @@
 
 namespace App\Transform\Steps;
 
+use App\Domain\Catalog\PreSwitch;
 use App\Support\LegacySlug;
 use App\Transform\CategoryNodes;
 use App\Transform\Row;
@@ -79,6 +80,22 @@ final class Step16SubTypes implements Step
 
     public function run(TransformContext $ctx, StepResult $result): void
     {
+        $ctx->eachStorefront(function (int $storefrontId, bool $primary) use ($ctx, $result): void {
+            if (! $primary && ! PreSwitch::syncsSecondaryTrees()) {
+                $result->count('tree_sync_skipped_post_switch');
+
+                return;
+            }
+            $this->syncStorefront($ctx, $result, $storefrontId, $primary);
+        });
+    }
+
+    /**
+     * One storefront's depth-2 nodes. The PLAN is computed from legacy facts only, so every
+     * storefront gets the same structure — its own rows, the same shape.
+     */
+    private function syncStorefront(TransformContext $ctx, StepResult $result, int $storefrontId, bool $primary): void
+    {
         $nodes = new CategoryNodes($ctx);
         $nodes->prime();
         $names = $ctx->legacyTranslations('sub_type_translations', 'sub_type_id', 'sub_type_name');
@@ -102,7 +119,9 @@ final class Step16SubTypes implements Step
         $subTypes = [];
         foreach ($ctx->legacy->table('sub_types')->select(['id', 'image', 'created_at', 'updated_at'])->orderBy('id')->get() as $row) {
             $subTypes[Row::int($row, 'id')] = ['image' => Row::nstr($row, 'image'), 'created_at' => Row::nstr($row, 'created_at'), 'updated_at' => Row::nstr($row, 'updated_at')];
-            $result->read++;
+            if ($primary) {
+                $result->read++;
+            }
         }
 
         foreach ($pairs as $subs) {
@@ -110,7 +129,7 @@ final class Step16SubTypes implements Step
                 if (! isset($subTypes[$subId])) {
                     throw new RuntimeException("products reference sub_type_id $subId which does not exist (A-24 should have caught this).");
                 }
-                if ($n === 1) {
+                if ($n === 1 && $primary) {
                     $result->count('pair_used_once');                // A-15 (informational)
                 }
             }
@@ -121,7 +140,9 @@ final class Step16SubTypes implements Step
                 if (! isset($typeNames[$d['type']])) {
                     throw new RuntimeException("Orphan sub_type {$d['sub']}: override/majority category_type_id {$d['type']} does not exist.");
                 }
-                $result->count($d['pinned'] ? 'orphan_placed_by_override' : 'orphan_placed_by_majority_rule');
+                if ($primary) {
+                    $result->count($d['pinned'] ? 'orphan_placed_by_override' : 'orphan_placed_by_majority_rule');
+                }
             }
         }
 
@@ -129,7 +150,7 @@ final class Step16SubTypes implements Step
         foreach ($desired as $d) {
             $typeId = $d['type'];
             $subId = $d['sub'];
-            $parentId = $ctx->idMap->get('category_types', $typeId, 'storefront_categories') ?? $nodes->find('category_type', $typeId, null);
+            $parentId = $ctx->nodeId('category_types', $typeId) ?? $nodes->find('category_type', $typeId, null);
             if ($parentId === null) {
                 throw new RuntimeException("Depth-1 node for category_type $typeId missing — run step 15 first.");
             }
@@ -164,8 +185,8 @@ final class Step16SubTypes implements Step
                 'updated_at' => $subTypes[$subId]['updated_at'],
             ], ['en' => $en, 'ar' => $ar], $result);
 
-            $ctx->idMap->remember('sub_types:'.$typeId, $subId, 'storefront_categories', $node['id']);
-            if ($d['orphan']) {
+            $ctx->rememberNode('sub_types:'.$typeId, $subId, $node['id']);
+            if ($d['orphan'] && $primary) {
                 $result->note(sprintf('orphan sub_type %d [%s] mirrored under category_type %d [%s] (%s)', $subId, $en, $typeId, trim($typeNames[$typeId]['en'] ?? ''), $d['pinned'] ? 'override' : 'majority rule'));
             }
         }

@@ -3,7 +3,9 @@
 namespace App\Http\Controllers\Manage;
 
 use App\Domain\Inventory\InventoryService;
+use App\Models\Storefront\Storefront;
 use App\Support\Sql;
+use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -32,7 +34,74 @@ final class HomeController
         return Inertia::render('Manage/Home', [
             'stats' => $this->stats(),
             'inventory' => $this->inventory(),
+            'storefronts' => $this->storefronts(),
         ]);
+    }
+
+    /**
+     * The catalogue AS EACH SITE SEES IT — the task-1 finding on this screen.
+     *
+     * The four numbers above are catalogue-wide, and that is correct: the catalogue is SHARED
+     * (AGENTS §2.4), so "how many products are there" has one answer. But it is not the question
+     * the team asks in the morning. They ask "how many are live on Brand Fashion, and what is
+     * stopping the rest", and this screen used to answer neither — it showed one set of totals and
+     * no storefront at all, which is what made a second storefront invisible in the dashboard.
+     *
+     * Every number is one indexed query per storefront. `not_added` is separated from `hidden` on
+     * purpose: a product with no `storefront_product` row was never offered to that site, while a
+     * hidden one was and someone decided against it. They lead to different actions.
+     *
+     * @return list<array{id: int, code: string, name: string, is_active: bool, visible: int, hidden: int, not_added: int, unplaced: int, no_arabic: int}>
+     */
+    private function storefronts(): array
+    {
+        $live = DB::table('catalog_products')->whereNull('deleted_at')->count();
+
+        $out = [];
+        foreach (Storefront::query()->orderBy('id')->get(['id', 'code', 'name', 'is_active']) as $storefront) {
+            $id = (int) $storefront->id;
+            $rows = DB::table('storefront_product as sp')
+                ->join('catalog_products as p', 'p.id', '=', 'sp.product_id')
+                ->where('sp.storefront_id', $id)
+                ->whereNull('p.deleted_at');
+
+            $visible = (clone $rows)->where('sp.is_visible', 1)->count();
+            $present = (clone $rows)->count();
+
+            $out[] = [
+                'id' => $id,
+                'code' => (string) $storefront->code,
+                'name' => (string) $storefront->name,
+                'is_active' => (bool) $storefront->is_active,
+                'visible' => $visible,
+                'hidden' => $present - $visible,
+                'not_added' => $live - $present,
+                // Placed nowhere on THIS storefront: present in the catalogue and reachable from
+                // no page of this site.
+                'unplaced' => (clone $rows)
+                    ->whereNotExists(function (Builder $sub) use ($id): void {
+                        $sub->from('storefront_category_product as scp')
+                            ->whereColumn('scp.product_id', 'sp.product_id')
+                            ->where('scp.storefront_id', $id)
+                            ->selectRaw('1');
+                    })
+                    ->count(),
+                // Visible today and missing its Arabic title — which the dashboard now refuses to
+                // create, so a non-zero number here is legacy data and worth seeing.
+                'no_arabic' => (clone $rows)
+                    ->where('sp.is_visible', 1)
+                    ->whereNotExists(function (Builder $sub): void {
+                        $sub->from('catalog_product_translations as t')
+                            ->whereColumn('t.product_id', 'sp.product_id')
+                            ->where('t.locale', 'ar')
+                            ->whereRaw("TRIM(COALESCE(t.title, '')) <> ''")
+                            ->selectRaw('1');
+                    })
+                    ->count(),
+            ];
+        }
+
+        return $out;
     }
 
     /** @return list<array{key: string, label: string, value: int, hint: string}> */

@@ -18,24 +18,24 @@ use Inertia\Response;
  * Creating and disabling a storefront is admin-only per AGENTS §2.7, and so is editing: the route
  * group carries `can:manage-storefronts`, which no data-entry grant includes.
  *
- * ── A LOUD FINDING this screen surfaced (reported, not worked around) ─────────────────────────
+ * ── The finding this screen surfaced, and how it was settled ─────────────────────────────────
  *
- * `storefronts` is in `CoreChecksumCommand::CLEAN_TABLES`, so switch night's drop-and-rebuild
- * (§3.4 step 3b) DROPS it and `StorefrontSeeder::ensure()` recreates the row from a hard-coded
- * constant. Anything an admin edits here — name, domain, locales, currency, the settings JSON, and
- * the per-storefront logo the branding indirection is built for — is therefore LOST on the night
- * the team goes live, silently, and replaced by the seeder's values.
+ * `storefronts` used to be in `CoreChecksumCommand::CLEAN_TABLES`, so switch night's
+ * drop-and-rebuild would have DROPPED it and `StorefrontSeeder::ensure()` would have recreated the
+ * row from a hard-coded constant — losing everything an admin typed here, silently, on the night
+ * the team goes live.
  *
- * That is a real contradiction between "wave 4 ships storefront settings" and "switch night is a
- * drop-and-rebuild", and it is not this screen's place to invent a scheme for it. Two options for
- * the developer, in the wave-4A report:
+ * **Settled 2026-09-11 with option (a)** and generalised into AGENTS §2.20: a table whose content
+ * is authored in the DASHBOARD is never in the drop list. `storefronts`, `storefront_banners` and
+ * `core_user_roles` are `DASHBOARD_TABLES` now; `core:drop-clean` refuses to touch them and
+ * verifies they are still there afterwards. The other half of the same bug was the seeder itself
+ * (`forceFill(...)->save()` rewrote these columns on EVERY transform run, so a rehearsal would
+ * have reverted the screen even without the drop) — `ensure()` is insert-only. Both halves are
+ * asserted by `tests/Feature/Manage/DashboardTablesTest.php`, and the real destructive path is
+ * recorded in `docs/wave4a/DROP_CLEAN_2026-09-11.md`.
  *
- *   (a) take `storefronts` out of the DROP list (the transform only ever *ensures* the row; it
- *       derives nothing from legacy, so dropping it buys nothing), or
- *   (b) make the rebuild recipe dump and restore the dashboard-owned columns.
- *
- * Until one is picked, the screen states it on the page rather than letting an admin discover it
- * in October.
+ * The warning below therefore no longer describes the storefront table — it now says the thing
+ * that IS still true before the write-switch, which is what the catalogue screens say too.
  */
 final class StorefrontController
 {
@@ -69,7 +69,8 @@ final class StorefrontController
             }),
             // The finding above, on the screen. It is a fact about the deployment procedure, so it
             // belongs where the person editing can read it.
-            'rebuild_warning' => 'إعدادات المتجر تُعاد من ملف التهيئة عند إعادة بناء الجداول ليلة التحويل (§3.4). أبلِغ المطوّر قبل الاعتماد عليها.',
+            'rebuild_warning' => 'جدول المتاجر محميّ من إعادة البناء (AGENTS §2.20) فلا تُفقد هذه الإعدادات. لكن قبل ليلة التحويل '
+                .'يبقى النظام القديم هو مصدر البيانات، وأي تعديل في شاشات الكتالوج يُستبدل بما فيه.',
         ]);
     }
 

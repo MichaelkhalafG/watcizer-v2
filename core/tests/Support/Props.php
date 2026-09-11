@@ -78,6 +78,56 @@ final class Props
     }
 
     /**
+     * The `table` prop of a list screen, narrowed — `Props::rows(Props::table($response))`.
+     *
+     * `of()` returns `array<string, mixed>`, so reaching into it gives `mixed` and every call site
+     * had to narrow the same shape by hand. This asserts it once.
+     *
+     * @param  TestResponse<Response>  $response
+     * @return array<string, mixed>
+     */
+    public static function table(TestResponse $response, string $key = 'table'): array
+    {
+        $table = self::of($response)[$key] ?? null;
+        Assert::assertIsArray($table, "the page shares no [{$key}] prop");
+
+        $out = [];
+        foreach ($table as $field => $value) {
+            $out[(string) $field] = $value;
+        }
+
+        return $out;
+    }
+
+    /**
+     * The `data` rows of a `TableQuery` payload, narrowed.
+     *
+     * Every 4B list ships `{table: {data, meta}}`, and `$props['table']['data'][0]['id']` is
+     * `mixed` four levels down. Narrowing it here — with assertions rather than casts — keeps the
+     * list tests readable and stops a broken payload from comparing null to null.
+     *
+     * @param  array<string, mixed>  $table  the `table` prop
+     * @return list<array<string, mixed>>
+     */
+    public static function rows(array $table): array
+    {
+        $data = $table['data'] ?? null;
+        Assert::assertIsArray($data, 'the table payload carries no data');
+
+        $rows = [];
+        foreach ($data as $row) {
+            Assert::assertIsArray($row, 'a table row is not an array');
+            $narrowed = [];
+            foreach ($row as $key => $value) {
+                $narrowed[(string) $key] = $value;
+            }
+            $rows[] = $narrowed;
+        }
+
+        return $rows;
+    }
+
+    /**
      * @param  TestResponse<Response>  $response
      * @return list<string> the keys of every nav item marked active
      */

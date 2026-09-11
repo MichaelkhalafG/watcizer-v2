@@ -84,9 +84,31 @@ export interface TableMeta {
     filters: Record<string, string | null>;
     sortable: string[];
     filterable: string[];
+    /**
+     * Declared filters that are not columns — the server applies them itself
+     * (App\Support\Table\TableQuery::virtual). The table treats them exactly like the others;
+     * the distinction only matters on the server.
+     */
+    virtual: string[];
 }
 
 export interface TablePayload<Row> {
     data: Row[];
     meta: TableMeta;
+}
+
+/**
+ * Whether a CREATE control may be offered before the write-switch, and the sentence to show
+ * instead (App\Domain\Catalog\PreSwitch).
+ *
+ * A created row is DELETED by the next rebuild — the catalogue tables are rebuilt from the legacy
+ * app on every rehearsal and on switch night — so creating is refused until the switch, while
+ * editing, browsing and training stay open. The server refuses again on the write path; this is
+ * what stops the team discovering it by clicking.
+ */
+export interface PreSwitchState {
+    write_switch_completed: boolean;
+    blocked: boolean;
+    message: string | null;
+    label: string;
 }

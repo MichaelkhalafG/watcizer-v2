@@ -54,10 +54,18 @@ it('hides the node when its products are soft-deleted', function () {
 });
 
 it('hides the node when its placements belong to another storefront', function () {
-    StorefrontSeeder::ensure(['id' => 2, 'code' => 'brand_fashion', 'name' => 'Brand Fashion', 'locales' => ['ar', 'en'], 'default_locale' => 'ar', 'currency' => 'EGP', 'is_active' => true]);
+    // Brand Fashion is a REAL seeded storefront since 2026-09-11, so this case uses it instead of
+    // inventing a second row — `ensure()` refuses a code that disagrees with the id on purpose, and
+    // this test was the first thing to prove that guard works.
+    StorefrontSeeder::ensure(StorefrontSeeder::BRAND_FASHION);
     breakCase('foreign placement', function (array $ids): void {
         $node = H::smallSubtree();
-        DB::table('storefront_category_product')->where('storefront_category_id', $node['id'])->whereIn('product_id', $ids)->update(['storefront_id' => 2]);
+        // `is_primary` is demoted in the SAME statement, and that is the invariant working rather
+        // than getting in the way: since 2026-09-11 every product has a PRIMARY placement on
+        // storefront 2 as well, so re-stamping this row's storefront_id while it is still flagged
+        // primary hits `scp_one_primary_unique` (2-424). This case is about whether a node is
+        // VISIBLE, never about which category is primary, so the flag comes off with the move.
+        DB::table('storefront_category_product')->where('storefront_category_id', $node['id'])->whereIn('product_id', $ids)->update(['storefront_id' => 2, 'is_primary' => 0]);
         // The product stays placed on the storefront's depth-1 node only through the sub node: remove the type placement too.
         DB::table('storefront_category_product')->where('storefront_id', 1)->whereIn('product_id', $ids)->delete();
         DB::table('storefront_product')->where('storefront_id', 1)->whereIn('product_id', $ids)->update(['is_visible' => 0]);

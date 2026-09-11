@@ -15,8 +15,10 @@ it('lists storefronts through the table contract', function () {
         ->assertOk()
         ->assertInertia(fn (AssertableInertia $page) => $page
             ->component('Manage/Storefronts/Index')
-            ->has('table.data', 1)
+            // Two storefronts since 2026-09-11: Watchizer (1) and Brand Fashion (2), in id order.
+            ->has('table.data', 2)
             ->where('table.data.0.code', 'watchizer')
+            ->where('table.data.1.code', 'brandfashion')
             ->where('table.meta.sortable', ['id', 'code', 'name', 'is_active', 'created_at'])
             ->has('rebuild_warning'));
 });

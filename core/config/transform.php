@@ -10,6 +10,26 @@
 
 return [
 
+    /*
+    | THE WRITE-SWITCH FLAG (AGENTS §2.1, §3; study §3.4 step 3).
+    |
+    | False = both applications still write stock: the legacy Blade dashboard
+    | and the legacy checkout decrement `products.stock`, and the transform
+    | mirrors that column into `catalog_products.stock_*`. True = the final
+    | transform has run, M2 has re-pointed the FKs, and core is the ONLY
+    | writer.
+    |
+    | It defaults to FALSE, which is the fail-safe direction: a flag nobody
+    | remembered to set refuses the dangerous operation instead of allowing
+    | it. Flipping it is a step of the switch-night runbook, and it must NOT
+    | be flipped while any legacy path can still write a stock column.
+    |
+    | What reads it: App\Domain\Catalog\ConversionGuard — the hard rule that a
+    | LIVE product may not be converted to sell through variants before the
+    | switch (wave 3.5 review 🟠-4, study §3.10.9 flag 1).
+    */
+    'write_switch_completed' => (bool) env('CORE_WRITE_SWITCH_COMPLETED', false),
+
     // Rows per chunked legacy read and per batched clean-table upsert.
     'chunk' => (int) env('TRANSFORM_CHUNK', 500),
 

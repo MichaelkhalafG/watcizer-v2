@@ -14,7 +14,30 @@ use stdClass;
  */
 final class TransformContext
 {
+    /**
+     * The PRIMARY storefront (Watchizer). A step that writes one storefront's rows means this one.
+     *
+     * The per-storefront steps (15–19) REASSIGN it around their loop and restore it afterwards, so
+     * that `CategoryNodes`, the placement writes and the reconciliation keep reading one field
+     * instead of every one of them growing a storefront parameter. {@see self::eachStorefront()}
+     * is the only sanctioned way to do that — it restores the value even if the body throws.
+     */
     public int $storefrontId = Storefront::WATCHIZER_ID;
+
+    /** @var list<int>|null memoised per run: the active storefront ids, lowest first */
+    private ?array $activeStorefronts = null;
+
+    /**
+     * Whether `storefront_product` was EMPTY when this run started — i.e. whether this run is a
+     * fresh rebuild (switch night) rather than an additive rehearsal.
+     *
+     * Measured by the command before any step runs, so it is a fact about the database and not a
+     * claim by a step. The reconciliation needs it to tell two different things apart: on a fresh
+     * rebuild every placement row is an INSERT, so "every row is visible" is a real assertion; on
+     * an additive re-run a hidden row is the team's own work, and asserting it away would make the
+     * insert-only rule unprovable. {@see Reconciliation}
+     */
+    public bool $freshRebuild = false;
 
     /** @var array<int, string> product id => family, filled by step 6 (or lazily from catalog_products) */
     private array $families = [];
@@ -40,6 +63,84 @@ final class TransformContext
     public function chunk(): int
     {
         return $this->options->chunk;
+    }
+
+    /** Is the loop currently pointing at the PRIMARY storefront (Watchizer)? */
+    public function isPrimaryStorefront(): bool
+    {
+        return $this->storefrontId === Storefront::WATCHIZER_ID;
+    }
+
+    /**
+     * Remember a legacy id → category node id pair — for the PRIMARY storefront ONLY.
+     *
+     * `core_transform_id_map` is keyed `(source_table, source_id, target_table)` with no storefront
+     * column, so writing Brand Fashion's node ids under `category_types`/`sub_types:N` would
+     * OVERWRITE Watchizer's and every later lookup would resolve to the wrong tree. Widening the
+     * key was the alternative and was rejected: mirrored nodes already have a natural key
+     * — `(storefront_id, legacy_source, legacy_id, legacy_parent_id)`, which is exactly what
+     * {@see CategoryNodes::find()} looks them up by — so the map would be storing something it is
+     * not needed for, and the map's own reconciliation count would change for no gain.
+     *
+     * So: the primary storefront keeps its id-map rows byte-for-byte as before, and a mirrored
+     * storefront resolves by natural key.
+     */
+    public function rememberNode(string $sourceKey, int $legacyId, int $nodeId): void
+    {
+        if (! $this->isPrimaryStorefront()) {
+            return;
+        }
+        $this->idMap->remember($sourceKey, $legacyId, 'storefront_categories', $nodeId);
+    }
+
+    /** The id-map's answer for a category node — null for a mirrored storefront, by design. */
+    public function nodeId(string $sourceKey, int $legacyId): ?int
+    {
+        return $this->isPrimaryStorefront()
+            ? $this->idMap->get($sourceKey, $legacyId, 'storefront_categories')
+            : null;
+    }
+
+    /**
+     * The active storefront ids, lowest first — read once per run.
+     *
+     * From the DATABASE, never from a constant: a storefront can be switched off from the settings
+     * screen, and a transform that kept writing placements for a dead channel would be inventing
+     * rows nobody asked for. Memoised because step 14 has already settled the list by the time any
+     * iterating step runs, and three steps ask for it.
+     *
+     * @return list<int>
+     */
+    public function activeStorefrontIds(): array
+    {
+        if ($this->activeStorefronts === null) {
+            $this->activeStorefronts = Storefront::activeIds();
+        }
+
+        return $this->activeStorefronts;
+    }
+
+    /**
+     * Run `$body` once per ACTIVE storefront with `$this->storefrontId` pointing at it.
+     *
+     * The primary storefront is always restored afterwards — including when the body throws —
+     * because a step that left `storefrontId` pointing at Brand Fashion would silently write every
+     * later step's rows to the wrong channel, and that is the kind of bug that looks like data
+     * corruption rather than like a bug.
+     *
+     * @param  callable(int, bool): void  $body  (storefront id, is the primary storefront)
+     */
+    public function eachStorefront(callable $body): void
+    {
+        $primary = $this->storefrontId;
+        try {
+            foreach ($this->activeStorefrontIds() as $id) {
+                $this->storefrontId = $id;
+                $body($id, $id === $primary);
+            }
+        } finally {
+            $this->storefrontId = $primary;
+        }
     }
 
     /** @return array<string, mixed> */
