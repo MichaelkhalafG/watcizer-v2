@@ -22,6 +22,9 @@ final class AdvPayload
     public static function product(int $node, array $over = [], string $prefix = 'adv'): array
     {
         return array_merge([
+            // The product form REPLACES the record, and the screen declares that; a test that
+            // drives the same endpoint says it too ({@see App\Support\FullReplace}).
+            '_complete' => 1,
             'wa_code' => $prefix.'-'.bin2hex(random_bytes(5)),
             'sku' => null,
             'brand_id' => T::int(DB::table('catalog_brands')->orderBy('id')->value('id')),

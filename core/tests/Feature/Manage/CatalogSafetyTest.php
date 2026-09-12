@@ -71,6 +71,7 @@ it('writes NO legacy table across a full catalogue editing session', function ()
 
     // 2. edit it
     actingAs($admin)->put("/manage/storefronts/1/products/{$productId}", [
+        '_complete' => 1,
         'wa_code' => T::str(DB::table('catalog_products')->where('id', $productId)->value('wa_code')),
         'brand_id' => T::int(DB::table('catalog_brands')->orderBy('id')->value('id')),
         'selling_price' => '1600.00', 'currency' => 'EGP', 'is_active' => true,
@@ -202,6 +203,7 @@ it('bumps the storefront cache version from the UI path, so v2 cannot serve a st
     $before = $cache->version(1);
 
     actingAs(Staff::admin())->put("/manage/storefronts/1/products/{$productId}", [
+        '_complete' => 1,
         'wa_code' => T::str(DB::table('catalog_products')->where('id', $productId)->value('wa_code')),
         'brand_id' => T::int(DB::table('catalog_brands')->orderBy('id')->value('id')),
         'selling_price' => '640.00', 'currency' => 'EGP', 'is_active' => true,
@@ -226,6 +228,7 @@ it('serves the edited product through the v2 API, not a cached copy', function (
     $slug = 'v2-visible-'.bin2hex(random_bytes(3));
 
     actingAs(Staff::admin())->put("/manage/storefronts/1/products/{$productId}", [
+        '_complete' => 1,
         'wa_code' => T::str(DB::table('catalog_products')->where('id', $productId)->value('wa_code')),
         'brand_id' => T::int(DB::table('catalog_brands')->orderBy('id')->value('id')),
         'selling_price' => '4321.00', 'currency' => 'EGP', 'is_active' => true,

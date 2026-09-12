@@ -41,6 +41,11 @@ type TranslationKey =
  * make every dynamic `setData` an `any` and lose exactly the checking that matters here.
  */
 interface ProductFormData {
+    /**
+     * The full-replace declaration (`App\Support\FullReplace`). Always `1` from this screen: the
+     * save replaces the whole product, and the server refuses a payload that has not said so.
+     */
+    _complete: 1;
     wa_code: string;
     sku: string;
     model_number: string;
@@ -226,6 +231,13 @@ export default function ProductForm({
     const isNew = product === null;
 
     const form = useForm<ProductFormData>({
+        /*
+         * The save REPLACES the product: a key absent from the payload is cleared server-side,
+         * which is how this form empties a field. `_complete` is the declaration that the payload
+         * IS the whole record — the server refuses a full-replace PUT without it, because a
+         * partial payload from a script or an importer silently deletes everything it omits.
+         */
+        _complete: 1,
         wa_code: product?.wa_code ?? '',
         sku: product?.sku ?? '',
         model_number: product?.model_number ?? '',

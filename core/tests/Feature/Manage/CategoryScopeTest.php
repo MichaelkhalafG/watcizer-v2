@@ -38,6 +38,8 @@ use function Pest\Laravel\actingAs;
 function scopePayload(int $productId, array $section, int $storefrontId = 1): array
 {
     return [
+        // The screen's full-replace declaration (App\Support\FullReplace).
+        '_complete' => 1,
         'wa_code' => T::str(DB::table('catalog_products')->where('id', $productId)->value('wa_code')),
         'brand_id' => T::int(DB::table('catalog_brands')->orderBy('id')->value('id')),
         'selling_price' => '500.00',
@@ -173,6 +175,7 @@ it('accepts each storefront’s OWN nodes in the same submit', function () {
     CatalogFixture::onStorefront($productId, visible: false);
 
     actingAs(Staff::dataEntry())->put("/manage/storefronts/1/products/{$productId}", [
+        '_complete' => 1,
         'wa_code' => T::str(DB::table('catalog_products')->where('id', $productId)->value('wa_code')),
         'brand_id' => T::int(DB::table('catalog_brands')->orderBy('id')->value('id')),
         'selling_price' => '500.00', 'currency' => 'EGP', 'is_active' => true,

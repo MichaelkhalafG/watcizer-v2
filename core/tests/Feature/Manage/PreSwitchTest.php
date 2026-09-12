@@ -132,6 +132,7 @@ it('still lets the team EDIT an existing product, which is the training the deci
     $waCode = T::str(DB::table('catalog_products')->where('id', $productId)->value('wa_code'));
 
     actingAs(Staff::dataEntry())->put("/manage/storefronts/1/products/{$productId}", [
+        '_complete' => 1,
         'wa_code' => $waCode,
         'brand_id' => T::int(DB::table('catalog_products')->where('id', $productId)->value('brand_id')),
         'selling_price' => '4444.00', 'currency' => 'EGP', 'is_active' => true,
@@ -220,6 +221,7 @@ it('still lets the team add and reorder IMAGES on an existing product', function
     $waCode = T::str(DB::table('catalog_products')->where('id', $productId)->value('wa_code'));
 
     actingAs(Staff::dataEntry())->put("/manage/storefronts/1/products/{$productId}", [
+        '_complete' => 1,
         'wa_code' => $waCode,
         'brand_id' => T::int(DB::table('catalog_products')->where('id', $productId)->value('brand_id')),
         'selling_price' => '500.00', 'currency' => 'EGP', 'is_active' => true,

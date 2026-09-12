@@ -36,6 +36,7 @@ function editPayload(int $productId, array $section = [], array $overrides = [])
     $watches = CatalogFixture::watchesRoot();
 
     return array_merge([
+        '_complete' => 1,   // the screen's full-replace declaration (App\Support\FullReplace)
         'wa_code' => T::str(DB::table('catalog_products')->where('id', $productId)->value('wa_code')),
         'brand_id' => T::int(DB::table('catalog_brands')->orderBy('id')->value('id')),
         'selling_price' => '500.00',
@@ -210,6 +211,7 @@ it('ALLOWS the same slug on a DIFFERENT storefront, because that is what the sch
     CatalogFixture::onStorefront($productId, visible: false);
 
     actingAs(Staff::dataEntry())->put("/manage/storefronts/1/products/{$productId}", [
+        '_complete' => 1,
         'wa_code' => T::str(DB::table('catalog_products')->where('id', $productId)->value('wa_code')),
         'brand_id' => T::int(DB::table('catalog_brands')->orderBy('id')->value('id')),
         'selling_price' => '500.00', 'currency' => 'EGP', 'is_active' => true,

@@ -233,6 +233,7 @@ it('derives the family from the payload, never from a field the payload could cl
     CatalogFixture::onStorefront($productId);
 
     actingAs(Staff::admin())->put("/manage/storefronts/1/products/{$productId}", [
+        '_complete' => 1,
         'family' => 'watch',                       // ← ignored by construction
         'wa_code' => '4b-family-'.bin2hex(random_bytes(4)),
         'brand_id' => DB::table('catalog_brands')->orderBy('id')->value('id'),

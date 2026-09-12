@@ -102,6 +102,7 @@ it('deletes an emptied English name rather than storing it blank', function () {
     $id = T::int(DB::table('catalog_materials')->orderByDesc('id')->value('id'));
 
     actingAs(Staff::admin())->put("/manage/lookups/materials/{$id}", [
+        '_complete' => 1,
         'name' => ['ar' => 'مادة', 'en' => ''],
     ])->assertSessionHasNoErrors();
 
@@ -207,6 +208,7 @@ it('bumps every storefront cache version when a lookup name changes', function (
 
     $id = T::int(DB::table('catalog_colors')->orderBy('id')->value('id'));
     actingAs(Staff::admin())->put("/manage/lookups/colors/{$id}", [
+        '_complete' => 1,
         'name' => ['ar' => 'اسم جديد', 'en' => 'New name'],
         'extra' => ['hex' => '#111111'],
     ])->assertSessionHasNoErrors();

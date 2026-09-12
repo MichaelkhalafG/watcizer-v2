@@ -9,6 +9,9 @@ use App\Compat\Diff\DiffReport;
 use App\Compat\Diff\DiffRunner;
 use App\Compat\Diff\Probe;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+use Throwable;
 
 /**
  * compat:diff — the switch-night tool (CLEAN_CORE_STUDY §3.2 "rehearsable weekly", §8.5/2):
@@ -79,6 +82,16 @@ class CompatDiffCommand extends Command
 
         $this->info(sprintf('compat:diff — %d cases, legacy=%s compat=%s', count($cases), $legacyBase, $compatBase));
 
+        // Said BEFORE the run, because the answer changes what the run means (decision 2026-09-12).
+        $edited = self::dashboardEditsSinceTransform();
+        if ($edited > 0) {
+            $this->warn(sprintf(
+                'NOTE: %d lookup/category row(s) were edited through the dashboard since the last transform.', $edited,
+            ));
+            $this->warn(self::REBUILD_FIRST);
+            $this->newLine();
+        }
+
         $legacyProbe = new Probe($legacyBase, $apiKey, $pace);
         $compatProbe = new Probe($compatBase, $apiKey);
 
@@ -109,7 +122,21 @@ class CompatDiffCommand extends Command
         $this->line('Sanctioned rules absorbed: '.($result['rules'] === [] ? 'none' : implode(', ', array_map(fn (string $k, int $n) => "{$k}×{$n}", array_keys($result['rules']), $result['rules']))));
         $this->line("Report: {$dir}/report.md");
         if ($result['totals']['unexplained_cases'] > 0) {
+            /*
+             * A run whose ONLY unexplained differences are `updated_at` values is not a divergence
+             * between the two implementations — it is a catalogue carrying dashboard edits, whose
+             * row timestamps moved while legacy's did not. Rehearsal #3's harness reported 164 of
+             * them after one colour and one category node had been renamed, which is 164 lines
+             * telling the operator nothing. D-17 is deliberately NOT widened to absorb them
+             * (decision 2026-09-12): the harness stays strict, and says the one useful sentence.
+             */
+            $timestampsOnly = self::everyFindingIsATimestamp($result);
             $this->error($result['verdict']);
+            if ($timestampsOnly) {
+                $this->newLine();
+                $this->warn('EVERY unexplained difference above is an `updated_at` value, and nothing else.');
+                $this->warn(self::REBUILD_FIRST);
+            }
 
             return self::FAILURE;
         }
@@ -161,5 +188,96 @@ class CompatDiffCommand extends Command
         }
 
         return null;
+    }
+
+    /** The one sentence both paths print, so the remedy is worded once. */
+    private const REBUILD_FIRST = 'This catalogue carries dashboard edits since the last transform, so the harness '
+        .'is not measuring the two implementations — rebuild first, then run it: '
+        .'`core:drop-clean --force && migrate --force && core:transform --force` (study §3.4 step 3b, §2.9.4 rule 10).';
+
+    /**
+     * How many clean-table rows were written AFTER the last transform, counted only where the
+     * answer is UNAMBIGUOUS.
+     *
+     * `core_transform_id_map` is re-flushed at the end of every run and carries only `created_at`,
+     * so its newest row is "when the catalogue was last rebuilt from legacy". A lookup master or a
+     * category node with a newer `updated_at` was written by the dashboard, and that is the state
+     * that makes a symmetric legacy-vs-compat diff meaningless.
+     *
+     * Two tables are deliberately NOT counted, both measured on 2026-09-12:
+     *
+     *  • `catalog_products` and `storefront_product` move for legitimate reasons — the harness's
+     *    own checkout cases decrement core's stock, which bumps three product rows and two
+     *    storefront rows every run. Counting them would print the warning after every harness run
+     *    and teach the operator to ignore it.
+     *  • the TRANSLATION tables have no `updated_at` column at all, so a title or name edit is
+     *    invisible here however hard this looks. That is why the decisive check is the one at
+     *    report time ({@see self::everyFindingIsATimestamp()}), which fires on the symptom
+     *    instead of guessing at the cause.
+     *
+     * Cheap by design (one indexed COUNT per table) and silent when the tables are absent: this
+     * check must never be the reason the harness cannot run.
+     */
+    private static function dashboardEditsSinceTransform(): int
+    {
+        try {
+            if (! Schema::hasTable('core_transform_id_map')) {
+                return 0;
+            }
+            $marker = DB::table('core_transform_id_map')->max('created_at');
+            if (! is_string($marker)) {
+                return 0;
+            }
+
+            $total = 0;
+            foreach ([
+                'catalog_colors', 'catalog_brands', 'catalog_grades', 'catalog_materials',
+                'catalog_shapes', 'catalog_movement_types', 'catalog_closure_types',
+                'catalog_display_types', 'catalog_units', 'catalog_genders', 'catalog_features',
+                'catalog_sizes', 'storefront_categories',
+            ] as $table) {
+                if (Schema::hasTable($table) && Schema::hasColumn($table, 'updated_at')) {
+                    $total += DB::table($table)->where('updated_at', '>', $marker)->count();
+                }
+            }
+
+            return $total;
+        } catch (Throwable) {
+            return 0;
+        }
+    }
+
+    /**
+     * True when the run failed AND every unexplained finding is a timestamp.
+     *
+     * @param  array<string, mixed>  $result
+     */
+    private static function everyFindingIsATimestamp(array $result): bool
+    {
+        $cases = $result['cases'] ?? null;
+        if (! is_array($cases)) {
+            return false;
+        }
+
+        $seen = 0;
+        foreach ($cases as $case) {
+            if (! is_array($case)) {
+                continue;
+            }
+            $findings = $case['unexplained'] ?? null;
+            if (! is_array($findings)) {
+                continue;
+            }
+            foreach ($findings as $finding) {
+                $path = is_array($finding) ? ($finding['path'] ?? '') : '';
+                $path = is_string($path) ? $path : '';
+                if (! str_ends_with($path, 'updated_at') && ! str_ends_with($path, 'created_at')) {
+                    return false;
+                }
+                $seen++;
+            }
+        }
+
+        return $seen > 0;
     }
 }
