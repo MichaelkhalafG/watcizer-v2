@@ -29,6 +29,7 @@ use function Pest\Laravel\actingAs;
 function productPayload(array $overrides = []): array
 {
     return array_merge([
+        '_complete' => 1,   // the screen's full-replace declaration (App\Support\FullReplace)
         'wa_code' => '4b-form-'.bin2hex(random_bytes(4)),
         'sku' => null,
         'brand_id' => T::int(DB::table('catalog_brands')->orderBy('id')->value('id')),

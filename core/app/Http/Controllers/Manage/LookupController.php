@@ -6,6 +6,7 @@ use App\Domain\Catalog\LookupWriter;
 use App\Domain\Catalog\PreSwitch;
 use App\Storefront\ImageUrl;
 use App\Support\Coerce;
+use App\Support\FullReplace;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -82,6 +83,10 @@ final class LookupController
 
     public function update(Request $request, string $list, int $id): RedirectResponse
     {
+        // Replaces the row, extras included: a PUT without `extra.hex` stored a colour with no
+        // hex and `catalog/meta` served `color_value: null` ({@see FullReplace}).
+        FullReplace::assert($request, 'عنصر القائمة المرجعية', 'name.ar');
+
         $def = self::definition($list);
         $data = Coerce::arr($request->validate(LookupWriter::rules($def['key'], $id)));
 

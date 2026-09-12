@@ -114,6 +114,7 @@ it('PRODUCT FORM: saves both storefronts in one submit, with independent values'
     $code = T::str(DB::table('catalog_products')->where('id', $productId)->value('wa_code'));
 
     actingAs(Staff::dataEntry())->put("/manage/storefronts/1/products/{$productId}", [
+        '_complete' => 1,
         'wa_code' => $code,
         'brand_id' => T::int(DB::table('catalog_brands')->orderBy('id')->value('id')),
         'selling_price' => '900.00', 'currency' => 'EGP', 'is_active' => true,
@@ -424,6 +425,7 @@ it('writes NO legacy table while placing a second storefront', function () {
     CatalogFixture::onStorefront($productId);
 
     actingAs(Staff::dataEntry())->put("/manage/storefronts/1/products/{$productId}", [
+        '_complete' => 1,
         'wa_code' => T::str(DB::table('catalog_products')->where('id', $productId)->value('wa_code')),
         'brand_id' => T::int(DB::table('catalog_brands')->orderBy('id')->value('id')),
         'selling_price' => '500.00', 'currency' => 'EGP', 'is_active' => true,

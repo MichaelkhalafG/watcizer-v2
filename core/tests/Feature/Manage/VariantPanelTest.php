@@ -136,6 +136,7 @@ it('turns a typed quantity into a LEDGER MOVEMENT, not a column write', function
     $movementsBefore = DB::table('inventory_movements')->where('variant_id', $variantId)->count();
 
     actingAs($admin)->put("/manage/products/{$productId}/variants/{$variantId}", [
+        '_complete' => 1,
         'label' => 'Size 1',
         'size_id' => aSizeId(),
         'is_active' => true,
@@ -170,6 +171,7 @@ it('writes NO movement when the quantity is unchanged', function () {
     $before = DB::table('inventory_movements')->where('variant_id', $variantId)->count();
 
     actingAs(Staff::admin())->put("/manage/products/{$productId}/variants/{$variantId}", [
+        '_complete' => 1,
         'label' => 'renamed but same stock',
         'size_id' => aSizeId(),
         'is_active' => true,
@@ -289,6 +291,7 @@ it('re-derives in_stock when a variant is deactivated, without moving a unit', f
     $movementsBefore = DB::table('inventory_movements')->where('variant_id', $variantId)->count();
 
     actingAs(Staff::admin())->put("/manage/products/{$productId}/variants/{$variantId}", [
+        '_complete' => 1,
         'label' => 'Size 1',
         'size_id' => aSizeId(), 'is_active' => false, 'stock_express' => 6,
     ])->assertSessionHasNoErrors();
@@ -300,6 +303,7 @@ it('re-derives in_stock when a variant is deactivated, without moving a unit', f
 
     // …and reactivating brings it back, so the flag is derived and not stamped.
     actingAs(Staff::admin())->put("/manage/products/{$productId}/variants/{$variantId}", [
+        '_complete' => 1,
         'label' => 'Size 1',
         'size_id' => aSizeId(), 'is_active' => true, 'stock_express' => 6,
     ])->assertSessionHasNoErrors();

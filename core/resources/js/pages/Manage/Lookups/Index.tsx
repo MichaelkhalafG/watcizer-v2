@@ -99,6 +99,10 @@ export default function LookupsIndex({ list, lists, rows, pre_switch }: Props) {
         router.put(
             `${base}/${row.id}`,
             {
+                // This endpoint REPLACES the row, extras included, so the screen sends every
+                // column it knows about and declares the payload complete. Without `_complete`
+                // the server refuses: a caller that omits `extra.hex` would clear the colour.
+                _complete: 1,
                 name: { ar: patch.ar ?? row.name.ar, en: patch.en ?? row.name.en },
                 extra: extraPayload(extra),
             },

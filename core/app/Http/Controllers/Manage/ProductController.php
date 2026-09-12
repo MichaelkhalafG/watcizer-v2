@@ -16,6 +16,7 @@ use App\Models\Catalog\Product;
 use App\Models\Storefront\Storefront;
 use App\Storefront\ImageUrl;
 use App\Support\Coerce;
+use App\Support\FullReplace;
 use App\Support\Table\TableQuery;
 use App\Transform\Row;
 use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
@@ -288,6 +289,14 @@ final class ProductController
 
     public function update(Request $request, Storefront $storefront, int $product): RedirectResponse
     {
+        /*
+         * This endpoint REPLACES the product: a key absent from the payload is cleared, which is
+         * what lets the form empty a field, and what let a five-field probe payload wipe a live
+         * product's grade, specs, descriptions, sale price and placements (see {@see FullReplace}).
+         * The screen declares completeness; nothing else may.
+         */
+        FullReplace::assert($request, 'بيانات المنتج', 'wa_code');
+
         $productId = Row::int(self::productRow($product), 'id');
         $data = $this->validated($request, $productId);
 

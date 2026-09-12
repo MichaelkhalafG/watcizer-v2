@@ -40,6 +40,7 @@ use function Pest\Laravel\actingAs;
 function movePayload(int $node, array $overrides = []): array
 {
     return array_merge([
+        '_complete' => 1,   // the screen's full-replace declaration (App\Support\FullReplace)
         'wa_code' => '4b-fam-'.bin2hex(random_bytes(4)),
         'sku' => null,
         'brand_id' => T::int(DB::table('catalog_brands')->orderBy('id')->value('id')),
