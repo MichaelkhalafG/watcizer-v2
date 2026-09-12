@@ -1,6 +1,7 @@
 <?php
 
 use App\Console\Commands\CoreChecksumCommand;
+use App\Support\Coerce;
 use App\Transform\Audit\AuditFinding;
 use App\Transform\Audit\AuditReport;
 use App\Transform\Audit\AuditRunner;
@@ -222,6 +223,54 @@ function injectOrphanSubType(int $id, string $name): void
  * Watches between rehearsals #1 and #2 as the team added watches, and a literal here would have
  * turned this proof into a data-dependent flake.
  */
+/**
+ * A pin that is ACTUALLY IN FORCE: a pinned sub type with no products, so the transform has to ask
+ * the config where it belongs.
+ *
+ * ── Why this is derived (rehearsal #3, 2026-09-12) ────────────────────────────────────────────
+ *
+ * Two tests in this file named `Automatic` and asserted that its pin was in force. `Automatic`
+ * gained its first product in the next production dump, so the pin stopped applying — correctly,
+ * because a sub type with products is placed by its real pair — and both tests failed while A-26
+ * was behaving exactly as designed. Diver and Tourbillon moved the same week.
+ *
+ * WHICH sub types are empty is a property of the dump. That every empty one is pinned, and that
+ * removing a pin makes A-26 block, is the rule. So the subject is chosen from the data.
+ *
+ * @return array{sub: int, parent: int, name: string, parent_name: string}|null
+ */
+function pinInForce(): ?array
+{
+    /** @var array<array-key, mixed> $configured */
+    $configured = is_array(config('transform.orphan_sub_type_parents')) ? config('transform.orphan_sub_type_parents') : [];
+
+    foreach ($configured as $sub => $parent) {
+        if (! is_numeric($sub) || ! is_int($parent)) {
+            continue;
+        }
+        $subId = (int) $sub;
+        if (DB::connection('legacy')->table('products')->where('sub_type_id', $subId)->exists()) {
+            continue;                                   // has products → the pin is redundant (A-28)
+        }
+        if (! DB::connection('legacy')->table('sub_types')->where('id', $subId)->exists()) {
+            continue;                                   // phantom pin → A-26 owns that case
+        }
+        $name = DB::connection('legacy')->table('sub_type_translations')
+            ->where('sub_type_id', $subId)->where('locale', 'en')->value('sub_type_name');
+        $parentName = DB::connection('legacy')->table('category_type_translations')
+            ->where('category_type_id', $parent)->where('locale', 'en')->value('category_type_name');
+
+        return [
+            'sub' => $subId,
+            'parent' => $parent,
+            'name' => is_string($name) ? $name : '',
+            'parent_name' => is_string($parentName) ? $parentName : '',
+        ];
+    }
+
+    return null;
+}
+
 function majorityCategoryTypeName(): string
 {
     $rows = DB::connection('legacy')->table('products')
@@ -277,12 +326,23 @@ it('A-26 and A-27 stay quiet on the corrected pin map', function () {
         ->and(finding($report, 'A-26')->blocks())->toBeFalse()
         ->and(finding($report, 'A-27')->count())->toBe(0);
 
-    // …and the pin that rehearsal #2 corrected is the one in force: Automatic under Watches.
-    $note = finding($report, 'A-26')->note;
-    $automatic = DB::connection('legacy')->table('sub_type_translations')->where('locale', 'en')->where('sub_type_name', 'Automatic')->value('sub_type_id');
-    if (is_int($automatic)) {
-        expect($note)->toContain($automatic.' [Automatic] → 1 [Watches]');
+    /*
+     * …and the note ECHOES the pins that are in force, so an operator can read what the config is
+     * deciding for them. The subject is derived: naming a sub type here is what made this test
+     * stale when `Automatic` gained a product (rehearsal #3).
+     */
+    $pin = pinInForce();
+    if ($pin === null) {
+        // Every pinned sub type has products today — legitimate, and then there is no "in force"
+        // line to check. Say so rather than passing quietly on an assertion that did not run.
+        expect(finding($report, 'A-26')->note)->toContain('Pins in force: none');
+
+        return;
     }
+
+    expect(finding($report, 'A-26')->note)->toContain(sprintf(
+        '%d [%s] → %d [%s]', $pin['sub'], $pin['name'], $pin['parent'], $pin['parent_name']
+    ));
 });
 
 it('A-27 warns (without blocking) when a pin contradicts the sub type name, in either direction', function () {
@@ -329,7 +389,45 @@ it('A-26 catches a pin that points at a category type which does not exist', fun
         ->and($f->rows[0]['detail'])->toContain('pinned to category_type 4242, which does not exist');
 });
 
-it('every pin in the map names a sub type that exists, and the real Automatic row is pinned to Watches', function () {
+it('A-28 reports every REDUNDANT pin as INFO, tells nobody to delete it, and never blocks', function () {
+    /*
+     * Rehearsal #3 (2026-09-12): seven of twenty-one pins had gone redundant because their sub
+     * type gained products. Redundant is harmless — a pin applies only to an orphan — but an
+     * "unused config" tidy-up would re-open the hole A-26 exists to close, because the sub type
+     * becomes an orphan again the moment those products go away. So the state is reported, as
+     * INFO, with the reason attached.
+     */
+    $f = finding(audit(), 'A-28');
+
+    // Derive the answer independently of the check, then compare: a pinned sub type that has
+    // products is redundant, one without products is in force.
+    /** @var array<array-key, mixed> $pins */
+    $pins = is_array(config('transform.orphan_sub_type_parents')) ? config('transform.orphan_sub_type_parents') : [];
+    $expected = [];
+    foreach (array_keys($pins) as $sub) {
+        $subId = (int) (is_numeric($sub) ? $sub : 0);
+        if ($subId > 0 && DB::connection('legacy')->table('products')->where('sub_type_id', $subId)->exists()) {
+            $expected[] = (string) $subId;
+        }
+    }
+    sort($expected);
+    $reported = array_map(fn (array $row): string => $row['id'], $f->rows);
+    sort($reported);
+
+    expect($reported)->toBe($expected, 'A-28 must report exactly the pins whose sub type now has products')
+        ->and($f->blocking)->toBeFalse()
+        ->and($f->blocks())->toBeFalse()
+        ->and($f->info)->toBeTrue('a redundant pin is a state, not a to-do — it must render as INFO');
+
+    if ($expected !== []) {
+        $details = implode(' | ', array_map(fn (array $row): string => $row['detail'], $f->rows));
+        expect($details)->toContain('Keep the pin.')
+            ->and($f->handling)->toContain('Do NOT delete these pins')
+            ->and($f->note)->toContain('Deleting a redundant pin re-opens A-26');
+    }
+});
+
+it('every pin names a sub type that exists, and removing an IN-FORCE pin makes A-26 block', function () {
     $pins = config('transform.orphan_sub_type_parents');
     $pins = is_array($pins) ? $pins : [];
     $existing = DB::connection('legacy')->table('sub_types')->pluck('id')->map(fn (mixed $v) => (int) (is_numeric($v) ? $v : 0))->all();
@@ -339,11 +437,32 @@ it('every pin in the map names a sub type that exists, and the real Automatic ro
         expect((int) $subId)->toBeIn($existing);                 // no phantom pins (rehearsal #2)
     }
 
-    $automatic = DB::connection('legacy')->table('sub_type_translations')->where('locale', 'en')->where('sub_type_name', 'Automatic')->value('sub_type_id');
-    $automatic = is_int($automatic) ? $automatic : 0;
-    expect($pins[$automatic] ?? null)->toBe(1);                  // watch complication → Watches
+    // Every pin's TARGET must exist too — a pin to a category type that was deleted is the other
+    // half of the phantom-pin case, and A-26 blocks on it (asserted separately above).
+    $types = DB::connection('legacy')->table('category_types')->pluck('id')->map(fn (mixed $v) => (int) (is_numeric($v) ? $v : 0))->all();
+    foreach ($pins as $subId => $parent) {
+        expect(Coerce::int($parent))->toBeIn($types, "pin for sub type {$subId} names a category type that does not exist");
+    }
 
-    // …and with that row present but unpinned, A-26 blocks the rehearsal.
-    config(['transform.orphan_sub_type_parents' => array_diff_key($pins, [$automatic => null])]);
-    expect(finding(audit(), 'A-26')->blocks())->toBeTrue();
-})->skip(fn () => DB::connection('legacy')->table('sub_type_translations')->where('locale', 'en')->where('sub_type_name', 'Automatic')->value('sub_type_id') === null, 'no Automatic sub type in this dump');
+    /*
+     * …and removing a pin that is IN FORCE makes A-26 block. The pin is derived, not named: this
+     * assertion used to remove `Automatic`'s pin, which stopped blocking the moment that sub type
+     * gained a product — the pin was no longer in force, so removing it changed nothing
+     * (rehearsal #3, 2026-09-12).
+     */
+    $pin = pinInForce();
+    if ($pin === null) {
+        // No orphan left to unpin. Then A-26 has nothing to block on, and this is the honest
+        // statement of that: the check is quiet because the catalogue gave it nothing to find.
+        expect(finding(audit(), 'A-26')->count())->toBe(0);
+
+        return;
+    }
+
+    config(['transform.orphan_sub_type_parents' => array_diff_key($pins, [$pin['sub'] => null])]);
+    $f = finding(audit(), 'A-26');
+
+    expect($f->blocks())->toBeTrue()
+        ->and(implode(' | ', array_map(fn (array $row): string => $row['detail'], $f->rows)))
+        ->toContain('has no products and no pin');
+});

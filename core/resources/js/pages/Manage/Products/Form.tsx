@@ -114,6 +114,16 @@ interface StorefrontSection {
         category_ids: number[];
         primary_category_id: number | null;
     };
+    /**
+     * What the placement IS today (rehearsal #3, 2026-09-12), not what this form will submit:
+     *  - `root_only` — on the top-level section with NO primary category, the shape a legacy
+     *                  product with no sub-type has. The select below is prefilled with that root,
+     *                  so an ordinary save GIVES it a primary it does not have — said out loud
+     *                  rather than done quietly;
+     *  - `none`      — no category at all;
+     *  - `placed`    — the ordinary state.
+     */
+    placement_state: 'placed' | 'root_only' | 'none';
 }
 
 interface ProductPayload {
@@ -646,6 +656,9 @@ function StorefrontFields({
     const error = (field: string): string | null => errors[`storefronts.${key}.${field}`] ?? null;
     const chosen = section.categories.filter((option) => data.category_ids.includes(Number(option.value)));
     const hasCategory = data.category_ids.length > 0;
+    // Every chosen node is a TOP-LEVEL section: the product would be published with no sub-category
+    // at all. Derived from the options' own depth, so it follows the tree rather than a name.
+    const rootOnlyChoice = hasCategory && chosen.every((option) => option.depth <= 1);
     const blockedReason = !canBeVisible
         ? `لإظهار المنتج لازم عنوان عربي أولًا${missingArabic.length > 0 ? ` (الناقص: ${missingArabic.join('، ')})` : ''}. اكتبه في خانة «العنوان — عربي» بالأعلى.`
         : !hasCategory
@@ -695,6 +708,23 @@ function StorefrontFields({
                         </p>
                     ) : null}
                 </fieldset>
+
+                {/* What happens if this product is saved with only a top-level section chosen —
+                    and what is already true of a product the transform left at the root. Both are
+                    legitimate, served states; neither is obvious from the fields (rehearsal #3). */}
+                {section.placement_state === 'root_only' ? (
+                    <Alert tone="warning" title="هذا المنتج بدون تصنيف فرعي حاليًا">
+                        هو موضوع في القسم الرئيسي فقط، وبلا تصنيف أساسي: يظهر في صفحة القسم وفي البحث، ولا يظهر في أي
+                        قائمة تصنيف فرعي، ومسار التصفّح له خطوة واحدة. العائلة مشتقة من اسم القسم الرئيسي. إن حفظت من هذه
+                        الشاشة الآن، سيصبح القسم الرئيسي هو تصنيفه الأساسي — اختر تصنيفًا فرعيًا إن أردت أن يظهر داخله.
+                    </Alert>
+                ) : null}
+                {section.placement_state !== 'root_only' && rootOnlyChoice ? (
+                    <Alert tone="warning" title="لم تختر تصنيفًا فرعيًا">
+                        اخترت القسم الرئيسي فقط. سيُنشر المنتج في صفحة القسم وفي البحث، ولن يظهر في أي قائمة تصنيف فرعي،
+                        وسيكون مسار التصفّح خطوة واحدة. اختر تصنيفًا فرعيًا إن أردت أن يظهر داخله.
+                    </Alert>
+                ) : null}
 
                 <SelectField
                     label="التصنيف الأساسي"

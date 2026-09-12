@@ -74,6 +74,13 @@ final class CompatEnvParityCommand extends Command
             if ($with === null) {
                 $failures[] = "could not reach {$base}{$path}";
                 $this->error("  [key] could not reach {$base}{$path} — nothing was proved.");
+                // Rehearsal #3 (2026-09-12) ended with exactly this line and no way to act on it.
+                // The unreachable host is the commonest outcome on a workstation, so the remedy
+                // belongs HERE rather than in a document nobody has open.
+                $this->line('        The legacy app must be answering on that origin first. Locally:');
+                $this->line('          1) start it from the legacy checkout — `php artisan serve --port=8011` in `backend/`');
+                $this->line('          2) point core at it — COMPAT_LEGACY_BASE in `core/.env` (now: '.$base.')');
+                $this->line('          3) re-run this command. On the real hosts, use the legacy origin itself.');
             } elseif ($with >= 200 && $with < 300 && $without === 401) {
                 $this->info(sprintf('  [key] OK — %d with the header, %d without. The keys match.', $with, $without));
             } elseif ($with === 401) {
@@ -125,7 +132,20 @@ final class CompatEnvParityCommand extends Command
         $this->line('');
         if ($failures !== []) {
             $this->error('NOT READY: '.implode('; ', $failures));
-            $this->line('Fix: core `.env` COMPAT_API_KEY = legacy `.env` PUBLIC_API_KEY, and the two JWT_SECRETs identical. Then `php artisan config:clear`.');
+            $this->newLine();
+            $this->line('WHAT THIS COMMAND NEEDS, exactly — switch-night prerequisite (f):');
+            $this->line('  1. COMPAT_API_KEY in `core/.env`  = the VALUE of PUBLIC_API_KEY in the legacy .env');
+            $this->line('     (on the legacy host: grep ^PUBLIC_API_KEY .env in backend/). Copy the value by hand.');
+            $this->line('  2. JWT_SECRET in `core/.env`      = the VALUE of JWT_SECRET in the legacy .env, byte for byte.');
+            $this->line('  3. `php artisan config:clear` on the core host, or the cached config keeps the old values.');
+            $this->line('  4. A REACHABLE legacy origin in COMPAT_LEGACY_BASE — the key half is proved by calling a');
+            $this->line('     guarded path and comparing 2xx-with-header against 401-without.');
+            $this->line('  5. For the JWT half: `--token="<JWT>"` from a real storefront session — sign in on the');
+            $this->line('     storefront and copy the token the app holds (it is minted by the legacy host; core');
+            $this->line('     only verifies, so it cannot produce one itself). Any unexpired token for any account works.');
+            $this->newLine();
+            $this->line('Neither secret is ever written into the repository (AGENTS §3): they live only in the two');
+            $this->line('`.env` files, and this command prints lengths, never values.');
 
             return self::FAILURE;
         }

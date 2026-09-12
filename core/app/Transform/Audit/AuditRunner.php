@@ -92,6 +92,7 @@ final class AuditRunner
         $this->a25($r);
         $this->a26($r);
         $this->a27($r);
+        $this->a28($r);
         $this->extras($r);
         $this->x07($r);
 
@@ -652,6 +653,90 @@ final class AuditRunner
         }
 
         $f->note = sprintf('Heuristic, non-blocking: %d of %d pins had a name clear enough to judge; the rest were ambiguous and left alone. Word lists live in config transform.family.{watch,fashion}_sub_type_name_hints.', $checked, count($overrides));
+    }
+
+    /**
+     * A-28 (rehearsal #3, 2026-09-12) — INFO, never blocking, and deliberately not silent.
+     *
+     * A pin in `transform.orphan_sub_type_parents` only ever applies to a sub type with NO
+     * products: one that has products is placed by its real `(category_type, sub_type)` pair and
+     * the pin is simply not consulted. So as the catalogue grows, pins go redundant — rehearsal #3
+     * found seven of twenty-one in that state (Diver, Dress, GMT, Skeleton, Tourbillon, Casual and
+     * Automatic had all gained products since the previous dump).
+     *
+     * **A redundant pin must NOT be deleted.** The products that made it redundant can go away
+     * again — a seasonal line sells out and is archived, a single product is re-filed — and the
+     * sub type returns to being an orphan. With the pin still in place nothing happens; without
+     * it, A-26 BLOCKS the next rehearsal, or worse, an older transform files the sub type under
+     * the majority category type and a watch complication quietly becomes Fashion. That is the
+     * exact hole A-26 exists to close, and "cleaning up unused config" is how it would re-open.
+     *
+     * Hence INFO with the reason attached: the state is visible, named, and explicitly not a
+     * to-do. It is reported in the audit rather than only in a document because the audit is what
+     * someone actually reads at 02:00.
+     */
+    private function a28(AuditReport $r): void
+    {
+        $f = $r->add(new AuditFinding(
+            'A-28',
+            'pins that are currently REDUNDANT because their sub type now has products',
+            false,
+            'INFO — expected and harmless. Do NOT delete these pins: if the sub type loses its products again it becomes an orphan, and an unpinned orphan BLOCKS (A-26) or gets filed by the majority rule.',
+            info: true,
+        ));
+
+        $subNames = $this->names('sub_type_translations', 'sub_type_id', 'sub_type_name');
+        $typeNames = $this->names('category_type_translations', 'category_type_id', 'category_type_name');
+
+        /** @var array<int, int> $overrides */
+        $overrides = [];
+        foreach (is_array($this->config['orphan_sub_type_parents'] ?? null) ? $this->config['orphan_sub_type_parents'] : [] as $sub => $type) {
+            if (is_numeric($sub) && is_int($type)) {
+                $overrides[(int) $sub] = $type;
+            }
+        }
+
+        // Which sub types carry products, and under which category type the data puts them — so
+        // the row can say whether the pin AGREED with the data that overtook it.
+        $used = [];
+        foreach ($this->products()->selectRaw('category_type_id, sub_type_id, COUNT(*) AS n')
+            ->whereNotNull('sub_type_id')->groupBy('category_type_id', 'sub_type_id')->get() as $row) {
+            $sub = Row::int($row, 'sub_type_id');
+            $used[$sub] = [
+                'type' => Row::nint($row, 'category_type_id'),
+                'n' => ($used[$sub]['n'] ?? 0) + Row::int($row, 'n'),
+            ];
+        }
+
+        $agree = 0;
+        foreach ($overrides as $subId => $pinnedType) {
+            if (! isset($used[$subId])) {
+                continue;                                   // still an orphan: the pin is in force, A-26's business
+            }
+            $name = trim($subNames[$subId]['en'] ?? '') !== '' ? $subNames[$subId]['en'] : ($subNames[$subId]['ar'] ?? '');
+            $dataType = $used[$subId]['type'];
+            $matches = $dataType !== null && $dataType === $pinnedType;
+            if ($matches) {
+                $agree++;
+            }
+            $f->add('config', $subId, sprintf(
+                '[%s] now has %d product(s) under category_type %s [%s]; the pin says %d [%s] — %s. Keep the pin.',
+                $name,
+                $used[$subId]['n'],
+                $dataType === null ? 'NULL' : (string) $dataType,
+                $dataType === null ? '' : ($typeNames[$dataType]['en'] ?? ''),
+                $pinnedType,
+                $typeNames[$pinnedType]['en'] ?? '',
+                $matches ? 'they agree' : 'THEY DISAGREE — the data wins, and the pin would be wrong if the sub type empties again',
+            ));
+        }
+
+        $f->note = sprintf(
+            'INFO: %d of %d pin(s) are currently redundant (%d agree with where the data puts the sub type). A pin applies only to a sub type with no products, so this number moves with every dump and is expected. Deleting a redundant pin re-opens A-26 the moment the sub type empties again — see §2.9.4.',
+            $f->count(),
+            count($overrides),
+            $agree,
+        );
     }
 
     /**

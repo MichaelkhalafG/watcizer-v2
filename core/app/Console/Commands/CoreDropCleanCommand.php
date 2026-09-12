@@ -62,13 +62,36 @@ final class CoreDropCleanCommand extends Command
 
         $existing = array_values(array_filter($planned, fn (string $table): bool => Schema::hasTable($table)));
         $missing = array_values(array_diff($planned, $existing));
-        $migrationRows = DB::table('core_migrations')->where('migration', 'like', self::MIGRATION_PATTERN)->count();
+
+        /*
+         * The migration ledger may not exist yet, and that is a NORMAL state for this command.
+         *
+         * Rehearsal #3 (2026-09-12) found it the hard way: the §2.9.4 loop starts by importing a
+         * fresh production dump, which has the 65 legacy tables and nothing of ours — no clean
+         * tables and no `core_migrations`. The first command of the runbook then died with
+         * "Base table or view not found: core_migrations" and exit 1, so the documented recipe
+         * could not be followed from its own first line. Nothing was wrong with the database.
+         *
+         * A missing ledger means zero rows to clear, which is exactly what a bare dump should
+         * report — so it is read through `Schema::hasTable()` and said out loud.
+         */
+        $hasLedger = Schema::hasTable('core_migrations');
+        $migrationRows = $hasLedger
+            ? DB::table('core_migrations')->where('migration', 'like', self::MIGRATION_PATTERN)->count()
+            : 0;
 
         $this->line(sprintf(
             'transform output: %d table(s) in the list, %d present, %d already absent',
             count($planned), count($existing), count($missing),
         ));
+        if (! $hasLedger) {
+            $this->line('core_migrations: not present — this database has never had the clean schema, so there is no ledger to clear.');
+        }
         $this->line('preserved (dashboard-authored, never dropped): '.implode(', ', $protected));
+
+        // Which dashboard tables are there BEFORE anything is dropped. The guard below asks whether
+        // the drop took one, not whether they exist at all — on a bare dump none of them do yet.
+        $protectedBefore = array_values(array_filter($protected, fn (string $table): bool => Schema::hasTable($table)));
 
         if ((bool) $this->option('dry-run')) {
             $this->newLine();
@@ -107,19 +130,32 @@ final class CoreDropCleanCommand extends Command
 
         if ((bool) $this->option('keep-migrations')) {
             $this->warn('core_migrations left alone (--keep-migrations): `migrate` will believe these tables still exist.');
+        } elseif (! $hasLedger) {
+            $this->line('no core_migrations table to clear.');
         } else {
             $removed = DB::table('core_migrations')->where('migration', 'like', self::MIGRATION_PATTERN)->delete();
             $this->info("cleared {$removed} core_migrations row(s)");
         }
 
-        // Prove the preserved tables are still there, in the same breath as the drop.
-        $lost = array_values(array_filter($protected, fn (string $table): bool => ! Schema::hasTable($table)));
+        /*
+         * Prove the preserved tables are still there, in the same breath as the drop — but only
+         * the ones that WERE there. A table that never existed cannot have been dropped, and
+         * treating its absence as a catastrophe is what made this command unusable on a fresh
+         * import (rehearsal #3). The alarm still fires for its real case: a dashboard table that
+         * existed a moment ago and does not now.
+         */
+        $lost = array_values(array_filter($protectedBefore, fn (string $table): bool => ! Schema::hasTable($table)));
         if ($lost !== []) {
             $this->error('A dashboard-authored table disappeared: '.implode(', ', $lost).'. This is a bug — do NOT continue the switch.');
 
             return self::FAILURE;
         }
-        $this->line('preserved tables verified present: '.implode(', ', $protected));
+
+        if ($protectedBefore === []) {
+            $this->line('dashboard-authored tables: none present yet — nothing to preserve on a database without the clean schema.');
+        } else {
+            $this->line('preserved tables verified present: '.implode(', ', $protectedBefore));
+        }
 
         $this->newLine();
         $this->info('Next: php artisan migrate --force && php artisan core:transform --force');
