@@ -18,11 +18,19 @@ final class AuditFinding
     /** Set when the check could not run meaningfully (e.g. partial local image copy). */
     public string $caveat = '';
 
+    /**
+     * @param  bool  $info  a finding that is NOT a defect and needs no action — it exists so that a
+     *                      state nobody should "tidy" is visible and named. Rendered as `INFO`
+     *                      rather than left blank beside the ordinary non-blocking codes, because
+     *                      a blank status invites exactly the tidying the finding warns against
+     *                      (rehearsal #3: seven redundant pins).
+     */
     public function __construct(
         public readonly string $code,
         public readonly string $title,
         public readonly bool $blocking,
         public readonly string $handling,
+        public readonly bool $info = false,
     ) {}
 
     public function add(string $entity, int|string $id, string $detail): void

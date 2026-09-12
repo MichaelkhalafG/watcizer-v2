@@ -128,7 +128,7 @@ final class ProductController
         // Filled by the `prepare` callback below, before a single row is mapped. See
         // `TableQuery::paginate()` for why these two are not columns of the list query. The empty
         // state comes from the same function that fills it, so there is one definition of the shape.
-        $extras = self::pageExtras([]);
+        $extras = self::pageExtras([], $storefront->id);
         // Read ONCE for the page, never inside the row mapper.
         $activeStorefronts = Storefront::activeIds();
 
@@ -170,20 +170,51 @@ final class ProductController
                     'has_arabic' => trim($titleAr ?? '') !== '',
                     'has_image' => $cover !== null,
                     'has_stock' => Row::bool($row, 'in_stock'),
+                    /*
+                     * Placement shape on THIS storefront (rehearsal #3):
+                     *   'none'      — no category at all, so it appears in no listing;
+                     *   'root_only' — on the root and nowhere else, no primary category. The
+                     *                 transform leaves a legacy product with no `sub_type_id`
+                     *                 exactly here, and the site shows it only under the top-level
+                     *                 section with a one-step breadcrumb;
+                     *   'placed'    — a primary category, the ordinary state.
+                     */
+                    'placement' => self::placementState($extras['placement'][$id] ?? null),
                     // Per storefront: true = visible, false = hidden, MISSING = no row at all.
                     'visibility' => self::visibilityFor($extras['storefronts'][$id] ?? [], $activeStorefronts),
                     'cover' => $cover === null ? null : ImageUrl::src($cover),
                     'updated_at' => Row::nstr($row, 'updated_at'),
                     'edit_url' => route('manage.products.edit', ['product' => $id, 'storefront' => $storefront->id]),
                 ];
-            }, function (array $rows) use (&$extras): void {
-                $extras = self::pageExtras($rows);
+            }, function (array $rows) use (&$extras, $storefront): void {
+                $extras = self::pageExtras($rows, $storefront->id);
             }),
             // Every active storefront, so the list can render one visibility chip each.
             'all_storefronts' => self::activeStorefrontsForList(),
             'pre_switch_notice' => self::preSwitchNotice(),
             'pre_switch' => PreSwitch::state('product'),
         ]);
+    }
+
+    /**
+     * The three placement shapes, named once so the list, the form and the tests agree.
+     *
+     * `root_only` is the state rehearsal #3 (2026-09-12) put in front of the team: a legacy
+     * product with a `category_type_id` and no `sub_type_id` is placed on the ROOT node with
+     * `is_primary = 0`. It is a legitimate, served state — the storefront answers its page and
+     * gives it a one-step breadcrumb, and its family comes from the root's own name — but it is
+     * invisible in every sub-category listing, and until now the list showed it as an ordinary
+     * placed product.
+     *
+     * @param  array{nodes: int, primaries: int}|null  $counts
+     */
+    private static function placementState(?array $counts): string
+    {
+        if ($counts === null || $counts['nodes'] === 0) {
+            return 'none';
+        }
+
+        return $counts['primaries'] === 0 ? 'root_only' : 'placed';
     }
 
     /**
@@ -447,17 +478,43 @@ final class ProductController
      * row either (AGENTS §2.24). One query over the page's 25 ids answers it for every storefront
      * at once.
      *
+     * `placement` is rehearsal #3's finding (2026-09-12). A product whose legacy row has a
+     * `category_type_id` but no `sub_type_id` is placed on the ROOT and nowhere else, with
+     * `is_primary = 0` — the state A-18 describes. Five live products arrived in that state and
+     * the list showed them exactly like any other placed product, so nobody could see which ones
+     * sit at the root of a site with no sub-category. The count is derived per page in one
+     * grouped query, never per row (AGENTS §2.24).
+     *
      * @param  list<object>  $rows
-     * @return array{covers: array<int, string>, variants: array<int, int>, storefronts: array<int, array<int, bool>>}
+     * @return array{covers: array<int, string>, variants: array<int, int>, storefronts: array<int, array<int, bool>>, placement: array<int, array{nodes: int, primaries: int}>}
      */
-    private static function pageExtras(array $rows): array
+    private static function pageExtras(array $rows, ?int $storefrontId = null): array
     {
         $ids = [];
         foreach ($rows as $raw) {
             $ids[] = Row::int(Row::cast($raw), 'id');
         }
         if ($ids === []) {
-            return ['covers' => [], 'variants' => [], 'storefronts' => []];
+            return ['covers' => [], 'variants' => [], 'storefronts' => [], 'placement' => []];
+        }
+
+        // Placement shape on THIS storefront: how many nodes, and how many of them are primary.
+        // `nodes > 0 && primaries === 0` is the root-only state; `nodes === 0` is "not placed".
+        $placement = [];
+        if ($storefrontId !== null) {
+            foreach (
+                DB::table('storefront_category_product')
+                    ->where('storefront_id', $storefrontId)
+                    ->whereIn('product_id', $ids)
+                    ->groupBy('product_id')
+                    ->get(['product_id', DB::raw('COUNT(*) as nodes'), DB::raw('COALESCE(SUM(is_primary), 0) as primaries')]) as $raw
+            ) {
+                $row = Row::cast($raw);
+                $placement[Row::int($row, 'product_id')] = [
+                    'nodes' => Row::int($row, 'nodes'),
+                    'primaries' => Row::int($row, 'primaries'),
+                ];
+            }
         }
 
         // product id => storefront id => is_visible. A product with NO row on a storefront is
@@ -500,7 +557,7 @@ final class ProductController
             }
         }
 
-        return ['covers' => $covers, 'variants' => $variants, 'storefronts' => $visibility];
+        return ['covers' => $covers, 'variants' => $variants, 'storefronts' => $visibility, 'placement' => $placement];
     }
 
     /**
@@ -1068,10 +1125,38 @@ final class ProductController
                     'category_ids' => $categoryIds,
                     'primary_category_id' => $productId === null ? null : self::primaryNodeOn($id, $productId),
                 ],
+                /*
+                 * What the placement IS right now, not what the form will submit (rehearsal #3).
+                 * `root_only` means the product sits on the top-level section with no primary
+                 * category — the shape the transform gives a legacy product with no sub-type. It
+                 * matters on this screen because `primaryNodeOn()` prefills that root as the
+                 * primary, so an ordinary save would quietly GIVE the product a primary category
+                 * it does not have today. The section says so instead of doing it silently.
+                 */
+                'placement_state' => $productId === null ? 'none' : self::placementStateOn($id, $productId),
             ];
         }
 
         return $out;
+    }
+
+    /** One product's placement shape on one storefront: placed / root_only / none. */
+    private static function placementStateOn(int $storefrontId, int $productId): string
+    {
+        // COALESCE, because an aggregate over ZERO rows returns COUNT 0 and SUM **NULL** — and a
+        // product with no placement at all is the ordinary case on a storefront it was never added
+        // to. Without it this read threw on `none` and the edit screen answered 500.
+        $row = DB::table('storefront_category_product')
+            ->where('storefront_id', $storefrontId)->where('product_id', $productId)
+            ->first([DB::raw('COUNT(*) as nodes'), DB::raw('COALESCE(SUM(is_primary), 0) as primaries')]);
+
+        if (! $row instanceof stdClass) {
+            return 'none';
+        }
+
+        $cast = Row::cast($row);
+
+        return self::placementState(['nodes' => Row::int($cast, 'nodes'), 'primaries' => Row::int($cast, 'primaries')]);
     }
 
     /** A product's primary category ON ONE STOREFRONT — the per-section answer. */

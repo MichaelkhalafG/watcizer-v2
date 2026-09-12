@@ -32,6 +32,15 @@ interface ProductRow {
     has_arabic: boolean;
     has_image: boolean;
     has_stock: boolean;
+    /**
+     * Placement shape on THIS storefront (rehearsal #3, 2026-09-12):
+     *  - `placed`    — has a primary category, the ordinary state;
+     *  - `root_only` — sits on the top-level section and nowhere else, with NO primary category.
+     *                  A legacy product with no sub-type lands here: the site serves it, but it
+     *                  appears in no sub-category listing;
+     *  - `none`      — no category at all, so it appears in no listing whatsoever.
+     */
+    placement: 'placed' | 'root_only' | 'none';
     /** One entry per active storefront: visible, hidden, or absent (no row at all). */
     visibility: Array<{ id: number; state: 'visible' | 'hidden' | 'absent' }>;
     cover: string | null;
@@ -136,6 +145,25 @@ export default function ProductsIndex({
                         {!row.has_arabic ? <Badge variant="destructive">عربي ناقص</Badge> : null}
                         {!row.has_image ? <Badge variant="destructive">بلا صورة</Badge> : null}
                         {!row.has_stock ? <Badge variant="warning">نفد المخزون</Badge> : null}
+                        {/* Rehearsal #3: a product on the top-level section with no sub-category is
+                            served by the site but listed under no sub-section, and it used to look
+                            exactly like an ordinary placed product here. */}
+                        {row.placement === 'root_only' ? (
+                            <Badge
+                                variant="warning"
+                                title="هذا المنتج موضوع في القسم الرئيسي فقط وبدون تصنيف فرعي: يظهر في صفحة القسم وفي البحث، ولا يظهر في أي قائمة تصنيف فرعي، ومسار التصفّح له خطوة واحدة. العائلة تُشتق من اسم القسم الرئيسي. افتح المنتج واختر تصنيفًا فرعيًا ليظهر في قوائمه."
+                            >
+                                بدون تصنيف فرعي
+                            </Badge>
+                        ) : null}
+                        {row.placement === 'none' ? (
+                            <Badge
+                                variant="destructive"
+                                title="هذا المنتج غير موضوع في أي تصنيف على هذا المتجر، فلا يظهر في أي قائمة. اختر له تصنيفًا من شاشة المنتج أو من شاشة التوزيع."
+                            >
+                                بلا تصنيف
+                            </Badge>
+                        ) : null}
                         {row.variants > 0 ? <Badge variant="outline">{row.variants} مقاس/لون</Badge> : null}
                         {row.archived ? <Badge variant="neutral">مؤرشف</Badge> : null}
                     </div>

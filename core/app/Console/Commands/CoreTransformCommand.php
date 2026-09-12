@@ -361,7 +361,14 @@ final class CoreTransformCommand extends Command
     {
         $rows = [];
         foreach ($report->all() as $f) {
-            $rows[] = [$f->code, $f->count(), $f->blocks() ? 'BLOCKS' : ($f->blocking ? 'blocking (0)' : ''), mb_substr($f->title, 0, 70)];
+            $rows[] = [
+                $f->code,
+                $f->count(),
+                // An INFO code says "this is a state, not a to-do" — a blank status there would
+                // read like any other finding waiting to be cleaned up (A-28, rehearsal #3).
+                $f->blocks() ? 'BLOCKS' : ($f->blocking ? 'blocking (0)' : ($f->info ? 'INFO' : '')),
+                mb_substr($f->title, 0, 70),
+            ];
         }
         $this->table(['code', 'count', 'status', 'check'], $rows);
         $this->line(sprintf('audit: %d codes, %d non-zero, %s — %.0f ms', count($report->all()), $report->nonZero(), $report->isBlocked() ? 'BLOCKED' : 'no blocking finding', $ms));
