@@ -6,6 +6,7 @@ namespace App\Domain\Orders;
 
 use App\Domain\Inventory\Actor;
 use App\Domain\Inventory\InventoryService;
+use App\Domain\Notifications\OrderMailer;
 use App\Transform\Row;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -64,8 +65,8 @@ final class OrderFulfilment
      * is dispatch; `shipped → delivered` is the courier's confirmation; `delivered → completed`
      * CLOSES the order. None of them returns stock, which is why data-entry may make them.
      *
-     * **One step at a time is deliberate.** Each move e-mails the customer (through the legacy
-     * sender today — see prerequisite (a)), so allowing `processing → delivered` would skip the
+     * **One step at a time is deliberate.** Each move e-mails the customer (from CORE since
+     * 2026-09-13 — prerequisite (a)), so allowing `processing → delivered` would skip the
      * "on its way" message the customer is waiting for, and allowing anything → `completed` would
      * bring back the very confusion this flow exists to remove.
      *
@@ -87,7 +88,10 @@ final class OrderFulfilment
      */
     public const UNCANCELLABLE = ['delivered', 'completed', 'cancelled'];
 
-    public function __construct(private readonly InventoryService $inventory) {}
+    public function __construct(
+        private readonly InventoryService $inventory,
+        private readonly OrderMailer $mailer,
+    ) {}
 
     /**
      * Move an order forward. Returns the new status.
@@ -105,6 +109,26 @@ final class OrderFulfilment
         }
 
         DB::table('orders')->where('id', $orderId)->update(['status' => $to, 'updated_at' => now()]);
+
+        /*
+         * -- the customer is told (prerequisite (a), 2026-09-13) ---------------------------------
+         *
+         * The legacy Blade dashboard mailed `OrderStatusUpdate` on every status change that was a
+         * real change (`if ($previousStatus !== $order->status)`). T-0 disables that dashboard, so
+         * until this line existed an order marked shipped from the core dashboard notified nobody
+         * and nothing errored -- the exact silence prerequisite (a) exists to close.
+         *
+         * ONE send per event, twice over: the refusal above means a no-op never reaches here at
+         * all (`$from === $to` is not in `FULFILMENT_TRANSITIONS[$from]`), and
+         * `integration_outbox.dedupe_key` is UNIQUE per (order, status) so two operators clicking
+         * the same button in the same second still produce one message.
+         *
+         * No transaction is open on this path, so the send happens in the operator's request --
+         * and it cannot fail the request: `OrderMailer` records every outcome and throws at
+         * nobody. A relay that is down leaves a pending row for the cron and the status change
+         * stands.
+         */
+        $this->mailer->statusChangedNow($orderId, $to);
 
         return $to;
     }
@@ -147,7 +171,10 @@ final class OrderFulfilment
 
         $storefrontId = Row::nint($order, 'storefront_id');
 
-        return DB::transaction(function () use ($orderId, $actor, $storefrontId, $note): array {
+        /** @var list<int> $mailIds */
+        $mailIds = [];
+
+        $result = DB::transaction(function () use ($orderId, $actor, $storefrontId, $note, &$mailIds): array {
             $alreadyReleased = $this->inventory->isReleased($orderId);
 
             DB::table('orders')->where('id', $orderId)->update(['status' => 'cancelled', 'updated_at' => now()]);
@@ -156,12 +183,28 @@ final class OrderFulfilment
             // units came back and `inventory:verify` can still reconcile the row.
             $movements = $this->inventory->releaseOrder($orderId, 'order_cancel', $actor, $storefrontId, $note);
 
+            /*
+             * The cancellation e-mail is ENQUEUED here, inside the transaction, and sent below
+             * once it has committed. Inside is right for the record: if the stock release fails
+             * and the whole cancellation rolls back, the customer must not have been told their
+             * order was cancelled. Outside is right for the SEND: an SMTP round trip inside this
+             * transaction would hold the locks on the order and its products for seconds.
+             *
+             * `order-status-update.blade.php` already carries the cancelled copy in both
+             * languages -- the same template and the same trigger class as every forward move.
+             */
+            $mailIds = $this->mailer->statusChanged($orderId, 'cancelled');
+
             return [
                 'status' => 'cancelled',
                 'released' => ! $alreadyReleased,
                 'movements' => count($movements),
             ];
         });
+
+        $this->mailer->flush($mailIds);
+
+        return $result;
     }
 
     /**

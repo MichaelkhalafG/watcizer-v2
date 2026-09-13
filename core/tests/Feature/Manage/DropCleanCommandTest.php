@@ -3,6 +3,7 @@
 use App\Console\Commands\CoreChecksumCommand;
 use App\Console\Commands\CoreDropCleanCommand;
 use App\Transform\LegacySource;
+use App\Transform\Row;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -84,12 +85,49 @@ it('refuses, at the moment of acting, a list containing anything but transform o
     expect(true)->toBeTrue();
 });
 
-it('names the migration pattern it clears, and the pattern matches only core migrations', function () {
-    expect(CoreDropCleanCommand::MIGRATION_PATTERN)->toBe('2026_09_1%');
+it('clears EVERY ledger row, so every core migration re-runs after the drop', function () {
+    /*
+     * ── the test this replaced, and why ─────────────────────────────────────────────────────
+     *
+     * The previous version asserted that `MIGRATION_PATTERN` was `'2026_09_1%'` and then that the
+     * rows matching `'2026_09_1%'` started with `2026_09_1`. Both are true of any pattern and any
+     * data — a tautology — and it passed for a week while `2026_09_20` and `2026_09_21` sat
+     * outside the pattern and quietly stopped being re-run. The symptom was
+     * `integration_outbox.dedupe_key` vanishing on a rebuild while `migrate` said there was
+     * nothing to do: the UNIQUE index that makes an order e-mail exactly-once, gone in silence.
+     *
+     * So the property, not the implementation: a rebuild drops the 41 tables, therefore the
+     * ledger clear must cover EVERY row, whatever its name or date.
+     */
+    $total = T::int(DB::table('core_migrations')->count());
+    expect($total)->toBeGreaterThan(0, 'this test needs a populated ledger to say anything')
+        ->and(CoreDropCleanCommand::rowsToClear())->toBe($total);
+});
 
-    $matched = DB::table('core_migrations')->where('migration', 'like', CoreDropCleanCommand::MIGRATION_PATTERN)->pluck('migration');
-    expect($matched)->not->toBeEmpty();
-    foreach ($matched as $migration) {
-        expect(T::str($migration))->toStartWith('2026_09_1');
+it('has a file on disk for every migration the ledger claims has run', function () {
+    /*
+     * The other half: a row whose file is gone cannot be re-run at all, so a rebuild would leave
+     * whatever that migration created missing and report success. On a clean checkout the answer
+     * is always none — this catches a branch switch, a deleted migration, and a renamed one.
+     */
+    expect(CoreDropCleanCommand::ledgerRowsWithoutAFile())->toBe([]);
+});
+
+it('really has the column and index the mail outbox needs, AFTER a rebuild', function () {
+    /*
+     * The consequence of the bug above, asserted against the live schema rather than the
+     * migration's source: `dedupe_key` and its UNIQUE index are what make an order e-mail
+     * exactly-once (M1k), and they are on a table `core:drop-clean` drops every rehearsal.
+     */
+    expect(Schema::hasColumn('integration_outbox', 'dedupe_key'))->toBeTrue();
+
+    $unique = [];
+    foreach (DB::select('SHOW INDEX FROM `integration_outbox`') as $row) {
+        $index = Row::cast(T::row($row));
+        if (Row::str($index, 'Column_name') === 'dedupe_key' && Row::str($index, 'Non_unique') === '0') {
+            $unique[] = Row::str($index, 'Key_name');
+        }
     }
+
+    expect($unique)->toBe(['io_dedupe_uq'], 'the dedupe key must be UNIQUE, or a double click mails the customer twice');
 });

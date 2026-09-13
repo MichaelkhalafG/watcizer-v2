@@ -86,6 +86,26 @@ interface Finding {
     note: string | null;
 }
 
+/**
+ * One order e-mail: what it was, who it was for, and whether it got as far as the relay
+ * (prerequisite (a)). `status` is the outbox row's own — sent | pending | sending | failed |
+ * skipped — so a message still waiting for a retry and a message nobody will ever receive do not
+ * look the same on this screen.
+ */
+interface Notification {
+    id: number;
+    event: string;
+    kind: string;
+    kind_label: string;
+    recipient: string | null;
+    status: string;
+    attempts: number;
+    created_at: string | null;
+    processed_at: string | null;
+    available_at: string | null;
+    last_error: string | null;
+}
+
 interface Props {
     order: {
         id: number;
@@ -107,12 +127,35 @@ interface Props {
     address: { id: number; line: string | null; phone: string | null; phone_alt: string | null; city: string | null } | null;
     attempts: Attempt[];
     movements: Movement[];
+    /** Every order e-mail this order caused, newest first. */
+    notifications: Notification[];
     /** What the domain says may happen next — never computed here (see OrderFulfilment). */
     options: { advance: string[]; may_cancel: boolean };
     /** Payment callbacks that need a human decision (🔴-1). Open ones first. */
     findings: Finding[];
     abilities: { fulfil: boolean; cancel: boolean; settle: boolean; resolve_findings: boolean };
 }
+
+/**
+ * The tone of a notification row. `failed` is destructive because a failed notification is a real
+ * person who was not told something; `skipped` is merely neutral because there was nobody to tell
+ * (a guest order with no e-mail address), which is information, not a fault.
+ */
+const MAIL_TONE: Record<string, 'default' | 'neutral' | 'success' | 'warning' | 'destructive' | 'outline'> = {
+    sent: 'success',
+    pending: 'warning',
+    sending: 'warning',
+    failed: 'destructive',
+    skipped: 'neutral',
+};
+
+const MAIL_STATUS_LABEL: Record<string, string> = {
+    sent: 'تم الإرسال',
+    pending: 'في الانتظار',
+    sending: 'جاري الإرسال',
+    failed: 'فشل',
+    skipped: 'لا يوجد مستلم',
+};
 
 const STATUS_TONE: Record<string, 'default' | 'neutral' | 'success' | 'warning' | 'destructive' | 'outline'> = {
     pending: 'warning',
@@ -192,7 +235,17 @@ function Line({ label, children }: { label: string; children: ReactNode }) {
     );
 }
 
-export default function OrderShow({ order, items, address, attempts, movements, options, findings, abilities }: Props) {
+export default function OrderShow({
+    order,
+    items,
+    address,
+    attempts,
+    movements,
+    notifications,
+    options,
+    findings,
+    abilities,
+}: Props) {
     const { errors } = usePage<SharedProps>().props;
     const [note, setNote] = useState('');
     const [busy, setBusy] = useState(false);
@@ -670,6 +723,72 @@ export default function OrderShow({ order, items, address, attempts, movements, 
                             </div>
                             <p className="px-4 pb-4 text-xs text-muted-foreground">
                                 السجل للقراءة فقط: لا توجد شاشة ولا مسار يعدّله. كل سطر هنا كتبته خدمة المخزون.
+                            </p>
+                        </CardContent>
+                    </Card>
+
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>رسائل هذا الطلب ({notifications.length})</CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-3 p-0">
+                            <div className="overflow-x-auto">
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHead>الرسالة</TableHead>
+                                            <TableHead>المستلم</TableHead>
+                                            <TableHead>الحالة</TableHead>
+                                            <TableHead>المحاولات</TableHead>
+                                            <TableHead>التاريخ</TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {notifications.map((notification) => (
+                                            <TableRow key={notification.id}>
+                                                <TableCell>
+                                                    <div className="space-y-0.5">
+                                                        <div className="text-sm">{notification.kind_label}</div>
+                                                        <div className="text-xs text-muted-foreground" dir="ltr">
+                                                            {notification.event}
+                                                        </div>
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell className="text-xs" dir="ltr">
+                                                    {notification.recipient ?? '—'}
+                                                </TableCell>
+                                                <TableCell>
+                                                    <div className="space-y-0.5">
+                                                        <Badge variant={MAIL_TONE[notification.status] ?? 'outline'}>
+                                                            {MAIL_STATUS_LABEL[notification.status] ?? notification.status}
+                                                        </Badge>
+                                                        {notification.last_error !== null ? (
+                                                            <div className="max-w-xs text-xs break-words text-muted-foreground" dir="ltr">
+                                                                {notification.last_error}
+                                                            </div>
+                                                        ) : null}
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell dir="ltr">{notification.attempts}</TableCell>
+                                                <TableCell className="text-xs" dir="ltr">
+                                                    {notification.processed_at ?? notification.created_at ?? '—'}
+                                                </TableCell>
+                                            </TableRow>
+                                        ))}
+                                        {notifications.length === 0 ? (
+                                            <TableRow>
+                                                <TableCell colSpan={5} className="py-6 text-center text-sm text-muted-foreground">
+                                                    لم تُرسل أي رسالة عن هذا الطلب.
+                                                </TableCell>
+                                            </TableRow>
+                                        ) : null}
+                                    </TableBody>
+                                </Table>
+                            </div>
+                            <p className="px-4 pb-4 text-xs text-muted-foreground">
+                                الرسائل تُرسل فور تغيّر حالة الطلب. لو فشل الإرسال يبقى السطر في الانتظار ويعيد
+                                <span dir="ltr"> mail:drain </span>
+                                المحاولة كل دقيقة؛ و«فشل» يعني أن أحدًا لم يُبلَّغ ويحتاج تدخّلًا.
                             </p>
                         </CardContent>
                     </Card>

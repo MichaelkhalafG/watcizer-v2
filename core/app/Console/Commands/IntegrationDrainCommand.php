@@ -2,7 +2,7 @@
 
 namespace App\Console\Commands;
 
-use App\Compat\CompatCheckout;
+use App\Domain\Notifications\OrderMailer;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 
@@ -15,8 +15,10 @@ use Illuminate\Support\Facades\DB;
  * marks pending rows `skipped` once they are older than `--older-than` minutes, which keeps a
  * short window of fresh rows visible for debugging while bounding the backlog.
  *
- * It NEVER touches the `mail` channel: those rows record order e-mails core cannot yet send, and
- * skipping them would erase the record of what is owed. They are drained by the mail wave.
+ * It NEVER touches the `mail` channel. Those rows are order e-mail, and since prerequisite (a)
+ * (2026-09-13) they are the RECORD of what was sent to whom — marking one `skipped` would both
+ * erase that record and, for a row still `pending`, throw away a message a real person is waiting
+ * for. `mail:drain` owns that channel; this command refuses it by name.
  */
 final class IntegrationDrainCommand extends Command
 {
@@ -30,8 +32,8 @@ final class IntegrationDrainCommand extends Command
     public function handle(): int
     {
         $channel = (string) $this->option('channel');
-        if ($channel === CompatCheckout::MAIL_CHANNEL) {
-            $this->error('The `mail` channel records order e-mails core does not yet send; draining it would lose them.');
+        if ($channel === OrderMailer::CHANNEL) {
+            $this->error('The `mail` channel is order e-mail: a pending row is a message somebody is waiting for and a sent row is the record that it went out. Use `php artisan mail:drain` (and `mail:drain --report`).');
 
             return self::INVALID;
         }

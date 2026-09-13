@@ -6,6 +6,7 @@ namespace App\Http\Controllers\Payment;
 
 use App\Domain\Inventory\Actor;
 use App\Domain\Inventory\InventoryService;
+use App\Domain\Notifications\OrderMailer;
 use App\Domain\Payment\CallbackPolicy;
 use App\Domain\Payment\CallbackVerdict;
 use App\Domain\Payment\PaymobProvider;
@@ -63,6 +64,7 @@ final class PaymentCallbackController
     public function __construct(
         private readonly ProviderRegistry $registry,
         private readonly InventoryService $inventory,
+        private readonly OrderMailer $mailer,
     ) {}
 
     /**
@@ -228,6 +230,17 @@ final class PaymentCallbackController
              * The attempt row is built BEFORE the transaction, so the fallback below can still
              * write it when the transaction cannot commit.
              */
+            /*
+             * The mail rows the transaction below enqueues, sent after it commits.
+             *
+             * This handler sent NO order e-mail at all until 2026-09-13, and it is the one the
+             * switch makes live (`aliasIsLive()`): a card customer would have paid, had their
+             * order moved to `processing`, and been told nothing by anybody.
+             *
+             * @var list<int> $mailIds
+             */
+            $mailIds = [];
+
             $attemptRow = [
                 'order_id' => $orderId,
                 'provider' => $provider,
@@ -259,7 +272,7 @@ final class PaymentCallbackController
                  * Without it a deadlocked callback answered 500 and VANISHED: the provider had
                  * taken the money and the rollback removed every trace of the attempt.
                  */
-                DeadlockRetry::run(function () use ($provider, $verdict, $orderId, $amountMatches, $methodId, $storefrontId, $outcome, $orderStatus, $decision, $attemptRow): void {
+                DeadlockRetry::run(function () use ($provider, $verdict, $orderId, $amountMatches, $methodId, $storefrontId, $outcome, $orderStatus, $decision, $attemptRow, &$mailIds): void {
                     $now = now();
                     $attemptId = (int) DB::table('payment_statuses')->insertGetId($attemptRow + [
                         'created_at' => $now,
@@ -294,6 +307,15 @@ final class PaymentCallbackController
                             'paid_via_method' => $methodId['method'],
                             'updated_at' => now(),
                         ]);
+
+                        /*
+                         * The money arrived: the customer's confirmation and the admins'
+                         * notification, the same pair the legacy callback sends
+                         * (`sendOrderEmails($order, $isGuest, 'cash')`). Enqueued inside the
+                         * transaction so the obligation commits with the payment; sent after it,
+                         * because an SMTP round trip inside a transaction holds row locks.
+                         */
+                        $mailIds = $this->mailer->placed($orderId, notifyCustomer: true);
                     } elseif ($decision['action'] === CallbackPolicy::ACT_CANCEL) {
                         DB::table('orders')->where('id', $orderId)->update(['status' => 'cancelled', 'updated_at' => now()]);
                         // The ONE door for stock, even here (D-21): a failed payment returns the
@@ -346,6 +368,18 @@ final class PaymentCallbackController
                 // storm turns one deadlock into ten.
                 return response()->json(['message' => 'Recorded for reconciliation'], 200);
             }
+
+            /*
+             * Committed, so the payment is real -- now the e-mail. A relay failure here changes
+             * nothing about the payment or the order: the row stays pending and `mail:drain`
+             * retries it on the next minute's tick.
+             *
+             * Deliberately NOT sent on the ACT_CANCEL branch above: a failed payment cancels the
+             * order and returns its stock, and the legacy app sends no e-mail for that either.
+             * Whether a customer should be told their card was declined is a product decision,
+             * flagged rather than invented here.
+             */
+            $this->mailer->flush($mailIds);
 
             if (! $amountMatches) {
                 Log::error('payment callback: amount does not match the order total; order left untouched.', $context + [

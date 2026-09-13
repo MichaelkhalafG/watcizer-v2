@@ -9,6 +9,7 @@ use App\Domain\Inventory\Actor;
 use App\Domain\Inventory\InsufficientOfferStock;
 use App\Domain\Inventory\InsufficientStock;
 use App\Domain\Inventory\InventoryService;
+use App\Domain\Notifications\OrderMailer;
 use App\Domain\Payment\CallbackPolicy;
 use App\Http\Controllers\Controller;
 use App\Http\Middleware\CompatGuestCart;
@@ -41,6 +42,7 @@ class CheckoutCompatController extends Controller
     public function __construct(
         private readonly CompatServices $compat,
         private readonly InventoryService $inventory,
+        private readonly OrderMailer $mailer,
     ) {}
 
     /** POST add_order */
@@ -155,8 +157,21 @@ class CheckoutCompatController extends Controller
 
             DB::commit();
 
+            /*
+             * -- order e-mail (prerequisite (a), 2026-09-13) --------------------------------
+             *
+             * AFTER `DB::commit()`, exactly where the legacy app sends it (`sendOrderEmails()`:
+             * "this runs after DB::commit(), so the order is already safely persisted"). The
+             * condition is the legacy condition: only a COD or WhatsApp order mails at checkout,
+             * and only COD mails the CUSTOMER -- a card order tells the customer when the callback
+             * says the money arrived, not when they clicked pay.
+             *
+             * Nothing here can fail the request: `OrderMailer` records every outcome as an outbox
+             * row and throws at nobody. Until this line existed, core wrote a row saying the mail
+             * was owed and sent nothing.
+             */
             if (in_array($paymentMethod, ['cash', 'whatsapp'], true)) {
-                $this->compat->checkout->recordOwedMail($orderId, $paymentMethod === 'cash' ? ['customer', 'admin'] : ['admin'], $this->customerEmail($userId, $this->nullableString($request->input('guest_email'))));
+                $this->mailer->placedNow($orderId, notifyCustomer: $paymentMethod === 'cash');
             }
 
             if ($paymentMethod === 'paymob') {
@@ -241,6 +256,15 @@ class CheckoutCompatController extends Controller
             $payload = $input;
             $outcome = CallbackPolicy::outcomeFromPaymob($payload);
 
+            /*
+             * The mail rows the transaction below may enqueue. Declared out here because they are
+             * written INSIDE it and sent AFTER it: an SMTP round trip inside a transaction holds
+             * row locks for seconds, and a row marked `sent` inside a transaction that then rolls
+             * back is how a customer gets told twice.
+             *
+             * @var list<int> $mailIds
+             */
+            $mailIds = [];
             $order = $orderId === null ? null : $this->compat->checkout->order($orderId);
             $orderStatus = $order === null ? null : Row::str($order, 'status');
             $decision = CallbackPolicy::decide($outcome, $orderStatus ?? 'pending', $amountMismatch === null);
@@ -267,7 +291,7 @@ class CheckoutCompatController extends Controller
                  * deadlock against each other under concurrency. A deadlocked callback used to
                  * answer 500 with every trace of the attempt rolled back.
                  */
-                DeadlockRetry::run(function () use ($transactionId, $orderId, $amountMismatch, $order, $orderStatus, $outcome, $decision, $attemptRow): void {
+                DeadlockRetry::run(function () use ($transactionId, $orderId, $amountMismatch, $order, $orderStatus, $outcome, $decision, $attemptRow, &$mailIds): void {
                     $now = now();
                     $attemptId = (int) DB::table('payment_statuses')->insertGetId($attemptRow + [
                         'created_at' => $now,
@@ -293,7 +317,18 @@ class CheckoutCompatController extends Controller
 
                     if ($decision['action'] === CallbackPolicy::ACT_PAY) {
                         DB::table('orders')->where('id', $orderId)->update(['status' => 'processing', 'updated_at' => now()]);
-                        $this->compat->checkout->recordOwedMail($orderId, ['customer', 'admin'], $this->customerEmail(Row::nint($order, 'user_id'), Row::nstr($order, 'guest_email')));
+                        /*
+                         * ENQUEUED inside the transaction, SENT after it (see `$mailIds` below).
+                         * The obligation commits with the payment or rolls back with it -- an order
+                         * whose payment row vanished must not have told the customer it arrived --
+                         * and the SMTP round trip happens outside, where it holds no row locks.
+                         *
+                         * The legacy app calls `sendOrderEmails($order, $isGuest, 'cash')` here,
+                         * i.e. customer AND admins, which is why `notifyCustomer` is true: the
+                         * money is in, so this is the same confirmation a COD shopper gets at
+                         * checkout.
+                         */
+                        $mailIds = $this->mailer->placed($orderId, notifyCustomer: true);
                     } elseif ($decision['action'] === CallbackPolicy::ACT_CANCEL) {
                         DB::table('orders')->where('id', $orderId)->update(['status' => 'cancelled', 'updated_at' => now()]);
                         $this->inventory->releaseOrder($orderId, 'payment_failed', Actor::system(), $this->compat->storefrontId);
@@ -341,6 +376,17 @@ class CheckoutCompatController extends Controller
                 // contention: the money is on record and a human has been handed the discrepancy.
                 return response()->json(['message' => 'Recorded for reconciliation'], 200);
             }
+
+            /*
+             * The transaction committed, so the order really is paid -- NOW the e-mail goes.
+             *
+             * Deliberately outside the `try` above and before the redirect: a shopper coming back
+             * from Paymob should not wait on a relay, but they should not be redirected before the
+             * attempt is made either, because inline sending is what makes the confirmation arrive
+             * while they are still looking at the thank-you page. A failure here costs the shopper
+             * nothing -- the row stays pending and the cron retries.
+             */
+            $this->mailer->flush($mailIds);
 
             if ($amountMismatch !== null) {
                 Log::error('Paymob callback amount does not match the order total; order left untouched.', $amountMismatch);
@@ -540,16 +586,6 @@ class CheckoutCompatController extends Controller
             'country' => 'Egypt',
             'email' => $email,
         ];
-    }
-
-    private function customerEmail(?int $userId, ?string $guestEmail): ?string
-    {
-        if ($userId === null) {
-            return $guestEmail;
-        }
-        $email = DB::table('users')->where('id', $userId)->value('email');
-
-        return is_string($email) ? $email : null;
     }
 
     private function guestToken(Request $request): ?string

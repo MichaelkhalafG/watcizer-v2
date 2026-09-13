@@ -413,7 +413,21 @@ it('refuses an empty order without creating an address', function () {
     expect(DB::table('addresses')->count())->toBe($addresses);
 });
 
-it('records the order e-mail core cannot yet send instead of dropping it', function () {
+it('records one mail row per RECIPIENT when an order is placed', function () {
+    /*
+     * ── what this test used to assert, and why it changed ───────────────────────────────────
+     *
+     * Until 2026-09-13 core could not render the legacy mailables, so `add_order` wrote ONE
+     * placeholder outbox row per order carrying a `kinds` list and the customer's address — a
+     * record of what was OWED (switch-night prerequisite (a)). The prerequisite is now met: the
+     * templates are ported and `App\Domain\Notifications\OrderMailer` sends, so the table holds
+     * one row per MESSAGE and says who it went to.
+     *
+     * The recipient list is set here rather than read from `.env`, so the expected count is a
+     * property of this test and not of the machine running it.
+     */
+    config(['notifications.admin_emails' => ['ops@watchizer.test', 'boss@watchizer.test']]);
+
     $token = (string) Str::uuid();
     $product = cartProduct();
     $city = shippingCity();
@@ -425,12 +439,33 @@ it('records the order e-mail core cannot yet send instead of dropping it', funct
         'items' => [['product_id' => $product['id'], 'quantity' => 1, 'piece_price' => $product['price'], 'total_price' => $product['price'], 'type_stock' => 'Express']],
     ])->assertOk();
 
-    $row = T::row(DB::table('integration_outbox')->where('channel', 'mail')->orderByDesc('id')->first());
-    $payload = T::arr(json_decode(Row::str($row, 'payload'), true));
-    expect(Row::str($row, 'event'))->toBe('order.placed')
-        ->and(Row::str($row, 'status'))->toBe('pending')
-        ->and($payload['kinds'])->toBe(['customer', 'admin'])
-        ->and($payload['customer_email'])->toBe('guest@example.test');
+    $orderId = T::int(DB::table('orders')->orderByDesc('id')->value('id'));
+    $rows = DB::table('integration_outbox')
+        ->where('channel', 'mail')->where('aggregate_id', $orderId)->orderBy('id')->get();
+
+    // A COD order tells the customer and both admins — three messages, no more, no fewer.
+    expect($rows)->toHaveCount(3);
+
+    $told = [];
+    foreach ($rows as $raw) {
+        $row = Row::cast(T::row($raw));
+        $payload = T::arr(json_decode(Row::str($row, 'payload'), true));
+        expect(Row::str($row, 'event'))->toBe('order.placed');
+        $told[T::str($payload['kind'])][] = T::str($payload['recipient']);
+    }
+
+    expect($told['customer_confirmation'])->toBe(['guest@example.test'])
+        ->and($told['admin_notification'])->toEqualCanonicalizing(['ops@watchizer.test', 'boss@watchizer.test']);
+
+    /*
+     * The rows are still `pending` here, and that is the production rule working: the suite wraps
+     * every test in a transaction and `OrderMailer::flush()` refuses to send inside one (a row
+     * marked sent inside a transaction that rolls back is a message the retry sends twice).
+     * `OrderMailTransactionGuardTest` holds that rule; `OrderMailTriggersTest` holds the send.
+     */
+    foreach ($rows as $raw) {
+        expect(Row::str(Row::cast(T::row($raw)), 'status'))->toBe('pending');
+    }
 });
 
 it('rejects a Paymob callback whose HMAC does not verify, before touching any order', function () {

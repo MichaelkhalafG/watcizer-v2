@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Manage;
 use App\Domain\Access\Role;
 use App\Domain\Access\Roles;
 use App\Domain\Inventory\Actor;
+use App\Domain\Notifications\OrderMailer;
 use App\Domain\Orders\OrderFulfilment;
 use App\Domain\Payment\CallbackPolicy;
 use App\Support\Coerce;
@@ -198,6 +199,15 @@ final class OrderController
             // The ledger rows this order caused — the reservation AND any release. This is what
             // makes "cancel returned the stock" visible to a human instead of asserted in a test.
             'movements' => self::movements($order),
+            /*
+             * What this order e-mailed, to whom, and whether it got there (prerequisite (a)).
+             *
+             * On the ORDER screen because "did the customer get told?" is asked about ONE order,
+             * on the telephone, while somebody waits. The global queue view is
+             * `php artisan mail:drain --report`, which exits non-zero while anything is failed —
+             * the same split as findings: per-order here, a loud list there.
+             */
+            'notifications' => OrderMailer::forOrder($order),
             'options' => OrderFulfilment::options($status),
             // The callbacks that need a human (🔴-1). On the ORDER screen because that is where
             // someone can actually judge one; `php artisan payments:findings` is the queue view,
