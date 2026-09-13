@@ -116,10 +116,16 @@
                                                         <span class="badge rounded-pill text-bg-warning">Pending</span>
                                                     @elseif ($item->status == 'processing')
                                                         <span class="badge rounded-pill text-bg-secondary">Processing</span>
+                                                    @elseif ($item->status == 'shipped')
+                                                        <span class="badge rounded-pill text-bg-info">Shipped</span>
+                                                    @elseif ($item->status == 'delivered')
+                                                        <span class="badge rounded-pill text-bg-success">Delivered</span>
                                                     @elseif ($item->status == 'completed')
                                                         <span class="badge rounded-pill text-bg-success">Completed</span>
-                                                    @else
+                                                    @elseif ($item->status == 'cancelled')
                                                         <span class="badge rounded-pill text-bg-danger">Cancelled</span>
+                                                    @else
+                                                        <span class="badge rounded-pill text-bg-dark">{{ $item->status }}</span>
                                                     @endif
                                                 </td>
                                                 <td>

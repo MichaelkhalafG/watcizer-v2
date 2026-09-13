@@ -6,6 +6,7 @@ use App\Http\Controllers\Compat\CatalogCompatController;
 use App\Http\Controllers\Compat\CheckoutCompatController;
 use App\Http\Controllers\Compat\GoneController;
 use App\Http\Controllers\Compat\ProxyController;
+use App\Http\Controllers\Payment\PaymentCallbackController;
 use App\Http\Controllers\V2\CategoryController;
 use App\Http\Controllers\V2\MetaController;
 use App\Http\Controllers\V2\ProductController;
@@ -82,9 +83,32 @@ Route::middleware('api.code')->group(function (): void {
         Route::get($path, GoneController::class);
     }
 });
-// Paymob calls this one; it carries no Api-Code header, and the legacy app registers it
-// OUTSIDE the CheckApi group for that reason. HMAC is the authentication.
-Route::get('callback_payment', [CheckoutCompatController::class, 'callbackPayment']);
+/*
+ * ── payment callbacks (wave 4C, study §3.9.2) ────────────────────────────────────────────────
+ *
+ * The only unauthenticated routes on this host, and they cannot be otherwise: a payment provider
+ * cannot send an `Api-Code` header this application invented. The SIGNATURE is the authentication,
+ * verified against the resolved contract's own secret — so two storefronts holding two Paymob
+ * accounts cannot validate each other's callbacks.
+ *
+ * The scoped route is the one every NEW storefront, provider and method is registered with. The
+ * alias below is Watchizer's existing Paymob URL, kept permanently, because that URL lives in the
+ * merchant portal against an integration id and changing it has no atomic cutover: a transaction in
+ * flight at that moment would call back to the old address, leaving money taken and an order with
+ * nobody to confirm it. Both run the SAME four checks in the SAME controller.
+ */
+Route::get('pay/{storefront}/{provider}/callback', [PaymentCallbackController::class, 'handle'])
+    ->where('storefront', '[a-z0-9-]{2,32}')
+    ->where('provider', '[a-z0-9_]{2,32}')
+    ->name('pay.callback');
+
+/*
+ * Watchizer's EXISTING Paymob URL. It resolves (storefront 1, paymob) and runs the same four
+ * checks — but only once that contract holds credentials. Until the runbook's `.env`-to-table
+ * step is performed it falls through to the wave-3 handler, so today's live callback behaves
+ * exactly as it does today. See PaymentCallbackController::alias().
+ */
+Route::get('callback_payment', [PaymentCallbackController::class, 'alias'])->name('pay.callback.alias');
 
 Route::any('categories/{any}', GoneController::class)->where('any', '.*');
 

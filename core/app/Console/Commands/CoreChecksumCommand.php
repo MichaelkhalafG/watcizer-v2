@@ -71,6 +71,23 @@ final class CoreChecksumCommand extends Command
      */
     public const DASHBOARD_TABLES = [
         'storefronts', 'storefront_banners', 'core_user_roles',
+        /*
+         * The payments seam joins this list in wave 4C (AGENTS §2.20, study §3.9).
+         *
+         * These three tables hold something no transform can regenerate: the merchant's CONTRACTS
+         * — encrypted credentials, integration ids, the labels the customer reads and the order the
+         * admin dragged them into. Dropping them on switch night would take the storefront's
+         * ability to accept money with it, and re-entering credentials at 02:00 from a portal
+         * nobody is logged into is not a recovery plan. They are authored in the dashboard and
+         * only in the dashboard, so they belong beside `storefronts` and `core_user_roles` rather
+         * than beside transform output.
+         */
+        'storefront_payment_providers', 'storefront_payment_methods',
+        'storefront_payment_method_translations',
+        // An unresolved money finding must not be erased by a rebuild (review 🔴-1): it is the
+        // record that a callback needs a human, and switch night drops and rebuilds everything
+        // in CLEAN_TABLES.
+        'payment_reconciliation_findings',
     ];
 
     /**

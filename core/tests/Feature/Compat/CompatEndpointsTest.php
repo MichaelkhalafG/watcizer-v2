@@ -251,11 +251,31 @@ it('answers all twelve wave-3 paths itself, and forwards none of them', function
         ['POST', '/api/add_order'], ['GET', '/api/callback_payment'], ['GET', '/api/me/orders'],
         ['GET', '/api/me/addresses'], ['DELETE', '/api/me/addresses/1'], ['POST', '/api/add_address'],
     ];
+    /*
+     * Eleven resolve to a compat controller. `callback_payment` resolves to wave 4C's
+     * `PaymentCallbackController@alias`, which owns Watchizer's existing Paymob URL and delegates
+     * to the wave-3 handler until that contract holds credentials (study §3.9.2). It is named here
+     * as an EXPECTED owner rather than loosening the rule for all twelve, so a path that drifted
+     * onto some other controller still fails.
+     */
+    $expectedOwners = ['GET /api/callback_payment' => 'Payment\\PaymentCallbackController@alias'];
+
     foreach ($paths as [$method, $path]) {
         $route = app('router')->getRoutes()->match(Request::create($path, $method));
         $action = $route->getActionName();
         $where = "{$method} {$path} => {$action}";
-        expect($where)->toContain('Compat\\')->and($where)->not->toContain('ProxyController');
+
+        // A 404 here would mean the proxy catch-all swallowed the path, which is how a "moved"
+        // route silently stays on the legacy host.
+        expect($where)->not->toContain('ProxyController');
+
+        $owner = $expectedOwners["{$method} {$path}"] ?? null;
+        if ($owner !== null) {
+            expect($where)->toContain($owner);
+
+            continue;
+        }
+        expect($where)->toContain('Compat\\');
     }
 
     Http::assertNothingSent();

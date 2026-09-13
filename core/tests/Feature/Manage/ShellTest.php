@@ -72,22 +72,35 @@ it('gives an admin the settings group and a data-entry user none of it', functio
 it('marks unbuilt screens with their wave instead of linking to them', function () {
     $byKey = Props::navItems(actingAs(Staff::admin())->get('/manage'));
 
-    expect($byKey['orders']['wave'])->toBe('4C')
-        ->and($byKey['orders']['href'])->toBeNull('a stub must not link anywhere')
-        ->and($byKey['payments']['wave'])->toBe('4D')
-        ->and($byKey['users']['wave'])->toBe('4C', 'the users-and-roles screen moved to 4C on 2026-09-11')
+    // Offers, banners and blogs are the one remaining stub: they were NOT in the 4C brief, so the
+    // badge moved to 4D rather than keeping a wave the screen missed.
+    expect($byKey['legacy-content']['wave'])->toBe('4D')
+        ->and($byKey['legacy-content']['href'])->toBeNull('a stub must not link anywhere')
         // …and what IS built has a link and no wave badge.
         ->and($byKey['storefronts']['href'])->not->toBeNull()
         ->and($byKey['storefronts']['wave'])->toBeNull()
         ->and($byKey['home']['active'])->toBeTrue();
 
-    // Wave 4B turned four stubs into screens, so the assertion flips for them: a built item MUST
-    // carry a link and MUST NOT carry a wave badge. This is the test that would have caught a
-    // shipped screen the sidebar still calls "coming in 4B".
-    foreach (['products', 'categories', 'placement', 'lookups'] as $built) {
-        expect($byKey[$built]['wave'])->toBeNull("{$built} is built in 4B and must not still be a stub")
+    // Wave 4B turned four stubs into screens and wave 4C turned four more, so the assertion flips
+    // for them: a built item MUST carry a link and MUST NOT carry a wave badge. This is the test
+    // that would have caught a shipped screen the sidebar still calls "coming in 4B".
+    foreach (['products', 'categories', 'placement', 'lookups', 'orders', 'inventory', 'users', 'payments'] as $built) {
+        expect($byKey[$built]['wave'])->toBeNull("{$built} is built and must not still be a stub")
             ->and($byKey[$built]['href'])->not->toBeNull("{$built} must link somewhere");
     }
+
+    // The shop-floor items are deliberately NOT storefront-scoped (one queue, filtered), while
+    // payments is — "which account takes this money" is a per-storefront question, and a link that
+    // dropped the segment would 404 on every click.
+    // Compared on the PATH, not the absolute URL: the host comes from APP_URL and carries a port
+    // in some environments, which is not what these assertions are about.
+    expect($byKey['orders']['href'])->toEndWith('/manage/orders')
+        ->and($byKey['orders']['href'])->not->toContain('/storefronts/')
+        ->and($byKey['inventory']['href'])->toEndWith('/manage/inventory')
+        ->and($byKey['inventory']['href'])->not->toContain('/storefronts/')
+        ->and($byKey['users']['href'])->toEndWith('/manage/users')
+        ->and($byKey['payments']['href'])->toContain('/manage/storefronts/')
+        ->and($byKey['payments']['href'])->toEndWith('/payments');
 
     // The storefront-scoped links carry the storefront segment: a nav link that dropped it would
     // 404 on every click (the scope middleware needs the id to check the grant).

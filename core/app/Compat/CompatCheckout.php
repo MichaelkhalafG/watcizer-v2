@@ -143,6 +143,25 @@ final class CompatCheckout
         $orderId = (int) DB::table('orders')->insertGetId([
             'user_id' => $userId,
             'address_id' => $addressId,
+            /*
+             * The storefront this layer is pinned to (`config('compat.storefront_id')`, injected
+             * above). It was already being handed to `commitOrder()` below, so the LEDGER has
+             * recorded it since wave 3 while the order row it belongs to said NULL — wave 4C then
+             * added this column, the payment callback started reading it, and nothing wrote it.
+             *
+             * That made the callback's ownership check (study §3.9.2 check 3) effectively
+             * single-storefront: every order was NULL, NULL is accepted only for the primary
+             * storefront, so the day Brand Fashion holds its own Paymob contract a BF order would
+             * have been accepted against WATCHIZER's credentials — the exact cross-storefront
+             * acceptance the two-level payment design exists to prevent.
+             *
+             * Not from the request host and not from a path segment: this layer answers the legacy
+             * paths, which carry no storefront anywhere, and every builder in `CompatServices` is
+             * constructed with this same value. A v2 checkout will take it from its
+             * `/api/v2/{storefront}/…` segment instead, and the column then means the same thing on
+             * both paths (developer decision 2026-09-13).
+             */
+            'storefront_id' => $this->storefrontId,
             'total_price_for_order' => $total,
             'payment_method' => $paymentMethod,
             'order_number' => $this->nextOrderNumber(),

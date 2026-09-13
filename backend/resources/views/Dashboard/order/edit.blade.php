@@ -35,6 +35,8 @@
                                     <select name="status" id="status" class="form-select">
                                         <option value="pending" @selected(old('status' , $order->status) == 'pending')>pending</option>
                                         <option value="processing" @selected(old('status' , $order->status) == 'processing')>processing</option>
+                                        <option value="shipped" @selected(old('status' , $order->status) == 'shipped')>shipped</option>
+                                        <option value="delivered" @selected(old('status' , $order->status) == 'delivered')>delivered</option>
                                         <option value="completed" @selected(old('status' , $order->status) == 'completed')>completed</option>
                                         <option value="cancelled" @selected(old('status' , $order->status) == 'cancelled')>cancelled</option>
                                     </select>

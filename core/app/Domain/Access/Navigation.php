@@ -66,9 +66,15 @@ final class Navigation
                 'key' => 'operations',
                 'label' => 'التشغيل',
                 'items' => [
-                    self::item('orders', 'الطلبات', 'ShoppingCart', Role::VIEW_ORDERS, wave: '4C'),
-                    self::item('inventory', 'المخزون', 'Boxes', Role::MANAGE_INVENTORY, wave: '4C'),
-                    self::item('legacy-content', 'العروض والبانرات والمقالات', 'Megaphone', Role::MANAGE_LEGACY_CONTENT, wave: '4C'),
+                    // Wave 4C, built. Neither names a storefront in its URL: the team works ONE
+                    // order queue and ONE stock list and filters them, because partitioning the
+                    // shop floor by storefront would mean two tabs to run one day.
+                    self::item('orders', 'الطلبات', 'ShoppingCart', Role::VIEW_ORDERS, route: 'manage.orders.index'),
+                    self::item('inventory', 'المخزون', 'Boxes', Role::MANAGE_INVENTORY, route: 'manage.inventory.index'),
+                    // Still a stub: offers, banners and blogs were NOT in the 4C brief (orders,
+                    // inventory, users-and-roles and payments were), so the badge says 4D rather
+                    // than keeping a wave number the screen missed.
+                    self::item('legacy-content', 'العروض والبانرات والمقالات', 'Megaphone', Role::MANAGE_LEGACY_CONTENT, wave: '4D'),
                 ],
             ],
             [
@@ -76,8 +82,11 @@ final class Navigation
                 'label' => 'الإعدادات',
                 'items' => [
                     self::item('storefronts', 'المتاجر', 'Store', Role::MANAGE_STOREFRONTS, route: 'manage.storefronts.index'),
-                    self::item('users', 'المستخدمون والصلاحيات', 'Users', Role::MANAGE_USERS, wave: '4C'),
-                    self::item('payments', 'وسائل الدفع', 'CreditCard', Role::MANAGE_PAYMENTS, wave: '4D'),
+                    self::item('users', 'المستخدمون والصلاحيات', 'Users', Role::MANAGE_USERS, route: 'manage.users.index'),
+                    // Payments ARE per-storefront — "which account takes this money" is a
+                    // per-storefront question — so this link carries the segment like the catalog
+                    // ones do, and the scope middleware checks the grant behind it.
+                    self::item('payments', 'وسائل الدفع', 'CreditCard', Role::MANAGE_PAYMENTS, route: 'manage.payments.index', params: ['storefront' => $storefrontId]),
                 ],
             ],
         ];

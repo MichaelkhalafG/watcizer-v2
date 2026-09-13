@@ -8,3 +8,9 @@ parameters:
         - routes
         - tests
     level: 10
+    # The memory limit lives in CONFIG now, via the bootstrap file: PHPStan has no parameter for it,
+    # and every run in this repo's notes carried `--memory-limit=1G` by hand — so a run WITHOUT the
+    # flag died at the default and looked like a broken codebase rather than a broken command.
+    bootstrapFiles:
+        - phpstan-bootstrap.php
+

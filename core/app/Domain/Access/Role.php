@@ -49,15 +49,25 @@ enum Role: string
     /*
      * Orders are THREE abilities, not one (developer decision 2026-09-11, AGENTS §2.7).
      *
-     * Data-entry runs the shop day to day: they need to see an order and move it along
-     * (processing → shipped). What they must not do is the part that moves MONEY and STOCK back —
-     * a cancellation returns units to the ledger and a refund is a financial act. Splitting the
-     * ability is the only way to express that; a single `manage-orders` would have forced the
+     * Data-entry runs the shop day to day: they need to see an order and move it along the whole
+     * fulfilment flow — **pending → processing → shipped → delivered → completed** since the enum
+     * was widened on 2026-09-12. What they must not do is the part that moves MONEY and STOCK
+     * back — a cancellation returns units to the ledger and a refund is a financial act. Splitting
+     * the ability is the only way to express that; a single `manage-orders` would have forced the
      * choice between "cannot work" and "can refund".
+     *
+     * **DECIDED 2026-09-13: `delivered → completed` stays HERE, with data-entry.** `completed` means
+     * CLOSED, and it is `delivered` — not `completed` — that ends the cancel path
+     * (`OrderFulfilment::UNCANCELLABLE`), because once the customer has the goods what follows is a
+     * return. So closing an order carries no consequence that delivering it had not already
+     * carried, and gating it would have queued every order behind an administrator for no safety
+     * gain. `OrderStatusFlowTest` states this rule, so a future change to it cannot pass unnoticed.
+     * If an admin lever after delivery is ever wanted, the cheaper shape is to let `cancel-orders`
+     * cancel a `delivered` order too and then gate `completed` — one decision, not two.
      */
     public const VIEW_ORDERS = 'view-orders';                     // read an order, its lines, its history (4C)
 
-    public const MANAGE_ORDER_FULFILMENT = 'manage-order-fulfilment'; // processing → shipped (4C)
+    public const MANAGE_ORDER_FULFILMENT = 'manage-order-fulfilment'; // pending → … → completed (4C)
 
     public const CANCEL_ORDERS = 'cancel-orders';                 // cancel + refund: money and stock (4C, admin only)
 
