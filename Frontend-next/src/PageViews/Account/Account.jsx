@@ -128,9 +128,13 @@ const Avatar = ({ src, first, last, size }) => (
 
 const StatusBadge = ({ status, isRTL }) => {
   const s = (status || 'pending').toLowerCase()
+  // `shipped` and `delivered` were added to the orders enum on 2026-09-12. Without them here the
+  // fallback below rendered the raw English value to an Arabic customer.
   const label = {
     pending: isRTL ? 'قيد الانتظار' : 'Pending',
     processing: isRTL ? 'قيد التنفيذ' : 'Processing',
+    shipped: isRTL ? 'تم الشحن' : 'Shipped',
+    delivered: isRTL ? 'تم التوصيل' : 'Delivered',
     completed: isRTL ? 'مكتمل' : 'Completed',
     cancelled: isRTL ? 'ملغي' : 'Cancelled',
   }

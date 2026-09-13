@@ -24,7 +24,9 @@ class ReportController extends Controller
         $request->validate([
             'start_date' => 'nullable|date',
             'end_date'   => 'nullable|date|after_or_equal:start_date',
-            'status'     => 'nullable|string|in:pending,processing,completed,cancelled',
+            // Same list as the status-update validator (2026-09-12); without the two new values a
+            // report could not be FILTERED by them, which is the same half-measure in a second place.
+            'status'     => 'nullable|string|in:pending,processing,shipped,delivered,completed,cancelled',
             'user'       => 'nullable|integer|exists:users,id',
         ]);
 

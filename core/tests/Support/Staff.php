@@ -44,6 +44,22 @@ final class Staff
         return $user;
     }
 
+    /**
+     * An ADMIN grant scoped to ONE storefront — the case wave 4C needs for the payment screens.
+     *
+     * An administrator is not necessarily an administrator everywhere: a scoped admin grant holds
+     * every ability inside its storefront and must answer 404 outside it, because "which account
+     * takes this money" is a per-storefront question and the wrong answer routes real money.
+     */
+    public static function adminFor(int $storefrontId): User
+    {
+        $user = self::nth(0);
+        self::clear($user);
+        app(Roles::class)->assign($user, Role::Admin, $storefrontId);
+
+        return $user;
+    }
+
     /** A data-entry grant scoped to ONE storefront, for the scope tests. */
     public static function dataEntryFor(int $storefrontId): User
     {

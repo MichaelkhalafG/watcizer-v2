@@ -44,10 +44,27 @@ it('keeps every dashboard-authored table out of the drop list', function () {
     );
 });
 
-it('names the three tables the dashboard authors today', function () {
-    // A change to this list is a decision, so it should fail a test rather than pass silently.
-    // 4C adds the payment provider/method tables here (§3.9.1).
-    expect(CoreChecksumCommand::DASHBOARD_TABLES)->toBe(['storefronts', 'storefront_banners', 'core_user_roles']);
+it('names the SEVEN tables the dashboard authors today', function () {
+    /*
+     * A change to this list is a decision, so it fails a test rather than passing silently — which
+     * is exactly what happened on 2026-09-13 when the findings table was added.
+     *
+     * Wave 4C added the three payments tables (§3.9.1): they hold the merchant's CONTRACTS —
+     * encrypted credentials, integration ids, customer-facing labels and the order the admin
+     * dragged them into — and no transform can regenerate any of it. Dropping them on switch
+     * night would take the storefront's ability to take money with it.
+     *
+     * The review's 🔴-1 added `payment_reconciliation_findings` for the same reason in a different
+     * currency: an unresolved finding is the record that a callback and an order disagree about
+     * MONEY and that nobody has judged it yet. A rebuild that erased it would erase the only
+     * evidence that a refund, a double charge or a decline-after-payment ever arrived.
+     */
+    expect(CoreChecksumCommand::DASHBOARD_TABLES)->toBe([
+        'storefronts', 'storefront_banners', 'core_user_roles',
+        'storefront_payment_providers', 'storefront_payment_methods',
+        'storefront_payment_method_translations',
+        'payment_reconciliation_findings',
+    ]);
 
     foreach (CoreChecksumCommand::DASHBOARD_TABLES as $table) {
         expect(Schema::hasTable($table))->toBeTrue("{$table} does not exist, so the exclusion above is about nothing");

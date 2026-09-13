@@ -5,12 +5,16 @@ use App\Http\Controllers\Compat\SitemapCompatController;
 use App\Http\Controllers\Manage\Auth\LoginController;
 use App\Http\Controllers\Manage\CategoryController;
 use App\Http\Controllers\Manage\HomeController;
+use App\Http\Controllers\Manage\InventoryController;
 use App\Http\Controllers\Manage\LookupController;
 use App\Http\Controllers\Manage\MediaController;
+use App\Http\Controllers\Manage\OrderController;
+use App\Http\Controllers\Manage\PaymentSettingsController;
 use App\Http\Controllers\Manage\PlacementController;
 use App\Http\Controllers\Manage\ProductController;
 use App\Http\Controllers\Manage\ProductVariantController;
 use App\Http\Controllers\Manage\StorefrontController;
+use App\Http\Controllers\Manage\UserRoleController;
 use App\Http\Middleware\EnsureDashboardAccess;
 use App\Http\Middleware\EnsureStorefrontScope;
 use App\Http\Middleware\HandleInertiaRequests;
@@ -122,6 +126,106 @@ Route::prefix('manage')->name('manage.')->group(function (): void {
             Route::put('storefronts/{storefront}/placement/{product}', [PlacementController::class, 'update'])->name('placement.update');
             Route::post('storefronts/{storefront}/placement/bulk', [PlacementController::class, 'bulk'])->name('placement.bulk');
             Route::post('storefronts/{storefront}/placement/category/{category}/sort', [PlacementController::class, 'sort'])->name('placement.sort');
+        });
+
+        /*
+        |--------------------------------------------------------------------------
+        | Wave 4C — the shop floor: orders, inventory, users, payments
+        |--------------------------------------------------------------------------
+        |
+        | ORDERS are three abilities and not one (AGENTS 2.7). Reading an order and
+        | moving it forward are the day job; CANCELLING moves money and returns stock
+        | to the ledger, so it is admin-only. The split is on the ROUTES, which is
+        | what makes it provable by direct HTTP rather than by a hidden menu --
+        | OrderAuthorizationTest posts every one of these as data-entry.
+        |
+        | {order} is constrained to digits so orders/export/settlement cannot be
+        | swallowed by it, and the export is gated on manage-payments: a settlement
+        | file is payment reconciliation, not shop-floor work.
+        |
+        | No {storefront} segment. An order belongs to a storefront through a column
+        | added in this wave, but the SCREEN is cross-storefront by design -- the team
+        | works one queue, filtered -- and inventing a path segment would imply orders
+        | are partitioned when they are not.
+        */
+        Route::middleware('can:'.Role::VIEW_ORDERS)->group(function (): void {
+            Route::get('orders', [OrderController::class, 'index'])->name('orders.index');
+            Route::get('orders/{order}', [OrderController::class, 'show'])
+                ->where('order', '[0-9]+')->name('orders.show');
+        });
+
+        Route::put('orders/{order}/status', [OrderController::class, 'advance'])
+            ->where('order', '[0-9]+')
+            ->middleware('can:'.Role::MANAGE_ORDER_FULFILMENT)->name('orders.advance');
+
+        // Cancel: money and stock. Admin only, and the stock return goes through
+        // InventoryService inside OrderFulfilment::cancel() -- never a column write.
+        Route::post('orders/{order}/cancel', [OrderController::class, 'cancel'])
+            ->where('order', '[0-9]+')
+            ->middleware('can:'.Role::CANCEL_ORDERS)->name('orders.cancel');
+
+        // Clearing a payment finding is MONEY work, so it sits behind manage-payments rather
+        // than the fulfilment ability (review 🔴-1, 2026-09-13).
+        Route::post('orders/{order}/findings/{finding}/resolve', [OrderController::class, 'resolveFinding'])
+            ->where('order', '[0-9]+')->where('finding', '[0-9]+')
+            ->middleware('can:'.Role::MANAGE_PAYMENTS)->name('orders.findings.resolve');
+
+        // The settlement CSV (3.9.6): one row per payment ATTEMPT, seven columns.
+        Route::get('orders/export/settlement', [OrderController::class, 'settlement'])
+            ->middleware('can:'.Role::MANAGE_PAYMENTS)->name('orders.settlement');
+
+        /*
+        | INVENTORY. Data-entry adjusts stock (2.7) and every movement goes through
+        | InventoryService -- the screen cannot write a column and neither can anyone
+        | else (AGENTS 3). The LEDGER is read-only for every role: there is no route
+        | that edits or deletes a movement, and InventoryAuthorizationTest asserts
+        | the absence rather than trusting it.
+        */
+        Route::middleware('can:'.Role::MANAGE_INVENTORY)->group(function (): void {
+            Route::get('inventory', [InventoryController::class, 'index'])->name('inventory.index');
+            Route::get('inventory/ledger', [InventoryController::class, 'ledger'])->name('inventory.ledger');
+            Route::get('inventory/reconciliation', [InventoryController::class, 'reconciliation'])->name('inventory.reconciliation');
+            Route::post('inventory/adjust', [InventoryController::class, 'adjust'])->name('inventory.adjust');
+        });
+
+        /*
+        | USERS AND ROLES -- admin only, promised in 4A. Grants ONLY: this screen never
+        | creates, edits or deletes a row in the shared users table (AGENTS 3), it
+        | writes core_user_roles. The artisan command stays the bootstrap path, for
+        | the case where nobody has a grant yet and therefore nobody can open this.
+        */
+        Route::middleware('can:'.Role::MANAGE_USERS)->group(function (): void {
+            Route::get('users', [UserRoleController::class, 'index'])->name('users.index');
+            Route::post('users/grants', [UserRoleController::class, 'store'])->name('users.grants.store');
+            Route::delete('users/grants/{grant}', [UserRoleController::class, 'destroy'])
+                ->where('grant', '[0-9]+')->name('users.grants.destroy');
+        });
+
+        /*
+        | PAYMENTS -- admin only (3.9.7), scoped to one storefront at a time, never a
+        | global cross-storefront list. Credential fields are WRITE-ONLY everywhere
+        | below: they render empty, blank means "keep", and no stored secret is ever
+        | put in a prop (PaymentSecrecyTest).
+        */
+        Route::middleware([
+            'can:'.Role::MANAGE_PAYMENTS,
+            EnsureStorefrontScope::with(Role::MANAGE_PAYMENTS),
+        ])->group(function (): void {
+            Route::get('storefronts/{storefront}/payments', [PaymentSettingsController::class, 'index'])->name('payments.index');
+            Route::post('storefronts/{storefront}/payments/providers', [PaymentSettingsController::class, 'storeProvider'])->name('payments.providers.store');
+            Route::put('storefronts/{storefront}/payments/providers/{provider}', [PaymentSettingsController::class, 'updateProvider'])
+                ->where('provider', '[0-9]+')->name('payments.providers.update');
+            Route::delete('storefronts/{storefront}/payments/providers/{provider}', [PaymentSettingsController::class, 'destroyProvider'])
+                ->where('provider', '[0-9]+')->name('payments.providers.destroy');
+
+            Route::post('storefronts/{storefront}/payments/methods', [PaymentSettingsController::class, 'storeMethod'])->name('payments.methods.store');
+            Route::put('storefronts/{storefront}/payments/methods/{method}', [PaymentSettingsController::class, 'updateMethod'])
+                ->where('method', '[0-9]+')->name('payments.methods.update');
+            Route::delete('storefronts/{storefront}/payments/methods/{method}', [PaymentSettingsController::class, 'destroyMethod'])
+                ->where('method', '[0-9]+')->name('payments.methods.destroy');
+            // The MERGED ordering screen: sort is storefront-wide, so the admin drags one list
+            // across every provider, exactly as the customer will see it (3.9.7).
+            Route::post('storefronts/{storefront}/payments/order', [PaymentSettingsController::class, 'reorder'])->name('payments.order');
         });
 
         // Brands and the lookup lists. Catalogue-wide, not per storefront: a colour is a

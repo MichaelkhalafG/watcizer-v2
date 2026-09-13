@@ -4,10 +4,10 @@ namespace App\Domain\Inventory;
 
 use App\Events\StockChanged;
 use App\Models\Inventory\InventoryMovement;
+use App\Support\DeadlockRetry;
 use App\Support\Sql;
 use App\Transform\Row;
 use Closure;
-use Illuminate\Database\QueryException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
@@ -97,23 +97,6 @@ final class InventoryService
         // anything that is not the literal string 'Express', NULL included, means market.
         return $typeStock === 'Express' ? self::BUCKET_EXPRESS : self::BUCKET_MARKET;
     }
-
-    /**
-     * How many times a deadlock victim retries before the failure reaches the caller.
-     *
-     * THREE, and the number is a judgement rather than a guess. With one lock order a cycle
-     * cannot form between two writers here, so a 1213 now means an actor OUTSIDE this class took
-     * the same rows in another order — an unmigrated dashboard query, a manual session. MariaDB
-     * picks the victim instantly and rolls its transaction back whole, so a retry re-reads state
-     * and re-acquires in the canonical order: attempt 2 wins essentially always, attempt 3 covers
-     * a second unlucky collision under load. A fourth would only lengthen the time a checkout
-     * holds an HTTP request open while hiding a real ordering bug — after three the caller is told.
-     *
-     * Only genuine deadlocks are retried, never lock-wait timeouts (1205): a 1205 means the lock
-     * was held for `innodb_lock_wait_timeout` (50 s by default), the request is already lost, and
-     * retrying it three times would turn one slow request into a two-and-a-half-minute one.
-     */
-    private const LOCK_RETRY_ATTEMPTS = 3;
 
     /**
      * Apply a relative change to one bucket, atomically. Returns the ledger row.
@@ -302,7 +285,7 @@ final class InventoryService
 
     /**
      * Run one stock transaction, retrying a deadlock victim a bounded number of times with jitter
-     * (review 2026-09-10 🔴-1b). See {@see self::LOCK_RETRY_ATTEMPTS} for the count and why.
+     * (review 2026-09-10 🔴-1b). See {@see DeadlockRetry::ATTEMPTS} for the count and why.
      *
      * A retry is only ours to make when we OWN the outermost transaction. Inside a caller's
      * transaction — the compat checkout wraps the order insert, the stock commit and the payment
@@ -317,34 +300,15 @@ final class InventoryService
      */
     private function transactionWithLockRetry(Closure $callback): mixed
     {
-        if (DB::transactionLevel() > 0) {
-            return DB::transaction($callback);
-        }
-
-        for ($attempt = 1; ; $attempt++) {
-            try {
-                return DB::transaction($callback);
-            } catch (QueryException $e) {
-                if ($attempt >= self::LOCK_RETRY_ATTEMPTS || ! self::isDeadlock($e)) {
-                    throw $e;
-                }
-                // Jitter, scaled by attempt: two victims of the same cycle must not wake together
-                // and reproduce it. 1–10 ms, then 2–20 ms — short enough to stay inside a request.
-                usleep(random_int(1000, 10000) * $attempt);
-            }
-        }
-    }
-
-    /**
-     * A genuine deadlock (MariaDB 1213 / SQLSTATE 40001), not a lock-wait timeout (1205) and not
-     * any other query failure. Retrying anything else would repeat a deterministic error.
-     */
-    private static function isDeadlock(QueryException $e): bool
-    {
-        $info = $e->errorInfo;
-        $driverCode = is_array($info) && array_key_exists(1, $info) ? $info[1] : null;
-
-        return $driverCode === 1213 || $e->getCode() === '40001';
+        /*
+         * The policy itself moved to `App\Support\DeadlockRetry` on 2026-09-13 so the payment
+         * callbacks use the SAME one rather than a second copy: they lock the same rows in the same
+         * order as this service, so they deadlock against it, and two implementations would drift
+         * on attempts, jitter and what counts as a deadlock. Behaviour here is unchanged —
+         * `DeadlockRetry::ATTEMPTS` is this class's old `LOCK_RETRY_ATTEMPTS` and the jitter is the
+         * same expression.
+         */
+        return DeadlockRetry::run($callback);
     }
 
     /**
@@ -408,13 +372,13 @@ final class InventoryService
      * @param  string  $reason  order_cancel | payment_failed
      * @return list<InventoryMovement>
      */
-    public function releaseOrder(int $orderId, string $reason, ?Actor $actor = null, ?int $storefrontId = null): array
+    public function releaseOrder(int $orderId, string $reason, ?Actor $actor = null, ?int $storefrontId = null, ?string $note = null): array
     {
         if (! in_array($reason, self::RELEASE_REASONS, true)) {
             throw new InvalidArgumentException('releaseOrder() reason must be one of '.implode(', ', self::RELEASE_REASONS).", got [{$reason}].");
         }
 
-        return $this->transactionWithLockRetry(function () use ($orderId, $reason, $actor, $storefrontId): array {
+        return $this->transactionWithLockRetry(function () use ($orderId, $reason, $actor, $storefrontId, $note): array {
             // The lock comes BEFORE the check. `isReleased()` followed by a write is a
             // check-then-act: twelve concurrent cancellations all read "not released yet" and all
             // credit the stock back, which is the 🔴-1 the review found. Locking the order row
@@ -443,6 +407,11 @@ final class InventoryService
                         Reference::orderLine($orderId, Row::int($line, 'id')),
                         $actor,
                         $storefrontId,
+                        // The operator's reason travels onto EVERY line's movement. A cancellation
+                        // note that stopped at the controller would leave the ledger saying
+                        // "order_cancel" and nothing about why — which is the question anyone
+                        // reading the row a month later is actually asking.
+                        note: $note,
                     );
 
                     continue;

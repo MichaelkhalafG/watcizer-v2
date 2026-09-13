@@ -9,10 +9,13 @@ use App\Domain\Inventory\Actor;
 use App\Domain\Inventory\InsufficientOfferStock;
 use App\Domain\Inventory\InsufficientStock;
 use App\Domain\Inventory\InventoryService;
+use App\Domain\Payment\CallbackPolicy;
 use App\Http\Controllers\Controller;
 use App\Http\Middleware\CompatGuestCart;
+use App\Support\DeadlockRetry;
 use App\Support\Val;
 use App\Transform\Row;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -215,49 +218,129 @@ class CheckoutCompatController extends Controller
                 return response()->json(['message' => 'Already processed'], 200);
             }
 
-            $success = $request->input('success');
-            $isSuccess = $success === 'true' || $success === true;
             $merchantOrderId = $request->input('merchant_order_id');
             $orderId = is_scalar($merchantOrderId) && (int) $merchantOrderId > 0 ? (int) $merchantOrderId : null;
             $amountCents = is_scalar($request->input('amount_cents')) ? (int) $request->input('amount_cents') : null;
 
             $amountMismatch = $this->paymobAmountMismatch($orderId, $amountCents);
 
-            DB::transaction(function () use ($transactionId, $orderId, $merchantOrderId, $request, $amountCents, $isSuccess, $amountMismatch): void {
-                $now = now();
-                DB::table('payment_statuses')->insert([
-                    'order_id' => is_scalar($merchantOrderId) ? (int) $merchantOrderId : null,
-                    'pay_order_id' => is_scalar($request->input('order')) ? (int) $request->input('order') : null,
-                    'pay_transaction_id' => $transactionId,
-                    'amount_cents' => $amountCents,
-                    // An amount that disagrees with the order is never recorded as a success,
-                    // whatever Paymob said.
-                    'success' => $isSuccess && $amountMismatch === null ? 'true' : 'false',
-                    'created_at' => $now,
-                    'updated_at' => $now,
-                ]);
+            /*
+             * ── What this callback is ALLOWED to do (🔴-1, review of 2026-09-13) ────────────
+             *
+             * This handler is the one Paymob calls TODAY, and until 2026-09-13 it moved the order
+             * unconditionally: success → `processing`, failure → `cancelled` + release stock,
+             * whatever state the order was in. The idempotency guard above only catches a replay of
+             * the SAME transaction id, so a retry after a decline re-marked a cancelled order as
+             * paid with its stock already back on the shelf, and a refund (`success=true` with
+             * `is_refunded=true`) read as a fresh sale.
+             *
+             * The decision now lives in ONE place shared with the wave-4C handler, so the two
+             * cannot drift: `App\Domain\Payment\CallbackPolicy`.
+             */
+            /** @var array<string, mixed> $payload */
+            $payload = $input;
+            $outcome = CallbackPolicy::outcomeFromPaymob($payload);
 
-                if ($amountMismatch !== null) {
-                    // Fail closed: the payment is on record, the ORDER is untouched. Neither
-                    // marked paid nor cancelled — a human decides what a mismatched amount meant.
-                    return;
+            $order = $orderId === null ? null : $this->compat->checkout->order($orderId);
+            $orderStatus = $order === null ? null : Row::str($order, 'status');
+            $decision = CallbackPolicy::decide($outcome, $orderStatus ?? 'pending', $amountMismatch === null);
+
+            // Built BEFORE the transaction, so the fallback can write it if the commit is lost.
+            $attemptRow = [
+                'order_id' => is_scalar($merchantOrderId) ? (int) $merchantOrderId : null,
+                'pay_order_id' => is_scalar($request->input('order')) ? (int) $request->input('order') : null,
+                'pay_transaction_id' => $transactionId,
+                'amount_cents' => $amountCents,
+                // An amount that disagrees with the order is never recorded as a success, whatever
+                // Paymob said.
+                'success' => $decision['paid'] ? 'true' : 'false',
+                // …and what it actually was: a refund, a void and a decline are three things that
+                // `success` cannot tell apart (🟡-4).
+                'outcome' => $outcome,
+            ];
+
+            try {
+                /*
+                 * Bounded deadlock retry, the same policy `InventoryService` uses (2026-09-13).
+                 * This is the handler Paymob calls TODAY, and it locks the order row and then its
+                 * products — the same rows in the same order as the stock service, so the two
+                 * deadlock against each other under concurrency. A deadlocked callback used to
+                 * answer 500 with every trace of the attempt rolled back.
+                 */
+                DeadlockRetry::run(function () use ($transactionId, $orderId, $amountMismatch, $order, $orderStatus, $outcome, $decision, $attemptRow): void {
+                    $now = now();
+                    $attemptId = (int) DB::table('payment_statuses')->insertGetId($attemptRow + [
+                        'created_at' => $now,
+                        'updated_at' => $now,
+                    ]);
+
+                    if ($decision['finding'] !== null) {
+                        CallbackPolicy::record(
+                            $decision['finding'],
+                            'paymob',
+                            $orderId,
+                            $attemptId,
+                            $outcome,
+                            $orderStatus,
+                            $amountCents = $attemptRow['amount_cents'],
+                            ['transaction' => $transactionId, 'route' => 'legacy_alias', 'amount_mismatch' => $amountMismatch],
+                        );
+                    }
+
+                    if ($orderId === null || $order === null) {
+                        return;
+                    }
+
+                    if ($decision['action'] === CallbackPolicy::ACT_PAY) {
+                        DB::table('orders')->where('id', $orderId)->update(['status' => 'processing', 'updated_at' => now()]);
+                        $this->compat->checkout->recordOwedMail($orderId, ['customer', 'admin'], $this->customerEmail(Row::nint($order, 'user_id'), Row::nstr($order, 'guest_email')));
+                    } elseif ($decision['action'] === CallbackPolicy::ACT_CANCEL) {
+                        DB::table('orders')->where('id', $orderId)->update(['status' => 'cancelled', 'updated_at' => now()]);
+                        $this->inventory->releaseOrder($orderId, 'payment_failed', Actor::system(), $this->compat->storefrontId);
+                    }
+                    // Every other decision: the attempt is on record, a finding is raised, and the
+                    // ORDER IS NOT TOUCHED. Stock is never re-reserved here — the units may be gone.
+                });
+            } catch (Throwable $e) {
+                /*
+                 * ONLY CONTENTION lands here — a deadlock that outlived the retries, or a
+                 * lock-wait timeout (which is never retried, because hammering the holder makes it
+                 * worse). Anything else is
+                 * deterministic — a foreign key, a bug, a broken config — and it is re-thrown
+                 * untouched so that:
+                 *
+                 *   - the transaction's all-or-nothing property stays exactly as wave 3 proved it
+                 *     (`PaymobCallbackTest`: a failing release rolls the payment row back with it), and
+                 *   - a callback naming an order that does not exist is still refused the way the
+                 *     LEGACY app refuses it, which the compat layer reproduces on purpose.
+                 *
+                 * Those failures repeat on the provider's next retry, which is what should happen:
+                 * recording them as "reconciliation" would file a bug under money.
+                 */
+                if (! ($e instanceof QueryException) || ! DeadlockRetry::isContention($e)) {
+                    throw $e;
                 }
 
-                if ($orderId === null) {
-                    return;
-                }
-                $order = $this->compat->checkout->order($orderId);
-                if ($order === null) {
-                    return;
-                }
+                /*
+                 * Retries spent on a genuine deadlock. The attempt and a finding are written
+                 * OUTSIDE the rolled-back transaction — inside it they would be rolled back too,
+                 * which is how a real payment disappears — and the order is left exactly as this
+                 * callback found it.
+                 */
+                CallbackPolicy::recordLostCallback(
+                    'paymob',
+                    $orderId,
+                    $orderStatus,
+                    $outcome,
+                    $attemptRow,
+                    $e,
+                    ['route' => 'legacy_alias', 'amount_mismatch' => $amountMismatch],
+                );
 
-                DB::table('orders')->where('id', $orderId)->update(['status' => $isSuccess ? 'processing' : 'cancelled', 'updated_at' => now()]);
-                if ($isSuccess) {
-                    $this->compat->checkout->recordOwedMail($orderId, ['customer', 'admin'], $this->customerEmail(Row::nint($order, 'user_id'), Row::nstr($order, 'guest_email')));
-                } else {
-                    $this->inventory->releaseOrder($orderId, 'payment_failed', Actor::system(), $this->compat->storefrontId);
-                }
-            });
+                // 200 rather than 500, so the provider does not retry straight back into the same
+                // contention: the money is on record and a human has been handed the discrepancy.
+                return response()->json(['message' => 'Recorded for reconciliation'], 200);
+            }
 
             if ($amountMismatch !== null) {
                 Log::error('Paymob callback amount does not match the order total; order left untouched.', $amountMismatch);

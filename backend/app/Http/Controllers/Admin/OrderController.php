@@ -53,7 +53,10 @@ class OrderController extends Controller
     public function update(Request $request, Order $order)
     {
         $request->validate([
-            'status' => 'required|in:pending,processing,completed,cancelled'
+            // `shipped` and `delivered` added 2026-09-12 with the enum (core migration M1i): the
+            // status-update e-mail already carries copy for both in EN and AR, and without them
+            // here the dashboard could not set the states the column now holds.
+            'status' => 'required|in:pending,processing,shipped,delivered,completed,cancelled'
         ]);
 
         $previousStatus = $order->status;

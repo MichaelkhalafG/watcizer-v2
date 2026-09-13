@@ -47,10 +47,16 @@
                                             <span class="badge rounded-pill text-bg-warning">Pending</span>
                                         @elseif ($order->status == 'processing')
                                             <span class="badge rounded-pill text-bg-secondary">Processing</span>
+                                        @elseif ($order->status == 'shipped')
+                                            <span class="badge rounded-pill text-bg-info">Shipped</span>
+                                        @elseif ($order->status == 'delivered')
+                                            <span class="badge rounded-pill text-bg-success">Delivered</span>
                                         @elseif ($order->status == 'completed')
                                             <span class="badge rounded-pill text-bg-success">Completed</span>
-                                        @else
+                                        @elseif ($order->status == 'cancelled')
                                             <span class="badge rounded-pill text-bg-danger">Cancelled</span>
+                                        @else
+                                            <span class="badge rounded-pill text-bg-dark">{{ $order->status }}</span>
                                         @endif
                                     </div>
                                     <div class="col-6"><b>{{ trans('order.note') }}</b> : {{ $order->note }}</div>
