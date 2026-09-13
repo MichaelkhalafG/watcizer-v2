@@ -42,8 +42,21 @@ final class CoreDropCleanCommand extends Command
 {
     use ConfirmableTrait;
 
-    /** Core migrations are dated `2026_09_1x`; the legacy app's own rows never match. */
-    public const MIGRATION_PATTERN = '2026_09_1%';
+    /*
+     * ── there is no pattern, and that is the fix (2026-09-13) ────────────────────────────────
+     *
+     * This used to clear only rows matching `LIKE '2026_09_1%'`. Two migrations later the dates
+     * reached `2026_09_20` and `2026_09_21` and the pattern stopped matching them — so a rebuild
+     * recreated `integration_outbox` from the base migration while M1k's row still claimed to
+     * have added `dedupe_key`. The UNIQUE index that makes an order e-mail exactly-once was gone
+     * and `migrate` reported nothing to do. Found by running the rebuild, not by reading it.
+     *
+     * `core_migrations` is CORE's own migration repository (`config/database.php`); the legacy
+     * application records its own in `migrations` and never touches this table. Every row here is
+     * therefore a core migration, there is nothing to filter out, and the honest operation is
+     * "clear the ledger". {@see self::ledgerRowsWithoutAFile()} checks that claim against the files
+     * on disk at the moment of acting, which a date glob never did.
+     */
 
     protected $signature = 'core:drop-clean
         {--dry-run : list the tables and the migration rows that would go, and change nothing}
@@ -76,9 +89,7 @@ final class CoreDropCleanCommand extends Command
          * report — so it is read through `Schema::hasTable()` and said out loud.
          */
         $hasLedger = Schema::hasTable('core_migrations');
-        $migrationRows = $hasLedger
-            ? DB::table('core_migrations')->where('migration', 'like', self::MIGRATION_PATTERN)->count()
-            : 0;
+        $migrationRows = $hasLedger ? self::rowsToClear() : 0;
 
         $this->line(sprintf(
             'transform output: %d table(s) in the list, %d present, %d already absent',
@@ -133,8 +144,18 @@ final class CoreDropCleanCommand extends Command
         } elseif (! $hasLedger) {
             $this->line('no core_migrations table to clear.');
         } else {
-            $removed = DB::table('core_migrations')->where('migration', 'like', self::MIGRATION_PATTERN)->delete();
-            $this->info("cleared {$removed} core_migrations row(s)");
+            $unknown = self::ledgerRowsWithoutAFile();
+            if ($unknown !== []) {
+                /*
+                 * A recorded migration with no file on disk cannot be re-run, so leaving its row
+                 * would be no safer than clearing it — but it IS drift worth saying out loud,
+                 * because it usually means a branch switch mid-rebuild.
+                 */
+                $this->warn('core_migrations names '.count($unknown).' migration(s) with no file on disk: '.implode(', ', $unknown));
+            }
+
+            $removed = DB::table('core_migrations')->delete();
+            $this->info("cleared {$removed} core_migrations row(s) — the whole ledger, so every core migration re-runs");
         }
 
         /*
@@ -161,6 +182,45 @@ final class CoreDropCleanCommand extends Command
         $this->info('Next: php artisan migrate --force && php artisan core:transform --force');
 
         return self::SUCCESS;
+    }
+
+    /**
+     * How many ledger rows a run would clear: all of them.
+     *
+     * A method rather than an inline `count()` so the rebuild test can assert that this equals the
+     * table's own total — which is what "no pattern" means, expressed as something checkable.
+     */
+    public static function rowsToClear(): int
+    {
+        return Schema::hasTable('core_migrations') ? DB::table('core_migrations')->count() : 0;
+    }
+
+    /**
+     * Ledger rows naming a migration this checkout does not have.
+     *
+     * @return list<string>
+     */
+    public static function ledgerRowsWithoutAFile(): array
+    {
+        if (! Schema::hasTable('core_migrations')) {
+            return [];
+        }
+
+        $files = glob(database_path('migrations/*.php'));
+        $known = [];
+        foreach ($files === false ? [] : $files as $file) {
+            $known[basename($file, '.php')] = true;
+        }
+
+        $out = [];
+        foreach (DB::table('core_migrations')->orderBy('id')->pluck('migration') as $name) {
+            $name = is_scalar($name) ? (string) $name : '';
+            if ($name !== '' && ! isset($known[$name])) {
+                $out[] = $name;
+            }
+        }
+
+        return $out;
     }
 
     /**

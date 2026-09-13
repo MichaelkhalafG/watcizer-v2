@@ -102,6 +102,9 @@ function callback(array $query): TestResponse
 }
 
 it('accepts a correctly signed success callback and marks the order processing', function () {
+    // Set explicitly, so the expected message count below is this test's own and not `.env`'s.
+    config(['notifications.admin_emails' => ['ops@watchizer.test']]);
+
     $f = callbackOrder(2, '250.00');
 
     callback(signedCallback(['merchant_order_id' => $f['order'], 'amount_cents' => '25000']))
@@ -110,7 +113,19 @@ it('accepts a correctly signed success callback and marks the order processing',
     expect(DB::table('orders')->where('id', $f['order'])->value('status'))->toBe('processing')
         // A successful payment keeps the stock reserved.
         ->and(T::int(DB::table('catalog_products')->where('id', $f['product'])->value('stock_express')))->toBe($f['before'] - 2)
-        ->and(DB::table('integration_outbox')->where('channel', 'mail')->where('aggregate_id', $f['order'])->count())->toBe(1);
+        /*
+         * TWO messages now, not the one placeholder row wave 3 wrote: the customer's confirmation
+         * and one admin notification, which is exactly what the legacy callback sends
+         * (`sendOrderEmails($order, $isGuest, 'cash')`). Prerequisite (a), 2026-09-13.
+         */
+        ->and(DB::table('integration_outbox')->where('channel', 'mail')->where('aggregate_id', $f['order'])->count())->toBe(2);
+
+    $kinds = [];
+    foreach (DB::table('integration_outbox')->where('channel', 'mail')->where('aggregate_id', $f['order'])->get() as $raw) {
+        $payload = T::arr(json_decode(Row::str(Row::cast(T::row($raw)), 'payload'), true));
+        $kinds[] = T::str($payload['kind']);
+    }
+    expect($kinds)->toEqualCanonicalizing(['customer_confirmation', 'admin_notification']);
 });
 
 it('returns the stock and cancels the order when the payment failed', function () {

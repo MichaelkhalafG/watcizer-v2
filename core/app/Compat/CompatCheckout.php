@@ -6,6 +6,7 @@ use App\Domain\Inventory\Actor;
 use App\Domain\Inventory\InsufficientOfferStock;
 use App\Domain\Inventory\InsufficientStock;
 use App\Domain\Inventory\InventoryService;
+use App\Domain\Notifications\OrderMailer;
 use App\Support\Val;
 use App\Transform\Row;
 use Illuminate\Support\Facades\DB;
@@ -29,15 +30,21 @@ use stdClass;
  *    server-side, so this is not a pricing hole; it exists because a stale DB cart row used to
  *    resurrect a line the shopper had removed and reject the checkout as a total mismatch.
  *
- * NOT reproduced, and flagged: the order e-mails. The legacy `sendOrderEmails()` renders three
- * blade templates that have not been ported to core. Instead of pretending, every order that
- * would have sent mail writes an `integration_outbox` row (`channel = mail`), so the queue of
- * what is owed is exact and nothing is silently dropped. Porting the mailables is a named
- * switch-night prerequisite.
+ * The order e-mails WERE the one thing this class did not reproduce. Wave 3 recorded each owed
+ * message as an `integration_outbox` row (`channel = mail`) rather than pretending, and named the
+ * port as switch-night prerequisite (a). That prerequisite was met on 2026-09-13: the templates
+ * are ported, `App\Domain\Notifications\OrderMailer` is the sender, and the controller calls it
+ * where this class used to write the placeholder row. The outbox rows are still written — they
+ * are now the record of what was actually SENT, not a list of what is owed.
  */
 final class CompatCheckout
 {
-    public const MAIL_CHANNEL = 'mail';
+    /**
+     * @deprecated 2026-09-13 — use {@see OrderMailer::CHANNEL}. Kept
+     *             because the wave-3 tests and the study's §4.2 prose name it; it holds the same
+     *             value, which `OrderMailTriggersTest` asserts.
+     */
+    public const MAIL_CHANNEL = OrderMailer::CHANNEL;
 
     public function __construct(
         private readonly CompatCart $cart,
@@ -336,33 +343,6 @@ final class CompatCheckout
         $clientSecret = $response->json('client_secret');
 
         return ['ok' => true, 'redirect_url' => 'https://accept.paymob.com/unifiedcheckout/?publicKey='.$publicKey.'&clientSecret='.(is_scalar($clientSecret) ? (string) $clientSecret : '')];
-    }
-
-    /**
-     * The e-mail core does not yet send, recorded rather than dropped. One row per order, so the
-     * mail wave (or a legacy-side drain) can replay exactly what is owed.
-     *
-     * @param  list<string>  $kinds  customer | admin
-     */
-    public function recordOwedMail(int $orderId, array $kinds, ?string $customerEmail): void
-    {
-        DB::table('integration_outbox')->insert([
-            'channel' => self::MAIL_CHANNEL,
-            'event' => 'order.placed',
-            'aggregate_type' => 'orders',
-            'aggregate_id' => $orderId,
-            'payload' => (string) json_encode([
-                'order_id' => $orderId,
-                'order_number' => $this->orderNumber($orderId),
-                'kinds' => $kinds,
-                'customer_email' => $customerEmail,
-                'note' => 'core does not render the legacy order mailables yet (wave-3 flag)',
-            ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
-            'status' => 'pending',
-            'attempts' => 0,
-            'available_at' => now(),
-            'created_at' => now(),
-        ]);
     }
 
     /** Row helper re-export so the controller does not need two imports for one call. */

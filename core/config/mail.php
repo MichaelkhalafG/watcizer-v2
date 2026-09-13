@@ -45,7 +45,19 @@ return [
             'port' => env('MAIL_PORT', 2525),
             'username' => env('MAIL_USERNAME'),
             'password' => env('MAIL_PASSWORD'),
-            'timeout' => null,
+            /*
+             * Seconds, NOT Laravel's `null` default (which means "use PHP's
+             * `default_socket_timeout`", 60s on most builds).
+             *
+             * Order e-mail sends INLINE in the operator's or the shopper's own request
+             * (prerequisite (a), 2026-09-13). With no timeout, an unreachable relay turns a status
+             * change into a minute of spinner per message and a checkout into the same — and with
+             * four admin recipients, five minutes. Ten seconds is long enough for Gmail's TLS
+             * handshake from Egypt with room to spare, and short enough that a dead relay costs
+             * the operator a noticeable pause rather than their afternoon. The message is not
+             * lost when it expires: the outbox row stays pending and `mail:drain` retries it.
+             */
+            'timeout' => (int) env('MAIL_TIMEOUT', 10),
             'local_domain' => env('MAIL_EHLO_DOMAIN', parse_url((string) env('APP_URL', 'http://localhost'), PHP_URL_HOST)),
         ],
 
