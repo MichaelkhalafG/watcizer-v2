@@ -2,12 +2,15 @@
 
 namespace App\Http\Controllers\Manage;
 
+use App\Domain\Activity\ActivityLog;
 use App\Domain\Catalog\CategoryTreeWriter;
 use App\Domain\Catalog\FamilyForCategory;
 use App\Domain\Catalog\PreSwitch;
 use App\Models\Storefront\Storefront;
 use App\Models\Storefront\StorefrontCategory;
 use App\Support\Coerce;
+use App\Support\ManageText;
+use App\Support\Table\TableExport;
 use App\Transform\Row;
 use Illuminate\Database\Query\JoinClause;
 use Illuminate\Http\RedirectResponse;
@@ -18,6 +21,7 @@ use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 use RuntimeException;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * /manage/storefronts/{storefront}/categories — the per-storefront category tree (scope item 4).
@@ -46,15 +50,48 @@ final class CategoryController
 {
     public function __construct(private readonly CategoryTreeWriter $tree) {}
 
-    public function index(Request $request, Storefront $storefront): Response
+    public function index(Request $request, Storefront $storefront): Response|StreamedResponse
     {
+        $nodes = self::tree($storefront->id);
+
+        /*
+         * A TREE as a flat file. `path` and `depth` carry the shape, so a spreadsheet sorted by
+         * `path` reads in the same order as the screen — which is what makes this export usable
+         * for the job people actually want it for: reviewing the taxonomy away from the dashboard.
+         *
+         * `in_menu_reason` travels with `in_menu`, because "no" without the reason is the answer
+         * that starts an argument.
+         */
+        $export = TableExport::wanted($request, 'categories-'.$storefront->code, [
+            'path' => ManageText::t('categories.path', 'المسار'),
+            'depth' => ManageText::t('categories.level', 'المستوى'),
+            'name' => [ManageText::t('common.name_ar', 'الاسم (عربي)'), fn (array $row): string => Coerce::str(Coerce::arr($row['name'] ?? null)['ar'] ?? null)],
+            'name_en' => [ManageText::t('common.name_en', 'الاسم (إنجليزي)'), fn (array $row): string => Coerce::str(Coerce::arr($row['name'] ?? null)['en'] ?? null)],
+            'slug' => ManageText::t('common.link', 'الرابط'),
+            'family' => ManageText::t('products.family', 'العائلة'),
+            'sort_order' => ManageText::t('common.sort', 'الترتيب'),
+            'children' => ManageText::t('categories.sub_categories', 'التصنيفات الفرعية'),
+            'products' => ManageText::t('categories.products_visible', 'منتجات ظاهرة'),
+            'products_any' => ManageText::t('categories.products_linked', 'منتجات مرتبطة'),
+            'is_active' => ManageText::t('common.active', 'مفعّل'),
+            'show_in_menu' => ManageText::t('categories.in_menu', 'في القائمة'),
+            'in_menu' => ManageText::t('categories.actually_shown', 'يظهر فعليًا'),
+            'in_menu_reason' => ManageText::t('common.reason', 'السبب'),
+            'legacy_source' => ManageText::t('categories.legacy_source', 'مصدر قديم'),
+            'legacy_id' => ManageText::t('categories.legacy_id', 'الرقم القديم'),
+        ], $nodes);
+        if ($export !== null) {
+            return $export;
+        }
+
         return Inertia::render('Manage/Categories/Index', [
             'storefront' => ['id' => $storefront->id, 'code' => $storefront->code, 'name' => $storefront->name],
             'storefronts' => self::storefrontOptions(),
-            'nodes' => self::tree($storefront->id),
+            'nodes' => $nodes,
             'max_depth' => CategoryTreeWriter::MAX_DEPTH,
-            'visibility_rule' => 'يظهر التصنيف في القوائم فقط إذا كان مفعّلًا ومعروضًا في القائمة وبه (أو بفروعه) منتج واحد على الأقل '
-                .'ظاهر على هذا المتجر ومفعّل وغير محذوف. هذه قاعدة تلقائية في طبقة القراءة — لا يوجد زر لتجاوزها.',
+            // One literal, not two concatenated ones: the seam's fallback is the SECOND ARGUMENT,
+            // so a sentence glued together after it would leave its tail untranslated.
+            'visibility_rule' => ManageText::t('categories.visibility_rule', 'يظهر التصنيف في القوائم فقط إذا كان مفعّلًا ومعروضًا في القائمة وبه (أو بفروعه) منتج واحد على الأقل ظاهر على هذا المتجر ومفعّل وغير محذوف. هذه قاعدة تلقائية في طبقة القراءة — لا يوجد زر لتجاوزها.'),
             'pre_switch' => PreSwitch::state('category'),
             // Whether THIS storefront's tree may be edited at all yet. A non-primary tree mirrors
             // legacy until the write-switch, so an edit here would be overwritten by the next
@@ -69,18 +106,28 @@ final class CategoryController
         $data = $this->validated($request);
 
         try {
-            $this->tree->create($storefront->id, self::parentId($data), self::names($data), self::attrs($data));
+            $created = $this->tree->create($storefront->id, self::parentId($data), self::names($data), self::attrs($data));
         } catch (RuntimeException $e) {
             throw ValidationException::withMessages(['tree' => $e->getMessage()]);
         }
 
-        return back()->with('status', 'تم إنشاء التصنيف.');
+        ActivityLog::record(
+            'storefront_categories',
+            Coerce::nint($created->getKey()),
+            ActivityLog::CREATED,
+            label: Coerce::nstr(self::names($data)['ar'] ?? null),
+            storefrontId: Coerce::nint($storefront->id),
+        );
+
+        return back()->with('status', ManageText::t('categories.created', 'تم إنشاء التصنيف.'));
     }
 
     public function update(Request $request, Storefront $storefront, int $category): RedirectResponse
     {
         $data = $this->validated($request);
         $slug = Coerce::nstr($data['slug'] ?? null);
+
+        $before = self::categoryFields($storefront->id, $category);
 
         try {
             $this->tree->rename($storefront->id, $category, self::names($data), $slug === '' ? null : $slug);
@@ -94,7 +141,14 @@ final class CategoryController
             throw ValidationException::withMessages(['tree' => $e->getMessage()]);
         }
 
-        return back()->with('status', 'تم حفظ التصنيف.');
+        ActivityLog::record(
+            'storefront_categories', $category, ActivityLog::UPDATED,
+            $before, self::categoryFields($storefront->id, $category),
+            label: self::categoryLabel($category),
+            storefrontId: Coerce::nint($storefront->id),
+        );
+
+        return back()->with('status', ManageText::t('categories.saved', 'تم حفظ التصنيف.'));
     }
 
     /** Move a node (and its subtree) under a new parent, or to the root. */
@@ -105,13 +159,24 @@ final class CategoryController
         ]);
         $parent = $request->input('parent_id');
 
+        $before = self::categoryFields($storefront->id, $category);
+
         try {
             $this->tree->move($storefront->id, $category, Coerce::nint($parent));
         } catch (RuntimeException $e) {
             throw ValidationException::withMessages(['tree' => $e->getMessage()]);
         }
 
-        return back()->with('status', 'تم نقل التصنيف وفروعه.');
+        // A move takes the whole subtree with it, which is why it is its own verb rather than an
+        // `parent_id` update: the row records one change and the operator knows it meant many.
+        ActivityLog::record(
+            'storefront_categories', $category, ActivityLog::UPDATED,
+            $before, self::categoryFields($storefront->id, $category),
+            label: self::categoryLabel($category),
+            storefrontId: Coerce::nint($storefront->id),
+        );
+
+        return back()->with('status', ManageText::t('categories.moved', 'تم نقل التصنيف وفروعه.'));
     }
 
     /** Reorder one level of siblings. */
@@ -130,18 +195,49 @@ final class CategoryController
             Coerce::orderedIntList($request->input('ids')),
         );
 
-        return back()->with('status', "تم ترتيب {$moved} تصنيفًا.");
+        /*
+         * ONE row for the whole reorder, unlike the placement bulk above — and the difference is
+         * the question each answers. "Why is this product hidden?" is about one product; "who
+         * reordered this level?" is about the level, and 30 rows saying `sort_order: 4 ← 5` would
+         * bury it.
+         */
+        if ($moved > 0) {
+            ActivityLog::record(
+                'storefront_categories', Coerce::nint($parent), ActivityLog::UPDATED,
+                ['sort_order' => 'previous order'], ['sort_order' => $moved.' node(s) reordered'],
+                // The root's label is STORED, beside category names captured the same way, so it
+                // is not on the seam: a row written in whatever locale the operator happened to
+                // have would make one log read in two languages.
+                label: Coerce::nint($parent) === null
+                    ? 'الجذر' // i18n-exempt: written to core_activity_log.label — a stored value, not interface text
+                    : self::categoryLabel(Coerce::int($parent)),
+                storefrontId: Coerce::nint($storefront->id),
+            );
+        }
+
+        return back()->with('status', ManageText::t('categories.reordered', 'تم ترتيب :count تصنيفًا.', ['count' => $moved]));
     }
 
     public function destroy(Request $request, Storefront $storefront, int $category): RedirectResponse
     {
+        // Captured BEFORE the delete: afterwards there is nothing left to name it by.
+        $label = self::categoryLabel($category);
+        $before = self::categoryFields($storefront->id, $category);
+
         try {
             $this->tree->delete($storefront->id, $category);
         } catch (RuntimeException $e) {
             return back()->withErrors(['tree' => $e->getMessage()]);
         }
 
-        return back()->with('status', 'تم حذف التصنيف.');
+        ActivityLog::record(
+            'storefront_categories', $category, ActivityLog::DELETED,
+            before: $before,
+            label: $label,
+            storefrontId: Coerce::nint($storefront->id),
+        );
+
+        return back()->with('status', ManageText::t('categories.deleted', 'تم حذف التصنيف.'));
     }
 
     // ── reads ────────────────────────────────────────────────────────────────────────────────
@@ -253,10 +349,10 @@ final class CategoryController
                 'products_any' => $any,
                 'in_menu' => $active && $inMenuFlag && $hasVisible,
                 'in_menu_reason' => match (true) {
-                    ! $active => 'معطّل',
-                    ! $inMenuFlag => 'مستبعد من القائمة يدويًا',
-                    ! $hasVisible => 'لا يوجد منتج ظاهر فيه أو في فروعه',
-                    default => 'ظاهر',
+                    ! $active => ManageText::t('products.inactive', 'معطّل'),
+                    ! $inMenuFlag => ManageText::t('categories.excluded_from_menu', 'مستبعد من القائمة يدويًا'),
+                    ! $hasVisible => ManageText::t('categories.no_visible_product', 'لا يوجد منتج ظاهر فيه أو في فروعه'),
+                    default => ManageText::t('common.visible', 'ظاهر'),
                 },
                 // Derived with the transform's own rule and config, so the answer here and the
                 // answer a product save computes are the same answer. A node whose `path` is
@@ -331,5 +427,32 @@ final class CategoryController
             'is_active' => Coerce::bool($data['is_active'] ?? null, true),
             'show_in_menu' => Coerce::bool($data['show_in_menu'] ?? null, true),
         ];
+    }
+
+    /**
+     * A category's own row, for the activity log's before/after.
+     *
+     * Only the columns a person edits. The tree's structural columns (`lft`/`rgt`/`depth` or
+     * whatever the writer maintains) are derived, so logging them would report a move as a dozen
+     * changed numbers instead of one changed parent.
+     *
+     * @return array<string, mixed>
+     */
+    private static function categoryFields(int $storefrontId, int $category): array
+    {
+        return ActivityLog::fields(DB::table('storefront_categories')
+            ->where('storefront_id', $storefrontId)->where('id', $category)
+            ->first(['parent_id', 'slug', 'sort_order', 'is_active', 'show_in_menu']));
+    }
+
+    /** What to call this category in the log — the Arabic name, captured at write time. */
+    private static function categoryLabel(int $category): ?string
+    {
+        $name = DB::table('storefront_category_translations')
+            ->where('storefront_category_id', $category)
+            ->orderByRaw("FIELD(locale, 'ar', 'en')")
+            ->value('name');
+
+        return is_string($name) && $name !== '' ? $name : null;
     }
 }

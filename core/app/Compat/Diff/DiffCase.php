@@ -26,6 +26,8 @@ final class DiffCase
      *                                          response and usable as `{variable}` in later steps of the
      *                                          sequence — the only way to say "delete the row you just made"
      *                                          when the two hosts assign different ids
+     * @param  bool  $mustNotBeEmpty  this case exists to compare a NON-TRIVIAL payload, so two empty
+     *                                arrays are a FAILURE and not a match
      */
     public function __construct(
         public readonly string $name,
@@ -40,11 +42,25 @@ final class DiffCase
         public readonly string $sequence = '',
         public readonly array $capture = [],
         public readonly array $positional = [],
+        /*
+         * ── why a case can declare that an empty answer is a failure ─────────────────────────
+         *
+         * `account:orders` compared `[]` with `[]` and reported IDENTICAL for as long as the
+         * harness has existed. Both sides were right and the case proved nothing: every order in
+         * this database is a guest order, so the authenticated reader had none. The two columns
+         * M1f and M1l added to the shared `order_items` were therefore never byte-compared by the
+         * thing whose job is byte-comparing them.
+         *
+         * Two empty arrays agreeing is the compat-layer twin of a screen test that asserts 200
+         * (AGENTS §4). A case that carries this flag says out loud that it needs a SUBJECT, and
+         * the runner fails the run when there is not one — instead of passing quietly.
+         */
+        public readonly bool $mustNotBeEmpty = false,
     ) {}
 
     /** @return array<string, mixed> */
     public function toArray(): array
     {
-        return ['name' => $this->name, 'method' => $this->method, 'path' => $this->path, 'kind' => $this->kind, 'headers' => $this->headers, 'accept' => $this->accept, 'api_code' => $this->apiCode, 'group' => $this->group, 'sequence' => $this->sequence, 'body' => $this->body, 'capture' => $this->capture, 'positional' => $this->positional];
+        return ['name' => $this->name, 'method' => $this->method, 'path' => $this->path, 'kind' => $this->kind, 'headers' => $this->headers, 'accept' => $this->accept, 'api_code' => $this->apiCode, 'group' => $this->group, 'sequence' => $this->sequence, 'body' => $this->body, 'capture' => $this->capture, 'positional' => $this->positional, 'must_not_be_empty' => $this->mustNotBeEmpty];
     }
 }

@@ -231,6 +231,8 @@ it('mails NOBODY when a card order is placed — the money has not arrived', fun
     Http::fake(['accept.paymob.com/*' => Http::response(['client_secret' => 'cs_test'], 200)]);
     config(['services.paymob.secret_key' => 'test-secret', 'services.paymob.public_key' => 'test-public']);
 
+    $mailRowsBefore = T::int(DB::table('integration_outbox')->where('channel', OrderMailer::CHANNEL)->count());
+
     $product = mailProduct();
     $city = mailCity();
     $total = round($product['price'] + $city['cost'], 2);
@@ -250,7 +252,18 @@ it('mails NOBODY when a card order is placed — the money has not arrived', fun
         ]);
 
     Mail::assertNothingSent();
-    expect(DB::table('integration_outbox')->where('channel', OrderMailer::CHANNEL)->count())->toBe(0);
+
+    /*
+     * A DELTA, not a global count — and the original global count was my own bug (§4 law: an
+     * assertion must be scoped to its subject).
+     *
+     * It read `->count())->toBe(0)` over the whole `mail` channel, which is only true of an empty
+     * table. It passed on the day it was written because a closing rebuild had just emptied one,
+     * and broke the moment a compat-harness COD checkout left five perfectly legitimate rows
+     * behind — the test then called the mail system's correct behaviour a defect. The claim was
+     * always "this checkout enqueued nothing", so that is what it now measures.
+     */
+    expect(DB::table('integration_outbox')->where('channel', OrderMailer::CHANNEL)->count())->toBe($mailRowsBefore);
 });
 
 // ── trigger 2: the Paymob callback ───────────────────────────────────────────────────────────

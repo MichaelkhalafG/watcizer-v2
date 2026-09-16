@@ -4,6 +4,7 @@ import { SelectField, TextField } from '@/components/form/TextField';
 import { Alert } from '@/components/ui/alert';
 import { SwitchField } from '@/components/form/SwitchField';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useT } from '@/lib/i18n';
 
 export interface SpecField {
     key: string;
@@ -82,6 +83,7 @@ export function SpecBlock({
     onChange: (values: SpecValues) => void;
     errors: Record<string, string>;
 }) {
+    const t = useT();
     const block = blocks[explanation.family];
 
     /*
@@ -112,34 +114,42 @@ export function SpecBlock({
     return (
         <Card>
             <CardHeader className="gap-2">
-                <CardTitle>{block === undefined ? 'مواصفات إضافية' : block.label}</CardTitle>
+                <CardTitle>{block === undefined ? t('specs.extra_specs', 'مواصفات إضافية') : block.label}</CardTitle>
                 {/* The derivation, in words. This is the sentence that makes the whole screen
                     trustworthy: the team can see WHY they are being shown watch fields. */}
                 <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
                     <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                     <span>
-                        العائلة المحسوبة: <strong className="text-foreground">{explanation.family}</strong> — {explanation.reason}
+                        {t('specs.derived_family', 'العائلة المحسوبة:')}{' '}
+                        <strong className="text-foreground">{explanation.family}</strong> — {explanation.reason}
                     </span>
                 </p>
             </CardHeader>
 
             <CardContent className="space-y-4">
                 {losing === undefined ? null : (
-                    <Alert tone="warning" title="تغيير التصنيف يغيّر نوع المواصفات">
-                        هذا المنتج محفوظ الآن كـ «{losing.label}». بعد الحفظ ستصبح مواصفاته «
-                        {block === undefined ? 'بلا مواصفات' : block.label}»، و
+                    <Alert tone="warning" title={t('specs.family_change_title', 'تغيير التصنيف يغيّر نوع المواصفات')}>
+                        {t('specs.family_change_body', 'هذا المنتج محفوظ الآن كـ «:saved». بعد الحفظ ستصبح مواصفاته «:next».', {
+                            saved: losing.label,
+                            next: block === undefined ? t('specs.no_specs_at_all', 'بلا مواصفات') : block.label,
+                        })}{' '}
                         {losingFilled.length === 0
-                            ? 'لا توجد قيم قديمة ستُفقد.'
-                            : `ستُحذف القيم المكتوبة في: ${losingFilled.join('، ')}.`}{' '}
-                        لو لم يكن هذا ما تريده، أعِد اختيار التصنيف الأساسي السابق قبل الحفظ.
+                            ? t('specs.family_change_loses_nothing', 'لا توجد قيم قديمة ستُفقد.')
+                            : t('specs.family_change_loses', 'ستُحذف القيم المكتوبة في: :list.', { list: losingFilled.join(t('common.list_separator', '، ')) })}{' '}
+                        {t('specs.family_change_undo', 'لو لم يكن هذا ما تريده، أعِد اختيار التصنيف الأساسي السابق قبل الحفظ.')}
                     </Alert>
                 )}
 
                 {block === undefined ? (
                     <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-                        لا توجد مواصفات خاصة بهذه العائلة. العائلتان <code>fashion</code> و<code>other</code> هما الحالة الافتراضية لقاعدة
-                        الاشتقاق، وإضافة حقول لهما تعني اختراع بيانات لا يعرفها النظام. لو احتاج هذا النوع مواصفات، يُضاف قسم له في{' '}
-                        <code dir="ltr">config/catalog.php</code> وتُشتق العائلة من تصنيف مناسب.
+                        {t('specs.no_block_before_families', 'لا توجد مواصفات خاصة بهذه العائلة. العائلتان')} <code>fashion</code>{' '}
+                        {t('specs.no_block_and', 'و')} <code>other</code>{' '}
+                        {t(
+                            'specs.no_block_after_families',
+                            'هما الحالة الافتراضية لقاعدة الاشتقاق، وإضافة حقول لهما تعني اختراع بيانات لا يعرفها النظام.',
+                        )}{' '}
+                        {t('specs.no_block_before_config', 'لو احتاج هذا النوع مواصفات، يُضاف قسم له في')}{' '}
+                        <code dir="ltr">config/catalog.php</code> {t('specs.no_block_after_config', 'وتُشتق العائلة من تصنيف مناسب.')}
                     </p>
                 ) : (
                     <div className="grid gap-4 sm:grid-cols-2">
@@ -186,7 +196,7 @@ export function SpecBlock({
                                     />
                                     {field.unit === undefined ? null : (
                                         <SelectField
-                                            label="الوحدة"
+                                            label={t('common.unit', 'الوحدة')}
                                             error={errors[`specs.${field.unit}`] ?? null}
                                             placeholder="—"
                                             value={text(field.unit)}

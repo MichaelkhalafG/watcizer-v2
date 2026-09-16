@@ -56,12 +56,71 @@ function compatProduct(int $minStock = 3): array
     ];
 }
 
-it('holds the invariant: no product on storefront 1 sells through variants', function () {
+it('holds the invariant for every LEGACY product on storefront 1', function () {
+    /*
+     * Scoped to `import_ref IS NULL` since wave 4D, and the scoping is the finding rather than a
+     * concession.
+     *
+     * "No product on storefront 1 sells through variants" was true BY CONSTRUCTION while the
+     * transform was the only writer: legacy `product_variants` is empty, so nothing it produced
+     * could have a size. The importer is a second writer, and on a rehearsal copy it is now used
+     * on purpose to put variant products on Watchizer (developer, 2026-09-14) so the v2 shape is
+     * exercised before the switch.
+     *
+     * What must still hold — and is what this assertion was always really about — is that nothing
+     * the TRANSFORM produced gained variants behind our backs. The imported case is not ignored: it
+     * is driven, below, through the two doors that refuse it.
+     */
     $reachable = DB::table('storefront_product as sp')
         ->join('catalog_product_variants as v', 'v.product_id', '=', 'sp.product_id')
-        ->where('sp.storefront_id', 1)->distinct()->count('sp.product_id');
+        ->join('catalog_products as p', 'p.id', '=', 'sp.product_id')
+        ->where('sp.storefront_id', 1)
+        ->whereNull('p.import_ref')
+        ->distinct()->count('sp.product_id');
 
     expect($reachable)->toBe(0, 'the compat layer cannot pick a size — see CompatCheckout::priceLines()');
+});
+
+it('refuses an IMPORTED variant product at both compat doors, on real data', function () {
+    // The shape the developer asked to exercise: a Joyroom product with colour variants, placed on
+    // Watchizer, reachable through the legacy API. It must be browsable and NOT buyable — a loud
+    // 422 at each door rather than a product-level decrement no variant backs.
+    /*
+     * `value()` answers NULL when nothing matches, and `T::int(null)` asserts — so the guard below
+     * was unreachable on exactly the catalogue it was written for: a freshly rebuilt one with no
+     * imported products. Coerced first, then guarded.
+     */
+    $found = DB::table('storefront_product as sp')
+        ->join('catalog_product_variants as v', 'v.product_id', '=', 'sp.product_id')
+        ->join('catalog_products as p', 'p.id', '=', 'sp.product_id')
+        ->where('sp.storefront_id', 1)
+        ->whereNotNull('p.import_ref')
+        ->value('sp.product_id');
+
+    $productId = is_numeric($found) ? (int) $found : 0;
+
+    if ($productId === 0) {
+        // Nothing imported on this storefront yet (a freshly rebuilt catalogue). Nothing to prove.
+        expect(true)->toBeTrue();
+
+        return;
+    }
+
+    $token = (string) Str::uuid();
+    $items = DB::table('cart_items')->count();
+
+    withHeaders(variantGuestHeaders($token))->postJson('/api/add_to_cart', [
+        'product_id' => $productId, 'quantity' => 1, 'piece_price' => 100,
+        'total_price' => 100, 'type_stock' => 'Express',
+    ])->assertStatus(422)->assertExactJson(['success' => false, 'message' => 'This product requires selecting an option']);
+
+    // …and it wrote nothing.
+    expect(DB::table('cart_items')->count())->toBe($items);
+
+    // The product is still SERVED — browsable, and only unbuyable.
+    $listed = DB::table('storefront_product')->where('storefront_id', 1)
+        ->where('product_id', $productId)->where('is_visible', 1)->exists();
+    expect($listed)->toBeTrue();
 });
 
 it('refuses to add a variant product to a compat cart, and writes no line', function () {

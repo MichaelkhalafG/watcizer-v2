@@ -3,6 +3,7 @@ import { LogOut, Menu, Moon, Sun, UserRound } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 
 import { Badge } from '@/components/ui/badge';
+import { Ltr } from '@/components/ui/bidi';
 import { Button } from '@/components/ui/button';
 import {
     DropdownMenu,
@@ -13,12 +14,14 @@ import {
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import type { Crumb, SharedProps } from '@/types';
+import { useT } from '@/lib/i18n';
 
 /**
  * Colour-scheme toggle. Per-browser and per-person (`localStorage`), because it is a comfort
  * setting for whoever is sitting there, not something the server should have an opinion about.
  */
 function ThemeToggle() {
+    const t = useT();
     const [dark, setDark] = useState<boolean>(() => document.documentElement.classList.contains('dark'));
 
     const apply = useCallback((next: boolean) => {
@@ -37,8 +40,8 @@ function ThemeToggle() {
             variant="ghost"
             size="icon"
             onClick={() => apply(!dark)}
-            aria-label={dark ? 'الوضع النهاري' : 'الوضع الليلي'}
-            title={dark ? 'الوضع النهاري' : 'الوضع الليلي'}
+            aria-label={dark ? t('shell.light_mode', 'الوضع النهاري') : t('shell.dark_mode', 'الوضع الليلي')}
+            title={dark ? t('shell.light_mode', 'الوضع النهاري') : t('shell.dark_mode', 'الوضع الليلي')}
         >
             {dark ? <Sun className="h-[18px] w-[18px]" /> : <Moon className="h-[18px] w-[18px]" />}
         </Button>
@@ -46,6 +49,7 @@ function ThemeToggle() {
 }
 
 function UserMenu() {
+    const t = useT();
     const { auth } = usePage<SharedProps>().props;
     const user = auth.user;
     if (user === null) {
@@ -58,7 +62,7 @@ function UserMenu() {
                 <button
                     type="button"
                     className="flex items-center gap-2 rounded-full py-1 pe-1 ps-3 text-sm transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                    aria-label="حساب المستخدم"
+                    aria-label={t('shell.user_account', 'حساب المستخدم')}
                 >
                     <span className="hidden max-w-[12rem] truncate font-medium sm:block">{user.name}</span>
                     <span
@@ -72,8 +76,8 @@ function UserMenu() {
             <DropdownMenuContent align="end" className="w-64">
                 <DropdownMenuLabel>
                     <span className="block truncate">{user.name}</span>
-                    <span className="mt-0.5 block truncate text-xs font-normal text-muted-foreground" dir="ltr">
-                        {user.email}
+                    <span className="mt-0.5 block truncate text-xs font-normal text-muted-foreground">
+                        <Ltr>{user.email}</Ltr>
                     </span>
                     <span className="mt-2 flex flex-wrap gap-1">
                         {user.roles.map((role) => (
@@ -84,10 +88,9 @@ function UserMenu() {
                     </span>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem disabled className="gap-2">
+                <DropdownMenuItem className="gap-2" onSelect={() => router.visit('/manage/profile')}>
                     <UserRound className="h-4 w-4" />
-                    الملف الشخصي
-                    <span className="ms-auto text-[11px] text-muted-foreground">4D</span>
+                    {t('common.profile', 'الملف الشخصي')}
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
@@ -96,7 +99,7 @@ function UserMenu() {
                     onSelect={() => router.post('/manage/logout')}
                 >
                     <LogOut className="h-4 w-4" />
-                    تسجيل الخروج
+                    {t('shell.sign_out', 'تسجيل الخروج')}
                 </DropdownMenuItem>
             </DropdownMenuContent>
         </DropdownMenu>
@@ -105,12 +108,13 @@ function UserMenu() {
 
 /** The trail. The last crumb is the current page and is not a link. */
 function Breadcrumbs({ crumbs }: { crumbs: Crumb[] }) {
+    const t = useT();
     if (crumbs.length === 0) {
         return null;
     }
 
     return (
-        <nav aria-label="مسار التنقل" className="min-w-0">
+        <nav aria-label={t('shell.breadcrumb', 'مسار التنقل')} className="min-w-0">
             <ol className="flex items-center gap-1.5 text-xs text-muted-foreground">
                 {crumbs.map((crumb, index) => {
                     const last = index === crumbs.length - 1;
@@ -136,6 +140,7 @@ function Breadcrumbs({ crumbs }: { crumbs: Crumb[] }) {
 }
 
 export function Header({ crumbs, onOpenNav }: { crumbs: Crumb[]; onOpenNav: () => void }) {
+    const t = useT();
     // Restore the stored scheme once, on mount, before the first paint the user notices.
     useEffect(() => {
         try {
@@ -150,7 +155,7 @@ export function Header({ crumbs, onOpenNav }: { crumbs: Crumb[]; onOpenNav: () =
 
     return (
         <header className="sticky top-0 z-30 flex h-header items-center gap-3 border-b bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/80">
-            <Button type="button" variant="outline" size="icon" className="lg:hidden" onClick={onOpenNav} aria-label="فتح القائمة">
+            <Button type="button" variant="outline" size="icon" className="lg:hidden" onClick={onOpenNav} aria-label={t('shell.open_menu', 'فتح القائمة')}>
                 <Menu className="h-[18px] w-[18px]" />
             </Button>
 

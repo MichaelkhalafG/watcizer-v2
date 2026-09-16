@@ -7,6 +7,7 @@ use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\HttpCacheHeaders;
 use App\Http\Middleware\NegotiateLegacyLocale;
 use App\Http\Middleware\ResolveStorefront;
+use App\Http\Middleware\SetDashboardLocale;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -21,6 +22,12 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->web(append: [
+            /*
+             * BEFORE the Inertia share, and before any controller: `__()` resolves against the
+             * locale that is set when the controller runs, so applying the operator's choice later
+             * would translate the props and not the flash message (i18n step 0).
+             */
+            SetDashboardLocale::class,
             HandleInertiaRequests::class,
         ]);
 

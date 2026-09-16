@@ -39,6 +39,12 @@ class CartCompatController extends Controller
     {
         try {
             $data = Validator::make($request->all(), [
+                /*
+                 * Deliberately NOT tightened to `is_active` (review 🔴-3). It would work, but this
+                 * controller reproduces legacy's "a validation failure is a 500 with a ref" — so a
+                 * withdrawn product would come back as a server error instead of a sentence. The
+                 * refusal is an explicit 422 below, beside the variant one, where it belongs.
+                 */
                 'product_id' => ['nullable', 'integer', Rule::exists('catalog_products', 'id')->whereNull('deleted_at')],
                 'offer_id' => 'nullable|integer|exists:offers,id',
                 'quantity' => 'required|integer|min:1',
@@ -58,18 +64,31 @@ class CartCompatController extends Controller
 
             if ($productId !== null) {
                 $product = $catalog['products'][$productId] ?? null;
-                if ($product !== null && $product['has_variants']) {
+                /*
+                 * ── review 🔴-3 ──────────────────────────────────────────────────────────────
+                 *
+                 * The reader returns nothing for a product that is archived or NOT ACTIVE. Every
+                 * check below was written as `if ($product !== null)`, so a missing entry skipped
+                 * all of them and the line was added regardless — the stock check, the variant
+                 * check, everything. A withdrawn product went into the cart and failed at
+                 * checkout, which is the worst place to find out.
+                 *
+                 * `InventoryService` refuses the sale itself and is the guard that matters; this
+                 * is the door saying so at the moment the customer can still act on it.
+                 */
+                if ($product === null) {
+                    return response()->json(['success' => false, 'message' => 'This product is no longer available'], 422);
+                }
+                if ($product['has_variants']) {
                     // Wave 3.5 invariant: the legacy frontend cannot choose a size, so a product
                     // that sells through variants is not addable here at all. Unreachable on
                     // Watchizer (no storefront-1 product has variants) and a loud refusal rather
                     // than a product-level decrement that no variant backs.
                     return response()->json(['success' => false, 'message' => 'This product requires selecting an option'], 422);
                 }
-                if ($product !== null) {
-                    $available = $typeStock === 'Express' ? $product['express'] : $product['market'];
-                    if ($quantity > $available) {
-                        return response()->json(['success' => false, 'message' => 'Requested quantity exceeds available stock'], 422);
-                    }
+                $available = $typeStock === 'Express' ? $product['express'] : $product['market'];
+                if ($quantity > $available) {
+                    return response()->json(['success' => false, 'message' => 'Requested quantity exceeds available stock'], 422);
                 }
             }
             if ($offerId !== null) {

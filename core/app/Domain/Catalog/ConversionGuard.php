@@ -3,6 +3,7 @@
 namespace App\Domain\Catalog;
 
 use App\Domain\Inventory\InventoryService;
+use App\Support\ManageText;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
@@ -77,23 +78,35 @@ final class ConversionGuard
     public function mayConvert(int $productId): array
     {
         if ($this->inventory->hasVariants($productId)) {
-            return ['allowed' => true, 'reason' => 'المنتج يعمل بالمقاسات/الألوان بالفعل، فإضافة صف آخر ليست تحويلاً.'];
+            return ['allowed' => true, 'reason' => ManageText::t(
+                'variants.convert_already_variant_backed',
+                'المنتج يعمل بالمقاسات/الألوان بالفعل، فإضافة صف آخر ليست تحويلاً.',
+            )];
         }
 
         if (self::writeSwitchCompleted()) {
-            return ['allowed' => true, 'reason' => 'تم التحويل النهائي للكتابة، والنواة هي الكاتب الوحيد للمخزون.'];
+            return ['allowed' => true, 'reason' => ManageText::t(
+                'variants.convert_after_write_switch',
+                'تم التحويل النهائي للكتابة، والنواة هي الكاتب الوحيد للمخزون.',
+            )];
         }
 
         if (! self::isLegacyBacked($productId)) {
-            return ['allowed' => true, 'reason' => 'منتج جديد أُنشئ من هذه اللوحة، فلا يوجد مخزون قديم يُكتب من تطبيقين.'];
+            return ['allowed' => true, 'reason' => ManageText::t(
+                'variants.convert_new_product',
+                'منتج جديد أُنشئ من هذه اللوحة، فلا يوجد مخزون قديم يُكتب من تطبيقين.',
+            )];
         }
 
         return [
             'allowed' => false,
-            'reason' => 'ممنوع قبل التحويل النهائي: هذا منتج قديم ما زال تطبيق الداشبورد القديم يخصم مخزونه مباشرة. '
-                .'تحويله الآن يجعل النواة تعامل مخزونه كمجموع للمقاسات بينما يبيع التطبيق القديم من نفس العمود — '
-                .'والتحويل لا يوفّق هذا العمود بعد ذلك، فلا شيء يكتشف الفرق. '
-                .'الطريقان الآمنان: منتج جديد بمقاسات من البداية، أو التحويل بعد ليلة التحويل.',
+            // ONE literal rather than the four concatenated parts it used to be: the fallback has
+            // to reach the seam as a single string, and a sentence split across `.` operators
+            // arrives as four.
+            'reason' => ManageText::t(
+                'variants.convert_blocked_legacy_product',
+                'ممنوع قبل التحويل النهائي: هذا منتج قديم ما زال تطبيق الداشبورد القديم يخصم مخزونه مباشرة. تحويله الآن يجعل النواة تعامل مخزونه كمجموع للمقاسات بينما يبيع التطبيق القديم من نفس العمود — والتحويل لا يوفّق هذا العمود بعد ذلك، فلا شيء يكتشف الفرق. الطريقان الآمنان: منتج جديد بمقاسات من البداية، أو التحويل بعد ليلة التحويل.',
+            ),
         ];
     }
 

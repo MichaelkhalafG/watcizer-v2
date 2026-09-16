@@ -57,9 +57,10 @@ final class FullReplace
         }
 
         throw ValidationException::withMessages([
-            $field => 'هذا الطلب يستبدل '.$record.' بالكامل، ولم يُعلن أنه كامل، فأي خانة غائبة كانت ستُمسح. '
-                .'شاشات اللوحة ترسل الإعلان تلقائيًا؛ إن جاء الطلب من سكربت أو استيراد فاستخدم مسار التحديث الجزئي. '
-                .'[developer] This endpoint REPLACES the whole record: every key absent from the payload is CLEARED. '
+            // The operator's half goes through the seam; the `[developer]` tail stays English in
+            // every locale, because it is addressed to whoever wrote the caller.
+            $field => ManageText::t('form.full_replace_required', 'هذا الطلب يستبدل :record بالكامل، ولم يُعلن أنه كامل، فأي خانة غائبة كانت ستُمسح. شاشات اللوحة ترسل الإعلان تلقائيًا؛ إن جاء الطلب من سكربت أو استيراد فاستخدم مسار التحديث الجزئي.', ['record' => $record])
+                .' [developer] This endpoint REPLACES the whole record: every key absent from the payload is CLEARED. '
                 .'Send '.self::MARKER.'=1 to declare the payload is the complete record, or use an explicit '
                 .'partial-update path (an importer must never assert completeness it does not have). '
                 .'See CLEAN_CORE_STUDY §2.9.7 and AGENTS §3.',

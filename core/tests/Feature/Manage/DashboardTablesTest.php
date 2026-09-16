@@ -44,7 +44,7 @@ it('keeps every dashboard-authored table out of the drop list', function () {
     );
 });
 
-it('names the SEVEN tables the dashboard authors today', function () {
+it('names EVERY table the dashboard authors, in order, so adding one is a deliberate edit', function () {
     /*
      * A change to this list is a decision, so it fails a test rather than passing silently — which
      * is exactly what happened on 2026-09-13 when the findings table was added.
@@ -59,11 +59,35 @@ it('names the SEVEN tables the dashboard authors today', function () {
      * MONEY and that nobody has judged it yet. A rebuild that erased it would erase the only
      * evidence that a refund, a double charge or a decline-after-payment ever arrived.
      */
+    /*
+     * Fourteen since M1o (2026-09-15): `core_activity_log` — who changed what, and what it was
+     * before. It is the one table on this list whose entire value is in being OLD, so it is the
+     * last one that may ever be dropped: a rebuild that erased it would erase the history of the
+     * rebuild itself, including the answer to whatever question prompted somebody to look.
+     *
+     * Thirteen since M1m (2026-09-14): `core_user_preferences` — the dashboard language an
+     * operator chose. It is the smallest row on this list and it is here for the same reason as
+     * the largest: a human typed it and no transform can regenerate it.
+     *
+     * Twelve since wave 4D (M1l): the five promotion tables joined the list on 2026-09-13
+     * (study §3.16.9 resolution 🔴-3). A rule, its storefronts, its conditions, its rewards and
+     * its skip counters are all typed by an admin and have no legacy source, so a rebuild would
+     * delete a promotion the shop is running — and the `promotion_rule_id` on the order lines it
+     * already granted would point at nothing.
+     *
+     * The list is pinned BY NAME on purpose: adding a table here must be a deliberate edit to this
+     * assertion, because the alternative is a table quietly joining the never-dropped set and
+     * nobody noticing until switch night proves it should not have.
+     */
     expect(CoreChecksumCommand::DASHBOARD_TABLES)->toBe([
         'storefronts', 'storefront_banners', 'core_user_roles',
         'storefront_payment_providers', 'storefront_payment_methods',
         'storefront_payment_method_translations',
         'payment_reconciliation_findings',
+        'promotion_rules', 'promotion_rule_storefront', 'promotion_rule_conditions',
+        'promotion_rule_rewards', 'promotion_rule_skips',
+        'core_user_preferences',
+        'core_activity_log',
     ]);
 
     foreach (CoreChecksumCommand::DASHBOARD_TABLES as $table) {

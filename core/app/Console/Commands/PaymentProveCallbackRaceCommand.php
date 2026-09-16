@@ -8,6 +8,7 @@ use App\Domain\Payment\CallbackPolicy;
 use App\Models\Storefront\StorefrontPaymentMethod;
 use App\Models\Storefront\StorefrontPaymentProvider;
 use App\Support\Coerce;
+use App\Support\WriteTarget;
 use App\Transform\Row;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -53,12 +54,28 @@ final class PaymentProveCallbackRaceCommand extends Command
                             {--rounds=10 : rounds to run, or until a deadlock is observed}
                             {--stop-on-deadlock : stop as soon as one round produced a recorded loss}
                             {--hold-lock=0 : hold the order row locked for this many ms, to force contention the retry cannot absorb}
-                            {--keep : leave the probe orders, attempts and findings behind for inspection}';
+                            {--keep : leave the probe orders, attempts and findings behind for inspection}
+                            {--allow-remote : Permit a target that is NOT a local copy. This probe WRITES: it creates real orders, order_items and payment attempts}';
 
     protected $description = 'Race concurrent payment callbacks at one order and prove none is lost.';
 
     public function handle(): int
     {
+        /*
+         * ── this probe WRITES, so it asks the same question the harness does ────────────────
+         *
+         * Every round creates a real order with its line and races callbacks at it, writing
+         * payment attempts and findings. `--keep` leaves all of it behind ON PURPOSE, and a run
+         * that dies mid-round leaves it behind anyway — real rows in the shared commerce tables.
+         *
+         * Found by the 2026-09-15 sweep as the fourth of four tools that write as a side effect of
+         * being run, all invisible for the same reason: none had ever been run. The guard is
+         * `App\Support\WriteTarget`, shared with `compat:diff` and the release probe.
+         */
+        if ($this->refuseIfTargetIsRemote()) {
+            return self::INVALID;
+        }
+
         $base = Coerce::str($this->option('path'));
         $workers = max(2, Coerce::int($this->option('workers')));
         $rounds = max(1, Coerce::int($this->option('rounds')));
@@ -491,5 +508,23 @@ final class PaymentProveCallbackRaceCommand extends Command
         $payload['hmac'] = hash_hmac('sha512', $concatenated, $secret);
 
         return $payload;
+    }
+
+    /** True when this probe must not run, because it would write to something that is not a copy. */
+    private function refuseIfTargetIsRemote(): bool
+    {
+        $remote = WriteTarget::remote();
+        if ($remote === [] || $this->option(WriteTarget::ALLOW_REMOTE) === true) {
+            return false;
+        }
+
+        return WriteTarget::refuse($this, 'this probe', $remote, [
+            'a real order and its order_items per round',
+            'a payment_statuses attempt per racing worker, and the findings they produce',
+            'all of it left behind when --keep is passed, or when a round dies mid-race',
+        ], [
+            'run it against a LOCAL COPY — the only place a probe that manufactures orders belongs;',
+            'or, deliberately, with --allow-remote, knowing --keep and a crash both leave rows.',
+        ]);
     }
 }

@@ -6,7 +6,9 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input, Select } from '@/components/ui/input';
 import ManageLayout from '@/layouts/ManageLayout';
+import { useT } from '@/lib/i18n';
 import type { TablePayload } from '@/types';
+import { Ltr } from '@/components/ui/bidi';
 
 /**
  * The movement ledger (wave 4C) — READ-ONLY, for everybody including an administrator.
@@ -50,28 +52,45 @@ interface Props {
     filters: { reasons: Option[]; buckets: Option[]; references: Option[] };
 }
 
-const REASON_LABEL: Record<string, string> = {
-    order: 'حجز لطلب',
-    order_cancel: 'إرجاع بعد إلغاء',
-    payment_failed: 'إرجاع بعد فشل دفع',
-    restock: 'توريد',
-    manual: 'تعديل يدوي',
-    import: 'استيراد',
-    adjustment: 'تسوية جرد',
-    erp_sync: 'مزامنة ERP',
-    transform: 'بناء أولي',
-};
+type Translate = ReturnType<typeof useT>;
+
+/**
+ * The ledger reasons in Arabic — the same vocabulary the other inventory screens use.
+ *
+ * A function of `t` rather than a constant map: a hook cannot run at module level, and these have
+ * to be translated. `adjustment` keeps its own key because the ledger names it a stock-COUNT
+ * correction, which is a longer phrase than the order screen's, and one key cannot hold both.
+ */
+const reasonLabels = (t: Translate): Record<string, string> => ({
+    order: t('common.reason_order', 'حجز لطلب'),
+    order_cancel: t('common.reason_order_cancel', 'إرجاع بعد إلغاء'),
+    payment_failed: t('common.reason_payment_failed', 'إرجاع بعد فشل دفع'),
+    restock: t('common.reason_restock', 'توريد'),
+    manual: t('common.reason_manual', 'تعديل يدوي'),
+    import: t('common.reason_import', 'استيراد'),
+    adjustment: t('inventory.ledger_reason_adjustment', 'تسوية جرد'),
+    erp_sync: t('common.reason_erp_sync', 'مزامنة ERP'),
+    transform: t('common.reason_transform', 'بناء أولي'),
+});
 
 /** A release is the movement that proves a cancellation gave the stock back. */
 const RELEASE_REASONS = ['order_cancel', 'payment_failed'];
 
-const BUCKET_LABEL: Record<string, string> = { express: 'إكسبريس', market: 'ماركت' };
+const bucketLabels = (t: Translate): Record<string, string> => ({
+    express: t('common.stock_express', 'إكسبريس'),
+    market: t('common.stock_market', 'ماركت'),
+});
 
 export default function InventoryLedger({ table, filters }: Props) {
+    const t = useT();
+
+    const REASON_LABEL = reasonLabels(t);
+    const BUCKET_LABEL = bucketLabels(t);
+
     const columns: Array<Column<LedgerRow>> = [
         {
             key: 'im.created_at',
-            header: 'التاريخ',
+            header: t('common.date', 'التاريخ'),
             sortable: true,
             cell: (row) => (
                 <span className="text-xs" dir="ltr">
@@ -81,12 +100,12 @@ export default function InventoryLedger({ table, filters }: Props) {
         },
         {
             key: 'product',
-            header: 'المنتج',
+            header: t('common.product', 'المنتج'),
             sortable: false,
             cell: (row) => (
                 <div className="space-y-0.5">
-                    <div className="text-xs font-medium" dir="ltr">
-                        {row.wa_code ?? `#${row.product_id ?? '—'}`}
+                    <div className="text-xs font-medium">
+                        <Ltr>{row.wa_code ?? `#${row.product_id ?? '—'}`}</Ltr>
                     </div>
                     {row.variant !== null ? <div className="text-xs text-muted-foreground">{row.variant}</div> : null}
                 </div>
@@ -94,13 +113,13 @@ export default function InventoryLedger({ table, filters }: Props) {
         },
         {
             key: 'im.bucket',
-            header: 'المخزن',
+            header: t('inventory.bucket', 'المخزن'),
             sortable: false,
             cell: (row) => <span className="text-sm">{BUCKET_LABEL[row.bucket] ?? row.bucket}</span>,
         },
         {
             key: 'im.quantity_delta',
-            header: 'التغيير',
+            header: t('inventory.ledger_delta', 'التغيير'),
             sortable: true,
             cell: (row) => (
                 <span
@@ -113,7 +132,7 @@ export default function InventoryLedger({ table, filters }: Props) {
         },
         {
             key: 'after',
-            header: 'الرصيد بعدها',
+            header: t('inventory.ledger_balance_after', 'الرصيد بعدها'),
             sortable: false,
             cell: (row) => (
                 <span dir="ltr">{row.after}</span>
@@ -121,7 +140,7 @@ export default function InventoryLedger({ table, filters }: Props) {
         },
         {
             key: 'reason',
-            header: 'السبب',
+            header: t('common.reason', 'السبب'),
             sortable: false,
             cell: (row) => (
                 <div className="space-y-0.5">
@@ -134,7 +153,7 @@ export default function InventoryLedger({ table, filters }: Props) {
         },
         {
             key: 'reference',
-            header: 'المصدر',
+            header: t('inventory.ledger_source', 'المصدر'),
             sortable: false,
             hideOnMobile: true,
             cell: (row) => (
@@ -154,8 +173,8 @@ export default function InventoryLedger({ table, filters }: Props) {
                         </span>
                     )}
                     {row.external_ref !== null ? (
-                        <div className="text-muted-foreground" dir="ltr">
-                            {row.external_ref}
+                        <div className="text-muted-foreground">
+                            <Ltr>{row.external_ref}</Ltr>
                         </div>
                     ) : null}
                 </div>
@@ -163,7 +182,7 @@ export default function InventoryLedger({ table, filters }: Props) {
         },
         {
             key: 'actor',
-            header: 'مَن',
+            header: t('inventory.ledger_actor', 'مَن'),
             sortable: false,
             hideOnMobile: true,
             cell: (row) => (
@@ -177,38 +196,41 @@ export default function InventoryLedger({ table, filters }: Props) {
 
     return (
         <ManageLayout
-            title="سجل حركات المخزون"
+            title={t('inventory.ledger_title', 'سجل حركات المخزون')}
             crumbs={[
-                { label: 'الرئيسية', href: '/manage' },
-                { label: 'المخزون', href: '/manage/inventory' },
-                { label: 'السجل' },
+                { label: t('common.home', 'الرئيسية'), href: '/manage' },
+                { label: t('common.inventory', 'المخزون'), href: '/manage/inventory' },
+                { label: t('inventory.ledger_crumb', 'السجل') },
             ]}
             actions={
                 <Button asChild variant="outline" size="sm">
-                    <Link href="/manage/inventory/reconciliation">فحص المطابقة</Link>
+                    <Link href="/manage/inventory/reconciliation">{t('common.reconciliation', 'فحص المطابقة')}</Link>
                 </Button>
             }
         >
             <div className="space-y-4">
-                <Alert tone="info" title="السجل للقراءة فقط">
-                    لا توجد شاشة ولا مسار يعدّل سطرًا هنا أو يحذفه. الخطأ يُصحَّح بتسجيل الحركة المضادة مع ملاحظة —
-                    وهكذا يظل مجموع الحركات مساويًا للرصيد، وهو أساس فحص المطابقة.
+                <Alert tone="info" title={t('inventory.ledger_read_only_title', 'السجل للقراءة فقط')}>
+                    {t(
+                        'inventory.ledger_read_only_body',
+                        'لا توجد شاشة ولا مسار يعدّل سطرًا هنا أو يحذفه. الخطأ يُصحَّح بتسجيل الحركة المضادة مع ملاحظة — وهكذا يظل مجموع الحركات مساويًا للرصيد، وهو أساس فحص المطابقة.',
+                    )}
                 </Alert>
 
                 <DataTable
                     table={table}
                     columns={columns}
                     rowId={(row) => row.id}
-                    emptyTitle="لا توجد حركات"
-                    emptyDescription="جرِّب تعديل التصفية أو نطاق التاريخ."
+                    emptyTitle={t('inventory.ledger_empty_title', 'لا توجد حركات')}
+                    emptyDescription={t('inventory.ledger_empty_description', 'جرِّب تعديل التصفية أو نطاق التاريخ.')}
                     filters={(setFilter, current) => (
                         <>
                             <Select
-                                aria-label="السبب"
+                                className="w-full sm:w-48"
+                                aria-label={t('common.reason', 'السبب')}
                                 value={current.reason ?? ''}
                                 onChange={(event) => setFilter('reason', event.target.value || null)}
                             >
-                                <option value="">كل الأسباب</option>
+                                <option value="">{t('inventory.ledger_all_reasons', 'كل الأسباب')}</option>
                                 {filters.reasons.map((option) => (
                                     <option key={option.value} value={option.value}>
                                         {REASON_LABEL[option.value] ?? option.label}
@@ -216,7 +238,8 @@ export default function InventoryLedger({ table, filters }: Props) {
                                 ))}
                             </Select>
                             <Select
-                                aria-label="المخزن"
+                                className="w-full sm:w-48"
+                                aria-label={t('inventory.bucket', 'المخزن')}
                                 value={current.bucket ?? ''}
                                 onChange={(event) => setFilter('bucket', event.target.value || null)}
                             >
@@ -227,7 +250,8 @@ export default function InventoryLedger({ table, filters }: Props) {
                                 ))}
                             </Select>
                             <Select
-                                aria-label="المصدر"
+                                className="w-full sm:w-48"
+                                aria-label={t('inventory.ledger_source', 'المصدر')}
                                 value={current.reference_type ?? ''}
                                 onChange={(event) => setFilter('reference_type', event.target.value || null)}
                             >
@@ -239,7 +263,7 @@ export default function InventoryLedger({ table, filters }: Props) {
                             </Select>
                             <Input
                                 type="number"
-                                aria-label="رقم المنتج"
+                                aria-label={t('common.product_number', 'رقم المنتج')}
                                 className="w-[9rem]"
                                 dir="ltr"
                                 placeholder="product id"
@@ -248,14 +272,14 @@ export default function InventoryLedger({ table, filters }: Props) {
                             />
                             <Input
                                 type="date"
-                                aria-label="من تاريخ"
+                                aria-label={t('common.from_date', 'من تاريخ')}
                                 className="w-[10rem]"
                                 value={current.from ?? ''}
                                 onChange={(event) => setFilter('from', event.target.value || null)}
                             />
                             <Input
                                 type="date"
-                                aria-label="إلى تاريخ"
+                                aria-label={t('common.to_date', 'إلى تاريخ')}
                                 className="w-[10rem]"
                                 value={current.to ?? ''}
                                 onChange={(event) => setFilter('to', event.target.value || null)}

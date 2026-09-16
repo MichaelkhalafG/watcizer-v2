@@ -116,6 +116,80 @@ it('verifies a token signed with the shared secret, and rejects one that is not'
         ->assertExitCode(1);
 });
 
+/*
+ * ── the image bases ──────────────────────────────────────────────────────────────────────────
+ *
+ * The third thing this command proves. `STOREFRONT_ASSET_BASE` / `COMPAT_ASSET_BASE` /
+ * `MEDIA_URL_BASE` decide the host of every rendered `<img src>` — dashboard, v2 API, compat
+ * payloads and order e-mails — and they are exactly the keys a developer overrides to see LOCAL
+ * files while working. That is the `ORDER_MAIL_INLINE` shape (AGENTS §3): a key edited once for a
+ * local convenience and carried to production with the rest of the file, whose only symptom is
+ * that every photograph in the shop is broken.
+ *
+ * All three outcomes are exercised, because a check that cannot fail is not a check: a development
+ * value PASSES on a developer's machine, the same value FAILS on a production host, and a
+ * `MEDIA_URL_BASE` that does not follow `STOREFRONT_ASSET_BASE` fails everywhere (it makes the
+ * just-uploaded preview and the reloaded preview name different hosts — study §3.14.6).
+ */
+
+/** The key and JWT halves pass, so the asset check is the only thing that can decide the run. */
+function parityWithHalvesPassing(): PendingCommand
+{
+    Http::fake(function (Request $request) {
+        return $request->hasHeader('Api-Code', 'the-real-public-api-key')
+            ? Http::response(['ok' => true], 200)
+            : Http::response([], 401);
+    });
+
+    return parity(['--token' => HarnessJwt::mint(1)]);
+}
+
+it('allows a LOCAL asset base on a developer machine, and says out loud that it is local', function () {
+    config()->set('storefront.asset_base', 'http://127.0.0.1:8099');
+    config()->set('compat.asset_base', 'http://127.0.0.1:8099');
+    config()->set('media.url_base', 'http://127.0.0.1:8099/Uploads_Images');
+
+    parityWithHalvesPassing()
+        ->expectsOutputToContain('NEVER copy this file to production')
+        ->assertExitCode(0);
+});
+
+it('REFUSES the same local asset base on a production host', function () {
+    // `Application::environment()` reads the container's `env` binding, not live config.
+    app()->instance('env', 'production');
+
+    config()->set('storefront.asset_base', 'http://127.0.0.1:8099');
+    config()->set('compat.asset_base', 'http://127.0.0.1:8099');
+    config()->set('media.url_base', 'http://127.0.0.1:8099/Uploads_Images');
+
+    parityWithHalvesPassing()
+        ->expectsOutputToContain('[assets] LOCAL VALUE IN PRODUCTION')
+        ->assertExitCode(1);
+});
+
+it('REFUSES a relative MEDIA_ROOT on a production host', function () {
+    // The write side of the same failure, and the quiet one: off this workstation the default
+    // `../backend/public/Uploads_Images` does not resolve to the shared mount, and
+    // `MediaStore::directory()` CREATES whatever it resolves to instead of refusing. Every upload
+    // then succeeds into a tree nothing serves.
+    app()->instance('env', 'production');
+    config()->set('media.root', '../backend/public/Uploads_Images');
+
+    parityWithHalvesPassing()
+        ->expectsOutputToContain('[assets] RELATIVE MEDIA_ROOT')
+        ->assertExitCode(1);
+});
+
+it('FAILS when MEDIA_URL_BASE does not follow STOREFRONT_ASSET_BASE, in any environment', function () {
+    // The one that has no "correct on a developer's machine" reading: the upload preview and the
+    // reloaded preview would point at two different hosts, and nothing on the screen says which.
+    config()->set('media.url_base', 'https://cdn.example.net/Uploads_Images');
+
+    parityWithHalvesPassing()
+        ->expectsOutputToContain('[assets] SPLIT PREVIEW')
+        ->assertExitCode(1);
+});
+
 it('does not claim the JWT half when no token was supplied', function () {
     Http::fake(function (Request $request) {
         return $request->hasHeader('Api-Code', 'the-real-public-api-key')

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Manage;
 
 use App\Domain\Media\MediaStore;
 use App\Domain\Media\UnreadableUpload;
+use App\Support\ManageText;
 use ErrorException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -29,11 +30,23 @@ use RuntimeException;
  */
 final class MediaController
 {
-    /** One wording for a rejected file, in both the message and the field error. */
-    private const NOT_AN_IMAGE = 'هذا الملف ليس صورة صالحة. استخدم JPG أو PNG أو WebP.';
+    /**
+     * One wording for a rejected file, in both the message and the field error.
+     *
+     * A static method rather than a `const`: a constant is evaluated at compile time and cannot
+     * call the translation seam, and this sentence is read by an operator. The two call sites are
+     * unchanged in every other respect — one wording, resolved at the point of use.
+     */
+    private static function notAnImage(): string
+    {
+        return ManageText::t('media.not_an_image', 'هذا الملف ليس صورة صالحة. استخدم JPG أو PNG أو WebP.');
+    }
 
     /** A file that reached the server but cannot be READ — nothing about it can be checked. */
-    private const UNREADABLE = 'تعذّر قراءة الملف المرفوع. أعد المحاولة أو اختر ملفًا آخر.';
+    private static function unreadable(): string
+    {
+        return ManageText::t('media.unreadable_upload', 'تعذّر قراءة الملف المرفوع. أعد المحاولة أو اختر ملفًا آخر.');
+    }
 
     public function store(Request $request, MediaStore $store): JsonResponse
     {
@@ -51,9 +64,11 @@ final class MediaController
          */
         $upload = $request->file('file');
         if ($upload instanceof UploadedFile && ! self::readable($upload)) {
+            $refusal = self::unreadable();
+
             return response()->json([
-                'message' => self::UNREADABLE,
-                'errors' => ['file' => [self::UNREADABLE]],
+                'message' => $refusal,
+                'errors' => ['file' => [$refusal]],
             ], 422);
         }
 
@@ -77,9 +92,11 @@ final class MediaController
              */
             report($e);
 
+            $refusal = self::unreadable();
+
             return response()->json([
-                'message' => self::UNREADABLE,
-                'errors' => ['file' => [self::UNREADABLE]],
+                'message' => $refusal,
+                'errors' => ['file' => [$refusal]],
             ], 422);
         }
 
@@ -101,16 +118,20 @@ final class MediaController
              */
             report($e);
 
+            $refusal = self::notAnImage();
+
             return response()->json([
-                'message' => self::NOT_AN_IMAGE,
-                'errors' => ['file' => [self::NOT_AN_IMAGE]],
+                'message' => $refusal,
+                'errors' => ['file' => [$refusal]],
             ], 422);
         } catch (RuntimeException $e) {
             // A host without GD/WebP, or an unwritable shared mount, is an operational fault:
             // report it as one instead of a 500 with a stack trace in a JSON body.
             report($e);
 
-            return response()->json(['message' => 'تعذّر معالجة الصورة على هذا الخادم. راجع سجلات النظام.'], 500);
+            return response()->json([
+                'message' => ManageText::t('media.processing_failed', 'تعذّر معالجة الصورة على هذا الخادم. راجع سجلات النظام.'),
+            ], 500);
         }
 
         return response()->json($stored, 201);

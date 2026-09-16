@@ -101,10 +101,24 @@ it('writes only clean tables and the shared commerce ones, across every wave-3 e
 });
 
 it('lists the shared commerce tables explicitly, so the exception stays visible', function () {
-    // A reviewer should be able to read the exception, not infer it. Six shared commerce tables
-    // plus `offers`, whose `stock` column InventoryService::adjustOffer() decrements.
+    /*
+     * A reviewer should be able to read the exception, not infer it. Six shared commerce tables,
+     * plus `offers` (whose `stock` column `InventoryService::adjustOffer()` decrements), plus the
+     * two shipping tables.
+     *
+     * SHIPPING JOINED 2026-09-15, deliberately. `shipping_cities` and `shipping_city_translations`
+     * were frozen — tables core promised never to write — and that promise had to end when the
+     * dashboard became the only editor of the delivery price (the Blade `shipping_city` screen is
+     * retired at handover, and without a replacement the next courier price rise is hand-typed SQL
+     * against production). Every write goes through `App\Domain\Shipping\ShippingCities`.
+     *
+     * This list growing is not routine. Each entry is a table core promised not to touch, so a
+     * change here should arrive with the reason attached — which is why this assertion is exact
+     * rather than a `toContain`.
+     */
     expect(CoreChecksumCommand::SHARED_COMMERCE_TABLES)->toBe([
         'addresses', 'carts', 'cart_items', 'orders', 'order_items', 'payment_statuses', 'offers',
+        'shipping_cities', 'shipping_city_translations',
     ]);
 
     // …and the frozen set is the rest of the 65: what core must never write, under any path.

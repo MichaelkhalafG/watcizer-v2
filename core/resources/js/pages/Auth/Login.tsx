@@ -7,6 +7,7 @@ import { TextField } from '@/components/form/TextField';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { useT } from '@/lib/i18n';
 import type { SharedProps } from '@/types';
 
 /**
@@ -21,6 +22,7 @@ import type { SharedProps } from '@/types';
  * unreadable.
  */
 export default function Login({ status }: { status: string | null }) {
+    const t = useT();
     const { dir, locale, branding, errors } = usePage<SharedProps>().props;
     const form = useForm({ email: '', password: '' });
 
@@ -31,7 +33,7 @@ export default function Login({ status }: { status: string | null }) {
 
     return (
         <div dir={dir} className="flex min-h-screen items-center justify-center bg-muted/40 px-4 py-10">
-            <Head title="تسجيل الدخول" />
+            <Head title={t('auth.sign_in', 'تسجيل الدخول')} />
 
             <div className="w-full max-w-sm space-y-6">
                 <div className="flex flex-col items-center gap-3 text-center">
@@ -54,7 +56,7 @@ export default function Login({ status }: { status: string | null }) {
                             }}
                         >
                             <TextField
-                                label="البريد الإلكتروني"
+                                label={t('auth.email', 'البريد الإلكتروني')}
                                 type="email"
                                 dir="ltr"
                                 required
@@ -65,7 +67,7 @@ export default function Login({ status }: { status: string | null }) {
                             />
 
                             <TextField
-                                label="كلمة المرور"
+                                label={t('common.password', 'كلمة المرور')}
                                 type="password"
                                 dir="ltr"
                                 required
@@ -76,14 +78,16 @@ export default function Login({ status }: { status: string | null }) {
 
                             <Button type="submit" className="w-full gap-2" disabled={form.processing}>
                                 {form.processing ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <LogIn className="h-4 w-4" aria-hidden="true" />}
-                                {form.processing ? 'جارٍ الدخول…' : 'تسجيل الدخول'}
+                                {form.processing
+                                    ? t('auth.signing_in', 'جارٍ الدخول…')
+                                    : t('auth.sign_in', 'تسجيل الدخول')}
                             </Button>
                         </form>
                     </CardContent>
                 </Card>
 
                 <p className="text-center text-xs text-muted-foreground">
-                    الدخول لفريق العمل فقط. الحسابات نفسها المستخدمة في اللوحة الحالية.
+                    {t('auth.staff_only', 'الدخول لفريق العمل فقط. الحسابات نفسها المستخدمة في اللوحة الحالية.')}
                 </p>
             </div>
         </div>

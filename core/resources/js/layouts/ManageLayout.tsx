@@ -7,6 +7,7 @@ import { Sidebar } from '@/components/manage/Sidebar';
 import { Alert } from '@/components/ui/alert';
 import { cn } from '@/lib/utils';
 import type { Crumb, SharedProps } from '@/types';
+import { useT } from '@/lib/i18n';
 
 /**
  * The shell every dashboard screen lives in (wave 4A).
@@ -44,6 +45,8 @@ export default function ManageLayout({
         }
     }, []);
 
+    const t = useT();
+
     const toggle = useCallback(() => {
         setCollapsed((current) => {
             const next = !current;
@@ -65,7 +68,7 @@ export default function ManageLayout({
 
             {/* Tablet/phone drawer: same component, same nav data, no second implementation. */}
             <Dialog open={navOpen} onOpenChange={setNavOpen}>
-                <Sheet title="القائمة الرئيسية" className="lg:hidden">
+                <Sheet title={t('shell.main_menu', 'القائمة الرئيسية')} className="lg:hidden">
                     <Sidebar collapsed={false} inSheet />
                 </Sheet>
             </Dialog>

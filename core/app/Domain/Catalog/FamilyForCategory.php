@@ -3,6 +3,7 @@
 namespace App\Domain\Catalog;
 
 use App\Support\Coerce;
+use App\Support\ManageText;
 use App\Transform\FamilyResolver;
 use App\Transform\Row;
 use Illuminate\Support\Facades\DB;
@@ -84,8 +85,73 @@ final class FamilyForCategory
     public function forNode(int $nodeId): string
     {
         $names = self::namesFor($nodeId);
+        $family = $this->resolver->resolve($names['root_en'], null, $names['node_en']);
 
-        return $this->resolver->resolve($names['root_en'], null, $names['node_en']);
+        /*
+         * ── a node deeper than legacy's two levels asks its ANCESTORS ───────────────────────
+         *
+         * The resolver answers from the ROOT name and the NODE's own name, which is exactly legacy's
+         * shape. The dashboard can build deeper, and wave 4D did: `Fashion → Bags → Handbags`. The
+         * node's own name says nothing to the map, so a handbag resolved to the default `fashion` —
+         * no bag spec block, and a bag filed as generic fashion.
+         *
+         * So when the node itself is not recognised, its nearest named ancestor decides, walking up
+         * the materialised path. `Bags` says `bag`, and every shape beneath it inherits that. The
+         * ROOT rule still wins first (a watch is a watch), and a node whose whole line says nothing
+         * still lands on the default — which is what the default is for.
+         */
+        if ($family !== $this->resolver->defaultFamily()) {
+            return $family;
+        }
+
+        foreach (self::ancestorNamesFor($nodeId) as $ancestorEn) {
+            $fromAncestor = $this->resolver->resolve($names['root_en'], null, $ancestorEn);
+            if ($fromAncestor !== $this->resolver->defaultFamily()) {
+                return $fromAncestor;
+            }
+        }
+
+        return $family;
+    }
+
+    /**
+     * EN names of this node's ancestors, NEAREST first, read off the materialised path.
+     *
+     * @return list<string>
+     */
+    private static function ancestorNamesFor(int $nodeId): array
+    {
+        $row = DB::table('storefront_categories')->where('id', $nodeId)->first(['path', 'storefront_id']);
+        if (! is_object($row)) {
+            return [];
+        }
+
+        $ids = [];
+        foreach (explode('/', Coerce::str(Row::cast($row)->path ?? '')) as $part) {
+            $id = Coerce::nint($part);
+            if ($id !== null && $id !== $nodeId) {
+                $ids[] = $id;
+            }
+        }
+
+        if ($ids === []) {
+            return [];
+        }
+
+        $names = DB::table('storefront_category_translations')
+            ->whereIn('storefront_category_id', $ids)
+            ->where('locale', 'en')
+            ->pluck('name', 'storefront_category_id');
+
+        $out = [];
+        foreach (array_reverse($ids) as $id) {
+            $name = $names[$id] ?? null;
+            if (is_string($name) && $name !== '') {
+                $out[] = $name;
+            }
+        }
+
+        return $out;
     }
 
     /**
@@ -142,12 +208,15 @@ final class FamilyForCategory
     private static function reasonFor(string $nodeEn, string $rootEn): string
     {
         if ($rootEn === '') {
-            return 'لا يوجد اسم إنجليزي للتصنيف الجذر، فالعائلة هي الافتراضية.';
+            return ManageText::t(
+                'products.family_reason_no_root_english',
+                'لا يوجد اسم إنجليزي للتصنيف الجذر، فالعائلة هي الافتراضية.',
+            );
         }
 
         return mb_strtolower($rootEn) === mb_strtolower($nodeEn)
-            ? "التصنيف الجذر «{$rootEn}»"
-            : "التصنيف «{$nodeEn}» تحت الجذر «{$rootEn}»";
+            ? ManageText::t('products.family_reason_root', 'التصنيف الجذر «:root»', ['root' => $rootEn])
+            : ManageText::t('products.family_reason_node_under_root', 'التصنيف «:node» تحت الجذر «:root»', ['node' => $nodeEn, 'root' => $rootEn]);
     }
 
     /**
@@ -288,7 +357,10 @@ final class FamilyForCategory
                 'node_id' => null,
                 'node_en' => '',
                 'root_en' => '',
-                'reason' => 'لا يوجد تصنيف محدد بعد، فالعائلة هي الافتراضية.',
+                'reason' => ManageText::t(
+                    'products.family_reason_no_category',
+                    'لا يوجد تصنيف محدد بعد، فالعائلة هي الافتراضية.',
+                ),
                 'saved_family' => $savedFamily,
             ];
         }
@@ -300,8 +372,14 @@ final class FamilyForCategory
             'node_id' => $nodeId,
             'node_en' => $names['node_en'],
             'root_en' => $names['root_en'],
+            /*
+             * Two translated halves joined by punctuation, not one sentence built by concatenation:
+             * the note is `products.family_rule_note`, the very key the product form's own family
+             * card already renders, so the server and the screen cannot end up saying it in two
+             * different Englishes.
+             */
             'reason' => self::reasonFor($names['node_en'], $names['root_en'])
-                .' — القاعدة نفسها التي يستخدمها التحويل (config/transform.php).',
+                .' — '.ManageText::t('products.family_rule_note', 'القاعدة نفسها التي يستخدمها التحويل (config/transform.php)').'.',
             'saved_family' => $savedFamily,
         ];
     }

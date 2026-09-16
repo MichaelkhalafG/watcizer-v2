@@ -6,6 +6,7 @@ use App\Domain\Inventory\Actor;
 use App\Domain\Inventory\InventoryService;
 use App\Domain\Inventory\StockTarget;
 use App\Support\Coerce;
+use App\Support\ManageText;
 use App\Transform\Row;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -94,7 +95,7 @@ final class VariantWriter
                 'updated_at' => now(),
             ];
             if ($row['label'] === '') {
-                throw new RuntimeException('اسم الصف (المقاس/اللون) مطلوب.');
+                throw new RuntimeException(ManageText::t('variants.label_required', 'اسم الصف (المقاس/اللون) مطلوب.'));
             }
 
             return (int) DB::table('catalog_product_variants')->insertGetId($row);
@@ -135,7 +136,7 @@ final class VariantWriter
                 'updated_at' => now(),
             ];
             if ($row['label'] === '') {
-                throw new RuntimeException('اسم الصف (المقاس/اللون) مطلوب.');
+                throw new RuntimeException(ManageText::t('variants.label_required', 'اسم الصف (المقاس/اللون) مطلوب.'));
             }
 
             DB::table('catalog_product_variants')
@@ -201,8 +202,11 @@ final class VariantWriter
         if ($orderLines > 0) {
             return [
                 'deleted' => false,
-                'reason' => "لا يمكن الحذف: {$orderLines} سطر طلب يشير إلى هذا الصف. "
-                    .'حذفه يترك الطلب معلّقًا على صف غير موجود ويمنع إرجاع الكمية عند الإلغاء. عطّله بدلًا من ذلك.',
+                'reason' => ManageText::t(
+                    'variants.delete_blocked_order_lines',
+                    'لا يمكن الحذف: :count سطر طلب يشير إلى هذا الصف. حذفه يترك الطلب معلّقًا على صف غير موجود ويمنع إرجاع الكمية عند الإلغاء. عطّله بدلًا من ذلك.',
+                    ['count' => $orderLines],
+                ),
             ];
         }
 
@@ -210,7 +214,11 @@ final class VariantWriter
         if ($units !== 0) {
             return [
                 'deleted' => false,
-                'reason' => "لا يمكن الحذف: الصف يحمل {$units} وحدة. صفّر الكمية أولًا (عبر حقل المخزون، ليُسجَّل في الدفتر) ثم احذفه.",
+                'reason' => ManageText::t(
+                    'variants.delete_blocked_units',
+                    'لا يمكن الحذف: الصف يحمل :count وحدة. صفّر الكمية أولًا (عبر حقل المخزون، ليُسجَّل في الدفتر) ثم احذفه.',
+                    ['count' => $units],
+                ),
             ];
         }
 
@@ -220,9 +228,11 @@ final class VariantWriter
             // history — it would RE-LEVEL it onto the product and break the reconciliation.
             return [
                 'deleted' => false,
-                'reason' => "لا يمكن الحذف: للصف {$movements} حركة في دفتر المخزون. حذفه لا يمسح الحركات بل ينقلها "
-                    .'إلى مستوى المنتج، فتصبح الأرقام غير مطابقة ويظهر ذلك في inventory:verify إلى الأبد. '
-                    .'عطّل الصف بدلًا من حذفه — هذا بالضبط سبب وجود التعطيل.',
+                'reason' => ManageText::t(
+                    'variants.delete_blocked_movements',
+                    'لا يمكن الحذف: للصف :count حركة في دفتر المخزون. حذفه لا يمسح الحركات بل ينقلها إلى مستوى المنتج، فتصبح الأرقام غير مطابقة ويظهر ذلك في inventory:verify إلى الأبد. عطّل الصف بدلًا من حذفه — هذا بالضبط سبب وجود التعطيل.',
+                    ['count' => $movements],
+                ),
             ];
         }
 
@@ -232,7 +242,7 @@ final class VariantWriter
 
         $this->afterStructureChange($productId);
 
-        return ['deleted' => true, 'reason' => 'تم حذف الصف.'];
+        return ['deleted' => true, 'reason' => ManageText::t('variants.deleted', 'تم حذف الصف.')];
     }
 
     /**
@@ -287,9 +297,9 @@ final class VariantWriter
                 'movements' => $movements,
                 'may_delete' => $lines === 0 && $units === 0 && $movements === 0,
                 'delete_blocked_reason' => match (true) {
-                    $lines > 0 => "مرتبط بـ {$lines} سطر طلب",
-                    $units !== 0 => "يحمل {$units} وحدة",
-                    $movements > 0 => "له {$movements} حركة مخزون — عطّله بدلًا من حذفه",
+                    $lines > 0 => ManageText::t('variants.blocked_by_order_lines', 'مرتبط بـ :count سطر طلب', ['count' => $lines]),
+                    $units !== 0 => ManageText::t('variants.holds_units', 'يحمل :count وحدة', ['count' => $units]),
+                    $movements > 0 => ManageText::t('variants.has_movements', 'له :count حركة مخزون — عطّله بدلًا من حذفه', ['count' => $movements]),
                     default => null,
                 },
             ];
@@ -320,7 +330,7 @@ final class VariantWriter
             }
             $quantity = Coerce::nint($data[$field]);
             if ($quantity === null || $quantity < 0) {
-                throw new RuntimeException('الكمية يجب أن تكون صفرًا أو أكثر.');
+                throw new RuntimeException(ManageText::t('variants.quantity_not_negative', 'الكمية يجب أن تكون صفرًا أو أكثر.'));
             }
 
             $this->inventory->set(
@@ -329,7 +339,13 @@ final class VariantWriter
                 quantity: $quantity,
                 reason: 'manual',
                 actor: $actor,
-                note: 'لوحة التحكم — تعديل كمية صف',
+                /*
+                 * NOT interface text. This string is INSERTED into `inventory_movements.note` and
+                 * stays there: the ledger is append-only history, so putting it on the translation
+                 * seam would make a row's stored note depend on the locale of whoever happened to
+                 * be looking at a screen when the movement was written.
+                 */
+                note: 'لوحة التحكم — تعديل كمية صف', // i18n-exempt: written to inventory_movements.note; stored history, not interface text.
             );
         }
     }

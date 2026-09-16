@@ -1,6 +1,8 @@
 import { router } from '@inertiajs/react';
 import { useEffect } from 'react';
 
+import { useT } from '@/lib/i18n';
+
 /**
  * Stops a half-finished form from being lost by a stray click.
  *
@@ -15,7 +17,15 @@ import { useEffect } from 'react';
  * The confirm() is deliberate: a custom modal cannot block a synchronous navigation, and a team
  * that edits a product for ten minutes deserves the interruption.
  */
-export function useDirtyGuard(dirty: boolean, message = 'هناك تغييرات غير محفوظة. هل تريد المتابعة وفقدانها؟'): void {
+export function useDirtyGuard(dirty: boolean, message?: string): void {
+    const t = useT();
+    /*
+     * Resolved HERE and not as a default parameter. A default is evaluated before the hook body
+     * runs, and `useT()` cannot be called there — the same trap that caught `Combobox` and
+     * `FormActions`.
+     */
+    const text = message ?? t('form.unsaved_leave_confirm', 'هناك تغييرات غير محفوظة. هل تريد المتابعة وفقدانها؟');
+
     useEffect(() => {
         if (!dirty) {
             return;
@@ -34,12 +44,12 @@ export function useDirtyGuard(dirty: boolean, message = 'هناك تغييرات
                 return true;
             }
 
-            return window.confirm(message);
+            return window.confirm(text);
         });
 
         return () => {
             window.removeEventListener('beforeunload', onBeforeUnload);
             stop();
         };
-    }, [dirty, message]);
+    }, [dirty, text]);
 }

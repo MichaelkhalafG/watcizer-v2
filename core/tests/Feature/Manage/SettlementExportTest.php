@@ -29,12 +29,22 @@ function settlementCsv(array $query = []): string
     return $response->streamedContent();
 }
 
-it('writes exactly the seven agreed columns, in order', function () {
+it('writes exactly the agreed columns, in order', function () {
     $csv = settlementCsv();
     $lines = preg_split('/\r?\n/', $csv) ?: [];
     $header = ltrim((string) ($lines[0] ?? ''), "\xEF\xBB\xBF");
 
-    expect($header)->toBe('date,order_number,provider,method,transaction_id,amount,status');
+    /*
+     * Seven columns in wave 4C; EIGHT since wave 4D added `rewards` (study §3.16.5) — which
+     * promotion, if any, gave something away on this order. Finance reconciles takings from this
+     * file, and a sale that carried a gift is a different sale; without the column the only way to
+     * know is to join `order_items` by hand, which nobody does.
+     *
+     * Pinned by name AND order on purpose: a settlement file whose columns move breaks whatever
+     * spreadsheet the accountant built on it, so adding one is a deliberate edit here — and it is
+     * appended, never inserted, for the same reason.
+     */
+    expect($header)->toBe('date,order_number,provider,method,transaction_id,amount,status,rewards');
 });
 
 it('opens in Excel as Arabic rather than mojibake, because of the BOM', function () {

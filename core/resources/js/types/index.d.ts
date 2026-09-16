@@ -32,6 +32,8 @@ export interface NavItem {
     ability: string;
     /** Set when the screen is not built yet ("4B"), which renders the item disabled. */
     wave: string | null;
+    /** A count worth the operator's eye, or null. Zero is never sent. */
+    badge: number | null;
     active: boolean;
 }
 
@@ -56,6 +58,8 @@ export interface SharedProps {
     auth: { user: AuthUser | null };
     abilities: Abilities;
     nav: NavGroup[];
+    /** The active locale's dictionary. Empty until the i18n backlog's step 1 — `t()` falls back. */
+    translations: Translations;
     flash: { status: string | null; error: string | null };
     errors: Record<string, string>;
     [key: string]: unknown;
@@ -70,6 +74,14 @@ export interface Crumb {
 }
 
 // ── the server-side table contract (App\Support\Table\TableQuery) ────────────────────────────
+
+/**
+ * The flat `key => string` dictionary for the active locale (i18n step 0).
+ *
+ * Empty today: `t()` from `@/lib/i18n` falls back to the literal it is given, so the seam exists
+ * without anything having been translated yet.
+ */
+export type Translations = Record<string, string>;
 
 export interface TableMeta {
     page: number;
@@ -90,6 +102,12 @@ export interface TableMeta {
      * the distinction only matters on the server.
      */
     virtual: string[];
+    /**
+     * Did the SERVER offer a CSV of this view? The button is rendered from this and nothing else:
+     * a screen whose controller declared no export columns has no export, and the client never
+     * decides what may leave the database.
+     */
+    exportable: boolean;
 }
 
 export interface TablePayload<Row> {

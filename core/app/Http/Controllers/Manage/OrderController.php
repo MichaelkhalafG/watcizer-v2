@@ -2,20 +2,23 @@
 
 namespace App\Http\Controllers\Manage;
 
+use App\Domain\Access\Preferences;
 use App\Domain\Access\Role;
 use App\Domain\Access\Roles;
 use App\Domain\Inventory\Actor;
 use App\Domain\Notifications\OrderMailer;
 use App\Domain\Orders\OrderFulfilment;
 use App\Domain\Payment\CallbackPolicy;
+use App\Models\User;
 use App\Support\Coerce;
+use App\Support\ManageText;
+use App\Support\Table\TableExport;
 use App\Support\Table\TableQuery;
 use App\Transform\Row;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Database\Query\JoinClause;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rule;
@@ -51,10 +54,31 @@ final class OrderController
      * The list, with the filters the brief names: storefront, status, date range, provider,
      * method, and a search over order number or phone.
      */
-    public function index(Request $request): Response
+    public function index(Request $request): Response|StreamedResponse
     {
         /** @var array{items: array<int, int>, attempts: array<int, array<string, mixed>>} $extras */
         $extras = ['items' => [], 'attempts' => []];
+
+        /*
+         * ── The filter dropdowns, read ONCE ──────────────────────────────────────────────────
+         *
+         * Each of these lists is needed twice in this method: once as the filter's ALLOW-LIST (a
+         * value outside it is discarded by `resolvedFilters()`) and once as the OPTIONS the screen
+         * renders. They used to be called in both places, and each call is a separate read — three
+         * for a `distinct()` (orders, attempts, configured) and one for the storefronts. Fourteen
+         * queries per page load to populate three dropdowns, all of them asking the same question
+         * in the same request and getting the same answer.
+         *
+         * Two of those reads are `SELECT DISTINCT` over `orders` on `paid_via_provider` and
+         * `paid_via_method`, and NEITHER column is indexed: at 67 orders that is invisible, at the
+         * 7,000 this screen is being built for it is a full scan and a filesort, twice over, for
+         * nothing. Hoisting to a local is the whole fix — no cache, no memo, nothing with a
+         * lifetime to get wrong, and the values cannot drift between the allow-list and the options
+         * because there is now only one of each.
+         */
+        $storefronts = self::storefrontOptions();
+        $providers = self::distinct('paid_via_provider');
+        $methods = self::distinct('paid_via_method');
 
         $table = TableQuery::for($request)
             ->sortable(['o.created_at', 'o.total_price_for_order', 'o.status', 'o.order_number'], default: 'o.created_at', direction: 'desc')
@@ -62,17 +86,58 @@ final class OrderController
             // query string and a seat in the reset button — and the ones that are not a plain
             // `where(column, value)` are declared VIRTUAL and applied by `applyFilters()`.
             ->filterable([
-                'storefront_id' => array_map(fn (array $o): string => $o['value'], self::storefrontOptions()),
+                'storefront_id' => array_map(fn (array $o): string => $o['value'], $storefronts),
                 'status' => OrderFulfilment::STATUSES,
-                'provider' => array_map(fn (array $o): string => $o['value'], self::distinct('paid_via_provider')),
-                'method' => array_map(fn (array $o): string => $o['value'], self::distinct('paid_via_method')),
+                'provider' => array_map(fn (array $o): string => $o['value'], $providers),
+                'method' => array_map(fn (array $o): string => $o['value'], $methods),
                 // `null` = any scalar. An empty ARRAY would be an allow-list of nothing, and
                 // `resolvedFilters()` drops a value that is not in it — so `[]` silently discards
                 // every date the operator picks.
                 'from' => null,
                 'to' => null,
             ])
-            ->virtual(['storefront_id', 'status', 'provider', 'method', 'from', 'to']);
+            ->virtual(['storefront_id', 'status', 'provider', 'method', 'from', 'to'])
+            /*
+             * ── THE ONE EXPORT THAT CARRIES PERSONAL DATA ──────────────────────────────────
+             *
+             * `customer` and `phone` are here because the ORDER QUEUE already shows them: the
+             * export rule is "what this operator can see", and a fulfilment sheet without a phone
+             * number is useless in Egypt, where the courier's whole workflow is a phone call.
+             *
+             * What is deliberately NOT here, and why:
+             *   • the street address, the second phone and the e-mail — they live on the order
+             *     DETAIL screen, not the queue, so they are not in this payload to pick from;
+             *   • the customer's account id, so an export cannot be joined back to `users`;
+             *   • every payment identifier beyond "who took it and how" — no token, no card, no
+             *     provider reference. `SettlementExport` is the reconciliation file and it is
+             *     behind MANAGE_PAYMENTS, a different ability on purpose.
+             *
+             * A scoped grant exports only its own storefronts' orders, because `applyScope()`
+             * narrowed the QUERY before this ever runs (§2.18) — not because the file filters.
+             *
+             * FLAGGED FOR THE DEVELOPER (2026-09-14): if a customer phone in a downloadable file
+             * is not acceptable, the single change is to drop the two lines below; nothing else
+             * moves. See docs/wave4d.
+             */
+            ->exportable([
+                'order_number' => ManageText::t('common.order_number', 'رقم الطلب'),
+                'created_at' => ManageText::t('common.date', 'التاريخ'),
+                'status_label' => ManageText::t('common.status', 'الحالة'),
+                'total' => ManageText::t('common.total', 'الإجمالي'),
+                'payment_method' => ManageText::t('orders.payment_method', 'طريقة الدفع'),
+                'paid_via_provider' => ManageText::t('orders.payment_provider', 'مزوّد الدفع'),
+                // NOT `orders.payment_method`: that column is what the customer CHOSE, this one is
+                // what the money actually came through. Same word in English until you read both
+                // columns side by side in the file, which is exactly when it matters.
+                'paid_via_method' => ManageText::t('orders.payment_channel', 'وسيلة الدفع'),
+                'customer' => ManageText::t('common.customer', 'العميل'),
+                'phone' => ManageText::t('common.phone', 'الهاتف'),
+                'items' => ManageText::t('orders.item_count', 'عدد الأصناف'),
+                'storefront' => ManageText::t('common.storefront', 'المتجر'),
+                'last_attempt' => [ManageText::t('orders.last_attempt', 'آخر محاولة دفع'), fn (array $row): string => Coerce::str(
+                    Coerce::arr($row['last_attempt'] ?? null)['status'] ?? null
+                )],
+            ], 'orders');
 
         $query = DB::table('orders as o')
             ->leftJoin('storefronts as s', 's.id', '=', 'o.storefront_id')
@@ -91,50 +156,67 @@ final class OrderController
 
         self::applyFilters($query, $table->resolvedFilters(), $request);
 
-        return Inertia::render('Manage/Orders/Index', [
-            'table' => $table->paginate(
-                $query,
-                function (object $raw) use (&$extras): array {
-                    $row = Row::cast($raw);
-                    $id = Row::int($row, 'id');
-                    $status = Row::str($row, 'status');
+        $prepare = function (array $rows) use (&$extras): void {
+            $extras = self::pageExtras(Coerce::objectList($rows));
+        };
 
-                    return [
-                        'id' => $id,
-                        'order_number' => Row::str($row, 'order_number'),
-                        'status' => $status,
-                        'status_label' => OrderFulfilment::label($status),
-                        'total' => Row::str($row, 'total_price_for_order'),
-                        'payment_method' => Row::nstr($row, 'payment_method'),
-                        // Who took the money, from the attempt that succeeded (§3.9.6). A plain
-                        // column, NOT an append-only record: `CallbackPolicy` is what stops a
-                        // second success from overwriting it.
-                        'paid_via_provider' => Row::nstr($row, 'paid_via_provider'),
-                        'paid_via_method' => Row::nstr($row, 'paid_via_method'),
-                        'customer' => Row::nstr($row, 'guest_name') ?? '—',
-                        'phone' => Row::nstr($row, 'guest_phone'),
-                        'storefront' => Row::nstr($row, 'storefront_name'),
-                        'storefront_id' => Row::nint($row, 'storefront_id'),
-                        'created_at' => Row::nstr($row, 'created_at'),
-                        'items' => Coerce::int($extras['items'][$id] ?? null),
-                        // The last attempt's outcome, so a "paid but pending" order is visible
-                        // from the list rather than only from the detail.
-                        'last_attempt' => $extras['attempts'][$id] ?? null,
-                        'url' => route('manage.orders.show', ['order' => $id]),
-                    ];
-                },
-                function (array $rows) use (&$extras): void {
-                    $extras = self::pageExtras($rows);
-                },
-            ),
+        $map = function (object $raw) use (&$extras): array {
+            $row = Row::cast($raw);
+            $id = Row::int($row, 'id');
+            $status = Row::str($row, 'status');
+
+            return [
+                'id' => $id,
+                'order_number' => Row::str($row, 'order_number'),
+                'status' => $status,
+                'status_label' => OrderFulfilment::label($status),
+                'total' => Row::str($row, 'total_price_for_order'),
+                'payment_method' => Row::nstr($row, 'payment_method'),
+                // Who took the money, from the attempt that succeeded (§3.9.6). A plain
+                // column, NOT an append-only record: `CallbackPolicy` is what stops a
+                // second success from overwriting it.
+                'paid_via_provider' => Row::nstr($row, 'paid_via_provider'),
+                'paid_via_method' => Row::nstr($row, 'paid_via_method'),
+                'customer' => Row::nstr($row, 'guest_name') ?? '—',
+                'phone' => Row::nstr($row, 'guest_phone'),
+                'storefront' => Row::nstr($row, 'storefront_name'),
+                'storefront_id' => Row::nint($row, 'storefront_id'),
+                'created_at' => Row::nstr($row, 'created_at'),
+                'items' => Coerce::int($extras['items'][$id] ?? null),
+                // The last attempt's outcome, so a "paid but pending" order is visible
+                // from the list rather than only from the detail.
+                'last_attempt' => $extras['attempts'][$id] ?? null,
+                'url' => route('manage.orders.show', ['order' => $id]),
+            ];
+        };
+
+        if ($table->wantsExport()) {
+            return $table->export($query, $map, $prepare);
+        }
+
+        /*
+         * Opening the queue discharges the badge's promise — "there is something here you have not
+         * looked at" — so the stamp moves now, for THIS operator only.
+         *
+         * After the render data is built, and not on the export path: a CSV download is not looking
+         * at the queue, and clearing somebody's badge because they exported a file would hide the
+         * orders they were about to work.
+         */
+        $actor = $request->user();
+        if ($actor instanceof User) {
+            Preferences::markOrdersSeen($actor);
+        }
+
+        return Inertia::render('Manage/Orders/Index', [
+            'table' => $table->paginate($query, $map, $prepare),
             'filters' => [
-                'storefronts' => self::storefrontOptions(),
+                'storefronts' => $storefronts,
                 'statuses' => array_map(
                     fn (string $s): array => ['value' => $s, 'label' => OrderFulfilment::label($s)],
                     OrderFulfilment::STATUSES,
                 ),
-                'providers' => self::distinct('paid_via_provider'),
-                'methods' => self::distinct('paid_via_method'),
+                'providers' => $providers,
+                'methods' => $methods,
             ],
             'abilities' => [
                 'fulfil' => Gate::allows(Role::MANAGE_ORDER_FULFILMENT),
@@ -245,7 +327,9 @@ final class OrderController
         abort_if(! is_object($row), 404);
 
         if (Row::nstr(Row::cast($row), 'resolved_at') !== null) {
-            throw ValidationException::withMessages(['note' => 'هذه المطابقة مُصفّاة بالفعل.']);
+            throw ValidationException::withMessages([
+                'note' => ManageText::t('orders.finding_already_resolved', 'هذه المطابقة مُصفّاة بالفعل.'),
+            ]);
         }
 
         DB::table('payment_reconciliation_findings')->where('id', $finding)->update([
@@ -254,7 +338,10 @@ final class OrderController
             'note' => Coerce::str($data['note']),
         ]);
 
-        return back()->with('status', 'تم تصفية المطابقة مع تسجيل السبب.');
+        return back()->with('status', ManageText::t(
+            'orders.finding_resolved',
+            'تم تصفية المطابقة مع تسجيل السبب.',
+        ));
     }
 
     /** Move an order forward — the `manage-order-fulfilment` ability's whole purpose. */
@@ -276,7 +363,7 @@ final class OrderController
             throw ValidationException::withMessages(['status' => $e->getMessage()]);
         }
 
-        return back()->with('status', 'تم تحديث حالة الطلب.');
+        return back()->with('status', ManageText::t('orders.status_updated', 'تم تحديث حالة الطلب.'));
     }
 
     /**
@@ -297,9 +384,18 @@ final class OrderController
             throw ValidationException::withMessages(['cancel' => $e->getMessage()]);
         }
 
+        // `:count`, not `{$…}` interpolation: the number has to be able to move inside the sentence
+        // when the sentence is English, and a placeholder is the only thing that lets it.
         return back()->with('status', $result['released']
-            ? "تم إلغاء الطلب وإرجاع المخزون ({$result['movements']} حركة في السجل)."
-            : 'تم إلغاء الطلب. المخزون كان قد أُرجع سابقًا، فلم تُسجَّل حركة جديدة.');
+            ? ManageText::t(
+                'orders.cancelled_with_release',
+                'تم إلغاء الطلب وإرجاع المخزون (:count حركة في السجل).',
+                ['count' => $result['movements']],
+            )
+            : ManageText::t(
+                'orders.cancelled_already_released',
+                'تم إلغاء الطلب. المخزون كان قد أُرجع سابقًا، فلم تُسجَّل حركة جديدة.',
+            ));
     }
 
     /**
@@ -322,6 +418,13 @@ final class OrderController
                 'ps.created_at', 'o.order_number', 'ps.provider', 'ps.method',
                 'ps.pay_transaction_id', 'ps.amount_cents', 'ps.success', 'ps.outcome',
             ])
+            /*
+             * One correlated sub-select, deliberately — and it is the exception AGENTS §2.24's rule
+             * allows for: this query is `chunk()`ed for a streamed download, not a paginated screen,
+             * so there is no page of ids to prepare extras for. It reads a tiny index range per row
+             * and only for orders that HAVE reward lines.
+             */
+            ->selectRaw('(SELECT GROUP_CONCAT(DISTINCT oi.promotion_rule_id ORDER BY oi.promotion_rule_id) FROM order_items oi WHERE oi.order_id = o.id AND oi.is_reward = 1) AS reward_rules')
             ->orderBy('ps.created_at')->orderBy('ps.id');
 
         if ($from !== null && $from !== '') {
@@ -335,44 +438,66 @@ final class OrderController
             $query->where('o.storefront_id', $storefrontId);
         }
 
-        $filename = 'settlement-'.now()->format('Ymd-His').'.csv';
+        /*
+         * `rewards` since wave 4D (study §3.16.5): which promotion, if any, gave something away on
+         * this order. Finance opens this file to reconcile takings, and a sale that carried a gift
+         * is a different sale — without the column the only way to know is to join `order_items`
+         * by hand, which nobody does.
+         *
+         * Empty for the overwhelming majority of rows, which is the honest shape: most orders
+         * carry no promotion.
+         */
+        $columns = [
+            ['key' => 'date', 'label' => 'date', 'value' => null],
+            ['key' => 'order_number', 'label' => 'order_number', 'value' => null],
+            ['key' => 'provider', 'label' => 'provider', 'value' => null],
+            ['key' => 'method', 'label' => 'method', 'value' => null],
+            ['key' => 'transaction_id', 'label' => 'transaction_id', 'value' => null],
+            ['key' => 'amount', 'label' => 'amount', 'value' => null],
+            ['key' => 'status', 'label' => 'status', 'value' => null],
+            ['key' => 'rewards', 'label' => 'rewards', 'value' => null],
+        ];
 
-        return response()->streamDownload(function () use ($query): void {
-            $out = fopen('php://output', 'w');
-            if ($out === false) {
-                return;
+        /*
+         * Chunked through a generator: a settlement export must not hold a year of attempts in
+         * memory, and `TableExport` writes what it yields a row at a time.
+         *
+         * @return iterable<int, array<string, mixed>>
+         */
+        $rows = (function () use ($query): iterable {
+            foreach ($query->orderBy('ps.id')->cursor() as $raw) {
+                $row = Row::cast($raw);
+                $minor = Row::nint($row, 'amount_cents');
+
+                yield [
+                    'date' => Row::nstr($row, 'created_at'),
+                    'order_number' => Row::nstr($row, 'order_number') ?? '',
+                    'provider' => Row::nstr($row, 'provider') ?? '',
+                    'method' => Row::nstr($row, 'method') ?? '',
+                    'transaction_id' => Row::nstr($row, 'pay_transaction_id') ?? '',
+                    'amount' => $minor === null ? '' : number_format($minor / 100, 2, '.', ''),
+                    /*
+                     * The real outcome, not `success`/`failed` (🟡-4). Paymob sends a refund as
+                     * `success=true` with `is_refunded=true`, so this column used to call a refund
+                     * a sale — and a finance sheet that adds a refund to the day's takings is a
+                     * reconciliation error found months after the fact. Rows written before the
+                     * `outcome` column existed fall back to what they DO claim rather than to an
+                     * invented distinction.
+                     */
+                    'status' => CallbackPolicy::outcomeOf(Row::nstr($row, 'outcome'), Row::nstr($row, 'success')),
+                    // The promotion(s) this order's reward lines were granted by, or ''.
+                    'rewards' => Row::nstr($row, 'reward_rules') ?? '',
+                ];
             }
-            // UTF-8 BOM: Excel opens an Arabic CSV as mojibake without it, and this file exists to
-            // be opened in Excel.
-            fwrite($out, "\xEF\xBB\xBF");
-            fputcsv($out, ['date', 'order_number', 'provider', 'method', 'transaction_id', 'amount', 'status']);
+        })();
 
-            // Chunked: a settlement export must not hold a year of attempts in memory.
-            $query->orderBy('ps.id')->chunk(500, function (Collection $rows) use ($out): void {
-                foreach ($rows as $raw) {
-                    $row = Row::cast($raw);
-                    $minor = Row::nint($row, 'amount_cents');
-                    fputcsv($out, [
-                        Row::nstr($row, 'created_at'),
-                        Row::nstr($row, 'order_number') ?? '',
-                        Row::nstr($row, 'provider') ?? '',
-                        Row::nstr($row, 'method') ?? '',
-                        Row::nstr($row, 'pay_transaction_id') ?? '',
-                        $minor === null ? '' : number_format($minor / 100, 2, '.', ''),
-                        /*
-                         * The real outcome, not `success`/`failed` (🟡-4). Paymob sends a refund as
-                         * `success=true` with `is_refunded=true`, so this column used to call a
-                         * refund a sale — and a finance sheet that adds a refund to the day's
-                         * takings is a reconciliation error found months after the fact. Rows
-                         * written before the `outcome` column existed fall back to what they DO
-                         * claim rather than to an invented distinction.
-                         */
-                        CallbackPolicy::outcomeOf(Row::nstr($row, 'outcome'), Row::nstr($row, 'success')),
-                    ]);
-                }
-            });
-            fclose($out);
-        }, $filename, ['Content-Type' => 'text/csv; charset=UTF-8']);
+        /*
+         * Through the SHARED writer since wave 4D. It was already streamed and already carried the
+         * BOM; what it gained is the row count in the filename and — the one that matters here —
+         * the leading-character defusing. An order number or a provider reference beginning `=` or
+         * `-` is a cell Excel EXECUTES, and this is the file finance opens every morning.
+         */
+        return TableExport::respond('settlement', $query->count(), $columns, $rows);
     }
 
     // ── reads ────────────────────────────────────────────────────────────────────────────────

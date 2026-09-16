@@ -2,12 +2,14 @@
 
 namespace App\Http\Controllers\Manage;
 
+use App\Domain\Activity\ActivityLog;
 use App\Domain\Payment\MethodList;
 use App\Domain\Payment\ProviderRegistry;
 use App\Models\Storefront\Storefront;
 use App\Models\Storefront\StorefrontPaymentMethod;
 use App\Models\Storefront\StorefrontPaymentProvider;
 use App\Support\Coerce;
+use App\Support\ManageText;
 use App\Transform\Row;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -84,7 +86,7 @@ final class PaymentSettingsController
             ->where('storefront_id', $storefront->id)->where('provider', $provider)->exists();
         if ($exists) {
             throw ValidationException::withMessages([
-                'provider' => 'هذا المتجر يملك عقدًا مع هذا المزوّد بالفعل. عدّله بدلًا من إضافة ثانٍ — العقد واحد لكل مزوّد لكل متجر.',
+                'provider' => ManageText::t('payments.contract_exists', 'هذا المتجر يملك عقدًا مع هذا المزوّد بالفعل. عدّله بدلًا من إضافة ثانٍ — العقد واحد لكل مزوّد لكل متجر.'),
             ]);
         }
 
@@ -96,7 +98,7 @@ final class PaymentSettingsController
             'settings' => null,
         ]);
 
-        return back()->with('status', 'تمت إضافة العقد.');
+        return back()->with('status', ManageText::t('payments.contract_added', 'تمت إضافة العقد.'));
     }
 
     /**
@@ -116,12 +118,37 @@ final class PaymentSettingsController
         ]);
 
         $key = Coerce::str($row->getAttribute('provider'));
+        $wasEnabled = (bool) $row->getAttribute('is_enabled');
+        $oldCredentials = $row->getAttribute('credentials');
+
         $row->update([
             'is_enabled' => (bool) $request->input('is_enabled'),
             'credentials' => self::mergeCredentials($row, $request, $key, $this->registry),
         ]);
 
-        return back()->with('status', 'تم حفظ العقد.');
+        /*
+         * MONEY, so it is logged — and the credential VALUES never enter the log.
+         *
+         * `ActivityLog::REDACTED_FIELDS` matches `credentials` and replaces both sides with a
+         * marker. The row still records THAT the Paymob secret changed and who changed it, which is
+         * the whole audit question; copying it into a second, less-guarded table would undo the
+         * encryption it sits behind in the first place. A hash of the value is passed instead of the
+         * value, so "did it actually change?" stays answerable without the secret being present.
+         */
+        ActivityLog::record(
+            'storefront_payment_providers',
+            $provider,
+            ActivityLog::UPDATED,
+            ['is_enabled' => $wasEnabled, 'credentials' => self::credentialPrint($oldCredentials)],
+            [
+                'is_enabled' => (bool) $request->input('is_enabled'),
+                'credentials' => self::credentialPrint($row->getAttribute('credentials')),
+            ],
+            label: $key,
+            storefrontId: Coerce::nint($storefront->getKey()),
+        );
+
+        return back()->with('status', ManageText::t('payments.contract_saved', 'تم حفظ العقد.'));
     }
 
     /**
@@ -134,11 +161,19 @@ final class PaymentSettingsController
     {
         $row = self::requireProvider($storefront, $provider);
         $methods = (int) $row->methods()->count();
+        $key = Coerce::str($row->getAttribute('provider'));
         $row->delete();
 
+        ActivityLog::record(
+            'storefront_payment_providers', $provider, ActivityLog::DELETED,
+            before: ['provider' => $key, 'methods_removed' => $methods],
+            label: $key,
+            storefrontId: Coerce::nint($storefront->getKey()),
+        );
+
         return back()->with('status', $methods === 0
-            ? 'تم حذف العقد.'
-            : "تم حذف العقد و{$methods} طريقة دفع تابعة له.");
+            ? ManageText::t('payments.contract_deleted', 'تم حذف العقد.')
+            : ManageText::t('payments.contract_deleted_with_methods', 'تم حذف العقد و:count طريقة دفع تابعة له.', ['count' => $methods]));
     }
 
     /** Add a method under a contract of THIS storefront. */
@@ -156,7 +191,7 @@ final class PaymentSettingsController
             ->where('method', $method)->exists();
         if ($duplicate) {
             throw ValidationException::withMessages([
-                'method' => 'هذه الطريقة موجودة بالفعل تحت هذا العقد. (نفس الطريقة تحت عقد آخر مسموحة — العميل يرى واحدة فقط.)',
+                'method' => ManageText::t('payments.method_exists', 'هذه الطريقة موجودة بالفعل تحت هذا العقد. (نفس الطريقة تحت عقد آخر مسموحة — العميل يرى واحدة فقط.)'),
             ]);
         }
 
@@ -172,13 +207,30 @@ final class PaymentSettingsController
 
         self::writeLabels($row, $request);
 
-        return back()->with('status', 'تمت إضافة طريقة الدفع.');
+        ActivityLog::record(
+            'storefront_payment_methods',
+            Coerce::nint($row->getKey()),
+            ActivityLog::CREATED,
+            after: ['method' => Coerce::str($data['method']), 'is_enabled' => (bool) $data['is_enabled']],
+            label: Coerce::str($data['method']),
+            storefrontId: Coerce::nint($storefront->getKey()),
+        );
+
+        return back()->with('status', ManageText::t('payments.method_added', 'تمت إضافة طريقة الدفع.'));
     }
 
     public function updateMethod(Request $request, Storefront $storefront, int $method): RedirectResponse
     {
         $row = self::requireMethod($storefront, $method);
         $data = Coerce::arr($request->validate(self::methodRules($storefront)));
+
+        /*
+         * A payment METHOD is what the customer sees and picks, so who enabled or disabled one is
+         * a money question in the same way the contract above is. No credential lives on this row
+         * — `integration_id` is an identifier, not a secret (study §3.9.1) — so the values are
+         * logged in full.
+         */
+        $before = ActivityLog::fields($row->only(['method', 'integration_id', 'icon', 'is_enabled', 'sort']));
 
         $row->update([
             'method' => Coerce::str($data['method']),
@@ -190,14 +242,33 @@ final class PaymentSettingsController
 
         self::writeLabels($row, $request);
 
-        return back()->with('status', 'تم حفظ طريقة الدفع.');
+        ActivityLog::record(
+            'storefront_payment_methods', $method, ActivityLog::UPDATED,
+            $before,
+            ActivityLog::fields($row->fresh()?->only(['method', 'integration_id', 'icon', 'is_enabled', 'sort'])),
+            label: Coerce::str($data['method']),
+            storefrontId: Coerce::nint($storefront->getKey()),
+        );
+
+        return back()->with('status', ManageText::t('payments.method_saved', 'تم حفظ طريقة الدفع.'));
     }
 
     public function destroyMethod(Request $request, Storefront $storefront, int $method): RedirectResponse
     {
-        self::requireMethod($storefront, $method)->delete();
+        // Named BEFORE the delete: afterwards there is nothing left to name it by, and "method 7
+        // was deleted" is not an answer anybody can act on.
+        $row = self::requireMethod($storefront, $method);
+        $name = Coerce::str($row->getAttribute('method'));
+        $row->delete();
 
-        return back()->with('status', 'تم حذف طريقة الدفع.');
+        ActivityLog::record(
+            'storefront_payment_methods', $method, ActivityLog::DELETED,
+            before: ['method' => $name],
+            label: $name,
+            storefrontId: Coerce::nint($storefront->getKey()),
+        );
+
+        return back()->with('status', ManageText::t('payments.method_deleted', 'تم حذف طريقة الدفع.'));
     }
 
     /**
@@ -229,7 +300,7 @@ final class PaymentSettingsController
         $foreign = array_values(array_diff($ids, $owned));
         if ($foreign !== []) {
             throw ValidationException::withMessages([
-                'ids' => 'القائمة تحتوي طريقة دفع لا تتبع هذا المتجر.',
+                'ids' => ManageText::t('payments.method_not_of_storefront', 'القائمة تحتوي طريقة دفع لا تتبع هذا المتجر.'),
             ]);
         }
 
@@ -240,7 +311,7 @@ final class PaymentSettingsController
             }
         });
 
-        return back()->with('status', 'تم حفظ الترتيب. الطريقة الأعلى في القائمة هي التي تستقبل الأموال عند التكرار.');
+        return back()->with('status', ManageText::t('payments.order_saved', 'تم حفظ الترتيب. الطريقة الأعلى في القائمة هي التي تستقبل الأموال عند التكرار.'));
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────────────────────
@@ -425,5 +496,25 @@ final class PaymentSettingsController
         }
 
         return $out;
+    }
+
+    /**
+     * A credential set as a FINGERPRINT, never as a value.
+     *
+     * Answers "did the credentials change?" without putting them anywhere. A SHA-256 prefix of the
+     * canonical JSON: two identical sets print the same, two different sets print differently, and
+     * nothing about the secret can be recovered from it. `ActivityLog` redacts the field as well —
+     * this is the belt behind that brace, so a future caller that forgets the field name still
+     * cannot leak a key through this path.
+     */
+    private static function credentialPrint(mixed $credentials): string
+    {
+        if ($credentials === null || $credentials === [] || $credentials === '') {
+            return '(none)';
+        }
+
+        $canonical = json_encode($credentials, JSON_UNESCAPED_UNICODE);
+
+        return 'set:'.substr(hash('sha256', is_string($canonical) ? $canonical : ''), 0, 8);
     }
 }

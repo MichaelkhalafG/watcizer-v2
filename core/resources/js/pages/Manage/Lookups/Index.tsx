@@ -12,8 +12,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { useT } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import type { PreSwitchState, SharedProps } from '@/types';
+import { ExportLink } from '@/components/table/ExportLink';
 
 type ExtraField = { label: string; type: 'string' | 'integer' | 'boolean' | 'hex' | 'slug' | 'image'; required?: boolean; default?: unknown; media_type?: string };
 
@@ -53,6 +55,7 @@ interface Props {
  * blank row and a missing row look the same to a reader and completely different to the storefront.
  */
 export default function LookupsIndex({ list, lists, rows, pre_switch }: Props) {
+    const t = useT();
     const { errors } = usePage<SharedProps>().props;
     const [draft, setDraft] = useState<{ ar: string; en: string; extra: Record<string, string | boolean> }>({ ar: '', en: '', extra: {} });
     const [edits, setEdits] = useState<Record<number, { ar?: string; en?: string; extra?: Record<string, string | boolean> }>>({});
@@ -113,10 +116,15 @@ export default function LookupsIndex({ list, lists, rows, pre_switch }: Props) {
     return (
         <ManageLayout
             title={list.label}
-            crumbs={[{ label: 'الرئيسية', href: '/manage' }, { label: 'الماركات والقوائم' }, { label: list.label }]}
+            crumbs={[
+                { label: t('common.home', 'الرئيسية'), href: '/manage' },
+                { label: t('lookups.title', 'الماركات والقوائم') },
+                { label: list.label },
+            ]}
+            actions={<ExportLink count={rows.length} />}
         >
             {/* The lists, as tabs. One screen, twelve datasets. */}
-            <nav aria-label="القوائم المرجعية" className="flex flex-wrap gap-1.5">
+            <nav aria-label={t('lookups.lists_nav', 'القوائم المرجعية')} className="flex flex-wrap gap-1.5">
                 {lists.map((item) => (
                     <Link
                         key={item.key}
@@ -133,7 +141,7 @@ export default function LookupsIndex({ list, lists, rows, pre_switch }: Props) {
             </nav>
 
             {errors.delete ? (
-                <Alert tone="error" title="تعذّر الحذف">
+                <Alert tone="error" title={t('lookups.delete_failed', 'تعذّر الحذف')}>
                     {errors.delete}
                 </Alert>
             ) : null}
@@ -142,11 +150,14 @@ export default function LookupsIndex({ list, lists, rows, pre_switch }: Props) {
                 <CardHeader className="gap-1">
                     <CardTitle>{list.label}</CardTitle>
                     <p className="text-xs text-muted-foreground">
-                        عمود «الاستخدام» يحسب الإشارات من{' '}
+                        {t('lookups.usage_note_before_tables', 'عمود «الاستخدام» يحسب الإشارات من')}{' '}
                         <span dir="ltr" className="font-mono">
                             {list.usage_tables.join(' · ')}
                         </span>
-                        . الحذف مرفوض ما دام العدد أكبر من صفر — المفاتيح الأجنبية ترفضه أصلًا، وهذه هي الرسالة قبل أن تصير خطأ.
+                        {t(
+                            'lookups.usage_note_after_tables',
+                            '. الحذف مرفوض ما دام العدد أكبر من صفر — المفاتيح الأجنبية ترفضه أصلًا، وهذه هي الرسالة قبل أن تصير خطأ.',
+                        )}
                     </p>
                 </CardHeader>
 
@@ -156,13 +167,13 @@ export default function LookupsIndex({ list, lists, rows, pre_switch }: Props) {
                             <TableHeader>
                                 <TableRow>
                                     <TableHead className="w-14">#</TableHead>
-                                    <TableHead>الاسم (عربي)</TableHead>
+                                    <TableHead>{t('common.name_ar', 'الاسم (عربي)')}</TableHead>
                                     <TableHead>Name (English)</TableHead>
                                     {columns.map(([column, field]) => (
                                         <TableHead key={column}>{field.label}</TableHead>
                                     ))}
-                                    <TableHead>الاستخدام</TableHead>
-                                    <TableHead className="text-end">إجراءات</TableHead>
+                                    <TableHead>{t('lookups.uses', 'الاستخدام')}</TableHead>
+                                    <TableHead className="text-end">{t('common.actions', 'إجراءات')}</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -175,7 +186,7 @@ export default function LookupsIndex({ list, lists, rows, pre_switch }: Props) {
                                             <Input
                                                 dir="rtl"
                                                 lang="ar"
-                                                aria-label={`الاسم العربي للعنصر ${row.id}`}
+                                                aria-label={t('lookups.row_name_ar_aria', 'الاسم العربي للعنصر :id', { id: row.id })}
                                                 className="min-w-[9rem]"
                                                 value={edits[row.id]?.ar ?? row.name.ar}
                                                 onChange={(event) => setEdits((current) => ({ ...current, [row.id]: { ...(current[row.id] ?? {}), ar: event.target.value } }))}
@@ -209,13 +220,17 @@ export default function LookupsIndex({ list, lists, rows, pre_switch }: Props) {
                                         ))}
 
                                         <TableCell>
-                                            {row.uses === 0 ? <Badge variant="neutral">غير مستخدم</Badge> : <Badge variant="outline">{row.uses}</Badge>}
+                                            {row.uses === 0 ? (
+                                                <Badge variant="neutral">{t('lookups.unused', 'غير مستخدم')}</Badge>
+                                            ) : (
+                                                <Badge variant="outline">{row.uses}</Badge>
+                                            )}
                                         </TableCell>
 
                                         <TableCell className="text-end">
                                             <div className="flex items-center justify-end gap-1">
                                                 <Button type="button" size="sm" variant={dirty(row.id) ? 'default' : 'outline'} disabled={!dirty(row.id)} onClick={() => saveRow(row)}>
-                                                    حفظ
+                                                    {t('common.save', 'حفظ')}
                                                 </Button>
                                                 <Button
                                                     type="button"
@@ -223,8 +238,19 @@ export default function LookupsIndex({ list, lists, rows, pre_switch }: Props) {
                                                     variant="ghost"
                                                     className="text-destructive"
                                                     disabled={row.uses > 0}
-                                                    title={row.uses > 0 ? `مستخدم في ${row.uses} سجل` : 'حذف'}
-                                                    aria-label={row.uses > 0 ? `لا يمكن حذف العنصر ${row.id}: مستخدم في ${row.uses} سجل` : `حذف العنصر ${row.id}`}
+                                                    title={
+                                                        row.uses > 0
+                                                            ? t('lookups.used_in_records', 'مستخدم في :count سجل', { count: row.uses })
+                                                            : t('common.delete', 'حذف')
+                                                    }
+                                                    aria-label={
+                                                        row.uses > 0
+                                                            ? t('lookups.delete_blocked_aria', 'لا يمكن حذف العنصر :id: مستخدم في :count سجل', {
+                                                                  id: row.id,
+                                                                  count: row.uses,
+                                                              })
+                                                            : t('lookups.delete_row_aria', 'حذف العنصر :id', { id: row.id })
+                                                    }
                                                     onClick={() => router.delete(`${base}/${row.id}`, { preserveScroll: true })}
                                                 >
                                                     <Trash2 className="h-4 w-4" />
@@ -238,7 +264,7 @@ export default function LookupsIndex({ list, lists, rows, pre_switch }: Props) {
                     </div>
 
                     {pre_switch.blocked ? (
-                        <Alert tone="warning" title="الإضافة موقوفة قبل ليلة التحويل">
+                        <Alert tone="warning" title={t('lookups.pre_switch_blocked_title', 'الإضافة موقوفة قبل ليلة التحويل')}>
                             {pre_switch.message}
                         </Alert>
                     ) : null}
@@ -249,7 +275,7 @@ export default function LookupsIndex({ list, lists, rows, pre_switch }: Props) {
                     <div className="grid gap-3 rounded-lg border border-dashed p-4 sm:grid-cols-2 lg:grid-cols-4">
                         <div className="space-y-1.5">
                             <Label htmlFor="new-ar" required>
-                                الاسم (عربي)
+                                {t('common.name_ar', 'الاسم (عربي)')}
                             </Label>
                             <Input id="new-ar" dir="rtl" lang="ar" value={draft.ar} onChange={(event) => setDraft({ ...draft, ar: event.target.value })} />
                         </div>
@@ -288,7 +314,7 @@ export default function LookupsIndex({ list, lists, rows, pre_switch }: Props) {
                                 }
                             >
                                 <Plus className="h-4 w-4" />
-                                إضافة
+                                {t('common.add', 'إضافة')}
                             </Button>
                         </div>
                     </div>

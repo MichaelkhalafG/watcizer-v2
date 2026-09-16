@@ -2,6 +2,9 @@
 
 use App\Domain\Catalog\FamilyForCategory;
 use App\Domain\Catalog\SpecBlocks;
+use App\Domain\Import\CategoryMerger;
+use App\Support\Coerce;
+use App\Transform\FamilyResolver;
 use App\Transform\Row;
 use Illuminate\Support\Facades\DB;
 use Tests\Support\CatalogFixture;
@@ -313,4 +316,41 @@ it('tells the operator which spec values the move will discard', function () {
         // category is chosen now and warns when they differ.
         ->and(T::str($family['saved_family'] ?? ''))->toBe('watch')
         ->and(T::arr($props['blocks']))->toHaveKey('watch');
+});
+
+// ── wave 4D: a ROOT the transform never made can still name a family ──────────────────────────
+
+it('resolves a family from any root category the config names, not only Watches', function () {
+    /*
+     * All 86 Joyroom products landed on `family = fashion`.
+     *
+     * The resolver knew exactly one root-level rule — `watch_category_type_names` — and fell
+     * through everything else to the default, so the ELECTRONICS root the importer created
+     * resolved to `fashion` even though `electronics` is a declared family with its own spec
+     * block. The class promises that "a category the team invents tomorrow resolves by the same
+     * rule as one the transform created"; `category_type_names` is that promise generalised, and
+     * it serves the transform and the dashboard through the resolver they share.
+     */
+    $resolver = new FamilyResolver(Coerce::arr(config('transform.family')));
+
+    expect($resolver->resolve('Electronics', null, 'Chargers & Cables'))->toBe('electronics')
+        ->and($resolver->resolve('Electronics', null, 'Electronics'))->toBe('electronics')
+        // …and the rules that were already there still decide first or as before.
+        ->and($resolver->resolve('Watches', null, 'Quartz'))->toBe('watch')
+        ->and($resolver->resolve('Fashion', null, 'Bags'))->toBe('bag')
+        ->and($resolver->resolve('Fashion', null, 'Sunglasses'))->toBe('fashion');
+});
+
+it('gives an imported electronics product the electronics family, through the node', function () {
+    $node = CategoryMerger::find(2, 'electronics/chargers');
+    if ($node === null) {
+        // Nothing has imported into the Electronics tree on this catalogue.
+        expect(true)->toBeTrue();
+
+        return;
+    }
+
+    // The dashboard half of the same rule: the FORM would store `electronics` for this node too,
+    // which is what makes the importer and the screen agree about what a product is.
+    expect(app(FamilyForCategory::class)->forNode($node))->toBe('electronics');
 });

@@ -1,10 +1,11 @@
 import { ChevronDown, ChevronUp, ImageUp, Loader2, Star, Trash2 } from 'lucide-react';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useRef, useState, type ReactNode } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { useT } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 
 export interface GalleryImage {
@@ -52,6 +53,7 @@ export function ImageGallery({
     onChange: (images: GalleryImage[]) => void;
     disabled?: boolean;
 }) {
+    const t = useT();
     const input = useRef<HTMLInputElement>(null);
     const [busy, setBusy] = useState(false);
     const [failure, setFailure] = useState<string | null>(null);
@@ -80,7 +82,7 @@ export function ImageGallery({
                         const message =
                             typeof payload === 'object' && payload !== null && 'message' in payload
                                 ? String((payload as { message: unknown }).message)
-                                : 'تعذّر رفع الصورة.';
+                                : t('common.upload_failed', 'تعذّر رفع الصورة.');
                         setFailure(message);
                         continue;
                     }
@@ -109,7 +111,7 @@ export function ImageGallery({
                         renditions: stored.renditions ?? {},
                     });
                 } catch {
-                    setFailure('تعذّر الاتصال بالخادم. حاول مرة أخرى.');
+                    setFailure(t('common.server_unreachable', 'تعذّر الاتصال بالخادم. حاول مرة أخرى.'));
                 }
             }
 
@@ -124,7 +126,7 @@ export function ImageGallery({
                 onChange(next);
             }
         },
-        [images, onChange],
+        [images, onChange, t],
     );
 
     const move = (index: number, delta: number) => {
@@ -153,9 +155,11 @@ export function ImageGallery({
     return (
         <Card>
             <CardHeader className="flex-row items-center justify-between gap-3">
-                <CardTitle>الصور</CardTitle>
+                <CardTitle>{t('gallery.title', 'الصور')}</CardTitle>
                 <div className="flex items-center gap-2">
-                    <span className="text-xs text-muted-foreground">{images.length} صورة</span>
+                    <span className="text-xs text-muted-foreground">
+                        {t('gallery.image_count', ':count صورة', { count: images.length })}
+                    </span>
                     <input
                         ref={input}
                         type="file"
@@ -172,7 +176,7 @@ export function ImageGallery({
                     />
                     <Button type="button" variant="outline" size="sm" disabled={disabled || busy} onClick={() => input.current?.click()} className="gap-2">
                         {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <ImageUp className="h-4 w-4" aria-hidden="true" />}
-                        {busy ? 'جارٍ الرفع…' : 'إضافة صور'}
+                        {busy ? t('common.uploading', 'جارٍ الرفع…') : t('gallery.add_images', 'إضافة صور')}
                     </Button>
                 </div>
             </CardHeader>
@@ -186,7 +190,7 @@ export function ImageGallery({
 
                 {images.length === 0 ? (
                     <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-                        لا توجد صور. أول صورة تُرفع تصبح صورة الغلاف تلقائيًا.
+                        {t('gallery.empty', 'لا توجد صور. أول صورة تُرفع تصبح صورة الغلاف تلقائيًا.')}
                     </p>
                 ) : null}
 
@@ -205,7 +209,7 @@ export function ImageGallery({
                                     <span className="truncate font-mono text-[11px] text-muted-foreground" dir="ltr" title={image.path}>
                                         {image.path}
                                     </span>
-                                    {image.is_cover ? <Badge variant="default">الغلاف</Badge> : null}
+                                    {image.is_cover ? <Badge variant="default">{t('gallery.cover', 'الغلاف')}</Badge> : null}
                                     {image.width !== null ? (
                                         <span className="text-[11px] text-muted-foreground" dir="ltr">
                                             {image.width}×{image.height}
@@ -223,8 +227,10 @@ export function ImageGallery({
                                     <Input
                                         dir="rtl"
                                         lang="ar"
-                                        placeholder="نص بديل (عربي)"
-                                        aria-label={`نص بديل عربي للصورة ${index + 1}`}
+                                        placeholder={t('gallery.alt_ar', 'نص بديل (عربي)')}
+                                        aria-label={t('gallery.alt_ar_for_image', 'نص بديل عربي للصورة :number', {
+                                            number: index + 1,
+                                        })}
                                         value={image.alt_ar}
                                         disabled={disabled}
                                         onChange={(event) => setAlt(index, 'ar', event.target.value)}
@@ -246,7 +252,7 @@ export function ImageGallery({
                                     type="button"
                                     variant="ghost"
                                     size="icon"
-                                    aria-label={`اجعل الصورة ${index + 1} غلافًا`}
+                                    aria-label={t('gallery.make_cover', 'اجعل الصورة :number غلافًا', { number: index + 1 })}
                                     disabled={disabled || image.is_cover}
                                     onClick={() => setCover(index)}
                                 >
@@ -256,7 +262,7 @@ export function ImageGallery({
                                     type="button"
                                     variant="ghost"
                                     size="icon"
-                                    aria-label={`حرّك الصورة ${index + 1} لأعلى`}
+                                    aria-label={t('gallery.move_up', 'حرّك الصورة :number لأعلى', { number: index + 1 })}
                                     disabled={disabled || index === 0}
                                     onClick={() => move(index, -1)}
                                 >
@@ -266,7 +272,7 @@ export function ImageGallery({
                                     type="button"
                                     variant="ghost"
                                     size="icon"
-                                    aria-label={`حرّك الصورة ${index + 1} لأسفل`}
+                                    aria-label={t('gallery.move_down', 'حرّك الصورة :number لأسفل', { number: index + 1 })}
                                     disabled={disabled || index === images.length - 1}
                                     onClick={() => move(index, 1)}
                                 >
@@ -277,7 +283,7 @@ export function ImageGallery({
                                     variant="ghost"
                                     size="icon"
                                     className="text-destructive"
-                                    aria-label={`أزل الصورة ${index + 1}`}
+                                    aria-label={t('gallery.remove_image', 'أزل الصورة :number', { number: index + 1 })}
                                     disabled={disabled}
                                     onClick={() => remove(index)}
                                 >
@@ -290,11 +296,41 @@ export function ImageGallery({
 
                 {images.length > 0 ? (
                     <p className="text-xs text-muted-foreground">
-                        الترتيب هنا هو الترتيب على المتجر. إزالة صورة تحذف السجل فقط — الملف يبقى في المجلد المشترك، ويُنظَّف بأمر{' '}
-                        <code dir="ltr">media:prune</code> بعد مراجعة تقريره.
+                        {/* One key for the whole sentence, with the command name as a `:command`
+                            placeholder the translator keeps in place — split here so the command
+                            still renders as LTR <code> instead of being flattened into the text. */}
+                        <Around
+                            text={t(
+                                'gallery.order_note',
+                                'الترتيب هنا هو الترتيب على المتجر. إزالة صورة تحذف السجل فقط — الملف يبقى في المجلد المشترك، ويُنظَّف بأمر :command بعد مراجعة تقريره.',
+                            )}
+                            placeholder=":command"
+                        >
+                            <code dir="ltr">media:prune</code>
+                        </Around>
                     </p>
                 ) : null}
             </CardContent>
         </Card>
+    );
+}
+
+/**
+ * Render `text` with `children` substituted for its `:placeholder`.
+ *
+ * A sentence that wraps one fragment in markup would otherwise have to be split into two keys, and
+ * a translator handed two halves cannot reorder them — which is exactly what Arabic → English
+ * needs to do. So the key stays ONE sentence carrying a Laravel-style `:name` placeholder, and the
+ * substitution happens here instead of in `t()`, because the value is an element and not a string.
+ */
+function Around({ text, placeholder, children }: { text: string; placeholder: string; children: ReactNode }) {
+    const [before, ...rest] = text.split(placeholder);
+
+    return (
+        <>
+            {before}
+            {rest.length === 0 ? null : children}
+            {rest.join(placeholder)}
+        </>
     );
 }

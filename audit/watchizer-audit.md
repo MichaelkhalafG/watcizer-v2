@@ -65,7 +65,7 @@ if ($request->header('Api-Code') == $apiPassword) { return $next($request); }
 That exact value is hardcoded in the frontend bundle in **at least 4 files** (`api.jsx:3`, `FetchTablesAndProducts.jsx:283`, `MyProvider.jsx:324`):
 
 ```
-"NbmFylY0vcwnhxUrm1udMgcX1MtPYb4QWXy1EKqVenm6uskufcXKeHh5W4TM5Iv0"
+"<REDACTED — see core/tests/Feature/SecretsInRepoTest.php; this value is COMPROMISED and must be rotated, not merely removed: it remains in git history>"
 ```
 
 **Impact:** Anyone who opens DevTools has your JWT secret. They can **forge authentication tokens for any user**. This is a full account-takeover vector. **Must rotate the JWT secret and decouple it from the public API key immediately.**

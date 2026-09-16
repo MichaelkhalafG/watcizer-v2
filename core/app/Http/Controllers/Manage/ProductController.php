@@ -17,6 +17,7 @@ use App\Models\Storefront\Storefront;
 use App\Storefront\ImageUrl;
 use App\Support\Coerce;
 use App\Support\FullReplace;
+use App\Support\ManageText;
 use App\Support\Table\TableQuery;
 use App\Transform\Row;
 use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
@@ -31,6 +32,7 @@ use Inertia\Inertia;
 use Inertia\Response;
 use RuntimeException;
 use stdClass;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * /manage/products — the list and the product form (wave 4B scope items 1–3, 5).
@@ -90,7 +92,7 @@ final class ProductController
         private readonly ConversionGuard $conversion,
     ) {}
 
-    public function index(Request $request, Storefront $storefront): Response
+    public function index(Request $request, Storefront $storefront): Response|StreamedResponse
     {
         $brands = self::brandOptions();
         $categories = self::categoryOptions($storefront->id);
@@ -107,7 +109,11 @@ final class ProductController
                 // Two filters that are not plain columns; applied by hand below and declared here
                 // so the whitelist, the URL and the reset button all know about them.
                 'category' => self::optionValues($categories),
-                'flag' => ['low_stock', 'no_arabic', 'unplaced', 'has_variants', 'archived'],
+                'flag' => ['low_stock', 'no_arabic', 'unplaced', 'has_variants', 'archived',
+                    // Wave 4D, the importer's two: everything a row is MISSING (derived, never
+                    // stored — a marker that cannot go stale while somebody fixes the data), and
+                    // the Arabic titles a machine wrote, so the team can work through them.
+                    'missing_data', 'machine_ar'],
             ])
             // …and declared VIRTUAL, because neither is a column: `category` is a whole branch of
             // the tree and `flag` is four different predicates. `listQuery()` applies them.
@@ -119,12 +125,70 @@ final class ProductController
             ->perPage(
                 default: config()->integer('catalog.list.per_page'),
                 max: config()->integer('catalog.list.per_page_max'),
-            );
+            )
+            /*
+             * ── What leaves in the CSV, and what deliberately does not ──────────────────────
+             *
+             * These are KEYS OF THE ROW THE SCREEN ALREADY RENDERS, so the file is the list the
+             * operator is looking at, filters and all. Two consequences worth stating out loud:
+             *
+             *  • `purchase_price` is absent. Not excluded by a rule — it was never in the list
+             *    payload, because the product LIST does not show cost. The form does, behind
+             *    `MANAGE_CATALOG`; the list never did and so the export cannot.
+             *  • `edit_url`, `cover` and the derived booleans the badges are drawn from are left
+             *    out as noise: a URL column in a spreadsheet helps nobody, and `has_image` says
+             *    the same thing the cover column would.
+             */
+            /*
+             * The column HEADINGS go through the seam like anything else an operator reads: the
+             * file lands on the desk of whoever asked for it, and a spreadsheet of Arabic headings
+             * is exactly as unreadable to an English-speaking buyer as the screen was. Most of
+             * them reuse the key the LIST already renders above the same column — a second key
+             * with the same text is two Englishes waiting to drift.
+             */
+            ->exportable([
+                'wa_code' => ManageText::t('products.code', 'الكود'),
+                'sku' => ManageText::t('products.supplier_code', 'كود المورّد'),
+                'title' => [ManageText::t('common.name_ar', 'الاسم (عربي)'), fn (array $row): string => Coerce::str(Coerce::arr($row['title'] ?? null)['ar'] ?? null)],
+                'title_en' => [ManageText::t('common.name_en', 'الاسم (إنجليزي)'), fn (array $row): string => Coerce::str(Coerce::arr($row['title'] ?? null)['en'] ?? null)],
+                'brand' => [ManageText::t('products.brand', 'الماركة'), fn (array $row): string => Coerce::str(Coerce::arr($row['brand'] ?? null)['ar'] ?? null)],
+                'family' => ManageText::t('products.family', 'العائلة'),
+                'selling_price' => ManageText::t('common.price', 'السعر'),
+                // NOT `products.sale_price`: that one's Arabic is «سعر التخفيض» and this column says
+                // «سعر العرض». Same column, two Arabic names — one key would mean one English
+                // standing for two different Arabic strings, which is the defect, not the tidy-up.
+                'sale_price' => ManageText::t('products.offer_price', 'سعر العرض'),
+                'currency' => ManageText::t('common.currency', 'العملة'),
+                'stock_express' => ManageText::t('common.stock_express', 'إكسبريس'),
+                'stock_market' => ManageText::t('common.stock_market', 'ماركت'),
+                'in_stock' => ManageText::t('products.in_stock', 'متوفر'),
+                'is_active' => ManageText::t('common.active', 'مفعّل'),
+                'is_visible' => [ManageText::t('products.visible_on_this_storefront', 'ظاهر على هذا المتجر'), fn (array $row): string => match ($row['is_visible'] ?? null) {
+                    true => ManageText::t('common.yes', 'نعم'),
+                    false => ManageText::t('common.no', 'لا'),
+                    default => ManageText::t('home.not_added', 'غير مضاف'),
+                }],
+                'is_featured' => [ManageText::t('products.featured', 'مميّز'), fn (array $row): string => $row['is_featured'] === true
+                    ? ManageText::t('common.yes', 'نعم')
+                    : ManageText::t('common.no', 'لا')],
+                'variants' => ManageText::t('inventory.variants', 'المقاسات/الألوان'),
+                'placement' => ManageText::t('banners.category', 'التصنيف'),
+                'missing' => [ManageText::t('products.missing_data_filter', 'بيانات ناقصة'), fn (array $row): string => implode(' | ', array_map(
+                    static fn (mixed $token): string => Coerce::str($token),
+                    Coerce::arr($row['missing'] ?? null),
+                ))],
+                'machine_ar' => ManageText::t('products.machine_translation', 'ترجمة آلية'),
+                'has_image' => ManageText::t('products.has_image', 'له صورة'),
+                'updated_at' => ManageText::t('products.last_edited', 'آخر تعديل'),
+            ], 'products');
 
         $filters = $table->resolvedFilters();
         $query = $this->listQuery($storefront->id, $filters);
 
         $brandNames = self::nameMap('catalog_brands', 'catalog_brand_translations', 'brand_id');
+        // One read for the page: the missing-data marker needs to know which brand means "nobody
+        // has assigned one yet" (the importer's `Generic`).
+        $genericBrand = self::genericBrandId();
 
         // Filled by the `prepare` callback below, before a single row is mapped. See
         // `TableQuery::paginate()` for why these two are not columns of the list query. The empty
@@ -133,63 +197,92 @@ final class ProductController
         // Read ONCE for the page, never inside the row mapper.
         $activeStorefronts = Storefront::activeIds();
 
+        /*
+         * The row callback and the batch loader are NAMED, because the CSV export runs the very
+         * same two. An export that built its own rows would be a second definition of "what this
+         * screen shows" — and the first time the two drifted, the file would carry a column the
+         * operator's role does not see.
+         */
+        $prepare = function (array $rows) use (&$extras, $storefront): void {
+            $extras = self::pageExtras(Coerce::objectList($rows), $storefront->id);
+        };
+
+        $map = function (object $raw) use ($brandNames, $storefront, $activeStorefronts, $genericBrand, &$extras): array {
+            $row = Row::cast($raw);
+            $id = Row::int($row, 'id');
+            $cover = $extras['covers'][$id] ?? null;
+            $titleAr = Row::nstr($row, 'title_ar');
+
+            return [
+                'id' => $id,
+                'wa_code' => Row::str($row, 'wa_code'),
+                'sku' => Row::nstr($row, 'sku'),
+                'title' => [
+                    'ar' => $titleAr ?? '',
+                    'en' => Row::nstr($row, 'title_en') ?? '',
+                ],
+                'family' => Row::str($row, 'family'),
+                'brand' => $brandNames[Row::int($row, 'brand_id')] ?? ['ar' => '', 'en' => ''],
+                'selling_price' => Row::str($row, 'selling_price'),
+                'sale_price' => Row::nstr($row, 'sale_price'),
+                'currency' => Row::str($row, 'currency'),
+                'stock_express' => Row::int($row, 'stock_express'),
+                'stock_market' => Row::int($row, 'stock_market'),
+                'in_stock' => Row::bool($row, 'in_stock'),
+                'is_active' => Row::bool($row, 'is_active'),
+                'archived' => Row::nstr($row, 'deleted_at') !== null,
+                'variants' => $extras['variants'][$id] ?? 0,
+                'is_visible' => Row::nstr($row, 'sp_id') === null ? null : Row::bool($row, 'is_visible'),
+                'is_featured' => Row::nstr($row, 'sp_id') === null ? null : Row::bool($row, 'is_featured'),
+                'slug' => Row::nstr($row, 'slug'),
+                // ── the four at-a-glance states (task 4.3) ────────────────────────────────
+                'has_arabic' => trim($titleAr ?? '') !== '',
+                /*
+                 * ── wave 4D: what this row is MISSING, and who wrote its Arabic ──────────
+                 *
+                 * Derived on every render rather than stored, deliberately. A stored marker
+                 * would have to be recomputed by every write path in the application, and the
+                 * first one that forgot would leave a product wearing a warning it had already
+                 * earned its way out of. These six are all answerable from the row in front of
+                 * us, so they are always true.
+                 *
+                 * `machine_ar` is the exception and IS stored, because "a machine wrote this"
+                 * is history and cannot be derived from the text. `ProductWriter` clears it the
+                 * moment a human edits that translation.
+                 */
+                'missing' => self::missingFor($row, $cover, $extras['placement'][$id] ?? null, $genericBrand),
+                'machine_ar' => Row::nbool($row, 'ar_is_machine') === true,
+                'has_image' => $cover !== null,
+                'has_stock' => Row::bool($row, 'in_stock'),
+                /*
+                 * Placement shape on THIS storefront (rehearsal #3):
+                 *   'none'      — no category at all, so it appears in no listing;
+                 *   'root_only' — on the root and nowhere else, no primary category. The
+                 *                 transform leaves a legacy product with no `sub_type_id`
+                 *                 exactly here, and the site shows it only under the top-level
+                 *                 section with a one-step breadcrumb;
+                 *   'placed'    — a primary category, the ordinary state.
+                 */
+                'placement' => self::placementState($extras['placement'][$id] ?? null),
+                // Per storefront: true = visible, false = hidden, MISSING = no row at all.
+                'visibility' => self::visibilityFor($extras['storefronts'][$id] ?? [], $activeStorefronts),
+                'cover' => $cover === null ? null : ImageUrl::src($cover),
+                'updated_at' => Row::nstr($row, 'updated_at'),
+                'edit_url' => route('manage.products.edit', ['product' => $id, 'storefront' => $storefront->id]),
+            ];
+        };
+
+        if ($table->wantsExport()) {
+            return $table->export($query, $map, $prepare);
+        }
+
         return Inertia::render('Manage/Products/Index', [
             'storefront' => ['id' => $storefront->id, 'code' => $storefront->code, 'name' => $storefront->name],
             'storefronts' => self::storefrontOptions(),
             'brands' => $brands,
             'categories' => $categories,
             'families' => self::familyOptions(),
-            'table' => $table->paginate($query, function (object $raw) use ($brandNames, $storefront, $activeStorefronts, &$extras): array {
-                $row = Row::cast($raw);
-                $id = Row::int($row, 'id');
-                $cover = $extras['covers'][$id] ?? null;
-                $titleAr = Row::nstr($row, 'title_ar');
-
-                return [
-                    'id' => $id,
-                    'wa_code' => Row::str($row, 'wa_code'),
-                    'sku' => Row::nstr($row, 'sku'),
-                    'title' => [
-                        'ar' => $titleAr ?? '',
-                        'en' => Row::nstr($row, 'title_en') ?? '',
-                    ],
-                    'family' => Row::str($row, 'family'),
-                    'brand' => $brandNames[Row::int($row, 'brand_id')] ?? ['ar' => '', 'en' => ''],
-                    'selling_price' => Row::str($row, 'selling_price'),
-                    'sale_price' => Row::nstr($row, 'sale_price'),
-                    'currency' => Row::str($row, 'currency'),
-                    'stock_express' => Row::int($row, 'stock_express'),
-                    'stock_market' => Row::int($row, 'stock_market'),
-                    'in_stock' => Row::bool($row, 'in_stock'),
-                    'is_active' => Row::bool($row, 'is_active'),
-                    'archived' => Row::nstr($row, 'deleted_at') !== null,
-                    'variants' => $extras['variants'][$id] ?? 0,
-                    'is_visible' => Row::nstr($row, 'sp_id') === null ? null : Row::bool($row, 'is_visible'),
-                    'is_featured' => Row::nstr($row, 'sp_id') === null ? null : Row::bool($row, 'is_featured'),
-                    'slug' => Row::nstr($row, 'slug'),
-                    // ── the four at-a-glance states (task 4.3) ────────────────────────────────
-                    'has_arabic' => trim($titleAr ?? '') !== '',
-                    'has_image' => $cover !== null,
-                    'has_stock' => Row::bool($row, 'in_stock'),
-                    /*
-                     * Placement shape on THIS storefront (rehearsal #3):
-                     *   'none'      — no category at all, so it appears in no listing;
-                     *   'root_only' — on the root and nowhere else, no primary category. The
-                     *                 transform leaves a legacy product with no `sub_type_id`
-                     *                 exactly here, and the site shows it only under the top-level
-                     *                 section with a one-step breadcrumb;
-                     *   'placed'    — a primary category, the ordinary state.
-                     */
-                    'placement' => self::placementState($extras['placement'][$id] ?? null),
-                    // Per storefront: true = visible, false = hidden, MISSING = no row at all.
-                    'visibility' => self::visibilityFor($extras['storefronts'][$id] ?? [], $activeStorefronts),
-                    'cover' => $cover === null ? null : ImageUrl::src($cover),
-                    'updated_at' => Row::nstr($row, 'updated_at'),
-                    'edit_url' => route('manage.products.edit', ['product' => $id, 'storefront' => $storefront->id]),
-                ];
-            }, function (array $rows) use (&$extras, $storefront): void {
-                $extras = self::pageExtras($rows, $storefront->id);
-            }),
+            'table' => $table->paginate($query, $map, $prepare),
             // Every active storefront, so the list can render one visibility chip each.
             'all_storefronts' => self::activeStorefrontsForList(),
             'pre_switch_notice' => self::preSwitchNotice(),
@@ -279,7 +372,7 @@ final class ProductController
 
         return redirect()
             ->route('manage.products.edit', ['product' => $productId, 'storefront' => $storefront->id])
-            ->with('status', 'تم إنشاء المنتج.');
+            ->with('status', ManageText::t('products.created', 'تم إنشاء المنتج.'));
     }
 
     public function edit(Request $request, Storefront $storefront, int $product): Response
@@ -295,7 +388,10 @@ final class ProductController
          * product's grade, specs, descriptions, sale price and placements (see {@see FullReplace}).
          * The screen declares completeness; nothing else may.
          */
-        FullReplace::assert($request, 'بيانات المنتج', 'wa_code');
+        // The record's NAME, which {@see FullReplace} drops into the sentence it shows the
+        // operator — so it goes through the seam even though the sentence around it does not
+        // belong to this file.
+        FullReplace::assert($request, ManageText::t('products.record_name', 'بيانات المنتج'), 'wa_code');
 
         $productId = Row::int(self::productRow($product), 'id');
         $data = $this->validated($request, $productId);
@@ -305,7 +401,7 @@ final class ProductController
 
         return redirect()
             ->route('manage.products.edit', ['product' => $productId, 'storefront' => $storefront->id])
-            ->with('status', 'تم حفظ المنتج.');
+            ->with('status', ManageText::t('products.saved', 'تم حفظ المنتج.'));
     }
 
     /**
@@ -342,7 +438,7 @@ final class ProductController
             $done++;
         }
 
-        return back()->with('status', "تم تنفيذ الإجراء على {$done} منتجًا.");
+        return back()->with('status', ManageText::t('products.bulk_done', 'تم تنفيذ الإجراء على :count منتجًا.', ['count' => $done]));
     }
 
     // ── the query ────────────────────────────────────────────────────────────────────────────
@@ -412,7 +508,7 @@ final class ProductController
                 $lead, 'p.wa_code', 'p.sku', 'p.family', 'p.brand_id', 'p.selling_price', 'p.sale_price',
                 'p.currency', 'p.stock_express', 'p.stock_market', 'p.in_stock', 'p.is_active',
                 'p.deleted_at', 'p.updated_at',
-                'ar.title as title_ar', 'en.title as title_en',
+                'ar.title as title_ar', 'en.title as title_en', 'ar.is_machine as ar_is_machine',
                 'sp.id as sp_id', 'sp.is_visible', 'sp.is_featured', 'sp.slug',
             ]);
 
@@ -472,10 +568,88 @@ final class ProductController
             'has_variants' => $query->whereExists(function (Builder $sub): void {
                 $sub->from('catalog_product_variants as v2')->whereColumn('v2.product_id', 'p.id')->selectRaw('1')->limit(1);
             }),
+            /*
+             * "Show me everything that is not finished." The six conditions are exactly the six
+             * markers the row renders, because a filter that selects a different set from the one
+             * the badge shows is worse than no filter (§4).
+             */
+            'missing_data' => $query->where(function (Builder $inner) use ($storefrontId): void {
+                $generic = self::genericBrandId();
+                $inner->whereNull('p.sku')
+                    ->orWhere('p.selling_price', '<=', 0)
+                    ->orWhereNull('ar.title')
+                    ->orWhere('ar.title', '=', '')
+                    ->orWhereNotExists(function (Builder $sub): void {
+                        $sub->from('catalog_product_images as i2')
+                            ->whereColumn('i2.product_id', 'p.id')->selectRaw('1')->limit(1);
+                    })
+                    ->orWhereNotExists(function (Builder $sub) use ($storefrontId): void {
+                        $sub->from('storefront_category_product as scp3')
+                            ->whereColumn('scp3.product_id', 'p.id')
+                            ->where('scp3.storefront_id', $storefrontId)
+                            ->selectRaw('1')->limit(1);
+                    });
+                if ($generic !== null) {
+                    $inner->orWhere('p.brand_id', $generic);
+                }
+            }),
+            'machine_ar' => $query->where('ar.is_machine', 1),
             default => null,
         };
 
         return $query;
+    }
+
+    /**
+     * What this product is missing, as the tokens the badge renders and the filter selects.
+     *
+     * The same six the importer marks (`ImportReport::MISSING_*`), because the import and the
+     * screen must agree about what "not finished" means — the import writes nothing for this, so
+     * agreement is the only thing that keeps them honest.
+     *
+     * @param  stdClass  $row  a list-query row, already cast
+     * @param  array{nodes: int, primaries: int}|null  $placement  this storefront's placement counts
+     * @param  int|null  $generic  the Generic brand's id, read once for the page
+     * @return list<string>
+     */
+    private static function missingFor(stdClass $row, ?string $cover, ?array $placement, ?int $generic): array
+    {
+        $out = [];
+
+        if (Row::nstr($row, 'sku') === null) {
+            $out[] = 'sku';
+        }
+        if ($cover === null) {
+            $out[] = 'image';
+        }
+        if (trim(Row::nstr($row, 'title_ar') ?? '') === '') {
+            $out[] = 'arabic';
+        }
+        // `nodes === 0` as well as null: "on the root and nowhere else" is the same problem for a
+        // customer as no placement at all.
+        if ($placement === null || $placement['nodes'] === 0) {
+            $out[] = 'category';
+        }
+        if ($generic !== null && Row::int($row, 'brand_id') === $generic) {
+            $out[] = 'brand';
+        }
+        if ((float) Row::str($row, 'selling_price') <= 0) {
+            $out[] = 'price';
+        }
+
+        return $out;
+    }
+
+    /**
+     * The `Generic` brand, or null when the importer has never run.
+     *
+     * Read once per page and passed down — not memoised in a static. A static would be read once
+     * per PROCESS, which is right for a web request and wrong for a test suite, where the brand
+     * may not exist yet when the first list renders and does by the time the tenth does.
+     */
+    private static function genericBrandId(): ?int
+    {
+        return Coerce::nint(DB::table('catalog_brands')->where('slug', 'generic')->value('id'));
     }
 
     /**
@@ -740,7 +914,7 @@ final class ProductController
             'variants' => [
                 'rows' => $productId === null ? [] : $this->variants->rows($productId),
                 'state' => $productId === null
-                    ? ['has_variants' => false, 'may_convert' => false, 'reason' => 'احفظ المنتج أولًا ثم أضف المقاسات.', 'write_switch_completed' => ConversionGuard::writeSwitchCompleted(), 'legacy_backed' => false]
+                    ? ['has_variants' => false, 'may_convert' => false, 'reason' => ManageText::t('variants.save_product_first_reason', 'احفظ المنتج أولًا ثم أضف المقاسات.'), 'write_switch_completed' => ConversionGuard::writeSwitchCompleted(), 'legacy_backed' => false]
                     : $this->conversion->state($productId),
             ],
             'pre_switch_notice' => self::preSwitchNotice(),
@@ -998,19 +1172,26 @@ final class ProductController
             $field = "storefronts.{$key}.primary_category_id";
 
             if ($ids !== [] && $primary === null) {
-                $errors[$field] = 'اختر التصنيف الأساسي من بين التصنيفات المحددة: هو الذي يحدد مسار المنتج على هذا المتجر، '
-                    .'ومنه تُشتق مواصفاته.';
+                $errors[$field] = ManageText::t(
+                    'products.primary_category_required',
+                    'اختر التصنيف الأساسي من بين التصنيفات المحددة: هو الذي يحدد مسار المنتج على هذا المتجر، ومنه تُشتق مواصفاته.',
+                );
 
                 continue;
             }
             if ($primary !== null && ! in_array($primary, $ids, true)) {
-                $errors[$field] = 'التصنيف الأساسي يجب أن يكون واحدًا من التصنيفات المحددة بالأعلى. ضع علامة على التصنيف أولًا.';
+                $errors[$field] = ManageText::t(
+                    'products.primary_category_must_be_chosen',
+                    'التصنيف الأساسي يجب أن يكون واحدًا من التصنيفات المحددة بالأعلى. ضع علامة على التصنيف أولًا.',
+                );
 
                 continue;
             }
             if ($creating && (int) $key === $decider && $ids === []) {
-                $errors["storefronts.{$key}.category_ids"] = 'اختر تصنيفًا واحدًا على الأقل: التصنيف هو ما يحدد نوع المنتج '
-                    .'وقائمة مواصفاته، ولا يمكن إنشاء منتج بلا تصنيف.';
+                $errors["storefronts.{$key}.category_ids"] = ManageText::t(
+                    'products.category_required_to_create',
+                    'اختر تصنيفًا واحدًا على الأقل: التصنيف هو ما يحدد نوع المنتج وقائمة مواصفاته، ولا يمكن إنشاء منتج بلا تصنيف.',
+                );
             }
         }
 
@@ -1420,9 +1601,16 @@ final class ProductController
         // One label per family in Product::FAMILIES — the list is exhaustive by construction,
         // so a family added there without a label here is a PHPStan error rather than a screen
         // showing the raw key.
+        // The very keys the product form's family picker renders, so the filter and the field
+        // cannot end up calling one family two things.
         $labels = [
-            'watch' => 'ساعات', 'fashion' => 'أزياء', 'bag' => 'حقائب', 'wallet' => 'محافظ',
-            'perfume' => 'عطور', 'electronics' => 'إلكترونيات', 'other' => 'أخرى',
+            'watch' => ManageText::t('products.family_watch', 'ساعات'),
+            'fashion' => ManageText::t('products.family_fashion', 'أزياء'),
+            'bag' => ManageText::t('products.family_bag', 'حقائب'),
+            'wallet' => ManageText::t('products.family_wallet', 'محافظ'),
+            'perfume' => ManageText::t('products.family_perfume', 'عطور'),
+            'electronics' => ManageText::t('products.family_electronics', 'إلكترونيات'),
+            'other' => ManageText::t('products.family_other', 'أخرى'),
         ];
         $out = [];
         foreach (Product::FAMILIES as $family) {
@@ -1469,7 +1657,10 @@ final class ProductController
                 // rather than the dropdown guessing one.
                 'family' => $resolved === null ? '' : $resolved['family'],
                 'family_reason' => $resolved === null
-                    ? 'مسار هذا التصنيف غير سليم في قاعدة البيانات — لا يمكن اشتقاق العائلة منه.'
+                    ? ManageText::t(
+                        'products.family_reason_bad_path',
+                        'مسار هذا التصنيف غير سليم في قاعدة البيانات — لا يمكن اشتقاق العائلة منه.',
+                    )
                     : $resolved['reason'],
             ];
         }
@@ -1522,7 +1713,12 @@ final class ProductController
             $row = Row::cast($raw);
             $id = Row::int($row, 'id');
             $name = Row::nstr($row, 'name') ?? ('#'.$id);
-            $out[] = ['value' => (string) $id, 'label' => $name.(Row::bool($row, 'is_active') ? '' : ' (معطّل)')];
+            // Interpolated rather than a suffix concatenated onto the name: in English the marker
+            // belongs after the name, in another language it may not, and a bare ' (…)' fragment
+            // is not a string anybody can translate.
+            $out[] = ['value' => (string) $id, 'label' => Row::bool($row, 'is_active')
+                ? $name
+                : ManageText::t('products.storefront_option_inactive', ':name (معطّل)', ['name' => $name])];
         }
 
         return $out;

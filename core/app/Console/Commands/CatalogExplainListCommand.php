@@ -274,7 +274,7 @@ final class CatalogExplainListCommand extends Command
                     'updated_at' => now(),
                 ];
                 $translations[] = ['product_id' => $id, 'locale' => 'en', 'title' => $title];
-                $translations[] = ['product_id' => $id, 'locale' => 'ar', 'title' => 'منتج قياس '.$id];
+                $translations[] = ['product_id' => $id, 'locale' => 'ar', 'title' => 'منتج قياس '.$id]; // i18n-exempt: a synthetic PRODUCT TITLE written into catalog_product_translations (and rolled back) — catalogue content, not interface text
                 $storefront[] = [
                     'storefront_id' => Storefront::WATCHIZER_ID,
                     'product_id' => $id,

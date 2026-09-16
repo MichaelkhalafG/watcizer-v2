@@ -83,6 +83,24 @@ final class DiffRunner
         ];
     }
 
+    /**
+     * Is this body an empty JSON array or object -- i.e. nothing to compare?
+     *
+     * Byte length alone is not enough: `[]` is two bytes but so is a two-character error string,
+     * and `{"data":[]}` is longer and still empty of subjects. Decoding is the honest test.
+     */
+    private static function isEmptyPayload(string $body): bool
+    {
+        $trimmed = trim($body);
+        if ($trimmed === '' || $trimmed === '[]' || $trimmed === '{}') {
+            return true;
+        }
+
+        $decoded = json_decode($trimmed, true);
+
+        return is_array($decoded) && $decoded === [];
+    }
+
     /** @return array{name: string, sequence: string, method: string, path: string, kind: string, group: string, legacy_status: int, compat_status: int, legacy_bytes: int, compat_bytes: int, identical: bool, content_type_equal: bool, headers: array{legacy: array<string, string>, compat: array<string, string>}, findings: int, sanctioned: array<string, int>, unexplained: list<array{path: string, kind: string, legacy: mixed, compat: mixed}>, note: string} */
     private function one(DiffCase $case): array
     {
@@ -133,6 +151,24 @@ final class DiffRunner
             }
         }
         $identical = $findings === [];
+
+        /*
+         * A case that declared it needs a subject, and got none on either side, is a case that
+         * proved nothing -- and reporting it as IDENTICAL is worse than reporting it as broken,
+         * because it looks like coverage. Raised as an unexplained finding so the run FAILS: the
+         * fix is to give the harness a subject, never to relax the flag.
+         */
+        if ($case->mustNotBeEmpty && self::isEmptyPayload($a['body']) && self::isEmptyPayload($b['body'])) {
+            $findings[] = [
+                'path' => 'body',
+                'kind' => 'vacuous',
+                'legacy' => 'empty payload',
+                'compat' => 'empty payload',
+            ];
+            $identical = false;
+            $note = 'VACUOUS: both hosts answered an empty payload, so this case compared nothing. '
+                .'It needs a subject in the data (see CartCases::readOnlyUser()).';
+        }
 
         $sanctioned = [];
         $unexplained = [];

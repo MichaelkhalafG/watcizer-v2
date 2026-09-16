@@ -2,18 +2,26 @@
 
 use App\Domain\Access\Role;
 use App\Http\Controllers\Compat\SitemapCompatController;
+use App\Http\Controllers\Manage\ActivityController;
 use App\Http\Controllers\Manage\Auth\LoginController;
+use App\Http\Controllers\Manage\BannerController;
 use App\Http\Controllers\Manage\CategoryController;
+use App\Http\Controllers\Manage\CustomerController;
 use App\Http\Controllers\Manage\HomeController;
 use App\Http\Controllers\Manage\InventoryController;
 use App\Http\Controllers\Manage\LookupController;
 use App\Http\Controllers\Manage\MediaController;
+use App\Http\Controllers\Manage\MediaPruneController;
 use App\Http\Controllers\Manage\OrderController;
 use App\Http\Controllers\Manage\PaymentSettingsController;
 use App\Http\Controllers\Manage\PlacementController;
 use App\Http\Controllers\Manage\ProductController;
 use App\Http\Controllers\Manage\ProductVariantController;
+use App\Http\Controllers\Manage\ProfileController;
+use App\Http\Controllers\Manage\PromotionController;
+use App\Http\Controllers\Manage\ShippingController;
 use App\Http\Controllers\Manage\StorefrontController;
+use App\Http\Controllers\Manage\UnitController;
 use App\Http\Controllers\Manage\UserRoleController;
 use App\Http\Middleware\EnsureDashboardAccess;
 use App\Http\Middleware\EnsureStorefrontScope;
@@ -48,6 +56,16 @@ Route::prefix('manage')->name('manage.')->group(function (): void {
 
     Route::middleware(['auth', EnsureDashboardAccess::class])->group(function (): void {
         Route::get('/', HomeController::class)->middleware('can:'.Role::VIEW_DASHBOARD)->name('home');
+
+        /*
+        | PROFILE -- the signed-in operator's own, and no ability beyond reaching the
+        | dashboard: the route takes no id, so there is no other person's profile to
+        | authorise. Name, e-mail and password are READ-ONLY here because `users` is a
+        | legacy table core may not write (AGENTS 3); the save touches
+        | `core_user_preferences` and nothing else.
+        */
+        Route::get('profile', [ProfileController::class, 'show'])->name('profile');
+        Route::put('profile', [ProfileController::class, 'update'])->name('profile.update');
 
         // Uploads: data-entry needs them for 4B's product forms, so the ability is theirs too.
         Route::post('media', [MediaController::class, 'store'])->middleware('can:'.Role::MANAGE_MEDIA)->name('media.store');
@@ -129,6 +147,24 @@ Route::prefix('manage')->name('manage.')->group(function (): void {
         });
 
         /*
+        | BANNERS -- the home slot, per storefront (wave 4D). Under MANAGE_LEGACY_CONTENT, which is
+        | the ability that was always meant for the offers/banners/blogs section; offers became the
+        | promotions engine, so this is the first screen the ability actually opens. Scoped like
+        | placement: a banner decides what one storefront's home page SHOWS.
+        */
+        Route::middleware([
+            'can:'.Role::MANAGE_LEGACY_CONTENT,
+            EnsureStorefrontScope::with(Role::MANAGE_LEGACY_CONTENT),
+        ])->group(function (): void {
+            Route::get('storefronts/{storefront}/banners', [BannerController::class, 'index'])->name('banners.index');
+            Route::post('storefronts/{storefront}/banners', [BannerController::class, 'store'])->name('banners.store');
+            Route::put('storefronts/{storefront}/banners/{banner}', [BannerController::class, 'update'])
+                ->where('banner', '[0-9]+')->name('banners.update');
+            Route::delete('storefronts/{storefront}/banners/{banner}', [BannerController::class, 'destroy'])
+                ->where('banner', '[0-9]+')->name('banners.destroy');
+        });
+
+        /*
         |--------------------------------------------------------------------------
         | Wave 4C — the shop floor: orders, inventory, users, payments
         |--------------------------------------------------------------------------
@@ -152,6 +188,21 @@ Route::prefix('manage')->name('manage.')->group(function (): void {
             Route::get('orders', [OrderController::class, 'index'])->name('orders.index');
             Route::get('orders/{order}', [OrderController::class, 'show'])
                 ->where('order', '[0-9]+')->name('orders.show');
+
+            /*
+            | CUSTOMERS -- the people who BUY, read-only (wave 4D).
+            |
+            | Two GETs and nothing else: every table it reads is LEGACY and shared with the live
+            | storefront, so there is no write path to authorise. It sits under VIEW_ORDERS rather
+            | than an ability of its own because everything on it is already on the order screens
+            | -- it groups the same facts by person instead of by order.
+            |
+            | The key is `u:41` or `g:01001234567`, so the pattern admits a colon and refuses a
+            | slash; a customer outside the grant's scope answers 404, never 403.
+            */
+            Route::get('customers', [CustomerController::class, 'index'])->name('customers.index');
+            Route::get('customers/{customer}', [CustomerController::class, 'show'])
+                ->where('customer', '[A-Za-z0-9:@._+-]+')->name('customers.show');
         });
 
         Route::put('orders/{order}/status', [OrderController::class, 'advance'])
@@ -202,6 +253,21 @@ Route::prefix('manage')->name('manage.')->group(function (): void {
         });
 
         /*
+        | MEDIA CLEANUP -- its OWN ability, held by nobody until granted (review, 2026-09-15).
+        |
+        | `manage-settings` was the wrong gate: every administrator holds it, and this button
+        | removes files the LIVE legacy storefront is still serving, with no undo. `MANAGE_MEDIA_PRUNE`
+        | is in `Role::RESTRICTED`, so `Gate::before` does not hand it to admins either -- the screen
+        | and both routes are absent and refused for everyone until:
+        |
+        |     php artisan manage:role grant <email> media_pruner
+        */
+        Route::middleware('can:'.Role::MANAGE_MEDIA_PRUNE)->group(function (): void {
+            Route::get('media/prune', [MediaPruneController::class, 'index'])->name('media.prune');
+            Route::delete('media/prune', [MediaPruneController::class, 'destroy'])->name('media.prune.destroy');
+        });
+
+        /*
         | PAYMENTS -- admin only (3.9.7), scoped to one storefront at a time, never a
         | global cross-storefront list. Credential fields are WRITE-ONLY everywhere
         | below: they render empty, blank means "keep", and no stored secret is ever
@@ -228,6 +294,48 @@ Route::prefix('manage')->name('manage.')->group(function (): void {
             Route::post('storefronts/{storefront}/payments/order', [PaymentSettingsController::class, 'reorder'])->name('payments.order');
         });
 
+        /*
+        |--------------------------------------------------------------------------
+        | PROMOTIONS -- admin only (study §3.16.6), and NOT per storefront in the URL
+        |--------------------------------------------------------------------------
+        |
+        | A rule is authored ONCE and the operator ticks which storefronts it applies to, exactly
+        | like product placement (developer decision 2026-09-13). So there is no `{storefront}`
+        | segment: partitioning the screen by storefront would mean authoring the same promotion
+        | twice, which is the shape this model was chosen to avoid.
+        |
+        | `manage-promotions` is admin-only and absent from data-entry's abilities: a promotion
+        | moves money and gives away stock, the same reasoning that keeps `cancel-orders` from them.
+        */
+        Route::middleware(['can:'.Role::MANAGE_PROMOTIONS])->group(function (): void {
+            Route::get('promotions', [PromotionController::class, 'index'])->name('promotions.index');
+            Route::get('promotions/create', [PromotionController::class, 'create'])->name('promotions.create');
+            // Search and preview come BEFORE `{promotion}` so neither is swallowed by the
+            // numeric-id route; both are POST/GET reads that write nothing permanent.
+            Route::get('promotions/products', [PromotionController::class, 'search'])->name('promotions.products');
+            Route::post('promotions/preview', [PromotionController::class, 'preview'])->name('promotions.preview');
+            Route::post('promotions', [PromotionController::class, 'store'])->name('promotions.store');
+            Route::get('promotions/{promotion}', [PromotionController::class, 'edit'])
+                ->where('promotion', '[0-9]+')->name('promotions.edit');
+            Route::put('promotions/{promotion}', [PromotionController::class, 'update'])
+                ->where('promotion', '[0-9]+')->name('promotions.update');
+            Route::delete('promotions/{promotion}', [PromotionController::class, 'destroy'])
+                ->where('promotion', '[0-9]+')->name('promotions.destroy');
+        });
+
+        /*
+         * THE ACTIVITY LOG (wave 4D) — read-only, and administrator-only.
+         *
+         * One GET. There is deliberately no edit and no delete, not even for an admin: a log
+         * somebody can change answers nothing, and the absence of the route is the guarantee.
+         *
+         * Admin-only because it shows what every named person did — a management view, not a
+         * working one.
+         */
+        Route::middleware('can:'.Role::MANAGE_USERS)->group(function (): void {
+            Route::get('activity', [ActivityController::class, 'index'])->name('activity.index');
+        });
+
         // Brands and the lookup lists. Catalogue-wide, not per storefront: a colour is a
         // colour on every storefront (D3, the shared catalogue).
         Route::middleware('can:'.Role::MANAGE_CATALOG)->group(function (): void {
@@ -235,6 +343,36 @@ Route::prefix('manage')->name('manage.')->group(function (): void {
             Route::post('lookups/{list}', [LookupController::class, 'store'])->name('lookups.store');
             Route::put('lookups/{list}/{id}', [LookupController::class, 'update'])->name('lookups.update');
             Route::delete('lookups/{list}/{id}', [LookupController::class, 'destroy'])->name('lookups.destroy');
+
+            /*
+             * The units cleanup screen (wave 4D, task C3). Its own routes rather than a mode of the
+             * lookup screen: a unit is not edited here, it is MERGED into another one and then
+             * retired, and that is a different verb with a different refusal.
+             */
+            /*
+             * SHIPPING (wave 4D — the handover blocker).
+             *
+             * The LIST is inside the catalogue group so data-entry reach it: the delivery price is
+             * something they quote on the telephone. Every WRITE is wrapped again in
+             * `can:manage-shipping` below, because the price is money — the same split the orders
+             * export settled (screen for both roles, act for administrators).
+             */
+            Route::get('shipping', [ShippingController::class, 'index'])->name('shipping.index');
+
+            Route::middleware('can:'.Role::MANAGE_SHIPPING)->group(function (): void {
+                Route::post('shipping', [ShippingController::class, 'store'])->name('shipping.store');
+                Route::put('shipping/{city}', [ShippingController::class, 'update'])
+                    ->where('city', '[0-9]+')->name('shipping.update');
+                Route::delete('shipping/{city}', [ShippingController::class, 'destroy'])
+                    ->where('city', '[0-9]+')->name('shipping.destroy');
+            });
+
+            Route::get('units', [UnitController::class, 'index'])->name('units.index');
+            Route::post('units/merge', [UnitController::class, 'merge'])->name('units.merge');
+            Route::post('units/{unit}/retire', [UnitController::class, 'retire'])
+                ->where('unit', '[0-9]+')->name('units.retire');
+            Route::post('units/{unit}/restore', [UnitController::class, 'restore'])
+                ->where('unit', '[0-9]+')->name('units.restore');
         });
     });
 });

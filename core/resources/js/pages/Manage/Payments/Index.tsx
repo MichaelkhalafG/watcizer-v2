@@ -1,18 +1,20 @@
-import { router, useForm, usePage } from '@inertiajs/react';
-import { useState } from 'react';
+import { router, useForm, usePage } from "@inertiajs/react";
+import { useState } from "react";
 
-import { SelectField, TextField } from '@/components/form/TextField';
-import { SwitchField } from '@/components/form/SwitchField';
-import { ConfirmAction } from '@/components/manage/ConfirmAction';
-import { Alert } from '@/components/ui/alert';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import ManageLayout from '@/layouts/ManageLayout';
-import type { SharedProps } from '@/types';
+import { SelectField, TextField } from "@/components/form/TextField";
+import { SwitchField } from "@/components/form/SwitchField";
+import { ConfirmAction } from "@/components/manage/ConfirmAction";
+import { Alert } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import ManageLayout from "@/layouts/ManageLayout";
+import { useT } from "@/lib/i18n";
+import type { SharedProps } from "@/types";
+import { Ltr } from "@/components/ui/bidi";
 
 /**
  * Payments — providers, methods and the merged order, for ONE storefront (study §3.9.7).
@@ -80,33 +82,74 @@ interface Props {
     storefront: { id: number; code: string; name: string };
     providers: ProviderRow[];
     merged: MergedRow[];
-    customer_preview: Array<{ id: number; method: string; label: string; icon: string | null; sort: number }>;
-    registry: Array<{ value: string; label: string; credential_fields: string[] }>;
+    customer_preview: Array<{
+        id: number;
+        method: string;
+        label: string;
+        icon: string | null;
+        sort: number;
+    }>;
+    registry: Array<{
+        value: string;
+        label: string;
+        credential_fields: string[];
+    }>;
     method_keys: string[];
 }
 
-const METHOD_LABEL: Record<string, string> = {
-    card: 'بطاقة',
-    valu: 'valU',
-    tamara: 'Tamara',
-    wallet: 'محفظة',
-    fawry_code: 'كود فوري',
-    cod: 'دفع عند الاستلام',
-    whatsapp: 'واتساب',
-};
+type Translator = ReturnType<typeof useT>;
 
-/** The credential key names, in Arabic, so a rotation checklist reads like one. */
+/**
+ * The display name of a method KEY.
+ *
+ * It is a function of `t` rather than a constant map because a hook cannot run at module level:
+ * the translated name has to be asked for inside a component, and every call site here already
+ * has a translator in hand. `valU` and `Tamara` are product names and stay as they are written.
+ */
+function methodLabel(t: Translator, method: string): string {
+    switch (method) {
+        case "card":
+            return t("payments.method_card", "بطاقة");
+        case "valu":
+            return "valU";
+        case "tamara":
+            return "Tamara";
+        case "wallet":
+            return t("payments.method_wallet", "محفظة");
+        case "fawry_code":
+            return t("payments.method_fawry_code", "كود فوري");
+        case "cod":
+            return t("payments.method_cod", "دفع عند الاستلام");
+        case "whatsapp":
+            return t("payments.method_whatsapp", "واتساب");
+        default:
+            return method;
+    }
+}
+
+/** The credential key names, so a rotation checklist reads like one. */
 const FIELD_LABEL: Record<string, string> = {
-    secret_key: 'Secret key',
-    public_key: 'Public key',
-    hmac_secret: 'HMAC secret',
+    secret_key: "Secret key",
+    public_key: "Public key",
+    hmac_secret: "HMAC secret",
 };
 
-export default function PaymentsIndex({ storefront, providers, merged, customer_preview, registry, method_keys }: Props) {
+export default function PaymentsIndex({
+    storefront,
+    providers,
+    merged,
+    customer_preview,
+    registry,
+    method_keys,
+}: Props) {
+    const t = useT();
     const { errors } = usePage<SharedProps>().props;
     const [addingProvider, setAddingProvider] = useState(false);
     const [editing, setEditing] = useState<ProviderRow | null>(null);
-    const [methodTarget, setMethodTarget] = useState<{ provider: ProviderRow; method: MethodRow | null } | null>(null);
+    const [methodTarget, setMethodTarget] = useState<{
+        provider: ProviderRow;
+        method: MethodRow | null;
+    } | null>(null);
 
     const base = `/manage/storefronts/${storefront.id}/payments`;
 
@@ -127,41 +170,65 @@ export default function PaymentsIndex({ storefront, providers, merged, customer_
         next[swapWith] = current;
         next[index] = moved;
 
-        router.post(`${base}/order`, { ids: next.map((row) => row.id) }, { preserveScroll: true });
+        router.post(
+            `${base}/order`,
+            { ids: next.map((row) => row.id) },
+            { preserveScroll: true },
+        );
     };
 
     return (
         <ManageLayout
-            title={`وسائل الدفع — ${storefront.name}`}
+            title={t("payments.title_for", "وسائل الدفع — :name", {
+                name: storefront.name,
+            })}
             crumbs={[
-                { label: 'الرئيسية', href: '/manage' },
-                { label: 'المتاجر', href: '/manage/storefronts' },
-                { label: storefront.name, href: `/manage/storefronts/${storefront.id}/edit` },
-                { label: 'وسائل الدفع' },
+                { label: t("common.home", "الرئيسية"), href: "/manage" },
+                {
+                    label: t("common.storefronts", "المتاجر"),
+                    href: "/manage/storefronts",
+                },
+                {
+                    label: storefront.name,
+                    href: `/manage/storefronts/${storefront.id}/edit`,
+                },
+                { label: t("payments.title", "وسائل الدفع") },
             ]}
             actions={
                 <Button size="sm" onClick={() => setAddingProvider(true)}>
-                    أضف عقد مزوّد
+                    {t("payments.add_contract", "أضف عقد مزوّد")}
                 </Button>
             }
         >
             <div className="space-y-6">
-                <Alert tone="info" title="المفاتيح تُكتب ولا تُقرأ">
-                    لا تُرسل هذه الشاشة أي مفتاح محفوظ إلى المتصفح، ولا يوجد زر لإظهاره. تظهر الحقول فارغة دائمًا:
-                    اكتب قيمة جديدة لتستبدل القديمة، واتركها فارغة ليبقى المحفوظ كما هو. ما تقوله الشاشة عن المفتاح هو
-                    أنه «مضبوط» ومتى تغيّر العقد — لا أكثر.
+                <Alert
+                    tone="info"
+                    title={t(
+                        "payments.write_only_title",
+                        "المفاتيح تُكتب ولا تُقرأ",
+                    )}
+                >
+                    {t(
+                        "payments.write_only_body",
+                        "لا تُرسل هذه الشاشة أي مفتاح محفوظ إلى المتصفح، ولا يوجد زر لإظهاره. تظهر الحقول فارغة دائمًا: اكتب قيمة جديدة لتستبدل القديمة، واتركها فارغة ليبقى المحفوظ كما هو. ما تقوله الشاشة عن المفتاح هو أنه «مضبوط» ومتى تغيّر العقد — لا أكثر.",
+                    )}
                 </Alert>
 
                 {errors.ids ? <Alert tone="error">{errors.ids}</Alert> : null}
-                {errors.provider ? <Alert tone="error">{errors.provider}</Alert> : null}
+                {errors.provider ? (
+                    <Alert tone="error">{errors.provider}</Alert>
+                ) : null}
 
                 {/* ── contracts ──────────────────────────────────────────────────────────── */}
                 <div className="space-y-4">
                     {providers.length === 0 ? (
                         <Card>
                             <CardContent className="py-8 text-center text-sm text-muted-foreground">
-                                لا يوجد عقد مزوّد لهذا المتجر بعد. «دفع عند الاستلام» و«واتساب» يحتاجان عقدًا بلا مفاتيح
-                                (المزوّد <code dir="ltr">offline</code>).
+                                {t(
+                                    "payments.no_contracts",
+                                    "لا يوجد عقد مزوّد لهذا المتجر بعد. «دفع عند الاستلام» و«واتساب» يحتاجان عقدًا بلا مفاتيح عند المزوّد",
+                                )}{" "}
+                                <code dir="ltr">offline</code>.
                             </CardContent>
                         </Card>
                     ) : null}
@@ -171,51 +238,124 @@ export default function PaymentsIndex({ storefront, providers, merged, customer_
                             <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
                                 <CardTitle className="flex flex-wrap items-center gap-2">
                                     <span dir="ltr">{provider.provider}</span>
-                                    <Badge variant={provider.is_enabled ? 'success' : 'neutral'}>
-                                        {provider.is_enabled ? 'مفعَّل' : 'موقوف'}
+                                    <Badge
+                                        variant={
+                                            provider.is_enabled
+                                                ? "success"
+                                                : "neutral"
+                                        }
+                                    >
+                                        {provider.is_enabled
+                                            ? t("common.active", "مفعّل")
+                                            : t("common.suspended", "موقوف")}
                                     </Badge>
                                     {!provider.implemented ? (
-                                        <Badge variant="destructive" title="لا يوجد كود لهذا المزوّد في السجل">
-                                            غير مُنفَّذ
+                                        <Badge
+                                            variant="destructive"
+                                            title={t(
+                                                "payments.not_implemented_hint",
+                                                "لا يوجد كود لهذا المزوّد في السجل",
+                                            )}
+                                        >
+                                            {t(
+                                                "payments.not_implemented",
+                                                "غير مُنفَّذ",
+                                            )}
                                         </Badge>
                                     ) : null}
                                     {provider.needs_credentials ? (
-                                        <Badge variant={provider.credentials_complete ? 'success' : 'warning'}>
+                                        <Badge
+                                            variant={
+                                                provider.credentials_complete
+                                                    ? "success"
+                                                    : "warning"
+                                            }
+                                        >
                                             {provider.credentials_complete
-                                                ? 'المفاتيح مضبوطة'
+                                                ? t(
+                                                      "payments.keys_set",
+                                                      "المفاتيح مضبوطة",
+                                                  )
                                                 : provider.credentials_set
-                                                  ? 'مفاتيح ناقصة'
-                                                  : 'بلا مفاتيح'}
+                                                  ? t(
+                                                        "payments.keys_incomplete",
+                                                        "مفاتيح ناقصة",
+                                                    )
+                                                  : t(
+                                                        "payments.keys_none",
+                                                        "بلا مفاتيح",
+                                                    )}
                                         </Badge>
                                     ) : (
-                                        <Badge variant="outline">لا يحتاج مفاتيح</Badge>
+                                        <Badge variant="outline">
+                                            {t(
+                                                "payments.keys_not_needed",
+                                                "لا يحتاج مفاتيح",
+                                            )}
+                                        </Badge>
                                     )}
                                 </CardTitle>
                                 <div className="flex flex-wrap items-center gap-2">
-                                    <Button variant="outline" size="sm" onClick={() => setEditing(provider)}>
-                                        المفاتيح والتفعيل
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => setEditing(provider)}
+                                    >
+                                        {t(
+                                            "payments.keys_and_activation",
+                                            "المفاتيح والتفعيل",
+                                        )}
                                     </Button>
-                                    <Button variant="outline" size="sm" onClick={() => setMethodTarget({ provider, method: null })}>
-                                        أضف طريقة
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() =>
+                                            setMethodTarget({
+                                                provider,
+                                                method: null,
+                                            })
+                                        }
+                                    >
+                                        {t("payments.add_method", "أضف طريقة")}
                                     </Button>
                                     <ConfirmAction
-                                        title="حذف العقد"
-                                        confirmLabel="احذف العقد وطرقه"
+                                        title={t(
+                                            "payments.delete_contract",
+                                            "حذف العقد",
+                                        )}
+                                        confirmLabel={t(
+                                            "payments.delete_contract_confirm",
+                                            "احذف العقد وطرقه",
+                                        )}
                                         consequence={
                                             <p>
-                                                سيُحذف عقد <span dir="ltr">{provider.provider}</span> مع{' '}
-                                                {provider.methods.length} طريقة دفع تحته، وستتوقف هذه الطرق عن الظهور
-                                                للعملاء فورًا. محاولات الدفع المسجّلة لا تُحذف — تبقى في سجل المحاولات
-                                                مع اسم المزوّد.
+                                                {t(
+                                                    "payments.delete_contract_consequence_before",
+                                                    "سيُحذف عقد",
+                                                )}{" "}
+                                                <span dir="ltr">
+                                                    {provider.provider}
+                                                </span>{" "}
+                                                {t(
+                                                    "payments.delete_contract_consequence_after",
+                                                    "مع :count طريقة دفع تحته، وستتوقف هذه الطرق عن الظهور للعملاء فورًا. محاولات الدفع المسجّلة لا تُحذف — تبقى في سجل المحاولات مع اسم المزوّد.",
+                                                    {
+                                                        count: provider.methods
+                                                            .length,
+                                                    },
+                                                )}
                                             </p>
                                         }
                                         trigger={
                                             <Button variant="outline" size="sm">
-                                                احذف
+                                                {t("common.delete", "حذف")}
                                             </Button>
                                         }
                                         onConfirm={() =>
-                                            router.delete(`${base}/providers/${provider.id}`, { preserveScroll: true })
+                                            router.delete(
+                                                `${base}/providers/${provider.id}`,
+                                                { preserveScroll: true },
+                                            )
                                         }
                                     />
                                 </div>
@@ -223,17 +363,33 @@ export default function PaymentsIndex({ storefront, providers, merged, customer_
                             <CardContent className="space-y-4">
                                 {provider.needs_credentials ? (
                                     <div className="flex flex-wrap gap-2 text-xs">
-                                        {provider.credential_fields.map((field) => (
-                                            <Badge
-                                                key={field}
-                                                variant={provider.credential_keys_present.includes(field) ? 'success' : 'warning'}
-                                            >
-                                                {FIELD_LABEL[field] ?? field}
-                                                {provider.credential_keys_present.includes(field) ? ' ✓' : ' —'}
-                                            </Badge>
-                                        ))}
+                                        {provider.credential_fields.map(
+                                            (field) => (
+                                                <Badge
+                                                    key={field}
+                                                    variant={
+                                                        provider.credential_keys_present.includes(
+                                                            field,
+                                                        )
+                                                            ? "success"
+                                                            : "warning"
+                                                    }
+                                                >
+                                                    {FIELD_LABEL[field] ??
+                                                        field}
+                                                    {provider.credential_keys_present.includes(
+                                                        field,
+                                                    )
+                                                        ? " ✓"
+                                                        : " —"}
+                                                </Badge>
+                                            ),
+                                        )}
                                         {provider.updated_at !== null ? (
-                                            <span className="text-muted-foreground" dir="ltr">
+                                            <span
+                                                className="text-muted-foreground"
+                                                dir="ltr"
+                                            >
                                                 updated {provider.updated_at}
                                             </span>
                                         ) : null}
@@ -241,7 +397,12 @@ export default function PaymentsIndex({ storefront, providers, merged, customer_
                                 ) : null}
 
                                 {provider.methods.length === 0 ? (
-                                    <p className="text-sm text-muted-foreground">لا توجد طرق دفع تحت هذا العقد.</p>
+                                    <p className="text-sm text-muted-foreground">
+                                        {t(
+                                            "payments.no_methods_under_contract",
+                                            "لا توجد طرق دفع تحت هذا العقد.",
+                                        )}
+                                    </p>
                                 ) : (
                                     <div className="space-y-2">
                                         {provider.methods.map((method) => (
@@ -251,43 +412,100 @@ export default function PaymentsIndex({ storefront, providers, merged, customer_
                                             >
                                                 <div className="space-y-0.5">
                                                     <div className="flex flex-wrap items-center gap-2 text-sm font-medium">
-                                                        {method.label.ar || (METHOD_LABEL[method.method] ?? method.method)}
-                                                        <Badge variant="outline" className="font-mono">
-                                                            <span dir="ltr">{method.method}</span>
+                                                        {method.label.ar ||
+                                                            methodLabel(
+                                                                t,
+                                                                method.method,
+                                                            )}
+                                                        <Badge
+                                                            variant="outline"
+                                                            className="font-mono"
+                                                        >
+                                                            <span dir="ltr">
+                                                                {method.method}
+                                                            </span>
                                                         </Badge>
-                                                        {!method.is_enabled ? <Badge variant="neutral">موقوفة</Badge> : null}
+                                                        {!method.is_enabled ? (
+                                                            <Badge variant="neutral">
+                                                                {t(
+                                                                    "payments.method_suspended",
+                                                                    "موقوفة",
+                                                                )}
+                                                            </Badge>
+                                                        ) : null}
                                                     </div>
-                                                    <div className="text-xs text-muted-foreground" dir="ltr">
-                                                        sort {method.sort}
-                                                        {method.integration_id !== null ? ` · integration ${method.integration_id}` : ''}
-                                                        {method.label.en !== '' ? ` · ${method.label.en}` : ''}
+                                                    <div className="text-xs text-muted-foreground">
+                                                        <Ltr>
+                                                            sort {method.sort}
+                                                            {method.integration_id !==
+                                                            null
+                                                                ? ` · integration ${method.integration_id}`
+                                                                : ""}
+                                                            {method.label.en !==
+                                                            ""
+                                                                ? ` · ${method.label.en}`
+                                                                : ""}
+                                                        </Ltr>
                                                     </div>
                                                 </div>
                                                 <div className="flex items-center gap-2">
                                                     <Button
                                                         variant="outline"
                                                         size="sm"
-                                                        onClick={() => setMethodTarget({ provider, method })}
+                                                        onClick={() =>
+                                                            setMethodTarget({
+                                                                provider,
+                                                                method,
+                                                            })
+                                                        }
                                                     >
-                                                        عدّل
+                                                        {t(
+                                                            "common.edit",
+                                                            "تعديل",
+                                                        )}
                                                     </Button>
                                                     <ConfirmAction
-                                                        title="حذف طريقة الدفع"
-                                                        confirmLabel="احذف الطريقة"
+                                                        title={t(
+                                                            "payments.delete_method",
+                                                            "حذف طريقة الدفع",
+                                                        )}
+                                                        confirmLabel={t(
+                                                            "payments.delete_method_confirm",
+                                                            "احذف الطريقة",
+                                                        )}
                                                         consequence={
                                                             <p>
-                                                                ستتوقف «{method.label.ar || method.method}» عن الظهور للعملاء
-                                                                في هذا المتجر. إن كانت طريقة أخرى بنفس المفتاح تحت عقد آخر،
-                                                                فستصبح هي المستقبِلة للأموال.
+                                                                {t(
+                                                                    "payments.delete_method_consequence",
+                                                                    "ستتوقف «:label» عن الظهور للعملاء في هذا المتجر. إن كانت طريقة أخرى بنفس المفتاح تحت عقد آخر، فستصبح هي المستقبِلة للأموال.",
+                                                                    {
+                                                                        label:
+                                                                            method
+                                                                                .label
+                                                                                .ar ||
+                                                                            method.method,
+                                                                    },
+                                                                )}
                                                             </p>
                                                         }
                                                         trigger={
-                                                            <Button variant="outline" size="sm">
-                                                                احذف
+                                                            <Button
+                                                                variant="outline"
+                                                                size="sm"
+                                                            >
+                                                                {t(
+                                                                    "common.delete",
+                                                                    "حذف",
+                                                                )}
                                                             </Button>
                                                         }
                                                         onConfirm={() =>
-                                                            router.delete(`${base}/methods/${method.id}`, { preserveScroll: true })
+                                                            router.delete(
+                                                                `${base}/methods/${method.id}`,
+                                                                {
+                                                                    preserveScroll: true,
+                                                                },
+                                                            )
                                                         }
                                                     />
                                                 </div>
@@ -303,16 +521,25 @@ export default function PaymentsIndex({ storefront, providers, merged, customer_
                 {/* ── the merged order ───────────────────────────────────────────────────── */}
                 <Card>
                     <CardHeader>
-                        <CardTitle>الترتيب الموحَّد</CardTitle>
+                        <CardTitle>
+                            {t("payments.merged_order", "الترتيب الموحَّد")}
+                        </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-3">
                         <p className="text-sm text-muted-foreground">
-                            ترتيب واحد يعبر العقود. عند تكرار نفس المفتاح تحت عقدين، الأعلى في هذه القائمة هو الذي
-                            يستقبل الأموال — فالترتيب هنا قرار توجيه لا قرار شكل.
+                            {t(
+                                "payments.merged_order_help",
+                                "ترتيب واحد يعبر العقود. عند تكرار نفس المفتاح تحت عقدين، الأعلى في هذه القائمة هو الذي يستقبل الأموال — فالترتيب هنا قرار توجيه لا قرار شكل.",
+                            )}
                         </p>
 
                         {merged.length === 0 ? (
-                            <p className="text-sm text-muted-foreground">لا توجد طرق دفع بعد.</p>
+                            <p className="text-sm text-muted-foreground">
+                                {t(
+                                    "payments.no_methods",
+                                    "لا توجد طرق دفع بعد.",
+                                )}
+                            </p>
                         ) : (
                             <div className="space-y-2">
                                 {merged.map((row, index) => (
@@ -321,37 +548,82 @@ export default function PaymentsIndex({ storefront, providers, merged, customer_
                                         className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border p-3"
                                     >
                                         <div className="flex flex-wrap items-center gap-2">
-                                            <span className="w-6 text-center text-xs text-muted-foreground" dir="ltr">
+                                            <span
+                                                className="w-6 text-center text-xs text-muted-foreground"
+                                                dir="ltr"
+                                            >
                                                 {index + 1}
                                             </span>
-                                            <span className="text-sm font-medium">{row.label || (METHOD_LABEL[row.method] ?? row.method)}</span>
-                                            <Badge variant="outline" className="font-mono">
-                                                <span dir="ltr">{row.method}</span>
+                                            <span className="text-sm font-medium">
+                                                {row.label ||
+                                                    methodLabel(t, row.method)}
+                                            </span>
+                                            <Badge
+                                                variant="outline"
+                                                className="font-mono"
+                                            >
+                                                <span dir="ltr">
+                                                    {row.method}
+                                                </span>
                                             </Badge>
                                             <Badge variant="neutral">
-                                                <span dir="ltr">{row.provider}</span>
+                                                <span dir="ltr">
+                                                    {row.provider}
+                                                </span>
                                             </Badge>
 
                                             {/* Who takes the money for this key. Never inferred from
                                                 position by the reader — the server says it. */}
                                             {row.serves ? (
-                                                <Badge variant="success">تستقبل الأموال</Badge>
+                                                <Badge variant="success">
+                                                    {t(
+                                                        "payments.takes_the_money",
+                                                        "تستقبل الأموال",
+                                                    )}
+                                                </Badge>
                                             ) : row.served_by !== null ? (
-                                                <Badge variant="warning" title="مفتاح مكرَّر: عقد آخر يستقبل الأموال">
-                                                    مغطّاة بـ <span dir="ltr">{row.served_by}</span>
+                                                <Badge
+                                                    variant="warning"
+                                                    title={t(
+                                                        "payments.covered_hint",
+                                                        "مفتاح مكرَّر: عقد آخر يستقبل الأموال",
+                                                    )}
+                                                >
+                                                    {t(
+                                                        "payments.covered_by",
+                                                        "مغطّاة بـ",
+                                                    )}{" "}
+                                                    <span dir="ltr">
+                                                        {row.served_by}
+                                                    </span>
                                                 </Badge>
                                             ) : (
                                                 <Badge variant="neutral">
-                                                    {!row.is_enabled || !row.provider_enabled ? 'موقوفة' : 'لا تستقبل'}
+                                                    {!row.is_enabled ||
+                                                    !row.provider_enabled
+                                                        ? t(
+                                                              "payments.method_suspended",
+                                                              "موقوفة",
+                                                          )
+                                                        : t(
+                                                              "payments.does_not_take_money",
+                                                              "لا تستقبل",
+                                                          )}
                                                 </Badge>
                                             )}
 
                                             {row.label_mismatch ? (
                                                 <Badge
                                                     variant="warning"
-                                                    title="عقدان بنفس المفتاح واسمان مختلفان: تغيير الترتيب يغيّر النص الذي يراه العميل"
+                                                    title={t(
+                                                        "payments.label_mismatch_hint",
+                                                        "عقدان بنفس المفتاح واسمان مختلفان: تغيير الترتيب يغيّر النص الذي يراه العميل",
+                                                    )}
                                                 >
-                                                    اسمان مختلفان
+                                                    {t(
+                                                        "payments.label_mismatch",
+                                                        "اسمان مختلفان",
+                                                    )}
                                                 </Badge>
                                             ) : null}
                                         </div>
@@ -361,7 +633,10 @@ export default function PaymentsIndex({ storefront, providers, merged, customer_
                                                 variant="outline"
                                                 size="sm"
                                                 disabled={index === 0}
-                                                aria-label="أعلى"
+                                                aria-label={t(
+                                                    "payments.move_up",
+                                                    "أعلى",
+                                                )}
                                                 onClick={() => move(index, -1)}
                                             >
                                                 ▲
@@ -369,8 +644,13 @@ export default function PaymentsIndex({ storefront, providers, merged, customer_
                                             <Button
                                                 variant="outline"
                                                 size="sm"
-                                                disabled={index === merged.length - 1}
-                                                aria-label="أسفل"
+                                                disabled={
+                                                    index === merged.length - 1
+                                                }
+                                                aria-label={t(
+                                                    "payments.move_down",
+                                                    "أسفل",
+                                                )}
                                                 onClick={() => move(index, 1)}
                                             >
                                                 ▼
@@ -386,22 +666,49 @@ export default function PaymentsIndex({ storefront, providers, merged, customer_
                 {/* ── what the customer will see ─────────────────────────────────────────── */}
                 <Card>
                     <CardHeader>
-                        <CardTitle>ما سيراه العميل ({customer_preview.length})</CardTitle>
+                        <CardTitle>
+                            {t(
+                                "payments.customer_preview",
+                                "ما سيراه العميل (:count)",
+                                { count: customer_preview.length },
+                            )}
+                        </CardTitle>
                     </CardHeader>
                     <CardContent>
                         {customer_preview.length === 0 ? (
-                            <Alert tone="warning" title="لن يرى العميل أي وسيلة دفع">
-                                لا توجد طريقة مفعَّلة تحت عقد مفعَّل. الطلبات لن تجد وسيلة سداد في هذا المتجر.
+                            <Alert
+                                tone="warning"
+                                title={t(
+                                    "payments.customer_sees_nothing_title",
+                                    "لن يرى العميل أي وسيلة دفع",
+                                )}
+                            >
+                                {t(
+                                    "payments.customer_sees_nothing_body",
+                                    "لا توجد طريقة مفعَّلة تحت عقد مفعَّل. الطلبات لن تجد وسيلة سداد في هذا المتجر.",
+                                )}
                             </Alert>
                         ) : (
                             <ol className="space-y-2">
                                 {customer_preview.map((row, index) => (
-                                    <li key={row.id} className="flex items-center gap-3 text-sm">
-                                        <span className="w-5 text-center text-xs text-muted-foreground" dir="ltr">
+                                    <li
+                                        key={row.id}
+                                        className="flex items-center gap-3 text-sm"
+                                    >
+                                        <span
+                                            className="w-5 text-center text-xs text-muted-foreground"
+                                            dir="ltr"
+                                        >
                                             {index + 1}
                                         </span>
-                                        <span className="font-medium">{row.label || (METHOD_LABEL[row.method] ?? row.method)}</span>
-                                        <span className="text-xs text-muted-foreground font-mono" dir="ltr">
+                                        <span className="font-medium">
+                                            {row.label ||
+                                                methodLabel(t, row.method)}
+                                        </span>
+                                        <span
+                                            className="text-xs text-muted-foreground font-mono"
+                                            dir="ltr"
+                                        >
                                             {row.method}
                                         </span>
                                     </li>
@@ -409,7 +716,10 @@ export default function PaymentsIndex({ storefront, providers, merged, customer_
                             </ol>
                         )}
                         <p className="pt-3 text-xs text-muted-foreground">
-                            مفتاح واحد يظهر مرة واحدة فقط، حتى لو كان متاحًا تحت عقدين.
+                            {t(
+                                "payments.one_key_once",
+                                "مفتاح واحد يظهر مرة واحدة فقط، حتى لو كان متاحًا تحت عقدين.",
+                            )}
                         </p>
                     </CardContent>
                 </Card>
@@ -460,24 +770,37 @@ function ProviderDialog({
     onClose,
 }: {
     base: string;
-    registry: Array<{ value: string; label: string; credential_fields: string[] }>;
+    registry: Array<{
+        value: string;
+        label: string;
+        credential_fields: string[];
+    }>;
     provider: ProviderRow | null;
     onClose: () => void;
 }) {
+    const t = useT();
     const { errors } = usePage<SharedProps>().props;
-    const [key, setKey] = useState(provider?.provider ?? (registry[0]?.value ?? ''));
+    const [key, setKey] = useState(
+        provider?.provider ?? registry[0]?.value ?? "",
+    );
     const [enabled, setEnabled] = useState(provider?.is_enabled ?? true);
     const [credentials, setCredentials] = useState<Record<string, string>>({});
     const [busy, setBusy] = useState(false);
 
-    const fields = provider !== null
-        ? provider.credential_fields
-        : (registry.find((entry) => entry.value === key)?.credential_fields ?? []);
+    const fields =
+        provider !== null
+            ? provider.credential_fields
+            : (registry.find((entry) => entry.value === key)
+                  ?.credential_fields ?? []);
 
     const submit = () => {
         setBusy(true);
         const payload = { provider: key, is_enabled: enabled, credentials };
-        const options = { preserveScroll: true, onSuccess: onClose, onFinish: () => setBusy(false) };
+        const options = {
+            preserveScroll: true,
+            onSuccess: onClose,
+            onFinish: () => setBusy(false),
+        };
 
         if (provider === null) {
             router.post(`${base}/providers`, payload, options);
@@ -488,44 +811,85 @@ function ProviderDialog({
 
     return (
         <Dialog open onOpenChange={(open) => (open ? undefined : onClose())}>
-            <DialogContent title={provider === null ? 'عقد مزوّد جديد' : `عقد ${provider.provider}`} className="space-y-4">
+            <DialogContent
+                title={
+                    provider === null
+                        ? t("payments.new_contract", "عقد مزوّد جديد")
+                        : t("payments.contract_of", "عقد :provider", {
+                              provider: provider.provider,
+                          })
+                }
+                className="space-y-4"
+            >
                 {provider === null ? (
                     <SelectField
-                        label="المزوّد"
+                        label={t("payments.provider", "المزوّد")}
                         required
                         value={key}
                         onChange={setKey}
-                        options={registry.map((entry) => ({ value: entry.value, label: entry.label }))}
+                        options={registry.map((entry) => ({
+                            value: entry.value,
+                            label: entry.label,
+                        }))}
                         error={errors.provider ?? null}
-                        hint="العقد واحد لكل مزوّد لكل متجر."
+                        hint={t(
+                            "payments.one_contract_per_provider",
+                            "العقد واحد لكل مزوّد لكل متجر.",
+                        )}
                     />
                 ) : null}
 
-                <SwitchField label="مفعَّل" checked={enabled} onChange={setEnabled} />
+                <SwitchField
+                    label={t("common.active", "مفعّل")}
+                    checked={enabled}
+                    onChange={setEnabled}
+                />
 
                 {fields.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">هذا المزوّد لا يحتاج مفاتيح.</p>
+                    <p className="text-sm text-muted-foreground">
+                        {t(
+                            "payments.provider_needs_no_keys",
+                            "هذا المزوّد لا يحتاج مفاتيح.",
+                        )}
+                    </p>
                 ) : (
                     <div className="space-y-3">
                         <p className="text-xs text-muted-foreground">
-                            اتركه فارغًا ليبقى المحفوظ كما هو. لا تُعرض القيم المحفوظة هنا ولا في أي مكان آخر.
+                            {t(
+                                "payments.leave_blank_hint",
+                                "اتركه فارغًا ليبقى المحفوظ كما هو. لا تُعرض القيم المحفوظة هنا ولا في أي مكان آخر.",
+                            )}
                         </p>
                         {fields.map((field) => (
                             <div key={field} className="space-y-1.5">
-                                <Label htmlFor={`cred-${field}`}>{FIELD_LABEL[field] ?? field}</Label>
+                                <Label htmlFor={`cred-${field}`}>
+                                    {FIELD_LABEL[field] ?? field}
+                                </Label>
                                 <Input
                                     id={`cred-${field}`}
                                     type="password"
                                     dir="ltr"
                                     autoComplete="new-password"
-                                    value={credentials[field] ?? ''}
+                                    value={credentials[field] ?? ""}
                                     placeholder={
-                                        provider !== null && provider.credential_keys_present.includes(field)
-                                            ? 'مضبوط — اتركه فارغًا للإبقاء عليه'
-                                            : 'غير مضبوط'
+                                        provider !== null &&
+                                        provider.credential_keys_present.includes(
+                                            field,
+                                        )
+                                            ? t(
+                                                  "payments.key_set_placeholder",
+                                                  "مضبوط — اتركه فارغًا للإبقاء عليه",
+                                              )
+                                            : t(
+                                                  "payments.key_unset_placeholder",
+                                                  "غير مضبوط",
+                                              )
                                     }
                                     onChange={(event) =>
-                                        setCredentials((current) => ({ ...current, [field]: event.target.value }))
+                                        setCredentials((current) => ({
+                                            ...current,
+                                            [field]: event.target.value,
+                                        }))
                                     }
                                 />
                             </div>
@@ -535,10 +899,10 @@ function ProviderDialog({
 
                 <div className="flex flex-wrap justify-end gap-2">
                     <Button type="button" variant="outline" onClick={onClose}>
-                        إلغاء
+                        {t("common.cancel", "إلغاء")}
                     </Button>
                     <Button type="button" disabled={busy} onClick={submit}>
-                        احفظ
+                        {t("common.save", "حفظ")}
                     </Button>
                 </div>
             </DialogContent>
@@ -560,15 +924,16 @@ function MethodDialog({
     method: MethodRow | null;
     onClose: () => void;
 }) {
+    const t = useT();
     const { errors } = usePage<SharedProps>().props;
     const form = useForm({
         storefront_payment_provider_id: provider.id,
-        method: method?.method ?? (methodKeys[0] ?? 'card'),
-        integration_id: method?.integration_id ?? '',
-        icon: method?.icon ?? '',
+        method: method?.method ?? methodKeys[0] ?? "card",
+        integration_id: method?.integration_id ?? "",
+        icon: method?.icon ?? "",
         is_enabled: method?.is_enabled ?? true,
         sort: String(method?.sort ?? provider.methods.length),
-        label: { ar: method?.label.ar ?? '', en: method?.label.en ?? '' },
+        label: { ar: method?.label.ar ?? "", en: method?.label.en ?? "" },
     });
 
     const submit = () => {
@@ -583,73 +948,116 @@ function MethodDialog({
     return (
         <Dialog open onOpenChange={(open) => (open ? undefined : onClose())}>
             <DialogContent
-                title={method === null ? `طريقة جديدة تحت ${provider.provider}` : `تعديل ${method.method}`}
+                title={
+                    method === null
+                        ? t(
+                              "payments.new_method_under",
+                              "طريقة جديدة تحت :provider",
+                              { provider: provider.provider },
+                          )
+                        : t("payments.edit_method", "تعديل :method", {
+                              method: method.method,
+                          })
+                }
                 className="space-y-4"
             >
                 <SelectField
-                    label="المفتاح"
+                    label={t("payments.method_key", "المفتاح")}
                     required
                     value={form.data.method}
-                    onChange={(value) => form.setData('method', value)}
-                    options={methodKeys.map((key) => ({ value: key, label: `${METHOD_LABEL[key] ?? key} (${key})` }))}
+                    onChange={(value) => form.setData("method", value)}
+                    options={methodKeys.map((key) => ({
+                        value: key,
+                        label: `${methodLabel(t, key)} (${key})`,
+                    }))}
                     error={errors.method ?? null}
-                    hint="المفتاح ثابت في الكود وليس في قاعدة البيانات."
+                    hint={t(
+                        "payments.method_key_hint",
+                        "المفتاح ثابت في الكود وليس في قاعدة البيانات.",
+                    )}
                 />
 
                 <div className="grid gap-4 sm:grid-cols-2">
                     <TextField
-                        label="الاسم (عربي)"
+                        label={t("common.name_ar", "الاسم (عربي)")}
                         required
                         value={form.data.label.ar}
-                        onChange={(value) => form.setData('label', { ...form.data.label, ar: value })}
-                        error={errors['label.ar'] ?? null}
-                        hint="هذا ما يقرأه العميل."
+                        onChange={(value) =>
+                            form.setData("label", {
+                                ...form.data.label,
+                                ar: value,
+                            })
+                        }
+                        error={errors["label.ar"] ?? null}
+                        hint={t(
+                            "payments.label_ar_hint",
+                            "هذا ما يقرأه العميل.",
+                        )}
                     />
                     <TextField
-                        label="الاسم (إنجليزي)"
+                        label={t("common.name_en", "الاسم (إنجليزي)")}
                         dir="ltr"
                         value={form.data.label.en}
-                        onChange={(value) => form.setData('label', { ...form.data.label, en: value })}
-                        error={errors['label.en'] ?? null}
+                        onChange={(value) =>
+                            form.setData("label", {
+                                ...form.data.label,
+                                en: value,
+                            })
+                        }
+                        error={errors["label.en"] ?? null}
                     />
                     <TextField
                         label="Integration id"
                         dir="ltr"
                         value={form.data.integration_id}
-                        onChange={(value) => form.setData('integration_id', value)}
+                        onChange={(value) =>
+                            form.setData("integration_id", value)
+                        }
                         error={errors.integration_id ?? null}
-                        hint="ليس مفتاحًا سريًّا: يأتي في حمولة الرد الموقَّعة ويُستخدم لمطابقة العملية في لوحة المزوّد."
+                        hint={t(
+                            "payments.integration_id_hint",
+                            "ليس مفتاحًا سريًّا: يأتي في حمولة الرد الموقَّعة ويُستخدم لمطابقة العملية في لوحة المزوّد.",
+                        )}
                     />
                     <TextField
-                        label="الأيقونة"
+                        label={t("payments.icon", "الأيقونة")}
                         dir="ltr"
                         value={form.data.icon}
-                        onChange={(value) => form.setData('icon', value)}
+                        onChange={(value) => form.setData("icon", value)}
                         error={errors.icon ?? null}
                     />
                     <TextField
-                        label="الترتيب"
+                        label={t("common.sort", "الترتيب")}
                         type="number"
                         dir="ltr"
                         min={0}
                         value={form.data.sort}
-                        onChange={(value) => form.setData('sort', value)}
+                        onChange={(value) => form.setData("sort", value)}
                         error={errors.sort ?? null}
-                        hint="الأقل يفوز عند تكرار المفتاح."
+                        hint={t(
+                            "payments.sort_hint",
+                            "الأقل يفوز عند تكرار المفتاح.",
+                        )}
                     />
                     <SwitchField
-                        label="مفعَّلة"
+                        label={t("payments.method_active", "مفعَّلة")}
                         checked={form.data.is_enabled}
-                        onChange={(checked) => form.setData('is_enabled', checked)}
+                        onChange={(checked) =>
+                            form.setData("is_enabled", checked)
+                        }
                     />
                 </div>
 
                 <div className="flex flex-wrap justify-end gap-2">
                     <Button type="button" variant="outline" onClick={onClose}>
-                        إلغاء
+                        {t("common.cancel", "إلغاء")}
                     </Button>
-                    <Button type="button" disabled={form.processing} onClick={submit}>
-                        احفظ
+                    <Button
+                        type="button"
+                        disabled={form.processing}
+                        onClick={submit}
+                    >
+                        {t("common.save", "حفظ")}
                     </Button>
                 </div>
             </DialogContent>

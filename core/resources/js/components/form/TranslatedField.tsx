@@ -2,6 +2,7 @@ import { Field, type FieldShellProps } from '@/components/form/Field';
 import { Input, Textarea } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import { useT } from '@/lib/i18n';
 
 export type Translations = Record<string, string>;
 
@@ -36,7 +37,13 @@ export function TranslatedField({
     multiline?: boolean;
     required?: boolean;
 }) {
-    const LABELS: Record<string, string> = { ar: 'العربية', en: 'English' };
+    const t = useT();
+    /*
+     * These are LANGUAGE NAMES, and a language is named in its own language on every interface
+     * worth using: "العربية" stays Arabic and "English" stays English whichever locale the
+     * dashboard is in. They are data, not UI text, so they do not go through the seam.
+     */
+    const LABELS: Record<string, string> = { ar: 'العربية', en: 'English' }; // i18n-exempt: language names are data, named in their own language
 
     return (
         <div className="space-y-2">
@@ -91,7 +98,7 @@ export function TranslatedField({
                         .filter((locale) => (value[locale] ?? '') === '')
                         .map((locale) => LABELS[locale] ?? locale)
                         .join(' · ')}{' '}
-                    ناقص
+                    {t('form.missing', 'ناقص')}
                 </Badge>
             ) : null}
         </div>

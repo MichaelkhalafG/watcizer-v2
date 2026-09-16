@@ -7,6 +7,7 @@ use App\Models\Storefront\StorefrontRedirect;
 use App\Storefront\StorefrontCache;
 use App\Support\Coerce;
 use App\Support\LegacySlug;
+use App\Support\ManageText;
 use App\Transform\Row;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -72,14 +73,14 @@ final class CategoryTreeWriter
 
         $ar = trim($names['ar'] ?? '');
         if ($ar === '') {
-            throw new RuntimeException('الاسم العربي مطلوب: الترجمة الاحتياطية مُعطّلة، فالتصنيف بدون عربي يظهر ناقصًا.');
+            throw new RuntimeException(ManageText::t('categories.name_ar_required_why', 'الاسم العربي مطلوب: الترجمة الاحتياطية مُعطّلة، فالتصنيف بدون عربي يظهر ناقصًا.'));
         }
 
         return DB::transaction(function () use ($storefrontId, $parentId, $names, $attrs): StorefrontCategory {
             $parent = $parentId === null ? null : $this->requireNode($storefrontId, $parentId);
             $depth = $parent === null ? 1 : $parent->depth + 1;
             if ($depth > self::MAX_DEPTH) {
-                throw new RuntimeException('تجاوز أقصى عمق مسموح للشجرة ('.self::MAX_DEPTH.').');
+                throw new RuntimeException(ManageText::t('categories.max_depth_exceeded', 'تجاوز أقصى عمق مسموح للشجرة (:max).', ['max' => self::MAX_DEPTH]));
             }
 
             $slug = $this->uniqueSlug($storefrontId, $attrs['slug'] ?? null, $names, null);
@@ -131,7 +132,7 @@ final class CategoryTreeWriter
         PreSwitch::assertMayEditTree($storefrontId);
         $ar = trim($names['ar'] ?? '');
         if ($ar === '') {
-            throw new RuntimeException('الاسم العربي مطلوب.');
+            throw new RuntimeException(ManageText::t('categories.name_ar_required', 'الاسم العربي مطلوب.'));
         }
 
         return DB::transaction(function () use ($storefrontId, $nodeId, $names, $slug): StorefrontCategory {
@@ -168,7 +169,7 @@ final class CategoryTreeWriter
             $oldDepth = $node->depth;
 
             if ($newParentId === $nodeId) {
-                throw new RuntimeException('لا يمكن جعل التصنيف أبًا لنفسه.');
+                throw new RuntimeException(ManageText::t('categories.move_self_parent', 'لا يمكن جعل التصنيف أبًا لنفسه.'));
             }
 
             $parent = $newParentId === null ? null : $this->requireNode($storefrontId, $newParentId);
@@ -176,7 +177,7 @@ final class CategoryTreeWriter
             // The cycle check, and the reason the path exists: a descendant's path always starts
             // with the node's own path, so one string comparison decides it for the whole subtree.
             if ($parent !== null && str_starts_with(Coerce::str($parent->getAttribute('path'), '/'), $oldPath)) {
-                throw new RuntimeException('لا يمكن نقل التصنيف إلى داخل فروعه.');
+                throw new RuntimeException(ManageText::t('categories.move_into_own_branch', 'لا يمكن نقل التصنيف إلى داخل فروعه.'));
             }
 
             if ($parent?->id === $node->parent_id) {
@@ -186,7 +187,7 @@ final class CategoryTreeWriter
             $newDepth = $parent === null ? 1 : $parent->depth + 1;
             $deepest = $this->deepestDescendantDepth($storefrontId, $oldPath);
             if ($newDepth + ($deepest - $oldDepth) > self::MAX_DEPTH) {
-                throw new RuntimeException('النقل يجعل الشجرة أعمق من المسموح ('.self::MAX_DEPTH.').');
+                throw new RuntimeException(ManageText::t('categories.move_too_deep', 'النقل يجعل الشجرة أعمق من المسموح (:max).', ['max' => self::MAX_DEPTH]));
             }
 
             $newPath = ($parent === null ? '/' : Coerce::str($parent->getAttribute('path'), '/')).$node->id.'/';
@@ -311,16 +312,16 @@ final class CategoryTreeWriter
 
             $children = DB::table('storefront_categories')->where('parent_id', $nodeId)->count();
             if ($children > 0) {
-                throw new RuntimeException("لا يمكن الحذف: التصنيف يحتوي {$children} تصنيفًا فرعيًا. انقلها أولًا أو عطّل التصنيف.");
+                throw new RuntimeException(ManageText::t('categories.delete_has_children', 'لا يمكن الحذف: التصنيف يحتوي :count تصنيفًا فرعيًا. انقلها أولًا أو عطّل التصنيف.', ['count' => $children]));
             }
 
             $placed = DB::table('storefront_category_product')->where('storefront_category_id', $nodeId)->count();
             if ($placed > 0) {
-                throw new RuntimeException("لا يمكن الحذف: {$placed} منتجًا مرتبطًا بهذا التصنيف. انقلها أولًا أو عطّل التصنيف.");
+                throw new RuntimeException(ManageText::t('categories.delete_has_products', 'لا يمكن الحذف: :count منتجًا مرتبطًا بهذا التصنيف. انقلها أولًا أو عطّل التصنيف.', ['count' => $placed]));
             }
 
             if ($node->legacy_source !== null) {
-                throw new RuntimeException('هذا التصنيف مأخوذ من النظام القديم، وإعادة بناء الجداول ستعيده. عطّله بدلًا من حذفه.');
+                throw new RuntimeException(ManageText::t('categories.delete_legacy_node', 'هذا التصنيف مأخوذ من النظام القديم، وإعادة بناء الجداول ستعيده. عطّله بدلًا من حذفه.'));
             }
 
             DB::table('storefront_category_translations')->where('storefront_category_id', $nodeId)->delete();
@@ -350,7 +351,7 @@ final class CategoryTreeWriter
              * It says "refresh", because that is the whole remedy, and it does NOT say whether the
              * id exists somewhere else: "not yours" and "not there" stay one answer (§3.11.14).
              */
-            throw new RuntimeException('هذا التصنيف غير موجود — ربما حذفه شخص آخر. حدّث الصفحة لرؤية الشجرة الحالية.');
+            throw new RuntimeException(ManageText::t('categories.node_gone', 'هذا التصنيف غير موجود — ربما حذفه شخص آخر. حدّث الصفحة لرؤية الشجرة الحالية.'));
         }
 
         return $node;
@@ -378,7 +379,7 @@ final class CategoryTreeWriter
         while ($this->slugTaken($storefrontId, $slug, $ignoreId)) {
             $slug = $base.'-'.$suffix++;
             if ($suffix > 200) {
-                throw new RuntimeException("تعذّر توليد رابط فريد للتصنيف من «{$base}».");
+                throw new RuntimeException(ManageText::t('categories.slug_not_unique', 'تعذّر توليد رابط فريد للتصنيف من «:base».', ['base' => $base]));
             }
         }
 
@@ -477,19 +478,16 @@ final class CategoryTreeWriter
     private static function assertPathShape(string $path): void
     {
         if (preg_match('#^/(?:\d+/)*$#', $path) !== 1) {
-            // Arabic for the operator, with the bad value kept verbatim for whoever they call:
+            // On the seam for the operator, with the bad value kept verbatim for whoever they call:
             // this is a corrupted row, not something they did, and no retry will fix it.
-            throw new RuntimeException(
-                'مسار هذا التصنيف غير سليم في قاعدة البيانات، ولا يمكن تنفيذ العملية عليه. '
-                ."أبلغ المطوّر بهذه القيمة: [{$path}]"
-            );
+            throw new RuntimeException(ManageText::t('categories.path_malformed', 'مسار هذا التصنيف غير سليم في قاعدة البيانات، ولا يمكن تنفيذ العملية عليه. أبلغ المطوّر بهذه القيمة: [:path]', ['path' => $path]));
         }
     }
 
     private static function assertPathFits(string $path): void
     {
         if (strlen($path) > self::PATH_MAX) {
-            throw new RuntimeException('مسار الشجرة أطول من العمود ('.self::PATH_MAX.' حرفًا).');
+            throw new RuntimeException(ManageText::t('categories.path_too_long', 'مسار الشجرة أطول من العمود (:max حرفًا).', ['max' => self::PATH_MAX]));
         }
     }
 

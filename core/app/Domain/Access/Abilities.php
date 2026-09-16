@@ -30,7 +30,13 @@ final class Abilities
             return null;
         });
 
-        foreach (Role::ABILITIES as $ability) {
+        /*
+         * Every ability is DEFINED, restricted ones included — an undefined ability is denied for
+         * the wrong reason: nobody could be granted it and nothing would say why. The admin
+         * short-circuit above stays on `ABILITIES` alone, which is what keeps `manage-media-prune`
+         * out of an administrator's hands until it is granted by name.
+         */
+        foreach (Role::ALL as $ability) {
             Gate::define($ability, fn (User $user, ?int $storefrontId = null): bool => $roles->can($user, $ability, $storefrontId));
         }
     }

@@ -4,6 +4,7 @@ namespace App\Domain\Catalog;
 
 use App\Console\Commands\CoreChecksumCommand;
 use App\Models\Storefront\Storefront;
+use App\Support\ManageText;
 use RuntimeException;
 
 /**
@@ -66,19 +67,21 @@ final class PreSwitch
      * writes `catalog_products` must call {@see self::assertMayCreate()} with `product` — that is
      * what makes this the single door rather than a note in a docblock.
      *
-     * @var array<string, array{tables: list<string>, label: string, blocked: bool, why: string}>
+     * The operator-facing NAME of each action is not here but in {@see self::label()}: a `const`
+     * cannot call the translation seam, and that name is read by a member of staff — in their own
+     * language — while `why` below is a note for whoever maintains this list.
+     *
+     * @var array<string, array{tables: list<string>, blocked: bool, why: string}>
      */
     public const CREATIONS = [
         'product' => [
             'tables' => ['catalog_products', 'catalog_product_translations', 'catalog_product_search'],
-            'label' => 'منتج جديد',
             'blocked' => true,
             'why' => 'A product typed here has no legacy source, so the rebuild deletes it and the work with it. '
                 .'This is the action the decision named.',
         ],
         'variant' => [
             'tables' => ['catalog_product_variants'],
-            'label' => 'صف مقاس/لون جديد',
             'blocked' => true,
             'why' => 'Legacy `product_variants` is empty, so every dashboard variant is deleted by the rebuild — '
                 .'and its ledger movements are re-levelled onto the product (AGENTS §2.22). '
@@ -86,7 +89,6 @@ final class PreSwitch
         ],
         'category' => [
             'tables' => ['storefront_categories', 'storefront_category_translations'],
-            'label' => 'تصنيف جديد',
             'blocked' => true,
             'why' => 'A node with no legacy key is deleted by the rebuild, and every placement inside it goes with '
                 .'it (ON DELETE CASCADE). Re-parenting the team did around it goes too.',
@@ -97,7 +99,6 @@ final class PreSwitch
                 'catalog_movement_types', 'catalog_closure_types', 'catalog_display_types', 'catalog_units',
                 'catalog_genders', 'catalog_features', 'catalog_grades',
             ],
-            'label' => 'عنصر جديد في قائمة مرجعية',
             'blocked' => true,
             'why' => 'A new colour/size/brand is deleted by the rebuild, and anything the team pointed at it loses '
                 .'the reference. The lists come from legacy until the switch.',
@@ -108,14 +109,12 @@ final class PreSwitch
         //    must be able to practise before they are asked to do it for real on switch night.
         'product_image' => [
             'tables' => ['catalog_product_images'],
-            'label' => 'صورة لمنتج قائم',
             'blocked' => false,
             'why' => 'An image is a property of a product that already exists, and "upload, reorder, choose the '
                 .'cover" is a skill the team has to practise. The rebuild restores the legacy gallery.',
         ],
         'placement' => [
             'tables' => ['storefront_category_product'],
-            'label' => 'ربط منتج بتصنيف',
             'blocked' => false,
             'why' => 'Placement is data-entry\'s core job (§2.7) and the transform recreates the row from legacy, '
                 .'so the effect is a revert. A placement inside a dashboard-created category cannot exist, '
@@ -123,20 +122,17 @@ final class PreSwitch
         ],
         'storefront_product' => [
             'tables' => ['storefront_product'],
-            'label' => 'إضافة منتج قائم إلى متجر',
             'blocked' => false,
             'why' => 'The transform writes one row per product per storefront, so this is a revert and not a '
                 .'deletion. Visibility, order, featured and slug are the placement screen\'s whole purpose.',
         ],
         'watch_specs' => [
             'tables' => ['catalog_product_watch_specs'],
-            'label' => 'مواصفات ساعة لمنتج قائم',
             'blocked' => false,
             'why' => 'One row per product, written by the product form for a product that already exists.',
         ],
         'redirect' => [
             'tables' => ['storefront_redirects'],
-            'label' => 'تحويل 301 بعد تغيير رابط',
             'blocked' => false,
             'why' => 'A consequence of an allowed edit, never typed directly. Blocking it would leave a renamed '
                 .'slug with no redirect, which is worse than a row the rebuild replaces. Pre-switch it is '
@@ -151,7 +147,6 @@ final class PreSwitch
             // the same reason as the other four — each row is a property of a product that already
             // exists, so a rebuild REVERTS the set rather than deleting an entity.
             'tables' => ['catalog_product_feature', 'catalog_product_gender', 'catalog_product_color'],
-            'label' => 'خصائص وفئات وألوان منتج قائم',
             'blocked' => false,
             'why' => 'Features, genders and colour roles are attribute SETS on a product that already exists, '
                 .'written by the product form as replace-in-place. The transform rebuilds them from legacy, so '
@@ -169,15 +164,63 @@ final class PreSwitch
      * on Brand Fashion can no more touch Watchizer than deleting a row in one table touches
      * another.
      *
-     * @var array{label: string, why: string}
+     * Its operator-facing name lives in {@see self::secondaryTreeLabel()}, for the reason given on
+     * {@see self::CREATIONS}: a `const` cannot reach the translation seam.
+     *
+     * @var array{why: string}
      */
     public const SECONDARY_TREE = [
-        'label' => 'شجرة تصنيفات متجر آخر',
         'why' => 'Until the write-switch the tree of every storefront but the primary is RE-SYNCED from legacy on '
             .'every transform run, because the team is still authoring categories in the legacy dashboard and '
             .'Brand Fashion must not fall behind. A rename or a move made here would be overwritten by the next '
             .'run, so it is refused instead of silently lost. The sync stops permanently when the flag flips.',
     ];
+
+    /**
+     * The one exemption name that is not a creation: editing a NON-PRIMARY storefront's category
+     * tree, which is a mirror of legacy until the switch. An importer that adds nodes to Brand
+     * Fashion must name it alongside `category`, so what it opens is written down in the call.
+     */
+    public const SECONDARY_TREE_EDIT = 'secondary_tree';
+
+    /**
+     * What a creation is CALLED, for the person reading the refusal.
+     *
+     * It is a method and not a `label` key of {@see self::CREATIONS} because a class constant
+     * cannot call {@see ManageText::t()}, and this is the one part of the declaration an operator
+     * actually reads — `why` beside it is a note for whoever maintains the list and stays English.
+     *
+     * The `match` is exhaustive over the declared actions on purpose: an action added to
+     * `CREATIONS` without a name here throws the moment a screen tries to render it, rather than
+     * showing the team a blank where the thing they were refused should be.
+     */
+    public static function label(string $action): string
+    {
+        return match ($action) {
+            // `products.new_title` is the product form's own heading, and this is the same words on
+            // the same screen — reusing the key is what stops the two drifting apart in English.
+            'product' => ManageText::t('products.new_title', 'منتج جديد'),
+            'variant' => ManageText::t('products.creation_variant', 'صف مقاس/لون جديد'),
+            'category' => ManageText::t('categories.new_title', 'تصنيف جديد'),
+            'lookup' => ManageText::t('products.creation_lookup_item', 'عنصر جديد في قائمة مرجعية'),
+            'product_image' => ManageText::t('products.creation_product_image', 'صورة لمنتج قائم'),
+            'placement' => ManageText::t('products.creation_placement', 'ربط منتج بتصنيف'),
+            'storefront_product' => ManageText::t('products.creation_storefront_product', 'إضافة منتج قائم إلى متجر'),
+            'watch_specs' => ManageText::t('products.creation_watch_specs', 'مواصفات ساعة لمنتج قائم'),
+            'redirect' => ManageText::t('products.creation_redirect', 'تحويل 301 بعد تغيير رابط'),
+            'attributes' => ManageText::t('products.creation_attributes', 'خصائص وفئات وألوان منتج قائم'),
+            default => throw new RuntimeException(
+                "PreSwitch has no operator-facing label for the creation [{$action}]. Add one to "
+                .'PreSwitch::label() beside its entry in PreSwitch::CREATIONS.'
+            ),
+        };
+    }
+
+    /** What a non-primary storefront's mirrored category tree is called, for the same reason. */
+    public static function secondaryTreeLabel(): string
+    {
+        return ManageText::t('products.secondary_tree_label', 'شجرة تصنيفات متجر آخر');
+    }
 
     /** Has the write-switch happened? While false, legacy is still the system of record. */
     public static function completed(): bool
@@ -215,7 +258,9 @@ final class PreSwitch
      */
     public static function mayEditTree(int $storefrontId): bool
     {
-        return $storefrontId === Storefront::WATCHIZER_ID || ! self::syncsSecondaryTrees();
+        return $storefrontId === Storefront::WATCHIZER_ID
+            || isset(self::$exempt[self::SECONDARY_TREE_EDIT])
+            || ! self::syncsSecondaryTrees();
     }
 
     /**
@@ -274,9 +319,10 @@ final class PreSwitch
     /** The refusal for a slug change, in the dashboard's language. */
     public static function slugMessage(): string
     {
-        return 'تغيير الروابط موقوف حتى ليلة التحويل: الرابط وتحويل 301 الذي يُنشأ معه يُعاد بناؤهما من '
-            .'النظام القديم في كل تحديث، فلو غيّرته الآن ستفقد الرابط الجديد والتحويل معه ويعود الرابط '
-            .'القديم بلا تحويل. غيّر الروابط من الداشبورد القديم حتى التحويل، أو من هنا بعده.';
+        return ManageText::t(
+            'products.slug_locked_pre_switch',
+            'تغيير الروابط موقوف حتى ليلة التحويل: الرابط وتحويل 301 الذي يُنشأ معه يُعاد بناؤهما من النظام القديم في كل تحديث، فلو غيّرته الآن ستفقد الرابط الجديد والتحويل معه ويعود الرابط القديم بلا تحويل. غيّر الروابط من الداشبورد القديم حتى التحويل، أو من هنا بعده.',
+        );
     }
 
     /**
@@ -292,7 +338,9 @@ final class PreSwitch
             'write_switch_completed' => self::completed(),
             'blocked' => $blocked,
             'message' => $blocked ? self::slugMessage() : null,
-            'label' => 'الرابط (slug)',
+            // The same key the slug FIELD carries on the form, so the lock and the box it locks
+            // cannot end up with two different names.
+            'label' => ManageText::t('common.slug', 'الرابط (slug)'),
         ];
     }
 
@@ -314,18 +362,27 @@ final class PreSwitch
             return null;
         }
 
-        $rebuild = 'جداول الكتالوج تُبنى من النظام القديم في كل تجربة وفي ليلة التحويل '
-            .'(core:drop-clean ثم migrate ثم core:transform). ';
+        /*
+         * The sentence both notices share stays ONE string with ONE key, spliced in as `:rebuild`
+         * rather than concatenated: two screens saying the same thing about the rebuild must not
+         * become two English sentences that drift.
+         */
+        $rebuild = ManageText::t(
+            'products.pre_switch_rebuild',
+            'جداول الكتالوج تُبنى من النظام القديم في كل تجربة وفي ليلة التحويل (core:drop-clean ثم migrate ثم core:transform).',
+        );
 
         $message = match ($screen) {
-            'placement' => 'قبل ليلة التحويل: '.$rebuild
-                .'كل ما تضبطه في هذه الشاشة يُعاد بناؤه من النظام القديم: ربط المنتجات بالتصنيفات، '
-                .'وقرارات الإظهار والإخفاء، والترتيب، والتمييز، والروابط المكتوبة يدويًا وتحويلات 301 '
-                .'التي أُنشئت معها. استخدم الشاشة للتدريب، واضبط العرض الحقيقي من الداشبورد القديم حتى '
-                .'التحويل. (تغيير الروابط موقوف أصلًا لأن تحويل 301 لا ينجو من إعادة البناء.)',
-            default => 'قبل ليلة التحويل: '.$rebuild
-                .'فأي منتج أو تعديل يُكتب هنا الآن يُستبدل بما في النظام القديم. '
-                .'استخدم هذه الشاشات للتدريب، وأدخل البيانات الحقيقية من الداشبورد القديم حتى التحويل.',
+            'placement' => ManageText::t(
+                'products.pre_switch_notice_placement',
+                'قبل ليلة التحويل: :rebuild كل ما تضبطه في هذه الشاشة يُعاد بناؤه من النظام القديم: ربط المنتجات بالتصنيفات، وقرارات الإظهار والإخفاء، والترتيب، والتمييز، والروابط المكتوبة يدويًا وتحويلات 301 التي أُنشئت معها. استخدم الشاشة للتدريب، واضبط العرض الحقيقي من الداشبورد القديم حتى التحويل. (تغيير الروابط موقوف أصلًا لأن تحويل 301 لا ينجو من إعادة البناء.)',
+                ['rebuild' => $rebuild],
+            ),
+            default => ManageText::t(
+                'products.pre_switch_notice',
+                'قبل ليلة التحويل: :rebuild فأي منتج أو تعديل يُكتب هنا الآن يُستبدل بما في النظام القديم. استخدم هذه الشاشات للتدريب، وأدخل البيانات الحقيقية من الداشبورد القديم حتى التحويل.',
+                ['rebuild' => $rebuild],
+            ),
         };
 
         return ['pre_switch' => true, 'message' => $message];
@@ -334,10 +391,10 @@ final class PreSwitch
     /** The refusal for a secondary tree, in the dashboard's language. */
     public static function treeMessage(): string
     {
-        return 'شجرة تصنيفات هذا المتجر مرآة لشجرة واتشيزر حتى ليلة التحويل: كل إضافة أو إعادة تسمية أو نقل '
-            .'تتم في الداشبورد القديم وتنتقل تلقائيًا إلى هنا في كل تحديث. لو عدّلنا الشجرة من هنا الآن '
-            .'سيُلغى التعديل في التحديث التالي. بعد ليلة التحويل تصبح شجرة هذا المتجر ملكًا للفريق وتنفصل تمامًا '
-            .'عن شجرة واتشيزر، ولا يُعاد مزامنتهما أبدًا.';
+        return ManageText::t(
+            'products.secondary_tree_mirrored',
+            'شجرة تصنيفات هذا المتجر مرآة لشجرة واتشيزر حتى ليلة التحويل: كل إضافة أو إعادة تسمية أو نقل تتم في الداشبورد القديم وتنتقل تلقائيًا إلى هنا في كل تحديث. لو عدّلنا الشجرة من هنا الآن سيُلغى التعديل في التحديث التالي. بعد ليلة التحويل تصبح شجرة هذا المتجر ملكًا للفريق وتنفصل تمامًا عن شجرة واتشيزر، ولا يُعاد مزامنتهما أبدًا.',
+        );
     }
 
     /**
@@ -353,14 +410,88 @@ final class PreSwitch
             'write_switch_completed' => self::completed(),
             'blocked' => $blocked,
             'message' => $blocked ? self::treeMessage() : null,
-            'label' => self::SECONDARY_TREE['label'],
+            'label' => self::secondaryTreeLabel(),
         ];
+    }
+
+    /**
+     * Creations exempted for the duration of ONE call, by a caller that said so out loud.
+     *
+     * @var array<string, true>
+     */
+    private static array $exempt = [];
+
+    /**
+     * Run $work with the named creations allowed, because the OPERATOR asked for it on the command
+     * line — the wave-4D importer rehearsal (developer, 2026-09-14).
+     *
+     * ── Why this exists, and why it is shaped like this ──────────────────────────────────────
+     *
+     * The importer's whole purpose is to create products before the write-switch: *"the entire
+     * point is to exercise creation now so switch night holds no surprises."* The gate must
+     * therefore open — and the developer's condition was that it open **explicitly and
+     * reversibly, never as a permanent hole**.
+     *
+     * So it is not a config key (a config key is edited once and forgotten, and `.env` files get
+     * copied to production — the `ORDER_MAIL_INLINE` lesson), not a subclass, and not a
+     * `blocked => false` in the table above. It is a scope:
+     *
+     *   • it lives only in this PHP process, and only inside the callable;
+     *   • the caller names exactly which creations it wants, so "import a product" cannot quietly
+     *     also mean "edit a secondary storefront's tree";
+     *   • `finally` restores the previous state even when the import throws, so a failed run
+     *     cannot leave the door open behind it;
+     *   • nesting is safe, because the previous set is restored rather than cleared.
+     *
+     * **What the caller is accepting** is stated in one place, here, so the command can print it:
+     * every row created under this exemption lives in a transform-output table and is DELETED by
+     * the next `core:drop-clean` → `migrate` → `core:transform`. That is expected. It is a
+     * rehearsal.
+     *
+     * @template T
+     *
+     * @param  list<string>  $actions  keys of {@see self::CREATIONS}
+     * @param  callable(): T  $work
+     * @return T
+     */
+    public static function allowing(array $actions, callable $work): mixed
+    {
+        $previous = self::$exempt;
+
+        foreach ($actions as $action) {
+            // Validates the name against the declared list: an exemption for a creation that does
+            // not exist is a typo that would silently protect nothing. `secondary_tree` is the one
+            // name that is not a creation — it is the mirror policy below, and an importer that
+            // adds categories to Brand Fashion needs both.
+            if ($action !== self::SECONDARY_TREE_EDIT) {
+                self::definition($action);
+            }
+            self::$exempt[$action] = true;
+        }
+
+        try {
+            return $work();
+        } finally {
+            self::$exempt = $previous;
+        }
+    }
+
+    /**
+     * The exemptions in force right now — for a command that wants to print what it opened.
+     *
+     * @return list<string>
+     */
+    public static function exempted(): array
+    {
+        return array_keys(self::$exempt);
     }
 
     /** Is this creation allowed right now? */
     public static function allows(string $action): bool
     {
-        return self::completed() || ! self::definition($action)['blocked'];
+        return self::completed()
+            || isset(self::$exempt[$action])
+            || ! self::definition($action)['blocked'];
     }
 
     /**
@@ -380,13 +511,14 @@ final class PreSwitch
     /** The refusal, in the dashboard's language and naming what to do instead. */
     public static function message(string $action): string
     {
-        $definition = self::definition($action);
+        // Declared, or this is a write path that never announced itself.
+        self::definition($action);
 
-        return 'ممنوع قبل ليلة التحويل: '.$definition['label'].' لا يمكن إنشاؤه من هذه اللوحة الآن. '
-            .'جداول الكتالوج تُبنى من النظام القديم في كل تجربة وفي ليلة التحويل '
-            .'(core:drop-clean ثم migrate ثم core:transform)، فالصف الذي يُنشأ هنا يُحذف مع إعادة البناء '
-            .'ويضيع معه العمل. أدخل البيانات الجديدة من الداشبورد القديم حتى التحويل؛ '
-            .'التعديل والتصفح والتدريب على هذه الشاشات مفتوح.';
+        return ManageText::t(
+            'products.pre_switch_create_blocked',
+            'ممنوع قبل ليلة التحويل: :label لا يمكن إنشاؤه من هذه اللوحة الآن. جداول الكتالوج تُبنى من النظام القديم في كل تجربة وفي ليلة التحويل (core:drop-clean ثم migrate ثم core:transform)، فالصف الذي يُنشأ هنا يُحذف مع إعادة البناء ويضيع معه العمل. أدخل البيانات الجديدة من الداشبورد القديم حتى التحويل؛ التعديل والتصفح والتدريب على هذه الشاشات مفتوح.',
+            ['label' => self::label($action)],
+        );
     }
 
     /**
@@ -398,14 +530,15 @@ final class PreSwitch
      */
     public static function state(string $action): array
     {
-        $definition = self::definition($action);
+        // Declared, or this is a screen asking about an action nothing announced.
+        self::definition($action);
         $blocked = ! self::allows($action);
 
         return [
             'write_switch_completed' => self::completed(),
             'blocked' => $blocked,
             'message' => $blocked ? self::message($action) : null,
-            'label' => $definition['label'],
+            'label' => self::label($action),
         ];
     }
 
@@ -442,7 +575,7 @@ final class PreSwitch
     }
 
     /**
-     * @return array{tables: list<string>, label: string, blocked: bool, why: string}
+     * @return array{tables: list<string>, blocked: bool, why: string}
      */
     private static function definition(string $action): array
     {

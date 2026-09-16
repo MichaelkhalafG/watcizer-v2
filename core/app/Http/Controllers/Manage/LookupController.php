@@ -7,6 +7,8 @@ use App\Domain\Catalog\PreSwitch;
 use App\Storefront\ImageUrl;
 use App\Support\Coerce;
 use App\Support\FullReplace;
+use App\Support\ManageText;
+use App\Support\Table\TableExport;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -14,6 +16,7 @@ use Inertia\Inertia;
 use Inertia\Response;
 use InvalidArgumentException;
 use RuntimeException;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * /manage/lookups/{list} — brands and the eleven lookup lists the product form consumes
@@ -32,9 +35,52 @@ final class LookupController
 {
     public function __construct(private readonly LookupWriter $lookups) {}
 
-    public function index(Request $request, string $list): Response
+    public function index(Request $request, string $list): Response|StreamedResponse
     {
         $def = self::definition($list);
+
+        $rows = array_map(
+            function (array $row) use ($def): array {
+                // An image column is stored as a filename and rendered from the shared tree,
+                // exactly as a product image is (study §5.4: the DB holds a filename only).
+                $extra = Coerce::arr($row['extra'] ?? null);
+                foreach ($def['extra'] as $column => $field) {
+                    $file = Coerce::nstr($extra[$column] ?? null);
+                    if (($field['type'] ?? null) === 'image' && $file !== null) {
+                        $extra[$column.'_url'] = ImageUrl::src($file);
+                    }
+                }
+                $row['extra'] = $extra;
+
+                return $row;
+            },
+            $this->lookups->rows($def['key']),
+        );
+
+        /*
+         * `uses` is the column this file exists for: it is the number that decides whether a brand
+         * or a colour may be retired, and reading three hundred of them off a screen is how a row
+         * that is still in use gets deleted. The extra columns are whatever THIS list declares, so
+         * the brands file carries a logo filename and the colours file a hex — and no per-list
+         * code exists anywhere.
+         */
+        $columns = [
+            'id' => ManageText::t('common.id', 'الرقم'),
+            'name' => [ManageText::t('common.name_ar', 'الاسم (عربي)'), fn (array $row): string => Coerce::str(Coerce::arr($row['name'] ?? null)['ar'] ?? null)],
+            'name_en' => [ManageText::t('common.name_en', 'الاسم (إنجليزي)'), fn (array $row): string => Coerce::str(Coerce::arr($row['name'] ?? null)['en'] ?? null)],
+            'uses' => ManageText::t('lookups.usage_count', 'مرات الاستخدام'),
+        ];
+        foreach ($def['extra'] as $column => $field) {
+            $columns[$column] = [
+                Coerce::str($field['label'] ?? $column),
+                fn (array $row): string => Coerce::str(Coerce::arr($row['extra'] ?? null)[$column] ?? null),
+            ];
+        }
+
+        $export = TableExport::wanted($request, 'lookup-'.$def['key'], $columns, $rows);
+        if ($export !== null) {
+            return $export;
+        }
 
         return Inertia::render('Manage/Lookups/Index', [
             'list' => [
@@ -46,23 +92,7 @@ final class LookupController
                 'usage_tables' => array_map(fn (array $pair): string => $pair[0].'.'.$pair[1], $def['usage']),
             ],
             'lists' => self::allLists(),
-            'rows' => array_map(
-                function (array $row) use ($def): array {
-                    // An image column is stored as a filename and rendered from the shared tree,
-                    // exactly as a product image is (study §5.4: the DB holds a filename only).
-                    $extra = Coerce::arr($row['extra'] ?? null);
-                    foreach ($def['extra'] as $column => $field) {
-                        $file = Coerce::nstr($extra[$column] ?? null);
-                        if (($field['type'] ?? null) === 'image' && $file !== null) {
-                            $extra[$column.'_url'] = ImageUrl::src($file);
-                        }
-                    }
-                    $row['extra'] = $extra;
-
-                    return $row;
-                },
-                $this->lookups->rows($def['key']),
-            ),
+            'rows' => $rows,
             'pre_switch' => PreSwitch::state('lookup'),
         ]);
     }
@@ -78,14 +108,14 @@ final class LookupController
             throw ValidationException::withMessages(['name.ar' => $e->getMessage()]);
         }
 
-        return back()->with('status', 'تمت الإضافة.');
+        return back()->with('status', ManageText::t('lookups.added', 'تمت الإضافة.'));
     }
 
     public function update(Request $request, string $list, int $id): RedirectResponse
     {
         // Replaces the row, extras included: a PUT without `extra.hex` stored a colour with no
         // hex and `catalog/meta` served `color_value: null` ({@see FullReplace}).
-        FullReplace::assert($request, 'عنصر القائمة المرجعية', 'name.ar');
+        FullReplace::assert($request, ManageText::t('lookups.record', 'عنصر القائمة المرجعية'), 'name.ar');
 
         $def = self::definition($list);
         $data = Coerce::arr($request->validate(LookupWriter::rules($def['key'], $id)));
@@ -96,7 +126,7 @@ final class LookupController
             throw ValidationException::withMessages(['name.ar' => $e->getMessage()]);
         }
 
-        return back()->with('status', 'تم الحفظ.');
+        return back()->with('status', ManageText::t('lookups.saved', 'تم الحفظ.'));
     }
 
     public function destroy(Request $request, string $list, int $id): RedirectResponse

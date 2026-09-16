@@ -7,6 +7,7 @@ use App\Domain\Inventory\InsufficientOfferStock;
 use App\Domain\Inventory\InsufficientStock;
 use App\Domain\Inventory\InventoryService;
 use App\Domain\Notifications\OrderMailer;
+use App\Domain\Promotions\PromotionOutcome;
 use App\Support\Val;
 use App\Transform\Row;
 use Illuminate\Support\Facades\DB;
@@ -145,6 +146,12 @@ final class CompatCheckout
         ?string $guestEmail,
         ?string $guestPhone,
         array $lines,
+        /*
+         * The winning promotion, or null. Appended and nullable so every existing caller — and the
+         * wave-3 tests that drive this directly — keeps working unchanged, and so that "no
+         * promotion" is the shape that costs nothing.
+         */
+        ?PromotionOutcome $promotion = null,
     ): int {
         $now = now();
         $orderId = (int) DB::table('orders')->insertGetId([
@@ -199,9 +206,42 @@ final class CompatCheckout
             ]);
         }
 
+        /*
+         * ── the granted rewards, as REAL lines at zero price (wave 4D, D-24) ────────────────
+         *
+         * Written here, with the customer's own lines and BEFORE `commitOrder()`, which is what
+         * makes reward stock inherit wave 3's guarantees instead of needing its own mechanism:
+         * the commit below locks the order row and walks every persisted line, so the gift is
+         * reserved inside the same transaction as the purchase, exactly once under concurrency,
+         * and `releaseOrder()` gives it back on a cancellation with no new code at all.
+         *
+         * `piece_price` and `total_price` are '0.00' — which is why a granted reward does not move
+         * `orders.total_price_for_order` and therefore cannot make `addOrder()`'s total check
+         * disagree with the client. That property is the whole reason only the free-item reward
+         * family ships before wave 9 (§3.16.9).
+         */
+        foreach ($promotion === null ? [] : $promotion->rewards as $reward) {
+            DB::table('order_items')->insert([
+                'order_id' => $orderId,
+                'product_id' => $reward->productId,
+                'variant_id' => $reward->variantId,
+                'promotion_rule_id' => $reward->ruleId,
+                'is_reward' => true,
+                'offer_id' => null,
+                'quantity' => $reward->quantity,
+                'piece_price' => '0.00',
+                'total_price' => '0.00',
+                'type_stock' => $reward->typeStock,
+                'color_band' => null,
+                'color_dial' => null,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+        }
+
         // One door for stock. The legacy loop decremented in place between item inserts; the
         // ledger reads the persisted lines back, so the movements can never disagree with what
-        // the order says it sold.
+        // the order says it sold. Reward lines are in there too, reserved with their own reason.
         $this->inventory->commitOrder($orderId, Actor::user($userId), $this->storefrontId);
 
         return $orderId;

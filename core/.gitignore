@@ -37,3 +37,21 @@ Thumbs.db
 /pnpm-lock.yaml
 /pnpm-workspace.yaml
 /yarn.lock
+
+# Database dumps: customer PII and password hashes. Never committed, never served.
+/storage/app/backups
+
+# ── The shared media tree. 631 MB on disk, and NONE of it belongs in git ───────────────────
+#
+# `MEDIA_ROOT` points here (config/media.php). It holds the product photography the legacy app
+# and core both serve, plus a large cache of files no row references — kept deliberately, see
+# CLEAN_CORE_STUDY §5.4.0, so nobody "tidies up" 56,000 files.
+#
+# It was NOT ignored until 2026-09-16, which on a PUBLIC repository meant one `git add -A` away
+# from committing the whole image library. Found in the wave-4D reviewer's pass, before the first
+# commit on the branch rather than after it.
+/public/Uploads_Images
+
+# Import run artifacts: supplier CSVs, fetched cover images, per-run reports. Working files that
+# can name a supplier and carry their catalogue — they belong on the machine that ran the import.
+/storage/import

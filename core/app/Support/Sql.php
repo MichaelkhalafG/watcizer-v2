@@ -22,6 +22,29 @@ final class Sql
     /** Every column this helper is allowed to name. Nothing outside the list can be built. */
     public const COLUMNS = ['stock_express', 'stock_market', 'stock', 'quantity'];
 
+    /** Every JSON column a lookup reference may be counted inside (wave 4D). */
+    public const JSON_COLUMNS = ['specs'];
+
+    /**
+     * `JSON_EXTRACT(`column`, ?) = ?` — for counting a lookup id stored inside a JSON spec column.
+     *
+     * The column is whitelisted here exactly as a stock column is; the PATH and the id stay
+     * BINDINGS at the call site, so nothing caller-supplied becomes SQL text. Used by the lookup
+     * delete guard, which would otherwise not see a material that lives only in a product's
+     * `specs` and would let it be deleted out from under 166 handbags.
+     */
+    public static function jsonExtract(string $column): Expression
+    {
+        if (! in_array($column, self::JSON_COLUMNS, true)) {
+            throw new InvalidArgumentException("Sql::jsonExtract() may not name the column [{$column}].");
+        }
+
+        // Two placeholders: the JSON PATH and the value, both bound by the caller. `DB::raw()`
+        // takes any string, so unlike `delta()` this needs no exemption — the safety is the
+        // whitelist two lines above, which is the same safety `delta()` relies on.
+        return DB::raw('JSON_EXTRACT(`'.$column.'`, ?) = ?');
+    }
+
     /** `` `column` + (delta) `` — a relative change. */
     public static function delta(string $column, int $delta): Expression
     {

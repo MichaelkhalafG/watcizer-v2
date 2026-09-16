@@ -2,6 +2,8 @@
 
 namespace App\Transform;
 
+use App\Domain\Catalog\FamilyForCategory;
+
 /**
  * Product family derivation (CLEAN_CORE_STUDY §2.2 / §2.9.2 step 6), configured in
  * config/transform.php `family`. Shared by step 6 (writes it), step 8/12 (branch on
@@ -11,6 +13,9 @@ final class FamilyResolver
 {
     /** @var list<string> */
     private array $watchTypeNames;
+
+    /** @var array<string, string> root category name (lower-cased) => family */
+    private array $categoryTypeNames;
 
     /** @var array<string, string> */
     private array $extraPrefixes;
@@ -24,10 +29,23 @@ final class FamilyResolver
     public function __construct(array $config)
     {
         $this->watchTypeNames = array_values(array_map(fn (mixed $v): string => mb_strtolower(is_string($v) ? $v : ''), is_array($config['watch_category_type_names'] ?? null) ? $config['watch_category_type_names'] : ['watches']));
+        $this->categoryTypeNames = self::stringMap($config['category_type_names'] ?? null, lowerKeys: true);
         $this->extraPrefixes = self::stringMap($config['extra_attribute_prefixes'] ?? null);
         $this->subTypeNames = self::stringMap($config['sub_type_names'] ?? null, lowerKeys: true);
         $default = $config['default'] ?? 'fashion';
         $this->default = is_string($default) ? $default : 'fashion';
+    }
+
+    /**
+     * The family this resolver falls back to when nothing matches.
+     *
+     * Exposed because a CALLER sometimes needs to know whether an answer was a match or a
+     * fallback — the dashboard asks a deep node's ancestors when the node itself said nothing
+     * ({@see FamilyForCategory::forNode()}).
+     */
+    public function defaultFamily(): string
+    {
+        return $this->default;
     }
 
     /**
@@ -37,8 +55,19 @@ final class FamilyResolver
      */
     public function resolve(string $categoryTypeEn, ?string $extraAttributes, string $subTypeEn): string
     {
-        if (in_array(mb_strtolower(trim($categoryTypeEn)), $this->watchTypeNames, true)) {
+        $root = mb_strtolower(trim($categoryTypeEn));
+
+        if (in_array($root, $this->watchTypeNames, true)) {
             return 'watch';
+        }
+
+        /*
+         * Any other ROOT that names a family. Checked here, with the watch rule, because a root
+         * category is the strongest signal there is — stronger than a JSON key prefix, which is a
+         * legacy-data heuristic for products whose categories said nothing.
+         */
+        if (isset($this->categoryTypeNames[$root])) {
+            return $this->categoryTypeNames[$root];
         }
 
         foreach (self::jsonKeys($extraAttributes) as $key) {

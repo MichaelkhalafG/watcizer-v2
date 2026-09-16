@@ -1,5 +1,6 @@
 <?php
 
+use App\Compat\CompatCategories;
 use App\Http\Controllers\Compat\CatalogCompatController;
 use App\Http\Controllers\Compat\ProxyController;
 use App\Storefront\StorefrontCache;
@@ -11,6 +12,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Testing\TestResponse;
 use Symfony\Component\HttpFoundation\Response;
+use Tests\Support\T;
 
 use function Pest\Laravel\call;
 use function Pest\Laravel\get;
@@ -89,11 +91,26 @@ it('serves catalog/meta in the legacy shape; meta follows Accept-Language like l
     // all_product: the legacy cache holds arrays → locale-blind; compat pins EN (D-13).
     expect(compat('all_product', ['Accept-Language' => 'ar'])->json('0.product_title'))->toBe(compat('all_product')->json('0.product_title'));
 
-    // Only visible sub types (study §3.3): every listed id has at least one visible product.
+    /*
+     * Only visible sub types (study §3.3): every listed id has at least one visible product.
+     *
+     * Resolved back to the NODE rather than looked up by `legacy_id`, because since wave 4D a node
+     * can be created outside the transform (the importer's Electronics tree) and carries no legacy
+     * id at all — the compat layer emits `NATIVE_ID_OFFSET + id` for those. The old lookup found
+     * zero products for such a node and read that as "listed without products", when the node has
+     * products and simply is not a legacy sub type.
+     */
     foreach (arr($en->json('tables.subTypes')) as $sub) {
-        $legacyId = arr($sub)['id'];
-        $n = DB::table('storefront_categories as c')->join('storefront_category_product as scp', 'scp.storefront_category_id', '=', 'c.id')
-            ->where('c.legacy_source', 'sub_type')->where('c.legacy_id', $legacyId)->count();
+        $legacyId = T::int(arr($sub)['id'] ?? null);
+
+        $nodeIds = $legacyId >= CompatCategories::NATIVE_ID_OFFSET
+            ? [$legacyId - CompatCategories::NATIVE_ID_OFFSET]
+            : DB::table('storefront_categories')->where('legacy_source', 'sub_type')
+                ->where('legacy_id', $legacyId)->pluck('id')->all();
+
+        $n = DB::table('storefront_category_product')
+            ->whereIn('storefront_category_id', $nodeIds === [] ? [-1] : $nodeIds)->count();
+
         expect($n)->toBeGreaterThan(0, 'sub type listed without products');
     }
 });

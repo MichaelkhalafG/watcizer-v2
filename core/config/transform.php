@@ -64,6 +64,19 @@ return [
     */
     'family' => [
         'watch_category_type_names' => ['watches'],
+
+        /*
+        | Any ROOT category name => the family it implies. The watch list above is the original
+        | special case and stays; this is the general form of the same rule, added 2026-09-14 when
+        | the wave-4D importer created an ELECTRONICS root and all 86 Joyroom products resolved to
+        | the default `fashion` — a declared family with its own spec block, reached by nothing.
+        |
+        | Matched on the lower-cased EN name of the node's root ancestor, so it serves the transform
+        | and the dashboard through the one resolver they share.
+        */
+        'category_type_names' => [
+            'electronics' => 'electronics',
+        ],
         'extra_attribute_prefixes' => [
             'perfume_' => 'perfume',
             'elec_' => 'electronics',
