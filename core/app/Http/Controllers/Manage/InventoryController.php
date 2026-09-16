@@ -80,7 +80,10 @@ final class InventoryController
             ->exportable([
                 'wa_code' => ManageText::t('products.code', 'الكود'),
                 'sku' => ManageText::t('products.supplier_code', 'كود المورّد'),
-                'title' => ManageText::t('common.name', 'الاسم'),
+                // Both languages: the stock file is opened to bulk-edit and to send on, and one
+                // language is half the record. Empty when there is no translation, never a fallback.
+                'title' => ManageText::t('common.name_ar', 'الاسم (عربي)'),
+                'title_en' => ManageText::t('common.name_en', 'الاسم (إنجليزي)'),
                 'family' => ManageText::t('products.family', 'العائلة'),
                 'express' => ManageText::t('common.stock_express', 'إكسبريس'),
                 'market' => ManageText::t('common.stock_market', 'ماركت'),
@@ -100,10 +103,20 @@ final class InventoryController
             ->leftJoin('catalog_product_translations as t', function (JoinClause $join): void {
                 $join->on('t.product_id', '=', 'p.id')->where('t.locale', '=', 'ar');
             })
+            /*
+             * The ENGLISH title too, for the CSV (2026-09-16). A second LEFT JOIN on the same table
+             * at a different locale, which is what the products and placement screens already do:
+             * the export must carry both languages of every translated field, and this query only
+             * ever fetched one. It costs one indexed row per product on a screen that already joins
+             * the table, and the screen itself still renders the Arabic.
+             */
+            ->leftJoin('catalog_product_translations as te', function (JoinClause $join): void {
+                $join->on('te.product_id', '=', 'p.id')->where('te.locale', '=', 'en');
+            })
             ->whereNull('p.deleted_at')
             ->select([
                 'p.id', 'p.wa_code', 'p.sku', 'p.stock_express', 'p.stock_market', 'p.in_stock',
-                'p.low_stock_threshold', 'p.family', 't.title as title_ar',
+                'p.low_stock_threshold', 'p.family', 't.title as title_ar', 'te.title as title_en',
             ]);
 
         // `resolvedFilters()`, never raw request input — see OrderController for why.
@@ -139,6 +152,9 @@ final class InventoryController
                 'wa_code' => Row::str($row, 'wa_code'),
                 'sku' => Row::nstr($row, 'sku'),
                 'title' => Row::nstr($row, 'title_ar'),
+                // For the CSV's second language column. The SCREEN reads `title`; this is never
+                // rendered, and it is empty when the product has no English translation.
+                'title_en' => Row::nstr($row, 'title_en'),
                 'family' => Row::nstr($row, 'family'),
                 'express' => $express,
                 'market' => $market,

@@ -40,11 +40,18 @@ it('writes exactly the agreed columns, in order', function () {
      * file, and a sale that carried a gift is a different sale; without the column the only way to
      * know is to join `order_items` by hand, which nobody does.
      *
+     * TEN since M1r added `discount` and `discount_rule` — the MONEY half of the same question.
+     * `rewards` names a promotion that gave an ITEM away; these name the one that took money OFF,
+     * and by how much. They matter more to this file than `rewards` does: `amount` above is what
+     * the PROVIDER took, and when a promotion reduced the order that figure is ALREADY the
+     * discounted one — so without these two a reconciled day's takings simply look lower than the
+     * catalogue says, with no line explaining the difference.
+     *
      * Pinned by name AND order on purpose: a settlement file whose columns move breaks whatever
      * spreadsheet the accountant built on it, so adding one is a deliberate edit here — and it is
-     * appended, never inserted, for the same reason.
+     * appended, never inserted, for the same reason. This assertion failing is the guard working.
      */
-    expect($header)->toBe('date,order_number,provider,method,transaction_id,amount,status,rewards');
+    expect($header)->toBe('date,order_number,provider,method,transaction_id,amount,status,rewards,discount,discount_rule');
 });
 
 it('opens in Excel as Arabic rather than mojibake, because of the BOM', function () {

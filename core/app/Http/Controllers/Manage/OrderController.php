@@ -9,6 +9,7 @@ use App\Domain\Inventory\Actor;
 use App\Domain\Notifications\OrderMailer;
 use App\Domain\Orders\OrderFulfilment;
 use App\Domain\Payment\CallbackPolicy;
+use App\Domain\Promotions\PromotionDiscounts;
 use App\Models\User;
 use App\Support\Coerce;
 use App\Support\ManageText;
@@ -276,6 +277,15 @@ final class OrderController
                 'updated_at' => Row::nstr($orderRow, 'updated_at'),
             ],
             'items' => self::items($order),
+            /*
+             * Why this order's total is lower than its lines (M1r).
+             *
+             * NULL for the overwhelming majority of orders, which is the honest shape. When it is
+             * set, the screen owes the operator an explanation rather than a number: a total that
+             * does not match the lines, with nothing saying why, is the thing somebody telephones
+             * about.
+             */
+            'discount' => PromotionDiscounts::forOrder($order),
             'address' => self::address(Row::nint($orderRow, 'address_id')),
             'attempts' => self::attempts($order),
             // The ledger rows this order caused — the reservation AND any release. This is what
@@ -425,6 +435,16 @@ final class OrderController
              * and only for orders that HAVE reward lines.
              */
             ->selectRaw('(SELECT GROUP_CONCAT(DISTINCT oi.promotion_rule_id ORDER BY oi.promotion_rule_id) FROM order_items oi WHERE oi.order_id = o.id AND oi.is_reward = 1) AS reward_rules')
+            /*
+             * The MONEY half of the same question (M1r). `reward_rules` above names the promotions
+             * that gave an ITEM away; these two name the one that took money OFF, and by how much.
+             *
+             * A LEFT JOIN rather than a third sub-select: `promotion_order_discounts` carries a
+             * UNIQUE on `order_id`, so it cannot multiply the payment-attempt rows this query is
+             * built from — which is exactly the reason the reward column had to be a sub-select.
+             */
+            ->leftJoin('promotion_order_discounts as pod', 'pod.order_id', '=', 'o.id')
+            ->addSelect(['pod.amount as discount_amount', 'pod.promotion_rule_id as discount_rule'])
             ->orderBy('ps.created_at')->orderBy('ps.id');
 
         if ($from !== null && $from !== '') {
@@ -456,6 +476,14 @@ final class OrderController
             ['key' => 'amount', 'label' => 'amount', 'value' => null],
             ['key' => 'status', 'label' => 'status', 'value' => null],
             ['key' => 'rewards', 'label' => 'rewards', 'value' => null],
+            /*
+             * `discount` is the column finance needs most of the three. The `amount` above is what
+             * the PROVIDER took; when a promotion reduced the order, that figure is already the
+             * discounted one — so without this column a reconciled day's takings look simply lower
+             * than the catalogue says, with no line explaining it.
+             */
+            ['key' => 'discount', 'label' => 'discount', 'value' => null],
+            ['key' => 'discount_rule', 'label' => 'discount_rule', 'value' => null],
         ];
 
         /*
@@ -487,6 +515,10 @@ final class OrderController
                     'status' => CallbackPolicy::outcomeOf(Row::nstr($row, 'outcome'), Row::nstr($row, 'success')),
                     // The promotion(s) this order's reward lines were granted by, or ''.
                     'rewards' => Row::nstr($row, 'reward_rules') ?? '',
+                    // What a money reward took off this order, and which rule took it. Empty for
+                    // every order that carried no discount, which is nearly all of them.
+                    'discount' => Row::nmoney($row, 'discount_amount') ?? '',
+                    'discount_rule' => ($ruleId = Row::nint($row, 'discount_rule')) === null ? '' : (string) $ruleId,
                 ];
             }
         })();

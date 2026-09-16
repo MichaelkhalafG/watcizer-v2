@@ -108,6 +108,15 @@ final class CoreChecksumCommand extends Command
         'promotion_rules', 'promotion_rule_storefront', 'promotion_rule_conditions',
         'promotion_rule_rewards', 'promotion_rule_skips',
         /*
+         * What a MONEY reward took off an order, and which rule took it (M1r, wave 4D).
+         *
+         * On the list for the same reason as the rules above it, and one more: it describes an
+         * ORDER. Orders are legacy rows a rebuild never touches, so a discount record dropped on
+         * switch night would leave those orders permanently unexplained — an order whose lines sum
+         * to 500 and whose total reads 475, with nothing left to say why.
+         */
+        'promotion_order_discounts',
+        /*
          * The operator's own dashboard preferences (M1m, wave 4D).
          *
          * Small, and on the list for the same reason as everything above it: a human typed it and

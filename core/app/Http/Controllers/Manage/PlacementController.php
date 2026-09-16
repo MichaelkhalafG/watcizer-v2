@@ -85,7 +85,15 @@ final class PlacementController
             // whether hiding a row is safe — the export is what the team works from off-screen.
             ->exportable([
                 'wa_code' => ManageText::t('products.code', 'الكود'),
-                'title' => [ManageText::t('common.name', 'الاسم'), fn (array $row): string => Coerce::str(Coerce::arr($row['title'] ?? null)['ar'] ?? null)],
+                /*
+                 * BOTH languages (2026-09-16). The map already carries the pair; the export was
+                 * dropping the English half, which is exactly the record somebody opening this file
+                 * to bulk-edit needs. A missing translation stays an EMPTY cell rather than falling
+                 * back to the other language — an empty cell is information, a duplicated one hides
+                 * the gap.
+                 */
+                'title' => [ManageText::t('common.name_ar', 'الاسم (عربي)'), fn (array $row): string => Coerce::str(Coerce::arr($row['title'] ?? null)['ar'] ?? null)],
+                'title_en' => [ManageText::t('common.name_en', 'الاسم (إنجليزي)'), fn (array $row): string => Coerce::str(Coerce::arr($row['title'] ?? null)['en'] ?? null)],
                 'slug' => ManageText::t('placement.slug', 'الرابط'),
                 'sort_order' => ManageText::t('common.sort', 'الترتيب'),
                 'placements' => ManageText::t('placement.category_count', 'عدد التصنيفات'),

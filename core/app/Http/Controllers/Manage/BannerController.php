@@ -62,7 +62,9 @@ final class BannerController
                 'starts_at' => ManageText::t('common.starts', 'يبدأ'),
                 'ends_at' => ManageText::t('common.ends', 'ينتهي'),
                 'target' => ManageText::t('banners.target_type', 'نوع الوجهة'),
-                'destination' => ManageText::t('banners.opens', 'يفتح'),
+                // Both languages of whatever the banner points at (2026-09-16).
+                'destination' => ManageText::t('banners.opens_ar', 'يفتح (عربي)'),
+                'destination_en' => ManageText::t('banners.opens_en', 'يفتح (إنجليزي)'),
                 'sort_order' => ManageText::t('common.sort', 'الترتيب'),
                 'is_active' => ManageText::t('common.active', 'مفعّل'),
                 'image_path' => ManageText::t('banners.image_file', 'ملف الصورة'),
@@ -110,6 +112,9 @@ final class BannerController
                 // What it points at, in words, so the list does not make the operator open a row
                 // to find out where a banner sends people.
                 'destination' => self::destination($row),
+                // The CSV's second language column. Never rendered — the screen reads
+                // `destination` — and empty when that destination has no English translation.
+                'destination_en' => self::destination($row, 'en', forExport: true),
                 ...BannerState::of($row, $now),
                 'edit_url' => route('manage.banners.index', ['storefront' => $storefront->id]).'#banner-'.$id,
             ];
@@ -192,22 +197,44 @@ final class BannerController
         };
     }
 
-    /** Where this banner sends a customer, in words. */
-    private static function destination(object $raw): string
+    /**
+     * Where this banner sends a customer, in words, in ONE language.
+     *
+     * `$locale` picks which translation to read. The screen asks for Arabic; the CSV asks for both
+     * and puts them in two columns, because an export that carries one language loses half the
+     * record for whoever opens it to bulk-edit or to send on.
+     *
+     * A URL destination is not translated — it is the same link in either column — and a banner
+     * with no destination at all yields an EMPTY string for the export rather than the screen's
+     * em-dash, because a dash in a spreadsheet cell is a value and an empty cell is a fact.
+     */
+    private static function destination(object $raw, string $locale = 'ar', bool $forExport = false): string
     {
         $row = Row::cast($raw);
+        $suffix = $locale === 'en' ? '_en' : '';
 
-        $product = Row::nstr($row, 'product_title');
+        $product = Row::nstr($row, 'product_title'.$suffix);
         if ($product !== null) {
             return $product;
         }
-        $category = Row::nstr($row, 'category_name');
+        $category = Row::nstr($row, 'category_name'.$suffix);
         if ($category !== null) {
             return $category;
         }
+
+        /*
+         * A product or category that HAS a destination but no translation in this locale must read
+         * as empty, not fall through to the link. Falling through would put the URL in the English
+         * column of a banner that points at a product — which is not a missing translation, it is a
+         * different fact.
+         */
+        if (Row::nint($row, 'product_id') !== null || Row::nint($row, 'storefront_category_id') !== null) {
+            return $forExport ? '' : '—';
+        }
+
         $url = Row::nstr($row, 'link_url');
 
-        return $url ?? '—';
+        return $url ?? ($forExport ? '' : '—');
     }
 
     /** @return list<array{value: string, label: string}> */
