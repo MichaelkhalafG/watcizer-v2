@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Manage;
 use App\Domain\Catalog\ConversionGuard;
 use App\Domain\Catalog\VariantWriter;
 use App\Support\Coerce;
+use App\Support\ManageText;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -46,7 +47,7 @@ final class ProductVariantController
             throw ValidationException::withMessages(['variants' => $e->getMessage()]);
         }
 
-        return back()->with('status', 'تمت إضافة الصف.');
+        return back()->with('status', ManageText::t('variants.added', 'تمت إضافة الصف.'));
     }
 
     public function update(Request $request, int $product, int $variant): RedirectResponse
@@ -60,7 +61,7 @@ final class ProductVariantController
             throw ValidationException::withMessages(['variants' => $e->getMessage()]);
         }
 
-        return back()->with('status', 'تم حفظ الصف.');
+        return back()->with('status', ManageText::t('variants.saved', 'تم حفظ الصف.'));
     }
 
     /**
@@ -94,7 +95,7 @@ final class ProductVariantController
 
         $moved = $this->variants->reorder($product, Coerce::orderedIntList($request->input('ids')));
 
-        return back()->with('status', "تم ترتيب {$moved} صفًا.");
+        return back()->with('status', ManageText::t('variants.reordered', 'تم ترتيب :count صفًا.', ['count' => $moved]));
     }
 
     /**
@@ -102,6 +103,14 @@ final class ProductVariantController
      */
     private function validated(Request $request, ?int $variantId): array
     {
+        // Written for the person holding the keyboard: what to do, not what is invalid. ONE key
+        // said on whichever of the two fields the operator is looking at — two keys would be two
+        // Englishes for one sentence.
+        $colourOrSize = ManageText::t(
+            'variants.colour_or_size_required',
+            'اختر لونًا أو مقاسًا على الأقل: الصف الذي لا يحدد أيًّا منهما ليس مقاسًا ولا لونًا، وسيظهر على المتجر كأنه نسخة مكرّرة من المنتج.',
+        );
+
         return Coerce::arr($request->validate([
             'label' => ['required', 'string', 'max:100'],
             'sku' => ['nullable', 'string', 'max:64', Rule::unique('catalog_product_variants', 'sku')->ignore($variantId)],
@@ -124,9 +133,8 @@ final class ProductVariantController
             'stock_express' => ['nullable', 'integer', 'min:0', 'max:1000000'],
             'stock_market' => ['nullable', 'integer', 'min:0', 'max:1000000'],
         ], [
-            // Written for the person holding the keyboard: what to do, not what is invalid.
-            'color_id.required_without' => 'اختر لونًا أو مقاسًا على الأقل: الصف الذي لا يحدد أيًّا منهما ليس مقاسًا ولا لونًا، وسيظهر على المتجر كأنه نسخة مكرّرة من المنتج.',
-            'size_id.required_without' => 'اختر لونًا أو مقاسًا على الأقل: الصف الذي لا يحدد أيًّا منهما ليس مقاسًا ولا لونًا، وسيظهر على المتجر كأنه نسخة مكرّرة من المنتج.',
+            'color_id.required_without' => $colourOrSize,
+            'size_id.required_without' => $colourOrSize,
         ]));
     }
 

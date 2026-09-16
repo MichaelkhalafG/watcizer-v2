@@ -1,5 +1,5 @@
 import { router } from '@inertiajs/react';
-import { ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight, Inbox, RotateCcw, Search } from 'lucide-react';
+import { ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight, Download, Inbox, RotateCcw, Search } from 'lucide-react';
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { Alert } from '@/components/ui/alert';
@@ -9,6 +9,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { useT } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import type { TablePayload } from '@/types';
 
@@ -70,12 +71,21 @@ export function DataTable<Row>({
     rowActions,
     filters,
     bulkActions,
-    searchPlaceholder = 'بحث…',
-    emptyTitle = 'لا توجد نتائج',
-    emptyDescription = 'جرِّب تعديل البحث أو عوامل التصفية.',
+    searchPlaceholder,
+    emptyTitle,
+    emptyDescription,
     only,
     error = null,
 }: DataTableProps<Row>) {
+    const t = useT();
+    /*
+     * Resolved in the body, never as default parameters: a default is evaluated before the
+     * component runs, where `useT()` is not a legal call.
+     */
+    const searchText = searchPlaceholder ?? t('table.search_placeholder', 'بحث…');
+    const emptyHeading = emptyTitle ?? t('table.empty_title', 'لا توجد نتائج');
+    const emptyBody = emptyDescription ?? t('table.empty_description', 'جرِّب تعديل البحث أو عوامل التصفية.');
+
     const { data, meta } = table;
     const [term, setTerm] = useState(meta.search ?? '');
     const [busy, setBusy] = useState(false);
@@ -148,6 +158,23 @@ export function DataTable<Row>({
         [meta.direction, meta.sort, visit],
     );
 
+    /*
+     * The export is THIS url plus `export=csv`, which is why it is a plain link and not a router
+     * visit: Inertia expects a page back, and this response is a file. Taking the address bar
+     * verbatim is also what makes the file match the screen — every filter, the search and the
+     * sort are already in it, including any the table does not know about because the screen put
+     * them there itself.
+     */
+    const exportHref = useMemo(() => {
+        if (typeof window === 'undefined') {
+            return '';
+        }
+        const url = new URL(window.location.href);
+        url.searchParams.set('export', 'csv');
+        url.searchParams.delete('page');
+        return `${url.pathname}${url.search}`;
+    }, [meta]);
+
     const allOnPage = useMemo(() => data.map((row) => rowId(row)), [data, rowId]);
     const headerState: boolean | 'indeterminate' =
         selected.length === 0 ? false : selected.length === allOnPage.length ? true : 'indeterminate';
@@ -165,8 +192,8 @@ export function DataTable<Row>({
                         type="search"
                         value={term}
                         onChange={(event) => onSearch(event.target.value)}
-                        placeholder={searchPlaceholder}
-                        aria-label={searchPlaceholder}
+                        placeholder={searchText}
+                        aria-label={searchText}
                         className="ps-9"
                     />
                 </div>
@@ -186,17 +213,28 @@ export function DataTable<Row>({
                         className="gap-1.5"
                     >
                         <RotateCcw className="h-3.5 w-3.5" />
-                        إلغاء التصفية
+                        {t('table.clear_filters', 'إلغاء التصفية')}
                     </Button>
                 ) : null}
                 <span className="ms-auto text-xs text-muted-foreground" aria-live="polite">
-                    {busy ? 'جارٍ التحميل…' : `${meta.total} سجل`}
+                    {busy ? t('table.loading', 'جارٍ التحميل…') : t('table.row_count', ':count سجل', { count: meta.total })}
                 </span>
+                {meta.exportable ? (
+                    <Button asChild variant="outline" size="sm" className="gap-1.5">
+                        {/* Downloads what is on screen — the filters, the search, the sort — and
+                            says how many rows that is, so nobody wonders whether they got the
+                            filtered set or the whole table. */}
+                        <a href={exportHref} download title={t('table.download_filtered', 'تنزيل :count سجل بعوامل التصفية الحالية', { count: meta.total })}>
+                            <Download className="h-3.5 w-3.5" />
+                            {t('common.export_csv', 'تصدير CSV')}
+                        </a>
+                    </Button>
+                ) : null}
             </div>
 
             {error !== null ? (
                 <div className="border-b p-4">
-                    <Alert tone="error" title="تعذّر تحميل البيانات">
+                    <Alert tone="error" title={t('table.load_failed', 'تعذّر تحميل البيانات')}>
                         {error}
                     </Alert>
                 </div>
@@ -204,10 +242,10 @@ export function DataTable<Row>({
 
             {bulkActions && selected.length > 0 ? (
                 <div className="flex flex-wrap items-center gap-3 border-b bg-brand-muted px-4 py-2.5 text-sm">
-                    <span className="font-medium">{selected.length} محدد</span>
+                    <span className="font-medium">{t('table.selected_count', ':count محدد', { count: selected.length })}</span>
                     {bulkActions(selected, () => setSelected([]))}
                     <Button type="button" variant="ghost" size="sm" className="ms-auto" onClick={() => setSelected([])}>
-                        إلغاء التحديد
+                        {t('table.clear_selection', 'إلغاء التحديد')}
                     </Button>
                 </div>
             ) : null}
@@ -220,7 +258,7 @@ export function DataTable<Row>({
                                 <Checkbox
                                     checked={headerState}
                                     onCheckedChange={(value) => setSelected(value === true ? allOnPage : [])}
-                                    aria-label="تحديد كل الصفوف"
+                                    aria-label={t('table.select_all_rows', 'تحديد كل الصفوف')}
                                 />
                             </TableHead>
                         ) : null}
@@ -250,7 +288,7 @@ export function DataTable<Row>({
                                 )}
                             </TableHead>
                         ))}
-                        {rowActions ? <TableHead className="w-16 text-end">إجراءات</TableHead> : null}
+                        {rowActions ? <TableHead className="w-16 text-end">{t('common.actions', 'إجراءات')}</TableHead> : null}
                     </TableRow>
                 </TableHeader>
 
@@ -270,9 +308,9 @@ export function DataTable<Row>({
                             <TableCell colSpan={columnCount}>
                                 <div className="flex flex-col items-center gap-2 py-10 text-center">
                                     <Inbox className="h-8 w-8 text-muted-foreground" aria-hidden="true" />
-                                    <p className="font-medium">{emptyTitle}</p>
+                                    <p className="font-medium">{emptyHeading}</p>
                                     <p className="max-w-sm text-sm text-muted-foreground">
-                                        {filtered ? emptyDescription : 'لا توجد بيانات لعرضها بعد.'}
+                                        {filtered ? emptyBody : t('table.no_data_yet', 'لا توجد بيانات لعرضها بعد.')}
                                     </p>
                                 </div>
                             </TableCell>
@@ -292,7 +330,7 @@ export function DataTable<Row>({
                                             onCheckedChange={(value) =>
                                                 setSelected((current) => (value === true ? [...current, id] : current.filter((item) => item !== id)))
                                             }
-                                            aria-label="تحديد الصف"
+                                            aria-label={t('table.select_row', 'تحديد الصف')}
                                         />
                                     </TableCell>
                                 ) : null}
@@ -311,7 +349,11 @@ export function DataTable<Row>({
             {meta.last_page > 1 ? (
                 <div className="flex flex-wrap items-center justify-between gap-3 border-t px-4 py-3 text-sm">
                     <span className="text-muted-foreground">
-                        {meta.from ?? 0}–{meta.to ?? 0} من {meta.total}
+                        {t('table.range', ':from–:to من :total', {
+                            from: meta.from ?? 0,
+                            to: meta.to ?? 0,
+                            total: meta.total,
+                        })}
                     </span>
                     <div className="flex items-center gap-2">
                         <Button
@@ -325,7 +367,7 @@ export function DataTable<Row>({
                             {/* Chevrons mirror in RTL: "previous" points toward the start edge. */}
                             <ChevronRight className="h-4 w-4 ltr:hidden" />
                             <ChevronLeft className="h-4 w-4 rtl:hidden" />
-                            السابق
+                            {t('table.previous', 'السابق')}
                         </Button>
                         <span className="px-1 text-xs text-muted-foreground">
                             {meta.page} / {meta.last_page}
@@ -338,7 +380,7 @@ export function DataTable<Row>({
                             onClick={() => visit({ page: meta.page + 1 })}
                             className="gap-1"
                         >
-                            التالي
+                            {t('table.next', 'التالي')}
                             <ChevronLeft className="h-4 w-4 ltr:hidden" />
                             <ChevronRight className="h-4 w-4 rtl:hidden" />
                         </Button>

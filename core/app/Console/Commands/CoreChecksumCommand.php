@@ -45,6 +45,14 @@ final class CoreChecksumCommand extends Command
      */
     public const SHARED_COMMERCE_TABLES = [
         'addresses', 'carts', 'cart_items', 'orders', 'order_items', 'payment_statuses', 'offers',
+        /*
+         * Joined 2026-09-15, when the shipping screen was built (wave 4D). `shipping_cities` and
+         * its translations were in the FROZEN set — the tables core promises never to write — and
+         * that promise had to end the moment the dashboard became the only editor of the delivery
+         * price. Listing them here is the honest bookkeeping, not a loosening: a table core writes
+         * cannot also be a table whose digest is asserted unchanged end to end.
+         */
+        'shipping_cities', 'shipping_city_translations',
     ];
 
     /** @var list<string> */
@@ -88,6 +96,36 @@ final class CoreChecksumCommand extends Command
         // record that a callback needs a human, and switch night drops and rebuilds everything
         // in CLEAN_TABLES.
         'payment_reconciliation_findings',
+        /*
+         * Promotions join the list in wave 4D (M1l, study §3.16.9 resolution 🔴-3).
+         *
+         * A rule, its storefronts, its conditions, its rewards and its skip counters are all typed
+         * by an admin and have no legacy source, so a rebuild would delete a promotion the shop is
+         * running — and `promotion_rule_id` on the order lines it already granted would point at
+         * nothing. `promotion_rule_skips` is here for the same reason in a weaker form: the count
+         * of times a gift was missed is evidence about the shop's stocking, not transform output.
+         */
+        'promotion_rules', 'promotion_rule_storefront', 'promotion_rule_conditions',
+        'promotion_rule_rewards', 'promotion_rule_skips',
+        /*
+         * The operator's own dashboard preferences (M1m, wave 4D).
+         *
+         * Small, and on the list for the same reason as everything above it: a human typed it and
+         * no transform can regenerate it. Losing it on switch night would only revert everyone's
+         * dashboard to Arabic — but §2.20 draws the line at "authored in the dashboard", not at
+         * "important enough to miss", and the day this table grows a second column that line will
+         * already be in the right place.
+         */
+        'core_user_preferences',
+        /*
+         * The activity log (M1o, wave 4D).
+         *
+         * A record of what HUMANS did. No transform can regenerate a line of it, and a rebuild that
+         * erased it would erase the history of the rebuild itself — including who changed the price
+         * that somebody is asking about. It is the one table here whose value is entirely in being
+         * old, so it is the last one that may ever be dropped.
+         */
+        'core_activity_log',
     ];
 
     /**

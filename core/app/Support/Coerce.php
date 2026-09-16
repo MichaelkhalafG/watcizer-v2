@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use App\Transform\Row;
+use Traversable;
 
 /**
  * LENIENT narrowing for values that arrive from outside the application — a validated request
@@ -100,6 +101,54 @@ final class Coerce
     }
 
     /**
+     * Whatever the caller passed, as something to iterate.
+     *
+     * **A Collection counts.** `pluck()` hands one back, and a caller who passes it means the list
+     * it holds; the old `is_array() ? … : []` read it as NOTHING and said so to nobody. That cost
+     * real behaviour (found 2026-09-13, wave 4D): `PromotionState` read every reward as visible
+     * because its id list came back empty, so the NOT VISIBLE state could never fire; the engine's
+     * category and brand conditions could never match for the same reason; and the promotion edit
+     * form loaded with no storefronts ticked. Four call sites, one silent hole — so the hole is
+     * closed here rather than patched at each of them.
+     *
+     * Anything that is neither array nor Traversable is still an empty list, which is the leniency
+     * this class exists for: a browser that posts `"7"` where a list belongs must not 500.
+     *
+     * @return iterable<mixed>
+     */
+    private static function items(mixed $value): iterable
+    {
+        if (is_array($value)) {
+            return $value;
+        }
+
+        return $value instanceof Traversable ? $value : [];
+    }
+
+    /**
+     * The row objects out of a batch of table rows.
+     *
+     * `TableQuery` hands a screen's `prepare` callback a list of database rows, but a closure
+     * assigned to a VARIABLE gets no contextual type — so the batch arrives as `array` and the
+     * screen's own helper, which quite reasonably asks for `list<object>`, cannot take it. This
+     * narrows it for real rather than asserting it: a non-object in a result set would be a bug
+     * somewhere else, and dropping it here is better than reading `->id` off a string.
+     *
+     * @return list<object>
+     */
+    public static function objectList(mixed $value): array
+    {
+        $out = [];
+        foreach (self::items($value) as $item) {
+            if (is_object($item)) {
+                $out[] = $item;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
      * A de-duplicated list of ints, preserving first-seen order.
      *
      * @return list<int>
@@ -107,7 +156,7 @@ final class Coerce
     public static function intList(mixed $value): array
     {
         $seen = [];
-        foreach (is_array($value) ? $value : [] as $item) {
+        foreach (self::items($value) as $item) {
             $id = self::nint($item);
             if ($id !== null) {
                 $seen[$id] = true;
@@ -126,7 +175,7 @@ final class Coerce
     public static function orderedIntList(mixed $value): array
     {
         $out = [];
-        foreach (is_array($value) ? $value : [] as $item) {
+        foreach (self::items($value) as $item) {
             $id = self::nint($item);
             if ($id !== null) {
                 $out[] = $id;

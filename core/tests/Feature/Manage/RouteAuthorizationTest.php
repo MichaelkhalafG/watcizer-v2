@@ -117,6 +117,24 @@ it('guards EVERY /manage route with authentication and an ability', function () 
     // `manage.loginhistory` — a whole unguarded screen hiding behind a prefix match.
     $openRoutes = ['manage.login', 'manage.login.store'];
 
+    /*
+     * Routes that need auth and the dashboard gate but NO ability, named exactly and for a reason.
+     *
+     * An ability answers "what may this person do to the SHOP". These three touch nothing in it:
+     *
+     *   • `manage.logout`  — ending your own session;
+     *   • `manage.profile` / `manage.profile.update` — your OWN profile. The route takes no id, it
+     *     reads `$request->user()`, and the only thing it can write is one row of
+     *     `core_user_preferences` keyed by that same user. Requiring an ability here would be a
+     *     category error, and gating it on `view-dashboard` would mean a future role that can work
+     *     but not see the home screen could not open its own settings.
+     *
+     * They are still asserted to carry `auth` and `EnsureDashboardAccess` below, and the list is
+     * checked for staleness at the end — an exemption naming a route that no longer exists is an
+     * exemption nobody is reading.
+     */
+    $noAbilityNeeded = ['manage.logout', 'manage.profile', 'manage.profile.update'];
+
     $unguarded = [];
     foreach (Route::getRoutes()->getRoutes() as $route) {
         $name = (string) $route->getName();
@@ -127,7 +145,8 @@ it('guards EVERY /manage route with authentication and an ability', function () 
 
         $hasAuth = in_array('auth', $middleware, true);
         $hasGate = in_array(EnsureDashboardAccess::class, $middleware, true);
-        $hasAbility = $name === 'manage.logout' || array_filter($middleware, fn (string $m): bool => str_starts_with($m, 'can:')) !== [];
+        $hasAbility = in_array($name, $noAbilityNeeded, true)
+            || array_filter($middleware, fn (string $m): bool => str_starts_with($m, 'can:')) !== [];
 
         if (! $hasAuth || ($name !== 'manage.logout' && ! $hasGate) || ! $hasAbility) {
             $unguarded[] = $name;
@@ -138,7 +157,7 @@ it('guards EVERY /manage route with authentication and an ability', function () 
 
     // …and the exemption list itself must still name real routes, or it is exempting nothing while
     // looking like it protects everything.
-    foreach ($openRoutes as $name) {
+    foreach ([...$openRoutes, ...$noAbilityNeeded] as $name) {
         expect(Route::has($name))->toBeTrue("the exemption list names {$name}, which no longer exists");
     }
 });

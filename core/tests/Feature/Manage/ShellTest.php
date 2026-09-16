@@ -20,7 +20,8 @@ it('renders the dashboard inside an Arabic RTL shell', function () {
             ->component('Manage/Home')
             ->where('locale', 'ar')
             ->where('dir', 'rtl')
-            ->has('stats', 4)
+            // Five since wave 4D: `orders_unseen`, the per-operator badge count.
+            ->has('stats', 5)
             ->has('inventory')
             ->has('nav')
             ->has('auth.user')
@@ -72,10 +73,12 @@ it('gives an admin the settings group and a data-entry user none of it', functio
 it('marks unbuilt screens with their wave instead of linking to them', function () {
     $byKey = Props::navItems(actingAs(Staff::admin())->get('/manage'));
 
-    // Offers, banners and blogs are the one remaining stub: they were NOT in the 4C brief, so the
-    // badge moved to 4D rather than keeping a wave the screen missed.
-    expect($byKey['legacy-content']['wave'])->toBe('4D')
-        ->and($byKey['legacy-content']['href'])->toBeNull('a stub must not link anywhere')
+    // The combined "offers, banners and articles" item is GONE (2026-09-14): offers became the
+    // promotions engine and banners got their own screen, so BLOGS is the one remaining stub — and
+    // it carries no wave number on purpose, because nothing has been promised for it.
+    expect($byKey)->not->toHaveKey('legacy-content');
+    expect($byKey['blogs']['wave'])->toBe('later')
+        ->and($byKey['blogs']['href'])->toBeNull('a stub must not link anywhere')
         // …and what IS built has a link and no wave badge.
         ->and($byKey['storefronts']['href'])->not->toBeNull()
         ->and($byKey['storefronts']['wave'])->toBeNull()
@@ -84,7 +87,7 @@ it('marks unbuilt screens with their wave instead of linking to them', function 
     // Wave 4B turned four stubs into screens and wave 4C turned four more, so the assertion flips
     // for them: a built item MUST carry a link and MUST NOT carry a wave badge. This is the test
     // that would have caught a shipped screen the sidebar still calls "coming in 4B".
-    foreach (['products', 'categories', 'placement', 'lookups', 'orders', 'inventory', 'users', 'payments'] as $built) {
+    foreach (['products', 'categories', 'placement', 'lookups', 'orders', 'inventory', 'users', 'payments', 'banners'] as $built) {
         expect($byKey[$built]['wave'])->toBeNull("{$built} is built and must not still be a stub")
             ->and($byKey[$built]['href'])->not->toBeNull("{$built} must link somewhere");
     }

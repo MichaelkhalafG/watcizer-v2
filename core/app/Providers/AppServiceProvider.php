@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Domain\Access\Abilities;
 use App\Domain\Access\Roles;
+use App\Domain\Import\ImageCache;
 use App\Domain\Inventory\StockWriteGuard;
 use App\Domain\Payment\ProviderRegistry;
 use App\Support\LegacyReadOnly;
@@ -26,6 +27,13 @@ class AppServiceProvider extends ServiceProvider
         // One instance per request: Roles memoises grants, and two instances would mean two
         // queries and — worse — two answers if a grant changed mid-request.
         $this->app->singleton(Roles::class);
+
+        /*
+         * ONE image cache per process. `CoverImages` is built while the import command's
+         * dependencies are resolved, which is before its options are parsed — so `--refresh-images`
+         * has to reach the same instance afterwards, and only a singleton makes that true.
+         */
+        $this->app->singleton(ImageCache::class);
 
         /*
          * The payment provider registry (wave 4C, study §3.9.3). Bound here rather than

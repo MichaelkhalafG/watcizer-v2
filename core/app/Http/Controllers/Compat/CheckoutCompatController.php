@@ -11,8 +11,15 @@ use App\Domain\Inventory\InsufficientStock;
 use App\Domain\Inventory\InventoryService;
 use App\Domain\Notifications\OrderMailer;
 use App\Domain\Payment\CallbackPolicy;
+use App\Domain\Payment\PaymentInitiator;
+use App\Domain\Promotions\CartLine;
+use App\Domain\Promotions\CartSnapshot;
+use App\Domain\Promotions\PromotionEngine;
+use App\Domain\Promotions\PromotionOutcome;
+use App\Domain\Promotions\PromotionSkips;
 use App\Http\Controllers\Controller;
 use App\Http\Middleware\CompatGuestCart;
+use App\Support\Coerce;
 use App\Support\DeadlockRetry;
 use App\Support\Val;
 use App\Transform\Row;
@@ -43,6 +50,9 @@ class CheckoutCompatController extends Controller
         private readonly CompatServices $compat,
         private readonly InventoryService $inventory,
         private readonly OrderMailer $mailer,
+        private readonly PromotionEngine $promotions,
+        private readonly PromotionSkips $skips,
+        private readonly PaymentInitiator $initiator,
     ) {}
 
     /** POST add_order */
@@ -132,6 +142,48 @@ class CheckoutCompatController extends Controller
                 ], 422);
             }
 
+            /*
+             * ── promotions (wave 4D, study §3.16) ─────────────────────────────────────────────
+             *
+             * Evaluated HERE: after the authoritative pricing, because a rule reads the server's
+             * own subtotal and never the client's; and before `placeOrder()`, because a granted
+             * reward is a line of the order being written.
+             *
+             * ── The total guard is ABOVE this, and it stays there ─────────────────────────────
+             *
+             * The client's number has already been compared against the server's own UNDISCOUNTED
+             * total and accepted. A promotion is applied to the order total only after that, which
+             * keeps two properties at once:
+             *
+             *  - the anti-tampering guard is exactly what it was. A client that sends the wrong
+             *    total is still refused, on the same arithmetic, with the same message. Nothing
+             *    about the discount is negotiable by the caller — it is computed here, from rules
+             *    the client never sees.
+             *  - a money-reducing reward no longer 422s the checkout that earned it. The order
+             *    simply carries a smaller total than the cart quoted.
+             *
+             * The second point is a DISCLOSURE problem rather than a correctness one, and it is why
+             * the money family is unlocked per storefront: a frontend that cannot show the discount
+             * would quote one number and charge a smaller one. `PromotionRules::isRewardAvailableOn`
+             * refuses those rewards on any storefront whose settings have not said otherwise, so a
+             * storefront that has never heard of the setting behaves precisely as it did before.
+             *
+             * `evaluate()` writes nothing. The refusals it reports are recorded AFTER the
+             * transaction, below — a skip is a fact about an attempt that happened, and it must
+             * survive the order rolling back.
+             */
+            $promotion = $this->evaluatePromotions($priced, $addressId, $paymentMethod);
+
+            /*
+             * Clamped at zero, belt and braces. `PromotionRules::discountFor()` already caps each
+             * reward at what the cart can bear, but the order total is the number a payment
+             * provider is charged and a courier collects: it is worth one more line here to make a
+             * negative total unrepresentable rather than merely unreachable.
+             */
+            if ($promotion->discount > 0.0) {
+                $serverTotal = round(max(0.0, $serverTotal - $promotion->discount), 2);
+            }
+
             $orderId = $this->compat->checkout->placeOrder(
                 $userId,
                 $guestToken,
@@ -143,6 +195,7 @@ class CheckoutCompatController extends Controller
                 $this->nullableString($request->input('guest_email')),
                 $this->nullableString($request->input('guest_phone') ?? $request->input('phone')),
                 $priced['lines'],
+                $promotion,
             );
 
             // Clear the cart so an ordered/removed line can never inflate the NEXT order's total.
@@ -156,6 +209,15 @@ class CheckoutCompatController extends Controller
             }
 
             DB::commit();
+
+            /*
+             * The promotions that MATCHED this cart and were refused — recorded after the commit,
+             * outside the transaction, for the same reason the lost-callback finding is: the
+             * attempt happened whether or not the order survived, and an admin whose gift is never
+             * delivered learns it from this counter and nothing else. The customer saw the cart
+             * they would have had, which is the requirement.
+             */
+            $this->skips->record($promotion->skipped, $this->compat->storefrontId);
 
             /*
              * -- order e-mail (prerequisite (a), 2026-09-13) --------------------------------
@@ -403,6 +465,39 @@ class CheckoutCompatController extends Controller
     }
 
     /**
+     * Build the snapshot and ask the engine. Never throws at the checkout: a promotion that cannot
+     * be evaluated is a promotion that does not apply.
+     *
+     * @param  array{lines: list<array<string, mixed>>, total: float}  $priced
+     */
+    private function evaluatePromotions(array $priced, int $addressId, string $paymentMethod): PromotionOutcome
+    {
+        $lines = [];
+        foreach ($priced['lines'] as $line) {
+            $lines[] = new CartLine(
+                productId: Val::nint($line, 'product_id'),
+                variantId: Val::nint($line, 'variant_id'),
+                offerId: Val::nint($line, 'offer_id'),
+                quantity: Val::int($line, 'quantity'),
+                unitPrice: (float) Val::str($line, 'piece_price'),
+                typeStock: Val::nstr($line, 'type_stock'),
+            );
+        }
+
+        $snapshot = new CartSnapshot(
+            storefrontId: $this->compat->storefrontId,
+            lines: $lines,
+            // The SERVER's subtotal, from `priceLines()`. A condition that read the client's
+            // number would be a discount a shopper could grant themselves.
+            subtotal: $priced['total'],
+            shippingCost: $this->compat->checkout->shippingCost($addressId),
+            paymentMethod: $paymentMethod,
+        );
+
+        return $this->promotions->evaluate($snapshot);
+    }
+
+    /**
      * Does the callback's `amount_cents` disagree with what the order says it costs?
      *
      * Returns null when the two agree (or when there is nothing to compare against, which is the
@@ -497,19 +592,66 @@ class CheckoutCompatController extends Controller
     }
 
     /**
-     * The Paymob branch. Structurally complete, locally unproven: the keys are developer-handled
-     * and are never in this repo, so with none configured the intention call throws and the
-     * caller sees the legacy "Payment could not be initiated" 422 — the same branch the legacy
-     * code takes for the same reason.
+     * The Paymob branch — the storefront's OWN contract first, the wave-3 path while none is live.
+     *
+     * ── Why initiation and verification must move together (wave 4D, task C2) ────────────────
+     *
+     * Until this branch asked the table, a customer could be sent to ONE Paymob account to pay
+     * while the callback was verified against ANOTHER account's HMAC secret — because wave 4C moved
+     * verification onto `storefront_payment_providers` and initiation was still reading
+     * `config('services.paymob.*')`. The symptom would be a signature that does not verify, with
+     * the money taken and the order left pending, which reads like a provider outage rather than a
+     * configuration split across two places.
+     *
+     * `PaymentInitiator` asks the SAME question the callback's `aliasIsLive()` asks — contract
+     * enabled AND credentials present — and answers null when it is not yet true. So inserting the
+     * credentials cuts BOTH halves over at once, with no deploy, and disabling the contract moves
+     * both back. Prerequisite (d) closes here.
+     *
+     * The keys themselves are developer-handled and never in this repo, so with nothing configured
+     * either path fails the same way: the legacy "Payment could not be initiated" 422, which is the
+     * branch the legacy code takes for the same reason.
      */
     private function paymob(Request $request, int $orderId, ?int $userId, int $addressId): JsonResponse
     {
         $orderNumber = $this->compat->checkout->orderNumber($orderId);
         $order = $this->compat->checkout->order($orderId);
         $amount = $order === null ? 0.0 : (float) Row::money($order, 'total_price_for_order');
+        $billing = $this->billingData($request, $userId, $addressId);
 
         try {
-            $result = $this->compat->checkout->createPaymobIntention($amount, $this->billingData($request, $userId, $addressId), $orderId);
+            $contracted = $this->initiator->initiate(
+                $this->compat->storefrontId,
+                app()->getLocale(),
+                Coerce::nstr($request->input('payment_method_id')) ?? Coerce::nstr($request->input('payment_method')),
+                $orderId,
+                $orderNumber,
+                $amount,
+                $billing,
+            );
+
+            if ($contracted !== null) {
+                if ($contracted->ok && $contracted->checkoutUrl !== null) {
+                    return response()->json([
+                        'success' => true,
+                        'order_number' => $orderNumber,
+                        'redirect_url' => $contracted->checkoutUrl,
+                    ], 200);
+                }
+
+                // Refused by the provider: give the reserved stock back and cancel, exactly as the
+                // wave-3 path does. The REASON is the provider's own sentence and carries no key.
+                $this->cancelAndRelease($orderId);
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Payment session failed',
+                    'order_number' => $orderNumber,
+                    'paymob_error' => $contracted->failureReason,
+                ], 422);
+            }
+
+            $result = $this->compat->checkout->createPaymobIntention($amount, $billing, $orderId);
 
             if ($result['ok']) {
                 return response()->json(['success' => true, 'order_number' => $orderNumber, 'redirect_url' => $result['redirect_url']], 200);

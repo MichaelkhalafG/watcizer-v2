@@ -1,11 +1,13 @@
-import { Link } from '@inertiajs/react';
+import { Link } from "@inertiajs/react";
 
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Input, Select } from '@/components/ui/input';
-import { DataTable, type Column } from '@/components/table/DataTable';
-import ManageLayout from '@/layouts/ManageLayout';
-import type { TablePayload } from '@/types';
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input, Select } from "@/components/ui/input";
+import { DataTable, type Column } from "@/components/table/DataTable";
+import ManageLayout from "@/layouts/ManageLayout";
+import type { TablePayload } from "@/types";
+import { Ltr } from "@/components/ui/bidi";
+import { useT } from "@/lib/i18n";
 
 /**
  * The order queue (wave 4C).
@@ -41,7 +43,11 @@ interface OrderRow {
     created_at: string | null;
     items: number;
     /** The last attempt's outcome, so "paid but still pending" is visible from the list. */
-    last_attempt: { provider: string | null; method: string | null; success: boolean } | null;
+    last_attempt: {
+        provider: string | null;
+        method: string | null;
+        success: boolean;
+    } | null;
     url: string;
 }
 
@@ -61,70 +67,96 @@ interface Props {
     abilities: { fulfil: boolean; cancel: boolean; settle: boolean };
 }
 
-const STATUS_TONE: Record<string, 'default' | 'neutral' | 'success' | 'warning' | 'destructive' | 'outline'> = {
-    pending: 'warning',
-    processing: 'default',
-    shipped: 'default',
+const STATUS_TONE: Record<
+    string,
+    "default" | "neutral" | "success" | "warning" | "destructive" | "outline"
+> = {
+    pending: "warning",
+    processing: "default",
+    shipped: "default",
     // `delivered` is the green one: it is the state the customer cares about. `completed` means
     // CLOSED and is deliberately quiet, so a queue of green rows reads as "arrived", not "filed".
-    delivered: 'success',
-    completed: 'neutral',
-    cancelled: 'destructive',
+    delivered: "success",
+    completed: "neutral",
+    cancelled: "destructive",
 };
 
 export default function OrdersIndex({ table, filters, abilities }: Props) {
+    const t = useT();
     const columns: Array<Column<OrderRow>> = [
         {
-            key: 'o.order_number',
-            header: 'رقم الطلب',
+            key: "o.order_number",
+            header: t("common.order_number", "رقم الطلب"),
             sortable: true,
             cell: (row) => (
                 <div className="space-y-0.5">
-                    <Link href={row.url} className="font-medium text-brand-strong hover:underline" dir="ltr">
+                    <Link
+                        href={row.url}
+                        className="font-medium text-brand-strong hover:underline"
+                        dir="ltr"
+                    >
                         {row.order_number}
                     </Link>
                     <div className="text-xs text-muted-foreground">
                         {row.customer}
-                        {row.phone ? <span dir="ltr"> · {row.phone}</span> : null}
+                        {row.phone ? (
+                            <span dir="ltr"> · {row.phone}</span>
+                        ) : null}
                     </div>
                 </div>
             ),
         },
         {
-            key: 'o.status',
-            header: 'الحالة',
+            key: "o.status",
+            header: t("common.status", "الحالة"),
             sortable: true,
             cell: (row) => (
                 <div className="flex flex-wrap items-center gap-1">
-                    <Badge variant={STATUS_TONE[row.status] ?? 'neutral'}>{row.status_label}</Badge>
+                    <Badge variant={STATUS_TONE[row.status] ?? "neutral"}>
+                        {row.status_label}
+                    </Badge>
                     {/* A paid order still sitting in `pending` is the thing worth seeing early. */}
                     {row.last_attempt && !row.last_attempt.success ? (
-                        <Badge variant="warning" title="آخر محاولة دفع فشلت">محاولة فاشلة</Badge>
+                        <Badge
+                            variant="warning"
+                            title={t(
+                                "orders.last_attempt_failed",
+                                "آخر محاولة دفع فشلت",
+                            )}
+                        >
+                            {t("orders.failed_attempt", "محاولة فاشلة")}
+                        </Badge>
                     ) : null}
                 </div>
             ),
         },
         {
-            key: 'payment',
-            header: 'الدفع',
+            key: "payment",
+            header: t("common.payment", "الدفع"),
             sortable: false,
             hideOnMobile: true,
             cell: (row) => (
                 <div className="space-y-0.5 text-sm">
                     {row.paid_via_provider ? (
-                        <div dir="ltr">
-                            {row.paid_via_provider}
-                            {row.paid_via_method ? ` · ${row.paid_via_method}` : ''}
+                        <div>
+                            <Ltr>
+                                {row.paid_via_provider}
+                                {row.paid_via_method
+                                    ? ` · ${row.paid_via_method}`
+                                    : ""}
+                            </Ltr>
                         </div>
                     ) : (
-                        <span className="text-muted-foreground">{row.payment_method ?? '—'}</span>
+                        <span className="text-muted-foreground">
+                            {row.payment_method ?? "—"}
+                        </span>
                     )}
                 </div>
             ),
         },
         {
-            key: 'o.total_price_for_order',
-            header: 'الإجمالي',
+            key: "o.total_price_for_order",
+            header: t("common.total", "الإجمالي"),
             sortable: true,
             cell: (row) => (
                 <span className="font-medium" dir="ltr">
@@ -133,54 +165,78 @@ export default function OrdersIndex({ table, filters, abilities }: Props) {
             ),
         },
         {
-            key: 'items',
-            header: 'الأصناف',
+            key: "items",
+            header: t("orders.items", "الأصناف"),
             sortable: false,
             hideOnMobile: true,
             cell: (row) => <span>{row.items}</span>,
         },
         {
-            key: 'storefront',
-            header: 'المتجر',
+            key: "storefront",
+            header: t("common.storefront", "المتجر"),
             sortable: false,
             hideOnMobile: true,
-            cell: (row) => <span className="text-sm">{row.storefront ?? '—'}</span>,
+            cell: (row) => (
+                <span className="text-sm">{row.storefront ?? "—"}</span>
+            ),
         },
         {
-            key: 'o.created_at',
-            header: 'التاريخ',
+            key: "o.created_at",
+            header: t("common.date", "التاريخ"),
             sortable: true,
             hideOnMobile: true,
             cell: (row) => (
                 <span className="text-xs text-muted-foreground" dir="ltr">
-                    {row.created_at ?? '—'}
+                    {row.created_at ?? "—"}
                 </span>
             ),
         },
     ];
 
     return (
-        <ManageLayout title="الطلبات" crumbs={[{ label: 'الرئيسية', href: '/manage' }, { label: 'الطلبات' }]}>
+        <ManageLayout
+            title={t("common.orders", "الطلبات")}
+            crumbs={[
+                { label: t("common.home", "الرئيسية"), href: "/manage" },
+                { label: t("common.orders", "الطلبات") },
+            ]}
+        >
             <DataTable
                 table={table}
                 columns={columns}
                 rowId={(row) => row.id}
-                searchPlaceholder="رقم الطلب أو الهاتف…"
-                emptyTitle="لا توجد طلبات"
-                emptyDescription="جرِّب تعديل التصفية أو نطاق التاريخ."
+                searchPlaceholder={t(
+                    "orders.search_placeholder",
+                    "رقم الطلب أو الهاتف…",
+                )}
+                emptyTitle={t("orders.empty_title", "لا توجد طلبات")}
+                emptyDescription={t(
+                    "orders.empty_description",
+                    "جرِّب تعديل التصفية أو نطاق التاريخ.",
+                )}
                 rowActions={(row) => (
                     <Button asChild variant="outline" size="sm">
-                        <Link href={row.url}>تفاصيل</Link>
+                        <Link href={row.url}>
+                            {t("orders.details", "تفاصيل")}
+                        </Link>
                     </Button>
                 )}
                 filters={(setFilter, current) => (
                     <>
                         <Select
-                            aria-label="المتجر"
-                            value={current.storefront_id ?? ''}
-                            onChange={(event) => setFilter('storefront_id', event.target.value || null)}
+                            className="w-full sm:w-48"
+                            aria-label={t("common.storefront", "المتجر")}
+                            value={current.storefront_id ?? ""}
+                            onChange={(event) =>
+                                setFilter(
+                                    "storefront_id",
+                                    event.target.value || null,
+                                )
+                            }
                         >
-                            <option value="">كل المتاجر</option>
+                            <option value="">
+                                {t("common.all_storefronts", "كل المتاجر")}
+                            </option>
                             {filters.storefronts.map((option) => (
                                 <option key={option.value} value={option.value}>
                                     {option.label}
@@ -189,11 +245,16 @@ export default function OrdersIndex({ table, filters, abilities }: Props) {
                         </Select>
 
                         <Select
-                            aria-label="الحالة"
-                            value={current.status ?? ''}
-                            onChange={(event) => setFilter('status', event.target.value || null)}
+                            className="w-full sm:w-48"
+                            aria-label={t("common.status", "الحالة")}
+                            value={current.status ?? ""}
+                            onChange={(event) =>
+                                setFilter("status", event.target.value || null)
+                            }
                         >
-                            <option value="">كل الحالات</option>
+                            <option value="">
+                                {t("common.all_statuses", "كل الحالات")}
+                            </option>
                             {filters.statuses.map((option) => (
                                 <option key={option.value} value={option.value}>
                                     {option.label}
@@ -205,11 +266,22 @@ export default function OrdersIndex({ table, filters, abilities }: Props) {
                             `orders.paid_via_provider`, and the server's filter matches attempts
                             too — which is exactly what someone chasing a provider is looking for. */}
                         <Select
-                            aria-label="مزوّد الدفع"
-                            value={current.provider ?? ''}
-                            onChange={(event) => setFilter('provider', event.target.value || null)}
+                            className="w-full sm:w-48"
+                            aria-label={t(
+                                "orders.payment_provider",
+                                "مزوّد الدفع",
+                            )}
+                            value={current.provider ?? ""}
+                            onChange={(event) =>
+                                setFilter(
+                                    "provider",
+                                    event.target.value || null,
+                                )
+                            }
                         >
-                            <option value="">كل المزوّدين</option>
+                            <option value="">
+                                {t("orders.all_providers", "كل المزوّدين")}
+                            </option>
                             {filters.providers.map((option) => (
                                 <option key={option.value} value={option.value}>
                                     {option.label}
@@ -218,11 +290,19 @@ export default function OrdersIndex({ table, filters, abilities }: Props) {
                         </Select>
 
                         <Select
-                            aria-label="طريقة الدفع"
-                            value={current.method ?? ''}
-                            onChange={(event) => setFilter('method', event.target.value || null)}
+                            className="w-full sm:w-48"
+                            aria-label={t(
+                                "orders.payment_method",
+                                "طريقة الدفع",
+                            )}
+                            value={current.method ?? ""}
+                            onChange={(event) =>
+                                setFilter("method", event.target.value || null)
+                            }
                         >
-                            <option value="">كل الطرق</option>
+                            <option value="">
+                                {t("orders.all_methods", "كل الطرق")}
+                            </option>
                             {filters.methods.map((option) => (
                                 <option key={option.value} value={option.value}>
                                     {option.label}
@@ -232,17 +312,21 @@ export default function OrdersIndex({ table, filters, abilities }: Props) {
 
                         <Input
                             type="date"
-                            aria-label="من تاريخ"
+                            aria-label={t("common.from_date", "من تاريخ")}
                             className="w-[10rem]"
-                            value={current.from ?? ''}
-                            onChange={(event) => setFilter('from', event.target.value || null)}
+                            value={current.from ?? ""}
+                            onChange={(event) =>
+                                setFilter("from", event.target.value || null)
+                            }
                         />
                         <Input
                             type="date"
-                            aria-label="إلى تاريخ"
+                            aria-label={t("common.to_date", "إلى تاريخ")}
                             className="w-[10rem]"
-                            value={current.to ?? ''}
-                            onChange={(event) => setFilter('to', event.target.value || null)}
+                            value={current.to ?? ""}
+                            onChange={(event) =>
+                                setFilter("to", event.target.value || null)
+                            }
                         />
                     </>
                 )}
@@ -254,7 +338,12 @@ export default function OrdersIndex({ table, filters, abilities }: Props) {
             {abilities.settle ? (
                 <div className="pt-4">
                     <Button asChild variant="outline" size="sm">
-                        <a href="/manage/orders/export/settlement">تصدير تسويات الدفع (CSV)</a>
+                        <a href="/manage/orders/export/settlement">
+                            {t(
+                                "orders.settlement_export",
+                                "تصدير تسويات الدفع (CSV)",
+                            )}
+                        </a>
                     </Button>
                 </div>
             ) : null}

@@ -1,8 +1,10 @@
 <?php
 
+use App\Domain\Promotions\PromotionRules;
 use Illuminate\Support\Facades\DB;
 use Inertia\Testing\AssertableInertia;
 use Tests\Support\Staff;
+use Tests\Support\T;
 
 use function Pest\Laravel\actingAs;
 
@@ -58,6 +60,7 @@ it('saves a change and flashes a status the shell renders', function () {
         'default_locale' => 'ar',
         'currency' => 'egp',
         'is_active' => true,
+        'money_rewards' => false,
     ])->assertRedirect('/manage/storefronts')->assertSessionHas('status');
 
     $row = DB::table('storefronts')->where('id', 1)->first(['name', 'currency']);
@@ -74,6 +77,7 @@ it('refuses a default locale that is not one of the enabled locales', function (
         'default_locale' => 'en',
         'currency' => 'EGP',
         'is_active' => true,
+        'money_rewards' => false,
     ])->assertSessionHasErrors('default_locale');
 
     expect(DB::table('storefronts')->where('id', 1)->value('default_locale'))->toBe('ar');
@@ -81,7 +85,7 @@ it('refuses a default locale that is not one of the enabled locales', function (
 
 it('validates the rest of the form', function () {
     actingAs(Staff::admin())->put('/manage/storefronts/1', [])
-        ->assertSessionHasErrors(['name', 'locales', 'default_locale', 'currency', 'is_active']);
+        ->assertSessionHasErrors(['name', 'locales', 'default_locale', 'currency', 'is_active', 'money_rewards']);
 
     actingAs(Staff::admin())->put('/manage/storefronts/1', [
         'name' => 'X',
@@ -89,6 +93,7 @@ it('validates the rest of the form', function () {
         'default_locale' => 'de',
         'currency' => 'TOOLONG',
         'is_active' => true,
+        'money_rewards' => false,
     ])->assertSessionHasErrors(['locales.0', 'default_locale', 'currency']);
 });
 
@@ -103,7 +108,126 @@ it('never lets the form rename the storefront code', function () {
         'default_locale' => 'ar',
         'currency' => 'EGP',
         'is_active' => true,
+        'money_rewards' => false,
     ])->assertRedirect('/manage/storefronts');
 
     expect(DB::table('storefronts')->where('id', 1)->value('code'))->toBe('watchizer');
+});
+
+// ── the money-reward switch (wave 4D) ────────────────────────────────────────────────────────
+
+/**
+ * The rest of the form, so a money-switch test states only what it is about.
+ *
+ * @return array<string, mixed>
+ */
+function storefrontPayload(bool $moneyRewards): array
+{
+    return [
+        'name' => 'Watchizer',
+        'domain' => null,
+        'locales' => ['ar', 'en'],
+        'default_locale' => 'ar',
+        'currency' => 'EGP',
+        'is_active' => true,
+        'money_rewards' => $moneyRewards,
+    ];
+}
+
+/**
+ * Storefront 1's `settings` column, decoded and narrowed to string keys.
+ *
+ * @return array<string, mixed>
+ */
+function storefrontSettings(): array
+{
+    $out = [];
+    foreach (T::arr(json_decode(T::str(DB::table('storefronts')->where('id', 1)->value('settings')), true)) as $key => $value) {
+        $out[(string) $key] = $value;
+    }
+
+    return $out;
+}
+
+/**
+ * The `promotions` bag inside it.
+ *
+ * @return array<string, mixed>
+ */
+function storefrontPromotionSettings(): array
+{
+    $out = [];
+    foreach (T::arr(storefrontSettings()['promotions'] ?? []) as $key => $value) {
+        $out[(string) $key] = $value;
+    }
+
+    return $out;
+}
+
+it('turns the money-reward switch on and off, and the engine follows immediately', function () {
+    // It starts OFF: absent settings mean off, which is the state every storefront is in today.
+    expect(PromotionRules::moneyRewardsEnabled(1))->toBeFalse();
+
+    actingAs(Staff::admin())->put('/manage/storefronts/1', storefrontPayload(true))
+        ->assertRedirect('/manage/storefronts');
+
+    expect(PromotionRules::moneyRewardsEnabled(1))->toBeTrue()
+        ->and(PromotionRules::isRewardAvailableOn('percent_discount', 1))->toBeTrue();
+
+    actingAs(Staff::admin())->put('/manage/storefronts/1', storefrontPayload(false))
+        ->assertRedirect('/manage/storefronts');
+
+    expect(PromotionRules::moneyRewardsEnabled(1))->toBeFalse()
+        ->and(PromotionRules::isRewardAvailableOn('percent_discount', 1))->toBeFalse()
+        // …and the gift family is never affected by this switch, in either position.
+        ->and(PromotionRules::isRewardAvailableOn('free_product', 1))->toBeTrue();
+});
+
+it('writes the switch as a real boolean, not the string "true"', function () {
+    /*
+     * `moneyRewardsEnabled()` reads it with a strict `=== true`, so a storefront whose setting
+     * arrived as the STRING "true" from a hand-edit is treated as OFF — deliberately, because the
+     * failure direction for a switch that changes what a customer is charged is off. This asserts
+     * the SCREEN can never produce that shape, which is the half that would otherwise be a
+     * silent mismatch between the writer and the reader.
+     */
+    actingAs(Staff::admin())->put('/manage/storefronts/1', storefrontPayload(true));
+
+    $promotions = storefrontPromotionSettings();
+
+    expect($promotions['money_rewards'] ?? null)->toBeTrue();
+});
+
+it('keeps every other key in settings when the switch is written', function () {
+    // The column is a general per-storefront bag; this screen owns one key in it. A writer that
+    // replaced the whole object would silently drop whatever another feature had put there.
+    DB::table('storefronts')->where('id', 1)->update([
+        'settings' => json_encode(['theme' => 'dark', 'promotions' => ['something_else' => 7]], JSON_THROW_ON_ERROR),
+    ]);
+
+    actingAs(Staff::admin())->put('/manage/storefronts/1', storefrontPayload(true));
+
+    $settings = storefrontSettings();
+    $promotions = storefrontPromotionSettings();
+
+    expect($settings['theme'] ?? null)->toBe('dark')
+        ->and($promotions['something_else'] ?? null)->toBe(7)
+        ->and($promotions['money_rewards'] ?? null)->toBeTrue();
+});
+
+it('shows the switch on the edit form', function () {
+    actingAs(Staff::admin())->get('/manage/storefronts/1/edit')
+        ->assertInertia(fn (AssertableInertia $page) => $page->where('storefront.money_rewards', false));
+});
+
+it('is ADMIN-ONLY, like the rest of this screen', function () {
+    /*
+     * It is a money switch, so it carries the same gate the rest of the storefront settings do:
+     * `can:manage-storefronts`, which no data-entry grant includes. Asserted rather than assumed —
+     * a new field on an existing form is exactly where an authorization hole hides.
+     */
+    actingAs(Staff::dataEntry())->put('/manage/storefronts/1', storefrontPayload(true))->assertForbidden();
+    actingAs(Staff::dataEntry())->get('/manage/storefronts/1/edit')->assertForbidden();
+
+    expect(PromotionRules::moneyRewardsEnabled(1))->toBeFalse();
 });

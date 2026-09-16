@@ -2,6 +2,7 @@
 
 namespace App\Domain\Inventory;
 
+use App\Domain\Activity\ActivityLog;
 use App\Events\StockChanged;
 use App\Models\Inventory\InventoryMovement;
 use App\Support\DeadlockRetry;
@@ -77,12 +78,28 @@ final class InventoryService
 
     /** `inventory_movements.reason` — the closed set from the schema comment (M1). */
     public const REASONS = [
-        'order', 'order_cancel', 'payment_failed', 'restock', 'manual',
+        // `promotion_reward` (wave 4D) is the reservation of a GIFT a promotion granted. It is a
+        // separate reason and not `order` because the ledger is what an operator reads to answer
+        // "where did these units go?", and "a promotion gave them away" is a different answer
+        // from "a customer bought them" — the same distinction `order_cancel` and
+        // `payment_failed` already make on the way back.
+        'order', 'promotion_reward', 'order_cancel', 'payment_failed', 'restock', 'manual',
         'import', 'adjustment', 'erp_sync', 'transform',
     ];
 
     /** Reasons that RETURN stock reserved by an order; used to make a release idempotent. */
     public const RELEASE_REASONS = ['order_cancel', 'payment_failed'];
+
+    /**
+     * Reasons that mean SOMETHING LEFT THE SHOP FOR A CUSTOMER — the set the sellable guard polices.
+     *
+     * Named rather than inlined because the guard was originally written against the literal
+     * `'order'`, and when wave 4D added `promotion_reward` — units given away by a promotion, which
+     * is every bit as much a thing leaving the shop — it walked straight past a check that was
+     * looking for one string (review 🔴-3). A list with a name is a list the next reason gets added
+     * to; a literal in an `if` is not.
+     */
+    public const SELLING_REASONS = ['order', 'promotion_reward'];
 
     /** @return array{express: string, market: string} */
     public static function columns(): array
@@ -220,7 +237,7 @@ final class InventoryService
             }
 
             // Direction-dependent rules, now that the delta is known whichever door we came in by.
-            $this->assertVariantSellable($target, $delta, $reason);
+            $this->assertSellable($target, $delta, $reason);
 
             // The AUTHORITATIVE row: the variant when there is one, the product otherwise.
             $query = DB::table($target->table())->where('id', $target->rowId());
@@ -279,6 +296,31 @@ final class InventoryService
         }
 
         DB::afterCommit(fn () => event(new StockChanged($productId, $bucket, $result['delta'], $result['after'], $reason, $ref, $storefrontId, $externalRef, $target->variantId)));
+
+        /*
+         * ── The activity log, for HUMAN adjustments only ─────────────────────────────────────
+         *
+         * The ledger already answers "who moved these units" for every movement — `actor_type` and
+         * `actor_id` are on the row, and it is the authority. This second entry exists so the
+         * activity screen can answer "who changed what" in ONE place, without the operator having
+         * to know that stock lives somewhere else.
+         *
+         * Filtered to a real person on purpose. Every order writes movements, so logging all of
+         * them would bury the handful of edits a human made under a day's trading — and "the
+         * checkout reduced stock" is not an audit question. `Actor::SYSTEM` and `Actor::ERP` are
+         * the ledger's business; this table is about people.
+         */
+        if (in_array($actor->type, [Actor::USER, Actor::ADMIN], true)) {
+            ActivityLog::record(
+                $target->isVariant() ? 'catalog_product_variants' : 'catalog_products',
+                $target->isVariant() ? $target->variantId : $productId,
+                ActivityLog::ADJUSTED,
+                [$bucket => $result['after'] - $result['delta']],
+                [$bucket => $result['after']],
+                label: $note,
+                storefrontId: $storefrontId,
+            );
+        }
 
         return $result['movement'];
     }
@@ -340,11 +382,21 @@ final class InventoryService
                 }
                 $productId = Row::nint($line, 'product_id');
                 if ($productId !== null) {
+                    /*
+                     * A REWARD line reserves exactly like a paid one and records a different
+                     * reason (wave 4D, study §3.16.4). Doing it here, inside the loop this
+                     * transaction already holds locks for, is what gives reward stock wave 3's
+                     * guarantees for free: the order row is locked, so two concurrent commits
+                     * cannot both reserve the gift, and `releaseOrder()` walks the same lines so a
+                     * cancellation returns it with no new code at all.
+                     */
+                    $reason = Row::bool($line, 'is_reward') ? 'promotion_reward' : 'order';
+
                     $movements[] = $this->adjust(
                         StockTarget::fromLine($productId, Row::nint($line, 'variant_id')),
                         self::bucketForTypeStock(Row::nstr($line, 'type_stock')),
                         -$qty,
-                        'order',
+                        $reason,
                         Reference::orderLine($orderId, Row::int($line, 'id')),
                         $actor,
                         $storefrontId,
@@ -592,13 +644,18 @@ final class InventoryService
     }
 
     /**
-     * A DEACTIVATED variant cannot be sold (review 2026-09-10 🟠-3).
+     * NOTHING WITHDRAWN FROM SALE MAY BE SOLD — product or variant (review 🔴-3, 2026-09-15;
+     * originally variant-only, review 2026-09-10 🟠-3).
      *
-     * Deactivating a size is how the team takes it off sale: it disappears from the PDP's
-     * `variants[]` and stops counting toward `in_stock`. But its units are still in the warehouse
-     * and the ledger still balances on them, so nothing in the quantity arithmetic stopped a SALE
-     * from decrementing it — a stale cart line, a queued order, or a v2 checkout holding a variant
-     * id from before the deactivation would have sold a size the shop had withdrawn.
+     * Deactivating a product or a size is how the team takes it off sale: it disappears from every
+     * listing and stops counting toward `in_stock`. But its units are still in the warehouse and
+     * the ledger still balances on them, so nothing in the quantity arithmetic stopped a SALE from
+     * decrementing it — a stale cart line, a queued order, a promotion reward, or a v2 checkout
+     * holding an id from before the deactivation would have sold what the shop had withdrawn.
+     *
+     * THE SINGLE DOOR. This lives here, in the service every movement passes through, rather than
+     * in each caller — so the cart, the checkout, the promotion engine and anything written later
+     * are covered by construction instead of by remembering.
      *
      * The rule is therefore about DIRECTION and INTENT, not about the row being locked:
      *
@@ -615,9 +672,49 @@ final class InventoryService
      * `add_to_cart` and again at `priceLines()`. This is the net under the future v2 checkout,
      * which maps it to the same 422 body as the conversion case (study §3.10.4).
      */
-    private function assertVariantSellable(StockTarget $target, int $delta, string $reason): void
+    private function assertSellable(StockTarget $target, int $delta, string $reason): void
     {
-        if (! $target->isVariant() || $delta >= 0 || $reason !== 'order') {
+        // Direction and intent first: nothing below applies to a return, a correction or a restock.
+        if ($delta >= 0 || ! in_array($reason, self::SELLING_REASONS, true)) {
+            return;
+        }
+
+        /*
+         * THE PRODUCT, checked for every target — including a variant's parent.
+         *
+         * This is the half review 🔴-3 found missing. Deactivating a PRODUCT is how the team takes
+         * it off sale, and `catalog_products.is_active = 0` removed it from every listing while
+         * leaving the quantity arithmetic untouched — so a stale cart line, a queued order or a
+         * promotion reward could still decrement it. A withdrawn variant was refused and a
+         * withdrawn product was not, which is the less likely case guarded and the more likely one
+         * open.
+         *
+         * `deleted_at` is checked in the same breath: a soft-deleted product is further off sale
+         * than an inactive one, and the compat door's `exists` rule was the only thing looking.
+         */
+        $row = DB::table('catalog_products')
+            ->where('id', $target->productId)
+            ->first(['is_active', 'deleted_at']);
+
+        if ($row === null) {
+            throw new InvalidArgumentException("Product {$target->productId} does not exist, so it cannot be sold.");
+        }
+        $product = Row::cast($row);
+        if (Row::nstr($product, 'deleted_at') !== null) {
+            throw new InvalidArgumentException(
+                "Product {$target->productId} is archived, so it cannot be sold. ".
+                'Its stock stays in the ledger and may still be corrected or released.'
+            );
+        }
+        if (! Row::bool($product, 'is_active')) {
+            throw new InvalidArgumentException(
+                "Product {$target->productId} is not active, so it cannot be sold. ".
+                'Its stock stays in the ledger and may still be corrected or released.'
+            );
+        }
+
+        // …and THE VARIANT, when the units move through one.
+        if (! $target->isVariant()) {
             return;
         }
 
@@ -669,7 +766,8 @@ final class InventoryService
     {
         /** @var Collection<int, \stdClass> $rows */
         $rows = DB::table('order_items')
-            ->select(['id', 'product_id', 'variant_id', 'offer_id', 'quantity', 'type_stock'])
+            // `is_reward` since wave 4D: the reservation is identical, the ledger REASON is not.
+            ->select(['id', 'product_id', 'variant_id', 'offer_id', 'quantity', 'type_stock', 'is_reward'])
             ->where('order_id', $orderId)
             ->orderBy('id')
             ->get();

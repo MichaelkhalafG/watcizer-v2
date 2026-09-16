@@ -82,6 +82,10 @@ return [
             'label' => 'مواصفات الحقيبة',
             'table' => 'specs',
             'fields' => [
+                // Wave 4D: the supplier files carry a MATERIAL for bags, wallets and fashion goods,
+                // and until now `catalog_materials` attached only to a watch (case / glass / band).
+                // A leather handbag had nowhere to record that it is leather.
+                ['key' => 'material_id', 'label' => 'الخامة', 'type' => 'lookup', 'lookup' => 'materials'],
                 ['key' => 'bag_type', 'label' => 'نوع الحقيبة', 'type' => 'string'],
                 ['key' => 'strap_length_cm', 'label' => 'طول الحمّالة (سم)', 'type' => 'decimal'],
                 ['key' => 'bag_compartments', 'label' => 'عدد الجيوب', 'type' => 'integer'],
@@ -95,10 +99,24 @@ return [
             'label' => 'مواصفات المحفظة',
             'table' => 'specs',
             'fields' => [
+                ['key' => 'material_id', 'label' => 'الخامة', 'type' => 'lookup', 'lookup' => 'materials'],
                 ['key' => 'wallet_card_slots', 'label' => 'جيوب البطاقات', 'type' => 'integer'],
                 ['key' => 'coin_pocket', 'label' => 'جيب للعملات', 'type' => 'boolean'],
                 ['key' => 'width_cm', 'label' => 'العرض (سم)', 'type' => 'decimal'],
                 ['key' => 'height_cm', 'label' => 'الارتفاع (سم)', 'type' => 'decimal'],
+            ],
+        ],
+
+        /*
+         * `fashion` is the DEFAULT family (config/transform.php) and had no block at all, so the
+         * largest non-watch bucket in the catalogue could record nothing about itself. One field to
+         * start with — the one the supplier files actually carry.
+         */
+        'fashion' => [
+            'label' => 'مواصفات المنتج',
+            'table' => 'specs',
+            'fields' => [
+                ['key' => 'material_id', 'label' => 'الخامة', 'type' => 'lookup', 'lookup' => 'materials'],
             ],
         ],
 
@@ -194,6 +212,15 @@ return [
             'translations' => 'catalog_material_translations',
             'fk' => 'material_id',
             'extra' => [],
+            /*
+             * Wave 4D: material is also a LOOKUP FIELD inside the JSON `specs` of a bag, a wallet
+             * and a fashion product. Declared separately because it is counted differently — the
+             * delete guard reads it with JSON_EXTRACT, not with `where(column, id)` — and a
+             * material used only there would otherwise look unused and be deletable.
+             */
+            'json_usage' => [
+                ['catalog_products', 'specs', 'material_id'],
+            ],
             'usage' => [
                 ['catalog_product_watch_specs', 'case_material_id'],
                 ['catalog_product_watch_specs', 'glass_material_id'],
@@ -237,6 +264,9 @@ return [
             'master' => 'catalog_units',
             'translations' => 'catalog_unit_translations',
             'fk' => 'unit_id',
+            // Wave 4D task C3: this list — and only this list — can retire a row instead of
+            // deleting it, so the pickers skip the retired ones. See `UnitCleanup`.
+            'retirable' => true,
             'extra' => ['code' => ['label' => 'الرمز', 'type' => 'string', 'required' => true]],
             'usage' => [
                 ['catalog_product_watch_specs', 'case_size_unit_id'],

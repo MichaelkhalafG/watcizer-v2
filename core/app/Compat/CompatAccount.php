@@ -55,6 +55,25 @@ final class CompatAccount
             $id = Row::int($order, 'id');
             $out[] = [
                 'id' => $id,
+                /*
+                 * ── found 2026-09-13, the first time this case ever compared real content ─────
+                 *
+                 * M1h (wave 4C) added `storefront_id`, `paid_via_provider` and `paid_via_method`
+                 * to the SHARED `orders` table. The legacy `Order` model selects `*`, so the
+                 * legacy app has been emitting all three ever since — and this explicit key list
+                 * never gained them, so core's `me/orders` was missing three keys the legacy app
+                 * sends.
+                 *
+                 * Nothing caught it because `account:orders` compared `[]` with `[]`: every order
+                 * in this database is a guest order, so the authenticated reader had none and the
+                 * case passed for the wrong reason. The moment the harness was given a real
+                 * subject it reported six differences, and these are three of them.
+                 *
+                 * The positions are `SHOW COLUMNS` order — `storefront_id` immediately after `id`,
+                 * the two `paid_via_*` between `payment_method` and `order_number` — because that
+                 * is the order Eloquent serialises them in on the legacy side.
+                 */
+                'storefront_id' => Row::nint($order, 'storefront_id'),
                 'user_id' => Row::nint($order, 'user_id'),
                 'guest_name' => Row::nstr($order, 'guest_name'),
                 'guest_email' => Row::nstr($order, 'guest_email'),
@@ -64,6 +83,9 @@ final class CompatAccount
                 'total_price_for_order' => Row::money($order, 'total_price_for_order'),
                 'status' => Row::str($order, 'status'),
                 'payment_method' => Row::str($order, 'payment_method'),
+                // M1h, in the legacy relation's own position — see the note above.
+                'paid_via_provider' => Row::nstr($order, 'paid_via_provider'),
+                'paid_via_method' => Row::nstr($order, 'paid_via_method'),
                 'order_number' => Row::str($order, 'order_number'),
                 'note' => Row::nstr($order, 'note'),
                 'created_at' => LegacyJson::ts(Row::nstr($order, 'created_at')),
@@ -178,6 +200,19 @@ final class CompatAccount
             // M1f added this column to the SHARED table, so the legacy `order_item` relation
             // serialises it here too, in this position.
             'variant_id' => Row::nint($item, 'variant_id'),
+            /*
+             * D-24 (wave 4D). M1l added these two to the same shared table, and the legacy
+             * `order_item` relation selects `*` — so the legacy app emits them HERE, between
+             * `variant_id` and `offer_id`, which is `SHOW COLUMNS` order. Emitting them anywhere
+             * else, or not at all, is a difference the harness reports.
+             *
+             * And note what is NOT here: a filter. A promotion reward is a real order line with
+             * `piece_price = 0`; both applications read the same row and both serialise it. The
+             * first design had core hide reward lines, which would have CREATED the difference it
+             * was meant to avoid (study §3.16.9 resolution 🔴-2).
+             */
+            'promotion_rule_id' => Row::nint($item, 'promotion_rule_id'),
+            'is_reward' => Row::int($item, 'is_reward'),
             'offer_id' => Row::nint($item, 'offer_id'),
             'quantity' => Row::int($item, 'quantity'),
             'piece_price' => Row::money($item, 'piece_price'),

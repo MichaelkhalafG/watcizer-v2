@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { Field, type FieldShellProps } from '@/components/form/Field';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { useT } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 
 export interface Option {
@@ -31,9 +32,9 @@ export function Combobox({
     value,
     onChange,
     options,
-    placeholder = 'اختر…',
-    searchPlaceholder = 'ابحث…',
-    emptyText = 'لا نتائج',
+    placeholder,
+    searchPlaceholder,
+    emptyText,
     disabled = false,
     ...shell
 }: FieldShellProps & {
@@ -45,6 +46,16 @@ export function Combobox({
     emptyText?: string;
     disabled?: boolean;
 }) {
+    const t = useT();
+    /*
+     * These three defaults CANNOT sit in the parameter list. A default parameter is evaluated
+     * before the component body runs, where `useT()` is not a legal call — so the fallback is
+     * resolved here instead, where the hook has already run.
+     */
+    const placeholderText = placeholder ?? t('form.choose', 'اختر…');
+    const searchText = searchPlaceholder ?? t('form.search_placeholder', 'ابحث…');
+    const emptyLabel = emptyText ?? t('form.no_results', 'لا نتائج');
+
     const [open, setOpen] = useState(false);
     const [term, setTerm] = useState('');
     const [active, setActive] = useState(0);
@@ -103,7 +114,7 @@ export function Combobox({
                                 selected === null && 'text-muted-foreground',
                             )}
                         >
-                            <span className="truncate">{selected?.label ?? placeholder}</span>
+                            <span className="truncate">{selected?.label ?? placeholderText}</span>
                             <ChevronDown className="h-4 w-4 shrink-0 opacity-60" aria-hidden="true" />
                         </button>
                     </PopoverTrigger>
@@ -115,7 +126,7 @@ export function Combobox({
                                 ref={inputRef}
                                 value={term}
                                 onChange={(event) => setTerm(event.target.value)}
-                                placeholder={searchPlaceholder}
+                                placeholder={searchText}
                                 aria-label={searchPlaceholder}
                                 aria-controls={listId}
                                 aria-activedescendant={filtered.length > 0 ? `${listId}-option-${active}` : undefined}
@@ -143,7 +154,7 @@ export function Combobox({
 
                         <ul id={listId} role="listbox" className="max-h-64 overflow-y-auto scrollbar-thin p-1">
                             {filtered.length === 0 ? (
-                                <li className="px-3 py-6 text-center text-sm text-muted-foreground">{emptyText}</li>
+                                <li className="px-3 py-6 text-center text-sm text-muted-foreground">{emptyLabel}</li>
                             ) : (
                                 filtered.map((option, index) => (
                                     <li

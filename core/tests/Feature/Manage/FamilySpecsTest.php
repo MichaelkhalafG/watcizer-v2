@@ -57,10 +57,23 @@ it('gives a product in the Fashion branch a family with NO watch block', functio
 
     $family = $families->forNode($fashion);
 
+    $block = T::arr(SpecBlocks::for($family));
+
     expect($family)->not->toBe('watch')
-        // `fashion` is the configured default and deliberately has no block: inventing attributes
-        // for "did not match anything" would make the form lie about the data.
-        ->and(SpecBlocks::for($family))->toBeNull();
+        /*
+         * `fashion` is the configured DEFAULT — the "nothing matched" bucket — so its block is
+         * deliberately tiny. It had none at all until wave 4D, on the reasoning that inventing
+         * attributes for products that are only fashion because nothing else fit would make the
+         * form lie. What changed is the data: the supplier files carry a MATERIAL for fashion goods
+         * (136 satin products in one file), and the developer's decision of 2026-09-14 is that
+         * every one of them records it. One field the source actually carries is not an invention.
+         *
+         * What must stay true is that it is NOT a watch block: no movement, no case size, nothing
+         * that would describe a scarf as a chronometer.
+         */
+        ->and($block)->not->toBe([])
+        ->and($block['table'] ?? null)->toBe('specs')
+        ->and(array_column(T::arr($block['fields'] ?? null), 'key'))->toBe(['material_id']);
 });
 
 it('resolves a sub type under Fashion by NAME, exactly as the transform does', function () {
@@ -200,7 +213,7 @@ it('ships the derived family and its REASON to the product form', function () {
         ->and(T::str($family['reason']))->toContain('config/transform.php');
 });
 
-it('shows a fashion product no spec block, and says why', function () {
+it('shows a fashion product its OWN single-field block, and never a watch one', function () {
     $fashion = CatalogFixture::fashionRoot();
     $productId = CatalogFixture::product('fashion');
     CatalogFixture::place($productId, $fashion);
@@ -214,12 +227,22 @@ it('shows a fashion product no spec block, and says why', function () {
     /** @var array<string, mixed> $blocks */
     $blocks = $props['blocks'];
 
+    /*
+     * This test asserted the opposite until wave 4D — that `fashion` had NO block and the screen
+     * rendered a "no specifications for this family" panel. The block now exists, with exactly one
+     * field, because the supplier files carry a material for fashion goods and the developer's
+     * decision of 2026-09-14 is that they record it. What the test is really protecting is
+     * unchanged and is asserted below: a fashion product is never shown a WATCH form.
+     */
+    $own = T::arr($blocks[T::str($family['family'])] ?? null);
+
     expect($family['family'])->not->toBe('watch')
-        // Every block is shipped (so changing the category re-renders with no round trip)…
+        // Every block is shipped, so changing the category re-renders with no round trip…
         ->and($blocks)->toHaveKey('watch')
-        // …and the family this product has is not among them, so the screen renders the
-        // "no specifications for this family" panel.
-        ->and($blocks)->not->toHaveKey(T::str($family['family']));
+        // …the product's own block is among them…
+        ->and($own)->not->toBe([])
+        // …and it holds its own field, not a watch's.
+        ->and(array_column(T::arr($own['fields'] ?? null), 'key'))->toBe(['material_id']);
 });
 
 it('derives the family from the payload, never from a field the payload could claim', function () {

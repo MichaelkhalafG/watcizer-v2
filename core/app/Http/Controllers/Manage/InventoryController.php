@@ -7,6 +7,7 @@ use App\Domain\Inventory\InsufficientStock;
 use App\Domain\Inventory\InventoryService;
 use App\Domain\Inventory\StockTarget;
 use App\Support\Coerce;
+use App\Support\ManageText;
 use App\Support\Table\TableQuery;
 use App\Transform\Row;
 use Illuminate\Database\Query\JoinClause;
@@ -19,6 +20,7 @@ use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 use RuntimeException;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * Inventory — stock, the ledger, low stock, and the reconciliation panel (wave 4C).
@@ -54,7 +56,7 @@ final class InventoryController
      * Stock per product, with its variants, both buckets — and a low-stock view that is a FILTER
      * on this list rather than a separate screen, so the numbers cannot differ between the two.
      */
-    public function index(Request $request): Response
+    public function index(Request $request): Response|StreamedResponse
     {
         /** @var array<int, list<array<string, mixed>>> $variants */
         $variants = [];
@@ -65,7 +67,34 @@ final class InventoryController
             // `view` and `bucket` are predicates, not columns: declared so they are whitelisted
             // and rendered, applied by hand below (the `flag` lesson of wave 4B).
             ->filterable(['view' => ['', 'low'], 'bucket' => ['', 'express', 'market', 'out']])
-            ->virtual(['view', 'bucket']);
+            ->virtual(['view', 'bucket'])
+            /*
+             * A stock take, as a file. `variants` is flattened to one cell rather than dropped:
+             * a product with sizes is adjusted PER VARIANT, and a stock sheet that showed only
+             * the aggregate would be counted against the wrong thing on the warehouse floor.
+             */
+            /*
+             * Every heading is a key the INVENTORY or PRODUCTS screen already renders — the stock
+             * sheet is the table as a file, so the two must name a column the same way.
+             */
+            ->exportable([
+                'wa_code' => ManageText::t('products.code', 'الكود'),
+                'sku' => ManageText::t('products.supplier_code', 'كود المورّد'),
+                'title' => ManageText::t('common.name', 'الاسم'),
+                'family' => ManageText::t('products.family', 'العائلة'),
+                'express' => ManageText::t('common.stock_express', 'إكسبريس'),
+                'market' => ManageText::t('common.stock_market', 'ماركت'),
+                'total' => ManageText::t('common.total', 'الإجمالي'),
+                'threshold' => ManageText::t('inventory.threshold', 'حد التنبيه'),
+                'is_low' => ManageText::t('inventory.low', 'منخفض'),
+                'in_stock' => ManageText::t('products.in_stock', 'متوفر'),
+                'variants' => [ManageText::t('inventory.variants', 'المقاسات/الألوان'), fn (array $row): string => implode(' | ', array_map(
+                    static fn (mixed $variant): string => Coerce::str(Coerce::arr($variant)['label'] ?? null)
+                        .': '.Coerce::str(Coerce::arr($variant)['express'] ?? 0)
+                        .'/'.Coerce::str(Coerce::arr($variant)['market'] ?? 0),
+                    Coerce::arr($row['variants'] ?? null),
+                ))],
+            ], 'stock');
 
         $query = DB::table('catalog_products as p')
             ->leftJoin('catalog_product_translations as t', function (JoinClause $join): void {
@@ -94,47 +123,56 @@ final class InventoryController
             $query->where('p.stock_express', 0)->where('p.stock_market', 0);
         }
 
-        return Inertia::render('Manage/Inventory/Index', [
-            'table' => $table->paginate(
-                $query,
-                function (object $raw) use (&$variants): array {
-                    $row = Row::cast($raw);
-                    $id = Row::int($row, 'id');
-                    $express = Row::int($row, 'stock_express');
-                    $market = Row::int($row, 'stock_market');
-                    $threshold = Row::int($row, 'low_stock_threshold');
+        $prepare = function (array $rows) use (&$variants): void {
+            $variants = self::variantsForPage(Coerce::objectList($rows));
+        };
 
-                    return [
-                        'id' => $id,
-                        'wa_code' => Row::str($row, 'wa_code'),
-                        'sku' => Row::nstr($row, 'sku'),
-                        'title' => Row::nstr($row, 'title_ar'),
-                        'family' => Row::nstr($row, 'family'),
-                        'express' => $express,
-                        'market' => $market,
-                        'total' => $express + $market,
-                        'threshold' => $threshold,
-                        'in_stock' => Row::bool($row, 'in_stock'),
-                        'is_low' => ($express + $market) <= $threshold,
-                        // A product with variants is adjusted PER VARIANT: the aggregate is derived
-                        // and the service refuses a product-level movement on it (wave 3.5).
-                        'variants' => $variants[$id] ?? [],
-                    ];
-                },
-                function (array $rows) use (&$variants): void {
-                    $variants = self::variantsForPage($rows);
-                },
-            ),
+        $map = function (object $raw) use (&$variants): array {
+            $row = Row::cast($raw);
+            $id = Row::int($row, 'id');
+            $express = Row::int($row, 'stock_express');
+            $market = Row::int($row, 'stock_market');
+            $threshold = Row::int($row, 'low_stock_threshold');
+
+            return [
+                'id' => $id,
+                'wa_code' => Row::str($row, 'wa_code'),
+                'sku' => Row::nstr($row, 'sku'),
+                'title' => Row::nstr($row, 'title_ar'),
+                'family' => Row::nstr($row, 'family'),
+                'express' => $express,
+                'market' => $market,
+                'total' => $express + $market,
+                'threshold' => $threshold,
+                'in_stock' => Row::bool($row, 'in_stock'),
+                'is_low' => ($express + $market) <= $threshold,
+                // A product with variants is adjusted PER VARIANT: the aggregate is derived
+                // and the service refuses a product-level movement on it (wave 3.5).
+                'variants' => $variants[$id] ?? [],
+            ];
+        };
+
+        if ($table->wantsExport()) {
+            return $table->export($query, $map, $prepare);
+        }
+
+        return Inertia::render('Manage/Inventory/Index', [
+            'table' => $table->paginate($query, $map, $prepare),
             'filters' => [
+                /*
+                 * The VALUES are the predicate the query reads and stay codes; only the labels
+                 * beside them are translated. `مخزون منخفض` is the products screen's own
+                 * `low_stock` filter word, deliberately the same key: one filter, one name.
+                 */
                 'views' => [
-                    ['value' => '', 'label' => 'كل المنتجات'],
-                    ['value' => 'low', 'label' => 'مخزون منخفض'],
+                    ['value' => '', 'label' => ManageText::t('inventory.all_products', 'كل المنتجات')],
+                    ['value' => 'low', 'label' => ManageText::t('products.low_stock', 'مخزون منخفض')],
                 ],
                 'buckets' => [
-                    ['value' => '', 'label' => 'كل المخازن'],
-                    ['value' => 'express', 'label' => 'إكسبريس فقط'],
-                    ['value' => 'market', 'label' => 'ماركت فقط'],
-                    ['value' => 'out', 'label' => 'نفد بالكامل'],
+                    ['value' => '', 'label' => ManageText::t('inventory.all_buckets', 'كل المخازن')],
+                    ['value' => 'express', 'label' => ManageText::t('inventory.express_only', 'إكسبريس فقط')],
+                    ['value' => 'market', 'label' => ManageText::t('inventory.market_only', 'ماركت فقط')],
+                    ['value' => 'out', 'label' => ManageText::t('inventory.out_of_both', 'نفد بالكامل')],
                 ],
             ],
             'reasons' => self::adjustmentReasons(),
@@ -147,7 +185,7 @@ final class InventoryController
      *
      * Read-only by construction: this method has no sibling that writes.
      */
-    public function ledger(Request $request): Response
+    public function ledger(Request $request): Response|StreamedResponse
     {
         $table = TableQuery::for($request)
             ->sortable(['im.created_at', 'im.quantity_delta', 'im.id'], default: 'im.created_at', direction: 'desc')
@@ -161,7 +199,29 @@ final class InventoryController
                 'from' => null,
                 'to' => null,
             ])
-            ->virtual(['reason', 'bucket', 'product_id', 'storefront_id', 'reference_type', 'from', 'to']);
+            ->virtual(['reason', 'bucket', 'product_id', 'storefront_id', 'reference_type', 'from', 'to'])
+            /*
+             * The ledger is the export the accountant actually asks for, and it is already past
+             * 100 000 rows — which is why the whole mechanism streams. Every column here is a
+             * movement fact; there is no customer or credential anywhere in this table.
+             */
+            ->exportable([
+                'created_at' => ManageText::t('common.date', 'التاريخ'),
+                'wa_code' => ManageText::t('products.code', 'الكود'),
+                'product_id' => ManageText::t('common.product_number', 'رقم المنتج'),
+                'variant' => ManageText::t('inventory.ledger_variant', 'المقاس/اللون'),
+                'bucket' => ManageText::t('inventory.bucket', 'المخزن'),
+                'delta' => ManageText::t('inventory.ledger_delta', 'التغيير'),
+                'after' => ManageText::t('inventory.ledger_balance_after', 'الرصيد بعدها'),
+                'reason' => ManageText::t('common.reason', 'السبب'),
+                'reference' => ManageText::t('inventory.ledger_source', 'المصدر'),
+                'reference_id' => ManageText::t('inventory.ledger_source_id', 'رقم المصدر'),
+                'external_ref' => ManageText::t('inventory.ledger_external_ref', 'مرجع خارجي'),
+                'actor' => ManageText::t('inventory.ledger_actor', 'مَن'),
+                'actor_id' => ManageText::t('inventory.ledger_actor_id', 'رقم المستخدم'),
+                'storefront_id' => ManageText::t('common.storefront', 'المتجر'),
+                'note' => ManageText::t('common.note', 'ملاحظة'),
+            ], 'stock-ledger');
 
         $query = DB::table('inventory_movements as im')
             ->leftJoin('catalog_products as p', 'p.id', '=', 'im.product_id')
@@ -196,36 +256,45 @@ final class InventoryController
             $query->where('im.created_at', '<=', $to.' 23:59:59');
         }
 
-        return Inertia::render('Manage/Inventory/Ledger', [
-            'table' => $table->paginate($query, function (object $raw): array {
-                $row = Row::cast($raw);
+        $map = function (object $raw): array {
+            $row = Row::cast($raw);
 
-                return [
-                    'id' => Row::int($row, 'id'),
-                    'product_id' => Row::nint($row, 'product_id'),
-                    'wa_code' => Row::nstr($row, 'wa_code'),
-                    'variant' => Row::nstr($row, 'variant_label'),
-                    'bucket' => Row::str($row, 'bucket'),
-                    'delta' => Row::int($row, 'quantity_delta'),
-                    'after' => Row::int($row, 'quantity_after'),
-                    'reason' => Row::str($row, 'reason'),
-                    'reference' => Row::nstr($row, 'reference_type'),
-                    'reference_id' => Row::nint($row, 'reference_id'),
-                    'actor' => Row::nstr($row, 'actor_type'),
-                    'actor_id' => Row::nint($row, 'actor_id'),
-                    'storefront_id' => Row::nint($row, 'storefront_id'),
-                    'note' => Row::nstr($row, 'note'),
-                    'external_ref' => Row::nstr($row, 'external_ref'),
-                    'created_at' => Row::nstr($row, 'created_at'),
-                ];
-            }),
+            return [
+                'id' => Row::int($row, 'id'),
+                'product_id' => Row::nint($row, 'product_id'),
+                'wa_code' => Row::nstr($row, 'wa_code'),
+                'variant' => Row::nstr($row, 'variant_label'),
+                'bucket' => Row::str($row, 'bucket'),
+                'delta' => Row::int($row, 'quantity_delta'),
+                'after' => Row::int($row, 'quantity_after'),
+                'reason' => Row::str($row, 'reason'),
+                'reference' => Row::nstr($row, 'reference_type'),
+                'reference_id' => Row::nint($row, 'reference_id'),
+                'actor' => Row::nstr($row, 'actor_type'),
+                'actor_id' => Row::nint($row, 'actor_id'),
+                'storefront_id' => Row::nint($row, 'storefront_id'),
+                'note' => Row::nstr($row, 'note'),
+                'external_ref' => Row::nstr($row, 'external_ref'),
+                'created_at' => Row::nstr($row, 'created_at'),
+            ];
+        };
+
+        if ($table->wantsExport()) {
+            return $table->export($query, $map);
+        }
+
+        return Inertia::render('Manage/Inventory/Ledger', [
+            'table' => $table->paginate($query, $map),
             'filters' => [
                 'reasons' => array_map(
                     fn (string $r): array => ['value' => $r, 'label' => $r],
                     InventoryService::REASONS,
                 ),
                 'buckets' => [
-                    ['value' => '', 'label' => 'كل المخازن'],
+                    ['value' => '', 'label' => ManageText::t('inventory.all_buckets', 'كل المخازن')],
+                    // The two bucket rows below carry the COLUMN VALUE as their label and have
+                    // always done so — English on an Arabic screen, but not Arabic text, so they
+                    // are left exactly as they were rather than changed under a translation pass.
                     ['value' => 'express', 'label' => 'express'],
                     ['value' => 'market', 'label' => 'market'],
                 ],
@@ -250,7 +319,11 @@ final class InventoryController
             'ok' => $exitCode === 0,
             'exit_code' => $exitCode,
             // The command's own words, verbatim, so the screen and the terminal agree.
-            'report' => $output === '' ? 'لم يُصدر الفحص أي مخرجات.' : $output,
+            // `$output` itself is the COMMAND's words and is never translated — the screen has to
+            // agree with the terminal. Only the "it said nothing" stand-in is UI text.
+            'report' => $output === ''
+                ? ManageText::t('inventory.recon_no_output', 'لم يُصدر الفحص أي مخرجات.')
+                : $output,
             'ran_at' => now()->toDateTimeString(),
             'counts' => [
                 'products' => DB::table('catalog_products')->whereNull('deleted_at')->count(),
@@ -291,15 +364,30 @@ final class InventoryController
             $belongs = DB::table('catalog_product_variants')
                 ->where('id', $variantId)->where('product_id', $productId)->exists();
             if (! $belongs) {
-                throw ValidationException::withMessages(['variant_id' => 'هذا المقاس/اللون لا يتبع هذا المنتج.']);
+                throw ValidationException::withMessages([
+                    'variant_id' => ManageText::t(
+                        'inventory.variant_not_of_product',
+                        'هذا المقاس/اللون لا يتبع هذا المنتج.',
+                    ),
+                ]);
             }
         }
 
         if ($mode === 'adjust' && $quantity === 0) {
-            throw ValidationException::withMessages(['quantity' => 'التغيير النسبي لا يمكن أن يكون صفرًا. استخدم «تعيين» لضبط رقم مطلق.']);
+            throw ValidationException::withMessages([
+                'quantity' => ManageText::t(
+                    'inventory.adjust_zero_delta',
+                    'التغيير النسبي لا يمكن أن يكون صفرًا. استخدم «تعيين» لضبط رقم مطلق.',
+                ),
+            ]);
         }
         if ($mode === 'set' && $quantity < 0) {
-            throw ValidationException::withMessages(['quantity' => 'الكمية المطلقة لا يمكن أن تكون سالبة.']);
+            throw ValidationException::withMessages([
+                'quantity' => ManageText::t(
+                    'inventory.set_negative',
+                    'الكمية المطلقة لا يمكن أن تكون سالبة.',
+                ),
+            ]);
         }
 
         $target = $variantId === null
@@ -326,7 +414,10 @@ final class InventoryController
                 );
         } catch (InsufficientStock $e) {
             throw ValidationException::withMessages([
-                'quantity' => 'لا يوجد مخزون كافٍ لهذا الخصم: الكمية المطلوبة أكبر من المتاح.',
+                'quantity' => ManageText::t(
+                    'inventory.insufficient_stock',
+                    'لا يوجد مخزون كافٍ لهذا الخصم: الكمية المطلوبة أكبر من المتاح.',
+                ),
             ]);
         } catch (RuntimeException $e) {
             // The service's own refusals are already operator-readable (wave 3.5 wrote them in
@@ -335,8 +426,8 @@ final class InventoryController
         }
 
         return back()->with('status', $movement === null
-            ? 'الكمية المطلوبة مطابقة للحالية، فلم تُسجَّل حركة.'
-            : 'تم تسجيل الحركة في السجل.');
+            ? ManageText::t('inventory.no_movement_needed', 'الكمية المطلوبة مطابقة للحالية، فلم تُسجَّل حركة.')
+            : ManageText::t('inventory.movement_recorded', 'تم تسجيل الحركة في السجل.'));
     }
 
     // ── reads ────────────────────────────────────────────────────────────────────────────────
@@ -355,12 +446,21 @@ final class InventoryController
     /** @return list<array{value: string, label: string}> */
     private static function adjustmentReasons(): array
     {
+        /*
+         * The KEYS are the `reason` column's own values and are never translated — they are
+         * written to `inventory_movements.reason` and compared against `ADJUSTMENT_REASONS`.
+         * Only the labels move.
+         *
+         * Four of the five are the vocabulary the ledger screen already renders, so they reuse its
+         * keys. `restock` does NOT: the ledger calls it `توريد` and this picker calls it
+         * `توريد جديد`, which are two different phrases, and one key cannot hold both.
+         */
         $labels = [
-            'adjustment' => 'تسوية جرد',
-            'restock' => 'توريد جديد',
-            'manual' => 'تعديل يدوي',
-            'import' => 'استيراد',
-            'erp_sync' => 'مزامنة ERP',
+            'adjustment' => ManageText::t('inventory.ledger_reason_adjustment', 'تسوية جرد'),
+            'restock' => ManageText::t('inventory.reason_restock', 'توريد جديد'),
+            'manual' => ManageText::t('common.reason_manual', 'تعديل يدوي'),
+            'import' => ManageText::t('common.reason_import', 'استيراد'),
+            'erp_sync' => ManageText::t('common.reason_erp_sync', 'مزامنة ERP'),
         ];
 
         $out = [];
@@ -419,7 +519,10 @@ final class InventoryController
     /** @return list<array{value: string, label: string}> */
     private static function referenceTypes(): array
     {
-        $out = [['value' => '', 'label' => 'كل المصادر']];
+        // The rows below carry the `reference_type` COLUMN VALUE as both value and label — a table
+        // name the operator matches against the ledger, not a phrase to translate. Only the
+        // "any source" row is UI text.
+        $out = [['value' => '', 'label' => ManageText::t('inventory.ledger_all_sources', 'كل المصادر')]];
         foreach (
             DB::table('inventory_movements')->whereNotNull('reference_type')
                 ->distinct()->orderBy('reference_type')->pluck('reference_type') as $value

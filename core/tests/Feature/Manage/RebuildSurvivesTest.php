@@ -57,6 +57,56 @@ it('guards the creation of every table on the never-dropped list', function () {
     expect($unguarded)->toBe([], 'a preserved table is created unguarded, so the rebuild will die at "table already exists": '.implode(', ', $unguarded));
 });
 
+it('guards every ALTER of a preserved table, not only its creation', function () {
+    /*
+     * The third case, and the one nobody wrote down (found 2026-09-16 adding M1q).
+     *
+     * AGENTS §2.20 says adding a table to `DASHBOARD_TABLES` is two edits: the list, and the guard
+     * on its CREATION. But `core:drop-clean` clears the WHOLE `core_migrations` ledger, so after a
+     * rebuild `migrate` re-runs every migration — including one that only ALTERS a preserved table.
+     * That table was never dropped, so it still carries the column, and an unguarded
+     * `$table->string('x')` dies at "Duplicate column name" at the second command of the runbook.
+     *
+     * Same failure as the unguarded `Schema::create` above, same night, different verb. M1q
+     * (`promotion_rule_rewards.amount`) is the first migration of this shape; this test is here so
+     * it is not the last one to be checked by hand.
+     */
+    $migrations = glob(database_path('migrations/*.php'));
+    $files = $migrations === false ? [] : $migrations;
+
+    $unguarded = [];
+    foreach ($files as $file) {
+        $contents = file_get_contents($file);
+        if (! is_string($contents)) {
+            continue;
+        }
+
+        foreach (CoreChecksumCommand::DASHBOARD_TABLES as $table) {
+            if (! str_contains($contents, "Schema::table('".$table."'")) {
+                continue;
+            }
+
+            /*
+             * `hasColumn` anywhere in the file is enough: the guard may sit around the
+             * `Schema::table` call or inside the closure around the individual column, and both
+             * make the re-run a no-op. Asserting the SHAPE any tighter would fail a correct
+             * migration for writing its guard differently.
+             */
+            if (! str_contains($contents, 'Schema::hasColumn')) {
+                $unguarded[] = basename($file).' → '.$table;
+            }
+        }
+    }
+
+    expect(array_values(array_unique($unguarded)))->toBe(
+        [],
+        "A migration ALTERS a preserved table without a `Schema::hasColumn` guard. The table survives\n"
+        ."`core:drop-clean` but the migration ledger does not, so this re-runs on switch night against\n"
+        ."a table that already has the column — and dies at \"Duplicate column name\".\n\n"
+        .'Wrap the change: `if (! Schema::hasColumn($table, $column)) { Schema::table(…); }`'
+    );
+});
+
 it('keeps the payment tables on the never-dropped list, with their translations', function () {
     // The list itself, asserted by name: a payment contract lost to a rebuild is a storefront that
     // silently stops taking money, and the credentials are not recoverable from the repo.

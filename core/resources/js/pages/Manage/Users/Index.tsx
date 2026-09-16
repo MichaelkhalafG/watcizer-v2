@@ -1,16 +1,26 @@
-import { router, useForm, usePage } from '@inertiajs/react';
-import { useState } from 'react';
+import { router, useForm, usePage } from "@inertiajs/react";
+import { useState } from "react";
 
-import { SelectField, TextField } from '@/components/form/TextField';
-import { ConfirmAction } from '@/components/manage/ConfirmAction';
-import { Alert } from '@/components/ui/alert';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import ManageLayout from '@/layouts/ManageLayout';
-import type { SharedProps } from '@/types';
+import { SelectField, TextField } from "@/components/form/TextField";
+import { ConfirmAction } from "@/components/manage/ConfirmAction";
+import { Alert } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import {
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+} from "@/components/ui/table";
+import ManageLayout from "@/layouts/ManageLayout";
+import type { SharedProps } from "@/types";
+import { Ltr } from "@/components/ui/bidi";
+import { ExportLink } from "@/components/table/ExportLink";
+import { useT } from "@/lib/i18n";
 
 /**
  * Users & roles (wave 4C, admin only).
@@ -63,84 +73,150 @@ interface Props {
     current_user_id: number;
 }
 
-/** Keyed by the enum's own VALUES (`App\Domain\Access\Role`), which are snake_case. */
-const ROLE_LABEL: Record<string, string> = {
-    admin: 'مدير',
-    data_entry: 'إدخال بيانات',
-};
-
-export default function UsersIndex({ grants, search, roles, storefronts, current_user_id }: Props) {
+export default function UsersIndex({
+    grants,
+    search,
+    roles,
+    storefronts,
+    current_user_id,
+}: Props) {
+    const t = useT();
     const { errors } = usePage<SharedProps>().props;
     const [term, setTerm] = useState(search.term);
 
+    /**
+     * Keyed by the enum's own VALUES (`App\Domain\Access\Role`), which are snake_case. Built inside
+     * the component because each label goes through `t()`, and a hook cannot run at module level.
+     */
+    const roleLabel: Record<string, string> = {
+        admin: t("users.role_admin", "مدير النظام"),
+        data_entry: t("users.role_data_entry", "إدخال بيانات"),
+    };
+
     const form = useForm({
-        email: '',
-        role: roles[0]?.value ?? 'data-entry',
-        storefront_id: '',
+        email: "",
+        role: roles[0]?.value ?? "data-entry",
+        storefront_id: "",
     });
 
     const runSearch = () => {
-        router.get('/manage/users', term === '' ? {} : { q: term }, { preserveState: true, preserveScroll: true, replace: true });
+        router.get("/manage/users", term === "" ? {} : { q: term }, {
+            preserveState: true,
+            preserveScroll: true,
+            replace: true,
+        });
     };
 
-    const unscopedAdmins = grants.filter((grant) => grant.role === 'admin' && grant.storefront_id === null);
+    const unscopedAdmins = grants.filter(
+        (grant) => grant.role === "admin" && grant.storefront_id === null,
+    );
 
     return (
-        <ManageLayout title="المستخدمون والصلاحيات" crumbs={[{ label: 'الرئيسية', href: '/manage' }, { label: 'المستخدمون والصلاحيات' }]}>
+        <ManageLayout
+            title={t("users.title", "المستخدمون والصلاحيات")}
+            crumbs={[
+                { label: t("common.home", "الرئيسية"), href: "/manage" },
+                { label: t("users.title", "المستخدمون والصلاحيات") },
+            ]}
+            /* The GRANTS, never the account search — see UserRoleController for why. */
+            actions={
+                <ExportLink
+                    count={grants.length}
+                    label={t("users.export_grants", "تصدير الصلاحيات")}
+                />
+            }
+        >
             <div className="space-y-6">
-                <Alert tone="info" title="هذه الشاشة تمنح الصلاحيات ولا تُنشئ حسابات">
-                    جدول الحسابات مشترك مع المتجر والداشبورد القديم، فلا تُنشئ اللوحة حسابًا ولا تعدّله ولا تعيد تعيين
-                    كلمة مروره. الحساب يُنشأ من المتجر أو من الداشبورد القديم، ثم يُمنح من هنا. وللبدء على قاعدة بيانات
-                    جديدة يبقى الأمر <code dir="ltr">php artisan manage:role</code> هو الطريق الوحيد — لا يمكن منح أول
-                    صلاحية من شاشة تحتاج صلاحية لفتحها.
+                <Alert
+                    tone="info"
+                    title={t(
+                        "users.grants_only_title",
+                        "هذه الشاشة تمنح الصلاحيات ولا تُنشئ حسابات",
+                    )}
+                >
+                    {t(
+                        "users.grants_only_body_before_command",
+                        "جدول الحسابات مشترك مع المتجر والداشبورد القديم، فلا تُنشئ اللوحة حسابًا ولا تعدّله ولا تعيد تعيين كلمة مروره. الحساب يُنشأ من المتجر أو من الداشبورد القديم، ثم يُمنح من هنا. وللبدء على قاعدة بيانات جديدة يبقى الأمر ",
+                    )}
+                    <code dir="ltr">php artisan manage:role</code>
+                    {t(
+                        "users.grants_only_body_after_command",
+                        " هو الطريق الوحيد — لا يمكن منح أول صلاحية من شاشة تحتاج صلاحية لفتحها.",
+                    )}
                 </Alert>
 
-                {errors.grant ? <Alert tone="error">{errors.grant}</Alert> : null}
+                {errors.grant ? (
+                    <Alert tone="error">{errors.grant}</Alert>
+                ) : null}
 
                 <div className="grid gap-6 lg:grid-cols-2">
                     <Card>
                         <CardHeader>
-                            <CardTitle>منح صلاحية</CardTitle>
+                            <CardTitle>
+                                {t("users.grant_title", "منح صلاحية")}
+                            </CardTitle>
                         </CardHeader>
                         <CardContent>
                             <form
                                 className="space-y-4"
                                 onSubmit={(event) => {
                                     event.preventDefault();
-                                    form.post('/manage/users/grants', {
+                                    form.post("/manage/users/grants", {
                                         preserveScroll: true,
-                                        onSuccess: () => form.setData('email', ''),
+                                        onSuccess: () =>
+                                            form.setData("email", ""),
                                     });
                                 }}
                             >
                                 <TextField
-                                    label="بريد الحساب"
+                                    label={t(
+                                        "users.account_email",
+                                        "بريد الحساب",
+                                    )}
                                     required
                                     dir="ltr"
                                     value={form.data.email}
-                                    onChange={(value) => form.setData('email', value)}
+                                    onChange={(value) =>
+                                        form.setData("email", value)
+                                    }
                                     error={errors.email ?? null}
-                                    hint="يجب أن يكون الحساب موجودًا بالفعل."
+                                    hint={t(
+                                        "users.account_must_exist",
+                                        "يجب أن يكون الحساب موجودًا بالفعل.",
+                                    )}
                                 />
                                 <SelectField
-                                    label="الصلاحية"
+                                    label={t("users.role", "الصلاحية")}
                                     required
                                     value={form.data.role}
-                                    onChange={(value) => form.setData('role', value)}
+                                    onChange={(value) =>
+                                        form.setData("role", value)
+                                    }
                                     options={roles}
                                     error={errors.role ?? null}
                                 />
                                 <SelectField
-                                    label="النطاق"
+                                    label={t("users.scope", "النطاق")}
                                     value={form.data.storefront_id}
-                                    onChange={(value) => form.setData('storefront_id', value)}
+                                    onChange={(value) =>
+                                        form.setData("storefront_id", value)
+                                    }
                                     options={storefronts}
                                     error={errors.storefront_id ?? null}
-                                    hint="«كل المتاجر» تعني صلاحية غير مقيّدة بمتجر."
+                                    hint={t(
+                                        "users.scope_hint",
+                                        "«كل المتاجر» تعني صلاحية غير مقيّدة بمتجر.",
+                                    )}
                                 />
                                 <div className="flex justify-end">
-                                    <Button type="submit" disabled={form.processing}>
-                                        امنح الصلاحية
+                                    <Button
+                                        type="submit"
+                                        disabled={form.processing}
+                                    >
+                                        {t(
+                                            "users.grant_submit",
+                                            "امنح الصلاحية",
+                                        )}
                                     </Button>
                                 </div>
                             </form>
@@ -149,7 +225,9 @@ export default function UsersIndex({ grants, search, roles, storefronts, current
 
                     <Card>
                         <CardHeader>
-                            <CardTitle>ابحث عن حساب</CardTitle>
+                            <CardTitle>
+                                {t("users.search_title", "ابحث عن حساب")}
+                            </CardTitle>
                         </CardHeader>
                         <CardContent className="space-y-4">
                             <form
@@ -160,25 +238,37 @@ export default function UsersIndex({ grants, search, roles, storefronts, current
                                 }}
                             >
                                 <Input
-                                    aria-label="بحث بالبريد أو الاسم"
+                                    aria-label={t(
+                                        "users.search_aria",
+                                        "بحث بالبريد أو الاسم",
+                                    )}
                                     dir="ltr"
                                     className="min-w-[12rem] flex-1"
                                     value={term}
-                                    onChange={(event) => setTerm(event.target.value)}
+                                    onChange={(event) =>
+                                        setTerm(event.target.value)
+                                    }
                                     placeholder="email or name"
                                 />
                                 <Button type="submit" variant="outline">
-                                    ابحث
+                                    {t("common.search", "ابحث")}
                                 </Button>
                             </form>
 
                             {!search.searched ? (
                                 <p className="text-sm text-muted-foreground">
-                                    البحث لا يعرض الجدول كاملًا: هو يحتوي عملاء المتجر أيضًا. اكتب بريدًا أو اسمًا —
-                                    أقصى عشرين نتيجة.
+                                    {t(
+                                        "users.search_hint",
+                                        "البحث لا يعرض الجدول كاملًا: هو يحتوي عملاء المتجر أيضًا. اكتب بريدًا أو اسمًا — أقصى عشرين نتيجة.",
+                                    )}
                                 </p>
                             ) : search.results.length === 0 ? (
-                                <p className="text-sm text-muted-foreground">لا نتائج. الحساب يُنشأ من المتجر أو من الداشبورد القديم.</p>
+                                <p className="text-sm text-muted-foreground">
+                                    {t(
+                                        "users.no_results",
+                                        "لا نتائج. الحساب يُنشأ من المتجر أو من الداشبورد القديم.",
+                                    )}
+                                </p>
                             ) : (
                                 <div className="space-y-2">
                                     {search.results.map((found) => (
@@ -187,23 +277,42 @@ export default function UsersIndex({ grants, search, roles, storefronts, current
                                             className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border p-3"
                                         >
                                             <div className="space-y-0.5">
-                                                <div className="text-sm font-medium" dir="ltr">
-                                                    {found.email ?? '—'}
+                                                <div className="text-sm font-medium">
+                                                    <Ltr>
+                                                        {found.email ?? "—"}
+                                                    </Ltr>
                                                 </div>
                                                 <div className="text-xs text-muted-foreground">
-                                                    {found.name ?? '—'}
-                                                    {found.legacy_type !== null ? ` · ${found.legacy_type}` : ''}
+                                                    {found.name ?? "—"}
+                                                    {found.legacy_type !== null
+                                                        ? ` · ${found.legacy_type}`
+                                                        : ""}
                                                 </div>
                                             </div>
                                             <div className="flex items-center gap-2">
-                                                {found.has_grant ? <Badge variant="neutral">له صلاحية</Badge> : null}
+                                                {found.has_grant ? (
+                                                    <Badge variant="neutral">
+                                                        {t(
+                                                            "users.has_grant",
+                                                            "له صلاحية",
+                                                        )}
+                                                    </Badge>
+                                                ) : null}
                                                 <Button
                                                     type="button"
                                                     variant="outline"
                                                     size="sm"
-                                                    onClick={() => form.setData('email', found.email ?? '')}
+                                                    onClick={() =>
+                                                        form.setData(
+                                                            "email",
+                                                            found.email ?? "",
+                                                        )
+                                                    }
                                                 >
-                                                    استخدم هذا البريد
+                                                    {t(
+                                                        "users.use_this_email",
+                                                        "استخدم هذا البريد",
+                                                    )}
                                                 </Button>
                                             </div>
                                         </div>
@@ -216,75 +325,158 @@ export default function UsersIndex({ grants, search, roles, storefronts, current
 
                 <Card>
                     <CardHeader>
-                        <CardTitle>الصلاحيات الممنوحة ({grants.length})</CardTitle>
+                        <CardTitle>
+                            {t(
+                                "users.granted_title",
+                                "الصلاحيات الممنوحة (:count)",
+                                { count: grants.length },
+                            )}
+                        </CardTitle>
                     </CardHeader>
                     <CardContent className="overflow-x-auto p-0">
                         <Table>
                             <TableHeader>
                                 <TableRow>
-                                    <TableHead>الحساب</TableHead>
-                                    <TableHead>الصلاحية</TableHead>
-                                    <TableHead>النطاق</TableHead>
-                                    <TableHead>منحها</TableHead>
-                                    <TableHead>التاريخ</TableHead>
+                                    <TableHead>
+                                        {t("users.account", "الحساب")}
+                                    </TableHead>
+                                    <TableHead>
+                                        {t("users.role", "الصلاحية")}
+                                    </TableHead>
+                                    <TableHead>
+                                        {t("users.scope", "النطاق")}
+                                    </TableHead>
+                                    <TableHead>
+                                        {t("users.granted_by", "منحها")}
+                                    </TableHead>
+                                    <TableHead>
+                                        {t("common.date", "التاريخ")}
+                                    </TableHead>
                                     <TableHead />
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
                                 {grants.map((grant) => {
-                                    const isSelfAdmin = grant.role === 'admin' && grant.user_id === current_user_id;
+                                    const isSelfAdmin =
+                                        grant.role === "admin" &&
+                                        grant.user_id === current_user_id;
                                     const isLastAdmin =
-                                        grant.role === 'admin' && grant.storefront_id === null && unscopedAdmins.length <= 1;
+                                        grant.role === "admin" &&
+                                        grant.storefront_id === null &&
+                                        unscopedAdmins.length <= 1;
                                     const blocked = isSelfAdmin || isLastAdmin;
 
                                     return (
                                         <TableRow key={grant.id}>
                                             <TableCell>
                                                 <div className="space-y-0.5">
-                                                    <div className="text-sm font-medium" dir="ltr">
-                                                        {grant.email ?? `#${grant.user_id}`}
+                                                    <div className="text-sm font-medium">
+                                                        <Ltr>
+                                                            {grant.email ??
+                                                                `#${grant.user_id}`}
+                                                        </Ltr>
                                                     </div>
                                                     <div className="text-xs text-muted-foreground">
-                                                        {grant.name ?? '—'}
+                                                        {grant.name ?? "—"}
                                                         {/* The legacy flag means nothing to core's gates. Showing it
                                                             next to the grant ends the "but they are SuperAdmin"
                                                             conversation before it starts. */}
-                                                        {grant.legacy_type !== null ? (
-                                                            <span title="علم الداشبورد القديم — لا تقرأه اللوحة الجديدة">
-                                                                {' '}
-                                                                · legacy: {grant.legacy_type}
+                                                        {grant.legacy_type !==
+                                                        null ? (
+                                                            <span
+                                                                title={t(
+                                                                    "users.legacy_flag_hint",
+                                                                    "علم الداشبورد القديم — لا تقرأه اللوحة الجديدة",
+                                                                )}
+                                                            >
+                                                                {" "}
+                                                                · legacy:{" "}
+                                                                {
+                                                                    grant.legacy_type
+                                                                }
                                                             </span>
                                                         ) : null}
                                                     </div>
                                                 </div>
                                             </TableCell>
                                             <TableCell>
-                                                <Badge variant={grant.role === 'admin' ? 'default' : 'neutral'}>
-                                                    {ROLE_LABEL[grant.role] ?? grant.role}
+                                                <Badge
+                                                    variant={
+                                                        grant.role === "admin"
+                                                            ? "default"
+                                                            : "neutral"
+                                                    }
+                                                >
+                                                    {roleLabel[grant.role] ??
+                                                        grant.role}
                                                 </Badge>
                                             </TableCell>
                                             <TableCell className="text-sm">
-                                                {grant.storefront_id === null ? 'كل المتاجر' : (grant.storefront ?? `#${grant.storefront_id}`)}
+                                                {grant.storefront_id === null
+                                                    ? t(
+                                                          "common.all_storefronts",
+                                                          "كل المتاجر",
+                                                      )
+                                                    : (grant.storefront ??
+                                                      `#${grant.storefront_id}`)}
                                             </TableCell>
-                                            <TableCell className="text-xs text-muted-foreground" dir="ltr">
-                                                {grant.granted_by ?? 'command'}
+                                            <TableCell
+                                                className="text-xs text-muted-foreground"
+                                                dir="ltr"
+                                            >
+                                                {grant.granted_by ?? "command"}
                                             </TableCell>
-                                            <TableCell className="text-xs text-muted-foreground" dir="ltr">
-                                                {grant.created_at ?? '—'}
+                                            <TableCell
+                                                className="text-xs text-muted-foreground"
+                                                dir="ltr"
+                                            >
+                                                {grant.created_at ?? "—"}
                                             </TableCell>
                                             <TableCell className="text-end">
                                                 <ConfirmAction
-                                                    title="سحب الصلاحية"
-                                                    confirmLabel="اسحب الصلاحية"
+                                                    title={t(
+                                                        "users.revoke_title",
+                                                        "سحب الصلاحية",
+                                                    )}
+                                                    confirmLabel={t(
+                                                        "users.revoke_confirm",
+                                                        "اسحب الصلاحية",
+                                                    )}
                                                     disabled={blocked}
                                                     consequence={
                                                         <p>
-                                                            سيفقد <span dir="ltr">{grant.email ?? `#${grant.user_id}`}</span> صلاحية
-                                                            «{ROLE_LABEL[grant.role] ?? grant.role}»{' '}
-                                                            {grant.storefront_id === null
-                                                                ? 'على كل المتاجر'
-                                                                : `على ${grant.storefront ?? `#${grant.storefront_id}`}`}
-                                                            . الحساب نفسه لا يتأثر — يبقى قادرًا على الدخول إلى المتجر كما كان.
+                                                            <span dir="ltr">
+                                                                {grant.email ??
+                                                                    `#${grant.user_id}`}
+                                                            </span>{" "}
+                                                            {t(
+                                                                "users.revoke_consequence",
+                                                                "سيفقد صلاحية «:role» :scope. الحساب نفسه لا يتأثر — يبقى قادرًا على الدخول إلى المتجر كما كان.",
+                                                                {
+                                                                    role:
+                                                                        roleLabel[
+                                                                            grant
+                                                                                .role
+                                                                        ] ??
+                                                                        grant.role,
+                                                                    scope:
+                                                                        grant.storefront_id ===
+                                                                        null
+                                                                            ? t(
+                                                                                  "users.on_all_storefronts",
+                                                                                  "على كل المتاجر",
+                                                                              )
+                                                                            : t(
+                                                                                  "users.on_storefront",
+                                                                                  "على :storefront",
+                                                                                  {
+                                                                                      storefront:
+                                                                                          grant.storefront ??
+                                                                                          `#${grant.storefront_id}`,
+                                                                                  },
+                                                                              ),
+                                                                },
+                                                            )}
                                                         </p>
                                                     }
                                                     trigger={
@@ -294,17 +486,31 @@ export default function UsersIndex({ grants, search, roles, storefronts, current
                                                             disabled={blocked}
                                                             title={
                                                                 isSelfAdmin
-                                                                    ? 'لا يمكنك سحب صلاحية المدير من نفسك — اطلب من مدير آخر.'
+                                                                    ? t(
+                                                                          "users.cannot_revoke_self",
+                                                                          "لا يمكنك سحب صلاحية المدير من نفسك — اطلب من مدير آخر.",
+                                                                      )
                                                                     : isLastAdmin
-                                                                      ? 'هذه آخر صلاحية مدير عامة: سحبها يترك اللوحة بلا مدير.'
+                                                                      ? t(
+                                                                            "users.cannot_revoke_last_admin",
+                                                                            "هذه آخر صلاحية مدير عامة: سحبها يترك اللوحة بلا مدير.",
+                                                                        )
                                                                       : undefined
                                                             }
                                                         >
-                                                            اسحب
+                                                            {t(
+                                                                "users.revoke",
+                                                                "اسحب",
+                                                            )}
                                                         </Button>
                                                     }
                                                     onConfirm={() =>
-                                                        router.delete(`/manage/users/grants/${grant.id}`, { preserveScroll: true })
+                                                        router.delete(
+                                                            `/manage/users/grants/${grant.id}`,
+                                                            {
+                                                                preserveScroll: true,
+                                                            },
+                                                        )
                                                     }
                                                 />
                                             </TableCell>
@@ -313,8 +519,14 @@ export default function UsersIndex({ grants, search, roles, storefronts, current
                                 })}
                                 {grants.length === 0 ? (
                                     <TableRow>
-                                        <TableCell colSpan={6} className="py-6 text-center text-sm text-muted-foreground">
-                                            لا توجد صلاحيات ممنوحة.
+                                        <TableCell
+                                            colSpan={6}
+                                            className="py-6 text-center text-sm text-muted-foreground"
+                                        >
+                                            {t(
+                                                "users.empty",
+                                                "لا توجد صلاحيات ممنوحة.",
+                                            )}
                                         </TableCell>
                                     </TableRow>
                                 ) : null}

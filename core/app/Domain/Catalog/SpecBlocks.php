@@ -83,6 +83,30 @@ final class SpecBlocks
     }
 
     /**
+     * Does this family's block declare this field?
+     *
+     * Asked by the wave-4D importer before it writes a material: `material_id` exists on a bag, a
+     * wallet and a fashion product, and not on a perfume or an electronics item. Reading the block
+     * beats a hard-coded family list, which is the mistake the legacy dashboard made about watches
+     * and had to be hotfixed for.
+     */
+    public static function hasField(string $family, string $key): bool
+    {
+        $block = self::for($family);
+        if ($block === null) {
+            return false;
+        }
+
+        foreach ($block['fields'] as $field) {
+            if ($field['key'] === $key) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * Every family that HAS a block. Used by the form (it ships all blocks so switching the
      * category re-renders without a round trip) and by the tests that prove the round trip.
      *
@@ -257,6 +281,17 @@ final class SpecBlocks
             ->leftJoin($translations.' as en', function (JoinClause $join) use ($fk): void {
                 $join->on('en.'.$fk, '=', 'm.id')->where('en.locale', '=', 'en');
             })
+            /*
+             * A RETIRED row is not offered (wave 4D, task C3). Declared per lookup in
+             * `config/catalog.php` rather than sniffed from the schema: `catalog_units` is the only
+             * list with a retirement column today, and a helper that quietly filtered on a column
+             * "if it happens to exist" would be the kind of rule nobody can find later.
+             *
+             * It filters the PICKER only. A product already pointing at a retired unit keeps
+             * rendering it, which is the point: hiding the row must not silently blank a
+             * measurement on a live page.
+             */
+            ->when(Coerce::bool($entry['retirable'] ?? null), fn ($query) => $query->whereNull('m.retired_at'))
             ->orderBy('m.id')
             ->get(['m.id', 'ar.name as name_ar', 'en.name as name_en']);
 

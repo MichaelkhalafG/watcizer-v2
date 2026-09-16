@@ -206,6 +206,18 @@ final class CartCases
      */
     private static function accountCases(?array $reader): array
     {
+        /*
+         * ── the subject for `account:orders`, and why it works ───────────────────────────────
+         *
+         * `orders` and `order_items` are SHARED tables. Both hosts place their authenticated order
+         * into the same table, and then both read the same rows back — so `me/orders` answers with
+         * identical bytes on both sides even though the two orders have different ids and
+         * `order_number`s (D-20). That is what makes an order-line comparison possible at all
+         * without the harness seeding fixture data.
+         *
+         * This runs in `accountCases()` rather than `checkoutSequence()` so it is ordered BEFORE
+         * the `account:orders` reads that need it, on the reader's own identity.
+         */
         $cases = [
             new DiffCase('account:orders:401', 'api/me/orders', 'json', [], true, 'account'),
             new DiffCase('account:orders:bad-token', 'api/me/orders', 'json', ['Authorization' => 'Bearer not.a.token'], true, 'account'),
@@ -217,12 +229,37 @@ final class CartCases
         }
         $auth = ['Authorization' => 'Bearer '.$reader['token']];
 
-        // Read-only and identical on both sides: same token, same user, same rows — so these
-        // four compare byte for byte with nothing absorbed.
-        $cases[] = new DiffCase('account:orders', 'api/me/orders', 'json', $auth, true, 'account');
-        $cases[] = new DiffCase('account:orders:ar', 'api/me/orders', 'json', $auth + ['Accept-Language' => 'ar-EG,ar;q=0.9'], true, 'account');
-        $cases[] = new DiffCase('account:addresses', 'api/me/addresses', 'json', $auth, true, 'account');
-        $cases[] = new DiffCase('account:addresses:ar', 'api/me/addresses', 'json', $auth + ['Accept-Language' => 'ar-EG,ar;q=0.9'], true, 'account');
+        /*
+         * An AUTHENTICATED COD checkout, on the reader's identity, before the reads below.
+         *
+         * Its own response differs between the hosts by `order_number` (D-20: MAX+1 over a shared
+         * table, so the second host takes the next one) — already sanctioned, and the same rule
+         * the guest `checkout:cod` case relies on.
+         */
+        $subject = self::authenticatedCheckout($reader, $auth);
+        foreach ($subject as $case) {
+            $cases[] = $case;
+        }
+
+        /*
+         * Read-only and identical on both sides: same token, same user, and — because `orders` is
+         * shared — the same ROWS, including the two orders the case above just placed. So these
+         * compare byte for byte with nothing absorbed.
+         *
+         * `mustNotBeEmpty`: these two are the ONLY cases that compare an order line's shape, and
+         * for four waves they compared two empty arrays and called it a match. If the subject ever
+         * disappears again the run fails instead of passing quietly.
+         */
+        $cases[] = new DiffCase('account:orders', 'api/me/orders', 'json', $auth, true, 'account',
+            DiffCase::ACCEPT_AXIOS, 'GET', null, '', [], ['$', '$[*].order_item'], mustNotBeEmpty: true);
+        $cases[] = new DiffCase('account:orders:ar', 'api/me/orders', 'json', $auth + ['Accept-Language' => 'ar-EG,ar;q=0.9'], true, 'account',
+            DiffCase::ACCEPT_AXIOS, 'GET', null, '', [], ['$', '$[*].order_item'], mustNotBeEmpty: true);
+        // `me/addresses` was vacuous for the same reason and is now a real comparison: the
+        // checkout above gave the reader an address, and both hosts read it from the shared table.
+        $cases[] = new DiffCase('account:addresses', 'api/me/addresses', 'json', $auth, true, 'account',
+            DiffCase::ACCEPT_AXIOS, 'GET', null, '', [], [], mustNotBeEmpty: true);
+        $cases[] = new DiffCase('account:addresses:ar', 'api/me/addresses', 'json', $auth + ['Accept-Language' => 'ar-EG,ar;q=0.9'], true, 'account',
+            DiffCase::ACCEPT_AXIOS, 'GET', null, '', [], [], mustNotBeEmpty: true);
         // Ownership: an id that is not this user's is a 404, never someone else's row.
         $cases[] = new DiffCase('account:address:delete:404', 'api/me/addresses/999999', 'json', $auth, true, 'account', DiffCase::ACCEPT_AXIOS, 'DELETE');
         $cases[] = new DiffCase('account:address:delete:not-mine', 'api/me/addresses/'.self::foreignAddressId($reader['id']), 'json', $auth, true, 'account', DiffCase::ACCEPT_AXIOS, 'DELETE');
@@ -231,6 +268,74 @@ final class CartCases
         $cases[] = new DiffCase('cart:merge:unknown-guest', 'api/cart/merge', 'json', $auth, true, 'account', DiffCase::ACCEPT_AXIOS, 'POST', ['guest_token' => '00000000-0000-4000-a000-000000000000']);
 
         return $cases;
+    }
+
+    /**
+     * The authenticated COD checkout that gives `account:orders` something to compare.
+     *
+     * Placed on the reader's own identity with the reader's own address, so nothing about it
+     * belongs to a guest token and the order really is theirs. It writes — that is the point —
+     * which makes it litter of exactly the kind rehearsal rule 11.0 records: two orders per run,
+     * one per host, and a rebuild afterwards.
+     *
+     * @param  array{id: int, token: string}  $reader
+     * @param  array<string, string>  $auth
+     * @return list<DiffCase>
+     */
+    private static function authenticatedCheckout(array $reader, array $auth): array
+    {
+        $product = self::stockedProduct();
+        $city = self::shippingCity();
+        if ($product === null || $city === null) {
+            return [];
+        }
+
+        $item = self::line($product['id'], 1, $product['price']);
+
+        /*
+         * ── reuse an address if the reader has one, create it if not ─────────────────────────
+         *
+         * First run on a database where no user owns an address: send the three address FIELDS, so
+         * `add_order` creates one and stamps `user_id` on it. That is the only way to bring the
+         * subject into existence through the endpoints under test rather than by seeding rows
+         * behind their back.
+         *
+         * Every run after that: send `address_id` instead, so the reader's account does not grow
+         * one address per run forever (rehearsal rule 11.0 is about exactly this kind of drip).
+         *
+         * The shipping cost — and therefore the total the server will demand — comes from
+         * whichever city the chosen address carries, which is why it is read rather than assumed.
+         */
+        $addressId = DB::table('addresses')->where('user_id', $reader['id'])->orderBy('id')->value('id');
+
+        if (is_numeric($addressId)) {
+            $cost = DB::table('addresses as a')
+                ->join('shipping_cities as c', 'c.id', '=', 'a.shipping_city_id')
+                ->where('a.id', (int) $addressId)
+                ->value('c.shipping_cost');
+            $body = [
+                'user_id' => $reader['id'],
+                'address_id' => (int) $addressId,
+                'total_price_for_order' => round($product['price'] + (is_numeric($cost) ? (float) $cost : $city['cost']), 2),
+                'payment_method' => 'cash',
+                'items' => [$item],
+            ];
+        } else {
+            $body = [
+                'user_id' => $reader['id'],
+                'shipping_city_id' => $city['id'],
+                'address_line' => 'Harness Account Street 1',
+                'phone' => '01000000000',
+                'total_price_for_order' => round($product['price'] + $city['cost'], 2),
+                'payment_method' => 'cash',
+                'items' => [$item],
+            ];
+        }
+
+        return [
+            new DiffCase('checkout:cod:auth', 'api/add_order', 'json', $auth, true, 'account',
+                DiffCase::ACCEPT_AXIOS, 'POST', $body),
+        ];
     }
 
     /**
@@ -337,6 +442,21 @@ final class CartCases
     }
 
     /**
+     * The account a REMOTE run must use, named by the operator (`--subject-user`).
+     *
+     * A static because a `compat:diff` run is one process doing one thing, and threading an option
+     * through `all()` → `accountCases()` → here would put the value in three signatures that exist
+     * for nothing else. Null is the local case: pick a subject from the database, which is safe
+     * precisely because the database is a copy.
+     */
+    private static ?int $subjectUserId = null;
+
+    public static function useSubject(int $userId): void
+    {
+        self::$subjectUserId = $userId;
+    }
+
+    /**
      * A real account with orders AND addresses, used ONLY for GETs. No harness case creates,
      * edits or deletes anything belonging to it — the two write cases aimed at it are a 404 on
      * an id it does not own and a 404 on an id that does not exist.
@@ -345,19 +465,74 @@ final class CartCases
      */
     public static function readOnlyUser(): ?array
     {
-        $id = DB::table('orders as o')
-            ->join('addresses as a', 'a.user_id', '=', 'o.user_id')
-            ->whereNotNull('o.user_id')
-            ->groupBy('o.user_id')
-            ->orderByRaw('COUNT(DISTINCT o.id) DESC, o.user_id')
-            ->value('o.user_id');
-        $id ??= DB::table('users')->orderBy('id')->value('id');
+        if (self::$subjectUserId !== null) {
+            /*
+             * An operator-named account is used AS GIVEN — not searched for, not fallen back from.
+             * If it does not exist the run must stop rather than quietly choose somebody else,
+             * because "quietly chose somebody else" on a production host means this harness
+             * attached its orders and addresses to a real customer.
+             */
+            $exists = DB::table('users')->where('id', self::$subjectUserId)->exists();
+            if (! $exists) {
+                throw new \RuntimeException(
+                    'The --subject-user account '.self::$subjectUserId.' does not exist on this database. '
+                    .'Name an account that does; the harness will not pick one for a remote run.'
+                );
+            }
+
+            $token = HarnessJwt::mint(self::$subjectUserId);
+
+            return $token === null ? null : ['id' => self::$subjectUserId, 'token' => $token];
+        }
+
+        /*
+         * ── the silent fallback that made a case pass for four waves ─────────────────────────
+         *
+         * This used to prefer a user with orders AND addresses and then fall back to
+         * `users.orderBy(id)->value('id')` — user 1. In THIS database every one of the 45 orders
+         * is a GUEST order (`user_id IS NULL`), so the preferred search found nobody, the fallback
+         * answered user 1, and `account:orders` compared `[]` with `[]` and reported IDENTICAL.
+         *
+         * Nothing was wrong with the comparison. The case simply had no subject, and the fallback
+         * hid that — which means the order-line SHAPE has never been byte-compared by this harness:
+         * not for M1f's `variant_id`, not for M1l's `promotion_rule_id` / `is_reward`.
+         *
+         * Measured on 2026-09-13: 4 users, 47 addresses, and **not one address owned by a user**.
+         * Every address and every order in this database belongs to a guest token. So the subject
+         * cannot be FOUND — it has to be CREATED, and `checkout:cod:auth` below does exactly that:
+         * an authenticated `add_order` carrying address FIELDS makes
+         * `CompatAccount::createAddress()` stamp `user_id`, which gives `me/addresses` an address
+         * and `me/orders` an order with a line, on both hosts, in the same shared tables.
+         *
+         * An address is therefore an OUTPUT of the run, not a precondition for it. What this
+         * method needs is only a user to be; the ordering still PREFERS one who already has
+         * orders or addresses, so repeat runs settle on the same subject instead of spreading
+         * fixture rows across accounts.
+         */
+        $id = DB::table('users as u')
+            ->leftJoin('orders as o', 'o.user_id', '=', 'u.id')
+            ->leftJoin('addresses as a', 'a.user_id', '=', 'u.id')
+            ->groupBy('u.id')
+            ->orderByRaw('COUNT(DISTINCT o.id) DESC, COUNT(DISTINCT a.id) DESC, u.id')
+            ->value('u.id');
+
         if (! is_numeric($id)) {
             return null;
         }
         $token = HarnessJwt::mint((int) $id);
 
         return $token === null ? null : ['id' => (int) $id, 'token' => $token];
+    }
+
+    /** Why the account cases are missing, for the run's own output. Null when they are not. */
+    public static function readerRefusal(): ?string
+    {
+        if (self::readOnlyUser() !== null) {
+            return null;
+        }
+
+        return 'no users in this database, so no authenticated case can run and nothing on the '
+            .'account surface can be compared';
     }
 
     /** A cart line that belongs to somebody else, for the ownership case. */

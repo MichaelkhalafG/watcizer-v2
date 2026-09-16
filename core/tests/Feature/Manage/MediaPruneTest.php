@@ -1,6 +1,7 @@
 <?php
 
 use App\Console\Commands\MediaPruneCommand;
+use App\Domain\Media\MediaAudit;
 use App\Domain\Media\MediaStore;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
@@ -40,9 +41,43 @@ it('is a DRY RUN by default and deletes nothing', function () {
     }
 });
 
+/**
+ * Run a prune against an EMPTY tree, so the no-coverage guard has something to refuse.
+ *
+ * ── Why this replaced "just run it" ─────────────────────────────────────────────────────────
+ *
+ * These two cases used to rely on the workstation's media copy being PARTIAL: with no brand logo
+ * on disk, every referenced file looked orphaned and the guard fired. That was an accident of one
+ * machine's state used as a fixture, and on 2026-09-16 it stopped being true — the developer
+ * copied the missing folders in, `media:verify` went to "2,655 present, 0 absent", and both tests
+ * failed while the code they guard was perfectly correct.
+ *
+ * The condition is now CREATED: an empty directory, `media.root` pointed at it for the call. That
+ * tests the guard rather than the laptop, and it cannot rot when the tree changes again.
+ *
+ * @param  array<string, mixed>  $args
+ */
+function pruneAgainstAnEmptyTree(array $args): int
+{
+    $empty = storage_path('framework/testing/empty-media-'.uniqid());
+    mkdir($empty.'/Brand', 0777, true);
+
+    $previous = config()->string('media.root');
+    config(['media.root' => $empty]);
+
+    try {
+        return Artisan::call('media:prune', $args);
+    } finally {
+        config(['media.root' => $previous]);
+        @rmdir($empty.'/Brand');
+        @rmdir($empty);
+    }
+}
+
 it('REFUSES to delete when no referenced file exists in the tree', function () {
-    // The workstation's condition, asserted: a partial copy means everything looks orphaned.
-    expect(Artisan::call('media:prune', ['--delete' => true, '--type' => ['brand']]))->toBe(1);
+    // The condition is made, not borrowed from this machine: an empty tree means every referenced
+    // file looks orphaned, which is exactly what the guard exists to refuse.
+    expect(pruneAgainstAnEmptyTree(['--delete' => true, '--type' => ['brand']]))->toBe(1);
 
     // One read: `Artisan::output()` drains the buffer, so a second call returns an empty string.
     $output = Artisan::output();
@@ -97,7 +132,7 @@ it('never lists a file younger than the age floor', function () {
 it('exits NON-ZERO on every refusal, and on a report it could not complete', function () {
     // 🟡-5. A cron or a deploy step reads the exit code, so "I refused" and "I could not look"
     // must never look like "nothing to do".
-    expect(Artisan::call('media:prune', ['--delete' => true, '--type' => ['brand']]))
+    expect(pruneAgainstAnEmptyTree(['--delete' => true, '--type' => ['brand']]))
         ->toBe(1, 'a coverage refusal must be non-zero');
 
     // An unknown type is a usage error…
@@ -139,7 +174,8 @@ it('finds a reference EMBEDDED in long text, which a column scan cannot see', fu
         ->where('id', DB::table('catalog_product_translations')->orderBy('id')->value('id'))
         ->update(['long_description' => '<p><img src="https://dash.watchizereg.com/Uploads_Images/Product/'.$file.'"></p>']);
 
-    $referenced = (new MediaPruneCommand)->referencedFiles();
+    // The scan moved into `MediaAudit` (wave 4D task C4) so the screen and the command share it.
+    $referenced = app(MediaAudit::class)->referencedFiles();
 
     expect($referenced)->toHaveKey($file);
 });

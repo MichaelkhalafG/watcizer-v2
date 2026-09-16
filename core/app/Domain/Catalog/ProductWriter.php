@@ -2,9 +2,11 @@
 
 namespace App\Domain\Catalog;
 
+use App\Domain\Activity\ActivityLog;
 use App\Models\Catalog\Product;
 use App\Storefront\StorefrontCache;
 use App\Support\Coerce;
+use App\Support\ManageText;
 use App\Transform\Row;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -96,8 +98,29 @@ final class ProductWriter
             $this->indexer->reindex($id);
             $this->flush($id);
 
+            // No diff on a creation: there is no `before`, and logging forty fields as "changed
+            // from nothing" would drown the updates that carry the real answers.
+            ActivityLog::record('catalog_products', $id, ActivityLog::CREATED, label: $this->labelFor($id));
+
             return $id;
         });
+    }
+
+    /**
+     * What to call this product in the log.
+     *
+     * Captured at write time and stored on the row, because a log entry has to outlive its subject:
+     * six months later "catalog_products 512" is unreadable and "512 — Rolex Submariner" is the
+     * answer somebody was looking for. Arabic first, since that is the dashboard's language.
+     */
+    private function labelFor(int $productId): ?string
+    {
+        $title = DB::table('catalog_product_translations')
+            ->where('product_id', $productId)
+            ->orderByRaw("FIELD(locale, 'ar', 'en')")
+            ->value('title');
+
+        return is_string($title) && $title !== '' ? $title : null;
     }
 
     /**
@@ -118,7 +141,29 @@ final class ProductWriter
             $row['updated_by'] = $actorId;
             $row['updated_at'] = now();
 
+            /*
+             * The BEFORE snapshot, taken inside the transaction and limited to the columns this
+             * update actually writes. Reading the whole row would log forty fields to report two,
+             * and reading it outside the transaction would race the very write it describes.
+             *
+             * `updated_by` / `updated_at` are excluded: they change on every save by construction,
+             * so logging them would put a "changed" row against a save that changed nothing — the
+             * shape that turns an audit trail into something nobody reads.
+             */
+            $audited = array_diff_key($row, ['updated_by' => true, 'updated_at' => true]);
+            $before = ActivityLog::fields(DB::table('catalog_products')->where('id', $productId)
+                ->first(array_keys($audited)));
+
             DB::table('catalog_products')->where('id', $productId)->update($row);
+
+            ActivityLog::record(
+                'catalog_products',
+                $productId,
+                ActivityLog::UPDATED,
+                $before,
+                $audited,
+                label: $this->labelFor($productId),
+            );
 
             $this->writeTranslations($productId, $data);
             $this->writeSpecs($productId, $family, $data);
@@ -147,6 +192,12 @@ final class ProductWriter
                 'updated_by' => $actorId,
                 'updated_at' => now(),
             ]);
+
+            ActivityLog::record(
+                'catalog_products', $productId, ActivityLog::DELETED,
+                label: $this->labelFor($productId),
+            );
+
             $this->flush($productId);
         });
     }
@@ -159,6 +210,11 @@ final class ProductWriter
                 'updated_by' => $actorId,
                 'updated_at' => now(),
             ]);
+
+            ActivityLog::record(
+                'catalog_products', $productId, ActivityLog::RESTORED,
+                label: $this->labelFor($productId),
+            );
             $this->flush($productId);
         });
     }
@@ -273,17 +329,31 @@ final class ProductWriter
 
             // `title` is NOT NULL in the schema: a locale with any content must have a title.
             if (($values['title'] ?? null) === null) {
-                throw new RuntimeException("اللغة [{$locale}] بها بيانات بدون عنوان. أدخل العنوان أو اترك اللغة فارغة تمامًا.");
+                throw new RuntimeException(ManageText::t(
+                    'products.locale_needs_title',
+                    'اللغة [:locale] بها بيانات بدون عنوان. أدخل العنوان أو اترك اللغة فارغة تمامًا.',
+                    ['locale' => $locale],
+                ));
             }
 
+            /*
+             * `is_machine = 0` on every write through this door, and that is the whole lifecycle of
+             * the importer's machine-translation badge (wave 4D). The developer's requirement was
+             * that it *"disappear when a human edits that translation"* — so it is cleared by the
+             * thing that DOES the editing, not by a screen remembering to send a flag. An import
+             * sets it afterwards, deliberately and in one place; everything else clears it.
+             */
             DB::table('catalog_product_translations')->updateOrInsert(
                 ['product_id' => $productId, 'locale' => $locale],
-                $values,
+                $values + ['is_machine' => 0],
             );
         }
 
         if (! DB::table('catalog_product_translations')->where('product_id', $productId)->where('locale', 'ar')->exists()) {
-            throw new RuntimeException('العنوان العربي مطلوب: الترجمة الاحتياطية مُعطّلة، والمنتج بدون عربي لا يصلح للعرض.');
+            throw new RuntimeException(ManageText::t(
+                'products.arabic_title_required',
+                'العنوان العربي مطلوب: الترجمة الاحتياطية مُعطّلة، والمنتج بدون عربي لا يصلح للعرض.',
+            ));
         }
     }
 
@@ -476,7 +546,15 @@ final class ProductWriter
      * and the compat payloads are all derived (study §3.7.6). The transform bumps the version on
      * every real run for the same reason; an edit made through the dashboard is no different.
      */
-    private function flush(int $productId): void
+    /**
+     * Invalidate every cached payload that carries this product.
+     *
+     * PUBLIC since wave 4D so {@see ProductPatcher} can call the same invalidation rather than
+     * keep a second copy of it — the per-storefront forget AND the catalogue-wide fallback for a
+     * product with no placement yet. Two copies of a cache-invalidation rule is how one of them
+     * quietly stops invalidating something.
+     */
+    public function flush(int $productId): void
     {
         $storefronts = DB::table('storefront_product')->where('product_id', $productId)->pluck('storefront_id');
         $ids = [];

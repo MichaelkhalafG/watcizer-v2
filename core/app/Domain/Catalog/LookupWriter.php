@@ -5,6 +5,8 @@ namespace App\Domain\Catalog;
 use App\Storefront\StorefrontCache;
 use App\Support\Coerce;
 use App\Support\LegacySlug;
+use App\Support\ManageText;
+use App\Support\Sql;
 use App\Transform\Row;
 use Illuminate\Database\Query\JoinClause;
 use Illuminate\Support\Facades\DB;
@@ -28,7 +30,7 @@ use RuntimeException;
  * to every row and the writer refuses first, naming the number. The FK stays as the backstop:
  * this is the message, not the mechanism.
  *
- * @phpstan-type LookupDef array{key: string, label: string, master: string, translations: string, fk: string, extra: array<string, array<string, mixed>>, usage: list<array{0: string, 1: string}>}
+ * @phpstan-type LookupDef array{key: string, label: string, master: string, translations: string, fk: string, extra: array<string, array<string, mixed>>, usage: list<array{0: string, 1: string}>, json_usage?: list<array{0: string, 1: string, 2: string}>}
  */
 final class LookupWriter
 {
@@ -162,7 +164,11 @@ final class LookupWriter
         if ($uses > 0) {
             return [
                 'deleted' => false,
-                'reason' => "لا يمكن الحذف: العنصر مستخدم في {$uses} سجل. غيّر تلك السجلات أولًا.",
+                'reason' => ManageText::t(
+                    'lookups.delete_refused',
+                    'لا يمكن الحذف: العنصر مستخدم في :count سجل. غيّر تلك السجلات أولًا.',
+                    ['count' => $uses],
+                ),
             ];
         }
 
@@ -172,12 +178,13 @@ final class LookupWriter
             $this->flush();
         });
 
-        return ['deleted' => true, 'reason' => 'تم الحذف.'];
+        return ['deleted' => true, 'reason' => ManageText::t('lookups.deleted', 'تم الحذف.')];
     }
 
     /**
      * How many rows reference this lookup row, across every declared (table, column) pair.
      *
+     * @param  LookupDef  $def
      * @param  LookupDef  $def
      */
     public function usageCount(array $def, int $id): int
@@ -187,7 +194,43 @@ final class LookupWriter
             $total += DB::table($table)->where($column, $id)->count();
         }
 
+        /*
+         * …and the same lookup stored inside a JSON spec column (wave 4D: `material_id` on a bag,
+         * a wallet, a fashion product). A reference the guard cannot see is a row it will happily
+         * delete out from under 166 handbags, so the JSON shape is declared and counted too.
+         *
+         * `JSON_EXTRACT` with a bound path: the key comes from config and the id is a binding, so
+         * nothing caller-supplied becomes SQL text.
+         */
+        foreach ($def['json_usage'] ?? [] as [$table, $column, $key]) {
+            $total += DB::table($table)
+                ->whereNotNull($column)
+                ->whereRaw(Sql::jsonExtract($column), ['$.'.$key, $id])
+                ->count();
+        }
+
         return $total;
+    }
+
+    /**
+     * Declared JSON references, narrowed: `[table, column, key]` triples and nothing else.
+     *
+     * @return list<array{0: string, 1: string, 2: string}>
+     */
+    private static function jsonUsage(mixed $declared): array
+    {
+        $out = [];
+        foreach (Coerce::arr($declared) as $entry) {
+            $pair = array_values(Coerce::arr($entry));
+            $table = Coerce::nstr($pair[0] ?? null);
+            $column = Coerce::nstr($pair[1] ?? null);
+            $key = Coerce::nstr($pair[2] ?? null);
+            if ($table !== null && $column !== null && $key !== null) {
+                $out[] = [$table, $column, $key];
+            }
+        }
+
+        return $out;
     }
 
     /**
@@ -304,7 +347,7 @@ final class LookupWriter
             $slug = LegacySlug::make(Coerce::str($names['en'] ?? null));
         }
         if ($slug === '') {
-            throw new RuntimeException('الرابط (slug) مطلوب بحروف لاتينية: الروابط العامة لا تُبنى من العربية.');
+            throw new RuntimeException(ManageText::t('lookups.slug_latin_required', 'الرابط (slug) مطلوب بحروف لاتينية: الروابط العامة لا تُبنى من العربية.'));
         }
 
         return $slug;
@@ -326,7 +369,7 @@ final class LookupWriter
 
             if ($name === '') {
                 if ($locale === 'ar') {
-                    throw new RuntimeException('الاسم العربي مطلوب.');
+                    throw new RuntimeException(ManageText::t('lookups.name_ar_required', 'الاسم العربي مطلوب.'));
                 }
                 DB::table($def['translations'])->where($def['fk'], $id)->where('locale', $locale)->delete();
 
@@ -389,6 +432,9 @@ final class LookupWriter
             'fk' => Coerce::str($entry['fk'] ?? null),
             'extra' => $extra,
             'usage' => $usage,
+            // Declared JSON references, carried through as config wrote them: `usageCount()` reads
+            // them with JSON_EXTRACT (wave 4D — `material_id` inside a product's `specs`).
+            'json_usage' => self::jsonUsage($entry['json_usage'] ?? null),
         ];
     }
 }

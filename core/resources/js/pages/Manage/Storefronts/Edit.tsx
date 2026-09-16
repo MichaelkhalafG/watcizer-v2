@@ -5,9 +5,11 @@ import { SelectField, TextField } from '@/components/form/TextField';
 import { SwitchField } from '@/components/form/SwitchField';
 import { useDirtyGuard } from '@/components/form/useDirtyGuard';
 import ManageLayout from '@/layouts/ManageLayout';
+import { Alert } from '@/components/ui/alert';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
+import { useT } from '@/lib/i18n';
 import type { SharedProps } from '@/types';
 
 interface StorefrontForm {
@@ -19,6 +21,8 @@ interface StorefrontForm {
     default_locale: string;
     currency: string;
     is_active: boolean;
+    /** Does this storefront's frontend compute and display a promotion-aware total? */
+    money_rewards: boolean;
 }
 
 /**
@@ -29,6 +33,7 @@ interface StorefrontForm {
  * and compat payload, so renaming it is a migration and not a form field (see StorefrontController).
  */
 export default function StorefrontEdit({ storefront, locale_options }: { storefront: StorefrontForm; locale_options: Array<{ value: string; label: string }> }) {
+    const t = useT();
     const { errors } = usePage<SharedProps>().props;
     const form = useForm({
         name: storefront.name,
@@ -37,6 +42,7 @@ export default function StorefrontEdit({ storefront, locale_options }: { storefr
         default_locale: storefront.default_locale,
         currency: storefront.currency,
         is_active: storefront.is_active,
+        money_rewards: storefront.money_rewards,
     });
 
     useDirtyGuard(form.isDirty);
@@ -48,10 +54,10 @@ export default function StorefrontEdit({ storefront, locale_options }: { storefr
 
     return (
         <ManageLayout
-            title={`إعدادات ${storefront.name}`}
+            title={t('storefronts.edit_title', 'إعدادات :name', { name: storefront.name })}
             crumbs={[
-                { label: 'الرئيسية', href: '/manage' },
-                { label: 'المتاجر', href: '/manage/storefronts' },
+                { label: t('common.home', 'الرئيسية'), href: '/manage' },
+                { label: t('common.storefronts', 'المتاجر'), href: '/manage/storefronts' },
                 { label: storefront.name },
             ]}
         >
@@ -64,39 +70,52 @@ export default function StorefrontEdit({ storefront, locale_options }: { storefr
             >
                 <Card>
                     <CardHeader>
-                        <CardTitle>الهوية</CardTitle>
+                        <CardTitle>{t('storefronts.edit_identity', 'الهوية')}</CardTitle>
                     </CardHeader>
                     <CardContent className="grid gap-5 sm:grid-cols-2">
-                        <TextField label="الرمز" value={storefront.code} onChange={() => undefined} disabled dir="ltr" hint="ثابت: يُستخدم في مسارات الـAPI ومفاتيح الكاش." />
-                        <TextField label="الاسم" required value={form.data.name} onChange={(value) => form.setData('name', value)} error={errors.name ?? null} />
                         <TextField
-                            label="النطاق"
+                            label={t('storefronts.code', 'الرمز')}
+                            value={storefront.code}
+                            onChange={() => undefined}
+                            disabled
+                            dir="ltr"
+                            hint={t('storefronts.edit_code_hint', 'ثابت: يُستخدم في مسارات الـAPI ومفاتيح الكاش.')}
+                        />
+                        <TextField
+                            label={t('common.name', 'الاسم')}
+                            required
+                            value={form.data.name}
+                            onChange={(value) => form.setData('name', value)}
+                            error={errors.name ?? null}
+                        />
+                        <TextField
+                            label={t('common.domain', 'النطاق')}
                             dir="ltr"
                             value={form.data.domain}
                             onChange={(value) => form.setData('domain', value)}
                             error={errors.domain ?? null}
                             placeholder="example.com"
-                            hint="بدون بروتوكول."
+                            hint={t('storefronts.edit_domain_hint', 'بدون بروتوكول.')}
                         />
                         <TextField
-                            label="العملة"
+                            label={t('common.currency', 'العملة')}
                             required
                             dir="ltr"
                             value={form.data.currency}
                             onChange={(value) => form.setData('currency', value.toUpperCase().slice(0, 3))}
                             error={errors.currency ?? null}
-                            hint="رمز ISO من ثلاثة أحرف، مثل EGP."
+                            hint={t('storefronts.edit_currency_hint', 'رمز ISO من ثلاثة أحرف، مثل EGP.')}
                         />
                     </CardContent>
                 </Card>
 
                 <Card>
                     <CardHeader>
-                        <CardTitle>اللغات والعرض</CardTitle>
+                        <CardTitle>{t('storefronts.edit_languages_section', 'اللغات والعرض')}</CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-5">
                         <div className="space-y-2">
-                            <Label required>اللغات المفعّلة</Label>
+                            <Label required>{t('storefronts.edit_enabled_locales', 'اللغات المفعّلة')}</Label>
                             <div className="flex flex-wrap gap-4">
                                 {locale_options.map((option) => (
                                     <label key={option.value} className="flex cursor-pointer items-center gap-2 text-sm">
@@ -116,21 +135,72 @@ export default function StorefrontEdit({ storefront, locale_options }: { storefr
                         </div>
 
                         <SelectField
-                            label="اللغة الافتراضية"
+                            label={t('storefronts.edit_default_locale', 'اللغة الافتراضية')}
                             required
                             value={form.data.default_locale}
                             onChange={(value) => form.setData('default_locale', value)}
                             options={locale_options.filter((option) => form.data.locales.includes(option.value))}
                             error={errors.default_locale ?? null}
-                            hint="يجب أن تكون من اللغات المفعّلة."
+                            hint={t('storefronts.edit_default_locale_hint', 'يجب أن تكون من اللغات المفعّلة.')}
                         />
 
                         <SwitchField
-                            label="المتجر مفعّل"
+                            label={t('storefronts.edit_is_active', 'المتجر مفعّل')}
                             checked={form.data.is_active}
                             onChange={(checked) => form.setData('is_active', checked)}
                             error={errors.is_active ?? null}
                         />
+                    </CardContent>
+                </Card>
+
+                {/*
+                 * ── The money switch, in its own card with the warning beside it ─────────────
+                 *
+                 * Separated from the identity settings on purpose: this one does not change how the
+                 * storefront LOOKS, it changes what customers are charged, and the consequence of
+                 * turning it on too early is failed card orders rather than a cosmetic mistake.
+                 *
+                 * The warning is stated next to the control and not in a tooltip, because the
+                 * person who needs it is exactly the person who has already decided to switch it on.
+                 */}
+                <Card>
+                    <CardHeader>
+                        <CardTitle>{t('storefronts.edit_promotions_section', 'العروض التي تغيّر المبلغ')}</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                        <SwitchField
+                            label={t('storefronts.edit_money_rewards', 'اسمح بالخصومات والشحن المجاني على هذا المتجر')}
+                            checked={form.data.money_rewards}
+                            onChange={(checked) => form.setData('money_rewards', checked)}
+                            error={errors.money_rewards ?? null}
+                        />
+
+                        <Alert tone="warning" title={t('storefronts.money_rewards_warning_title', 'لا تفعّل هذا قبل انتقال واجهة المتجر إلى الإصدار الثاني')}>
+                            <p>
+                                {t(
+                                    'storefronts.money_rewards_warning_body',
+                                    'أنواع المكافآت التي تخفض المبلغ — نسبة خصم، مبلغ خصم، شحن مجاني — لن تعمل حتى تنتقل واجهة هذا المتجر إلى الإصدار الثاني. الواجهة الحالية تحسب الإجمالي بنفسها ولا تعرف بالعرض، فترسل الرقم الكامل.',
+                                )}
+                            </p>
+                            <p>
+                                {t(
+                                    'storefronts.money_rewards_warning_cod',
+                                    'في الدفع عند الاستلام: العميل يرى رقمًا ويُحصَّل منه رقم أقل.',
+                                )}
+                            </p>
+                            <p>
+                                {t(
+                                    'storefronts.money_rewards_warning_card',
+                                    'في الدفع بالبطاقة (Paymob): الواجهة تطلب من المزوّد المبلغ الكامل، ثم يقارن فحصُ المبلغ في ردّ المزوّد بإجمالي الطلب المخفَّض ولا يتطابقان — فيُسجَّل الطلب كمحاولة فاشلة ولا يُدفع ولا يُلغى، ويحتاج تدخّلًا يدويًا. كل طلب بطاقة عليه خصم سينتهي في قائمة المطابقة.',
+                                )}
+                            </p>
+                            <p>
+                                {t(
+                                    'storefronts.money_rewards_warning_safe',
+                                    'حتى ذلك الحين اترك هذا مغلقًا: القواعد التي تمنح هدايا مجانية تعمل على كل المتاجر بلا استثناء، لأن الهدية بسعر صفر لا تغيّر الإجمالي.',
+                                )}
+                            </p>
+                        </Alert>
                     </CardContent>
                 </Card>
 

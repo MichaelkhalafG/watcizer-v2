@@ -1,19 +1,25 @@
 import { Link, usePage } from '@inertiajs/react';
 import {
     Boxes,
+    Contact,
     ChevronsLeft,
     ChevronsRight,
     Circle,
     CreditCard,
     FolderTree,
+    Gift,
+    Image,
     LayoutDashboard,
     Layers,
     ListOrdered,
     Megaphone,
+    Newspaper,
     Package,
     Ruler,
+    Scale,
     ShoppingCart,
     Store,
+    Trash2,
     Users,
 } from 'lucide-react';
 import type { ComponentType } from 'react';
@@ -21,6 +27,7 @@ import type { ComponentType } from 'react';
 import { Brand } from '@/components/manage/Brand';
 import { cn } from '@/lib/utils';
 import type { NavGroup, NavItem, SharedProps } from '@/types';
+import { useT } from '@/lib/i18n';
 
 /**
  * Nav items name their icon as a string on the server (App\Domain\Access\Navigation); this maps it
@@ -38,10 +45,16 @@ const ICONS: Record<string, ComponentType<{ className?: string }>> = {
     Layers,
     ListOrdered,
     Ruler,
+    Scale,
     ShoppingCart,
     Boxes,
+    Contact,
     Megaphone,
+    Newspaper,
+    Image,
+    Gift,
     Store,
+    Trash2,
     Users,
     CreditCard,
 };
@@ -53,6 +66,7 @@ function NavIcon({ name, className }: { name: string; className?: string }) {
 }
 
 function Item({ item, collapsed }: { item: NavItem; collapsed: boolean }) {
+    const t = useT();
     const stub = item.href === null;
     const shared = cn(
         'group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors',
@@ -72,6 +86,29 @@ function Item({ item, collapsed }: { item: NavItem; collapsed: boolean }) {
                     {item.wave}
                 </span>
             ) : null}
+            {/*
+              * The unseen-orders count. The server sends null rather than 0, so there is no badge
+              * to ignore on a quiet morning — and the one that appears means something.
+              *
+              * It survives the COLLAPSED rail as a dot: the whole point is to catch the eye of
+              * somebody working another screen, and hiding it when the sidebar is narrow would
+              * hide it exactly when it is least in the way.
+              */}
+            {item.badge !== null && item.badge > 0 ? (
+                collapsed ? (
+                    <span
+                        className="absolute end-1.5 top-1.5 h-2 w-2 rounded-full bg-brand ring-2 ring-zinc-900"
+                        aria-label={t('shell.new_count', ':count جديد', { count: item.badge })}
+                    />
+                ) : (
+                    <span
+                        className="ms-auto min-w-[1.5rem] rounded-full bg-brand px-1.5 py-0.5 text-center text-[11px] font-semibold text-brand-foreground tabular-nums"
+                        aria-label={t('shell.new_count', ':count جديد', { count: item.badge })}
+                    >
+                        {item.badge}
+                    </span>
+                )
+            ) : null}
         </>
     );
 
@@ -83,7 +120,9 @@ function Item({ item, collapsed }: { item: NavItem; collapsed: boolean }) {
                 <span
                     className={shared}
                     aria-disabled="true"
-                    title={collapsed ? `${item.label} — قادم في ${item.wave}` : `قادم في ${item.wave}`}
+                    title={collapsed
+                        ? `${item.label} — ${t('shell.coming_in', 'قادم في :wave', { wave: item.wave ?? '' })}`
+                        : t('shell.coming_in', 'قادم في :wave', { wave: item.wave ?? '' })}
                 >
                     {body}
                 </span>
@@ -143,6 +182,7 @@ export function Sidebar({
     inSheet?: boolean;
 }) {
     const { nav, branding } = usePage<SharedProps>().props;
+    const t = useT();
 
     return (
         <div
@@ -161,7 +201,7 @@ export function Sidebar({
                 )}
             </div>
 
-            <nav aria-label="القائمة الرئيسية" className="flex-1 overflow-y-auto scrollbar-thin px-3 py-5">
+            <nav aria-label={t('shell.main_menu', 'القائمة الرئيسية')} className="flex-1 overflow-y-auto scrollbar-thin px-3 py-5">
                 {nav.map((group) => (
                     <Group key={group.key} group={group} collapsed={collapsed} />
                 ))}
@@ -180,7 +220,7 @@ export function Sidebar({
                     ) : (
                         <>
                             <ChevronsRight className="h-4 w-4 rtl:rotate-180" />
-                            <span>تصغير القائمة</span>
+                            <span>{t('shell.collapse_menu', 'تصغير القائمة')}</span>
                         </>
                     )}
                 </button>

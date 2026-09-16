@@ -6,6 +6,8 @@ use App\Domain\Access\Role;
 use App\Domain\Access\Roles;
 use App\Models\User;
 use App\Support\Coerce;
+use App\Support\ManageText;
+use App\Support\Table\TableExport;
 use App\Transform\Row;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Http\RedirectResponse;
@@ -15,6 +17,7 @@ use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * Users and roles — the screen 4A promised (wave 4C, AGENTS §2.7).
@@ -51,12 +54,38 @@ final class UserRoleController
      * Everyone who holds a dashboard grant, plus the accounts a search finds — because granting
      * requires finding an existing account first, and the team knows people by e-mail.
      */
-    public function index(Request $request): Response
+    public function index(Request $request): Response|StreamedResponse
     {
         $term = trim(Coerce::str($request->input('q')));
+        $grants = self::grantRows();
+
+        /*
+         * WHO CAN GET INTO THE DASHBOARD, as a file — the list somebody reviews quarterly.
+         *
+         * It exports the GRANTS and never the account search. That search reaches into `users`,
+         * which holds real customers, and a screen that deliberately refuses to page through them
+         * must not hand them over in a download either. No password, no remember-token, no hash
+         * appears here — not because they are filtered out, but because `grantRows()` never
+         * selected one.
+         */
+        $export = TableExport::wanted($request, 'dashboard-access', [
+            // The screen's own headings, off the screen's own keys: the file and the page are the
+            // same list, so a second English "Permission" here would be one waiting to disagree.
+            'email' => ManageText::t('common.email', 'البريد'),
+            'name' => ManageText::t('common.name', 'الاسم'),
+            'role' => ManageText::t('users.role', 'الصلاحية'),
+            'storefront' => [ManageText::t('users.scope', 'النطاق'), fn (array $row): string => Coerce::nstr($row['storefront'] ?? null)
+                ?? ManageText::t('common.all_storefronts', 'كل المتاجر')],
+            'granted_by' => ManageText::t('users.granted_by', 'منحها'),
+            'created_at' => ManageText::t('common.date', 'التاريخ'),
+            'legacy_type' => ManageText::t('users.legacy_type', 'النوع في النظام القديم'),
+        ], $grants);
+        if ($export !== null) {
+            return $export;
+        }
 
         return Inertia::render('Manage/Users/Index', [
-            'grants' => self::grantRows(),
+            'grants' => $grants,
             // The search is deliberately narrow and never lists the whole `users` table: it holds
             // customers, and a dashboard screen has no business paging through them.
             'search' => [
@@ -65,8 +94,8 @@ final class UserRoleController
                 'searched' => $term !== '',
             ],
             'roles' => [
-                ['value' => Role::Admin->value, 'label' => 'مدير (كل الصلاحيات)'],
-                ['value' => Role::DataEntry->value, 'label' => 'إدخال بيانات'],
+                ['value' => Role::Admin->value, 'label' => ManageText::t('users.role_admin_full', 'مدير (كل الصلاحيات)')],
+                ['value' => Role::DataEntry->value, 'label' => ManageText::t('users.role_data_entry', 'إدخال بيانات')],
             ],
             'storefronts' => self::storefrontOptions(),
             'current_user_id' => Coerce::int($request->user()?->getAuthIdentifier()),
@@ -86,12 +115,14 @@ final class UserRoleController
             'role' => ['required', 'string', Rule::in([Role::Admin->value, Role::DataEntry->value])],
             'storefront_id' => ['nullable', 'integer', Rule::exists('storefronts', 'id')],
         ], [
-            'email.exists' => 'لا يوجد حساب بهذا البريد. الحسابات تُنشأ من المتجر أو من الداشبورد القديم — هذه الشاشة تمنح الصلاحيات فقط.',
+            'email.exists' => ManageText::t('users.account_not_found_hint', 'لا يوجد حساب بهذا البريد. الحسابات تُنشأ من المتجر أو من الداشبورد القديم — هذه الشاشة تمنح الصلاحيات فقط.'),
         ]));
 
         $user = User::query()->where('email', Coerce::str($data['email']))->first();
         if ($user === null) {
-            throw ValidationException::withMessages(['email' => 'لا يوجد حساب بهذا البريد.']);
+            throw ValidationException::withMessages([
+                'email' => ManageText::t('users.account_not_found', 'لا يوجد حساب بهذا البريد.'),
+            ]);
         }
 
         $role = Role::from(Coerce::str($data['role']));
@@ -100,8 +131,8 @@ final class UserRoleController
         $this->roles->assign($user, $role, $storefrontId, $request->user());
 
         return back()->with('status', $storefrontId === null
-            ? 'تم منح الصلاحية على كل المتاجر.'
-            : 'تم منح الصلاحية على متجر واحد.');
+            ? ManageText::t('users.granted_all_storefronts', 'تم منح الصلاحية على كل المتاجر.')
+            : ManageText::t('users.granted_one_storefront', 'تم منح الصلاحية على متجر واحد.'));
     }
 
     /**
@@ -125,13 +156,13 @@ final class UserRoleController
 
         if ($role === Role::Admin->value && $userId === $currentUserId) {
             throw ValidationException::withMessages([
-                'grant' => 'لا يمكنك سحب صلاحية المدير من نفسك. اطلب من مدير آخر أن يفعلها، أو استخدم `php artisan manage:role revoke`.',
+                'grant' => ManageText::t('users.revoke_self_refused', 'لا يمكنك سحب صلاحية المدير من نفسك. اطلب من مدير آخر أن يفعلها، أو استخدم `php artisan manage:role revoke`.'),
             ]);
         }
 
         if ($role === Role::Admin->value && $storefrontId === null && self::unscopedAdminCount() <= 1) {
             throw ValidationException::withMessages([
-                'grant' => 'هذه آخر صلاحية مدير عامة في النظام: سحبها يترك اللوحة بلا مدير. امنح مديرًا آخر أولًا.',
+                'grant' => ManageText::t('users.revoke_last_admin_refused', 'هذه آخر صلاحية مدير عامة في النظام: سحبها يترك اللوحة بلا مدير. امنح مديرًا آخر أولًا.'),
             ]);
         }
 
@@ -145,7 +176,7 @@ final class UserRoleController
             DB::table('core_user_roles')->where('id', $grant)->delete();
         }
 
-        return back()->with('status', 'تم سحب الصلاحية.');
+        return back()->with('status', ManageText::t('users.revoked', 'تم سحب الصلاحية.'));
     }
 
     // ── reads ────────────────────────────────────────────────────────────────────────────────
@@ -242,7 +273,7 @@ final class UserRoleController
     /** @return list<array{value: string, label: string}> */
     private static function storefrontOptions(): array
     {
-        $out = [['value' => '', 'label' => 'كل المتاجر']];
+        $out = [['value' => '', 'label' => ManageText::t('common.all_storefronts', 'كل المتاجر')]];
         foreach (DB::table('storefronts')->orderBy('id')->get(['id', 'name']) as $raw) {
             $row = Row::cast($raw);
             $out[] = ['value' => (string) Row::int($row, 'id'), 'label' => Row::nstr($row, 'name') ?? ''];

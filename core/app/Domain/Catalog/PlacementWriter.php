@@ -6,6 +6,7 @@ use App\Models\Storefront\StorefrontRedirect;
 use App\Storefront\StorefrontCache;
 use App\Support\Coerce;
 use App\Support\LegacySlug;
+use App\Support\ManageText;
 use App\Transform\Row;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -235,10 +236,14 @@ final class PlacementWriter
     {
         $missing = $this->missingArabic($productId);
         if ($missing !== []) {
-            throw new RuntimeException(
-                'لا يمكن إظهار المنتج على المتجر قبل استكمال العربية (الترجمة الاحتياطية مُعطّلة). الناقص: '
-                .implode('، ', $missing)
-            );
+            // The missing fields travel as a `:fields` replacement rather than being glued to the
+            // end of the sentence: the seam's fallback is ONE literal, and a tail concatenated
+            // after it would stay Arabic for an English operator.
+            throw new RuntimeException(ManageText::t(
+                'placement.needs_arabic',
+                'لا يمكن إظهار المنتج على المتجر قبل استكمال العربية (الترجمة الاحتياطية مُعطّلة). الناقص: :fields',
+                ['fields' => implode(ManageText::t('common.list_separator', '، '), $missing)],
+            ));
         }
     }
 
@@ -260,16 +265,19 @@ final class PlacementWriter
     {
         $suggestion = Str::slug($requested);
 
-        $base = 'لا يمكن تحويل «'.$requested.'» إلى رابط: روابط المتجر تُكتب بحروف إنجليزية وأرقام '
-            .'وشرطات فقط، والحروف العربية والرموز لا تدخل فيها. ';
+        /*
+         * Two sentences, two keys, joined with a space — never one key spliced onto half of
+         * another. The rule is the same sentence in both branches, and only the NEXT STEP differs;
+         * splitting on the full stop keeps each half a whole thought for whoever writes the
+         * English, and keeps the shared half written once.
+         */
+        $base = ManageText::t('placement.slug_not_latin', 'لا يمكن تحويل «:name» إلى رابط: روابط المتجر تُكتب بحروف إنجليزية وأرقام وشرطات فقط، والحروف العربية والرموز لا تدخل فيها.', ['name' => $requested]);
 
         if ($suggestion === '') {
-            return $base.'اكتب رابطًا بالإنجليزية (مثل rolex-submariner)، أو اترك الخانة فارغة '
-                .'ليُولّد من العنوان الإنجليزي تلقائيًا.';
+            return $base.' '.ManageText::t('placement.slug_write_latin', 'اكتب رابطًا بالإنجليزية (مثل rolex-submariner)، أو اترك الخانة فارغة ليُولّد من العنوان الإنجليزي تلقائيًا.');
         }
 
-        return $base.'اقتراح قريب من الاسم: «'.$suggestion.'» — عدّله كما يناسبك واكتبه في الخانة، '
-            .'أو اتركها فارغة ليُولّد من العنوان الإنجليزي تلقائيًا.';
+        return $base.' '.ManageText::t('placement.slug_suggestion', 'اقتراح قريب من الاسم: «:suggestion» — عدّله كما يناسبك واكتبه في الخانة، أو اتركها فارغة ليُولّد من العنوان الإنجليزي تلقائيًا.', ['suggestion' => $suggestion]);
     }
 
     /**
@@ -288,10 +296,7 @@ final class PlacementWriter
             return;
         }
 
-        throw new RuntimeException(
-            'لا يمكن إظهار منتج بلا صورة: بطاقة المنتج على المتجر صورة وسعر، '
-            .'والإطار الفارغ يبدو عطلًا في الموقع. ارفع صورة واحدة على الأقل من قسم الصور ثم أظهره.'
-        );
+        throw new RuntimeException(ManageText::t('placement.needs_image', 'لا يمكن إظهار منتج بلا صورة: بطاقة المنتج على المتجر صورة وسعر، والإطار الفارغ يبدو عطلًا في الموقع. ارفع صورة واحدة على الأقل من قسم الصور ثم أظهره.'));
     }
 
     /**
@@ -310,10 +315,7 @@ final class PlacementWriter
             return;
         }
 
-        throw new RuntimeException(
-            'لا يمكن إظهار المنتج في هذا المتجر قبل اختيار تصنيف واحد على الأقل: '
-            .'منتج بلا تصنيف لا يظهر في أي قائمة ولا تحت أي قسم، ولا يصل إليه إلا من يعرف رابطه.'
-        );
+        throw new RuntimeException(ManageText::t('placement.needs_category', 'لا يمكن إظهار المنتج في هذا المتجر قبل اختيار تصنيف واحد على الأقل: منتج بلا تصنيف لا يظهر في أي قائمة ولا تحت أي قسم، ولا يصل إليه إلا من يعرف رابطه.'));
     }
 
     /**
@@ -328,12 +330,14 @@ final class PlacementWriter
             ->first(self::REQUIRED_AR);
 
         if ($row === null) {
-            return ['صف الترجمة العربية بالكامل'];
+            return [ManageText::t('placement.missing_arabic_row', 'صف الترجمة العربية بالكامل')];
         }
 
         // One label per required column. The map is exhaustive by construction, so adding a
         // column to REQUIRED_AR without a label is a PHPStan error and not a raw key on screen.
-        $labels = ['title' => 'العنوان'];
+        // The labels are the product form's own field names, off the shared English file, so the
+        // refusal names the box the operator has to go and fill.
+        $labels = ['title' => ManageText::t('products.field_title', 'العنوان')];
         $translation = Row::cast($row);
         $missing = [];
         foreach (self::REQUIRED_AR as $column) {
@@ -407,9 +411,7 @@ final class PlacementWriter
             if ($taken) {
                 throw new FieldRefusal(
                     'slug',
-                    'الرابط «'.$slug.'» مستخدم بالفعل لمنتج آخر في هذا المتجر. '
-                    .'الروابط لا تتكرر داخل المتجر الواحد. اكتب رابطًا مختلفًا، أو اترك الخانة فارغة '
-                    .'ليُولّد من العنوان الإنجليزي تلقائيًا.'
+                    ManageText::t('placement.slug_taken', 'الرابط «:slug» مستخدم بالفعل لمنتج آخر في هذا المتجر. الروابط لا تتكرر داخل المتجر الواحد. اكتب رابطًا مختلفًا، أو اترك الخانة فارغة ليُولّد من العنوان الإنجليزي تلقائيًا.', ['slug' => $slug]),
                 );
             }
 
@@ -447,7 +449,7 @@ final class PlacementWriter
             $slug = $suffix === 2 ? $base.'-'.$productId : $base.'-'.$productId.'-'.$suffix;
             $suffix++;
             if ($suffix > 50) {
-                throw new FieldRefusal('slug', "تعذّر توليد رابط فريد من «{$base}».");
+                throw new FieldRefusal('slug', ManageText::t('placement.slug_not_unique', 'تعذّر توليد رابط فريد من «:base».', ['base' => $base]));
             }
         }
 

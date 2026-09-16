@@ -2,6 +2,7 @@
 
 namespace App\Domain\Access;
 
+use App\Domain\Activity\ActivityLog;
 use App\Models\Access\UserRole;
 use App\Models\Storefront\Storefront;
 use App\Models\User;
@@ -125,6 +126,23 @@ final class Roles
         );
         unset($this->memo[$user->id]);
 
+        /*
+         * Logged only when the grant is NEW. `firstOrCreate` is idempotent, so re-granting a role
+         * somebody already holds is a no-op — and a log row saying a permission was given when
+         * nothing changed is worse than no row: it is a false positive in the one place a reader
+         * is looking for the truth about who can do what.
+         */
+        if ($grant->wasRecentlyCreated) {
+            ActivityLog::record(
+                'core_user_roles',
+                (int) $grant->id,
+                ActivityLog::GRANTED,
+                after: ['role' => $role->value, 'user_id' => $user->id, 'storefront_id' => $storefrontId],
+                label: $role->value,
+                storefrontId: $storefrontId,
+            );
+        }
+
         return $grant;
     }
 
@@ -137,6 +155,18 @@ final class Roles
         }
         $removed = $query->delete();
         unset($this->memo[$user->id]);
+
+        // Only when something was actually removed — revoking a role nobody held changed nothing.
+        if (is_int($removed) && $removed > 0) {
+            ActivityLog::record(
+                'core_user_roles',
+                null,                                  // the grant rows are gone; the subject is the person
+                ActivityLog::REVOKED,
+                before: ['role' => $role->value, 'user_id' => $user->id, 'storefront_id' => $storefrontId],
+                label: $role->value,
+                storefrontId: $storefrontId,
+            );
+        }
 
         return is_int($removed) ? $removed : 0;
     }

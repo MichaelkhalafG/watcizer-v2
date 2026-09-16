@@ -7,6 +7,7 @@ use App\Domain\Inventory\InventoryService;
 use App\Domain\Inventory\StockTarget;
 use App\Domain\Inventory\StockWriteGuard;
 use App\Listeners\EnqueueStockChangedOutbox;
+use App\Support\WriteTarget;
 use App\Transform\Row;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -40,12 +41,29 @@ final class InventoryProveReleaseRaceCommand extends Command
     protected $signature = 'inventory:prove-release-race
         {--workers=12 : concurrent cancellations of the same order}
         {--quantity=3 : units the order line reserves}
-        {--lead=3 : seconds to give every worker to boot before the start instant}';
+        {--lead=3 : seconds to give every worker to boot before the start instant}
+        {--allow-remote : Permit a target that is NOT a local copy. This probe WRITES: it creates a real order and order_items}';
 
     protected $description = 'Prove releaseOrder() credits an order back exactly once under concurrency (review 🔴-1)';
 
     public function handle(InventoryService $inventory): int
     {
+        /*
+         * ── this probe WRITES, so it asks the same question the harness does ────────────────
+         *
+         * It creates a real order with a real line, races cancellations at it, and tidies up
+         * afterwards. The tidy-up is the part that is not guaranteed: a probe that dies mid-run
+         * leaves the order behind, and it is a REAL order in the shared commerce tables.
+         *
+         * Found by the 2026-09-15 sweep as the third of four tools that write as a side effect of
+         * being run, all of them invisible for the same reason — none had ever been run. The guard
+         * is `App\Support\WriteTarget`, shared with `compat:diff` and the callback probe, so there
+         * is one question and one wording rather than three.
+         */
+        if ($this->refuseIfTargetIsRemote()) {
+            return self::INVALID;
+        }
+
         $workers = max(2, self::intOption($this->option('workers')));
         $quantity = max(1, self::intOption($this->option('quantity')));
 
@@ -248,5 +266,23 @@ final class InventoryProveReleaseRaceCommand extends Command
     private static function intOption(mixed $value): int
     {
         return (int) (is_scalar($value) ? $value : 0);
+    }
+
+    /** True when this probe must not run, because it would write to something that is not a copy. */
+    private function refuseIfTargetIsRemote(): bool
+    {
+        $remote = WriteTarget::remote();
+        if ($remote === [] || $this->option(WriteTarget::ALLOW_REMOTE) === true) {
+            return false;
+        }
+
+        return WriteTarget::refuse($this, 'this probe', $remote, [
+            'one real order and its order_items, raced and then deleted',
+            'inventory_movements for the commit and every release',
+            'a real product row touched and its updated_at put back afterwards',
+        ], [
+            'run it against a LOCAL COPY — the only place a probe that manufactures orders belongs;',
+            'or, deliberately, with --allow-remote, knowing a failed run leaves its order behind.',
+        ]);
     }
 }

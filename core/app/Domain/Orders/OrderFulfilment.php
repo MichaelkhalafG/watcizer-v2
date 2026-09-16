@@ -7,6 +7,7 @@ namespace App\Domain\Orders;
 use App\Domain\Inventory\Actor;
 use App\Domain\Inventory\InventoryService;
 use App\Domain\Notifications\OrderMailer;
+use App\Support\ManageText;
 use App\Transform\Row;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -151,7 +152,7 @@ final class OrderFulfilment
         $from = Row::str($order, 'status');
 
         if ($from === 'cancelled') {
-            throw new RuntimeException('هذا الطلب ملغى بالفعل.');
+            throw new RuntimeException(ManageText::t('orders.already_cancelled', 'هذا الطلب ملغى بالفعل.'));
         }
         if (in_array($from, self::UNCANCELLABLE, true)) {
             /*
@@ -166,7 +167,10 @@ final class OrderFulfilment
              * the release when the decision is made, which is the same guarantee wave 3 gives for
              * every other cancellation.
              */
-            throw new RuntimeException('لا يمكن إلغاء طلب وصل إلى العميل من هذه الشاشة. تعامل معه كمرتجع.');
+            throw new RuntimeException(ManageText::t(
+                'orders.cancel_after_delivery',
+                'لا يمكن إلغاء طلب وصل إلى العميل من هذه الشاشة. تعامل معه كمرتجع.',
+            ));
         }
 
         $storefrontId = Row::nint($order, 'storefront_id');
@@ -223,15 +227,22 @@ final class OrderFulfilment
     /** The Arabic label for a status — one home, so the list, the detail and the filter agree. */
     public static function label(string $status): string
     {
+        /*
+         * Every key here is one `Orders/Show.tsx` ALREADY renders on its own status buttons — the
+         * server and the client share `lang/en/manage.php`, so the queue's `status_label` and the
+         * button beside it cannot say two different things in English.
+         */
         return match ($status) {
-            'pending' => 'قيد الانتظار',
-            'processing' => 'قيد التنفيذ',
-            'shipped' => 'تم الشحن',
-            'delivered' => 'تم التوصيل',
+            'pending' => ManageText::t('common.status_pending', 'قيد الانتظار'),
+            'processing' => ManageText::t('common.status_processing', 'قيد التنفيذ'),
+            'shipped' => ManageText::t('common.status_shipped', 'تم الشحن'),
+            'delivered' => ManageText::t('common.status_delivered', 'تم التوصيل'),
             // `completed` now means CLOSED, not "fulfilled" — `delivered` is the state that tells
             // the customer their order arrived, so this label had to stop claiming that.
-            'completed' => 'مغلق',
-            'cancelled' => 'ملغى',
+            'completed' => ManageText::t('common.status_completed', 'مغلق'),
+            'cancelled' => ManageText::t('common.status_cancelled', 'ملغى'),
+            // The raw column value, untranslated on purpose: a status outside the enum is DATA the
+            // operator needs to see verbatim, not a label to guess an English word for.
             default => $status,
         };
     }
@@ -253,11 +264,33 @@ final class OrderFulfilment
     /** @param  list<string>  $allowed */
     private static function refusal(string $from, string $to, array $allowed): string
     {
+        /*
+         * ONE sentence per refusal, with `:name` placeholders — not a sentence assembled from six
+         * fragments. The concatenated version could not be translated at all: half of its words
+         * were in the glue between the calls, and an English reader would have got Arabic
+         * punctuation around English labels.
+         */
         if ($allowed === []) {
-            return 'لا يمكن تغيير حالة هذا الطلب: حالته الحالية ('.self::label($from).') نهائية.';
+            return ManageText::t(
+                'orders.transition_terminal',
+                'لا يمكن تغيير حالة هذا الطلب: حالته الحالية (:status) نهائية.',
+                ['status' => self::label($from)],
+            );
         }
 
-        return 'لا يمكن الانتقال من ('.self::label($from).') إلى ('.self::label($to).'). '
-            .'الخطوة المتاحة الآن: '.implode('، ', array_map(self::label(...), $allowed)).'.';
+        return ManageText::t(
+            'orders.transition_not_allowed',
+            'لا يمكن الانتقال من (:from) إلى (:to). الخطوة المتاحة الآن: :allowed.',
+            [
+                'from' => self::label($from),
+                'to' => self::label($to),
+                // The separator is the SHARED one the client joins lists with, so a list built
+                // here and a list built in React read the same in both languages.
+                'allowed' => implode(
+                    ManageText::t('common.list_separator', '، '),
+                    array_map(self::label(...), $allowed),
+                ),
+            ],
+        );
     }
 }

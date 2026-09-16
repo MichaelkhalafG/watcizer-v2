@@ -1,6 +1,6 @@
 import { router, usePage } from '@inertiajs/react';
 import { Star } from 'lucide-react';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 
 import { DataTable, type Column } from '@/components/table/DataTable';
 import ManageLayout from '@/layouts/ManageLayout';
@@ -11,6 +11,8 @@ import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Input, Select } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import type { PreSwitchState, SharedProps, TablePayload } from '@/types';
+import { Ltr } from '@/components/ui/bidi';
+import { useT } from '@/lib/i18n';
 
 interface PlacementRow {
     product_id: number;
@@ -69,6 +71,7 @@ export default function PlacementIndex({
     slug_lock,
     pre_switch_notice,
 }: Props) {
+    const t = useT();
     const { errors } = usePage<SharedProps>().props;
     const [slugs, setSlugs] = useState<Record<number, string>>({});
     const [sorts, setSorts] = useState<Record<number, string>>({});
@@ -94,7 +97,7 @@ export default function PlacementIndex({
     const columns: Array<Column<PlacementRow>> = [
         {
             key: 'cover',
-            header: 'صورة',
+            header: t('placement.image', 'صورة'),
             sortable: false,
             className: 'w-14',
             cell: (row) => (
@@ -105,27 +108,35 @@ export default function PlacementIndex({
         },
         {
             key: 'p.wa_code',
-            header: 'المنتج',
+            header: t('common.product', 'المنتج'),
             cell: (row) => (
                 <div className="min-w-[11rem] space-y-0.5">
-                    <div className="font-medium">{row.title.ar === '' ? <span className="text-destructive">— بلا اسم عربي —</span> : row.title.ar}</div>
-                    <div className="font-mono text-[11px] text-muted-foreground" dir="ltr">
-                        {row.wa_code}
+                    <div className="font-medium">
+                        {row.title.ar === '' ? (
+                            <span className="text-destructive">{t('common.no_arabic_name', '— بلا اسم عربي —')}</span>
+                        ) : (
+                            row.title.ar
+                        )}
+                    </div>
+                    <div className="font-mono text-[11px] text-muted-foreground">
+                        <Ltr>{row.wa_code}</Ltr>
                     </div>
                     <div className="flex flex-wrap gap-1">
-                        {row.has_arabic ? null : <Badge variant="destructive">عربي ناقص</Badge>}
-                        {row.placements === 0 ? <Badge variant="warning">بلا تصنيف</Badge> : null}
-                        {row.placements > 0 && row.primary_category_id === null ? <Badge variant="warning">بلا تصنيف أساسي</Badge> : null}
+                        {row.has_arabic ? null : <Badge variant="destructive">{t('placement.missing_arabic', 'عربي ناقص')}</Badge>}
+                        {row.placements === 0 ? <Badge variant="warning">{t('placement.unplaced', 'بلا تصنيف')}</Badge> : null}
+                        {row.placements > 0 && row.primary_category_id === null ? (
+                            <Badge variant="warning">{t('placement.no_primary_category', 'بلا تصنيف أساسي')}</Badge>
+                        ) : null}
                     </div>
                 </div>
             ),
         },
         {
             key: 'sp.is_visible',
-            header: 'ظاهر',
+            header: t('common.visible', 'ظاهر'),
             cell: (row) => (
                 <Switch
-                    aria-label={`إظهار ${row.title.ar || row.wa_code}`}
+                    aria-label={t('placement.show_product', 'إظهار :name', { name: row.title.ar || row.wa_code })}
                     checked={row.is_visible}
                     disabled={!row.has_arabic && !row.is_visible}
                     onCheckedChange={(checked) => {
@@ -143,13 +154,13 @@ export default function PlacementIndex({
         },
         {
             key: 'sp.is_featured',
-            header: 'مميّز',
+            header: t('placement.featured', 'مميّز'),
             cell: (row) => (
                 <Button
                     type="button"
                     variant="ghost"
                     size="icon"
-                    aria-label={`تمييز ${row.title.ar || row.wa_code}`}
+                    aria-label={t('placement.feature_product', 'تمييز :name', { name: row.title.ar || row.wa_code })}
                     onClick={() => save(row, { is_featured: !row.is_featured })}
                 >
                     <Star className={row.is_featured ? 'h-4 w-4 fill-current text-amber-500' : 'h-4 w-4 text-muted-foreground'} />
@@ -158,13 +169,13 @@ export default function PlacementIndex({
         },
         {
             key: 'sp.sort_order',
-            header: 'الترتيب',
+            header: t('common.sort', 'الترتيب'),
             cell: (row) => (
                 <Input
                     dir="ltr"
                     type="number"
                     className="w-20"
-                    aria-label={`ترتيب ${row.title.ar || row.wa_code}`}
+                    aria-label={t('placement.sort_for_product', 'ترتيب :name', { name: row.title.ar || row.wa_code })}
                     value={sorts[row.product_id] ?? String(row.sort_order)}
                     onChange={(event) => setSorts((current) => ({ ...current, [row.product_id]: event.target.value }))}
                     onBlur={() => {
@@ -177,14 +188,14 @@ export default function PlacementIndex({
         },
         {
             key: 'slug',
-            header: 'الرابط',
+            header: t('placement.slug', 'الرابط'),
             sortable: false,
             hideOnMobile: true,
             cell: (row) => (
                 <Input
                     dir="ltr"
                     className="min-w-[10rem]"
-                    aria-label={`رابط ${row.title.ar || row.wa_code}`}
+                    aria-label={t('placement.slug_for_product', 'رابط :name', { name: row.title.ar || row.wa_code })}
                     // Locked until the write-switch: the 301 this would promise does not survive
                     // the next rebuild, so the field refuses rather than warning (review 🟠-3).
                     disabled={slug_lock.blocked}
@@ -201,7 +212,7 @@ export default function PlacementIndex({
         },
         {
             key: 'p.selling_price',
-            header: 'السعر',
+            header: t('common.price', 'السعر'),
             hideOnMobile: true,
             cell: (row) => (
                 <span dir="ltr" className="text-sm">
@@ -213,12 +224,15 @@ export default function PlacementIndex({
 
     return (
         <ManageLayout
-            title="العرض والترتيب"
-            crumbs={[{ label: 'الرئيسية', href: '/manage' }, { label: 'العرض والترتيب' }]}
+            title={t('placement.title', 'العرض والترتيب')}
+            crumbs={[
+                { label: t('common.home', 'الرئيسية'), href: '/manage' },
+                { label: t('placement.title', 'العرض والترتيب') },
+            ]}
             actions={
                 storefronts.length > 1 ? (
                     <Select
-                        aria-label="المتجر"
+                        aria-label={t('common.storefront', 'المتجر')}
                         className="w-40"
                         value={String(storefront.id)}
                         onChange={(event) => router.get(`/manage/storefronts/${event.target.value}/placement`)}
@@ -232,29 +246,32 @@ export default function PlacementIndex({
                 ) : null
             }
         >
-            <Alert tone="warning" title="قبل تغيير أي رابط">
+            <Alert tone="warning" title={t('placement.slug_warning_title', 'قبل تغيير أي رابط')}>
                 {slug_warning}
             </Alert>
 
             {pre_switch_notice === null ? null : (
-                <Alert tone="warning" title="قبل ليلة التحويل — كل ما تضبطه هنا يُعاد بناؤه">
+                <Alert
+                    tone="warning"
+                    title={t('placement.pre_switch_title', 'قبل ليلة التحويل — كل ما تضبطه هنا يُعاد بناؤه')}
+                >
                     {pre_switch_notice.message}
                 </Alert>
             )}
 
             {errors.slug ? (
-                <Alert tone="error" title="تعذّر حفظ الرابط">
+                <Alert tone="error" title={t('placement.slug_save_failed', 'تعذّر حفظ الرابط')}>
                     {errors.slug}
                 </Alert>
             ) : null}
 
             {errors.is_visible ? (
-                <Alert tone="error" title="تعذّر الإظهار">
+                <Alert tone="error" title={t('placement.show_failed', 'تعذّر الإظهار')}>
                     {errors.is_visible}
                 </Alert>
             ) : null}
             {errors.bulk ? (
-                <Alert tone="warning" title="تم التنفيذ جزئيًا">
+                <Alert tone="warning" title={t('placement.bulk_partial', 'تم التنفيذ جزئيًا')}>
                     {errors.bulk}
                 </Alert>
             ) : null}
@@ -263,16 +280,16 @@ export default function PlacementIndex({
                 table={table}
                 columns={columns}
                 rowId={(row) => row.product_id}
-                searchPlaceholder="ابحث بالاسم أو الكود أو الرابط…"
+                searchPlaceholder={t('placement.search_placeholder', 'ابحث بالاسم أو الكود أو الرابط…')}
                 filters={(setFilter, current) => (
                     <>
                         <Select
-                            aria-label="تصفية بالتصنيف"
+                            aria-label={t('placement.filter_by_category', 'تصفية بالتصنيف')}
                             className="w-44"
                             value={current.category ?? ''}
                             onChange={(event) => setFilter('category', event.target.value === '' ? null : event.target.value)}
                         >
-                            <option value="">كل التصنيفات</option>
+                            <option value="">{t('placement.all_categories', 'كل التصنيفات')}</option>
                             {categories.map((option) => (
                                 <option key={option.value} value={option.value}>
                                     {option.label}
@@ -280,25 +297,25 @@ export default function PlacementIndex({
                             ))}
                         </Select>
                         <Select
-                            aria-label="تصفية بالظهور"
+                            aria-label={t('placement.filter_by_visibility', 'تصفية بالظهور')}
                             className="w-32"
                             value={current['sp.is_visible'] ?? ''}
                             onChange={(event) => setFilter('sp.is_visible', event.target.value === '' ? null : event.target.value)}
                         >
-                            <option value="">ظاهر ومخفي</option>
-                            <option value="1">ظاهر</option>
-                            <option value="0">مخفي</option>
+                            <option value="">{t('placement.visible_and_hidden', 'ظاهر ومخفي')}</option>
+                            <option value="1">{t('common.visible', 'ظاهر')}</option>
+                            <option value="0">{t('common.hidden', 'مخفي')}</option>
                         </Select>
                         <Select
-                            aria-label="تصفية سريعة"
+                            aria-label={t('placement.quick_filter', 'تصفية سريعة')}
                             className="w-44"
                             value={current.flag ?? ''}
                             onChange={(event) => setFilter('flag', event.target.value === '' ? null : event.target.value)}
                         >
-                            <option value="">بلا تصفية سريعة</option>
-                            <option value="no_arabic">عربي ناقص</option>
-                            <option value="no_primary">بلا تصنيف أساسي</option>
-                            <option value="unplaced">بلا تصنيف</option>
+                            <option value="">{t('placement.no_quick_filter', 'بلا تصفية سريعة')}</option>
+                            <option value="no_arabic">{t('placement.missing_arabic', 'عربي ناقص')}</option>
+                            <option value="no_primary">{t('placement.no_primary_category', 'بلا تصنيف أساسي')}</option>
+                            <option value="unplaced">{t('placement.unplaced', 'بلا تصنيف')}</option>
                         </Select>
                     </>
                 )}
@@ -306,10 +323,10 @@ export default function PlacementIndex({
                     <>
                         {(
                             [
-                                ['show', 'إظهار'],
-                                ['hide', 'إخفاء'],
-                                ['feature', 'تمييز'],
-                                ['unfeature', 'إلغاء التمييز'],
+                                ['show', t('placement.bulk_show', 'إظهار')],
+                                ['hide', t('placement.bulk_hide', 'إخفاء')],
+                                ['feature', t('placement.bulk_feature', 'تمييز')],
+                                ['unfeature', t('placement.bulk_unfeature', 'إلغاء التمييز')],
                             ] as Array<[string, string]>
                         ).map(([action, label]) => (
                             <Button
@@ -326,26 +343,42 @@ export default function PlacementIndex({
                         ))}
                     </>
                 )}
-                emptyTitle="لا توجد منتجات على هذا المتجر"
-                emptyDescription="أضف منتجات من شاشة المنتجات، أو عدّل التصفية."
+                emptyTitle={t('placement.empty_title', 'لا توجد منتجات على هذا المتجر')}
+                emptyDescription={t('placement.empty_description', 'أضف منتجات من شاشة المنتجات، أو عدّل التصفية.')}
             />
             {/* ── hiding a product that customers are holding (task 4.4) ────────────────── */}
             <Dialog open={hiding !== null} onOpenChange={(open) => (open ? null : setHiding(null))}>
                 {hiding === null ? null : (
-                    <DialogContent title={`إخفاء «${hiding.title.ar || hiding.wa_code}» عن ${storefront.name}`}>
+                    <DialogContent
+                        title={t('placement.hide_title', 'إخفاء «:name» عن :storefront', {
+                            name: hiding.title.ar || hiding.wa_code,
+                            storefront: storefront.name,
+                        })}
+                    >
                         <div className="space-y-3 text-sm text-muted-foreground">
                             <p>
-                                هذا المنتج موجود الآن في <strong>{hiding.in_carts}</strong> سلة مفتوحة. بعد الإخفاء لن يظهر في القوائم ولا في
-                                البحث، ومن يفتح سلته لن يتمكن من إتمام شرائه.
+                                {/* The cart count stays a bold run inside the sentence, so the key
+                                    holds the whole sentence with a `:count` placeholder. */}
+                                <Around
+                                    text={t(
+                                        'placement.hide_in_carts',
+                                        'هذا المنتج موجود الآن في :count سلة مفتوحة. بعد الإخفاء لن يظهر في القوائم ولا في البحث، ومن يفتح سلته لن يتمكن من إتمام شرائه.',
+                                    )}
+                                    placeholder=":count"
+                                >
+                                    <strong>{hiding.in_carts}</strong>
+                                </Around>
                             </p>
                             <p>
-                                الإخفاء لا يحذف المنتج ولا يمس مخزونه ولا طلباته السابقة، ويمكن إرجاعه في أي وقت. لو كان
-                                السبب نفاد الكمية، الأفضل تركه ظاهرًا — المتجر يكتب «نفد» وحده.
+                                {t(
+                                    'placement.hide_reassurance',
+                                    'الإخفاء لا يحذف المنتج ولا يمس مخزونه ولا طلباته السابقة، ويمكن إرجاعه في أي وقت. لو كان السبب نفاد الكمية، الأفضل تركه ظاهرًا — المتجر يكتب «نفد» وحده.',
+                                )}
                             </p>
                         </div>
                         <div className="mt-4 flex flex-wrap justify-end gap-2">
                             <Button type="button" variant="outline" onClick={() => setHiding(null)}>
-                                إلغاء
+                                {t('common.cancel', 'إلغاء')}
                             </Button>
                             <Button
                                 type="button"
@@ -356,7 +389,7 @@ export default function PlacementIndex({
                                     save(row, { is_visible: false });
                                 }}
                             >
-                                أخفِ المنتج
+                                {t('placement.hide_confirm', 'أخفِ المنتج')}
                             </Button>
                         </div>
                     </DialogContent>
@@ -364,5 +397,25 @@ export default function PlacementIndex({
             </Dialog>
 
         </ManageLayout>
+    );
+}
+
+/**
+ * Render `text` with `children` substituted for its `:placeholder`.
+ *
+ * A sentence that wraps one fragment in markup would otherwise have to be split into two keys, and
+ * a translator handed two halves cannot reorder them — which is exactly what Arabic → English
+ * needs to do. So the key stays ONE sentence carrying a Laravel-style `:name` placeholder, and the
+ * substitution happens here instead of in `t()`, because the value is an element and not a string.
+ */
+function Around({ text, placeholder, children }: { text: string; placeholder: string; children: ReactNode }) {
+    const [before, ...rest] = text.split(placeholder);
+
+    return (
+        <>
+            {before}
+            {rest.length === 0 ? null : children}
+            {rest.join(placeholder)}
+        </>
     );
 }

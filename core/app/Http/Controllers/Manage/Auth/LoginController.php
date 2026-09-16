@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Manage\Auth;
 
 use App\Domain\Access\Roles;
 use App\Models\User;
+use App\Support\ManageText;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -98,7 +99,7 @@ final class LoginController
             RateLimiter::hit($key, 60);
 
             throw ValidationException::withMessages([
-                'email' => 'هذا الحساب لا يملك صلاحية الدخول إلى لوحة التحكم.',
+                'email' => ManageText::t('auth.no_dashboard_access', 'هذا الحساب لا يملك صلاحية الدخول إلى لوحة التحكم.'),
             ]);
         }
 
@@ -114,7 +115,7 @@ final class LoginController
         $request->session()->invalidate();
         $request->session()->regenerateToken();
 
-        return redirect()->route('manage.login')->with('status', 'تم تسجيل الخروج.');
+        return redirect()->route('manage.login')->with('status', ManageText::t('auth.signed_out', 'تم تسجيل الخروج.'));
     }
 
     private function throttleKey(Request $request, string $email): string

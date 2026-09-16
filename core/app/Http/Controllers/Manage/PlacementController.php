@@ -2,12 +2,14 @@
 
 namespace App\Http\Controllers\Manage;
 
+use App\Domain\Activity\ActivityLog;
 use App\Domain\Catalog\FieldRefusal;
 use App\Domain\Catalog\PlacementWriter;
 use App\Domain\Catalog\PreSwitch;
 use App\Models\Storefront\Storefront;
 use App\Storefront\ImageUrl;
 use App\Support\Coerce;
+use App\Support\ManageText;
 use App\Support\Table\TableQuery;
 use App\Transform\Row;
 use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
@@ -21,6 +23,7 @@ use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 use RuntimeException;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * /manage/storefronts/{storefront}/placement — visibility, ordering, featured, slug and the
@@ -52,7 +55,7 @@ final class PlacementController
 
     public function __construct(private readonly PlacementWriter $placements) {}
 
-    public function index(Request $request, Storefront $storefront): Response
+    public function index(Request $request, Storefront $storefront): Response|StreamedResponse
     {
         $categories = self::categoryOptions($storefront->id);
 
@@ -76,7 +79,23 @@ final class PlacementController
                         ->orWhere('en.title', 'like', '%'.$escaped.'%');
                 });
             })
-            ->perPage(default: 25, max: 100);
+            ->perPage(default: 25, max: 100)
+            // A placement worksheet: which products sit where, in what order, and which of them a
+            // customer cannot reach. `in_carts` travels because it is the number that decides
+            // whether hiding a row is safe — the export is what the team works from off-screen.
+            ->exportable([
+                'wa_code' => ManageText::t('products.code', 'الكود'),
+                'title' => [ManageText::t('common.name', 'الاسم'), fn (array $row): string => Coerce::str(Coerce::arr($row['title'] ?? null)['ar'] ?? null)],
+                'slug' => ManageText::t('placement.slug', 'الرابط'),
+                'sort_order' => ManageText::t('common.sort', 'الترتيب'),
+                'placements' => ManageText::t('placement.category_count', 'عدد التصنيفات'),
+                'primary_category_id' => ManageText::t('products.primary_category', 'التصنيف الأساسي'),
+                'is_visible' => ManageText::t('common.visible', 'ظاهر'),
+                'is_featured' => ManageText::t('placement.featured', 'مميّز'),
+                'has_arabic' => ManageText::t('placement.has_arabic_name', 'له اسم عربي'),
+                'in_carts' => ManageText::t('placement.in_open_carts', 'في سلات مفتوحة'),
+                'selling_price' => ManageText::t('common.price', 'السعر'),
+            ], 'placement');
 
         $filters = $table->resolvedFilters();
         $query = $this->listQuery($storefront->id, $filters);
@@ -86,35 +105,43 @@ final class PlacementController
         // shown row (`TableQuery::paginate()`).
         $extras = self::pageExtras([], $storefront->id);
 
+        $prepare = function (array $rows) use (&$extras, $storefront): void {
+            $extras = self::pageExtras(Coerce::objectList($rows), $storefront->id);
+        };
+
+        $map = function (object $raw) use (&$extras): array {
+            $row = Row::cast($raw);
+            $productId = Row::int($row, 'id');
+            $cover = $extras['covers'][$productId] ?? null;
+            $titleAr = Row::nstr($row, 'title_ar');
+
+            return [
+                'product_id' => $productId,
+                'wa_code' => Row::str($row, 'wa_code'),
+                'title' => ['ar' => $titleAr ?? '', 'en' => Row::nstr($row, 'title_en') ?? ''],
+                'has_arabic' => $titleAr !== null && trim($titleAr) !== '',
+                'is_visible' => Row::bool($row, 'is_visible'),
+                'is_featured' => Row::bool($row, 'is_featured'),
+                'sort_order' => Row::int($row, 'sort_order'),
+                'slug' => Row::str($row, 'slug'),
+                'primary_category_id' => $extras['primary'][$productId] ?? null,
+                'placements' => $extras['placements'][$productId] ?? 0,
+                // How many live carts hold this product — the number the hide confirmation needs.
+                'in_carts' => $extras['carts'][$productId] ?? 0,
+                'selling_price' => Row::str($row, 'selling_price'),
+                'cover' => $cover === null ? null : ImageUrl::src($cover),
+            ];
+        };
+
+        if ($table->wantsExport()) {
+            return $table->export($query, $map, $prepare);
+        }
+
         return Inertia::render('Manage/Placement/Index', [
             'storefront' => ['id' => $storefront->id, 'code' => $storefront->code, 'name' => $storefront->name],
             'storefronts' => self::storefrontOptions(),
             'categories' => $categories,
-            'table' => $table->paginate($query, function (object $raw) use (&$extras): array {
-                $row = Row::cast($raw);
-                $productId = Row::int($row, 'id');
-                $cover = $extras['covers'][$productId] ?? null;
-                $titleAr = Row::nstr($row, 'title_ar');
-
-                return [
-                    'product_id' => $productId,
-                    'wa_code' => Row::str($row, 'wa_code'),
-                    'title' => ['ar' => $titleAr ?? '', 'en' => Row::nstr($row, 'title_en') ?? ''],
-                    'has_arabic' => $titleAr !== null && trim($titleAr) !== '',
-                    'is_visible' => Row::bool($row, 'is_visible'),
-                    'is_featured' => Row::bool($row, 'is_featured'),
-                    'sort_order' => Row::int($row, 'sort_order'),
-                    'slug' => Row::str($row, 'slug'),
-                    'primary_category_id' => $extras['primary'][$productId] ?? null,
-                    'placements' => $extras['placements'][$productId] ?? 0,
-                    // How many live carts hold this product — the number the hide confirmation needs.
-                    'in_carts' => $extras['carts'][$productId] ?? 0,
-                    'selling_price' => Row::str($row, 'selling_price'),
-                    'cover' => $cover === null ? null : ImageUrl::src($cover),
-                ];
-            }, function (array $rows) use (&$extras, $storefront): void {
-                $extras = self::pageExtras($rows, $storefront->id);
-            }),
+            'table' => $table->paginate($query, $map, $prepare),
             /*
              * Two different sentences, and which one shows depends on the flag (review 🟠-3).
              *
@@ -123,7 +150,7 @@ final class PlacementController
              * screen says why instead of promising a redirect the next rebuild deletes.
              */
             'slug_warning' => PreSwitch::mayEditSlug()
-                ? 'تغيير الرابط ينشئ تحويلًا 301 من الرابط القديم تلقائيًا، لكن الروابط المنشورة والمشاركة ستمر عبر التحويل. لا تغيّره بلا سبب.'
+                ? ManageText::t('placement.slug_warning', 'تغيير الرابط ينشئ تحويلًا 301 من الرابط القديم تلقائيًا، لكن الروابط المنشورة والمشاركة ستمر عبر التحويل. لا تغيّره بلا سبب.')
                 : PreSwitch::slugMessage(),
             'slug_lock' => PreSwitch::slugState(),
             // Worded for what THIS screen loses: placements, visibility, order, featured, and any
@@ -162,6 +189,16 @@ final class PlacementController
 
         $payload = Coerce::arr($data);
 
+        /*
+         * The BEFORE snapshot for the activity log. Taken from `storefront_product` rather than the
+         * payload, because the payload is what was ASKED for and the row is what was true — and a
+         * refusal (missing Arabic, no image, no category) leaves the row untouched, so a log built
+         * from the request would record a change that never happened.
+         */
+        $before = ActivityLog::fields(DB::table('storefront_product')
+            ->where('storefront_id', $storefront->id)->where('product_id', $product)
+            ->first(['is_visible', 'is_featured', 'sort_order', 'slug']));
+
         try {
             if (array_key_exists('category_ids', $payload)) {
                 $this->placements->place(
@@ -185,7 +222,37 @@ final class PlacementController
             throw ValidationException::withMessages([FieldRefusal::fieldOf($e) => $e->getMessage()]);
         }
 
-        return back()->with('status', 'تم حفظ العرض والترتيب.');
+        $after = ActivityLog::fields(DB::table('storefront_product')
+            ->where('storefront_id', $storefront->id)->where('product_id', $product)
+            ->first(['is_visible', 'is_featured', 'sort_order', 'slug']));
+
+        ActivityLog::record(
+            'storefront_product',
+            $product,
+            ActivityLog::UPDATED,
+            $before,
+            $after,
+            label: self::productLabel($product),
+            storefrontId: Coerce::nint($storefront->id),
+        );
+
+        return back()->with('status', ManageText::t('placement.saved', 'تم حفظ العرض والترتيب.'));
+    }
+
+    /**
+     * What to call this product in the log — captured at write time.
+     *
+     * A log entry has to outlive its subject: "storefront_product 512" means nothing six months
+     * later, and the Arabic title is what the reader recognises.
+     */
+    private static function productLabel(int $productId): ?string
+    {
+        $title = DB::table('catalog_product_translations')
+            ->where('product_id', $productId)
+            ->orderByRaw("FIELD(locale, 'ar', 'en')")
+            ->value('title');
+
+        return is_string($title) && $title !== '' ? $title : null;
     }
 
     /** Re-order the products inside one category. */
@@ -206,7 +273,7 @@ final class PlacementController
             Coerce::orderedIntList($request->input('product_ids')),
         );
 
-        return back()->with('status', "تم ترتيب {$moved} منتجًا في التصنيف.");
+        return back()->with('status', ManageText::t('placement.sorted', 'تم ترتيب :count منتجًا في التصنيف.', ['count' => $moved]));
     }
 
     /**
@@ -261,17 +328,44 @@ final class PlacementController
             try {
                 $this->placements->save($storefront->id, $productId, $payload);
                 $done++;
+
+                /*
+                 * One row per product, not one per bulk action. A bulk hide of 200 products is 200
+                 * separate facts about 200 separate records, and the question this log answers —
+                 * "why is THIS product hidden?" — is only answerable if the row names that product.
+                 *
+                 * `ActivityLog::record()` drops an update whose diff is empty, so products the
+                 * action did not actually change cost nothing here.
+                 */
+                ActivityLog::record(
+                    'storefront_product',
+                    $productId,
+                    ActivityLog::UPDATED,
+                    ActivityLog::fields($current),
+                    $payload,
+                    label: self::productLabel($productId),
+                    storefrontId: Coerce::nint($storefront->id),
+                );
             } catch (RuntimeException) {
                 $skipped[] = $productId;
             }
         }
 
-        $message = "تم التنفيذ على {$done} منتجًا.";
+        $message = ManageText::t('placement.bulk_done', 'تم التنفيذ على :count منتجًا.', ['count' => $done]);
         if ($skipped !== []) {
             // The reasons, named. A bulk action that says only "3 skipped" sends the operator
             // hunting; these are exactly the three gates `PlacementWriter::save()` enforces.
-            $message .= ' تم تخطّي '.count($skipped).' منتجًا (عربي ناقص، أو بلا صورة، أو بلا تصنيف في هذا المتجر): '
-                .implode('، ', array_slice($skipped, 0, 20)).'.';
+            //
+            // TWO sentences on the seam rather than one glued to the other's tail: each is a whole
+            // thought, and the second only exists when something was skipped.
+            $message .= ' '.ManageText::t(
+                'placement.bulk_skipped',
+                'تم تخطّي :count منتجًا (عربي ناقص، أو بلا صورة، أو بلا تصنيف في هذا المتجر): :ids.',
+                [
+                    'count' => count($skipped),
+                    'ids' => implode(ManageText::t('common.list_separator', '، '), array_slice($skipped, 0, 20)),
+                ],
+            );
         }
 
         return $skipped === []

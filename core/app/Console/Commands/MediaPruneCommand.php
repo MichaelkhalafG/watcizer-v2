@@ -2,10 +2,9 @@
 
 namespace App\Console\Commands;
 
+use App\Domain\Media\MediaAudit;
 use App\Domain\Media\MediaStore;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\DB;
-use Throwable;
 
 /**
  * media:prune — find image files in the shared tree that NOTHING references, and (only when told)
@@ -123,10 +122,7 @@ final class MediaPruneCommand extends Command
         ],
     ];
 
-    /** Set when any reference query failed: a partial reference set must never authorise a delete. */
-    private bool $scanFailed = false;
-
-    public function handle(): int
+    public function handle(MediaAudit $audit): int
     {
         $delete = (bool) $this->option('delete');
         $minAge = max(0, self::intOption($this->option('min-age-days')));
@@ -139,63 +135,38 @@ final class MediaPruneCommand extends Command
         }
 
         $json = (bool) $this->option('json');
-        $referenced = $this->referencedFiles();
+
+        /*
+         * The scan, the refusals and the delete all live in `MediaAudit` (wave 4D, task C4) so that
+         * the dashboard screen asks the SAME questions with the SAME guards. This command is now
+         * the way an operator runs it from a terminal, and the screen is the way they see it — but
+         * there is one implementation of "what is an orphan" and one of "when may I delete", which
+         * is the only arrangement that cannot drift.
+         */
+        $scan = $audit->scan($types, $minAge);
+        foreach ($scan['warnings'] as $warning) {
+            $this->warn($warning);
+        }
+
+        $orphans = $scan['orphans'];
+        $bytes = $scan['bytes'];
+        $fileCount = $scan['files'];
+
         if (! $json) {
-            $this->line('reference scan: '.count($referenced).' distinct filename(s) referenced by clean + legacy rows');
+            $this->line('reference scan: '.$scan['referenced'].' distinct filename(s) referenced by clean + legacy rows');
         }
 
         $report = [];
-        $orphans = [];
-        $matched = 0;
-        foreach ($types as $type) {
-            $folder = MediaStore::typeConfig($type)['folder'];
-            try {
-                $directory = MediaStore::directory($folder);
-            } catch (Throwable $e) {
-                // A folder we could not read is a HOLE in the report, so the run is not a
-                // success even if everything else worked (review 🟡-5).
-                $this->error("skipping {$type}: ".$e->getMessage());
-                $this->scanFailed = true;
-
-                continue;
-            }
-
-            $groups = $this->groupByMaster($directory);
-            $kept = 0;
-            $young = 0;
-            foreach ($groups as $master => $files) {
-                if (isset($referenced[$master])) {
-                    $kept++;
-
-                    continue;
-                }
-                $newest = 0;
-                $bytes = 0;
-                foreach ($files as $file) {
-                    $newest = max($newest, (int) (@filemtime($file) ?: 0));
-                    $bytes += (int) (@filesize($file) ?: 0);
-                }
-                if ($minAge > 0 && $newest > time() - ($minAge * 86400)) {
-                    $young++;
-
-                    continue;
-                }
-                $orphans[] = ['type' => $type, 'folder' => $folder, 'master' => $master, 'files' => $files, 'bytes' => $bytes];
-            }
-
-            $matched += $kept;
-            $report[] = [$type, $folder, count($groups), $kept, $young, count(array_filter($orphans, fn (array $o): bool => $o['type'] === $type))];
+        foreach ($scan['types'] as $row) {
+            $report[] = [$row['type'], $row['folder'], $row['masters'], $row['referenced'], $row['young'], $row['orphans']];
         }
-
-        $bytes = array_sum(array_map(fn (array $o): int => $o['bytes'], $orphans));
-        $fileCount = array_sum(array_map(fn (array $o): int => count($o['files']), $orphans));
 
         if ($json) {
             // ONLY the payload on stdout in this mode: a caller pipes it into a parser, and a
             // stray human line makes the whole document invalid.
             $this->line((string) json_encode([
                 'dry_run' => ! $delete,
-                'referenced' => count($referenced),
+                'referenced' => $scan['referenced'],
                 'orphan_masters' => count($orphans),
                 'orphan_files' => $fileCount,
                 'bytes' => $bytes,
@@ -224,164 +195,31 @@ final class MediaPruneCommand extends Command
 
             // Even a dry run reports failure when it could not see everything: a caller (or a cron)
             // must be able to tell "nothing to prune" from "I could not look".
-            return $this->scanFailed ? self::FAILURE : self::SUCCESS;
+            return $scan['scan_failed'] ? self::FAILURE : self::SUCCESS;
         }
 
-        // Guard 5a: ANY unreadable reference source blocks deletion outright. Counting is not
-        // enough — the dry run proved it: one broken connection name still left 2 323 legacy
-        // references, so a count-only floor would have waved a half-blind delete through.
-        if ($this->scanFailed) {
-            $this->error('REFUSING to delete: at least one reference source could not be read (see the warnings above).');
-            $this->line('  A partial reference set cannot authorise a deletion. Fix the scan, then re-run.');
+        $refusal = MediaAudit::refusal($scan, $minReferences);
+        if ($refusal !== null) {
+            // English in the terminal, Arabic on the screen — one decision, two renderings.
+            $this->error('REFUSING to delete: '.$refusal['en']);
 
             return self::FAILURE;
         }
 
-        // Guard 5c: does this tree even LOOK like the tree the database describes? On the
-        // developer's workstation the answer is no — `Uploads_Images` there is a partial copy, and
-        // this command found 74 files, NONE of them referenced, and none of the 2 323 referenced
-        // files present. A `--delete` on that machine would have wiped the whole local tree while
-        // reporting itself perfectly correct. If not one referenced file is on disk, the tree and
-        // the database are not describing the same thing.
-        if ($matched === 0 && $referenced !== []) {
-            $this->error('REFUSING to delete: not ONE of the '.count($referenced).' referenced files exists in this tree.');
-            $this->line('  The directory and the database are describing different worlds — a partial copy, a wrong');
-            $this->line('  MEDIA_ROOT, or an unmounted share. Everything here would look like an orphan.');
-
-            return self::FAILURE;
-        }
-        if ($matched > 0 && $matched * 10 < count($referenced)) {
-            $this->warn(sprintf(
-                'only %d of %d referenced files are present in this tree (%.1f%%) — check MEDIA_ROOT before trusting the orphan list.',
-                $matched, count($referenced), 100 * $matched / max(1, count($referenced)),
-            ));
+        $coverage = MediaAudit::coverageWarning($scan);
+        if ($coverage !== null) {
+            $this->warn($coverage);
         }
 
-        // Guard 5b: a scan that found almost nothing is a broken scan, not an empty shop.
-        if (count($referenced) < $minReferences) {
-            $this->error(sprintf(
-                'REFUSING to delete: the reference scan found only %d referenced filename(s), below the --min-references floor of %d.',
-                count($referenced), $minReferences,
-            ));
-            $this->line('  That pattern means the scan failed (a renamed column, a table missing mid-rebuild), not that the tree is unused.');
-
-            return self::FAILURE;
-        }
-
-        $deleted = 0;
-        $failed = 0;
-        foreach ($orphans as $orphan) {
-            foreach ($orphan['files'] as $file) {
-                @unlink($file) ? $deleted++ : $failed++;
-            }
-        }
+        $result = $audit->delete($orphans);
 
         $this->newLine();
-        $this->info("deleted {$deleted} file(s), ".self::humanBytes($bytes).' reclaimed.');
-        if ($failed > 0) {
-            $this->warn("{$failed} file(s) could not be deleted (permissions?).");
+        $this->info("deleted {$result['deleted']} file(s), ".self::humanBytes($bytes).' reclaimed.');
+        if ($result['failed'] > 0) {
+            $this->warn("{$result['failed']} file(s) could not be deleted (permissions?).");
         }
 
-        return $failed === 0 ? self::SUCCESS : self::FAILURE;
-    }
-
-    /**
-     * Every filename any row references, from BOTH connections.
-     *
-     * Keyed by filename for O(1) lookup. A stored value may be a bare filename (the convention,
-     * §5.4) or carry a path — legacy rows are not perfectly clean — so only the basename is
-     * compared, which is also what makes a legacy `Product/x.webp` and a clean `x.webp` match.
-     *
-     * @return array<string, true>
-     */
-    public function referencedFiles(): array
-    {
-        $referenced = [];
-        foreach (self::REFERENCE_COLUMNS as $schema => $tables) {
-            // 'clean' → the default connection (named `mariadb`); 'legacy' → the legacy one.
-            $connection = $schema === 'legacy' ? 'legacy' : null;
-            foreach ($tables as $table => $columns) {
-                foreach ($columns as $column) {
-                    try {
-                        $values = DB::connection($connection)->table($table)->whereNotNull($column)->distinct()->pluck($column);
-                    } catch (Throwable $e) {
-                        // A missing table mid-rebuild must not silently shrink the reference set:
-                        // say so, and let the --min-references floor catch the consequence.
-                        $this->warn("reference scan: cannot read {$schema}.{$table}.{$column} — ".$e->getMessage());
-                        $this->scanFailed = true;
-
-                        continue;
-                    }
-                    foreach ($values as $value) {
-                        if (! is_string($value) || trim($value) === '') {
-                            continue;
-                        }
-                        $referenced[basename(trim($value))] = true;
-                    }
-                }
-            }
-        }
-
-        // …and anything embedded in long text, which a column scan cannot see.
-        foreach (self::INLINE_TEXT_COLUMNS as $schema => $tables) {
-            $connection = $schema === 'legacy' ? 'legacy' : null;
-            foreach ($tables as $table => $columns) {
-                foreach ($columns as $column) {
-                    try {
-                        $rows = DB::connection($connection)->table($table)->where($column, 'like', '%Uploads_Images%')->pluck($column);
-                    } catch (Throwable $e) {
-                        $this->warn("inline scan: cannot read {$schema}.{$table}.{$column} — ".$e->getMessage());
-                        $this->scanFailed = true;
-
-                        continue;
-                    }
-                    foreach ($rows as $value) {
-                        if (! is_string($value)) {
-                            continue;
-                        }
-                        // Any `…/Uploads_Images/<folder>/<file>` occurrence, however it is quoted.
-                        if (preg_match_all('#Uploads_Images/[^"\'\\s>)]+/([^"\'\\s>)]+)#i', $value, $matches) > 0) {
-                            foreach ($matches[1] as $file) {
-                                $referenced[basename($file)] = true;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        return $referenced;
-    }
-
-    /**
-     * Group a directory's files by their MASTER filename.
-     *
-     * `1700_2026-01-01_abc.webp` is a master; `1700_2026-01-01_abc-320.avif` is its rendition. No
-     * row ever references a rendition, so judging one on its own would delete every rendition in
-     * the tree.
-     *
-     * @return array<string, list<string>> master filename => absolute paths (master + renditions)
-     */
-    private function groupByMaster(string $directory): array
-    {
-        $groups = [];
-        foreach (glob($directory.'/*') ?: [] as $path) {
-            if (! is_file($path)) {
-                continue;
-            }
-            $name = basename($path);
-            // `<base>-<width>.<ext>` → `<base>.webp`
-            if (preg_match('/^(.+)-(\d{2,4})\.(avif|webp)$/', $name, $matches) === 1) {
-                $master = $matches[1].'.webp';
-                $groups[$master][] = $path;
-
-                continue;
-            }
-            $groups[$name][] = $path;
-        }
-
-        /** @var array<string, list<string>> $groups */
-        return $groups;
+        return $result['failed'] === 0 ? self::SUCCESS : self::FAILURE;
     }
 
     /** @return list<string> */

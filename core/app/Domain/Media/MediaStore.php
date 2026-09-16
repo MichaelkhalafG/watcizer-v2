@@ -37,6 +37,23 @@ final class MediaStore
      */
     public function store(UploadedFile $file, string $type): array
     {
+        return $this->storePath($file->getRealPath() ?: $file->getPathname(), $type);
+    }
+
+    /**
+     * The same thing, for a file that did not arrive as an upload.
+     *
+     * The wave-4D importer downloads a cover image to a temporary file and needs it processed
+     * EXACTLY as an upload would be — same folder, same legacy filename scheme, same master preset,
+     * same renditions — because a product imported from a spreadsheet and one uploaded by hand must
+     * not be distinguishable afterwards. Wrapping the temp file in a fake `UploadedFile` to reach
+     * `store()` was the alternative, and a fake request object in a console command is the kind of
+     * thing that is still there in two years.
+     *
+     * @return array{file: string, folder: string, url: string, width: int, height: int, bytes: int, renditions: array<int, array<string, string>>, skipped: list<string>}
+     */
+    public function storePath(string $sourcePath, string $type): array
+    {
         $config = self::typeConfig($type);
         $folder = $config['folder'];
         $directory = self::directory($folder);
@@ -44,7 +61,7 @@ final class MediaStore
         $name = self::filename();
         $absolute = $directory.'/'.$name;
 
-        $result = $this->pipeline->write($file->getRealPath() ?: $file->getPathname(), $absolute, $config);
+        $result = $this->pipeline->write($sourcePath, $absolute, $config);
 
         return [
             'file' => $name,

@@ -233,6 +233,10 @@ final class CompatCart
                 })
                 ->whereIn('cp.id', $productIds)
                 ->whereNull('cp.deleted_at')
+                // Withdrawn from sale is withdrawn from the cart reader too (review 🔴-3): an
+                // inactive product that still returns a price and a stock figure is a line the
+                // checkout will later refuse, which is the worst place to discover it.
+                ->where('cp.is_active', 1)
                 ->select(['cp.id', 'cp.selling_price', 'cp.sale_price', 'cp.stock_express', 'cp.stock_market', 'sp.effective_price', 'sp.effective_sale_price', 'sp.id as sp_id'])
                 ->get();
             foreach ($rows as $row) {

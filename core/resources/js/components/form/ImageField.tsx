@@ -3,6 +3,8 @@ import { useCallback, useRef, useState } from 'react';
 
 import { Field, type FieldShellProps } from '@/components/form/Field';
 import { Button } from '@/components/ui/button';
+import { Ltr } from '@/components/ui/bidi';
+import { useT } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 
 export interface StoredImage {
@@ -40,6 +42,7 @@ export function ImageField({
     onChange: (image: StoredImage | null) => void;
     disabled?: boolean;
 }) {
+    const t = useT();
     const input = useRef<HTMLInputElement>(null);
     const [busy, setBusy] = useState(false);
     const [preview, setPreview] = useState<string | null>(null);
@@ -68,7 +71,7 @@ export function ImageField({
                     const message =
                         typeof payload === 'object' && payload !== null && 'message' in payload
                             ? String((payload as { message: unknown }).message)
-                            : 'تعذّر رفع الصورة.';
+                            : t('common.upload_failed', 'تعذّر رفع الصورة.');
                     setFailure(message);
                     setPreview(null);
 
@@ -77,13 +80,13 @@ export function ImageField({
 
                 onChange(payload as StoredImage);
             } catch {
-                setFailure('تعذّر الاتصال بالخادم. حاول مرة أخرى.');
+                setFailure(t('common.server_unreachable', 'تعذّر الاتصال بالخادم. حاول مرة أخرى.'));
                 setPreview(null);
             } finally {
                 setBusy(false);
             }
         },
-        [onChange, type],
+        [onChange, type, t],
     );
 
     const shown = preview ?? value?.url ?? null;
@@ -127,7 +130,11 @@ export function ImageField({
                             <div className="flex flex-wrap items-center gap-2">
                                 <Button type="button" variant="outline" size="sm" disabled={disabled || busy} onClick={() => input.current?.click()} className="gap-2">
                                     {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <ImageUp className="h-4 w-4" aria-hidden="true" />}
-                                    {busy ? 'جارٍ الرفع…' : value === null ? 'اختر صورة' : 'استبدال'}
+                                    {busy
+                                        ? t('common.uploading', 'جارٍ الرفع…')
+                                        : value === null
+                                          ? t('form.choose_image', 'اختر صورة')
+                                          : t('form.replace_image', 'استبدال')}
                                 </Button>
                                 {value !== null ? (
                                     <Button
@@ -142,25 +149,31 @@ export function ImageField({
                                         className="gap-2 text-destructive"
                                     >
                                         <Trash2 className="h-4 w-4" aria-hidden="true" />
-                                        إزالة
+                                        {t('common.remove', 'إزالة')}
                                     </Button>
                                 ) : null}
                             </div>
 
                             {value !== null ? (
-                                <p className="truncate text-xs text-muted-foreground" dir="ltr" title={value.file}>
-                                    {value.file} · {value.width}×{value.height} · {Math.round(value.bytes / 1024)} KB
-                                    {Object.keys(value.renditions).length > 0 ? ` · ${Object.keys(value.renditions).length} أحجام` : ''}
+                                <p className="truncate text-xs text-muted-foreground" title={value.file}>
+                                    <Ltr>
+                                        {value.file} · {value.width}×{value.height} · {Math.round(value.bytes / 1024)} KB
+                                        {Object.keys(value.renditions).length > 0
+                                            ? ` · ${t('form.rendition_count', ':count أحجام', { count: Object.keys(value.renditions).length })}`
+                                            : ''}
+                                    </Ltr>
                                 </p>
                             ) : null}
 
                             {/* When the host could not write AVIF, or a rendition was skipped because
                                 the source was too small, say so here rather than in a log nobody reads. */}
                             {value !== null && value.skipped.length > 0 ? (
-                                <ul className="space-y-0.5 text-[11px] text-amber-700 dark:text-amber-400" dir="ltr">
-                                    {value.skipped.map((reason) => (
-                                        <li key={reason}>· {reason}</li>
-                                    ))}
+                                <ul className="space-y-0.5 text-[11px] text-amber-700 dark:text-amber-400">
+                                    <Ltr>
+                                        {value.skipped.map((reason) => (
+                                            <li key={reason}>· {reason}</li>
+                                        ))}
+                                    </Ltr>
                                 </ul>
                             ) : null}
                         </div>
