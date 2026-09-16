@@ -75,6 +75,12 @@ it('names EVERY table the dashboard authors, in order, so adding one is a delibe
      * delete a promotion the shop is running — and the `promotion_rule_id` on the order lines it
      * already granted would point at nothing.
      *
+     * FIFTEEN since M1r added `promotion_order_discounts` — what a money reward took off an order
+     * and which rule took it. It is on the list for the reasons above and one more: it describes an
+     * ORDER, and orders are legacy rows a rebuild never touches. Dropping the discount record would
+     * leave those orders permanently unexplained — a total of 475 against lines of 500, with
+     * nothing left to say why.
+     *
      * The list is pinned BY NAME on purpose: adding a table here must be a deliberate edit to this
      * assertion, because the alternative is a table quietly joining the never-dropped set and
      * nobody noticing until switch night proves it should not have.
@@ -86,6 +92,7 @@ it('names EVERY table the dashboard authors, in order, so adding one is a delibe
         'payment_reconciliation_findings',
         'promotion_rules', 'promotion_rule_storefront', 'promotion_rule_conditions',
         'promotion_rule_rewards', 'promotion_rule_skips',
+        'promotion_order_discounts',
         'core_user_preferences',
         'core_activity_log',
     ]);

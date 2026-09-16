@@ -151,7 +151,15 @@ final class ProductController
                 'sku' => ManageText::t('products.supplier_code', 'كود المورّد'),
                 'title' => [ManageText::t('common.name_ar', 'الاسم (عربي)'), fn (array $row): string => Coerce::str(Coerce::arr($row['title'] ?? null)['ar'] ?? null)],
                 'title_en' => [ManageText::t('common.name_en', 'الاسم (إنجليزي)'), fn (array $row): string => Coerce::str(Coerce::arr($row['title'] ?? null)['en'] ?? null)],
-                'brand' => [ManageText::t('products.brand', 'الماركة'), fn (array $row): string => Coerce::str(Coerce::arr($row['brand'] ?? null)['ar'] ?? null)],
+                /*
+                 * BOTH languages, like `title` above (2026-09-16). The database stores `ar` and
+                 * `en` for every translated thing, and an export that emits one of them loses half
+                 * the record — the file is opened to bulk-edit and to send to the client, and both
+                 * of those need the pair. A MISSING translation is an EMPTY cell, never the other
+                 * language: an empty cell is information, a duplicated one hides the gap.
+                 */
+                'brand' => [ManageText::t('products.brand_ar', 'الماركة (عربي)'), fn (array $row): string => Coerce::str(Coerce::arr($row['brand'] ?? null)['ar'] ?? null)],
+                'brand_en' => [ManageText::t('products.brand_en', 'الماركة (إنجليزي)'), fn (array $row): string => Coerce::str(Coerce::arr($row['brand'] ?? null)['en'] ?? null)],
                 'family' => ManageText::t('products.family', 'العائلة'),
                 'selling_price' => ManageText::t('common.price', 'السعر'),
                 // NOT `products.sale_price`: that one's Arabic is «سعر التخفيض» and this column says

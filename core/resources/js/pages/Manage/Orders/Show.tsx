@@ -150,6 +150,16 @@ interface Props {
     } | null;
     attempts: Attempt[];
     movements: Movement[];
+    /**
+     * What a money reward took off this order, and which rule took it — NULL for nearly every
+     * order. Without it a total lower than the lines has nothing explaining it (M1r).
+     */
+    discount: {
+        rule_id: number;
+        rule_name: string | null;
+        amount: string;
+        free_shipping: boolean;
+    } | null;
     /** Every order e-mail this order caused, newest first. */
     notifications: Notification[];
     /** What the domain says may happen next — never computed here (see OrderFulfilment). */
@@ -292,6 +302,7 @@ function Line({ label, children }: { label: string; children: ReactNode }) {
 export default function OrderShow({
     order,
     items,
+    discount,
     address,
     attempts,
     movements,
@@ -695,6 +706,36 @@ export default function OrderShow({
                             <Line label={t("common.total", "الإجمالي")}>
                                 <span dir="ltr">{order.total}</span>
                             </Line>
+                            {/*
+                             * Why the total is lower than the lines. Rendered only when there IS a
+                             * discount, and it names the RULE — an amount alone would replace one
+                             * unexplained number with two.
+                             */}
+                            {discount !== null ? (
+                                <Line
+                                    label={
+                                        discount.free_shipping
+                                            ? t(
+                                                  "orders.discount_shipping",
+                                                  "خصم (شحن مجاني)",
+                                              )
+                                            : t("orders.discount", "الخصم")
+                                    }
+                                >
+                                    <span dir="ltr">−{discount.amount}</span>
+                                    <span className="block text-xs text-muted-foreground">
+                                        {t(
+                                            "orders.discount_from_rule",
+                                            "من عرض: :name",
+                                            {
+                                                name:
+                                                    discount.rule_name ??
+                                                    `#${discount.rule_id}`,
+                                            },
+                                        )}
+                                    </span>
+                                </Line>
+                            ) : null}
                             <Line label={t("common.payment", "الدفع")}>
                                 {order.paid_via_provider !== null ? (
                                     <span dir="ltr">

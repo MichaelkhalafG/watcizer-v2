@@ -26,8 +26,16 @@ use Tests\Support\T;
  *     an operator switched language.
  *   • `Mail/*`, `Domain/Notifications/*` and `Storefront/*` speak to the CUSTOMER, in the
  *     storefront's language. A different audience and a different locale from the dashboard
- *     operator; "an English operator reads Arabic" is not about them. They need their own seam
- *     keyed on the ORDER's locale, which is a separate piece of work.
+ *     operator; "an English operator reads Arabic" is not about them.
+ *
+ *     **Settled 2026-09-16: they stay in Arabic, and this is not a gap.** The customers are
+ *     Egyptian and the e-mails work; converting them would be work rather than a saving. A second
+ *     language can be added if Brand Fashion ever needs one — at which point the seam is keyed on
+ *     the ORDER's locale, not the operator's — which is precisely why the dashboard seam was not
+ *     extended over them: `ManageText::t()` resolves against the OPERATOR's language, and an
+ *     English-speaking member of staff advancing an order must not thereby send an Egyptian
+ *     customer an English e-mail. Nobody should read the exclusion below as an outstanding item.
+ *     See CLEAN_CORE_STUDY §6.2.1.
  *
  * Everything else is OPERATOR text and in scope.
  *

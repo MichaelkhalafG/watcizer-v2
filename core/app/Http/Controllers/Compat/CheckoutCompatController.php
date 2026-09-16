@@ -14,6 +14,7 @@ use App\Domain\Payment\CallbackPolicy;
 use App\Domain\Payment\PaymentInitiator;
 use App\Domain\Promotions\CartLine;
 use App\Domain\Promotions\CartSnapshot;
+use App\Domain\Promotions\PromotionDiscounts;
 use App\Domain\Promotions\PromotionEngine;
 use App\Domain\Promotions\PromotionOutcome;
 use App\Domain\Promotions\PromotionSkips;
@@ -197,6 +198,20 @@ class CheckoutCompatController extends Controller
                 $priced['lines'],
                 $promotion,
             );
+
+            /*
+             * ── The discount's audit trail (M1r) ──────────────────────────────────────────────
+             *
+             * A free-item reward is already explained by its own `order_items` row. A money reward
+             * is only a smaller total, so the reason has to be recorded deliberately — otherwise an
+             * order whose lines sum to 500 and whose total reads 475 has nothing to say why, and
+             * the settlement export cannot attribute the difference.
+             *
+             * INSIDE the transaction, unlike the skip counter below: a skip is a fact about an
+             * ATTEMPT and must survive the order rolling back, while this is a fact about an ORDER
+             * and must not exist if that order does not.
+             */
+            PromotionDiscounts::record($orderId, $promotion);
 
             // Clear the cart so an ordered/removed line can never inflate the NEXT order's total.
             if (! $isGuest && $cart !== null) {

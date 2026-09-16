@@ -27,12 +27,27 @@ final class Banners
             ->leftJoin('storefront_category_translations as ct', function (JoinClause $join): void {
                 $join->on('ct.storefront_category_id', '=', 'b.storefront_category_id')->where('ct.locale', '=', 'ar');
             })
+            /*
+             * The ENGLISH names too (2026-09-16), for the CSV's second language column.
+             *
+             * The screen shows one destination name and goes on showing the Arabic; these two joins
+             * exist so the export can carry both, which is what somebody bulk-editing the file or
+             * sending it to the client needs. A banner has at most one destination, so neither join
+             * can multiply a row.
+             */
+            ->leftJoin('catalog_product_translations as pte', function (JoinClause $join): void {
+                $join->on('pte.product_id', '=', 'b.product_id')->where('pte.locale', '=', 'en');
+            })
+            ->leftJoin('storefront_category_translations as cte', function (JoinClause $join): void {
+                $join->on('cte.storefront_category_id', '=', 'b.storefront_category_id')->where('cte.locale', '=', 'en');
+            })
             ->where('b.storefront_id', $storefrontId)
             ->where('b.placement', BannerWriter::PLACEMENTS[0])
             ->select([
                 'b.id', 'b.image_path', 'b.link_url', 'b.product_id', 'b.storefront_category_id',
                 'b.sort_order', 'b.is_active', 'b.starts_at', 'b.ends_at',
                 'pt.title as product_title', 'ct.name as category_name',
+                'pte.title as product_title_en', 'cte.name as category_name_en',
             ]);
     }
 
