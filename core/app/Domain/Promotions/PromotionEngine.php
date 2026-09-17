@@ -352,7 +352,14 @@ final class PromotionEngine
         return [
             'rewards' => $lines,
             'reason' => null,
-            'discount' => round($discount, 2),
+            /*
+             * Clamped ONCE, on the sum (🟡-1, 2026-09-17). It used to be clamped per reward inside
+             * `discountFor()` and then added up, so a rule with two rewards could record more than
+             * the cart was worth — two "100% off" rewards on a EGP 500 cart recorded EGP 1,100.
+             * The shopper was charged correctly either way; the wrong number was the one written
+             * into the discount record that finance reconciles against.
+             */
+            'discount' => PromotionRules::clampToCart($discount, $cart),
             'free_shipping' => $freeShipping,
         ];
     }

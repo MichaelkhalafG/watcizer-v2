@@ -112,11 +112,15 @@ export default function ProductsIndex({
     };
 
     /**
-     * The six missing-data tokens, in the operator's language.
+     * The seven missing-data tokens, in the operator's language.
      *
      * The tokens themselves are the server's (`ImportReport::MISSING_*`) and are deliberately short
      * and stable — they are also what the filter selects on — so the translation lives here, next to
      * the only place that shows them to a person.
+     *
+     * `image_problem` is the odd one out and reads as a whole phrase rather than a field name, on
+     * purpose. Every other token names something ABSENT, and the chip is read as "missing: …". This
+     * one is present and broken, so "صورة" in that list would say the opposite of what is true.
      */
     const missingLabels: Record<string, string> = {
         sku: t("products.supplier_code", "كود المورّد"),
@@ -125,6 +129,7 @@ export default function ProductsIndex({
         category: t("common.category", "تصنيف"),
         brand: t("products.brand", "الماركة"),
         price: t("common.price", "السعر"),
+        image_problem: t("products.image_problem", "صورة تالفة — تحتاج رفعًا جديدًا"),
     };
 
     const missingLabel = (token: string): string =>
@@ -685,6 +690,12 @@ export default function ProductsIndex({
                                 {t(
                                     "products.machine_ar_filter",
                                     "ترجمة آلية تحتاج مراجعة",
+                                )}
+                            </option>
+                            <option value="image_problem">
+                                {t(
+                                    "products.image_problem_filter",
+                                    "صور تالفة تحتاج رفعًا جديدًا",
                                 )}
                             </option>
                         </Select>

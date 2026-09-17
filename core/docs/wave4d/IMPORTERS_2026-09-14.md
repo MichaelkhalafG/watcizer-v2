@@ -93,6 +93,19 @@ dropped: **631 unpublished, 416 hidden, 6 with no name**.
 
 The run is idempotent (`catalog_products.import_ref` UNIQUE), so it resumes where it stopped.
 
+**Proven under a real crash, 2026-09-17.** That sentence was written the day the importer was and
+went untested against anything worse than a rolled-back test transaction. A Windows reboot then killed
+`mysqld` and PHP 6 066 products into a 7 308-row run. The resumed run re-read the file, reported
+`imported 0` across all six thousand already-present rows, picked up within ~100 rows of the crash
+point, and finished with **6 097 imported rows over 6 097 distinct `import_ref` values — 0 duplicated
+refs, 0 duplicated `wa_code`s**. Full numbers and the integrity checks on the crashed database:
+`OVERNIGHT_2026-09-17.md` §8.
+
+The cost of a resume is one full re-read of the file: the importer does not remember where it stopped,
+it re-derives it from what the catalogue already holds. A stored cursor would be a second source of
+truth that could point at the wrong row after a partial write; the re-read is cheap next to the
+per-product work.
+
 ---
 
 ## 6. Five defects the real runs found
@@ -104,7 +117,7 @@ The run is idempotent (`catalog_products.import_ref` UNIQUE), so it resumes wher
    words are matched as whole words now, women first.
 3. **TLS.** The first real run stored 79 products and ZERO images: `curl.cainfo` is unset on a stock
    Windows PHP. Added `MEDIA_CA_BUNDLE` (documented in `.env.example`; verification never disabled)
-   and the report now groups image failures BY REASON.
+   and the report now groups image failures BY REASON. **It happened again on 2026-09-17** — see §6a.
 4. **A source that knows its brand.** Joyroom titles are descriptions, so the title-derived brand was
    "20W Magnetic" and "Screen Protector" for all 86. `SourceRow::$brand` lets a reader assert it.
 5. **A half-imported row was skipped for ever.** A failure after `import_ref` left a product with
@@ -112,6 +125,39 @@ The run is idempotent (`catalog_products.import_ref` UNIQUE), so it resumes wher
    workers deadlock), `discard()` to remove a partial row (refusing any product with a ledger
    movement or an order line), and the row's work reordered so everything undoable happens before
    the one thing that is not.
+
+---
+
+## 6a. The TLS defect happened a SECOND time — so it is now a guard (2026-09-17)
+
+The overnight run started, imported 400 products, and every one of them was marked "no image".
+`MEDIA_CA_BUNDLE` is documented in `.env.example` and was simply **not present in `.env`**, so every
+HTTPS fetch died with *"unable to get local issuer certificate"*.
+
+**Nothing about the run looked wrong.** Products imported, counters incremented, the command was on
+course to exit zero. It was caught only because image coverage read **26%** — and even that figure
+was an artefact: 26% is precisely the share of urls an earlier run had already cached to disk, so
+what looked like partial success was in fact a total failure plus a cache.
+
+A documented variable is not a guard. `import:catalogue` now runs a **TLS pre-flight** before the
+first row: it takes the first image url the file offers and asks `CoverImages::tlsProblem()`, which
+refuses the run with a sentence naming `MEDIA_CA_BUNDLE`, whether it is unset, missing or wrong, and
+offering `--images=none` for a deliberate imageless import. Verification is never disabled.
+
+It is deliberately narrow — **only a certificate error stops a run**. A 404, a timeout or a refused
+connection says nothing about the machine, supplier files are full of dead links, and aborting 7 000
+rows over one of them would be a worse failure than the one being prevented. A certificate error is a
+property of the HOST: identical for every url on the internet, fixed by one line in `.env`.
+
+`ImageTlsPreflightTest` pins both halves — it fires on an unusable bundle, and stays silent on a
+working machine, on a dead link and on a plain-HTTP url. The working-machine case doubles as a live
+check that `.env` still carries a usable bundle, which is the assertion that would have caught this
+before the run instead of 400 products into it.
+
+One more thing the guard's own test caught: the first draft named `CURLE_PEER_FAILED_VERIFICATION`,
+which **does not exist** on this PHP build (libcurl renamed 60 and PHP exposes whichever name it was
+compiled against). The guard against a silent failure would itself have died with a fatal error. The
+error numbers are now listed as numbers, with the names in a comment.
 
 ---
 
@@ -132,7 +178,39 @@ screen adds a typed confirmation checked against a FRESH scan.
 
 ---
 
-## 8. One consequence worth stating
+## 8. An unknown category FLAGS the row — it no longer refuses it (2026-09-17)
+
+The rule of 2026-09-15 refused any row whose category leaf was not in `CategoryMap`. Its reasoning
+was right about the thing it protected and wrong about what to do with it.
+
+**What stays.** An unmapped leaf still contributes **no placement**. No guess, no fallthrough to a
+default node, no teaching the reconciliation to look away. That guarantee is the point, because a
+guessed placement is invisible afterwards: the product sits in a real section, looks deliberate, and
+nothing records that a machine chose it.
+
+**What changed.** The PRODUCT now arrives. Its title, price, stock, images and brand are all good
+data, and refusing the whole row threw every one of them away over a single unfamiliar word in one
+column. It lands **unplaced, hidden and marked `needs_category`**, with the offending leaf named in
+`report.csv` — so it is one dashboard assignment rather than a re-run of a file of thousands.
+
+`needs_category` is deliberately NOT the same marker as `category`:
+
+| marker | what it means | what to do |
+|---|---|---|
+| `category` | the source said nothing usable (`Uncategorized`, or no category) | decide what the product is |
+| `needs_category` | the source said a real word the map has not been asked about | assign it, or add a `CategoryMap::LEAVES` row |
+
+Collapsing them would hide the second inside the first, and the second is the one that means *the map
+is out of date* rather than *their data is thin*.
+
+**What it costs on today's data: nothing.** Measured on the real export, 2026-09-17: 8 614 rows,
+**60 distinct leaves, all 60 mapped**, and no leaf in the map the file does not use. Both the old rule
+and the new one fire zero times on this file. `UnmappedCategoryTest` fabricates the row instead, and
+its load-bearing case is *"it places it NOWHERE"*.
+
+---
+
+## 9. One consequence worth stating
 
 **An import run and a compat-harness run are mutually exclusive until the write-switch.** The
 harness compares core's catalogue byte-for-byte with legacy's, and an imported product exists only

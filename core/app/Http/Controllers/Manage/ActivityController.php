@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Manage;
 
+use App\Domain\Access\Roles;
 use App\Domain\Activity\ActivityLog;
 use App\Support\Coerce;
 use App\Support\ManageText;
@@ -72,6 +73,22 @@ final class ActivityController
             ->select(['a.id', 'a.user_id', 'a.user_name', 'a.subject_type', 'a.subject_id',
                 'a.subject_label', 'a.action', 'a.storefront_id', 'a.changes', 'a.created_at']);
 
+        /*
+         * ── The acting grant's storefronts, like every other list (🟡-2, 2026-09-17) ──────────
+         *
+         * `manage-users` opens this screen and can be granted SCOPED, so an administrator scoped to
+         * Brand Fashion was reading Watchizer's entire change history — who edited which product,
+         * what a price was before, which permissions were granted to whom.
+         *
+         * `storefront_id IS NULL` stays visible on purpose, and it is the opposite of the choice
+         * the order queue made. An order always belongs to a storefront; an ACTIVITY row often does
+         * not — a permission grant, a unit merge, a lookup edit are shop-wide, and a scoped operator
+         * who did one of those must still see that they did. Hiding the NULLs would make a scoped
+         * administrator's own actions disappear from the log the moment they were not about a
+         * storefront.
+         */
+        self::applyStorefrontScope($query);
+
         self::applyFilters($query, $table->resolvedFilters());
 
         // Which of the referenced accounts still exist — one query, not one per row.
@@ -137,6 +154,44 @@ final class ActivityController
             'pre_handover_note' => ManageText::t('activity.pre_handover_note', 'الصفوف المؤرَّخة قبل :date هي نشاط اختبار من مرحلة بناء اللوحة، وليست عمل الفريق. تُركت كما هي عمدًا: سجلّ يُعاد كتابته لا قيمة له.', ['date' => ActivityLog::HANDOVER_CUTOFF]),
             'coverage' => ManageText::t('activity.coverage', 'يسجَّل: المنتجات، التصنيفات، العرض والترتيب، تعديلات المخزون اليدوية، العروض الترويجية، إعدادات الدفع، ومنح الصلاحيات. لا تُسجَّل القراءات، ولا البانرات والمقالات والقوائم المرجعية (مؤجَّلة). قيم الأسرار لا تُكتب هنا أبدًا.'),
         ]);
+    }
+
+    /**
+     * Narrow the log to the acting grant's storefronts, plus the shop-wide rows (🟡-2).
+     *
+     * `storefront_id IS NULL` is INCLUDED, and that is the opposite of what the order queue does.
+     * An order always belongs to a storefront, so a NULL there would be a gap. An activity row often
+     * legitimately has none — a permission grant, a unit merge, a lookup edit are shop-wide — and
+     * excluding them would make a scoped administrator's own shop-wide actions vanish from the log
+     * they are reading to check what they did.
+     */
+    private static function applyStorefrontScope(Builder $query): void
+    {
+        $user = request()->user();
+        if ($user === null) {
+            // No session reaches this screen (the route is gated), so this is the belt behind the
+            // brace — and it is the right way round: see nothing, not everything.
+            $query->whereRaw('1 = 0');
+
+            return;
+        }
+
+        $scope = app(Roles::class)->storefrontScope($user);
+        if ($scope === null) {
+            return;                                  // an unscoped grant sees the whole log
+        }
+
+        $ids = [];
+        foreach ($scope as $id) {
+            $ids[] = Coerce::int($id);
+        }
+
+        $query->where(function (Builder $scoped) use ($ids): void {
+            // `[0]` for a grant that names no storefront: no row carries storefront 0, so only the
+            // shop-wide rows remain — which is what "scoped to nothing" has to mean.
+            $scoped->whereIn('a.storefront_id', $ids === [] ? [0] : $ids)
+                ->orWhereNull('a.storefront_id');
+        });
     }
 
     /**

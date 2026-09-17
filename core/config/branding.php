@@ -23,7 +23,7 @@ return [
 
     // Shown next to the mark in the sidebar; keeps the dashboard honest about which
     // platform it is, not just which storefront.
-    'suffix' => env('BRANDING_SUFFIX', 'لوحة التحكم'),
+    'suffix' => env('BRANDING_SUFFIX', 'لوحة التحكم'),  // i18n-exempt: an ENV DEFAULT for the browser-title suffix, set per deployment
 
     'logo' => [
         // Dark ink — for light surfaces.

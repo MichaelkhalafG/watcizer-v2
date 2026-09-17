@@ -40,6 +40,21 @@ final class ImportReport
 
     public const MISSING_PRICE = 'price';
 
+    /**
+     * The source named a category the map has never been asked about (developer decision,
+     * 2026-09-17, replacing the 2026-09-15 refusal).
+     *
+     * DISTINCT from `MISSING_CATEGORY`, and the difference is the action it asks for. A row marked
+     * `category` carried nothing usable — their own `Uncategorized`, or no category at all — and the
+     * answer is for somebody to decide what it is. A row marked `needs_category` carried a real word
+     * we have simply not mapped yet, so the answer is either one dashboard assignment or one new
+     * `CategoryMap::LEAVES` row, and the leaf itself is in the report to make that a minute's work.
+     *
+     * Folding the two together would hide the second inside the first, and the second is the one
+     * that means "the map is out of date" rather than "the supplier's data is thin".
+     */
+    public const NEEDS_CATEGORY = 'needs_category';
+
     /** @var array<string, int> */
     private array $counts = [];
 

@@ -24,6 +24,36 @@ use RuntimeException;
 final class ImagePipeline
 {
     /**
+     * Marks an entry in `skipped` as a real FAILURE rather than a deliberate omission.
+     *
+     * The list holds both, and the difference matters to everything downstream. *"320w: source is
+     * only 300px wide"* is the pipeline refusing to upscale — correct, expected, and true of a large
+     * share of a supplier catalogue; flagging those products would put half the shop on a review
+     * list. *"the encoder reported success but wrote 0 bytes"* is something going wrong that nobody
+     * asked for, and it is the one a person has to see.
+     *
+     * A prefix rather than a second array because `skipped` is already persisted and already read by
+     * the upload screen; splitting the shape would mean changing every reader to fix one of them.
+     */
+    public const FAILED_PREFIX = 'FAILED ';
+
+    /** Did this pipeline result carry a real failure (as opposed to a deliberate skip)? */
+    public static function hasFailure(mixed $skipped): bool
+    {
+        if (! is_array($skipped)) {
+            return false;
+        }
+
+        foreach ($skipped as $entry) {
+            if (is_string($entry) && str_starts_with($entry, self::FAILED_PREFIX)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * @param  array{folder: string, master: array{width: int, height: int, quality: int, pad_square: bool}, widths: list<int>, thumbnails: list<int>}  $config
      * @return array{width: int, height: int, bytes: int, renditions: array<int, array<string, string>>, skipped: list<string>}
      */
@@ -40,9 +70,19 @@ final class ImagePipeline
         $master = $this->fit($source, $config['master']['width'], $config['master']['height'], $config['master']['pad_square']);
         imagedestroy($source);
 
-        if (! imagewebp($master, $masterPath, $config['master']['quality'])) {
+        /*
+         * The master gets the same bytes-on-disk check as the renditions below, and it THROWS rather
+         * than recording a failure. A missing rendition degrades — the loader falls through to
+         * another source. A zero-byte master is the image itself, so there is nothing to fall
+         * through to, and a caller that carried on would attach a broken file to a product and call
+         * it done.
+         */
+        if (! imagewebp($master, $masterPath, $config['master']['quality']) || (int) (@filesize($masterPath) ?: 0) === 0) {
             imagedestroy($master);
-            throw new RuntimeException("Could not write the master image to [{$masterPath}].");
+            if (is_file($masterPath)) {
+                @unlink($masterPath);
+            }
+            throw new RuntimeException("Could not write the master image to [{$masterPath}]: the encoder produced no bytes.");
         }
 
         $width = imagesx($master);
@@ -78,9 +118,34 @@ final class ImagePipeline
                 $ok = $format === 'avif'
                     ? imageavif($resized, $path, config()->integer('media.renditions.avif_quality'))
                     : imagewebp($resized, $path, config()->integer('media.renditions.webp_quality'));
-                if ($ok) {
+
+                /*
+                 * ── `true` IS NOT ENOUGH. The file has to have bytes in it (2026-09-17) ────────
+                 *
+                 * GD's encoders can return `true` and leave a ZERO-BYTE file behind — measured on
+                 * this host: 8 empty renditions across 59 835 files, 7 of them AVIF, spread over the
+                 * 320/480/640/960 sizes with no pattern. The old code trusted the return value, so
+                 * the empty file was recorded in `renditions` and served: an empty AVIF usually
+                 * falls through to the next `<picture>` source, but an empty WebP is a broken image
+                 * in front of a customer, and nothing anywhere noticed either.
+                 *
+                 * So the file is REMOVED and not recorded. A rendition that does not exist is a
+                 * rendition the loader never advertises, which is exactly the rule the `skipped`
+                 * list already exists to keep — and `FAILED_PREFIX` marks it as a real failure
+                 * rather than one of the deliberate skips beside it.
+                 */
+                $bytes = $ok ? (int) (@filesize($path) ?: 0) : 0;
+                if ($ok && $bytes > 0) {
                     $renditions[$target][$format] = basename($path);
+
+                    continue;
                 }
+
+                if (is_file($path)) {
+                    @unlink($path);
+                }
+                $skipped[] = self::FAILED_PREFIX."{$target}w {$format}: the encoder reported "
+                    .($ok ? 'success but wrote 0 bytes' : 'failure');
             }
             imagedestroy($resized);
         }

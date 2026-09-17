@@ -228,3 +228,37 @@ it('computes each type from the cart, with the percentage clamped to 0..100', fu
         // A type that is not a money reward is worth nothing, never a fallback amount.
         ->and(PromotionRules::discountFor('free_product', '99.00', $cart))->toBe(0.0);
 });
+
+it('clamps the SUM of a rule’s rewards, not each one on its own', function () {
+    PromotionFixture::moneyRewards(true);
+    $product = PromotionFixture::giftableProduct();
+
+    /*
+     * Two rewards on ONE rule, each worth the whole cart. Clamped per reward — as they were until
+     * 🟡-1 — this recorded 2 × (subtotal + shipping): a discount larger than the order existed.
+     * The shopper was charged correctly, because the checkout floors the total at zero; the wrong
+     * number was the one written into the discount record the settlement export reconciles against.
+     */
+    PromotionFixture::rule(
+        [PromotionFixture::subtotalAtLeast(10)],
+        [PromotionFixture::fixedDiscount(500), PromotionFixture::fixedDiscount(500)],
+    );
+
+    $cart = PromotionFixture::cart([['product' => $product, 'qty' => 1, 'price' => 300.0]], shipping: 40.0);
+    $outcome = moneyEngine()->evaluate($cart);
+
+    // Exactly what the cart can bear — once.
+    expect($outcome->discount)->toBe(340.0)
+        ->and($outcome->discount)->toBe(round($cart->subtotal + $cart->shippingCost, 2));
+});
+
+it('leaves one reward’s value unclamped, because the ceiling belongs to the cart', function () {
+    // `discountFor()` reports what the REWARD is worth; `clampToCart()` applies what the CART can
+    // bear. Keeping them separate is what makes summing correct.
+    $cart = new CartSnapshot(storefrontId: 1, lines: [], subtotal: 100.0, shippingCost: 20.0, paymentMethod: 'cash');
+
+    expect(PromotionRules::discountFor('fixed_discount', '500.00', $cart))->toBe(500.0)
+        ->and(PromotionRules::clampToCart(500.0, $cart))->toBe(120.0)
+        // …and a negative can never become a surcharge.
+        ->and(PromotionRules::clampToCart(-50.0, $cart))->toBe(0.0);
+});

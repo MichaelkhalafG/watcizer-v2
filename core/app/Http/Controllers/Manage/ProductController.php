@@ -113,7 +113,8 @@ final class ProductController
                     // Wave 4D, the importer's two: everything a row is MISSING (derived, never
                     // stored — a marker that cannot go stale while somebody fixes the data), and
                     // the Arabic titles a machine wrote, so the team can work through them.
-                    'missing_data', 'machine_ar'],
+                    // …and M1s: an image that exists but did not process cleanly.
+                    'missing_data', 'machine_ar', 'image_problem'],
             ])
             // …and declared VIRTUAL, because neither is a column: `category` is a whole branch of
             // the tree and `flag` is four different predicates. `listQuery()` applies them.
@@ -258,7 +259,8 @@ final class ProductController
                  * is history and cannot be derived from the text. `ProductWriter` clears it the
                  * moment a human edits that translation.
                  */
-                'missing' => self::missingFor($row, $cover, $extras['placement'][$id] ?? null, $genericBrand),
+                'missing' => self::missingFor($row, $cover, $extras['placement'][$id] ?? null, $genericBrand,
+                    ($extras['image_problem'][$id] ?? false) === true),
                 'machine_ar' => Row::nbool($row, 'ar_is_machine') === true,
                 'has_image' => $cover !== null,
                 'has_stock' => Row::bool($row, 'in_stock'),
@@ -577,9 +579,10 @@ final class ProductController
                 $sub->from('catalog_product_variants as v2')->whereColumn('v2.product_id', 'p.id')->selectRaw('1')->limit(1);
             }),
             /*
-             * "Show me everything that is not finished." The six conditions are exactly the six
+             * "Show me everything that is not finished." The SEVEN conditions are exactly the seven
              * markers the row renders, because a filter that selects a different set from the one
-             * the badge shows is worse than no filter (§4).
+             * the badge shows is worse than no filter (§4). image_problem joined them in M1s, and
+             * it had to join here at the same time for that reason.
              */
             'missing_data' => $query->where(function (Builder $inner) use ($storefrontId): void {
                 $generic = self::genericBrandId();
@@ -597,11 +600,28 @@ final class ProductController
                             ->where('scp3.storefront_id', $storefrontId)
                             ->selectRaw('1')->limit(1);
                     });
+                $inner->orWhereExists(function (Builder $sub): void {
+                    $sub->from('catalog_product_images as i4')
+                        ->whereColumn('i4.product_id', 'p.id')
+                        ->whereNotNull('i4.renditions_failed')
+                        ->selectRaw('1')->limit(1);
+                });
                 if ($generic !== null) {
                     $inner->orWhere('p.brand_id', $generic);
                 }
             }),
             'machine_ar' => $query->where('ar.is_machine', 1),
+            /*
+             * M1s. An EXISTS over the image rows, like the missing_data conditions beside it —
+             * renditions_failed is nullable and null on the overwhelming majority of rows, so this
+             * selects the handful that need somebody.
+             */
+            'image_problem' => $query->whereExists(function (Builder $sub): void {
+                $sub->from('catalog_product_images as i3')
+                    ->whereColumn('i3.product_id', 'p.id')
+                    ->whereNotNull('i3.renditions_failed')
+                    ->selectRaw('1')->limit(1);
+            }),
             default => null,
         };
 
@@ -620,7 +640,7 @@ final class ProductController
      * @param  int|null  $generic  the Generic brand's id, read once for the page
      * @return list<string>
      */
-    private static function missingFor(stdClass $row, ?string $cover, ?array $placement, ?int $generic): array
+    private static function missingFor(stdClass $row, ?string $cover, ?array $placement, ?int $generic, bool $imageProblem = false): array
     {
         $out = [];
 
@@ -629,6 +649,14 @@ final class ProductController
         }
         if ($cover === null) {
             $out[] = 'image';
+        }
+        /*
+         * It HAS an image and something is wrong with it (M1s) — a rendition the encoder wrote as
+         * zero bytes. Separate from image because the action differs: image means find a
+         * photo, image_problem means the photo we have did not process and wants re-uploading.
+         */
+        if ($imageProblem) {
+            $out[] = 'image_problem';
         }
         if (trim(Row::nstr($row, 'title_ar') ?? '') === '') {
             $out[] = 'arabic';
@@ -677,7 +705,7 @@ final class ProductController
      * grouped query, never per row (AGENTS §2.24).
      *
      * @param  list<object>  $rows
-     * @return array{covers: array<int, string>, variants: array<int, int>, storefronts: array<int, array<int, bool>>, placement: array<int, array{nodes: int, primaries: int}>}
+     * @return array{covers: array<int, string>, variants: array<int, int>, storefronts: array<int, array<int, bool>>, placement: array<int, array{nodes: int, primaries: int}>, image_problem: array<int, bool>}
      */
     private static function pageExtras(array $rows, ?int $storefrontId = null): array
     {
@@ -686,7 +714,7 @@ final class ProductController
             $ids[] = Row::int(Row::cast($raw), 'id');
         }
         if ($ids === []) {
-            return ['covers' => [], 'variants' => [], 'storefronts' => [], 'placement' => []];
+            return ['covers' => [], 'variants' => [], 'storefronts' => [], 'placement' => [], 'image_problem' => []];
         }
 
         // Placement shape on THIS storefront: how many nodes, and how many of them are primary.
@@ -735,20 +763,37 @@ final class ProductController
         // The cover rule is the read layer's own — `is_cover` first, then `sort` — so the first
         // row seen per product wins. One ordered read over 25 ids, not one query per row.
         $covers = [];
+        /*
+         * …and the image PROBLEM comes off the same read (M1s), because it is a fact about a row
+         * this query is already fetching. Any image of the product counts, not only the cover: a
+         * broken gallery rendition is still a broken image on the product page, and asking the team
+         * to re-upload "the one that is wrong" is better served by them opening the product than by
+         * this list guessing which.
+         *
+         * `renditions_failed` is the one STORED image marker, and it has to be. The others are
+         * derived per render (see `missingFor()`), which works because each is a question SQL can
+         * ask. "Does a file on disk have zero bytes" is not — answering it per row would mean
+         * stat()-ing several files per product on every page of the list.
+         */
+        $imageProblem = [];
         foreach (
             DB::table('catalog_product_images')
                 ->whereIn('product_id', $ids)
                 ->orderBy('product_id')->orderByDesc('is_cover')->orderBy('sort')->orderBy('id')
-                ->get(['product_id', 'path']) as $raw
+                ->get(['product_id', 'path', 'renditions_failed']) as $raw
         ) {
             $row = Row::cast($raw);
             $productId = Row::int($row, 'product_id');
             if (! array_key_exists($productId, $covers)) {
                 $covers[$productId] = Row::str($row, 'path');
             }
+            if (Row::nstr($row, 'renditions_failed') !== null) {
+                $imageProblem[$productId] = true;
+            }
         }
 
-        return ['covers' => $covers, 'variants' => $variants, 'storefronts' => $visibility, 'placement' => $placement];
+        return ['covers' => $covers, 'variants' => $variants, 'storefronts' => $visibility,
+            'placement' => $placement, 'image_problem' => $imageProblem];
     }
 
     /**

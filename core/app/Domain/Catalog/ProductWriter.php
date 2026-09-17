@@ -497,6 +497,20 @@ final class ProductWriter
                 $row['renditions'] = $image['renditions'];
             }
 
+            /*
+             * A human just put an image on this row, so whatever `media:verify` found wrong with the
+             * old one is no longer true (M1s). Cleared here for the same reason `is_machine` is
+             * cleared on a human edit: the marker exists to ask somebody to act, and it has to stop
+             * asking the moment they have.
+             *
+             * If the NEW file also encodes badly, nothing broken is served — the pipeline removes an
+             * empty rendition rather than recording it — and the next `media:verify --mark` marks
+             * the row again. Re-flagging it here would need the upload's `skipped` list to survive a
+             * round trip through the browser, which is a lot of plumbing for a case that is already
+             * both harmless and detected.
+             */
+            $row['renditions_failed'] = null;
+
             if ($image['id'] !== null && DB::table('catalog_product_images')->where('id', $image['id'])->where('product_id', $productId)->exists()) {
                 DB::table('catalog_product_images')->where('id', $image['id'])->update($row);
                 $keptIds[] = $image['id'];

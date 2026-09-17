@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Domain\Media\ImagePipeline;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 
@@ -31,7 +32,9 @@ final class MediaVerifyCommand extends Command
 {
     protected $signature = 'media:verify
         {--against= : Path of the OLD tree, to prove a copy landed whole}
-        {--show=15 : How many example missing files to print}';
+        {--show=15 : How many example missing files to print}
+        {--empty-renditions : Find rendition files that exist but hold ZERO bytes}
+        {--mark : With --empty-renditions, record the finding on the product so the dashboard shows it}';
 
     protected $description = 'Verify the image tree: every DB-referenced file, and (optionally) that a copy is faithful';
 
@@ -99,6 +102,10 @@ final class MediaVerifyCommand extends Command
             }
         }
 
+        if ((bool) $this->option('empty-renditions')) {
+            $this->emptyRenditions($root);
+        }
+
         // ── 3. was a copy faithful? ──────────────────────────────────────────────────────────
         $against = $this->option('against');
         if (! is_string($against) || $against === '') {
@@ -109,6 +116,94 @@ final class MediaVerifyCommand extends Command
         }
 
         return $this->compare($against, $root, $onDisk);
+    }
+
+    /**
+     * Rendition files that EXIST and hold zero bytes — and, with `--mark`, the product rows that
+     * have to know about it.
+     *
+     * ── Why this is a separate pass and not part of the "missing" check above ────────────────
+     *
+     * A missing file and an empty one fail differently. `is_file()` is true for both a real image
+     * and a zero-byte one, so the check in step 1 walks straight past an empty rendition — which is
+     * exactly how 8 of them sat in the tree unnoticed since 2026-09-14. This pass asks the one extra
+     * question that separates them, `filesize() === 0`.
+     *
+     * `ImagePipeline` now removes an empty rendition at write time rather than recording it, so this
+     * exists for the files that were written BEFORE that fix, and as the standing check that the fix
+     * is still holding.
+     *
+     * ── Why it marks the PRODUCT and not just the file ──────────────────────────────────────
+     *
+     * Nobody reads a console command's output looking for work. The person who can fix this opens
+     * the products list, and `--mark` is what puts it in front of them: `renditions_failed` on the
+     * image row, which the dashboard renders as a missing-data marker beside "no SKU" and "no image"
+     * and filters on with `flag=image_problem`.
+     */
+    private function emptyRenditions(string $root): void
+    {
+        $this->line('');
+        $this->info('  empty renditions');
+
+        // `filesUnder()` already carries each file's size, so this costs one walk and no extra stat.
+        $empty = [];
+        foreach ($this->filesUnder($root) as $relative => $bytes) {
+            if ($bytes === 0) {
+                $empty[] = $relative;
+            }
+        }
+        sort($empty);
+
+        if ($empty === []) {
+            $this->line('    none — every file in the tree has bytes in it');
+
+            return;
+        }
+
+        $this->warn(sprintf('    %s file(s) exist but hold ZERO bytes', number_format(count($empty))));
+        foreach (array_slice($empty, 0, max(0, (int) $this->option('show'))) as $file) {
+            $this->line('      '.$file);
+        }
+        if (count($empty) > (int) $this->option('show')) {
+            $this->line('      … and '.number_format(count($empty) - (int) $this->option('show')).' more');
+        }
+
+        if (! (bool) $this->option('mark')) {
+            $this->line('');
+            $this->line('    Re-run with --mark to record these on the products, so the dashboard asks');
+            $this->line('    somebody to re-upload them.');
+
+            return;
+        }
+
+        /*
+         * An empty rendition is named `<master-basename>-<width>.<ext>`, so the row it belongs to is
+         * the one whose `path` ends in `<master-basename>.webp`. Matched on the basename rather than
+         * by parsing `renditions`, because a rendition the pipeline failed to record is exactly the
+         * case here — the JSON would not mention it.
+         */
+        $marked = 0;
+        $byMaster = [];
+        foreach ($empty as $relative) {
+            $base = basename($relative);
+            if (preg_match('/^(.*)-\d+\.(?:webp|avif)$/', $base, $m) !== 1) {
+                continue;               // the MASTER itself is empty: a different, louder problem
+            }
+            $byMaster[$m[1]][] = $base;
+        }
+
+        foreach ($byMaster as $masterBase => $files) {
+            sort($files);
+            $note = ImagePipeline::FAILED_PREFIX.'zero-byte on disk: '.implode(', ', $files);
+            $marked += DB::table('catalog_product_images')
+                ->where('path', 'like', '%'.$masterBase.'.webp')
+                ->update(['renditions_failed' => mb_substr($note, 0, 1000), 'updated_at' => now()]);
+        }
+
+        $this->line('');
+        $this->line(sprintf('    marked %s image row(s) across %s master image(s)',
+            number_format($marked), number_format(count($byMaster))));
+        $this->line('    the products list shows these under flag=image_problem');
     }
 
     /**

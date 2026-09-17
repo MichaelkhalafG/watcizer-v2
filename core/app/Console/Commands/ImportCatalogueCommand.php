@@ -6,7 +6,9 @@ namespace App\Console\Commands;
 
 use App\Domain\Catalog\PreSwitch;
 use App\Domain\Import\CategoryMerger;
+use App\Domain\Import\CoverImages;
 use App\Domain\Import\ImageCache;
+use App\Domain\Import\ImportFileError;
 use App\Domain\Import\ImportReport;
 use App\Domain\Import\JoyroomSheet;
 use App\Domain\Import\ProductImporter;
@@ -129,6 +131,32 @@ final class ImportCatalogueCommand extends Command
 
         $rows = $source === 'woo' ? new WooExport($file) : new JoyroomSheet($file);
 
+        /*
+         * ── Can this machine fetch over TLS? Asked once, before the first row (2026-09-17) ──
+         *
+         * Not a general connectivity check — see `CoverImages::tlsProblem()` for why only a
+         * certificate error stops a run. It is here because the failure it catches is SILENT: every
+         * fetch fails, every product still imports, every product is marked `image`, and the run
+         * reports success. The overnight run of 2026-09-17 was 400 products into exactly that before
+         * the image-coverage figure gave it away.
+         *
+         * Skipped under `--dry-run` (which writes nothing and fetches nothing) and under
+         * `--images=none` (where failing to fetch is the instruction).
+         */
+        if ($withImages && ! $dryRun) {
+            $problem = $this->tlsPreflight($rows);
+            if ($problem !== null) {
+                $this->error('Refusing to import: image fetching is broken on this machine.');
+                $this->line('');
+                foreach (explode("\n", $problem) as $line) {
+                    $this->line('  '.$line);
+                }
+                $this->line('');
+
+                return self::FAILURE;
+            }
+        }
+
         $run = function () use ($rows, $file, $source, $importer, $merger, $storefronts, $report, $withImages, $allowCompatVariants, $limit, $dryRun, $shardIndex, $shardCount): void {
             if (! $dryRun) {
                 $importer->ensureMaterials($report);
@@ -203,11 +231,39 @@ final class ImportCatalogueCommand extends Command
             }
         };
 
-        if ($dryRun) {
-            $run();
-        } else {
-            // THE exemption. Scoped, named, and closed in a finally by PreSwitch itself.
-            PreSwitch::allowing(self::EXEMPTIONS, $run);
+        /*
+         * ── A bad FILE is an answer, not a crash (🟡-4, 2026-09-17) ──────────────────────────
+         *
+         * `ImportFileError` is the reader saying "your file has a problem, here is the line". It
+         * used to arrive as a bare `RuntimeException` and come out of the console as forty lines of
+         * vendor frames — which tells the person holding the spreadsheet nothing, and reads as the
+         * importer being broken rather than the file.
+         *
+         * Caught HERE and nowhere deeper: the reader must not swallow it and carry on, because the
+         * usual cause is an unclosed quote that has already swallowed the following rows. Every
+         * other exception still propagates with its trace, because that one IS ours.
+         */
+        /*
+         * The failure is CAUGHT and remembered, not returned on — because the report has to be
+         * written either way (2026-09-17).
+         *
+         * A malformed row a thousand products into a file does not undo the thousand: they are
+         * committed, and some of them carry markers saying which ones need a person. Returning here
+         * threw that list away and left the operator with a database full of half-finished products
+         * and nothing to work from — the exact thing `report.csv` exists to prevent. The exit code
+         * is still non-zero; only the order of the last two steps changed.
+         */
+        $failure = null;
+
+        try {
+            if ($dryRun) {
+                $run();
+            } else {
+                // THE exemption. Scoped, named, and closed in a finally by PreSwitch itself.
+                PreSwitch::allowing(self::EXEMPTIONS, $run);
+            }
+        } catch (ImportFileError $e) {
+            $failure = $e;
         }
 
         foreach ($rows->counts() as $key => $value) {
@@ -216,9 +272,20 @@ final class ImportCatalogueCommand extends Command
         // The names we could not match — the answer to "which brands should we add?".
         $importer->recordUnmatchedBrands($report);
 
+        if ($failure !== null) {
+            $this->line('');
+            $this->error('The file could not be read: '.$failure->getMessage());
+            $this->line('');
+            $this->line('  Nothing was imported from the point of the error onwards. Rows already written by');
+            $this->line('  this run are committed — the importer skips what the catalogue already has, so');
+            $this->line('  re-running after the fix continues rather than duplicating.');
+            $this->line('');
+            $this->line('  The report below covers what DID land, including every row that needs a person.');
+        }
+
         $this->summarise($report, $source, $file, $started, $dryRun);
 
-        return self::SUCCESS;
+        return $failure === null ? self::SUCCESS : self::FAILURE;
     }
 
     /** A dry run classifies without writing — the same decisions, none of the consequences. */
@@ -264,6 +331,31 @@ final class ImportCatalogueCommand extends Command
         }
 
         return [$index - 1, $count];
+    }
+
+    /**
+     * The first image URL the file offers, asked of `CoverImages::tlsProblem()`.
+     *
+     * Reads only as far as the first row that HAS an image — a file whose first hundred rows carry
+     * none is not evidence of anything, and a file with no image at all has nothing to probe with,
+     * so both answer "no problem" and the run proceeds.
+     *
+     * `ImportFileError` is not caught here: a malformed file should be refused by the reader's own
+     * message (🟡-4), not turned into a confusing TLS answer.
+     */
+    private function tlsPreflight(WooExport|JoyroomSheet $rows): ?string
+    {
+        $seen = 0;
+        foreach ($rows->rows() as $row) {
+            if ($row->imageUrl !== null && $row->imageUrl !== '') {
+                return CoverImages::tlsProblem($row->imageUrl);
+            }
+            if (++$seen >= 200) {
+                break;
+            }
+        }
+
+        return null;
     }
 
     /**

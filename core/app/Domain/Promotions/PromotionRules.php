@@ -264,10 +264,18 @@ final class PromotionRules
     /**
      * What one money reward takes off this cart, in EGP.
      *
-     * Never more than the cart can bear: a discount is clamped to the subtotal (plus the shipping it
-     * waives), so no arithmetic here can produce a NEGATIVE order total. An operator who writes
-     * "EGP 500 off" and meets a EGP 300 cart gets a free cart, not a refund — and the clamp lives
-     * here rather than at the call site so the preview and the checkout cannot disagree about it.
+     * ONE reward's worth, UNCLAMPED against the cart — see {@see clampToCart()} (🟡-1, 2026-09-17).
+     *
+     * This used to clamp each reward to `subtotal + shipping` on its own, which is the wrong place
+     * for the ceiling: a rule granting two rewards clamped each to the cart's value and then SUMMED
+     * them, so two "100% off" rewards on a EGP 500 cart produced a recorded discount of EGP 1,100.
+     * The customer was charged correctly — the checkout floors the order total at zero — so nothing
+     * on screen was wrong; what was wrong was the NUMBER WRITTEN DOWN, in the discount record the
+     * settlement export reconciles against.
+     *
+     * The per-reward bounds stay (a percentage is 0–100, a fixed amount is never negative), because
+     * those are facts about the reward. The cart's ceiling is a fact about the CART, so it is
+     * applied once, to the total.
      */
     public static function discountFor(string $type, ?string $amount, CartSnapshot $cart): float
     {
@@ -280,7 +288,21 @@ final class PromotionRules
             default => 0.0,
         };
 
-        return round(min($discount, $cart->subtotal + $cart->shippingCost), 2);
+        return round($discount, 2);
+    }
+
+    /**
+     * The SUMMED discount, capped at what the cart can bear.
+     *
+     * Applied once, after every reward on the rule has been added up, so a rule with two rewards
+     * cannot record more than the cart was worth. Never negative, so no arithmetic here can produce
+     * a surcharge; never more than `subtotal + shipping`, so no order total can go below zero.
+     *
+     * An operator who writes "EGP 500 off" and meets a EGP 300 cart gives a free cart, not a refund.
+     */
+    public static function clampToCart(float $discount, CartSnapshot $cart): float
+    {
+        return round(max(0.0, min($discount, $cart->subtotal + $cart->shippingCost)), 2);
     }
 
     /**
@@ -308,8 +330,21 @@ final class PromotionRules
                 'names' => implode(ManageText::t('common.list_separator', '، '), $storefronts),
             ]);
 
-        // The bracketed half is the LOG's, not the operator's, so it stays English in every locale.
-        return $sentence." [{$type}: money reward; the storefront's frontend must compute a promotion-aware total]";
+        /*
+         * ── The English suffix is GONE (🟡-5, 2026-09-17) ─────────────────────────────────────
+         *
+         * This used to append `" [{$type}: money reward; the storefront's frontend must compute a
+         * promotion-aware total]"` to every refusal, in every locale. The intent was a note for
+         * whoever reads a log — but this string is a VALIDATION MESSAGE: it goes into the error bag
+         * and onto the authoring screen, beside the field, where an Arabic operator read a sentence
+         * in their own language with a line of English developer jargon stapled to the end of it.
+         *
+         * Nothing reads it from a log, either: the writer throws a `ValidationException`, which is
+         * rendered, not logged. So the suffix served nobody and was noise to everybody, and the
+         * reward TYPE it carried is already implied by the field the error is attached to
+         * (`rewards.<index>.type`).
+         */
+        return $sentence;
     }
 
     /** The Arabic label of a condition type, for the wizard and the rule summary. */

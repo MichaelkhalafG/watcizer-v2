@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Domain\Import;
 
 use Generator;
-use RuntimeException;
 
 /**
  * Reads Brand Fashion's WooCommerce export and hands back {@see SourceRow}s (wave 4D importers).
@@ -334,13 +333,13 @@ final class WooExport
     {
         $handle = @fopen($this->path, 'r');
         if ($handle === false) {
-            throw new RuntimeException("Cannot read the export at [{$this->path}].");
+            throw new ImportFileError("Cannot read the export at [{$this->path}].");
         }
 
         try {
             $header = fgetcsv($handle, 0, ',', '"', '');
             if (! is_array($header)) {
-                throw new RuntimeException('The export has no header row.');
+                throw new ImportFileError('The export has no header row.');
             }
             // A UTF-8 BOM would make the first column name unmatchable, and the first column is `ID`.
             $header[0] = preg_replace('/^\xEF\xBB\xBF/', '', (string) $header[0]);
@@ -350,14 +349,51 @@ final class WooExport
 
             $missing = array_diff(self::REQUIRED, $columns);
             if ($missing !== []) {
-                throw new RuntimeException('The export is missing required column(s): '.implode(', ', $missing));
+                throw new ImportFileError('The export is missing required column(s): '.implode(', ', $missing));
             }
 
+            /*
+             * The line number is carried so a refusal can NAME it (🟡-4, 2026-09-17). Starts at 1
+             * for the header that was just read, so the first data row reports as line 2 — which is
+             * the number the operator's spreadsheet shows.
+             */
+            $line = 1;
+
             while (($record = fgetcsv($handle, 0, ',', '"', '')) !== false) {
+                $line++;
+
                 // A blank line in a CSV arrives as `[null]`. It is not a record.
                 if ($record === [null]) {
                     continue;
                 }
+
+                /*
+                 * ── A row whose width is wrong is REFUSED, by line number ────────────────────
+                 *
+                 * This used to pad silently: `$record[$index] ?? ''` filled every missing column
+                 * with a blank and ignored every surplus one. That is the wrong default for this
+                 * file, because of how the common corruption actually behaves — an unescaped or
+                 * unbalanced quote makes `fgetcsv` swallow the FOLLOWING LINES into one field until
+                 * it finds the next quote. The result is one row with too few columns and a product
+                 * that has silently vanished from the import, with a plausible-looking row in its
+                 * place and nothing in the report to say so.
+                 *
+                 * So the width is checked, and the refusal names the line, the expectation and what
+                 * was found — everything needed to open the file and look at it.
+                 */
+                if (count($record) !== count($columns)) {
+                    throw new ImportFileError(sprintf(
+                        'line %d has %d column(s) but the header declares %d. '
+                        .'The usual cause is an unclosed quote earlier in the file, which makes the reader '
+                        .'swallow the following lines into one field — so the row that looks wrong is often '
+                        .'just after the row that IS wrong. Open the file at line %d and check the quoting.',
+                        $line,
+                        count($record),
+                        count($columns),
+                        $line,
+                    ));
+                }
+
                 $values = [];
                 foreach ($columns as $index => $column) {
                     $values[$column] = is_string($record[$index] ?? null) ? $record[$index] : '';

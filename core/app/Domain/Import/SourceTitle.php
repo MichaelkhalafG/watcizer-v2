@@ -43,11 +43,16 @@ final class SourceTitle
     /** `&amp;amp;` exists in the wild; decode until it stops changing, but never forever. */
     private const MAX_DECODE_PASSES = 3;
 
-    /** The whole normalisation, in the order the two fixes have to happen. */
+    /** The whole normalisation, in the order the fixes have to happen. */
     public static function clean(string $raw): string
     {
+        // BYTES FIRST. Everything below is `preg_*` with the `/u` flag, and those return NULL on a
+        // string that is not valid UTF-8 — so before this existed, one bad byte silently disabled
+        // every fix in this class through the `?? $text` fallbacks, and then killed the INSERT.
+        $text = self::scrub($raw);
+
         // Entities first: a decoded `&amp;` can expose a glued word behind it, never the reverse.
-        $text = self::decode($raw);
+        $text = self::decode($text);
         $text = self::unglue($text);
 
         // Collapse the runs of whitespace the source is also full of, so `Maserati  Watch` — two
@@ -55,6 +60,42 @@ final class SourceTitle
         $collapsed = preg_replace('/\s+/u', ' ', $text);
 
         return trim($collapsed ?? $text);
+    }
+
+    /**
+     * Bytes MariaDB will accept, and nothing invisible.
+     *
+     * ── What this caught (2026-09-17) ───────────────────────────────────────────────────────
+     *
+     * One row of the real export refused to insert at all:
+     *
+     *     SQLSTATE[22007]: Incorrect string value: '\x8EK50K5…' for column `…`.`title`
+     *
+     * A lone `0x8E` — not valid UTF-8, almost certainly the tail of a left-to-right mark (`E2 80 8E`)
+     * that lost its first two bytes somewhere upstream of us. MariaDB refused the whole statement, so
+     * a complete, otherwise perfect Calvin Klein product did not arrive.
+     *
+     * Two passes, and they fix different things:
+     *
+     *   1. **Invalid sequences are dropped.** `iconv(…//IGNORE)` rather than `mb_scrub()` because the
+     *      latter substitutes U+FFFD — a visible `�` in a customer-facing title is worse than the
+     *      byte being gone.
+     *   2. **Invisible formatting characters are removed.** Zero-width spaces and the bidi marks
+     *      (U+200B–U+200F, U+2028/2029, U+FEFF) survive a UTF-8 check perfectly well and then cause
+     *      exactly this class of bug for the next person: a title that looks identical to another one
+     *      and is not, a search that cannot find a product, a slug with a character nobody can type.
+     *      They carry no meaning in a product name.
+     */
+    public static function scrub(string $text): string
+    {
+        if (! mb_check_encoding($text, 'UTF-8')) {
+            $converted = @iconv('UTF-8', 'UTF-8//IGNORE', $text);
+            $text = is_string($converted) ? $converted : '';
+        }
+
+        $stripped = preg_replace('/[\x{200B}-\x{200F}\x{2028}\x{2029}\x{FEFF}]/u', '', $text);
+
+        return $stripped ?? $text;
     }
 
     /** `DOLCE&amp;GABBANA` → `DOLCE&GABBANA`. */

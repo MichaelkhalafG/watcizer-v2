@@ -206,7 +206,7 @@ it('mails the customer AND every admin when a COD order is placed', function () 
     foreach ($rows as $row) {
         expect($row['status'])->toBe('sent')
             ->and($row['attempts'])->toBe(1)
-            ->and($row['last_error'])->toBeNull();
+            ->and($row['error_kind'])->toBeNull();
     }
 });
 

@@ -1,7 +1,9 @@
 <?php
 
+use App\Domain\Inventory\Actor;
 use App\Domain\Inventory\InventoryService;
 use App\Domain\Inventory\StockTarget;
+use App\Domain\Orders\OrderFulfilment;
 use App\Transform\Row;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
@@ -160,4 +162,63 @@ it('refuses to advance a cancelled order, so the screen cannot walk it back', fu
         ->assertSessionHasErrors('status');
 
     expect(T::str(DB::table('orders')->where('id', $f['order'])->value('status')))->toBe('cancelled');
+});
+
+// ── the concurrent double cancel (🔵, 2026-09-17) ────────────────────────────────────────────
+
+it('makes the UPDATE the claim, so a losing cancellation releases nothing twice', function () {
+    /*
+     * Two operators click cancel at the same instant. The `$from === 'cancelled'` guard lives
+     * OUTSIDE the transaction, so both read `pending`, both pass it, and both reach the write. The
+     * loser used to set `cancelled` over `cancelled` and report a fresh cancellation — "stock
+     * returned, 0 movements" — a sentence about something that did not happen.
+     *
+     * The fix is that the UPDATE carries `where status != cancelled`, so the ROW decides. This
+     * asserts that claim directly rather than trying to schedule two threads: the losing request's
+     * write is exactly this statement against an already-cancelled row, and what matters is that it
+     * changes nothing. Pretending to race in-process would test the test.
+     */
+    $f = cancelScreenFixture(2);
+    $fulfilment = app(OrderFulfilment::class);
+    $actor = Actor::user(Staff::admin()->id);
+
+    $first = $fulfilment->cancel($f['order'], $actor, 'first');
+
+    expect($first['already_cancelled'])->toBeFalse()
+        ->and($first['released'])->toBeTrue();
+
+    $movements = T::int(
+        DB::table('inventory_movements')
+            ->where('reference_type', 'order')->where('reference_id', $f['order'])->count()
+    );
+
+    // THE claim, as the losing request would issue it: it must change zero rows.
+    $claimed = DB::table('orders')
+        ->where('id', $f['order'])
+        ->where('status', '!=', 'cancelled')
+        ->update(['status' => 'cancelled', 'updated_at' => now()]);
+
+    expect($claimed)->toBe(0, 'a second cancellation could still claim the order');
+
+    // …and the stock came back exactly once, which is the property the claim protects.
+    expect(T::int(
+        DB::table('inventory_movements')
+            ->where('reference_type', 'order')->where('reference_id', $f['order'])->count()
+    ))->toBe($movements);
+});
+
+it('still REFUSES a sequential second cancellation, which is a different case', function () {
+    /*
+     * An operator who opens an already-cancelled order and clicks cancel is not racing anybody —
+     * they are looking at stale screen and should be told. That refusal stays, and this pins it so
+     * the concurrency fix above cannot quietly turn every double cancel into a silent success.
+     */
+    $f = cancelScreenFixture(2);
+    $fulfilment = app(OrderFulfilment::class);
+    $actor = Actor::user(Staff::admin()->id);
+
+    $fulfilment->cancel($f['order'], $actor, 'first');
+
+    expect(fn () => $fulfilment->cancel($f['order'], $actor, 'again'))
+        ->toThrow(RuntimeException::class);
 });

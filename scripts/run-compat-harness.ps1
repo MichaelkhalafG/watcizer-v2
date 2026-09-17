@@ -206,6 +206,21 @@ Write-Host '== booting both hosts ==' -ForegroundColor Cyan
 $env:MAIL_MAILER = 'log'
 
 <#
+  CORE_MAIL_PARK=1 — the other half of the same guard (review 🟠-5, 2026-09-17).
+
+  MAIL_MAILER=log stops mail going out DURING the run. It does nothing about what the run leaves
+  BEHIND: every COD checkout the harness places writes `pending` rows into `integration_outbox`,
+  addressed to the real ORDER_ADMIN_EMAILS, and they sit there until somebody runs
+  `php artisan mail:drain` on a host with real SMTP. Then four real people are told about harness
+  order 3381 — days later, with nothing on screen connecting the two.
+
+  With this set, every outbox row the run writes is PARKED: a resting state no path ever claims.
+  `mail:drain` additionally refuses any row belonging to an order that has a parked row, which
+  covers the ones written by a retry or by a dashboard status change afterwards.
+#>
+$env:CORE_MAIL_PARK = '1'
+
+<#
   The local database credentials, into the process environment both servers inherit.
 
   For CORE these are the values it already reads from its own .env, so they change nothing. For
@@ -327,6 +342,7 @@ finally {
     }
     # Leave no override behind in this shell: the next thing run here must see the real files.
     Remove-Item Env:\MAIL_MAILER -ErrorAction SilentlyContinue
+    Remove-Item Env:\CORE_MAIL_PARK -ErrorAction SilentlyContinue
     foreach ($key in @('DB_HOST', 'DB_PORT', 'DB_DATABASE', 'DB_USERNAME', 'DB_PASSWORD')) {
         Remove-Item "Env:\$key" -ErrorAction SilentlyContinue
     }

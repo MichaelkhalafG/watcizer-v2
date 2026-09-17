@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Domain\Import;
 
 use Generator;
-use RuntimeException;
 
 /**
  * Reads the T.JOY (Joyroom) price list — after it has been turned into a CSV (wave 4D importers).
@@ -243,13 +242,13 @@ final class JoyroomSheet
     {
         $handle = @fopen($this->path, 'r');
         if ($handle === false) {
-            throw new RuntimeException("Cannot read the extracted price list at [{$this->path}].");
+            throw new ImportFileError("Cannot read the extracted price list at [{$this->path}].");
         }
 
         try {
             $header = fgetcsv($handle, 0, ',', '"', '');
             if (! is_array($header)) {
-                throw new RuntimeException('The extracted price list has no header row.');
+                throw new ImportFileError('The extracted price list has no header row.');
             }
             $header[0] = preg_replace('/^\xEF\xBB\xBF/', '', (string) $header[0]);
             /** @var list<string> $columns */
@@ -257,17 +256,39 @@ final class JoyroomSheet
 
             $missing = array_diff(self::REQUIRED, $columns);
             if ($missing !== []) {
-                throw new RuntimeException(
+                throw new ImportFileError(
                     'The extracted price list is missing column(s): '.implode(', ', $missing)
                     .'. Re-run new branding/scripts/extract_joyroom.py.'
                 );
             }
 
+            // Carried so a refusal can NAME the line (🟡-4). The header was line 1.
+            $line = 1;
+
             while (($record = fgetcsv($handle, 0, ',', '"', '')) !== false) {
+                $line++;
+
                 // A blank line in a CSV arrives as `[null]`. It is not a record.
                 if ($record === [null]) {
                     continue;
                 }
+
+                /*
+                 * A row of the wrong width is REFUSED rather than padded — same reasoning as
+                 * `WooExport`: the usual cause is an unclosed quote, which makes the reader swallow
+                 * the FOLLOWING lines into one field, so padding silently loses whole products.
+                 */
+                if (count($record) !== count($columns)) {
+                    throw new ImportFileError(sprintf(
+                        'line %d has %d column(s) but the header declares %d. The usual cause is an '
+                        .'unclosed quote earlier in the file. Open the file at line %d.',
+                        $line,
+                        count($record),
+                        count($columns),
+                        $line,
+                    ));
+                }
+
                 $values = [];
                 foreach ($columns as $index => $column) {
                     $values[$column] = is_string($record[$index] ?? null) ? $record[$index] : '';
