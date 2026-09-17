@@ -112,15 +112,38 @@ function verifyBackup(array $args = []): PendingCommand
  * is silence, which reads exactly like success.
  */
 
-it('PASSES when a recent, plausible dump is on disk', function () {
+it('PASSES a dump that is inside the age limit and above the size floor', function () {
+    /*
+     * ── What this asserts, and what it deliberately stopped asserting (2026-09-17) ─────────
+     *
+     * It used to run `backup:verify` with its DEFAULT 36-hour limit against whatever dump happened
+     * to be on this machine. That is a property of the MACHINE — did a cron run here recently —
+     * not of the code, so it passed on a workstation that had just taken a backup and failed on one
+     * that had not, with nothing wrong either way. It failed exactly that way today: the newest
+     * dump was 49 hours old, `backup:verify` correctly said "the schedule has stopped running", and
+     * the suite reported a defect that was the command telling the truth.
+     *
+     * The contract worth pinning is the code's: **given a dump within the limit and above the
+     * floor, say OK and exit zero.** So the limit is computed from the dump that is actually here.
+     * The stale and stub cases below still pin the refusals, with their own explicit thresholds.
+     */
     $dir = storage_path('app/backups');
-    if ((glob($dir.DIRECTORY_SEPARATOR.'*.sql') ?: []) === []) {
+    $dumps = glob($dir.DIRECTORY_SEPARATOR.'*.sql') ?: [];
+
+    if ($dumps === []) {
         expect(true)->toBeTrue('no dump on this machine to verify — core:backup has not been run here');
 
         return;
     }
 
-    verifyBackup()
+    // The newest dump, and an age limit that admits it — one hour of headroom for a slow run.
+    $newest = 0;
+    foreach ($dumps as $dump) {
+        $newest = max($newest, (int) (filemtime($dump) ?: 0));
+    }
+    $ageHours = (int) ceil((time() - $newest) / 3600) + 1;
+
+    verifyBackup(['--max-age' => $ageHours])
         ->expectsOutputToContain('OK')
         ->assertExitCode(Command::SUCCESS);
 });

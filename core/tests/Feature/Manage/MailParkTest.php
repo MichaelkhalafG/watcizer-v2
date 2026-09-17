@@ -109,12 +109,32 @@ it('refuses to drain ANY row of an order that has a parked row', function () {
     $mailer->statusChanged($harnessOrder, 'shipped');
     $mailer->statusChanged($realOrder, 'shipped');
 
-    $pendingOnHarness = T::int(
+    /*
+     * ── Counted by ORDER, not by id alone (2026-09-17) ─────────────────────────────────────
+     *
+     * `integration_outbox` is shared by every channel: the catalogue importer writes a `morabaa`
+     * row per PRODUCT, keyed by `aggregate_id` = the product id. Order ids and product ids are
+     * different sequences in the same integer space, so an order and a product routinely share a
+     * number — order 913 and product 913 both exist.
+     *
+     * These counts used to filter on `aggregate_id` and `status` alone. That was correct only while
+     * the outbox held nothing but mail: after the Brand Fashion import put 4,543 product rows in it,
+     * the query counted a PRODUCT's pending row as the order's and the test failed reporting the
+     * guard "too wide" — while the guard was doing exactly the right thing. Verified by dumping the
+     * rows: the order's row was `sent`; the one being counted belonged to a product.
+     *
+     * `aggregate_type` and `channel` are what the queries actually mean, so they are what they say.
+     */
+    $mailRows = static fn (int $orderId, string $status): int => T::int(
         DB::table('integration_outbox')
-            ->where('aggregate_id', $harnessOrder)
-            ->where('status', OrderMailer::STATUS_PENDING)
+            ->where('channel', OrderMailer::CHANNEL)
+            ->where('aggregate_type', 'orders')
+            ->where('aggregate_id', $orderId)
+            ->where('status', $status)
             ->count()
     );
+
+    $pendingOnHarness = $mailRows($harnessOrder, OrderMailer::STATUS_PENDING);
     expect($pendingOnHarness)->toBeGreaterThan(0, 'the test has not created the situation it asserts on');
 
     Artisan::call('mail:drain', ['--limit' => 50]);
@@ -124,19 +144,11 @@ it('refuses to drain ANY row of an order that has a parked row', function () {
      * and is still pending. Asserted on the ROW rather than on the command's wording, because the
      * wording is not the contract.
      */
-    expect(T::int(
-        DB::table('integration_outbox')
-            ->where('aggregate_id', $harnessOrder)
-            ->where('status', OrderMailer::STATUS_PENDING)
-            ->count()
-    ))->toBe($pendingOnHarness, 'a harness order’s mail was claimed by mail:drain');
+    expect($mailRows($harnessOrder, OrderMailer::STATUS_PENDING))
+        ->toBe($pendingOnHarness, 'a harness order’s mail was claimed by mail:drain');
 
-    expect(T::int(
-        DB::table('integration_outbox')
-            ->where('aggregate_id', $realOrder)
-            ->where('status', OrderMailer::STATUS_PENDING)
-            ->count()
-    ))->toBe(0, 'a real order’s mail was skipped, so the guard is too wide');
+    expect($mailRows($realOrder, OrderMailer::STATUS_PENDING))
+        ->toBe(0, 'a real order’s mail was skipped, so the guard is too wide');
 });
 
 it('is set by every tool that places orders which are not real', function () {
