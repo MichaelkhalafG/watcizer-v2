@@ -2,6 +2,7 @@
 
 namespace App\Transform\Steps;
 
+use App\Support\ArabicSearch;
 use App\Transform\Row;
 use App\Transform\StepResult;
 use App\Transform\TransformContext;
@@ -64,7 +65,18 @@ final class Step21SearchIndex implements Step
                         $typeId === null ? '' : ($types[$typeId][$locale] ?? ''),
                         $subId === null ? '' : ($subs[$subId][$locale] ?? ''),
                     ];
-                    $body = trim((string) preg_replace('/\s+/u', ' ', implode(' ', array_filter($parts, fn (string $s) => $s !== ''))));
+                    /*
+                     * NORMALISED, exactly as `ProductIndexer` does (A-UX-1, 2026-09-17).
+                     *
+                     * The two have to stay byte-identical: this step rebuilds the whole table on
+                     * switch night, `ProductIndexer` rewrites one row on every dashboard edit, and
+                     * the indexer's docblock rests on a re-index of an untouched product producing
+                     * the same row. Normalising in one and not the other would make every transform
+                     * re-run report thousands of changes and break the idempotency check.
+                     */
+                    $body = ArabicSearch::normalise(
+                        trim((string) preg_replace('/\s+/u', ' ', implode(' ', array_filter($parts, fn (string $s) => $s !== ''))))
+                    );
                     $out[] = ['product_id' => $id, 'locale' => $locale, 'body' => $body];
                 }
             }

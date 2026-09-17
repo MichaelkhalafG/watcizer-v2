@@ -2,6 +2,7 @@
 
 use App\Domain\Catalog\ProductWriter;
 use App\Domain\Catalog\SpecBlocks;
+use App\Support\ArabicSearch;
 use App\Transform\Row;
 use Illuminate\Support\Facades\DB;
 use stdClass;
@@ -313,10 +314,19 @@ it('maintains the search index on every save, because step 21 cannot see this ro
 
     $bodies = DB::table('catalog_product_search')->where('product_id', $productId)->pluck('body', 'locale');
 
+    /*
+     * The Arabic expectation goes through the NORMALISER (A-UX-1, 2026-09-17), because the index
+     * body is a folded search key rather than the title: `كلمة فريدة` is stored as `كلمه فريده`.
+     *
+     * Written as a call rather than as the folded literal on purpose — the literal would say the
+     * right thing and explain nothing, and the next person to read it would not know whether the
+     * odd spelling was the point or a typo. The English assertions are untouched, which is itself
+     * part of the contract: the fold leaves Latin text byte-identical.
+     */
     expect($bodies)->toHaveCount(2)
         ->and(T::str($bodies['en']))->toContain('Unique Indexable Title')
         ->and(T::str($bodies['en']))->toContain('extra keyword')
-        ->and(T::str($bodies['ar']))->toContain('كلمة فريدة');
+        ->and(T::str($bodies['ar']))->toContain(ArabicSearch::normalise('كلمة فريدة'));
 
     // …and again through the endpoint, which is the path the team takes.
     actingAs(Staff::admin())->put("/manage/storefronts/1/products/{$productId}", productPayload([

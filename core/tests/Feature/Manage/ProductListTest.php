@@ -350,3 +350,85 @@ it('pages without repeating or losing a row', function () {
         ->and($second)->toHaveCount(5)
         ->and(array_intersect($firstIds, $secondIds))->toBe([], 'page 2 repeated a row from page 1');
 });
+
+it('finds Arabic products however the operator spells the word (A-UX-1)', function () {
+    /*
+     * The END-TO-END guard for the Arabic search fix. The unit test proves the fold; this proves the
+     * two sides AGREE — which is where the bug actually lived and the only place it can return, by
+     * someone normalising the index and not the query or the other way round.
+     *
+     * ── Why it searches the COMMITTED catalogue instead of making a product ─────────────────
+     *
+     * The first draft created a product and searched for it, and every spelling failed — including
+     * the one already in the catalogue. The cause is InnoDB, not the fix: a FULLTEXT index is
+     * updated when the transaction COMMITS, and every test here runs inside a transaction that is
+     * rolled back, so a row written by the test is invisible to `MATCH … AGAINST` for the whole of
+     * its life. A product fixture can never exercise this path.
+     *
+     * Asserting over the real index is also the better test: it is the same measurement the review
+     * made, against the same 7,713 products.
+     */
+    $total = static fn (string $typed): int => T::int(listMeta(['q' => $typed, 'per_page' => 1])['total']);
+
+    /*
+     * Each pair is one word written the two ordinary ways. The review measured the left-hand
+     * spelling of each returning ZERO while the right-hand one returned thousands.
+     */
+    $pairs = [
+        'ساعه' => 'ساعة',        // ta-marbuta ↔ ha
+        'حقيبه' => 'حقيبة',
+        'نظاره' => 'نظارة',
+        'الرجالى' => 'الرجالي',   // alef maqsura ↔ ya
+        'سـاعة' => 'ساعة',        // tatweel
+        'سَاعة' => 'ساعة',        // diacritics
+    ];
+
+    $broken = [];
+    foreach ($pairs as $typed => $canonical) {
+        $a = $total($typed);
+        $b = $total($canonical);
+        if ($a !== $b || $a === 0) {
+            $broken[] = "{$typed}={$a} vs {$canonical}={$b}";
+        }
+    }
+
+    expect($broken)->toBe([], 'spellings that disagree: '.implode(' · ', $broken));
+
+    /*
+     * …and the fold has not turned the search into "match everything", which is the failure that
+     * would make all of the above pass for the wrong reason.
+     */
+    $everything = T::int(listMeta(['per_page' => 1])['total']);
+    expect($total('ساعه'))->toBeLessThan($everything)
+        ->and($total('حقيبه'))->toBeLessThan($total('ساعه'));
+
+    // English is untouched: half the catalogue is Latin and its behaviour must not move.
+    expect($total('Hilfiger'))->toBeGreaterThan(0)
+        ->and($total('Hilfiger'))->toBeLessThan($everything);
+});
+
+it('finds a word carrying the Arabic definite article, which the index cannot prefix-match (A-UX-2)', function () {
+    /*
+     * Arabic attaches `ال` to the FRONT of a noun, so `الأسود` is the word `أسود` wearing "the". A
+     * word-prefix FULLTEXT index cannot see inside a token, so typing the bare word — which is what
+     * an operator does — missed every product that spelled it with the article.
+     *
+     * Measured over the real catalogue: 429 products have it as a word, 79 more only as `الاسود`,
+     * and 429 + 79 = 508. The MATCH alone returns 429; the ORed LIKE is what reaches 508.
+     *
+     * The assertion is RELATIVE, deliberately. Pinning 508 would make this test a tripwire for
+     * ordinary catalogue edits — a colour renamed, a product archived — and a test that fails when
+     * nothing is wrong gets deleted. What must hold is that the bare word finds AT LEAST what the
+     * article-carrying spelling finds, which is the property the fix delivers.
+     */
+    $total = static fn (string $typed): int => T::int(listMeta(['q' => $typed, 'per_page' => 1])['total']);
+
+    $bare = $total('اسود');
+    $withArticle = $total('الاسود');
+
+    expect($withArticle)->toBeGreaterThan(0, 'the catalogue has no article-carrying rows to prove anything with')
+        // The bare word must reach the article-carrying products as well as its own.
+        ->and($bare)->toBeGreaterThan($withArticle)
+        // …and must not have become "match everything", which is the other way to pass.
+        ->and($bare)->toBeLessThan(T::int(listMeta(['per_page' => 1])['total']));
+});

@@ -19,6 +19,7 @@ use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
+use InvalidArgumentException;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -433,6 +434,44 @@ final class InventoryController
                 'quantity' => ManageText::t(
                     'inventory.insufficient_stock',
                     'لا يوجد مخزون كافٍ لهذا الخصم: الكمية المطلوبة أكبر من المتاح.',
+                ),
+            ]);
+        } catch (InvalidArgumentException $e) {
+            /*
+             * ── B-BUG-1: a product with sizes returned HTTP 500 (2026-09-17) ────────────────
+             *
+             * `InventoryService` is right to refuse a product-level movement on a product that has
+             * variants — §2.5, and the aggregate would stop meaning anything. But it refuses with an
+             * `InvalidArgumentException`, which is NOT a `RuntimeException`, so it fell past both
+             * arms below and reached the operator as a Server Error page.
+             *
+             * Two defects in one, and the second is why this catch does not echo `$e->getMessage()`
+             * the way the `RuntimeException` arm does. That text is a PROGRAMMING contract —
+             *
+             *     "Product 5593 has variants, so its stock moves through a variant, never through
+             *      the product. Use StockTarget::variant()."
+             *
+             * — addressed to whoever wrote the caller, in English, naming a PHP class and method. It
+             * is the right message for a developer and useless to the person holding the stock
+             * sheet. So the domain keeps its contract message and the screen gets its own sentence,
+             * which names the ACTION rather than the API: pick the size and adjust that.
+             *
+             * Brand Fashion sells shoes and clothing in sizes, so this is a first-week event, not an
+             * edge case.
+             */
+            $sizes = DB::table('catalog_product_variants')
+                ->where('product_id', $productId)
+                ->where('is_active', true)
+                ->count();
+
+            throw ValidationException::withMessages([
+                // ONE literal, not a concatenation across two lines: the coverage ratchet reads the
+                // source line by line, so a continuation line holding bare Arabic is — correctly —
+                // indistinguishable to it from an unwired string.
+                'variant_id' => ManageText::t(
+                    'inventory.product_has_variants',
+                    'هذا المنتج له مقاسات/ألوان (:count)، والمخزون يُدار لكل مقاس على حدة. اختر المقاس ثم عدّل كميته — إجمالي المنتج يُحسب من مجموع المقاسات.',
+                    ['count' => $sizes],
                 ),
             ]);
         } catch (RuntimeException $e) {

@@ -77,6 +77,16 @@ export default function PlacementIndex({
     const [sorts, setSorts] = useState<Record<number, string>>({});
     /** The row whose hide is waiting for a confirmation, because customers hold it in a cart. */
     const [hiding, setHiding] = useState<PlacementRow | null>(null);
+    /**
+     * The BULK hide waiting for a confirmation (C-GUARD-1).
+     *
+     * Hiding one product that sits in a cart has always asked first. Hiding a whole page of them
+     * asked nothing at all — `router.post` fired on the click, with no count, no cart check and no
+     * undo. Measured by the review: 200 products went from visible to hidden on a live storefront in
+     * one request. The blast radius is bounded (selection is per page, and paging clears it) but a
+     * page is 25 products, or 100 if somebody raised the page size.
+     */
+    const [bulkHiding, setBulkHiding] = useState<{ ids: Array<string | number>; clear: () => void } | null>(null);
 
     const base = `/manage/storefronts/${storefront.id}/placement`;
 
@@ -333,10 +343,26 @@ export default function PlacementIndex({
                                 key={action}
                                 type="button"
                                 size="sm"
-                                variant="outline"
-                                onClick={() =>
-                                    router.post(`${base}/bulk`, { action, product_ids: selected }, { preserveScroll: true, onSuccess: clear })
-                                }
+                                variant={action === 'hide' ? 'destructive' : 'outline'}
+                                onClick={() => {
+                                    /*
+                                     * HIDE asks first (C-GUARD-1). It is the only one of the four
+                                     * that takes products off a live shop; show, feature and
+                                     * unfeature are all recoverable by clicking the same button
+                                     * again, and a confirmation on every action teaches people to
+                                     * click through confirmations.
+                                     */
+                                    if (action === 'hide') {
+                                        setBulkHiding({ ids: selected, clear });
+
+                                        return;
+                                    }
+                                    router.post(
+                                        `${base}/bulk`,
+                                        { action, product_ids: selected },
+                                        { preserveScroll: true, onSuccess: clear },
+                                    );
+                                }}
                             >
                                 {label}
                             </Button>
@@ -394,6 +420,75 @@ export default function PlacementIndex({
                         </div>
                     </DialogContent>
                 )}
+            </Dialog>
+
+            {/* ── hiding a WHOLE SELECTION (C-GUARD-1) ──────────────────────────────────── */}
+            <Dialog open={bulkHiding !== null} onOpenChange={(open) => (open ? null : setBulkHiding(null))}>
+                {bulkHiding === null ? null : (() => {
+                    /*
+                     * The cart numbers come from the ROWS ON SCREEN, with no extra request.
+                     *
+                     * That is exact rather than convenient: selection is per page and paging clears
+                     * it (the reasoning is in DataTable.tsx), so every selected id is a row this
+                     * component already holds, `in_carts` and all. A round trip to re-derive numbers
+                     * already in memory would be slower and could disagree with what the operator is
+                     * looking at.
+                     */
+                    const chosen = new Set(bulkHiding.ids.map((id) => Number(id)));
+                    const rows = table.data.filter((row) => chosen.has(row.product_id));
+                    const inCarts = rows.filter((row) => row.in_carts > 0);
+                    const carts = inCarts.reduce((total, row) => total + row.in_carts, 0);
+
+                    return (
+                        <DialogContent
+                            title={t('placement.bulk_hide_title', 'إخفاء :count منتجًا عن :storefront', {
+                                count: bulkHiding.ids.length,
+                                storefront: storefront.name,
+                            })}
+                        >
+                            <div className="space-y-3 text-sm text-muted-foreground">
+                                <p>
+                                    {t(
+                                        'placement.bulk_hide_body',
+                                        'سيختفي :count منتجًا من القوائم ومن البحث على هذا المتجر. الإخفاء لا يحذف شيئًا ولا يمس المخزون أو الطلبات، ويمكن إرجاعه — لكنه يطبّق على المحدد كله دفعة واحدة.',
+                                        { count: bulkHiding.ids.length },
+                                    )}
+                                </p>
+                                {carts === 0 ? null : (
+                                    <p className="font-medium text-foreground">
+                                        {/* The number that decides whether this is safe, stated
+                                            separately because it is the one a person acts on. */}
+                                        {t(
+                                            'placement.bulk_hide_in_carts',
+                                            'من بينها :products منتجًا موجودة الآن في :carts سلة مفتوحة، ومن يفتح سلته لن يتمكن من إتمام شرائه.',
+                                            { products: inCarts.length, carts },
+                                        )}
+                                    </p>
+                                )}
+                            </div>
+                            <div className="mt-4 flex flex-wrap justify-end gap-2">
+                                <Button type="button" variant="outline" onClick={() => setBulkHiding(null)}>
+                                    {t('common.cancel', 'إلغاء')}
+                                </Button>
+                                <Button
+                                    type="button"
+                                    variant="destructive"
+                                    onClick={() => {
+                                        const { ids, clear } = bulkHiding;
+                                        setBulkHiding(null);
+                                        router.post(
+                                            `${base}/bulk`,
+                                            { action: 'hide', product_ids: ids },
+                                            { preserveScroll: true, onSuccess: clear },
+                                        );
+                                    }}
+                                >
+                                    {t('placement.bulk_hide_confirm', 'أخفِ المحدد')}
+                                </Button>
+                            </div>
+                        </DialogContent>
+                    );
+                })()}
             </Dialog>
 
         </ManageLayout>
