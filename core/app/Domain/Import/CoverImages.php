@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domain\Import;
 
+use App\Domain\Media\ImagePipeline;
 use App\Domain\Media\MediaStore;
 use Illuminate\Support\Facades\DB;
 use Throwable;
@@ -47,6 +48,23 @@ final class CoverImages
      * reason is a fact nobody can act on.
      */
     private string $lastError = '';
+
+    /**
+     * The cURL error numbers that mean "this machine cannot verify certificates".
+     *
+     * NUMBERS, not constant names, and the reason is a bug this list already caught: libcurl renamed
+     * 60 from `CURLE_SSL_PEER_CERTIFICATE` to `CURLE_PEER_FAILED_VERIFICATION`, and PHP exposes
+     * whichever names its build was compiled against — `CURLE_PEER_FAILED_VERIFICATION` is simply
+     * undefined on the PHP 8.3 build here, so naming it raised a fatal error inside the guard meant
+     * to prevent a silent failure. The numbers have been stable since libcurl 7.x.
+     *
+     *   58 `CURLE_SSL_CERTPROBLEM`     — our own client certificate is unusable
+     *   60 `CURLE_SSL_CACERT` / `CURLE_PEER_FAILED_VERIFICATION` — the peer could not be verified
+     *   77 `CURLE_SSL_CACERT_BADFILE`  — the bundle we NAMED could not be read
+     *
+     * @var list<int>
+     */
+    private const CERTIFICATE_ERRNOS = [58, 60, 77];
 
     public function __construct(
         private readonly MediaStore $media,
@@ -129,9 +147,24 @@ final class CoverImages
                 'alt_en' => mb_substr($altEn, 0, 255),
                 'alt_ar' => null,
                 'renditions' => $stored['renditions'] === [] ? null : json_encode($stored['renditions']),
+                /*
+                 * Only the REAL failures (M1s). `skipped` also holds the deliberate omissions —
+                 * "source is only 300px wide" is the pipeline refusing to upscale, which is correct
+                 * and true of a large share of any supplier catalogue. Storing those would put half
+                 * the shop on the review list and teach the team to ignore the marker.
+                 */
+                'renditions_failed' => self::failureNote($stored['skipped']),
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
+
+            if (ImagePipeline::hasFailure($stored['skipped'])) {
+                $report->count('image_rendition_failed');
+                $report->note('image_rendition_failure', implode('; ', array_filter(
+                    $stored['skipped'],
+                    fn (string $s): bool => str_starts_with($s, ImagePipeline::FAILED_PREFIX),
+                )));
+            }
 
             $report->count('images_fetched');
 
@@ -145,6 +178,21 @@ final class CoverImages
                 @unlink($temporary);
             }
         }
+    }
+
+    /**
+     * The failure entries of a `skipped` list, as one note — or null when nothing went wrong.
+     *
+     * @param  list<string>  $skipped
+     */
+    private static function failureNote(array $skipped): ?string
+    {
+        $failures = array_values(array_filter(
+            $skipped,
+            fn (string $s): bool => str_starts_with($s, ImagePipeline::FAILED_PREFIX),
+        ));
+
+        return $failures === [] ? null : mb_substr(implode('; ', $failures), 0, 1000);
     }
 
     /**
@@ -264,5 +312,87 @@ final class CoverImages
         }
 
         return $temporary;
+    }
+
+    /**
+     * Can this host fetch over TLS at all? Answered BEFORE a run, against one real URL.
+     *
+     * ── Why this exists (2026-09-17, and it is the second time) ──────────────────────────────
+     *
+     * A stock PHP on Windows ships with `curl.cainfo` unset, so every HTTPS fetch fails with
+     * *"SSL certificate problem: unable to get local issuer certificate"*. `MEDIA_CA_BUNDLE` was
+     * added for exactly this after the first real import run stored 79 products and zero images —
+     * and then the overnight run of 2026-09-17 hit it AGAIN, because `.env.example` documents the
+     * variable and `.env` simply did not carry it.
+     *
+     * **The failure is silent, and that is the whole problem.** Every fetch fails, every product is
+     * imported and marked `image`, every counter looks plausible, and the run reports success. It
+     * was caught 400 products in only because the image-coverage figure was 26% instead of 93% —
+     * and 26% is itself an artefact, the share of URLs an earlier run had already cached. Left
+     * alone it would have spent a whole night writing thousands of imageless products.
+     *
+     * So the command asks this question once, up front, and refuses rather than discovering it in
+     * the morning.
+     *
+     * ── Why it only refuses on a CERTIFICATE error ───────────────────────────────────────────
+     *
+     * A 404, a timeout or a refused connection on ONE url says nothing about the host — supplier
+     * files carry dead links all the time, and aborting a 7 000-row run over one of them would be a
+     * worse failure than the one this prevents. A certificate error is different in kind: it is a
+     * property of THIS machine's cURL, it is identical for every url on the internet, and it is
+     * fixed by one line in `.env`. That is the only case worth stopping for.
+     *
+     * @return string|null the reason to refuse, or null if fetching works (or if the problem is not
+     *                     one this machine can be blamed for)
+     */
+    public static function tlsProblem(string $probeUrl): ?string
+    {
+        if (! str_starts_with(mb_strtolower($probeUrl), 'https://')) {
+            return null;
+        }
+
+        $curl = curl_init($probeUrl);
+        if ($curl === false) {
+            return null;
+        }
+
+        curl_setopt_array($curl, [
+            CURLOPT_NOBODY => true,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_MAXREDIRS => 3,
+            CURLOPT_TIMEOUT => 20,
+            CURLOPT_CONNECTTIMEOUT => 10,
+            CURLOPT_USERAGENT => 'WatchizerCoreImporter/1.0 (+catalogue import)',
+        ]);
+
+        $bundle = config('media.ca_bundle');
+        $named = is_string($bundle) && $bundle !== '';
+        if ($named && is_file($bundle)) {
+            curl_setopt($curl, CURLOPT_CAINFO, $bundle);
+        }
+
+        $ok = curl_exec($curl);
+        $errno = curl_errno($curl);
+        $error = curl_error($curl);
+        curl_close($curl);
+
+        if ($ok !== false || ! in_array($errno, self::CERTIFICATE_ERRNOS, true)) {
+            return null;
+        }
+
+        // Named but wrong is a different mistake from not named at all, and they are fixed
+        // differently — so the sentence says which one this is.
+        $advice = match (true) {
+            ! $named => 'MEDIA_CA_BUNDLE is not set in .env. Point it at a CA bundle — on XAMPP, '
+                .'MEDIA_CA_BUNDLE=C:/xampp/apache/bin/curl-ca-bundle.crt',
+            ! is_file((string) $bundle) => 'MEDIA_CA_BUNDLE names a file that does not exist: '.$bundle,
+            default => 'MEDIA_CA_BUNDLE is set to '.$bundle.', and it did not satisfy this certificate.',
+        };
+
+        return 'This machine cannot verify TLS certificates, so EVERY image fetch would fail and every '
+            ."product would be imported without one.\n  cURL said: ".$error."\n  ".$advice
+            ."\n  Verification is never disabled to work around this."
+            ."\n  Or re-run with --images=none if you meant to import without images.";
     }
 }

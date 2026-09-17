@@ -415,10 +415,12 @@ it('carries the discount into the settlement export finance reconciles against',
 
     $csv = get('/manage/orders/export/settlement')->assertOk()->streamedContent();
 
-    expect($csv)->toContain('discount')
-        ->and($csv)->toContain('discount_rule')
-        // The order's own row carries the figure and the rule that produced it.
-        ->and($csv)->toContain($number)
+    /*
+     * Asserted on the DATA, not on the headings. The settlement headings are translated (🟡-5), so
+     * they depend on the operator's locale — while the figures are the contract: the order, what
+     * came off it, and which rule took it.
+     */
+    expect($csv)->toContain($number)
         ->and($csv)->toContain('25.00')
         ->and($csv)->toContain((string) $rule);
 });

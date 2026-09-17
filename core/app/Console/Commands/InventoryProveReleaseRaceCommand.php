@@ -64,6 +64,18 @@ final class InventoryProveReleaseRaceCommand extends Command
             return self::INVALID;
         }
 
+        /*
+         * ── PARK every outbox row this probe writes (🟠-5, 2026-09-17) ──────────────────────
+         *
+         * The probe creates REAL orders, and a real order writes `pending` outbox rows addressed to
+         * the real `ORDER_ADMIN_EMAILS`. They wait there until somebody runs `php artisan mail:drain`
+         * on a host with real SMTP, which is days later and nowhere near this command.
+         *
+         * Set here rather than only in a launcher, for the same reason the remote-target refusal is
+         * here: a launcher is the thing somebody forgets.
+         */
+        config(['notifications.send.park' => true]);
+
         $workers = max(2, self::intOption($this->option('workers')));
         $quantity = max(1, self::intOption($this->option('quantity')));
 

@@ -587,3 +587,83 @@ it('sends the accessories leaves to their own node, not to the Fashion root', fu
 
     expect($primary)->toBe($accessories)->and($primary)->not->toBe($fashionRoot);
 });
+
+it('marks a product whose image did not process, and the filter finds only those', function () {
+    /*
+     * ── M1s, 2026-09-17 ─────────────────────────────────────────────────────────────────────
+     *
+     * GD can return `true` and write a ZERO-BYTE rendition. The pipeline now removes the file and
+     * does not record it, so nothing broken is served — but the person who can fix it, by uploading
+     * a better source, still has to be told. `renditions_failed` on the image row is how, and this
+     * pins the whole path from that column to the chip on the list.
+     *
+     * Written onto the row directly rather than by forcing an encoder to fail: a host whose GD is
+     * broken is not something a test can arrange, and the behaviour under test starts at the column.
+     * `MediaTest` covers the other half — that the pipeline never records an empty rendition.
+     */
+    importRows(implode("\n", [
+        WooFixture::row(['ID' => 9900990, 'Type' => 'simple', 'SKU' => 'IMG-990', 'Name' => 'Tommy Hilfiger Watch For Men 990',
+            'Published' => '1', 'Visibility in catalog' => 'visible', 'Regular price' => '100', 'Categories' => 'Watches']),
+        WooFixture::row(['ID' => 9900991, 'Type' => 'simple', 'SKU' => 'IMG-991', 'Name' => 'Tommy Hilfiger Watch For Men 991',
+            'Published' => '1', 'Visibility in catalog' => 'visible', 'Regular price' => '100', 'Categories' => 'Watches']),
+    ]));
+
+    $subject = T::int(DB::table('catalog_products')->where('import_ref', 'woo:9900990')->value('id'));
+    $other = T::int(DB::table('catalog_products')->where('import_ref', 'woo:9900991')->value('id'));
+
+    // Images are off during an import test, so both products need a row to hang the marker on.
+    foreach ([$subject, $other] as $productId) {
+        DB::table('catalog_product_images')->insert([
+            'product_id' => $productId, 'path' => 'Product/probe-'.$productId.'.webp',
+            'is_cover' => 1, 'sort' => 0, 'width' => 1200, 'height' => 1200,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+    }
+    DB::table('catalog_product_images')->where('product_id', $subject)
+        ->update(['renditions_failed' => 'FAILED 480w webp: the encoder reported success but wrote 0 bytes']);
+
+    actingAs(Staff::admin());
+
+    // 1. The MARKER is on the row, and reads as its own token rather than as "no image" — the
+    //    product has one; it is the processing that failed, and the two need different actions.
+    $rows = Props::rows(Props::table(get('/manage/storefronts/2/products?q=IMG-990')));
+    $seen = [];
+    foreach ($rows as $row) {
+        $seen = array_merge($seen, T::arr($row['missing'] ?? null));
+    }
+    expect($seen)->toContain('image_problem')
+        ->and($seen)->not->toContain('image');
+
+    // 2. The FILTER selects it…
+    $flagged = Props::rows(Props::table(get('/manage/storefronts/2/products?per_page=100&filters[flag]=image_problem')));
+    $ids = array_map(static fn (array $r): int => T::int($r['id'] ?? null), $flagged);
+    expect($ids)->toContain($subject)
+        // …and ONLY it. A filter that also returns the healthy product beside it is worse than none.
+        ->and($ids)->not->toContain($other);
+
+    // 3. …and "show me everything unfinished" includes it, because the composite filter and the
+    //    badge must select the same set (the §4 law the six other markers already obey).
+    $missing = Props::rows(Props::table(get('/manage/storefronts/2/products?per_page=100&filters[flag]=missing_data')));
+    expect(array_map(static fn (array $r): int => T::int($r['id'] ?? null), $missing))->toContain($subject);
+
+    // 4. A human re-uploading clears it — the same lifecycle `is_machine` has. The marker exists to
+    //    ask somebody to act and must stop asking once they have.
+    $row = Row::cast(T::one(DB::table('catalog_products')->where('id', $subject)));
+    app(ProductWriter::class)->update($subject, [
+        'brand_id' => Row::int($row, 'brand_id'),
+        'wa_code' => Row::str($row, 'wa_code'),
+        'sku' => Row::nstr($row, 'sku'),
+        'selling_price' => Row::str($row, 'selling_price'),
+        'currency' => 'EGP',
+        'is_active' => true,
+        'family' => Row::str($row, 'family'),
+        'title' => ['ar' => 'ساعة تومي هيلفيغر رجالي', 'en' => 'Tommy Hilfiger Watch For Men 990'],
+        'images' => [[
+            'id' => null, 'path' => 'Product/replacement-'.$subject.'.webp',
+            'is_cover' => true, 'sort' => 0, 'width' => 1200, 'height' => 1200,
+            'alt_en' => null, 'alt_ar' => null, 'renditions' => null,
+        ]],
+    ], null);
+    expect(DB::table('catalog_product_images')->where('product_id', $subject)->whereNotNull('renditions_failed')->count())
+        ->toBe(0);
+});

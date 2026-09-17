@@ -409,6 +409,16 @@ final class LookupWriter
             if (! in_array($type, self::TYPES, true)) {
                 throw new InvalidArgumentException("config/catalog.php: lookup [{$key}] column [{$column}] has unknown type [{$type}].");
             }
+            /*
+             * The extra column's LABEL through the seam (🟠-4, 2026-09-17), keyed on the list and
+             * the column — both stable. The config value stays as the Arabic fallback, because a
+             * `ManageText::t()` inside `config/catalog.php` would be frozen into `config:cache` in
+             * whatever locale happened to be active when the cache was built.
+             */
+            if (is_string($declared['label'] ?? null)) {
+                $declared['label'] = ManageText::t('lookups.column_'.$key.'_'.$column, $declared['label']);
+            }
+
             $extra[$column] = $declared;
         }
 
@@ -426,7 +436,8 @@ final class LookupWriter
 
         return [
             'key' => $key,
-            'label' => Coerce::str($entry['label'] ?? null, $key),
+            // The list's own name ("الماركات", "الألوان") — same contract as the columns above.
+            'label' => ManageText::t('lookups.list_'.$key, Coerce::str($entry['label'] ?? null, $key)),
             'master' => Coerce::str($entry['master'] ?? null),
             'translations' => Coerce::str($entry['translations'] ?? null),
             'fk' => Coerce::str($entry['fk'] ?? null),

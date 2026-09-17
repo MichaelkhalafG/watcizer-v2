@@ -51,11 +51,16 @@ use Tests\Support\T;
 /** Arabic anywhere. */
 const SERVER_ARABIC = '/[\x{0600}-\x{06FF}\x{0750}-\x{077F}\x{FB50}-\x{FDFF}\x{FE70}-\x{FEFF}]/u';
 
-/** Not interface text: catalogue content the importer writes. */
-const DATA_PREFIXES = ['Domain/Import/'];
+/**
+ * Not interface text: catalogue content the importer writes.
+ *
+ * Prefixed with the scan root since 🟠-4, because `config/` is scanned too and a bare `Domain/…`
+ * would be ambiguous between the two roots.
+ */
+const DATA_PREFIXES = ['app/Domain/Import/'];
 
 /** Not the operator's language: the shopper's. */
-const CUSTOMER_PREFIXES = ['Mail/', 'Domain/Notifications/', 'Storefront/'];
+const CUSTOMER_PREFIXES = ['app/Mail/', 'app/Domain/Notifications/', 'app/Storefront/'];
 
 /**
  * Operator-facing Arabic that no locale can reach, as path => count.
@@ -64,8 +69,45 @@ const CUSTOMER_PREFIXES = ['Mail/', 'Domain/Notifications/', 'Storefront/'];
  */
 function unwiredServerArabic(): array
 {
-    $root = app_path();
     $out = [];
+
+    /*
+     * `app/` AND `config/` (🟠-4, 2026-09-17).
+     *
+     * The ratchet used to scan `app/` alone, and `config/catalog.php` held 589 Arabic characters —
+     * every spec-block name and every specification field label. An English operator read the whole
+     * specifications panel in Arabic and BOTH ratchets reported zero, because neither had ever
+     * looked at the directory. A guard that misses an entire directory is a worse defect than the
+     * strings it missed, which is why the scan root is a list now rather than one path.
+     *
+     * A config file cannot call the seam itself — `config:cache` would freeze the translation in
+     * whatever locale built the cache — so the Arabic in `config/` is a FALLBACK that its consumer
+     * passes to `ManageText::t()`. This scan therefore expects those literals to be marked
+     * `i18n-exempt` with the consumer named, and `ConfigTranslationTest` asserts the other half:
+     * that every declared label really does have an English entry.
+     */
+    $roots = [app_path(), config_path()];
+
+    foreach ($roots as $root) {
+        foreach (unwiredArabicUnder($root) as $relative => $count) {
+            $out[$relative] = $count;
+        }
+    }
+
+    ksort($out);
+
+    return $out;
+}
+
+/**
+ * The unwired-Arabic count for one directory, as path => count.
+ *
+ * @return array<string, int>
+ */
+function unwiredArabicUnder(string $root): array
+{
+    $out = [];
+    $prefix = basename($root).'/';
 
     $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root));
     foreach ($iterator as $file) {
@@ -73,7 +115,7 @@ function unwiredServerArabic(): array
             continue;
         }
 
-        $relative = str_replace('\\', '/', str_replace($root.DIRECTORY_SEPARATOR, '', $file->getPathname()));
+        $relative = $prefix.str_replace('\\', '/', str_replace($root.DIRECTORY_SEPARATOR, '', $file->getPathname()));
         if (serverTextIsExcluded($relative)) {
             continue;
         }
@@ -118,11 +160,37 @@ function bareArabicLiterals(string $source): array
      * operator-facing file, and the reason is REQUIRED so it stays a decision somebody wrote down
      * rather than a mute switch.
      */
+    /*
+     * A FILE-level opt-out, for the one shape a line-level marker cannot serve: a config file that
+     * is entirely a data structure whose every Arabic value is a FALLBACK consumed through the seam
+     * somewhere else. `config/catalog.php` declares 58 labels; stamping 58 identical markers on it
+     * would be noise that nobody reads, and the reason is a property of the file rather than of any
+     * one line.
+     *
+     * It is deliberately narrow. The marker must NAME THE CONSUMER, and it is only honest because
+     * `ConfigTranslationTest` asserts the other half from the outside: every label the config
+     * declares has an English entry, and the consumer really does resolve it. Without that positive
+     * test this would be a mute switch — which is exactly what the line-level marker's required
+     * reason exists to prevent.
+     */
+    if (preg_match('#\bi18n-exempt-file:\s*\S#u', $source) === 1) {
+        return [];
+    }
+
     $stripped = T::str(preg_replace('#^.*\bi18n-exempt:\s*\S.*$#mu', '', $source));
 
     // Comments and docblocks are written for developers, not for an operator.
     $stripped = T::str(preg_replace('#/\*.*?\*/#su', '', $stripped));
     $stripped = T::str(preg_replace('#^\s*//.*$#mu', '', $stripped));
+
+    /*
+     * TRAILING comments too — `29 => 1,  // Automatic (اوتوماتيك) — watch complication`.
+     *
+     * The full-line rule above missed them, so a developer's note at the end of a data line counted
+     * as untranslated UI text and `config/transform.php` reported Arabic it does not render. Matched
+     * as SPACE-slash-slash so a `https://` inside a string is not mistaken for the start of one.
+     */
+    $stripped = T::str(preg_replace('#\s//.*$#mu', '', $stripped));
 
     /*
      * Blank out what the seam already covers: `ManageText::t('key', 'العربية')` and Laravel's own

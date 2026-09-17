@@ -85,6 +85,21 @@ class CompatDiffCommand extends Command
         }
 
         /*
+         * ── …and PARK every outbox row this run writes (🟠-5, 2026-09-17) ───────────────────
+         *
+         * The mail guard above stops a send DURING the run. It does nothing about what the run
+         * leaves BEHIND: each checkout writes `pending` outbox rows addressed to the real
+         * `ORDER_ADMIN_EMAILS`, and they wait there until somebody runs `php artisan mail:drain`
+         * on a host with real SMTP — days later, with nothing on screen connecting the two.
+         *
+         * Set HERE rather than only in the launcher, for the same reason the mail refusal is here:
+         * a launcher is the thing somebody forgets. `mail:drain` also refuses any row belonging to
+         * an order that has a parked row, which covers a retry or a dashboard status change made
+         * afterwards.
+         */
+        config(['notifications.send.park' => true]);
+
+        /*
          * ── …and it does not merely SEND, it WRITES ─────────────────────────────────────────
          *
          * The mail guard above was written after a run mailed four real administrators. It was the

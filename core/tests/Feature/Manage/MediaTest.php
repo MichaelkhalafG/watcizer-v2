@@ -1,5 +1,6 @@
 <?php
 
+use App\Domain\Media\ImagePipeline;
 use App\Domain\Media\MediaCapabilities;
 use App\Domain\Media\MediaStore;
 use Illuminate\Http\UploadedFile;
@@ -87,6 +88,70 @@ it('writes renditions at the declared widths, in every format this host supports
     } finally {
         forgetStored($stored);
     }
+});
+
+it('records NO rendition it did not actually write — every one has bytes on disk', function () {
+    /*
+     * ── The defect this pins (M1s, 2026-09-17) ──────────────────────────────────────────────
+     *
+     * GD's encoders can return `true` and leave a ZERO-BYTE file behind. Measured on this host: 8
+     * empty renditions across 59 835 files, 7 AVIF and 1 WebP, spread over the 320/480/640/960 sizes
+     * with no pattern. The pipeline trusted the return value, so the empty file went into
+     * `renditions` and was served — an empty AVIF usually falls through to the next `<picture>`
+     * source, but that WebP was a broken image in front of a customer. Nothing noticed either.
+     *
+     * `file_exists()` is true for an empty file, so the existing test above walks straight past this.
+     * The assertion that matters is the SIZE, and it is the invariant rather than the symptom: it
+     * holds however the encoder misbehaves, including in ways nobody has seen yet.
+     */
+    $stored = app(MediaStore::class)->store(fakeUpload(1400, 1400), 'product');
+
+    try {
+        expect($stored['renditions'])->not->toBe([], 'no renditions were written, so this proves nothing');
+
+        foreach ($stored['renditions'] as $width => $formats) {
+            foreach ($formats as $format => $file) {
+                $path = MediaStore::directory('Product').'/'.$file;
+                expect(is_file($path))->toBeTrue("recorded rendition {$width}{$format} is missing on disk")
+                    ->and(filesize($path))->toBeGreaterThan(0, "recorded rendition {$width}{$format} is ZERO bytes");
+            }
+        }
+
+        // The master too: an empty one has nothing to fall through to, so the pipeline throws
+        // rather than recording it. Here it must simply be real.
+        expect(filesize(MediaStore::directory('Product').'/'.$stored['file']))->toBeGreaterThan(0);
+    } finally {
+        forgetStored($stored);
+    }
+});
+
+it('separates a real FAILURE from a deliberate skip, because only one needs a person', function () {
+    /*
+     * `skipped` carries both, and conflating them would be the worse bug of the two. "320w: source
+     * is only 300px wide" is the pipeline refusing to upscale — correct, and true of a large share
+     * of any supplier catalogue. If that counted as a failure, half the shop would wear a review
+     * marker and the team would learn to ignore it.
+     */
+    $stored = app(MediaStore::class)->store(fakeUpload(300, 300), 'brand');
+
+    try {
+        expect($stored['skipped'])->not->toBe([])
+            ->and(implode(' ', $stored['skipped']))->toContain('source is only 300px wide')
+            // …and none of it is a failure, so nothing is flagged for a human.
+            ->and(ImagePipeline::hasFailure($stored['skipped']))->toBeFalse();
+    } finally {
+        forgetStored($stored);
+    }
+
+    // The other direction, on the shape rather than on a real encoder — the only way to see a
+    // failure entry without a host whose GD is broken.
+    expect(ImagePipeline::hasFailure([ImagePipeline::FAILED_PREFIX.'480w webp: the encoder reported success but wrote 0 bytes']))
+        ->toBeTrue()
+        ->and(ImagePipeline::hasFailure(['320w: source is only 300px wide']))->toBeFalse()
+        ->and(ImagePipeline::hasFailure([]))->toBeFalse()
+        // Defensive: the list arrives from a database column on some paths, so it may not be a list.
+        ->and(ImagePipeline::hasFailure(null))->toBeFalse()
+        ->and(ImagePipeline::hasFailure('not an array'))->toBeFalse();
 });
 
 it('never upscales, and says why a rendition was skipped', function () {

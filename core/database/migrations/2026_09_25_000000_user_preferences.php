@@ -60,7 +60,22 @@ return new class extends Migration
             $table->string('locale', 8)->default('ar');
             $table->timestamps();
 
-            $table->foreign('user_id')->references('id')->on('users')->cascadeOnDelete();
+            /*
+             * NAMED, like every other foreign key in this schema (🔵, 2026-09-17).
+             *
+             * An unnamed key gets MariaDB's generated identifier, which is positional and differs
+             * between a fresh build and a rebuilt one — so a later migration that wants to drop it
+             * has nothing stable to name, and `core:drop-clean` + `migrate` can leave two databases
+             * that are identical in content and different in constraint names. The convention is
+             * `<table-abbrev>_<column>_fk`, as used by the payment and activity tables.
+             *
+             * HONEST LIMIT: this table is in `DASHBOARD_TABLES`, so `core:drop-clean` preserves it
+             * and this `create` never re-runs on an existing database. Databases built before today
+             * keep MariaDB's generated name until the table is dropped for some other reason. That
+             * is acceptable because nothing drops this key today — the rule is here so the NEXT
+             * migration that touches it has a name to use, and so a fresh install is right.
+             */
+            $table->foreign('user_id', 'cup_user_fk')->references('id')->on('users')->cascadeOnDelete();
         });
     }
 

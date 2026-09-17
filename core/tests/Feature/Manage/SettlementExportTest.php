@@ -1,5 +1,7 @@
 <?php
 
+use App\Domain\Access\Preferences;
+use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Tests\Support\PaymentFixture;
 use Tests\Support\Staff;
@@ -47,11 +49,29 @@ it('writes exactly the agreed columns, in order', function () {
      * discounted one — so without these two a reconciled day's takings simply look lower than the
      * catalogue says, with no line explaining the difference.
      *
-     * Pinned by name AND order on purpose: a settlement file whose columns move breaks whatever
-     * spreadsheet the accountant built on it, so adding one is a deliberate edit here — and it is
-     * appended, never inserted, for the same reason. This assertion failing is the guard working.
+     * ── The headings are TRANSLATED since 🟡-5 (2026-09-17) ──────────────────────────────────
+     *
+     * They used to be the raw column keys in every locale — `order_number`, `transaction_id` — on
+     * the one file an Egyptian accountant opens every morning. Every other export names its columns
+     * in the operator's language; this one shipped its database identifiers.
+     *
+     * So this is asserted in a KNOWN locale. The COLUMN ORDER is still pinned, because that is what
+     * a spreadsheet built on this file depends on: adding one stays a deliberate edit here, and it
+     * is appended, never inserted. This assertion failing is the guard working.
      */
-    expect($header)->toBe('date,order_number,provider,method,transaction_id,amount,status,rewards,discount,discount_rule');
+    Preferences::setLocale(Staff::admin(), 'en');
+
+    /*
+     * PARSED, not compared as a raw line: a heading with a space in it is quoted by the writer, as
+     * CSV requires, so a string comparison would be asserting the quoting rules rather than the
+     * columns. This asserts the fields a spreadsheet actually sees.
+     */
+    $header = str_getcsv(ltrim((string) (preg_split('/\r?\n/', settlementCsv())[0] ?? ''), "\xEF\xBB\xBF"));
+
+    expect($header)->toBe([
+        'Date', 'Order number', 'Payment provider', 'Payment method', 'Transaction number',
+        'Amount', 'Status', 'Gift promotions', 'Discount', 'Discount promotion ID',
+    ]);
 });
 
 it('opens in Excel as Arabic rather than mojibake, because of the BOM', function () {
@@ -132,4 +152,75 @@ it('filters by date range and by storefront', function () {
     // file that mixed two storefronts' money would be reconciled against the wrong account.
     expect(settlementCsv(['storefront_id' => 2]))->not->toContain($number);
     expect(settlementCsv(['storefront_id' => 1]))->toContain($number);
+});
+
+// ── the scope (🟠-1, 2026-09-17) ─────────────────────────────────────────────────────────────
+
+/**
+ * The streamed body as a named USER sees it — the scope probe's whole point.
+ *
+ * @param  array<string, int|string>  $query
+ */
+function settlementCsvAs(User $user, array $query = []): string
+{
+    $response = actingAs($user)->get('/manage/orders/export/settlement'.($query === [] ? '' : '?'.http_build_query($query)));
+    $response->assertOk();
+
+    return $response->streamedContent();
+}
+
+it('never lets a SCOPED grant export another storefront’s takings', function () {
+    /*
+     * The finding this test exists for: the export carried no storefront scope at all. The route is
+     * gated on `manage-payments`, and that ability can be granted SCOPED — so a holder scoped to
+     * Brand Fashion was downloading Watchizer's entire payment history: transaction ids, amounts
+     * and order numbers for a shop they cannot open one order of.
+     *
+     * The list screen had `applyScope()` from the day the scope existed. The export is the same
+     * question in a different verb and simply never got it.
+     */
+    $onOne = PaymentFixture::order(100.0, storefrontId: 1);
+    $onTwo = PaymentFixture::order(100.0, storefrontId: 2);
+    $numberOne = PaymentFixture::orderNumber($onOne);
+    $numberTwo = PaymentFixture::orderNumber($onTwo);
+
+    foreach ([$onOne => 991001, $onTwo => 991002] as $orderId => $transaction) {
+        DB::table('payment_statuses')->insert([
+            'order_id' => $orderId,
+            'provider' => 'paymob',
+            'method' => 'card',
+            'pay_transaction_id' => $transaction,
+            'amount_cents' => 1000,
+            'success' => 'true',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+    }
+
+    // An UNSCOPED admin sees both — the behaviour that must not change.
+    $all = settlementCsvAs(Staff::admin());
+    expect($all)->toContain($numberOne)->toContain($numberTwo);
+
+    // An admin scoped to storefront 2 sees ONLY storefront 2.
+    $scoped = settlementCsvAs(Staff::adminFor(2));
+    expect($scoped)->toContain($numberTwo)
+        ->and($scoped)->not->toContain($numberOne);
+});
+
+it('answers 404 when a scoped grant NAMES a storefront outside it', function () {
+    /*
+     * `applyScope()` alone would already return nothing here, but "no rows" and "not yours" read
+     * identically to the caller — and a finance operator handed an empty CSV concludes the day had
+     * no takings rather than that they asked for the wrong shop.
+     *
+     * 404 rather than 403, for the reason §3.11.14 gives everywhere else: a 403 confirms the
+     * storefront exists.
+     */
+    actingAs(Staff::adminFor(2))
+        ->get('/manage/orders/export/settlement?storefront_id=1')
+        ->assertNotFound();
+
+    // …and its own storefront is still fine.
+    actingAs(Staff::adminFor(2))
+        ->get('/manage/orders/export/settlement?storefront_id=2')
+        ->assertOk();
 });

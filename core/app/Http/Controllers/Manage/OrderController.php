@@ -394,6 +394,15 @@ final class OrderController
             throw ValidationException::withMessages(['cancel' => $e->getMessage()]);
         }
 
+        /*
+         * Somebody else cancelled it a moment ago (🔵). A STATUS, not an error: the order is
+         * cancelled, which is what this operator wanted, and refusing them for a thing that
+         * succeeded would send them back to look at a screen that already agrees with them.
+         */
+        if ($result['already_cancelled']) {
+            return back()->with('status', ManageText::t('orders.already_cancelled', 'هذا الطلب ملغى بالفعل.'));
+        }
+
         // `:count`, not `{$…}` interpolation: the number has to be able to move inside the sentence
         // when the sentence is English, and a placeholder is the only thing that lets it.
         return back()->with('status', $result['released']
@@ -453,8 +462,36 @@ final class OrderController
         if ($to !== null && $to !== '') {
             $query->where('ps.created_at', '<=', $to.' 23:59:59');
         }
+
+        /*
+         * ── The SAME scope the list applies (🟠-1, 2026-09-17) ────────────────────────────────
+         *
+         * This export carried no storefront scope at all. The route is gated on `manage-payments`,
+         * but that ability can be granted SCOPED — and a scoped holder was downloading every
+         * storefront's payment history: transaction ids, amounts and order numbers for a shop they
+         * cannot open a single order of.
+         *
+         * The screen had `applyScope()` from the day the scope existed; the export is the same
+         * question asked in a different verb and simply never got it. It is applied here through
+         * the same helper rather than a second copy of the rule, because two copies of an
+         * authorisation rule agree only by coincidence — which is the finding that produced
+         * `Navigation`'s admin short-circuit fix as well.
+         */
+        self::applyScope($query);
+
         $storefrontId = Coerce::nint($request->input('storefront_id'));
         if ($storefrontId !== null) {
+            /*
+             * …and a NAMED storefront outside the grant is a 404, not a silently empty file.
+             *
+             * `applyScope()` alone would already return nothing for such a request, but "no rows"
+             * and "not yours" read identically to the caller, and a finance operator handed an
+             * empty CSV concludes the day had no takings. 404 rather than 403 for the reason
+             * §3.11.14 gives everywhere else: a 403 confirms the storefront exists.
+             */
+            $scope = self::storefrontScope();
+            abort_if($scope !== null && ! in_array($storefrontId, $scope, true), 404);
+
             $query->where('o.storefront_id', $storefrontId);
         }
 
@@ -467,23 +504,34 @@ final class OrderController
          * Empty for the overwhelming majority of rows, which is the honest shape: most orders
          * carry no promotion.
          */
+        /*
+         * ── The headings are TRANSLATED now (🟡-5, 2026-09-17) ────────────────────────────────
+         *
+         * They used to be the raw column keys — `order_number`, `transaction_id` — in every locale,
+         * on the one file an Egyptian accountant opens every morning. Every other export in the
+         * dashboard names its columns in the operator's language; this one shipped its database
+         * identifiers and nobody noticed because the developers reading it could read them.
+         *
+         * The keys are unchanged, so nothing that reads the file by key moves. Only the first row
+         * does — which is what a person reads.
+         */
         $columns = [
-            ['key' => 'date', 'label' => 'date', 'value' => null],
-            ['key' => 'order_number', 'label' => 'order_number', 'value' => null],
-            ['key' => 'provider', 'label' => 'provider', 'value' => null],
-            ['key' => 'method', 'label' => 'method', 'value' => null],
-            ['key' => 'transaction_id', 'label' => 'transaction_id', 'value' => null],
-            ['key' => 'amount', 'label' => 'amount', 'value' => null],
-            ['key' => 'status', 'label' => 'status', 'value' => null],
-            ['key' => 'rewards', 'label' => 'rewards', 'value' => null],
+            ['key' => 'date', 'label' => ManageText::t('common.date', 'التاريخ'), 'value' => null],
+            ['key' => 'order_number', 'label' => ManageText::t('common.order_number', 'رقم الطلب'), 'value' => null],
+            ['key' => 'provider', 'label' => ManageText::t('orders.payment_provider', 'مزوّد الدفع'), 'value' => null],
+            ['key' => 'method', 'label' => ManageText::t('orders.payment_method', 'طريقة الدفع'), 'value' => null],
+            ['key' => 'transaction_id', 'label' => ManageText::t('orders.transaction_id', 'رقم العملية'), 'value' => null],
+            ['key' => 'amount', 'label' => ManageText::t('orders.amount', 'المبلغ'), 'value' => null],
+            ['key' => 'status', 'label' => ManageText::t('common.status', 'الحالة'), 'value' => null],
+            ['key' => 'rewards', 'label' => ManageText::t('orders.settlement_rewards', 'عروض الهدايا'), 'value' => null],
             /*
              * `discount` is the column finance needs most of the three. The `amount` above is what
              * the PROVIDER took; when a promotion reduced the order, that figure is already the
              * discounted one — so without this column a reconciled day's takings look simply lower
              * than the catalogue says, with no line explaining it.
              */
-            ['key' => 'discount', 'label' => 'discount', 'value' => null],
-            ['key' => 'discount_rule', 'label' => 'discount_rule', 'value' => null],
+            ['key' => 'discount', 'label' => ManageText::t('orders.discount', 'الخصم'), 'value' => null],
+            ['key' => 'discount_rule', 'label' => ManageText::t('orders.settlement_discount_rule', 'رقم عرض الخصم'), 'value' => null],
         ];
 
         /*

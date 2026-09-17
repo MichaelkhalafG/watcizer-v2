@@ -451,3 +451,46 @@ it('filters by user, action and date, and each one bites', function () {
     // A date range that excludes today excludes everything written today.
     expect($rows('?filters[to]=2000-01-01'))->toBe([]);
 });
+
+// ── the storefront scope (🟡-2, 2026-09-17) ──────────────────────────────────────────────────
+
+it('shows a SCOPED grant only its own storefronts, plus the shop-wide rows', function () {
+    /*
+     * `manage-users` opens this screen and can be granted SCOPED, so an administrator scoped to
+     * Brand Fashion was reading Watchizer's entire change history — who edited which product, what
+     * a price was before, which permissions were granted to whom.
+     *
+     * The NULL rows stay visible deliberately, and that is the opposite of the order queue's rule.
+     * An order always belongs to a storefront; an activity row often does not — a permission grant,
+     * a unit merge, a lookup edit are shop-wide — and hiding those would make a scoped
+     * administrator's own actions vanish from the log they opened to check what they did.
+     */
+    $actor = Staff::admin();
+
+    DB::table(ActivityLog::TABLE)->insert([
+        ['user_id' => $actor->id, 'user_name' => 'probe', 'subject_type' => 'catalog_products',
+            'subject_id' => 1, 'subject_label' => 'ON-STOREFRONT-ONE', 'action' => 'updated',
+            'storefront_id' => 1, 'changes' => '[]', 'created_at' => now()],
+        ['user_id' => $actor->id, 'user_name' => 'probe', 'subject_type' => 'catalog_products',
+            'subject_id' => 2, 'subject_label' => 'ON-STOREFRONT-TWO', 'action' => 'updated',
+            'storefront_id' => 2, 'changes' => '[]', 'created_at' => now()],
+        ['user_id' => $actor->id, 'user_name' => 'probe', 'subject_type' => 'permission',
+            'subject_id' => 3, 'subject_label' => 'SHOP-WIDE-ROW', 'action' => 'granted',
+            'storefront_id' => null, 'changes' => '[]', 'created_at' => now()],
+    ]);
+
+    // An UNSCOPED admin sees all three — the behaviour that must not change.
+    $all = Props::of(actingAs(Staff::admin())->get('/manage/activity'));
+    $unscoped = json_encode(T::arr($all['table'])['data'] ?? [], JSON_UNESCAPED_UNICODE);
+    expect($unscoped)->toContain('ON-STOREFRONT-ONE')
+        ->toContain('ON-STOREFRONT-TWO')
+        ->toContain('SHOP-WIDE-ROW');
+
+    // An admin scoped to storefront 2 sees its own rows and the shop-wide one, never storefront 1.
+    $scoped = Props::of(actingAs(Staff::adminFor(2))->get('/manage/activity'));
+    $body = json_encode(T::arr($scoped['table'])['data'] ?? [], JSON_UNESCAPED_UNICODE);
+
+    expect($body)->toContain('ON-STOREFRONT-TWO')
+        ->and($body)->toContain('SHOP-WIDE-ROW')
+        ->and($body)->not->toContain('ON-STOREFRONT-ONE');
+});

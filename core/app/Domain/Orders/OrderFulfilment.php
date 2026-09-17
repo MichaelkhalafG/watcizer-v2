@@ -142,7 +142,7 @@ final class OrderFulfilment
      * the units twice. The order row and the ledger rows commit or roll back together: an order
      * marked cancelled whose stock never came back is the failure this shape prevents.
      *
-     * @return array{status: string, released: bool, movements: int}
+     * @return array{status: string, released: bool, movements: int, already_cancelled: bool}
      *
      * @throws RuntimeException when the order cannot be cancelled
      */
@@ -179,9 +179,40 @@ final class OrderFulfilment
         $mailIds = [];
 
         $result = DB::transaction(function () use ($orderId, $actor, $storefrontId, $note, &$mailIds): array {
-            $alreadyReleased = $this->inventory->isReleased($orderId);
+            /*
+             * ── The UPDATE is the claim (🔵, 2026-09-17) ──────────────────────────────────────
+             *
+             * The `$from === 'cancelled'` check above happens OUTSIDE this transaction, so two
+             * operators clicking at the same instant both read `pending`, both pass it, and both
+             * arrive here. The second used to set `cancelled` over `cancelled` and report a fresh
+             * cancellation — "stock returned, 0 movements" — which is a sentence about something
+             * that did not happen.
+             *
+             * `where('status', '!=', 'cancelled')` makes the row itself the arbiter: the loser
+             * updates zero rows and says so. Same shape as `OrderMailer::deliver()`'s claim and as
+             * the payment callback's, and for the same reason — a pre-check plus a write has a
+             * window, and a conditional write does not.
+             */
+            $claimed = DB::table('orders')
+                ->where('id', $orderId)
+                ->where('status', '!=', 'cancelled')
+                ->update(['status' => 'cancelled', 'updated_at' => now()]);
 
-            DB::table('orders')->where('id', $orderId)->update(['status' => 'cancelled', 'updated_at' => now()]);
+            if ($claimed === 0) {
+                /*
+                 * Somebody else cancelled it between our read and this write. Not an error: the
+                 * order IS cancelled, which is what the operator wanted. They are told plainly
+                 * rather than shown a refusal for a thing that succeeded.
+                 */
+                return [
+                    'status' => 'cancelled',
+                    'released' => false,
+                    'movements' => 0,
+                    'already_cancelled' => true,
+                ];
+            }
+
+            $alreadyReleased = $this->inventory->isReleased($orderId);
 
             // THE one door. `order_cancel` is a declared release reason, so the ledger says why the
             // units came back and `inventory:verify` can still reconcile the row.
@@ -203,6 +234,7 @@ final class OrderFulfilment
                 'status' => 'cancelled',
                 'released' => ! $alreadyReleased,
                 'movements' => count($movements),
+                'already_cancelled' => false,
             ];
         });
 

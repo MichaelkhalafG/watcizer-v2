@@ -76,6 +76,18 @@ final class PaymentProveCallbackRaceCommand extends Command
             return self::INVALID;
         }
 
+        /*
+         * ── PARK every outbox row this probe writes (🟠-5, 2026-09-17) ──────────────────────
+         *
+         * The probe creates REAL orders, and a real order writes `pending` outbox rows addressed to
+         * the real `ORDER_ADMIN_EMAILS`. They wait there until somebody runs `php artisan mail:drain`
+         * on a host with real SMTP, which is days later and nowhere near this command.
+         *
+         * Set here rather than only in a launcher, for the same reason the remote-target refusal is
+         * here: a launcher is the thing somebody forgets.
+         */
+        config(['notifications.send.park' => true]);
+
         $base = Coerce::str($this->option('path'));
         $workers = max(2, Coerce::int($this->option('workers')));
         $rounds = max(1, Coerce::int($this->option('rounds')));

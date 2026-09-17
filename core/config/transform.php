@@ -97,8 +97,8 @@ return [
         | is placed. A name matching both lists (or neither) is treated as ambiguous and is not
         | reported. Substring match on the lower-cased EN and AR names.
         */
-        'watch_sub_type_name_hints' => ['watch', 'automatic', 'chronograph', 'chronometer', 'diver', 'pilot', 'gmt', 'tourbillon', 'skeleton', 'moonphase', 'quartz', 'mechanical', 'ساعة', 'ساعات', 'اوتوماتيك', 'أوتوماتيك'],
-        'fashion_sub_type_name_hints' => ['bag', 'wallet', 'perfume', 'cap', 'belt', 'sunglass', 'scarf', 'keychain', 'cufflink', 'jewel', 'bracelet', 'shoe', 'حقيبة', 'حقائب', 'محفظة', 'عطر', 'حزام', 'أحزمة', 'نظارة', 'مجوهرات'],
+        'watch_sub_type_name_hints' => ['watch', 'automatic', 'chronograph', 'chronometer', 'diver', 'pilot', 'gmt', 'tourbillon', 'skeleton', 'moonphase', 'quartz', 'mechanical', 'ساعة', 'ساعات', 'اوتوماتيك', 'أوتوماتيك'],  // i18n-exempt: MATCHING TOKENS compared against legacy sub-type names, never rendered
+        'fashion_sub_type_name_hints' => ['bag', 'wallet', 'perfume', 'cap', 'belt', 'sunglass', 'scarf', 'keychain', 'cufflink', 'jewel', 'bracelet', 'shoe', 'حقيبة', 'حقائب', 'محفظة', 'عطر', 'حزام', 'أحزمة', 'نظارة', 'مجوهرات'],  // i18n-exempt: MATCHING TOKENS compared against legacy sub-type names, never rendered
     ],
 
     /*
@@ -147,7 +147,7 @@ return [
     'legacy_tree_root' => [
         'slug' => 'legacy-tree',
         'name_en' => 'Legacy category tree',
-        'name_ar' => 'شجرة التصنيفات القديمة',
+        'name_ar' => 'شجرة التصنيفات القديمة',  // i18n-exempt: written into storefront_category_translations — a stored NAME, catalogue content
     ],
 
 ];

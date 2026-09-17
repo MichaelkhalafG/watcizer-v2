@@ -393,6 +393,23 @@ final class PlacementWriter
             }
 
             /*
+             * A TYPED slug that does not fit is refused, not shortened — the opposite of the
+             * generated path below, and deliberately.
+             *
+             * Nobody chose the generated one, so cutting it costs nothing. Somebody chose this one,
+             * and silently handing them back a different URL from the one they typed is how a person
+             * ends up linking to a page that does not exist. They are at a keyboard; the sentence
+             * says the limit and what they have.
+             */
+            if (mb_strlen($slug) > self::SLUG_MAX) {
+                throw new FieldRefusal('slug', ManageText::t(
+                    'placement.slug_too_long',
+                    'الرابط طويل جدًا: :length حرفًا والحد :max. اختصره ثم احفظ.',
+                    ['length' => mb_strlen($slug), 'max' => self::SLUG_MAX],
+                ));
+            }
+
+            /*
              * The pre-switch lock applies to a CHANGE, not to every save. The product form echoes
              * the stored slug back in its payload on an ordinary edit, so refusing any non-empty
              * slug here would refuse every save the screen makes — and a rule that blocks unrelated
@@ -431,8 +448,53 @@ final class PlacementWriter
         );
     }
 
+    /**
+     * `storefront_product.slug` is varchar(191), and a slug that does not fit is a LOST PRODUCT.
+     *
+     * Measured 2026-09-17: ten Brand Fashion rows failed with `1406 Data too long for column 'slug'`
+     * — supplier titles that run to 211 characters ("Jacop&Philipp Elegant Silk Sleep Cap for Women,
+     * Single Layer Satin Sleep Cap, High-Tech Care, …"). The whole product was refused over the URL.
+     *
+     * The transform answers this differently and correctly for its own case: X-05 is a BLOCKING audit
+     * finding, because a legacy product already has a live URL and silently shortening it would break
+     * a link somebody has bookmarked. An IMPORTED product has no URL yet — there is nothing to
+     * preserve — so the honest answer here is to shorten it and keep the product.
+     */
+    public const SLUG_MAX = 191;
+
+    /**
+     * A slug base cut to fit, leaving room for the collision suffix that may follow it.
+     *
+     * Cut on a HYPHEN where there is one in the last quarter, so the URL ends on a whole word rather
+     * than mid-syllable — `…-single-layer-satin` reads as something, `…-single-layer-sat` reads as a
+     * mistake. Trailing hyphens are trimmed either way, because `foo-` and `foo` are different URLs
+     * and only one of them looks deliberate.
+     */
+    public static function fitSlug(string $base, int $reserve = 0): string
+    {
+        $limit = max(1, self::SLUG_MAX - $reserve);
+        if (mb_strlen($base) <= $limit) {
+            return rtrim($base, '-');
+        }
+
+        $cut = mb_substr($base, 0, $limit);
+        $lastHyphen = mb_strrpos($cut, '-');
+        if ($lastHyphen !== false && $lastHyphen >= (int) ($limit * 0.75)) {
+            $cut = mb_substr($cut, 0, $lastHyphen);
+        }
+
+        return rtrim($cut, '-');
+    }
+
     private function uniqueSlug(int $storefrontId, string $base, int $productId): string
     {
+        /*
+         * Room reserved for the longest suffix the loop below can add — `-{id}-{n}` — so a slug that
+         * collides after truncation still fits the column. Reserving up front rather than
+         * re-truncating per attempt keeps the base stable across the loop, which is what makes the
+         * eventual slug predictable from the title.
+         */
+        $base = self::fitSlug($base, mb_strlen('-'.$productId.'-99'));
         $base = $base === '' ? (string) $productId : $base;
         $slug = $base;
         $suffix = 2;

@@ -81,6 +81,28 @@ final class OrderMailer
     public const STATUS_SKIPPED = 'skipped';
 
     /**
+     * Written by a run that places orders THAT ARE NOT REAL — the compat harness, the WriteTarget
+     * tools (🟠-5, 2026-09-17).
+     *
+     * A resting state that nothing ever claims: `deliver()` and `mail:drain` both select `pending`,
+     * so a parked row cannot be sent by any path, now or a month from now. That is the whole point.
+     * Those runs already set `MAIL_MAILER=log`, which stops mail going out DURING the run and does
+     * nothing about what is left behind — a `pending` row from harness order 3381 waits in the
+     * outbox until somebody runs `mail:drain` on a host with real SMTP, and then four real admin
+     * addresses are told about a test order.
+     *
+     * Parked rather than deleted: the row is evidence that the harness exercised the mail path,
+     * which is one of the things the harness is for.
+     */
+    public const STATUS_PARKED = 'parked';
+
+    /** Is this process one whose orders are not real? See `config('notifications.send.park')`. */
+    public static function parking(): bool
+    {
+        return (bool) config('notifications.send.park', false);
+    }
+
+    /**
      * An order was placed: the customer's confirmation and one notification per admin.
      *
      * `$notifyCustomer` reproduces the legacy rule exactly — `sendOrderEmails()` only builds the
@@ -239,7 +261,7 @@ final class OrderMailer
         $recipient = is_string($payload['recipient'] ?? null) ? $payload['recipient'] : '';
 
         if ($recipient === '') {
-            $this->park($id, 'the row carries no recipient address');
+            $this->park($id, MailFailure::ours(MailFailure::NO_ADDRESS, 'the row carries no recipient address'));
 
             return false;
         }
@@ -315,7 +337,15 @@ final class OrderMailer
                 'created_at' => Row::nstr($row, 'created_at'),
                 'processed_at' => Row::nstr($row, 'processed_at'),
                 'available_at' => Row::nstr($row, 'available_at'),
-                'last_error' => Row::nstr($row, 'last_error'),
+                /*
+                 * The CLASSIFICATION, not the transport's text (🟠-2). `last_error` itself no longer
+                 * leaves the server: it is masked at write time, but a masked string is still a
+                 * developer's artefact, and what an operator needs is whose problem this is —
+                 * the relay's, the address's, or ours. `error_kind` is the machine-readable word and
+                 * `error_label` the sentence the screen renders.
+                 */
+                'error_kind' => ($kindOfError = MailFailure::kindOf(Row::nstr($row, 'last_error'))),
+                'error_label' => $kindOfError === null ? null : MailFailure::label($kindOfError),
             ];
         }
 
@@ -361,7 +391,7 @@ final class OrderMailer
                 recipient: null,
                 extra: $extra ?? [],
                 status: self::STATUS_SKIPPED,
-                error: 'the order carries no customer e-mail address',
+                error: MailFailure::ours(MailFailure::NO_ADDRESS, 'the order carries no customer e-mail address'),
             );
         }
 
@@ -390,6 +420,20 @@ final class OrderMailer
         string $status = self::STATUS_PENDING,
         ?string $error = null,
     ): ?int {
+        /*
+         * A run that places orders which are not real parks EVERY row it writes (🟠-5). Applied
+         * here, at the one door every enqueue goes through, rather than at each caller — the
+         * failure this prevents is a caller that forgets.
+         *
+         * A status the caller chose deliberately (`skipped`, `failed` for "no admin recipients") is
+         * left alone: those are already resting states that nothing sends, and overwriting them
+         * would lose why the row is there.
+         */
+        if ($status === self::STATUS_PENDING && self::parking()) {
+            $status = self::STATUS_PARKED;
+            $error = $error ?? 'parked: written by a run whose orders are not real (notifications.send.park)';
+        }
+
         $payload = [
             'kind' => $kind,
             'recipient' => $recipient,
@@ -454,7 +498,7 @@ final class OrderMailer
                 recipient: null,
                 extra: [],
                 status: self::STATUS_FAILED,
-                error: 'ORDER_ADMIN_EMAILS is empty: no admin notification recipients are configured',
+                error: MailFailure::ours(MailFailure::CONFIG, 'ORDER_ADMIN_EMAILS is empty: no admin notification recipients are configured'),
             );
 
             Log::error("order mail: no admin recipients configured (ORDER_ADMIN_EMAILS); order {$orderId} notified nobody in the shop.");
@@ -476,9 +520,20 @@ final class OrderMailer
         $attempts = Coerce::int(DB::table('integration_outbox')->where('id', $id)->value('attempts'));
         $max = max(1, config()->integer('notifications.send.max_attempts'));
 
-        // The exception CLASS as well as the message: "Connection could not be established" from a
-        // TransportException is a relay problem, the same words from something else is a bug.
-        $error = $e::class.': '.mb_substr($e->getMessage(), 0, 400);
+        /*
+         * MASKED and CLASSIFIED — never the transport's own words (🟠-2, 2026-09-17).
+         *
+         * This used to be `$e::class.': '.$e->getMessage()`. A Symfony TransportException for a
+         * rejected SMTP login carries the mail account's USERNAME and the relay's host:port in its
+         * message, so a misconfigured relay put half the shop's mail credentials onto a screen any
+         * `view-orders` holder can open, and into every backup of this table. Nobody had to be
+         * attacked for it to leak; it only had to fail.
+         *
+         * `MailFailure` keeps the exception class and the words that tell a developer where to
+         * look, strikes out the shapes that carry a secret or an identity, and adds the
+         * classification the screen actually renders.
+         */
+        $error = MailFailure::masked($e);
 
         if ($attempts >= $max) {
             DB::table('integration_outbox')->where('id', $id)->update([

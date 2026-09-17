@@ -13,6 +13,7 @@ use App\Domain\Inventory\Actor;
 use App\Domain\Inventory\InventoryService;
 use App\Domain\Inventory\StockTarget;
 use App\Models\Storefront\Storefront;
+use App\Support\LegacySlug;
 use App\Transform\Row;
 use Illuminate\Database\Query\JoinClause;
 use Illuminate\Support\Facades\DB;
@@ -56,6 +57,12 @@ use Throwable;
  */
 final class ProductImporter
 {
+    /**
+     * `catalog_products.sku` is varchar(64). Anything longer is not a supplier code — see the
+     * comment at the SKU step for the 180-character Arabic description that proved it.
+     */
+    private const SKU_MAX = 64;
+
     /** Stock arrives as a quantity, never as a column: `import` is a declared ledger reason. */
     private const STOCK_REASON = 'import';
 
@@ -135,35 +142,6 @@ final class ProductImporter
          * because the residual false-positive risk cannot be argued to zero and that file is the
          * only way anybody would ever find out.
          */
-        /*
-         * ── AN UNKNOWN CATEGORY REFUSES THE ROW (decision 2026-09-15, option b) ─────────────
-         *
-         * Before the duplicate gate, because a row we cannot place is a row we should not be
-         * reasoning about at all. The source leaf is not in `CategoryMap`, so there is no honest
-         * answer to "where does this go" — and the two dishonest ones were both on the table:
-         * guess a placement, or teach the reconciliation to skip imported rows. The second is
-         * worse than the first; an audit that looks away stops being an audit.
-         *
-         * A leaf the map answers with `none` (their `Uncategorized`) or `gender` is NOT unknown —
-         * those are decisions already taken, and they still import and still carry the
-         * missing-data marker.
-         */
-        if ($row->unmappedLeaves !== []) {
-            $report->count('refused_unmapped_category');
-            foreach ($row->unmappedLeaves as $leaf) {
-                $report->note('unmapped_category', $leaf);
-            }
-            $report->row(
-                $row->ref,
-                $row->titleEn,
-                'refused',
-                'category not in the map: '.implode(', ', $row->unmappedLeaves)
-                .' — add it to CategoryMap::LEAVES, or decide it maps to nothing, then re-run.',
-            );
-
-            return null;
-        }
-
         $duplicate = $this->catalogue->match($row);
         if ($duplicate !== null) {
             $report->count('duplicate_of_existing');
@@ -186,6 +164,48 @@ final class ProductImporter
         }
 
         $missing = [];
+
+        /*
+         * ── AN UNKNOWN CATEGORY FLAGS THE ROW (decision 2026-09-17, replacing the refusal) ──
+         *
+         * The 2026-09-15 rule refused the row outright. Its reasoning was sound about the thing it
+         * protected — an unmapped leaf has no honest placement, and guessing one corrupts the
+         * catalogue invisibly — but it drew the wrong conclusion from it. Refusing means the
+         * PRODUCT does not arrive either: its title, its price, its stock, its images and its brand
+         * are all perfectly good, and every one of them is thrown away because a single word in one
+         * column is unfamiliar. Over an overnight run of several thousand rows that is the
+         * difference between a catalogue with a to-do list and no catalogue at all.
+         *
+         * So the row IMPORTS, UNPLACED and marked. `unmappedLeaves` contributes no path (see
+         * `WooExport::taxonomy()`), which keeps the guarantee that actually mattered: no placement
+         * is ever guessed, and nothing falls through to a default node. Assigning it is then one
+         * action in the dashboard rather than a re-run of the whole file.
+         *
+         * A row that ALSO carries a leaf the map knows is placed by THAT leaf and still marked. The
+         * known leaf is a fact, not a default, and dropping a real placement to punish an unrelated
+         * unknown word would lose information for nothing.
+         *
+         * AFTER the duplicate gate, deliberately: a row already in the catalogue is not being
+         * imported, so reporting it as needing a category would put work on a list that nobody has
+         * to do.
+         *
+         * A leaf the map answers with `none` (their `Uncategorized`) or `gender` is NOT unknown —
+         * those are decisions already taken, and they carry `MISSING_CATEGORY` instead.
+         */
+        if ($row->unmappedLeaves !== []) {
+            $missing[] = ImportReport::NEEDS_CATEGORY;
+            $report->count('needs_category');
+            foreach ($row->unmappedLeaves as $leaf) {
+                $report->note('unmapped_category', $leaf);
+            }
+            $report->row(
+                $row->ref,
+                $row->titleEn,
+                'needs_category',
+                'category not in the map: '.implode(', ', $row->unmappedLeaves)
+                .' — imported unplaced; assign it in the dashboard, or add it to CategoryMap::LEAVES and re-run.',
+            );
+        }
 
         /*
          * ── brand ───────────────────────────────────────────────────────────────────────────
@@ -213,6 +233,35 @@ final class ProductImporter
 
         // ── SKU, first-come-first-served ────────────────────────────────────────────────────
         $sku = $row->sku;
+
+        /*
+         * ── A value too long to BE a SKU is not one (2026-09-17) ────────────────────────────
+         *
+         * `catalog_products.sku` is varchar(64) and one real row refused to insert:
+         * `1406 Data too long for column 'sku'`. What was in the column was **180 characters of
+         * Arabic marketing copy** — a product description pasted into the SKU field:
+         *
+         *     "هذه النظارات الشمسية مصنوعة من مواد عالية الجودة، وهي متينة بما يكفي للاستخدام ط…"
+         *
+         * TRUNCATING that to 64 would store a fragment of a sentence and present it to the team as
+         * this product's supplier code — a wrong answer that looks like a right one, and the kind
+         * nobody re-checks. A supplier code is short by nature; something 180 characters long is a
+         * different field that landed in the wrong column.
+         *
+         * So it is treated as NO SKU: the product imports, carries the `sku` marker, and the report
+         * says what was actually there so somebody can see why. That path already exists and is
+         * already the answer for an empty SKU and a duplicate one.
+         */
+        if ($sku !== null && mb_strlen($sku) > self::SKU_MAX) {
+            $report->row($row->ref, $row->titleEn, 'sku_not_a_code', sprintf(
+                'the SKU column held %d characters, which is not a supplier code — imported without one. It began: %s',
+                mb_strlen($sku),
+                mb_substr($sku, 0, 60).'…',
+            ));
+            $report->count('sku_too_long');
+            $sku = null;
+        }
+
         if ($sku === null || $sku === '') {
             $sku = null;
             $missing[] = ImportReport::MISSING_SKU;
@@ -314,6 +363,33 @@ final class ProductImporter
                 // rather than invented into a column that does not exist.
                 $report->count('material_no_home');
             }
+        }
+
+        /*
+         * ── The importer's X-05 (2026-09-17) ────────────────────────────────────────────────
+         *
+         * The transform has a BLOCKING audit code for a title whose slug would not fit
+         * `storefront_product.slug(191)`, because a legacy product already has a live URL and
+         * shortening it silently would break somebody's bookmark. The importer had no equivalent at
+         * all, so ten Brand Fashion rows simply died on `1406 Data too long for column 'slug'` — the
+         * whole product lost over its URL.
+         *
+         * An imported product has no URL yet, so the answer here is the opposite of the transform's:
+         * `PlacementWriter::fitSlug()` shortens it and the product lands. But it must not be SILENT —
+         * a shortened URL is a decision somebody may want to improve on, and a title long enough to
+         * need it is usually a description in the name field, which is worth knowing about on its own.
+         *
+         * Reported, never refused. That is the whole difference from the rule that lost the ten.
+         */
+        $wouldBeSlug = LegacySlug::make($row->titleEn);
+        if (mb_strlen($wouldBeSlug) > PlacementWriter::SLUG_MAX) {
+            $report->count('slug_shortened');
+            $report->row($row->ref, $row->titleEn, 'slug_shortened', sprintf(
+                'the title makes a %d-character URL and the limit is %d, so it was shortened. '
+                .'A title this long is usually a description in the name field.',
+                mb_strlen($wouldBeSlug),
+                PlacementWriter::SLUG_MAX,
+            ));
         }
 
         try {

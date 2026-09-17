@@ -5,6 +5,23 @@
 | Catalog dashboard (CLEAN_CORE_STUDY §3.12 — wave 4B)
 |--------------------------------------------------------------------------
 |
+| i18n-exempt-file: every Arabic value here is a LABEL and every label is a
+| FALLBACK, resolved through `ManageText::t()` by the two consumers that read
+| this file — `App\Domain\Catalog\SpecBlocks::for()` keys the block and field
+| names as `specs.block_<family>` / `specs.field_<key>`, and
+| `App\Domain\Catalog\LookupWriter::narrow()` keys the list and column names as
+| `lookups.list_<key>` / `lookups.column_<list>_<column>`.
+|
+| The seam CANNOT be called from this file: `php artisan config:cache` would
+| resolve every label once, in whatever locale happened to be active when the
+| cache was built, and freeze it there for every operator until the next
+| deploy. So the Arabic stays here as the fallback, exactly as a `t()` call's
+| second argument does, and the key is derived from the stable `key` beside it.
+|
+| `ConfigTranslationTest` holds the other half: every label declared below has
+| an English entry, and the consumers really do resolve one. Without that this
+| marker would be a mute switch (🟠-4, 2026-09-17).
+|
 | What the product form SHOWS for a given family, and which lookup lists the
 | dashboard maintains. It is configuration and not code for one specific
 | reason: a product's family is derived from its CATEGORY (see

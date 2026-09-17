@@ -115,7 +115,13 @@ interface Notification {
     created_at: string | null;
     processed_at: string | null;
     available_at: string | null;
-    last_error: string | null;
+    /*
+     * The failure's CLASSIFICATION and the sentence for it. `last_error` deliberately does not
+     * reach the client at all (🟠-2): even masked it is a developer's artefact, and it used to
+     * carry the SMTP username and the relay endpoint.
+     */
+    error_kind: "auth" | "connect" | "refused" | "unknown" | null;
+    error_label: string | null;
 }
 
 interface Props {
@@ -1307,14 +1313,25 @@ export default function OrderShow({
                                                             ] ??
                                                                 notification.status}
                                                         </Badge>
-                                                        {notification.last_error !==
+                                                        {/*
+                                                         * The CLASSIFICATION, not the transport's
+                                                         * own words (🟠-2). This used to render
+                                                         * `last_error`, which for a rejected SMTP
+                                                         * login carried the mail account's username
+                                                         * and the relay's host:port. It is also not
+                                                         * what an operator needs: the question is
+                                                         * whose problem this is, and the label says
+                                                         * so in a sentence they can repeat.
+                                                         *
+                                                         * Not `<Ltr>`: this is Arabic prose now, not
+                                                         * a Latin transport string.
+                                                         */}
+                                                        {notification.error_label !==
                                                         null ? (
                                                             <div className="max-w-xs text-xs break-words text-muted-foreground">
-                                                                <Ltr>
-                                                                    {
-                                                                        notification.last_error
-                                                                    }
-                                                                </Ltr>
+                                                                {
+                                                                    notification.error_label
+                                                                }
                                                             </div>
                                                         ) : null}
                                                     </div>

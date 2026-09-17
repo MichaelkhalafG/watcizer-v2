@@ -4,6 +4,7 @@ namespace App\Domain\Catalog;
 
 use App\Models\Catalog\Product;
 use App\Support\Coerce;
+use App\Support\ManageText;
 use App\Transform\FamilyResolver;
 use App\Transform\Row;
 use Illuminate\Database\Query\JoinClause;
@@ -60,9 +61,29 @@ final class SpecBlocks
             if (! in_array($type, self::TYPES, true)) {
                 throw new InvalidArgumentException("config/catalog.php: field [{$field['key']}] has unknown type [{$type}].");
             }
+            /*
+             * ── The label goes through the seam HERE, not in config (🟠-4, 2026-09-17) ────────
+             *
+             * `config/catalog.php` holds 589 Arabic characters — spec-block names, field labels —
+             * and neither ratchet looked at `config/`, so an English operator read the whole
+             * specifications panel in Arabic and nothing failed.
+             *
+             * The fix cannot be a `ManageText::t()` inside the config file: config is CACHED
+             * (`php artisan config:cache`), so the translation would be resolved once, at cache
+             * time, in whatever locale happened to be active — and then frozen for every operator
+             * until the next deploy. That is worse than the bug.
+             *
+             * So the config value stays as the ARABIC FALLBACK, exactly like a `t()` call's second
+             * argument, and the key is derived from the field's own stable `key`. Same contract as
+             * the rest of the seam: Arabic renders with `lang/ar` empty, English comes from
+             * `lang/en/manage.php`, and `ConfigTranslationTest` asserts every declared field has an
+             * English entry.
+             */
+            $label = is_string($field['label'] ?? null) ? $field['label'] : $field['key'];
+
             $one = [
                 'key' => $field['key'],
-                'label' => is_string($field['label'] ?? null) ? $field['label'] : $field['key'],
+                'label' => ManageText::t('specs.field_'.$field['key'], $label),
                 'type' => $type,
             ];
             if (is_string($field['unit'] ?? null)) {
@@ -76,7 +97,12 @@ final class SpecBlocks
 
         return [
             'family' => $family,
-            'label' => is_string($block['label'] ?? null) ? $block['label'] : $family,
+            // The block's own name ("مواصفات الساعة"), keyed on the FAMILY — same reasoning as the
+            // field labels above: the config value is the fallback, the key is derived and stable.
+            'label' => ManageText::t(
+                'specs.block_'.$family,
+                is_string($block['label'] ?? null) ? $block['label'] : $family,
+            ),
             'table' => is_string($block['table'] ?? null) ? $block['table'] : 'specs',
             'fields' => $fields,
         ];
