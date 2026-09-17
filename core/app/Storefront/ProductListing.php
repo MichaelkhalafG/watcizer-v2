@@ -2,6 +2,7 @@
 
 namespace App\Storefront;
 
+use App\Support\ArabicSearch;
 use App\Support\Val;
 use App\Transform\Row;
 use Illuminate\Database\Query\Builder;
@@ -194,7 +195,18 @@ final class ProductListing
     private function applySearch(Builder $query, string $q): void
     {
         $locale = $this->ctx->locale;
-        $terms = preg_split('/\s+/u', $q) ?: [];
+
+        /*
+         * The CUSTOMER'S search is folded exactly as the dashboard's is (A-UX-1, 2026-09-17).
+         *
+         * `catalog_product_search.body` now holds one normalised spelling of Arabic, and this is the
+         * other reader of that table — so it moves with the index or it stops matching. The customer
+         * gains the same thing the operator does: `ساعه` finds the 4,674 watches spelled `ساعة`.
+         *
+         * Before the tokenising below, because folding strips tatweel and diacritics and therefore
+         * changes the length the three-character floor is measured against.
+         */
+        $terms = preg_split('/\s+/u', ArabicSearch::normalise($q)) ?: [];
         $tokens = [];
         foreach ($terms as $term) {
             $term = (string) preg_replace('/[^\p{L}\p{N}]+/u', '', $term);   // letters and digits only: every FTS operator and wildcard is stripped

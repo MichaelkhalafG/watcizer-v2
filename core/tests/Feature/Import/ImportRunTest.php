@@ -667,3 +667,92 @@ it('marks a product whose image did not process, and the filter finds only those
     expect(DB::table('catalog_product_images')->where('product_id', $subject)->whereNotNull('renditions_failed')->count())
         ->toBe(0);
 });
+
+it('KEEPS the machine badge when a save does not touch the translation (A-BUG-1)', function () {
+    /*
+     * The other half of the badge's lifecycle, and the one that was broken.
+     *
+     * `flag=machine_ar` is the review queue for 7,087 imported Arabic titles. Because the writer
+     * cleared `is_machine` on every pass through the door, the queue drained through work that has
+     * nothing to do with Arabic — the review measured a price-only edit clearing it, and a bulk
+     * deactivate of 25 products (form never opened) taking the queue from 7,087 to 7,061.
+     *
+     * The damage was invisible: the activity log records `is_active`, so nothing explained where
+     * the rows went.
+     */
+    importRows(WooFixture::row(['ID' => 9900995, 'Type' => 'simple', 'SKU' => 'KEEP-995', 'Name' => 'Tommy Hilfiger Watch For Men 995',
+        'Published' => '1', 'Visibility in catalog' => 'visible', 'Regular price' => '100', 'Categories' => 'Watches']));
+
+    $product = importedProduct('woo:9900995');
+    $id = Row::int($product, 'id');
+
+    $badge = static fn (): int => T::int(DB::table('catalog_product_translations')
+        ->where('product_id', $id)->where('locale', 'ar')->value('is_machine'));
+
+    expect($badge())->toBe(1, 'the importer must have set the badge for this to prove anything');
+
+    $arabic = T::str(DB::table('catalog_product_translations')
+        ->where('product_id', $id)->where('locale', 'ar')->value('title'));
+
+    // A PRICE-ONLY edit, sending the SAME translations back — exactly what the product form does on
+    // an ordinary save, and what the review measured clearing the flag on product 635.
+    $payload = static fn (string $price, string $ar) => [
+        'brand_id' => Row::int($product, 'brand_id'),
+        'wa_code' => Row::str($product, 'wa_code'),
+        'sku' => Row::nstr($product, 'sku'),
+        'selling_price' => $price,
+        'currency' => 'EGP',
+        'is_active' => true,
+        'family' => Row::str($product, 'family'),
+        'title' => ['ar' => $ar, 'en' => Row::str($product, 'wa_code').' EN'],
+    ];
+
+    app(ProductWriter::class)->update($id, $payload('149.00', $arabic), null);
+
+    expect($badge())->toBe(1, 'a price-only save must not empty the Arabic review queue')
+        ->and(T::str(DB::table('catalog_product_translations')
+            ->where('product_id', $id)->where('locale', 'ar')->value('title')))->toBe($arabic);
+
+    // …and the price really did change, so the save was real and not a no-op that proved nothing.
+    expect(T::str(DB::table('catalog_products')->where('id', $id)->value('selling_price')))->toBe('149.00');
+
+    // NOW a human actually rewrites the Arabic: the badge must go.
+    app(ProductWriter::class)->update($id, $payload('149.00', 'ساعة كتبها إنسان'), null);
+
+    expect($badge())->toBe(0, 'editing the Arabic must clear the badge — that is what it is for');
+});
+
+it('does not clear the badge through a bulk action that never opens the form (A-BUG-1)', function () {
+    /*
+     * The review's second measurement, and the more damaging one: 25 products deactivated in one
+     * click cleared 25 badges. A bulk action routes through the same full-replace save, so it sent
+     * the stored translations back and the old writer treated that as a human edit.
+     */
+    $refs = [];
+    foreach ([9900996, 9900997, 9900998] as $wooId) {
+        $refs[] = 'woo:'.$wooId;
+    }
+
+    importRows(implode("\n", array_map(
+        static fn (int $wooId): string => WooFixture::row(['ID' => $wooId, 'Type' => 'simple', 'SKU' => 'BULK-'.$wooId,
+            'Name' => 'Tommy Hilfiger Watch For Men '.$wooId, 'Published' => '1',
+            'Visibility in catalog' => 'visible', 'Regular price' => '100', 'Categories' => 'Watches']),
+        [9900996, 9900997, 9900998],
+    )));
+
+    $ids = DB::table('catalog_products')->whereIn('import_ref', $refs)->pluck('id')->all();
+    expect($ids)->toHaveCount(3);
+
+    $badged = static fn (): int => T::int(DB::table('catalog_product_translations')
+        ->whereIn('product_id', $ids)->where('locale', 'ar')->where('is_machine', 1)->count());
+
+    expect($badged())->toBe(3);
+
+    actingAs(Staff::admin())
+        ->post('/manage/storefronts/2/products/bulk', ['action' => 'deactivate', 'ids' => $ids])
+        ->assertRedirect();
+
+    expect($badged())->toBe(3, 'a bulk deactivate must not drain the Arabic review queue')
+        // …and the bulk action really did its job, so this is not passing on a no-op.
+        ->and(T::int(DB::table('catalog_products')->whereIn('id', $ids)->where('is_active', 0)->count()))->toBe(3);
+});

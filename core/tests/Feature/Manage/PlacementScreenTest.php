@@ -320,3 +320,82 @@ function placementTable(array $query = []): array
 
     return $table;
 }
+
+it('routes the BULK HIDE through a confirmation that names the count and the carts (C-GUARD-1)', function () {
+    /*
+     * ── The asymmetry this closes ───────────────────────────────────────────────────────────
+     *
+     * Hiding ONE product that sits in a customer's cart has always opened a dialog naming the
+     * number — `in_carts` is computed for exactly that. Hiding a whole PAGE of them called
+     * `router.post` on the click: no confirmation, no cart check, no count, no undo. The review
+     * measured 200 products going from visible to hidden on a live storefront in one request.
+     *
+     * ── Why this test is mostly about the SCREEN ────────────────────────────────────────────
+     *
+     * The guard is a confirmation, and a confirmation lives in the browser. The endpoint must keep
+     * accepting a confirmed hide — a server-side refusal would break the single-product path too —
+     * so there is no server behaviour to assert beyond "it still works".
+     *
+     * What CAN be asserted without a browser, and is worth more than a rendered dialog: the screen
+     * is handed the number the dialog is built from. If `in_carts` ever stopped travelling in the
+     * row payload, the dialog would silently render "0 carts" over a live shop, which is the failure
+     * this guard exists to prevent wearing the costume of the fix.
+     */
+    $productId = CatalogFixture::product();
+    CatalogFixture::place($productId, CatalogFixture::watchesRoot());
+    CatalogFixture::onStorefront($productId, visible: true);
+
+    /*
+     * Found by CODE, never scanned out of page one: the catalogue holds 7,713 products, so a
+     * freshly created one is not on the first page of any ordering — a test that only passes on a
+     * small database is a test that fails the week the shop grows.
+     */
+    $waCode = T::str(DB::table('catalog_products')->where('id', $productId)->value('wa_code'));
+    $rows = Props::rows(Props::table(actingAs(Staff::admin())->get(
+        '/manage/storefronts/1/placement?per_page=100&q='.urlencode($waCode)
+    )));
+
+    $subject = null;
+    foreach ($rows as $row) {
+        if (T::int($row['product_id'] ?? null) === $productId) {
+            $subject = $row;
+        }
+    }
+
+    expect($subject)->not->toBeNull('the product must be on the placement screen to be selectable');
+    // THE prop the dialog counts. Present and numeric, on every row, not just the ones in carts.
+    expect($subject['in_carts'] ?? null)->toBeInt();
+
+    // …and the confirmed action still applies, which is what the dialog posts.
+    actingAs(Staff::admin())->post('/manage/storefronts/1/placement/bulk', [
+        'action' => 'hide',
+        'product_ids' => [$productId],
+    ])->assertRedirect();
+
+    expect(T::int(DB::table('storefront_product')->where('product_id', $productId)->where('storefront_id', 1)->value('is_visible')))
+        ->toBe(0);
+});
+
+it('keeps the bulk hide auditable per product, so the confirmation is not the only record', function () {
+    /*
+     * A confirmation stops an accident; it does not answer "who hid these" a week later. One
+     * activity row per product is what does, and it must survive the new path — the dialog changes
+     * WHEN the request is sent, never what the request is.
+     */
+    $first = CatalogFixture::product();
+    $second = CatalogFixture::product();
+    foreach ([$first, $second] as $id) {
+        CatalogFixture::place($id, CatalogFixture::watchesRoot());
+        CatalogFixture::onStorefront($id, visible: true);
+    }
+
+    $before = T::int(DB::table('core_activity_log')->where('subject_type', 'storefront_product')->count());
+
+    actingAs(Staff::admin())->post('/manage/storefronts/1/placement/bulk', [
+        'action' => 'hide',
+        'product_ids' => [$first, $second],
+    ])->assertRedirect();
+
+    expect(T::int(DB::table('core_activity_log')->where('subject_type', 'storefront_product')->count()))
+        ->toBe($before + 2, 'one row per product, not one per bulk action');
+});

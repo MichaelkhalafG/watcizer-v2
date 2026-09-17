@@ -2,6 +2,7 @@
 
 namespace App\Domain\Catalog;
 
+use App\Support\ArabicSearch;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -61,7 +62,18 @@ final class ProductIndexer
                 ...($categoryNames[$locale] ?? []),
             ];
 
-            $body = trim((string) preg_replace('/\s+/u', ' ', implode(' ', array_filter($parts, fn (string $s): bool => $s !== ''))));
+            /*
+             * NORMALISED (A-UX-1, 2026-09-17). The body is a search key, never a display value, so
+             * folding Arabic orthography here costs nothing visible and is the only way a person
+             * typing `ساعه` can find the 4,674 products spelled `ساعة`.
+             *
+             * `Step21SearchIndex` applies the same function to the same parts, which is what keeps
+             * this class's promise that a re-index of an untouched product produces the
+             * byte-identical row.
+             */
+            $body = ArabicSearch::normalise(
+                trim((string) preg_replace('/\s+/u', ' ', implode(' ', array_filter($parts, fn (string $s): bool => $s !== ''))))
+            );
 
             DB::table('catalog_product_search')->updateOrInsert(
                 ['product_id' => $productId, 'locale' => $locale],

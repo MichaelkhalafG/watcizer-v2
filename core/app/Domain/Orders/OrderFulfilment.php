@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domain\Orders;
 
+use App\Domain\Activity\ActivityLog;
 use App\Domain\Inventory\Actor;
 use App\Domain\Inventory\InventoryService;
 use App\Domain\Notifications\OrderMailer;
@@ -112,6 +113,30 @@ final class OrderFulfilment
         DB::table('orders')->where('id', $orderId)->update(['status' => $to, 'updated_at' => now()]);
 
         /*
+         * ── WHO moved this order, and when (B-GUARD-2, 2026-09-17) ─────────────────────────────
+         *
+         * Order transitions were not audited at all. The review read every writer and found
+         * `ActivityLog::record()` called by the product, stock, category, payment-settings,
+         * placement, promotion and role writers — and by nothing on the order path. A status change
+         * mails a customer and moves an order towards money, and the only trace it left was the
+         * column it changed.
+         *
+         * Recorded AFTER the update lands and BEFORE the mail goes, because the audit describes the
+         * state change, not the notification: a relay that is down must not cost the audit row.
+         * `record()` swallows its own failures by design, so it cannot turn a successful transition
+         * into an error either way.
+         */
+        ActivityLog::record(
+            'orders',
+            $orderId,
+            ActivityLog::UPDATED,
+            ['status' => $from],
+            ['status' => $to],
+            self::orderLabel($order),
+            Row::nint($order, 'storefront_id'),
+        );
+
+        /*
          * -- the customer is told (prerequisite (a), 2026-09-13) ---------------------------------
          *
          * The legacy Blade dashboard mailed `OrderStatusUpdate` on every status change that was a
@@ -178,7 +203,7 @@ final class OrderFulfilment
         /** @var list<int> $mailIds */
         $mailIds = [];
 
-        $result = DB::transaction(function () use ($orderId, $actor, $storefrontId, $note, &$mailIds): array {
+        $result = DB::transaction(function () use ($orderId, $order, $from, $actor, $storefrontId, $note, &$mailIds): array {
             /*
              * ── The UPDATE is the claim (🔵, 2026-09-17) ──────────────────────────────────────
              *
@@ -230,6 +255,41 @@ final class OrderFulfilment
              */
             $mailIds = $this->mailer->statusChanged($orderId, 'cancelled');
 
+            /*
+             * ── The one action that moves money, on the record (B-GUARD-2, 2026-09-17) ────────
+             *
+             * A cancellation returns stock, stops a sale and is admin-only, and it was audited
+             * nowhere the activity screen could show. The stock half already leaves an
+             * `inventory_movements` row carrying the actor — but that answers "which units came
+             * back", not "who cancelled order 1234, when, and why". The note in particular existed
+             * only as an argument passed to the ledger.
+             *
+             * INSIDE the transaction, deliberately. If the stock release fails and the whole
+             * cancellation rolls back, the audit row must go with it — an audit trail that records
+             * cancellations which did not happen is worse than one that records none, because it is
+             * the one source a dispute would be settled from.
+             *
+             * The `already_cancelled` path above returns before reaching here, and must: nothing
+             * happened on that request, and a second row would make one cancellation look like two.
+             *
+             * `note` and the release facts travel as fields so the screen renders them in the same
+             * `{field: from → to}` shape it uses everywhere. `ActivityLog::diff()` stores only what
+             * differs, so a cancellation with no note writes no `note` field at all.
+             */
+            ActivityLog::record(
+                'orders',
+                $orderId,
+                ActivityLog::UPDATED,
+                ['status' => $from, 'note' => null, 'stock_movements' => 0],
+                [
+                    'status' => 'cancelled',
+                    'note' => $note,
+                    'stock_movements' => count($movements),
+                ],
+                self::orderLabel($order),
+                $storefrontId,
+            );
+
             return [
                 'status' => 'cancelled',
                 'released' => ! $alreadyReleased,
@@ -277,6 +337,23 @@ final class OrderFulfilment
             // operator needs to see verbatim, not a label to guess an English word for.
             default => $status,
         };
+    }
+
+    /**
+     * How an order is NAMED in the activity log.
+     *
+     * The operator knows an order by the number printed on it, not by its primary key — and
+     * `subject_label` is captured at write time precisely so the log still reads correctly when the
+     * row it points at has changed or gone. Falls back to the id when the number is missing, because
+     * a label is the one field here that must never be empty.
+     */
+    private static function orderLabel(\stdClass $order): string
+    {
+        $number = Row::nstr($order, 'order_number');
+
+        return $number === null || trim($number) === ''
+            ? '#'.Row::int($order, 'id')
+            : $number;
     }
 
     private static function require(int $orderId): \stdClass

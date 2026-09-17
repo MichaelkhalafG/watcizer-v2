@@ -59,6 +59,45 @@ final class StorefrontCache
         Cache::forget($this->key($storefrontId, 'product', (string) $productId));
     }
 
+    /**
+     * The key `ResolveStorefront` caches the raw storefront ROW under.
+     *
+     * Declared here rather than inline in the middleware so the writer and the reader cannot drift:
+     * before this existed the middleware was the only place that knew the shape, and the dashboard's
+     * update path did not forget it because there was nothing to call (C-BUG-1).
+     */
+    public static function resolvedKey(string $code): string
+    {
+        return "sf:code:{$code}";
+    }
+
+    /**
+     * Everything that goes stale when a storefront's own settings change (C-BUG-1, 2026-09-17).
+     *
+     * ── Why two different invalidations, not one ────────────────────────────────────────────
+     *
+     * They cache different things and neither covers the other:
+     *
+     *  1. **The resolved ROW** (`sf:code:{code}`) is what `ResolveStorefront` reads on EVERY
+     *     storefront request to decide the name, currency, locales and — the one that matters —
+     *     whether the shop is active at all. It is a plain 10-minute `Cache::put`, with no version
+     *     in its key, so bumping the version below does nothing to it. Measured before this fix:
+     *     deactivating a storefront left it serving customers for up to ten more minutes.
+     *
+     *  2. **The versioned payloads** (`meta`, `tree`, `lookups`, …) embed `v{n}`. `meta` carries the
+     *     shop's name, currency and locales, so a rename that only forgot the row above would still
+     *     serve the old name from `meta` until its own TTL expired.
+     *
+     * `INVALIDATION_MAP` has listed `StorefrontSettingsChanged` against `meta` since it was written.
+     * The contract was right; nothing fired it. This method is the firing.
+     */
+    public function forgetStorefront(int $storefrontId, string $code): int
+    {
+        Cache::forget(self::resolvedKey($code));
+
+        return $this->flush($storefrontId);
+    }
+
     public function key(int $storefrontId, string $what, string $suffix = ''): string
     {
         if (! array_key_exists($what, self::INVALIDATION_MAP)) {

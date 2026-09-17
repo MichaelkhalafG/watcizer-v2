@@ -33,10 +33,10 @@ class ResolveStorefront
 
         $ttl = config()->integer('storefront.ttl.storefront');
         // The cache holds the raw attribute row, never the model: `cache.serializable_classes` is off.
-        $attributes = Cache::get("sf:code:{$code}");
+        $attributes = Cache::get(StorefrontCache::resolvedKey($code));
         if (! is_array($attributes)) {
             $attributes = Storefront::query()->where('code', $code)->first()?->getAttributes() ?? [];
-            Cache::put("sf:code:{$code}", $attributes, $ttl);
+            Cache::put(StorefrontCache::resolvedKey($code), $attributes, $ttl);
         }
         if ($attributes === []) {
             throw new NotFoundHttpException('Storefront not found');

@@ -15,6 +15,7 @@ use App\Http\Middleware\EnsureStorefrontScope;
 use App\Models\Catalog\Product;
 use App\Models\Storefront\Storefront;
 use App\Storefront\ImageUrl;
+use App\Support\ArabicSearch;
 use App\Support\Coerce;
 use App\Support\FullReplace;
 use App\Support\ManageText;
@@ -433,22 +434,74 @@ final class ProductController
         $action = $request->string('action')->toString();
         $actorId = self::actorId($request);
 
+        /*
+         * ── A-BUG-2: one stale id used to crash the batch HALF-APPLIED (2026-09-17) ─────────
+         *
+         * `currentPayload()` throws for an id that is not in the table, and this loop had no
+         * transaction — so ids `[real, 99999999, real]` produced an HTTP 500 with the FIRST product
+         * already deactivated and the third untouched. The operator got a crash page and no way to
+         * tell how much of their batch had applied; the only way to find out was to go and look.
+         *
+         * It takes nothing exotic to trigger. A tab left open while a colleague archives a product,
+         * or a selection made before someone else's delete, is enough.
+         *
+         * Two changes, and they answer different halves:
+         *
+         *  1. **The unknown ids are found FIRST and skipped**, so the common case never throws at
+         *     all. Reported rather than silently dropped — an operator who selected 25 and sees "23
+         *     done" must be told why, or the number reads as a bug.
+         *
+         *  2. **The rest runs in ONE transaction**, so anything else that refuses mid-batch — a
+         *     writer rule, a deadlock, a constraint — leaves the catalogue exactly as it was rather
+         *     than half-changed. "Nothing happened" is a state an operator can act on; "some of it
+         *     happened, in an order nobody recorded" is not.
+         *
+         * The lock cost is accepted deliberately: a 100-id batch is ~2,900 queries and a couple of
+         * seconds (the review measured it, and the per-product write cost is on the "live with it"
+         * list), so this holds row locks for that long. A partial write is the worse failure, and
+         * the selection is capped at one page.
+         *
+         * No `deleted_at` filter on the existence read: `restore` acts on archived rows, so
+         * "exists" here means the row is in the table, which is exactly what the writers require.
+         */
+        $existing = DB::table('catalog_products')->whereIn('id', $ids)->pluck('id')->all();
+        $known = [];
+        foreach ($existing as $value) {
+            $known[] = Coerce::int($value);
+        }
+        $missing = array_values(array_diff($ids, $known));
+        $targets = array_values(array_intersect($ids, $known));
+
         $done = 0;
-        foreach ($ids as $id) {
-            match ($action) {
-                'activate', 'deactivate' => $this->products->update(
-                    $id,
-                    self::currentPayload($id, ['is_active' => $action === 'activate']),
-                    $actorId,
-                ),
-                'archive' => $this->products->archive($id, $actorId),
-                'restore' => $this->products->restore($id, $actorId),
-                default => null,
-            };
-            $done++;
+        DB::transaction(function () use ($targets, $action, $actorId, &$done): void {
+            foreach ($targets as $id) {
+                match ($action) {
+                    'activate', 'deactivate' => $this->products->update(
+                        $id,
+                        self::currentPayload($id, ['is_active' => $action === 'activate']),
+                        $actorId,
+                    ),
+                    'archive' => $this->products->archive($id, $actorId),
+                    'restore' => $this->products->restore($id, $actorId),
+                    default => null,
+                };
+                $done++;
+            }
+        });
+
+        $status = ManageText::t('products.bulk_done', 'تم تنفيذ الإجراء على :count منتجًا.', ['count' => $done]);
+
+        if ($missing !== []) {
+            // The COUNT, not the ids: an operator cannot act on `99999999`, and the number is what
+            // explains the gap between what they selected and what the first sentence reports.
+            $status .= ' '.ManageText::t(
+                'products.bulk_skipped_missing',
+                'وتُخطّي :count منتجًا لم يعد موجودًا — على الأرجح حُذف أو أُرشف بينما كانت الصفحة مفتوحة. حدّث الصفحة لترى الحالة الجديدة.',
+                ['count' => count($missing)],
+            );
         }
 
-        return back()->with('status', ManageText::t('products.bulk_done', 'تم تنفيذ الإجراء على :count منتجًا.', ['count' => $done]));
+        return back()->with('status', $status);
     }
 
     // ── the query ────────────────────────────────────────────────────────────────────────────
@@ -818,10 +871,41 @@ final class ProductController
                 ->orWhere('p.sku', 'like', '%'.$escaped.'%');
 
             if (mb_strlen($term) >= 3) {
-                $inner->orWhereExists(function (Builder $sub) use ($term): void {
+                /*
+                 * ── FULLTEXT **OR** a substring match (A-UX-2, 2026-09-17) ───────────────────
+                 *
+                 * The FULLTEXT index is word-PREFIX, so `اسود` finds the 429 products whose title
+                 * has it as a word and misses the 79 spelled `الأسود` — the same word carrying the
+                 * definite article, which Arabic attaches to the front of the noun. Typing the bare
+                 * word is what an operator does, so the gap is a daily one, not an edge case.
+                 *
+                 * **Always ORed, never "only when FULLTEXT found nothing".** That was the shape the
+                 * review suggested and it would not fix this: `اسود` returns 429 rows, so a
+                 * fallback conditional on an empty result never fires and the 79 stay invisible.
+                 *
+                 * COST, measured on the real 15,426-row index: the LIKE is a full scan at a flat
+                 * ~19 ms whatever the term, taking the search sub-query from ~5 ms to ~26 ms and the
+                 * page from ~64 ms to ~85 ms. That is the same band as the 2-character LIKE fallback
+                 * below, which this system already accepts at 78-82 ms, and half of `missing_data`
+                 * at 174 ms.
+                 *
+                 * It scales LINEARLY with the catalogue, which is the thing to watch: 19 ms at 7,713
+                 * products would be ~120 ms at 50,000. If the catalogue reaches that, the cheaper
+                 * shape is to emit the article-stripped form as an extra TOKEN at index time, which
+                 * moves the cost to the write and keeps the query on the index — a bigger change,
+                 * and not worth it for a table this size today.
+                 *
+                 * The needle is the NORMALISED term, because `body` now holds normalised Arabic.
+                 */
+                $needle = '%'.self::escapeLike(ArabicSearch::normalise($term)).'%';
+
+                $inner->orWhereExists(function (Builder $sub) use ($term, $needle): void {
                     $sub->from('catalog_product_search as s')
                         ->whereColumn('s.product_id', 'p.id')
-                        ->whereRaw('MATCH(s.body) AGAINST (? IN BOOLEAN MODE)', [self::booleanTerm($term)])
+                        ->where(function (Builder $match) use ($term, $needle): void {
+                            $match->whereRaw('MATCH(s.body) AGAINST (? IN BOOLEAN MODE)', [self::booleanTerm($term)])
+                                ->orWhere('s.body', 'like', $needle);
+                        })
                         ->selectRaw('1');
                 });
 
@@ -869,6 +953,19 @@ final class ProductController
      */
     private static function booleanTerm(string $term): string
     {
+        /*
+         * NORMALISED FIRST (A-UX-1, 2026-09-17), and first for two reasons.
+         *
+         * The obvious one: the index now holds folded Arabic, so a term that is not folded asks for
+         * a spelling the index no longer contains — the same bug as before with the sides swapped.
+         *
+         * The less obvious one: folding STRIPS characters (tatweel, diacritics), so it changes
+         * length. Doing it after the three-character filter below would measure the word the
+         * operator typed rather than the word that reaches MariaDB, and `سـاعة` — five characters of
+         * which one is decoration — would be judged on the wrong count.
+         */
+        $term = ArabicSearch::normalise($term);
+
         $clean = (string) preg_replace('/[+\-*~<>()"@]+/u', ' ', $term);
         $words = array_values(array_filter(preg_split('/\s+/u', $clean) ?: [], fn (string $w): bool => mb_strlen($w) >= 3));
 

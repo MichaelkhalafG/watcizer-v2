@@ -337,15 +337,55 @@ final class ProductWriter
             }
 
             /*
-             * `is_machine = 0` on every write through this door, and that is the whole lifecycle of
-             * the importer's machine-translation badge (wave 4D). The developer's requirement was
-             * that it *"disappear when a human edits that translation"* — so it is cleared by the
-             * thing that DOES the editing, not by a screen remembering to send a flag. An import
-             * sets it afterwards, deliberately and in one place; everything else clears it.
+             * ── The machine-translation badge clears on a CHANGE, not on a save (A-BUG-1) ─────
+             *
+             * The requirement is still what it always was — the badge *"disappears when a human
+             * edits that translation"* — and the door is still the thing that enforces it, not a
+             * screen remembering to send a flag. What was wrong was the trigger: this wrote
+             * `is_machine = 0` on EVERY pass, whether or not a single character of the translation
+             * had moved.
+             *
+             * That made the badge drain through work that has nothing to do with Arabic. Measured
+             * by the review on 2026-09-17:
+             *
+             *   • changing ONLY `selling_price` on product 635 cleared the flag, Arabic provably
+             *     identical;
+             *   • a bulk deactivate of 25 products — the form never opened — cleared 25, taking the
+             *     review queue from 7,087 to 7,061.
+             *
+             * `flag=machine_ar` is the queue for 7,087 imported Arabic titles, and it was emptying
+             * itself through price edits and bulk actions. Nothing recorded why: the activity log
+             * holds `is_active`, so the rows simply stopped appearing.
+             *
+             * So the write compares first. If every translated column for this locale is byte-
+             * identical to what is stored, the row is left as it is — including its badge. A
+             * genuinely new locale row has no stored value to match and is a human's writing by
+             * definition, so it starts cleared; the importer sets its own flag afterwards, in the
+             * one place that is allowed to.
              */
+            $stored = DB::table('catalog_product_translations')
+                ->where('product_id', $productId)->where('locale', $locale)
+                ->first(array_merge(self::TRANSLATED, ['is_machine']));
+
+            $unchanged = $stored !== null;
+            if ($stored !== null) {
+                foreach (self::TRANSLATED as $column) {
+                    $was = $stored->{$column} ?? null;
+                    if (Coerce::nstr($was) !== ($values[$column] ?? null)) {
+                        $unchanged = false;
+                        break;
+                    }
+                }
+            }
+
             DB::table('catalog_product_translations')->updateOrInsert(
                 ['product_id' => $productId, 'locale' => $locale],
-                $values + ['is_machine' => 0],
+                $unchanged
+                    // Nothing moved: preserve the badge exactly as it was, including when it is
+                    // already 0. Writing the stored value back rather than omitting the column
+                    // keeps this one statement the single writer of the row.
+                    ? $values + ['is_machine' => Coerce::int($stored->is_machine ?? 0) === 1 ? 1 : 0]
+                    : $values + ['is_machine' => 0],
             );
         }
 

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Manage;
 
 use App\Domain\Promotions\PromotionRules;
 use App\Models\Storefront\Storefront;
+use App\Storefront\StorefrontCache;
 use App\Support\Coerce;
 use App\Support\ManageText;
 use App\Support\Table\TableQuery;
@@ -43,6 +44,8 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  */
 final class StorefrontController
 {
+    public function __construct(private readonly StorefrontCache $cache) {}
+
     public function index(Request $request): Response|StreamedResponse
     {
         $table = TableQuery::for($request)
@@ -171,6 +174,28 @@ final class StorefrontController
             'settings' => self::withMoneyRewards($storefront->settings, $request->boolean('money_rewards')),
         ]);
         $storefront->save();
+
+        /*
+         * ── The shop has to SEE the save (C-BUG-1, 2026-09-17) ──────────────────────────────
+         *
+         * Nothing here invalidated anything, and `ResolveStorefront` caches the whole storefront row
+         * for ten minutes. Measured end to end before this fix:
+         *
+         *   • deactivate a storefront through this screen → the database says `is_active = 0` and a
+         *     customer request immediately afterwards is still served 200. A deactivated shop kept
+         *     trading for up to ten minutes.
+         *   • rename it, change the currency EGP→USD, change the default locale → the database is
+         *     right and the shop keeps serving the old name, currency and locale.
+         *
+         * The screen said "saved" and meant it — the row was written. What it could not say was that
+         * the shop would not agree for another ten minutes, and nothing on it mentioned a delay.
+         *
+         * `forgetStorefront()` does both halves: it forgets the resolved row, which is the one with
+         * no version in its key, and bumps the version so `meta` and the rest go with it. This is the
+         * `StorefrontSettingsChanged` event `StorefrontCache::INVALIDATION_MAP` has always listed and
+         * nothing ever fired.
+         */
+        $this->cache->forgetStorefront((int) $storefront->id, (string) $storefront->code);
 
         return redirect()
             ->route('manage.storefronts.index')
