@@ -154,3 +154,126 @@ The practical test: for every declared invalidation, refusal or event contract, 
 fail if I deleted the caller?"** If the answer is "nothing, the declaration still passes", the
 contract is decoration. C-BUG-1's fix is now covered by a test that primes the shop, changes the
 setting and asks the shop again — which fails if the caller is deleted.
+
+---
+
+## 7. The battery, and the gap that turned out not to be one
+
+Run on the live tree — the imported catalogue standing, **no rebuild** — on 2026-09-17.
+
+### The result
+
+| | |
+|---|---:|
+| passed | **1 249** |
+| failed | 0 |
+| skipped | 38 |
+| assertions | 26 663 |
+
+Two failures surfaced on the first pass and **both were the tests, not the code**:
+
+- **`MailParkTest`** counted outbox rows by `aggregate_id` and `status` alone, with no
+  `aggregate_type`. That was correct only while the outbox held nothing but mail. The Brand Fashion
+  import put **4 543 `morabaa` rows keyed by PRODUCT id** in the same table, and order ids and
+  product ids are different sequences in the same integer space — order 913 and product 913 both
+  exist. The test counted a product's pending row as the order's and reported the park guard "too
+  wide" while the guard was doing exactly the right thing. Proved by dumping the rows mid-test: the
+  order's row was `sent`. The queries now say `channel` and `aggregate_type`, which is what they
+  always meant.
+- **`BackupCommandTest`** ran `backup:verify` with its default 36-hour limit against whatever dump
+  was on the machine. That asserts a property of the MACHINE — did a cron run here recently — not of
+  the code. The newest dump was 49 hours old, `backup:verify` correctly said *"the schedule has
+  stopped running"*, and the suite reported a defect that was the command telling the truth. It now
+  computes the limit from the dump actually present, so it pins the contract worth pinning: **given a
+  dump inside the limit and above the floor, say OK**. The stale and stub refusals keep their own
+  explicit thresholds.
+
+One further failure appeared only in the full run and is **environmental**:
+`MediaPruneScreenTest` died on `SQLSTATE[HY000] [2002] Only one usage of each socket address` —
+Windows ephemeral-port exhaustion after ~1 287 tests of TIME_WAIT sockets. It passes in isolation
+(120 s; it is a slow media-tree scan). Not a defect, and not something the code can fix.
+
+### The 38 skips, named
+
+**7 are opt-in evidence captures** (`CAPTURE_SCREENS=1`). They skip on every run, by design, and
+regenerate the wave-4C screen captures when asked. Nothing about the system is untested because of
+them.
+
+**31 are the wave-3 ledger guard.** `core:transform` refuses to re-baseline once
+`inventory_movements` holds a row it did not write — legacy `products.stock` has stopped being the
+truth at that point. The Brand Fashion import wrote **4 503 `import` movements** (plus 40 `manual`
+from variant opening stock), so every transform-touching test skips with that sentence. They cover,
+in eight files:
+
+| file | what it covers |
+|---|---|
+| `TransformCommandTest` | the audit, a rolled-back dry run, the full transform reconciling and converging |
+| `VariantTransformTest` | variant baselines, the product-as-sum invariant, idempotency, corrections, `inventory:verify` |
+| `CategoryVisibilityTest` | a node lights up only for a visible, placed, non-deleted product on THIS storefront (4 break cases + a bypass attempt) |
+| `MultiStorefrontTransformTest` | mirrored-tree sync on/off, insert-only behaviour for a second storefront |
+| `OnePrimaryPlacementTest` | the database-level one-primary guard, and the primary moving with the legacy sub type |
+| `LedgerGuardTest` | the guard itself: naming foreign reasons, running clean, re-baseline appends |
+| `CacheBumpTest` | the storefront cache version bumping on a real run and never on a dry run |
+| `DashboardTablesTest` | storefronts surviving a transform with their dashboard-authored columns intact |
+
+### They were RUN — on a disposable copy, and they all pass
+
+The gap is closable without touching the catalogue, and it was closed:
+
+1. `CREATE DATABASE watchizer_scratch`
+2. copy the **65 legacy tables only** into it (`mysqldump` of the live copy — the clean tables are
+   deliberately NOT copied, because building them is the thing under test)
+3. `migrate` then `core:transform --force` against it — reconciliation passed 83 checks, ledger came
+   out **transform-only, 1 252 rows**
+4. run the eight files with `DB_DATABASE=watchizer_scratch`
+5. `DROP DATABASE watchizer_scratch`
+
+**Result: 56 passed, 485 assertions, 0 skipped.** The live catalogue was verified untouched
+afterwards — 7 713 products, 7 087 imported, ledger unchanged at import × 4 503, manual × 40,
+transform × 1 252.
+
+This works because `phpunit.xml` deliberately does not pin `DB_*` (its own comment says so), so the
+whole suite can be aimed at another schema, and the `legacy` connection follows `DB_DATABASE` when
+`LEGACY_DB_DATABASE` is unset.
+
+**So the honest status is not "31 tests untested".** It is: *31 tests cannot run against the live
+database while the import's movements are in the ledger, and they pass against a disposable copy
+built from the same legacy data.* The command to reproduce is above; it takes about three minutes.
+
+### What would make them runnable in place
+
+A rebuild — `core:drop-clean --force && migrate --force && core:transform --force` — which clears the
+ledger to transform-only and destroys the imported catalogue. That is the trade, and it is taken
+**after the team is working and the catalogue is theirs rather than ours**: at that point the Brand
+Fashion products will have been reviewed, categorised and corrected in the dashboard, and re-importing
+is a known, repeatable operation rather than a loss.
+
+---
+
+## 8. PATTERN — an id without its type is not an identifier
+
+`integration_outbox` is shared by every channel. A row is addressed by
+`(channel, aggregate_type, aggregate_id)`; the id alone is just a number.
+
+`MailParkTest` counted an order's rows with `where('aggregate_id', $orderId)` and nothing else. That
+was not a shortcut anybody noticed, because for months it gave the right answer: the outbox held
+order mail and little else, so no other row could share the number. Then the Brand Fashion import
+wrote **4 543 `morabaa` rows keyed by PRODUCT id**, order ids and product ids being different
+sequences in the same integer space — and **order 913 met product 913**. The test counted a product's
+pending row as the order's and reported the park guard as "too wide" while the guard was behaving
+perfectly. The order's row was `sent`; the row being counted was never mail at all.
+
+**The general shape:** whenever a table is keyed by a polymorphic pair, a query that names only the
+id is not narrower than the table — it is a query over every type at once that happens to be correct
+while the other types are empty or their sequences have not overlapped yet. It is not a latent bug in
+the sense of something that might go wrong; it is **already wrong and not yet visible**, and the
+thing that makes it visible is ordinary growth in an unrelated part of the system.
+
+Cheap to find: grep for a `where` on `aggregate_id`, `subject_id`, `reference_id`, `product_id` or
+any other polymorphic key that is not accompanied by its type column in the same query. Cheap to fix:
+say the type. The queries in `MailParkTest` now name `channel` and `aggregate_type`, which is what
+they meant on the day they were written.
+
+This sits next to §5 and §6 as a third way an artefact can look like evidence and not be one: §5 is a
+guard whose trigger never fires, §6 is a contract with no caller, and this is **a query whose
+correctness was on loan from an empty table**.
