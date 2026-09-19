@@ -19,6 +19,8 @@ interface ProductRow {
     id: number;
     wa_code: string;
     sku: string | null;
+    /** How many live products carry this supplier code, counting this one. 0 or 1 = nobody else. */
+    sku_shared: number;
     title: { ar: string; en: string };
     family: string;
     brand: { ar: string; en: string };
@@ -131,7 +133,7 @@ export default function ProductsIndex({
      * one is present and broken, so "صورة" in that list would say the opposite of what is true.
      */
     const missingLabels: Record<string, string> = {
-        sku: t("products.supplier_code", "كود المورّد"),
+        sku: t("products.sku", "رقم الموديل (SKU)"),
         image: t("products.image", "صورة"),
         arabic: t("common.name_ar", "الاسم (عربي)"),
         category: t("common.category", "تصنيف"),
@@ -181,6 +183,23 @@ export default function ProductsIndex({
 
         return match === undefined ? `#${id}` : match.name;
     };
+
+    /*
+     * ── The shop's INITIAL for the chip, its name for the tooltip (2026-10-05) ─────────
+     *
+     * Two chips reading «Watchizer ✓» and «Brand Fashion ✕» do not fit one line in a column this
+     * narrow, so they stacked and set the height of EVERY row in the list to 89px. The state is
+     * the information here — which shop it is only has to be distinguishable, and the full
+     * sentence is already on the hover.
+     *
+     * The initial comes from the shop's own name rather than a hard-coded map, so a third
+     * storefront needs nothing from this file.
+     */
+    const storefrontInitial = (id: number): string => {
+        const match = all_storefronts.find((option) => option.id === id);
+
+        return match === undefined ? `#${id}` : match.name.trim().charAt(0).toUpperCase();
+    };
     const columns: Array<Column<ProductRow>> = [
         {
             key: "cover",
@@ -209,16 +228,90 @@ export default function ProductsIndex({
             ),
         },
         {
+            /* ── What earns a column at 1366px (2026-10-05) ───────────────────────
+
+               The developer: *"It's the screen the team lives in all day, and a row you drag
+               sideways to read is a row nobody reads — the product name is already cut mid-word."*
+
+               So the question was asked of every column: does a SCANNING operator need it here, or
+               does it belong in the row's detail, on hover, or behind a filter? Six earn the row at
+               1366: the picture, the name (complete, and with the row's exceptions on it), the
+               price, the stock, where it is live, and the actions.
+
+               These four drop to `2xl`, each for its own reason and each still reachable:
+
+                 • the internal code and the model number — codes are SEARCHED, not scanned; both
+                   are in the search box, in the row detail and in the export;
+                 • the brand — it is in the product's own title on essentially every row, and it
+                   has a filter of its own;
+                 • the family — likewise a filter, and it changes for nobody while they scan.
+
+               `p.is_active` lost its column outright: see the name cell, where "موقوف" is now a
+               chip. A column that says "نعم" on 7,600 of 7,713 rows is a column spent on the
+               absence of news. */
             key: "p.wa_code",
-            header: t("products.code", "الكود"),
+            header: t("products.wa_code", "الكود الداخلي"),
+            hideBelow: "2xl",
             cell: (row) => (
                 <Num className="font-mono text-xs">{row.wa_code}</Num>
             ),
         },
         {
+            /* ── The supplier's code, and whether anybody else carries it (2026-10-05) ────────
+
+               `catalog_products.sku` had a UNIQUE index until this date. It was dropped, because
+               the SKU comes from the manufacturer and two of our products may legitimately share
+               one — so the check the database used to make has to be made by a person instead,
+               and a person cannot check what the screen does not show.
+
+               Hidden below xl: the list was just rebuilt to stop overflowing at 1366px (item 9),
+               and a second code column is exactly the kind of thing that put it there. The marker
+               is not lost at narrow widths — the duplicate FILTER is in the quick-filter list, and
+               it is the filter, not the column, that somebody uses to work through them. */
+            key: "p.sku",
+            /* «رقم الموديل (SKU)» is 17 characters over a column whose values are seven
+               (`ROLL007`), and `TableHead` is `whitespace-nowrap`, so the HEADER was setting the
+               width. `الموديل` says the same thing to somebody reading a row, and the 50px it
+               gives back go to the product name. The full name is still on the form and in the
+               export, where there is room for it. */
+            header: t("products.sku_short", "الموديل"),
+            hideBelow: "2xl",
+            cell: (row) =>
+                row.sku === null || row.sku === "" ? (
+                    <span className="text-xs text-muted-foreground">—</span>
+                ) : (
+                    <div className="flex items-center gap-1.5">
+                        <Num className="font-mono text-xs">{row.sku}</Num>
+                        {row.sku_shared > 1 ? (
+                            <span
+                                className="rounded bg-amber-100 px-1 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-950 dark:text-amber-300"
+                                title={t(
+                                    "products.sku_shared_hint",
+                                    "منتج آخر يحمل رقم الموديل نفسه. هذا مسموح — رقم الموديل يأتي من المورّد — لكن راجعه للتأكد أنه ليس خطأ كتابة.",
+                                )}
+                            >
+                                {t("products.sku_shared", "مكرر")}
+                            </span>
+                        ) : null}
+                    </div>
+                ),
+        },
+        {
             key: "title",
             header: t("common.name", "الاسم"),
             sortable: false,
+            /* ── The name gets a SHARE of the table, not the leftovers (2026-10-05) ─────────
+               A minimum width only stops the column being crushed; it does not stop the other ten
+               columns taking everything above it. At 1740 the name was landing on 268px and a
+               150-character import wrapped to five lines — a 166px row. 40% of the table gives it
+               ~500px, which is three lines for that title and one line for the 82% of names that
+               are 45 characters or fewer. The other columns hold content-sized values and shrink
+               to them. */
+            // On the HEAD as well: a width on a body cell alone is a suggestion the auto table
+            // layout may ignore, and did — the column stayed at 301px. The header cell is what
+            // the column-width algorithm reads.
+            headerClassName: "w-[40%]",
+            className: "w-[40%]",
             /*
              * ── ONE LINE (§2.2) ────────────────────────────────────────────────────────────
              *
@@ -241,10 +334,36 @@ export default function ProductsIndex({
 
                 return (
                     <div
-                        className="flex min-w-[14rem] max-w-[28rem] items-center gap-2"
+                        className="flex w-full flex-wrap items-baseline gap-x-2 gap-y-1"
                         title={other ?? undefined}
                     >
-                        <span className="min-w-0 flex-1 truncate">
+                        {/* ── The name is never cut. The ROW grows instead. (2026-10-05) ────
+
+                            Three versions of this cell, and the last one is the developer's call:
+
+                              1. `truncate` in a `max-w-[28rem]` cell — where
+                                 «حقيبة كروس Tory Burch نسائي جل…» came from;
+                              2. `line-clamp-2` — better, and still a cut: an import like
+                                 «…nnet for Women, Single Layer Satin» stopped at the second line;
+                              3. no limit at all. *"I'd rather the row grew than the data got cut
+                                 — an operator scanning a catalogue needs to read what's there."*
+
+                            Measured on the live catalogue (7,713 Arabic titles): 82% are 45
+                            characters or fewer, 15% are 46–70, 2% are 71–110, 0.7% longer, the
+                            longest 208. So most rows are one line, a sixth are two, and the
+                            handful that are three are the rows where three lines is the honest
+                            height. The table aligns to the TOP (`cellAlign`) so the short cells
+                            beside a tall name start on its first line rather than floating in the
+                            middle of it.
+
+                            `break-words` because an imported title can be one unbroken 200-
+                            character string, which no amount of height will wrap on its own. */}
+                        {/* The floor lives HERE and nowhere else (2026-10-05). It was on the
+                            container too, and the two stacked: 22rem of container plus the chips
+                            pushed the table 131px past the window at the wide viewport, which is
+                            the horizontal scroll coming back by another route. One floor, on the
+                            thing that actually needs one. */}
+                        <span className="min-w-[13rem] flex-1 break-words leading-snug">
                             <ProductName title={row.title} secondary={false} />
                         </span>
 
@@ -264,22 +383,33 @@ export default function ProductsIndex({
                             </Badge>
                         ) : null}
 
-                        {/* Kept as its own badge, and only these two. `absent` is the D-3
-                            distinction — a fact about where the product is sold, not work — and
-                            `archived` changes what the row IS. Everything else that used to sit
-                            here is inside the count above. */}
-                        {row.placement === "absent" ? (
+                        {/* «موقوف», which used to be a whole column saying «نعم» on 7,600 of
+                            7,713 rows (2026-10-05). A state that is the rule for everybody is not
+                            news; the EXCEPTION is, so only the exception is drawn. */}
+                        {row.is_active ? null : (
                             <Badge
                                 variant="neutral"
                                 className="shrink-0"
                                 title={t(
-                                    "products.absent_hint",
-                                    "هذا المنتج غير معروض على هذا المتجر أصلًا، فلا ينقصه تصنيف ولا يحتاج أي إجراء. أضِفه من شاشة التوزيع فقط إذا قررت بيعه هنا.",
+                                    "products.inactive_hint",
+                                    "المنتج موقوف: لا يظهر على أي متجر ولا في البحث، مهما كانت إعدادات الظهور لكل متجر.",
                                 )}
                             >
-                                {t("products.absent", "غير مضاف لهذا المتجر")}
+                                {t("products.inactive_short", "موقوف")}
                             </Badge>
-                        ) : null}
+                        )}
+
+                        {/* Kept as its own badge, and only these two. `absent` is the D-3
+                            distinction — a fact about where the product is sold, not work — and
+                            `archived` changes what the row IS. Everything else that used to sit
+                            here is inside the count above. */}
+                        {/* ── «غير مضاف لهذا المتجر» is gone from here (2026-10-05) ─────
+
+                            Not because it stopped being true — it is true of 7,087 of 7,713 rows
+                            on Watchizer — but because the visibility column beside it already says
+                            so, with the shop named in its tooltip. Two statements of one fact, and
+                            the duplicate was the one wrapping onto a second line and setting the
+                            height of every row in the list. */}
                         {row.archived ? (
                             <Badge variant="neutral" className="shrink-0">
                                 {t("products.archived", "مؤرشف")}
@@ -294,6 +424,10 @@ export default function ProductsIndex({
             header: t("products.brand", "الماركة"),
             sortable: false,
             hideOnMobile: true,
+            // Dropped below 1280 (item 9): this is the widest table in the dashboard and it was
+            // measured overflowing at 1366. The brand is also on the product's own screen, and
+            // the list can be read without it — which is the bar for marking a column this way.
+            hideBelow: "2xl",
             cell: (row) => (
                 <span className="text-sm">
                     {/*
@@ -303,7 +437,13 @@ export default function ProductsIndex({
                      * whole page and say nothing new. The brand screen is where a missing brand
                      * name is actionable, and that is where it is shown.
                      */}
-                    <Name>{localisedTitle(row.brand, locale).text}</Name>
+                    {/* `whitespace-nowrap`: «غير محدد» is one phrase and was breaking between
+                        its two words in a column this narrow — reported 2026-10-05. A brand name
+                        is a name; if it does not fit, the column widens or the cell scrolls, but
+                        it does not get split down the middle. */}
+                    <Name className="whitespace-nowrap">
+                        {localisedTitle(row.brand, locale).text}
+                    </Name>
                 </span>
             ),
         },
@@ -311,8 +451,11 @@ export default function ProductsIndex({
             key: "p.family",
             header: t("products.family", "العائلة"),
             hideOnMobile: true,
+            // Derived from the primary category and shown on the product screen; nobody scans the
+            // list by family, they filter by it — and the filter is above the table.
+            hideBelow: "2xl",
             cell: (row) => (
-                <Badge variant="neutral">
+                <Badge variant="neutral" className="whitespace-nowrap">
                     {familyLabels[row.family] ?? row.family}
                 </Badge>
             ),
@@ -352,29 +495,19 @@ export default function ProductsIndex({
             ),
         },
         {
-            key: "p.is_active",
-            header: t("common.active", "مفعّل"),
-            cell: (row) =>
-                row.is_active ? (
-                    <Badge variant="success">{t("common.yes", "نعم")}</Badge>
-                ) : (
-                    <Badge variant="neutral">{t("common.no", "لا")}</Badge>
-                ),
-        },
-        {
             // Sorting still uses THIS storefront's column (the one in the URL); the cell shows
             // every storefront, because "where is this product live?" is the question the team
             // actually asks and it used to need two browser tabs to answer.
             key: "sp.is_visible",
-            header: t(
-                "products.visibility_per_storefront",
-                "الظهور على المتاجر",
-            ),
+            // Same reason as the model-number header: the column holds two one-letter chips and
+            // the eighteen-character heading above them was setting its width.
+            header: t("products.visibility_short", "الظهور"),
             cell: (row) => (
-                <div className="flex flex-wrap gap-1">
+                <div className="flex flex-nowrap gap-1">
                     {row.visibility.map((entry) => (
                         <Badge
                             key={entry.id}
+                            className="px-1.5 font-mono"
                             variant={
                                 entry.state === "visible"
                                     ? "success"
@@ -414,7 +547,7 @@ export default function ProductsIndex({
                                         )
                             }
                         >
-                            {storefrontLabel(entry.id)}
+                            {storefrontInitial(entry.id)}
                             {entry.state === "visible"
                                 ? entry.id === storefront.id && row.is_featured
                                     ? " ★"
@@ -501,12 +634,15 @@ export default function ProductsIndex({
             ) : null}
 
             <DataTable
+                // Rows grow to fit the product name (see the name cell), so every other cell in
+                // the row starts on the name's first line instead of floating in the middle of it.
+                cellAlign="top"
                 table={table}
                 columns={columns}
                 rowId={(row) => row.id}
                 searchPlaceholder={t(
                     "products.search_placeholder",
-                    "ابحث بالاسم أو الكود أو الموديل…",
+                    "ابحث بالاسم أو الكود الداخلي أو رقم الموديل…",
                 )}
                 filters={(setFilter, current) => (
                     <>
@@ -700,6 +836,15 @@ export default function ProductsIndex({
                                 {t(
                                     "products.image_problem_filter",
                                     "صور تالفة تحتاج رفعًا جديدًا",
+                                )}
+                            </option>
+                            {/* Since the UNIQUE index on `sku` was dropped (2026-10-05): the
+                                duplicates the database used to refuse, listed so somebody can
+                                decide whether each one is the supplier's doing or a typo. */}
+                            <option value="shared_sku">
+                                {t(
+                                    "products.shared_sku_filter",
+                                    "رقم موديل مكرر",
                                 )}
                             </option>
                         </Select>

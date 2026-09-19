@@ -73,8 +73,8 @@ function Item({ item, collapsed }: { item: NavItem; collapsed: boolean }) {
         collapsed && 'justify-center px-0',
         item.active
             ? 'bg-brand text-brand-foreground shadow-sm'
-            : 'text-zinc-300 hover:bg-white/10 hover:text-white',
-        stub && 'cursor-not-allowed text-zinc-500 hover:bg-transparent hover:text-zinc-500',
+            : 'text-sidebar-foreground/75 hover:bg-sidebar-accent hover:text-sidebar-foreground',
+        stub && 'cursor-not-allowed text-sidebar-muted hover:bg-transparent hover:text-sidebar-muted',
     );
 
     const body = (
@@ -82,7 +82,7 @@ function Item({ item, collapsed }: { item: NavItem; collapsed: boolean }) {
             <NavIcon name={item.icon} className="h-[18px] w-[18px] shrink-0" />
             {collapsed ? null : <span className="truncate">{item.label}</span>}
             {!collapsed && item.later ? (
-                <span className="ms-auto rounded-full bg-white/10 px-2 py-0.5 text-[11px] font-medium text-zinc-300">
+                <span className="ms-auto rounded-full bg-sidebar-accent px-2 py-0.5 text-[11px] font-medium text-sidebar-muted">
                     {t('shell.later', 'لاحقًا')}
                 </span>
             ) : null}
@@ -97,7 +97,7 @@ function Item({ item, collapsed }: { item: NavItem; collapsed: boolean }) {
             {item.badge !== null && item.badge > 0 ? (
                 collapsed ? (
                     <span
-                        className="absolute end-1.5 top-1.5 h-2 w-2 rounded-full bg-brand ring-2 ring-zinc-900"
+                        className="absolute end-1.5 top-1.5 h-2 w-2 rounded-full bg-brand ring-2 ring-sidebar"
                         aria-label={t('shell.new_count', ':count جديد', { count: item.badge })}
                     />
                 ) : (
@@ -155,7 +155,7 @@ function Group({ group, collapsed }: { group: NavGroup; collapsed: boolean }) {
         <div className="mb-6">
             <p
                 className={cn(
-                    'mb-2 px-3 text-[11px] font-semibold uppercase tracking-wider text-zinc-500',
+                    'mb-2 px-3 text-[11px] font-semibold uppercase tracking-wider text-sidebar-muted',
                     collapsed && 'px-0 text-center',
                 )}
             >
@@ -193,20 +193,29 @@ export function Sidebar({
     return (
         <div
             className={cn(
-                'flex h-full flex-col bg-zinc-900 text-zinc-100',
-                inSheet ? 'w-full' : 'fixed inset-y-0 start-0 z-40 hidden border-e border-zinc-800 lg:flex',
+                // The shell's own tokens (item 11, 2026-09-19): the rail used to be literally
+                // `bg-zinc-900`, so it stayed black while the rest of the dashboard went light.
+                'flex h-full flex-col bg-sidebar text-sidebar-foreground',
+                inSheet ? 'w-full' : 'fixed inset-y-0 start-0 z-40 hidden border-e border-sidebar-border lg:flex',
                 !inSheet && (collapsed ? 'w-sidebar-rail' : 'w-sidebar'),
             )}
         >
-            <div className={cn('flex h-header items-center gap-2 border-b border-zinc-800 px-4', collapsed && 'justify-center px-0')}>
-                <Brand variant="light" className={cn('h-7', collapsed && 'h-6')} />
+            <div className={cn('flex h-header items-center gap-2 border-b border-sidebar-border px-4', collapsed && 'justify-center px-0')}>
+                {/* Two marks, one shown at a time. The mark is dark ink on transparency, so the
+                    white-ink file is the only one readable on the dark rail and the only one NOT
+                    readable on the light one — which is why the sidebar cannot simply keep using
+                    `variant="light"` now that the rail follows the theme. Swapped in CSS rather
+                    than from React state: the theme is a class on <html> and this needs no
+                    hydration to be correct. */}
+                <Brand className={cn('h-7 dark:hidden', collapsed && 'h-6')} />
+                <Brand variant="light" className={cn('hidden h-7 dark:block', collapsed && 'h-6')} />
                 {collapsed ? null : (
                     // Through the seam (D-13). This rendered `branding.suffix`, whose ENV default
                     // is «لوحة التحكم» — so the ENGLISH shell opened with an Arabic word beside
                     // the logo. What a deployment owns is the brand NAME; what the reader sees
                     // beside it is UI copy like any other.
                     <span
-                        className="truncate text-sm font-medium text-zinc-400"
+                        className="truncate text-sm font-medium text-sidebar-muted"
                         title={`${branding.name} ${t('shell.dashboard', 'لوحة التحكم')}`}
                     >
                         {t('shell.dashboard', 'لوحة التحكم')}
@@ -224,7 +233,7 @@ export function Sidebar({
                 <button
                     type="button"
                     onClick={onToggle}
-                    className="flex h-11 items-center justify-center gap-2 border-t border-zinc-800 text-xs text-zinc-400 transition-colors hover:bg-white/5 hover:text-white"
+                    className="flex h-11 items-center justify-center gap-2 border-t border-sidebar-border text-xs text-sidebar-muted transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
                     aria-pressed={collapsed}
                 >
                     {/* The chevron points the way the rail will move, which in RTL is the mirror image. */}

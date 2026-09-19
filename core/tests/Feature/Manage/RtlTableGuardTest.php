@@ -50,8 +50,16 @@ $sources = static function (): array {
 };
 
 it('never puts a direction on a block element — that is what breaks header alignment', function () use ($sources) {
-    // `<span dir>` is fine: an inline box changes no alignment. These are the block tags.
-    $blocks = 'div|p|ul|ol|li|dd|dt|td|th|h1|h2|h3|h4|section|article';
+    /*
+     * `<span dir>` is fine: an inline box changes no alignment. These are the block tags.
+     *
+     * The COMPONENTS are named too (2026-09-19). `TableCell` renders a `<td>` and `TableHead` a
+     * `<th>`, and this list only had the lowercase tags — so `<TableCell dir="ltr">` on the
+     * shipping screen sailed past the guard written to forbid exactly that, and its English name
+     * column left-aligned under a right-aligned header for as long as it took somebody to look.
+     */
+    $blocks = 'div|p|ul|ol|li|dd|dt|td|th|h1|h2|h3|h4|section|article'
+        .'|TableCell|TableHead|TableRow|CardContent|CardHeader|DialogContent';
 
     $offenders = [];
     foreach ($sources() as $path => $source) {

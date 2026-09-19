@@ -17,21 +17,21 @@ final class ProductDetail
 {
     /** Spec labels (ar/en) for the watch-spec rows; the family JSON keys get a humanised label. */
     private const LABELS = [
-        'case_size' => ['ar' => 'مقاس الإطار', 'en' => 'Case size'],
-        'case_shape' => ['ar' => 'شكل الإطار', 'en' => 'Case shape'],
-        'case_material' => ['ar' => 'خامة الإطار', 'en' => 'Case material'],
+        'case_size' => ['ar' => 'قياس جسم الساعة', 'en' => 'Case size'],
+        'case_shape' => ['ar' => 'شكل جسم الساعة', 'en' => 'Case shape'],
+        'case_material' => ['ar' => 'مادة جسم الساعة', 'en' => 'Case material'],
         'glass_material' => ['ar' => 'خامة الزجاج', 'en' => 'Glass material'],
-        'case_thickness' => ['ar' => 'سُمك الإطار', 'en' => 'Case thickness'],
+        'case_thickness' => ['ar' => 'سماكة جسم الساعة', 'en' => 'Case thickness'],
         'band_material' => ['ar' => 'خامة السوار', 'en' => 'Band material'],
         'band_closure' => ['ar' => 'قفل السوار', 'en' => 'Band closure'],
         'band_length' => ['ar' => 'طول السوار', 'en' => 'Band length'],
         'band_width' => ['ar' => 'عرض السوار', 'en' => 'Band width'],
-        'dial_display_type' => ['ar' => 'نوع العرض', 'en' => 'Display type'],
+        'dial_display_type' => ['ar' => 'نوع عرض القرص', 'en' => 'Dial display type'],
         'movement_type' => ['ar' => 'نوع الحركة', 'en' => 'Movement'],
         'water_resistance' => ['ar' => 'مقاومة الماء', 'en' => 'Water resistance'],
-        'height' => ['ar' => 'الارتفاع', 'en' => 'Height'],
-        'width' => ['ar' => 'العرض', 'en' => 'Width'],
-        'length' => ['ar' => 'الطول', 'en' => 'Length'],
+        'height' => ['ar' => 'ارتفاع الساعة', 'en' => 'Watch height'],
+        'width' => ['ar' => 'عرض الساعة', 'en' => 'Watch width'],
+        'length' => ['ar' => 'طول الساعة', 'en' => 'Watch length'],
         'interchangeable_dial' => ['ar' => 'ميناء قابل للتبديل', 'en' => 'Interchangeable dial'],
         'interchangeable_strap' => ['ar' => 'سوار قابل للتبديل', 'en' => 'Interchangeable strap'],
         'watch_box' => ['ar' => 'علبة الساعة', 'en' => 'Watch box'],
@@ -48,7 +48,14 @@ final class ProductDetail
     /** @return array{product: array<string, mixed>, related: list<array<string, mixed>>}|null */
     public function bySlug(string $slug): ?array
     {
-        $row = $this->cards->base()->select(array_merge(ProductCards::columns(), ['p.model_number', 'p.warranty_years', 'p.specs']))->where('sp.slug', $slug)->first();
+        /*
+         * `p.sku`, not `p.model_number` (item 4, 2026-09-19). The two columns held the same thing
+         * and are now one; `sku` is the survivor because 6,799 products had one against 295.
+         *
+         * The storefront gains by it: the model line on a product page used to appear for 295
+         * products and now appears for 6,858.
+         */
+        $row = $this->cards->base()->select(array_merge(ProductCards::columns(), ['p.sku', 'p.warranty_years', 'p.specs']))->where('sp.slug', $slug)->first();
         if ($row === null) {
             return null;
         }
@@ -103,7 +110,10 @@ final class ProductDetail
             'model_name' => $tr['model_name'] ?? [],
             'country' => $tr['country'] ?? [],
             'stone' => $tr['stone'] ?? [],
-            'model_number' => Row::nstr($row, 'model_number'),
+            // The public key stays `model_number`: it is what the storefront's API answers with,
+            // and renaming it would be a breaking change to a contract this merge has no business
+            // touching. Only where the value comes FROM has changed.
+            'model_number' => Row::nstr($row, 'sku'),
             'warranty_years' => Row::nint($row, 'warranty_years'),
             'images' => $images,
             'specs' => array_merge($ws === null ? [] : $this->watchSpecs($ws), is_array($family) ? self::familySpecs($family) : []),

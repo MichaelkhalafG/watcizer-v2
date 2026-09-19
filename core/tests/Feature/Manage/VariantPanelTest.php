@@ -1,5 +1,6 @@
 <?php
 
+use App\Domain\Activity\ActivityLog;
 use App\Domain\Catalog\ConversionGuard;
 use App\Domain\Catalog\ProductWriter;
 use App\Domain\Catalog\VariantWriter;
@@ -23,6 +24,40 @@ use function Pest\Laravel\actingAs;
 function aSizeId(): int
 {
     return T::int(DB::table('catalog_sizes')->orderBy('id')->value('id'));
+}
+
+/**
+ * The highest activity-log id right now — a watermark, so a test reads only the entries ITS
+ * actions wrote.
+ *
+ * The suite runs inside a transaction against the developer's own database, which already holds
+ * real entries; `orderByDesc('id')->first()` would be reading whatever was there.
+ */
+function variantAuditMark(): int
+{
+    return T::int(DB::table(ActivityLog::TABLE)->max('id') ?? 0);
+}
+
+/**
+ * The entries written since a watermark, oldest first.
+ *
+ * @return list<stdClass>
+ */
+function variantAuditSince(int $mark): array
+{
+    return T::many(DB::table(ActivityLog::TABLE)->where('id', '>', $mark)->orderBy('id'));
+}
+
+/**
+ * One entry's `changes`, decoded.
+ *
+ * @return array<array-key, mixed>
+ */
+function variantAuditChanges(stdClass $entry): array
+{
+    $raw = $entry->changes ?? null;
+
+    return is_string($raw) ? T::arr(json_decode($raw, true)) : [];
 }
 
 /*
@@ -348,4 +383,179 @@ it('shows the panel why each row may or may not be deleted', function () {
         ->and($row['may_delete'])->toBeFalse()
         ->and($row['order_lines'])->toBe(1)
         ->and($row['delete_blocked_reason'])->toBeString();
+});
+
+it('records the variant ROW — added, renamed, reordered, deleted — and leaves the stock to the ledger', function () {
+    /*
+     * The gap this closes, and why it was not obvious. A variant's QUANTITY has been audited since
+     * wave 3.5: the ledger carries an actor on every movement, and `InventoryService` writes a
+     * second `catalog_product_variants` entry into the activity log for human adjustments. So the
+     * screen LOOKED covered — and the row itself was not recorded at all. Who added this size, who
+     * renamed it, who re-priced it, who deleted it, who moved it: four write actions, nothing
+     * written.
+     *
+     * The assertions below are therefore in two halves: the row's own fields ARE recorded, and the
+     * two stock columns are NOT — because a second writer copying the ledger in here would produce
+     * two entries for one fact, the second unable to name the movement it came from.
+     */
+    CatalogFixture::assumeSwitched();
+    $productId = CatalogFixture::product();
+    $admin = Staff::admin();
+
+    // The name `ActivityLog` captures at write time, computed the way it computes it: a name if
+    // the account has one, the e-mail if it does not.
+    $actor = trim(T::str($admin->getAttribute('first_name')).' '.T::str($admin->getAttribute('last_name')));
+    $actor = $actor !== '' ? $actor : T::str($admin->getAttribute('email'));
+
+    // ── added ────────────────────────────────────────────────────────────────────────────────
+    $mark = variantAuditMark();
+
+    actingAs($admin)->post("/manage/products/{$productId}/variants", [
+        'label' => 'أسود / 42مم',
+        'size_id' => aSizeId(),
+        'is_active' => true,
+        'price_delta' => 25,
+        'stock_express' => 4,
+    ])->assertSessionHasNoErrors();
+
+    $variantId = T::int(DB::table('catalog_product_variants')->where('product_id', $productId)->value('id'));
+
+    $created = T::one(DB::table(ActivityLog::TABLE)->where('id', '>', $mark)
+        ->where('subject_type', 'catalog_product_variants')
+        ->where('subject_id', $variantId)
+        ->where('action', ActivityLog::CREATED));
+
+    $changes = variantAuditChanges($created);
+
+    expect(T::str($created->user_name))->toBe($actor)
+        // The label names the PRODUCT as well as the row: `42mm` identifies nothing on its own,
+        // and the activity screen resolves live names for products and categories only.
+        ->and(T::str($created->subject_label))->toContain('منتج اختبار 4B')
+        ->and(T::str($created->subject_label))->toContain('أسود / 42مم')
+        ->and(T::arr($changes['label'] ?? null)['to'] ?? null)->toBe('أسود / 42مم')
+        ->and(T::str(T::arr($changes['price_delta'] ?? null)['to'] ?? null))->toBe('25.00')
+        /*
+         * The other half, and the point of the whole snapshot: the quantity posted in the SAME
+         * request is absent from this entry. It is not lost — it is the ledger's, and the
+         * assertion below proves it landed there instead, under a different action.
+         */
+        ->and($changes)->not->toHaveKey('stock_express')
+        ->and($changes)->not->toHaveKey('stock_market');
+
+    $adjusted = T::one(DB::table(ActivityLog::TABLE)->where('id', '>', $mark)
+        ->where('subject_type', 'catalog_product_variants')
+        ->where('action', ActivityLog::ADJUSTED));
+
+    expect(variantAuditChanges($adjusted))->toHaveKey('express');
+
+    // ── renamed and re-priced ────────────────────────────────────────────────────────────────
+    $mark = variantAuditMark();
+
+    actingAs($admin)->put("/manage/products/{$productId}/variants/{$variantId}", [
+        '_complete' => 1,
+        'label' => 'بني / 42مم',
+        'size_id' => aSizeId(),
+        'is_active' => true,
+        'price_delta' => 40,
+        'stock_express' => 4,                      // unchanged: no movement, and nothing to log
+    ])->assertSessionHasNoErrors();
+
+    $updated = T::one(DB::table(ActivityLog::TABLE)->where('id', '>', $mark)
+        ->where('subject_type', 'catalog_product_variants')
+        ->where('subject_id', $variantId)
+        ->where('action', ActivityLog::UPDATED));
+
+    $changes = variantAuditChanges($updated);
+
+    expect(T::str($updated->user_name))->toBe($actor)
+        // Before AND after, which is the question this table exists to answer.
+        ->and(T::arr($changes['label'] ?? null)['from'] ?? null)->toBe('أسود / 42مم')
+        ->and(T::arr($changes['label'] ?? null)['to'] ?? null)->toBe('بني / 42مم')
+        ->and(T::str(T::arr($changes['price_delta'] ?? null)['from'] ?? null))->toBe('25.00')
+        ->and(T::str(T::arr($changes['price_delta'] ?? null)['to'] ?? null))->toBe('40.00')
+        // The stock was posted again at the same number, so it moved no units — and this entry is
+        // the only one the request produced.
+        ->and(variantAuditSince($mark))->toHaveCount(1);
+
+    // A save that changes nothing writes nothing: the panel posts a whole row on every save, and a
+    // log of those would answer "who changed this" with a page of entries where nobody did.
+    $mark = variantAuditMark();
+
+    actingAs($admin)->put("/manage/products/{$productId}/variants/{$variantId}", [
+        '_complete' => 1,
+        'label' => 'بني / 42مم',
+        'size_id' => aSizeId(),
+        'is_active' => true,
+        'price_delta' => 40,
+    ])->assertSessionHasNoErrors();
+
+    expect(variantAuditSince($mark))->toBe([]);
+
+    // ── reordered: ONE entry for the panel, not one per row ──────────────────────────────────
+    actingAs($admin)->post("/manage/products/{$productId}/variants", [
+        'label' => 'ذهبي / 44مم',
+        'size_id' => aSizeId(),
+        'is_active' => true,
+    ])->assertSessionHasNoErrors();
+
+    $secondId = T::int(DB::table('catalog_product_variants')
+        ->where('product_id', $productId)->where('id', '<>', $variantId)->value('id'));
+
+    $mark = variantAuditMark();
+
+    actingAs($admin)->post("/manage/products/{$productId}/variants/reorder", [
+        'ids' => [$secondId, $variantId],
+    ])->assertSessionHasNoErrors();
+
+    $entries = variantAuditSince($mark);
+
+    expect($entries)->toHaveCount(1);
+
+    $reordered = $entries[0];
+
+    expect(T::str($reordered->subject_type))->toBe('catalog_product_variants')
+        ->and(T::str($reordered->action))->toBe(ActivityLog::UPDATED)
+        ->and(T::str($reordered->user_name))->toBe($actor)
+        /*
+         * The SUBJECT of a reorder is the panel, and the panel's only identifier is its product —
+         * the same shape the category tree's reorder uses, where the subject is the parent whose
+         * level was rearranged. Nothing dereferences this id, and the label carries the identity a
+         * reader actually uses.
+         */
+        ->and(T::int($reordered->subject_id))->toBe($productId)
+        ->and(T::str($reordered->subject_label))->toBe('منتج اختبار 4B')
+        // A count, never a sentence: a number needs no translating, and this table is never
+        // rewritten.
+        ->and(T::arr(variantAuditChanges($reordered)['rows_reordered'] ?? null)['to'] ?? null)->toBe(2);
+
+    // ── deleted ──────────────────────────────────────────────────────────────────────────────
+    $mark = variantAuditMark();
+
+    actingAs($admin)->delete("/manage/products/{$productId}/variants/{$secondId}")
+        ->assertSessionHasNoErrors();
+
+    expect(DB::table('catalog_product_variants')->where('id', $secondId)->exists())->toBeFalse();
+
+    $deleted = T::one(DB::table(ActivityLog::TABLE)->where('id', '>', $mark)
+        ->where('subject_type', 'catalog_product_variants')
+        ->where('subject_id', $secondId)
+        ->where('action', ActivityLog::DELETED));
+
+    /*
+     * The LABEL is captured while the row still exists — after the write there is nothing left to
+     * read — and so is the snapshot beside it.
+     *
+     * That snapshot used to be thrown away. `ActivityLog::diff()` walked `$after` alone, and a
+     * delete has no after, so the before every caller carefully captured (`BlogController`,
+     * `CategoryController`, `LookupController`, this one) was diffed against nothing and the column
+     * went in NULL. Ten `revoked` rows on the development database proved it, against zero of the
+     * ten `granted` rows beside them. `diff()` now walks the union, which is what makes a delete
+     * entry able to say what it deleted — and this is the assertion that keeps it that way.
+     */
+    expect(T::str($deleted->user_name))->toBe($actor)
+        ->and(T::str($deleted->subject_label))->toContain('ذهبي / 44مم');
+
+    $gone = T::arr(json_decode(T::str($deleted->changes), true));
+    expect(T::str(T::arr($gone['label'] ?? null)['from'] ?? null))->toBe('ذهبي / 44مم')
+        ->and(T::arr($gone['label'] ?? null)['to'] ?? null)->toBeNull();
 });

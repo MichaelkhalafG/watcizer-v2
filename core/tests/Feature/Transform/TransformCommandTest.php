@@ -7,6 +7,7 @@ use App\Transform\Row;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Testing\PendingCommand;
 use Tests\Support\LedgerState;
+use Tests\Support\Scratch;
 
 use function Pest\Laravel\artisan;
 
@@ -18,12 +19,7 @@ use function Pest\Laravel\artisan;
 
 function transformOutputDir(string $suffix): string
 {
-    $dir = storage_path('framework/testing/transform-'.$suffix.'-'.getmypid());
-    if (! is_dir($dir)) {
-        mkdir($dir, 0775, true);
-    }
-
-    return $dir;
+    return Scratch::dir('transform-'.$suffix);
 }
 
 /** @param  array<string, mixed>  $args */

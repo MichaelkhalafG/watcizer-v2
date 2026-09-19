@@ -10,6 +10,7 @@ use App\Domain\Catalog\PreSwitch;
 use App\Models\Storefront\Storefront;
 use App\Storefront\ImageUrl;
 use App\Support\Coerce;
+use App\Support\LocalisedName;
 use App\Support\ManageText;
 use App\Support\Table\TableQuery;
 use App\Transform\Row;
@@ -86,7 +87,7 @@ final class PlacementController
             // customer cannot reach. `in_carts` travels because it is the number that decides
             // whether hiding a row is safe — the export is what the team works from off-screen.
             ->exportable([
-                'wa_code' => ManageText::t('products.code', 'الكود'),
+                'wa_code' => ManageText::t('products.wa_code', 'الكود الداخلي'),
                 /*
                  * BOTH languages (2026-09-16). The map already carries the pair; the export was
                  * dropping the English half, which is exactly the record somebody opening this file
@@ -709,16 +710,25 @@ final class PlacementController
             ->leftJoin('storefront_category_translations as ar', function (JoinClause $join): void {
                 $join->on('ar.storefront_category_id', '=', 'c.id')->where('ar.locale', '=', 'ar');
             })
+            ->leftJoin('storefront_category_translations as en', function (JoinClause $join): void {
+                $join->on('en.storefront_category_id', '=', 'c.id')->where('en.locale', '=', 'en');
+            })
             ->where('c.storefront_id', $storefrontId)
             ->orderBy('c.path')
-            ->get(['c.id', 'c.depth', 'c.slug', 'ar.name as name_ar']);
+            ->get(['c.id', 'c.depth', 'c.slug', 'ar.name as name_ar', 'en.name as name_en']);
 
         $out = [];
         foreach ($rows as $raw) {
             $row = Row::cast($raw);
             $id = Row::int($row, 'id');
-            $ar = trim(Row::nstr($row, 'name_ar') ?? '');
-            $name = $ar !== '' ? $ar : (Row::nstr($row, 'slug') ?? ('#'.$id));
+            // Both names read, and the reader's chosen (2026-10-05): this query asked for the
+            // Arabic column alone, so no amount of client-side care could have shown an English
+            // operator an English category here.
+            $name = LocalisedName::pick(
+                Row::nstr($row, 'name_ar'),
+                Row::nstr($row, 'name_en'),
+                Row::nstr($row, 'slug') ?? ('#'.$id),
+            );
             $out[] = [
                 'value' => (string) $id,
                 'label' => str_repeat('— ', max(0, Row::int($row, 'depth') - 1)).$name,

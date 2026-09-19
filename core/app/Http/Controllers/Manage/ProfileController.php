@@ -6,6 +6,7 @@ namespace App\Http\Controllers\Manage;
 
 use App\Domain\Access\Preferences;
 use App\Domain\Access\Role;
+use App\Domain\Activity\ActivityLog;
 use App\Models\Storefront\Storefront;
 use App\Models\User;
 use App\Support\Coerce;
@@ -96,6 +97,18 @@ final class ProfileController
      *
      * The validated payload has ONE key. That is not an oversight and it is not a first version:
      * it is the whole of what this screen may write, for the reason in the class docblock.
+     *
+     * ── And the one key is AUDITED, which it was not ─────────────────────────────────────
+     *
+     * `core_user_preferences` carried a changed `locale` on 2026-10-05 and NOTHING said where it
+     * came from. The row has a `user_id` and an `updated_at` and neither answers the question that
+     * was asked: whether a person had saved this screen, or a test run had written the row. One
+     * column, one table, and the incident still could not be closed — which is the whole argument
+     * for logging a screen that writes almost nothing.
+     *
+     * The subject id is the USER's id, because the preferences row is keyed by it and has no id of
+     * its own; `ActivityLog::record()` separately stamps the ACTOR, and on this screen the two are
+     * always the same person — there is no other profile to reach.
      */
     public function update(Request $request): RedirectResponse
     {
@@ -106,9 +119,41 @@ final class ProfileController
             'locale' => ['required', 'string', Rule::in(Preferences::LOCALES)],
         ]));
 
+        // BEFORE the write, and read through the same door the screen reads it through — so an
+        // operator who has never chosen shows as `ar`, which is what they were actually using,
+        // rather than as an empty cell because no row existed yet.
+        $before = ['locale' => Preferences::localeFor($user)];
+
         Preferences::setLocale($user, Coerce::str($data['locale']));
 
+        // Re-saving the same language diffs to nothing and `ActivityLog::record()` drops it. That
+        // is the wanted behaviour: this screen's Save is one button, and a log that recorded every
+        // press would answer "who changed the language" with a page of entries where nobody did.
+        ActivityLog::record(
+            'core_user_preferences',
+            Coerce::nint($user->getAuthIdentifier()),
+            ActivityLog::UPDATED,
+            $before,
+            ['locale' => Preferences::localeFor($user)],
+            label: self::operatorLabel($user),
+        );
+
         return back()->with('status', ManageText::t('profile.saved', 'تم حفظ تفضيلاتك.'));
+    }
+
+    /**
+     * Whose preferences these are, as a name a reader recognises.
+     *
+     * The activity screen resolves live names for products and categories only, so what is
+     * captured here is what the entry will say forever — including after the account is gone,
+     * which is exactly the entry somebody will come looking for. The e-mail is the fallback
+     * because an account with no name still has one, and `#12` names nobody.
+     */
+    private static function operatorLabel(User $user): string
+    {
+        $name = trim(Coerce::str($user->getAttribute('first_name')).' '.Coerce::str($user->getAttribute('last_name')));
+
+        return $name !== '' ? $name : Coerce::str($user->getAttribute('email'));
     }
 
     /**

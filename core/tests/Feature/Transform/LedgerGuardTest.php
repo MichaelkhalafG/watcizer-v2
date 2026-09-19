@@ -6,6 +6,7 @@ use App\Transform\Row;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Tests\Support\LedgerState;
+use Tests\Support\Scratch;
 use Tests\Support\T;
 
 /*
@@ -24,7 +25,7 @@ it('refuses to run when the ledger holds a movement the transform did not write'
     $productId = T::int(DB::table('catalog_products')->whereNull('deleted_at')->orderBy('id')->value('id'));
     app(InventoryService::class)->adjust(StockTarget::product($productId), 'market', 1, 'restock');
 
-    $exit = Artisan::call('core:transform', ['--force' => true]);
+    $exit = Artisan::call('core:transform', ['--force' => true, '--output' => Scratch::dir('ledger-guard')]);
     $output = Artisan::output();
 
     expect($exit)->toBe(1)
@@ -43,7 +44,7 @@ it('names every foreign reason and its count', function () {
     $service->adjust(StockTarget::product($productId), 'market', 1, 'manual');
     $service->adjust(StockTarget::product($productId), 'market', 1, 'manual');
 
-    Artisan::call('core:transform', ['--force' => true]);
+    Artisan::call('core:transform', ['--force' => true, '--output' => Scratch::dir('ledger-guard')]);
 
     expect(Artisan::output())->toContain('manual × 2')->toContain('restock × 1');
 });
@@ -52,7 +53,7 @@ it('still allows --audit, which writes nothing', function () {
     $productId = T::int(DB::table('catalog_products')->whereNull('deleted_at')->orderBy('id')->value('id'));
     app(InventoryService::class)->adjust(StockTarget::product($productId), 'market', 1, 'restock');
 
-    $exit = Artisan::call('core:transform', ['--audit' => true, '--force' => true]);
+    $exit = Artisan::call('core:transform', ['--audit' => true, '--force' => true, '--output' => Scratch::dir('ledger-guard')]);
 
     expect($exit)->toBe(0)
         ->and(Artisan::output())->not->toContain('holds movements the transform did not write');
@@ -61,7 +62,7 @@ it('still allows --audit, which writes nothing', function () {
 it('runs normally while the ledger holds only transform rows', function () {
     LedgerState::skipIfDirty();                                     // this IS the precondition
 
-    $exit = Artisan::call('core:transform', ['--force' => true, '--only' => '20']);
+    $exit = Artisan::call('core:transform', ['--force' => true, '--only' => '20', '--output' => Scratch::dir('ledger-guard')]);
 
     expect($exit)->toBe(0)
         ->and(Artisan::output())->not->toContain('holds movements the transform did not write');
@@ -84,7 +85,7 @@ it('appends a re-baseline row instead of editing the opening one when legacy sto
     DB::table('inventory_movements')->where('id', $openingId)->update(['quantity_after' => $legacyStock + 7]);
     $rows = DB::table('inventory_movements')->where('product_id', $productId)->where('bucket', 'express')->count();
 
-    Artisan::call('core:transform', ['--force' => true, '--only' => '20']);
+    Artisan::call('core:transform', ['--force' => true, '--only' => '20', '--output' => Scratch::dir('ledger-guard')]);
 
     $after = T::row(DB::table('inventory_movements')->where('product_id', $productId)->where('bucket', 'express')->orderByDesc('id')->first());
 
@@ -99,10 +100,10 @@ it('appends a re-baseline row instead of editing the opening one when legacy sto
 
 it('writes nothing on a second pass once the ledger agrees again', function () {
     LedgerState::skipIfDirty();                                     // else BOTH runs are refused and
-    Artisan::call('core:transform', ['--force' => true, '--only' => '20']);   // this passes vacuously
+    Artisan::call('core:transform', ['--force' => true, '--only' => '20', '--output' => Scratch::dir('ledger-guard')]);   // this passes vacuously
     $rows = DB::table('inventory_movements')->count();
 
-    Artisan::call('core:transform', ['--force' => true, '--only' => '20']);
+    Artisan::call('core:transform', ['--force' => true, '--only' => '20', '--output' => Scratch::dir('ledger-guard')]);
 
     expect(DB::table('inventory_movements')->count())->toBe($rows);
 });

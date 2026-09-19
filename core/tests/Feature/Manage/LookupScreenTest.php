@@ -14,6 +14,8 @@ use Tests\Support\Staff;
 use Tests\Support\T;
 
 use function Pest\Laravel\actingAs;
+use function Pest\Laravel\delete;
+use function Pest\Laravel\post;
 
 /*
  * Brands and the eleven lookup lists (scope item 6) — one screen, twelve datasets, driven by
@@ -492,4 +494,105 @@ it('still refuses a hex that no picker could have produced', function () {
         'name' => ['ar' => 'لون غير صالح', 'en' => 'Bad colour'],
         'extra' => ['hex' => '#B7'],
     ])->assertSessionHasErrors();
+});
+
+/*
+ * ── The record twelve lists leave behind (2026-10-05) ────────────────────────────────────────
+ *
+ * Brands, colours, materials, shapes, genders, features, sizes, movements, closures, display types
+ * and grades are all edited from here, and none of it was recorded. "Who deleted this brand?" had
+ * no answer on the one screen where a delete is permanent.
+ *
+ * ONE subject type for all twelve, with the list in the LABEL — because the question is about the
+ * brand, not about the table, and twelve subject types would be twelve filter entries on a screen
+ * most people touch twice a year. The list key travels in `changes` as well, so a history per list
+ * is still reachable without matching on a label.
+ *
+ * `ActivityLog::record()` swallows its own exceptions by design: a call that stopped working would
+ * never say so, which is the whole reason this test is not optional.
+ */
+
+it('records who added, renamed and deleted a list row — with the list named in the label', function () {
+    CatalogFixture::assumeSwitched();
+
+    // Signed in FIRST: the role grant is itself an audited event.
+    $admin = Staff::admin();
+    actingAs($admin);
+
+    // Read from the config rather than typed here, so the assertion holds in either language —
+    // `definition()` resolves the list's own name through the translation seam.
+    $list = Coerce::str(LookupWriter::definition('colors')['label']);
+
+    post('/manage/lookups/colors', [
+        'name' => ['ar' => 'لون السجل', 'en' => 'Log colour'],
+        'extra' => ['hex' => '#123456'],
+    ])->assertSessionHasNoErrors();
+
+    $id = T::int(DB::table('catalog_colors')->orderByDesc('id')->value('id'));
+
+    $created = T::one(DB::table('core_activity_log')
+        ->where('subject_type', 'catalog_lookups')->where('subject_id', $id)
+        ->where('action', 'created')->orderByDesc('id'));
+
+    expect(T::int($created->user_id))->toBe(T::int($admin->getAttribute('id')))
+        ->and(T::str($created->user_name))->toBe(Staff::nameOf($admin))
+        // `الألوان: لون السجل` — the list, then the row, which is how somebody would say it.
+        ->and(T::str($created->subject_label))->toBe($list.': لون السجل');
+
+    $changes = T::arr(json_decode(T::str($created->changes), true));
+    expect(T::str(T::arr($changes['list'] ?? null)['to'] ?? null))->toBe('colors')
+        // Both names, because either can be the one somebody is searching for…
+        ->and(T::str(T::arr($changes['name_en'] ?? null)['to'] ?? null))->toBe('Log colour')
+        // …and whatever extra column THIS list declares, read from the config rather than a
+        // hard-coded set — so a list that gains a column is recorded without anyone remembering.
+        ->and(T::str(T::arr($changes['hex'] ?? null)['to'] ?? null))->toBe('#123456');
+
+    // ── a rename ─────────────────────────────────────────────────────────────────────────────
+    DB::table('core_activity_log')->where('subject_type', 'catalog_lookups')->delete();
+
+    actingAs($admin)->put("/manage/lookups/colors/{$id}", [
+        'name' => ['ar' => 'لون السجل', 'en' => 'Renamed colour'],
+        'extra' => ['hex' => '#123456'],
+        // This endpoint replaces the whole record, so it refuses a payload that has not declared
+        // itself complete (§2.9.7). The screen sends it; a test posting by hand has to as well.
+        '_complete' => 1,
+    ])->assertSessionHasNoErrors();
+
+    $updated = T::one(DB::table('core_activity_log')
+        ->where('subject_type', 'catalog_lookups')->where('subject_id', $id)->orderByDesc('id'));
+
+    $name = T::arr(T::arr(json_decode(T::str($updated->changes), true))['name_en'] ?? null);
+    expect(T::str($updated->action))->toBe('updated')
+        ->and(T::str($name['from'] ?? null))->toBe('Log colour')
+        ->and(T::str($name['to'] ?? null))->toBe('Renamed colour');
+
+    // ── a delete, which on this screen is permanent ──────────────────────────────────────────
+    actingAs($admin)->delete("/manage/lookups/colors/{$id}")->assertSessionHasNoErrors();
+
+    $deleted = T::one(DB::table('core_activity_log')
+        ->where('subject_type', 'catalog_lookups')->where('subject_id', $id)
+        ->where('action', 'deleted')->orderByDesc('id'));
+
+    // The row is gone from its own table, so this entry is the only surviving description of it —
+    // which is exactly why the snapshot is captured BEFORE the delete and not read back after.
+    expect(T::str($deleted->subject_label))->toBe($list.': لون السجل');
+
+    $gone = T::arr(json_decode(T::str($deleted->changes), true));
+    expect(T::str(T::arr($gone['name_en'] ?? null)['from'] ?? null))->toBe('Renamed colour')
+        ->and(T::arr($gone['name_en'] ?? null)['to'] ?? null)->toBeNull();
+});
+
+it('records NOTHING for a delete the screen refused, because nothing was deleted', function () {
+    $admin = Staff::admin();
+    actingAs($admin);
+
+    // A colour a product still uses: the screen refuses, and an entry saying it was deleted would
+    // be describing something that never happened.
+    $colorId = T::int(DB::table('catalog_product_color')->orderBy('color_id')->value('color_id'));
+    $before = DB::table('core_activity_log')->where('subject_type', 'catalog_lookups')->count();
+
+    delete("/manage/lookups/colors/{$colorId}")->assertSessionHasErrors('delete');
+
+    expect(DB::table('core_activity_log')->where('subject_type', 'catalog_lookups')->count())
+        ->toBe($before);
 });

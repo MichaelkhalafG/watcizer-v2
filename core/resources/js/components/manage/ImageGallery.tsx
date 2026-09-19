@@ -225,30 +225,42 @@ export function ImageGallery({
                                     ) : null}
                                 </div>
 
+                                {/* ── Labels, not placeholders (item 3 sweep, 2026-10-05) ────────
+
+                                    Same defect the variants form was reported for: a placeholder is
+                                    the text a box shows WHILE IT IS EMPTY, so on every image that
+                                    already has alt text — which is every image somebody has worked
+                                    through — the two boxes were unlabelled and indistinguishable
+                                    apart from the direction of the text in them.
+
+                                    The alt text is per locale for the same reason the title is:
+                                    fallback is off, and an Arabic page with English alt text is an
+                                    accessibility hole rather than a nicety. */}
                                 <div className="grid gap-2 sm:grid-cols-2">
-                                    {/* The alt text is per locale for the same reason the title is:
-                                        fallback is off, and an Arabic page with English alt text is
-                                        an accessibility hole rather than a nicety. */}
-                                    <Input
-                                        dir="rtl"
-                                        lang="ar"
-                                        placeholder={t('gallery.alt_ar', 'نص بديل (عربي)')}
-                                        aria-label={t('gallery.alt_ar_for_image', 'نص بديل عربي للصورة :number', {
-                                            number: index + 1,
-                                        })}
-                                        value={image.alt_ar}
-                                        disabled={disabled}
-                                        onChange={(event) => setAlt(index, 'ar', event.target.value)}
-                                    />
-                                    <Input
-                                        dir="ltr"
-                                        lang="en"
-                                        placeholder={t('gallery.alt_en', 'نص بديل (إنجليزي)')}
-                                        aria-label={t('gallery.alt_en_for_image', 'نص بديل إنجليزي للصورة :number', { number: index + 1 })}
-                                        value={image.alt_en}
-                                        disabled={disabled}
-                                        onChange={(event) => setAlt(index, 'en', event.target.value)}
-                                    />
+                                    <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+                                        {t('gallery.alt_ar', 'نص بديل (عربي)')}
+                                        <Input
+                                            dir="rtl"
+                                            lang="ar"
+                                            aria-label={t('gallery.alt_ar_for_image', 'نص بديل عربي للصورة :number', {
+                                                number: index + 1,
+                                            })}
+                                            value={image.alt_ar}
+                                            disabled={disabled}
+                                            onChange={(event) => setAlt(index, 'ar', event.target.value)}
+                                        />
+                                    </label>
+                                    <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+                                        {t('gallery.alt_en', 'نص بديل (إنجليزي)')}
+                                        <Input
+                                            dir="ltr"
+                                            lang="en"
+                                            aria-label={t('gallery.alt_en_for_image', 'نص بديل إنجليزي للصورة :number', { number: index + 1 })}
+                                            value={image.alt_en}
+                                            disabled={disabled}
+                                            onChange={(event) => setAlt(index, 'en', event.target.value)}
+                                        />
+                                    </label>
                                 </div>
                             </div>
 

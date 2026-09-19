@@ -7,6 +7,7 @@ import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SelectField, TextField } from "@/components/form/TextField";
 import { Input, Select } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -18,6 +19,7 @@ import {
     TableRow,
 } from "@/components/ui/table";
 import type { PreSwitchState } from "@/types";
+import { Num } from "@/components/ui/bidi";
 import { bucketLabel } from "@/lib/labels";
 import { useT } from "@/lib/i18n";
 
@@ -103,6 +105,62 @@ const EMPTY: Draft = {
  * PRODUCT counts as in stock (`in_stock` means "some ACTIVE variant has stock"). The server calls
  * `recomputeInStock()` on every change for exactly that reason.
  */
+/**
+ * What adding the first row does — SHOWN, not described (item 2, 2026-09-19).
+ *
+ * "The product's stock moves down to the rows" is a sentence you can only parse if you already
+ * know what it means. The picture below says it in one glance: one box with a number becomes two
+ * boxes with their own numbers, and the first box goes quiet.
+ *
+ * Rendered only while the product has no rows, because that is the only moment this is a decision
+ * anybody is making. After the first row exists, the reader needs one line and not a lesson.
+ */
+function FirstRowExplainer() {
+    const t = useT();
+
+    return (
+        <div className="rounded-lg border bg-muted/30 p-4">
+            <p className="text-sm font-medium">
+                {t('variants.what_changes', 'ماذا يتغيّر لو أضفت أول سطر؟')}
+            </p>
+
+            {/* The before/after. Two small boxes and an arrow — no vocabulary at all. */}
+            <div className="mt-3 flex flex-wrap items-center gap-3 text-xs">
+                <div className="rounded-md border bg-background px-3 py-2">
+                    <p className="text-muted-foreground">{t('variants.before', 'الآن')}</p>
+                    <p className="mt-1 font-medium">{t('variants.the_product', 'المنتج')}</p>
+                    <p className="text-muted-foreground">
+                        {t('variants.quantity_is', 'الكمية: ')}
+                        <Num>12</Num>
+                    </p>
+                </div>
+
+                <span aria-hidden="true" className="text-lg text-muted-foreground rtl:rotate-180">
+                    →
+                </span>
+
+                <div className="rounded-md border bg-background px-3 py-2">
+                    <p className="text-muted-foreground">{t('variants.after', 'بعد إضافة سطرين')}</p>
+                    <p className="mt-1 font-medium">
+                        {t('variants.example_black', 'سوار أسود')} —{' '}
+                        <Num>7</Num>
+                    </p>
+                    <p className="font-medium">
+                        {t('variants.example_brown', 'سوار بني')} — <Num>5</Num>
+                    </p>
+                </div>
+            </div>
+
+            <ul className="mt-3 space-y-1.5 text-sm text-muted-foreground">
+                <li>{t('variants.change_stock', 'الكمية تصبح لكل سطر على حدة، ومجموعها هو كمية المنتج.')}</li>
+                <li>{t('variants.change_locked', 'خانتا الكمية في قسم السعر تُقفَلان، لأن الرقم لم يعد للمنتج بل للسطور.')}</li>
+                <li>{t('variants.change_in_stock', '«متوفر» تعني أن سطرًا واحدًا على الأقل مُشغَّلًا وبه كمية.')}</li>
+                <li>{t('variants.change_undo', 'غيّرت رأيك؟ احذف السطور وترجع الكمية إلى المنتج. سطر بِيع منه لا يُحذف — أوقِفه بدل حذفه.')}</li>
+            </ul>
+        </div>
+    );
+}
+
 export function VariantsPanel({
     productId,
     rows,
@@ -191,20 +249,32 @@ export function VariantsPanel({
 
     return (
         <Card>
+            {/* ── Rewritten for somebody who has never heard the word "variant" ───────────────
+                   (item 2, second browser pass, 2026-09-19)
+
+                The old header was one 200-character sentence containing "دفتر الحركات", "عمود
+                مخزون" and a conditional definition of «متوفر». The developer read it twice and
+                could not follow it, and said the data-entry team has no chance. They are right:
+                it was written by somebody who already knew the answer.
+
+                What replaced it, in order of what the reader needs:
+
+                  1. what a row IS — with an example, because "variant" is not a word anybody uses
+                     about a watch;
+                  2. what happens to the product's own quantity when the first row appears — SHOWN
+                     as a before/after rather than described, because "stock moves down a level"
+                     is a sentence you can only understand if you already understand it;
+                  3. why the quantity boxes on the price tab stop accepting input;
+                  4. how to undo it.
+
+                Points 2-4 only render while there are NO rows yet, which is the only moment they
+                are a decision. Once the rows exist the reader needs one line, not a lesson. */}
             <CardHeader className="gap-2">
-                <CardTitle>
-                    {t("variants.title", "المقاسات والألوان (المخزون لكل صف)")}
-                </CardTitle>
-                {/* ONE sentence, not four fragments around a PHP class name (D-18).
-                    `<code dir="ltr">InventoryService</code>` was split across three translation
-                    keys so that it survived into English too — a class name printed on a product
-                    form, in both languages, telling the operator nothing they can act on. What
-                    they need to know is that the number is always recorded and never typed
-                    straight into a column, and that is what the sentence now says. */}
-                <p className="text-xs text-muted-foreground">
+                <CardTitle>{t("variants.tab", "المقاسات والألوان")}</CardTitle>
+                <p className="text-sm text-muted-foreground">
                     {t(
-                        "variants.ledger_note",
-                        "كل كمية تُسجَّل في دفتر الحركات، ولا يُكتب رقم مخزون مباشرة من أي شاشة. المنتج الذي له صفوف هنا يصبح مخزونه محسوبًا من الصفوف، وحالة «متوفر» تعني أن صفًا مفعّلًا به كمية.",
+                        "variants.lead",
+                        "لو المنتج يأتي بأكثر من مقاس أو لون، اكتب لكل واحد سطرًا هنا. مثال: ساعة بسوار أسود وأخرى بسوار بني — سطران.",
                     )}
                 </p>
             </CardHeader>
@@ -229,9 +299,21 @@ export function VariantsPanel({
                     >
                         {t(
                             "variants.save_product_first_body",
-                            "تُضاف المقاسات والألوان بعد حفظ المنتج، لأن كل صف يحمل مخزونه الخاص في دفتر الحركات.",
+                            "احفظ المنتج، ثم ارجع إلى هنا لإضافة مقاساته وألوانه.",
                         )}
                     </Alert>
+                ) : null}
+
+                {/* The whole decision, once, at the only moment it is a decision. */}
+                {productId !== null && rows.length === 0 ? <FirstRowExplainer /> : null}
+
+                {rows.length > 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                        {t(
+                            "variants.now_per_row",
+                            "كمية هذا المنتج صارت مجموع كميات السطور تحت. عدّل الرقم في سطره، وكل تغيير يُسجَّل باسمك.",
+                        )}
+                    </p>
                 ) : null}
 
                 {rows.length > 0 ? (
@@ -508,16 +590,22 @@ export function VariantsPanel({
                                                     )}
                                                     consequence={
                                                         <>
+                                                            {/* Two facts, each in one line. The
+                                                                second used to explain HOW the
+                                                                data would be corrupted, which is
+                                                                our problem, not the reader's —
+                                                                theirs is "can I press this, and
+                                                                what do I do instead". */}
                                                             <p>
                                                                 {t(
                                                                     "variants.delete_consequence_clean",
-                                                                    "هذا الصف بلا أي تاريخ: لا طلبات تشير إليه، ولا وحدات في المخزون، ولا حركات في سجل المخزون. لذلك يمكن حذفه نهائيًا.",
+                                                                    "هذا السطر لم يُبَع منه شيء ولا يحمل أي كمية، فيمكن حذفه.",
                                                                 )}
                                                             </p>
                                                             <p className="mt-2">
                                                                 {t(
                                                                     "variants.delete_consequence_history",
-                                                                    "الصف الذي له تاريخ لا يُحذف أبدًا — يُعطَّل — لأن الحذف لا يمسح حركات مخزونه بل ينقلها إلى المنتج نفسه ويفسد أرقامه للأبد.",
+                                                                    "السطر الذي بِيع منه أو تحرّكت كميته لا يُحذف أبدًا. أوقِفه: يختفي من المتجر وتتوقف كميته عن الحساب، ويبقى تاريخه سليمًا.",
                                                                 )}
                                                             </p>
                                                         </>
@@ -618,134 +706,133 @@ export function VariantsPanel({
                     </Alert>
                 ) : state.may_convert ? (
                     <div className="space-y-3 rounded-lg border border-dashed p-4">
-                        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                            <Input
-                                aria-label={t(
-                                    "variants.new_row_name_aria",
-                                    "اسم الصف الجديد",
-                                )}
-                                placeholder={t(
-                                    "variants.new_row_name_placeholder",
-                                    "الاسم (مثال: أسود / 42مم)",
+                        {/* ── Every box here says what it is (item 3, 2026-10-05) ───────────
+
+                            Reported by the developer: *"I looked at the row and could not tell
+                            what the three numeric boxes are. The four fields above them have
+                            labels; the three zeros below have nothing."*
+
+                            They were right, and the cause is worth stating because it is a whole
+                            class of bug rather than one screen: every control here was labelled
+                            with a PLACEHOLDER. A placeholder is not a label — it is the text a box
+                            shows **while it is empty**, and these three start at `0`, so their
+                            placeholders were never once visible to anybody. The four above them
+                            start empty, which is the only reason they looked labelled.
+
+                            Now they carry real `<label>` elements through the same `Field` wrapper
+                            the product form uses, plus a line saying what the number MEANS —
+                            because «فرق السعر» names the box without answering the question
+                            somebody is actually asking, which is what happens if they leave it
+                            alone. */}
+                        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                            <TextField
+                                label={t("variants.new_row_name", "اسم الصف")}
+                                required
+                                hint={t(
+                                    "variants.new_row_name_hint",
+                                    "ما يراه العميل ويختار به، مثل «أسود» أو «42 مم».",
                                 )}
                                 value={draft.label}
-                                onChange={(event) =>
-                                    setDraft({
-                                        ...draft,
-                                        label: event.target.value,
-                                    })
+                                onChange={(value) =>
+                                    setDraft({ ...draft, label: value })
                                 }
                             />
-                            <Input
+                            <TextField
+                                label={t("variants.new_row_sku", "كود الصف (SKU)")}
                                 dir="ltr"
-                                aria-label="SKU"
-                                placeholder="SKU"
+                                hint={t(
+                                    "variants.new_row_sku_hint",
+                                    "اختياري، وكودنا نحن لا كود المورّد. لو كتبته فلا يتكرر بين الصفوف.",
+                                )}
                                 value={draft.sku}
-                                onChange={(event) =>
-                                    setDraft({
-                                        ...draft,
-                                        sku: event.target.value,
-                                    })
+                                onChange={(value) =>
+                                    setDraft({ ...draft, sku: value })
                                 }
                             />
-                            <Select
-                                aria-label={t("variants.colour", "اللون")}
+                            <SelectField
+                                label={t("variants.colour", "اللون")}
+                                placeholder={t("variants.colour_none", "لون —")}
+                                hint={t(
+                                    "variants.new_row_colour_hint",
+                                    "اتركه فارغًا لو هذا الصف لا يختلف باللون.",
+                                )}
+                                options={colors}
                                 value={draft.color_id}
-                                onChange={(event) =>
-                                    setDraft({
-                                        ...draft,
-                                        color_id: event.target.value,
-                                    })
+                                onChange={(value) =>
+                                    setDraft({ ...draft, color_id: value })
                                 }
-                            >
-                                <option value="">
-                                    {t("variants.colour_none", "لون —")}
-                                </option>
-                                {colors.map((option) => (
-                                    <option
-                                        key={option.value}
-                                        value={option.value}
-                                    >
-                                        {option.label}
-                                    </option>
-                                ))}
-                            </Select>
-                            <Select
-                                aria-label={t("variants.size", "المقاس")}
+                            />
+                            <SelectField
+                                label={t("variants.size", "المقاس")}
+                                placeholder={t("variants.size_none", "مقاس —")}
+                                hint={t(
+                                    "variants.new_row_size_hint",
+                                    "اتركه فارغًا لو هذا الصف لا يختلف بالمقاس.",
+                                )}
+                                options={sizes}
                                 value={draft.size_id}
-                                onChange={(event) =>
-                                    setDraft({
-                                        ...draft,
-                                        size_id: event.target.value,
-                                    })
+                                onChange={(value) =>
+                                    setDraft({ ...draft, size_id: value })
                                 }
-                            >
-                                <option value="">
-                                    {t("variants.size_none", "مقاس —")}
-                                </option>
-                                {sizes.map((option) => (
-                                    <option
-                                        key={option.value}
-                                        value={option.value}
-                                    >
-                                        {option.label}
-                                    </option>
-                                ))}
-                            </Select>
-                            <Input
+                            />
+                            <TextField
+                                label={t("variants.price_delta", "فرق السعر")}
                                 dir="ltr"
                                 type="number"
                                 step="0.01"
-                                aria-label={t(
-                                    "variants.price_delta",
-                                    "فرق السعر",
-                                )}
-                                placeholder={t(
-                                    "variants.price_delta",
-                                    "فرق السعر",
+                                hint={t(
+                                    "variants.price_delta_hint",
+                                    "يُضاف إلى سعر المنتج لهذا الصف وحده — واكتب رقمًا سالبًا ليُخصم. اتركه صفرًا ليُباع بسعر المنتج نفسه.",
                                 )}
                                 value={draft.price_delta}
-                                onChange={(event) =>
-                                    setDraft({
-                                        ...draft,
-                                        price_delta: event.target.value,
-                                    })
+                                onChange={(value) =>
+                                    setDraft({ ...draft, price_delta: value })
                                 }
                             />
-                            <Input
-                                dir="ltr"
-                                type="number"
-                                min={0}
-                                aria-label={t(
-                                    "variants.express_quantity",
-                                    "كمية Express",
-                                )}
-                                placeholder={bucketLabel(t, 'express')}
-                                value={draft.stock_express}
-                                onChange={(event) =>
-                                    setDraft({
-                                        ...draft,
-                                        stock_express: event.target.value,
-                                    })
-                                }
-                            />
-                            <Input
-                                dir="ltr"
-                                type="number"
-                                min={0}
-                                aria-label={t(
-                                    "variants.market_quantity",
-                                    "كمية Market",
-                                )}
-                                placeholder={bucketLabel(t, 'market')}
-                                value={draft.stock_market}
-                                onChange={(event) =>
-                                    setDraft({
-                                        ...draft,
-                                        stock_market: event.target.value,
-                                    })
-                                }
-                            />
+                            <div className="grid gap-3 sm:grid-cols-2">
+                                <TextField
+                                    label={t(
+                                        "variants.express_quantity",
+                                        "كمية Express",
+                                    )}
+                                    dir="ltr"
+                                    type="number"
+                                    min={0}
+                                    hint={t(
+                                        "variants.express_quantity_hint",
+                                        "الكمية الجاهزة للشحن السريع من هذا الصف.",
+                                    )}
+                                    value={draft.stock_express}
+                                    onChange={(value) =>
+                                        setDraft({
+                                            ...draft,
+                                            stock_express: value,
+                                        })
+                                    }
+                                />
+                                <TextField
+                                    label={t(
+                                        "variants.market_quantity",
+                                        "كمية Market",
+                                    )}
+                                    dir="ltr"
+                                    type="number"
+                                    min={0}
+                                    hint={t(
+                                        "variants.market_quantity_hint",
+                                        "الكمية الموجودة في المعرض من هذا الصف.",
+                                    )}
+                                    value={draft.stock_market}
+                                    onChange={(value) =>
+                                        setDraft({
+                                            ...draft,
+                                            stock_market: value,
+                                        })
+                                    }
+                                />
+                            </div>
+                        </div>
+                        <div className="flex justify-end">
                             <Button
                                 type="button"
                                 className="gap-1.5"
@@ -758,9 +845,12 @@ export function VariantsPanel({
                         </div>
                         {state.has_variants ? null : (
                             <p className="text-xs text-muted-foreground">
+                                {/* The explainer above already SHOWS what changes; this line is
+                                    the reminder at the moment of the click, plus whatever the
+                                    server has to say about this particular product. */}
                                 {t(
                                     "variants.first_row_converts",
-                                    "إضافة أول صف تُحوِّل المنتج ليُدار مخزونه بالمقاسات: أعمدة المنتج تصبح مجموعًا محسوبًا لصفوفه.",
+                                    "هذا أول سطر: بعده تصبح الكمية لكل سطر على حدة.",
                                 )}{" "}
                                 {state.reason}
                             </p>

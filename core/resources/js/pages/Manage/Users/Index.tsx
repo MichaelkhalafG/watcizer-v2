@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/table";
 import ManageLayout from "@/layouts/ManageLayout";
 import type { SharedProps } from "@/types";
-import { Ltr } from "@/components/ui/bidi";
+import { Ltr, Num } from "@/components/ui/bidi";
 import { ExportLink } from "@/components/table/ExportLink";
 import { useT } from "@/lib/i18n";
 
@@ -439,18 +439,14 @@ export default function UsersIndex({
                                                     : (grant.storefront ??
                                                       `#${grant.storefront_id}`)}
                                             </TableCell>
-                                            <TableCell
-                                                className="text-xs text-muted-foreground"
-                                                dir="ltr"
-                                            >
-                                                {grant.granted_by ??
-                                                    t("users.granted_by_command", "من سطر الأوامر")}
+                                            <TableCell className="text-xs text-muted-foreground">
+                                                <Ltr>
+                                                    {grant.granted_by ??
+                                                        t("users.granted_by_command", "من سطر الأوامر")}
+                                                </Ltr>
                                             </TableCell>
-                                            <TableCell
-                                                className="text-xs text-muted-foreground"
-                                                dir="ltr"
-                                            >
-                                                {grant.created_at ?? "—"}
+                                            <TableCell className="text-xs text-muted-foreground">
+                                                <Num>{grant.created_at ?? "—"}</Num>
                                             </TableCell>
                                             <TableCell className="text-end">
                                                 <ConfirmAction

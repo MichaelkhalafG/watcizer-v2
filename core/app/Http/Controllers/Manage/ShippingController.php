@@ -3,13 +3,16 @@
 namespace App\Http\Controllers\Manage;
 
 use App\Domain\Access\Role;
+use App\Domain\Activity\ActivityLog;
 use App\Domain\Shipping\ShippingCities;
 use App\Support\Coerce;
 use App\Support\FullReplace;
 use App\Support\ManageText;
 use App\Support\Table\TableExport;
+use App\Transform\Row;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
@@ -80,7 +83,16 @@ final class ShippingController
     {
         $data = Coerce::arr($request->validate(ShippingCities::rules()));
 
-        $this->cities->create($data);
+        $id = $this->cities->create($data);
+
+        ActivityLog::record(
+            'shipping_cities',
+            $id,
+            ActivityLog::CREATED,
+            [],
+            self::logFields($id),
+            label: self::label($id),
+        );
 
         return back()->with('status', ManageText::t('shipping.city_added', 'تمت إضافة المحافظة.'));
     }
@@ -93,21 +105,101 @@ final class ShippingController
 
         $data = Coerce::arr($request->validate(ShippingCities::rules()));
 
+        // Captured BEFORE the write: the old price is the whole question an operator asks of this
+        // screen's log — "it was 45 last month, who made it 85?" — and one line later it is gone.
+        $before = self::logFields($city);
+
         try {
             $this->cities->update($city, $data);
         } catch (RuntimeException $e) {
             throw ValidationException::withMessages(['name_ar' => $e->getMessage()]);
         }
 
+        ActivityLog::record(
+            'shipping_cities',
+            $city,
+            ActivityLog::UPDATED,
+            $before,
+            self::logFields($city),
+            label: self::label($city),
+        );
+
         return back()->with('status', ManageText::t('shipping.cost_saved', 'تم حفظ سعر الشحن.'));
     }
 
     public function destroy(Request $request, int $city): RedirectResponse
     {
+        // Both read while the row is still there — after the delete there is nothing left to name
+        // it with, and a deletion nobody can identify is the one this log most needs to explain.
+        $before = self::logFields($city);
+        $label = self::label($city);
+
         $result = $this->cities->delete($city);
+
+        /*
+         * Logged only when something was actually there to delete. `ShippingCities::delete()`
+         * reports success for an id that does not exist — nothing referenced it, so nothing
+         * refused — and a DELETED row for a governorate that never was is a log entry inviting an
+         * investigation into an event that did not happen. An empty snapshot is how that case
+         * announces itself.
+         */
+        if ($result['deleted'] && $before !== []) {
+            ActivityLog::record('shipping_cities', $city, ActivityLog::DELETED, $before, [], label: $label);
+        }
 
         return $result['deleted']
             ? back()->with('status', $result['reason'])
             : back()->withErrors(['delete' => $result['reason']]);
+    }
+
+    /**
+     * What a governorate is, for the log — its two names and its price, and nothing else.
+     *
+     * ── Why this screen is logged at all (2026-10-05) ───────────────────────────
+     *
+     * The delivery price is money charged to every customer in the governorate, on every order,
+     * until somebody reads the accounts and notices. This screen is the only editor of it anywhere,
+     * and it recorded nothing: a wrong number here had no author, no previous value and no date —
+     * the three things anybody investigating it would ask for first.
+     *
+     * The NAMES are in the snapshot beside the price because they are the other half of the same
+     * mistake: a governorate renamed by a typo is a row the storefront still serves under the wrong
+     * label, and the log is where the old spelling survives. `addresses` counts and the id are not
+     * — the count is a fact about customers rather than about this edit, and the id is on the row.
+     *
+     * @return array<string, mixed>
+     */
+    private static function logFields(int $id): array
+    {
+        $row = DB::table(ShippingCities::MASTER)->where('id', $id)->first(['shipping_cost']);
+        if (! is_object($row)) {
+            return [];
+        }
+
+        $names = [];
+        foreach (
+            DB::table(ShippingCities::TRANSLATIONS)
+                ->where('shipping_city_id', $id)->get(['locale', 'city_name']) as $raw
+        ) {
+            $translation = Row::cast($raw);
+            $names[Row::str($translation, 'locale')] = Row::nstr($translation, 'city_name');
+        }
+
+        return [
+            'name_ar' => $names['ar'] ?? null,
+            'name_en' => $names['en'] ?? null,
+            // The same canonical "123.45" the screen and the compat payload show, so the log's
+            // before/after reads as the price somebody actually typed.
+            'shipping_cost' => Row::nmoney(Row::cast($row), 'shipping_cost'),
+        ];
+    }
+
+    /** The governorate's ARABIC name — «القاهرة», «أسوان» — which is what an operator calls it. */
+    private static function label(int $id): ?string
+    {
+        $name = DB::table(ShippingCities::TRANSLATIONS)
+            ->where('shipping_city_id', $id)->where('locale', 'ar')->value('city_name');
+
+        return Coerce::nstr($name);
     }
 }

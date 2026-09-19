@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Manage;
 
+use App\Domain\Activity\ActivityLog;
 use App\Domain\Content\Banners;
 use App\Domain\Content\BannerState;
 use App\Domain\Content\BannerWriter;
@@ -136,7 +137,18 @@ final class BannerController
 
     public function store(Request $request, Storefront $storefront): RedirectResponse
     {
-        $this->writer->save($this->validated($request, $storefront), null);
+        $id = $this->writer->save($this->validated($request, $storefront), null);
+
+        $after = self::logFields($id);
+        ActivityLog::record(
+            'storefront_banners',
+            $id,
+            ActivityLog::CREATED,
+            [],
+            $after,
+            label: self::labelOf($after),
+            storefrontId: $storefront->id,
+        );
 
         return back()->with('status', ManageText::t('banners.saved', 'تم حفظ البانر.'));
     }
@@ -144,7 +156,23 @@ final class BannerController
     public function update(Request $request, Storefront $storefront, int $banner): RedirectResponse
     {
         self::requireBanner($storefront->id, $banner);
+
+        // BEFORE the save, because the question this row answers is what the home page used to show
+        // and where it used to send people — and the update overwrites both.
+        $before = self::logFields($banner);
+
         $this->writer->save($this->validated($request, $storefront), $banner);
+
+        $after = self::logFields($banner);
+        ActivityLog::record(
+            'storefront_banners',
+            $banner,
+            ActivityLog::UPDATED,
+            $before,
+            $after,
+            label: self::labelOf($after),
+            storefrontId: $storefront->id,
+        );
 
         return back()->with('status', ManageText::t('banners.updated', 'تم تحديث البانر.'));
     }
@@ -152,9 +180,82 @@ final class BannerController
     public function destroy(Storefront $storefront, int $banner): RedirectResponse
     {
         self::requireBanner($storefront->id, $banner);
+
+        $before = self::logFields($banner);
+
         $this->writer->delete($banner);
 
+        ActivityLog::record(
+            'storefront_banners',
+            $banner,
+            ActivityLog::DELETED,
+            $before,
+            [],
+            // From the snapshot, not from the table: the row is gone, and the file name is the only
+            // thing left that says which banner disappeared off the home page.
+            label: self::labelOf($before),
+            storefrontId: $storefront->id,
+        );
+
         return back()->with('status', ManageText::t('banners.deleted', 'تم حذف البانر. الملف نفسه لم يُحذف — media:prune وحده يفعل ذلك.'));
+    }
+
+    /**
+     * What a banner is, for the log — what it POINTS AT, and whether it is showing.
+     *
+     * ── Why this screen is logged at all (2026-10-05) ───────────────────────────
+     *
+     * A banner is the first thing a customer sees, and every failure it has is silent: an empty
+     * hero slot, a link that goes nowhere, a window that closed. Nothing here recorded anything, so
+     * "the offer banner is gone" and "the banner sends people to the wrong category" both had the
+     * same answer — nobody knows, and nobody knows what it pointed at before.
+     *
+     * The three destination columns are all kept even though a banner carries exactly ONE of them:
+     * a change of TARGET is a change from one column to another, and a snapshot of only the
+     * populated one would record the arrival and lose the departure.
+     *
+     * Out: `placement` (always `home`, by decision — a constant is not a change), `storefront_id`
+     * (from the route, and already on the row as `storefront_id`), and `updated_at` — that last one
+     * deliberately, because it moves on every save and would make every save write a row saying
+     * nothing else changed, which is exactly the noise `ActivityLog::diff()` exists to suppress.
+     *
+     * @return array<string, mixed>
+     */
+    private static function logFields(int $id): array
+    {
+        $raw = DB::table('storefront_banners')->where('id', $id)->first([
+            'image_path', 'product_id', 'storefront_category_id', 'link_url',
+            'sort_order', 'is_active', 'starts_at', 'ends_at',
+        ]);
+        if (! is_object($raw)) {
+            return [];
+        }
+        $row = Row::cast($raw);
+
+        return [
+            'image_path' => Row::str($row, 'image_path'),
+            'product_id' => Row::nint($row, 'product_id'),
+            'storefront_category_id' => Row::nint($row, 'storefront_category_id'),
+            'link_url' => Row::nstr($row, 'link_url'),
+            'sort_order' => Row::int($row, 'sort_order'),
+            'is_active' => Row::bool($row, 'is_active'),
+            'starts_at' => Row::nstr($row, 'starts_at'),
+            'ends_at' => Row::nstr($row, 'ends_at'),
+        ];
+    }
+
+    /**
+     * What to call a banner in the log.
+     *
+     * A banner has no name — it is a picture — so the FILENAME is its label, for the same reason
+     * the CSV export carries it: it is the one column that identifies which banner a row is when
+     * the image itself cannot travel.
+     *
+     * @param  array<string, mixed>  $fields
+     */
+    private static function labelOf(array $fields): ?string
+    {
+        return Coerce::nstr($fields['image_path'] ?? null);
     }
 
     /**

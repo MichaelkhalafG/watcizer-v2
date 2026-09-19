@@ -156,10 +156,10 @@ it('translates through ManageText, so the keys behave like every other string', 
 
     try {
         app()->setLocale('en');
-        expect(ManageText::t('specs.field_case_size', 'قياس العلبة'))->toBe('Case size');
+        expect(ManageText::t('specs.field_case_size', 'قياس جسم الساعة'))->toBe('Case size');
 
         app()->setLocale('ar');
-        expect(ManageText::t('specs.field_case_size', 'قياس العلبة'))->toBe('قياس العلبة');
+        expect(ManageText::t('specs.field_case_size', 'قياس جسم الساعة'))->toBe('قياس جسم الساعة');
     } finally {
         app()->setLocale($original);
     }

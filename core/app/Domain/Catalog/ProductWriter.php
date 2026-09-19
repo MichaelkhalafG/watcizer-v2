@@ -43,7 +43,7 @@ final class ProductWriter
      * @var list<string>
      */
     public const COLUMNS = [
-        'family', 'brand_id', 'grade_id', 'wa_code', 'sku', 'model_number', 'hs_code',
+        'family', 'brand_id', 'grade_id', 'wa_code', 'sku', 'hs_code',
         'purchase_price', 'selling_price', 'sale_price', 'currency', 'low_stock_threshold',
         'warranty_years', 'is_active', 'search_keywords', 'specs',
     ];
@@ -349,7 +349,17 @@ final class ProductWriter
             'grade_id' => Coerce::nint($data['grade_id'] ?? null),
             'wa_code' => Coerce::str($data['wa_code'] ?? null),
             'sku' => Coerce::nstr($data['sku'] ?? null),
-            'model_number' => Coerce::nstr($data['model_number'] ?? null),
+            /*
+             * `model_number` is no longer written (item 4, 2026-09-19). It and `sku` held the same
+             * thing, the dashboard asked for it twice, and the merge migration moved the 59 values
+             * that only existed here into `sku`.
+             *
+             * The COLUMN stays, and is deliberately left untouched rather than nulled: fifteen
+             * products carry a `model_number` that disagrees with their `sku`, and in fourteen of
+             * them it is the truer manufacturer code. Clearing it would destroy the only remaining
+             * copy of something nobody has reconciled — see the migration's own note and
+             * `docs/wave4d/sku-model-conflicts.tsv`.
+             */
             'hs_code' => Coerce::nstr($data['hs_code'] ?? null),
             'purchase_price' => Coerce::float($data['purchase_price'] ?? null),
             'selling_price' => $selling,

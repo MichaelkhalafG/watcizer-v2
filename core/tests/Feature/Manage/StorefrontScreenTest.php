@@ -1,5 +1,6 @@
 <?php
 
+use App\Domain\Activity\ActivityLog;
 use App\Domain\Promotions\PromotionRules;
 use Illuminate\Support\Facades\DB;
 use Inertia\Testing\AssertableInertia;
@@ -234,4 +235,61 @@ it('is ADMIN-ONLY, like the rest of this screen', function () {
     actingAs(Staff::dataEntry())->get('/manage/storefronts/1/edit')->assertForbidden();
 
     expect(PromotionRules::moneyRewardsEnabled(1))->toBeFalse();
+});
+
+it('records the settings change, and never copies the settings blob into the log', function () {
+    /*
+     * The gap this closes (2026-10-05). Every field on this form changes what a CUSTOMER sees:
+     * `is_active` closes the shop, `currency` changes the sign in front of every price,
+     * `default_locale` changes the language it opens in. One admin-only form, and no trace of any
+     * of it — so "the shop was down on Friday" and "prices showed in dollars" had no author.
+     */
+    $admin = Staff::admin();
+    actingAs($admin);
+
+    // Something else's key, already in the bag — the reason the blob itself is not snapshotted.
+    DB::table('storefronts')->where('id', 1)->update([
+        'settings' => json_encode(['theme' => 'dark'], JSON_THROW_ON_ERROR),
+    ]);
+
+    actingAs($admin)->put('/manage/storefronts/1', [
+        'name' => 'Watchizer USD',
+        'domain' => null,
+        'locales' => ['ar', 'en'],
+        'default_locale' => 'ar',
+        'currency' => 'USD',
+        'is_active' => true,
+        'money_rewards' => true,
+    ])->assertRedirect('/manage/storefronts');
+
+    $row = T::one(DB::table(ActivityLog::TABLE)
+        ->where('subject_type', 'storefronts')->where('subject_id', 1)
+        ->where('action', ActivityLog::UPDATED)->orderByDesc('id'));
+
+    expect(T::int($row->user_id))->toBe(T::int($admin->getAttribute('id')))
+        ->and(T::str($row->user_name))->toBe(Staff::nameOf($admin))
+        ->and(T::str($row->subject_label))->toBe('Watchizer USD')
+        ->and(T::int($row->storefront_id))->toBe(1);
+
+    $changes = T::arr(json_decode(T::str($row->changes), true));
+
+    // The currency it used to charge in, and the language it used to open in.
+    $currency = T::arr($changes['currency'] ?? null);
+    expect(T::str($currency['from'] ?? null))->toBe('EGP')
+        ->and(T::str($currency['to'] ?? null))->toBe('USD');
+
+    /*
+     * The `settings` column is a general per-storefront bag and this screen owns ONE key in it. The
+     * blob never enters the log — it would be a truncated JSON dump nobody can read, it carries
+     * other features' keys, and `ActivityLog::REDACTED_FIELDS` matches by FIELD NAME, so a secret
+     * nested inside it one day would land here in the clear. The one key this form writes is logged
+     * as its own flat boolean instead.
+     */
+    $rewards = T::arr($changes['money_rewards'] ?? null);
+    expect($rewards['from'] ?? null)->toBeFalse()
+        ->and($rewards['to'] ?? null)->toBeTrue()
+        ->and($changes)->not->toHaveKey('settings');
+
+    // …and the key the screen does not own is still in the column, untouched by either of them.
+    expect(storefrontSettings()['theme'] ?? null)->toBe('dark');
 });

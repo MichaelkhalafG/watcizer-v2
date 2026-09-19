@@ -79,7 +79,7 @@ final class ProductPatcher
         'grade_id' => 'nint',
         'wa_code' => 'str',
         'sku' => 'nstr',
-        'model_number' => 'nstr',
+
         'hs_code' => 'nstr',
         'purchase_price' => 'decimal',
         'selling_price' => 'decimal',
@@ -109,7 +109,8 @@ final class ProductPatcher
      * `brand_id` (which it does not): a brand change would have left the index naming the old
      * brand, and a test asserting the wrong column is what surfaced it.
      */
-    private const SEARCHABLE = ['brand_id', 'model_number', 'search_keywords'];
+    // `sku` since the merge (item 4): one code column, and it is the one the index reads.
+    private const SEARCHABLE = ['brand_id', 'sku', 'search_keywords'];
 
     /** Translated columns whose change also has to reach the index. */
     private const SEARCHABLE_TRANSLATED = ['title', 'model_name'];

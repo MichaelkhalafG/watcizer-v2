@@ -1,4 +1,4 @@
-import { type ReactNode, useCallback, useEffect, useRef } from 'react';
+import { type ReactNode, useCallback, useRef } from 'react';
 
 import { cn } from '@/lib/utils';
 import { useT } from '@/lib/i18n';
@@ -197,22 +197,53 @@ export function TabPanel({ when, active, children }: { when: string; active: str
  */
 export function StickySaveBar({ children }: { children: ReactNode }) {
     /*
-     * A tiny bit of bottom padding is added to the document while this is mounted, so the final
-     * field can always be scrolled clear of the bar. Done here rather than by asking every form to
-     * remember a magic `pb-20`.
+     * ── At the TOP, and sticky there (second browser pass, item 3, 2026-09-19) ──────────
+     *
+     * It was at the bottom — better than the 4,868 px scroll it replaced, but still the wrong
+     * end: the operator opens the form, reads the tabs, and the thing they came to do is below
+     * the fold on first paint. Sticky at the top puts it where the eye already is and keeps it
+     * there while they work down the panel.
+     *
+     * ── …BELOW the app header, not over it (2026-10-05) ─────────────────────────
+     *
+     * The first version was `top-0 z-30`, and the dashboard header is ALSO `top-0 z-30`
+     * (`Manage/Header.tsx`). Two elements at the same offset and the same layer, and the one
+     * later in the document wins — so the save bar painted over the avatar, the breadcrumb and
+     * the product's own name. The developer found it by looking at the form.
+     *
+     * Two corrections, and both are needed:
+     *
+     *   • `top-header` — `var(--header-height)`, the single token the header's own `h-header`
+     *     is built from, so the two cannot drift apart when that height changes;
+     *   • `z-20` — strictly BELOW the header's `z-30`, so if anything ever does overlap, the
+     *     navigation is the thing that stays readable. The bar still sits above page content,
+     *     which is all `z-30` was there for: the layer stack is rail 40 > header 30 > save bar
+     *     20 > content, with dialogs and menus at 50 over everything.
      */
-    useEffect(() => {
-        const previous = document.body.style.paddingBottom;
-        document.body.style.paddingBottom = '4rem';
-
-        return () => {
-            document.body.style.paddingBottom = previous;
-        };
-    }, []);
-
     return (
-        <div className="sticky bottom-0 z-20 -mx-4 mt-6 border-t bg-background/95 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/80 sm:-mx-6 sm:px-6">
+        <div className="sticky top-header z-20 -mx-4 mb-4 border-b bg-background/95 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-background/80 sm:-mx-6 sm:px-6">
             {children}
         </div>
+    );
+}
+
+/**
+ * The one sentence a tabbed form owes its reader (item 3).
+ *
+ * A form split into tabs invites the belief that each tab saves separately — it is the reasonable
+ * reading of the shape, and nothing on the screen contradicted it. Somebody who believes it will
+ * fill one tab, press Save, and go away thinking the other six are still waiting for them; or
+ * worse, fill three and press Save three times expecting three saves.
+ *
+ * Said in words, on the bar, next to the button it is about. Not in a tooltip and not once in an
+ * onboarding note: the belief re-forms every time somebody new opens the screen.
+ */
+export function SaveScopeNote() {
+    const t = useT();
+
+    return (
+        <span className="text-xs text-muted-foreground">
+            {t('form.save_saves_everything', 'الحفظ يحفظ المنتج كله — كل الأقسام دفعة واحدة، وليس القسم المفتوح فقط.')}
+        </span>
     );
 }

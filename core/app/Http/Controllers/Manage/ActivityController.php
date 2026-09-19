@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Manage;
 use App\Domain\Access\Roles;
 use App\Domain\Activity\ActivityLog;
 use App\Support\Coerce;
+use App\Support\LocalisedName;
 use App\Support\ManageText;
 use App\Support\Table\TableQuery;
 use App\Transform\Row;
@@ -94,7 +95,33 @@ final class ActivityController
         // Which of the referenced accounts still exist — one query, not one per row.
         $living = self::livingUsers();
 
-        $map = function (object $raw) use ($living): array {
+        /*
+         * ── The record's name, in the reader's language (2026-10-05) ─────────────────
+         *
+         * `subject_label` is a SNAPSHOT: whatever the record was called at the moment of the write,
+         * captured deliberately so the log still reads correctly after a rename or a delete
+         * ({@see App\Domain\Orders\OrderFulfilment} and `ActivityLog::record()`). It is one
+         * string, and every writer captured the Arabic one — so the English dashboard's record
+         * column read «ساعات», «محفظة نسائي».
+         *
+         * Resolved on READ rather than fixed on write, and the distinction matters:
+         *
+         *   • a second stored column would only help rows written from today, and the log is read
+         *     for what happened BEFORE today;
+         *   • the snapshot must stay — it is the only thing that names a record somebody deleted.
+         *
+         * So: for the rows on this page whose subject still exists, the CURRENT name in the
+         * operator's language; for the rest, the snapshot, exactly as before. Two keyed reads per
+         * page, filled by `$prepare` before a row is mapped — the same shape the products list
+         * uses for its covers.
+         */
+        $names = [];
+
+        $resolveNames = function (array $rows) use (&$names): void {
+            $names = self::currentNames(Coerce::objectList($rows));
+        };
+
+        $map = function (object $raw) use ($living, &$names): array {
             $row = Row::cast($raw);
             $changes = self::changesOf(Row::nstr($row, 'changes'));
             $createdAt = Row::nstr($row, 'created_at');
@@ -121,7 +148,15 @@ final class ActivityController
                  */
                 'subject_type_label' => self::typeLabel(Row::str($row, 'subject_type')),
                 'subject_id' => Row::nint($row, 'subject_id'),
-                'subject_label' => Row::nstr($row, 'subject_label'),
+                /*
+                 * The current name when the record is still there, the captured one when it is
+                 * not. `subject_label_is_snapshot` lets the screen say which it is looking at,
+                 * because “this is what it was called then” is a different statement from “this is
+                 * what it is called” and a log is read for the difference.
+                 */
+                'subject_label' => $names[Row::str($row, 'subject_type').':'.Row::nint($row, 'subject_id')]
+                    ?? Row::nstr($row, 'subject_label'),
+                'subject_label_is_snapshot' => ! isset($names[Row::str($row, 'subject_type').':'.Row::nint($row, 'subject_id')]),
                 'action' => Row::str($row, 'action'),
                 'action_label' => self::actionLabel(Row::str($row, 'action')),
                 'storefront_id' => Row::nint($row, 'storefront_id'),
@@ -133,11 +168,11 @@ final class ActivityController
         };
 
         if ($table->wantsExport()) {
-            return $table->export($query, $map);
+            return $table->export($query, $map, $resolveNames);
         }
 
         return Inertia::render('Manage/Activity/Index', [
-            'table' => $table->paginate($query, $map),
+            'table' => $table->paginate($query, $map, $resolveNames),
             'filters' => [
                 'users' => self::actors(),
                 'actions' => array_map(
@@ -161,7 +196,22 @@ final class ActivityController
              * different places once the word order changes.
              */
             'pre_handover_note' => ManageText::t('activity.pre_handover_note', 'الصفوف المؤرَّخة قبل :date هي نشاط اختبار من مرحلة بناء اللوحة، وليست عمل الفريق. تُركت كما هي عمدًا: سجلّ يُعاد كتابته لا قيمة له.', ['date' => ActivityLog::HANDOVER_CUTOFF]),
-            'coverage' => ManageText::t('activity.coverage', 'يسجَّل: المنتجات، التصنيفات، العرض والترتيب، تعديلات المخزون اليدوية، العروض الترويجية، إعدادات الدفع، ومنح الصلاحيات. لا تُسجَّل القراءات، ولا البانرات والمقالات والقوائم المرجعية (مؤجَّلة). قيم الأسرار لا تُكتب هنا أبدًا.'),
+            /*
+             * ── This sentence named gaps that had been closed (2026-10-05) ──────────────
+             *
+             * It said banners, blogs and the reference lists were "not recorded (deferred)". Blogs
+             * had been logging for weeks, and banners and the lists log as of this round — so the
+             * screen was telling operators the log had holes it did not have, which is the one
+             * direction this sentence must never be wrong in. A reader who believes a change is
+             * unrecorded stops looking for it here.
+             *
+             * It is now a statement about which KINDS of thing are covered rather than a list of
+             * screens, because a list of screens is a thing somebody has to remember to update and
+             * nobody ever does. What is genuinely still absent is a bare image UPLOAD: the file
+             * arrives with no row of its own, and it enters the log through whatever product,
+             * banner or brand comes to reference it.
+             */
+            'coverage' => ManageText::t('activity.coverage', 'يسجَّل كل تغيير يحفظه أحد من اللوحة: المنتجات والمتغيّرات، التصنيفات، العرض والترتيب، المخزون، الطلبات، العروض الترويجية، الشحن، البانرات، المقالات، القوائم المرجعية ووحدات القياس، إعدادات المتجر والدفع، الصلاحيات، وحذف ملفات الوسائط. لا تُسجَّل القراءات ولا عمليات الرفع بذاتها — يظهر الملف في السجل عند ربطه بمنتج أو بانر. قيم الأسرار لا تُكتب هنا أبدًا.'),
         ]);
     }
 
@@ -242,6 +292,84 @@ final class ActivityController
      *
      * @return list<array{value: string, label: string}>
      */
+    /**
+     * The CURRENT name of every record this page's rows point at, keyed `type:id`.
+     *
+     * Only the two subject types whose names are translated — products and categories. Everything
+     * else the log records (a payment contract, a shipping governorate, a user) is stored with one
+     * name, so there is nothing to choose between and the captured snapshot is already right.
+     *
+     * A row whose subject is gone is simply absent from the map, and the caller keeps the snapshot.
+     * That is the whole point: this improves the reading of a live record without touching the one
+     * thing an audit trail must never lose.
+     *
+     * @param  list<object>  $rows
+     * @return array<string, string>
+     */
+    private static function currentNames(array $rows): array
+    {
+        $products = [];
+        $categories = [];
+
+        foreach ($rows as $raw) {
+            $row = Row::cast($raw);
+            $id = Row::nint($row, 'subject_id');
+            if ($id === null) {
+                continue;
+            }
+
+            if (Row::str($row, 'subject_type') === 'catalog_products') {
+                $products[] = $id;
+            } elseif (Row::str($row, 'subject_type') === 'storefront_categories') {
+                $categories[] = $id;
+            }
+        }
+
+        $out = [];
+
+        if ($products !== []) {
+            foreach (
+                DB::table('catalog_product_translations')
+                    ->whereIn('product_id', $products)
+                    ->whereIn('locale', ['ar', 'en'])
+                    ->get(['product_id', 'locale', 'title']) as $raw
+            ) {
+                $row = Row::cast($raw);
+                $key = 'catalog_products:'.Row::int($row, 'product_id');
+                $out[$key] ??= ['ar' => null, 'en' => null];
+                $out[$key][Row::str($row, 'locale')] = Row::nstr($row, 'title');
+            }
+        }
+
+        if ($categories !== []) {
+            foreach (
+                DB::table('storefront_category_translations')
+                    ->whereIn('storefront_category_id', $categories)
+                    ->whereIn('locale', ['ar', 'en'])
+                    ->get(['storefront_category_id', 'locale', 'name']) as $raw
+            ) {
+                $row = Row::cast($raw);
+                $key = 'storefront_categories:'.Row::int($row, 'storefront_category_id');
+                $out[$key] ??= ['ar' => null, 'en' => null];
+                $out[$key][Row::str($row, 'locale')] = Row::nstr($row, 'name');
+            }
+        }
+
+        $picked = [];
+        foreach ($out as $key => $pair) {
+            $name = LocalisedName::pick(
+                is_string($pair['ar']) ? $pair['ar'] : null,
+                is_string($pair['en']) ? $pair['en'] : null,
+            );
+            if ($name !== '') {
+                $picked[$key] = $name;
+            }
+        }
+
+        return $picked;
+    }
+
+    /** @return list<array{value: string, label: string}> */
     private static function actors(): array
     {
         $out = [];
@@ -274,6 +402,9 @@ final class ActivityController
             'catalog_products', 'catalog_product_variants', 'storefront_categories',
             'storefront_product', 'promotion_rules', 'storefront_payment_providers',
             'storefront_payment_methods', 'core_user_roles', 'shipping_cities',
+            // The eight screens covered on 2026-10-05.
+            'catalog_units', 'catalog_lookups', 'storefront_banners', 'storefronts',
+            'core_user_preferences', 'media_files',
             /*
              * `orders` and `core_blogs` are WRITTEN to this log and were missing from the filter
              * (D-18, 2026-09-19) — so the subject the shop floor generates most, after products,
@@ -356,9 +487,38 @@ final class ActivityController
             'storefront_product' => ManageText::t('activity.type_placement', 'عرض وترتيب'),
             'promotion_rules' => ManageText::t('activity.type_promotion_rule', 'قاعدة ترويجية'),
             'storefront_payment_providers' => ManageText::t('activity.type_payment_provider', 'عقد دفع'),
+            /*
+             * This one STAYS, and the record of why is worth more than the line.
+             *
+             * It was removed on 2026-10-05 on a report that nothing ever wrote it — that a method
+             * change was recorded against its PROVIDER. That report was wrong. `PaymentSettingsController`
+             * writes this exact subject type from three actions (add, edit, delete a method), and
+             * has since the payments screen was built. The grep that produced the finding looked
+             * for the type in the controllers being CHANGED that day and concluded from its absence
+             * there that nothing wrote it anywhere.
+             *
+             * The lesson is the one this whole round is about: a filter entry with no rows behind
+             * it and a filter entry whose rows nobody has produced YET look identical from the
+             * screen. Only the writers can tell you which it is, and only a grep across all of
+             * them counts as having looked.
+             */
             'storefront_payment_methods' => ManageText::t('activity.type_payment_method', 'طريقة دفع'),
             'core_user_roles' => ManageText::t('activity.type_permission', 'صلاحية'),
             'shipping_cities' => ManageText::t('activity.type_shipping_price', 'سعر شحن'),
+            // ── The eight screens that recorded nothing until 2026-10-05 ────────────────
+            'catalog_units' => ManageText::t('activity.type_unit', 'وحدة قياس'),
+            /*
+             * ONE type for TWELVE lists — brands, colours, materials, shapes, genders, features,
+             * sizes, movements, closures, display types, grades — because the question somebody
+             * asks is "who deleted this brand", and the row's LABEL answers it by naming the list
+             * and the row. Twelve subject types would be twelve filter entries and twelve English
+             * strings for a screen most people touch twice a year.
+             */
+            'catalog_lookups' => ManageText::t('activity.type_lookup', 'عنصر قائمة'),
+            'storefront_banners' => ManageText::t('activity.type_banner', 'بانر'),
+            'storefronts' => ManageText::t('activity.type_storefront', 'إعدادات متجر'),
+            'core_user_preferences' => ManageText::t('activity.type_preference', 'تفضيلات حساب'),
+            'media_files' => ManageText::t('activity.type_media', 'ملفات وسائط'),
             'orders' => ManageText::t('common.order', 'طلب'),
             'core_blogs' => ManageText::t('activity.type_blog', 'مقال'),
             default => $type,

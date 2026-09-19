@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Num } from '@/components/ui/bidi';
 import { useT } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import type { PreSwitchState, SharedProps } from '@/types';
@@ -106,6 +107,7 @@ export default function LookupsIndex({ list, lists, rows, pre_switch }: Props) {
                 // column it knows about and declares the payload complete. Without `_complete`
                 // the server refuses: a caller that omits `extra.hex` would clear the colour.
                 _complete: 1,
+                // name-seam-exempt: the inline EDITOR's payload — both languages are saved, so both are read.
                 name: { ar: patch.ar ?? row.name.ar, en: patch.en ?? row.name.en },
                 extra: extraPayload(extra),
             },
@@ -165,11 +167,26 @@ export default function LookupsIndex({ list, lists, rows, pre_switch }: Props) {
                 </CardHeader>
 
                 <CardContent className="space-y-4">
+                    {/* ── The sentence, ONCE (2026-10-05) ─────────────────────────
+
+                        It used to be printed inside the usage column on every unused row, where
+                        Arabic wrapped to about one word per line and each row grew to ~300px. It
+                        explains a state, not a row — so it is said once, and only when a row on
+                        this page is actually in that state. */}
+                    {rows.some((row) => row.uses === 0) ? (
+                        <p className="text-xs leading-snug text-muted-foreground">
+                            {t(
+                                'lookups.unused_explained',
+                                'مفعّلة، لكن لا يظهر لها أثر على المتجر: لا يوجد منتج واحد مرتبط بها. اربطها بمنتج من شاشة المنتجات.',
+                            )}
+                        </p>
+                    ) : null}
+
                     <div className="overflow-x-auto">
                         <Table>
                             <TableHeader>
                                 <TableRow>
-                                    <TableHead className="w-14">#</TableHead>
+                                    <TableHead className="w-10">#</TableHead>
                                     <TableHead>{t('common.name_ar', 'الاسم (عربي)')}</TableHead>
                                     <TableHead>{t('common.name_en', 'الاسم (إنجليزي)')}</TableHead>
                                     {columns.map(([column, field]) => (
@@ -182,15 +199,16 @@ export default function LookupsIndex({ list, lists, rows, pre_switch }: Props) {
                             <TableBody>
                                 {rows.map((row) => (
                                     <TableRow key={row.id}>
-                                        <TableCell className="font-mono text-xs" dir="ltr">
-                                            {row.id}
+                                        <TableCell className="font-mono text-xs">
+                                            <Num>{row.id}</Num>
                                         </TableCell>
                                         <TableCell>
                                             <Input
                                                 dir="rtl"
                                                 lang="ar"
                                                 aria-label={t('lookups.row_name_ar_aria', 'الاسم العربي للعنصر :id', { id: row.id })}
-                                                className="min-w-[9rem]"
+                                                className="min-w-[7.5rem]"
+                                                // name-seam-exempt: the Arabic name's own input box
                                                 value={edits[row.id]?.ar ?? row.name.ar}
                                                 onChange={(event) => setEdits((current) => ({ ...current, [row.id]: { ...(current[row.id] ?? {}), ar: event.target.value } }))}
                                             />
@@ -200,7 +218,8 @@ export default function LookupsIndex({ list, lists, rows, pre_switch }: Props) {
                                                 dir="ltr"
                                                 lang="en"
                                                 aria-label={t('lookups.row_name_en_aria', 'الاسم الإنجليزي للعنصر :id', { id: row.id })}
-                                                className="min-w-[9rem]"
+                                                className="min-w-[7.5rem]"
+                                                // name-seam-exempt: the English name's own input box
                                                 value={edits[row.id]?.en ?? row.name.en}
                                                 onChange={(event) => setEdits((current) => ({ ...current, [row.id]: { ...(current[row.id] ?? {}), en: event.target.value } }))}
                                             />
@@ -222,11 +241,33 @@ export default function LookupsIndex({ list, lists, rows, pre_switch }: Props) {
                                             </TableCell>
                                         ))}
 
+                                        {/* ── The same contradiction as the category tree, and the
+                                               same correction to how it is SHOWN ────────────
+
+                                            item 7 (2026-09-19): a brand row showed `غير مستخدم`
+                                            beside a toggle reading `مفعّلة` and nothing said how the
+                                            two relate. It was replaced with a sentence ending in
+                                            the remedy.
+
+                                            2026-10-05: the sentence was printed in a NARROW
+                                            COLUMN, on every unused row. Arabic wrapped to roughly
+                                            one word per line and rows grew to about 300px — three
+                                            brands filled a screen. The explanation was right and
+                                            the place was wrong.
+
+                                            Now: a chip in the cell, and the sentence once, above
+                                            the table, shown only when some row on this page is
+                                            unused. A column this narrow does not get a sentence.
+
+                                            A row that IS used keeps a bare number, because there
+                                            is nothing to explain — §2.4: a count is a fact. */}
                                         <TableCell>
                                             {row.uses === 0 ? (
-                                                <Badge variant="neutral">{t('lookups.unused', 'غير مستخدم')}</Badge>
+                                                <Badge variant="neutral" className="whitespace-nowrap">
+                                                    {t('lookups.unused_chip', 'غير مستخدمة')}
+                                                </Badge>
                                             ) : (
-                                                <Badge variant="outline">{row.uses}</Badge>
+                                                <Num>{row.uses}</Num>
                                             )}
                                         </TableCell>
 
@@ -362,10 +403,22 @@ function ExtraCell({
     }
 
     if (field.type === 'image') {
+        /*
+         * ── A whole upload form does not fit inside a table cell (2026-10-05) ─────────
+         *
+         * `ImageField` is the product form's control: an 80px preview, a dashed drop frame, two
+         * buttons and the stored file path. Rendered once per brand it made every row on this
+         * screen **211px tall** and pushed the table 335px past the window at 1366 — 79 brands,
+         * three to a screen, and the usage column scrolled off the side.
+         *
+         * `compact` is the same control with the frame, the padding and the path line dropped and
+         * a 40px preview. Nothing is removed that is not still reachable: the file name is on the
+         * image's own `title`, and every other property of the row is editable in place beside it.
+         */
         return (
-            <div className="min-w-[10rem] space-y-1">
-                {urlHint === null ? null : <img src={urlHint} alt="" className="h-10 w-10 rounded border object-contain" />}
+            <div className="min-w-[7.5rem]">
                 <ImageField
+                    compact
                     label={field.label}
                     type={field.media_type ?? 'brand'}
                     value={

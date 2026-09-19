@@ -1,5 +1,6 @@
 <?php
 
+use App\Domain\Activity\ActivityLog;
 use App\Domain\Content\BannerState;
 use App\Domain\Content\BannerWriter;
 use App\Transform\Row;
@@ -210,4 +211,68 @@ it('404s a banner that belongs to another storefront, never 403', function () {
     ])->assertNotFound();
 
     delete("/manage/storefronts/1/banners/{$other}")->assertNotFound();
+});
+
+it('records what the home page used to show, and who changed it', function () {
+    /*
+     * The gap this closes (2026-10-05). A banner is the first thing a customer sees and every
+     * failure it has is silent — an empty hero slot, a link that goes nowhere, a window that
+     * closed. Nothing here recorded anything, so "the offer banner is gone" and "it opens the wrong
+     * category" had the same answer: nobody knows, and nobody knows what it pointed at before.
+     */
+    $admin = Staff::admin();
+    actingAs($admin);
+
+    post('/manage/storefronts/1/banners', [
+        'image_path' => '1700_2026-01-01_abc.webp',
+        'target' => 'url',
+        'link_url' => '/category/watches',
+        'sort_order' => 5,
+        'is_active' => true,
+    ])->assertSessionHasNoErrors();
+
+    $id = T::int(DB::table('storefront_banners')->orderByDesc('id')->value('id'));
+
+    put("/manage/storefronts/1/banners/{$id}", [
+        'image_path' => '1700_2026-01-01_abc.webp',
+        'target' => 'none',
+        'sort_order' => 5,
+        'is_active' => true,
+    ])->assertSessionHasNoErrors();
+
+    $actions = DB::table(ActivityLog::TABLE)
+        ->where('subject_type', 'storefront_banners')->where('subject_id', $id)
+        ->orderBy('id')->pluck('action')->all();
+
+    expect($actions)->toContain(ActivityLog::CREATED);
+    expect($actions)->toContain(ActivityLog::UPDATED);
+
+    $row = T::one(DB::table(ActivityLog::TABLE)
+        ->where('subject_type', 'storefront_banners')->where('subject_id', $id)
+        ->where('action', ActivityLog::UPDATED)->orderByDesc('id'));
+
+    expect(T::int($row->user_id))->toBe(T::int($admin->getAttribute('id')))
+        ->and(T::str($row->user_name))->toBe(Staff::nameOf($admin))
+        // A banner has no name: the image FILE is what identifies one, which is why the export
+        // carries the same column.
+        ->and(T::str($row->subject_label))->toBe('1700_2026-01-01_abc.webp')
+        ->and(T::int($row->storefront_id))->toBe(1);
+
+    // Where it USED to send people — the destination is the whole question a banner's log answers.
+    $changes = T::arr(json_decode(T::str($row->changes), true));
+    $link = T::arr($changes['link_url'] ?? null);
+
+    expect(T::str($link['from'] ?? null))->toBe('/category/watches')
+        // Nulled, not merely absent: the banner now points nowhere, and `?? …` would hide that.
+        ->and($link)->toHaveKey('to')
+        ->and($link['to'])->toBeNull();
+
+    // …and the delete says which banner left the home page, after the row is gone.
+    delete("/manage/storefronts/1/banners/{$id}")->assertSessionHasNoErrors();
+
+    $deleted = T::one(DB::table(ActivityLog::TABLE)
+        ->where('subject_type', 'storefront_banners')->where('subject_id', $id)
+        ->where('action', ActivityLog::DELETED)->orderByDesc('id'));
+
+    expect(T::str($deleted->subject_label))->toBe('1700_2026-01-01_abc.webp');
 });

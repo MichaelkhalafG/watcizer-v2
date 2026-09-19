@@ -1,6 +1,7 @@
 <?php
 
 use App\Domain\Access\Role;
+use App\Domain\Activity\ActivityLog;
 use App\Domain\Shipping\ShippingCities;
 use Illuminate\Support\Facades\DB;
 use Tests\Support\Props;
@@ -223,4 +224,54 @@ it('names MANAGE_SHIPPING as an admin ability that data-entry does not hold', fu
     expect(Role::ABILITIES)->toContain(Role::MANAGE_SHIPPING)
         ->and(Role::Admin->abilities())->toContain(Role::MANAGE_SHIPPING)
         ->and(Role::DataEntry->abilities())->not->toContain(Role::MANAGE_SHIPPING);
+});
+
+it('records the governorate and the price it used to charge, with who changed them', function () {
+    /*
+     * The gap this closes (2026-10-05). The delivery price is money charged to every customer in
+     * the governorate, on every order, until somebody reads the accounts — and this screen, the
+     * only editor of it anywhere, recorded nothing at all. A wrong number had no author, no
+     * previous value and no date.
+     */
+    $admin = Staff::admin();
+    actingAs($admin);
+
+    post('/manage/shipping', [
+        'name_ar' => 'محافظة السجل',
+        'name_en' => 'Log Governorate',
+        'shipping_cost' => '45.00',
+    ])->assertSessionHasNoErrors();
+
+    $id = T::int(DB::table('shipping_cities')->orderByDesc('id')->value('id'));
+
+    put("/manage/shipping/{$id}", [
+        'name_ar' => 'محافظة السجل',
+        'name_en' => 'Log Governorate',
+        'shipping_cost' => '85.00',
+        '_complete' => 1,
+    ])->assertRedirect();
+
+    $actions = DB::table(ActivityLog::TABLE)
+        ->where('subject_type', 'shipping_cities')->where('subject_id', $id)
+        ->orderBy('id')->pluck('action')->all();
+
+    expect($actions)->toContain(ActivityLog::CREATED);
+    expect($actions)->toContain(ActivityLog::UPDATED);
+
+    $row = T::one(DB::table(ActivityLog::TABLE)
+        ->where('subject_type', 'shipping_cities')->where('subject_id', $id)
+        ->where('action', ActivityLog::UPDATED)->orderByDesc('id'));
+
+    // WHO, by the name the log captured at the time — not merely "somebody".
+    expect(T::int($row->user_id))->toBe(T::int($admin->getAttribute('id')))
+        ->and(T::str($row->user_name))->toBe(Staff::nameOf($admin))
+        // …and WHICH governorate, in the word an operator uses for it.
+        ->and(T::str($row->subject_label))->toBe('محافظة السجل');
+
+    $changes = T::arr(json_decode(T::str($row->changes), true));
+    $cost = T::arr($changes['shipping_cost'] ?? null);
+
+    // Compared as money: the point of the row is that the old price survived the write.
+    expect(T::float($cost['from'] ?? null))->toBe(45.0)
+        ->and(T::float($cost['to'] ?? null))->toBe(85.0);
 });

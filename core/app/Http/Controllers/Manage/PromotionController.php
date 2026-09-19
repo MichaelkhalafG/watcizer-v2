@@ -265,8 +265,9 @@ final class PromotionController
             ->where(function (Builder $outer) use ($term): void {
                 $outer->where('t.title', 'like', '%'.$term.'%')
                     ->orWhere('p.wa_code', 'like', $term.'%')
-                    ->orWhere('p.sku', 'like', $term.'%')
-                    ->orWhere('p.model_number', 'like', $term.'%');
+                    // `model_number` was a third column here and is the same value as `p.sku`
+                    // since the merge (item 4), so searching it as well would only cost a scan.
+                    ->orWhere('p.sku', 'like', $term.'%');
             })
             ->orderBy('p.id')
             ->limit(20)
@@ -347,6 +348,29 @@ final class PromotionController
          * evaluated the STORED rule would answer about yesterday's version — which is the one thing
          * a preview must not do. Nothing survives this method.
          */
+        /*
+         * ── Unwind to the level we FOUND, not to zero (2026-10-05) ──────────────────
+         *
+         * This method used to `rollBack()` in the catch AND again in a `finally` guarded by
+         * `transactionLevel() > 0`. In production that guard is right — after the catch's rollback
+         * the level is 0 and the second one is skipped. Whenever a transaction is ALREADY OPEN
+         * around this call it is wrong twice over: the catch unwinds this method's savepoint, and
+         * then the `finally` sees the CALLER's transaction still open and rolls that back too.
+         *
+         * The whole test suite runs inside exactly such a transaction, so a refused preview drops
+         * the suite out of it. Measured with a scratch probe rather than assumed: the level really
+         * does reach 0, and anything that SAME test writes afterwards survives the run
+         * permanently. A later test is not affected — `DatabaseTransactions` opens a fresh
+         * transaction per test — so the damage is bounded to the offending test, and a silent
+         * permanent write is bad enough on a database with no test-only copy.
+         *
+         * Found by asserting `transactionLevel() >= 1` after every test, which is now permanent in
+         * `Tests\TestCase::tearDown()`.
+         *
+         * The same shape would corrupt production the first time anything wraps this call.
+         */
+        $outer = DB::transactionLevel();
+
         DB::beginTransaction();
 
         try {
@@ -375,12 +399,14 @@ final class PromotionController
              * The draft is not saveable yet — a missing end date, an unbounded reward, a gift that
              * is not visible where the rule runs. The admin gets the SAME refusals the save would
              * give, before they press save, which is most of what a preview is for.
+             *
+             * No `rollBack()` here: the `finally` below does it, once, for every exit path. Two
+             * rollbacks for one `beginTransaction()` is what broke the suite.
              */
-            DB::rollBack();
-
             return response()->json(['ok' => false, 'errors' => $e->errors()], 422);
         } finally {
-            if (DB::transactionLevel() > 0) {
+            // Down to where we started and no further — never to zero.
+            while (DB::transactionLevel() > $outer) {
                 DB::rollBack();
             }
         }

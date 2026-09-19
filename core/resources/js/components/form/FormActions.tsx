@@ -16,6 +16,7 @@ export function FormActions({
     submitLabel,
     cancelLabel,
     extra,
+    formId,
 }: {
     processing?: boolean;
     dirty?: boolean;
@@ -23,6 +24,16 @@ export function FormActions({
     submitLabel?: string;
     cancelLabel?: string;
     extra?: ReactNode;
+    /**
+     * The id of the `<form>` this submits, for when the button is NOT inside it.
+     *
+     * HTML's own `form=` association, not a click handler: the button still submits, still
+     * validates, and `Enter` in a field still works. Needed since 2026-10-05, because the product
+     * form's save bar had to move OUTSIDE the form element — a `position: sticky` box only sticks
+     * inside its own parent, so a bar inside the form stopped sticking the moment the page scrolled
+     * into the variants panel, which is deliberately rendered after `</form>`.
+     */
+    formId?: string;
 }) {
     /*
      * The labels default INSIDE the body, not in the parameter list. A default parameter is
@@ -35,7 +46,7 @@ export function FormActions({
 
     return (
         <div className="flex flex-wrap items-center gap-2">
-            <Button type="submit" disabled={processing || !dirty} className="gap-2">
+            <Button type="submit" form={formId} disabled={processing || !dirty} className="gap-2">
                 {processing ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}
                 {processing ? t('common.saving', 'جارٍ الحفظ…') : submit}
             </Button>

@@ -470,6 +470,25 @@ final class CategoryController
         $before = self::categoryFields($storefront->id, $category);
 
         try {
+            /*
+             * ── Delete is gated by the same rule as CREATE (2026-09-19) ────────────────────
+             *
+             * Creating a category is blocked before the write switch, because a node with no
+             * legacy key is destroyed by a rebuild. Deleting one was not blocked, and the only
+             * reason nothing noticed is that the block on creation meant no deletable node could
+             * exist: every node was legacy-sourced, or held children, or held products. The
+             * invariant was a property of the data, not a rule.
+             *
+             * The Electronics restoration (item 1b) created seven nodes that are none of those,
+             * and `StorefrontIsolationTest`'s reachability sweep found the hole the same hour —
+             * which is what that test is for.
+             *
+             * A gate that permits destruction while forbidding restoration is worse than a gate
+             * in either direction: an operator could delete this node and then be refused when
+             * they tried to put it back. So the same assertion guards both verbs.
+             */
+            PreSwitch::assertMayCreate('category');
+
             $this->tree->delete($storefront->id, $category);
         } catch (RuntimeException $e) {
             return back()->withErrors(['tree' => $e->getMessage()]);
@@ -639,11 +658,53 @@ final class CategoryController
                 'products_subtree' => Coerce::int($subtreeLive[$id] ?? null),
                 'products_any_subtree' => Coerce::int($subtreeAny[$id] ?? null),
                 'in_menu' => $active && $inMenuFlag && $hasVisible,
+                /*
+                 * ── One statement, not two badges that contradict each other (item 6, 2026-09-19)
+                 *
+                 * The row used to carry «فارغ — مخفي تلقائيًا» beside a toggle reading «مفعّل»,
+                 * with nothing connecting them. They are two different facts — the category is
+                 * switched ON administratively, and the §3.3 visibility rule hides it anyway
+                 * because nothing visible sits in it — and a screen that shows both without
+                 * saying which causes which reads as a contradiction. It was reported as one.
+                 *
+                 * So the reason is now a WHOLE sentence that ends with the remedy. A state the
+                 * operator cannot change needs no remedy and gets none; the three they can change
+                 * each name the one control that changes it.
+                 */
                 'in_menu_reason' => match (true) {
-                    ! $active => ManageText::t('products.inactive', 'معطّل'),
-                    ! $inMenuFlag => ManageText::t('categories.excluded_from_menu', 'مستبعد من القائمة يدويًا'),
-                    ! $hasVisible => ManageText::t('categories.no_visible_product', 'لا يوجد منتج ظاهر فيه أو في فروعه'),
-                    default => ManageText::t('common.visible', 'ظاهر'),
+                    ! $active => ManageText::t(
+                        'categories.hidden_because_inactive',
+                        'التصنيف موقوف، فلا يظهر هو ولا منتجاته على المتجر. شغّل مفتاح «مفعّل» ليعود.',
+                    ),
+                    ! $inMenuFlag => ManageText::t(
+                        'categories.hidden_because_excluded',
+                        'مفعّل، لكنه مستبعد من القائمة يدويًا: صفحته تعمل ومنتجاته معروضة، وهو وحده غير مدرج في قائمة المتجر. شغّل مفتاح «في القائمة» ليُدرج.',
+                    ),
+                    ! $hasVisible => ManageText::t(
+                        'categories.hidden_because_empty',
+                        'مفعّل، لكنه لا يظهر في القائمة: لا يوجد بداخله ولا في فروعه منتج واحد ظاهر. أضِف إليه منتجًا ظاهرًا وسيظهر من تلقاء نفسه.',
+                    ),
+                    default => ManageText::t('categories.in_menu', 'في القائمة'),
+                },
+                /*
+                 * ── The same answer in two or three words (2026-10-05) ─────────────────
+                 *
+                 * The sentence above was the right fix for a real contradiction and the wrong
+                 * thing to print on sixty rows: the developer found the tree with the explanation
+                 * repeated identically down the page, eating so much of each row that the category
+                 * NAMES truncated to «ساعات سـ…». The one thing that must be readable was the one
+                 * thing that lost.
+                 *
+                 * So the row takes THIS — two words naming which of the three rules is hiding the
+                 * node — and the sentence stays for the chip's tooltip and for the edit dialog,
+                 * where the operator is dealing with that node and nothing is competing for the
+                 * width. The rule is general: a per-row marker is a label, not a paragraph.
+                 */
+                'in_menu_reason_short' => match (true) {
+                    ! $active => ManageText::t('categories.short_inactive', 'موقوف'),
+                    ! $inMenuFlag => ManageText::t('categories.short_excluded', 'مستبعد يدويًا'),
+                    ! $hasVisible => ManageText::t('categories.short_empty', 'لا منتج ظاهر'),
+                    default => '',
                 },
                 // Derived with the transform's own rule and config, so the answer here and the
                 // answer a product save computes are the same answer. A node whose `path` is
