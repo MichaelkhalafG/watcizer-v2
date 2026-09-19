@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Manage;
 
+use App\Domain\Access\Role;
 use App\Domain\Activity\ActivityLog;
 use App\Domain\Catalog\FieldRefusal;
 use App\Domain\Catalog\PlacementWriter;
@@ -18,6 +19,7 @@ use Illuminate\Database\Query\JoinClause;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
@@ -161,9 +163,26 @@ final class PlacementController
                 ? ManageText::t('placement.slug_warning', 'تغيير الرابط ينشئ تحويلًا 301 من الرابط القديم تلقائيًا، لكن الروابط المنشورة والمشاركة ستمر عبر التحويل. لا تغيّره بلا سبب.')
                 : PreSwitch::slugMessage(),
             'slug_lock' => PreSwitch::slugState(),
-            // Worded for what THIS screen loses: placements, visibility, order, featured, and any
-            // hand-typed slug together with the 301 written for it.
-            'pre_switch_notice' => PreSwitch::noticeFor('placement'),
+            /*
+             * Whether THIS operator may type a slug at all (item 6, 2026-09-18).
+             *
+             * Deliberately a second prop rather than folded into `slug_lock`. They are two
+             * different rules with two different answers: `slug_lock` is about the CALENDAR and is
+             * the same for everybody, this is about the PERSON and is the same on any day. Folding
+             * them would give an operator one sentence that is half true for them, and would make
+             * the screen unable to say which rule it is reporting.
+             *
+             * Hiding is never the control — `PlacementWriter::assertMayTypeSlug()` refuses on the
+             * server and `RouteAuthorizationTest` proves it. This is so the field looks disabled
+             * instead of looking broken.
+             */
+            'slug_role' => [
+                'allowed' => Gate::allows(Role::EDIT_PRODUCT_SLUG),
+                'message' => Gate::allows(Role::EDIT_PRODUCT_SLUG) ? null : ManageText::t(
+                    'placement.slug_admin_only',
+                    'تغيير رابط المنتج متاح للمدير فقط. الرابط هو عنوان الصفحة عند العملاء وفي جوجل، وتغييره ينقل الصفحة ويعتمد على تحويل 301 لكي لا تصبح 404. لو الرابط يحتاج تعديلًا اطلب ذلك من المدير.',
+                ),
+            ],
         ]);
     }
 
@@ -216,7 +235,7 @@ final class PlacementController
                     Coerce::nint($payload['primary_category_id'] ?? null),
                 );
             }
-            $this->placements->save($storefront->id, $product, $payload);
+            $this->placements->save($storefront->id, $product, $payload, visibilityRequested: true);
         } catch (RuntimeException $e) {
             /*
              * Route the refusal to the FIELD it is about. Three different rules land here — the
@@ -294,14 +313,39 @@ final class PlacementController
     public function bulk(Request $request, Storefront $storefront): RedirectResponse
     {
         $request->validate([
-            'action' => ['required', 'string', 'in:show,hide,feature,unfeature'],
+            'action' => ['required', 'string', 'in:show,hide,feature,unfeature,set_category,clear_category'],
             'product_ids' => ['required', 'array', 'min:1', 'max:500'],
             'product_ids.*' => ['integer', 'min:1'],
+            /*
+             * ── The bulk category actions (W-1, 2026-09-19) ─────────────────────────────────
+             *
+             * *"The single most expensive gap in the product."* Correcting a wrong category on
+             * twenty products meant, twenty times: open a 7.4-screen form, scroll to the picker,
+             * scroll inside a 200 px pane through 61 names, untick, tick, set the primary, scroll
+             * five screens down, Save, scroll back up to find out whether it saved.
+             *
+             * The node is validated as belonging to THIS storefront by `Rule::exists` with the
+             * storefront in the where — a node from another shop is not an error naming it, it
+             * simply does not exist as far as this request is concerned (study §3.11.14).
+             */
+            'category_id' => [
+                'required_if:action,set_category', 'required_if:action,clear_category',
+                'integer',
+                Rule::exists('storefront_categories', 'id')->where('storefront_id', $storefront->id),
+            ],
+            // Whether the added category also becomes the product's PRIMARY — the one that decides
+            // its breadcrumb and its family. Off by default: promoting a primary is a bigger
+            // decision than filing a product, and a bulk action should not make it by accident.
+            'make_primary' => ['nullable', 'boolean'],
         ]);
 
         $action = $request->string('action')->toString();
         $skipped = [];
         $done = 0;
+
+        if ($action === 'set_category' || $action === 'clear_category') {
+            return $this->bulkCategory($request, $storefront, $action);
+        }
 
         foreach ((array) $request->input('product_ids') as $raw) {
             if (! is_numeric($raw)) {
@@ -334,7 +378,7 @@ final class PlacementController
             ];
 
             try {
-                $this->placements->save($storefront->id, $productId, $payload);
+                $this->placements->save($storefront->id, $productId, $payload, visibilityRequested: true);
                 $done++;
 
                 /*
@@ -379,6 +423,148 @@ final class PlacementController
         return $skipped === []
             ? back()->with('status', $message)
             : back()->with('status', $message)->withErrors(['bulk' => $message]);
+    }
+
+    /**
+     * Add a category to a batch of products, or take one away (W-1).
+     *
+     * ── ADDITIVE, never a replacement ───────────────────────────────────────────────────────
+     *
+     * `set_category` adds the chosen node to whatever each product already has; it does not
+     * replace the set. That is the difference between a bulk action somebody can use without
+     * reading the code and one that quietly strips categories the operator never saw — twenty
+     * products selected from a filtered list have twenty different existing sets, and none of them
+     * is on screen. Correcting a wrong category is therefore two deliberate passes: clear the
+     * wrong one, add the right one. Two passes over twenty products is still two actions instead
+     * of twenty seven-screen form edits.
+     *
+     * ── What it refuses, and why that is the whole point ────────────────────────────────────
+     *
+     * Taking a product's LAST category away while it is visible leaves it on sale and reachable
+     * from no listing on the site — the `بلا تصنيف` state, created in bulk, silently. Those
+     * products are skipped and named, which is the posture this screen already takes for its other
+     * refusals: the placement screen REFUSES where the product form demotes, because on this
+     * screen placement is the only thing being decided (see `PreventionTest`).
+     */
+    private function bulkCategory(Request $request, Storefront $storefront, string $action): RedirectResponse
+    {
+        $categoryId = Coerce::int($request->input('category_id'));
+        $makePrimary = $request->boolean('make_primary');
+
+        $skipped = [];
+        $done = 0;
+        $unchanged = 0;
+
+        foreach (Coerce::intList($request->input('product_ids')) as $productId) {
+            // Only products that are ON this storefront. One that is not is not a failure to
+            // report — it was never in this screen's world (D-3: absent is not a fault).
+            $onStorefront = DB::table('storefront_product')
+                ->where('storefront_id', $storefront->id)->where('product_id', $productId)
+                ->first(['is_visible']);
+            if ($onStorefront === null) {
+                $skipped[] = $productId;
+
+                continue;
+            }
+
+            $before = self::categoryIdsOf($storefront->id, $productId);
+            $primary = self::primaryIdOf($storefront->id, $productId);
+
+            if ($action === 'set_category') {
+                if (in_array($categoryId, $before, true) && (! $makePrimary || $primary === $categoryId)) {
+                    $unchanged++;
+
+                    continue;
+                }
+                $after = in_array($categoryId, $before, true) ? $before : [...$before, $categoryId];
+                $nextPrimary = $makePrimary ? $categoryId : $primary;
+            } else {
+                if (! in_array($categoryId, $before, true)) {
+                    $unchanged++;
+
+                    continue;
+                }
+                $after = array_values(array_filter($before, fn (int $id): bool => $id !== $categoryId));
+
+                // The refusal: a VISIBLE product with nothing left is on sale and in no listing.
+                if ($after === [] && Row::bool(Row::cast($onStorefront), 'is_visible')) {
+                    $skipped[] = $productId;
+
+                    continue;
+                }
+                $nextPrimary = $primary === $categoryId ? ($after[0] ?? null) : $primary;
+            }
+
+            $this->placements->place($storefront->id, $productId, $after, $nextPrimary);
+            $done++;
+
+            // One row per product, for the same reason the visibility bulk above keeps one: the
+            // question this log answers is "why is THIS product filed here?".
+            ActivityLog::record(
+                'storefront_product', $productId, ActivityLog::UPDATED,
+                ['categories' => implode(',', $before)],
+                ['categories' => implode(',', $after)],
+                label: self::productLabel($productId),
+                storefrontId: Coerce::nint($storefront->id),
+            );
+        }
+
+        $message = $action === 'set_category'
+            ? ManageText::t('placement.bulk_category_added', 'تمت إضافة التصنيف إلى :count منتجًا.', ['count' => $done])
+            : ManageText::t('placement.bulk_category_removed', 'تم حذف التصنيف من :count منتجًا.', ['count' => $done]);
+
+        if ($unchanged > 0) {
+            $message .= ' '.ManageText::t(
+                'placement.bulk_category_unchanged',
+                'و:count منتجًا كان بالفعل على الحالة المطلوبة فلم يتغيّر.',
+                ['count' => $unchanged],
+            );
+        }
+
+        if ($skipped === []) {
+            return back()->with('status', $message);
+        }
+
+        $message .= ' '.ManageText::t(
+            'placement.bulk_category_skipped',
+            'وتُخطّي :count منتجًا: إمّا غير معروض على هذا المتجر أصلًا، أو كان هذا تصنيفه الوحيد وهو ظاهر — وحذفه كان سيتركه معروضًا للبيع بلا أي قائمة تصل إليه: :ids.',
+            [
+                'count' => count($skipped),
+                'ids' => implode(ManageText::t('common.list_separator', '، '), array_slice($skipped, 0, 20)),
+            ],
+        );
+
+        return back()->with('status', $message)->withErrors(['bulk' => $message]);
+    }
+
+    /**
+     * The category ids a product holds on one storefront.
+     *
+     * @return list<int>
+     */
+    private static function categoryIdsOf(int $storefrontId, int $productId): array
+    {
+        $out = [];
+        foreach (
+            DB::table('storefront_category_product')
+                ->where('storefront_id', $storefrontId)->where('product_id', $productId)
+                ->orderBy('id')->pluck('storefront_category_id') as $value
+        ) {
+            $out[] = Coerce::int($value);
+        }
+
+        return $out;
+    }
+
+    /** …and which of them is the primary, or null. */
+    private static function primaryIdOf(int $storefrontId, int $productId): ?int
+    {
+        return Coerce::nint(
+            DB::table('storefront_category_product')
+                ->where('storefront_id', $storefrontId)->where('product_id', $productId)
+                ->where('is_primary', true)
+                ->value('storefront_category_id')
+        );
     }
 
     // ── the query ────────────────────────────────────────────────────────────────────────────

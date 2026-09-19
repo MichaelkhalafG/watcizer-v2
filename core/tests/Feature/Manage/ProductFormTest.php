@@ -42,6 +42,10 @@ function productPayload(array $overrides = []): array
         'is_active' => true,
         'title' => ['ar' => 'ساعة اختبار', 'en' => 'Test watch'],
         'short_description' => ['ar' => 'وصف', 'en' => 'Description'],
+        // Sent because this payload is a full REPLACE and several of these tests edit a
+        // VISIBLE product: omitting it would blank the description and the writer refuses
+        // that outright ({@see ProductWriter::assertVisibleProductStaysComplete()}).
+        'long_description' => ['ar' => 'وصف تفصيلي', 'en' => 'Long description'],
         'specs' => [],
         'images' => [],
         'feature_ids' => [],
@@ -396,7 +400,11 @@ it('ships the create form with every block and lookup it might need', function (
         ->and($props['lookups'])->toHaveKey('colors')
         ->and($props['lookups'])->toHaveKey('units')
         ->and($props['categories'])->toBeArray()
-        // The pre-switch notice is on the create screen: a product typed here now is replaced by
-        // the next rebuild, and the team has to know that before they spend an afternoon.
-        ->and($props['pre_switch_notice'])->toBeArray();
+        /*
+         * And NO pre-switch banner. This used to assert the opposite — that the create screen
+         * carries a notice saying the next rebuild replaces anything typed here. The developer
+         * removed every one of those on 2026-09-18 because the team is now working as though the
+         * switch has happened, so the prop is gone from the payload rather than merely empty.
+         */
+        ->and(array_key_exists('pre_switch_notice', $props))->toBeFalse();
 });

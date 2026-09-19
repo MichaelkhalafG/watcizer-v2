@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import ManageLayout from '@/layouts/ManageLayout';
 import { useT } from '@/lib/i18n';
+import { methodLabel, providerLabel } from '@/lib/labels';
 
 /**
  * One customer (wave 4D) — what somebody needs while the person is on the telephone.
@@ -48,6 +49,7 @@ interface Props {
         phone: string | null;
         orders_count: number;
         spent: string;
+        ordered: string;
         last_order_at: string | null;
         joined_at: string | null;
         storefronts: string[];
@@ -122,9 +124,29 @@ export default function CustomerShow({ customer, orders, addresses }: Props) {
                         <Field label={t('customers.show_orders_count', 'عدد الطلبات')}>
                             <Num className="text-lg font-semibold">{customer.orders_count}</Num>
                         </Field>
-                        <Field label={t('common.total_spent', 'إجمالي المشتريات')}>
-                            {/* Delivered and completed only — money taken, not money asked for. */}
+                        {/* ── Two figures, because one of them was unreadable alone (D-23) ─────
+
+                            `إجمالي المشتريات 0.00` sat beside `عدد الطلبات 5`, with five orders of
+                            3,190 listed underneath. The query was right — a pending order is not a
+                            purchase — but no order in this database has ever reached `delivered`
+                            or `completed`, so the column is 0.00 for every customer and an
+                            unqualified label beside an order count reads as broken data.
+
+                            Loosening the query would have been the wrong repair: it would make the
+                            number that means "money actually taken" stop meaning that. So both are
+                            named for exactly what they are, and the gap between them is the shop's
+                            open exposure. */}
+                        <Field label={t('customers.ordered_total', 'إجمالي ما طلبه')}>
+                            <Num className="text-lg font-semibold">{money.format(Number(customer.ordered))}</Num>
+                            <p className="mt-0.5 text-[11px] text-muted-foreground">
+                                {t('customers.ordered_hint', 'كل الطلبات عدا الملغاة.')}
+                            </p>
+                        </Field>
+                        <Field label={t('customers.delivered_total', 'إجمالي ما استلمه')}>
                             <Num className="text-lg font-semibold">{money.format(Number(customer.spent))}</Num>
+                            <p className="mt-0.5 text-[11px] text-muted-foreground">
+                                {t('customers.delivered_hint', 'الطلبات التي وصلت العميل فعلًا — لا تشمل قيد التنفيذ ولا الملغاة.')}
+                            </p>
                         </Field>
                         <Field label={t('customers.show_first_seen_last_order', 'أول ظهور / آخر طلب')}>
                             <Num className="text-sm">
@@ -172,7 +194,9 @@ export default function CustomerShow({ customer, orders, addresses }: Props) {
                                                 <Num>{money.format(Number(order.total))}</Num>
                                             </TableCell>
                                             <TableCell className="text-xs text-muted-foreground">
-                                                <Ltr>{order.provider ?? order.payment_method ?? '—'}</Ltr>
+                                                {order.provider !== null
+                                                    ? providerLabel(t, order.provider)
+                                                    : methodLabel(t, order.payment_method)}
                                             </TableCell>
                                             <TableCell className="text-xs">{order.storefront ?? '—'}</TableCell>
                                             <TableCell align="end">

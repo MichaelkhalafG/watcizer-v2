@@ -44,7 +44,9 @@ enum Role: string
     public const ABILITIES = [
         self::VIEW_DASHBOARD,
         self::MANAGE_CATALOG,
+        self::EDIT_CATEGORY_TREE,
         self::MANAGE_PLACEMENT,
+        self::EDIT_PRODUCT_SLUG,
         self::MANAGE_LEGACY_CONTENT,
         self::MANAGE_MEDIA,
         self::VIEW_ORDERS,
@@ -79,7 +81,39 @@ enum Role: string
 
     public const MANAGE_CATALOG = 'manage-catalog';               // products, categories, units (4B)
 
+    /**
+     * CHANGE THE SHAPE OF A CATEGORY TREE — admin only (item 6, developer 2026-09-18).
+     *
+     * `MANAGE_CATALOG` stays with data-entry and still covers everything they do all day, RENAMING
+     * a category included. What this narrows is the four operations that change the tree's SHAPE:
+     * create a node, move it under a different parent, reorder siblings, deactivate one.
+     *
+     * The difference is blast radius, not seniority. A rename changes a word on a page. Moving a
+     * node moves every product under it, changes the breadcrumb and the menu, and re-derives the
+     * family — and on a tree of 7,713 products nobody notices until a customer cannot find
+     * something. A mis-drag is one gesture and its consequences are a day's work to unpick.
+     *
+     * In {@see self::ABILITIES}, so every administrator holds it through `Gate::before`, and absent
+     * from data-entry's list below. The screen SAYS so rather than hiding the buttons: an operator
+     * who cannot click needs to know it is a rule and not a fault.
+     */
+    public const EDIT_CATEGORY_TREE = 'edit-category-tree';
+
     public const MANAGE_PLACEMENT = 'manage-placement';           // visibility, sort, featured (4B)
+
+    /**
+     * TYPE A PRODUCT'S PUBLIC URL — admin only (item 6, developer 2026-09-18).
+     *
+     * Everything else on the placement screen stays with data-entry: visibility, order, featured,
+     * the category set. Those are DECISIONS, and remaking a decision costs a click.
+     *
+     * A slug is not a decision, it is an address. Changing it moves a page customers have
+     * bookmarked and Google has indexed; the 301 written alongside it is what keeps that from being
+     * a 404, and a redirect chain built by trial and error is its own problem. After the switch the
+     * archived Brand Fashion URLs depend on these exact strings (item 7). One person owning them is
+     * the difference between a URL map and a pile of guesses.
+     */
+    public const EDIT_PRODUCT_SLUG = 'edit-product-slug';
 
     public const MANAGE_LEGACY_CONTENT = 'manage-legacy-content'; // offers, banners, blogs (4C)
 

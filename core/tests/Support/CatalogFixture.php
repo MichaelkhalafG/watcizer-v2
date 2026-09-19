@@ -115,10 +115,28 @@ final class CatalogFixture
             'updated_at' => now(),
         ]));
 
+        /*
+         * Both descriptions in both languages, and a gender below — because since 2026-09-18 those
+         * gate VISIBILITY alongside the image ({@see PlacementWriter::missingForVisibility()}).
+         * Same reasoning as the image directly below: a fixture that cannot be published is not the
+         * shape of anything a test is trying to describe, and every gate is proved instead with a
+         * product built deliberately without the one field under test.
+         */
         DB::table('catalog_product_translations')->insert([
-            ['product_id' => $id, 'locale' => 'ar', 'title' => 'منتج اختبار 4B'],
-            ['product_id' => $id, 'locale' => 'en', 'title' => 'Wave 4B test product'],
+            [
+                'product_id' => $id, 'locale' => 'ar', 'title' => 'منتج اختبار 4B',
+                'short_description' => 'وصف مختصر للاختبار', 'long_description' => 'وصف تفصيلي للاختبار',
+            ],
+            [
+                'product_id' => $id, 'locale' => 'en', 'title' => 'Wave 4B test product',
+                'short_description' => 'Short description for the fixture', 'long_description' => 'Long description for the fixture',
+            ],
         ]);
+
+        $genderId = DB::table('catalog_genders')->orderBy('id')->value('id');
+        if ($genderId !== null) {
+            DB::table('catalog_product_gender')->insert(['product_id' => $id, 'gender_id' => T::int($genderId)]);
+        }
 
         /*
          * One image, because since 2026-09-11 a product with NO image may not be made visible

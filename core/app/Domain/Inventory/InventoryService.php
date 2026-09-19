@@ -9,6 +9,7 @@ use App\Support\DeadlockRetry;
 use App\Support\Sql;
 use App\Transform\Row;
 use Closure;
+use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
@@ -105,6 +106,42 @@ final class InventoryService
     public static function columns(): array
     {
         return ['express' => 'stock_express', 'market' => 'stock_market'];
+    }
+
+    /**
+     * The dashboard's ONE definition of a sellable product.
+     *
+     * Everything the two stock screens count is counted off this base, so the KPI on `/manage`,
+     * the banner on `/manage/inventory` and the rows behind the `مخزون منخفض` filter cannot
+     * disagree — which they did, loudly, until 2026-09-19: the home tile said 4,946 and the
+     * banner said 7,524 for the same words on two screens an operator reads in the same minute.
+     * The predicate had been written out by hand in three places and two of them had drifted.
+     *
+     * Deleted and deactivated products are out because neither can be bought: an alert the team
+     * cannot act on is not an alert.
+     */
+    public static function sellableProducts(): QueryBuilder
+    {
+        return DB::table('catalog_products')->whereNull('deleted_at')->where('is_active', 1);
+    }
+
+    /**
+     * At or below the product's OWN threshold, and still orderable.
+     *
+     * `in_stock = 1` is the half that was missing from the banner. A product with nothing left is
+     * not *low* — it is GONE, and it is counted by {@see self::outOfStockProducts()} under its own
+     * name. Adding the 2,578 out-of-stock rows to the 4,946 genuinely-low ones produced an alarm
+     * covering 97.5% of the catalogue, which is a number nobody reads twice.
+     */
+    public static function lowStockProducts(): QueryBuilder
+    {
+        return self::sellableProducts()->where('in_stock', 1)->whereRaw(Sql::belowLowStockThreshold());
+    }
+
+    /** Nothing left in either bucket. Separate from "low" because the answer is different. */
+    public static function outOfStockProducts(): QueryBuilder
+    {
+        return self::sellableProducts()->where('in_stock', 0);
     }
 
     /** The legacy `type_stock` enum maps to a bucket exactly as the legacy checkout mapped it. */

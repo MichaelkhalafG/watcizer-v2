@@ -136,6 +136,8 @@ final class ProductWriter
                 throw new RuntimeException("Product {$productId} does not exist.");
             }
 
+            $this->assertVisibleProductStaysComplete($productId, $data);
+
             $family = $this->familyFor($data, $productId);
             $row = $this->scalarColumns($data, $family);
             $row['updated_by'] = $actorId;
@@ -177,6 +179,85 @@ final class ProductWriter
             $this->indexer->reindex($productId);
             $this->flush($productId);
         });
+    }
+
+    /**
+     * Refuse a REPLACE payload that would strip a live product of a field it needs to stay on sale.
+     *
+     * ── What this is for ────────────────────────────────────────────────────────────────────
+     *
+     * `update()` is a full-replace contract: {@see self::writeTranslations()} reads every column in
+     * {@see self::TRANSLATED} out of the payload and writes `null` for any that is absent. That is
+     * correct for the form — it is how an operator empties a field — and it is how a five-field
+     * script silently erases the other thirty-five.
+     *
+     * Since 2026-09-18 the consequence got worse: those descriptions gate visibility, so blanking
+     * them does not merely lose text, it takes the product off the storefront. The form is
+     * unaffected because it always sends every field. What this stops is a caller that should have
+     * been on the PARTIAL path ({@see ProductPatcher}) and was not.
+     *
+     * It lives on the writer rather than in a controller deliberately (developer, 2026-09-18):
+     * *"a future caller should hit it wherever it comes from."*
+     *
+     * Only VISIBLE products are guarded. A hidden product has nothing to lose by being emptied, and
+     * refusing there would block the legitimate act of clearing a field on a draft.
+     *
+     * @param  array<string, mixed>  $data
+     *
+     * @throws RuntimeException naming the fields it would have removed
+     */
+    private function assertVisibleProductStaysComplete(int $productId, array $data): void
+    {
+        $visibleOn = DB::table('storefront_product')
+            ->where('product_id', $productId)->where('is_visible', true)->count();
+        if ($visibleOn === 0) {
+            return;
+        }
+
+        $labels = [
+            'title' => ManageText::t('products.field_title', 'العنوان'),
+            'short_description' => ManageText::t('products.field_short_description', 'وصف مختصر'),
+            'long_description' => ManageText::t('products.field_long_description', 'الوصف الكامل'),
+        ];
+        $locales = [
+            'ar' => ManageText::t('common.arabic', 'عربي'),
+            'en' => ManageText::t('common.english', 'إنجليزي'),
+        ];
+
+        $rows = DB::table('catalog_product_translations')
+            ->where('product_id', $productId)
+            ->get(array_merge(['locale'], PlacementWriter::REQUIRED_TRANSLATED));
+
+        $losing = [];
+        $firstColumn = null;
+        foreach ($rows as $raw) {
+            $row = Row::cast($raw);
+            $locale = Row::str($row, 'locale');
+            if (! isset($locales[$locale])) {
+                continue;
+            }
+
+            foreach (PlacementWriter::REQUIRED_TRANSLATED as $column) {
+                $held = trim(Row::nstr($row, $column) ?? '') !== '';
+                $incoming = trim(Coerce::str(Coerce::arr($data[$column] ?? null)[$locale] ?? null));
+                if ($held && $incoming === '') {
+                    $losing[] = $labels[$column].' — '.$locales[$locale];
+                    $firstColumn ??= $column;
+                }
+            }
+        }
+
+        if ($losing === []) {
+            return;
+        }
+
+        // Declares its field, so the message lands beside a box rather than at the top of a form
+        // whose fields all look fine ({@see FieldRefusal}).
+        throw new FieldRefusal($firstColumn ?? 'short_description', ManageText::t(
+            'products.replace_would_hide',
+            'هذا الطلب سيمسح حقولًا يحتاجها المنتج ليبقى ظاهرًا، وسيختفي من المتجر: :fields. أرسل الحقول كاملة، أو استخدم مسار التحديث الجزئي.',
+            ['fields' => implode(ManageText::t('common.list_separator', '، '), $losing)],
+        ));
     }
 
     /**
@@ -274,7 +355,27 @@ final class ProductWriter
             'selling_price' => $selling,
             'sale_price' => $sale,
             'currency' => strtoupper(Coerce::str($data['currency'] ?? null, 'EGP')),
-            'low_stock_threshold' => Coerce::int($data['low_stock_threshold'] ?? null, 5),
+            /*
+             * ── The default is 0 — "no alert" — since 2026-09-19 (W-2) ──────────────────────
+             *
+             * It was 5, and 5 turned out to be an assertion nobody had made: **7,578 of the
+             * 7,713 live products carry it untouched**, while almost all stock sits between 0 and
+             * 3 units. So the low-stock alert fired on 97.5% of the shop — every product was
+             * permanently "below its threshold", which is the same as no alert at all, except it
+             * is also an alarm the team learns to ignore.
+             *
+             * A default of 0 says the honest thing: nobody has decided a reorder point for this
+             * product yet, so it is not claiming to be low. A product that DOES have a reorder
+             * point gets one typed in, or set in bulk from the list — which is the other half of
+             * W-2 and the reason this change is safe to make: before it, correcting the 7,578
+             * would have meant 7,578 individual form saves.
+             *
+             * The 7,578 existing rows are NOT rewritten by this. A default only applies to a
+             * payload that omits the field, and the column default in the schema is still 5 for
+             * anything that writes around this class. Changing 7,578 live rows is the team's
+             * decision to make with the bulk action, not a migration's to make for them.
+             */
+            'low_stock_threshold' => Coerce::int($data['low_stock_threshold'] ?? null, 0),
             'warranty_years' => Coerce::nint($data['warranty_years'] ?? null),
             'is_active' => Coerce::bool($data['is_active'] ?? null),
             'search_keywords' => Coerce::nstr($data['search_keywords'] ?? null),

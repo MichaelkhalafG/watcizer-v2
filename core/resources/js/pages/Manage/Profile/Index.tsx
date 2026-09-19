@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select } from '@/components/ui/input';
 import ManageLayout from '@/layouts/ManageLayout';
 import { useT } from '@/lib/i18n';
+import { abilityLabel } from '@/lib/labels';
 import type { SharedProps } from '@/types';
 
 /**
@@ -235,7 +236,7 @@ export default function ProfileIndex({
                                                 key={ability}
                                                 className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground"
                                             >
-                                                <Ltr>{ability}</Ltr>
+                                                {abilityLabel(t, ability)}
                                             </span>
                                         ))}
                                     </div>
@@ -245,7 +246,7 @@ export default function ProfileIndex({
                         <p className="text-xs text-muted-foreground">
                             {t(
                                 'profile.grants_note',
-                                'الصلاحيات تُمنح من شاشة «المستخدمون والصلاحيات» ولا تُعدَّل من هنا.',
+                                'الصلاحيات تُمنح من شاشة «المستخدمون والصلاحيات».',
                             )}
                         </p>
                     </CardContent>

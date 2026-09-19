@@ -379,7 +379,7 @@ final class FamilyForCategory
              * different Englishes.
              */
             'reason' => self::reasonFor($names['node_en'], $names['root_en'])
-                .' — '.ManageText::t('products.family_rule_note', 'القاعدة نفسها التي يستخدمها التحويل (config/transform.php)').'.',
+                .' — '.ManageText::t('products.family_rule_note', 'القاعدة نفسها المطبَّقة في المتجر').'.',
             'saved_family' => $savedFamily,
         ];
     }

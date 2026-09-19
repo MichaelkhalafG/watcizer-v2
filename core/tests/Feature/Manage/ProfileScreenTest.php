@@ -43,7 +43,14 @@ it('renders identity READ-ONLY, with the reason and the grants', function () {
         // The sentence is a prop, not a comment: the operator has to be able to READ why there is
         // no edit control, or they go looking for one that cannot exist.
         ->and(T::str($props['identity_notice'] ?? null))->not->toBe('')
-        ->and(T::str($props['saves_notice'] ?? null))->toContain('core_user_preferences')
+        /*
+         * The sentence no longer names the TABLE (D-18). It used to read "…يكتب في جدول واحد
+         * يملكه النظام الجديد (core_user_preferences)…", and the table name is not something a
+         * reader can check, act on, or care about — what the sentence is FOR is the promise in its
+         * second half, which is what this now asserts.
+         */
+        ->and(T::str($props['saves_notice'] ?? null))->not->toContain('core_user_preferences')
+        ->and(T::str($props['saves_notice'] ?? null))->toContain('حسابك')
         ->and($props['grants'] ?? null)->toBeArray();
 
     // …and what it may save is offered, with today's value.

@@ -33,6 +33,25 @@ a scope restored in a `finally`. No config key, no `.env` entry, no permanent `b
 The command prints what the flag means before the first write: everything created is deleted by the
 next `core:drop-clean` → `migrate` → `core:transform`.
 
+> ## ⛔ THAT IS NO LONGER TRUE — 2026-09-18
+>
+> **The rebuilds are finished.** The developer's words: *"Rebuilds are finished, so this import is
+> permanent."* The last one ran at `2026-09-17 02:34:55` (every row of `core_transform_id_map`
+> carries that one timestamp), and it is the last one there will be.
+>
+> **What that changes.** An import is no longer a rehearsal that a rebuild will tidy away. Every row
+> it writes is production data from the moment it is written, and the only thing that removes it now
+> is somebody deleting it on purpose.
+>
+> **The standing rule that follows.** Anything that would erase imported catalogue data —
+> `core:drop-clean`, a transform run, a bulk delete, a truncate, a "just re-import it cleanly" —
+> needs the developer's explicit say-so, per occasion. Not inferred from an earlier approval, not
+> bundled into a larger task, not assumed because a command exists to do it.
+>
+> This note sits here because the paragraph above it is the one that taught everybody the opposite,
+> and the previous sentence is still true of the runs it describes — it is the world that changed,
+> not the history.
+
 ---
 
 ## 3. The category decision (approved shape, 60 leaves)

@@ -7,6 +7,7 @@ use Illuminate\Database\Query\JoinClause;
 use Illuminate\Support\Facades\DB;
 use Tests\Support\AdvPayload;
 use Tests\Support\CatalogFixture;
+use Tests\Support\Gates;
 use Tests\Support\Staff;
 use Tests\Support\T;
 
@@ -123,6 +124,13 @@ it('holds the one-primary invariant per storefront across the whole catalogue', 
 });
 
 it('refuses every CREATION door over HTTP with the flag in its default state', function () {
+    /*
+     * This test is ABOUT the refusal, so it asks for the mode that refuses (item 5, 2026-09-18).
+     * The shipped default is `warn` — the gates carry their sentence as a caveat and the controls
+     * work. `enforce` is still supported and still has to be proved. {@see Tests\Support\Gates}.
+     */
+    Gates::enforcePreSwitch();
+
     expect((bool) config('transform.write_switch_completed'))->toBeFalse('the flag must default to false');
     $admin = Staff::admin();
 
@@ -152,6 +160,13 @@ it('refuses every CREATION door over HTTP with the flag in its default state', f
 
 it('refuses the same three doors called DIRECTLY, with no request in sight', function () {
     /*
+     * This test is ABOUT the refusal, so it asks for the mode that refuses (item 5, 2026-09-18).
+     * The shipped default is `warn` — the gates carry their sentence as a caveat and the controls
+     * work. `enforce` is still supported and still has to be proved. {@see Tests\Support\Gates}.
+     */
+    Gates::enforcePreSwitch();
+
+    /*
      * The console / importer door. A guard that lives in a controller is a guard a future
      * `php artisan import:something` walks straight past, so the block sits in the writers.
      */
@@ -180,6 +195,13 @@ it('refuses the same three doors called DIRECTLY, with no request in sight', fun
 });
 
 it('refuses a SECONDARY tree edit pre-switch while the primary tree stays editable', function () {
+    /*
+     * This test is ABOUT the refusal, so it asks for the mode that refuses (item 5, 2026-09-18).
+     * The shipped default is `warn` — the gates carry their sentence as a caveat and the controls
+     * work. `enforce` is still supported and still has to be proved. {@see Tests\Support\Gates}.
+     */
+    Gates::enforcePreSwitch();
+
     /*
      * The sync policy: pre-switch, storefront 2's tree is re-synced from legacy on every run, so an
      * edit there would be silently reverted — it is refused instead. Storefront 1's tree is the
@@ -227,6 +249,13 @@ it('opens all four doors, and the secondary tree, when the flag flips', function
 });
 
 it('leaves NO category deletable anywhere while the flag is false', function () {
+    /*
+     * This test is ABOUT the refusal, so it asks for the mode that refuses (item 5, 2026-09-18).
+     * The shipped default is `warn` — the gates carry their sentence as a caveat and the controls
+     * work. `enforce` is still supported and still has to be proved. {@see Tests\Support\Gates}.
+     */
+    Gates::enforcePreSwitch();
+
     /*
      * The reviewer's reachability sweep: try to delete EVERY node of BOTH storefronts and count
      * how many died. The answer has to be none — every node is either legacy-sourced (a rebuild

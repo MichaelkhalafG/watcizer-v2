@@ -70,25 +70,45 @@ it('gives an admin the settings group and a data-entry user none of it', functio
         ->and($entryKeys)->toContain('inventory');
 });
 
-it('marks unbuilt screens with their wave instead of linking to them', function () {
+it('parks the screens the team is not meant to open, instead of linking to them', function () {
     $byKey = Props::navItems(actingAs(Staff::admin())->get('/manage'));
 
     // The combined "offers, banners and articles" item is GONE (2026-09-14): offers became the
-    // promotions engine and banners got their own screen, so BLOGS is the one remaining stub — and
-    // it carries no wave number on purpose, because nothing has been promised for it.
+    // promotions engine and banners got their own screen.
     expect($byKey)->not->toHaveKey('legacy-content');
-    expect($byKey['blogs']['wave'])->toBe('later')
-        ->and($byKey['blogs']['href'])->toBeNull('a stub must not link anywhere')
-        // …and what IS built has a link and no wave badge.
-        ->and($byKey['storefronts']['href'])->not->toBeNull()
-        ->and($byKey['storefronts']['wave'])->toBeNull()
+
+    /*
+     * ONE parked item now, and it is parked for a reason worth stating — the sidebar draws a
+     * not-built screen and a deliberately-closed one identically on purpose, because "not for you
+     * today" is the whole message an operator needs:
+     *
+     * BLOGS left this list on 2026-09-18 (item 14): it is a real screen with real routes and
+     * core-owned tables. The assertion below is what made that a deliberate edit rather than a
+     * sidebar quietly still saying "later" over a screen that works.
+     *
+     *   • promotions — built, tested, and deliberately switched off (item 13, 2026-09-17). Its
+     *                  ROUTES are still registered and still admin-only; what changed is that the
+     *                  sidebar no longer offers it. `PromotionScreenTest` still proves the
+     *                  server's side of that, which is the half that is actually the control.
+     *
+     * If somebody opens promotions back up, this assertion is what tells them to move the item out
+     * of this list rather than leaving a live screen the sidebar calls "later".
+     */
+    foreach (['promotions'] as $parked) {
+        expect($byKey[$parked]['later'])->toBeTrue("{$parked} must render parked")
+            ->and($byKey[$parked]['href'])->toBeNull("{$parked} is parked and must not link anywhere");
+    }
+
+    // …and what IS live has a link and no badge.
+    expect($byKey['storefronts']['href'])->not->toBeNull()
+        ->and($byKey['storefronts']['later'])->toBeFalse()
         ->and($byKey['home']['active'])->toBeTrue();
 
     // Wave 4B turned four stubs into screens and wave 4C turned four more, so the assertion flips
-    // for them: a built item MUST carry a link and MUST NOT carry a wave badge. This is the test
-    // that would have caught a shipped screen the sidebar still calls "coming in 4B".
-    foreach (['products', 'categories', 'placement', 'lookups', 'orders', 'inventory', 'users', 'payments', 'banners'] as $built) {
-        expect($byKey[$built]['wave'])->toBeNull("{$built} is built and must not still be a stub")
+    // for them: a built item MUST carry a link and MUST NOT be parked. This is the test that would
+    // have caught a shipped screen the sidebar still calls "later".
+    foreach (['products', 'categories', 'placement', 'lookups', 'orders', 'inventory', 'users', 'payments', 'banners', 'blogs'] as $built) {
+        expect($byKey[$built]['later'])->toBeFalse("{$built} is built and must not be parked")
             ->and($byKey[$built]['href'])->not->toBeNull("{$built} must link somewhere");
     }
 

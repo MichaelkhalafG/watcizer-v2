@@ -95,7 +95,15 @@ export default function UsersIndex({
 
     const form = useForm({
         email: "",
-        role: roles[0]?.value ?? "data-entry",
+        /*
+         * `data_entry`, named rather than taken from `roles[0]` (J-2).
+         *
+         * Position is not a promise. Reading the default off the first option made the safest
+         * grant depend on the ORDER of a list on the server, which is exactly how this became
+         * "administrator" in the first place — and it would become administrator again the moment
+         * somebody reordered that array for an unrelated reason.
+         */
+        role: "data_entry",
         storefront_id: "",
     });
 
@@ -134,14 +142,15 @@ export default function UsersIndex({
                         "هذه الشاشة تمنح الصلاحيات ولا تُنشئ حسابات",
                     )}
                 >
+                    {/* D-18: the sentence ended on `php artisan manage:role`. That command is the
+                        bootstrap path for a FRESH database — a developer's first grant, on a
+                        machine with no administrator yet. It is not something anybody reading this
+                        screen will ever type, because reaching this screen already requires the
+                        grant it would create. The fact worth keeping is the first half: this
+                        dashboard does not own accounts. */}
                     {t(
-                        "users.grants_only_body_before_command",
-                        "جدول الحسابات مشترك مع المتجر والداشبورد القديم، فلا تُنشئ اللوحة حسابًا ولا تعدّله ولا تعيد تعيين كلمة مروره. الحساب يُنشأ من المتجر أو من الداشبورد القديم، ثم يُمنح من هنا. وللبدء على قاعدة بيانات جديدة يبقى الأمر ",
-                    )}
-                    <code dir="ltr">php artisan manage:role</code>
-                    {t(
-                        "users.grants_only_body_after_command",
-                        " هو الطريق الوحيد — لا يمكن منح أول صلاحية من شاشة تحتاج صلاحية لفتحها.",
+                        "users.grants_only_body",
+                        "جدول الحسابات مشترك مع المتجر والداشبورد القديم، فلا تُنشئ اللوحة حسابًا ولا تعدّله ولا تعيد تعيين كلمة مروره. الحساب يُنشأ من المتجر أو من الداشبورد القديم، ثم تُمنح صلاحياته من هنا.",
                     )}
                 </Alert>
 
@@ -188,6 +197,10 @@ export default function UsersIndex({
                                 <SelectField
                                     label={t("users.role", "الصلاحية")}
                                     required
+                                    hint={t(
+                                        "users.role_hint",
+                                        "«مدير» يفتح كل شيء: المدفوعات وإعدادات المتجر والصلاحيات وإلغاء الطلبات. امنحه عن قصد لا بالسهو.",
+                                    )}
                                     value={form.data.role}
                                     onChange={(value) =>
                                         form.setData("role", value)
@@ -248,7 +261,7 @@ export default function UsersIndex({
                                     onChange={(event) =>
                                         setTerm(event.target.value)
                                     }
-                                    placeholder="email or name"
+                                    placeholder={t('users.search_placeholder', 'بريد أو اسم')}
                                 />
                                 <Button type="submit" variant="outline">
                                     {t("common.search", "ابحث")}
@@ -284,8 +297,12 @@ export default function UsersIndex({
                                                 </div>
                                                 <div className="text-xs text-muted-foreground">
                                                     {found.name ?? "—"}
+                                                    {/* Item 10: the flag was orphaned — a bare
+                                                        `SuperAdmin` with nothing saying what it
+                                                        was. The VALUE is real legacy data and
+                                                        stays; only the label is new. */}
                                                     {found.legacy_type !== null
-                                                        ? ` · ${found.legacy_type}`
+                                                        ? ` · ${t("users.legacy_type", "في النظام القديم")}: ${found.legacy_type}`
                                                         : ""}
                                                 </div>
                                             </div>
@@ -390,7 +407,9 @@ export default function UsersIndex({
                                                                 )}
                                                             >
                                                                 {" "}
-                                                                · legacy:{" "}
+                                                                ·{" "}
+                                                                {t("users.legacy_type", "في النظام القديم")}
+                                                                :{" "}
                                                                 {
                                                                     grant.legacy_type
                                                                 }
@@ -424,7 +443,8 @@ export default function UsersIndex({
                                                 className="text-xs text-muted-foreground"
                                                 dir="ltr"
                                             >
-                                                {grant.granted_by ?? "command"}
+                                                {grant.granted_by ??
+                                                    t("users.granted_by_command", "من سطر الأوامر")}
                                             </TableCell>
                                             <TableCell
                                                 className="text-xs text-muted-foreground"
@@ -480,29 +500,42 @@ export default function UsersIndex({
                                                         </p>
                                                     }
                                                     trigger={
-                                                        <Button
-                                                            variant="outline"
-                                                            size="sm"
-                                                            disabled={blocked}
-                                                            title={
-                                                                isSelfAdmin
-                                                                    ? t(
-                                                                          "users.cannot_revoke_self",
-                                                                          "لا يمكنك سحب صلاحية المدير من نفسك — اطلب من مدير آخر.",
-                                                                      )
-                                                                    : isLastAdmin
-                                                                      ? t(
-                                                                            "users.cannot_revoke_last_admin",
-                                                                            "هذه آخر صلاحية مدير عامة: سحبها يترك اللوحة بلا مدير.",
-                                                                        )
-                                                                      : undefined
-                                                            }
-                                                        >
-                                                            {t(
-                                                                "users.revoke",
-                                                                "اسحب",
-                                                            )}
-                                                        </Button>
+                                                        /* ── The reason, VISIBLE (J-8) ────────
+
+                                                           This button looks close enough to
+                                                           enabled, does nothing when clicked, and
+                                                           explained itself only after about a
+                                                           second of hover — and never on touch at
+                                                           all. Reported as "the dashboard is
+                                                           broken" rather than understood as a
+                                                           rule. AGENTS §2.27 asks for the reason
+                                                           ON the control, so it is printed beside
+                                                           it and the `title` is gone. */
+                                                        <span className="inline-flex flex-wrap items-center justify-end gap-1.5">
+                                                            {blocked ? (
+                                                                <span className="text-[11px] leading-snug text-muted-foreground">
+                                                                    {isSelfAdmin
+                                                                        ? t(
+                                                                              "users.cannot_revoke_self",
+                                                                              "لا يمكنك سحب صلاحية المدير من نفسك — اطلب من مدير آخر.",
+                                                                          )
+                                                                        : t(
+                                                                              "users.cannot_revoke_last_admin",
+                                                                              "هذه آخر صلاحية مدير عامة: سحبها يترك اللوحة بلا مدير.",
+                                                                          )}
+                                                                </span>
+                                                            ) : null}
+                                                            <Button
+                                                                variant="outline"
+                                                                size="sm"
+                                                                disabled={blocked}
+                                                            >
+                                                                {t(
+                                                                    "users.revoke",
+                                                                    "اسحب",
+                                                                )}
+                                                            </Button>
+                                                        </span>
                                                     }
                                                     onConfirm={() =>
                                                         router.delete(

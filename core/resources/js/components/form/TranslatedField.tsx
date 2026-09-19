@@ -66,6 +66,11 @@ export function TranslatedField({
                             key={locale}
                             label={LABELS[locale] ?? locale}
                             error={error}
+                            // Required on BOTH boxes when the pair is required (D-19). A bilingual
+                            // field that is required is required in both languages — that is the
+                            // whole reason both are on screen at once — so the asterisk above the
+                            // pair now corresponds to a guard on each input rather than to nothing.
+                            required={required}
                             className={cn('rounded-lg border bg-muted/30 p-3', error !== null && 'border-destructive/50')}
                             render={(attrs) =>
                                 multiline ? (

@@ -2,6 +2,7 @@
 
 namespace App\Domain\Catalog;
 
+use App\Domain\Access\Role;
 use App\Models\Storefront\StorefrontRedirect;
 use App\Storefront\StorefrontCache;
 use App\Support\Coerce;
@@ -9,6 +10,7 @@ use App\Support\LegacySlug;
 use App\Support\ManageText;
 use App\Transform\Row;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Str;
 use RuntimeException;
 
@@ -40,8 +42,40 @@ final class PlacementWriter
     /** Columns the dashboard may write on `storefront_product`. `effective_*` are maintained, not typed. */
     public const COLUMNS = ['is_visible', 'is_featured', 'sort_order', 'slug', 'published_at'];
 
-    /** Translated product columns that must be present in Arabic before a product may be visible. */
+    /**
+     * Translated columns a product needs, IN BOTH LANGUAGES, before it may face a customer.
+     *
+     * ── Why these gate visibility and not the save (developer, 2026-09-18) ──────────────────
+     *
+     * The legacy form made all four descriptions `required`, and matching that literally would
+     * have locked the catalogue: 7,087 of the 7,713 live products have no Arabic short or long
+     * description, so a required rule would refuse every edit to 92% of the shop. The developer's
+     * reasoning for the shape chosen instead:
+     *
+     *   *"a rule that refuses the save punishes whoever is fixing something rather than whoever
+     *   left it incomplete. Blocking visibility means they must fill them for the product to sell,
+     *   without being stopped from correcting a price or a title today."*
+     *
+     * So the save always goes through. What is missing decides whether the product can be SEEN.
+     */
+    public const REQUIRED_TRANSLATED = ['title', 'short_description', 'long_description'];
+
+    /** The locales {@see self::REQUIRED_TRANSLATED} is checked in. Both, deliberately. */
+    public const REQUIRED_LOCALES = ['ar', 'en'];
+
+    /**
+     * Kept as the Arabic-only view of the rule, because §2.17 is about the Arabic FALLBACK being
+     * off — an English-only product renders blank on an Arabic storefront. The broader gate above
+     * supersedes it for publishing; this stays so the older rule keeps its own name and meaning.
+     */
     public const REQUIRED_AR = ['title'];
+
+    /**
+     * Storefront id => the fields that forced a demotion during this request.
+     *
+     * @var array<int, list<string>>
+     */
+    private array $demoted = [];
 
     public function __construct(
         private readonly StorefrontCache $cache,
@@ -49,24 +83,146 @@ final class PlacementWriter
     ) {}
 
     /**
+     * What was taken off sale by this request, so the caller can say so.
+     *
+     * @return array<int, list<string>>
+     */
+    public function demotions(): array
+    {
+        return $this->demoted;
+    }
+
+    /**
+     * Everything a product is missing before it may be visible, as labels an operator can act on.
+     *
+     * Both languages, plus the two non-text requirements. Empty list = publishable.
+     *
+     * @return list<string>
+     */
+    public function missingForVisibility(int $productId): array
+    {
+        $labels = [
+            'title' => ManageText::t('products.field_title', 'العنوان'),
+            'short_description' => ManageText::t('products.field_short_description', 'وصف مختصر'),
+            'long_description' => ManageText::t('products.field_long_description', 'الوصف الكامل'),
+        ];
+        $locales = [
+            'ar' => ManageText::t('common.arabic', 'عربي'),
+            'en' => ManageText::t('common.english', 'إنجليزي'),
+        ];
+
+        $rows = DB::table('catalog_product_translations')
+            ->where('product_id', $productId)
+            ->whereIn('locale', self::REQUIRED_LOCALES)
+            ->get(array_merge(['locale'], self::REQUIRED_TRANSLATED));
+
+        $present = [];
+        $held = [];
+        foreach ($rows as $raw) {
+            $row = Row::cast($raw);
+            $locale = Row::str($row, 'locale');
+            $present[$locale] = true;
+            foreach (self::REQUIRED_TRANSLATED as $column) {
+                if (trim(Row::nstr($row, $column) ?? '') !== '') {
+                    $held[$locale.'.'.$column] = true;
+                }
+            }
+        }
+
+        $missing = [];
+        foreach (self::REQUIRED_LOCALES as $locale) {
+            /*
+             * No row at all is its own sentence. A product whose Arabic record is simply absent is
+             * a different problem from one whose Arabic title is blank — the first is usually an
+             * import that never carried the language, the second is a half-filled form — and
+             * listing three empty fields for it would describe the symptom instead of the cause.
+             */
+            if (! isset($present[$locale])) {
+                $missing[] = $locale === 'ar'
+                    ? ManageText::t('placement.missing_arabic_row', 'صف الترجمة العربية بالكامل')
+                    : ManageText::t('placement.missing_english_row', 'صف الترجمة الإنجليزية بالكامل');
+
+                continue;
+            }
+            foreach (self::REQUIRED_TRANSLATED as $column) {
+                if (! isset($held[$locale.'.'.$column])) {
+                    $missing[] = $labels[$column].' — '.$locales[$locale];
+                }
+            }
+        }
+
+        if (! DB::table('catalog_product_gender')->where('product_id', $productId)->exists()) {
+            $missing[] = ManageText::t('products.field_gender', 'الفئة (رجالي/حريمي)');
+        }
+
+        if (! DB::table('catalog_product_images')->where('product_id', $productId)->exists()) {
+            $missing[] = ManageText::t('products.field_image', 'صورة المنتج');
+        }
+
+        return $missing;
+    }
+
+    /**
      * Create or update a product's row on one storefront.
      *
      * @param  array<string, mixed>  $data
      */
-    public function save(int $storefrontId, int $productId, array $data): void
+    public function save(int $storefrontId, int $productId, array $data, bool $visibilityRequested = false): void
     {
-        DB::transaction(function () use ($storefrontId, $productId, $data): void {
+        DB::transaction(function () use ($storefrontId, $productId, $data, $visibilityRequested): void {
             $existing = DB::table('storefront_product')
                 ->where('storefront_id', $storefrontId)->where('product_id', $productId)
                 ->first(['id', 'slug', 'is_visible', 'published_at']);
 
             $visible = (bool) ($data['is_visible'] ?? false);
             if ($visible) {
-                // Two gates before a product may face a customer, both of them things the
-                // storefront cannot render around (task 4.2).
-                $this->assertArabicComplete($productId);
-                $this->assertHasImage($productId);
-                $this->assertPlacedSomewhere($storefrontId, $productId);
+                /*
+                 * ── The completeness gate DEMOTES; it does not refuse ───────────────────────
+                 *
+                 * An incomplete product is forced invisible and the caller is told which fields
+                 * did it, instead of the save being rejected. That covers both directions at once
+                 * and they are the same rule:
+                 *
+                 *   • a product that is not yet complete cannot be turned on;
+                 *   • a product that IS on and loses one of these fields goes off THIS SAVE —
+                 *     *"that's the rule, not a warning. A product with no description has no
+                 *     business being on sale."*
+                 *
+                 * `$demoted` is what makes the second case speakable. Without it the product
+                 * would simply vanish from the shop with the save reporting success, which is the
+                 * silent disappearance the developer asked me to make impossible.
+                 */
+                $missing = $this->missingForVisibility($productId);
+                if ($missing !== [] && $visibilityRequested) {
+                    /*
+                     * The operator ASKED for this, on a screen whose whole job is visibility. The
+                     * developer's reason for demoting rather than refusing was that a refusal
+                     * *"punishes whoever is fixing something rather than whoever left it
+                     * incomplete"* — which is true of the product form, where the save is about a
+                     * price or a title and visibility changes underneath it. It is not true here:
+                     * there is nothing else being fixed, and a toggle that silently springs back
+                     * is worse than one that says why.
+                     */
+                    throw new FieldRefusal('is_visible', ManageText::t(
+                        'placement.needs_complete',
+                        'لا يمكن إظهار المنتج قبل استكمال هذه الحقول: :fields.',
+                        ['fields' => implode(ManageText::t('common.list_separator', '، '), $missing)],
+                    ));
+                }
+                if ($missing !== []) {
+                    $visible = false;
+                    $this->demoted[$storefrontId] = $missing;
+                }
+
+                /*
+                 * Reachability, last — and only while the product is still going on sale. A demoted
+                 * product is not visible, so "it is in no category" is not yet its problem; running
+                 * this first made the category message pre-empt the one naming the empty fields,
+                 * which is the wrong answer to give somebody whose product is simply unfinished.
+                 */
+                if ($visible) {
+                    $this->assertPlacedSomewhere($storefrontId, $productId);
+                }
             }
 
             $slug = $this->resolveSlug($storefrontId, $productId, $data, $existing === null ? null : Row::str(Row::cast($existing), 'slug'));
@@ -418,6 +574,7 @@ final class PlacementWriter
              */
             if ($current !== null && $current !== '' && $slug !== $current) {
                 PreSwitch::assertMayEditSlug();
+                self::assertMayTypeSlug();
             }
 
             $taken = DB::table('storefront_product')
@@ -446,6 +603,41 @@ final class PlacementWriter
             LegacySlug::orId(is_string($titleEn) ? $titleEn : '', $productId),
             $productId,
         );
+    }
+
+    /**
+     * Only an administrator may TYPE a product's public URL (item 6, developer 2026-09-18).
+     *
+     * ── Why this is not on the route ─────────────────────────────────────────────
+     *
+     * `placement.update` writes the slug and four other things in one request, and the other four
+     * are data-entry's daily work. Gating the route would take visibility, order, featured and the
+     * category set away with it. So the check is on the FIELD, where the rule actually is, and it
+     * fires only on a CHANGE — the screen echoes the stored slug back on every ordinary save, and a
+     * rule that blocks unrelated work is a rule the team routes around.
+     *
+     * ── Why a slug and not the rest ────────────────────────────────────────────
+     *
+     * The others are decisions, and remaking a decision costs a click. A slug is an address:
+     * changing it moves a page customers have bookmarked and Google has indexed, and the 301
+     * written alongside is the only thing standing between that and a 404.
+     *
+     * The refusal names the field, so it lands on the slug box rather than on the visibility
+     * toggle, and it says WHO can do it — an operator who is only told "not allowed" goes looking
+     * for a bug in the screen.
+     *
+     * @throws FieldRefusal
+     */
+    private static function assertMayTypeSlug(): void
+    {
+        if (Gate::allows(Role::EDIT_PRODUCT_SLUG)) {
+            return;
+        }
+
+        throw new FieldRefusal('slug', ManageText::t(
+            'placement.slug_admin_only',
+            'تغيير رابط المنتج متاح للمدير فقط. الرابط هو عنوان الصفحة عند العملاء وفي جوجل، وتغييره ينقل الصفحة ويعتمد على تحويل 301 لكي لا تصبح 404. لو الرابط يحتاج تعديلًا اطلب ذلك من المدير.',
+        ));
     }
 
     /**

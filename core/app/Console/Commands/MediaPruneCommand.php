@@ -81,6 +81,16 @@ final class MediaPruneCommand extends Command
             // Found by the DERIVED coverage guard (review 🟠-3), not by reading this list: category
             // images were invisible to the prune, so every one of them was an "orphan".
             'storefront_categories' => ['image_path'],
+            /*
+             * Article covers (item 14, 2026-09-18) — and found the same way, by the same guard,
+             * within minutes of the table existing. Without this line `media:prune --delete` would
+             * have treated every blog cover as an orphan and deleted it, and the articles screen
+             * would have started showing broken images with nothing to explain why.
+             *
+             * That is twice now that this list was forgotten and twice that the coverage test
+             * caught it. It is doing more work than the list it guards.
+             */
+            'core_blogs' => ['cover_path'],
         ],
         'legacy' => [
             'products' => ['image'],

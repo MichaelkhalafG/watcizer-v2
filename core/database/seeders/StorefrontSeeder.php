@@ -25,7 +25,7 @@ class StorefrontSeeder extends Seeder
         'name' => 'Watchizer',
         'domain' => 'watchizereg.com',
         'locales' => ['ar', 'en'],
-        'default_locale' => 'ar',
+        'default_locale' => 'en',
         'currency' => 'EGP',
         'is_active' => true,
     ];
@@ -46,7 +46,7 @@ class StorefrontSeeder extends Seeder
         'name' => 'Brand Fashion',
         'domain' => 'brandfashionegy.com',
         'locales' => ['ar', 'en'],
-        'default_locale' => 'ar',
+        'default_locale' => 'en',
         'currency' => 'EGP',
         'is_active' => true,
     ];

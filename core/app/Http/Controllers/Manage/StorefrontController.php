@@ -99,10 +99,6 @@ final class StorefrontController
 
         return Inertia::render('Manage/Storefronts/Index', [
             'table' => $table->paginate($query, $map),
-            // The finding above, on the screen. It is a fact about the deployment procedure, so it
-            // belongs where the person editing can read it. This is the BODY of the alert whose
-            // title the screen already carries as `storefronts.rebuild_warning_title`.
-            'rebuild_warning' => ManageText::t('storefronts.rebuild_warning', 'جدول المتاجر محميّ من إعادة البناء (AGENTS §2.20) فلا تُفقد هذه الإعدادات. لكن قبل ليلة التحويل يبقى النظام القديم هو مصدر البيانات، وأي تعديل في شاشات الكتالوج يُستبدل بما فيه.'),
         ]);
     }
 

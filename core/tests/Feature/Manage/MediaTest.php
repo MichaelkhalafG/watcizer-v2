@@ -59,9 +59,17 @@ it('stores a master into the LEGACY folder with the LEGACY filename scheme', fun
             // `<unix>_<Y-m-d>_<uniqid>.webp`, exactly as ImageService::filename() produces.
             ->and($stored['file'])->toMatch('/^\d{10}_\d{4}-\d{2}-\d{2}_[0-9a-f]+\.webp$/')
             ->and($stored['url'])->toContain('/Uploads_Images/Product/')
-            // The pad-square preset: a 1400x900 source becomes a 1200x1200 master.
+            /*
+             * The pad-square preset writes a 1200x1200 FILE, and reports the PICTURE inside it
+             * (D-16, 2026-09-19). A 1400x900 source scaled to fit is 1200x771, centred on white.
+             *
+             * This used to assert 1200x1200 — the canvas — which is why an 800x800 upload was
+             * reported to the operator as `1200x1200` with renditions down from 960: the numbers
+             * described the padding, not the photograph, and the rendition guard measured the
+             * same wrong thing so it could never skip anything for a product image.
+             */
             ->and($stored['width'])->toBe(1200)
-            ->and($stored['height'])->toBe(1200)
+            ->and($stored['height'])->toBe(771)
             ->and(file_exists(MediaStore::directory('Product').'/'.$stored['file']))->toBeTrue();
     } finally {
         forgetStored($stored);

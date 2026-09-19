@@ -19,14 +19,22 @@ use Illuminate\Support\Facades\Route;
  *     cannot open also cannot appear in their sidebar, and neither statement is written twice.
  *     (The nav is presentation; the route middleware is the authorisation. Hiding is never the
  *     control — `RouteAuthorizationTest` proves the server refuses.)
- *  2. **Stub screens announce themselves.** Anything not built yet carries its wave (`4C`, `4D`)
- *     and renders disabled, so the team can see the shape of what is coming instead of finding
- *     dead links. Wave 4B turned four of those stubs into real links — products, categories,
- *     placement and the lookup lists — and `ShellTest` asserts the flip in both directions: a
- *     built item must carry an href and NO wave badge, which is the test that would catch a
- *     shipped screen the sidebar still calls "coming in 4B".
+ *  2. **Parked screens announce themselves.** Anything the team is not meant to use yet renders
+ *     disabled with a "later" badge, so they can see the shape of what is coming instead of
+ *     finding dead links. `ShellTest` asserts the flip in both directions: a live item must carry
+ *     an href and NOT be parked, which is the test that would catch a shipped screen the sidebar
+ *     still calls "later".
  *
- * @phpstan-type NavItem array{key: string, label: string, icon: string, route: string|null, href: string|null, ability: string, wave: string|null, active: bool, badge: int|null}
+ *     This used to be `wave: string|null` — the wave NUMBER a stub was promised for (`4B`, `4C`,
+ *     `4D`) — and the sidebar printed that token straight into its badge. Every one of those
+ *     promises has now been kept, so the only value the field ever carried was the literal string
+ *     `'later'`, which the badge rendered verbatim: an Arabic screen showing the English word
+ *     "later", and a tooltip reading "قادم في later". A string field with one possible value is a
+ *     boolean wearing a costume, and the costume was leaking onto the screen. It is now a
+ *     boolean. If a future wave wants to promise a number again, it can be added back then, with
+ *     the reason that is true then.
+ *
+ * @phpstan-type NavItem array{key: string, label: string, icon: string, route: string|null, href: string|null, ability: string, later: bool, active: bool, badge: int|null}
  * @phpstan-type NavGroup array{key: string, label: string, items: list<NavItem>}
  */
 final class Navigation
@@ -123,19 +131,29 @@ final class Navigation
                      * engine (§3.16), so the section is two unrelated jobs — a home-page image with
                      * a window, and long-form content — and one label for both described neither.
                      *
-                     * Blogs keeps a `wave` stub: there is no screen and, on this dump, no data
-                     * (legacy `blogs` is empty). An item with a real href and nothing behind it is
-                     * worse than one that says "not yet".
+                     * Blogs became a real screen on 2026-09-18 (item 14). It is CORE-owned —
+                     * `core_blogs`, not the empty legacy `blogs` — because the legacy table has no
+                     * slug, no published flag and no SEO fields, and core may not write it anyway.
                      */
                     self::item('banners', ManageText::t('banners.title', 'البانرات'), 'Image', Role::MANAGE_LEGACY_CONTENT, route: 'manage.banners.index', params: ['storefront' => $storefrontId]),
-                    self::item('blogs', ManageText::t('nav.blogs', 'المقالات'), 'Newspaper', Role::MANAGE_LEGACY_CONTENT, wave: 'later'),
+                    self::item('blogs', ManageText::t('nav.blogs', 'المقالات'), 'Newspaper', Role::MANAGE_LEGACY_CONTENT, route: 'manage.blogs.index'),
                     /*
-                     * Promotions (4D, built 2026-09-13). No `{storefront}` segment, unlike
-                     * payments: a rule is authored once and the operator ticks which storefronts
-                     * it applies to, exactly like product placement. Admin-only — data-entry does
-                     * not hold `manage-promotions`, so this item does not render for them.
+                     * Promotions — BUILT, and deliberately PARKED (developer, 2026-09-17).
+                     *
+                     * The engine is finished and tested: rules, conditions, rewards, the skip
+                     * ledger, the preview, and the discount audit trail that records which rule
+                     * discounted which order and by how much. Nothing here is a stub.
+                     *
+                     * It is off the sidebar because the developer does not want the team using it
+                     * yet — item 13 of the 2026-09-17 dashboard review, "the way Articles is". The
+                     * ROUTES stay registered (see routes/web.php): they are admin-only, no rule
+                     * exists to apply, and deleting a tested engine to hide a link would be the
+                     * expensive way to do a cheap thing. An admin who knows the URL still reaches
+                     * the screen — that is the intended shape, not an oversight.
+                     *
+                     * To bring it back: give this item its route again and drop `later`.
                      */
-                    self::item('promotions', ManageText::t('promotions.title', 'العروض الترويجية'), 'Gift', Role::MANAGE_PROMOTIONS, route: 'manage.promotions.index'),
+                    self::item('promotions', ManageText::t('promotions.title', 'العروض الترويجية'), 'Gift', Role::MANAGE_PROMOTIONS, later: true),
                 ],
             ],
             [
@@ -213,7 +231,7 @@ final class Navigation
      * @param  array<string, int|string>  $params
      * @return NavItem
      */
-    private static function item(string $key, string $label, string $icon, string $ability, ?string $route = null, ?string $wave = null, array $params = [], ?int $badge = null): array
+    private static function item(string $key, string $label, string $icon, string $ability, ?string $route = null, bool $later = false, array $params = [], ?int $badge = null): array
     {
         $href = $route !== null && Route::has($route) ? route($route, $params) : null;
 
@@ -231,7 +249,7 @@ final class Navigation
             'route' => $route,
             'href' => $href,
             'ability' => $ability,
-            'wave' => $wave,
+            'later' => $later,
             'active' => $active,
             /*
              * A COUNT, or null for "nothing to say". Zero is deliberately NOT rendered: a badge

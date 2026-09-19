@@ -81,9 +81,9 @@ function Item({ item, collapsed }: { item: NavItem; collapsed: boolean }) {
         <>
             <NavIcon name={item.icon} className="h-[18px] w-[18px] shrink-0" />
             {collapsed ? null : <span className="truncate">{item.label}</span>}
-            {!collapsed && item.wave !== null ? (
+            {!collapsed && item.later ? (
                 <span className="ms-auto rounded-full bg-white/10 px-2 py-0.5 text-[11px] font-medium text-zinc-300">
-                    {item.wave}
+                    {t('shell.later', 'لاحقًا')}
                 </span>
             ) : null}
             {/*
@@ -112,17 +112,23 @@ function Item({ item, collapsed }: { item: NavItem; collapsed: boolean }) {
         </>
     );
 
-    // A stub is a real, focusable element that announces itself rather than a dead link: the team
-    // can see what is coming in 4B/4C/4D without clicking into a 404.
+    /*
+     * A parked item is a real, focusable element that announces itself rather than a dead link, so
+     * the team can see the shape of the dashboard without clicking into a 404.
+     *
+     * The badge used to print the server's raw token — the sidebar said `later`, in English, on an
+     * Arabic screen, and the tooltip read "قادم في later". It now says the same thing in the
+     * reader's own language and promises no date, because none of these has one.
+     */
     if (stub) {
+        const parked = t('shell.later_hint', 'غير متاح بعد. سيُفتح لاحقًا.');
+
         return (
             <li>
                 <span
                     className={shared}
                     aria-disabled="true"
-                    title={collapsed
-                        ? `${item.label} — ${t('shell.coming_in', 'قادم في :wave', { wave: item.wave ?? '' })}`
-                        : t('shell.coming_in', 'قادم في :wave', { wave: item.wave ?? '' })}
+                    title={collapsed ? `${item.label} — ${parked}` : parked}
                 >
                     {body}
                 </span>
@@ -195,8 +201,15 @@ export function Sidebar({
             <div className={cn('flex h-header items-center gap-2 border-b border-zinc-800 px-4', collapsed && 'justify-center px-0')}>
                 <Brand variant="light" className={cn('h-7', collapsed && 'h-6')} />
                 {collapsed ? null : (
-                    <span className="truncate text-sm font-medium text-zinc-400" title={`${branding.name} ${branding.suffix}`}>
-                        {branding.suffix}
+                    // Through the seam (D-13). This rendered `branding.suffix`, whose ENV default
+                    // is «لوحة التحكم» — so the ENGLISH shell opened with an Arabic word beside
+                    // the logo. What a deployment owns is the brand NAME; what the reader sees
+                    // beside it is UI copy like any other.
+                    <span
+                        className="truncate text-sm font-medium text-zinc-400"
+                        title={`${branding.name} ${t('shell.dashboard', 'لوحة التحكم')}`}
+                    >
+                        {t('shell.dashboard', 'لوحة التحكم')}
                     </span>
                 )}
             </div>

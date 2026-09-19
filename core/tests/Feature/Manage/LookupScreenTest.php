@@ -3,6 +3,7 @@
 use App\Domain\Catalog\LookupWriter;
 use App\Storefront\Lookups;
 use App\Storefront\StorefrontCache;
+use App\Support\Coerce;
 use App\Transform\Row;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
@@ -93,7 +94,16 @@ it('refuses a row with no Arabic name', function () {
     ])->assertSessionHasErrors('name.ar');
 });
 
-it('deletes an emptied English name rather than storing it blank', function () {
+it('REFUSES an emptied English name, because both languages are required', function () {
+    /*
+     * This asserted the opposite until 2026-09-18: an emptied English name deleted the row rather
+     * than storing a blank. The developer adopted the legacy rule instead — *"name required in both
+     * languages, min:2, unique per language"* — after the audit found what it would cost: across
+     * all twelve lists and both locales, **0 duplicate names and 0 blank English names**. The rule
+     * locks in what the data already satisfies.
+     *
+     * The English row therefore survives untouched, because a refusal writes nothing.
+     */
     CatalogFixture::assumeSwitched();
     actingAs(Staff::admin())->post('/manage/lookups/materials', [
         'name' => ['ar' => 'مادة', 'en' => 'Material'],
@@ -104,10 +114,32 @@ it('deletes an emptied English name rather than storing it blank', function () {
     actingAs(Staff::admin())->put("/manage/lookups/materials/{$id}", [
         '_complete' => 1,
         'name' => ['ar' => 'مادة', 'en' => ''],
+    ])->assertSessionHasErrors('name.en');
+
+    expect(T::str(DB::table('catalog_material_translations')->where('material_id', $id)->where('locale', 'en')->value('name')))
+        ->toBe('Material');
+});
+
+it('REFUSES a duplicate name within one language, and allows the same spelling across languages', function () {
+    /*
+     * The rule legacy enforced on every one of these lists, and the reason it matters: two brands
+     * called "Rolex" split a catalogue in half and nobody notices, because both look right.
+     *
+     * Per LANGUAGE, deliberately — a lookup whose Arabic and English read the same («Rolex» /
+     * "Rolex") is ordinary, and refusing that would make the rule unusable for exactly the brands
+     * it most needs to protect.
+     */
+    CatalogFixture::assumeSwitched();
+
+    actingAs(Staff::admin())->post('/manage/lookups/materials', [
+        'name' => ['ar' => 'Steel', 'en' => 'Steel'],
+        // No errors AT ALL, not just on one key: the same spelling in both languages is an ordinary
+        // save and nothing about it should be refused.
     ])->assertSessionHasNoErrors();
 
-    expect(DB::table('catalog_material_translations')->where('material_id', $id)->where('locale', 'en')->exists())->toBeFalse()
-        ->and(DB::table('catalog_material_translations')->where('material_id', $id)->where('locale', 'ar')->exists())->toBeTrue();
+    actingAs(Staff::admin())->post('/manage/lookups/materials', [
+        'name' => ['ar' => 'مادة أخرى', 'en' => 'Steel'],
+    ])->assertSessionHasErrors('name.en');
 });
 
 it('counts usage, and REFUSES to delete a row anything references', function () {
@@ -243,4 +275,221 @@ it('keeps the lookup screens catalogue-wide, with no storefront in the URL', fun
     // It is still storefront-AWARE where it matters: a rename invalidates every storefront's
     // cache, which the test above proves.
     expect(CatalogFixture::STOREFRONT)->toBe(1);
+});
+
+/*
+ * ── The boolean that was never a boolean (item 11, 2026-09-18) ───────────────────────────────
+ *
+ * The developer reported "brands are all inactive". They are not: all 78 rows of `catalog_brands`
+ * carry `is_active = 1`. The screen was reading the flag wrong, and the two tests below are the
+ * two halves of what that cost.
+ *
+ * `LookupWriter::rows()` passed the column through `is_scalar($value) ? $value : null`, so a
+ * MariaDB TINYINT arrived at the browser as the JSON number `1`. The switch renders
+ * `checked={value === true}`, and `1 === true` is false in JavaScript — so every brand on the
+ * screen showed as switched OFF while every brand in the database was on.
+ *
+ * The second half is the one that matters more, and nobody had hit it yet: the same screen sends
+ * the row back on save. `extraPayload()` maps a boolean column to `value === true`, which for the
+ * incoming `1` is FALSE. Renaming a brand — or setting its logo, or fixing its slug — would have
+ * written `is_active = 0` on the way out. A display bug that deactivates 78 brands the first time
+ * somebody edits one is a data bug wearing a display bug's clothes.
+ *
+ * Fixed at the SOURCE rather than in the browser: `config/catalog.php` declares the column's type
+ * and the server holds that config, so the server is what owes the client the right shape. A cast
+ * in the React file would have left the wrong value on the wire for the CSV export and for every
+ * screen added later.
+ */
+
+it('sends a declared boolean as a real boolean, not as the digit the database returns', function () {
+    $rows = app(LookupWriter::class)->rows('brands');
+
+    expect($rows)->not->toBe([], 'no brands — this test proves nothing');
+
+    $wrong = [];
+    foreach ($rows as $row) {
+        $value = T::arr($row['extra'] ?? null)['is_active'] ?? null;
+        if (! is_bool($value)) {
+            $wrong[] = T::int($row['id'] ?? null).': '.get_debug_type($value);
+        }
+    }
+
+    expect($wrong)->toBe([], 'is_active reached the client as something other than a boolean');
+});
+
+it('round-trips a row unchanged: what the screen was GIVEN, sent back, changes nothing', function () {
+    CatalogFixture::assumeSwitched();
+
+    /*
+     * This is the assertion that would have caught the whole defect, and it is deliberately not
+     * written as "is_active stays 1". It takes the row exactly as `rows()` hands it to the browser,
+     * posts it straight back through the screen's own `_complete` endpoint, and requires the
+     * database to be unchanged.
+     *
+     * That property is what a full-replace endpoint owes its own screen. Break it in either
+     * direction — the server sending a shape the form cannot round-trip, or the form sending a
+     * shape the server reads differently — and an operator who opened a brand to fix a typo saves
+     * a silent change to a column they never touched.
+     */
+    $rows = app(LookupWriter::class)->rows('brands');
+    $row = null;
+    foreach ($rows as $candidate) {
+        if (T::int($candidate['uses'] ?? null) > 0) {
+            $row = $candidate;
+            break;
+        }
+    }
+
+    expect($row)->not->toBeNull('no brand has any products — this test proves nothing');
+    if ($row === null) {
+        return;
+    }
+
+    $id = T::int($row['id'] ?? null);
+    $before = T::one(DB::table('catalog_brands')->where('id', $id));
+    $names = T::arr($row['name'] ?? null);
+
+    actingAs(Staff::admin())->put("/manage/lookups/brands/{$id}", [
+        '_complete' => 1,
+        'name' => ['ar' => T::str($names['ar'] ?? null), 'en' => T::str($names['en'] ?? null)],
+        'extra' => T::arr($row['extra'] ?? null),
+    ])->assertSessionHasNoErrors();
+
+    $after = T::one(DB::table('catalog_brands')->where('id', $id));
+
+    $drifted = [];
+    foreach (['slug', 'logo_path', 'is_active'] as $column) {
+        // Compared as strings because the two reads come back through different paths and `1` and
+        // `'1'` are the same stored value — the point of this test is DRIFT, not representation.
+        $was = Coerce::str($before->{$column} ?? null);
+        $now = Coerce::str($after->{$column} ?? null);
+        if ($was !== $now) {
+            $drifted[] = "{$column}: '{$was}' -> '{$now}'";
+        }
+    }
+
+    expect($drifted)->toBe([], 'a save that changed nothing changed something');
+});
+
+/*
+ * ── "Any brand with products should be active" — as a rule, not as an UPDATE (item 11) ───────
+ *
+ * The developer asked for the state fixed and the rule made to hold. The state needed nothing:
+ * all 78 brands were already active, and the report came from the boolean defect above. So the
+ * whole of this item is the rule, written where it can actually hold.
+ *
+ * What `is_active` does is the reason it deserves one. It does NOT hide the brand's products —
+ * they keep selling. It removes the brand from `Storefront\Meta`'s brand list and stops
+ * `Storefront\Sitemaps` emitting its page. Switching Rolex off drops a browse path and a URL
+ * Google has indexed, while 125 products carry on as if nothing happened. That is exactly the
+ * kind of change that is never noticed until somebody asks why traffic fell.
+ */
+
+it('refuses to switch off a lookup row that products still use, and says what it would cost', function () {
+    CatalogFixture::assumeSwitched();
+
+    $rows = app(LookupWriter::class)->rows('brands');
+    $used = null;
+    foreach ($rows as $row) {
+        if (T::int($row['uses'] ?? null) > 0 && (T::arr($row['extra'] ?? null)['is_active'] ?? null) === true) {
+            $used = $row;
+            break;
+        }
+    }
+
+    expect($used)->not->toBeNull('no active brand has products — this test proves nothing');
+    if ($used === null) {
+        return;
+    }
+
+    $id = T::int($used['id'] ?? null);
+    $names = T::arr($used['name'] ?? null);
+    $extra = T::arr($used['extra'] ?? null);
+    $extra['is_active'] = false;
+
+    actingAs(Staff::admin())->put("/manage/lookups/brands/{$id}", [
+        '_complete' => 1,
+        'name' => ['ar' => T::str($names['ar'] ?? null), 'en' => T::str($names['en'] ?? null)],
+        'extra' => $extra,
+    ])->assertSessionHasErrors('extra.is_active');
+
+    // …and the refusal actually held: the column is untouched.
+    expect((bool) Row::int(T::one(DB::table('catalog_brands')->where('id', $id)), 'is_active'))->toBeTrue();
+});
+
+it('still lets a row nothing uses be switched off', function () {
+    CatalogFixture::assumeSwitched();
+
+    /*
+     * The half that makes the guard a rule rather than a wall. A brand with no products is exactly
+     * what somebody retires, and a refusal there would be the screen inventing a policy nobody
+     * asked for — 51 of the 78 brands carry no products at all.
+     */
+    $rows = app(LookupWriter::class)->rows('brands');
+    $unused = null;
+    foreach ($rows as $row) {
+        if (T::int($row['uses'] ?? null) === 0 && (T::arr($row['extra'] ?? null)['is_active'] ?? null) === true) {
+            $unused = $row;
+            break;
+        }
+    }
+
+    expect($unused)->not->toBeNull('every brand has products — this test proves nothing');
+    if ($unused === null) {
+        return;
+    }
+
+    $id = T::int($unused['id'] ?? null);
+    $names = T::arr($unused['name'] ?? null);
+    $extra = T::arr($unused['extra'] ?? null);
+    $extra['is_active'] = false;
+
+    actingAs(Staff::admin())->put("/manage/lookups/brands/{$id}", [
+        '_complete' => 1,
+        'name' => ['ar' => T::str($names['ar'] ?? null), 'en' => T::str($names['en'] ?? null)],
+        'extra' => $extra,
+    ])->assertSessionHasNoErrors();
+
+    expect((bool) Row::int(T::one(DB::table('catalog_brands')->where('id', $id)), 'is_active'))->toBeFalse();
+});
+
+/*
+ * ── The colour picker writes what the hex box writes (item 9, 2026-09-18) ────────────────────
+ *
+ * The swatch on this screen used to be a read-only `<span>`: it SHOWED the colour and could not set
+ * it, so the only way in was to type six hexadecimal digits from memory. Nobody knows that
+ * ذهبي وردي is `#B76E79`.
+ *
+ * Both controls now write. The picker is React and this tree has no JavaScript test runner, so what
+ * is asserted here is the half a browser test could not tell you anyway: that the value a picker
+ * produces — always lower-case `#rrggbb`, that is what the platform gives — survives the round trip
+ * and lands in the column the same way a typed one does.
+ */
+
+it('accepts the lower-case hex a colour picker produces, and stores it like any other', function () {
+    CatalogFixture::assumeSwitched();
+
+    actingAs(Staff::admin())->post('/manage/lookups/colors', [
+        'name' => ['ar' => 'لون المنتقي', 'en' => 'Picker colour'],
+        // Exactly what `<input type="color">` hands back.
+        'extra' => ['hex' => '#b76e79'],
+    ])->assertSessionHasNoErrors();
+
+    $row = T::one(DB::table('catalog_colors')->orderByDesc('id'));
+
+    // Upper-cased on the way in, as the transform stores it (deviation D-07) — so one colour
+    // cannot appear twice in the list because two people typed it in different cases.
+    expect(Row::str($row, 'hex'))->toBe('#B76E79');
+});
+
+it('still refuses a hex that no picker could have produced', function () {
+    CatalogFixture::assumeSwitched();
+
+    // The hex BOX stays free-text on purpose — it is for pasting a code a supplier sent, and
+    // normalising as somebody types fights the cursor. So the server is what refuses, and it must
+    // keep doing so now that a second control writes the same field.
+    actingAs(Staff::admin())->post('/manage/lookups/colors', [
+        'name' => ['ar' => 'لون غير صالح', 'en' => 'Bad colour'],
+        'extra' => ['hex' => '#B7'],
+    ])->assertSessionHasErrors();
 });

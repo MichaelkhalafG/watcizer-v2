@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import ManageLayout from '@/layouts/ManageLayout';
 import { useT } from '@/lib/i18n';
+import { mediaTypeLabel } from '@/lib/labels';
 
 /**
  * Media cleanup (wave 4D, task C4) — what `media:prune` sees, with a button.
@@ -172,7 +173,7 @@ export default function MediaPrune({
                             {types.map((row) => (
                                 <TableRow key={row.type}>
                                     <TableCell>
-                                        <Ltr>{row.type}</Ltr>
+                                        {mediaTypeLabel(t, row.type)}
                                     </TableCell>
                                     <TableCell className="text-muted-foreground">
                                         <Ltr>{row.folder}</Ltr>

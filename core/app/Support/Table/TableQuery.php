@@ -61,6 +61,13 @@ final class TableQuery
      */
     private ?string $tiebreaker = null;
 
+    /**
+     * Public sort name => the column it orders by (`wa_code` => `p.wa_code`).
+     *
+     * @var array<string, string>
+     */
+    private array $sortNames = [];
+
     /** @var list<string> */
     private array $searchable = [];
 
@@ -120,12 +127,53 @@ final class TableQuery
      */
     public function sortable(array $columns, ?string $default = null, string $direction = 'asc', ?string $tiebreaker = null): self
     {
+        /*
+         * ── The URL carries a NAME; the query carries a COLUMN (D-18, 2026-09-19) ───────────
+         *
+         * A screen declares what it can sort by in SQL — `p.wa_code`, `sp.sort_order`,
+         * `o.total_price_for_order` — and every one of those went straight into the query string,
+         * so the link an operator bookmarks and pastes into a colleague's chat read
+         * `?sort=p.id&direction=desc`. That is this application's join aliases published as a
+         * public interface: it tells a stranger the shape of the schema, it means nothing to the
+         * person reading it, and it freezes the alias — renaming `p` to `prod` would break every
+         * saved link.
+         *
+         * So the alias is stripped once, here: `p.wa_code` is offered to the world as `wa_code`,
+         * and `resolvedSortColumn()` maps it back. The declaration is unchanged at every call
+         * site, which is the point — nothing had to be remembered.
+         *
+         * A COLLISION (two declared columns stripping to the same name, `p.id` and `oi.id`) would
+         * make one of them unreachable, silently. It throws instead, at declaration time, so it is
+         * a startup failure on the developer's machine rather than a sort that quietly does the
+         * wrong thing in production.
+         */
+        $names = [];
+        foreach ($columns as $column) {
+            $name = self::publicSortName($column);
+            if (isset($names[$name]) && $names[$name] !== $column) {
+                throw new InvalidArgumentException(
+                    "Two sortable columns share the public name [{$name}]: [{$names[$name]}] and [{$column}]. "
+                    .'Give one of them an unambiguous column name, or the URL cannot tell them apart.'
+                );
+            }
+            $names[$name] = $column;
+        }
+
         $this->sortable = $columns;
+        $this->sortNames = $names;
         $this->defaultSort = $default ?? ($columns[0] ?? null);
         $this->defaultDirection = strtolower($direction) === 'desc' ? 'desc' : 'asc';
         $this->tiebreaker = $tiebreaker;
 
         return $this;
+    }
+
+    /** `p.wa_code` → `wa_code`. A bare column is already its own public name. */
+    private static function publicSortName(string $column): string
+    {
+        $at = strrpos($column, '.');
+
+        return $at === false ? $column : substr($column, $at + 1);
     }
 
     /**
@@ -239,7 +287,7 @@ final class TableQuery
             return;
         }
 
-        abort(403, ManageText::t('table.export_forbidden', 'تصدير البيانات ليس ضمن صلاحياتك. الشاشة متاحة لك بالكامل، أما تنزيل الملف فيحتاج صلاحية مدير.'));
+        abort(403, ManageText::t('table.export_forbidden', 'تنزيل ملف التصدير يحتاج صلاحية مدير.'));
     }
 
     /**
@@ -335,13 +383,35 @@ final class TableQuery
         return max(1, is_numeric($value) ? (int) $value : 1);
     }
 
-    /** The sort column, or null when the screen declared none. Never a column outside the whitelist. */
+    /**
+     * The sort as the URL and the client speak it — a public NAME, never a join alias.
+     *
+     * The aliased form is still accepted on the way IN, so the links people bookmarked before
+     * 2026-09-19 keep working; it is normalised to the public name on the way out, so a shared
+     * link written today is clean.
+     */
     public function resolvedSort(): ?string
     {
         $value = $this->request->query('sort');
         $requested = is_string($value) ? $value : null;
 
-        return $requested !== null && in_array($requested, $this->sortable, true) ? $requested : $this->defaultSort;
+        if ($requested !== null && isset($this->sortNames[$requested])) {
+            return $requested;
+        }
+        // The legacy aliased form, from an older bookmark.
+        if ($requested !== null && in_array($requested, $this->sortable, true)) {
+            return self::publicSortName($requested);
+        }
+
+        return $this->defaultSort === null ? null : self::publicSortName($this->defaultSort);
+    }
+
+    /** The same sort as a COLUMN the query builder can order by. Never reaches the URL. */
+    private function resolvedSortColumn(): ?string
+    {
+        $name = $this->resolvedSort();
+
+        return $name === null ? null : ($this->sortNames[$name] ?? null);
     }
 
     public function resolvedDirection(): string
@@ -428,7 +498,7 @@ final class TableQuery
             }
         }
 
-        $sort = $this->resolvedSort();
+        $sort = $this->resolvedSortColumn();
         if ($sort !== null) {
             // The direction is one of exactly two literals by construction (resolvedDirection),
             // which is what `orderBy()` asks for at level 10.
@@ -528,7 +598,9 @@ final class TableQuery
                 'direction' => $this->resolvedDirection(),
                 'search' => $this->resolvedSearch(),
                 'filters' => $this->resolvedFilters(),
-                'sortable' => $this->sortable,
+                // The public NAMES, which is what the client matches its column keys against and
+                // what ends up in the query string.
+                'sortable' => array_keys($this->sortNames),
                 'filterable' => array_keys($this->filterable),
                 'virtual' => $this->virtual,
                 /*

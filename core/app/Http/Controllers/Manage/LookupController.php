@@ -71,9 +71,30 @@ final class LookupController
             'uses' => ManageText::t('lookups.usage_count', 'مرات الاستخدام'),
         ];
         foreach ($def['extra'] as $column => $field) {
+            /*
+             * A declared boolean exports as a WORD, not as a digit (item 11, 2026-09-18).
+             *
+             * The server now sends real booleans — see `LookupWriter::rows()` — and stringifying
+             * one gives `'1'` for true and `''` for false, so an inactive brand would have left a
+             * blank cell that reads as "nobody filled this in" rather than "switched off". The
+             * bilingual export's own rule applies: an empty cell is information, so it must not be
+             * spent on a value that is present and simply false.
+             */
+            $isBoolean = ($field['type'] ?? null) === 'boolean';
+
             $columns[$column] = [
                 Coerce::str($field['label'] ?? $column),
-                fn (array $row): string => Coerce::str(Coerce::arr($row['extra'] ?? null)[$column] ?? null),
+                function (array $row) use ($column, $isBoolean): string {
+                    $value = Coerce::arr($row['extra'] ?? null)[$column] ?? null;
+
+                    if ($isBoolean) {
+                        return $value === true
+                            ? ManageText::t('common.yes', 'نعم')
+                            : ManageText::t('common.no', 'لا');
+                    }
+
+                    return Coerce::str($value);
+                },
             ];
         }
 
@@ -87,9 +108,26 @@ final class LookupController
                 'key' => $def['key'],
                 'label' => $def['label'],
                 'extra' => $def['extra'],
-                // The screen tells the team WHERE a row is used, not just how often, so "23"
-                // is actionable instead of alarming.
-                'usage_tables' => array_map(fn (array $pair): string => $pair[0].'.'.$pair[1], $def['usage']),
+                /*
+                 * WHAT the usage number counts — not where it is counted from (item 10, 2026-09-18).
+                 *
+                 * This used to be `usage_tables`: `catalog_product_watch_specs.case_size_unit_id`,
+                 * rendered in a monospace span in front of a data-entry operator. The developer
+                 * named it as the example of the whole class: *"Column names and table names in
+                 * front of a data-entry operator."*
+                 *
+                 * The fix is the PROP, not the sentence around it. Rewording a note that still
+                 * contained `catalog_product_watch_specs.case_size_unit_id` would have moved the
+                 * problem one clause to the left. An operator needs to know the number means
+                 * PRODUCTS — and then they can act on it. Where it comes from is this file's
+                 * business.
+                 *
+                 * A TOKEN rather than a finished sentence, because the wording belongs on the
+                 * screen with the rest of the copy: every one of the twelve lists is ultimately
+                 * counting products, and the only distinction worth making is whether it counts
+                 * them through their sizes and colours.
+                 */
+                'usage_counts' => self::usageCounts($def['usage']),
             ],
             'lists' => self::allLists(),
             'rows' => $rows,
@@ -137,6 +175,27 @@ final class LookupController
         return $result['deleted']
             ? back()->with('status', $result['reason'])
             : back()->withErrors(['delete' => $result['reason']]);
+    }
+
+    /**
+     * `products` or `variants` — what the usage column is counting, in the operator's terms.
+     *
+     * Every declared usage pair on every one of the twelve lists points at a product or at
+     * something that belongs to exactly one product, so the honest answer is always "products".
+     * The one distinction an operator can act on is whether the reference is on the product itself
+     * or on its sizes and colours, because that changes where they go to move it.
+     *
+     * @param  list<array{0: string, 1: string}>  $usage
+     */
+    private static function usageCounts(array $usage): string
+    {
+        foreach ($usage as [$table]) {
+            if ($table === 'catalog_product_variants') {
+                return 'variants';
+            }
+        }
+
+        return 'products';
     }
 
     /**

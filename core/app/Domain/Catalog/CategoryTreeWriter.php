@@ -321,7 +321,7 @@ final class CategoryTreeWriter
             }
 
             if ($node->legacy_source !== null) {
-                throw new RuntimeException(ManageText::t('categories.delete_legacy_node', 'هذا التصنيف مأخوذ من النظام القديم، وإعادة بناء الجداول ستعيده. عطّله بدلًا من حذفه.'));
+                throw new RuntimeException(ManageText::t('categories.delete_legacy_node', 'هذا التصنيف مأخوذ من متجر واتشيزر وسيعود بعد حذفه. عطّله بدلًا من ذلك.'));
             }
 
             DB::table('storefront_category_translations')->where('storefront_category_id', $nodeId)->delete();

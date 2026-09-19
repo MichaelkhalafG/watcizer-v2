@@ -27,7 +27,7 @@ interface Row {
 }
 
 interface Props {
-    list: { key: string; label: string; extra: Record<string, ExtraField>; usage_tables: string[] };
+    list: { key: string; label: string; extra: Record<string, ExtraField>; usage_counts: 'products' | 'variants' };
     lists: Array<{ key: string; label: string; url: string }>;
     rows: Row[];
     pre_switch: PreSwitchState;
@@ -149,15 +149,18 @@ export default function LookupsIndex({ list, lists, rows, pre_switch }: Props) {
             <Card>
                 <CardHeader className="gap-1">
                     <CardTitle>{list.label}</CardTitle>
+                    {/* Item 10: what the number MEANS and what to do about it. It used to name
+                        the tables it was counted from, in a monospace span. */}
                     <p className="text-xs text-muted-foreground">
-                        {t('lookups.usage_note_before_tables', 'عمود «الاستخدام» يحسب الإشارات من')}{' '}
-                        <span dir="ltr" className="font-mono">
-                            {list.usage_tables.join(' · ')}
-                        </span>
-                        {t(
-                            'lookups.usage_note_after_tables',
-                            '. الحذف مرفوض ما دام العدد أكبر من صفر — المفاتيح الأجنبية ترفضه أصلًا، وهذه هي الرسالة قبل أن تصير خطأ.',
-                        )}
+                        {list.usage_counts === 'variants'
+                            ? t(
+                                  'lookups.usage_note_variants',
+                                  'عمود «الاستخدام» يعرض عدد المنتجات والمقاسات/الألوان التي تستخدم هذا العنصر. لا يمكن حذف عنصر مستخدم: انقل تلك المنتجات إلى عنصر آخر أولاً.',
+                              )
+                            : t(
+                                  'lookups.usage_note',
+                                  'عمود «الاستخدام» يعرض عدد المنتجات التي تستخدم هذا العنصر. لا يمكن حذف عنصر مستخدم: انقل تلك المنتجات إلى عنصر آخر أولاً.',
+                              )}
                     </p>
                 </CardHeader>
 
@@ -168,7 +171,7 @@ export default function LookupsIndex({ list, lists, rows, pre_switch }: Props) {
                                 <TableRow>
                                     <TableHead className="w-14">#</TableHead>
                                     <TableHead>{t('common.name_ar', 'الاسم (عربي)')}</TableHead>
-                                    <TableHead>Name (English)</TableHead>
+                                    <TableHead>{t('common.name_en', 'الاسم (إنجليزي)')}</TableHead>
                                     {columns.map(([column, field]) => (
                                         <TableHead key={column}>{field.label}</TableHead>
                                     ))}
@@ -196,7 +199,7 @@ export default function LookupsIndex({ list, lists, rows, pre_switch }: Props) {
                                             <Input
                                                 dir="ltr"
                                                 lang="en"
-                                                aria-label={`English name for item ${row.id}`}
+                                                aria-label={t('lookups.row_name_en_aria', 'الاسم الإنجليزي للعنصر :id', { id: row.id })}
                                                 className="min-w-[9rem]"
                                                 value={edits[row.id]?.en ?? row.name.en}
                                                 onChange={(event) => setEdits((current) => ({ ...current, [row.id]: { ...(current[row.id] ?? {}), en: event.target.value } }))}
@@ -263,8 +266,14 @@ export default function LookupsIndex({ list, lists, rows, pre_switch }: Props) {
                         </Table>
                     </div>
 
+                    {/* Item 5: the refusal became a caveat. `blocked` and `caveat` are mutually
+                        exclusive, so this renders whichever one the server set — the same fact, in
+                        the voice the situation calls for. */}
                     {pre_switch.blocked ? (
-                        <Alert tone="warning" title={t('lookups.pre_switch_blocked_title', 'الإضافة موقوفة قبل ليلة التحويل')}>
+                        <Alert
+                            tone="warning"
+                            title={t('lookups.pre_switch_blocked_title', 'الإضافة موقوفة حاليًا')}
+                        >
                             {pre_switch.message}
                         </Alert>
                     ) : null}
@@ -280,7 +289,7 @@ export default function LookupsIndex({ list, lists, rows, pre_switch }: Props) {
                             <Input id="new-ar" dir="rtl" lang="ar" value={draft.ar} onChange={(event) => setDraft({ ...draft, ar: event.target.value })} />
                         </div>
                         <div className="space-y-1.5">
-                            <Label htmlFor="new-en">Name (English)</Label>
+                            <Label htmlFor="new-en">{t('common.name_en', 'الاسم (إنجليزي)')}</Label>
                             <Input id="new-en" dir="ltr" lang="en" value={draft.en} onChange={(event) => setDraft({ ...draft, en: event.target.value })} />
                         </div>
 
@@ -303,7 +312,7 @@ export default function LookupsIndex({ list, lists, rows, pre_switch }: Props) {
                             <Button
                                 type="button"
                                 className="gap-1.5"
-                                title={pre_switch.message ?? undefined}
+                                title={(pre_switch.message ?? pre_switch.caveat) ?? undefined}
                                 disabled={draft.ar.trim() === '' || pre_switch.blocked}
                                 onClick={() =>
                                     router.post(
@@ -344,6 +353,10 @@ function ExtraCell({
     urlHint: string | null;
     onChange: (value: string | boolean) => void;
 }) {
+    // Its own hook rather than a `t` prop: this renders once per row per extra column, and
+    // threading the translator through every call site would be noise at every one of them.
+    const t = useT();
+
     if (field.type === 'boolean') {
         return <Switch id={id} aria-label={field.label} checked={value === true} onCheckedChange={onChange} />;
     }
@@ -367,14 +380,41 @@ function ExtraCell({
     }
 
     if (field.type === 'hex') {
+        /*
+         * ── A picker AND a hex box, either of which fills the other (item 9, 2026-09-18) ────
+         *
+         * The swatch used to be a read-only `<span>`: it showed the colour and could not set it, so
+         * the only way in was to type six hexadecimal digits from memory. Nobody knows that
+         * ذهبي وردي is `#B76E79`.
+         *
+         * Both controls now write. The picker is for choosing, the box is for pasting a code a
+         * supplier sent — two different jobs that happen to share a value, which is why the answer
+         * is both and not one.
+         *
+         * The box keeps whatever is typed, character by character, INVALID INCLUDED. Normalising as
+         * somebody types turns `#B7` into a fight with the cursor, and the server refuses a bad hex
+         * with a sentence of its own. Only the picker writes a normalised value, because a picker
+         * cannot produce an invalid one.
+         */
+        const text = String(value);
+        const valid = /^#[0-9A-Fa-f]{6}$/.test(text);
+
         return (
             <div className="flex items-center gap-2">
-                <span
-                    aria-hidden="true"
-                    className="h-6 w-6 shrink-0 rounded border"
-                    style={{ background: typeof value === 'string' && /^#[0-9A-Fa-f]{6}$/.test(value) ? value : 'transparent' }}
+                <input
+                    type="color"
+                    // `<input type="color">` always HAS a value, so an empty field would show black
+                    // and imply somebody chose black. The dashed ring is what says "nothing yet".
+                    value={valid ? text : '#000000'}
+                    onChange={(event) => onChange(event.target.value.toUpperCase())}
+                    aria-label={t('lookups.pick_colour', 'اختر اللون')}
+                    title={t('lookups.pick_colour', 'اختر اللون')}
+                    className={cn(
+                        'h-8 w-10 shrink-0 cursor-pointer rounded border bg-transparent p-0.5',
+                        valid ? '' : 'border-dashed',
+                    )}
                 />
-                <Input id={id} dir="ltr" className="w-28" placeholder="#RRGGBB" aria-label={field.label} value={String(value)} onChange={(event) => onChange(event.target.value)} />
+                <Input id={id} dir="ltr" className="w-28" placeholder="#RRGGBB" aria-label={field.label} value={text} onChange={(event) => onChange(event.target.value)} />
             </div>
         );
     }

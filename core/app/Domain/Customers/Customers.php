@@ -78,6 +78,7 @@ final class Customers
                 'u.created_at as joined_at',
                 DB::raw('COALESCE(oa.orders_count, 0) as orders_count'),
                 DB::raw('COALESCE(oa.spent, 0) as spent'),
+                DB::raw('COALESCE(oa.ordered, 0) as ordered'),
                 'oa.last_order_at',
                 'oa.storefronts',
             ]);
@@ -119,6 +120,7 @@ final class Customers
                 'o.user_id',
                 DB::raw('COUNT(*) as orders_count'),
                 self::spent(),
+                self::ordered(),
                 DB::raw('MAX(o.created_at) as last_order_at'),
                 DB::raw('GROUP_CONCAT(DISTINCT o.storefront_id ORDER BY o.storefront_id) as storefronts'),
             ]);
@@ -175,6 +177,10 @@ final class Customers
                     "COALESCE(SUM(CASE WHEN g.status IN ('delivered', 'completed') "
                     .'THEN g.total_price_for_order ELSE 0 END), 0) as spent'
                 ),
+                DB::raw(
+                    "COALESCE(SUM(CASE WHEN g.status <> 'cancelled' "
+                    .'THEN g.total_price_for_order ELSE 0 END), 0) as ordered'
+                ),
                 DB::raw('MAX(g.created_at) as last_order_at'),
                 DB::raw('GROUP_CONCAT(DISTINCT g.storefront_id ORDER BY g.storefront_id) as storefronts'),
             ]);
@@ -196,6 +202,32 @@ final class Customers
         return DB::raw(
             "COALESCE(SUM(CASE WHEN o.status IN ('delivered', 'completed') "
             .'THEN o.total_price_for_order ELSE 0 END), 0) as spent'
+        );
+    }
+
+    /**
+     * `SUM(total) OF EVERYTHING NOT CANCELLED` — what this customer has ORDERED (D-23).
+     *
+     * ── Why a second number rather than a looser first one ──────────────────────────────────
+     *
+     * `/manage/customers` showed `عدد الطلبات 5` and `إجمالي المشتريات 0.00` on the same card,
+     * with five orders of 3,190 listed underneath. The query was right and the docblock above says
+     * why — a pending order is not a purchase and a cancelled one is not either. But **no order in
+     * this database has ever reached `delivered` or `completed`**, so the column is 0.00 for every
+     * row, and an unqualified "total purchases" beside an order count reads as broken data.
+     *
+     * Loosening `spent()` to fix the appearance would be the wrong repair: it would make the
+     * number that means "money actually taken" stop meaning that, and that is the number somebody
+     * quotes at a customer before refunding them.
+     *
+     * So both are shown. `ordered` is what they have committed to, `spent` is what has actually
+     * completed, and the gap between them is itself worth seeing — it is the shop's open exposure.
+     */
+    private static function ordered(): ExpressionContract
+    {
+        return DB::raw(
+            "COALESCE(SUM(CASE WHEN o.status <> 'cancelled' "
+            .'THEN o.total_price_for_order ELSE 0 END), 0) as ordered'
         );
     }
 

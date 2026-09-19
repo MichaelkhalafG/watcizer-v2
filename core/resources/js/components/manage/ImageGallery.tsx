@@ -1,5 +1,5 @@
 import { ChevronDown, ChevronUp, ImageUp, Loader2, Star, Trash2 } from 'lucide-react';
-import { useCallback, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -206,8 +206,13 @@ export function ImageGallery({
 
                             <div className="min-w-[12rem] flex-1 space-y-2">
                                 <div className="flex flex-wrap items-center gap-2">
+                                    {/* The FILE, not the storage path (D-18). `Product_image/…` is
+                                        the folder layout of a shared disk the operator has no
+                                        access to; the filename is what they quote when they say
+                                        "the third picture is wrong". The full path stays in the
+                                        `title` for whoever is matching it against the disk. */}
                                     <span className="truncate font-mono text-[11px] text-muted-foreground" dir="ltr" title={image.path}>
-                                        {image.path}
+                                        {image.path.split('/').pop()}
                                     </span>
                                     {image.is_cover ? <Badge variant="default">{t('gallery.cover', 'الغلاف')}</Badge> : null}
                                     {image.width !== null ? (
@@ -238,8 +243,8 @@ export function ImageGallery({
                                     <Input
                                         dir="ltr"
                                         lang="en"
-                                        placeholder="Alt text (English)"
-                                        aria-label={`Alt text for image ${index + 1}`}
+                                        placeholder={t('gallery.alt_en', 'نص بديل (إنجليزي)')}
+                                        aria-label={t('gallery.alt_en_for_image', 'نص بديل إنجليزي للصورة :number', { number: index + 1 })}
                                         value={image.alt_en}
                                         disabled={disabled}
                                         onChange={(event) => setAlt(index, 'en', event.target.value)}
@@ -295,42 +300,20 @@ export function ImageGallery({
                 </ul>
 
                 {images.length > 0 ? (
+                    // D-18: the sentence used to end "…ويُنظَّف بأمر `media:prune` بعد مراجعة
+                    // تقريره". `media:prune` answers 403 to EVERY role including administrators
+                    // (`Role::RESTRICTED`), so the one instruction on the line was an instruction
+                    // nobody reading it could carry out. What matters to the operator is the
+                    // consequence — the picture is gone from the shop, the file is not gone from
+                    // the disk — and that somebody else clears the disk later.
                     <p className="text-xs text-muted-foreground">
-                        {/* One key for the whole sentence, with the command name as a `:command`
-                            placeholder the translator keeps in place — split here so the command
-                            still renders as LTR <code> instead of being flattened into the text. */}
-                        <Around
-                            text={t(
-                                'gallery.order_note',
-                                'الترتيب هنا هو الترتيب على المتجر. إزالة صورة تحذف السجل فقط — الملف يبقى في المجلد المشترك، ويُنظَّف بأمر :command بعد مراجعة تقريره.',
-                            )}
-                            placeholder=":command"
-                        >
-                            <code dir="ltr">media:prune</code>
-                        </Around>
+                        {t(
+                            'gallery.order_note',
+                            'الترتيب هنا هو الترتيب على المتجر. إزالة صورة تُخرجها من المنتج فورًا، لكن الملف نفسه يبقى في المجلد المشترك ويُحذف لاحقًا في عملية تنظيف يقوم بها مسؤول النظام.',
+                        )}
                     </p>
                 ) : null}
             </CardContent>
         </Card>
-    );
-}
-
-/**
- * Render `text` with `children` substituted for its `:placeholder`.
- *
- * A sentence that wraps one fragment in markup would otherwise have to be split into two keys, and
- * a translator handed two halves cannot reorder them — which is exactly what Arabic → English
- * needs to do. So the key stays ONE sentence carrying a Laravel-style `:name` placeholder, and the
- * substitution happens here instead of in `t()`, because the value is an element and not a string.
- */
-function Around({ text, placeholder, children }: { text: string; placeholder: string; children: ReactNode }) {
-    const [before, ...rest] = text.split(placeholder);
-
-    return (
-        <>
-            {before}
-            {rest.length === 0 ? null : children}
-            {rest.join(placeholder)}
-        </>
     );
 }

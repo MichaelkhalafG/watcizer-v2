@@ -55,12 +55,17 @@ class HandleInertiaRequests extends Middleware
             'app' => ['name' => config('app.name')],
             'locale' => $locale,
             /*
-             * The writing direction follows the language the dashboard is WRITTEN in, not the one
-             * the operator picked — see Preferences::TEXT_LOCALE. Step 1 of the i18n backlog makes
-             * these the same thing; until then, mirroring the layout around Arabic labels would be
-             * worse than not switching at all.
+             * The writing direction follows the operator's CHOSEN locale (2026-09-17).
+             *
+             * It used to be pinned to `rtl` whatever they picked, and that was right at the time:
+             * the shell was 1,422 inline Arabic literals, so an English-speaking operator still read
+             * Arabic and an `ltr` layout would have mirrored the furniture around Arabic text.
+             *
+             * English coverage is 99.8% now, so the condition the pin named has been met and the pin
+             * itself became the defect — English words in a right-to-left shell, sidebar on the
+             * wrong side, every chevron pointing the wrong way.
              */
-            'dir' => Preferences::TEXT_DIR,
+            'dir' => Preferences::directionFor($locale),
             /*
              * The flat dictionary for the ACTIVE locale (i18n step 0). Empty today on purpose:
              * `t(key, fallback)` renders the fallback, which is the literal already in the JSX, so

@@ -1,9 +1,11 @@
 import { DataTable, type Column } from '@/components/table/DataTable';
+import { DateRangeFilter } from '@/components/table/DateRangeFilter';
 import { Badge } from '@/components/ui/badge';
 import { Num } from '@/components/ui/bidi';
-import { Input, Select } from '@/components/ui/input';
+import { Select } from '@/components/ui/input';
 import ManageLayout from '@/layouts/ManageLayout';
 import { useT } from '@/lib/i18n';
+import { changedFieldLabel } from '@/lib/labels';
 import type { TablePayload } from '@/types';
 
 /**
@@ -37,6 +39,8 @@ interface Entry {
     user_name: string;
     subject_type: string;
     subject_id: number | null;
+    /** The same word the filter shows — never the table name (item 10). */
+    subject_type_label: string;
     subject_label: string | null;
     action: string;
     action_label: string;
@@ -122,24 +126,17 @@ export default function ActivityIndex({ table, filters, coverage, pre_handover_n
             sortable: true,
             cell: (row) => <Badge variant={actionTone(row.action)}>{row.action_label}</Badge>,
         },
-        {
-            key: 'subject_label',
-            header: t('common.record', 'السجل'),
-            cell: (row) => (
-                <div className="min-w-0">
-                    <div className="truncate">{row.subject_label ?? '—'}</div>
-                    <div className="text-xs text-muted-foreground">
-                        {row.subject_type}
-                        {row.subject_id !== null && (
-                            <>
-                                {' · '}
-                                <Num>{row.subject_id}</Num>
-                            </>
-                        )}
-                    </div>
-                </div>
-            ),
-        },
+        /*
+         * `ما تغيّر` sits DIRECTLY beside `الإجراء`, and `السجل` is capped.
+         *
+         * Read in that order the row is a sentence — who, did what, from what to what — and the
+         * two columns an auditor actually reads are adjacent. The previous order put the audit
+         * trail's entire payload last, behind an unbounded `السجل` cell that took every pixel of
+         * slack: measured at a 1,740 px window, `السجل` was 1,257 px wide to hold `000009` and
+         * `ما تغيّر` began at x = -376, i.e. wholly off-screen. There IS an `overflow-x-auto`
+         * wrapper, but in RTL `scrollLeft: 0` is the RIGHT edge, so the page opened on the
+         * columns nobody needed and the operator concluded nothing had been recorded.
+         */
         {
             key: 'changes',
             header: t('activity.changed', 'ما تغيّر'),
@@ -152,7 +149,11 @@ export default function ActivityIndex({ table, filters, coverage, pre_handover_n
                     <ul className="space-y-0.5 text-xs">
                         {entries.map(([field, change]) => (
                             <li key={field} className="flex flex-wrap items-baseline gap-1">
-                                <span className="font-medium">{field}</span>
+                                {/* Item 10: a column name is not a field name. `is_primary` and
+                                    `type_stock` mean nothing to the person reading their own audit
+                                    trail; an unmapped column still shows verbatim, because a new
+                                    one is something to notice. */}
+                                <span className="font-medium">{changedFieldLabel(t, field)}</span>
                                 <Value value={change.from} />
                                 <span className="text-muted-foreground">←</span>
                                 <Value value={change.to} />
@@ -161,6 +162,31 @@ export default function ActivityIndex({ table, filters, coverage, pre_handover_n
                     </ul>
                 );
             },
+        },
+        {
+            key: 'subject_label',
+            header: t('common.record', 'السجل'),
+            // Capped so it can never take the slack again. The full value stays reachable as the
+            // cell's `title`, which is the right place for an overflow of a value the reader can
+            // already see most of — unlike J-8, where a `title` hid a RULE nothing else stated.
+            className: 'max-w-[20rem]',
+            cell: (row) => (
+                <div className="min-w-0 max-w-[20rem]">
+                    <div className="truncate" title={row.subject_label ?? undefined}>
+                        {row.subject_label ?? '—'}
+                    </div>
+                    <div className="truncate text-xs text-muted-foreground">
+                        {/* Item 10: the word, which the filter above has always used. */}
+                        {row.subject_type_label}
+                        {row.subject_id !== null && (
+                            <>
+                                {' · '}
+                                <Num>{row.subject_id}</Num>
+                            </>
+                        )}
+                    </div>
+                </div>
+            ),
         },
     ];
 
@@ -211,20 +237,15 @@ export default function ActivityIndex({ table, filters, coverage, pre_handover_n
                             </Select>
                         ))}
 
-                        {/* The date range narrows any of the three questions above. */}
-                        <Input
-                            type="date"
-                            className="w-full sm:w-40"
-                            aria-label={t('common.from_date', 'من تاريخ')}
-                            value={current.from ?? ''}
-                            onChange={(event) => setFilter('from', event.target.value || null)}
-                        />
-                        <Input
-                            type="date"
-                            className="w-full sm:w-40"
-                            aria-label={t('common.to_date', 'إلى تاريخ')}
-                            value={current.to ?? ''}
-                            onChange={(event) => setFilter('to', event.target.value || null)}
+                        {/* The date range narrows any of the three questions above. One control
+                            rather than two bare boxes the filter row could wrap between (§2.8). */}
+                        <DateRangeFilter
+                            from={current.from ?? null}
+                            to={current.to ?? null}
+                            onChange={(from, to) => {
+                                setFilter('from', from);
+                                setFilter('to', to);
+                            }}
                         />
                     </>
                 )}

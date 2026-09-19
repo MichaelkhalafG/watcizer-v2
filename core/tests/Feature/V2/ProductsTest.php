@@ -13,7 +13,7 @@ beforeEach(fn () => H::flush());
 
 it('paginates the storefront catalog server-side with sane defaults and a hard cap', function () {
     $res = getJson(H::base('products'))->assertOk();
-    $res->assertJsonPath('meta.page', 1)->assertJsonPath('meta.per_page', 24)->assertJsonPath('meta.sort', 'newest')->assertJsonPath('meta.locale', 'ar');
+    $res->assertJsonPath('meta.page', 1)->assertJsonPath('meta.per_page', 24)->assertJsonPath('meta.sort', 'newest')->assertJsonPath('meta.locale', 'en');
     expect($res->json('data'))->toHaveCount(24)
         ->and($res->json('meta.total'))->toBeGreaterThan(24)
         ->and($res->json('links.next'))->toContain('page=2');
@@ -79,7 +79,7 @@ it('searches the request locale with FULLTEXT and falls back to LIKE below three
 it('serves a product detail by storefront slug with specs, attributes, breadcrumb and related cards', function () {
     $slug = H::visibleSlug();
     $res = getJson(H::base('products/'.$slug))->assertOk();
-    $res->assertJsonPath('product.slug', $slug)->assertJsonPath('locale', 'ar');
+    $res->assertJsonPath('product.slug', $slug)->assertJsonPath('locale', 'en');
     $p = H::arr($res->json('product'));
     expect($p)->toHaveKeys(['title', 'long_description', 'images', 'specs', 'attributes', 'categories', 'breadcrumb', 'meta', 'price', 'stock'])
         ->and(H::arr($p['attributes']))->toHaveKeys(['features', 'genders', 'colors'])

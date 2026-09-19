@@ -81,7 +81,8 @@ final class CustomerController
                 'email' => ManageText::t('common.email', 'البريد'),
                 'kind_label' => ManageText::t('common.type', 'النوع'),
                 'orders_count' => ManageText::t('customers.show_orders_count', 'عدد الطلبات'),
-                'spent' => ManageText::t('common.total_spent', 'إجمالي المشتريات'),
+                'ordered' => ManageText::t('customers.ordered_total', 'إجمالي ما طلبه'),
+                'spent' => ManageText::t('customers.delivered_total', 'إجمالي ما استلمه'),
                 'last_order_at' => ManageText::t('customers.last_order', 'آخر طلب'),
                 'joined_at' => ManageText::t('customers.first_seen', 'أول ظهور'),
                 'storefronts' => [ManageText::t('common.storefronts', 'المتاجر'), fn (array $row): string => implode(' | ', array_map(
@@ -128,6 +129,7 @@ final class CustomerController
                 'phone' => Row::nstr($row, 'phone'),
                 'orders_count' => Row::int($row, 'orders_count'),
                 'spent' => Row::str($row, 'spent'),
+                'ordered' => Row::str($row, 'ordered'),
                 'last_order_at' => Row::nstr($row, 'last_order_at'),
                 'joined_at' => Row::nstr($row, 'joined_at'),
                 'storefronts' => self::storefrontLabels(Row::nstr($row, 'storefronts'), $names),
@@ -154,7 +156,7 @@ final class CustomerController
             'grouping_notice' => ManageText::t('customers.grouping_notice', 'الضيوف تُجمَّع حسب رقم الهاتف (وإن غاب فالبريد، وإن غاب فرمز السلة). لا يوجد جدول عملاء في قاعدة البيانات، فهذا تجميع مبني على بيانات الطلبات نفسها.'),
             'read_only_notice' => ManageText::t(
                 'customers.read_only_notice',
-                'هذه الشاشة للقراءة فقط. بيانات العملاء يملكها المتجر ولا تُعدَّل من هنا.',
+                'بيانات العملاء يملكها المتجر، ولا تُعدَّل من اللوحة.',
             ),
         ]);
     }
@@ -182,6 +184,7 @@ final class CustomerController
                 'phone' => Row::nstr($customerRow, 'phone'),
                 'orders_count' => Row::int($customerRow, 'orders_count'),
                 'spent' => Row::str($customerRow, 'spent'),
+                'ordered' => Row::str($customerRow, 'ordered'),
                 'last_order_at' => Row::nstr($customerRow, 'last_order_at'),
                 'joined_at' => Row::nstr($customerRow, 'joined_at'),
                 'storefronts' => self::storefrontLabels(Row::nstr($customerRow, 'storefronts'), $names),

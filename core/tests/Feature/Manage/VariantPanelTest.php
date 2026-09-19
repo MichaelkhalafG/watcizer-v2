@@ -82,7 +82,7 @@ it('states the refusal ON the product form instead of showing a button the serve
         // The reason is on the screen: "cannot" without "why" is a dead end for the person
         // holding the keyboard.
         ->and($state['reason'])->toBeString()
-        ->and(T::str($state['reason']))->toContain('قبل التحويل النهائي');
+        ->and(T::str($state['reason']))->toContain('لا يمكن تحويل هذا المنتج إلى مقاسات');
 });
 
 it('ALLOWS variants on a product created in this dashboard — the safe path the rule names', function () {

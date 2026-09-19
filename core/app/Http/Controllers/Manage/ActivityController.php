@@ -63,7 +63,7 @@ final class ActivityController
                 'created_at' => ManageText::t('common.date', 'التاريخ'),
                 'user_name' => ManageText::t('activity.user', 'المستخدم'),
                 'action_label' => ManageText::t('activity.action', 'الإجراء'),
-                'subject_type' => ManageText::t('common.type', 'النوع'),
+                'subject_type_label' => ManageText::t('common.type', 'النوع'),
                 'subject_id' => ManageText::t('common.id', 'الرقم'),
                 'subject_label' => ManageText::t('common.record', 'السجل'),
                 'summary' => ManageText::t('activity.changed', 'ما تغيّر'),
@@ -111,6 +111,15 @@ final class ActivityController
                  */
                 'pre_handover' => ActivityLog::isPreHandover($createdAt),
                 'subject_type' => Row::str($row, 'subject_type'),
+                /*
+                 * The same word the FILTER has always shown (item 10, 2026-09-18).
+                 *
+                 * `typeLabel()` existed and was used to build the filter's options and nothing
+                 * else, so the dropdown offered «عقد دفع» while the rows underneath it said
+                 * `storefront_payment_providers`. One screen, two vocabularies, and the raw one was
+                 * the one an operator actually read.
+                 */
+                'subject_type_label' => self::typeLabel(Row::str($row, 'subject_type')),
                 'subject_id' => Row::nint($row, 'subject_id'),
                 'subject_label' => Row::nstr($row, 'subject_label'),
                 'action' => Row::str($row, 'action'),
@@ -265,6 +274,14 @@ final class ActivityController
             'catalog_products', 'catalog_product_variants', 'storefront_categories',
             'storefront_product', 'promotion_rules', 'storefront_payment_providers',
             'storefront_payment_methods', 'core_user_roles', 'shipping_cities',
+            /*
+             * `orders` and `core_blogs` are WRITTEN to this log and were missing from the filter
+             * (D-18, 2026-09-19) — so the subject the shop floor generates most, after products,
+             * could not be selected here at all. Found while fixing `typeLabel`, which had the
+             * same nine arms and the same two gaps: the list and the labels were copied from each
+             * other, so they agreed about being wrong.
+             */
+            'orders', 'core_blogs',
         ];
     }
 
@@ -342,6 +359,8 @@ final class ActivityController
             'storefront_payment_methods' => ManageText::t('activity.type_payment_method', 'طريقة دفع'),
             'core_user_roles' => ManageText::t('activity.type_permission', 'صلاحية'),
             'shipping_cities' => ManageText::t('activity.type_shipping_price', 'سعر شحن'),
+            'orders' => ManageText::t('common.order', 'طلب'),
+            'core_blogs' => ManageText::t('activity.type_blog', 'مقال'),
             default => $type,
         };
     }

@@ -18,14 +18,25 @@ it('serves a per-locale sitemap index and chunks with alternates and covers', fu
 
     $ar = (string) get(H::base('sitemaps/ar/products-1.xml'))->assertOk()->getContent();
     $en = (string) get(H::base('sitemaps/en/products-1.xml'))->assertOk()->getContent();
-    expect($ar)->toContain('<loc>https://watchizereg.com/product/')
-        ->toContain('hreflang="en" href="https://watchizereg.com/en/product/')
+    /*
+     * WHICH LANGUAGE LIVES AT THE BARE URL, asserted — and it is English.
+     *
+     * `Sitemaps::prefix()` leaves the storefront's default locale unprefixed and puts the other
+     * under `/{locale}/`, so this test is really an assertion about `storefronts.default_locale`.
+     * It used to read the other way round, with Arabic unprefixed, which would have published
+     * `watchizereg.com/product/…` as the Arabic page and moved every English page to `/en/`.
+     *
+     * the storefront opens in ENGLISH — it always has, and the customer switches for themselves (developer, 2026-09-18).
+     */
+    expect($en)->toContain('<loc>https://watchizereg.com/product/')
+        ->toContain('hreflang="ar" href="https://watchizereg.com/ar/product/')
         ->toContain('hreflang="x-default" href="https://watchizereg.com/product/')
         ->toContain('<image:image>');
-    expect($en)->toContain('<loc>https://watchizereg.com/en/product/');
+    expect($ar)->toContain('<loc>https://watchizereg.com/ar/product/');
     expect(substr_count($ar, '<url>'))->toBe(substr_count($en, '<url>'));
 
-    $cats = (string) get(H::base('sitemaps/ar/categories.xml'))->assertOk()->getContent();
+    // The default locale's chunk, so the bare `/category/` and `/c/` paths are the ones checked.
+    $cats = (string) get(H::base('sitemaps/en/categories.xml'))->assertOk()->getContent();
     expect($cats)->toContain('<loc>https://watchizereg.com/category/')->toContain('<loc>https://watchizereg.com/c/');
     get(H::base('sitemaps/ar/products-99.xml'))->assertNotFound();
     get(H::base('sitemaps/fr/products-1.xml'))->assertNotFound();

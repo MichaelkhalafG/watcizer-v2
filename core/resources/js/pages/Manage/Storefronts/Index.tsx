@@ -3,7 +3,6 @@ import { Pencil } from 'lucide-react';
 
 import ManageLayout from '@/layouts/ManageLayout';
 import { DataTable, type Column } from '@/components/table/DataTable';
-import { Alert } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select } from '@/components/ui/input';
@@ -27,7 +26,7 @@ interface StorefrontRow {
  * screen will look: declare columns, hand over the server's `table` payload, done. No client-side
  * sorting, no local filtering, no page state.
  */
-export default function StorefrontsIndex({ table, rebuild_warning }: { table: TablePayload<StorefrontRow>; rebuild_warning: string }) {
+export default function StorefrontsIndex({ table }: { table: TablePayload<StorefrontRow> }) {
     const t = useT();
     const columns: Array<Column<StorefrontRow>> = [
         {
@@ -92,9 +91,6 @@ export default function StorefrontsIndex({ table, rebuild_warning }: { table: Ta
             ]}
         >
             {/* The switch-night finding, on the screen rather than only in the report. */}
-            <Alert tone="warning" title={t('storefronts.rebuild_warning_title', 'تنبيه قبل الاعتماد على هذه الإعدادات')}>
-                {rebuild_warning}
-            </Alert>
 
             <DataTable
                 table={table}

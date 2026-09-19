@@ -17,8 +17,15 @@ import {
 } from "@/components/ui/table";
 import ManageLayout from "@/layouts/ManageLayout";
 import type { SharedProps } from "@/types";
-import { Ltr } from "@/components/ui/bidi";
+import { Ltr, Name, Num } from "@/components/ui/bidi";
 import { useT } from "@/lib/i18n";
+import { methodLabel, providerLabel } from "@/lib/labels";
+import { ColourChip, type StoredColour } from "@/components/manage/ColourChip";
+import {
+    ProductPeekDialog,
+    type Peek,
+    type PeekLine,
+} from "@/components/manage/ProductPeekDialog";
 
 /**
  * One order (wave 4C).
@@ -42,6 +49,38 @@ import { useT } from "@/lib/i18n";
 /** What `useT()` hands back — the label maps below are built from it, not from literals. */
 type Translate = ReturnType<typeof useT>;
 
+/**
+ * The colours ONE line carries, labelled (item 12).
+ *
+ * `order_items` has two slots and they are a watch's vocabulary: the dial and the band. A legacy
+ * line may carry one, both, or neither, and an order placed against a VARIANT carries neither
+ * because the variant names the colour itself.
+ *
+ * It exists as a function rather than inline JSX because two places render the same list — the
+ * table cell and the product panel — and two copies would drift the moment a third slot appears.
+ */
+function lineColours(
+    item: Item,
+    t: Translate,
+): Array<{ label: string; colour: StoredColour }> {
+    const out: Array<{ label: string; colour: StoredColour }> = [];
+
+    if (item.color_dial !== null) {
+        out.push({
+            label: t("orders.colour_dial", "لون القرص"),
+            colour: item.color_dial,
+        });
+    }
+    if (item.color_band !== null) {
+        out.push({
+            label: t("orders.colour_band", "لون السوار"),
+            colour: item.color_band,
+        });
+    }
+
+    return out;
+}
+
 interface Item {
     id: number;
     product_id: number | null;
@@ -55,8 +94,13 @@ interface Item {
     piece_price: string;
     total_price: string;
     bucket: string | null;
-    color_band: string | null;
-    color_dial: string | null;
+    /*
+     * A stored colour is `{hex, name}` since item 12, not a bare hex string. The hex is what the
+     * legacy cart wrote and what draws the swatch; the name is what `catalog_colors` calls it, and
+     * is null for a hex the catalogue has never seen.
+     */
+    color_band: StoredColour | null;
+    color_dial: StoredColour | null;
 }
 
 interface Attempt {
@@ -146,7 +190,21 @@ interface Props {
         created_at: string | null;
         updated_at: string | null;
     };
+    /**
+     * What the total is made of (D-22). Every figure is DERIVED — `orders` has one money column
+     * and no subtotal, shipping or discount — so `unexplained` is a real field and not a rounding
+     * artefact: it is whatever the lines and today's delivery price do not account for.
+     */
+    totals: {
+        items: string;
+        shipping: string | null;
+        total: string;
+        unexplained: string;
+        shipping_is_current: boolean;
+    };
     items: Item[];
+    /** The product behind each line, keyed by product id — see `App\Domain\Orders\ProductPeek`. */
+    products: Record<string, Peek>;
     address: {
         id: number;
         line: string | null;
@@ -177,6 +235,8 @@ interface Props {
         cancel: boolean;
         settle: boolean;
         resolve_findings: boolean;
+        /** May this operator open the product screen? Decides whether the peek panel links. */
+        catalog: boolean;
     };
 }
 
@@ -239,6 +299,7 @@ const reasonLabels = (t: Translate): Record<string, string> => ({
     adjustment: t("orders.reason_adjustment", "تسوية"),
     erp_sync: t("common.reason_erp_sync", "مزامنة ERP"),
     transform: t("common.reason_transform", "بناء أولي"),
+    promotion_reward: t("common.reason_promotion_reward", "هدية عرض ترويجي"),
 });
 
 const bucketLabels = (t: Translate): Record<string, string> => ({
@@ -296,10 +357,21 @@ const outcomeLabels = (t: Translate): Record<string, string> => ({
     pending: t("orders.outcome_pending", "معلّقة"),
 });
 
-function Line({ label, children }: { label: string; children: ReactNode }) {
+function Line({
+    label,
+    hint,
+    children,
+}: {
+    label: string;
+    /** Why this figure is what it is — a derived total owes the reader that (D-22). */
+    hint?: string;
+    children: ReactNode;
+}) {
     return (
         <div className="flex items-start justify-between gap-4 py-1.5 text-sm">
-            <span className="shrink-0 text-muted-foreground">{label}</span>
+            <span className="shrink-0 text-muted-foreground" title={hint}>
+                {label}
+            </span>
             <span className="text-end font-medium">{children}</span>
         </div>
     );
@@ -307,7 +379,9 @@ function Line({ label, children }: { label: string; children: ReactNode }) {
 
 export default function OrderShow({
     order,
+    totals,
     items,
+    products,
     discount,
     address,
     attempts,
@@ -323,6 +397,9 @@ export default function OrderShow({
     const [busy, setBusy] = useState(false);
     const [resolving, setResolving] = useState<number | null>(null);
     const [resolveNote, setResolveNote] = useState("");
+    /** The line whose product panel is open, or null. Keyed on the LINE, not the product: two
+        lines can carry the same product in different colours, and the panel shows the line. */
+    const [peeking, setPeeking] = useState<Item | null>(null);
 
     const MAIL_STATUS_LABEL = mailStatusLabels(t);
     const STATUS_LABEL = statusLabels(t);
@@ -391,14 +468,71 @@ export default function OrderShow({
                         delivered → completed (`completed` = closed). */}
                     {abilities.fulfil
                         ? options.advance.map((next) => (
-                              <Button
+                              /* ── Advancing an order asks first (J-7, 2026-09-19) ─────────
+
+                                 Marking an order shipped e-mails the customer and cannot be
+                                 undone through this interface — while HIDING a product, which is
+                                 reversible and silent, got a full confirmation dialog naming the
+                                 open carts. The two were the wrong way round.
+
+                                 What the dialog says is what this project's confirmations are
+                                 for: not "are you sure?", which asks somebody to re-affirm an
+                                 intention they already had, but the consequence they had not
+                                 thought of — that a message goes out, to this address, now. The
+                                 address is named because "an e-mail will be sent" is a fact the
+                                 operator cannot check, and `adam@…` is one they can. */
+                              <ConfirmAction
                                   key={next}
-                                  size="sm"
+                                  tone="default"
+                                  title={t(
+                                      "orders.advance_title",
+                                      "تغيير حالة الطلب :number إلى «:status»",
+                                      {
+                                          number: order.order_number,
+                                          status: STATUS_LABEL[next] ?? next,
+                                      },
+                                  )}
+                                  confirmLabel={t(
+                                      "orders.advance_confirm",
+                                      "غيّر الحالة وأبلغ العميل",
+                                  )}
+                                  consequence={
+                                      <div className="space-y-2">
+                                          <p>
+                                              {order.customer.email === null
+                                                  ? t(
+                                                        "orders.advance_mail_none",
+                                                        "لا يوجد بريد إلكتروني مسجَّل لهذا الطلب، فلن تُرسَل رسالة — ستتغيّر الحالة فقط.",
+                                                    )
+                                                  : t(
+                                                        "orders.advance_mail",
+                                                        "ستُرسَل رسالة إلى :email تخبر العميل بأن حالة طلبه أصبحت «:status». الرسالة تُرسل فورًا ولا يمكن سحبها.",
+                                                        {
+                                                            email: order.customer
+                                                                .email,
+                                                            status:
+                                                                STATUS_LABEL[
+                                                                    next
+                                                                ] ?? next,
+                                                        },
+                                                    )}
+                                          </p>
+                                          <p>
+                                              {t(
+                                                  "orders.advance_one_way",
+                                                  "حالات الطلب تتقدّم في اتجاه واحد: لا توجد شاشة تُرجع الحالة خطوة إلى الوراء.",
+                                              )}
+                                          </p>
+                                      </div>
+                                  }
+                                  onConfirm={() => advance(next)}
                                   disabled={busy}
-                                  onClick={() => advance(next)}
-                              >
-                                  {STATUS_LABEL[next] ?? next}
-                              </Button>
+                                  trigger={
+                                      <Button size="sm" disabled={busy}>
+                                          {STATUS_LABEL[next] ?? next}
+                                      </Button>
+                                  }
+                              />
                           ))
                         : null}
 
@@ -414,7 +548,7 @@ export default function OrderShow({
                                     <p>
                                         {t(
                                             "orders.cancel_consequence",
-                                            "سيصبح الطلب :number ملغى، ولا يمكن التراجع عن ذلك من هذه الشاشة.",
+                                            "سيصبح الطلب :number ملغى، ولا يمكن التراجع عن ذلك.",
                                             { number: order.order_number },
                                         )}
                                     </p>
@@ -709,8 +843,50 @@ export default function OrderShow({
                                     {order.status_label}
                                 </Badge>
                             </Line>
+                            {/* ── What the total is MADE OF (D-22, 2026-09-19) ─────────────────
+
+                                Order 000009 showed `الإجمالي 4300.00` against a single line of
+                                `4200.00 × 1`. The difference is the Cairo delivery price, and
+                                nothing on the screen said so: somebody checking an invoice saw a
+                                total that contradicted the only line on the page.
+
+                                Every figure here is DERIVED — `orders` carries one money column
+                                and no subtotal, shipping or discount — so the block says what it
+                                worked out and, when something is still missing, says that too
+                                rather than labelling it "shipping" and being wrong the day a
+                                discount is the real cause. */}
+                            <Line label={t("orders.items_total", "الأصناف")}>
+                                <Num>{totals.items}</Num>
+                            </Line>
+                            {totals.shipping === null ? null : (
+                                <Line
+                                    label={t("orders.shipping_total", "الشحن")}
+                                    hint={t(
+                                        "orders.shipping_current_price",
+                                        "سعر الشحن الحالي لمدينة العنوان. لم يُخزَّن سعر الشحن وقت الطلب في أي عمود، فهذا هو السعر المعمول به اليوم.",
+                                    )}
+                                >
+                                    <Num>{totals.shipping}</Num>
+                                </Line>
+                            )}
+                            {Number(totals.unexplained) === 0 ? null : (
+                                <Line
+                                    label={t(
+                                        "orders.unexplained_total",
+                                        "فرق غير مفسَّر",
+                                    )}
+                                    hint={t(
+                                        "orders.unexplained_hint",
+                                        "ما لا تفسّره الأصناف ولا سعر الشحن: غالبًا خصم أو تعديل يدوي أو سعر تغيّر بعد الطلب.",
+                                    )}
+                                >
+                                    <Num>{totals.unexplained}</Num>
+                                </Line>
+                            )}
                             <Line label={t("common.total", "الإجمالي")}>
-                                <span dir="ltr">{order.total}</span>
+                                <strong>
+                                    <Num>{order.total}</Num>
+                                </strong>
                             </Line>
                             {/*
                              * Why the total is lower than the lines. Rendered only when there IS a
@@ -743,17 +919,27 @@ export default function OrderShow({
                                 </Line>
                             ) : null}
                             <Line label={t("common.payment", "الدفع")}>
+                                {/* Item 10: the company and the method in words. It read
+                                    "paymob · card" — two stored tokens — on the line a person
+                                    checks when a customer telephones about a payment. */}
                                 {order.paid_via_provider !== null ? (
-                                    <span dir="ltr">
-                                        {order.paid_via_provider}
-                                        {order.paid_via_method !== null
-                                            ? ` · ${order.paid_via_method}`
-                                            : ""}
+                                    <span>
+                                        <Name>{providerLabel(t, order.paid_via_provider)}</Name>
+                                        {order.paid_via_method !== null ? (
+                                            <>
+                                                {" · "}
+                                                <Name>{methodLabel(t, order.paid_via_method)}</Name>
+                                            </>
+                                        ) : null}
                                     </span>
                                 ) : (
+                                    // Through `methodLabel`, like the queue (D-10). This branch
+                                    // rendered the column verbatim, so the SAME order read
+                                    // «نقدًا» on the list and `cash` here.
                                     <span className="text-muted-foreground">
-                                        {order.payment_method ??
-                                            t("orders.unpaid", "غير مدفوع")}
+                                        {order.payment_method === null
+                                            ? t("orders.unpaid", "غير مدفوع")
+                                            : methodLabel(t, order.payment_method)}
                                     </span>
                                 )}
                             </Line>
@@ -895,19 +1081,49 @@ export default function OrderShow({
                                 {items.map((item) => (
                                     <TableRow key={item.id}>
                                         <TableCell>
-                                            <div className="space-y-0.5">
-                                                <div className="font-medium">
-                                                    {item.title ?? "—"}
+                                            {/* A button, not a link (item 12): confirming a pick
+                                                must not cost the operator the order they are
+                                                looking at. A line whose product row is gone — a
+                                                legacy order pointing at a deleted product — is
+                                                plain text, because there is nothing to open. */}
+                                            {item.product_id !== null &&
+                                            products[String(item.product_id)] !== undefined ? (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setPeeking(item)}
+                                                    className="space-y-0.5 text-start underline-offset-2 hover:underline focus-visible:underline"
+                                                    title={t(
+                                                        "orders.peek_open",
+                                                        "عرض تفاصيل المنتج للتأكد منه",
+                                                    )}
+                                                >
+                                                    <div className="font-medium">
+                                                        {item.title ?? "—"}
+                                                    </div>
+                                                    <div className="text-xs text-muted-foreground">
+                                                        <Ltr>
+                                                            {item.wa_code ?? "—"}
+                                                            {item.offer_id !== null
+                                                                ? ` · ${t("orders.offer", "عرض")}`
+                                                                : ""}
+                                                        </Ltr>
+                                                    </div>
+                                                </button>
+                                            ) : (
+                                                <div className="space-y-0.5">
+                                                    <div className="font-medium">
+                                                        {item.title ?? "—"}
+                                                    </div>
+                                                    <div className="text-xs text-muted-foreground">
+                                                        <Ltr>
+                                                            {item.wa_code ?? "—"}
+                                                            {item.offer_id !== null
+                                                                ? ` · ${t("orders.offer", "عرض")}`
+                                                                : ""}
+                                                        </Ltr>
+                                                    </div>
                                                 </div>
-                                                <div className="text-xs text-muted-foreground">
-                                                    <Ltr>
-                                                        {item.wa_code ?? "—"}
-                                                        {item.offer_id !== null
-                                                            ? ` · ${t("orders.offer", "عرض")}`
-                                                            : ""}
-                                                    </Ltr>
-                                                </div>
-                                            </div>
+                                            )}
                                         </TableCell>
                                         <TableCell>
                                             {/* The variant is what the warehouse picks. An order that predates
@@ -928,17 +1144,30 @@ export default function OrderShow({
                                                     ) : null}
                                                 </div>
                                             ) : (
-                                                <span className="text-xs text-muted-foreground">
-                                                    {[
-                                                        item.color_dial,
-                                                        item.color_band,
-                                                    ]
-                                                        .filter(
-                                                            (value) =>
-                                                                value !== null,
+                                                <div className="space-y-1 text-xs">
+                                                    {/* Item 12: a name and a swatch, not a hex
+                                                        code. `lineColours` is the one place that
+                                                        decides which slots this line has. */}
+                                                    {lineColours(item, t).length === 0 ? (
+                                                        <span className="text-muted-foreground">
+                                                            —
+                                                        </span>
+                                                    ) : (
+                                                        lineColours(item, t).map(
+                                                            ({ label, colour }) => (
+                                                                <div
+                                                                    key={label}
+                                                                    className="flex items-center gap-1.5"
+                                                                >
+                                                                    <span className="text-muted-foreground">
+                                                                        {label}
+                                                                    </span>
+                                                                    <ColourChip colour={colour} />
+                                                                </div>
+                                                            ),
                                                         )
-                                                        .join(" / ") || "—"}
-                                                </span>
+                                                    )}
+                                                </div>
                                             )}
                                         </TableCell>
                                         <TableCell>
@@ -1023,14 +1252,12 @@ export default function OrderShow({
                                             <TableCell>
                                                 <div className="space-y-0.5">
                                                     <div>
-                                                        <Ltr>
-                                                            {attempt.provider ??
-                                                                "—"}
-                                                            {attempt.method !==
-                                                            null
-                                                                ? ` · ${attempt.method}`
+                                                        <Name>
+                                                            {providerLabel(t, attempt.provider)}
+                                                            {attempt.method !== null
+                                                                ? ` · ${methodLabel(t, attempt.method)}`
                                                                 : ""}
-                                                        </Ltr>
+                                                        </Name>
                                                     </div>
                                                     {/* The integration id is NOT a credential: the provider puts it
                                                         in the signed payload, and it is how an admin finds this row
@@ -1365,21 +1592,59 @@ export default function OrderShow({
                                     </TableBody>
                                 </Table>
                             </div>
+                            {/* D-18: `mail:drain` is the name of a scheduled command. The operator
+                                cannot run it, cannot see it, and does not need to know it exists —
+                                what they need is that a failed message retries by itself and that
+                                «فشل» means a customer was not told. */}
                             <p className="px-4 pb-4 text-xs text-muted-foreground">
                                 {t(
-                                    "orders.mail_note_before",
-                                    "الرسائل تُرسل فور تغيّر حالة الطلب. لو فشل الإرسال يبقى السطر في الانتظار ويعيد",
-                                )}
-                                <span dir="ltr"> mail:drain </span>
-                                {t(
-                                    "orders.mail_note_after",
-                                    "المحاولة كل دقيقة؛ و«فشل» يعني أن أحدًا لم يُبلَّغ ويحتاج تدخّلًا.",
+                                    "orders.mail_note",
+                                    "الرسائل تُرسل فور تغيّر حالة الطلب. لو فشل الإرسال يبقى السطر في الانتظار وتُعاد المحاولة تلقائيًا كل دقيقة؛ و«فشل» يعني أن أحدًا لم يُبلَّغ ويحتاج تدخّلًا.",
                                 )}
                             </p>
                         </CardContent>
                     </Card>
                 </div>
             </div>
+
+            {/* ── the product panel (item 12) ──────────────────────────────────────────────
+                Mounted once at the page level rather than once per row: twenty lines would
+                otherwise mount twenty dialogs, nineteen of which are closed, and each one carries
+                a focus trap and a portal. */}
+            <ProductPeekDialog
+                open={peeking !== null}
+                onClose={() => setPeeking(null)}
+                peek={peekFor(peeking, products)}
+                line={peeking === null ? null : peekLine(peeking, t)}
+                productUrl={
+                    peeking === null ||
+                    peeking.product_id === null ||
+                    order.storefront_id === null ||
+                    abilities.catalog !== true
+                        ? null
+                        : `/manage/storefronts/${order.storefront_id}/products/${peeking.product_id}/edit`
+                }
+            />
         </ManageLayout>
     );
+}
+
+/** The product behind a line, or null when the line has none the page was given. */
+function peekFor(item: Item | null, products: Record<string, Peek>): Peek | null {
+    if (item === null || item.product_id === null) {
+        return null;
+    }
+
+    return products[String(item.product_id)] ?? null;
+}
+
+/** What the LINE contributes to the panel, as opposed to what the product does. */
+function peekLine(item: Item, t: Translate): PeekLine {
+    return {
+        variant: item.variant,
+        variant_sku: item.variant_sku,
+        colours: lineColours(item, t),
+        quantity: item.quantity,
+        piece_price: item.piece_price,
+    };
 }

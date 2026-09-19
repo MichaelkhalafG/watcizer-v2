@@ -37,28 +37,44 @@ final class Preferences
 
     public const DEFAULT_LOCALE = 'ar';
 
-    /**
-     * The language the dashboard's TEXT is actually written in TODAY.
+    /*
+     * `TEXT_LOCALE = 'ar'` stood here and was DELETED on 2026-09-17, with `TEXT_DIR` beside it.
      *
-     * Not the same question as "which locale did this operator choose". 1 422 strings are still
-     * inline Arabic literals, so an operator who picks English still READS Arabic — and flipping
-     * the shell to `ltr` for them would mirror the layout around Arabic text, which is a
-     * regression dressed as progress.
+     * It answered "which language is the dashboard's text actually written in today", which was a
+     * different question from "which locale did the operator choose" only while the shell was 1,422
+     * inline Arabic literals. Its own docblock named the condition for its removal — *"step 1 of the
+     * i18n backlog translates the shell and DELETES this constant"* — and step 1 is done at 99.8%
+     * coverage.
      *
-     * Step 1 of the i18n backlog translates the shell and DELETES this constant, letting `dir`
-     * follow the chosen locale. Until then it is one honest line instead of a broken layout.
+     * Removed rather than left at `'ar'` with no reader: a constant nothing calls is
+     * indistinguishable from a working one, which is how the storefront cache went stale for ten
+     * minutes behind a correct-looking invalidation map. If the two questions ever diverge again,
+     * the new constant should be written then, with the reason that is true then.
      */
-    public const TEXT_LOCALE = 'ar';
 
     /**
-     * The writing direction that goes with {@see self::TEXT_LOCALE}.
+     * The writing direction for a locale — `rtl` for Arabic, `ltr` for everything else.
      *
-     * Stated as its own constant rather than derived from the one above, because deriving it would
-     * be a comparison of two literals that is true by construction — and a reader (or PHPStan)
-     * would rightly ask what the other branch was for. There is no other branch yet. Step 1 of the
-     * i18n backlog deletes both and lets `dir` follow the operator's chosen locale.
+     * ── This replaced a pinned constant on 2026-09-17, and the reason it was pinned has expired ──
+     *
+     * `TEXT_DIR = 'rtl'` used to be the honest answer: 1,422 shell strings were inline Arabic
+     * literals, so an operator who chose English still READ Arabic, and flipping the layout to `ltr`
+     * around Arabic text would have been a regression dressed as progress. The constant's own
+     * docblock named the condition for removing it — *"step 1 of the i18n backlog translates the
+     * shell and DELETES this constant"*.
+     *
+     * Step 1 is done. English coverage is 99.8%, so an operator who picks English now reads English,
+     * and pinning the layout to `rtl` is the thing that looks broken: English text in a
+     * right-to-left shell, with the sidebar on the wrong side and every chevron pointing the wrong
+     * way.
+     *
+     * Derived rather than stored, so a third locale needs no second decision — and `ar` is the only
+     * right-to-left language this dashboard will plausibly carry.
      */
-    public const TEXT_DIR = 'rtl';
+    public static function directionFor(string $locale): string
+    {
+        return $locale === 'ar' ? 'rtl' : 'ltr';
+    }
 
     /** This user's dashboard language — `ar` when they have never chosen. */
     public static function localeFor(?User $user): string

@@ -36,6 +36,7 @@ interface Customer {
     phone: string | null;
     orders_count: number;
     spent: string;
+    ordered: string;
     last_order_at: string | null;
     joined_at: string | null;
     storefronts: string[];
@@ -94,10 +95,22 @@ export default function CustomersIndex({ table, storefronts, grouping_notice, re
             cell: (row) => <Num>{row.orders_count}</Num>,
         },
         {
+            key: 'c.ordered',
+            header: t('customers.ordered_total', 'إجمالي ما طلبه'),
+            sortable: false,
+            // Everything not cancelled: what the customer has committed to (D-23).
+            cell: (row) => <Num>{money.format(Number(row.ordered))}</Num>,
+        },
+        {
             key: 'c.spent',
-            header: t('common.total_spent', 'إجمالي المشتريات'),
+            header: t('customers.delivered_total', 'إجمالي ما استلمه'),
             sortable: true,
-            // Delivered and completed only: money that was actually taken, not money that was asked for.
+            /*
+             * Delivered and completed only: money that was actually taken, not money that was
+             * asked for. Named for what it is since 2026-09-19 — as `إجمالي المشتريات` beside an
+             * order count it read as broken data on every row, because nothing in this database
+             * has reached those two states yet (D-23).
+             */
             cell: (row) => <Num>{money.format(Number(row.spent))}</Num>,
         },
         {

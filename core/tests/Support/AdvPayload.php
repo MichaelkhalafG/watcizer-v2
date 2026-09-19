@@ -35,10 +35,18 @@ final class AdvPayload
             'low_stock_threshold' => 5,
             'is_active' => true,
             'title' => ['ar' => 'منتج عدائي', 'en' => 'Adversarial product'],
+            /*
+             * Complete enough to be PUBLISHABLE, because several of these tests turn visibility on
+             * and since 2026-09-18 an incomplete product is taken off the storefront instead of
+             * refused ({@see PlacementWriter::missingForVisibility()}). A test that wants the
+             * incomplete shape overrides these rather than relying on the default being broken.
+             */
+            'short_description' => ['ar' => 'وصف مختصر', 'en' => 'Short description'],
+            'long_description' => ['ar' => 'وصف تفصيلي', 'en' => 'Long description'],
             'specs' => [],
-            'images' => [],
+            'images' => [['path' => 'Product/adv-fixture.webp', 'is_cover' => true]],
             'feature_ids' => [],
-            'gender_ids' => [],
+            'gender_ids' => [T::int(DB::table('catalog_genders')->orderBy('id')->value('id'))],
             'colors' => [],
             'category_ids' => [$node],
             'primary_category_id' => $node,

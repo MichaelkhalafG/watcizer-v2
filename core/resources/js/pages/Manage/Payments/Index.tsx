@@ -2,6 +2,8 @@ import { router, useForm, usePage } from "@inertiajs/react";
 import { useState } from "react";
 
 import { SelectField, TextField } from "@/components/form/TextField";
+import { Select } from "@/components/ui/input";
+import { methodLabel, providerLabel } from "@/lib/labels";
 import { SwitchField } from "@/components/form/SwitchField";
 import { ConfirmAction } from "@/components/manage/ConfirmAction";
 import { Alert } from "@/components/ui/alert";
@@ -80,6 +82,8 @@ interface MergedRow {
 
 interface Props {
     storefront: { id: number; code: string; name: string };
+    /** The ACTIVE storefronts this operator's grant reaches (item 15) — scoped, so no option 404s. */
+    storefronts: Array<{ value: string; label: string }>;
     providers: ProviderRow[];
     merged: MergedRow[];
     customer_preview: Array<{
@@ -106,37 +110,35 @@ type Translator = ReturnType<typeof useT>;
  * the translated name has to be asked for inside a component, and every call site here already
  * has a translator in hand. `valU` and `Tamara` are product names and stay as they are written.
  */
-function methodLabel(t: Translator, method: string): string {
-    switch (method) {
-        case "card":
-            return t("payments.method_card", "بطاقة");
-        case "valu":
-            return "valU";
-        case "tamara":
-            return "Tamara";
-        case "wallet":
-            return t("payments.method_wallet", "محفظة");
-        case "fawry_code":
-            return t("payments.method_fawry_code", "كود فوري");
-        case "cod":
-            return t("payments.method_cod", "دفع عند الاستلام");
-        case "whatsapp":
-            return t("payments.method_whatsapp", "واتساب");
+
+/**
+ * The credential key names, so a rotation checklist reads like one (Arabic since item 10).
+ *
+ * They were English — "Secret key", "Public key", "HMAC secret" — on an Arabic screen. A key name
+ * IS a technical thing and an administrator recognises it either way, but it sat in a checklist
+ * whose every other word was Arabic, and this screen is the one an administrator uses under
+ * pressure, at the moment a payment provider has been rotated.
+ *
+ * A key the provider registry declares and this map has not heard of falls through to the raw name,
+ * which is correct: a new credential field is something to notice, not something to hide.
+ */
+function fieldLabel(t: Translator, field: string): string {
+    switch (field) {
+        case "secret_key":
+            return t("payments.field_secret_key", "المفتاح السرّي");
+        case "public_key":
+            return t("payments.field_public_key", "المفتاح العام");
+        case "hmac_secret":
+            return t("payments.field_hmac_secret", "مفتاح التوقيع (HMAC)");
         default:
-            return method;
+            return field;
     }
 }
-
-/** The credential key names, so a rotation checklist reads like one. */
-const FIELD_LABEL: Record<string, string> = {
-    secret_key: "Secret key",
-    public_key: "Public key",
-    hmac_secret: "HMAC secret",
-};
 
 export default function PaymentsIndex({
     storefront,
     providers,
+    storefronts,
     merged,
     customer_preview,
     registry,
@@ -195,9 +197,37 @@ export default function PaymentsIndex({
                 { label: t("payments.title", "وسائل الدفع") },
             ]}
             actions={
-                <Button size="sm" onClick={() => setAddingProvider(true)}>
-                    {t("payments.add_contract", "أضف عقد مزوّد")}
-                </Button>
+                <div className="flex flex-wrap items-center gap-2">
+                    {/*
+                      * The storefront switcher (item 15). Every other per-storefront screen has one
+                      * and this did not, so the only route to Brand Fashion's payment settings was
+                      * to type its id into the address bar — the sidebar links to whichever
+                      * storefront you were last on, and nothing here said another existed.
+                      *
+                      * Offered only when there IS somewhere else to go: a single-storefront grant
+                      * gets a dropdown of one, which is furniture.
+                      */}
+                    {storefronts.length > 1 ? (
+                        <Select
+                            aria-label={t("common.storefront", "المتجر")}
+                            value={String(storefront.id)}
+                            onChange={(event) =>
+                                router.get(
+                                    `/manage/storefronts/${event.target.value}/payments`,
+                                )
+                            }
+                        >
+                            {storefronts.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                    {option.label}
+                                </option>
+                            ))}
+                        </Select>
+                    ) : null}
+                    <Button size="sm" onClick={() => setAddingProvider(true)}>
+                        {t("payments.add_contract", "أضف عقد مزوّد")}
+                    </Button>
+                </div>
             }
         >
             <div className="space-y-6">
@@ -210,7 +240,7 @@ export default function PaymentsIndex({
                 >
                     {t(
                         "payments.write_only_body",
-                        "لا تُرسل هذه الشاشة أي مفتاح محفوظ إلى المتصفح، ولا يوجد زر لإظهاره. تظهر الحقول فارغة دائمًا: اكتب قيمة جديدة لتستبدل القديمة، واتركها فارغة ليبقى المحفوظ كما هو. ما تقوله الشاشة عن المفتاح هو أنه «مضبوط» ومتى تغيّر العقد — لا أكثر.",
+                        "المفاتيح المحفوظة لا تُرسل إلى المتصفح ولا يمكن استرجاعها. الخانة الفارغة تُبقي المحفوظ كما هو؛ أي قيمة تكتبها تستبدله.",
                     )}
                 </Alert>
 
@@ -228,7 +258,7 @@ export default function PaymentsIndex({
                                     "payments.no_contracts",
                                     "لا يوجد عقد مزوّد لهذا المتجر بعد. «دفع عند الاستلام» و«واتساب» يحتاجان عقدًا بلا مفاتيح عند المزوّد",
                                 )}{" "}
-                                <code dir="ltr">offline</code>.
+                                <strong>{providerLabel(t, "offline")}</strong>.
                             </CardContent>
                         </Card>
                     ) : null}
@@ -237,7 +267,7 @@ export default function PaymentsIndex({
                         <Card key={provider.id}>
                             <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
                                 <CardTitle className="flex flex-wrap items-center gap-2">
-                                    <span dir="ltr">{provider.provider}</span>
+                                    <span>{providerLabel(t, provider.provider)}</span>
                                     <Badge
                                         variant={
                                             provider.is_enabled
@@ -334,7 +364,7 @@ export default function PaymentsIndex({
                                                     "سيُحذف عقد",
                                                 )}{" "}
                                                 <span dir="ltr">
-                                                    {provider.provider}
+                                                    {providerLabel(t, provider.provider)}
                                                 </span>{" "}
                                                 {t(
                                                     "payments.delete_contract_consequence_after",
@@ -375,8 +405,7 @@ export default function PaymentsIndex({
                                                             : "warning"
                                                     }
                                                 >
-                                                    {FIELD_LABEL[field] ??
-                                                        field}
+                                                    {fieldLabel(t, field)}
                                                     {provider.credential_keys_present.includes(
                                                         field,
                                                     )
@@ -390,7 +419,7 @@ export default function PaymentsIndex({
                                                 className="text-muted-foreground"
                                                 dir="ltr"
                                             >
-                                                updated {provider.updated_at}
+                                                {t("common.updated_at", "آخر تعديل")} {provider.updated_at}
                                             </span>
                                         ) : null}
                                     </div>
@@ -422,7 +451,7 @@ export default function PaymentsIndex({
                                                             className="font-mono"
                                                         >
                                                             <span dir="ltr">
-                                                                {method.method}
+                                                                {methodLabel(t, method.method)}
                                                             </span>
                                                         </Badge>
                                                         {!method.is_enabled ? (
@@ -436,10 +465,10 @@ export default function PaymentsIndex({
                                                     </div>
                                                     <div className="text-xs text-muted-foreground">
                                                         <Ltr>
-                                                            sort {method.sort}
+                                                            {t("common.sort", "الترتيب")} {method.sort}
                                                             {method.integration_id !==
                                                             null
-                                                                ? ` · integration ${method.integration_id}`
+                                                                ? ` · ${t("payments.integration_id", "رقم العملية لدى المزوّد")}: ${method.integration_id}`
                                                                 : ""}
                                                             {method.label.en !==
                                                             ""
@@ -563,12 +592,12 @@ export default function PaymentsIndex({
                                                 className="font-mono"
                                             >
                                                 <span dir="ltr">
-                                                    {row.method}
+                                                    {methodLabel(t, row.method)}
                                                 </span>
                                             </Badge>
                                             <Badge variant="neutral">
                                                 <span dir="ltr">
-                                                    {row.provider}
+                                                    {providerLabel(t, row.provider)}
                                                 </span>
                                             </Badge>
 
@@ -594,7 +623,7 @@ export default function PaymentsIndex({
                                                         "مغطّاة بـ",
                                                     )}{" "}
                                                     <span dir="ltr">
-                                                        {row.served_by}
+                                                        {providerLabel(t, row.served_by)}
                                                     </span>
                                                 </Badge>
                                             ) : (
@@ -709,7 +738,7 @@ export default function PaymentsIndex({
                                             className="text-xs text-muted-foreground font-mono"
                                             dir="ltr"
                                         >
-                                            {row.method}
+                                            {methodLabel(t, row.method)}
                                         </span>
                                     </li>
                                 ))}
@@ -827,9 +856,11 @@ function ProviderDialog({
                         required
                         value={key}
                         onChange={setKey}
+                        // Item 10: the server sends `label => $key`, so this picker offered
+                        // `paymob` and `cod` as its only text.
                         options={registry.map((entry) => ({
                             value: entry.value,
-                            label: entry.label,
+                            label: providerLabel(t, entry.value),
                         }))}
                         error={errors.provider ?? null}
                         hint={t(
@@ -863,7 +894,7 @@ function ProviderDialog({
                         {fields.map((field) => (
                             <div key={field} className="space-y-1.5">
                                 <Label htmlFor={`cred-${field}`}>
-                                    {FIELD_LABEL[field] ?? field}
+                                    {fieldLabel(t, field)}
                                 </Label>
                                 <Input
                                     id={`cred-${field}`}
@@ -953,7 +984,7 @@ function MethodDialog({
                         ? t(
                               "payments.new_method_under",
                               "طريقة جديدة تحت :provider",
-                              { provider: provider.provider },
+                              { provider: providerLabel(t, provider.provider) },
                           )
                         : t("payments.edit_method", "تعديل :method", {
                               method: method.method,
@@ -1007,7 +1038,7 @@ function MethodDialog({
                         error={errors["label.en"] ?? null}
                     />
                     <TextField
-                        label="Integration id"
+                        label={t("payments.integration_id", "رقم العملية لدى المزوّد")}
                         dir="ltr"
                         value={form.data.integration_id}
                         onChange={(value) =>

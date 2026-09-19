@@ -25,11 +25,16 @@ it('refuses to make a product VISIBLE with no image, by direct request', functio
     CatalogFixture::assumeSwitched();
     $bags = CatalogFixture::child(CatalogFixture::fashionRoot(), 'Bags', 'حقائب');
 
-    actingAs(Staff::admin())->post('/manage/storefronts/1/products', AdvPayload::product($bags['id']))->assertRedirect();
+    /*
+     * `images => []` explicitly: `AdvPayload::product()` ships a cover by default since 2026-09-18,
+     * because most of these probes publish and an incomplete product no longer can be. A test about
+     * the IMAGE gate has to build the missing-image shape on purpose rather than inherit it.
+     */
+    actingAs(Staff::admin())->post('/manage/storefronts/1/products', AdvPayload::product($bags['id'], ['images' => []]))->assertRedirect();
     $id = AdvPayload::newestProductId();
 
     actingAs(Staff::admin())
-        ->put("/manage/storefronts/1/products/{$id}", AdvPayload::product($bags['id'], ['is_visible' => true]));
+        ->put("/manage/storefronts/1/products/{$id}", AdvPayload::product($bags['id'], ['is_visible' => true, 'images' => []]));
 
     expect(AdvPayload::isVisible($id))->toBeFalse('a product with no image was made VISIBLE by a direct request');
 });
