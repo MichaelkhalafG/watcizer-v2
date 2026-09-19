@@ -37,7 +37,7 @@ final class ProductIndexer
     {
         $product = DB::table('catalog_products')
             ->where('id', $productId)
-            ->first(['id', 'brand_id', 'model_number', 'search_keywords']);
+            ->first(['id', 'brand_id', 'sku', 'search_keywords']);
 
         if ($product === null) {
             DB::table('catalog_product_search')->where('product_id', $productId)->delete();
@@ -57,7 +57,10 @@ final class ProductIndexer
                 $translation['title'],
                 $brandNames[$locale] ?? '',
                 $translation['model_name'],
-                is_string($product->model_number) ? trim($product->model_number) : '',
+                // `sku` since the merge (item 4): it is the one code column now, and it carries
+                // 6,858 values where `model_number` carried 295 — so the index gained rather
+                // than lost by the change.
+                is_string($product->sku) ? trim($product->sku) : '',
                 is_string($product->search_keywords) ? trim($product->search_keywords) : '',
                 ...($categoryNames[$locale] ?? []),
             ];

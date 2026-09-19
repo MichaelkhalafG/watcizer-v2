@@ -1176,17 +1176,16 @@ export default function OrderShow({
                                                 : (BUCKET_LABEL[item.bucket] ??
                                                   item.bucket)}
                                         </TableCell>
-                                        <TableCell dir="ltr">
-                                            {item.quantity}
+                                        <TableCell>
+                                            <Num>{item.quantity}</Num>
                                         </TableCell>
-                                        <TableCell dir="ltr">
-                                            {item.piece_price}
+                                        <TableCell>
+                                            <Num>{item.piece_price}</Num>
                                         </TableCell>
-                                        <TableCell
-                                            className="font-medium"
-                                            dir="ltr"
-                                        >
-                                            {item.total_price}
+                                        <TableCell className="font-medium">
+                                            <Num>
+    {item.total_price}
+                                            </Num>
                                         </TableCell>
                                     </TableRow>
                                 ))}
@@ -1275,25 +1274,24 @@ export default function OrderShow({
                                                     ) : null}
                                                 </div>
                                             </TableCell>
-                                            <TableCell
-                                                className="text-xs"
-                                                dir="ltr"
-                                            >
-                                                <div>
-                                                    {attempt.transaction_id ??
-                                                        "—"}
-                                                </div>
-                                                {attempt.provider_order_id !==
-                                                null ? (
-                                                    <div className="text-muted-foreground">
-                                                        {
-                                                            attempt.provider_order_id
-                                                        }
+                                            <TableCell className="text-xs">
+                                                <Ltr>
+    <div>
+                                                        {attempt.transaction_id ??
+                                                            "—"}
                                                     </div>
-                                                ) : null}
+                                                    {attempt.provider_order_id !==
+                                                    null ? (
+                                                        <div className="text-muted-foreground">
+                                                            {
+                                                                attempt.provider_order_id
+                                                            }
+                                                        </div>
+                                                    ) : null}
+                                                </Ltr>
                                             </TableCell>
-                                            <TableCell dir="ltr">
-                                                {attempt.amount ?? "—"}
+                                            <TableCell>
+                                                <Num>{attempt.amount ?? "—"}</Num>
                                             </TableCell>
                                             <TableCell>
                                                 <Badge
@@ -1314,11 +1312,10 @@ export default function OrderShow({
                                                           )}
                                                 </Badge>
                                             </TableCell>
-                                            <TableCell
-                                                className="text-xs text-muted-foreground"
-                                                dir="ltr"
-                                            >
-                                                {attempt.created_at ?? "—"}
+                                            <TableCell className="text-xs text-muted-foreground">
+                                                <Num>
+    {attempt.created_at ?? "—"}
+                                                </Num>
                                             </TableCell>
                                         </TableRow>
                                     ))}
@@ -1401,7 +1398,7 @@ export default function OrderShow({
                                                         movement.bucket
                                                     ] ?? movement.bucket}
                                                 </TableCell>
-                                                <TableCell dir="ltr">
+                                                <TableCell>
                                                     <span
                                                         className={
                                                             movement.delta > 0
@@ -1414,8 +1411,8 @@ export default function OrderShow({
                                                             : movement.delta}
                                                     </span>
                                                 </TableCell>
-                                                <TableCell dir="ltr">
-                                                    {movement.after}
+                                                <TableCell>
+                                                    <Num>{movement.after}</Num>
                                                 </TableCell>
                                                 <TableCell>
                                                     <div className="space-y-0.5">
@@ -1517,12 +1514,11 @@ export default function OrderShow({
                                                         </div>
                                                     </div>
                                                 </TableCell>
-                                                <TableCell
-                                                    className="text-xs"
-                                                    dir="ltr"
-                                                >
-                                                    {notification.recipient ??
-                                                        "—"}
+                                                <TableCell className="text-xs">
+                                                    <Ltr>
+    {notification.recipient ??
+                                                            "—"}
+                                                    </Ltr>
                                                 </TableCell>
                                                 <TableCell>
                                                     <div className="space-y-0.5">
@@ -1563,16 +1559,15 @@ export default function OrderShow({
                                                         ) : null}
                                                     </div>
                                                 </TableCell>
-                                                <TableCell dir="ltr">
-                                                    {notification.attempts}
+                                                <TableCell>
+                                                    <Num>{notification.attempts}</Num>
                                                 </TableCell>
-                                                <TableCell
-                                                    className="text-xs"
-                                                    dir="ltr"
-                                                >
-                                                    {notification.processed_at ??
-                                                        notification.created_at ??
-                                                        "—"}
+                                                <TableCell className="text-xs">
+                                                    <Num>
+    {notification.processed_at ??
+                                                            notification.created_at ??
+                                                            "—"}
+                                                    </Num>
                                                 </TableCell>
                                             </TableRow>
                                         ))}

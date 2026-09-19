@@ -277,3 +277,315 @@ they meant on the day they were written.
 This sits next to §5 and §6 as a third way an artefact can look like evidence and not be one: §5 is a
 guard whose trigger never fires, §6 is a contract with no caller, and this is **a query whose
 correctness was on loan from an empty table**.
+
+---
+
+## 9. THE ONE TO TELL THE TEAM BEFORE THEY FIND IT — saving a Joyroom product hides it from both shops
+
+*Added 2026-10-05. The developer's instruction: "the trap goes in the handover notes, not just a tsv.
+The team must be told before they discover it."*
+
+**What will happen.** Open any of the **72 Joyroom products**, change one thing — a price, a photo,
+a title — press Save, and the product **disappears from Watchizer AND from Brand Fashion**. Nothing
+is deleted; it becomes hidden on both shops at once. The save itself succeeds.
+
+**Why.** The visibility gate (2026-09-18) refuses to publish a product that is missing any of:
+
+| | |
+|---|---|
+| Arabic **and** English short description | all 72 are missing **both** |
+| Arabic **and** English long description | all 72 are missing the **Arabic** one |
+| a gender | all 72 have **none** |
+| at least one image | present on these |
+
+The gate is enforced **on write, and was never applied retroactively**. So these 72 are live today
+carrying data the gate would refuse — they were imported before it existed, and the Electronics
+restoration on 2026-09-19 placed them on Watchizer in the same state they already had on Brand
+Fashion, deliberately (see `SECOND_PASS_DECISIONS_2026-09-19.md` §2). The first save is the first
+time the gate ever sees them, and it demotes them the way it would demote a new product with the
+same gaps.
+
+**It is not a bug and there is nothing to fix in the code.** A gate that let a save publish an
+incomplete product would be worse. What is missing is the data.
+
+**What to do — the whole remedy, in order:**
+
+1. Before touching a Joyroom product, fill the four fields **in the same edit**: the short
+   description in Arabic and English, the long description in Arabic, and the gender.
+2. Save. The product stays visible, on both shops.
+3. If one has already been saved and vanished: it is not lost. On the products list set the
+   **visibility** filter to **hidden** (`الظهور` → `مخفي`), open it, fill the four fields, save
+   again, and switch it back to visible.
+
+**Which products.** All 72 are listed with their codes in `docs/wave4d/joyroom-incomplete.tsv`. On
+screen, find them by setting the **brand** filter to **Joyroom / جوي روم** — that is the whole set
+and nothing else, because the brand was created for them on 2026-09-19.
+
+**The quick filter `بيانات ناقصة` does NOT find them,** and that is worth knowing rather than
+discovering. It selects what the row BADGES mark — no supplier code, no price, no Arabic title, no
+image, no category, an unassigned brand, a broken image — and the four fields the visibility gate
+demands are not among those seven. The badge set and the gate set overlap but are not the same
+list; the gate is checked by `PlacementWriter::REQUIRED_TRANSLATED`, the badges by
+`ProductController::missingFor()`. Aligning them is a real improvement and a deliberate change,
+not something to assume has already happened.
+
+**Verified on the live catalogue, 2026-10-05** — 72 products, and the gaps are exactly:
+
+| | of 72 |
+|---|---|
+| Arabic short description missing | 72 |
+| English short description missing | 72 |
+| Arabic long description missing | 72 |
+| No gender | 72 |
+| English long description missing | 0 |
+| No image | 0 |
+
+**Tell the team this before the first one of them opens a Joyroom product**, not after. The failure
+is silent from the operator's side — the save works, the confirmation appears, and the consequence
+is on a shop they are not looking at.
+
+---
+
+## 10. RULE — a clean table that differs from its legacy source is NOT damaged
+
+*Added 2026-10-05, after this session got it wrong and had to be stopped.*
+
+**What happened.** `catalog_units` held 16 rows where legacy `size_types` holds 37. A test that
+named specific unit codes failed. The reasoning went: legacy has 37, clean has 16, 21 rows are
+missing, the legacy table is read-only so it must be the truth — and the 21 rows were restored from
+it, id by id.
+
+**Every one of those 21 rows had been deleted deliberately**, by the developer, using the Units
+screen, which exists for exactly that purpose: the garment and shoe sizes (XS, S, L, XL, 26–47)
+were never units of measurement, and removing them is the job that screen was built to do. The
+restore undid a completed piece of work and put the mess back.
+
+**The rule, stated so nobody repeats it:**
+
+> A difference between a clean table and its legacy source is not evidence of damage. The clean
+> tables are **supposed** to diverge — every retirement, merge, archive and cleanup the dashboard
+> performs makes them diverge on purpose, and that divergence is the product of the work, not a
+> fault in it.
+
+**Before restoring anything from legacy, in this order:**
+
+1. **Ask whether a dashboard action created the difference.**
+
+   **Correction (2026-10-05): the activity log will usually NOT tell you.** An earlier version of
+   this note said it "records exactly this". It does not: nothing in `UnitController`,
+   `UnitCleanup`, `LookupController` or `LookupWriter` calls `ActivityLog::record()` at all, so a
+   unit merged, retired or deleted through the dashboard leaves **no trace**. The log is evidence
+   when it has a row; its silence is evidence of nothing, and steps 2 and 3 carry the whole check
+   for the screens it does not cover.
+
+   **§11 below lists exactly which screens those are** — eight of them, nineteen write actions —
+   and what closing the gap would cost. Read it before trusting the log about any table.
+2. **Check the screen that owns the table.** Units, Brands & lists, Categories and Products all have
+   verbs that legitimately remove rows. If the table has such a screen, removal is a feature.
+3. **Ask the developer** if it is not obvious. A restore is not a safe default: it is a write that
+   reverses somebody's decision, and it is far harder to notice than the gap it fills.
+
+**A gap is only damage when nobody chose it** — a failed migration, a half-finished import, a
+transform that stopped. Those leave other traces: a run directory under `storage/transform`, a
+partial count in a report, an exception in the log. Look for the trace before reaching for the
+source.
+
+**The test that started it has been fixed too**, because it was the other half of the mistake: it
+asserted a CENSUS (`['xs', 'xl', 'xxxl', '42', 'free-size']` are present) rather than the rule it
+was meant to cover. A test that fails when an operator does the intended thing is a test that
+teaches the team to distrust the suite. It now asserts that size-shaped units are flagged as such,
+on whatever rows still exist, and says plainly when the cleanup is finished and the test should be
+retired with it.
+
+---
+
+## 11. "WHO CHANGED THIS?" has no answer for eight screens
+
+*2026-10-05. Found while correcting §10, whose first version wrongly told people to check the
+activity log first. Recorded here as a finding in its own right.*
+
+### What is actually covered
+
+The log CAN record nine subject types. Only three have rows on this copy, because the others have
+not been exercised here — **absence of rows is not absence of coverage**, and confusing the two is
+how §10 went wrong:
+
+| subject type | written by | rows today |
+|---|---|---|
+| `catalog_products` | `ProductWriter` | 7,611 |
+| `core_user_roles` | `Domain\Access\Roles` | 20 |
+| `storefront_categories` | `CategoryController` | 5 |
+| `catalog_product_variants` | `InventoryService` (stock only) | 0 |
+| `orders` | `OrderFulfilment` | 0 |
+| `core_blogs` | `BlogController` | 0 |
+| `storefront_payment_providers` | `PaymentSettingsController` | 0 |
+| `storefront_product` | `PlacementController` | 0 |
+| `promotion_rules` | `PromotionController` | 0 |
+
+### What is NOT covered — 19 write actions across 8 screens
+
+Nothing in these paths calls `ActivityLog::record()`. A change made through them leaves **no trace
+of any kind**: no row, no actor, no before/after, nothing to ask.
+
+| screen | write actions | what changes untraceably |
+|---|---|---|
+| **Units of measurement** | 3 | merge, retire, restore — *this is the one that started it: 21 units were removed and nothing recorded it* |
+| **Brands & lists** (12 lists through one controller) | 3 | create, rename, delete a brand, colour, material, shape, gender, feature, size, movement, closure, display type, grade |
+| **Shipping prices** | 3 | a governorate's name or its delivery cost |
+| **Banners** | 3 | what the shop's home page shows |
+| **Variants** | 4 | creating, editing, deleting or reordering a product's buyable rows (their STOCK is logged; their existence is not) |
+| **Storefront settings** | 1 | a shop's name, slug and settings JSON |
+| **Profile** | 1 | the operator's own language — the row we could not attribute on 2026-10-05 |
+| **Media prune** | 1 | permanent deletion of image files |
+
+**Two of those are the worst kind:** media prune *deletes files permanently*, and the lookups screen
+*deletes rows that products reference by id*. Both are irreversible and neither leaves a record.
+
+### One thing that is actively misleading
+
+`ActivityController::typeLabel()` already offers **`shipping_cities`** and
+**`storefront_payment_methods`** in the activity screen's filter dropdown. Nothing writes either.
+So the filter promises two record types the log can never contain, and an operator who filters by
+"Shipping prices" and sees nothing will read it as *nothing was changed* rather than *this is not
+recorded*. That is worse than the gap itself and is the cheapest thing on this page to fix.
+
+### The honest cost of closing it
+
+Measured against the screen that already does it properly. `BlogController` spends **15 lines** on
+logging across 4 write actions: a 14-line `logFields()` helper that snapshots the columns worth
+diffing, and one `ActivityLog::record(...)` call per action passing `$before`, `$after` and a label.
+
+| | |
+|---|---|
+| Write actions to cover | **19**, across 8 controllers |
+| Per controller | one `logFields()` helper (~10–15 lines) + a `label()` (~5) |
+| Per action | 4–8 lines (snapshot before, record after) |
+| New `typeLabel()` entries | **8** subject types, one line each, plus their English in `lang/en` |
+| Tests | 8 — one per screen, asserting the row, the actor and the before/after. The repo already has a test file per screen, so these are additions, not new files |
+| **Estimate** | **≈ 350–450 lines across 17 files, and about a day** including the tests |
+
+**Two decisions have to be made first, and they are not code:**
+
+1. **The lookups screen is 12 lists behind one controller.** Either it logs one subject type
+   (`catalog_lookups`) with the list name in the label — cheap, one entry in the filter, and the
+   filter cannot narrow to "brands" — or twelve subject types, which is twelve filter entries and
+   twelve English strings for a screen most people touch rarely. My recommendation: **one type**,
+   because the question people will ask is "who deleted this brand", and the label answers it.
+2. **Media prune deletes FILES, not rows.** A log row about a deleted file is the only record that
+   would exist, so it should carry the paths — which makes it the one place where the log's own
+   `changes` column is doing real work rather than recording a diff nobody will read.
+
+**What I would do in what order**, if it is worth doing at all:
+
+1. **The filter lie** — remove `shipping_cities` and `storefront_payment_methods` from
+   `typeLabel()`, or add them to the list below. Minutes, and it stops the screen implying coverage
+   it does not have.
+2. **Media prune and lookups deletes** — the two irreversible ones. ~80 lines, half a day with
+   tests.
+3. **Units, shipping, banners, storefront, variants, profile** — the rest, in whatever order the
+   team's questions actually arrive.
+
+**And one honest caveat about all of it:** `ActivityLog::record()` swallows its own exceptions by
+design, so adding these calls cannot break a write — but it also means a logging gap can never
+announce itself. The only thing that proves a screen is covered is a test that asserts the row.
+That is why the estimate has eight tests in it and why they are not optional.
+
+---
+
+## 12. §11 IS BUILT — and two things in §11 were wrong
+
+*2026-10-05, later the same day. §11 above is left exactly as written, because it is the record of
+what was known when the decision was taken. This section is what happened next, and what §11 got
+wrong.*
+
+All **19 write actions across the 8 screens** now write to `core_activity_log`, with **one test per
+screen asserting the row** — the actor by the name the log captured, the subject, the action, and a
+real before/after. The screens: units, the twelve reference lists, shipping prices, banners,
+storefront settings, variants, profile and media prune.
+
+### The two corrections
+
+**1. `storefront_payment_methods` was never a false filter entry — and this is the worked example
+§11's own rule deserves, so it stays on the page rather than being quietly fixed.**
+
+§11 says, in the paragraph above its coverage table:
+
+> **absence of rows is not absence of coverage**, and confusing the two is how §10 went wrong
+
+Two paragraphs later, under *"One thing that is actively misleading"*, it names
+`storefront_payment_methods` as a filter entry nothing writes and recommends removing it. That is
+the same confusion, committed in the same section, while writing the warning against it.
+`PaymentSettingsController` has written that subject type from **three** actions — add, edit and
+delete a payment method — since the payments screen was built. The entry was removed on that
+finding, and has been put back.
+
+**How the error was actually made**, because the shape of it is the lesson: the grep ran over the
+controllers *being changed that day*, found nothing, and the absence was read as absence everywhere.
+A `git grep` across the whole tree would have taken the same few seconds and returned the three call
+sites. The first version of this rule in `AGENTS.md` had the same defect in the other direction —
+it claimed the log covered everything — so the rule has now been wrong twice, once too generous and
+once too harsh, and **both times because it was read from the rows or from a partial grep instead of
+from the writers.**
+
+`shipping_cities` was genuinely false, and is now true: the shipping screen logs.
+
+> **The general shape of it:** a filter entry with nothing behind it and one whose rows nobody has
+> produced yet look *identical* from the screen. Only the writers can tell you which it is, and
+> only `git grep -n 'ActivityLog::record' -- app` across the whole tree counts as having looked.
+> An audit that cannot survive that command being run twice is not an audit.
+
+**2. A `deleted` row recorded nothing about what was deleted.** Not this round's code — the whole
+table, since it was built. `ActivityLog::diff()` walked `$after` only, and a delete has no after, so
+the before-snapshot that `BlogController`, `CategoryController`, `PaymentSettingsController` and
+`ProductWriter` all carefully capture was diffed against nothing and the column went in `NULL`. The
+log knew a category had been deleted and by whom, and could not say what the category had been.
+
+It was not found by reading the code. It was found in the data: ten `revoked` rows on this database,
+all ten with a null `changes`, against zero of the ten `granted` rows beside them — the same screen,
+the same writer, one passing `before` and one `after`.
+
+`diff()` now walks the union of both sides, which is a three-line change in one place instead of a
+patch at fourteen call sites. A field present in `before` and absent from `after` is exactly what
+`from: value, to: null` means. Creations are unaffected (nothing in `before`); updates post both
+sides, so no existing row changes shape.
+
+### The two decisions in §11, as taken
+
+1. **Lookups: ONE subject type**, `catalog_lookups`, with the list in the label — `الماركات: Rolex`.
+   The list key also travels in `changes`, so a history for one list is reachable without matching
+   on a label text.
+2. **Media prune carries the paths.** It is the only screen whose row describes something that no
+   longer exists anywhere, and the row *nearly failed to do it twice over*: the payload went in as
+   `$before`, where `diff()` could not see it, and the path list went in as an array, which
+   `ActivityLog::readable()` json-encodes and clips at 300 characters — about eight filenames out of
+   five hundred, with nothing saying the rest were dropped. It is now one newline-joined string
+   passed as `$after`, capped at 500 paths with the remainder counted in the row, and
+   `LIKE '%name.webp%'` finds a single file inside it.
+
+   A prune cannot be driven end to end by a test — the `no_coverage` guard refuses on any machine
+   whose media tree is not the live one, which is what stops a workstation deleting its own files —
+   so the payload assembly is a public static (`MediaPruneController::auditPayload()`) and the test
+   asserts it directly, then pushes the result through `ActivityLog::record()` and reads the row
+   back. That is every step except `unlink`.
+
+### What is still NOT recorded, deliberately
+
+- **A bare image upload.** The file arrives with no row of its own; it enters the log when a
+  product, banner or brand comes to reference it. The activity screen's coverage sentence now says
+  this — it previously claimed banners, articles and the reference lists were unrecorded, which had
+  stopped being true.
+- **Ten field names render as raw column names** on the activity screen: `list`, `hex`, `retired`,
+  `merged_into`, `specifications_moved`, `rows_reordered`, `money_rewards`, `default_locale`,
+  `link_url`, and the five media-prune counters. `changedFieldLabel()` gained arms only for the
+  fields that could reuse an EXISTING translation key — sixteen of them — because a new key means a
+  new English string, and one key may not carry two different Arabic strings, so inventing ten of
+  those unseen is how a wrong label gets into a table that is never rewritten. The raw name is the
+  documented fallback for a newly audited field and is how anybody finds out one exists. **This is
+  work, not a bug** — an hour, and it wants somebody looking at the screen.
+
+### The caveat from §11, restated because it is the reason the tests exist
+
+`ActivityLog::record()` swallows its own exceptions by design. A logging call that has stopped
+working cannot announce that. The media-prune row is the proof: it lost its contents twice, and both
+losses were silent — they would have been discovered by somebody asking which file had gone, and
+finding that the row written for exactly that question could not answer it.

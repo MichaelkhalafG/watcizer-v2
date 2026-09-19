@@ -25,6 +25,15 @@ export interface FieldShellProps {
     className?: string;
     /** Rendered instead of the label column for a switch, which labels itself inline. */
     inline?: boolean;
+    /**
+     * The label is kept for screen readers and not drawn.
+     *
+     * For a control inside a TABLE CELL, where the column header is already the label: printing it
+     * again on every row is the defect the lookups screen was reported for — 79 brand rows each
+     * repeating «الشعار» under the column that says «الشعار». It is `sr-only`, never
+     * removed: a screen reader outside the table's header context still needs the name.
+     */
+    labelHidden?: boolean;
 }
 
 /**
@@ -42,6 +51,7 @@ export function Field({
     required = false,
     className,
     inline = false,
+    labelHidden = false,
     render,
 }: FieldShellProps & {
     render: (attrs: FieldControlAttrs) => ReactNode;
@@ -96,17 +106,17 @@ export function Field({
     });
 
     return (
-        <div className={cn('space-y-2', className)}>
+        <div className={cn(labelHidden ? undefined : 'space-y-2', className)}>
             {inline ? (
                 <div className="flex items-center justify-between gap-4">
-                    <Label htmlFor={id} required={required}>
+                    <Label htmlFor={id} required={required} className={labelHidden ? 'sr-only' : undefined}>
                         {label}
                     </Label>
                     {control}
                 </div>
             ) : (
                 <>
-                    <Label htmlFor={id} required={required}>
+                    <Label htmlFor={id} required={required} className={labelHidden ? 'sr-only' : undefined}>
                         {label}
                     </Label>
                     {control}

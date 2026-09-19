@@ -249,6 +249,16 @@ final class ExistingCatalogue
                 'title' => Coerce::str(Row::nstr($row, 'title')),
             ];
 
+            /*
+             * `model_number` is STILL matched here, on purpose, after the item-4 merge
+             * (2026-09-19) stopped the dashboard writing it.
+             *
+             * The column keeps every value that was ever in it, including the fifteen that
+             * disagree with their product's `sku` and were deliberately not overwritten. Those are
+             * exactly the codes an incoming supplier row is most likely to carry — so dropping
+             * them from the duplicate check would make the importer re-create products it already
+             * has. A matcher should read every code the catalogue has ever known.
+             */
             foreach (['sku', 'model_number', 'wa_code'] as $column) {
                 $code = self::normalise(Row::nstr($row, $column));
                 if ($code !== '' && strlen($code) >= self::MIN_SKU) {

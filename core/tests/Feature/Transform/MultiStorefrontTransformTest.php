@@ -8,6 +8,7 @@ use Illuminate\Testing\PendingCommand;
 use Tests\Support\CatalogFixture;
 use Tests\Support\Gates;
 use Tests\Support\LedgerState;
+use Tests\Support\Scratch;
 use Tests\Support\T;
 
 use function Pest\Laravel\artisan;
@@ -48,7 +49,7 @@ function runSteps(array $steps): void
      */
     LedgerState::skipIfDirty();
 
-    $pending = artisan('core:transform', ['--force' => true, '--only' => implode(',', $steps)]);
+    $pending = artisan('core:transform', ['--force' => true, '--only' => implode(',', $steps), '--output' => Scratch::dir('multi-storefront')]);
     if (! $pending instanceof PendingCommand) {
         throw new RuntimeException('artisan() did not return a PendingCommand');
     }

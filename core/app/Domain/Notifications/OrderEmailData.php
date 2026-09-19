@@ -258,7 +258,7 @@ final class OrderEmailData
             ->select([
                 'oi.id', 'oi.product_id', 'oi.offer_id', 'oi.quantity', 'oi.piece_price', 'oi.total_price',
                 'oi.type_stock', 'oi.color_band', 'oi.color_dial',
-                'p.wa_code', 'p.sku', 'p.model_number', 'p.selling_price',
+                'p.wa_code', 'p.sku', 'p.selling_price',
                 'pen.title as title_en', 'par.title as title_ar',
                 'v.label as variant_label', 'v.sku as variant_sku',
                 'f.wa_code as offer_code', 'f.image as offer_image', 'f.selling_price as offer_selling_price',
@@ -308,7 +308,8 @@ final class OrderEmailData
                 'code' => $isProduct
                     ? (Row::nstr($row, 'variant_sku') ?? Row::nstr($row, 'wa_code') ?? Row::nstr($row, 'sku'))
                     : Row::nstr($row, 'offer_code'),
-                'model' => $isProduct ? Row::nstr($row, 'model_number') : null,
+                // One code, one column (item 4). `sku` is the survivor of the merge.
+                'model' => $isProduct ? Row::nstr($row, 'sku') : null,
                 'type_stock' => Row::nstr($row, 'type_stock'),
                 'color_band' => Row::nstr($row, 'color_band'),
                 'color_dial' => Row::nstr($row, 'color_dial'),

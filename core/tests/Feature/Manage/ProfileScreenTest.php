@@ -2,6 +2,7 @@
 
 use App\Console\Commands\CoreChecksumCommand;
 use App\Domain\Access\Preferences;
+use App\Domain\Activity\ActivityLog;
 use App\Transform\LegacySource;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -110,25 +111,36 @@ it('leaves the 65-table legacy digest IDENTICAL across a full profile save', fun
     expect(CoreChecksumCommand::compute(LegacySource::TABLES)['digest'])->toBe($before);
 });
 
-it('touches core_user_preferences and NOTHING else on the clean side', function () {
+it('touches core_user_preferences and the activity log, and NOTHING else on the clean side', function () {
     $user = Staff::admin();
     actingAs($user);
 
-    // Every core table except the one this screen owns, checksummed before and after.
+    /*
+     * Every core table except the two this save may reach, checksummed before and after.
+     *
+     * `core_activity_log` joined `core_user_preferences` here on 2026-10-05, when this screen
+     * started recording who changed the language. It is an EXCLUSION with a reason rather than a
+     * hole: the log is append-only, every audited screen writes it, and the assertion that matters
+     * — that it gained exactly one entry, about this user — is made below instead of being waved
+     * through by a digest.
+     */
     $others = [];
     foreach (CoreChecksumCommand::CORE_TABLES as $table) {
-        if ($table !== 'core_user_preferences') {
+        if (! in_array($table, ['core_user_preferences', 'core_activity_log'], true)) {
             $others[] = $table;
         }
     }
 
     $before = CoreChecksumCommand::compute($others)['digest'];
+    $entries = DB::table('core_activity_log')->count();
 
     put('/manage/profile', ['locale' => 'en'])->assertSessionHasNoErrors();
 
     expect(CoreChecksumCommand::compute($others)['digest'])->toBe($before)
         // …and the one table it DOES own actually changed, or the assertion above proves nothing.
-        ->and(T::int(DB::table('core_user_preferences')->count()))->toBe(1);
+        ->and(T::int(DB::table('core_user_preferences')->count()))->toBe(1)
+        // One entry, not none and not two.
+        ->and(DB::table('core_activity_log')->count())->toBe($entries + 1);
 });
 
 it('offers no route that could write the accounts table', function () {
@@ -165,4 +177,50 @@ it('refuses an account with no dashboard grant', function () {
 
     get('/manage/profile')->assertForbidden();
     put('/manage/profile', ['locale' => 'en'])->assertForbidden();
+});
+
+it('records the language change in the activity log, with the operator who made it', function () {
+    /*
+     * The gap, dated. On 2026-10-05 a `core_user_preferences` row carried a changed `locale` and
+     * nothing said where it came from: the row has a `user_id` and an `updated_at`, and neither
+     * answers whether a PERSON saved this screen or a test run wrote it. One table, one column,
+     * and the incident still could not be closed — which is the whole argument for auditing a
+     * screen that writes almost nothing.
+     */
+    $user = Staff::admin();
+    actingAs($user);
+
+    // The name `ActivityLog` captures at write time, computed the way it computes it.
+    $actor = trim(T::str($user->getAttribute('first_name')).' '.T::str($user->getAttribute('last_name')));
+    $actor = $actor !== '' ? $actor : T::str($user->getAttribute('email'));
+
+    $mark = T::int(DB::table(ActivityLog::TABLE)->max('id') ?? 0);
+
+    put('/manage/profile', ['locale' => 'en'])->assertSessionHasNoErrors();
+
+    $entry = T::one(DB::table(ActivityLog::TABLE)->where('id', '>', $mark)
+        ->where('subject_type', 'core_user_preferences'));
+
+    $changes = T::arr(json_decode(T::str($entry->changes), true));
+
+    // The subject is the USER: the preferences row is keyed by `user_id` and has no id of its own.
+    expect(T::int($entry->subject_id))->toBe(T::int($user->getAuthIdentifier()))
+        ->and(T::str($entry->action))->toBe(ActivityLog::UPDATED)
+        ->and(T::str($entry->user_name))->toBe($actor)
+        ->and(T::str($entry->subject_label))->toBe($actor)
+        /*
+         * Before AND after. `from` is `ar` rather than empty although NO ROW existed yet, because
+         * the snapshot is read through `Preferences::localeFor()` — the same door the screen reads
+         * it through, so it reports the language the operator was actually using.
+         */
+        ->and(T::arr($changes['locale'] ?? null)['from'] ?? null)->toBe('ar')
+        ->and(T::arr($changes['locale'] ?? null)['to'] ?? null)->toBe('en');
+
+    // Pressing Save again on the same language records nothing: this screen has one button, and a
+    // log of every press would answer "who changed the language" with entries where nobody did.
+    $mark = T::int(DB::table(ActivityLog::TABLE)->max('id') ?? 0);
+
+    put('/manage/profile', ['locale' => 'en'])->assertSessionHasNoErrors();
+
+    expect(DB::table(ActivityLog::TABLE)->where('id', '>', $mark)->count())->toBe(0);
 });

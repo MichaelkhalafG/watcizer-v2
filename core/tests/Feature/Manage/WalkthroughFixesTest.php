@@ -132,7 +132,16 @@ it('finds a product on the STOCK screen by the name printed on its own row', fun
     // A word taken from a row the screen is ALREADY showing — the exact thing the operator does.
     $title = null;
     foreach ($rows as $row) {
-        $candidate = walkStr(T::arr($row)['title'] ?? null);
+        /*
+         * `title` became a PAIR on 2026-10-05, when the stock screen stopped serving Arabic names
+         * to an English reader. The test takes the language the suite runs in — Arabic, the
+         * default — which is the name this screen prints for this reader.
+         */
+        $pair = T::arr(T::arr($row)['title'] ?? null);
+        $candidate = walkStr($pair['ar'] ?? null);
+        if (mb_strlen($candidate) <= 6) {
+            $candidate = walkStr($pair['en'] ?? null);
+        }
         if (mb_strlen($candidate) > 6) {
             $title = $candidate;
 

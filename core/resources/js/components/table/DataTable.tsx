@@ -69,11 +69,46 @@ export interface Column<Row> {
     headerClassName?: string;
     /** Hide below `sm`, for the tablet layout. */
     hideOnMobile?: boolean;
+    /**
+     * Drop this column below a WIDER breakpoint (item 9, 2026-09-19).
+     *
+     * `hideOnMobile` drops at `sm` — 640 px — which never fires on the laptops this team uses.
+     * The products list was reported overflowing at 1366 px with the visibility column cut in
+     * half, and 1366 is not a narrow screen; it is the commonest screen in the building.
+     *
+     * A column marked here is one the row can be READ without. Nothing that is only available in
+     * a dropped column may be marked: the scroll container is what guarantees no information is
+     * lost, and this is what stops the reader having to use it for the ordinary case.
+     */
+    hideBelow?: 'lg' | 'xl' | '2xl';
 }
+
+/**
+ * Tailwind needs whole class names, so the three cases are written out rather than composed.
+ *
+ * `2xl` (1536 px) was added 2026-10-05 for the products list: `xl` is 1280 and the screen the team
+ * actually uses is 1366, so an `xl`-hidden column is still on the row exactly where it hurts. A
+ * column that only earns its place on a large desktop drops at `2xl`.
+ */
+const HIDE_BELOW: Record<'lg' | 'xl' | '2xl', string> = {
+    lg: 'hidden lg:table-cell',
+    xl: 'hidden xl:table-cell',
+    '2xl': 'hidden 2xl:table-cell',
+};
 
 export interface DataTableProps<Row> {
     table: TablePayload<Row>;
     columns: Array<Column<Row>>;
+    /**
+     * Where a cell's content sits when the row is taller than one line. Default `middle`.
+     *
+     * `top` is for a list whose rows GROW — the products list, where a long product name wraps to
+     * two or three lines and everything else on the row is one. Centred, each of those short cells
+     * floats at a different height from its neighbour and the row reads as a scatter; aligned to
+     * the top they all start on the same line as the first line of the name, which is the one a
+     * scanning eye follows down the page.
+     */
+    cellAlign?: 'middle' | 'top';
     /** Stable identity per row — needed by selection and by React keys. */
     rowId: (row: Row) => string | number;
     /** Right-hand cell of each row: buttons, a dropdown, whatever the screen needs. */
@@ -128,8 +163,10 @@ export function DataTable<Row>({
     emptyDescription,
     only,
     error = null,
+    cellAlign = 'middle',
 }: DataTableProps<Row>) {
     const t = useT();
+    const alignClass = cellAlign === 'top' ? 'align-top' : undefined;
     /*
      * Resolved in the body, never as default parameters: a default is evaluated before the
      * component runs, where `useT()` is not a legal call.
@@ -389,7 +426,11 @@ export function DataTable<Row>({
                         {columns.map((column) => (
                             <TableHead
                                 key={column.key}
-                                className={cn(column.headerClassName, column.hideOnMobile && 'hidden sm:table-cell')}
+                                className={cn(
+                                    column.headerClassName,
+                                    column.hideOnMobile && 'hidden sm:table-cell',
+                                    column.hideBelow && HIDE_BELOW[column.hideBelow],
+                                )}
                                 aria-sort={
                                     meta.sort === sortName(column.key)
                                         ? meta.direction === 'asc'
@@ -454,7 +495,7 @@ export function DataTable<Row>({
                         return (
                             <TableRow key={id} data-state={isSelected ? 'selected' : undefined}>
                                 {bulkActions ? (
-                                    <TableCell>
+                                    <TableCell className={alignClass}>
                                         <Checkbox
                                             checked={isSelected}
                                             onCheckedChange={(value) =>
@@ -465,11 +506,19 @@ export function DataTable<Row>({
                                     </TableCell>
                                 ) : null}
                                 {columns.map((column) => (
-                                    <TableCell key={column.key} className={cn(column.className, column.hideOnMobile && 'hidden sm:table-cell')}>
+                                    <TableCell
+                                        key={column.key}
+                                        className={cn(
+                                            alignClass,
+                                            column.className,
+                                            column.hideOnMobile && 'hidden sm:table-cell',
+                                            column.hideBelow && HIDE_BELOW[column.hideBelow],
+                                        )}
+                                    >
                                         {column.cell(row)}
                                     </TableCell>
                                 ))}
-                                {rowActions ? <TableCell className="text-end">{rowActions(row)}</TableCell> : null}
+                                {rowActions ? <TableCell className={cn('text-end', alignClass)}>{rowActions(row)}</TableCell> : null}
                             </TableRow>
                         );
                     })}

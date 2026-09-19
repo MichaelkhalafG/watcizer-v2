@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Manage;
 
+use App\Domain\Activity\ActivityLog;
 use App\Domain\Catalog\LookupWriter;
 use App\Domain\Catalog\PreSwitch;
 use App\Storefront\ImageUrl;
@@ -9,8 +10,10 @@ use App\Support\Coerce;
 use App\Support\FullReplace;
 use App\Support\ManageText;
 use App\Support\Table\TableExport;
+use App\Transform\Row;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -141,10 +144,18 @@ final class LookupController
         $data = Coerce::arr($request->validate(LookupWriter::rules($def['key'])));
 
         try {
-            $this->lookups->create($def['key'], $data);
+            $id = $this->lookups->create($def['key'], $data);
         } catch (RuntimeException $e) {
             throw ValidationException::withMessages(['name.ar' => $e->getMessage()]);
         }
+
+        ActivityLog::record(
+            'catalog_lookups',
+            $id,
+            ActivityLog::CREATED,
+            after: self::logFields($def, $id),
+            label: self::logLabel($def, $id),
+        );
 
         return back()->with('status', ManageText::t('lookups.added', 'تمت الإضافة.'));
     }
@@ -158,11 +169,24 @@ final class LookupController
         $def = self::definition($list);
         $data = Coerce::arr($request->validate(LookupWriter::rules($def['key'], $id)));
 
+        $before = self::logFields($def, $id);
+
         try {
             $this->lookups->update($def['key'], $id, $data);
         } catch (RuntimeException $e) {
             throw ValidationException::withMessages(['name.ar' => $e->getMessage()]);
         }
+
+        ActivityLog::record(
+            'catalog_lookups',
+            $id,
+            ActivityLog::UPDATED,
+            $before,
+            self::logFields($def, $id),
+            // The label is captured AFTER: a rename's most useful label is the new name, and the
+            // old one is in `changes` where a diff belongs.
+            label: self::logLabel($def, $id),
+        );
 
         return back()->with('status', ManageText::t('lookups.saved', 'تم الحفظ.'));
     }
@@ -170,11 +194,93 @@ final class LookupController
     public function destroy(Request $request, string $list, int $id): RedirectResponse
     {
         $def = self::definition($list);
+
+        /*
+         * Captured BEFORE the delete, because afterwards there is nothing left to name it by —
+         * and this is the one action on this screen that cannot be undone.
+         */
+        $before = self::logFields($def, $id);
+        $label = self::logLabel($def, $id);
+
         $result = $this->lookups->delete($def['key'], $id);
+
+        // Only when it actually went: a refused delete (the row is still in use) is not an event,
+        // and recording one would fill the log with things that did not happen.
+        if ($result['deleted']) {
+            ActivityLog::record('catalog_lookups', $id, ActivityLog::DELETED, $before, label: $label);
+        }
 
         return $result['deleted']
             ? back()->with('status', $result['reason'])
             : back()->withErrors(['delete' => $result['reason']]);
+    }
+
+    /**
+     * What a lookup row is, for the log: both names, and the list it belongs to.
+     *
+     * ── ONE subject type for twelve lists (2026-10-05) ──────────────────────────
+     *
+     * Brands, colours, materials, shapes, genders, features, sizes, movements, closures, display
+     * types and grades all go in as `catalog_lookups`, with the LIST in the label rather than in
+     * the subject type. Twelve types would mean twelve entries in the activity screen's filter and
+     * twelve English strings, for a screen most people touch twice a year — and the question
+     * somebody actually asks is *"who deleted this brand?"*, which the label answers on its own.
+     *
+     * The list key travels in `changes` as well, so a filter on the label is not the only way to
+     * find one list's history.
+     *
+     * @param  array{key: string, label: string, master: string, translations: string, fk: string, extra: array<string, mixed>}  $def
+     * @return array<string, mixed>
+     */
+    private static function logFields(array $def, int $id): array
+    {
+        $row = DB::table($def['master'])->where('id', $id)->first();
+        if (! is_object($row)) {
+            return [];
+        }
+
+        $out = ['list' => $def['key']];
+
+        // Both names, because either can be the one somebody is looking for — and a rename that
+        // touched only the English would otherwise show an empty diff.
+        foreach (['ar', 'en'] as $locale) {
+            $name = DB::table($def['translations'])
+                ->where($def['fk'], $id)->where('locale', $locale)->value('name');
+            $out['name_'.$locale] = is_scalar($name) ? (string) $name : null;
+        }
+
+        // …and whatever extra columns THIS list declares — a brand's slug and active flag, a
+        // colour's hex. Read from the config rather than listed here, so a list that gains a
+        // column is logged without anybody remembering to come back.
+        $cast = Row::cast($row);
+        foreach (array_keys($def['extra']) as $column) {
+            if (property_exists($cast, (string) $column)) {
+                $value = $cast->{$column};
+                $out[(string) $column] = is_scalar($value) ? $value : null;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * `الماركات: Rolex` — the list, then the row, which is how somebody would say it.
+     *
+     * @param  array{key: string, label: string, master: string, translations: string, fk: string, extra: array<string, mixed>}  $def
+     */
+    private static function logLabel(array $def, int $id): string
+    {
+        $fields = self::logFields($def, $id);
+        $name = Coerce::str($fields['name_ar'] ?? null);
+        if ($name === '') {
+            $name = Coerce::str($fields['name_en'] ?? null);
+        }
+
+        // `definition()` already resolves the list's own name through the seam, so the label
+        // reads in whatever language the operator is using.
+        $list = $def['label'];
+
+        return $name === '' ? $list.': #'.$id : $list.': '.$name;
     }
 
     /**

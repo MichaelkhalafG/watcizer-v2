@@ -1,5 +1,6 @@
 <?php
 
+use App\Domain\Activity\ActivityLog;
 use App\Domain\Catalog\SpecBlocks;
 use App\Domain\Catalog\UnitCleanup;
 use App\Transform\Row;
@@ -85,11 +86,35 @@ it('counts what uses each unit, and flags the ones that are really clothing size
     expect($byCode['mm']['looks_like_a_size'] ?? null)->toBeFalse()
         ->and($byCode['atm']['looks_like_a_size'] ?? null)->toBeFalse();
 
-    // …and the garment/shoe sizes that came out of `size_types` are.
-    foreach (['xs', 'xl', 'xxxl', '42', 'free-size'] as $code) {
-        expect($byCode)->toHaveKey($code);
-        expect($byCode[$code]['looks_like_a_size'] ?? null)->toBeTrue("[{$code}] should read as a size");
+    /*
+     * …and the garment/shoe sizes that came out of `size_types` are.
+     *
+     * ── This used to name five codes, and that was wrong (2026-10-05) ────────────────
+     *
+     * It asserted `['xs', 'xl', 'xxxl', '42', 'free-size']` were PRESENT — a census of the
+     * catalogue rather than a statement about the rule. Then the developer used this very screen
+     * to delete the shoe sizes 26–47, which is the job the screen exists to do, and the test
+     * failed for the success of the feature it covers.
+     *
+     * A test that breaks when an operator does the intended thing teaches everybody to distrust
+     * it. So it now asserts the RULE on whatever size-shaped rows are still there, and says so
+     * plainly when there are none left — which will one day be the correct state of this table.
+     */
+    $sizes = array_filter(
+        $byCode,
+        static fn (array $unit): bool => ($unit['looks_like_a_size'] ?? null) === true,
+    );
+
+    foreach (['xs', 'xl', 'xxxl', 'free-size'] as $code) {
+        // Only the ones still present: each of these may legitimately be merged away tomorrow.
+        if (isset($byCode[$code])) {
+            expect($byCode[$code]['looks_like_a_size'] ?? null)->toBeTrue("[{$code}] should read as a size");
+        }
     }
+
+    // The rule has to be doing SOMETHING, or the two assertions above pass vacuously on an empty
+    // table. `m` below is the specific row that must always be flagged while it exists.
+    expect($sizes)->not->toBe([], 'no unit reads as a size — either the rule stopped working, or the cleanup is finished and this test needs retiring with it');
 
     // `M` is the one that matters: it LOOKS like a size and is used as a unit, which is why the
     // screen offers merge rather than quietly retiring everything that looks like a size.
@@ -209,4 +234,71 @@ it('merges and retires through the screen, and says what happened', function () 
     post("/manage/units/{$from}/restore")->assertSessionHasNoErrors();
 
     expect(DB::table('catalog_units')->where('id', $from)->value('retired_at'))->toBeNull();
+});
+
+// ── 5. the record the screen leaves behind ───────────────────────────────────────────────────
+
+/*
+ * This is the screen whose silence is the reason the whole round exists.
+ *
+ * Twenty-one units were removed through it, nothing anywhere recorded that, and when the rows
+ * turned up missing the only available account of it was a guess — which was wrong, and which
+ * nearly put a restore-from-legacy on top of a deliberate deletion. Three verbs, three rows.
+ *
+ * And the assertions below are not ceremony: `ActivityLog::record()` swallows its own exceptions
+ * by design, so a logging call that has stopped working cannot announce that. Only a test can.
+ */
+
+it('records a merge, a retirement and a restore — with who, which unit, and what moved', function () {
+    // Signed in FIRST: granting the account its role is itself an audited event, and a count taken
+    // before that would be measuring the sign-in.
+    $admin = Staff::admin();
+    actingAs($admin);
+
+    $from = makeUnit('zz-log-from', 'من', 'From');
+    $into = makeUnit('zz-log-into', 'إلى', 'Into');
+    specUsing($from);
+
+    post('/manage/units/merge', ['from' => $from, 'into' => $into])->assertSessionHasNoErrors();
+
+    $merge = T::one(DB::table(ActivityLog::TABLE)
+        ->where('subject_type', 'catalog_units')->where('subject_id', $from)
+        ->orderByDesc('id'));
+
+    // WHO, by the name the log captured at the time — not merely "somebody".
+    expect(T::int($merge->user_id))->toBe(T::int($admin->getAttribute('id')))
+        ->and(T::str($merge->user_name))->toBe(Staff::nameOf($admin))
+        ->and(T::str($merge->action))->toBe(ActivityLog::UPDATED)
+        // …and WHICH unit, by the code an operator calls it, not by its id.
+        ->and(T::str($merge->subject_label))->toBe('zz-log-from');
+
+    $changes = T::arr(json_decode(T::str($merge->changes), true));
+
+    /*
+     * A merge is the one action here that moves data belonging to somebody else's screen: the
+     * specification rows come off this unit and land on another. The count is what makes the row
+     * answer "how much of the catalogue did that touch" a year later, when nobody can re-derive it.
+     */
+    expect(T::str(T::arr($changes['merged_into'] ?? null)['to'] ?? null))->toBe('zz-log-into')
+        ->and(T::int(T::arr($changes['specifications_moved'] ?? null)['to'] ?? null))->toBeGreaterThan(0);
+
+    // ── retire ───────────────────────────────────────────────────────────────────────────────
+    post("/manage/units/{$into}/retire")->assertSessionHasErrors();   // it now holds the spec
+    post("/manage/units/{$from}/restore")->assertSessionHasNoErrors();
+
+    $restore = T::one(DB::table(ActivityLog::TABLE)
+        ->where('subject_type', 'catalog_units')->where('subject_id', $from)
+        ->where('action', ActivityLog::RESTORED)->orderByDesc('id'));
+
+    expect(T::str($restore->user_name))->toBe(Staff::nameOf($admin));
+
+    // The before/after of the field that actually moved: it WAS retired, and now it is not.
+    $retiredAt = T::arr(T::arr(json_decode(T::str($restore->changes), true))['retired_at'] ?? null);
+    expect($retiredAt['from'] ?? null)->not->toBeNull()
+        ->and($retiredAt['to'] ?? null)->toBeNull();
+
+    // …and the refusal above recorded NOTHING. A retirement that was turned away is not an event,
+    // and a log that reported one would be describing something that did not happen.
+    expect(DB::table(ActivityLog::TABLE)
+        ->where('subject_type', 'catalog_units')->where('subject_id', $into)->count())->toBe(0);
 });

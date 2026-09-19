@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Tests\Support\LedgerState;
 use Tests\Support\LegacyShadow;
+use Tests\Support\Scratch;
 use Tests\Support\T;
 
 /*
@@ -46,7 +47,7 @@ function variantFixtureProduct(): int
 /** Run only the two steps wave 3.5 touched. */
 function runVariantSteps(): int
 {
-    return Artisan::call('core:transform', ['--only' => '13,20', '--force' => true]);
+    return Artisan::call('core:transform', ['--only' => '13,20', '--force' => true, '--output' => Scratch::dir('variant-transform')]);
 }
 
 /** @param  list<array{id: int, stock: int}>  $variants */

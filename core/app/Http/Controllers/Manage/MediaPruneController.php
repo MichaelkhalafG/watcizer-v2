@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Manage;
 
+use App\Domain\Activity\ActivityLog;
 use App\Domain\Media\MediaAudit;
 use App\Domain\Media\MediaStore;
 use App\Support\Coerce;
@@ -40,6 +41,15 @@ use Inertia\Response;
  */
 final class MediaPruneController
 {
+    /**
+     * How many deleted paths one log row carries.
+     *
+     * Enough to answer "was my image in there?" for a normal prune, and bounded so an enormous one
+     * cannot write a megabyte of JSON into a column a person is meant to read. The COUNT is never
+     * truncated — only the list, and the row says by how much.
+     */
+    private const LOGGED_PATHS = 500;
+
     /** The command's defaults, so screen and terminal report the same thing. */
     private const MIN_AGE_DAYS = 7;
 
@@ -87,6 +97,45 @@ final class MediaPruneController
         $result = $audit->delete($scan['orphans']);
 
         /*
+         * ── This row is the ONLY record that will exist (2026-10-05) ──────────────────
+         *
+         * Every other screen's log row describes a database row somebody can still go and look at.
+         * This one describes FILES that no longer exist anywhere — there is no table to inspect,
+         * no soft delete, no rebuild that brings them back. So the paths go IN, not just the count:
+         * a row saying "412 files deleted" answers nothing an hour later, and the one question
+         * anybody will ask is whether a particular image was among them.
+         *
+         * `subject_id` is null because there is no row to point at, and everything goes in as
+         * `$after` rather than `$before` — this row is an EVENT, not a diff. `— ← 412` reads as
+         * "this happened"; the other way round would read as "412 files used to be there", which
+         * is not what the row means.
+         *
+         * ── Two things that silently emptied this row, and what they cost ────────────
+         *
+         * Written first with the payload as `$before` and no `$after`, which produced a row with a
+         * NULL `changes` — `ActivityLog::diff()` walked `$after` alone. It has since been fixed to
+         * walk both sides (and that fix is what makes every DELETE in this codebase carry what it
+         * deleted), but the argument stays on the `$after` side because that is what it means.
+         *
+         * And the paths went in as an ARRAY, which `ActivityLog::readable()` json-encodes and clips
+         * to 300 characters — about eight filenames out of five hundred, with no marker saying so.
+         * They go in as one newline-joined STRING instead: a scalar passes through `readable()`
+         * untouched, `LIKE '%name.webp%'` finds a single file in it, and the cap below is the only
+         * thing that trims the list.
+         */
+        ActivityLog::record(
+            'media_files',
+            null,
+            ActivityLog::DELETED,
+            after: self::auditPayload($scan, $result),
+            label: ManageText::t(
+                'media.prune_log_label',
+                'حذف :count ملف يتيم',
+                ['count' => $result['deleted']],
+            ),
+        );
+
+        /*
          * ONE sentence per outcome rather than a sentence assembled from three fragments: the
          * "…and N could not be deleted…" clause sits in the MIDDLE of the sentence, and a
          * translator handed the pieces separately cannot put it anywhere else.
@@ -104,6 +153,65 @@ final class MediaPruneController
                 'حُذف :count ملف. استُرجعت :size.',
                 ['count' => $result['deleted'], 'size' => $reclaimed],
             ));
+    }
+
+    /**
+     * What the one surviving record of a prune says.
+     *
+     * ── Public, and separate from the call, so it can be TESTED ──────────────────────
+     *
+     * Every other screen's audit row can be proved end to end: make the change, read the row. This
+     * one cannot. A prune is refused on any machine whose media tree is not the live one — that is
+     * the `no_coverage` guard, and it is the guard that stops a developer's workstation deleting
+     * its own 74 files — so the only way to reach this payload through the screen would be to make
+     * a real prune succeed, which means really deleting somebody's images. The assembly is
+     * therefore lifted out and tested directly, and the test then feeds the result through
+     * {@see ActivityLog::record()} to prove the row survives the trip intact.
+     *
+     * That is not an academic precaution. The first version of this payload lost its paths twice
+     * over — once to `diff()` reading `$after` only, once to `readable()` clipping an array at 300
+     * characters — and the log swallows its own exceptions, so neither loss could have announced
+     * itself. It would have been discovered by somebody asking which file had gone, and finding
+     * that the row which existed for exactly that question could not answer it.
+     *
+     * @param  array<string, mixed>  $scan  the result of {@see MediaAudit::scan()}
+     * @param  array{deleted: int, failed: int}  $result
+     * @return array<string, mixed>
+     */
+    public static function auditPayload(array $scan, array $result): array
+    {
+        /*
+         * `orphans` is grouped by MASTER — one entry per image, carrying its renditions — and each
+         * group's `files` are ABSOLUTE paths on this machine, because that is what `delete()`
+         * unlinks. Flattened to one line per file, since what somebody searches the log for is a
+         * file, not a group.
+         *
+         * Stored as `<folder>/<name>`, not as the absolute path: the drive letter and the install
+         * directory are this server's and say nothing, while `product/8f2a….webp` is the shape the
+         * database stores and the shape somebody will paste into a search. (The first version
+         * joined the folder onto the full path and produced `product/D:/…/product/x.webp`.)
+         */
+        $paths = [];
+        foreach (is_array($scan['orphans'] ?? null) ? $scan['orphans'] : [] as $group) {
+            $folder = Coerce::str(is_array($group) ? ($group['folder'] ?? null) : null);
+            $files = is_array($group) && is_array($group['files'] ?? null) ? $group['files'] : [];
+            foreach ($files as $file) {
+                $paths[] = $folder.'/'.basename(Coerce::str($file));
+            }
+        }
+        $listed = array_slice($paths, 0, self::LOGGED_PATHS);
+
+        return [
+            'files_deleted' => $result['deleted'],
+            'files_failed' => $result['failed'],
+            'bytes_reclaimed' => Coerce::int($scan['bytes'] ?? null),
+            // ONE newline-joined string, not a list: `ActivityLog::readable()` json-encodes a
+            // non-scalar and clips it to 300 characters — eight filenames out of five hundred,
+            // with nothing saying the rest were dropped. A scalar passes through untouched, and
+            // `LIKE '%name.webp%'` still finds a single file inside it.
+            'paths' => implode("\n", $listed),
+            'paths_truncated' => count($paths) - count($listed),
+        ];
     }
 
     /**

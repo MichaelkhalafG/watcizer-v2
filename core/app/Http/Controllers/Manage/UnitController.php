@@ -4,12 +4,15 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Manage;
 
+use App\Domain\Activity\ActivityLog;
 use App\Domain\Catalog\UnitCleanup;
 use App\Support\Coerce;
 use App\Support\ManageText;
 use App\Support\Table\TableExport;
+use App\Transform\Row;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -105,7 +108,33 @@ final class UnitController
             'into' => ['required', 'integer', 'exists:catalog_units,id'],
         ]));
 
-        $moved = $this->units->merge(Coerce::int($data['from'] ?? null), Coerce::int($data['into'] ?? null));
+        $from = Coerce::int($data['from'] ?? null);
+        $into = Coerce::int($data['into'] ?? null);
+
+        /*
+         * Read BEFORE: the merge retires the source and empties its usage count, so afterwards the
+         * row could no longer say what was actually moved. The unit's CODE goes in the label rather
+         * than in the diff, because it is not what changed — `logFields()` is for the two verbs
+         * that change the row's own columns, and a merge is a different shape.
+         *
+         * Both sides carry the SAME three keys on purpose. `ActivityLog::diff()` walks the union of
+         * before and after, so a key present on one side alone reads as a field that was emptied:
+         * an earlier version passed `logFields()` as the before and these three as the after, and
+         * the row said `code: mm ← —`, which is a merged unit reporting that its code was deleted.
+         */
+        $target = self::unitCode($into);
+        $before = ['merged_into' => null, 'specifications_moved' => null, 'retired' => false];
+
+        $moved = $this->units->merge($from, $into);
+
+        ActivityLog::record(
+            'catalog_units',
+            $from,
+            ActivityLog::UPDATED,
+            $before,
+            ['merged_into' => $target, 'specifications_moved' => $moved, 'retired' => true],
+            label: self::unitCode($from),
+        );
 
         return back()->with('status', ManageText::t(
             'units.merged',
@@ -116,16 +145,72 @@ final class UnitController
 
     public function retire(Request $request, int $unit): RedirectResponse
     {
+        $before = self::logFields($unit);
+
         $this->units->retire($unit);
+
+        ActivityLog::record(
+            'catalog_units',
+            $unit,
+            ActivityLog::UPDATED,
+            $before,
+            self::logFields($unit),
+            label: self::unitCode($unit),
+        );
 
         return back()->with('status', ManageText::t('units.retire_done', 'أُخرجت الوحدة من القوائم. لا شيء حُذف: يمكن إعادتها في أي وقت.'));
     }
 
     public function restore(Request $request, int $unit): RedirectResponse
     {
+        $before = self::logFields($unit);
+
         $this->units->restore($unit);
 
+        ActivityLog::record(
+            'catalog_units',
+            $unit,
+            ActivityLog::RESTORED,
+            $before,
+            self::logFields($unit),
+            label: self::unitCode($unit),
+        );
+
         return back()->with('status', ManageText::t('units.restore_done', 'أُعيدت الوحدة إلى القوائم.'));
+    }
+
+    /**
+     * What a unit row is, for the log — the two fields a merge or a retirement actually moves.
+     *
+     * ── Why this screen is logged at all (2026-10-05) ───────────────────────────
+     *
+     * It was not, and the cost was concrete: 21 units were removed through this screen and nothing
+     * anywhere recorded it, so when the rows turned up missing the only available explanation was
+     * a guess — and the guess was wrong, and a restore from legacy nearly put the mess back. "Who
+     * changed this?" had no answer for eight screens; this was one of them.
+     *
+     * @return array<string, mixed>
+     */
+    private static function logFields(int $id): array
+    {
+        $row = DB::table('catalog_units')->where('id', $id)->first(['code', 'retired_at']);
+        if (! is_object($row)) {
+            return [];
+        }
+        $unit = Row::cast($row);
+
+        return [
+            'code' => Row::str($unit, 'code'),
+            'retired_at' => Row::nstr($unit, 'retired_at'),
+        ];
+    }
+
+    /** The unit's CODE, which is what an operator calls it — `mm`, `atm`, `42`. */
+    private static function unitCode(int $id): string
+    {
+        $code = DB::table('catalog_units')->where('id', $id)->value('code');
+
+        return is_scalar($code) ? (string) $code : ('#'.$id);
     }
 
     /**
@@ -139,14 +224,14 @@ final class UnitController
     private static function columnLabel(string $column): string
     {
         return match ($column) {
-            'case_size_unit_id' => ManageText::t('specs.field_case_size', 'قياس العلبة'),
-            'case_thickness_unit_id' => ManageText::t('specs.field_case_thickness', 'سماكة العلبة'),
+            'case_size_unit_id' => ManageText::t('specs.field_case_size', 'قياس جسم الساعة'),
+            'case_thickness_unit_id' => ManageText::t('specs.field_case_thickness', 'سماكة جسم الساعة'),
             'band_length_unit_id' => ManageText::t('specs.field_band_length', 'طول السوار'),
             'band_width_unit_id' => ManageText::t('specs.field_band_width', 'عرض السوار'),
             'water_resistance_unit_id' => ManageText::t('specs.field_water_resistance', 'مقاومة الماء'),
-            'height_unit_id' => ManageText::t('specs.field_height', 'الارتفاع'),
-            'width_unit_id' => ManageText::t('specs.field_width', 'العرض'),
-            'length_unit_id' => ManageText::t('specs.field_length', 'الطول'),
+            'height_unit_id' => ManageText::t('specs.field_height', 'ارتفاع الساعة'),
+            'width_unit_id' => ManageText::t('specs.field_width', 'عرض الساعة'),
+            'length_unit_id' => ManageText::t('specs.field_length', 'طول الساعة'),
             default => $column,
         };
     }

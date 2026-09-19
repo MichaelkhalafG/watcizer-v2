@@ -75,7 +75,7 @@ it('starts with a UTF-8 BOM, or Excel renders Arabic as mojibake', function () {
 
     expect(substr($body, 0, 3))->toBe("\xEF\xBB\xBF")
         // …and the header row is the Arabic the screen shows, not a column name.
-        ->and($body)->toContain('الكود');
+        ->and($body)->toContain('الكود الداخلي');
 });
 
 it('puts the row count in the FILENAME, so nobody has to open the file to see it', function () {
@@ -89,7 +89,7 @@ it('puts the row count in the FILENAME, so nobody has to open the file to see it
 
     // A banner line above the headers would stop Excel treating row 1 as the header row, which is
     // why the count lives in the name instead.
-    expect(csvLines(T::str($response->streamedContent()))[0])->toStartWith('الكود,');
+    expect(csvLines(T::str($response->streamedContent()))[0])->toStartWith('"الكود الداخلي",');
 });
 
 it('ignores per_page: an export is the whole filtered set, not one page', function () {

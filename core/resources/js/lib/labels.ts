@@ -292,11 +292,11 @@ export function changedFieldLabel(t: Translator, field: string): string {
         case 'stock_market':
             return t('common.stock_market', 'ماركت');
         case 'model_number':
-            return t('products.model_number', 'رقم الموديل');
+            return t('products.sku', 'رقم الموديل (SKU)');
         case 'wa_code':
-            return t('products.code', 'الكود');
+            return t('products.wa_code', 'الكود الداخلي');
         case 'sku':
-            return t('products.supplier_code', 'كود المورّد');
+            return t('products.sku', 'رقم الموديل (SKU)');
         case 'brand_id':
             return t('products.brand', 'الماركة');
         case 'grade_id':
@@ -344,6 +344,56 @@ export function changedFieldLabel(t: Translator, field: string): string {
             return t('common.sort', 'الترتيب');
         case 'nodes_reordered':
             return t('categories.nodes_reordered', 'تصنيفات أُعيد ترتيبها');
+
+        /*
+         * ── The eight screens that started logging on 2026-10-05 ────────────────────────────
+         *
+         * Every arm below REUSES a key that already exists, and copies its Arabic exactly from the
+         * screen that owns it — `t()` returns one English string per key, so a key carrying two
+         * different Arabic strings would hand the losing screen English that does not match the
+         * Arabic beside it, and no test reading a single file could see it. `TranslationCoverageTest`
+         * is what enforces that.
+         *
+         * Deliberately NOT here: `list`, `hex`, `retired`, `merged_into`,
+         * `specifications_moved`, `rows_reordered`, `money_rewards`, `default_locale`, `link_url`
+         * and the five `media.*` prune counters. Each would need a NEW key and a new English string,
+         * and inventing eleven of those at the end of a round — none of them seen in a browser — is
+         * how a wrong label gets into an audit trail that is never rewritten. They fall through to
+         * the raw column name, which is the documented behaviour for a newly audited field and is
+         * how anybody finds out it exists. They are listed in the handover notes as work, not as a
+         * bug.
+         */
+        case 'label':
+            // A variant's own name — «أسود / 42مم». `name` above already resolves to this key.
+            return t('common.name', 'الاسم');
+        case 'code':
+            return t('common.unit', 'الوحدة');
+        case 'retired_at':
+            return t('units.retired_at', 'أُوقف في');
+        case 'name_ar':
+            return t('common.name_ar', 'الاسم (عربي)');
+        case 'name_en':
+            return t('common.name_en', 'الاسم (إنجليزي)');
+        case 'color_id':
+            return t('variants.colour', 'اللون');
+        case 'size_id':
+            return t('variants.size', 'المقاس');
+        case 'price_delta':
+            return t('variants.price_delta', 'فرق السعر');
+        case 'shipping_cost':
+            return t('shipping.cost', 'سعر الشحن');
+        case 'image_path':
+            return t('banners.image', 'صورة البانر');
+        case 'product_id':
+            return t('banners.target_product', 'منتج');
+        case 'storefront_category_id':
+            return t('common.category', 'تصنيف');
+        case 'domain':
+            return t('common.domain', 'النطاق');
+        case 'locales':
+            return t('storefronts.locales', 'اللغات');
+        case 'locale':
+            return t('profile.panel_language', 'لغة اللوحة');
         default:
             return field;
     }

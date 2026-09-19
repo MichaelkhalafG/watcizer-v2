@@ -61,7 +61,7 @@ it('changes ONLY the column it was given, and leaves every other one byte-identi
     $id = CatalogFixture::product(selling: 500.0);
     $before = patchSnapshot($id);
 
-    $result = patcher()->patch($id, ['model_number' => 'PATCH-001']);
+    $result = patcher()->patch($id, ['hs_code' => 'PATCH-001']);
 
     $after = patchSnapshot($id);
 
@@ -76,9 +76,9 @@ it('changes ONLY the column it was given, and leaves every other one byte-identi
         }
     }
 
-    expect($moved)->toBe(['model_number'], 'a partial update moved a column it was not given: '.implode(', ', $moved))
-        ->and($result->changedFields())->toBe(['model_number'])
-        ->and($result->changes['model_number'])->toBe(['from' => null, 'to' => 'PATCH-001'])
+    expect($moved)->toBe(['hs_code'], 'a partial update moved a column it was not given: '.implode(', ', $moved))
+        ->and($result->changedFields())->toBe(['hs_code'])
+        ->and($result->changes['hs_code'])->toBe(['from' => null, 'to' => 'PATCH-001'])
         ->and($result->derived)->toBe([])
         ->and($result->isNoop())->toBeFalse();
 });
@@ -112,7 +112,7 @@ it('refuses a field it does not declare, names it, and writes NOTHING', function
 
     // A mistyped sheet header. The dangerous outcome is not an error — it is a silent no-op that
     // reports success, so the refusal has to name the field.
-    expect(fn () => patcher()->patch($id, ['selling_pirce' => 999, 'model_number' => 'SHOULD-NOT-LAND']))
+    expect(fn () => patcher()->patch($id, ['selling_pirce' => 999, 'hs_code' => 'SHOULD-NOT-LAND']))
         ->toThrow(RuntimeException::class, 'selling_pirce');
 
     expect(patchSnapshot($id))->toBe($before, 'a refused patch wrote something');
@@ -181,12 +181,12 @@ it('refuses an empty patch instead of reporting a successful no-op', function ()
 it('is idempotent: the same patch twice changes nothing the second time', function () {
     $id = CatalogFixture::product(selling: 500.0);
 
-    $first = patcher()->patch($id, ['model_number' => 'IDEM-1', 'selling_price' => 777]);
+    $first = patcher()->patch($id, ['hs_code' => 'IDEM-1', 'selling_price' => 777]);
     expect($first->changedCount())->toBe(2);
 
     $stamp = DB::table('catalog_products')->where('id', $id)->value('updated_at');
 
-    $second = patcher()->patch($id, ['model_number' => 'IDEM-1', 'selling_price' => 777]);
+    $second = patcher()->patch($id, ['hs_code' => 'IDEM-1', 'selling_price' => 777]);
 
     expect($second->isNoop())->toBeTrue()
         ->and($second->changes)->toBe([])
@@ -269,7 +269,7 @@ it('keeps a sale price the contract accepts', function () {
 it('refuses a product that does not exist instead of inserting one', function () {
     $before = T::int(DB::table('catalog_products')->count());
 
-    expect(fn () => patcher()->patch(0, ['model_number' => 'GHOST']))
+    expect(fn () => patcher()->patch(0, ['hs_code' => 'GHOST']))
         ->toThrow(RuntimeException::class, 'never creates');
 
     expect(T::int(DB::table('catalog_products')->count()))->toBe($before);
@@ -283,10 +283,10 @@ it('WORKS with the write-switch flag in its blocked default, because a patch is 
     expect(config('transform.write_switch_completed'))->toBeFalse();
 
     $id = CatalogFixture::product();
-    $result = patcher()->patch($id, ['model_number' => 'PRE-SWITCH']);
+    $result = patcher()->patch($id, ['hs_code' => 'PRE-SWITCH']);
 
-    expect($result->changedFields())->toBe(['model_number'])
-        ->and(T::str(DB::table('catalog_products')->where('id', $id)->value('model_number')))->toBe('PRE-SWITCH');
+    expect($result->changedFields())->toBe(['hs_code'])
+        ->and(T::str(DB::table('catalog_products')->where('id', $id)->value('hs_code')))->toBe('PRE-SWITCH');
 });
 
 // ── clause 7: translations, per locale, per column ───────────────────────────────────────────
@@ -366,11 +366,13 @@ it('re-indexes when a field the INDEXER reads changes', function () {
     $id = CatalogFixture::product();
 
     /*
-     * `model_number` and `search_keywords`, not `wa_code`: the assertion is against what
-     * `ProductIndexer` really puts in `catalog_product_search.body`. Writing this test against a
-     * field the indexer ignores is what caught the guessed `SEARCHABLE` list in the patcher.
+     * `sku` and `search_keywords`, not `wa_code`: the assertion is against what `ProductIndexer`
+     * really puts in `catalog_product_search.body`. Writing this test against a field the indexer
+     * ignores is what caught the guessed `SEARCHABLE` list in the patcher — and it caught the
+     * blanket rename on 2026-09-19 too, when `model_number` became `hs_code` everywhere in this
+     * file and this one assertion started testing a column the index does not read.
      */
-    patcher()->patch($id, ['model_number' => 'FINDABLE-42', 'search_keywords' => 'زجاج سفير']);
+    patcher()->patch($id, ['sku' => 'FINDABLE-42', 'search_keywords' => 'زجاج سفير']);
 
     expect(patchIndexBody($id))->toContain('FINDABLE-42')->toContain('زجاج سفير');
 });
@@ -408,13 +410,13 @@ it('produces an operator-readable report of exactly what moved', function () {
     $id = CatalogFixture::product(selling: 500.0);
 
     $result = patcher()->patch($id, [
-        'model_number' => 'REPORT-1',
+        'hs_code' => 'REPORT-1',
         'selling_price' => 620,
         'title.en' => 'Reported title',
     ]);
 
     expect($result->lines())->toEqualCanonicalizing([
-        'model_number: — → REPORT-1',
+        'hs_code: — → REPORT-1',
         'selling_price: 500.00 → 620.00',
         'title.en: Wave 4B test product → Reported title',
     ])

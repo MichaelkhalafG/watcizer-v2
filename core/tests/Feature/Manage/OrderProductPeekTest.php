@@ -125,9 +125,14 @@ it('carries what a person actually confirms a product with', function () {
     foreach ($products as $product) {
         $peek = T::arr($product);
 
-        // The KEYS, not their values — 750-odd products are missing a supplier code, and a panel
-        // that omits the row entirely is what tells the operator so.
-        foreach (['title', 'wa_code', 'sku', 'brand', 'family', 'family_label', 'model_number', 'cover', 'specs'] as $key) {
+        /*
+         * The KEYS, not their values — 855 products are missing a model number, and a panel that
+         * omits the row entirely is what tells the operator so.
+         *
+         * `model_number` left this list on 2026-09-19 (item 4): it and `sku` were the same column,
+         * and the panel printed one value on two rows under two different names.
+         */
+        foreach (['title', 'wa_code', 'sku', 'brand', 'family', 'family_label', 'cover', 'specs'] as $key) {
             expect($peek)->toHaveKey($key);
         }
 

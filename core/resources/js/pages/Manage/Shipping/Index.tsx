@@ -2,8 +2,7 @@ import { router, useForm } from '@inertiajs/react';
 import { useState } from 'react';
 
 import { ExportLink } from '@/components/table/ExportLink';
-import { Badge } from '@/components/ui/badge';
-import { Num } from '@/components/ui/bidi';
+import { Ltr, Num } from '@/components/ui/bidi';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -78,19 +77,41 @@ export default function ShippingIndex({ cities, abilities, notice }: Props) {
 
             {adding && <CityForm onDone={() => setAdding(false)} />}
 
-            <div className="mt-4 overflow-x-auto">
+            {/* ── The row reads as a table row again (second pass, item 10, 2026-09-19) ────────
+
+                Three separate faults, and only one of them was mine:
+
+                 • `align="end"` is not a valid value of the `align` attribute (the HTML one takes
+                   left/center/right/justify, and is deprecated anyway), so the cost column was
+                   silently start-aligned while its header looked like it should not be. That is
+                   the "columns don't line up" report, and it was invisible in code review because
+                   the attribute LOOKS like it is doing something.
+                 • `dir="ltr"` on a `TableCell` is the exact bug `components/ui/bidi` exists to
+                   stop: direction on a block resolves `text-align: start` against the box's own
+                   direction, so the English name left-aligned while its header stayed right.
+                   `RtlTableGuardTest` forbids it — and missed it, because the guard matched
+                   lowercase `<td`. That hole is closed with this change.
+                 • the linked-address explanation and both buttons were stacked into one cell by
+                   my own J-8 fix. The explanation belongs beside the NUMBER it explains, not
+                   beside the button it disables.
+
+                No outer `overflow-x-auto` either: `Table` now owns its scroll container (item 9),
+                and two nested scrollers means the inner one can never reach its own edge. */}
+            <div className="mt-4">
                 <Table>
                     <TableHeader>
                         <TableRow>
-                            <TableHead className="w-16">#</TableHead>
+                            <TableHead className="w-14">#</TableHead>
                             <TableHead>{t('shipping.governorate', 'المحافظة')}</TableHead>
                             {/* Item 10: this said `Governorate` in English beside the
                                 Arabic heading one line up. It is the ENGLISH NAME column,
                                 and the lookup screens already have a word for that. */}
                             <TableHead>{t('common.name_en', 'الاسم (إنجليزي)')}</TableHead>
-                            <TableHead align="end">{t('shipping.cost', 'سعر الشحن')}</TableHead>
-                            <TableHead align="center">{t('shipping.linked_addresses', 'عناوين مرتبطة')}</TableHead>
-                            {abilities.manage && <TableHead className="w-40" />}
+                            <TableHead className="text-end">{t('shipping.cost', 'سعر الشحن')}</TableHead>
+                            <TableHead className="text-end">{t('shipping.linked_addresses', 'عناوين مرتبطة')}</TableHead>
+                            {abilities.manage && (
+                                <TableHead className="w-[9rem] text-end">{t('common.actions', 'إجراءات')}</TableHead>
+                            )}
                         </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -107,22 +128,38 @@ export default function ShippingIndex({ cities, abilities, notice }: Props) {
                                         <Num>{city.id}</Num>
                                     </TableCell>
                                     <TableCell>{city.name_ar ?? '—'}</TableCell>
-                                    <TableCell dir="ltr">{city.name_en ?? '—'}</TableCell>
-                                    <TableCell align="end">
+                                    <TableCell>
+                                        <Ltr>{city.name_en ?? '—'}</Ltr>
+                                    </TableCell>
+                                    <TableCell className="text-end">
                                         <Num>{city.shipping_cost}</Num>
                                     </TableCell>
-                                    <TableCell align="center">
+                                    {/* A plain number, not a badge. §2.4: a badge says "act on
+                                        this", and nine customers having addresses in Cairo is a
+                                        healthy fact — the same mistake the units screen makes with
+                                        its usage count in red. The sentence under it is the reason
+                                        the delete button is off, printed where the number is
+                                        rather than crowding the buttons. */}
+                                    <TableCell className="text-end">
                                         {city.addresses > 0 ? (
-                                            <Badge variant="neutral">
+                                            <>
                                                 <Num>{city.addresses}</Num>
-                                            </Badge>
+                                                {abilities.manage ? (
+                                                    <span className="mt-0.5 block text-[11px] leading-snug text-muted-foreground">
+                                                        {t(
+                                                            'shipping.linked_blocks_delete',
+                                                            'لا يمكن حذفها ما دامت مرتبطة بعناوين عملاء',
+                                                        )}
+                                                    </span>
+                                                ) : null}
+                                            </>
                                         ) : (
                                             <span className="text-muted-foreground">—</span>
                                         )}
                                     </TableCell>
                                     {abilities.manage && (
-                                        <TableCell>
-                                            <div className="flex gap-1.5">
+                                        <TableCell className="text-end">
+                                            <div className="flex justify-end gap-1.5">
                                                 <Button variant="outline" size="sm" onClick={() => setEditing(city.id)}>
                                                     {t('common.edit', 'تعديل')}
                                                 </Button>
@@ -231,28 +268,23 @@ function DeleteButton({ city }: { city: City }) {
 
     if (city.addresses > 0) {
         /*
-         * ── The reason, VISIBLE (J-8, 2026-09-19) ───────────────────────────────────────────
+         * ── The reason is VISIBLE, and it is next to the NUMBER (J-8, then item 10) ─────────
          *
-         * Cairo's `حذف` looks close enough to enabled, does nothing when clicked, and explained
-         * itself only after about a second of hover — and never on touch at all. That is reported
-         * as "the dashboard is broken" rather than understood as a rule.
+         * J-8: Cairo's `حذف` looks close enough to enabled, does nothing when clicked, and
+         * explained itself only after about a second of hover — never on touch. That is reported
+         * as "the dashboard is broken" rather than understood as a rule, and AGENTS §2.27 asks
+         * for the reason ON the control.
          *
-         * The docblock above says "the reason is the number already on the row", and on a wide
-         * screen it is. It is not on a tablet, where the addresses column is the first thing a
-         * narrow layout drops, and it was never connected to the button in words. AGENTS §2.27
-         * asks for the reason ON the control.
+         * The first fix put the sentence inside this button's own cell, which crammed an
+         * explanation and two buttons into one column and made the row read as a paragraph
+         * (item 10). The sentence now lives in the linked-addresses cell, beside the count it is
+         * about; the button keeps only the short form, which is what a disabled control needs to
+         * carry on its own.
          */
         return (
-            <span className="inline-flex flex-wrap items-center justify-end gap-1.5">
-                <span className="text-[11px] leading-snug text-muted-foreground">
-                    {t('shipping.delete_blocked', ':count عنوان عميل مرتبط بهذه المحافظة', {
-                        count: city.addresses,
-                    })}
-                </span>
-                <Button variant="outline" size="sm" disabled>
-                    {t('shipping.delete', 'حذف')}
-                </Button>
-            </span>
+            <Button variant="outline" size="sm" disabled title={t('shipping.delete', 'حذف')}>
+                {t('shipping.delete_blocked_short', 'مرتبطة')}
+            </Button>
         );
     }
 

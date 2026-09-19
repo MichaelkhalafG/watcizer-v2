@@ -96,12 +96,12 @@ final class InventoryController
              * sheet is the table as a file, so the two must name a column the same way.
              */
             ->exportable([
-                'wa_code' => ManageText::t('products.code', 'الكود'),
-                'sku' => ManageText::t('products.supplier_code', 'كود المورّد'),
+                'wa_code' => ManageText::t('products.wa_code', 'الكود الداخلي'),
+                'sku' => ManageText::t('products.sku', 'رقم الموديل (SKU)'),
                 // Both languages: the stock file is opened to bulk-edit and to send on, and one
                 // language is half the record. Empty when there is no translation, never a fallback.
-                'title' => ManageText::t('common.name_ar', 'الاسم (عربي)'),
-                'title_en' => ManageText::t('common.name_en', 'الاسم (إنجليزي)'),
+                'title' => [ManageText::t('common.name_ar', 'الاسم (عربي)'), fn (array $row): string => Coerce::str(Coerce::arr($row['title'] ?? null)['ar'] ?? null)],
+                'title_en' => [ManageText::t('common.name_en', 'الاسم (إنجليزي)'), fn (array $row): string => Coerce::str(Coerce::arr($row['title'] ?? null)['en'] ?? null)],
                 'family' => ManageText::t('products.family', 'العائلة'),
                 'express' => ManageText::t('common.stock_express', 'إكسبريس'),
                 'market' => ManageText::t('common.stock_market', 'ماركت'),
@@ -179,10 +179,25 @@ final class InventoryController
                 'id' => $id,
                 'wa_code' => Row::str($row, 'wa_code'),
                 'sku' => Row::nstr($row, 'sku'),
-                'title' => Row::nstr($row, 'title_ar'),
-                // For the CSV's second language column. The SCREEN reads `title`; this is never
-                // rendered, and it is empty when the product has no English translation.
-                'title_en' => Row::nstr($row, 'title_en'),
+                /*
+                 * The PAIR, not the Arabic (2026-10-05).
+                 *
+                 * This screen sent `title` = the Arabic name and `title_en` alongside it for the
+                 * CSV, and the screen rendered `title`. So the English dashboard listed
+                 * «ساعة هوجو بوس للرجال» for an operator counting stock in English — item 1b's
+                 * defect, in a screen that never adopted item 1b's fix.
+                 *
+                 * Sent as `{ar, en}` exactly as the products list sends it, so `ProductName` can
+                 * choose and mark a fallback. The CSV keeps both columns; its two closures read
+                 * the pair rather than two different keys.
+                 */
+                'title' => [
+                    'ar' => Row::nstr($row, 'title_ar') ?? '',
+                    'en' => Row::nstr($row, 'title_en') ?? '',
+                ],
+                // `title_en` is gone as a separate key (2026-10-05): both languages now travel in
+                // `title`, and the CSV's second column reads the pair. One name in the payload,
+                // one rule for choosing it.
                 'family' => Row::nstr($row, 'family'),
                 'express' => $express,
                 'market' => $market,
@@ -254,7 +269,7 @@ final class InventoryController
              */
             ->exportable([
                 'created_at' => ManageText::t('common.date', 'التاريخ'),
-                'wa_code' => ManageText::t('products.code', 'الكود'),
+                'wa_code' => ManageText::t('products.wa_code', 'الكود الداخلي'),
                 'product_id' => ManageText::t('common.product_number', 'رقم المنتج'),
                 'variant' => ManageText::t('inventory.ledger_variant', 'المقاس/اللون'),
                 'bucket' => ManageText::t('inventory.bucket', 'المخزن'),

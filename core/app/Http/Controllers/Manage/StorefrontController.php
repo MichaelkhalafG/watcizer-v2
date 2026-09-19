@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Manage;
 
+use App\Domain\Activity\ActivityLog;
 use App\Domain\Promotions\PromotionRules;
 use App\Models\Storefront\Storefront;
 use App\Storefront\StorefrontCache;
@@ -60,7 +61,10 @@ final class StorefrontController
                 'id' => ManageText::t('common.id', 'الرقم'),
                 // `الكود` here and `الرمز` on the screen are two different Arabic words for the same
                 // column, so they are two keys on purpose: one key cannot hold both Arabics.
-                'code' => ManageText::t('products.code', 'الكود'),
+                // A STOREFRONT's code, which borrowed a product key and would have been
+                // renamed to «الكود الداخلي» by the item-4 sweep. It is neither of the two
+                // product codes.
+                'code' => ManageText::t('storefronts.shop_code', 'رمز المتجر'),
                 'name' => ManageText::t('common.name', 'الاسم'),
                 'domain' => ManageText::t('common.domain', 'النطاق'),
                 'locales' => [ManageText::t('storefronts.locales', 'اللغات'), fn (array $row): string => implode(' | ', array_map(
@@ -155,6 +159,10 @@ final class StorefrontController
         // refuses a code/id disagreement. Renaming one is a migration, not a form field.
         $domain = $request->string('domain')->toString();
 
+        // Read BEFORE the fill: the model is about to hold the new values, and this is the only
+        // moment the old currency, the old domain and the old money switch still exist anywhere.
+        $before = self::logFields($storefront->id);
+
         $storefront->fill([
             'name' => $request->string('name')->toString(),
             'domain' => $domain === '' ? null : $domain,
@@ -193,9 +201,76 @@ final class StorefrontController
          */
         $this->cache->forgetStorefront((int) $storefront->id, (string) $storefront->code);
 
+        ActivityLog::record(
+            'storefronts',
+            $storefront->id,
+            ActivityLog::UPDATED,
+            $before,
+            self::logFields($storefront->id),
+            // The shop's NAME, which is what an operator calls it. `code` is the stable identity and
+            // is on the row already as `subject_id`'s twin; the name is the word in the sentence.
+            label: $storefront->name,
+            storefrontId: $storefront->id,
+        );
+
         return redirect()
             ->route('manage.storefronts.index')
             ->with('status', ManageText::t('storefronts.saved', 'تم حفظ إعدادات متجر :name.', ['name' => $storefront->name]));
+    }
+
+    /**
+     * What a storefront is, for the log — the seven values this form can actually change.
+     *
+     * ── Why this screen is logged at all (2026-10-05) ───────────────────────────
+     *
+     * Every field on it changes what a CUSTOMER sees: `is_active` closes the shop, `currency`
+     * changes the sign in front of every price, `default_locale` changes the language the site
+     * opens in, `domain` moves it. One admin-only form, no trace of any of it — so "the shop was
+     * down on Friday morning" and "prices showed in dollars" were questions with no author.
+     *
+     * `code` is not here because the form refuses to change it, and `created_at`/`updated_at`
+     * because the log's own timestamp already says when.
+     *
+     * ── The `settings` JSON: ONE key, not the blob ──────────────────────────────
+     *
+     * `settings` is a general per-storefront bag and this screen owns exactly one key in it,
+     * `promotions.money_rewards`. The whole column is deliberately NOT snapshotted:
+     *
+     *  • it is a diff nobody can read. `ActivityLog::diff()` renders a non-scalar as JSON truncated
+     *    to 300 characters, so a grown bag would log two truncated dumps whose visible halves are
+     *    identical — a row that says something changed and cannot say what.
+     *  • it belongs to other features. A key written by a background job would surface in this
+     *    screen's log, attributed to whoever last pressed Save here, which is the log asserting
+     *    something that did not happen.
+     *  • redaction is by FIELD NAME (`ActivityLog::REDACTED_FIELDS`), and `settings` matches none of
+     *    them. A secret nested inside the bag one day would be copied into this table in the clear,
+     *    which is the one thing the log promises never to do.
+     *
+     * So the one key this form writes is logged as its own flat boolean, where it reads as what it
+     * is: a money switch that decides whether this shop shows promotion discounts at all.
+     *
+     * @return array<string, mixed>
+     */
+    private static function logFields(int $id): array
+    {
+        $raw = DB::table('storefronts')->where('id', $id)
+            ->first(['name', 'domain', 'locales', 'default_locale', 'currency', 'is_active']);
+        if (! is_object($raw)) {
+            return [];
+        }
+        $row = Row::cast($raw);
+
+        return [
+            'name' => Row::str($row, 'name'),
+            'domain' => Row::nstr($row, 'domain'),
+            // Flattened to `ar, en` rather than left as raw JSON: the list is two items and a
+            // reader should not have to parse `["ar","en"]` to see which language was dropped.
+            'locales' => implode(', ', self::locales(Row::nstr($row, 'locales'))),
+            'default_locale' => Row::str($row, 'default_locale'),
+            'currency' => Row::str($row, 'currency'),
+            'is_active' => Row::bool($row, 'is_active'),
+            'money_rewards' => PromotionRules::moneyRewardsEnabled($id),
+        ];
     }
 
     /**

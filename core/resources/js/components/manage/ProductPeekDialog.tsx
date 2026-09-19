@@ -15,7 +15,6 @@ export interface Peek {
     brand: TitlePair;
     family: string;
     family_label: string;
-    model_number: string | null;
     cover: string | null;
     specs: Array<{ label: string; value: string }>;
 }
@@ -115,18 +114,15 @@ export function ProductPeekDialog({
                                 ) : null}
                                 <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 pt-1 text-xs">
                                     <Fact
-                                        label={t("products.code", "الكود")}
+                                        label={t("products.wa_code", "الكود الداخلي")}
                                         value={peek.wa_code}
                                         mono
                                     />
+                                    {/* ONE row, not two. `sku` and `model_number` were the same
+                                        value shown twice under two different names (item 4). */}
                                     <Fact
-                                        label={t("products.supplier_code", "كود المورّد")}
+                                        label={t("products.sku", "رقم الموديل (SKU)")}
                                         value={peek.sku}
-                                        mono
-                                    />
-                                    <Fact
-                                        label={t("products.model_number", "رقم الموديل")}
-                                        value={peek.model_number}
                                         mono
                                     />
                                 </dl>

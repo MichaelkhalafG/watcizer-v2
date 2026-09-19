@@ -162,7 +162,7 @@ export default function Home({
                         </div>
 
                         <div className="flex items-start gap-3 rounded-lg border p-4">
-                            <AlertTriangle className="mt-0.5 h-5 w-5 text-amber-600" aria-hidden="true" />
+                            <AlertTriangle className="mt-0.5 h-5 w-5 text-amber-600 dark:text-amber-400" aria-hidden="true" />
                             <div>
                                 <p className="text-lg font-semibold">
                                     <Num>{nf.format(inventory.low_stock)}</Num>

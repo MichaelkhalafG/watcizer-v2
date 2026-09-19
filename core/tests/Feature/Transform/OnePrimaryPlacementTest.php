@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Testing\PendingCommand;
 use Tests\Support\LedgerState;
 use Tests\Support\LegacyShadow;
+use Tests\Support\Scratch;
 
 use function Pest\Laravel\artisan;
 
@@ -31,11 +32,7 @@ use function Pest\Laravel\artisan;
  */
 function primaryPlacementRun(int $expectedExit = 0): void
 {
-    $dir = storage_path('framework/testing/one-primary-'.getmypid());
-    if (! is_dir($dir)) {
-        mkdir($dir, 0775, true);
-    }
-    $pending = artisan('core:transform', ['--only' => '19', '--output' => $dir, '--force' => true]);
+    $pending = artisan('core:transform', ['--only' => '19', '--output' => Scratch::dir('one-primary'), '--force' => true]);
     if (! $pending instanceof PendingCommand) {
         throw new RuntimeException('artisan() did not return a PendingCommand');
     }
@@ -46,7 +43,10 @@ function primaryPlacementRun(int $expectedExit = 0): void
 /** @return array<string, mixed>|null the reconciliation row for a table, from the run's summary.json */
 function reconciliationRow(string $table): ?array
 {
-    $json = file_get_contents(storage_path('framework/testing/one-primary-'.getmypid()).'/summary.json');
+    // The SAME directory `primaryPlacementRun()` just wrote into: `Scratch::dir()` memoises the
+    // path per label for the life of one test, so this reads THIS run's summary and never a
+    // leftover one (which is what the old `-<pid>` name could hand back).
+    $json = file_get_contents(Scratch::dir('one-primary').'/summary.json');
     $data = json_decode($json === false ? '{}' : $json, true);
     $rows = is_array($data) && is_array($data['reconciliation'] ?? null) ? ($data['reconciliation']['rows'] ?? []) : [];
     foreach (is_array($rows) ? $rows : [] as $row) {

@@ -1,4 +1,4 @@
-import { Link, router, useForm, usePage } from "@inertiajs/react";
+import { router, useForm, usePage } from "@inertiajs/react";
 import { Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
@@ -6,6 +6,7 @@ import { CategoryPicker } from "@/components/manage/CategoryPicker";
 import { ErrorCount, ErrorSummary } from "@/components/form/ErrorSummary";
 import {
     FormTabs,
+    SaveScopeNote,
     StickySaveBar,
     TabPanel,
     firstTabWithError,
@@ -47,28 +48,20 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { useLocale, useT } from "@/lib/i18n";
+import { cn } from "@/lib/utils";
 import { titleOrCode } from "@/lib/title";
-import { generateSeo, type SeoInput } from "@/lib/seo";
+import {
+    DESCRIPTION_EM,
+    estimateEm,
+    generateSeo,
+    TITLE_EM,
+    type Attribute as SeoAttribute,
+    type NamePair,
+    type SeoInput,
+} from "@/lib/seo";
 import type { PreSwitchState, SharedProps } from "@/types";
 
 type Option = { value: string; label: string };
-
-/**
- * The seven families in BOTH languages (item 8).
- *
- * `t()` answers in the ACTIVE locale, and the SEO generator writes an Arabic sentence and an English
- * one in the same click — so it needs both at once, which the seam cannot express. These are the
- * same seven words `products.family_*` carries; `ProductFormTest` asserts they stay in step.
- */
-const FAMILY_NAMES: Record<string, { ar: string; en: string }> = {
-    watch: { ar: "ساعات", en: "Watches" }, // i18n-exempt: both locales at once, written into product content
-    fashion: { ar: "أزياء", en: "Fashion" }, // i18n-exempt: both locales at once, written into product content
-    bag: { ar: "حقائب", en: "Bags" }, // i18n-exempt: both locales at once, written into product content
-    wallet: { ar: "محافظ", en: "Wallets" }, // i18n-exempt: both locales at once, written into product content
-    perfume: { ar: "عطور", en: "Perfumes" }, // i18n-exempt: both locales at once, written into product content
-    electronics: { ar: "إلكترونيات", en: "Electronics" }, // i18n-exempt: both locales at once, written into product content
-    other: { ar: "أخرى", en: "Other" }, // i18n-exempt: both locales at once, written into product content
-};
 
 /** Both locales of one translated field. `Translations` is the form components' own shape. */
 type Pair = Translations;
@@ -99,7 +92,6 @@ interface ProductFormData {
     _complete: 1;
     wa_code: string;
     sku: string;
-    model_number: string;
     hs_code: string;
     brand_id: string;
     grade_id: string;
@@ -193,7 +185,6 @@ interface ProductPayload {
     id: number;
     wa_code: string;
     sku: string;
-    model_number: string;
     hs_code: string;
     brand_id: string;
     grade_id: string;
@@ -242,6 +233,9 @@ interface Props {
     /** `id => {ar, en}` for the SEO generator, which writes a sentence in each language. */
     brand_names: Record<string, { ar: string; en: string }>;
     category_names: Record<string, { ar: string; en: string }>;
+    /** `list => id => {ar, en}` for genders, colours and materials — the SEO generator's other
+     *  facts. Only the three lists that appear in a sentence somebody would click (item 5). */
+    lookup_names: Record<string, Record<string, NamePair>>;
     variants: { rows: VariantRow[]; state: VariantState };
     pre_switch: PreSwitchState;
     pre_switch_variant: PreSwitchState;
@@ -291,6 +285,7 @@ export default function ProductForm({
     brands,
     brand_names,
     category_names,
+    lookup_names,
     variants,
     pre_switch,
     pre_switch_variant,
@@ -312,7 +307,14 @@ export default function ProductForm({
         {
             key: "identity",
             label: t("products.identity", "التعريف"),
-            fields: ["wa_code", "sku", "model_number", "brand_id", "grade_id", "is_active", "hs_code"],
+            fields: [
+                "wa_code",
+                "sku",
+                "brand_id",
+                "grade_id",
+                "is_active",
+                "hs_code",
+            ],
         },
         {
             key: "content",
@@ -323,21 +325,50 @@ export default function ProductForm({
             key: "price",
             label: t("common.price", "السعر"),
             fields: [
-                "selling_price", "purchase_price", "sale_price", "currency",
-                "low_stock_threshold", "warranty_years",
+                "selling_price",
+                "purchase_price",
+                "sale_price",
+                "currency",
+                "low_stock_threshold",
             ],
         },
         {
             key: "visibility",
             label: t("products.visibility", "الظهور"),
-            fields: ["storefronts", "category_ids", "primary_category_id", "is_visible", "slug"],
+            fields: [
+                "storefronts",
+                "category_ids",
+                "primary_category_id",
+                "is_visible",
+                "slug",
+            ],
         },
         {
             key: "specs",
             label: t("products.specs", "المواصفات"),
-            fields: ["specs", "feature_ids", "gender_ids", "colors"],
+            // `warranty_years` is asked in the specification block now, not on the price tab, so
+            // the tab that counts its refusal has to be this one — otherwise a 422 on the warranty
+            // sends the operator to a tab where the field is no longer mounted.
+            fields: [
+                "specs",
+                "warranty_years",
+                "feature_ids",
+                "gender_ids",
+                "colors",
+            ],
         },
-        { key: "images", label: t("gallery.title", "الصور"), fields: ["images"] },
+        {
+            key: "images",
+            label: t("gallery.title", "الصور"),
+            fields: ["images"],
+        },
+        {
+            key: "variants",
+            label: t("variants.tab", "المقاسات والألوان"),
+            // The panel posts on its own and never through the product form, so the product's
+            // error bag has nothing of its own to count here.
+            fields: ["variants"],
+        },
         {
             key: "seo",
             label: t("products.seo_short", "SEO"),
@@ -346,6 +377,13 @@ export default function ProductForm({
     ];
 
     const [tab, setTab] = useState("identity");
+    /*
+     * Which shop's placement the visibility tab is showing (item 1a). It starts at the shop in
+     * the URL — the one they came from — and switching it is local: every shop's placement is in
+     * `form.data.storefronts` already, and Save submits all of them, so this moves the view and
+     * never the data.
+     */
+    const [placementShop, setPlacementShop] = useState(storefront.id);
 
     /*
      * A failed save lands the operator on the tab that refused (§2.1, D-19).
@@ -379,9 +417,8 @@ export default function ProductForm({
     const LANG: Record<string, string> = { ar: "العربية", en: "English" }; // i18n-exempt: language names are data, named in their own language
 
     const fieldLabels: Record<string, string> = {
-        wa_code: t("products.wa_code", "كود واتشيزر"),
+        wa_code: t("products.wa_code", "الكود الداخلي"),
         sku: "SKU",
-        model_number: t("products.model_number", "رقم الموديل"),
         brand_id: t("products.brand", "الماركة"),
         "title.ar": `${t("products.field_title", "العنوان")} — ${LANG.ar}`,
         "title.en": `${t("products.field_title", "العنوان")} — ${LANG.en}`,
@@ -411,7 +448,6 @@ export default function ProductForm({
         _complete: 1,
         wa_code: product?.wa_code ?? "",
         sku: product?.sku ?? "",
-        model_number: product?.model_number ?? "",
         hs_code: product?.hs_code ?? "",
         /*
          * ── NO default brand (J-1, 2026-09-19) ──────────────────────────────────────────────
@@ -550,9 +586,65 @@ export default function ProductForm({
         const primaryId =
             deciding === undefined
                 ? ""
-                : (form.data.storefronts[decidingKey]?.primary_category_id ?? "");
+                : (form.data.storefronts[decidingKey]?.primary_category_id ??
+                  "");
 
-        const familyLabel = FAMILY_NAMES[shownFamily.family] ?? { ar: "", en: "" };
+        const named = (list: string, id: unknown): NamePair | null => {
+            const key = String(id ?? "");
+            if (key === "" || key === "0") {
+                return null;
+            }
+
+            return lookup_names[list]?.[key] ?? null;
+        };
+
+        /*
+         * The materials are read from the BLOCK DEFINITION rather than from a list of spec keys
+         * written out here. `config/catalog.php` is what decides that a watch has three material
+         * fields and a bag has one, and a second copy of that decision in this file would be a
+         * copy that goes stale the first time a family gains a field.
+         *
+         * The role is taken from the key's own prefix — `case_material_id` is the case's — which
+         * is the same convention the config already follows. Anything else is the `main` material,
+         * which is what a bag's single `material_id` is.
+         */
+        const materials: SeoAttribute[] = [];
+        for (const field of blocks[shownFamily.family]?.fields ?? []) {
+            if (field.lookup !== "materials") {
+                continue;
+            }
+
+            const name = named("materials", form.data.specs[field.key]);
+            if (name === null) {
+                continue;
+            }
+
+            const role = field.key.startsWith("case_")
+                ? "case"
+                : field.key.startsWith("band_")
+                  ? "band"
+                  : field.key.startsWith("glass_")
+                    ? "glass"
+                    : "main";
+
+            materials.push({ role, name });
+        }
+
+        const colors: SeoAttribute[] = [];
+        for (const row of form.data.colors) {
+            const name = named("colors", row.color_id);
+            if (name !== null) {
+                colors.push({ role: row.role, name });
+            }
+        }
+
+        const genders: NamePair[] = [];
+        for (const id of form.data.gender_ids) {
+            const name = named("genders", id);
+            if (name !== null) {
+                genders.push(name);
+            }
+        }
 
         return {
             title: {
@@ -560,9 +652,15 @@ export default function ProductForm({
                 en: pair("title").en ?? "",
             },
             brand: brand_names[brandId] ?? { ar: "", en: "" },
-            family: familyLabel,
+            // The KEY, not a label: `lib/seo` owns the words for it, singular and plural, in both
+            // languages, because a sentence needs the singular and a keyword needs the plural.
+            familyKey: shownFamily.family,
             category: category_names[primaryId] ?? { ar: "", en: "" },
-            modelNumber: String(form.data.model_number ?? ""),
+            // `sku` since the merge (item 4): one code column, and the SEO generator reads it.
+            modelNumber: String(form.data.sku ?? ""),
+            genders,
+            materials,
+            colors,
         };
     };
 
@@ -575,6 +673,53 @@ export default function ProductForm({
             pair("meta_description").en,
             String(form.data.search_keywords ?? ""),
         ].some((value) => value.trim() !== "");
+
+    /*
+     * ── Does what is in the boxes actually fit a search result? (item 5) ────────────────────
+     *
+     * The generator composes to fit, so its own output always does. These fields stay EDITABLE
+     * afterwards, which is the point of them — and an operator who adds half a sentence has no way
+     * to know they have pushed the title past what Google renders. The measure is the same one the
+     * generator uses, so the screen and the generator can never disagree about what "too long"
+     * means.
+     *
+     * Named, not counted: "43 / 60" invites the wrong question. The only question is whether the
+     * customer sees the whole thing.
+     */
+    const seoOverLength = (): string[] => {
+        const over: string[] = [];
+        const check = (value: string, budget: number, label: string) => {
+            if (
+                value.trim() !== "" &&
+                estimateEm(value.replace(/\s+/g, " ").trim()) > budget
+            ) {
+                over.push(label);
+            }
+        };
+
+        check(
+            pair("meta_title").ar ?? "",
+            TITLE_EM,
+            t("products.seo_fit_title_ar", "عنوان SEO بالعربية"),
+        );
+        check(
+            pair("meta_title").en ?? "",
+            TITLE_EM,
+            t("products.seo_fit_title_en", "عنوان SEO بالإنجليزية"),
+        );
+        check(
+            pair("meta_description").ar ?? "",
+            DESCRIPTION_EM,
+            t("products.seo_fit_desc_ar", "وصف SEO بالعربية"),
+        );
+        check(
+            pair("meta_description").en ?? "",
+            DESCRIPTION_EM,
+            t("products.seo_fit_desc_en", "وصف SEO بالإنجليزية"),
+        );
+
+        return over;
+    };
 
     const writeSeo = () => {
         const next = generateSeo(seoInput());
@@ -600,7 +745,11 @@ export default function ProductForm({
         if (String(form.data.sale_price ?? "").trim() === "") {
             return null;
         }
-        if (!Number.isFinite(sale) || !Number.isFinite(selling) || selling <= 0) {
+        if (
+            !Number.isFinite(sale) ||
+            !Number.isFinite(selling) ||
+            selling <= 0
+        ) {
             return null;
         }
         if (sale <= 0) {
@@ -613,7 +762,10 @@ export default function ProductForm({
             return t(
                 "products.sale_price_not_below",
                 "سعر التخفيض (:sale) لا بد أن يكون أقل من سعر البيع (:selling). الأرجح أن الرقمين مقلوبان — وبهذه القيمة لن يُحفظ أي تخفيض ولن يرى العميل أي خصم.",
-                { sale: String(form.data.sale_price), selling: String(form.data.selling_price) },
+                {
+                    sale: String(form.data.sale_price),
+                    selling: String(form.data.selling_price),
+                },
             );
         }
 
@@ -699,8 +851,14 @@ export default function ProductForm({
         ...(
             [
                 ["title", t("products.field_title", "العنوان")],
-                ["short_description", t("products.field_short_description", "وصف مختصر")],
-                ["long_description", t("products.field_long_description", "الوصف الكامل")],
+                [
+                    "short_description",
+                    t("products.field_short_description", "وصف مختصر"),
+                ],
+                [
+                    "long_description",
+                    t("products.field_long_description", "الوصف الكامل"),
+                ],
             ] as const
         ).flatMap(([field, label]) => {
             const value = pair(field);
@@ -728,7 +886,11 @@ export default function ProductForm({
                     : t("products.edit_title", "تعديل: :name", {
                           // The heading names the product in the reader's own language; the two
                           // title fields below are where BOTH are edited, so nothing is hidden.
-                          name: titleOrCode(pair("title"), locale, product.wa_code),
+                          name: titleOrCode(
+                              pair("title"),
+                              locale,
+                              product.wa_code,
+                          ),
                       })
             }
             crumbs={[
@@ -767,587 +929,20 @@ export default function ProductForm({
                 </Alert>
             ) : null}
 
-            <form
-                className="space-y-6"
-                onSubmit={(event) => {
-                    event.preventDefault();
-                    submit();
-                }}
-            >
-                {/* Everything the server refused, in one place, with the page scrolled to it
-                    (D-19). The messages still render beside their own fields — this is the map,
-                    not a replacement for them. */}
-                <ErrorSummary errors={errors} labels={fieldLabels} />
+            {/* ── The save bar is OUTSIDE the form, and that is deliberate (2026-10-05) ────
 
-                <FormTabs tabs={TABS} active={tab} onChange={setTab} errors={errors} />
+                A `position: sticky` box only sticks inside its own parent. The bar used to be the
+                first child of `<form>`, so it stuck beautifully on seven tabs and vanished on the
+                eighth — the variants panel is rendered after `</form>` (pressing Enter in a
+                quantity box must not submit the PRODUCT), and once the page scrolled into it, the
+                form's box had ended and the bar went with it.
 
-                <TabPanel when="identity" active={tab}>
-                {/* ── identity ─────────────────────────────────────────────────────────── */}
-                <Card>
-                    <CardHeader>
-                        <CardTitle>
-                            {t("products.identity", "التعريف")}
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                        <TextField
-                            label={t("products.wa_code", "كود واتشيزر")}
-                            required
-                            dir="ltr"
-                            hint={t(
-                                "products.wa_code_hint",
-                                "الكود الذي يعرفه المخزن والفواتير. لا يتكرر.",
-                            )}
-                            error={errors.wa_code ?? null}
-                            value={String(form.data.wa_code ?? "")}
-                            onChange={(value) => form.setData("wa_code", value)}
-                        />
-                        <TextField
-                            label="SKU"
-                            dir="ltr"
-                            error={errors.sku ?? null}
-                            value={String(form.data.sku ?? "")}
-                            onChange={(value) => form.setData("sku", value)}
-                        />
-                        <TextField
-                            label={t("products.model_number", "رقم الموديل")}
-                            dir="ltr"
-                            error={errors.model_number ?? null}
-                            value={String(form.data.model_number ?? "")}
-                            onChange={(value) =>
-                                form.setData("model_number", value)
-                            }
-                        />
-                        <SelectField
-                            label={t("products.brand", "الماركة")}
-                            required
-                            // An explicit empty option (J-1). Without it the select shows the
-                            // first BRAND as though somebody had chosen it.
-                            placeholder={t(
-                                "products.brand_choose",
-                                "— اختر ماركة —",
-                            )}
-                            error={errors.brand_id ?? null}
-                            value={String(form.data.brand_id ?? "")}
-                            options={brands}
-                            onChange={(value) =>
-                                form.setData("brand_id", value)
-                            }
-                        />
-                        <SelectField
-                            label={t("products.grade", "الدرجة")}
-                            placeholder="—"
-                            error={errors.grade_id ?? null}
-                            value={String(form.data.grade_id ?? "")}
-                            options={lookups.grades ?? []}
-                            onChange={(value) =>
-                                form.setData("grade_id", value)
-                            }
-                        />
-                        <SwitchField
-                            label={t("products.is_active", "مفعّل في الكتالوج")}
-                            checked={form.data.is_active === true}
-                            onChange={(checked) =>
-                                form.setData("is_active", checked)
-                            }
-                        />
-                    </CardContent>
-                </Card>
-
-                </TabPanel>
-
-                <TabPanel when="content" active={tab}>
-                {/* ── names and copy, both locales at once ─────────────────────────────── */}
-                <Card>
-                    <CardHeader className="gap-1">
-                        <CardTitle>
-                            {t("products.names", "الاسم والوصف")}
-                        </CardTitle>
-                        <p className="text-xs text-muted-foreground">
-                            {t(
-                                "products.names_hint",
-                                "الترجمة الاحتياطية مُعطّلة: ما يغيب بالعربية يظهر ناقصًا على المتجر، ولا يمكن إظهار منتج بلا عنوان عربي.",
-                            )}
-                        </p>
-                    </CardHeader>
-                    <CardContent className="space-y-5">
-                        <TranslatedField
-                            label={t("products.field_title", "العنوان")}
-                            name="title"
-                            required
-                            value={pair("title")}
-                            onChange={(value) => setPair("title", value)}
-                            errors={errors}
-                        />
-                        <TranslatedField
-                            label={t(
-                                "products.field_short_description",
-                                "وصف مختصر",
-                            )}
-                            name="short_description"
-                            multiline
-                            value={pair("short_description")}
-                            onChange={(value) =>
-                                setPair("short_description", value)
-                            }
-                            errors={errors}
-                        />
-                        <TranslatedField
-                            label={t(
-                                "products.field_long_description",
-                                "الوصف الكامل",
-                            )}
-                            name="long_description"
-                            multiline
-                            value={pair("long_description")}
-                            onChange={(value) =>
-                                setPair("long_description", value)
-                            }
-                            errors={errors}
-                        />
-                        <div className="grid gap-5 lg:grid-cols-3">
-                            <TranslatedField
-                                label={t(
-                                    "products.field_model_name",
-                                    "اسم الموديل",
-                                )}
-                                name="model_name"
-                                value={pair("model_name")}
-                                onChange={(value) =>
-                                    setPair("model_name", value)
-                                }
-                                errors={errors}
-                            />
-                            <TranslatedField
-                                label={t("products.field_country", "بلد الصنع")}
-                                name="country"
-                                value={pair("country")}
-                                onChange={(value) => setPair("country", value)}
-                                errors={errors}
-                            />
-                            <TranslatedField
-                                label={t("products.field_stone", "الحجر")}
-                                name="stone"
-                                value={pair("stone")}
-                                onChange={(value) => setPair("stone", value)}
-                                errors={errors}
-                            />
-                        </div>
-                    </CardContent>
-                </Card>
-
-                </TabPanel>
-
-                <TabPanel when="price" active={tab}>
-                {/* ── price ────────────────────────────────────────────────────────────── */}
-                <Card>
-                    <CardHeader className="gap-1">
-                        <CardTitle>{t("common.price", "السعر")}</CardTitle>
-                        <p className="text-xs text-muted-foreground">
-                            {t(
-                                "products.sale_price_rule",
-                                "سعر التخفيض يُحتسب فقط إذا كان أكبر من صفر وأقل من سعر البيع — غير ذلك يُخزَّن فارغًا، لأن الواجهة والسلة تتحققان من الشرط نفسه ويُرفض إجمالي الطلب لو اختلفا.",
-                            )}
-                        </p>
-                    </CardHeader>
-                    <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                        <TextField
-                            label={t("products.selling_price", "سعر البيع")}
-                            required
-                            dir="ltr"
-                            type="number"
-                            error={errors.selling_price ?? null}
-                            value={String(form.data.selling_price ?? "")}
-                            onChange={(value) =>
-                                form.setData("selling_price", value)
-                            }
-                        />
-                        {/* ── The rule is ON the field now (J-4, 2026-09-19) ───────────────
-
-                            Entering selling 1500 / sale 2000 produced no warning, no refusal and
-                            no highlight. The form saved cleanly and the sale price was stored
-                            EMPTY — so somebody who transposed the two fields watched a successful
-                            save and the discount they had promised a customer simply did not
-                            exist.
-
-                            The rule was narrated in prose above the fields instead. AGENTS §2.27
-                            says a rule in the domain is enforced IN the form; this one was
-                            explained next to it, which is the failure mode the rule names. */}
-                        <TextField
-                            label={t("products.sale_price", "سعر التخفيض")}
-                            dir="ltr"
-                            type="number"
-                            min={0}
-                            error={errors.sale_price ?? saleRefusal}
-                            value={String(form.data.sale_price ?? "")}
-                            onChange={(value) =>
-                                form.setData("sale_price", value)
-                            }
-                        />
-                        <TextField
-                            label={t("products.purchase_price", "سعر الشراء")}
-                            dir="ltr"
-                            type="number"
-                            hint={t(
-                                "products.purchase_price_hint",
-                                "داخلي — لا يظهر على المتجر.",
-                            )}
-                            error={errors.purchase_price ?? null}
-                            value={String(form.data.purchase_price ?? "")}
-                            onChange={(value) =>
-                                form.setData("purchase_price", value)
-                            }
-                        />
-                        <TextField
-                            label={t("common.currency", "العملة")}
-                            dir="ltr"
-                            error={errors.currency ?? null}
-                            value={String(form.data.currency ?? "")}
-                            onChange={(value) =>
-                                form.setData("currency", value)
-                            }
-                        />
-                        <TextField
-                            label={t(
-                                "products.low_stock_threshold",
-                                "حد التنبيه للمخزون",
-                            )}
-                            hint={t(
-                                "products.low_stock_threshold_hint",
-                                "الكمية التي يبدأ عندها التنبيه. اتركه صفرًا لو لا تريد تنبيهًا لهذا المنتج.",
-                            )}
-                            dir="ltr"
-                            type="number"
-                            min={0}
-                            error={errors.low_stock_threshold ?? null}
-                            value={String(form.data.low_stock_threshold ?? "")}
-                            onChange={(value) =>
-                                form.setData("low_stock_threshold", value)
-                            }
-                        />
-                        <TextField
-                            label={t("products.warranty_years", "سنوات الضمان")}
-                            dir="ltr"
-                            type="number"
-                            error={errors.warranty_years ?? null}
-                            value={String(form.data.warranty_years ?? "")}
-                            onChange={(value) =>
-                                form.setData("warranty_years", value)
-                            }
-                        />
-                    </CardContent>
-                </Card>
-
-                </TabPanel>
-
-                <TabPanel when="visibility" active={tab}>
-                {/* ── one section per storefront: its categories, its single primary category,
-                    its visibility, order and slug. The product's CONTENT above is shared; these
-                    are the only columns `storefront_product` keeps per storefront (AGENTS §2.4),
-                    and the form now shows all of them for every storefront at once instead of
-                    making the team visit one URL per site. ────────────────────────────────── */}
-                {/* ── Only the shop being edited is EXPANDED (§2.1) ─────────────────────────
-
-                    Both storefronts' complete trees used to render here at once — about 98
-                    checkboxes, 37 nodes for Watchizer and 61 for Brand Fashion — on a form that
-                    was already seven screens long. Two trees side by side is also the shape that
-                    invites a mis-tick: they look identical and both open with the same section
-                    names.
-
-                    The others collapse to one line each that STATES what is true there, with a
-                    link to edit inside that shop. Every field for every shop still SUBMITS — the
-                    payload is unchanged. This is about what is on screen, not about what is
-                    saved. ────────────────────────────────────────────────────────────────── */}
-                {sections
-                    .filter((section) => section.storefront.id === storefront.id)
-                    .map((section) => (
-                        <StorefrontFields
-                            key={section.storefront.id}
-                            section={section}
-                            data={
-                                form.data.storefronts[
-                                    String(section.storefront.id)
-                                ]
-                            }
-                            errors={errors}
-                            canBeVisible={canBeVisible}
-                            slugLock={slug_lock}
-                            slugRole={slug_role}
-                            missingArabic={missingForVisibility}
-                            onChange={(patch) =>
-                                setSection(String(section.storefront.id), patch)
-                            }
-                            onToggleCategory={(id, on) =>
-                                toggleCategory(
-                                    String(section.storefront.id),
-                                    id,
-                                    on,
-                                )
-                            }
-                        />
-                    ))}
-
-                {sections.filter(
-                    (section) => section.storefront.id !== storefront.id,
-                ).length > 0 ? (
-                    <Card>
-                        <CardHeader className="gap-1">
-                            <CardTitle className="text-sm">
-                                {t("products.also_on", "على المتاجر الأخرى")}
-                            </CardTitle>
-                            <p className="text-xs text-muted-foreground">
-                                {t(
-                                    "products.also_on_hint",
-                                    "اسم المنتج ووصفه وصوره مشتركة بين كل المتاجر. الظهور والتصنيفات والترتيب والرابط تخص كل متجر على حدة، وتُعدَّل من داخل ذلك المتجر.",
-                                )}
-                            </p>
-                        </CardHeader>
-                        <CardContent className="space-y-2">
-                            {sections
-                                .filter(
-                                    (section) =>
-                                        section.storefront.id !== storefront.id,
-                                )
-                                .map((section) => {
-                                    const other =
-                                        form.data.storefronts[
-                                            String(section.storefront.id)
-                                        ];
-                                    const count =
-                                        other?.category_ids.length ?? 0;
-
-                                    return (
-                                        <div
-                                            key={section.storefront.id}
-                                            className="flex flex-wrap items-center gap-2 rounded-md border p-2.5 text-sm"
-                                        >
-                                            <span className="font-medium">
-                                                {section.storefront.name}
-                                            </span>
-                                            {other?.is_visible ? (
-                                                <Badge variant="success">
-                                                    {t(
-                                                        "common.visible",
-                                                        "ظاهر",
-                                                    )}
-                                                </Badge>
-                                            ) : (
-                                                <Badge variant="neutral">
-                                                    {t("common.hidden", "مخفي")}
-                                                </Badge>
-                                            )}
-                                            <span className="text-xs text-muted-foreground">
-                                                {t(
-                                                    "products.also_on_categories",
-                                                    ":count تصنيفًا",
-                                                    { count },
-                                                )}
-                                            </span>
-                                            {product === null ? null : (
-                                                <Link
-                                                    href={`/manage/storefronts/${section.storefront.id}/products/${product.id}/edit`}
-                                                    className="ms-auto text-xs underline underline-offset-2"
-                                                >
-                                                    {t(
-                                                        "products.also_on_edit",
-                                                        "عدّل داخل هذا المتجر",
-                                                    )}
-                                                </Link>
-                                            )}
-                                        </div>
-                                    );
-                                })}
-                        </CardContent>
-                    </Card>
-                ) : null}
-
-                </TabPanel>
-
-                <TabPanel when="specs" active={tab}>
-                {/* ── the family-aware block ───────────────────────────────────────────── */}
-                <SpecBlock
-                    explanation={shownFamily}
-                    blocks={blocks}
-                    lookups={lookups}
-                    values={form.data.specs}
-                    onChange={(values) => form.setData("specs", values)}
-                    errors={errors}
-                />
-
-                {/* ── attributes ──────────────────────────────────────────────────────── */}
-                <Card>
-                    <CardHeader>
-                        <CardTitle>
-                            {t(
-                                "products.attributes",
-                                "الخصائص والفئات والألوان",
-                            )}
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent className="grid gap-5 lg:grid-cols-3">
-                        <CheckList
-                            label={t("products.features", "الخصائص")}
-                            options={lookups.features ?? []}
-                            selected={form.data.feature_ids}
-                            onChange={(ids) => form.setData("feature_ids", ids)}
-                        />
-                        <CheckList
-                            // `حرمي` was a misspelling of `حريمي`, and the correct spelling was a
-                            // few hundred pixels above it at `products.field_gender` — so one
-                            // product form showed the word both ways (D-14).
-                            label={t("products.genders", "الفئة (رجالي/حريمي…)")}
-                            options={lookups.genders ?? []}
-                            selected={form.data.gender_ids}
-                            onChange={(ids) => form.setData("gender_ids", ids)}
-                        />
-                        {/* Family-scoped since 2026-09-19 (J-6): a watch is asked for its dial and
-                            band, everything else for its primary colour, and a family with no
-                            colour question renders nothing at all. */}
-                        <ColorRoles
-                            options={lookups.colors ?? []}
-                            roles={
-                                color_roles[shownFamily.family] ??
-                                color_roles.default ??
-                                []
-                            }
-                            value={form.data.colors}
-                            onChange={(rows) => form.setData("colors", rows)}
-                        />
-                    </CardContent>
-                </Card>
-
-                </TabPanel>
-
-                <TabPanel when="images" active={tab}>
-                {/* ── images ──────────────────────────────────────────────────────────── */}
-                <ImageGallery
-                    images={form.data.images}
-                    onChange={(images) => form.setData("images", images)}
-                />
-                </TabPanel>
-
-                <TabPanel when="seo" active={tab}>
-
-                {/* ── SEO and search keywords: SHARED, like the rest of the product's content.
-                    Per-storefront visibility, order, featured and slug live in each storefront's
-                    own section above (AGENTS §2.4 — there are no per-storefront overrides of
-                    title, description or media, on purpose). ──────────────────────── */}
-                <Card>
-                    <CardHeader className="gap-1">
-                        <div className="flex flex-wrap items-start justify-between gap-3">
-                            <CardTitle>
-                                {t("products.seo", "بيانات SEO وكلمات البحث")}
-                            </CardTitle>
-                            {/*
-                              * The generator (item 8). Two shapes for one button, and the difference
-                              * is whether anything would be overwritten:
-                              *
-                              *   • nothing written yet → fills, immediately. Nothing is at risk.
-                              *   • something written → asks first, because somebody may have written
-                              *     those two sentences by hand and a click that silently replaces
-                              *     them is the kind of help nobody asks for twice.
-                              *
-                              * Neither shape SAVES: the fields become dirty and the operator reads
-                              * them, edits them and presses Save like any other change. That is what
-                              * "editable afterwards" has to mean to be worth anything.
-                              */}
-                            {seoFilled() ? (
-                                <ConfirmAction
-                                    title={t(
-                                        "products.seo_regenerate_title",
-                                        "إعادة كتابة حقول SEO",
-                                    )}
-                                    consequence={
-                                        <p>
-                                            {t(
-                                                "products.seo_regenerate_body",
-                                                "سيُستبدل عنوان SEO ووصفه وكلمات البحث باللغتين بما يُشتق من بيانات المنتج المعروضة الآن. لن يُحفظ شيء إلا بعد ضغط زر الحفظ.",
-                                            )}
-                                        </p>
-                                    }
-                                    confirmLabel={t(
-                                        "products.seo_regenerate_confirm",
-                                        "أعد الكتابة",
-                                    )}
-                                    onConfirm={writeSeo}
-                                    trigger={
-                                        <Button type="button" variant="outline" size="sm">
-                                            {t("products.seo_generate", "اكتب حقول SEO تلقائيًا")}
-                                        </Button>
-                                    }
-                                />
-                            ) : (
-                                <Button type="button" variant="outline" size="sm" onClick={writeSeo}>
-                                    {t("products.seo_generate", "اكتب حقول SEO تلقائيًا")}
-                                </Button>
-                            )}
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                            {t(
-                                "products.seo_hint",
-                                "مشتركة بين كل المتاجر. الظهور والترتيب والتمييز والرابط والتصنيفات تخص كل متجر على حدة.",
-                            )}{" "}
-                            {t(
-                                "products.seo_generate_hint",
-                                "زر «اكتب حقول SEO تلقائيًا» يكتبها من اسم المنتج وماركته وتصنيفه وموديله باللغتين، ويبقى كل حقل قابلاً للتعديل بعدها. لا يُكتب السعر ولا التوفر: وصف SEO يُقدّم لشهور والسعر يتغير.",
-                            )}
-                        </p>
-                    </CardHeader>
-                    <CardContent className="space-y-5">
-                        <div className="grid gap-5 lg:grid-cols-2">
-                            <TranslatedField
-                                label={t(
-                                    "products.field_meta_title",
-                                    "عنوان SEO",
-                                )}
-                                name="meta_title"
-                                value={pair("meta_title")}
-                                onChange={(value) =>
-                                    setPair("meta_title", value)
-                                }
-                                errors={errors}
-                            />
-                            <TranslatedField
-                                label={t(
-                                    "products.field_meta_description",
-                                    "وصف SEO",
-                                )}
-                                name="meta_description"
-                                multiline
-                                value={pair("meta_description")}
-                                onChange={(value) =>
-                                    setPair("meta_description", value)
-                                }
-                                errors={errors}
-                            />
-                        </div>
-
-                        <TextareaField
-                            label={t("products.search_keywords", "كلمات البحث")}
-                            hint={t(
-                                "products.search_keywords_hint",
-                                "تُضاف إلى فهرس البحث مع الاسم والماركة والتصنيف.",
-                            )}
-                            rows={2}
-                            error={errors.search_keywords ?? null}
-                            value={String(form.data.search_keywords ?? "")}
-                            onChange={(value) =>
-                                form.setData("search_keywords", value)
-                            }
-                        />
-                    </CardContent>
-                </Card>
-
-                </TabPanel>
-
-                {/* ── The save bar follows the operator (D-20, §2.1) ────────────────────────
-
-                    It used to sit at the bottom of 4,868 px of form, with the variants panel
-                    BELOW it — so the primary action was neither in view nor even last. Sticky, it
-                    is in view from every tab, and the error count beside it is what tells somebody
-                    on the Images tab that the Price tab is refusing. */}
-                <StickySaveBar>
+                Out here its parent is the page, so it sticks across every tab. The button still
+                submits the form through HTML's own `form="product-form"` association: no click
+                handler, no change to validation, and Enter in a field still saves. */}
+            <StickySaveBar>
                 <FormActions
+                    formId="product-form"
                     processing={form.processing}
                     // A create form whose server will refuse the POST must not offer a live save.
                     dirty={form.isDirty && !(isNew && pre_switch.blocked)}
@@ -1364,98 +959,792 @@ export default function ProductForm({
                     extra={
                         <span className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                             {/* The error count travels with the button (§2.1). It is what tells
-                                somebody standing on the Images tab that the Price tab is the
-                                reason nothing saved. */}
+                            somebody standing on the Images tab that the Price tab is the
+                            reason nothing saved. */}
                             <ErrorCount errors={errors} />
+                            <SaveScopeNote />
                             {/* ── Archiving, from the form that created it (W-6) ─────────────
 
-                                There was no DELETE route for a product at all: archiving existed
-                                only as a bulk action on the LIST, so a junior who had just created
-                                a duplicate had to leave the form, find the row again among 7,713,
-                                tick it and use the bulk bar.
+                            There was no DELETE route for a product at all: archiving existed
+                            only as a bulk action on the LIST, so a junior who had just created
+                            a duplicate had to leave the form, find the row again among 7,713,
+                            tick it and use the bulk bar.
 
-                                It keeps the same confirmation discipline as everything else that
-                                removes something: the dialog names what archiving does and what it
-                                does NOT do, because "delete" is the word people expect and this is
-                                not that. */}
+                            It keeps the same confirmation discipline as everything else that
+                            removes something: the dialog names what archiving does and what it
+                            does NOT do, because "delete" is the word people expect and this is
+                            not that. */}
                             {product === null ? null : (
-                            <>
-                                <ConfirmAction
-                                    title={t(
-                                        "products.archive_title",
-                                        "أرشفة المنتج",
-                                    )}
-                                    confirmLabel={t(
-                                        "products.archive_confirm",
-                                        "أرشف المنتج",
-                                    )}
-                                    consequence={
-                                        <div className="space-y-2">
-                                            <p>
+                                <>
+                                    <ConfirmAction
+                                        title={t(
+                                            "products.archive_title",
+                                            "أرشفة المنتج",
+                                        )}
+                                        confirmLabel={t(
+                                            "products.archive_confirm",
+                                            "أرشف المنتج",
+                                        )}
+                                        consequence={
+                                            <div className="space-y-2">
+                                                <p>
+                                                    {t(
+                                                        "products.archive_consequence",
+                                                        "سيختفي المنتج من كل المتاجر ومن البحث فورًا، ويخرج من قوائم اللوحة إلا قائمة «المؤرشف».",
+                                                    )}
+                                                </p>
+                                                <p>
+                                                    {t(
+                                                        "products.archive_keeps",
+                                                        "لا يُحذف شيء: الطلبات القديمة وسجل المخزون تبقى كما هي، ويمكن إرجاع المنتج من قائمة «المؤرشف» في أي وقت.",
+                                                    )}
+                                                </p>
+                                            </div>
+                                        }
+                                        onConfirm={() =>
+                                            router.delete(
+                                                `/manage/storefronts/${storefront.id}/products/${product.id}`,
+                                            )
+                                        }
+                                        trigger={
+                                            <Button
+                                                type="button"
+                                                variant="ghost"
+                                                size="sm"
+                                                className="gap-1.5 text-destructive"
+                                            >
+                                                <Trash2 className="h-3.5 w-3.5" />
                                                 {t(
-                                                    "products.archive_consequence",
-                                                    "سيختفي المنتج من كل المتاجر ومن البحث فورًا، ويخرج من قوائم اللوحة إلا قائمة «المؤرشف».",
+                                                    "products.archive_action",
+                                                    "أرشفة",
                                                 )}
-                                            </p>
-                                            <p>
-                                                {t(
-                                                    "products.archive_keeps",
-                                                    "لا يُحذف شيء: الطلبات القديمة وسجل المخزون تبقى كما هي، ويمكن إرجاع المنتج من قائمة «المؤرشف» في أي وقت.",
-                                                )}
-                                            </p>
-                                        </div>
-                                    }
-                                    onConfirm={() =>
-                                        router.delete(
-                                            `/manage/storefronts/${storefront.id}/products/${product.id}`,
-                                        )
-                                    }
-                                    trigger={
-                                        <Button
-                                            type="button"
-                                            variant="ghost"
-                                            size="sm"
-                                            className="gap-1.5 text-destructive"
-                                        >
-                                            <Trash2 className="h-3.5 w-3.5" />
+                                            </Button>
+                                        }
+                                    />
+                                    <Badge variant="neutral">
+                                        #{product.id}
+                                    </Badge>
+                                    {/* Read-only on purpose: a quantity is a ledger event, so the
+                                place to change it is the variants panel (or 4C's stock
+                                screen for a product with no variants). */}
+                                    <span dir="ltr">
+                                        Express {product.stock_express} /
+                                        Market {product.stock_market}
+                                    </span>
+                                    {product.in_stock ? (
+                                        <Badge variant="success">
                                             {t(
-                                                "products.archive_action",
-                                                "أرشفة",
+                                                "products.in_stock",
+                                                "متوفر",
                                             )}
-                                        </Button>
-                                    }
-                                />
-                                <Badge variant="neutral">#{product.id}</Badge>
-                                {/* Read-only on purpose: a quantity is a ledger event, so the
-                                    place to change it is the variants panel (or 4C's stock
-                                    screen for a product with no variants). */}
-                                <span dir="ltr">
-                                    Express {product.stock_express} / Market{" "}
-                                    {product.stock_market}
-                                </span>
-                                {product.in_stock ? (
-                                    <Badge variant="success">
-                                        {t("products.in_stock", "متوفر")}
-                                    </Badge>
-                                ) : (
-                                    <Badge variant="warning">
-                                        {t("common.out_short", "نفد")}
-                                    </Badge>
-                                )}
-                            </>
+                                        </Badge>
+                                    ) : (
+                                        <Badge variant="warning">
+                                            {t("common.out_short", "نفد")}
+                                        </Badge>
+                                    )}
+                                </>
                             )}
                         </span>
                     }
                 />
-                </StickySaveBar>
+            </StickySaveBar>
+            <form
+                id="product-form"
+                className="space-y-6"
+                onSubmit={(event) => {
+                    event.preventDefault();
+                    submit();
+                }}
+            >
+                {/* Everything the server refused, in one place, with the page scrolled to it
+                    (D-19). The messages still render beside their own fields — this is the map,
+                    not a replacement for them. */}
+                <ErrorSummary errors={errors} labels={fieldLabels} />
+
+                {/* ── The save bar is at the TOP (item 3, second pass, 2026-09-19) ──────────
+
+                    It was at the bottom — an improvement on the 4,868 px scroll it replaced, and
+                    still the wrong end: the operator opens the form, reads the tabs, and the thing
+                    they came to do is below the fold on first paint.
+
+                    It carries the sentence a tabbed form owes its reader. A form split into tabs
+                    invites the belief that each tab saves separately — that is the reasonable
+                    reading of the shape, and nothing contradicted it. Somebody who believes it
+                    fills one tab, saves, and leaves thinking the other six are still waiting. */}
+                <FormTabs
+                    tabs={TABS}
+                    active={tab}
+                    onChange={setTab}
+                    errors={errors}
+                />
+
+                <TabPanel when="identity" active={tab}>
+                    {/* ── identity ─────────────────────────────────────────────────────────── */}
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>
+                                {t("products.identity", "التعريف")}
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                            {/* ── TWO codes, not three (item 4, second browser pass, 2026-09-19) ────
+
+                            `model_number` and `sku` held the same thing, so the form asked for it
+                            twice and the team had no way to know which box to use. They are one
+                            column now (`sku` survived, 6,799 values against 295), and each of the
+                            two survivors carries a line saying whose code it is — which is the
+                            actual question somebody stares at these boxes asking. */}
+                            <TextField
+                                label={t("products.wa_code", "الكود الداخلي")}
+                                required
+                                dir="ltr"
+                                hint={t(
+                                    "products.wa_code_hint",
+                                    "كودنا نحن لهذا المنتج. نحن من يضعه، ولا يتكرر أبدًا بين منتجين.",
+                                )}
+                                error={errors.wa_code ?? null}
+                                value={String(form.data.wa_code ?? "")}
+                                onChange={(value) =>
+                                    form.setData("wa_code", value)
+                                }
+                            />
+                            <TextField
+                                label={t("products.sku", "رقم الموديل (SKU)")}
+                                dir="ltr"
+                                hint={t(
+                                    "products.sku_hint",
+                                    "كود المصنّع أو المورّد. يأتي منهم، ويمكن أن يكون فارغًا، ويمكن أن يشترك فيه منتجان.",
+                                )}
+                                error={errors.sku ?? null}
+                                value={String(form.data.sku ?? "")}
+                                onChange={(value) => form.setData("sku", value)}
+                            />
+                            <SelectField
+                                label={t("products.brand", "الماركة")}
+                                required
+                                // An explicit empty option (J-1). Without it the select shows the
+                                // first BRAND as though somebody had chosen it.
+                                placeholder={t(
+                                    "products.brand_choose",
+                                    "— اختر ماركة —",
+                                )}
+                                error={errors.brand_id ?? null}
+                                value={String(form.data.brand_id ?? "")}
+                                options={brands}
+                                onChange={(value) =>
+                                    form.setData("brand_id", value)
+                                }
+                            />
+                            <SelectField
+                                label={t("products.grade", "الدرجة")}
+                                placeholder="—"
+                                error={errors.grade_id ?? null}
+                                value={String(form.data.grade_id ?? "")}
+                                options={lookups.grades ?? []}
+                                onChange={(value) =>
+                                    form.setData("grade_id", value)
+                                }
+                            />
+                            <SwitchField
+                                label={t(
+                                    "products.is_active",
+                                    "مفعّل في الكتالوج",
+                                )}
+                                checked={form.data.is_active === true}
+                                onChange={(checked) =>
+                                    form.setData("is_active", checked)
+                                }
+                            />
+                        </CardContent>
+                    </Card>
+                </TabPanel>
+
+                <TabPanel when="content" active={tab}>
+                    {/* ── names and copy, both locales at once ─────────────────────────────── */}
+                    <Card>
+                        <CardHeader className="gap-1">
+                            <CardTitle>
+                                {t("products.names", "الاسم والوصف")}
+                            </CardTitle>
+                            <p className="text-xs text-muted-foreground">
+                                {t(
+                                    "products.names_hint",
+                                    "الترجمة الاحتياطية مُعطّلة: ما يغيب بالعربية يظهر ناقصًا على المتجر، ولا يمكن إظهار منتج بلا عنوان عربي.",
+                                )}
+                            </p>
+                        </CardHeader>
+                        <CardContent className="space-y-5">
+                            <TranslatedField
+                                label={t("products.field_title", "العنوان")}
+                                name="title"
+                                required
+                                value={pair("title")}
+                                onChange={(value) => setPair("title", value)}
+                                errors={errors}
+                            />
+                            <TranslatedField
+                                label={t(
+                                    "products.field_short_description",
+                                    "وصف مختصر",
+                                )}
+                                name="short_description"
+                                multiline
+                                value={pair("short_description")}
+                                onChange={(value) =>
+                                    setPair("short_description", value)
+                                }
+                                errors={errors}
+                            />
+                            <TranslatedField
+                                label={t(
+                                    "products.field_long_description",
+                                    "الوصف الكامل",
+                                )}
+                                name="long_description"
+                                multiline
+                                value={pair("long_description")}
+                                onChange={(value) =>
+                                    setPair("long_description", value)
+                                }
+                                errors={errors}
+                            />
+                            <div className="grid gap-5 lg:grid-cols-3">
+                                <TranslatedField
+                                    label={t(
+                                        "products.field_model_name",
+                                        "اسم الموديل",
+                                    )}
+                                    name="model_name"
+                                    value={pair("model_name")}
+                                    onChange={(value) =>
+                                        setPair("model_name", value)
+                                    }
+                                    errors={errors}
+                                />
+                                <TranslatedField
+                                    label={t(
+                                        "products.field_country",
+                                        "بلد الصنع",
+                                    )}
+                                    name="country"
+                                    value={pair("country")}
+                                    onChange={(value) =>
+                                        setPair("country", value)
+                                    }
+                                    errors={errors}
+                                />
+                                <TranslatedField
+                                    label={t("products.field_stone", "الحجر")}
+                                    name="stone"
+                                    value={pair("stone")}
+                                    onChange={(value) =>
+                                        setPair("stone", value)
+                                    }
+                                    errors={errors}
+                                />
+                            </div>
+                        </CardContent>
+                    </Card>
+                </TabPanel>
+
+                <TabPanel when="price" active={tab}>
+                    {/* ── price ────────────────────────────────────────────────────────────── */}
+                    <Card>
+                        <CardHeader className="gap-1">
+                            <CardTitle>{t("common.price", "السعر")}</CardTitle>
+                            {/* The rule used to be narrated here, in prose, above the fields it was
+                            about — which is the exact shape J-4 was reported for. It is now
+                            enforced ON the sale-price field, live, and says what is wrong with the
+                            number in front of it. A paragraph that repeats a guard is a paragraph
+                            the reader learns to skip (item 8, 2026-09-19). */}
+                        </CardHeader>
+                        <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                            <TextField
+                                label={t("products.selling_price", "سعر البيع")}
+                                required
+                                dir="ltr"
+                                type="number"
+                                error={errors.selling_price ?? null}
+                                value={String(form.data.selling_price ?? "")}
+                                onChange={(value) =>
+                                    form.setData("selling_price", value)
+                                }
+                            />
+                            {/* ── The rule is ON the field now (J-4, 2026-09-19) ───────────────
+
+                            Entering selling 1500 / sale 2000 produced no warning, no refusal and
+                            no highlight. The form saved cleanly and the sale price was stored
+                            EMPTY — so somebody who transposed the two fields watched a successful
+                            save and the discount they had promised a customer simply did not
+                            exist.
+
+                            The rule was narrated in prose above the fields instead. AGENTS §2.27
+                            says a rule in the domain is enforced IN the form; this one was
+                            explained next to it, which is the failure mode the rule names. */}
+                            <TextField
+                                label={t("products.sale_price", "سعر التخفيض")}
+                                dir="ltr"
+                                type="number"
+                                min={0}
+                                error={errors.sale_price ?? saleRefusal}
+                                value={String(form.data.sale_price ?? "")}
+                                onChange={(value) =>
+                                    form.setData("sale_price", value)
+                                }
+                            />
+                            <TextField
+                                label={t(
+                                    "products.purchase_price",
+                                    "سعر الشراء",
+                                )}
+                                dir="ltr"
+                                type="number"
+                                hint={t(
+                                    "products.purchase_price_hint",
+                                    "داخلي — لا يظهر على المتجر.",
+                                )}
+                                error={errors.purchase_price ?? null}
+                                value={String(form.data.purchase_price ?? "")}
+                                onChange={(value) =>
+                                    form.setData("purchase_price", value)
+                                }
+                            />
+                            <TextField
+                                label={t("common.currency", "العملة")}
+                                dir="ltr"
+                                error={errors.currency ?? null}
+                                value={String(form.data.currency ?? "")}
+                                onChange={(value) =>
+                                    form.setData("currency", value)
+                                }
+                            />
+                            <TextField
+                                label={t(
+                                    "products.low_stock_threshold",
+                                    "حد التنبيه للمخزون",
+                                )}
+                                hint={t(
+                                    "products.low_stock_threshold_hint",
+                                    "الكمية التي يبدأ عندها التنبيه. اتركه صفرًا لو لا تريد تنبيهًا لهذا المنتج.",
+                                )}
+                                dir="ltr"
+                                type="number"
+                                min={0}
+                                error={errors.low_stock_threshold ?? null}
+                                value={String(
+                                    form.data.low_stock_threshold ?? "",
+                                )}
+                                onChange={(value) =>
+                                    form.setData("low_stock_threshold", value)
+                                }
+                            />
+                        </CardContent>
+                    </Card>
+                </TabPanel>
+
+                <TabPanel when="visibility" active={tab}>
+                    {/* ── one section per storefront: its categories, its single primary category,
+                    its visibility, order and slug. The product's CONTENT above is shared; these
+                    are the only columns `storefront_product` keeps per storefront (AGENTS §2.4),
+                    and the form now shows all of them for every storefront at once instead of
+                    making the team visit one URL per site. ────────────────────────────────── */}
+                    {/* ── Only the shop being edited is EXPANDED (§2.1) ─────────────────────────
+
+                    Both storefronts' complete trees used to render here at once — about 98
+                    checkboxes, 37 nodes for Watchizer and 61 for Brand Fashion — on a form that
+                    was already seven screens long. Two trees side by side is also the shape that
+                    invites a mis-tick: they look identical and both open with the same section
+                    names.
+
+                    The others collapse to one line each that STATES what is true there, with a
+                    link to edit inside that shop. Every field for every shop still SUBMITS — the
+                    payload is unchanged. This is about what is on screen, not about what is
+                    saved. ────────────────────────────────────────────────────────────────── */}
+                    {/* ── An explicit shop switch (item 1a, second browser pass, 2026-09-19) ────────
+
+                    The tab showed ONE tree with a shop name above it, and read as though the
+                    product had one taxonomy. Nothing said a second shop existed, and nothing
+                    offered a way to it — the only route was the "edit inside that shop" link,
+                    which NAVIGATES, and navigating away from a half-filled form loses the rest of
+                    it.
+
+                    A segmented control instead. Both shops are on screen at once, each carrying
+                    its own current state, so "there are two shops" and "this is the one I am
+                    editing" are the same glance. Switching is local: `form.data.storefronts` has
+                    always carried every shop's placement and Save has always submitted all of
+                    them, so this changes what is SHOWN and nothing about what is saved.
+
+                    "Impossible to edit the wrong shop without noticing" is why the selection is
+                    repeated three times and never subtly: the pressed segment, the brand-coloured
+                    rail down the expanded card, and the shop's own name as the card's title. */}
+                    {sections.length > 1 ? (
+                        <div
+                            role="group"
+                            aria-label={t(
+                                "products.which_storefront",
+                                "أي متجر تعدّل الآن؟",
+                            )}
+                            className="flex flex-wrap items-center gap-2"
+                        >
+                            <span className="text-sm text-muted-foreground">
+                                {t(
+                                    "products.which_storefront",
+                                    "أي متجر تعدّل الآن؟",
+                                )}
+                            </span>
+                            {sections.map((section) => {
+                                const id = section.storefront.id;
+                                const data = form.data.storefronts[String(id)];
+                                const selected = id === placementShop;
+
+                                return (
+                                    <button
+                                        key={id}
+                                        type="button"
+                                        aria-pressed={selected}
+                                        onClick={() => setPlacementShop(id)}
+                                        className={cn(
+                                            "flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm transition-colors",
+                                            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                                            selected
+                                                ? "border-brand bg-brand-muted font-medium text-brand-strong"
+                                                : "text-muted-foreground hover:text-foreground",
+                                        )}
+                                    >
+                                        {section.storefront.name}
+                                        {/* Each shop's own state, on its own button — so the choice
+                                        is made with the answer already visible. */}
+                                        <Badge
+                                            variant={
+                                                data === undefined
+                                                    ? "outline"
+                                                    : data.is_visible
+                                                      ? "success"
+                                                      : "neutral"
+                                            }
+                                        >
+                                            {data === undefined
+                                                ? t(
+                                                      "products.absent",
+                                                      "غير مضاف لهذا المتجر",
+                                                  )
+                                                : data.is_visible
+                                                  ? t("common.visible", "ظاهر")
+                                                  : t("common.hidden", "مخفي")}
+                                        </Badge>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    ) : null}
+
+                    {sections
+                        .filter(
+                            (section) =>
+                                section.storefront.id === placementShop,
+                        )
+                        .map((section) => (
+                            <div
+                                key={section.storefront.id}
+                                className="border-s-4 border-brand ps-3"
+                            >
+                                <StorefrontFields
+                                    section={section}
+                                    data={
+                                        form.data.storefronts[
+                                            String(section.storefront.id)
+                                        ]
+                                    }
+                                    errors={errors}
+                                    canBeVisible={canBeVisible}
+                                    slugLock={slug_lock}
+                                    slugRole={slug_role}
+                                    missingArabic={missingForVisibility}
+                                    onChange={(patch) =>
+                                        setSection(
+                                            String(section.storefront.id),
+                                            patch,
+                                        )
+                                    }
+                                    onToggleCategory={(id, on) =>
+                                        toggleCategory(
+                                            String(section.storefront.id),
+                                            id,
+                                            on,
+                                        )
+                                    }
+                                />
+                            </div>
+                        ))}
+
+                    {sections.length > 1 ? (
+                        <p className="text-xs text-muted-foreground">
+                            {t(
+                                "products.also_on_hint",
+                                "اسم المنتج ووصفه وصوره مشتركة بين كل المتاجر. الظهور والتصنيفات والترتيب والرابط تخص كل متجر على حدة، وتُعدَّل من هنا بالتبديل بين المتجرين — والحفظ يحفظ الاثنين معًا.",
+                            )}
+                        </p>
+                    ) : null}
+                </TabPanel>
+
+                <TabPanel when="specs" active={tab}>
+                    {/* ── the family-aware block ───────────────────────────────────────────── */}
+                    {/* ── the warranty is asked HERE now (2026-09-19) ───────────────────────
+
+                    `warranty_years` is a column of `catalog_products` and it stays there: this is
+                    a question of WHERE IT IS ASKED, not of where it is stored. It used to sit on
+                    the price tab among the four money fields, which is where it landed rather than
+                    where it belongs — a buyer asks about the guarantee in the same breath as the
+                    water resistance, and whoever is filling in a watch's specifications had to
+                    leave the tab to answer it.
+
+                    It goes through `extra` rather than into `config/catalog.php`, because that
+                    config is what the SERVER validates and writes into
+                    `catalog_product_watch_specs`. Declaring the warranty there would make the
+                    writer look for a column of that table that does not exist. */}
+                    <SpecBlock
+                        explanation={shownFamily}
+                        blocks={blocks}
+                        lookups={lookups}
+                        values={form.data.specs}
+                        onChange={(values) => form.setData("specs", values)}
+                        errors={errors}
+                        extra={
+                            <TextField
+                                label={t(
+                                    "products.warranty_years",
+                                    "سنوات الضمان",
+                                )}
+                                dir="ltr"
+                                type="number"
+                                error={errors.warranty_years ?? null}
+                                value={String(form.data.warranty_years ?? "")}
+                                onChange={(value) =>
+                                    form.setData("warranty_years", value)
+                                }
+                            />
+                        }
+                    />
+
+                    {/* ── attributes ──────────────────────────────────────────────────────── */}
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>
+                                {t(
+                                    "products.attributes",
+                                    "الخصائص والفئات والألوان",
+                                )}
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent className="grid gap-5 lg:grid-cols-3">
+                            <CheckList
+                                label={t("products.features", "الخصائص")}
+                                options={lookups.features ?? []}
+                                selected={form.data.feature_ids}
+                                onChange={(ids) =>
+                                    form.setData("feature_ids", ids)
+                                }
+                            />
+                            <CheckList
+                                // `حرمي` was a misspelling of `حريمي`, and the correct spelling was a
+                                // few hundred pixels above it at `products.field_gender` — so one
+                                // product form showed the word both ways (D-14).
+                                label={t(
+                                    "products.genders",
+                                    "الفئة (رجالي/حريمي…)",
+                                )}
+                                options={lookups.genders ?? []}
+                                selected={form.data.gender_ids}
+                                onChange={(ids) =>
+                                    form.setData("gender_ids", ids)
+                                }
+                            />
+                            {/* Family-scoped since 2026-09-19 (J-6): a watch is asked for its dial and
+                            band, everything else for its primary colour, and a family with no
+                            colour question renders nothing at all. */}
+                            <ColorRoles
+                                options={lookups.colors ?? []}
+                                roles={
+                                    color_roles[shownFamily.family] ??
+                                    color_roles.default ??
+                                    []
+                                }
+                                value={form.data.colors}
+                                onChange={(rows) =>
+                                    form.setData("colors", rows)
+                                }
+                            />
+                        </CardContent>
+                    </Card>
+                </TabPanel>
+
+                <TabPanel when="images" active={tab}>
+                    {/* ── images ──────────────────────────────────────────────────────────── */}
+                    <ImageGallery
+                        images={form.data.images}
+                        onChange={(images) => form.setData("images", images)}
+                    />
+                </TabPanel>
+
+                <TabPanel when="seo" active={tab}>
+                    {/* ── SEO and search keywords: SHARED, like the rest of the product's content.
+                    Per-storefront visibility, order, featured and slug live in each storefront's
+                    own section above (AGENTS §2.4 — there are no per-storefront overrides of
+                    title, description or media, on purpose). ──────────────────────── */}
+                    <Card>
+                        <CardHeader className="gap-1">
+                            <div className="flex flex-wrap items-start justify-between gap-3">
+                                <CardTitle>
+                                    {t(
+                                        "products.seo",
+                                        "بيانات SEO وكلمات البحث",
+                                    )}
+                                </CardTitle>
+                                {/*
+                                 * The generator (item 8). Two shapes for one button, and the difference
+                                 * is whether anything would be overwritten:
+                                 *
+                                 *   • nothing written yet → fills, immediately. Nothing is at risk.
+                                 *   • something written → asks first, because somebody may have written
+                                 *     those two sentences by hand and a click that silently replaces
+                                 *     them is the kind of help nobody asks for twice.
+                                 *
+                                 * Neither shape SAVES: the fields become dirty and the operator reads
+                                 * them, edits them and presses Save like any other change. That is what
+                                 * "editable afterwards" has to mean to be worth anything.
+                                 */}
+                                {seoFilled() ? (
+                                    <ConfirmAction
+                                        title={t(
+                                            "products.seo_regenerate_title",
+                                            "إعادة كتابة حقول SEO",
+                                        )}
+                                        consequence={
+                                            <p>
+                                                {t(
+                                                    "products.seo_regenerate_body",
+                                                    "سيُستبدل عنوان SEO ووصفه وكلمات البحث باللغتين بما يُشتق من بيانات المنتج المعروضة الآن. لن يُحفظ شيء إلا بعد ضغط زر الحفظ.",
+                                                )}
+                                            </p>
+                                        }
+                                        confirmLabel={t(
+                                            "products.seo_regenerate_confirm",
+                                            "أعد الكتابة",
+                                        )}
+                                        onConfirm={writeSeo}
+                                        trigger={
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="sm"
+                                            >
+                                                {t(
+                                                    "products.seo_generate",
+                                                    "اكتب حقول SEO تلقائيًا",
+                                                )}
+                                            </Button>
+                                        }
+                                    />
+                                ) : (
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={writeSeo}
+                                    >
+                                        {t(
+                                            "products.seo_generate",
+                                            "اكتب حقول SEO تلقائيًا",
+                                        )}
+                                    </Button>
+                                )}
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                                {t(
+                                    "products.seo_hint",
+                                    "مشتركة بين كل المتاجر. الظهور والترتيب والتمييز والرابط والتصنيفات تخص كل متجر على حدة.",
+                                )}{" "}
+                                {t(
+                                    "products.seo_generate_hint",
+                                    "زر «اكتب حقول SEO تلقائيًا» يكتب جملة بالعربية وأخرى بالإنجليزية من بيانات المنتج نفسه: الماركة والفئة والتصنيف والخامة واللون والموديل. يبقى كل حقل قابلاً للتعديل بعدها. لا يُكتب السعر ولا التوفر: وصف SEO يُقدّم لشهور والسعر يتغير.",
+                                )}
+                            </p>
+                            {/* ── Does it fit a search result? (item 5) ────────────────────────
+                            The generator's own output always does; what somebody types afterwards
+                            may not, and nothing on the screen used to say so. */}
+                            {seoOverLength().length > 0 ? (
+                                <p className="text-xs font-medium text-amber-700 dark:text-amber-500">
+                                    {t(
+                                        "products.seo_too_long",
+                                        "أطول مما يعرضه محرك البحث، وسيُقصّ عند النتيجة: :fields",
+                                        { fields: seoOverLength().join("، ") }, // i18n-exempt: the Arabic comma joining the field names
+                                    )}
+                                </p>
+                            ) : null}
+                        </CardHeader>
+                        <CardContent className="space-y-5">
+                            <div className="grid gap-5 lg:grid-cols-2">
+                                <TranslatedField
+                                    label={t(
+                                        "products.field_meta_title",
+                                        "عنوان SEO",
+                                    )}
+                                    name="meta_title"
+                                    value={pair("meta_title")}
+                                    onChange={(value) =>
+                                        setPair("meta_title", value)
+                                    }
+                                    errors={errors}
+                                />
+                                <TranslatedField
+                                    label={t(
+                                        "products.field_meta_description",
+                                        "وصف SEO",
+                                    )}
+                                    name="meta_description"
+                                    multiline
+                                    value={pair("meta_description")}
+                                    onChange={(value) =>
+                                        setPair("meta_description", value)
+                                    }
+                                    errors={errors}
+                                />
+                            </div>
+
+                            <TextareaField
+                                label={t(
+                                    "products.search_keywords",
+                                    "كلمات البحث",
+                                )}
+                                hint={t(
+                                    "products.search_keywords_hint",
+                                    "تُضاف إلى فهرس البحث مع الاسم والماركة والتصنيف.",
+                                )}
+                                rows={2}
+                                error={errors.search_keywords ?? null}
+                                value={String(form.data.search_keywords ?? "")}
+                                onChange={(value) =>
+                                    form.setData("search_keywords", value)
+                                }
+                            />
+                        </CardContent>
+                    </Card>
+                </TabPanel>
             </form>
 
-            {/* Outside the form element: the panel posts on its own, and nesting forms is invalid HTML.
+            {/* ── Its own TAB, rendered outside the <form> (item 2, second pass, 2026-09-19) ────
 
-                It is also outside the TABS, and that is the point of its own heading: stock is not
-                a field of this form, it is a ledger, and the walkthrough's complaint was that Save
-                sat ABOVE it. With a sticky save bar the order no longer misleads. */}
-            <div className="mt-6">
+                It used to hang below everything, outside the tab structure — an orphan at the foot
+                of the page that read as an afterthought, which is exactly how it was reported.
+
+                It is switched by the same `tab` state as every other panel, so to the operator it
+                is simply the eighth tab. It is rendered AFTER `</form>` rather than inside a
+                `TabPanel`, and that is not tidiness: the panel posts each row on its own, because
+                a quantity is a ledger event and must never ride on a title validation. Inside the
+                product form, pressing Enter in a quantity box would submit the PRODUCT — a
+                surprise that writes. */}
+            {tab === "variants" ? (
                 <VariantsPanel
                     productId={product === null ? null : product.id}
                     rows={variants.rows}
@@ -1468,7 +1757,7 @@ export default function ProductForm({
                     sizes={lookups.sizes ?? []}
                     error={errors.variants ?? null}
                 />
-            </div>
+            ) : null}
 
             {storefronts.length > 1 ? (
                 <p className="mt-4 text-xs text-muted-foreground">
@@ -1582,26 +1871,26 @@ function StorefrontFields({
                     ) : null}
                 </div>
                 {/*
-                  * The whole rule, in one place (item 4, 2026-09-18).
-                  *
-                  * This paragraph already said the second half — one primary per storefront, and
-                  * that it decides the family. The developer still had to ask, and re-reading it
-                  * shows why: it never said a product may be in SEVERAL categories, which was the
-                  * first half of the question, and it never said what the primary is FOR from the
-                  * customer's side or what happens without one.
-                  *
-                  * Every clause below was verified before it was written on a screen:
-                  *
-                  *   • several categories, one primary — `PlacementWriter` clears any previous
-                  *     primary before setting a new one, and across 8,211 placements on both
-                  *     storefronts not one product has more than one;
-                  *   • the primary decides the FAMILY — `FamilyForCategory`, the same resolver the
-                  *     transform uses;
-                  *   • the family decides which SPECIFICATION fields exist — `SpecBlocks::for()`;
-                  *   • the primary IS the breadcrumb — `Storefront\ProductDetail` builds it from the
-                  *     primary node and nothing else, so a product without one has none at all.
-                  *     37 products per storefront are in that state today.
-                  */}
+                 * The whole rule, in one place (item 4, 2026-09-18).
+                 *
+                 * This paragraph already said the second half — one primary per storefront, and
+                 * that it decides the family. The developer still had to ask, and re-reading it
+                 * shows why: it never said a product may be in SEVERAL categories, which was the
+                 * first half of the question, and it never said what the primary is FOR from the
+                 * customer's side or what happens without one.
+                 *
+                 * Every clause below was verified before it was written on a screen:
+                 *
+                 *   • several categories, one primary — `PlacementWriter` clears any previous
+                 *     primary before setting a new one, and across 8,211 placements on both
+                 *     storefronts not one product has more than one;
+                 *   • the primary decides the FAMILY — `FamilyForCategory`, the same resolver the
+                 *     transform uses;
+                 *   • the family decides which SPECIFICATION fields exist — `SpecBlocks::for()`;
+                 *   • the primary IS the breadcrumb — `Storefront\ProductDetail` builds it from the
+                 *     primary node and nothing else, so a product without one has none at all.
+                 *     37 products per storefront are in that state today.
+                 */}
                 <p className="text-xs text-muted-foreground">
                     {t(
                         "products.primary_category_rule",
@@ -1610,7 +1899,7 @@ function StorefrontFields({
                     {section.decides_family
                         ? t(
                               "products.primary_category_decides_family",
-                              "ومنه تُشتق عائلة المنتج وقائمة مواصفاته، لأن المواصفات مشتركة بين المتاجر ولا يمكن أن تختلف. لو لم تختر واحدًا تُشتق العائلة من أول تصنيف مختار.",
+                              "ومنه تُشتق عائلة المنتج وقائمة مواصفاته. لو لم تختر واحدًا تُشتق العائلة من أول تصنيف مختار.",
                           )
                         : t(
                               "products.categories_independent",
@@ -1756,11 +2045,13 @@ function StorefrontFields({
                             !slugRole.allowed
                                 ? (slugRole.message ?? undefined)
                                 : slugLock.blocked
-                                  ? (slugLock.message ?? slugLock.caveat ?? undefined)
-                                : t(
-                                      "products.slug_hint",
-                                      "يُولّد من العنوان الإنجليزي إن تُرك فارغًا.",
-                                  )
+                                  ? (slugLock.message ??
+                                    slugLock.caveat ??
+                                    undefined)
+                                  : t(
+                                        "products.slug_hint",
+                                        "يُولّد من العنوان الإنجليزي إن تُرك فارغًا.",
+                                    )
                         }
                         error={error("slug")}
                         value={data.slug}

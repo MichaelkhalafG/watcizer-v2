@@ -14,6 +14,7 @@ use App\Domain\Payment\CallbackPolicy;
 use App\Domain\Promotions\PromotionDiscounts;
 use App\Models\User;
 use App\Support\Coerce;
+use App\Support\LocalisedName;
 use App\Support\ManageText;
 use App\Support\Table\TableExport;
 use App\Support\Table\TableQuery;
@@ -811,13 +812,19 @@ final class OrderController
                 ->leftJoin('catalog_product_translations as pt', function (JoinClause $join): void {
                     $join->on('pt.product_id', '=', 'oi.product_id')->where('pt.locale', '=', 'ar');
                 })
+                // The English name too (2026-10-05): this query joined the Arabic translation
+                // alone, so an order opened in English listed its lines in Arabic.
+                ->leftJoin('catalog_product_translations as pte', function (JoinClause $join): void {
+                    $join->on('pte.product_id', '=', 'oi.product_id')->where('pte.locale', '=', 'en');
+                })
                 ->leftJoin('catalog_product_variants as v', 'v.id', '=', 'oi.variant_id')
                 ->where('oi.order_id', $orderId)
                 ->orderBy('oi.id')
                 ->get([
                     'oi.id', 'oi.product_id', 'oi.variant_id', 'oi.offer_id', 'oi.quantity',
                     'oi.piece_price', 'oi.total_price', 'oi.type_stock', 'oi.color_band', 'oi.color_dial',
-                    'p.wa_code', 'pt.title as title_ar', 'v.label as variant_label', 'v.sku as variant_sku',
+                    'p.wa_code', 'pt.title as title_ar', 'pte.title as title_en',
+                    'v.label as variant_label', 'v.sku as variant_sku',
                 ]) as $raw
         ) {
             $row = Row::cast($raw);
@@ -825,7 +832,20 @@ final class OrderController
                 'id' => Row::int($row, 'id'),
                 'product_id' => Row::nint($row, 'product_id'),
                 'wa_code' => Row::nstr($row, 'wa_code'),
-                'title' => Row::nstr($row, 'title_ar'),
+                /*
+                 * The product's CURRENT name, in the reader's language.
+                 *
+                 * An order line is a historical record, but the product's NAME is not part of what
+                 * it records — the line stores the price, the quantity and the codes, which are the
+                 * things that must not drift. The name is looked up so it reads for whoever is
+                 * looking, and it falls back to the internal code when the product is gone, which
+                 * is what an operator would search for anyway.
+                 */
+                'title' => LocalisedName::pick(
+                    Row::nstr($row, 'title_ar'),
+                    Row::nstr($row, 'title_en'),
+                    Row::nstr($row, 'wa_code') ?? '',
+                ),
                 'variant_id' => Row::nint($row, 'variant_id'),
                 'variant' => Row::nstr($row, 'variant_label'),
                 'variant_sku' => Row::nstr($row, 'variant_sku'),
@@ -1014,10 +1034,20 @@ final class OrderController
             ->leftJoin('shipping_city_translations as ct', function (JoinClause $join): void {
                 $join->on('ct.shipping_city_id', '=', 'a.shipping_city_id')->where('ct.locale', '=', 'ar');
             })
+            /*
+             * The English name of the city too (2026-10-05).
+             *
+             * This query joined the Arabic translation alone, so an order opened in English showed
+             * its delivery city as «القاهرة». Both locales exist for all 27 cities — checked,
+             * not assumed — so there was nothing to add to the data, only a join to write.
+             */
+            ->leftJoin('shipping_city_translations as cte', function (JoinClause $join): void {
+                $join->on('cte.shipping_city_id', '=', 'a.shipping_city_id')->where('cte.locale', '=', 'en');
+            })
             ->where('a.id', $addressId)
             ->first([
                 'a.id', 'a.address_line', 'a.phone_number_one', 'a.phone_number_two',
-                'a.shipping_city_id', 'ct.city_name',
+                'a.shipping_city_id', 'ct.city_name', 'cte.city_name as city_name_en',
             ]);
 
         if (! is_object($row)) {
@@ -1030,7 +1060,10 @@ final class OrderController
             'line' => Row::nstr($address, 'address_line'),
             'phone' => Row::nstr($address, 'phone_number_one'),
             'phone_alt' => Row::nstr($address, 'phone_number_two'),
-            'city' => Row::nstr($address, 'city_name'),
+            'city' => LocalisedName::pick(
+                Row::nstr($address, 'city_name'),
+                Row::nstr($address, 'city_name_en'),
+            ) ?: null,
         ];
     }
 

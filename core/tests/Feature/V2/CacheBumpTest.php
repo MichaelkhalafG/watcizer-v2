@@ -7,6 +7,7 @@ use Illuminate\Testing\PendingCommand;
 use Tests\Feature\V2\ApiTestHelpers as H;
 use Tests\Support\LedgerState;
 use Tests\Support\LegacyShadow;
+use Tests\Support\Scratch;
 
 use function Pest\Laravel\artisan;
 use function Pest\Laravel\getJson;
@@ -23,10 +24,7 @@ use function Pest\Laravel\getJson;
 
 function transformAfterShadow(int $expectedExit): void
 {
-    $dir = storage_path('framework/testing/cache-bump-'.getmypid());
-    if (! is_dir($dir)) {
-        mkdir($dir, 0775, true);
-    }
+    $dir = Scratch::dir('cache-bump');
     $pending = artisan('core:transform', ['--only' => '19', '--output' => $dir, '--force' => true]);
     if (! $pending instanceof PendingCommand) {
         throw new RuntimeException('artisan() did not return a PendingCommand');
@@ -76,10 +74,7 @@ beforeEach(function () {
 
 it('bumps the storefront cache version on a real run, and never on a dry run', function () {
     $cache = app(StorefrontCache::class);
-    $dir = storage_path('framework/testing/cache-bump-dry-'.getmypid());
-    if (! is_dir($dir)) {
-        mkdir($dir, 0775, true);
-    }
+    $dir = Scratch::dir('cache-bump-dry');
 
     $before = $cache->version(1);
     $dry = artisan('core:transform', ['--dry-run' => true, '--only' => '19', '--output' => $dir, '--force' => true]);

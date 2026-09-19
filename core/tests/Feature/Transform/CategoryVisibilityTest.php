@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Testing\PendingCommand;
 use PHPUnit\Framework\Assert;
 use Tests\Support\LedgerState;
+use Tests\Support\Scratch;
 
 use function Pest\Laravel\artisan;
 
@@ -22,11 +23,7 @@ use function Pest\Laravel\artisan;
 
 function transformForVisibility(): void
 {
-    $dir = storage_path('framework/testing/transform-visibility-'.getmypid());
-    if (! is_dir($dir)) {
-        mkdir($dir, 0775, true);
-    }
-    $pending = artisan('core:transform', ['--output' => $dir, '--force' => true]);
+    $pending = artisan('core:transform', ['--output' => Scratch::dir('transform-visibility'), '--force' => true]);
     if (! $pending instanceof PendingCommand) {
         throw new RuntimeException('artisan() did not return a PendingCommand');
     }

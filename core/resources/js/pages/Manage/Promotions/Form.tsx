@@ -864,7 +864,7 @@ export default function PromotionForm({
                                                 <p className="text-xs text-destructive">
                                                     {t(
                                                         "promotions.reward_blocked_on",
-                                                        "هذه المكافأة تغيّر المبلغ المستحق، ولا تعمل على: :names — لأن واجهة المتجر لا تعرض الخصم. استبعد المتجر من هذه القاعدة، أو فعّل الإعداد له.",
+                                                        "هذه المكافأة تغيّر المبلغ المستحق ولا تعمل على: :names. استبعد هذه المتاجر من القاعدة، أو فعّل عرض الخصومات في إعداداتها.",
                                                         {
                                                             names: blocked
                                                                 .map(

@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Tests\Support\LedgerState;
+use Tests\Support\Scratch;
 
 /*
  * The rule the 2026-09-11 decision settled (AGENTS §2.20): a table whose content is AUTHORED IN
@@ -168,7 +169,7 @@ it('runs the transform with storefronts preserved: the row survives and reconcil
     $storefront = Storefront::query()->findOrFail(Storefront::WATCHIZER_ID);
     $storefront->forceFill(['name' => 'Edited before the transform'])->save();
 
-    expect(Artisan::call('core:transform', ['--force' => true]))->toBe(0);
+    expect(Artisan::call('core:transform', ['--force' => true, '--output' => Scratch::dir('dashboard-tables')]))->toBe(0);
 
     expect(Artisan::output())->toContain('ALL COUNTS RECONCILE')
         ->and(Storefront::query()->findOrFail(Storefront::WATCHIZER_ID)->name)->toBe('Edited before the transform');

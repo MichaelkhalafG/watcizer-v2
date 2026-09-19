@@ -14,7 +14,9 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Select } from "@/components/ui/input";
 import ManageLayout from "@/layouts/ManageLayout";
-import { useT } from "@/lib/i18n";
+import { useT, useLocale } from "@/lib/i18n";
+import { ProductName } from "@/components/manage/ProductName";
+import { titleOrCode } from "@/lib/title";
 import type { SharedProps, TablePayload } from "@/types";
 
 /**
@@ -53,7 +55,8 @@ interface StockRow {
     id: number;
     wa_code: string;
     sku: string | null;
-    title: string | null;
+    /** Both names; `ProductName` picks the reader's and marks a fallback (2026-10-05). */
+    title: { ar: string; en: string };
     family: string | null;
     express: number;
     market: number;
@@ -80,7 +83,8 @@ interface Props {
 interface AdjustTarget {
     product_id: number;
     wa_code: string;
-    title: string | null;
+    /** Both names; `ProductName` picks the reader's and marks a fallback (2026-10-05). */
+    title: { ar: string; en: string };
     variant_id: number | null;
     variant_label: string | null;
     express: number;
@@ -109,6 +113,7 @@ export default function InventoryIndex({
     alerts,
 }: Props) {
     const t = useT();
+    const locale = useLocale();
     const { errors } = usePage<SharedProps>().props;
     const [target, setTarget] = useState<AdjustTarget | null>(null);
     const [expanded, setExpanded] = useState<number[]>([]);
@@ -165,7 +170,9 @@ export default function InventoryIndex({
             sortable: true,
             cell: (row) => (
                 <div className="space-y-0.5">
-                    <div className="font-medium">{row.title ?? "—"}</div>
+                    <div className="font-medium">
+                        <ProductName title={row.title} secondary={false} />
+                    </div>
                     <div className="text-xs text-muted-foreground">
                         <Ltr>
                             {row.wa_code}
@@ -341,23 +348,28 @@ export default function InventoryIndex({
                             { count: alerts.low },
                         )}
                     >
-                        <div className="space-y-1">
-                            <p>
-                                {t(
-                                    "inventory.low_count_body",
-                                    "كل منتج له حدّه الخاص، فالقائمة تحسب «منخفض» من عمود المنتج نفسه لا من رقم عام.",
-                                )}
-                            </p>
+                        {/* ── A banner, not an essay (second pass, item 8, 2026-09-19) ─────────
+
+                            Both of these explained OUR REASONING to somebody who opened the screen
+                            to see a list. The rule they described is real and the sentences were
+                            true; they were just addressed to the wrong reader. A banner says what
+                            the number is and where the rows are.
+
+                            The reasoning has not been deleted — it has moved into the code
+                            comments above, which is where an argument about why a number is
+                            counted the way it is belongs. */}
+                        <p>
+                            {t(
+                                "inventory.low_count_body",
+                                "كل منتج له حدّ تنبيه خاص به.",
+                            )}{" "}
                             <Link
                                 href="/manage/inventory?filters[view]=low"
-                                className="inline-block font-medium underline"
+                                className="font-medium underline"
                             >
-                                {t(
-                                    "inventory.alert_show",
-                                    "اعرض هذه المنتجات",
-                                )}
+                                {t("inventory.alert_show", "اعرض هذه المنتجات")}
                             </Link>
-                        </div>
+                        </p>
                     </Alert>
                 ) : null}
 
@@ -370,23 +382,18 @@ export default function InventoryIndex({
                             { count: alerts.out },
                         )}
                     >
-                        <div className="space-y-1">
-                            <p>
-                                {t(
-                                    "inventory.out_count_body",
-                                    "هذه ليست «منخفضة» بل انتهت تمامًا، فلها سطر مستقل: المنخفض يُطلب قبل أن ينفد، والنافد قرارٌ بشأن ما يراه الزبون الآن.",
-                                )}
-                            </p>
+                        <p>
+                            {t(
+                                "inventory.out_count_body",
+                                "لا توجد منها قطعة واحدة في أي مخزن.",
+                            )}{" "}
                             <Link
                                 href="/manage/inventory?filters[view]=out"
-                                className="inline-block font-medium underline"
+                                className="font-medium underline"
                             >
-                                {t(
-                                    "inventory.alert_show",
-                                    "اعرض هذه المنتجات",
-                                )}
+                                {t("inventory.alert_show", "اعرض هذه المنتجات")}
                             </Link>
-                        </div>
+                        </p>
                     </Alert>
                 ) : null}
 
@@ -400,12 +407,12 @@ export default function InventoryIndex({
                     // query now come from ProductSearch, so they cannot drift apart again.
                     searchPlaceholder={t(
                         "inventory.search_placeholder",
-                        "اسم المنتج أو كوده أو كود المورّد…",
+                        "اسم المنتج أو الكود الداخلي أو رقم الموديل…",
                     )}
                     emptyTitle={t("common.no_products", "لا توجد منتجات")}
                     emptyDescription={t(
                         "products.search_covers_hint",
-                        "البحث يشمل الاسم بالعربي والإنجليزي وكود المنتج وكود المورّد. جرِّب كلمة أقصر أو عدِّل التصفية.",
+                        "البحث يشمل الاسم بالعربي والإنجليزي والكود الداخلي ورقم الموديل. جرِّب كلمة أقصر أو عدِّل التصفية.",
                     )}
                     rowActions={(row) =>
                         row.variants.length > 0 ? (
@@ -500,7 +507,7 @@ export default function InventoryIndex({
                     {target === null ? null : (
                         <>
                             <p className="text-sm text-muted-foreground">
-                                {target.title ?? target.wa_code}
+                                {titleOrCode(target.title, locale, target.wa_code)}
                                 {target.variant_label !== null
                                     ? ` — ${target.variant_label}`
                                     : ""}

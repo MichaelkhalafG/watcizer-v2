@@ -36,6 +36,8 @@ import type { PreSwitchState, SharedProps } from "@/types";
 import { ExportLink } from "@/components/table/ExportLink";
 import { TreeRail } from "@/components/manage/TreeRail";
 import { useLocale } from "@/lib/i18n";
+import { ProductName } from "@/components/manage/ProductName";
+import { titleOrCode } from "@/lib/title";
 import { familyLabel } from "@/lib/labels";
 
 interface Node {
@@ -60,6 +62,8 @@ interface Node {
     products_any_subtree: number;
     in_menu: boolean;
     in_menu_reason: string;
+    /** The same answer in two or three words — what the ROW shows. Empty when it is in the menu. */
+    in_menu_reason_short: string;
     family: string;
     may_delete: boolean;
 }
@@ -157,6 +161,24 @@ export default function CategoriesIndex({
     const t = useT();
     const locale = useLocale();
     const { errors } = usePage<SharedProps>().props;
+    /*
+     * ── One name, in the reader's language (2026-10-05) ────────────────────────
+     *
+     * This screen printed BOTH names on every node — «ساعات Watches», «جي إم تي GMT» — so an
+     * English operator read a bilingual string instead of a name, and every dialog, tooltip and
+     * `aria-label` on the screen said that field outright. // name-seam-exempt: prose, not a read
+     *
+     * It is the same defect item 1b fixed for the products list on 2026-09-17, in a screen that
+     * never adopted the fix. `localisedTitle` is that rule and `ProductName` draws it; both are
+     * used here now, and `ProductNameSeamTest` has been widened so a category name cannot go back
+     * to picking a language for the reader.
+     *
+     * `nodeName` is for the places that need a bare string — an `aria-label`, a confirmation
+     * sentence — and falls back to the slug, which is what somebody would search for anyway.
+     */
+    const nodeName = (node: Node): string =>
+        titleOrCode(node.name, locale, node.slug);
+
     const [editing, setEditing] = useState<Node | null>(null);
     const [creatingUnder, setCreatingUnder] = useState<number | null | "root">(
         null,
@@ -302,7 +324,7 @@ export default function CategoriesIndex({
             .filter((node) => node.depth < max_depth)
             .map((node) => ({
                 value: String(node.id),
-                label: `${"— ".repeat(Math.max(0, node.depth - 1))}${node.name.ar || node.slug}`,
+                label: `${"— ".repeat(Math.max(0, node.depth - 1))}${nodeName(node)}`,
             })),
     ];
 
@@ -506,7 +528,7 @@ export default function CategoriesIndex({
                                 collapsed={collapsed.has(node.id)}
                                 onToggle={() => toggle(node.id)}
                                 rtl={locale === "ar"}
-                                label={node.name.ar || node.slug}
+                                label={nodeName(node)}
                             />
                         <div
                             className={cn(
@@ -569,30 +591,27 @@ export default function CategoriesIndex({
                                         : t("categories.legacy_hint", "مأخوذ من متجر واتشيزر"),
                                 ].join(t("common.list_separator", "، "))}
                             >
-                                <span className="truncate font-medium">
-                                    {node.name.ar === "" ? (
-                                        <span className="text-destructive">
-                                            {t(
-                                                "common.no_arabic_name",
-                                                "— بلا اسم عربي —",
-                                            )}
-                                        </span>
-                                    ) : (
-                                        node.name.ar
-                                    )}
+                                {/* ── The name is never the thing that loses width (2026-10-05)
+
+                                    `shrink-0` on the name, `min-w-0 truncate` on the two beside
+                                    it: flexbox takes the space back from the items that ALLOW it,
+                                    so the English name and the slug shorten first and the Arabic
+                                    name — the only thing on the row an operator navigates by —
+                                    keeps its full text. The `truncate` here is a last resort for a
+                                    pathological name; measured at 1366px on this tree, no node
+                                    reaches it. */}
+                                <span className="shrink-0 truncate font-medium">
+                                    <ProductName
+                                        title={node.name}
+                                        secondary={false}
+                                    />
                                 </span>
 
-                                {node.name.en === "" ? null : (
-                                    <span
-                                        className="hidden truncate text-xs text-muted-foreground sm:inline"
-                                        dir="ltr"
-                                    >
-                                        {node.name.en}
-                                    </span>
-                                )}
-
+                                {/* Below 2xl the slug goes entirely: it is a URL fragment, it is
+                                    in the edit dialog and in the export, and nobody scans a tree
+                                    by it. It was the second widest thing on the row. */}
                                 <span
-                                    className="hidden shrink-0 font-mono text-[11px] text-muted-foreground lg:inline"
+                                    className="hidden min-w-0 truncate font-mono text-[11px] text-muted-foreground 2xl:inline"
                                     dir="ltr"
                                 >
                                     /{node.slug}
@@ -601,33 +620,45 @@ export default function CategoriesIndex({
                                 {/* The computed answer of the §3.3 rule. Kept inline because it is
                                     the one thing on the row that says whether customers can reach
                                     this section at all. */}
+                                {/* ── ONE statement about whether customers can reach this
+                                       section — and it is a CHIP, not a paragraph ─────────
+
+                                    2026-09-19: the row used to carry a `فارغ — مخفي
+                                    تلقائيًا` badge next to a toggle reading `مفعّل`, with nothing
+                                    saying which caused which. That was replaced with the server's
+                                    whole explanatory sentence, ending in the remedy.
+
+                                    2026-10-05: printing that sentence on EVERY row is what broke
+                                    this screen. Sixty nodes carried the same paragraph, it took
+                                    half the row, and the category names truncated to `سـ…`. The
+                                    developer found it by looking at the tree.
+
+                                    So the rule, applied here and on the lookups screen: **the row
+                                    carries a short state chip and nothing more; the sentence
+                                    appears once, where the operator is dealing with that row.**
+                                    Here that is the chip's own tooltip and the edit dialog. */}
                                 {node.in_menu ? (
                                     <Badge variant="success" className="shrink-0">
                                         <Eye className="h-3 w-3" />{" "}
                                         {t("categories.in_menu", "في القائمة")}
                                     </Badge>
                                 ) : (
-                                    <Badge variant="neutral" className="shrink-0">
+                                    // The full sentence lives on the hover and in the edit dialog
+                                    // — see the note above. Here: three words and the cause.
+                                    <Badge
+                                        variant="neutral"
+                                        className="shrink-0"
+                                        title={node.in_menu_reason}
+                                    >
                                         <EyeOff className="h-3 w-3" />{" "}
-                                        {node.in_menu_reason}
+                                        {t("categories.hidden_short", "مخفي")}
+                                        {node.in_menu_reason_short === ""
+                                            ? null
+                                            : ` — ${node.in_menu_reason_short}`}
                                     </Badge>
                                 )}
 
-                                {node.products_subtree === 0 ? (
-                                    <Badge
-                                        variant="warning"
-                                        className="shrink-0"
-                                        title={t(
-                                            "categories.empty_hidden_hint",
-                                            "القاعدة تخفي أي تصنيف لا يحتوي منتجًا ظاهرًا واحدًا على الأقل، لا فيه ولا في فروعه",
-                                        )}
-                                    >
-                                        {t(
-                                            "categories.empty_auto_hidden",
-                                            "فارغ — مخفي تلقائيًا",
-                                        )}
-                                    </Badge>
-                                ) : (
+                                {node.products_subtree === 0 ? null : (
                                     <Badge
                                         variant="neutral"
                                         className="shrink-0"
@@ -658,51 +689,21 @@ export default function CategoriesIndex({
                                 )}
                             </div>
 
-                            {/* ── Two toggles that no longer look like one another (§2.9) ────
+                            {/* ── ONE inline toggle, not two (2026-10-05) ───────────────
 
-                                They sat adjacent, identically styled and identically coloured,
-                                and nothing on the row said that one controls the MENU and the
-                                other takes the category and its products off the site. The words
-                                were there; what was missing was the difference between them. Each
-                                now carries its own consequence, and the destructive one is marked
-                                as destructive. */}
+                                §2.9 made the two toggles stop looking like one another. The
+                                developer's next look said there are still too many controls on a
+                                category row, and they are right — at sixty nodes, two switches,
+                                two chevrons and a menu is five controls per row.
+
+                                So the one that stays inline is the one this SCREEN is for:
+                                «في القائمة», which is reversible, harmless and used repeatedly while
+                                arranging a menu. «مفعّل» moved into the overflow menu: it takes
+                                the category AND its products off the site, it is used rarely, and
+                                a destructive control does not belong under the cursor on every
+                                row. Its confirmation dialog is unchanged — only the trigger
+                                moved. */}
                             <div className="flex shrink-0 items-center gap-3">
-                                <label
-                                    className="flex items-center gap-1.5 text-xs"
-                                    title={t(
-                                        "categories.toggle_active_hint",
-                                        "إيقاف التصنيف يُخرجه ويُخرج منتجاته من المتجر بالكامل.",
-                                    )}
-                                >
-                                    <Switch
-                                        aria-label={t(
-                                            "categories.toggle_active",
-                                            "تفعيل :name",
-                                            {
-                                                name: node.name.ar || node.slug,
-                                            },
-                                        )}
-                                        // Switching a category OFF takes its products off the
-                                        // site with it, so it is a shape change, not a rename.
-                                        disabled={shapeLocked}
-                                        checked={node.is_active}
-                                        onCheckedChange={(checked) => {
-                                            // Deactivating a category that HOLDS products takes
-                                            // those products off the site with it, which is not
-                                            // what "turn this category off" sounds like (task 4.4).
-                                            if (
-                                                !checked &&
-                                                node.products_any > 0
-                                            ) {
-                                                setDeactivating(node);
-
-                                                return;
-                                            }
-                                            setActive(node, checked);
-                                        }}
-                                    />
-                                    {t("common.active", "مفعّل")}
-                                </label>
                                 <label
                                     className="flex items-center gap-1.5 text-xs"
                                     title={t(
@@ -715,7 +716,7 @@ export default function CategoriesIndex({
                                             "categories.toggle_in_menu",
                                             "عرض :name في القائمة",
                                             {
-                                                name: node.name.ar || node.slug,
+                                                name: nodeName(node),
                                             },
                                         )}
                                         disabled={treeReadOnly}
@@ -733,7 +734,9 @@ export default function CategoriesIndex({
                                             )
                                         }
                                     />
-                                    {t("categories.in_menu", "في القائمة")}
+                                    <span className="hidden lg:inline">
+                                        {t("categories.in_menu", "في القائمة")}
+                                    </span>
                                 </label>
                             </div>
 
@@ -758,7 +761,7 @@ export default function CategoriesIndex({
                                     aria-label={t(
                                         "categories.move_up",
                                         "حرّك :name لأعلى",
-                                        { name: node.name.ar || node.slug },
+                                        { name: nodeName(node) },
                                     )}
                                     // These two carried NO disabled state at all (item 6): on a
                                     // mirrored tree, or for an operator without the grant, they
@@ -781,7 +784,7 @@ export default function CategoriesIndex({
                                     aria-label={t(
                                         "categories.move_down",
                                         "حرّك :name لأسفل",
-                                        { name: node.name.ar || node.slug },
+                                        { name: nodeName(node) },
                                     )}
                                     disabled={shapeLocked}
                                     title={
@@ -806,8 +809,7 @@ export default function CategoriesIndex({
                                                 "إجراءات :name",
                                                 {
                                                     name:
-                                                        node.name.ar ||
-                                                        node.slug,
+                                                        nodeName(node),
                                                 },
                                             )}
                                         >
@@ -853,6 +855,44 @@ export default function CategoriesIndex({
                                                 {shapeReason}
                                             </p>
                                         ) : null}
+
+                                        {/* Moved off the row (2026-10-05). Same behaviour, same
+                                            confirmation — a different place to press it. */}
+                                        <DropdownMenuItem
+                                            disabled={shapeLocked}
+                                            onSelect={(event) => {
+                                                // Deactivating a category that HOLDS products
+                                                // takes those products off the site with it,
+                                                // which is not what "turn this category off"
+                                                // sounds like (task 4.4). The dialog opens from
+                                                // state for the same reason delete's does.
+                                                if (
+                                                    node.is_active &&
+                                                    node.products_any > 0
+                                                ) {
+                                                    event.preventDefault();
+                                                    setDeactivating(node);
+
+                                                    return;
+                                                }
+                                                setActive(node, !node.is_active);
+                                            }}
+                                        >
+                                            {node.is_active ? (
+                                                <EyeOff className="h-4 w-4" />
+                                            ) : (
+                                                <Eye className="h-4 w-4" />
+                                            )}
+                                            {node.is_active
+                                                ? t(
+                                                      "categories.deactivate_action",
+                                                      "أوقف التصنيف ومنتجاته",
+                                                  )
+                                                : t(
+                                                      "categories.activate_action",
+                                                      "أعد تفعيل التصنيف",
+                                                  )}
+                                        </DropdownMenuItem>
 
                                         <DropdownMenuSeparator />
 
@@ -918,13 +958,34 @@ export default function CategoriesIndex({
                         title={t(
                             "categories.edit_dialog_title",
                             "تعديل: :name",
-                            { name: editing.name.ar || editing.slug },
+                            { name: nodeName(editing) },
                         )}
                         description={t(
                             "categories.edit_dialog_description",
                             "الاسم والرابط والموضع في الشجرة.",
                         )}
                     >
+                        {/* ── The explanation, ONCE, here (2026-10-05) ─────────────────
+
+                            The row shows a two-word chip; this is where the whole sentence
+                            belongs, because this is the node the operator has actually opened and
+                            there is room for a sentence without anything else losing width.
+
+                            Only when the node is NOT in the menu: a node that is shown needs no
+                            explanation, and a dialog that always carries a paragraph is the same
+                            mistake one level down. */}
+                        {editing.in_menu ? null : (
+                            <Alert
+                                tone="warning"
+                                title={t(
+                                    "categories.hidden_dialog_title",
+                                    "لا يظهر في قائمة المتجر",
+                                )}
+                            >
+                                <p>{editing.in_menu_reason}</p>
+                            </Alert>
+                        )}
+
                         <NodeForm
                             node={editing}
                             parents={parentOptions(editing)}
@@ -991,7 +1052,7 @@ export default function CategoriesIndex({
                         title={t(
                             "categories.delete_title",
                             "حذف التصنيف «:name»",
-                            { name: deleting.name.ar || deleting.slug },
+                            { name: nodeName(deleting) },
                         )}
                     >
                         <div className="space-y-3 text-sm text-muted-foreground">
@@ -1009,7 +1070,7 @@ export default function CategoriesIndex({
                             <p>
                                 {t(
                                     "categories.delete_consequence_note",
-                                    "التصنيف الآن بلا منتجات وبلا تصنيفات فرعية، ولذلك يُمكن حذفه. لن يفقد أي منتج بياناته، ولكن أي رابط قديم يشير إلى هذا القسم سيصبح 404.",
+                                    "لن يفقد أي منتج بياناته، لكن أي رابط قديم يشير إلى هذا القسم لن يعمل بعد الحذف.",
                                 )}
                             </p>
                         </div>
@@ -1053,7 +1114,7 @@ export default function CategoriesIndex({
                             "categories.deactivate_title",
                             "تعطيل «:name»",
                             {
-                                name: deactivating.name.ar || deactivating.slug,
+                                name: nodeName(deactivating),
                             },
                         )}
                     >
@@ -1124,8 +1185,11 @@ function NodeForm({
     onMove?: (parentId: number | null) => void;
 }) {
     const t = useT();
+    // An EDITOR: this form offers an Arabic box and an English box, so it has to read each
+    // language on its own. Choosing one for a READER is what the guard forbids.
+    // name-seam-exempt: the Arabic name's own box
     const [ar, setAr] = useState(node?.name.ar ?? "");
-    const [en, setEn] = useState(node?.name.en ?? "");
+    const [en, setEn] = useState(node?.name.en ?? ""); // name-seam-exempt: the editor's other box
     const [slug, setSlug] = useState(node?.slug ?? "");
     const [parent, setParent] = useState(
         node === null

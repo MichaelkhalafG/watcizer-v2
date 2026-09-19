@@ -149,6 +149,18 @@ final class SpecBlocks
             if (is_string($field['lookup'] ?? null)) {
                 $one['lookup'] = $field['lookup'];
             }
+            /*
+             * A field's HINT, through the same seam as its label and for the same reason: the
+             * config value is the Arabic fallback and the key is derived from the field's own
+             * stable `key`, so `config:cache` cannot freeze one locale's text.
+             *
+             * Added 2026-10-05 for `case_size`, where the label names the measurement and only a
+             * sentence can say WHICH measurement it is — a diameter, not a circumference. Optional
+             * everywhere: a field that says all it needs to in its label carries none.
+             */
+            if (is_string($field['hint'] ?? null)) {
+                $one['hint'] = ManageText::t('specs.hint_'.$field['key'], $field['hint']);
+            }
             $fields[] = $one;
         }
 

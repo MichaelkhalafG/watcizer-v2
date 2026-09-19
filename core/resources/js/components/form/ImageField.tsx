@@ -34,6 +34,7 @@ export function ImageField({
     value,
     onChange,
     disabled = false,
+    compact = false,
     ...shell
 }: FieldShellProps & {
     /** A key from config/media.php: product, product_gallery, brand, category, banner. */
@@ -41,6 +42,14 @@ export function ImageField({
     value: StoredImage | null;
     onChange: (image: StoredImage | null) => void;
     disabled?: boolean;
+    /**
+     * Inside a TABLE CELL: no dashed frame, no padding, a 40px preview and no file-path line.
+     *
+     * Added 2026-10-05 for the lookups screen, where one of these per row made every row 211px
+     * tall and pushed the table off the side of a 1366px window. Same control, same upload, same
+     * errors — a size that fits where it is being used.
+     */
+    compact?: boolean;
 }) {
     const t = useT();
     const input = useRef<HTMLInputElement>(null);
@@ -91,20 +100,43 @@ export function ImageField({
 
     const shown = preview ?? value?.url ?? null;
 
+    const replaceLabel = busy
+        ? t('common.uploading', 'جارٍ الرفع…')
+        : value === null
+          ? t('form.choose_image', 'اختر صورة')
+          : t('form.replace_image', 'استبدال');
+
     return (
         <Field
             {...shell}
+            /*
+             * In compact mode the visible label is dropped and kept for screen readers only: this
+             * control sits in a table cell whose COLUMN HEADER already says «الشعار», and printing
+             * it again on all 79 rows was 24px of every row saying what the header said once.
+             * `inline` renders the control without the label column; the `aria-label` below keeps
+             * the accessible name, so nothing is lost to a reader that cannot see the header.
+             */
+            labelHidden={compact}
             error={shell.error ?? failure}
             render={(attrs) => (
-                <div className="space-y-3">
+                <div className={compact ? undefined : 'space-y-3'}>
                     <div
                         className={cn(
-                            'flex items-center gap-4 rounded-lg border border-dashed p-4',
+                            'flex items-center',
+                            compact
+                                ? 'gap-2'
+                                : 'gap-4 rounded-lg border border-dashed p-4',
                             disabled && 'opacity-60',
-                            failure !== null && 'border-destructive/60',
+                            failure !== null && !compact && 'border-destructive/60',
                         )}
                     >
-                        <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-md border bg-muted/40">
+                        <div
+                            className={cn(
+                                'flex shrink-0 items-center justify-center overflow-hidden rounded-md border bg-muted/40',
+                                compact ? 'h-10 w-10' : 'h-20 w-20',
+                            )}
+                            title={value?.file ?? undefined}
+                        >
                             {shown !== null ? (
                                 <img src={shown} alt="" className="h-full w-full object-contain" />
                             ) : (
@@ -127,29 +159,36 @@ export function ImageField({
                                     }
                                 }}
                             />
-                            <div className="flex flex-wrap items-center gap-2">
-                                <Button type="button" variant="outline" size="sm" disabled={disabled || busy} onClick={() => input.current?.click()} className="gap-2">
+                            <div className={cn('flex items-center gap-2', compact ? 'flex-nowrap' : 'flex-wrap')}>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size={compact ? 'icon' : 'sm'}
+                                    disabled={disabled || busy}
+                                    onClick={() => input.current?.click()}
+                                    className={compact ? 'h-8 w-8' : 'gap-2'}
+                                    aria-label={compact ? replaceLabel : undefined}
+                                    title={compact ? replaceLabel : undefined}
+                                >
                                     {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <ImageUp className="h-4 w-4" aria-hidden="true" />}
-                                    {busy
-                                        ? t('common.uploading', 'جارٍ الرفع…')
-                                        : value === null
-                                          ? t('form.choose_image', 'اختر صورة')
-                                          : t('form.replace_image', 'استبدال')}
+                                    {compact ? null : replaceLabel}
                                 </Button>
                                 {value !== null ? (
                                     <Button
                                         type="button"
                                         variant="ghost"
-                                        size="sm"
                                         disabled={disabled || busy}
                                         onClick={() => {
                                             onChange(null);
                                             setPreview(null);
                                         }}
-                                        className="gap-2 text-destructive"
+                                        size={compact ? 'icon' : 'sm'}
+                                        className={cn('text-destructive', compact ? 'h-8 w-8' : 'gap-2')}
+                                        aria-label={compact ? t('common.remove', 'إزالة') : undefined}
+                                        title={compact ? t('common.remove', 'إزالة') : undefined}
                                     >
                                         <Trash2 className="h-4 w-4" aria-hidden="true" />
-                                        {t('common.remove', 'إزالة')}
+                                        {compact ? null : t('common.remove', 'إزالة')}
                                     </Button>
                                 ) : null}
                             </div>
@@ -161,7 +200,7 @@ export function ImageField({
                                 under a picture that was plainly neither. Zeros presented as
                                 measurements are worse than no line: they say the file is broken.
                                 The FILENAME is always shown, because that part is always known. */}
-                            {value !== null ? (
+                            {value !== null && !compact ? (
                                 <p className="truncate text-xs text-muted-foreground" title={value.file}>
                                     <Ltr>
                                         {value.file}
@@ -178,7 +217,7 @@ export function ImageField({
 
                             {/* When the host could not write AVIF, or a rendition was skipped because
                                 the source was too small, say so here rather than in a log nobody reads. */}
-                            {value !== null && value.skipped.length > 0 ? (
+                            {value !== null && !compact && value.skipped.length > 0 ? (
                                 <ul className="space-y-0.5 text-[11px] text-amber-700 dark:text-amber-400">
                                     <Ltr>
                                         {value.skipped.map((reason) => (

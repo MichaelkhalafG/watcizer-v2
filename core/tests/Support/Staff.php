@@ -79,6 +79,30 @@ final class Staff
         return $user;
     }
 
+    /**
+     * The name `core_activity_log.user_name` captures for an account — first and last, or the
+     * email when the account carries neither.
+     *
+     * Composed here rather than asserted as "not empty", because the log CAPTURES the operator's
+     * name at write time (so the row still reads correctly after the account is deleted) and a
+     * test that only checked for a non-empty string would pass on anybody's name, including the
+     * wrong one's.
+     */
+    public static function nameOf(User $user): string
+    {
+        $first = $user->getAttribute('first_name');
+        $last = $user->getAttribute('last_name');
+        $name = trim((is_string($first) ? $first : '').' '.(is_string($last) ? $last : ''));
+
+        if ($name !== '') {
+            return $name;
+        }
+
+        $email = $user->getAttribute('email');
+
+        return is_string($email) ? $email : 'user';
+    }
+
     private static function clear(User $user): void
     {
         foreach (Role::cases() as $role) {

@@ -41,7 +41,7 @@ use Illuminate\Support\Facades\DB;
  * page, the operator reads the dashboard's own field names, which is what `SpecBlocks` holds.
  *
  * @phpstan-type PeekSpec array{label: string, value: string}
- * @phpstan-type Peek array{title: array{ar: string, en: string}, wa_code: string|null, sku: string|null, brand: array{ar: string, en: string}, family: string, family_label: string, cover: string|null, model_number: string|null, specs: list<PeekSpec>}
+ * @phpstan-type Peek array{title: array{ar: string, en: string}, wa_code: string|null, sku: string|null, brand: array{ar: string, en: string}, family: string, family_label: string, cover: string|null, specs: list<PeekSpec>}
  */
 final class ProductPeek
 {
@@ -77,7 +77,7 @@ final class ProductPeek
                 })
                 ->whereIn('p.id', $ids)
                 ->get([
-                    'p.id', 'p.wa_code', 'p.sku', 'p.family', 'p.model_number', 'p.specs',
+                    'p.id', 'p.wa_code', 'p.sku', 'p.family', 'p.specs',
                     'pt_ar.title as title_ar', 'pt_en.title as title_en',
                     'bt_ar.name as brand_ar', 'bt_en.name as brand_en',
                 ]) as $raw
@@ -103,7 +103,6 @@ final class ProductPeek
                 // operator reads "ساعات". The products list translates the same six tokens in
                 // React — same keys, one shared English file, so the two cannot drift.
                 'family_label' => self::familyLabel($family),
-                'model_number' => Row::nstr($row, 'model_number'),
                 'cover' => null,
                 'specs' => [],
                 // Not part of the shape the caller sees — consumed by the spec pass below and

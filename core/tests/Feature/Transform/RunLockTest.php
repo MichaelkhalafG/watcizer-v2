@@ -3,6 +3,7 @@
 use App\Console\Commands\CoreTransformCommand;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Testing\PendingCommand;
+use Tests\Support\Scratch;
 
 use function Pest\Laravel\artisan;
 
@@ -20,10 +21,7 @@ afterEach(function () {
 it('refuses to start while another session holds the transform lock', function () {
     expect(CoreTransformCommand::acquireRunLock(DB::connection('legacy')))->toBeTrue();
 
-    $dir = storage_path('framework/testing/transform-lock-'.getmypid());
-    if (! is_dir($dir)) {
-        mkdir($dir, 0775, true);
-    }
+    $dir = Scratch::dir('transform-lock');
     $pending = artisan('core:transform', ['--audit' => true, '--output' => $dir, '--force' => true]);
     if (! $pending instanceof PendingCommand) {
         throw new RuntimeException('artisan() did not return a PendingCommand');
@@ -32,10 +30,7 @@ it('refuses to start while another session holds the transform lock', function (
 });
 
 it('releases the lock after a run so the next run can start', function () {
-    $dir = storage_path('framework/testing/transform-lock2-'.getmypid());
-    if (! is_dir($dir)) {
-        mkdir($dir, 0775, true);
-    }
+    $dir = Scratch::dir('transform-lock2');
     $pending = artisan('core:transform', ['--audit' => true, '--output' => $dir, '--force' => true]);
     if (! $pending instanceof PendingCommand) {
         throw new RuntimeException('artisan() did not return a PendingCommand');

@@ -57,8 +57,43 @@ class CheckoutCompatController extends Controller
     ) {}
 
     /** POST add_order */
+    /**
+     * Roll back down to `$outer` and no further.
+     *
+     * A bare `DB::rollBack()` rolls back ONE level, and one level below our own is the caller's.
+     * This is a loop rather than a single call because the level can be more than one above
+     * `$outer` if something inside opened a nested transaction of its own.
+     */
+    private static function unwindTo(int $outer): void
+    {
+        while (DB::transactionLevel() > $outer) {
+            DB::rollBack();
+        }
+    }
+
     public function addOrder(Request $request): JsonResponse
     {
+        /*
+         * ── Unwind to the level we FOUND, not to zero (2026-10-05) ──────────────────
+         *
+         * `DB::commit()` below is INSIDE this `try`, and four things run after it: the skipped-
+         * promotion counter (a database write), the order e-mail, the Paymob leg (an outbound HTTP
+         * call) and the order-number read. A throw from any of them lands in
+         * `catch (Throwable) { DB::rollBack(); }` at a moment when this method's own transaction is
+         * already committed — so the rollback unwinds whatever transaction is open OUTSIDE this
+         * call instead.
+         *
+         * In production that is usually nothing. The test suite runs every request inside a
+         * transaction, so it is the suite's, and once it is gone everything that TEST writes
+         * afterwards is permanent — the same failure `PromotionController::preview()` was fixed
+         * for on the same day. Found there by asserting `transactionLevel() >= 1` after every
+         * test, and found here by an audit that went looking for the same shape.
+         *
+         * `$outer` makes every rollback in this method a no-op once our own transaction is gone,
+         * which is the correct behaviour on all four paths.
+         */
+        $outer = DB::transactionLevel();
+
         DB::beginTransaction();
 
         try {
@@ -118,7 +153,7 @@ class CheckoutCompatController extends Controller
                 }
             }
             if ($lines === []) {
-                DB::rollBack();
+                self::unwindTo($outer);
 
                 return response()->json(['success' => false, 'message' => 'Cart is empty'], 422);
             }
@@ -126,7 +161,7 @@ class CheckoutCompatController extends Controller
             // ── authoritative server-side pricing ───────────────────────────────
             $priced = $this->compat->checkout->priceLines($lines);
             if (isset($priced['error'])) {
-                DB::rollBack();
+                self::unwindTo($outer);
 
                 return response()->json($priced['error'], 422);
             }
@@ -134,7 +169,7 @@ class CheckoutCompatController extends Controller
             $serverTotal = round($priced['total'] + $this->compat->checkout->shippingCost($addressId), 2);
             $clientTotal = round((float) Val::str($data, 'total_price_for_order'), 2);
             if (abs($clientTotal - $serverTotal) > 0.01) {
-                DB::rollBack();
+                self::unwindTo($outer);
 
                 return response()->json([
                     'success' => false,
@@ -261,16 +296,16 @@ class CheckoutCompatController extends Controller
                 'order_number' => $this->compat->checkout->orderNumber($orderId),
             ], 200);
         } catch (InsufficientStock|InsufficientOfferStock $e) {
-            DB::rollBack();
+            self::unwindTo($outer);
             $response = CompatCheckout::insufficientStockResponse($e);
 
             return response()->json($response['body'], $response['status']);
         } catch (ValidationException $e) {
-            DB::rollBack();
+            self::unwindTo($outer);
 
             return response()->json(['success' => false, 'message' => 'Validation failed', 'errors' => $e->errors()], 422);
         } catch (Throwable $e) {
-            DB::rollBack();
+            self::unwindTo($outer);
             Log::error($e);
 
             return response()->json(['success' => false, 'message' => 'An error occurred', 'ref' => (string) Str::uuid()], 500);

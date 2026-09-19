@@ -197,7 +197,7 @@ export default function StorefrontEdit({ storefront, locale_options }: { storefr
                             <p>
                                 {t(
                                     'storefronts.money_rewards_warning_safe',
-                                    'حتى ذلك الحين اترك هذا مغلقًا: القواعد التي تمنح هدايا مجانية تعمل على كل المتاجر بلا استثناء، لأن الهدية بسعر صفر لا تغيّر الإجمالي.',
+                                    'حتى ذلك الحين اترك هذا مغلقًا. القواعد التي تمنح هدايا مجانية تعمل على كل المتاجر في كل الأحوال.',
                                 )}
                             </p>
                         </Alert>

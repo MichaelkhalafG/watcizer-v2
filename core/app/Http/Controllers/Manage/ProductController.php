@@ -20,6 +20,7 @@ use App\Models\Storefront\Storefront;
 use App\Storefront\ImageUrl;
 use App\Support\Coerce;
 use App\Support\FullReplace;
+use App\Support\LocalisedName;
 use App\Support\ManageText;
 use App\Support\Table\TableQuery;
 use App\Transform\Row;
@@ -124,6 +125,9 @@ final class ProductController
                 // so the whitelist, the URL and the reset button all know about them.
                 'category' => self::optionValues($categories),
                 'flag' => ['low_stock', 'no_arabic', 'unplaced', 'absent', 'has_variants', 'archived',
+                    // …and the one the dropped UNIQUE index used to make impossible: a supplier
+                    // code carried by more than one product (2026-10-05).
+                    'shared_sku',
                     // Wave 4D, the importer's two: everything a row is MISSING (derived, never
                     // stored — a marker that cannot go stale while somebody fixes the data), and
                     // the Arabic titles a machine wrote, so the team can work through them.
@@ -170,8 +174,8 @@ final class ProductController
              * with the same text is two Englishes waiting to drift.
              */
             ->exportable([
-                'wa_code' => ManageText::t('products.code', 'الكود'),
-                'sku' => ManageText::t('products.supplier_code', 'كود المورّد'),
+                'wa_code' => ManageText::t('products.wa_code', 'الكود الداخلي'),
+                'sku' => ManageText::t('products.sku', 'رقم الموديل (SKU)'),
                 'title' => [ManageText::t('common.name_ar', 'الاسم (عربي)'), fn (array $row): string => Coerce::str(Coerce::arr($row['title'] ?? null)['ar'] ?? null)],
                 'title_en' => [ManageText::t('common.name_en', 'الاسم (إنجليزي)'), fn (array $row): string => Coerce::str(Coerce::arr($row['title'] ?? null)['en'] ?? null)],
                 /*
@@ -244,10 +248,24 @@ final class ProductController
             $cover = $extras['covers'][$id] ?? null;
             $titleAr = Row::nstr($row, 'title_ar');
 
+            // Lowercased to match `pageExtras`' key: the column's collation is case-insensitive
+            // and PHP's array lookup is not — the real pair differs by one letter's case.
+            $code = Row::nstr($row, 'sku');
+            $sharedCode = $code === null || $code === ''
+                ? 0
+                : ($extras['shared_sku'][mb_strtolower($code)] ?? 0);
+
             return [
                 'id' => $id,
                 'wa_code' => Row::str($row, 'wa_code'),
                 'sku' => Row::nstr($row, 'sku'),
+                /*
+                 * How many live products carry this supplier code, counting this one — so `2` is
+                 * "shared with one other" and `0`/`1` is "nobody else". Shown beside the code and
+                 * selectable with `flag=shared_sku`, because since 2026-10-05 the database allows
+                 * it and a thing the database allows has to be a thing the screen can show.
+                 */
+                'sku_shared' => $sharedCode,
                 'title' => [
                     'ar' => $titleAr ?? '',
                     'en' => Row::nstr($row, 'title_en') ?? '',
@@ -946,6 +964,34 @@ final class ProductController
             }),
             'machine_ar' => $query->where('ar.is_machine', 1),
             /*
+             * ── A supplier code two products carry (2026-10-05) ─────────────────────────────
+             *
+             * This filter exists because the UNIQUE index that used to forbid this was dropped:
+             * the SKU is the manufacturer's code and two of our products may legitimately share
+             * one. The constraint moved out of the schema and onto the screen, and this is the
+             * screen half — without it, a duplicate is simply invisible until a customer finds it.
+             *
+             * `limit(1)` for the same reason as every EXISTS above: an un-flattened subquery keeps
+             * the driving table's primary-key ordering. The probe is served by
+             * `catalog_products_sku_index`, which the same migration added in the unique index's
+             * place precisely so this question stays cheap.
+             *
+             * The comparison is the COLUMN's own collation, which is case-insensitive — so
+             * `Ap0012` and `AP0012` are one code here, exactly as the database read them when it
+             * still refused the pair.
+             */
+            'shared_sku' => $query
+                ->whereNotNull('p.sku')
+                ->where('p.sku', '<>', '')
+                ->whereExists(function (Builder $sub): void {
+                    $sub->from('catalog_products as dup')
+                        ->whereColumn('dup.sku', 'p.sku')
+                        ->whereColumn('dup.id', '<>', 'p.id')
+                        ->whereNull('dup.deleted_at')
+                        ->selectRaw('1')
+                        ->limit(1);
+                }),
+            /*
              * M1s. An EXISTS over the image rows, like the missing_data conditions beside it —
              * renditions_failed is nullable and null on the overwhelming majority of rows, so this
              * selects the handful that need somebody.
@@ -1047,7 +1093,7 @@ final class ProductController
      * grouped query, never per row (AGENTS §2.24).
      *
      * @param  list<object>  $rows
-     * @return array{covers: array<int, string>, variants: array<int, int>, storefronts: array<int, array<int, bool>>, placement: array<int, array{nodes: int, primaries: int}>, image_problem: array<int, bool>}
+     * @return array{covers: array<int, string>, variants: array<int, int>, storefronts: array<int, array<int, bool>>, placement: array<int, array{nodes: int, primaries: int}>, image_problem: array<int, bool>, shared_sku: array<string, int>}
      */
     private static function pageExtras(array $rows, ?int $storefrontId = null): array
     {
@@ -1056,7 +1102,7 @@ final class ProductController
             $ids[] = Row::int(Row::cast($raw), 'id');
         }
         if ($ids === []) {
-            return ['covers' => [], 'variants' => [], 'storefronts' => [], 'placement' => [], 'image_problem' => []];
+            return ['covers' => [], 'variants' => [], 'storefronts' => [], 'placement' => [], 'image_problem' => [], 'shared_sku' => []];
         }
 
         // Placement shape on THIS storefront: how many nodes, and how many of them are primary.
@@ -1089,6 +1135,47 @@ final class ProductController
         ) {
             $row = Row::cast($raw);
             $visibility[Row::int($row, 'product_id')][Row::int($row, 'storefront_id')] = Row::bool($row, 'is_visible');
+        }
+
+        /*
+         * ── Supplier codes this page shares with another product (2026-10-05) ───────────────
+         *
+         * One grouped read for the page's codes, not one per row. It answers the question the
+         * dropped UNIQUE index used to answer by refusing: *is anybody else carrying this?*
+         *
+         * Keyed LOWERCASE on both sides, and that is load-bearing: the column's collation is
+         * case-insensitive, so MariaDB groups `Ap0012` with `AP0012` and hands back whichever
+         * casing it met first — while PHP's array lookup is case-sensitive and would miss the
+         * other row. The real pair in this catalogue differs by exactly one letter's case.
+         */
+        $sharedSku = [];
+        $codes = [];
+        foreach ($rows as $raw) {
+            $code = Row::nstr(Row::cast($raw), 'sku');
+            if ($code !== null && $code !== '') {
+                $codes[mb_strtolower($code)] = $code;
+            }
+        }
+        /*
+         * Run unconditionally, even when the page holds no codes at all.
+         *
+         * Skipping it on an empty list looks like a free optimisation and is not: it makes the
+         * number of queries a page costs depend on its CONTENT, and `ProductListTest` asserts the
+         * opposite — that a page of 100 costs exactly what a page of 25 costs, which is the
+         * property that keeps this list free of N+1 reads. An empty `whereIn` is one round trip
+         * that returns nothing; a conditional read is a count that moves for reasons nobody can
+         * see from the outside.
+         */
+        foreach (
+            DB::table('catalog_products')
+                ->whereIn('sku', array_values($codes))
+                ->whereNull('deleted_at')
+                ->groupBy('sku')
+                ->havingRaw('COUNT(*) > 1')
+                ->get(['sku', DB::raw('COUNT(*) as shared')]) as $raw
+        ) {
+            $row = Row::cast($raw);
+            $sharedSku[mb_strtolower(Row::str($row, 'sku'))] = Row::int($row, 'shared');
         }
 
         $variants = [];
@@ -1135,7 +1222,7 @@ final class ProductController
         }
 
         return ['covers' => $covers, 'variants' => $variants, 'storefronts' => $visibility,
-            'placement' => $placement, 'image_problem' => $imageProblem];
+            'placement' => $placement, 'image_problem' => $imageProblem, 'shared_sku' => $sharedSku];
     }
 
     /**
@@ -1209,7 +1296,7 @@ final class ProductController
                 'id' => $productId,
                 'wa_code' => Row::str($product, 'wa_code'),
                 'sku' => Row::nstr($product, 'sku') ?? '',
-                'model_number' => Row::nstr($product, 'model_number') ?? '',
+
                 'hs_code' => Row::nstr($product, 'hs_code') ?? '',
                 'brand_id' => (string) Row::int($product, 'brand_id'),
                 'grade_id' => self::idString(Row::nint($product, 'grade_id')),
@@ -1294,6 +1381,25 @@ final class ProductController
              */
             'brand_names' => self::namePairs('catalog_brands', 'catalog_brand_translations', 'brand_id'),
             'category_names' => self::categoryNamePairs(),
+            /*
+             * The same, for the three lookups the rebuilt generator describes the product WITH
+             * (item 5, 2026-09-19): the audience, the material and the colour.
+             *
+             * The brief asked for keywords "drawn from what the product IS (brand, family,
+             * material, colour, gender, category)". The form already holds those as ids — it draws
+             * pickers with them — but a picker's label is in the ACTIVE locale only, and a
+             * generator that writes an Arabic sentence and an English one in the same click needs
+             * both names at once. So the three lists travel as name pairs, exactly as the brands
+             * and the category nodes do.
+             *
+             * Three lists and not eleven: the rest (shapes, closures, movements, units) do not
+             * appear in a sentence anybody would click.
+             */
+            'lookup_names' => [
+                'genders' => self::namePairs('catalog_genders', 'catalog_gender_translations', 'gender_id'),
+                'colors' => self::namePairs('catalog_colors', 'catalog_color_translations', 'color_id'),
+                'materials' => self::namePairs('catalog_materials', 'catalog_material_translations', 'material_id'),
+            ],
             'families' => self::familyOptions(),
             'variants' => [
                 'rows' => $productId === null ? [] : $this->variants->rows($productId),
@@ -1318,8 +1424,21 @@ final class ProductController
     {
         $base = [
             'wa_code' => ['required', 'string', 'max:64', Rule::unique('catalog_products', 'wa_code')->ignore($productId)],
-            'sku' => ['nullable', 'string', 'max:64', Rule::unique('catalog_products', 'sku')->ignore($productId)],
-            'model_number' => ['nullable', 'string', 'max:100'],
+            /*
+             * NOT unique, since 2026-10-05.
+             *
+             * `sku` is the manufacturer's code: it comes from outside, it may be empty, and two of
+             * our products may legitimately carry one — the developer's own definition, and the
+             * merge migration hit a real pair (413 and 414, `Ap0012`/`AP0012`). The UNIQUE index
+             * that contradicted it has been dropped, and this rule went with it: a form that
+             * refuses a true value is the same mistake one layer up.
+             *
+             * Duplicates are not unnoticed, they are SHOWN — the list marks a shared code beside
+             * it and `?filters[flag]=shared_sku` selects every row carrying one, so somebody can
+             * judge whether it is a supplier's habit or a typo. `max:64` is the column.
+             */
+            'sku' => ['nullable', 'string', 'max:64'],
+
             'hs_code' => ['nullable', 'string', 'max:32'],
             'brand_id' => ['required', 'integer', Rule::exists('catalog_brands', 'id')],
             'grade_id' => ['nullable', 'integer', Rule::exists('catalog_grades', 'id')],
@@ -1846,7 +1965,7 @@ final class ProductController
         $payload = [
             'wa_code' => Row::str($product, 'wa_code'),
             'sku' => Row::nstr($product, 'sku'),
-            'model_number' => Row::nstr($product, 'model_number'),
+
             'hs_code' => Row::nstr($product, 'hs_code'),
             'brand_id' => Row::int($product, 'brand_id'),
             'grade_id' => Row::nint($product, 'grade_id'),
@@ -2214,9 +2333,20 @@ final class ProductController
             $id = Row::int($row, 'id');
             $depth = Row::int($row, 'depth');
             $path = Row::str($row, 'path');
-            $ar = trim(Row::nstr($row, 'name_ar') ?? '');
+            /*
+             * The READER's language, not Arabic-always (2026-10-05).
+             *
+             * This one line built four things — the form's category picker, its primary-category
+             * select, the products list's category filter and the placement tree — and every one
+             * of them showed an English operator sixty-one Arabic names. The client could not have
+             * corrected it: by the time the option reached the browser it was a single string.
+             */
             $en = trim(Row::nstr($row, 'name_en') ?? '');
-            $label = $ar !== '' ? $ar : ($en !== '' ? $en : (Row::nstr($row, 'slug') ?? ('#'.$id)));
+            $label = LocalisedName::pick(
+                Row::nstr($row, 'name_ar'),
+                $en,
+                Row::nstr($row, 'slug') ?? ('#'.$id),
+            );
 
             $inDeadTree = false;
             foreach ($legacyRoots as $root) {

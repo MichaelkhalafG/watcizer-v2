@@ -1,4 +1,5 @@
 import { Info } from 'lucide-react';
+import type { ReactNode } from 'react';
 
 import { SelectField, TextField } from '@/components/form/TextField';
 import { Alert } from '@/components/ui/alert';
@@ -15,6 +16,8 @@ export interface SpecField {
     unit?: string;
     /** A lookup key from config('catalog.lookups'). */
     lookup?: string;
+    /** One line under the control saying what to type, when the label cannot say it alone. */
+    hint?: string;
 }
 
 export interface SpecBlockDef {
@@ -76,6 +79,7 @@ export function SpecBlock({
     values,
     onChange,
     errors,
+    extra,
 }: {
     explanation: FamilyExplanation;
     blocks: Record<string, SpecBlockDef>;
@@ -83,6 +87,16 @@ export function SpecBlock({
     values: SpecValues;
     onChange: (values: SpecValues) => void;
     errors: Record<string, string>;
+    /**
+     * Fields that belong BESIDE the block on screen without belonging to it in the schema.
+     *
+     * `catalog_products.warranty_years` is the one today: it is a column of the product, not of
+     * `catalog_product_watch_specs`, and it does not move — but a buyer asks about the guarantee
+     * in the same breath as the water resistance, and it used to be asked six fields away on the
+     * price tab. A slot rather than a config entry, because the config drives what the SERVER
+     * validates and writes into the specs table, and this field is neither.
+     */
+    extra?: ReactNode;
 }) {
     const t = useT();
     const block = blocks[explanation.family];
@@ -167,6 +181,7 @@ export function SpecBlock({
                             if (field.type === 'boolean') {
                                 return (
                                     <SwitchField
+                                        hint={field.hint}
                                         key={field.key}
                                         label={field.label}
                                         error={error}
@@ -179,6 +194,7 @@ export function SpecBlock({
                             if (field.type === 'lookup') {
                                 return (
                                     <SelectField
+                                        hint={field.hint}
                                         key={field.key}
                                         label={field.label}
                                         error={error}
@@ -195,6 +211,7 @@ export function SpecBlock({
                             return (
                                 <div key={field.key} className={field.unit === undefined ? '' : 'grid grid-cols-[1fr_8rem] gap-2'}>
                                     <TextField
+                                        hint={field.hint}
                                         label={field.label}
                                         error={error}
                                         dir="ltr"
@@ -217,6 +234,11 @@ export function SpecBlock({
                         })}
                     </div>
                 )}
+
+                {/* Outside the `block === undefined` branch on purpose: the warranty is a
+                    question about any product, so a family with no specification block of its
+                    own still asks it. Same grid, so it lines up with the fields above. */}
+                {extra === undefined ? null : <div className="grid gap-4 sm:grid-cols-2">{extra}</div>}
             </CardContent>
         </Card>
     );

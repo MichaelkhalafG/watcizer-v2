@@ -152,6 +152,22 @@ final class ActivityLog
      * form and `99.50` from a column are the same price, and a log that reported that as a change
      * every time would be noise indistinguishable from signal.
      *
+     * ── Both sides, not just `$after` (2026-10-05) ──────────────────────────────────────────
+     *
+     * This walked `$after` alone, and the consequence was that a DELETE recorded nothing at all.
+     * Every delete in the codebase passes what the row WAS and no `$after` — there is no after, the
+     * row is gone — so the loop had nothing to iterate and `changes` went in as NULL. The log knew
+     * that a category was deleted and by whom, and could not say what the category had been.
+     *
+     * It was not a reading of the code: `core_activity_log` on the development database held ten
+     * `revoked` rows, and all ten had a null `changes`, against zero of the ten `granted` rows
+     * beside them — the same screen, the same writer, one passing `before` and one `after`.
+     *
+     * Walking the union fixes it in one place instead of at fourteen call sites, and a field that
+     * is in `$before` and not in `$after` is exactly what `from: value, to: null` means. A CREATE
+     * is unaffected (nothing in `$before`), and an update posts both sides, so nothing about the
+     * existing rows changes shape.
+     *
      * @param  array<string, mixed>  $before
      * @param  array<string, mixed>  $after
      * @return array<string, array{from: mixed, to: mixed}>
@@ -160,8 +176,11 @@ final class ActivityLog
     {
         $changes = [];
 
-        foreach ($after as $field => $newValue) {
+        // `+` keeps the left operand's value for a shared key — and neither value is wanted here,
+        // only the KEYS, so the union is walked once and both sides are read per field.
+        foreach (array_keys($after + $before) as $field) {
             $oldValue = $before[$field] ?? null;
+            $newValue = $after[$field] ?? null;
 
             if (self::same($oldValue, $newValue)) {
                 continue;
