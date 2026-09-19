@@ -6,6 +6,7 @@ use App\Transform\Row;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Testing\PendingCommand;
 use Tests\Support\CatalogFixture;
+use Tests\Support\Gates;
 use Tests\Support\LedgerState;
 use Tests\Support\T;
 
@@ -202,6 +203,13 @@ it('INSERT-ONLY: a NEW product gets its rows on the next run, visible by default
 });
 
 it('never lets the transform be refused by the pre-switch block it does not go through', function () {
+    /*
+     * This test is ABOUT the refusal, so it asks for the mode that refuses (item 5, 2026-09-18).
+     * The shipped default is `warn` — the gates carry their sentence as a caveat and the controls
+     * work. `enforce` is still supported and still has to be proved. {@see Tests\Support\Gates}.
+     */
+    Gates::enforcePreSwitch();
+
     /*
      * The non-negotiable, asserted rather than assumed: `PreSwitch` gates the DASHBOARD writers,
      * and the transform writes through `App\Transform\CategoryNodes` / `Writer`. If a future edit

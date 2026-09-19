@@ -7,7 +7,6 @@ use App\Domain\Orders\NewOrders;
 use App\Models\Storefront\Storefront;
 use App\Models\User;
 use App\Support\ManageText;
-use App\Support\Sql;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -136,7 +135,11 @@ final class HomeController
                 'key' => 'active_products',
                 'label' => ManageText::t('home.stat_active_products', 'منتجات مفعّلة'),
                 'value' => DB::table('catalog_products')->whereNull('deleted_at')->where('is_active', 1)->count(),
-                'hint' => 'is_active = 1',   // i18n-exempt: a column name and its value, not a sentence
+                // The exemption that used to sit here read "a column name and its value, not a
+                // sentence". True, and beside the point: it was printed under a KPI tile on the
+                // first screen the shop floor opens every morning (D-18). A column name is not a
+                // sentence and it is not an explanation either.
+                'hint' => ManageText::t('home.stat_active_products_hint', 'معروضة للبيع، غير موقوفة'),
             ],
             [
                 'key' => 'orders_today',
@@ -184,12 +187,10 @@ final class HomeController
         $columns = InventoryService::columns();
 
         return [
-            'out_of_stock' => $live()->where('in_stock', 0)->count(),
-            // At or below the product's OWN threshold, and still orderable — the list a buyer acts on.
-            'low_stock' => $live()->where('in_stock', 1)
-                // Built by App\Support\Sql, the one place a column name becomes SQL text.
-                ->whereRaw(Sql::belowLowStockThreshold())
-                ->count(),
+            // Both numbers come from InventoryService, which owns the one definition the stock
+            // screen counts off too — see the note on `lowStockProducts()`.
+            'out_of_stock' => InventoryService::outOfStockProducts()->count(),
+            'low_stock' => InventoryService::lowStockProducts()->count(),
             'variants' => DB::table('catalog_product_variants')->count(),
             'threshold_products' => $live()->where('low_stock_threshold', '>', 0)->count(),
             'buckets' => [

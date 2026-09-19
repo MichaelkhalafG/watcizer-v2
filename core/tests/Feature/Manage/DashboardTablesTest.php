@@ -95,6 +95,10 @@ it('names EVERY table the dashboard authors, in order, so adding one is a delibe
         'promotion_order_discounts',
         'core_user_preferences',
         'core_activity_log',
+        // Articles join the list in item 14 (2026-09-18). Core-owned because the legacy
+        // `blogs` tables are empty and carry no slug, no published flag and no SEO fields —
+        // and a rebuild that dropped these would delete the shop's writing.
+        'core_blogs', 'core_blog_translations',
     ]);
 
     foreach (CoreChecksumCommand::DASHBOARD_TABLES as $table) {

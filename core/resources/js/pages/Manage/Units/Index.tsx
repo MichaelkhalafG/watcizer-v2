@@ -52,10 +52,9 @@ interface Unit {
 interface Props {
     units: Unit[];
     columns: string[];
-    pre_switch_notice: { pre_switch: boolean; message: string } | null;
 }
 
-export default function UnitsIndex({ units, pre_switch_notice }: Props) {
+export default function UnitsIndex({ units }: Props) {
     const t = useT();
     const [mergeFrom, setMergeFrom] = useState<Unit | null>(null);
     const [mergeInto, setMergeInto] = useState<string>("");
@@ -110,15 +109,6 @@ export default function UnitsIndex({ units, pre_switch_notice }: Props) {
             actions={<ExportLink count={units.length} />}
         >
             <div className="space-y-4">
-                {pre_switch_notice ? (
-                    <div
-                        className="rounded-lg border border-amber-300/60 bg-amber-50/60 p-4 text-sm leading-relaxed dark:border-amber-900/50 dark:bg-amber-950/20"
-                        role="note"
-                    >
-                        {pre_switch_notice.message}
-                    </div>
-                ) : null}
-
                 <div className="rounded-lg border bg-card p-4 text-sm leading-relaxed">
                     <p>
                         {t(

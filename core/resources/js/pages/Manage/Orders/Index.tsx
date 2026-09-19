@@ -2,12 +2,14 @@ import { Link } from "@inertiajs/react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input, Select } from "@/components/ui/input";
+import { Select } from "@/components/ui/input";
+import { Name, Num } from "@/components/ui/bidi";
 import { DataTable, type Column } from "@/components/table/DataTable";
+import { DateRangeFilter } from "@/components/table/DateRangeFilter";
 import ManageLayout from "@/layouts/ManageLayout";
 import type { TablePayload } from "@/types";
-import { Ltr } from "@/components/ui/bidi";
 import { useT } from "@/lib/i18n";
+import { methodLabel, providerLabel } from "@/lib/labels";
 
 /**
  * The order queue (wave 4C).
@@ -97,10 +99,20 @@ export default function OrdersIndex({ table, filters, abilities }: Props) {
                     >
                         {row.order_number}
                     </Link>
-                    <div className="text-xs text-muted-foreground">
-                        {row.customer}
+                    {/* Name and phone are laid out by FLEX, not by the bidi algorithm. A bare
+                        `{row.customer}` beside a `dir="ltr"` span put the separator at the far
+                        left of the cell and glued the phone to the name: `· 01022315422Adam
+                        Ayoub`. Flex gives the separator its own box and a real gap, and the two
+                        `bdi` wrappers keep each value in its own direction without touching the
+                        cell's alignment — a customer name may be Arabic or Latin, so `Name`
+                        (dir="auto") decides per value. */}
+                    <div className="flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
+                        <Name>{row.customer}</Name>
                         {row.phone ? (
-                            <span dir="ltr"> · {row.phone}</span>
+                            <>
+                                <span aria-hidden="true">·</span>
+                                <Num>{row.phone}</Num>
+                            </>
                         ) : null}
                     </div>
                 </div>
@@ -137,18 +149,22 @@ export default function OrdersIndex({ table, filters, abilities }: Props) {
             hideOnMobile: true,
             cell: (row) => (
                 <div className="space-y-0.5 text-sm">
+                    {/* Item 10: words, not tokens. This column is read down a queue of
+                        orders, so `paymob · card` repeated forty times taught nobody anything. */}
                     {row.paid_via_provider ? (
                         <div>
-                            <Ltr>
-                                {row.paid_via_provider}
-                                {row.paid_via_method
-                                    ? ` · ${row.paid_via_method}`
-                                    : ""}
-                            </Ltr>
+                            {providerLabel(t, row.paid_via_provider)}
+                            {row.paid_via_method
+                                ? ` · ${methodLabel(t, row.paid_via_method)}`
+                                : ""}
                         </div>
                     ) : (
                         <span className="text-muted-foreground">
-                            {row.payment_method ?? "—"}
+                            {/* The legacy chosen-method column, which holds its own vocabulary
+                                (`cod`, `cash`, `online`) — the same map covers it. */}
+                            {row.payment_method === null
+                                ? "—"
+                                : methodLabel(t, row.payment_method)}
                         </span>
                     )}
                 </div>
@@ -282,9 +298,12 @@ export default function OrdersIndex({ table, filters, abilities }: Props) {
                             <option value="">
                                 {t("orders.all_providers", "كل المزوّدين")}
                             </option>
+                            {/* Item 10: the server sends these options with the stored token in
+                                BOTH fields, so the filter read `paymob` while the column beside it
+                                now reads the company name. */}
                             {filters.providers.map((option) => (
                                 <option key={option.value} value={option.value}>
-                                    {option.label}
+                                    {providerLabel(t, option.value)}
                                 </option>
                             ))}
                         </Select>
@@ -305,28 +324,21 @@ export default function OrdersIndex({ table, filters, abilities }: Props) {
                             </option>
                             {filters.methods.map((option) => (
                                 <option key={option.value} value={option.value}>
-                                    {option.label}
+                                    {methodLabel(t, option.value)}
                                 </option>
                             ))}
                         </Select>
 
-                        <Input
-                            type="date"
-                            aria-label={t("common.from_date", "من تاريخ")}
-                            className="w-[10rem]"
-                            value={current.from ?? ""}
-                            onChange={(event) =>
-                                setFilter("from", event.target.value || null)
-                            }
-                        />
-                        <Input
-                            type="date"
-                            aria-label={t("common.to_date", "إلى تاريخ")}
-                            className="w-[10rem]"
-                            value={current.to ?? ""}
-                            onChange={(event) =>
-                                setFilter("to", event.target.value || null)
-                            }
+                        {/* An order queue is filtered by "today" and "this week" far more often
+                            than by a typed pair of dates, which is why the presets are here
+                            (§2.8). */}
+                        <DateRangeFilter
+                            from={current.from ?? null}
+                            to={current.to ?? null}
+                            onChange={(from, to) => {
+                                setFilter("from", from);
+                                setFilter("to", to);
+                            }}
                         />
                     </>
                 )}

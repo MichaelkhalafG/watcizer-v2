@@ -154,10 +154,21 @@ export function ImageField({
                                 ) : null}
                             </div>
 
+                            {/* The measurements are printed only when they were MEASURED (D-15).
+                                A freshly uploaded image arrives with real numbers; one loaded from
+                                a stored path arrives as zeros, because the path is all the row
+                                holds. Every saved brand logo therefore read `… · 0×0 · 0 KB`
+                                under a picture that was plainly neither. Zeros presented as
+                                measurements are worse than no line: they say the file is broken.
+                                The FILENAME is always shown, because that part is always known. */}
                             {value !== null ? (
                                 <p className="truncate text-xs text-muted-foreground" title={value.file}>
                                     <Ltr>
-                                        {value.file} · {value.width}×{value.height} · {Math.round(value.bytes / 1024)} KB
+                                        {value.file}
+                                        {value.width > 0 && value.height > 0
+                                            ? ` · ${value.width}×${value.height}`
+                                            : ''}
+                                        {value.bytes > 0 ? ` · ${Math.round(value.bytes / 1024)} KB` : ''}
                                         {Object.keys(value.renditions).length > 0
                                             ? ` · ${t('form.rendition_count', ':count أحجام', { count: Object.keys(value.renditions).length })}`
                                             : ''}

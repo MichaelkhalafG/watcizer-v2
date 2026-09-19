@@ -135,6 +135,14 @@ final class CoreChecksumCommand extends Command
          * old, so it is the last one that may ever be dropped.
          */
         'core_activity_log',
+        /*
+         * Articles join the list in wave 4D (item 14, developer 2026-09-18).
+         *
+         * An admin types every word, the legacy `blogs` tables are empty and have no slug, no
+         * published flag and no SEO fields, and no transform reads or writes these. A rebuild that
+         * dropped them would delete the shop's articles and the URLs they are published under.
+         */
+        'core_blogs', 'core_blog_translations',
     ];
 
     /**

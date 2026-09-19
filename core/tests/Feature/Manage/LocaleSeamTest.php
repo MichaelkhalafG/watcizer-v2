@@ -56,24 +56,49 @@ it('applies the operator CHOSEN locale to the request, so __() resolves against 
     expect(T::str($props['locale'] ?? null))->toBe('en');
 });
 
-it('does NOT flip the writing direction, because the text is still Arabic', function () {
+it('FLIPS the writing direction with the chosen locale (2026-09-17)', function () {
     /*
-     * The one thing step 0 must not do. Mirroring the shell to `ltr` while all 1 422 labels in it
-     * are Arabic would be a regression wearing the costume of a feature — so `dir` follows the
-     * language the dashboard is WRITTEN in, and step 1 deletes that constant.
+     * ── The assertion this replaced, and why the replacement is not a reversal ──────────────
+     *
+     * This used to assert the OPPOSITE: that `dir` stayed `rtl` even for an English operator. That
+     * was correct while the shell was 1,422 inline Arabic literals — mirroring the layout around
+     * Arabic text would have been a regression wearing the costume of a feature, and the test said
+     * so.
+     *
+     * The condition it named has been met. English coverage is 99.8%, so an operator who picks
+     * English reads English, and the pin became the defect: English words in a right-to-left shell.
+     * The test now pins the behaviour the old one promised would come.
      */
     $user = Staff::admin();
-    Preferences::setLocale($user, 'en');
-    actingAs($user);
 
-    expect(T::str(Props::of(get('/manage'))['dir'] ?? null))->toBe('rtl')
-        ->and(Preferences::TEXT_LOCALE)->toBe('ar')
-        ->and(Preferences::TEXT_DIR)->toBe('rtl');
+    Preferences::setLocale($user, 'en');
+    expect(T::str(Props::of(actingAs($user)->get('/manage'))['dir'] ?? null))->toBe('ltr');
+
+    // …and Arabic still gets the layout it has always had, which is the half that must not break.
+    Preferences::setLocale($user, 'ar');
+    expect(T::str(Props::of(actingAs($user)->get('/manage'))['dir'] ?? null))->toBe('rtl');
 });
 
-it('is INERT: an English operator sees exactly what an Arabic one sees', function () {
-    // The proof that nothing regressed. Same page, same rendered props, two locales — because the
-    // dictionaries are empty and every string is still its inline literal.
+it('derives the direction from the locale rather than storing a second decision', function () {
+    // A third locale must not need anybody to remember to add a direction for it.
+    expect(Preferences::directionFor('ar'))->toBe('rtl')
+        ->and(Preferences::directionFor('en'))->toBe('ltr')
+        ->and(Preferences::directionFor('fr'))->toBe('ltr');
+});
+
+it('changes only the LANGUAGE and the direction — the data is identical in both locales', function () {
+    /*
+     * ── What this test used to assert, and why the change is the point ──────────────────────
+     *
+     * It was called "is INERT" and it listed `dir` among the props that must be byte-identical
+     * across locales. That was the correct assertion for step 0, when the dictionaries were empty
+     * and the locale toggle was a seam that changed nothing anybody could see.
+     *
+     * Step 1 landed on 2026-09-17: the direction now follows the chosen locale, so `dir` is
+     * deliberately DIFFERENT and belongs on the other side of this test. Everything else must still
+     * match, and that is the half worth keeping — a locale switch must never change the DATA, only
+     * how it is written and which way it runs.
+     */
     $user = Staff::admin();
 
     Preferences::setLocale($user, 'ar');
@@ -82,10 +107,16 @@ it('is INERT: an English operator sees exactly what an Arabic one sees', functio
     Preferences::setLocale($user, 'en');
     $english = Props::of(actingAs($user)->get('/manage/storefronts/1/banners'));
 
-    // `locale` is the one prop allowed to differ — it is the thing that was set.
-    foreach (['table', 'targets', 'media_type', 'dir'] as $key) {
+    // The DATA the screen renders is the same in either language.
+    foreach (['table', 'targets', 'media_type'] as $key) {
         expect(json_encode($english[$key] ?? null))->toBe(json_encode($arabic[$key] ?? null), "[{$key}] differs between locales");
     }
+
+    // …and the two things that SHOULD differ, do.
+    expect($english['locale'] ?? null)->toBe('en')
+        ->and($arabic['locale'] ?? null)->toBe('ar')
+        ->and($english['dir'] ?? null)->toBe('ltr')
+        ->and($arabic['dir'] ?? null)->toBe('rtl');
 });
 
 it('carries the shell keys in English and nothing in Arabic', function () {

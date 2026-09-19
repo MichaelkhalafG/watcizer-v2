@@ -2,14 +2,18 @@
 
 namespace App\Http\Controllers\Manage;
 
+use App\Domain\Catalog\ProductSearch;
 use App\Domain\Inventory\Actor;
 use App\Domain\Inventory\InsufficientStock;
 use App\Domain\Inventory\InventoryService;
 use App\Domain\Inventory\StockTarget;
 use App\Support\Coerce;
 use App\Support\ManageText;
+use App\Support\Sql;
 use App\Support\Table\TableQuery;
 use App\Transform\Row;
+use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
+use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Database\Query\JoinClause;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -64,10 +68,23 @@ final class InventoryController
 
         $table = TableQuery::for($request)
             ->sortable(['p.wa_code', 'p.stock_express', 'p.stock_market', 'p.low_stock_threshold'], default: 'p.wa_code')
-            ->searchable(['p.wa_code', 'p.sku'])
+            /*
+             * The SAME search the products list runs (D-8, 2026-09-19).
+             *
+             * Every row on this screen is headed by an Arabic product name, and the search could
+             * not see names: typing `هوغو` into a list of rows reading *ساعة هوغو بوس للرجال*
+             * returned "لا توجد منتجات". Reusing `ProductSearch` rather than re-deriving it here
+             * is the point — two lists of the same products that answer "find me this" differently
+             * is how the operator learns not to trust either one.
+             *
+             * The alias pair is this screen's own: it joins the translations as `t`/`te`.
+             */
+            ->searchUsing(function (EloquentBuilder|QueryBuilder $query, string $term): void {
+                ProductSearch::apply($query, $term, 't', 'te');
+            })
             // `view` and `bucket` are predicates, not columns: declared so they are whitelisted
             // and rendered, applied by hand below (the `flag` lesson of wave 4B).
-            ->filterable(['view' => ['', 'low'], 'bucket' => ['', 'express', 'market', 'out']])
+            ->filterable(['view' => ['', 'low', 'out'], 'bucket' => ['', 'express', 'market', 'out']])
             ->virtual(['view', 'bucket'])
             /*
              * A stock take, as a file. `variants` is flattened to one cell rather than dropped:
@@ -123,10 +140,20 @@ final class InventoryController
         // `resolvedFilters()`, never raw request input — see OrderController for why.
         $filters = $table->resolvedFilters();
 
-        // Low stock: the product's OWN threshold, not a global number — the column exists per
-        // product because a watch and a keychain do not run low at the same count.
+        /*
+         * Low stock: the product's OWN threshold, not a global number — the column exists per
+         * product because a watch and a keychain do not run low at the same count.
+         *
+         * The three clauses match `InventoryService::lowStockProducts()` exactly, so the rows this
+         * filter returns are the rows the banner above counted and the rows the home tile counted.
+         * Written through `Sql` rather than as a raw string because a fourth hand-written copy of
+         * this predicate is how the first three drifted.
+         */
         if (Coerce::str($filters['view'] ?? null) === 'low') {
-            $query->whereRaw('(p.stock_express + p.stock_market) <= p.low_stock_threshold');
+            $query->where('p.is_active', 1)->where('p.in_stock', 1)
+                ->whereRaw(Sql::belowLowStockThreshold('p'));
+        } elseif (Coerce::str($filters['view'] ?? null) === 'out') {
+            $query->where('p.is_active', 1)->where('p.in_stock', 0);
         }
         $bucket = Coerce::str($filters['bucket'] ?? null);
         if ($bucket === 'express') {
@@ -184,6 +211,9 @@ final class InventoryController
                 'views' => [
                     ['value' => '', 'label' => ManageText::t('inventory.all_products', 'كل المنتجات')],
                     ['value' => 'low', 'label' => ManageText::t('products.low_stock', 'مخزون منخفض')],
+                    // "Low" and "gone" are two different jobs for the buyer, so they are two
+                    // entries. They used to be one number, added together, called an alert.
+                    ['value' => 'out', 'label' => ManageText::t('common.out_of_stock', 'نفد المخزون')],
                 ],
                 'buckets' => [
                     ['value' => '', 'label' => ManageText::t('inventory.all_buckets', 'كل المخازن')],
@@ -193,7 +223,7 @@ final class InventoryController
                 ],
             ],
             'reasons' => self::adjustmentReasons(),
-            'low_count' => self::lowStockCount(),
+            'alerts' => self::stockAlerts(),
         ]);
     }
 
@@ -243,11 +273,28 @@ final class InventoryController
         $query = DB::table('inventory_movements as im')
             ->leftJoin('catalog_products as p', 'p.id', '=', 'im.product_id')
             ->leftJoin('catalog_product_variants as v', 'v.id', '=', 'im.variant_id')
+            /*
+             * The ACTOR's name (D-11, 2026-09-19).
+             *
+             * The ledger used to print `user #5`. On the one screen whose product is
+             * accountability, the person who moved the stock was a raw foreign key — while every
+             * other screen in the dashboard resolves that id to a name. The join is conditional on
+             * `actor_type` because the column is polymorphic: `system` rows carry an id that is
+             * not a user id, and matching it against `users` would attribute a machine's movement
+             * to whichever person happens to hold that number.
+             */
+            ->leftJoin('users as u', function (JoinClause $join): void {
+                $join->on('u.id', '=', 'im.actor_id')->where('im.actor_type', '=', 'user');
+            })
             ->select([
                 'im.id', 'im.product_id', 'im.variant_id', 'im.bucket', 'im.quantity_delta',
                 'im.quantity_after', 'im.reason', 'im.reference_type', 'im.reference_id',
                 'im.actor_type', 'im.actor_id', 'im.storefront_id', 'im.note', 'im.external_ref',
                 'im.created_at', 'p.wa_code', 'v.label as variant_label',
+                // `users` carries first_name/last_name and NO `name` column (measured on the
+                // production schema, and the users screen assembles it the same way). The e-mail
+                // is the fallback, because a row with no name still has to identify a person.
+                'u.first_name as actor_first', 'u.last_name as actor_last', 'u.email as actor_email',
             ]);
 
         $filters = $table->resolvedFilters();
@@ -287,7 +334,11 @@ final class InventoryController
                 'reason' => Row::str($row, 'reason'),
                 'reference' => Row::nstr($row, 'reference_type'),
                 'reference_id' => Row::nint($row, 'reference_id'),
-                'actor' => Row::nstr($row, 'actor_type'),
+                'actor' => self::actorLabel(
+                    Row::nstr($row, 'actor_type'),
+                    self::personName($row),
+                    Row::nint($row, 'actor_id'),
+                ),
                 'actor_id' => Row::nint($row, 'actor_id'),
                 'storefront_id' => Row::nint($row, 'storefront_id'),
                 'note' => Row::nstr($row, 'note'),
@@ -309,9 +360,17 @@ final class InventoryController
                 ),
                 'buckets' => [
                     ['value' => '', 'label' => ManageText::t('inventory.all_buckets', 'كل المخازن')],
-                    // The two bucket rows below carry the COLUMN VALUE as their label and have
-                    // always done so — English on an Arabic screen, but not Arabic text, so they
-                    // are left exactly as they were rather than changed under a translation pass.
+                    /*
+                     * These two carry the COLUMN VALUE in both fields, and the SCREEN translates
+                     * them (item 10, 2026-09-18): `Ledger.tsx` renders `bucketLabel(t, option.value)`
+                     * rather than `option.label`, so the filter says «إكسبريس» like the column beside
+                     * it instead of `express`.
+                     *
+                     * Translated there rather than here because the same two words are needed on
+                     * five screens and one vocabulary beats five — see `resources/js/lib/labels.ts`.
+                     * The label stays as the value so this payload is still self-describing to
+                     * anyone reading it without the screen.
+                     */
                     ['value' => 'express', 'label' => 'express'],
                     ['value' => 'market', 'label' => 'market'],
                 ],
@@ -563,12 +622,49 @@ final class InventoryController
         return $out;
     }
 
-    private static function lowStockCount(): int
+    /**
+     * Who moved this stock, as a person reads it.
+     *
+     * Four cases, and none of them is a bare id:
+     *
+     *  • a named user — their name, which is what every other screen shows;
+     *  • a user whose account has since been deleted — the id is all that is left, so it is
+     *    labelled as a user rather than printed as a naked number;
+     *  • `system` — the machine did it, and saying so is the honest answer;
+     *  • anything else the column grows later — shown verbatim, because a new actor kind is
+     *    something to NOTICE rather than to swallow (the rule the whole `labels.ts` file follows).
+     */
+    /** First and last name, or the e-mail, or nothing — assembled exactly as the users screen does. */
+    private static function personName(\stdClass $row): ?string
     {
-        return (int) DB::table('catalog_products')
-            ->whereNull('deleted_at')
-            ->whereRaw('(stock_express + stock_market) <= low_stock_threshold')
-            ->count();
+        $name = trim((Row::nstr($row, 'actor_first') ?? '').' '.(Row::nstr($row, 'actor_last') ?? ''));
+        if ($name !== '') {
+            return $name;
+        }
+
+        return Row::nstr($row, 'actor_email');
+    }
+
+    private static function actorLabel(?string $type, ?string $name, ?int $id): string
+    {
+        if ($type === 'user') {
+            return $name ?? ManageText::t('inventory.ledger_actor_gone', 'مستخدم محذوف #:id', ['id' => $id ?? 0]);
+        }
+
+        if ($type === null || $type === 'system') {
+            return ManageText::t('common.system', 'النظام');
+        }
+
+        return $type;
+    }
+
+    /** @return array{low: int, out: int} */
+    private static function stockAlerts(): array
+    {
+        return [
+            'low' => InventoryService::lowStockProducts()->count(),
+            'out' => InventoryService::outOfStockProducts()->count(),
+        ];
     }
 
     /** @return list<array{value: string, label: string}> */

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Manage;
 
+use App\Domain\Access\Role;
 use App\Domain\Activity\ActivityLog;
 use App\Domain\Catalog\CategoryTreeWriter;
 use App\Domain\Catalog\FamilyForCategory;
@@ -17,10 +18,12 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 use RuntimeException;
+use stdClass;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
@@ -93,6 +96,22 @@ final class CategoryController
             // so a sentence glued together after it would leave its tail untranslated.
             'visibility_rule' => ManageText::t('categories.visibility_rule', 'يظهر التصنيف في القوائم فقط إذا كان مفعّلًا ومعروضًا في القائمة وبه (أو بفروعه) منتج واحد على الأقل ظاهر على هذا المتجر ومفعّل وغير محذوف. هذه قاعدة تلقائية في طبقة القراءة — لا يوجد زر لتجاوزها.'),
             'pre_switch' => PreSwitch::state('category'),
+            /*
+             * May THIS operator change the tree's shape? (item 6, 2026-09-18)
+             *
+             * Renaming stays open to data-entry and is not covered by this. What it gates is
+             * create / move / reorder / deactivate — the four that move products, breadcrumbs and
+             * menus underneath themselves. The routes refuse too (`can:edit-category-tree`); this
+             * exists so the buttons look disabled rather than broken, and so the screen can say
+             * which rule it is.
+             */
+            'tree_role' => [
+                'allowed' => Gate::allows(Role::EDIT_CATEGORY_TREE),
+                'message' => Gate::allows(Role::EDIT_CATEGORY_TREE) ? null : ManageText::t(
+                    'categories.tree_admin_only',
+                    'تعديل شكل الشجرة — إضافة تصنيف أو نقله أو إعادة ترتيبه أو إيقافه — متاح للمدير فقط. نقل تصنيف ينقل معه كل منتجاته ويغيّر مسار التصفّح والقوائم على المتجر. تغيير اسم التصنيف مفتوح لك كالمعتاد. لو الشجرة تحتاج تعديلًا اطلب ذلك من المدير.',
+                ),
+            ],
             // Whether THIS storefront's tree may be edited at all yet. A non-primary tree mirrors
             // legacy until the write-switch, so an edit here would be overwritten by the next
             // transform run — the screen says so instead of letting the operator find out
@@ -129,6 +148,26 @@ final class CategoryController
 
         $before = self::categoryFields($storefront->id, $category);
 
+        /*
+         * ── Two of this endpoint's four fields are admin-only (item 6, 2026-09-18) ─────────
+         *
+         * `update` is the RENAME route and stays on `manage-catalog`, because renaming is
+         * data-entry's daily work — it changes a word on a page. Two of the things it can write are
+         * not renames at all and were riding along with it:
+         *
+         *   • the SLUG. A category's slug is its public URL, exactly like a product's, and the
+         *     same argument applies: customers have bookmarked it, Google has indexed it, and
+         *     changing it moves a page.
+         *   • switching the node OFF. That takes every product under it off the storefront along
+         *     the whole path, which is what the deactivation dialog on this screen exists to warn
+         *     about — and is a change of shape, not of wording.
+         *
+         * Checked per FIELD and only on a CHANGE, for the same reason the product slug is: this
+         * screen echoes the whole row back on every save, so refusing any request that merely
+         * CONTAINS a slug would refuse every rename a data-entry operator makes.
+         */
+        self::assertMayChangeAddressing($storefront->id, $category, $data);
+
         try {
             $this->tree->rename($storefront->id, $category, self::names($data), $slug === '' ? null : $slug);
             $this->tree->setFlags(
@@ -149,6 +188,200 @@ final class CategoryController
         );
 
         return back()->with('status', ManageText::t('categories.saved', 'تم حفظ التصنيف.'));
+    }
+
+    /**
+     * Refuse a SLUG change or a DEACTIVATION from somebody who may only rename (item 6).
+     *
+     * The refusal names `tree`, which is the field this screen already routes its tree errors to,
+     * so it lands in the alert the operator is looking at rather than beside a text box.
+     *
+     * @param  array<string, mixed>  $data
+     *
+     * @throws ValidationException
+     */
+    private static function assertMayChangeAddressing(int $storefrontId, int $category, array $data): void
+    {
+        if (Gate::allows(Role::EDIT_CATEGORY_TREE)) {
+            return;
+        }
+
+        $current = DB::table('storefront_categories')
+            ->where('storefront_id', $storefrontId)
+            ->where('id', $category)
+            ->first(['slug', 'is_active']);
+
+        if (! is_object($current)) {
+            return;
+        }
+        $row = Row::cast($current);
+
+        $wanted = Coerce::nstr($data['slug'] ?? null);
+        $slugChanged = $wanted !== null && $wanted !== '' && $wanted !== Row::nstr($row, 'slug');
+
+        $deactivating = array_key_exists('is_active', $data)
+            && ! (bool) $data['is_active']
+            && Row::bool($row, 'is_active');
+
+        if (! $slugChanged && ! $deactivating) {
+            return;
+        }
+
+        throw ValidationException::withMessages(['tree' => ManageText::t(
+            'categories.tree_admin_only',
+            'تعديل شكل الشجرة — إضافة تصنيف أو نقله أو إعادة ترتيبه أو إيقافه — متاح للمدير فقط. نقل تصنيف ينقل معه كل منتجاته ويغيّر مسار التصفّح والقوائم على المتجر. تغيير اسم التصنيف مفتوح لك كالمعتاد. لو الشجرة تحتاج تعديلًا اطلب ذلك من المدير.',
+        )]);
+    }
+
+    /**
+     * `node id => product ids`, from a result set of `{node, product_id}` rows.
+     *
+     * @param  Collection<int, stdClass>  $rows
+     * @return array<int, list<int>>
+     */
+    private static function placementPairs(Collection $rows): array
+    {
+        $out = [];
+        foreach ($rows as $raw) {
+            $row = Row::cast($raw);
+            $out[Row::int($row, 'node')][] = Row::int($row, 'product_id');
+        }
+
+        return $out;
+    }
+
+    /**
+     * How many DISTINCT PRODUCTS a branch holds (item 2, 2026-09-18; corrected 2026-09-19).
+     *
+     * ── Why this counts sets and not numbers ────────────────────────────────────────────────
+     *
+     * The first version of this method SUMMED each node's own count up the tree, which is only
+     * correct if no product is ever filed under two categories in the same branch. Products are
+     * filed under several: a watch under both `ساعات غوص` and `كرونوغراف` was counted twice in
+     * `ساعات`. The badge said `7823 في الفرع` on a catalogue of 7,713 — a branch holding more
+     * products than exist, which is the kind of number that quietly teaches a team to stop
+     * believing the screen. Measured on storefront 2: 7,829 placement rows, 4,692 products.
+     *
+     * The label says products, so the number is products. That means carrying the product IDS up
+     * the tree rather than a running total, because a count cannot be de-duplicated after the
+     * fact. Still ONE pass: `inTreeOrder()` puts parents before children, so walking the reversed
+     * list reaches every child before its parent, and each set is merged into the parent and then
+     * released — nothing holds more than one branch at a time.
+     *
+     * @param  list<object>  $ordered  depth-first, parents before children
+     * @param  array<int, list<int>>  $own  node id => the product ids placed directly on it
+     * @return array<int, int>
+     */
+    private static function subtreeDistinct(array $ordered, array $own): array
+    {
+        /** @var array<int, array<int, true>> $sets */
+        $sets = [];
+        $totals = [];
+
+        foreach (array_reverse($ordered) as $raw) {
+            $row = Row::cast($raw);
+            $id = Row::int($row, 'id');
+
+            // Whatever the children already merged in, plus this node's own placements.
+            $set = $sets[$id] ?? [];
+            foreach ($own[$id] ?? [] as $productId) {
+                $set[$productId] = true;
+            }
+            $totals[$id] = count($set);
+
+            $parent = Row::nint($row, 'parent_id');
+            if ($parent !== null) {
+                // `+` on arrays is a union that keeps the left-hand key — exactly a set union
+                // here, since every value is `true`.
+                $sets[$parent] = ($sets[$parent] ?? []) + $set;
+            }
+            unset($sets[$id]);
+        }
+
+        return $totals;
+    }
+
+    /**
+     * The nodes, depth-first, each level in the order the team PUT them (item 3, 2026-09-18).
+     *
+     * ── Why the reorder buttons "didn't work" ────────────────────────────────────
+     *
+     * They worked. `storefront_categories.sort_order` was written correctly on every click, the
+     * activity log recorded it, and the STOREFRONT honoured it — `Storefront\CategoryTree` has
+     * always ordered by `depth, sort_order, id`. The customer-facing menu moved; this screen did
+     * not.
+     *
+     * This screen ordered by `path`, and `path` is an ID path: `/1/10/`, `/1/11/`, `/1/12/`. Sorted
+     * as a string that is ascending by id, which has nothing to do with `sort_order` and cannot be
+     * changed by any button. The operator clicked, the page reloaded identical, and the only clue
+     * that anything had happened was on the live site.
+     *
+     * A single ORDER BY cannot fix it: depth-first ordering of a materialised ID path needs the
+     * sort position of every ANCESTOR, which the id path does not carry. So the arrangement happens
+     * here. The trees are 37 and 61 nodes; this is not a query worth contorting.
+     *
+     * @param  list<object>  $rows
+     * @return list<object>
+     */
+    private static function inTreeOrder(array $rows): array
+    {
+        /** @var array<int, list<object>> $children  parent id (0 for the root) => its nodes */
+        $children = [];
+        foreach ($rows as $raw) {
+            $row = Row::cast($raw);
+            $parent = Row::nint($row, 'parent_id') ?? 0;
+            $children[$parent] = [...($children[$parent] ?? []), $raw];
+        }
+
+        // Each level in the team's order, with the id as the tie-break so two nodes that share a
+        // sort position do not swap places between one page load and the next.
+        foreach ($children as $parent => $list) {
+            usort($list, static function (object $a, object $b): int {
+                $left = Row::cast($a);
+                $right = Row::cast($b);
+
+                return [Row::int($left, 'sort_order'), Row::int($left, 'id')]
+                    <=> [Row::int($right, 'sort_order'), Row::int($right, 'id')];
+            });
+            $children[$parent] = $list;
+        }
+
+        $out = [];
+        /*
+         * Iterative, not recursive. The live tree is 3 levels deep today (the system's CEILING is
+         * `CategoryTreeWriter::MAX_DEPTH` = 10 — two different numbers, which this comment used to
+         * conflate exactly as the screen did) and a recursive walk would be shorter,
+         * but a tree that has somehow become cyclic would blow the stack rather than say so — and
+         * `$seen` turns that into a node that simply appears once.
+         */
+        $seen = [];
+        $walk = static function (int $parent) use (&$walk, &$out, &$seen, $children): void {
+            foreach ($children[$parent] ?? [] as $raw) {
+                $id = Row::int(Row::cast($raw), 'id');
+                if (isset($seen[$id])) {
+                    continue;
+                }
+                $seen[$id] = true;
+                $out[] = $raw;
+                $walk($id);
+            }
+        };
+        $walk(0);
+
+        /*
+         * Anything the walk could not reach — a node whose parent is missing or outside this
+         * storefront — is APPENDED rather than dropped. An orphan is a real thing to go and fix,
+         * and a screen that silently omits rows is a screen that hides the problem.
+         */
+        foreach ($rows as $raw) {
+            $id = Row::int(Row::cast($raw), 'id');
+            if (! isset($seen[$id])) {
+                $seen[$id] = true;
+                $out[] = $raw;
+            }
+        }
+
+        return $out;
     }
 
     /** Move a node (and its subtree) under a new parent, or to the root. */
@@ -204,7 +437,19 @@ final class CategoryController
         if ($moved > 0) {
             ActivityLog::record(
                 'storefront_categories', Coerce::nint($parent), ActivityLog::UPDATED,
-                ['sort_order' => 'previous order'], ['sort_order' => $moved.' node(s) reordered'],
+                /*
+                 * A COUNT, under a key the reader's language has a word for (D-18, 2026-09-19).
+                 *
+                 * This used to store the English sentences `previous order` and
+                 * `15 node(s) reordered` as the before/after VALUES, so an Arabic operator's audit
+                 * trail carried an English sentence in a value column. A number needs no
+                 * translating, and `nodes_reordered` is named in `changedFieldLabel`.
+                 *
+                 * Rows written before today keep their English strings, and that is correct: the
+                 * log is forward-only and records what happened when it happened. Rewriting them
+                 * would be the one thing this table must never do.
+                 */
+                ['nodes_reordered' => null], ['nodes_reordered' => $moved],
                 // The root's label is STORED, beside category names captured the same way, so it
                 // is not on the seam: a row written in whatever locale the operator happened to
                 // have would make one log read in two languages.
@@ -267,25 +512,43 @@ final class CategoryController
     {
         $visibleNodeIds = StorefrontCategory::nodeIdsWithVisibleProducts($storefrontId);
 
-        /** @var Collection<int|string, mixed> $counts */
-        $counts = DB::table('storefront_category_product as scp')
-            ->join('storefront_product as sp', function (JoinClause $join) use ($storefrontId): void {
-                $join->on('sp.product_id', '=', 'scp.product_id')->where('sp.storefront_id', '=', $storefrontId);
-            })
-            ->join('catalog_products as cp', 'cp.id', '=', 'sp.product_id')
-            ->where('scp.storefront_id', $storefrontId)
-            ->where('sp.is_visible', true)
-            ->where('cp.is_active', true)
-            ->whereNull('cp.deleted_at')
-            ->selectRaw('scp.storefront_category_id as node, COUNT(*) as live')
-            ->groupBy('scp.storefront_category_id')
-            ->pluck('live', 'node');
+        /*
+         * The PLACEMENTS themselves, not their counts.
+         *
+         * A branch total has to be a count of distinct products (D-4), and a count cannot be
+         * de-duplicated after it has been added up — so the ids come back and both the per-node
+         * number and the per-branch number are derived from the same pairs. Each of these reads
+         * the same rows the old `COUNT(*)` version did; only the projection changed.
+         */
+        $livePairs = self::placementPairs(
+            DB::table('storefront_category_product as scp')
+                ->join('storefront_product as sp', function (JoinClause $join) use ($storefrontId): void {
+                    $join->on('sp.product_id', '=', 'scp.product_id')->where('sp.storefront_id', '=', $storefrontId);
+                })
+                ->join('catalog_products as cp', 'cp.id', '=', 'sp.product_id')
+                ->where('scp.storefront_id', $storefrontId)
+                ->where('sp.is_visible', true)
+                ->where('cp.is_active', true)
+                ->whereNull('cp.deleted_at')
+                ->distinct()
+                ->get(['scp.storefront_category_id as node', 'scp.product_id as product_id'])
+        );
 
-        $anyCounts = DB::table('storefront_category_product')
-            ->where('storefront_id', $storefrontId)
-            ->selectRaw('storefront_category_id as node, COUNT(*) as total')
-            ->groupBy('storefront_category_id')
-            ->pluck('total', 'node');
+        $anyPairs = self::placementPairs(
+            DB::table('storefront_category_product')
+                ->where('storefront_id', $storefrontId)
+                ->distinct()
+                ->get(['storefront_category_id as node', 'product_id'])
+        );
+
+        $counts = [];
+        foreach ($livePairs as $node => $products) {
+            $counts[$node] = count($products);
+        }
+        $anyCounts = [];
+        foreach ($anyPairs as $node => $products) {
+            $anyCounts[$node] = count($products);
+        }
 
         $childCounts = DB::table('storefront_categories')
             ->where('storefront_id', $storefrontId)
@@ -302,21 +565,45 @@ final class CategoryController
                 $join->on('en.storefront_category_id', '=', 'c.id')->where('en.locale', '=', 'en');
             })
             ->where('c.storefront_id', $storefrontId)
-            ->orderBy('c.path')
+            /*
+             * NOT `ORDER BY path` — that was item 3 (developer: "the up/down reorder buttons don't
+             * work"). See {@see self::inTreeOrder()}. The rows come back in whatever order suits
+             * the database and are arranged below.
+             */
             ->get([
                 'c.id', 'c.parent_id', 'c.depth', 'c.path', 'c.slug', 'c.icon', 'c.image_path',
                 'c.is_active', 'c.show_in_menu', 'c.sort_order', 'c.legacy_source', 'c.legacy_id',
                 'ar.name as name_ar', 'en.name as name_en',
             ]);
 
+        $ordered = self::inTreeOrder(array_values($rows->all()));
+
         $ids = [];
-        foreach ($rows as $raw) {
+        foreach ($ordered as $raw) {
             $ids[] = Row::int(Row::cast($raw), 'id');
         }
         $families = (new FamilyForCategory)->explainMany($ids);
 
+        /*
+         * ── What a BRANCH holds, not just what is pinned to the node (item 2, 2026-09-18) ───
+         *
+         * `$counts` and `$anyCounts` are per node: products placed directly on it. On this tree
+         * most products hang off leaves, so a section like "ساعات" showed **0 products** while the
+         * branch beneath it held several thousand.
+         *
+         * That was already confusing on its own, and it produced a straight contradiction: the
+         * "auto-hidden because empty" badge reads the node's own count, while "in the menu" reads
+         * the §3.3 rule, which looks at the whole branch. A parent full of products displayed both
+         * at once — "in the menu" beside "empty — hidden automatically".
+         *
+         * Folding a branch (also item 2) would have made it worse: the one row left on screen would
+         * be the one claiming to be empty.
+         */
+        $subtreeLive = self::subtreeDistinct($ordered, $livePairs);
+        $subtreeAny = self::subtreeDistinct($ordered, $anyPairs);
+
         $out = [];
-        foreach ($rows as $raw) {
+        foreach ($ordered as $raw) {
             $row = Row::cast($raw);
             $id = Row::int($row, 'id');
             $live = Coerce::int($counts[$id] ?? null);
@@ -347,6 +634,10 @@ final class CategoryController
                 'children' => $kids,
                 'products' => $live,
                 'products_any' => $any,
+                // The same two numbers for the node AND everything under it. Equal to the pair
+                // above on a leaf, which is most of the tree.
+                'products_subtree' => Coerce::int($subtreeLive[$id] ?? null),
+                'products_any_subtree' => Coerce::int($subtreeAny[$id] ?? null),
                 'in_menu' => $active && $inMenuFlag && $hasVisible,
                 'in_menu_reason' => match (true) {
                     ! $active => ManageText::t('products.inactive', 'معطّل'),

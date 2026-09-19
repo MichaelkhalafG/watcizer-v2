@@ -59,13 +59,34 @@ it('renders the list with the server deciding sort, page size and filters', func
 
     expect($meta['page'])->toBe(1)
         ->and($meta['per_page'])->toBe(config('catalog.list.per_page'))
-        ->and($meta['sort'])->toBe('p.id')
+        /*
+         * The PUBLIC name, not the join alias (D-18, 2026-09-19). The screen still declares
+         * `p.id` — that is what the query orders by — but `?sort=p.id` published this
+         * application's aliases as a URL people bookmark and paste. The alias is stripped once, in
+         * `TableQuery`, and this is the assertion that says which side of that line `meta` is on.
+         */
+        ->and($meta['sort'])->toBe('id')
         ->and($meta['direction'])->toBe('desc')
         ->and($meta['total'])->toBeGreaterThan(0)
         // The whitelists are part of the payload, so the table component can only OFFER what the
         // server accepts — the list is code, the request is data.
-        ->and($meta['sortable'])->toContain('p.wa_code')
+        ->and($meta['sortable'])->toContain('wa_code')
         ->and($meta['filterable'])->toContain('p.family');
+});
+
+it('still honours a bookmark saved before the sort names were cleaned up', function () {
+    // `?sort=p.wa_code` is what every link written before 2026-09-19 carries. It keeps working,
+    // and comes back normalised — so a link SHARED from this page today is the clean form.
+    $meta = listMeta(['sort' => 'p.wa_code', 'direction' => 'asc']);
+
+    expect($meta['sort'])->toBe('wa_code')
+        ->and($meta['direction'])->toBe('asc');
+});
+
+it('refuses a sort column the screen never offered, rather than erroring', function () {
+    $meta = listMeta(['sort' => 'password']);
+
+    expect($meta['sort'])->toBe('id');
 });
 
 it('survives every hostile paging and sorting parameter the brief names', function () {

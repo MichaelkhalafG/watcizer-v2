@@ -14,9 +14,11 @@ use RuntimeException;
  * `ImageService` already produces.
  *
  * **Never upscales.** `scaleDown` semantics: an 800 px source asked for a 1200 px master stays
- * 800 px (padded to a 1200 square when the preset says so, which is how the legacy presets keep a
- * grid of product cards from jumping). A rendition wider than the master is skipped rather than
- * blown up, and the skip is reported.
+ * 800 px of PICTURE, padded onto a 1200 square when the preset says so — which is how the legacy
+ * presets keep a grid of product cards from jumping. The reported resolution is the picture's,
+ * not the canvas's, and a rendition wider than the picture is skipped rather than blown up
+ * (D-16: it used to compare against the padded canvas, so for a product image the skip could
+ * never fire and a 960 px rendition was produced from an 800 px photo and labelled 960).
  *
  * Alpha is preserved end to end, except where a preset pads onto white — a watch on transparency
  * padded onto white is the legacy behaviour and the storefront depends on it.
@@ -67,6 +69,38 @@ final class ImagePipeline
         }
 
         $source = $this->read($sourcePath);
+
+        /*
+         * ── The PHOTOGRAPH's size, not the canvas's (D-16, 2026-09-19) ──────────────────────
+         *
+         * An 800 x 800 upload was reported on screen as `1200x1200` with renditions
+         * `960 - 640 - 480 - 320 - 160`, and the 960 and the 1200 were padding. The `product`
+         * preset is `pad_square`, so `fit()` creates the canvas at exactly the preset's size and
+         * centres the source on white — 44% of that master is white, measured: the photograph
+         * starts at x = 200.
+         *
+         * Everything downstream then measured the CANVAS. The screen told the operator they had
+         * uploaded a 1200 px image when they had uploaded an 800 px one, and the rendition guard
+         * compared each target against the padded width, so its *"source is only Npx wide"*
+         * message could never fire for `product` or `product_gallery` — the one case it exists
+         * for. The class docblock's own example ("an 800 px source asked for a 1200 px master
+         * stays 800") described behaviour the padding path did not have.
+         *
+         * `$detail` is how much of the master is actual picture: the source scaled down to fit,
+         * never up. For a padded 800 px source that is 800; for a 4,000 px source into a 1,200 px
+         * master it is 1,200. Both are the honest answer to "what resolution is this image", and
+         * both are the right number to decide whether a rendition would be inventing detail.
+         */
+        $sourceWidth = imagesx($source);
+        $sourceHeight = imagesy($source);
+        $ratio = min(
+            $config['master']['width'] / max(1, $sourceWidth),
+            $config['master']['height'] / max(1, $sourceHeight),
+            1.0,
+        );
+        $detailWidth = max(1, (int) round($sourceWidth * $ratio));
+        $detailHeight = max(1, (int) round($sourceHeight * $ratio));
+
         $master = $this->fit($source, $config['master']['width'], $config['master']['height'], $config['master']['pad_square']);
         imagedestroy($source);
 
@@ -85,6 +119,8 @@ final class ImagePipeline
             throw new RuntimeException("Could not write the master image to [{$masterPath}]: the encoder produced no bytes.");
         }
 
+        // The CANVAS, for resizing the renditions — they have to match the master's geometry or
+        // a padded image would come back cropped.
         $width = imagesx($master);
         $height = imagesy($master);
 
@@ -106,9 +142,12 @@ final class ImagePipeline
         $targets = array_values(array_unique(array_merge($config['widths'], $config['thumbnails'])));
         sort($targets);
         foreach ($targets as $target) {
-            if ($target >= $width) {
-                // Wider than the master: upscaling would invent detail and cost bytes.
-                $skipped[] = "{$target}w: source is only {$width}px wide";
+            if ($target >= $detailWidth) {
+                // Wider than the PICTURE inside the master: upscaling would invent detail and cost
+                // bytes. Measured against the photograph, not the padded canvas (D-16) — against
+                // the canvas this branch was unreachable for every `pad_square` preset, which is
+                // every product image.
+                $skipped[] = "{$target}w: source is only {$detailWidth}px wide";
 
                 continue;
             }
@@ -154,8 +193,11 @@ final class ImagePipeline
         imagedestroy($master);
 
         return [
-            'width' => $width,
-            'height' => $height,
+            // Reported as the PICTURE's resolution, which is what the operator uploaded and what
+            // they are being asked to judge. The file on disk is the padded canvas; its size is
+            // an implementation detail of the preset and tells nobody anything actionable.
+            'width' => $detailWidth,
+            'height' => $detailHeight,
             'bytes' => $bytes,
             'renditions' => $renditions,
             'skipped' => $skipped,

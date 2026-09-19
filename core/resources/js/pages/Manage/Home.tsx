@@ -71,7 +71,7 @@ export default function Home({
             <Alert tone="info" title={t('home.welcome', 'أهلاً :name', { name: auth.user?.name ?? '' })}>
                 {t(
                     'home.catalogue_shared',
-                    'الكتالوج مشترك بين المتاجر: المنتج واحد، وما يختلف هو الظهور والتصنيفات والترتيب في كل متجر. الأرقام بالأسفل تفصّل ذلك لكل متجر.',
+                    'الكتالوج مشترك بين المتاجر: المنتج واحد، وما يختلف هو الظهور والتصنيفات والترتيب في كل متجر.',
                 )}
             </Alert>
 
@@ -169,10 +169,14 @@ export default function Home({
                                 </p>
                                 <p className="text-sm text-muted-foreground">
                                     {t('home.low_stock_hint', 'وصلت إلى حد التنبيه الخاص بها')}
+                                    {/* D-18: `low_stock_threshold` was a column name printed on
+                                        the shop floor's first screen of the day. The sentence says
+                                        the same thing in the words the stock screen uses for the
+                                        same setting. */}
                                     <span className="mt-1 block text-xs">
                                         {t(
                                             'home.low_stock_source',
-                                            'محسوبة من عمود low_stock_threshold لكل منتج (:count منتج لديه حد)',
+                                            'لكل منتج حد تنبيه خاص به، والعدّ من هذا الحد لا من رقم عام (:count منتج لديه حد)',
                                             { count: nf.format(inventory.threshold_products) },
                                         )}
                                     </span>
@@ -189,7 +193,10 @@ export default function Home({
                                     </Num>
                                 </p>
                                 <p className="text-sm text-muted-foreground">
-                                    {t('home.units_total', 'إجمالي الوحدات: express / market')}
+                                    {/* D-18: the two shelves are «إكسبريس» and «ماركت» on the
+                                        stock screen and on the ledger. They were their raw column
+                                        suffixes only here. */}
+                                    {t('home.units_total', 'إجمالي الوحدات: إكسبريس / ماركت')}
                                 </p>
                             </div>
                         </div>
@@ -218,12 +225,9 @@ export default function Home({
                                 <Badge key={role.value}>{role.label}</Badge>
                             ))}
                         </div>
-                        <p className="text-xs text-muted-foreground">
-                            {t(
-                                'home.abilities_note',
-                                'القائمة الجانبية تعرض ما تستطيع الوصول إليه فقط، والخادم يرفض أي مسار خارج صلاحياتك.',
-                            )}
-                        </p>
+                        {/* The line that used to sit here said the sidebar shows what you can open
+                            and the server refuses the rest. The badges above already are the answer,
+                            and nobody needed the sentence. */}
                     </CardContent>
                 </Card>
             </div>

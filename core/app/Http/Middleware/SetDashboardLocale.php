@@ -21,14 +21,16 @@ use Symfony\Component\HttpFoundation\Response;
  *
  * ── What this does NOT do ───────────────────────────────────────────────────────────────────
  *
- * It does not change what anybody sees today, because `lang/en/manage.php` is empty and the 1 422
- * dashboard strings are still inline literals (docs/wave4d/I18N_BACKLOG_2026-09-14.md). It is the
- * seam: from here, a new string can be written translatable for free, and the backlog stops
- * growing while the translation work waits its turn.
+ * When this was written it changed nothing anybody could see: `lang/en/manage.php` was empty and the
+ * 1,422 dashboard strings were inline literals (docs/wave4d/I18N_BACKLOG_2026-09-14.md). It was the
+ * seam — from there, a new string could be written translatable for free.
  *
- * The one thing it deliberately leaves alone is the writing DIRECTION — see
- * {@see Preferences::TEXT_LOCALE}. Flipping the shell to `ltr` while every label in it is still
- * Arabic would be a regression dressed as progress.
+ * **Both halves are live now (2026-09-17).** The English file is filled (99.8% coverage) and the
+ * writing DIRECTION follows this locale too, through {@see Preferences::directionFor()}. The
+ * paragraph that used to stand here explained why direction was deliberately pinned to `rtl`: the
+ * shell was still Arabic whatever the operator picked, so an `ltr` layout would have mirrored the
+ * furniture around Arabic text. That condition no longer holds, and the pin became the defect it was
+ * guarding against — English words in a right-to-left shell.
  */
 final class SetDashboardLocale
 {

@@ -18,6 +18,7 @@ import {
     TableRow,
 } from "@/components/ui/table";
 import type { PreSwitchState } from "@/types";
+import { bucketLabel } from "@/lib/labels";
 import { useT } from "@/lib/i18n";
 
 export interface VariantRow {
@@ -194,18 +195,17 @@ export function VariantsPanel({
                 <CardTitle>
                     {t("variants.title", "المقاسات والألوان (المخزون لكل صف)")}
                 </CardTitle>
+                {/* ONE sentence, not four fragments around a PHP class name (D-18).
+                    `<code dir="ltr">InventoryService</code>` was split across three translation
+                    keys so that it survived into English too — a class name printed on a product
+                    form, in both languages, telling the operator nothing they can act on. What
+                    they need to know is that the number is always recorded and never typed
+                    straight into a column, and that is what the sentence now says. */}
                 <p className="text-xs text-muted-foreground">
                     {t(
-                        "variants.ledger_note_before_service",
-                        "كل كمية تُسجَّل في دفتر الحركات عبر ",
+                        "variants.ledger_note",
+                        "كل كمية تُسجَّل في دفتر الحركات، ولا يُكتب رقم مخزون مباشرة من أي شاشة. المنتج الذي له صفوف هنا يصبح مخزونه محسوبًا من الصفوف، وحالة «متوفر» تعني أن صفًا مفعّلًا به كمية.",
                     )}
-                    <code dir="ltr">InventoryService</code>
-                    {t(
-                        "variants.ledger_note_before_active",
-                        " — لا يُكتب عمود مخزون مباشرة من أي شاشة. المنتج الذي له صفوف هنا يصبح مخزونه محسوبًا من الصفوف، وحالة «متوفر» تعني أن صفًا ",
-                    )}
-                    <strong>{t("variants.active_word", "مفعّلًا")}</strong>
-                    {t("variants.ledger_note_after_active", " به كمية.")}
                 </p>
             </CardHeader>
 
@@ -254,8 +254,10 @@ export function VariantsPanel({
                                     <TableHead>
                                         {t("variants.price_delta", "فرق السعر")}
                                     </TableHead>
-                                    <TableHead>Express</TableHead>
-                                    <TableHead>Market</TableHead>
+                                    {/* Item 10: the bucket NAMES, not the stored tokens.
+                                        The same two words the ledger has always used. */}
+                                    <TableHead>{bucketLabel(t, 'express')}</TableHead>
+                                    <TableHead>{bucketLabel(t, 'market')}</TableHead>
                                     <TableHead>
                                         {t("common.active", "مفعّل")}
                                     </TableHead>
@@ -591,12 +593,15 @@ export function VariantsPanel({
                 {/* The conversion gate. When it refuses, the form is REPLACED by the reason — an
                     enabled control the server would reject is a worse experience than no control,
                     and the reason is the only thing that tells the team what to do instead. */}
-                {productId === null ? null : preSwitch.blocked ? (
+                {/* Item 5: a caveat renders in the same place as the refusal did, because the
+                    operator needs the same fact either way — only the verb changes. */}
+                {productId === null ? null : preSwitch.blocked ||
+                  preSwitch.caveat !== null ? (
                     <Alert
                         tone="warning"
                         title={t(
                             "variants.add_blocked_pre_switch",
-                            "إضافة صفوف موقوفة قبل ليلة التحويل",
+                            "إضافة الصفوف موقوفة حاليًا",
                         )}
                     >
                         <p className="flex items-start gap-2">
@@ -604,7 +609,11 @@ export function VariantsPanel({
                                 className="mt-0.5 h-4 w-4 shrink-0"
                                 aria-hidden="true"
                             />
-                            <span>{preSwitch.message}</span>
+                            <span>
+                                {preSwitch.blocked
+                                    ? preSwitch.message
+                                    : preSwitch.caveat}
+                            </span>
                         </p>
                     </Alert>
                 ) : state.may_convert ? (
@@ -711,7 +720,7 @@ export function VariantsPanel({
                                     "variants.express_quantity",
                                     "كمية Express",
                                 )}
-                                placeholder="Express"
+                                placeholder={bucketLabel(t, 'express')}
                                 value={draft.stock_express}
                                 onChange={(event) =>
                                     setDraft({
@@ -728,7 +737,7 @@ export function VariantsPanel({
                                     "variants.market_quantity",
                                     "كمية Market",
                                 )}
-                                placeholder="Market"
+                                placeholder={bucketLabel(t, 'market')}
                                 value={draft.stock_market}
                                 onChange={(event) =>
                                     setDraft({

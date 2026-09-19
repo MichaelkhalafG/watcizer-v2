@@ -21,7 +21,10 @@ it('seeds Watchizer at the deterministic id 1 and is idempotent', function () {
     $watchizer = Storefront::query()->findOrFail(Storefront::WATCHIZER_ID);
 
     expect($watchizer->code)->toBe('watchizer')
-        ->and($watchizer->default_locale)->toBe('ar')
+        // English, not Arabic: the storefront opens in ENGLISH — it always has, and the customer switches for themselves (developer, 2026-09-18).
+        // The DASHBOARD is Arabic-first; that is Preferences::DEFAULT_LOCALE and a different
+        // question entirely — operators and customers do not share a default.
+        ->and($watchizer->default_locale)->toBe('en')
         ->and($watchizer->locales)->toBe(['ar', 'en'])
         ->and(Storefront::query()->where('code', 'watchizer')->count())->toBe(1);
 });

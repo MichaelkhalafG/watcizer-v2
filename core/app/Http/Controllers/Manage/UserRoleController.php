@@ -93,9 +93,22 @@ final class UserRoleController
                 'results' => $term === '' ? [] : self::search($term),
                 'searched' => $term !== '',
             ],
+            /*
+             * ── DATA-ENTRY FIRST (J-2, 2026-09-19) ─────────────────────────────────────────
+             *
+             * The select defaulted to its first option, and its first option was administrator —
+             * so granting a new data-entry hire in a hurry, without touching this field, granted
+             * full access: payments, storefront settings, users, order cancellation. Handed out by
+             * omission, in the one form on the dashboard where omission is most expensive.
+             *
+             * The order is the fix. The least-privileged role is the default because a wrong
+             * default should fail in the direction of "they will come and ask for more", never
+             * "nobody finds out until something is deleted". The list is short enough that
+             * choosing the other one costs one click.
+             */
             'roles' => [
-                ['value' => Role::Admin->value, 'label' => ManageText::t('users.role_admin_full', 'مدير (كل الصلاحيات)')],
                 ['value' => Role::DataEntry->value, 'label' => ManageText::t('users.role_data_entry', 'إدخال بيانات')],
+                ['value' => Role::Admin->value, 'label' => ManageText::t('users.role_admin_full', 'مدير (كل الصلاحيات)')],
             ],
             'storefronts' => self::storefrontOptions(),
             'current_user_id' => Coerce::int($request->user()?->getAuthIdentifier()),
@@ -115,7 +128,7 @@ final class UserRoleController
             'role' => ['required', 'string', Rule::in([Role::Admin->value, Role::DataEntry->value])],
             'storefront_id' => ['nullable', 'integer', Rule::exists('storefronts', 'id')],
         ], [
-            'email.exists' => ManageText::t('users.account_not_found_hint', 'لا يوجد حساب بهذا البريد. الحسابات تُنشأ من المتجر أو من الداشبورد القديم — هذه الشاشة تمنح الصلاحيات فقط.'),
+            'email.exists' => ManageText::t('users.account_not_found_hint', 'لا يوجد حساب بهذا البريد. الحسابات تُنشأ من المتجر أو من الداشبورد القديم.'),
         ]));
 
         $user = User::query()->where('email', Coerce::str($data['email']))->first();
@@ -156,7 +169,7 @@ final class UserRoleController
 
         if ($role === Role::Admin->value && $userId === $currentUserId) {
             throw ValidationException::withMessages([
-                'grant' => ManageText::t('users.revoke_self_refused', 'لا يمكنك سحب صلاحية المدير من نفسك. اطلب من مدير آخر أن يفعلها، أو استخدم `php artisan manage:role revoke`.'),
+                'grant' => ManageText::t('users.revoke_self_refused', 'لا يمكنك سحب صلاحية المدير من نفسك. اطلب من مدير آخر أن يفعلها.'),
             ]);
         }
 

@@ -120,7 +120,7 @@ it('captures every wave-4B screen as rendered HTML and its props', function () {
 
     // And the two sentences a reviewer should be able to grep for are in the HTML the server sent.
     $conversionScreen = File::get(evidenceDir().'/06-product-edit-conversion-refused.props.json');
-    expect($conversionScreen)->toContain('قبل التحويل النهائي');
+    expect($conversionScreen)->toContain('لا يمكن تحويل هذا المنتج إلى مقاسات');
 
     $tree = File::get(evidenceDir().'/07-categories-tree.props.json');
     expect($tree)->toContain('in_menu_reason');

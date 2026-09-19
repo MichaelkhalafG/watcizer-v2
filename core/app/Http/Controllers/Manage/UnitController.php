@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Manage;
 
-use App\Domain\Catalog\PreSwitch;
 use App\Domain\Catalog\UnitCleanup;
 use App\Support\Coerce;
 use App\Support\ManageText;
@@ -75,7 +74,7 @@ final class UnitController
             'used_by' => [ManageText::t('units.where', 'أين'), function (array $row): string {
                 $parts = [];
                 foreach (Coerce::arr($row['used_by'] ?? null) as $column => $count) {
-                    $parts[] = Coerce::str($column).': '.Coerce::int($count);
+                    $parts[] = self::columnLabel(Coerce::str($column)).': '.Coerce::int($count);
                 }
 
                 return implode(' | ', $parts);
@@ -96,7 +95,6 @@ final class UnitController
              * next rebuild. The screen says so rather than letting an admin spend an afternoon on
              * it — and after the switch the notice disappears on its own.
              */
-            'pre_switch_notice' => PreSwitch::noticeFor('units'),
         ]);
     }
 
@@ -128,5 +126,28 @@ final class UnitController
         $this->units->restore($unit);
 
         return back()->with('status', ManageText::t('units.restore_done', 'أُعيدت الوحدة إلى القوائم.'));
+    }
+
+    /**
+     * One `*_unit_id` column, as the measurement it holds (item 10, 2026-09-18).
+     *
+     * The same eight words `Units/Index.tsx` shows in its table — the screen had them and the CSV
+     * export did not. `UnitCleanup::referenceColumns()` DISCOVERS these columns with `SHOW COLUMNS`
+     * rather than declaring them, so a ninth one can appear without anybody editing this file: it
+     * falls through to the raw column name, which is how it announces itself.
+     */
+    private static function columnLabel(string $column): string
+    {
+        return match ($column) {
+            'case_size_unit_id' => ManageText::t('specs.field_case_size', 'قياس العلبة'),
+            'case_thickness_unit_id' => ManageText::t('specs.field_case_thickness', 'سماكة العلبة'),
+            'band_length_unit_id' => ManageText::t('specs.field_band_length', 'طول السوار'),
+            'band_width_unit_id' => ManageText::t('specs.field_band_width', 'عرض السوار'),
+            'water_resistance_unit_id' => ManageText::t('specs.field_water_resistance', 'مقاومة الماء'),
+            'height_unit_id' => ManageText::t('specs.field_height', 'الارتفاع'),
+            'width_unit_id' => ManageText::t('specs.field_width', 'العرض'),
+            'length_unit_id' => ManageText::t('specs.field_length', 'الطول'),
+            default => $column,
+        };
     }
 }

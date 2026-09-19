@@ -168,6 +168,38 @@ return [
     ],
 
     /*
+    |--------------------------------------------------------------------------
+    | Which COLOUR questions each family is asked (J-6, 2026-09-19)
+    |--------------------------------------------------------------------------
+    |
+    | The product form rendered three colour selects for every product
+    | regardless of family — `اللون الأساسي`, `لون القرص` and `لون السوار` —
+    | from a fixed array in the component, while the rest of the specification
+    | block has been family-gated through this file since wave 4B.
+    |
+    | So a hat was asked for its dial colour and a handbag for its strap
+    | colour, and whoever answered wrote into the column the storefront
+    | renders as a WATCH BAND. The form looked entirely correct while it
+    | happened, which is what makes it a trap rather than a mistake.
+    |
+    | Here rather than in a `match` for the same reason every other
+    | family-dependent thing is here: a product's family comes from its
+    | CATEGORY and the team invents categories. A new family is a line in this
+    | file, never a hotfix in a component — which is precisely what the legacy
+    | dashboard needed when it checked families against hard-coded ids.
+    |
+    | `default` answers for every family with no entry of its own, including
+    | `other`. A family that genuinely has no colour at all would be `[]`.
+    */
+    'color_roles' => [
+        'default' => ['main'],
+        // A watch's colours ARE the dial and the band. "Primary colour" means
+        // nothing on a watch, and asking for it invited a third answer that no
+        // storefront surface reads.
+        'watch' => ['dial', 'band'],
+    ],
+
+    /*
     | Lookup lists the dashboard maintains (scope item 6): a master table plus
     | its ar/en translation table. `usage` names the (table, column) pairs
     | that reference a row, which is what the screen counts before it lets

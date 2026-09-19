@@ -95,7 +95,7 @@ export default function ManageLayout({
                 <footer className="border-t bg-background px-4 py-4 sm:px-6">
                     <div className="mx-auto flex w-full max-w-7xl flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
                         <span>
-                            {branding.name} · {branding.suffix}
+                            {branding.name} · {t('shell.dashboard', 'لوحة التحكم')}
                         </span>
                         {/* The developer credit, from config, rendered here and nowhere else.
                             It is a separate shared prop that only exists for a signed-in session,

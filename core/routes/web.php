@@ -5,6 +5,7 @@ use App\Http\Controllers\Compat\SitemapCompatController;
 use App\Http\Controllers\Manage\ActivityController;
 use App\Http\Controllers\Manage\Auth\LoginController;
 use App\Http\Controllers\Manage\BannerController;
+use App\Http\Controllers\Manage\BlogController;
 use App\Http\Controllers\Manage\CategoryController;
 use App\Http\Controllers\Manage\CustomerController;
 use App\Http\Controllers\Manage\HomeController;
@@ -109,14 +110,40 @@ Route::prefix('manage')->name('manage.')->group(function (): void {
             Route::get('storefronts/{storefront}/products/{product}/edit', [ProductController::class, 'edit'])->name('products.edit');
             Route::put('storefronts/{storefront}/products/{product}', [ProductController::class, 'update'])->name('products.update');
             Route::post('storefronts/{storefront}/products/bulk', [ProductController::class, 'bulk'])->name('products.bulk');
+            /*
+            | Archive ONE product, from the form that created it (W-6, 2026-09-19).
+            |
+            | There was no DELETE route for a product at all: archiving existed only as a bulk
+            | action on the list, so a junior who had just created a duplicate had to leave the
+            | form, find the row again among 7,713, tick it and use the bulk bar.
+            |
+            | `DELETE` and not `POST`, because the verb is the truth: it soft-deletes. Same
+            | ability, same storefront scope and the same writer the bulk action calls -- the
+            | route is new, the rule is not.
+            */
+            Route::delete('storefronts/{storefront}/products/{product}', [ProductController::class, 'destroy'])->name('products.destroy');
 
-            // The category tree, per storefront.
+            /*
+            | The category tree, per storefront -- and SPLIT BY BLAST RADIUS (item 6, 2026-09-18).
+            |
+            | Reading it and RENAMING a node stay on manage-catalog, which data-entry holds: that
+            | is their daily work and a rename changes a word on a page.
+            |
+            | Creating, moving, reordering and deactivating change the tree's SHAPE, and on 7,713
+            | products that moves every item underneath, the breadcrumb, the menu and the derived
+            | family. A mis-drag is one gesture and a day's work to unpick, so those four are
+            | admin-only through edit-category-tree. The SCREEN says so rather than hiding the
+            | controls -- an operator who cannot click needs to know it is a rule, not a fault.
+            */
             Route::get('storefronts/{storefront}/categories', [CategoryController::class, 'index'])->name('categories.index');
-            Route::post('storefronts/{storefront}/categories', [CategoryController::class, 'store'])->name('categories.store');
             Route::put('storefronts/{storefront}/categories/{category}', [CategoryController::class, 'update'])->name('categories.update');
-            Route::put('storefronts/{storefront}/categories/{category}/move', [CategoryController::class, 'move'])->name('categories.move');
-            Route::post('storefronts/{storefront}/categories/reorder', [CategoryController::class, 'reorder'])->name('categories.reorder');
-            Route::delete('storefronts/{storefront}/categories/{category}', [CategoryController::class, 'destroy'])->name('categories.destroy');
+
+            Route::middleware('can:'.Role::EDIT_CATEGORY_TREE)->group(function (): void {
+                Route::post('storefronts/{storefront}/categories', [CategoryController::class, 'store'])->name('categories.store');
+                Route::put('storefronts/{storefront}/categories/{category}/move', [CategoryController::class, 'move'])->name('categories.move');
+                Route::post('storefronts/{storefront}/categories/reorder', [CategoryController::class, 'reorder'])->name('categories.reorder');
+                Route::delete('storefronts/{storefront}/categories/{category}', [CategoryController::class, 'destroy'])->name('categories.destroy');
+            });
         });
 
         /*
@@ -162,6 +189,38 @@ Route::prefix('manage')->name('manage.')->group(function (): void {
                 ->where('banner', '[0-9]+')->name('banners.update');
             Route::delete('storefronts/{storefront}/banners/{banner}', [BannerController::class, 'destroy'])
                 ->where('banner', '[0-9]+')->name('banners.destroy');
+        });
+
+        /*
+        |--------------------------------------------------------------------------
+        | ARTICLES -- item 14 (developer 2026-09-18)
+        |--------------------------------------------------------------------------
+        |
+        | Under MANAGE_LEGACY_CONTENT, beside banners: they are the same job, which
+        | is the storefront's words and pictures rather than its catalogue.
+        |
+        | NO {storefront} segment, unlike banners. A banner decides what one shop's
+        | home page shows; an article is a piece of writing that belongs to the
+        | business. The same reasoning kept promotions storefront-free (2026-09-13):
+        | inventing a path segment would imply articles are partitioned per shop
+        | when they are not, and it is a much smaller change to add one later than
+        | to explain away one that was never true.
+        */
+        Route::middleware('can:'.Role::MANAGE_LEGACY_CONTENT)->group(function (): void {
+            Route::get('blogs', [BlogController::class, 'index'])->name('blogs.index');
+            Route::get('blogs/create', [BlogController::class, 'create'])->name('blogs.create');
+            Route::post('blogs', [BlogController::class, 'store'])->name('blogs.store');
+
+            // Constrained to digits so `blogs/create` cannot be swallowed by `blogs/{blog}` --
+            // the same trap `orders/export/settlement` fell into in wave 4C.
+            Route::get('blogs/{blog}/edit', [BlogController::class, 'edit'])
+                ->where('blog', '[0-9]+')->name('blogs.edit');
+            Route::put('blogs/{blog}', [BlogController::class, 'update'])
+                ->where('blog', '[0-9]+')->name('blogs.update');
+            Route::put('blogs/{blog}/publish', [BlogController::class, 'publish'])
+                ->where('blog', '[0-9]+')->name('blogs.publish');
+            Route::delete('blogs/{blog}', [BlogController::class, 'destroy'])
+                ->where('blog', '[0-9]+')->name('blogs.destroy');
         });
 
         /*

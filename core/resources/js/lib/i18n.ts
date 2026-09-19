@@ -87,6 +87,18 @@ export function useT(): (key: string, fallback: string, values?: Record<string, 
 }
 
 /**
+ * The operator's chosen dashboard language.
+ *
+ * `t()` covers the strings the DASHBOARD owns, which is most of them. This is for the other kind:
+ * data that carries its own two languages — a product's Arabic and English names — where the screen
+ * has to decide which one this reader should see. {@link localisedTitle} in `lib/title` is that
+ * decision; this is how a component gets the locale to hand it.
+ */
+export function useLocale(): SharedProps['locale'] {
+    return usePage<SharedProps>().props.locale;
+}
+
+/**
  * The same thing outside a component — for a module-level constant map, where a hook cannot run.
  *
  * It takes the dictionary explicitly rather than reaching for one, because a helper that silently

@@ -8,9 +8,11 @@ use App\Support\LegacySlug;
 use App\Support\ManageText;
 use App\Support\Sql;
 use App\Transform\Row;
+use Illuminate\Database\Query\Builder;
 use Illuminate\Database\Query\JoinClause;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use InvalidArgumentException;
 use RuntimeException;
 
@@ -79,9 +81,27 @@ final class LookupWriter
     {
         $def = self::definition($key);
 
+        /*
+         * Both languages, `min:2`, and unique WITHIN a language — exactly what the legacy dashboard
+         * demanded of every one of these lists for years (`BrandController`, `ColorController` and
+         * their nine siblings all read `required|string|min:2|max:255|unique:<x>_translations`).
+         *
+         * Counted before it was adopted, across all twelve lists and both locales: 0 duplicate
+         * names and 0 blank English names. So this locks in what the data already satisfies rather
+         * than imposing something the team would have to go and fix — which is the difference
+         * between this rule and the four product descriptions, where the same audit said 7,087.
+         *
+         * Per LANGUAGE, not globally: a brand may legitimately read the same in Arabic and English
+         * («Rolex» / "Rolex"), and it is two rows sharing one language's spelling that splits a
+         * catalogue in half without anybody noticing.
+         */
+        $unique = fn (string $locale): object => Rule::unique($def['translations'], 'name')
+            ->where(fn (Builder $query): Builder => $query->where('locale', $locale))
+            ->ignore($ignoreId, $def['fk']);
+
         $rules = [
-            'name.ar' => ['required', 'string', 'max:191'],
-            'name.en' => ['nullable', 'string', 'max:191'],
+            'name.ar' => ['required', 'string', 'min:2', 'max:191', $unique('ar')],
+            'name.en' => ['required', 'string', 'min:2', 'max:191', $unique('en')],
         ];
 
         foreach ($def['extra'] as $column => $field) {
@@ -143,12 +163,67 @@ final class LookupWriter
                 throw new RuntimeException("Row {$id} does not exist in {$def['master']}.");
             }
             $row = $this->extraColumns($def, $data, isCreate: false);
+            $this->assertMayDeactivate($def, $id, $row);
             $row['updated_at'] = now();
 
             DB::table($def['master'])->where('id', $id)->update($row);
             $this->writeTranslations($def, $id, $data);
             $this->flush();
         });
+    }
+
+    /**
+     * Switching a lookup row OFF is refused while things still point at it (item 11, 2026-09-18).
+     *
+     * ── What the switch actually does, and why it needs a guard ──────────────────────────────
+     *
+     * `is_active` on a brand does NOT hide that brand's products — they keep selling. What it does
+     * is quieter: `Storefront\Meta` drops the brand from the storefront's brand list and
+     * `Storefront\Sitemaps` stops emitting its page. So switching Rolex off removes a brand
+     * customers browse by, and drops a URL Google has indexed, while 125 products carry on as if
+     * nothing happened. Nothing on the screen said so, and nothing went wrong loudly enough to be
+     * noticed.
+     *
+     * The developer's rule for item 11 is "any brand with products should be active". This is that
+     * rule written where it can actually hold, rather than a one-off UPDATE that is true until the
+     * next person clicks the switch. It mirrors the delete refusal exactly — same shape, same
+     * count, same reason — because it is the same argument: a row the catalogue still points at is
+     * not one you retire by accident.
+     *
+     * It refuses only the TRANSITION, so a row that is already off stays editable, and it applies
+     * to any list that declares a boolean named `is_active`, not to brands by name.
+     *
+     * @param  LookupDef  $def
+     * @param  array<string, mixed>  $row  the columns about to be written
+     *
+     * @throws ValidationException
+     */
+    private function assertMayDeactivate(array $def, int $id, array $row): void
+    {
+        if (($def['extra']['is_active']['type'] ?? null) !== 'boolean') {
+            return;
+        }
+        if (! array_key_exists('is_active', $row) || (bool) $row['is_active'] === true) {
+            return;
+        }
+        // Already off: this save is about something else, and refusing it would trap the row.
+        $current = DB::table($def['master'])->where('id', $id)->value('is_active');
+        if ((bool) $current === false) {
+            return;
+        }
+
+        $uses = $this->usageCount($def, $id);
+        if ($uses === 0) {
+            return;
+        }
+
+        throw ValidationException::withMessages([
+            'extra.is_active' => ManageText::t(
+                'lookups.deactivate_refused',
+                'لا يمكن إيقاف هذا العنصر: :count منتج يستخدمه. إيقافه يُخفيه من قوائم التصفّح ومن خريطة الموقع بينما تظل منتجاته معروضة للبيع. انقل المنتجات إلى عنصر آخر أولًا.',
+                ['count' => $uses],
+            ),
+        ]);
     }
 
     /**
@@ -264,6 +339,15 @@ final class LookupWriter
             }
         }
 
+        /*
+         * The declared TYPE of each extra column, because a value's type is part of the contract
+         * and the database does not keep it (item 11, 2026-09-18).
+         */
+        $extraTypes = [];
+        foreach ($def['extra'] as $column => $field) {
+            $extraTypes[$column] = is_string($field['type'] ?? null) ? $field['type'] : 'string';
+        }
+
         $extraColumns = array_keys($def['extra']);
         $select = array_merge(['m.id'], array_map(fn (string $c): string => 'm.'.$c, $extraColumns));
         $select[] = 'ar.name as name_ar';
@@ -286,7 +370,29 @@ final class LookupWriter
             $extra = [];
             foreach ($extraColumns as $column) {
                 $value = $row->{$column} ?? null;
-                $extra[$column] = is_scalar($value) ? $value : null;
+                $value = is_scalar($value) ? $value : null;
+
+                /*
+                 * ── A boolean must LEAVE here as a boolean ───────────────────────────────────
+                 *
+                 * MariaDB hands a TINYINT back as the integer 1, and this line used to pass it
+                 * straight through. The lookup screen's switch renders `checked={value === true}`,
+                 * and `1 === true` is false in JavaScript — so all 78 brands showed as switched
+                 * OFF while all 78 rows in `catalog_brands` were switched ON. That is the whole of
+                 * the "brands are all inactive" report (developer, 2026-09-17): nothing was ever
+                 * wrong with the data.
+                 *
+                 * The screen also sends the row BACK on save, and its `extraPayload()` maps a
+                 * boolean column to `value === true` — which for the incoming `1` is `false`. So a
+                 * rename, a new logo or a slug correction would have written `is_active = 0` on
+                 * the way out. The display bug was one edit away from being a data bug.
+                 *
+                 * Cast HERE rather than in the React file because `config/catalog.php` declares
+                 * the type and this is the code that holds the config. A cast in the browser would
+                 * have left the wrong value on the wire for the CSV export and for every screen
+                 * added after it.
+                 */
+                $extra[$column] = $extraTypes[$column] === 'boolean' ? (bool) $value : $value;
             }
             $out[] = [
                 'id' => $id,
@@ -368,12 +474,11 @@ final class LookupWriter
             $name = $names[$locale];
 
             if ($name === '') {
-                if ($locale === 'ar') {
-                    throw new RuntimeException(ManageText::t('lookups.name_ar_required', 'الاسم العربي مطلوب.'));
-                }
-                DB::table($def['translations'])->where($def['fk'], $id)->where('locale', $locale)->delete();
-
-                continue;
+                // Both languages are required since 2026-09-18, matching legacy. The English row is
+                // no longer deleted when blank, because blank is no longer an allowed answer.
+                throw new RuntimeException($locale === 'ar'
+                    ? ManageText::t('lookups.name_ar_required', 'الاسم العربي مطلوب.')
+                    : ManageText::t('lookups.name_en_required', 'الاسم الإنجليزي مطلوب.'));
             }
 
             DB::table($def['translations'])->updateOrInsert(

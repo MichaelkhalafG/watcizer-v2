@@ -1,14 +1,16 @@
 import { Link } from '@inertiajs/react';
 
 import { DataTable, type Column } from '@/components/table/DataTable';
+import { DateRangeFilter } from '@/components/table/DateRangeFilter';
 import { Alert } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input, Select } from '@/components/ui/input';
 import ManageLayout from '@/layouts/ManageLayout';
 import { useT } from '@/lib/i18n';
+import { bucketLabel, referenceLabel } from '@/lib/labels';
 import type { TablePayload } from '@/types';
-import { Ltr } from '@/components/ui/bidi';
+import { Ltr, Name } from '@/components/ui/bidi';
 
 /**
  * The movement ledger (wave 4C) — READ-ONLY, for everybody including an administrator.
@@ -71,6 +73,9 @@ const reasonLabels = (t: Translate): Record<string, string> => ({
     adjustment: t('inventory.ledger_reason_adjustment', 'تسوية جرد'),
     erp_sync: t('common.reason_erp_sync', 'مزامنة ERP'),
     transform: t('common.reason_transform', 'بناء أولي'),
+    // Units given away by a promotion. It was the one reason of the ten with no word, so the
+    // filter listed `promotion_reward` among nine Arabic phrases — and the ledger row said it too.
+    promotion_reward: t('common.reason_promotion_reward', 'هدية عرض ترويجي'),
 });
 
 /** A release is the movement that proves a cancellation gave the stock back. */
@@ -163,12 +168,13 @@ export default function InventoryLedger({ table, filters }: Props) {
                     ) : row.reference === 'orders' && row.reference_id !== null ? (
                         // The one link on the page: a movement caused by an order leads to that
                         // order, which is the question a surprising number actually raises.
-                        <Link href={`/manage/orders/${row.reference_id}`} className="text-brand-strong hover:underline" dir="ltr">
-                            order #{row.reference_id}
+                        <Link href={`/manage/orders/${row.reference_id}`} className="text-brand-strong hover:underline">
+                            {/* Item 10: "order #41" was half English, half number. */}
+                            {t('inventory.reference_order_number', 'طلب #:id', { id: row.reference_id })}
                         </Link>
                     ) : (
-                        <span dir="ltr">
-                            {row.reference}
+                        <span>
+                            {referenceLabel(t, row.reference)}
                             {row.reference_id !== null ? ` #${row.reference_id}` : ''}
                         </span>
                     )}
@@ -185,10 +191,13 @@ export default function InventoryLedger({ table, filters }: Props) {
             header: t('inventory.ledger_actor', 'مَن'),
             sortable: false,
             hideOnMobile: true,
+            // The server resolves this to a NAME (D-11). The id is no longer appended: `Michael
+            // #5` tells the reader nothing the name did not, and the raw `user #5` it replaced is
+            // exactly what this column was reported for. The id is still in the CSV export, where
+            // a machine reads it.
             cell: (row) => (
-                <span className="text-xs text-muted-foreground" dir="ltr">
-                    {row.actor ?? '—'}
-                    {row.actor_id !== null ? ` #${row.actor_id}` : ''}
+                <span className="text-xs text-muted-foreground">
+                    <Name>{row.actor ?? '—'}</Name>
                 </span>
             ),
         },
@@ -243,9 +252,24 @@ export default function InventoryLedger({ table, filters }: Props) {
                                 value={current.bucket ?? ''}
                                 onChange={(event) => setFilter('bucket', event.target.value || null)}
                             >
+                                {/* Item 10: the server sends these options as the stored value in
+                                    BOTH fields, so the dropdown read `express` while the table column
+                                    beside it read «إكسبريس». Translated here, where the words already
+                                    live, rather than by teaching the filter builder about language.
+
+                                    …and then translating the VALUE broke the option that has no
+                                    value (D-9). The "any" row is the one option whose label the
+                                    server writes out in full — `['value' => '', 'label' => 'كل
+                                    المخازن']` — and `bucketLabel('')` fell through to
+                                    `bucket ?? '—'`, which does not fire for `''` because `''` is
+                                    not `null`. The dropdown rendered as an empty box. An option
+                                    with no value is not a token to translate; it is a label to
+                                    print. */}
                                 {filters.buckets.map((option) => (
                                     <option key={option.value} value={option.value}>
-                                        {option.label}
+                                        {option.value === ''
+                                            ? option.label
+                                            : bucketLabel(t, option.value)}
                                     </option>
                                 ))}
                             </Select>
@@ -255,9 +279,13 @@ export default function InventoryLedger({ table, filters }: Props) {
                                 value={current.reference_type ?? ''}
                                 onChange={(event) => setFilter('reference_type', event.target.value || null)}
                             >
+                                {/* Same rule as the bucket filter above: `''` means "any", and its
+                                    label is the server's sentence, not a token. */}
                                 {filters.references.map((option) => (
                                     <option key={option.value} value={option.value}>
-                                        {option.label}
+                                        {option.value === ''
+                                            ? option.label
+                                            : referenceLabel(t, option.value)}
                                     </option>
                                 ))}
                             </Select>
@@ -266,23 +294,17 @@ export default function InventoryLedger({ table, filters }: Props) {
                                 aria-label={t('common.product_number', 'رقم المنتج')}
                                 className="w-[9rem]"
                                 dir="ltr"
-                                placeholder="product id"
+                                placeholder={t('common.product_number', 'رقم المنتج')}
                                 value={current.product_id ?? ''}
                                 onChange={(event) => setFilter('product_id', event.target.value || null)}
                             />
-                            <Input
-                                type="date"
-                                aria-label={t('common.from_date', 'من تاريخ')}
-                                className="w-[10rem]"
-                                value={current.from ?? ''}
-                                onChange={(event) => setFilter('from', event.target.value || null)}
-                            />
-                            <Input
-                                type="date"
-                                aria-label={t('common.to_date', 'إلى تاريخ')}
-                                className="w-[10rem]"
-                                value={current.to ?? ''}
-                                onChange={(event) => setFilter('to', event.target.value || null)}
+                            <DateRangeFilter
+                                from={current.from ?? null}
+                                to={current.to ?? null}
+                                onChange={(from, to) => {
+                                    setFilter('from', from);
+                                    setFilter('to', to);
+                                }}
                             />
                         </>
                     )}

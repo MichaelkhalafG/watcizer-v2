@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Manage\Auth;
 
+use App\Domain\Access\Preferences;
 use App\Domain\Access\Roles;
 use App\Models\User;
 use App\Support\ManageText;
@@ -114,6 +115,22 @@ final class LoginController
         Auth::logout();
         $request->session()->invalidate();
         $request->session()->regenerateToken();
+
+        /*
+         * The farewell is resolved in the locale of the page it will be READ ON, not the locale of
+         * the account that just left (D-12, 2026-09-19).
+         *
+         * `SetDashboardLocale` has already set the app locale from the departing user's preference,
+         * and `Auth::logout()` does not undo that — so signing out in English produced
+         * `You have been signed out.` flashed onto the login page, which is a guest page and
+         * therefore always renders in the guest locale. English words in a right-to-left paragraph,
+         * with the full stop pushed to the far left.
+         *
+         * `localeFor(null)` rather than a literal or `config('app.locale')`: it is the same
+         * function the login screen itself will be rendered through on the next request, so the two
+         * cannot answer differently.
+         */
+        app()->setLocale(Preferences::localeFor(null));
 
         return redirect()->route('manage.login')->with('status', ManageText::t('auth.signed_out', 'تم تسجيل الخروج.'));
     }

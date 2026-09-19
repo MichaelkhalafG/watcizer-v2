@@ -113,16 +113,26 @@ final class Sql
      * The `literal-string` return type is what lets `whereRaw()` accept it at PHPStan level 10:
      * the value is a constant in the source, not something assembled from input.
      *
+     * `$alias` exists because the stock LIST joins `catalog_products as p` and so cannot use the
+     * bare form. It is a `match` over two literals rather than string concatenation on purpose:
+     * concatenating an argument would destroy the `literal-string` type and with it the reason
+     * this helper is safe. Adding a third alias means adding a third arm, in this file, which is
+     * exactly the audit trail the class exists to provide.
+     *
      * @return literal-string
      */
-    public static function belowLowStockThreshold(): string
+    public static function belowLowStockThreshold(string $alias = ''): string
     {
         $columns = ['stock_express', 'stock_market'];
         foreach ($columns as $column) {
             self::column($column);
         }
 
-        return '(`stock_express` + `stock_market`) <= `low_stock_threshold`';
+        return match ($alias) {
+            '' => '(`stock_express` + `stock_market`) <= `low_stock_threshold`',
+            'p' => '(`p`.`stock_express` + `p`.`stock_market`) <= `p`.`low_stock_threshold`',
+            default => throw new InvalidArgumentException("Sql::belowLowStockThreshold() has no arm for the alias [{$alias}]."),
+        };
     }
 
     private static function column(string $column): string

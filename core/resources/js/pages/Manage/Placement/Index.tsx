@@ -12,7 +12,9 @@ import { Input, Select } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import type { PreSwitchState, SharedProps, TablePayload } from '@/types';
 import { Ltr } from '@/components/ui/bidi';
-import { useT } from '@/lib/i18n';
+import { ProductName } from '@/components/manage/ProductName';
+import { useLocale, useT } from '@/lib/i18n';
+import { titleOrCode } from '@/lib/title';
 
 interface PlacementRow {
     product_id: number;
@@ -39,8 +41,14 @@ interface Props {
     slug_warning: string;
     /** Whether slug editing is open yet, and the reason when it is not. */
     slug_lock: PreSwitchState;
+    /**
+     * Whether THIS operator may type a slug (item 6) — a different rule from `slug_lock`.
+     *
+     * `slug_lock` is about the calendar and is the same for everybody; this is about the person and
+     * is the same on any day. Kept apart so the screen can say which one is stopping the field.
+     */
+    slug_role: { allowed: boolean; message: string | null };
     /** The pre-switch banner, worded for what THIS screen loses. */
-    pre_switch_notice: { pre_switch: boolean; message: string } | null;
 }
 
 /**
@@ -69,9 +77,10 @@ export default function PlacementIndex({
     table,
     slug_warning,
     slug_lock,
-    pre_switch_notice,
+    slug_role,
 }: Props) {
     const t = useT();
+    const locale = useLocale();
     const { errors } = usePage<SharedProps>().props;
     const [slugs, setSlugs] = useState<Record<number, string>>({});
     const [sorts, setSorts] = useState<Record<number, string>>({});
@@ -87,6 +96,10 @@ export default function PlacementIndex({
      * page is 25 products, or 100 if somebody raised the page size.
      */
     const [bulkHiding, setBulkHiding] = useState<{ ids: Array<string | number>; clear: () => void } | null>(null);
+    // The bulk category picker (W-1). Empty until chosen: both buttons stay disabled, so the
+    // action cannot fire against "whatever was first in the list" the way a defaulted select would.
+    const [bulkCategory, setBulkCategory] = useState('');
+    const [bulkPrimary, setBulkPrimary] = useState(false);
 
     const base = `/manage/storefronts/${storefront.id}/placement`;
 
@@ -121,13 +134,9 @@ export default function PlacementIndex({
             header: t('common.product', 'المنتج'),
             cell: (row) => (
                 <div className="min-w-[11rem] space-y-0.5">
-                    <div className="font-medium">
-                        {row.title.ar === '' ? (
-                            <span className="text-destructive">{t('common.no_arabic_name', '— بلا اسم عربي —')}</span>
-                        ) : (
-                            row.title.ar
-                        )}
-                    </div>
+                    {/* Item 1b — the reader's own language, the other one marked when it stands in.
+                        No second line here: the code sits under it and the cell is already narrow. */}
+                    <ProductName title={row.title} secondary={false} />
                     <div className="font-mono text-[11px] text-muted-foreground">
                         <Ltr>{row.wa_code}</Ltr>
                     </div>
@@ -146,7 +155,7 @@ export default function PlacementIndex({
             header: t('common.visible', 'ظاهر'),
             cell: (row) => (
                 <Switch
-                    aria-label={t('placement.show_product', 'إظهار :name', { name: row.title.ar || row.wa_code })}
+                    aria-label={t('placement.show_product', 'إظهار :name', { name: titleOrCode(row.title, locale, row.wa_code) })}
                     checked={row.is_visible}
                     disabled={!row.has_arabic && !row.is_visible}
                     onCheckedChange={(checked) => {
@@ -170,7 +179,7 @@ export default function PlacementIndex({
                     type="button"
                     variant="ghost"
                     size="icon"
-                    aria-label={t('placement.feature_product', 'تمييز :name', { name: row.title.ar || row.wa_code })}
+                    aria-label={t('placement.feature_product', 'تمييز :name', { name: titleOrCode(row.title, locale, row.wa_code) })}
                     onClick={() => save(row, { is_featured: !row.is_featured })}
                 >
                     <Star className={row.is_featured ? 'h-4 w-4 fill-current text-amber-500' : 'h-4 w-4 text-muted-foreground'} />
@@ -185,7 +194,7 @@ export default function PlacementIndex({
                     dir="ltr"
                     type="number"
                     className="w-20"
-                    aria-label={t('placement.sort_for_product', 'ترتيب :name', { name: row.title.ar || row.wa_code })}
+                    aria-label={t('placement.sort_for_product', 'ترتيب :name', { name: titleOrCode(row.title, locale, row.wa_code) })}
                     value={sorts[row.product_id] ?? String(row.sort_order)}
                     onChange={(event) => setSorts((current) => ({ ...current, [row.product_id]: event.target.value }))}
                     onBlur={() => {
@@ -205,11 +214,30 @@ export default function PlacementIndex({
                 <Input
                     dir="ltr"
                     className="min-w-[10rem]"
-                    aria-label={t('placement.slug_for_product', 'رابط :name', { name: row.title.ar || row.wa_code })}
-                    // Locked until the write-switch: the 301 this would promise does not survive
-                    // the next rebuild, so the field refuses rather than warning (review 🟠-3).
-                    disabled={slug_lock.blocked}
-                    title={slug_lock.blocked ? (slug_lock.message ?? undefined) : undefined}
+                    aria-label={t('placement.slug_for_product', 'رابط :name', { name: titleOrCode(row.title, locale, row.wa_code) })}
+                    /*
+                     * It used to be LOCKED until the write-switch, because the 301 this promises
+                     * does not survive the next rebuild and § 2.27 says a real rule belongs in the
+                     * form rather than beside it (review 🟠-3).
+                     *
+                     * Item 5 (2026-09-18) reversed that decision deliberately, not by accident: the
+                     * developer wants every gated feature exercised before the switch. The sentence
+                     * did not change — the same fact now arrives as `caveat` instead of `message`
+                     * and rides on the field's tooltip and the screen notice above the table.
+                     */
+                    /*
+                     * Two rules, and the field says which one is in force (item 6). The role rule
+                     * is checked first because it is the one that does not change tomorrow —
+                     * telling a data-entry operator about switch night when the real answer is
+                     * "ask an administrator" sends them to wait for the wrong thing.
+                     */
+                    disabled={slug_lock.blocked || !slug_role.allowed}
+                    title={
+                        (slug_role.message ??
+                            slug_lock.message ??
+                            slug_lock.caveat) ??
+                        undefined
+                    }
                     value={slugs[row.product_id] ?? row.slug}
                     onChange={(event) => setSlugs((current) => ({ ...current, [row.product_id]: event.target.value }))}
                     onBlur={() => {
@@ -259,15 +287,6 @@ export default function PlacementIndex({
             <Alert tone="warning" title={t('placement.slug_warning_title', 'قبل تغيير أي رابط')}>
                 {slug_warning}
             </Alert>
-
-            {pre_switch_notice === null ? null : (
-                <Alert
-                    tone="warning"
-                    title={t('placement.pre_switch_title', 'قبل ليلة التحويل — كل ما تضبطه هنا يُعاد بناؤه')}
-                >
-                    {pre_switch_notice.message}
-                </Alert>
-            )}
 
             {errors.slug ? (
                 <Alert tone="error" title={t('placement.slug_save_failed', 'تعذّر حفظ الرابط')}>
@@ -367,6 +386,79 @@ export default function PlacementIndex({
                                 {label}
                             </Button>
                         ))}
+
+                        {/* ── Filing products into a category, in bulk (W-1) ─────────────────
+
+                            *"The single most expensive gap in the product."* Correcting a wrong
+                            category on twenty products meant twenty passes through a 7.4-screen
+                            form. It is ADDITIVE by design — see PlacementController::bulkCategory()
+                            — so the two buttons are "add" and "remove" rather than one "set" that
+                            would silently discard categories nobody on this screen can see. */}
+                        <div className="flex flex-wrap items-center gap-1.5 border-s ps-3">
+                            <Select
+                                aria-label={t('placement.bulk_category', 'التصنيف')}
+                                className="h-8 w-48"
+                                value={bulkCategory}
+                                onChange={(event) => setBulkCategory(event.target.value)}
+                            >
+                                <option value="">
+                                    {t('placement.bulk_category_choose', '— اختر تصنيفًا —')}
+                                </option>
+                                {categories.map((option) => (
+                                    <option key={option.value} value={option.value}>
+                                        {option.label}
+                                    </option>
+                                ))}
+                            </Select>
+                            <label className="flex items-center gap-1 text-xs">
+                                <input
+                                    type="checkbox"
+                                    className="h-3.5 w-3.5"
+                                    checked={bulkPrimary}
+                                    onChange={(event) => setBulkPrimary(event.target.checked)}
+                                />
+                                {t('placement.bulk_make_primary', 'اجعله الأساسي')}
+                            </label>
+                            <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                disabled={bulkCategory === ''}
+                                onClick={() =>
+                                    router.post(
+                                        `${base}/bulk`,
+                                        {
+                                            action: 'set_category',
+                                            product_ids: selected,
+                                            category_id: Number(bulkCategory),
+                                            make_primary: bulkPrimary,
+                                        },
+                                        { preserveScroll: true, onSuccess: clear },
+                                    )
+                                }
+                            >
+                                {t('placement.bulk_category_add', 'أضِف التصنيف')}
+                            </Button>
+                            <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                disabled={bulkCategory === ''}
+                                onClick={() =>
+                                    router.post(
+                                        `${base}/bulk`,
+                                        {
+                                            action: 'clear_category',
+                                            product_ids: selected,
+                                            category_id: Number(bulkCategory),
+                                        },
+                                        { preserveScroll: true, onSuccess: clear },
+                                    )
+                                }
+                            >
+                                {t('placement.bulk_category_remove', 'احذف التصنيف')}
+                            </Button>
+                        </div>
                     </>
                 )}
                 emptyTitle={t('placement.empty_title', 'لا توجد منتجات على هذا المتجر')}
@@ -377,7 +469,7 @@ export default function PlacementIndex({
                 {hiding === null ? null : (
                     <DialogContent
                         title={t('placement.hide_title', 'إخفاء «:name» عن :storefront', {
-                            name: hiding.title.ar || hiding.wa_code,
+                            name: titleOrCode(hiding.title, locale, hiding.wa_code),
                             storefront: storefront.name,
                         })}
                     >

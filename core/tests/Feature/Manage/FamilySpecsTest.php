@@ -210,7 +210,13 @@ it('ships the derived family and its REASON to the product form', function () {
         // The reason is on the screen, because a block that appears without explanation looks
         // like a bug to the person filling it in.
         ->and($family['reason'])->toBeString()
-        ->and(T::str($family['reason']))->toContain('config/transform.php');
+        /*
+         * It used to be asserted by the config file it named. The 2026-09-18 copy sweep took the
+         * file name off the screen — an operator cannot act on `config/transform.php` — so what is
+         * pinned now is that the block still explains itself, and in the operator's own words.
+         */
+        ->and(T::str($family['reason']))->not->toBe('')
+        ->and(str_contains(T::str($family['reason']), 'config/'))->toBeFalse();
 });
 
 it('shows a fashion product its OWN single-field block, and never a watch one', function () {

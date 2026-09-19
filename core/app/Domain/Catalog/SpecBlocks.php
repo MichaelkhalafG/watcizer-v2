@@ -39,6 +39,63 @@ final class SpecBlocks
     public const TYPES = ['string', 'integer', 'decimal', 'boolean', 'lookup'];
 
     /**
+     * Which colour questions each family is asked, labelled (J-6, 2026-09-19).
+     *
+     * Every family at once, keyed by family, because the product form derives the family in the
+     * BROWSER as the operator changes the primary category — the same `option.family` mechanism
+     * task 4.1 built so the specification block could react without a round trip. Sending one
+     * family's roles would mean a request per category change, or a second copy of the derivation
+     * rule in JavaScript, and wave 4B rejected both.
+     *
+     * ── Shown, not required ─────────────────────────────────────────────────────────────────
+     *
+     * J-6 asked for these to be REQUIRED per family. Measured against the live catalogue first,
+     * as every field rule on this project is:
+     *
+     *     main colour missing:  7,713 of 7,713   (no product has ever had one)
+     *     watch dial missing:   4,264 of 4,645
+     *     watch band missing:   4,263 of 4,645
+     *
+     * A required colour would refuse a save on essentially every product in the shop, which is the
+     * exact failure the 2026-09-18 field-rules decision was written to avoid: *"a rule that
+     * refuses the save punishes whoever is fixing something rather than whoever left it
+     * incomplete."* Legacy has these `nullable` too.
+     *
+     * So the FAMILY SCOPING ships — which is the half that closes the trap, because a handbag is
+     * no longer asked for a strap colour and cannot write into the column the storefront renders
+     * as a watch band — and the requirement does not. The form says which colours matter for this
+     * family instead of refusing to save without them.
+     *
+     * @return array<string, list<array{key: string, label: string}>>
+     */
+    public static function colorRoles(): array
+    {
+        $labels = [
+            'main' => ManageText::t('products.color_main', 'اللون الأساسي'),
+            'dial' => ManageText::t('products.color_dial', 'لون القرص'),
+            'band' => ManageText::t('products.color_band', 'لون السوار'),
+        ];
+
+        /** @var array<string, mixed> $config */
+        $config = config('catalog.color_roles', []);
+
+        $out = [];
+        foreach (array_merge(['default'], Product::FAMILIES) as $family) {
+            $roles = $config[$family] ?? $config['default'] ?? [];
+            $list = [];
+            foreach (is_array($roles) ? $roles : [] as $role) {
+                if (! is_string($role) || ! isset($labels[$role])) {
+                    throw new InvalidArgumentException('config/catalog.php: unknown colour role ['.Coerce::str($role).'].');
+                }
+                $list[] = ['key' => $role, 'label' => $labels[$role]];
+            }
+            $out[$family] = $list;
+        }
+
+        return $out;
+    }
+
+    /**
      * The block for a family, or null when the family has none (`fashion`, `other`).
      *
      * @return SpecBlock|null

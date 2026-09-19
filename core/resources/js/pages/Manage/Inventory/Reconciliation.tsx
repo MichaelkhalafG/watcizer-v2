@@ -88,7 +88,7 @@ export default function InventoryReconciliation({ ok, exit_code, report, ran_at,
                     >
                         {t(
                             'inventory.recon_failed_body',
-                            'اقرأ التقرير أدناه كما هو. هذه الشاشة لا تُصلح شيئًا ولا تخفي شيئًا — الإصلاح يتم بتسجيل حركة مضادة من شاشة المخزون، أو بمراجعة الموجة المسؤولة عن الفارق.',
+                            'الفارق لا يُصلَّح من هنا: سجّل حركة مضادة من شاشة المخزون، أو راجع الموجة المسؤولة عنه.',
                         )}
                     </Alert>
                 )}
@@ -131,7 +131,7 @@ export default function InventoryReconciliation({ ok, exit_code, report, ran_at,
                             {t('inventory.recon_ran_at', 'نُفِّذ في')} <span dir="ltr">{ran_at}</span>{' '}
                             {t(
                                 'inventory.recon_report_verbatim',
-                                '— هذه مخرجات الأمر نفسه بلا تعديل، حتى تتفق الشاشة مع الطرفية ومع خطوة الكتاب الليلي.',
+                                '— مخرجات الأمر نفسه، بلا تعديل.',
                             )}
                         </p>
                         {/* `dir="ltr"` and a monospace block: this is command output, not prose. */}

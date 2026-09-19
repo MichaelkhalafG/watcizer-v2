@@ -13,7 +13,7 @@ use App\Models\Storefront\Storefront;
  * needed is inside {@see self::forStorefront()} — no component, no layout and no Blade template
  * mentions a file path or a brand name anywhere.
  *
- * @phpstan-type BrandingPayload array{name: string, suffix: string, logo: string, logo_light: string, logo_width: int, logo_height: int}
+ * @phpstan-type BrandingPayload array{name: string, logo: string, logo_light: string, logo_width: int, logo_height: int}
  * @phpstan-type CreditPayload array{text: string, url: string|null}
  */
 final class Branding
@@ -27,7 +27,7 @@ final class Branding
 
         return [
             'name' => self::str($settings['name'] ?? null) ?? ($storefront === null ? config()->string('branding.name') : $storefront->name),
-            'suffix' => config()->string('branding.suffix'),
+
             'logo' => self::asset(self::str($settings['logo'] ?? null) ?? config()->string('branding.logo.default')),
             'logo_light' => self::asset(self::str($settings['logo_light'] ?? null) ?? config()->string('branding.logo.light')),
             'logo_width' => config()->integer('branding.logo.width'),

@@ -84,7 +84,10 @@ final class ProfileController
              * a costed backlog item rather than a toggle.
              */
             'locale_notice' => ManageText::t('profile.locale_notice', 'اللغة تُحفَظ الآن لحسابك، وتُطبَّق على الشاشات تدريجيًا مع ترجمتها. العربية تبقى لغة اللوحة الأساسية.'),
-            'saves_notice' => ManageText::t('profile.saves_notice', 'الحفظ هنا يكتب في جدول واحد يملكه النظام الجديد (core_user_preferences) ولا يمس جدول الحسابات.'),
+            // D-18: the table name was in the parentheses. What the sentence is FOR is the second
+            // half — this screen cannot touch your account — and a table name neither supports
+            // that nor is checkable by anybody reading it.
+            'saves_notice' => ManageText::t('profile.saves_notice', 'الحفظ هنا يخصّ تفضيلات اللوحة وحدها، ولا يمس بيانات حسابك ولا كلمة مرورك.'),
         ]);
     }
 

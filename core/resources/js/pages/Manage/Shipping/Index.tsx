@@ -84,7 +84,10 @@ export default function ShippingIndex({ cities, abilities, notice }: Props) {
                         <TableRow>
                             <TableHead className="w-16">#</TableHead>
                             <TableHead>{t('shipping.governorate', 'المحافظة')}</TableHead>
-                            <TableHead>Governorate</TableHead>
+                            {/* Item 10: this said `Governorate` in English beside the
+                                Arabic heading one line up. It is the ENGLISH NAME column,
+                                and the lookup screens already have a word for that. */}
+                            <TableHead>{t('common.name_en', 'الاسم (إنجليزي)')}</TableHead>
                             <TableHead align="end">{t('shipping.cost', 'سعر الشحن')}</TableHead>
                             <TableHead align="center">{t('shipping.linked_addresses', 'عناوين مرتبطة')}</TableHead>
                             {abilities.manage && <TableHead className="w-40" />}
@@ -227,17 +230,29 @@ function DeleteButton({ city }: { city: City }) {
     const t = useT();
 
     if (city.addresses > 0) {
+        /*
+         * ── The reason, VISIBLE (J-8, 2026-09-19) ───────────────────────────────────────────
+         *
+         * Cairo's `حذف` looks close enough to enabled, does nothing when clicked, and explained
+         * itself only after about a second of hover — and never on touch at all. That is reported
+         * as "the dashboard is broken" rather than understood as a rule.
+         *
+         * The docblock above says "the reason is the number already on the row", and on a wide
+         * screen it is. It is not on a tablet, where the addresses column is the first thing a
+         * narrow layout drops, and it was never connected to the button in words. AGENTS §2.27
+         * asks for the reason ON the control.
+         */
         return (
-            <Button
-                variant="outline"
-                size="sm"
-                disabled
-                title={t('shipping.delete_blocked', ':count عنوان عميل مرتبط بهذه المحافظة', {
-                    count: city.addresses,
-                })}
-            >
-                {t('shipping.delete', 'حذف')}
-            </Button>
+            <span className="inline-flex flex-wrap items-center justify-end gap-1.5">
+                <span className="text-[11px] leading-snug text-muted-foreground">
+                    {t('shipping.delete_blocked', ':count عنوان عميل مرتبط بهذه المحافظة', {
+                        count: city.addresses,
+                    })}
+                </span>
+                <Button variant="outline" size="sm" disabled>
+                    {t('shipping.delete', 'حذف')}
+                </Button>
+            </span>
         );
     }
 

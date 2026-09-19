@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import type { Crumb, SharedProps } from '@/types';
 import { useT } from '@/lib/i18n';
+import { cn } from '@/lib/utils';
 
 /**
  * Colour-scheme toggle. Per-browser and per-person (`localStorage`), because it is a comfort
@@ -45,6 +46,67 @@ function ThemeToggle() {
         >
             {dark ? <Sun className="h-[18px] w-[18px]" /> : <Moon className="h-[18px] w-[18px]" />}
         </Button>
+    );
+}
+
+/**
+ * The language switch, in the header (W-5, 2026-09-19).
+ *
+ * It was four steps deep — avatar → `الملف الشخصي` → scroll → select → Save — and not in the
+ * header, which is where a bilingual team looks for it. That is the wrong cost for something the
+ * same person flips several times a day when they are working with a colleague who reads the other
+ * language.
+ *
+ * It posts to the SAME endpoint the profile screen uses, and `ProfileController::update()` is the
+ * only writer: one place validates the locale, one place stores it, and the two controls cannot
+ * drift into disagreeing about what a valid language is.
+ *
+ * Rendered as the two languages side by side rather than a dropdown, because there are exactly two
+ * and each is written in ITSELF — `العربية` / `English` — which is the one label that needs no
+ * translating and no guessing.
+ */
+function LocaleSwitch() {
+    const t = useT();
+    const { locale } = usePage<SharedProps>().props;
+
+    const LANGUAGES = [
+        { value: 'ar', label: 'العربية' }, // i18n-exempt: a language is named in its own language, whatever locale the page is in
+        { value: 'en', label: 'English' },
+    ];
+
+    return (
+        <div
+            className="hidden items-center rounded-full border p-0.5 sm:flex"
+            role="group"
+            aria-label={t('profile.panel_language', 'لغة اللوحة')}
+        >
+            {LANGUAGES.map((language) => (
+                <button
+                    key={language.value}
+                    type="button"
+                    aria-pressed={locale === language.value}
+                    onClick={() => {
+                        if (locale === language.value) {
+                            return;
+                        }
+                        /*
+                         * A full visit, not `preserveState`: the locale changes the writing
+                         * DIRECTION of the whole shell (`Preferences::directionFor`), so the page
+                         * has to be re-rendered from the server rather than re-labelled in place.
+                         */
+                        router.put('/manage/profile', { locale: language.value });
+                    }}
+                    className={cn(
+                        'rounded-full px-2.5 py-1 text-xs transition-colors',
+                        locale === language.value
+                            ? 'bg-accent font-medium text-foreground'
+                            : 'text-muted-foreground hover:text-foreground',
+                    )}
+                >
+                    {language.label}
+                </button>
+            ))}
+        </div>
     );
 }
 
@@ -162,6 +224,7 @@ export function Header({ crumbs, onOpenNav }: { crumbs: Crumb[]; onOpenNav: () =
             <Breadcrumbs crumbs={crumbs} />
 
             <div className="ms-auto flex items-center gap-1">
+                <LocaleSwitch />
                 <ThemeToggle />
                 <UserMenu />
             </div>

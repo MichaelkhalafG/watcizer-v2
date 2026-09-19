@@ -30,6 +30,30 @@ return [
     */
     'write_switch_completed' => (bool) env('CORE_WRITE_SWITCH_COMPLETED', false),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Do the pre-switch gates REFUSE, or warn? (item 5, developer 2026-09-18)
+    |--------------------------------------------------------------------------
+    |
+    | `enforce` — App\Domain\Catalog\PreSwitch refuses every creation, slug
+    | change and secondary-tree edit, because the next rebuild deletes them.
+    | `warn` — the same screens carry the same sentence as a CAVEAT and the
+    | controls work.
+    |
+    | It defaults to `warn` because the developer asked for every gated feature
+    | open and exercised before the switch: a gate nobody has opened is a gate
+    | nobody knows the shape of, and switch night is the worst time to learn.
+    | Set CORE_PRE_SWITCH_GATES=enforce to put the refusals back.
+    |
+    | This is deliberately NOT the same flag as write_switch_completed above.
+    | That one means "legacy has stopped writing"; this one means "we accept
+    | losing this work to a rebuild". ConversionGuard reads that one and keeps
+    | refusing, because converting a live product to variants while legacy can
+    | still write `products.quantity` corrupts stock — and stock is not
+    | recoverable by typing it again.
+    */
+    'pre_switch_gates' => env('CORE_PRE_SWITCH_GATES', 'warn'),
+
     // Rows per chunked legacy read and per batched clean-table upsert.
     'chunk' => (int) env('TRANSFORM_CHUNK', 500),
 

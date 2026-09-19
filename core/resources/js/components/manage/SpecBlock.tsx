@@ -5,6 +5,7 @@ import { Alert } from '@/components/ui/alert';
 import { SwitchField } from '@/components/form/SwitchField';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useT } from '@/lib/i18n';
+import { familyLabel } from '@/lib/labels';
 
 export interface SpecField {
     key: string;
@@ -121,7 +122,8 @@ export function SpecBlock({
                     <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                     <span>
                         {t('specs.derived_family', 'العائلة المحسوبة:')}{' '}
-                        <strong className="text-foreground">{explanation.family}</strong> — {explanation.reason}
+                        {/* The family as a WORD (item 10). `watch` is a column value. */}
+                        <strong className="text-foreground">{familyLabel(t, explanation.family)}</strong> — {explanation.reason}
                     </span>
                 </p>
             </CardHeader>
@@ -142,14 +144,20 @@ export function SpecBlock({
 
                 {block === undefined ? (
                     <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-                        {t('specs.no_block_before_families', 'لا توجد مواصفات خاصة بهذه العائلة. العائلتان')} <code>fashion</code>{' '}
-                        {t('specs.no_block_and', 'و')} <code>other</code>{' '}
+                        {/* Item 10: the two families NAMED, not quoted as config keys. */}
+                        {t('specs.no_block_before_families', 'لا توجد مواصفات خاصة بهذه العائلة. العائلتان')}{' '}
+                        <strong>{familyLabel(t, 'fashion')}</strong>{' '}
+                        {t('specs.no_block_and', 'و')} <strong>{familyLabel(t, 'other')}</strong>{' '}
                         {t(
                             'specs.no_block_after_families',
                             'هما الحالة الافتراضية لقاعدة الاشتقاق، وإضافة حقول لهما تعني اختراع بيانات لا يعرفها النظام.',
                         )}{' '}
-                        {t('specs.no_block_before_config', 'لو احتاج هذا النوع مواصفات، يُضاف قسم له في')}{' '}
-                        <code dir="ltr">config/catalog.php</code> {t('specs.no_block_after_config', 'وتُشتق العائلة من تصنيف مناسب.')}
+                        {/* The source-file path is gone (item 10): a data-entry operator
+                            cannot edit `config/catalog.php`, and naming it tells them only
+                            that the answer is somewhere they cannot reach. The sentence now
+                            says what to do — choose a category that carries specifications —
+                            which is the part that is actually theirs. */}
+                        {t('specs.no_block_ask_admin', 'لو احتاج هذا النوع مواصفات، اختر تصنيفًا أساسيًا لعائلة تحمل مواصفات، أو اطلب من المدير إضافة مواصفات لهذه العائلة.')}
                     </p>
                 ) : (
                     <div className="grid gap-4 sm:grid-cols-2">

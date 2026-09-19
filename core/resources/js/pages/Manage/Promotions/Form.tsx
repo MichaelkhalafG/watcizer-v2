@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import ManageLayout from "@/layouts/ManageLayout";
 import { Ltr } from "@/components/ui/bidi";
 import { useT } from "@/lib/i18n";
+import { bucketLabel } from "@/lib/labels";
 
 /**
  * Authoring a promotion (wave 4D, study §3.16.6).
@@ -1105,7 +1106,7 @@ export default function PromotionForm({
                         <p className="text-sm text-muted-foreground">
                             {t(
                                 "promotions.sample_cart_intro",
-                                "ابحث عن منتجات حقيقية وكوّن سلة، ثم اضغط «جرّب». سترى ما يدفعه العميل، وما يخرج من المخزون — العرض قرار مخزون قبل أن يكون قرار سعر.",
+                                "العرض قرار مخزون قبل أن يكون قرار سعر.",
                             )}
                         </p>
 
@@ -1349,7 +1350,7 @@ export default function PromotionForm({
                                                     </div>
                                                     <div className="text-xs text-muted-foreground">
                                                         <Ltr>
-                                                            {row.bucket}:{" "}
+                                                            {bucketLabel(t, row.bucket)}:{" "}
                                                             {row.stock_before} →{" "}
                                                             {row.stock_after}{" "}
                                                             {t(

@@ -23,6 +23,7 @@ export function TextField({
     max,
     step,
     inputMode,
+    autoComplete,
     ...shell
 }: Common & {
     type?: string;
@@ -31,6 +32,16 @@ export function TextField({
     max?: number | string;
     step?: number | string;
     inputMode?: 'text' | 'decimal' | 'numeric';
+    /*
+     * Passed through for the LOGIN form (item 16, 2026-09-18), and useful nowhere else so far.
+     *
+     * Without `username` and `current-password` a browser's password manager cannot recognise the
+     * pair, so it neither fills nor offers to save them — and an operator who cannot use their
+     * password manager types the password by hand, which is how passwords end up short and reused.
+     * It is one attribute and it is the difference between a form a password manager understands
+     * and one it does not.
+     */
+    autoComplete?: string;
 }) {
     return (
         <Field
@@ -47,6 +58,7 @@ export function TextField({
                     max={max}
                     step={step}
                     inputMode={inputMode ?? (type === 'number' ? 'decimal' : undefined)}
+                    autoComplete={autoComplete}
                     onChange={(event) => onChange(event.target.value)}
                 />
             )}

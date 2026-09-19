@@ -7,7 +7,14 @@ const TONES = {
     info: { className: 'border-brand/30 bg-brand-muted text-foreground', Icon: Info },
     success: { className: 'border-emerald-500/30 bg-emerald-50 text-emerald-900 dark:bg-emerald-950/50 dark:text-emerald-200', Icon: CheckCircle2 },
     warning: { className: 'border-amber-500/40 bg-amber-50 text-amber-900 dark:bg-amber-950/50 dark:text-amber-200', Icon: AlertTriangle },
-    error: { className: 'border-destructive/40 bg-destructive/10 text-destructive', Icon: XCircle },
+    // Same measured problem as the `destructive` BADGE (D-6): `--destructive` is a
+    // background-grade red in the dark palette, so using it as text on a near-black card lands
+    // around 2:1 against a 4.5:1 minimum. Fixed here as well as on the badge, because it is one
+    // colour with one job and a half-fixed alarm colour is worse than an unfixed one.
+    error: {
+        className: 'border-destructive/40 bg-destructive/10 text-destructive dark:border-red-900 dark:bg-red-950/50 dark:text-red-300',
+        Icon: XCircle,
+    },
 } as const;
 
 export type AlertTone = keyof typeof TONES;

@@ -14,6 +14,7 @@ use App\Support\DeadlockRetry;
 use App\Transform\Row;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
+use Tests\Support\Gates;
 use Tests\Support\Props;
 use Tests\Support\Staff;
 use Tests\Support\T;
@@ -86,6 +87,13 @@ function rowValue(mixed $row, string $column): mixed
 // ── 1. the PreSwitch exemption ───────────────────────────────────────────────────────────────
 
 it('REFUSES to create a product before the write-switch without the exemption', function () {
+    /*
+     * This test is ABOUT the refusal, so it asks for the mode that refuses (item 5, 2026-09-18).
+     * The shipped default is `warn` — the gates carry their sentence as a caveat and the controls
+     * work. `enforce` is still supported and still has to be proved. {@see Tests\Support\Gates}.
+     */
+    Gates::enforcePreSwitch();
+
     expect(PreSwitch::completed())->toBeFalse();
 
     // The default is a refusal, and it has to stay one: the whole importer is a door the developer
@@ -99,6 +107,13 @@ it('REFUSES to create a product before the write-switch without the exemption', 
 });
 
 it('CLOSES the exemption again — even when the work throws', function () {
+    /*
+     * This test is ABOUT the refusal, so it asks for the mode that refuses (item 5, 2026-09-18).
+     * The shipped default is `warn` — the gates carry their sentence as a caveat and the controls
+     * work. `enforce` is still supported and still has to be proved. {@see Tests\Support\Gates}.
+     */
+    Gates::enforcePreSwitch();
+
     expect(PreSwitch::allows('product'))->toBeFalse();
 
     PreSwitch::allowing(['product'], function (): void {
@@ -123,6 +138,13 @@ it('CLOSES the exemption again — even when the work throws', function () {
 });
 
 it('names its exemptions one by one, never a blanket', function () {
+    /*
+     * This test is ABOUT the refusal, so it asks for the mode that refuses (item 5, 2026-09-18).
+     * The shipped default is `warn` — the gates carry their sentence as a caveat and the controls
+     * work. `enforce` is still supported and still has to be proved. {@see Tests\Support\Gates}.
+     */
+    Gates::enforcePreSwitch();
+
     PreSwitch::allowing(['product'], function (): void {
         // Asking for products does not also open categories or lookups.
         expect(PreSwitch::allows('product'))->toBeTrue()

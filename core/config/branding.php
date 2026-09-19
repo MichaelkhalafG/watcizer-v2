@@ -21,9 +21,18 @@ return [
 
     'name' => env('BRANDING_NAME', 'Watchizer'),
 
-    // Shown next to the mark in the sidebar; keeps the dashboard honest about which
-    // platform it is, not just which storefront.
-    'suffix' => env('BRANDING_SUFFIX', 'لوحة التحكم'),  // i18n-exempt: an ENV DEFAULT for the browser-title suffix, set per deployment
+    /*
+     * `suffix` used to live here, and it was removed on 2026-09-19 (D-13).
+     *
+     * It carried the exemption "an ENV DEFAULT for the browser-title suffix, set per deployment".
+     * The second half was simply not true: the browser title comes from `config('app.name')` in
+     * `resources/views/app.blade.php`, and `suffix` was rendered as VISIBLE COPY in three places —
+     * the sidebar header, the footer and the login panel. So the English shell opened with
+     * «لوحة التحكم» beside the logo, and the exemption was what stopped anybody noticing.
+     *
+     * Visible copy belongs to the translation seam. It is now `shell.dashboard`, and this file
+     * holds only things a deployment genuinely owns: the brand's NAME and its marks.
+     */
 
     'logo' => [
         // Dark ink — for light surfaces.

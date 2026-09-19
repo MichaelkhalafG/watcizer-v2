@@ -73,7 +73,7 @@ interface Props {
     table: TablePayload<StockRow>;
     filters: { views: Option[]; buckets: Option[] };
     reasons: Option[];
-    low_count: number;
+    alerts: { low: number; out: number };
 }
 
 /** The form the dialog posts. `variant_id` empty means the product itself. */
@@ -106,7 +106,7 @@ export default function InventoryIndex({
     table,
     filters,
     reasons,
-    low_count,
+    alerts,
 }: Props) {
     const t = useT();
     const { errors } = usePage<SharedProps>().props;
@@ -328,19 +328,65 @@ export default function InventoryIndex({
             }
         >
             <div className="space-y-4">
-                {low_count > 0 ? (
+                {/* Two alerts, because they are two jobs. "Low" means reorder soon; "out" means
+                    it is already unbuyable and somebody should decide whether to hide it. They
+                    were one number until 2026-09-19, added together into an alarm that covered
+                    97.5% of the shop. Each title is a link to exactly the rows it counted. */}
+                {alerts.low > 0 ? (
                     <Alert
                         tone="warning"
                         title={t(
                             "inventory.low_count_title",
                             ":count منتجًا تحت حد التنبيه",
-                            { count: low_count },
+                            { count: alerts.low },
                         )}
                     >
-                        {t(
-                            "inventory.low_count_body",
-                            "كل منتج له حدّه الخاص، فالقائمة تحسب «منخفض» من عمود المنتج نفسه لا من رقم عام.",
+                        <div className="space-y-1">
+                            <p>
+                                {t(
+                                    "inventory.low_count_body",
+                                    "كل منتج له حدّه الخاص، فالقائمة تحسب «منخفض» من عمود المنتج نفسه لا من رقم عام.",
+                                )}
+                            </p>
+                            <Link
+                                href="/manage/inventory?filters[view]=low"
+                                className="inline-block font-medium underline"
+                            >
+                                {t(
+                                    "inventory.alert_show",
+                                    "اعرض هذه المنتجات",
+                                )}
+                            </Link>
+                        </div>
+                    </Alert>
+                ) : null}
+
+                {alerts.out > 0 ? (
+                    <Alert
+                        tone="info"
+                        title={t(
+                            "inventory.out_count_title",
+                            ":count منتجًا نفد من المخزن",
+                            { count: alerts.out },
                         )}
+                    >
+                        <div className="space-y-1">
+                            <p>
+                                {t(
+                                    "inventory.out_count_body",
+                                    "هذه ليست «منخفضة» بل انتهت تمامًا، فلها سطر مستقل: المنخفض يُطلب قبل أن ينفد، والنافد قرارٌ بشأن ما يراه الزبون الآن.",
+                                )}
+                            </p>
+                            <Link
+                                href="/manage/inventory?filters[view]=out"
+                                className="inline-block font-medium underline"
+                            >
+                                {t(
+                                    "inventory.alert_show",
+                                    "اعرض هذه المنتجات",
+                                )}
+                            </Link>
+                        </div>
                     </Alert>
                 ) : null}
 
@@ -348,14 +394,18 @@ export default function InventoryIndex({
                     table={table}
                     columns={columns}
                     rowId={(row) => row.id}
+                    // The placeholder is a PROMISE about what the box can see, and it used to
+                    // promise less than the query delivers — it said "كود المنتج أو SKU" while
+                    // every row on screen is headed by an Arabic name. Both the promise and the
+                    // query now come from ProductSearch, so they cannot drift apart again.
                     searchPlaceholder={t(
                         "inventory.search_placeholder",
-                        "كود المنتج أو SKU…",
+                        "اسم المنتج أو كوده أو كود المورّد…",
                     )}
                     emptyTitle={t("common.no_products", "لا توجد منتجات")}
                     emptyDescription={t(
-                        "common.try_adjusting_search",
-                        "جرِّب تعديل البحث أو التصفية.",
+                        "products.search_covers_hint",
+                        "البحث يشمل الاسم بالعربي والإنجليزي وكود المنتج وكود المورّد. جرِّب كلمة أقصر أو عدِّل التصفية.",
                     )}
                     rowActions={(row) =>
                         row.variants.length > 0 ? (

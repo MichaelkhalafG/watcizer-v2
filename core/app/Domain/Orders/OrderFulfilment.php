@@ -194,7 +194,7 @@ final class OrderFulfilment
              */
             throw new RuntimeException(ManageText::t(
                 'orders.cancel_after_delivery',
-                'لا يمكن إلغاء طلب وصل إلى العميل من هذه الشاشة. تعامل معه كمرتجع.',
+                'لا يمكن إلغاء طلب وصل إلى العميل. تعامل معه كمرتجع.',
             ));
         }
 

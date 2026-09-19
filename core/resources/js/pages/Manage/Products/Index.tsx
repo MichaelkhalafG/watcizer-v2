@@ -1,15 +1,19 @@
 import { Link, router } from "@inertiajs/react";
-import { Lock, Pencil, Plus } from "lucide-react";
+import { ImageOff, Lock, Pencil, Plus } from "lucide-react";
+import { useState } from "react";
 
 import { DataTable, type Column } from "@/components/table/DataTable";
 import ManageLayout from "@/layouts/ManageLayout";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Select } from "@/components/ui/input";
+import { Input, Select } from "@/components/ui/input";
 import type { PreSwitchState, TablePayload } from "@/types";
-import { Ltr, Num } from "@/components/ui/bidi";
-import { useT } from "@/lib/i18n";
+import { Name, Num } from "@/components/ui/bidi";
+import { ProductName } from "@/components/manage/ProductName";
+import { useLocale, useT } from "@/lib/i18n";
+import { localisedTitle, titleOrCode } from "@/lib/title";
+import { bucketLabel } from "@/lib/labels";
 
 interface ProductRow {
     id: number;
@@ -46,7 +50,8 @@ interface ProductRow {
      *                  appears in no sub-category listing;
      *  - `none`      — no category at all, so it appears in no listing whatsoever.
      */
-    placement: "placed" | "root_only" | "none";
+    // `absent` = no `storefront_product` row on the shop being looked at. Not a fault (D-3).
+    placement: "placed" | "root_only" | "none" | "absent";
     /** One entry per active storefront: visible, hidden, or absent (no row at all). */
     visibility: Array<{ id: number; state: "visible" | "hidden" | "absent" }>;
     cover: string | null;
@@ -68,7 +73,6 @@ interface Props {
     categories: Option[];
     families: Option[];
     table: TablePayload<ProductRow>;
-    pre_switch_notice: { pre_switch: boolean; message: string } | null;
     pre_switch: PreSwitchState;
 }
 
@@ -92,10 +96,14 @@ export default function ProductsIndex({
     categories,
     families,
     table,
-    pre_switch_notice,
     pre_switch,
 }: Props) {
     const t = useT();
+    const locale = useLocale();
+
+    // The bulk reorder threshold (W-2). `'0'` as the starting value on purpose: turning the alert
+    // OFF for products nobody has set a reorder point for is what this control is mostly for.
+    const [threshold, setThreshold] = useState("0");
 
     /**
      * The family names, in the operator's language. Built inside the component because every one
@@ -135,9 +143,37 @@ export default function ProductsIndex({
     const missingLabel = (token: string): string =>
         missingLabels[token] ?? token;
 
-    /** The joined list a missing-data chip shows. The separator is punctuation, so it translates too. */
-    const missingList = (tokens: string[]): string =>
-        tokens.map(missingLabel).join(t("common.list_separator", "، "));
+    /*
+     * ── ONE indicator for everything wrong with a row (§2.2) ────────────────────────────────
+     *
+     * Almost every row carried the same three badges — `بيانات ناقصة: تصنيف، الماركة`,
+     * `ترجمة آلية — تحتاج مراجعة` and `بلا تصنيف` — and **7,087 of 7,713 rows carried that exact
+     * set**. A warning that fires on 92% of the catalogue is wallpaper: it costs a third of every
+     * row's height and tells the reader nothing, because the one row that is different looks the
+     * same as the 7,086 that are not.
+     *
+     * So the marks are counted rather than listed. The chip says HOW MANY things are wrong, the
+     * tooltip says what they are, and the difference between a row with one problem and a row with
+     * five is finally visible from across the screen — which is the thing the three badges could
+     * never show.
+     *
+     * `تصنيف` also stopped being named twice. It appeared inside `بيانات ناقصة` AND as its own
+     * `بلا تصنيف` badge, on the same row, meaning the same thing.
+     */
+    const needsWork = (row: ProductRow): string[] => {
+        const out = row.missing.map(missingLabel);
+
+        if (row.machine_ar) {
+            out.push(t("products.machine_ar_badge", "ترجمة آلية — تحتاج مراجعة"));
+        }
+        // Only for a product that IS on this shop: `absent` is a fact, not work (D-3).
+        if (row.placement === "root_only") {
+            out.push(t("products.no_sub_type", "بدون تصنيف فرعي"));
+        }
+
+        return out;
+    };
+
 
     /** A short label per storefront id, for the visibility chips. */
     const storefrontLabel = (id: number): string => {
@@ -152,12 +188,20 @@ export default function ProductsIndex({
             sortable: false,
             className: "w-14",
             cell: (row) => (
-                <div className="h-10 w-10 overflow-hidden rounded border bg-muted/40">
-                    {row.cover === null ? null : (
+                <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded border bg-muted/40">
+                    {row.cover === null ? (
+                        // Not an empty bordered box (§2.2). A blank frame cannot tell the reader
+                        // whether the picture is missing or failed to load, and one of those is
+                        // something to go and fix.
+                        <ImageOff
+                            className="h-4 w-4 text-muted-foreground"
+                            aria-label={t("products.no_image", "بلا صورة")}
+                        />
+                    ) : (
                         <img
                             src={row.cover}
                             alt=""
-                            className="h-full w-full object-contain"
+                            className="h-full w-full object-cover"
                             loading="lazy"
                         />
                     )}
@@ -175,118 +219,75 @@ export default function ProductsIndex({
             key: "title",
             header: t("common.name", "الاسم"),
             sortable: false,
-            cell: (row) => (
-                <div className="min-w-[12rem] space-y-0.5">
-                    <div className="font-medium">
-                        {row.title.ar === "" ? (
-                            <span className="text-muted-foreground">
-                                {t("common.no_arabic_name", "— بلا اسم عربي —")}
-                            </span>
-                        ) : (
-                            row.title.ar
-                        )}
-                    </div>
-                    {row.title.en === "" ? null : (
-                        <div className="text-xs text-muted-foreground">
-                            <Ltr>{row.title.en}</Ltr>
-                        </div>
-                    )}
-                    <div className="flex flex-wrap gap-1 pt-0.5">
-                        {/* Everything that stops a product from selling, on the row itself — no
-                            opening, no filtering, no guessing (task 4.3). Each of these is a hard
-                            gate on the server too, so a badge here is a refusal there. */}
-                        {/* The importer's badge. It is NOT one chip per missing field — a row
-                            with five gaps would be a wall of red — but one chip that SAYS what is
-                            missing, so the operator reads a sentence instead of decoding colours.
-                            The Arabic-missing and image-missing chips below stay as they are: they
-                            are hard gates on the server, and they predate the import. */}
-                        {row.missing.length > 0 ? (
+            /*
+             * ── ONE LINE (§2.2) ────────────────────────────────────────────────────────────
+             *
+             * Measured before: rows 118-190 px tall, five or six to a screen, 7,713 products at 25
+             * per page = 309 pages. The height went on two things, and both were repetition:
+             *
+             *  • the title printed TWICE — Arabic, then English underneath in grey. When the
+             *    Arabic field holds the English string, which is common across the imported Brand
+             *    Fashion catalogue, the SAME 200-character sentence printed twice, ten lines, in
+             *    one cell.
+             *  • three badges that 7,087 of 7,713 rows carried identically.
+             *
+             * Now: the reader's own language only, truncated, with the other language on hover —
+             * and one counted indicator instead of three badges. `title` on the cell rather than a
+             * second line, because a name is something you check occasionally and read constantly.
+             */
+            cell: (row) => {
+                const problems = needsWork(row);
+                const other = localisedTitle(row.title, locale).secondary;
+
+                return (
+                    <div
+                        className="flex min-w-[14rem] max-w-[28rem] items-center gap-2"
+                        title={other ?? undefined}
+                    >
+                        <span className="min-w-0 flex-1 truncate">
+                            <ProductName title={row.title} secondary={false} />
+                        </span>
+
+                        {problems.length > 0 ? (
                             <Badge
                                 variant="warning"
-                                title={t(
-                                    "products.missing_title",
-                                    "ناقص: :list",
-                                    { list: missingList(row.missing) },
-                                )}
+                                className="shrink-0"
+                                title={t("products.needs_work_list", "يحتاج: :list", {
+                                    list: problems.join(
+                                        t("common.list_separator", "، "),
+                                    ),
+                                })}
                             >
-                                {t(
-                                    "products.missing_data",
-                                    "بيانات ناقصة: :list",
-                                    { list: missingList(row.missing) },
-                                )}
+                                {t("products.needs_work", "يحتاج مراجعة (:count)", {
+                                    count: problems.length,
+                                })}
                             </Badge>
                         ) : null}
-                        {row.machine_ar ? (
+
+                        {/* Kept as its own badge, and only these two. `absent` is the D-3
+                            distinction — a fact about where the product is sold, not work — and
+                            `archived` changes what the row IS. Everything else that used to sit
+                            here is inside the count above. */}
+                        {row.placement === "absent" ? (
                             <Badge
-                                variant="outline"
+                                variant="neutral"
+                                className="shrink-0"
                                 title={t(
-                                    "products.machine_ar_hint",
-                                    "العنوان العربي مكتوب آليًا أثناء الاستيراد ولم يراجعه أحد بعد. افتح المنتج وصحّح الاسم — بمجرد حفظك للترجمة تختفي هذه العلامة.",
+                                    "products.absent_hint",
+                                    "هذا المنتج غير معروض على هذا المتجر أصلًا، فلا ينقصه تصنيف ولا يحتاج أي إجراء. أضِفه من شاشة التوزيع فقط إذا قررت بيعه هنا.",
                                 )}
                             >
-                                {t(
-                                    "products.machine_ar_badge",
-                                    "ترجمة آلية — تحتاج مراجعة",
-                                )}
-                            </Badge>
-                        ) : null}
-                        {!row.has_arabic ? (
-                            <Badge variant="destructive">
-                                {t("products.missing_arabic", "عربي ناقص")}
-                            </Badge>
-                        ) : null}
-                        {!row.has_image ? (
-                            <Badge variant="destructive">
-                                {t("products.no_image", "بلا صورة")}
-                            </Badge>
-                        ) : null}
-                        {!row.has_stock ? (
-                            <Badge variant="warning">
-                                {t("common.out_of_stock", "نفد المخزون")}
-                            </Badge>
-                        ) : null}
-                        {/* Rehearsal #3: a product on the top-level section with no sub-category is
-                            served by the site but listed under no sub-section, and it used to look
-                            exactly like an ordinary placed product here. */}
-                        {row.placement === "root_only" ? (
-                            <Badge
-                                variant="warning"
-                                title={t(
-                                    "products.root_only_hint",
-                                    "هذا المنتج موضوع في القسم الرئيسي فقط وبدون تصنيف فرعي: يظهر في صفحة القسم وفي البحث، ولا يظهر في أي قائمة تصنيف فرعي، ومسار التصفّح له خطوة واحدة. العائلة تُشتق من اسم القسم الرئيسي. افتح المنتج واختر تصنيفًا فرعيًا ليظهر في قوائمه.",
-                                )}
-                            >
-                                {t("products.no_sub_type", "بدون تصنيف فرعي")}
-                            </Badge>
-                        ) : null}
-                        {row.placement === "none" ? (
-                            <Badge
-                                variant="destructive"
-                                title={t(
-                                    "products.unplaced_hint",
-                                    "هذا المنتج غير موضوع في أي تصنيف على هذا المتجر، فلا يظهر في أي قائمة. اختر له تصنيفًا من شاشة المنتج أو من شاشة التوزيع.",
-                                )}
-                            >
-                                {t("products.unplaced", "بلا تصنيف")}
-                            </Badge>
-                        ) : null}
-                        {row.variants > 0 ? (
-                            <Badge variant="outline">
-                                {t(
-                                    "products.variant_count",
-                                    ":count مقاس/لون",
-                                    { count: row.variants },
-                                )}
+                                {t("products.absent", "غير مضاف لهذا المتجر")}
                             </Badge>
                         ) : null}
                         {row.archived ? (
-                            <Badge variant="neutral">
+                            <Badge variant="neutral" className="shrink-0">
                                 {t("products.archived", "مؤرشف")}
                             </Badge>
                         ) : null}
                     </div>
-                </div>
-            ),
+                );
+            },
         },
         {
             key: "brand",
@@ -295,7 +296,14 @@ export default function ProductsIndex({
             hideOnMobile: true,
             cell: (row) => (
                 <span className="text-sm">
-                    {row.brand.ar === "" ? row.brand.en : row.brand.ar}
+                    {/*
+                     * Same rule as the name, WITHOUT the marker — deliberately. The badge on a
+                     * product title points at a row somebody is meant to go and fill in; a brand
+                     * name is shared by hundreds of rows, so the same badge would repeat down the
+                     * whole page and say nothing new. The brand screen is where a missing brand
+                     * name is actionable, and that is where it is shown.
+                     */}
+                    <Name>{localisedTitle(row.brand, locale).text}</Name>
                 </span>
             ),
         },
@@ -333,8 +341,8 @@ export default function ProductsIndex({
             header: t("common.inventory", "المخزون"),
             cell: (row) => (
                 <span className="whitespace-nowrap text-xs" dir="ltr">
-                    <span title="Express">{row.stock_express}</span> /{" "}
-                    <span title="Market">{row.stock_market}</span>
+                    <span title={bucketLabel(t, 'express')}>{row.stock_express}</span> /{" "}
+                    <span title={bucketLabel(t, 'market')}>{row.stock_market}</span>
                     {row.in_stock ? null : (
                         <Badge variant="warning" className="ms-1">
                             {t("common.out_short", "نفد")}
@@ -485,22 +493,12 @@ export default function ProductsIndex({
                     tone="warning"
                     title={t(
                         "products.pre_switch_paused_title",
-                        "قبل ليلة التحويل: الإضافة موقوفة، والتعديل مفتوح",
+                        "الإضافة موقوفة حاليًا، والتعديل مفتوح",
                     )}
                 >
                     {pre_switch.message}
                 </Alert>
-            ) : pre_switch_notice === null ? null : (
-                <Alert
-                    tone="warning"
-                    title={t(
-                        "products.pre_switch_notice_title",
-                        "قبل ليلة التحويل — اقرأ هذا أولًا",
-                    )}
-                >
-                    {pre_switch_notice.message}
-                </Alert>
-            )}
+            ) : null}
 
             <DataTable
                 table={table}
@@ -670,8 +668,14 @@ export default function ProductsIndex({
                             <option value="no_arabic">
                                 {t("products.missing_arabic", "عربي ناقص")}
                             </option>
+                            {/* TWO entries, because they were two different things wearing one
+                                name (D-3). `بلا تصنيف` is a fault on a product this shop sells;
+                                `غير مضاف` is the ordinary state of a product it does not. */}
                             <option value="unplaced">
                                 {t("products.unplaced", "بلا تصنيف")}
+                            </option>
+                            <option value="absent">
+                                {t("products.absent", "غير مضاف لهذا المتجر")}
                             </option>
                             <option value="has_variants">
                                 {t("products.has_variants", "به مقاسات/ألوان")}
@@ -701,49 +705,93 @@ export default function ProductsIndex({
                         </Select>
                     </>
                 )}
-                bulkActions={(selected, clear) => (
-                    <>
-                        {/* Visibility is deliberately NOT here: it needs the Arabic gate per
-                            product, and a bulk action that silently skipped half a selection
-                            would be worse than no bulk action. It lives on the placement screen,
-                            which reports what it skipped. */}
-                        <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            onClick={() =>
-                                router.post(
-                                    `/manage/storefronts/${storefront.id}/products/bulk`,
-                                    { action: "activate", ids: selected },
-                                    { preserveScroll: true, onSuccess: clear },
-                                )
-                            }
-                        >
-                            {t("products.activate", "تفعيل")}
-                        </Button>
-                        <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            onClick={() =>
-                                router.post(
-                                    `/manage/storefronts/${storefront.id}/products/bulk`,
-                                    { action: "deactivate", ids: selected },
-                                    { preserveScroll: true, onSuccess: clear },
-                                )
-                            }
-                        >
-                            {t("products.deactivate", "تعطيل")}
-                        </Button>
-                    </>
-                )}
+                bulkActions={(selected, clear, scope) => {
+                    /*
+                     * Every action posts either the ids on screen or the SCOPE (W-3). The server
+                     * re-resolves "matching" through the same whitelists the list rendered from,
+                     * so a selection of 7,578 costs one small request rather than 7,578 ids.
+                     */
+                    const post = (payload: Record<string, unknown>) =>
+                        router.post(
+                            `/manage/storefronts/${storefront.id}/products/bulk`,
+                            scope.matching
+                                ? { ...payload, scope: "matching", query: scope.query }
+                                : { ...payload, ids: selected },
+                            { preserveScroll: true, onSuccess: clear },
+                        );
+
+                    return (
+                        <>
+                            {/* Visibility is deliberately NOT here: it needs the Arabic gate per
+                                product, and a bulk action that silently skipped half a selection
+                                would be worse than no bulk action. It lives on the placement screen,
+                                which reports what it skipped. */}
+                            <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                onClick={() => post({ action: "activate" })}
+                            >
+                                {t("products.activate", "تفعيل")}
+                            </Button>
+                            <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                onClick={() => post({ action: "deactivate" })}
+                            >
+                                {t("products.deactivate", "تعطيل")}
+                            </Button>
+
+                            {/* ── The reorder threshold, in bulk (W-2) ──────────────────────
+                                7,578 of 7,713 products carry the old default of 5 while their
+                                stock sits at 0–3, which is why the low-stock alert covered 97.5%
+                                of the shop. Fixing that one product at a time was 7,578 form
+                                saves; this is the control that makes the alert mean something. */}
+                            <form
+                                className="flex items-center gap-1.5"
+                                onSubmit={(event) => {
+                                    event.preventDefault();
+                                    post({
+                                        action: "set_threshold",
+                                        threshold: Number(threshold),
+                                    });
+                                }}
+                            >
+                                <label
+                                    className="text-xs"
+                                    htmlFor="bulk-threshold"
+                                >
+                                    {t(
+                                        "products.low_stock_threshold",
+                                        "حد التنبيه للمخزون",
+                                    )}
+                                </label>
+                                <Input
+                                    id="bulk-threshold"
+                                    type="number"
+                                    min={0}
+                                    dir="ltr"
+                                    className="h-8 w-20"
+                                    value={threshold}
+                                    onChange={(event) =>
+                                        setThreshold(event.target.value)
+                                    }
+                                />
+                                <Button type="submit" size="sm" variant="outline">
+                                    {t("common.apply", "طبِّق")}
+                                </Button>
+                            </form>
+                        </>
+                    );
+                }}
                 rowActions={(row) => (
                     <Button
                         asChild
                         variant="ghost"
                         size="icon"
                         aria-label={t("products.edit_row", "تعديل :name", {
-                            name: row.title.ar || row.wa_code,
+                            name: titleOrCode(row.title, locale, row.wa_code),
                         })}
                     >
                         <Link href={row.edit_url}>

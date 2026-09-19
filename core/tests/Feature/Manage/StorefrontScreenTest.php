@@ -22,13 +22,16 @@ it('lists storefronts through the table contract', function () {
             ->where('table.data.0.code', 'watchizer')
             ->where('table.data.1.code', 'brandfashion')
             ->where('table.meta.sortable', ['id', 'code', 'name', 'is_active', 'created_at'])
-            ->has('rebuild_warning'));
+            // `rebuild_warning` was removed on 2026-09-18: it named AGENTS §2.20 and switch night
+            // at an operator, which is machinery, and the catalogue half of it was the pre-switch
+            // instruction the team has been told to stop following.
+            ->missing('rebuild_warning'));
 });
 
 it('decodes the locales JSON column for the client', function () {
     actingAs(Staff::admin())->get('/manage/storefronts')->assertInertia(fn (AssertableInertia $page) => $page
         ->where('table.data.0.locales', ['ar', 'en'])
-        ->where('table.data.0.default_locale', 'ar'));
+        ->where('table.data.0.default_locale', 'en'));
 });
 
 it('filters and searches server-side', function () {
@@ -80,7 +83,8 @@ it('refuses a default locale that is not one of the enabled locales', function (
         'money_rewards' => false,
     ])->assertSessionHasErrors('default_locale');
 
-    expect(DB::table('storefronts')->where('id', 1)->value('default_locale'))->toBe('ar');
+    // Unchanged by the refusal. 'en' because the storefront opens in ENGLISH — it always has, and the customer switches for themselves (developer, 2026-09-18).
+    expect(DB::table('storefronts')->where('id', 1)->value('default_locale'))->toBe('en');
 });
 
 it('validates the rest of the form', function () {

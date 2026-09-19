@@ -76,9 +76,40 @@ it('refuses with a SENTENCE, not a bare status', function () {
 
     // The operator is not doing anything wrong — they simply do not hold this. A blank 403 sends
     // them to ask somebody why.
-    $body = T::str(get('/manage/orders?export=csv')->getContent());
+    //
+    // The sentence was shortened in the 2026-09-18 copy sweep: it used to open with "exporting data
+    // is not one of your permissions" and then add that the screen itself was fully open, which the
+    // operator could see for themselves. What is asserted here is the part that carries the fact —
+    // that this needs an administrator — not the wording around it.
+    //
+    // Since 2026-09-19 a refusal inside `/manage` renders the dashboard's own error page (D-17),
+    // so the sentence arrives as a PROP rather than as text in the HTML. Read as a prop for that
+    // reason — the raw body carries it `\u`-escaped inside the Inertia payload, so a substring
+    // match on the markup would fail while the operator reads the sentence perfectly well.
+    $response = get('/manage/orders?export=csv');
+    $response->assertForbidden();
 
-    expect($body)->toContain('تصدير البيانات ليس ضمن صلاحياتك');
+    $props = Props::of($response);
+
+    expect(T::str($props['body'] ?? null))->toContain('يحتاج صلاحية مدير');
+});
+
+it('keeps a specific refusal specific, instead of talking over it with a generic page', function () {
+    /*
+     * The trap the error page created and this catches: several refusals in this application
+     * already say exactly WHY, and a page that replaced every 403 with one general sentence would
+     * be a step backwards — a reason the operator can act on, swapped for one they cannot.
+     *
+     * So the generic body is a FALLBACK. Where a caller wrote a sentence, that sentence wins.
+     */
+    actingAs(Staff::dataEntry());
+    $specific = T::str(Props::of(get('/manage/orders?export=csv'))['body'] ?? null);
+
+    // …and a refusal that never had words falls back to the general explanation.
+    $generic = T::str(Props::of(get('/manage/users'))['body'] ?? null);
+
+    expect($specific)->not->toBe($generic)
+        ->and($generic)->toContain('الصلاحيات');
 });
 
 it('still gives data-entry the SCREEN, with the customer data on it', function () {

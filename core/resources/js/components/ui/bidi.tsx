@@ -41,3 +41,19 @@ export function Ltr({ className, ...props }: BdiProps) {
 export function Num({ className, ...props }: BdiProps) {
     return <bdi dir="ltr" className={cn('inline whitespace-nowrap tabular-nums', className)} {...props} />;
 }
+
+/**
+ * Text whose language is not known until it is rendered — a product name, a category name.
+ *
+ * `Ltr` is wrong for these and so is doing nothing. The dashboard now runs in two directions, and
+ * every product carries BOTH an Arabic and an English name: the same cell shows Arabic to one
+ * operator and English to another, and in the fallback case shows Arabic inside an English,
+ * left-to-right shell. Hard-coding either direction gets one of those wrong.
+ *
+ * `dir="auto"` asks the browser to decide from the first strong character in the string, which is
+ * exactly the right rule for a name and is what `<bdi>` defaults to. Still isolated, still inline,
+ * so — like its two neighbours — it never changes the alignment of the cell it sits in.
+ */
+export function Name({ className, ...props }: BdiProps) {
+    return <bdi dir="auto" className={cn('inline', className)} {...props} />;
+}

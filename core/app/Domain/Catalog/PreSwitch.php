@@ -229,6 +229,43 @@ final class PreSwitch
     }
 
     /**
+     * Do this class's gates REFUSE, or merely warn? (item 5, developer decision 2026-09-18)
+     *
+     * ── What changed, and what deliberately did not ────────────────────────────────
+     *
+     * The developer's words: *"We are close enough to the switch that I want every gated feature
+     * open and exercised... Keep the explanatory notices, but make the actions work."* A gate that
+     * has never been opened is a gate nobody knows the shape of, and switch night is the worst
+     * moment to find out.
+     *
+     * Every refusal in this class protects ONE thing: an afternoon of typing that the next rebuild
+     * silently deletes. That is a real cost and the notices still say so — they are now CAVEATS
+     * rather than refusals, carried in the same state objects under `caveat`, so the sentence an
+     * operator reads is the same sentence and the button beside it works.
+     *
+     * ── Why this is NOT `CORE_WRITE_SWITCH_COMPLETED=true` ─────────────────────────
+     *
+     * Flipping that flag would open these gates in one line, and it would be wrong. That flag means
+     * "legacy has stopped writing and core is the only writer", and its own config comment says it
+     * *"must NOT be flipped while any legacy path can still write a stock column"*. The legacy
+     * storefront is live. Two other things read it and must keep refusing:
+     *
+     *   • `ConversionGuard` — converting a LIVE product to sell through variants. Legacy writes
+     *     `products.quantity` directly; a converted product's stock lives in the ledger. Opening
+     *     that before legacy stops writing corrupts stock, which is not recoverable by re-typing.
+     *   • `syncsSecondaryTrees()` — the flag flip IS the moment the mirror stops, for ever. Saying
+     *     it has happened when it has not would silently end the sync a month early.
+     *
+     * So the two questions are separated, and this one has its own name. The difference between
+     * them is the difference between "you may lose an afternoon" and "you may lose the stock
+     * figures", and one flag cannot answer both.
+     */
+    public static function enforced(): bool
+    {
+        return config('transform.pre_switch_gates', 'warn') === 'enforce';
+    }
+
+    /**
      * Does the transform still mirror the non-primary storefronts' category trees from legacy?
      *
      * **TRUE until the write-switch, FALSE for ever after** — the flag flip IS the transition, so
@@ -260,6 +297,8 @@ final class PreSwitch
     {
         return $storefrontId === Storefront::WATCHIZER_ID
             || isset(self::$exempt[self::SECONDARY_TREE_EDIT])
+            // Item 5: open, with the mirror caveat still on screen. {@see self::enforced()}.
+            || ! self::enforced()
             || ! self::syncsSecondaryTrees();
     }
 
@@ -299,7 +338,10 @@ final class PreSwitch
      */
     public static function mayEditSlug(): bool
     {
-        return self::completed();
+        // Item 5 (2026-09-18): the lock became a caveat. The paragraph above is still true — a slug
+        // typed now, and the 301 written with it, are both rebuilt from legacy on switch night —
+        // so `slugState()` still carries that sentence, next to a field that works.
+        return self::completed() || ! self::enforced();
     }
 
     /**
@@ -321,14 +363,14 @@ final class PreSwitch
     {
         return ManageText::t(
             'products.slug_locked_pre_switch',
-            'تغيير الروابط موقوف حتى ليلة التحويل: الرابط وتحويل 301 الذي يُنشأ معه يُعاد بناؤهما من النظام القديم في كل تحديث، فلو غيّرته الآن ستفقد الرابط الجديد والتحويل معه ويعود الرابط القديم بلا تحويل. غيّر الروابط من الداشبورد القديم حتى التحويل، أو من هنا بعده.',
+            'تغيير روابط المنتجات موقوف حاليًا. لو احتجت تغيير رابط، اطلب ذلك من المدير.',
         );
     }
 
     /**
      * What a screen needs to render its slug field honestly.
      *
-     * @return array{write_switch_completed: bool, blocked: bool, message: string|null, label: string}
+     * @return array{write_switch_completed: bool, blocked: bool, message: string|null, caveat: string|null, label: string}
      */
     public static function slugState(): array
     {
@@ -338,6 +380,16 @@ final class PreSwitch
             'write_switch_completed' => self::completed(),
             'blocked' => $blocked,
             'message' => $blocked ? self::slugMessage() : null,
+            /*
+             * No caveat. There used to be one here saying a slug typed now would be replaced by the
+             * rebuild; the developer's instruction on 2026-09-18 was that the team is working as if
+             * the switch has happened, and a warning telling them not to do the thing they have
+             * been asked to do is worse than no warning at all.
+             *
+             * `message` stays, because it is a REFUSAL and only exists when the control is actually
+             * disabled — which is only when the gates are set to enforce.
+             */
+            'caveat' => null,
             // The same key the slug FIELD carries on the form, so the lock and the box it locks
             // cannot end up with two different names.
             'label' => ManageText::t('common.slug', 'الرابط (slug)'),
@@ -345,47 +397,24 @@ final class PreSwitch
     }
 
     /**
-     * The banner a catalogue screen shows before the write-switch, worded for WHAT THAT SCREEN
-     * actually loses (review 🟠-3).
+     * The one note that survived the 2026-09-18 sweep.
      *
-     * One generic sentence used to serve every screen, and on the placement screen it was close to
-     * useless: it spoke about "any product or edit" while the work a placement operator does is
-     * categories, visibility, order, featured and slugs — each of which is recreated from legacy on
-     * the next rebuild, and none of which the sentence named. An operator who cannot tell whether
-     * their afternoon survives will assume that it does.
+     * Every other pre-switch caveat went: they warned that a rebuild would undo the operator's
+     * work, and the team has been told to work as though the switch has happened. This one is
+     * different in kind. It is not about a rebuild — it is about TWO dashboards writing the same
+     * tree right now. Brand Fashion's categories are still maintained in the Watchizer dashboard
+     * and copied here; an operator who renames a category here and sees it revert has no way to
+     * discover why, because the other writer is not on their screen.
      *
-     * @return array{pre_switch: bool, message: string}|null null once the switch has happened
+     * So it says what to do and nothing about how any of it works: no rebuild, no switch night, no
+     * command names. It disappears on its own when `syncsSecondaryTrees()` turns false.
      */
-    public static function noticeFor(string $screen): ?array
+    public static function treeCaveat(): string
     {
-        if (self::completed()) {
-            return null;
-        }
-
-        /*
-         * The sentence both notices share stays ONE string with ONE key, spliced in as `:rebuild`
-         * rather than concatenated: two screens saying the same thing about the rebuild must not
-         * become two English sentences that drift.
-         */
-        $rebuild = ManageText::t(
-            'products.pre_switch_rebuild',
-            'جداول الكتالوج تُبنى من النظام القديم في كل تجربة وفي ليلة التحويل (core:drop-clean ثم migrate ثم core:transform).',
+        return ManageText::t(
+            'products.secondary_tree_caveat',
+            'تصنيفات هذا المتجر تتبع تصنيفات واتشيزر حاليًا: أي تعديل هنا سيعود إلى ما هو مضبوط هناك. عدّل التصنيفات من متجر واتشيزر ليظهر التعديل في المتجرين.',
         );
-
-        $message = match ($screen) {
-            'placement' => ManageText::t(
-                'products.pre_switch_notice_placement',
-                'قبل ليلة التحويل: :rebuild كل ما تضبطه في هذه الشاشة يُعاد بناؤه من النظام القديم: ربط المنتجات بالتصنيفات، وقرارات الإظهار والإخفاء، والترتيب، والتمييز، والروابط المكتوبة يدويًا وتحويلات 301 التي أُنشئت معها. استخدم الشاشة للتدريب، واضبط العرض الحقيقي من الداشبورد القديم حتى التحويل. (تغيير الروابط موقوف أصلًا لأن تحويل 301 لا ينجو من إعادة البناء.)',
-                ['rebuild' => $rebuild],
-            ),
-            default => ManageText::t(
-                'products.pre_switch_notice',
-                'قبل ليلة التحويل: :rebuild فأي منتج أو تعديل يُكتب هنا الآن يُستبدل بما في النظام القديم. استخدم هذه الشاشات للتدريب، وأدخل البيانات الحقيقية من الداشبورد القديم حتى التحويل.',
-                ['rebuild' => $rebuild],
-            ),
-        };
-
-        return ['pre_switch' => true, 'message' => $message];
     }
 
     /** The refusal for a secondary tree, in the dashboard's language. */
@@ -393,23 +422,26 @@ final class PreSwitch
     {
         return ManageText::t(
             'products.secondary_tree_mirrored',
-            'شجرة تصنيفات هذا المتجر مرآة لشجرة واتشيزر حتى ليلة التحويل: كل إضافة أو إعادة تسمية أو نقل تتم في الداشبورد القديم وتنتقل تلقائيًا إلى هنا في كل تحديث. لو عدّلنا الشجرة من هنا الآن سيُلغى التعديل في التحديث التالي. بعد ليلة التحويل تصبح شجرة هذا المتجر ملكًا للفريق وتنفصل تمامًا عن شجرة واتشيزر، ولا يُعاد مزامنتهما أبدًا.',
+            'تصنيفات هذا المتجر تتبع تصنيفات واتشيزر حاليًا، وتُعدَّل من هناك.',
         );
     }
 
     /**
      * What the category screen needs to render itself honestly for ONE storefront.
      *
-     * @return array{write_switch_completed: bool, blocked: bool, message: string|null, label: string}
+     * @return array{write_switch_completed: bool, blocked: bool, message: string|null, caveat: string|null, label: string}
      */
     public static function treeState(int $storefrontId): array
     {
         $blocked = ! self::mayEditTree($storefrontId);
+        // The primary storefront's tree was never mirrored, so it has never had a caveat to carry.
+        $mirrored = $storefrontId !== Storefront::WATCHIZER_ID && self::syncsSecondaryTrees();
 
         return [
             'write_switch_completed' => self::completed(),
             'blocked' => $blocked,
             'message' => $blocked ? self::treeMessage() : null,
+            'caveat' => $blocked || ! $mirrored ? null : self::treeCaveat(),
             'label' => self::secondaryTreeLabel(),
         ];
     }
@@ -491,6 +523,8 @@ final class PreSwitch
     {
         return self::completed()
             || isset(self::$exempt[$action])
+            // Item 5: every creation is open, and every screen still says what a rebuild costs.
+            || ! self::enforced()
             || ! self::definition($action)['blocked'];
     }
 
@@ -516,7 +550,7 @@ final class PreSwitch
 
         return ManageText::t(
             'products.pre_switch_create_blocked',
-            'ممنوع قبل ليلة التحويل: :label لا يمكن إنشاؤه من هذه اللوحة الآن. جداول الكتالوج تُبنى من النظام القديم في كل تجربة وفي ليلة التحويل (core:drop-clean ثم migrate ثم core:transform)، فالصف الذي يُنشأ هنا يُحذف مع إعادة البناء ويضيع معه العمل. أدخل البيانات الجديدة من الداشبورد القديم حتى التحويل؛ التعديل والتصفح والتدريب على هذه الشاشات مفتوح.',
+            'الإضافة موقوفة حاليًا: :label لا يمكن إنشاؤه من هنا. التعديل والتصفح مفتوحان كالمعتاد. لو احتجت إضافة، اطلب ذلك من المدير.',
             ['label' => self::label($action)],
         );
     }
@@ -526,7 +560,7 @@ final class PreSwitch
      * to show instead of it. The server refuses again on the write path — hiding a control is
      * never the control.
      *
-     * @return array{write_switch_completed: bool, blocked: bool, message: string|null, label: string}
+     * @return array{write_switch_completed: bool, blocked: bool, message: string|null, caveat: string|null, label: string}
      */
     public static function state(string $action): array
     {
@@ -538,6 +572,10 @@ final class PreSwitch
             'write_switch_completed' => self::completed(),
             'blocked' => $blocked,
             'message' => $blocked ? self::message($action) : null,
+            // No caveat — see `slugState()` for why. The field stays in the shape because the
+            // category tree still uses it, and one state object with one shape is worth more than
+            // three that differ.
+            'caveat' => null,
             'label' => self::label($action),
         ];
     }

@@ -36,7 +36,7 @@ final class VariantFixture
         $productId = (int) StockWriteGuard::allow(fn () => DB::table('catalog_products')->insertGetId([
             'family' => 'fashion', 'brand_id' => $brandId,
             'wa_code' => 'variant-test-'.bin2hex(random_bytes(5)),
-            'selling_price' => '500.00', 'currency' => 'EGP',
+            'selling_price' => '500.00', 'purchase_price' => '0.00', 'currency' => 'EGP',
             'stock_express' => 0, 'stock_market' => 0, 'in_stock' => 0, 'is_active' => 1,
             'created_at' => now(), 'updated_at' => now(),
         ]));

@@ -6,8 +6,10 @@ use App\Domain\Access\Preferences;
 use App\Domain\Access\Role;
 use App\Domain\Access\Roles;
 use App\Domain\Inventory\Actor;
+use App\Domain\Inventory\InventoryService;
 use App\Domain\Notifications\OrderMailer;
 use App\Domain\Orders\OrderFulfilment;
+use App\Domain\Orders\ProductPeek;
 use App\Domain\Payment\CallbackPolicy;
 use App\Domain\Promotions\PromotionDiscounts;
 use App\Models\User;
@@ -254,6 +256,16 @@ final class OrderController
         self::requireInScope($order);
         $status = Row::str($orderRow, 'status');
 
+        // Built once and read twice: the lines carry the ids the product panel is keyed on.
+        $items = self::items($order);
+        $productIds = [];
+        foreach ($items as $item) {
+            $id = Coerce::nint($item['product_id'] ?? null);
+            if ($id !== null) {
+                $productIds[] = $id;
+            }
+        }
+
         return Inertia::render('Manage/Orders/Show', [
             'order' => [
                 'id' => Row::int($orderRow, 'id'),
@@ -276,7 +288,16 @@ final class OrderController
                 'created_at' => Row::nstr($orderRow, 'created_at'),
                 'updated_at' => Row::nstr($orderRow, 'updated_at'),
             ],
-            'items' => self::items($order),
+            'items' => $items,
+            'totals' => self::totals($orderRow, $items),
+            /*
+             * The products behind those lines, in enough detail to CONFIRM one (item 12).
+             *
+             * Keyed by product id and loaded with the page rather than fetched when the panel
+             * opens: an order has a handful of lines, so the cost is four grouped queries and
+             * nothing that can fail halfway. {@see ProductPeek}.
+             */
+            'products' => ProductPeek::forProducts($productIds),
             /*
              * Why this order's total is lower than its lines (M1r).
              *
@@ -310,6 +331,15 @@ final class OrderController
                 'cancel' => Gate::allows(Role::CANCEL_ORDERS),
                 // Clearing a money finding is payment work, not shop-floor work.
                 'resolve_findings' => Gate::allows(Role::MANAGE_PAYMENTS),
+                /*
+                 * Whether the product panel may offer a link to the product SCREEN (item 12).
+                 *
+                 * The panel's facts are order data, and everyone who can read the order can read
+                 * them. Editing the product is catalogue work, so the link is offered only to
+                 * somebody the product route would actually admit — a link that 403s teaches the
+                 * team to distrust the ones that work.
+                 */
+                'catalog' => Gate::allows(Role::MANAGE_CATALOG),
                 // The settlement export is payment reconciliation, not order work: its route sits
                 // behind `manage-payments`, so the button must ask for that ability and not guess
                 // from a neighbouring one.
@@ -774,6 +804,7 @@ final class OrderController
     private static function items(int $orderId): array
     {
         $out = [];
+        $hexes = [];
         foreach (
             DB::table('order_items as oi')
                 ->leftJoin('catalog_products as p', 'p.id', '=', 'oi.product_id')
@@ -802,13 +833,70 @@ final class OrderController
                 'quantity' => Row::int($row, 'quantity'),
                 'piece_price' => Row::str($row, 'piece_price'),
                 'total_price' => Row::str($row, 'total_price'),
-                'bucket' => Row::nstr($row, 'type_stock'),
-                'color_band' => Row::nstr($row, 'color_band'),
-                'color_dial' => Row::nstr($row, 'color_dial'),
+                /*
+                 * The CANONICAL bucket key, not the legacy column's casing (D-10, 2026-09-19).
+                 *
+                 * `order_items.type_stock` holds `Express` / `Market` with a capital, while the
+                 * whole rest of the system — the stock screen, the ledger, the home tiles — speaks
+                 * `express` / `market`. The client's label map is keyed lowercase, so a capitalised
+                 * value fell straight through it and the order line printed the raw `Market` beside
+                 * a stock screen calling the same shelf «ماركت». Mapped through the one function
+                 * that owns this translation, which is the same one the checkout used.
+                 */
+                'bucket' => Row::nstr($row, 'type_stock') === null
+                    ? null
+                    : InventoryService::bucketForTypeStock(Row::nstr($row, 'type_stock')),
+                'color_band' => self::colour(Row::nstr($row, 'color_band')),
+                'color_dial' => self::colour(Row::nstr($row, 'color_dial')),
             ];
+
+            foreach ([Row::nstr($row, 'color_band'), Row::nstr($row, 'color_dial')] as $hex) {
+                if ($hex !== null) {
+                    $hexes[] = $hex;
+                }
+            }
+        }
+
+        /*
+         * ── The hex becomes a NAME (item 12, 2026-09-18) ─────────────────────────────────────
+         *
+         * `order_items.color_band` and `color_dial` store what the legacy cart stored: `#1F3A5F`.
+         * The screen printed it, so a team member packing the order read "#1F3A5F / #1F3A5F" where
+         * they needed to read "أزرق". Nobody picks a watch off a shelf by its hex code.
+         *
+         * Resolved in ONE grouped query after the lines are built, not per line — an order of six
+         * watches would otherwise ask the colour table twelve times for four distinct answers.
+         *
+         * The hex is KEPT alongside the name, because it is what draws the swatch and it is what
+         * the row actually stores. A colour the catalogue has never heard of keeps its hex and gets
+         * no name: see {@see ProductPeek::colourNames()} for why that is not a near-match.
+         */
+        $names = ProductPeek::colourNames($hexes);
+        foreach ($out as $index => $item) {
+            foreach (['color_band', 'color_dial'] as $slot) {
+                $colour = Coerce::arr($item[$slot] ?? null);
+                $hex = Coerce::nstr($colour['hex'] ?? null);
+                if ($hex !== null) {
+                    $out[$index][$slot]['name'] = $names[strtoupper($hex)] ?? null;
+                }
+            }
         }
 
         return $out;
+    }
+
+    /**
+     * One stored colour as `{hex, name}` — or null when the line carries none.
+     *
+     * The name is filled in by the caller once every hex on the order has been resolved together.
+     *
+     * @return array{hex: string, name: array{ar: string, en: string}|null}|null
+     */
+    private static function colour(?string $hex): ?array
+    {
+        $clean = $hex === null ? '' : trim($hex);
+
+        return $clean === '' ? null : ['hex' => $clean, 'name' => null];
     }
 
     /**
@@ -846,6 +934,72 @@ final class OrderController
         }
 
         return $out;
+    }
+
+    /**
+     * What the order's total is MADE OF (D-22, 2026-09-19).
+     *
+     * ── The problem ─────────────────────────────────────────────────────────────────────────
+     *
+     * Order 000009 showed `الإجمالي 4300.00` against a single line of `4200.00 × 1`; order 000008
+     * showed 1099.00 against 999.00. The difference is the Cairo delivery price and nothing on the
+     * screen said so — somebody checking an invoice saw a total that contradicted the only line on
+     * the page, with no account of the gap.
+     *
+     * ── Why this is DERIVED and says so ─────────────────────────────────────────────────────
+     *
+     * `orders` carries one money column: `total_price_for_order`. There is no subtotal, no
+     * shipping and no discount column — measured on the live schema, not assumed. So the block
+     * cannot report a stored breakdown, because there is not one. What it can do honestly is:
+     *
+     *   • add the lines up,
+     *   • look up what delivery to this order's city costs TODAY,
+     *   • and show whatever is left over as exactly that — unexplained — rather than silently
+     *     labelling it "shipping" and being wrong the day a discount or a price change is the
+     *     real cause.
+     *
+     * The shipping price is today's, not the one charged at checkout: nothing stored it. The
+     * screen says that too, in `shipping_is_current`, rather than presenting a current number as
+     * a historical fact.
+     *
+     * @param  list<array<string, mixed>>  $items
+     * @return array<string, mixed>
+     */
+    private static function totals(\stdClass $orderRow, array $items): array
+    {
+        $order = Row::cast($orderRow);
+
+        $lines = 0.0;
+        foreach ($items as $item) {
+            $lines += (float) Coerce::str(Coerce::arr($item)['total_price'] ?? '0');
+        }
+
+        $total = (float) Row::str($order, 'total_price_for_order');
+
+        $shipping = null;
+        $addressId = Row::nint($order, 'address_id');
+        if ($addressId !== null) {
+            $cost = DB::table('addresses as a')
+                ->join('shipping_cities as c', 'c.id', '=', 'a.shipping_city_id')
+                ->where('a.id', $addressId)
+                ->value('c.shipping_cost');
+            $shipping = is_numeric($cost) ? (float) $cost : null;
+        }
+
+        $gap = round($total - $lines, 2);
+        // A cent of float noise is not a discrepancy worth a sentence.
+        $explained = $shipping !== null && abs($gap - $shipping) < 0.01;
+
+        return [
+            'items' => number_format($lines, 2, '.', ''),
+            'shipping' => $shipping === null ? null : number_format($shipping, 2, '.', ''),
+            'total' => number_format($total, 2, '.', ''),
+            // What the lines plus the known delivery price still do not account for. Zero on a
+            // healthy order; a number here means a discount, a manual adjustment, or a price that
+            // moved since — and all three are worth seeing rather than hiding.
+            'unexplained' => number_format($explained ? 0.0 : $gap - ($shipping ?? 0.0), 2, '.', ''),
+            'shipping_is_current' => $shipping !== null,
+        ];
     }
 
     /** @return array<string, mixed>|null */

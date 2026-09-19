@@ -2,12 +2,14 @@
 
 namespace App\Http\Controllers\Manage;
 
+use App\Domain\Access\Roles;
 use App\Domain\Activity\ActivityLog;
 use App\Domain\Payment\MethodList;
 use App\Domain\Payment\ProviderRegistry;
 use App\Models\Storefront\Storefront;
 use App\Models\Storefront\StorefrontPaymentMethod;
 use App\Models\Storefront\StorefrontPaymentProvider;
+use App\Models\User;
 use App\Support\Coerce;
 use App\Support\ManageText;
 use App\Transform\Row;
@@ -53,6 +55,23 @@ final class PaymentSettingsController
 
         return Inertia::render('Manage/Payments/Index', [
             'storefront' => ['id' => $storefrontId, 'code' => (string) $storefront->code, 'name' => (string) $storefront->name],
+            /*
+             * The storefronts this operator may switch to (item 15, 2026-09-18).
+             *
+             * Every other per-storefront screen — products, categories, placement, banners — offers
+             * this. Payments did not, so the only way onto Brand Fashion's payment settings was to
+             * type its id into the address bar: the sidebar links to whichever storefront you were
+             * last looking at, and there was nothing on the screen to say another existed. The
+             * developer's report was "the payment methods screen only shows Watchizer", and that is
+             * exactly what it did.
+             *
+             * SCOPED, unlike the catalogue screens' switcher. Payments is behind a per-storefront
+             * grant and answers 404 for a storefront outside it (§3.11.14 — out of scope is 404, not
+             * 403, so an id cannot be confirmed by probing). A switcher that listed every storefront
+             * would hand a scoped operator a link that 404s, which reads as a broken dashboard
+             * rather than as a permission they do not have.
+             */
+            'storefronts' => self::switchableStorefronts(),
             'providers' => $this->providerRows($storefrontId),
             // The MERGED list: every candidate row across every provider, in the storefront's own
             // order, each saying whether it currently SERVES its method key and who took it if
@@ -425,6 +444,33 @@ final class PaymentSettingsController
         abort_if($row === null, 404);
 
         return $row;
+    }
+
+    /**
+     * The ACTIVE storefronts this operator's grant reaches, for the switcher (item 15).
+     *
+     * @return list<array{value: string, label: string}>
+     */
+    private static function switchableStorefronts(): array
+    {
+        $user = auth()->user();
+        $scope = $user instanceof User ? app(Roles::class)->storefrontScope($user) : [];
+
+        $query = DB::table('storefronts')->where('is_active', true)->orderBy('id');
+        // An EMPTY scope means unscoped — every storefront — which is what an administrator holds.
+        // A non-empty one is the exact list, so the switcher and the route agree by construction.
+        if (is_array($scope) && $scope !== []) {
+            $query->whereIn('id', $scope);
+        }
+
+        $out = [];
+        foreach ($query->get(['id', 'name']) as $raw) {
+            $row = Row::cast($raw);
+            $id = Row::int($row, 'id');
+            $out[] = ['value' => (string) $id, 'label' => Row::nstr($row, 'name') ?? ('#'.$id)];
+        }
+
+        return $out;
     }
 
     /**

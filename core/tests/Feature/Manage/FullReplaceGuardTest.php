@@ -89,6 +89,7 @@ it('accepts the SCREEN payload, which carries the declaration', function () {
             'wa_code' => T::str(DB::table('catalog_products')->where('id', $productId)->value('wa_code')),
             'brand_id' => T::int(DB::table('catalog_brands')->orderBy('id')->value('id')),
             'selling_price' => '777.00',
+            'purchase_price' => '0.00',
             'currency' => 'EGP',
             'is_active' => true,
             'title' => ['ar' => 'مكتمل', 'en' => 'Complete'],

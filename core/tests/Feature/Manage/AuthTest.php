@@ -266,9 +266,18 @@ it('throttles repeated failures for one address', function () {
         post('/manage/login', ['email' => $user->email, 'password' => 'wrong'])->assertSessionHasErrors('email');
     }
 
-    // The sixth attempt is refused by the limiter rather than by the password check.
+    /*
+     * The sixth attempt is refused by the limiter rather than by the password check.
+     *
+     * Asserted against a fragment of the TRANSLATED message since item 16 (2026-09-18). It used to
+     * look for the English "Too many login attempts", which passed only because `lang/ar/auth.php`
+     * did not exist and Laravel fell through to its own copy — so this test was quietly pinning the
+     * defect that item fixed: an Arabic operator being refused in English.
+     *
+     * A fragment rather than the whole sentence, because the message carries a live countdown.
+     */
     post('/manage/login', ['email' => $user->email, 'password' => 'wrong'])
-        ->assertInvalid(['email' => 'Too many login attempts']);
+        ->assertInvalid(['email' => 'محاولات دخول كثيرة']);
 });
 
 it('validates the form before it touches the database', function () {
