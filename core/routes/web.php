@@ -67,6 +67,14 @@ Route::prefix('manage')->name('manage.')->group(function (): void {
         */
         Route::get('profile', [ProfileController::class, 'show'])->name('profile');
         Route::put('profile', [ProfileController::class, 'update'])->name('profile.update');
+        /*
+        | The operator's OWN password (AGENTS §2.18, 2026-09-20). No id in the path and
+        | none accepted: this changes the requesting account and there is no other one to
+        | reach. Throttled because it takes a current password, which makes it a place to
+        | guess one.
+        */
+        Route::put('profile/password', [ProfileController::class, 'password'])
+            ->middleware('throttle:10,1')->name('profile.password');
 
         // Uploads: data-entry needs them for 4B's product forms, so the ability is theirs too.
         Route::post('media', [MediaController::class, 'store'])->middleware('can:'.Role::MANAGE_MEDIA)->name('media.store');
@@ -296,16 +304,33 @@ Route::prefix('manage')->name('manage.')->group(function (): void {
             Route::get('inventory/ledger', [InventoryController::class, 'ledger'])->name('inventory.ledger');
             Route::get('inventory/reconciliation', [InventoryController::class, 'reconciliation'])->name('inventory.reconciliation');
             Route::post('inventory/adjust', [InventoryController::class, 'adjust'])->name('inventory.adjust');
+            /*
+            | Bulk stock work on the SELECTED rows (6.3, 2026-09-20). Throttled and capped at
+            | 100 ids in the controller: this writes the ledger, where every movement is
+            | permanent and signed, so the blast radius is bounded on purpose. There is
+            | deliberately no "apply to all matching" here, unlike the products list.
+            */
+            Route::post('inventory/bulk', [InventoryController::class, 'bulk'])
+                ->middleware('throttle:30,1')->name('inventory.bulk');
         });
 
         /*
-        | USERS AND ROLES -- admin only, promised in 4A. Grants ONLY: this screen never
-        | creates, edits or deletes a row in the shared users table (AGENTS 3), it
-        | writes core_user_roles. The artisan command stays the bootstrap path, for
-        | the case where nobody has a grant yet and therefore nobody can open this.
+        | USERS AND ROLES -- admin only, promised in 4A.
+        |
+        | Grants, AND account creation as of 2026-09-20 (AGENTS 2.18). Until then this
+        | screen never touched the shared users table and told the operator accounts were
+        | made "on the storefront or in the old dashboard" -- a workflow with nowhere to
+        | happen once the legacy host was unreachable, which meant nobody could be
+        | onboarded at all. The create route writes through DashboardAccounts, the single
+        | permitted door; it still never EDITS or DELETES an account.
+        |
+        | The artisan command stays the bootstrap path, for the case where nobody has a
+        | grant yet and therefore nobody can open this.
         */
         Route::middleware('can:'.Role::MANAGE_USERS)->group(function (): void {
             Route::get('users', [UserRoleController::class, 'index'])->name('users.index');
+            Route::post('users', [UserRoleController::class, 'storeAccount'])
+                ->middleware('throttle:20,1')->name('users.store');
             Route::post('users/grants', [UserRoleController::class, 'store'])->name('users.grants.store');
             Route::delete('users/grants/{grant}', [UserRoleController::class, 'destroy'])
                 ->where('grant', '[0-9]+')->name('users.grants.destroy');

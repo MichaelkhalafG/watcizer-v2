@@ -75,6 +75,18 @@ interface Props {
     categories: Option[];
     families: Option[];
     table: TablePayload<ProductRow>;
+    /**
+     * Which catalogue is on screen, and what the other choice would show (W1).
+     *
+     * Both counts come from the server under the SAME filters as the list, so the number on the
+     * control is the number you get when you press it.
+     */
+    scope: {
+        current: "placed" | "all";
+        placed: number;
+        catalogue: number;
+        hidden: number;
+    };
     pre_switch: PreSwitchState;
 }
 
@@ -98,6 +110,7 @@ export default function ProductsIndex({
     categories,
     families,
     table,
+    scope,
     pre_switch,
 }: Props) {
     const t = useT();
@@ -646,6 +659,41 @@ export default function ProductsIndex({
                 )}
                 filters={(setFilter, current) => (
                     <>
+                        {/* WHICH CATALOGUE — first, because it decides what every other filter
+                            is filtering. Counts on both options so the choice is informed: the
+                            operator can see that "the whole catalogue" is 7,714 and this shop is
+                            699 before pressing anything. */}
+                        <Select
+                            aria-label={t(
+                                "products.which_catalogue",
+                                "أي كتالوج",
+                            )}
+                            className="w-56"
+                            value={scope.current}
+                            onChange={(event) =>
+                                setFilter(
+                                    "scope",
+                                    event.target.value === "placed"
+                                        ? null
+                                        : event.target.value,
+                                )
+                            }
+                        >
+                            <option value="placed">
+                                {t(
+                                    "products.scope_placed",
+                                    "منتجات هذا المتجر",
+                                )}{" "}
+                                ({scope.placed.toLocaleString()})
+                            </option>
+                            <option value="all">
+                                {t(
+                                    "products.scope_all",
+                                    "الكتالوج المشترك كله",
+                                )}{" "}
+                                ({scope.catalogue.toLocaleString()})
+                            </option>
+                        </Select>
                         <Select
                             aria-label={t(
                                 "products.filter_by_category",

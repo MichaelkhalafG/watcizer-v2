@@ -4,6 +4,7 @@ use App\Domain\Access\Role;
 use App\Domain\Access\Roles;
 use App\Domain\Activity\ActivityLog;
 use App\Domain\Catalog\ProductWriter;
+use App\Domain\Catalog\SpecBlocks;
 use App\Domain\Inventory\Actor;
 use App\Domain\Inventory\InventoryService;
 use App\Domain\Inventory\StockTarget;
@@ -115,6 +116,34 @@ function auditProductPayload(int $productId, array $changes): array
         foreach (ProductWriter::TRANSLATED as $column) {
             $payload[$column][$locale] = $row->{$column} ?? null;
         }
+    }
+
+    /*
+     * ── The SPECS travel too, and their absence used to be invisible (2026-09-20) ────
+     *
+     * This helper claims to send "exactly what is already stored", and it did not: it omitted
+     * `specs`, and `writeSpecs()` — unlike `writePivots()`, which is guarded by `array_key_exists`
+     * — rewrites the block from whatever it is handed. An absent key therefore NULLED every
+     * specification column: case size, materials, movement, water resistance, the lot.
+     *
+     * Nothing caught it because the audit could not see the specs table. The moment the snapshot
+     * covered the whole edit (B4), a "changed nothing" save reported ten spec columns going to
+     * null — which was the truth about the payload, not a fault in the log.
+     *
+     * The dashboard itself is not affected: `ProductController::currentPayload()` carries
+     * `specs`, so the placement follow-up round-trips them. The exposure is for any OTHER caller
+     * that builds a partial payload, and that asymmetry between the two writers is reported
+     * rather than changed here.
+     */
+    $specs = DB::table(SpecBlocks::WATCH_SPECS_TABLE)->where('product_id', $productId)->first();
+    if (is_object($specs)) {
+        $block = [];
+        foreach ((array) $specs as $column => $value) {
+            if ($column !== 'product_id' && $column !== 'id') {
+                $block[$column] = $value;
+            }
+        }
+        $payload['specs'] = $block;
     }
 
     return array_merge($payload, $changes);

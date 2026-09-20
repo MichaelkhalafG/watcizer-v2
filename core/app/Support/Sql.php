@@ -20,7 +20,14 @@ use InvalidArgumentException;
 final class Sql
 {
     /** Every column this helper is allowed to name. Nothing outside the list can be built. */
-    public const COLUMNS = ['stock_express', 'stock_market', 'stock', 'quantity'];
+    public const COLUMNS = [
+        'stock_express', 'stock_market', 'stock', 'quantity',
+        // The other three columns the LOW STOCK rule names (B5, 2026-09-20). They are here
+        // for the same reason the stock columns are: `column()` refuses anything not on this
+        // list, so a rule naming a column it has not declared fails loudly in this file
+        // rather than reaching the database as text nobody vetted.
+        'low_stock_threshold', 'is_active', 'in_stock',
+    ];
 
     /** Every JSON column a lookup reference may be counted inside (wave 4D). */
     public const JSON_COLUMNS = ['specs'];
@@ -104,34 +111,91 @@ final class Sql
     }
 
     /**
-     * `(stock_express + stock_market) <= low_stock_threshold` — the dashboard's "low stock" test.
+     * "LOW STOCK" — the whole rule, in one place, for every screen that asks.
      *
-     * Here rather than in the controller for the same reason every other fragment is: this file
-     * is the ONE construction site for SQL text built from column names, and it is the only one
-     * with the whitelist. No caller-supplied string reaches it.
+     * ── Why this now owns four clauses and not one (B5, 2026-09-20) ─────────────────
+     *
+     * It used to return the arithmetic alone, and the consequence was that three screens each
+     * wrapped it in whatever else they thought "low" meant — or did not wrap it at all:
+     *
+     *   • products list      arithmetic only                              7,524
+     *   • inventory view     `is_active` + `in_stock` + arithmetic        4,946
+     *   • inventory BADGE    arithmetic, computed in PHP                  fired on all 2,578
+     *                                                                     out-of-stock rows
+     *
+     * Two screens used the same Arabic words and disagreed by 2,578, and the badge contradicted
+     * the filter beside it on ONE screen: every out-of-stock row was badged «منخفض» while
+     * clicking «مخزون منخفض» returned none of them.
+     *
+     * A helper that owns a FRAGMENT cannot prevent that: every caller still has to remember the
+     * rest, and two callers out of three did not. So the fragment is gone and this returns the
+     * whole test. There is nothing left for a caller to add, and therefore nothing to forget.
+     *
+     * ── The four clauses, each earned ───────────────────────────────────────────────
+     *
+     *   `is_active = 1`            an inactive product is not selling; an alert to reorder it is
+     *                              noise about a decision somebody already made.
+     *   `in_stock = 1`             OUT of stock is a different state with its own view and its own
+     *                              count. Low means "nearly gone", not "gone" — and this is the
+     *                              clause the badge was missing, which is why it fired on all 2,578.
+     *   `low_stock_threshold > 0`  the product form says, in as many words, *leave it at zero if you
+     *                              do not want an alert for this product*. Measured 2026-09-20: NO
+     *                              product currently sits at 0, so this clause changes no number
+     *                              today. It is here because the form makes a promise and the rule
+     *                              should keep it directly, not by the accident of `in_stock` also
+     *                              excluding those rows.
+     *   the arithmetic             both buckets together against the product's OWN threshold, which
+     *                              is a column because a watch and a keychain do not run low at the
+     *                              same count.
+     *
+     * ── Why this is also what the BADGE reads ───────────────────────────────────────
+     *
+     * The badge was computed in PHP from two of the row's columns, which made it a fourth
+     * definition that no change to this file could reach. {@see self::lowStockSelect()} returns the
+     * same expression as a SELECT, so the row carries the answer this function gave — not a
+     * re-derivation that agrees with it today.
      *
      * The `literal-string` return type is what lets `whereRaw()` accept it at PHPStan level 10:
-     * the value is a constant in the source, not something assembled from input.
-     *
-     * `$alias` exists because the stock LIST joins `catalog_products as p` and so cannot use the
-     * bare form. It is a `match` over two literals rather than string concatenation on purpose:
-     * concatenating an argument would destroy the `literal-string` type and with it the reason
-     * this helper is safe. Adding a third alias means adding a third arm, in this file, which is
-     * exactly the audit trail the class exists to provide.
+     * the value is a constant in the source, not something assembled from input. `$alias` is a
+     * `match` over two literals rather than concatenation for the same reason — concatenating an
+     * argument would destroy that type, and with it the reason this helper is safe. A third alias
+     * means a third arm, in this file, which is the audit trail the class exists to provide.
      *
      * @return literal-string
      */
-    public static function belowLowStockThreshold(string $alias = ''): string
+    public static function lowStock(string $alias = ''): string
     {
-        $columns = ['stock_express', 'stock_market'];
-        foreach ($columns as $column) {
+        foreach (['stock_express', 'stock_market', 'low_stock_threshold', 'is_active', 'in_stock'] as $column) {
             self::column($column);
         }
 
         return match ($alias) {
-            '' => '(`stock_express` + `stock_market`) <= `low_stock_threshold`',
-            'p' => '(`p`.`stock_express` + `p`.`stock_market`) <= `p`.`low_stock_threshold`',
-            default => throw new InvalidArgumentException("Sql::belowLowStockThreshold() has no arm for the alias [{$alias}]."),
+            '' => '(`is_active` = 1 AND `in_stock` = 1 AND `low_stock_threshold` > 0'
+                .' AND (`stock_express` + `stock_market`) <= `low_stock_threshold`)',
+            'p' => '(`p`.`is_active` = 1 AND `p`.`in_stock` = 1 AND `p`.`low_stock_threshold` > 0'
+                .' AND (`p`.`stock_express` + `p`.`stock_market`) <= `p`.`low_stock_threshold`)',
+            default => throw new InvalidArgumentException("Sql::lowStock() has no arm for the alias [{$alias}]."),
+        };
+    }
+
+    /**
+     * The same rule, as a SELECT — so a row can carry its own answer.
+     *
+     * This exists so the inventory BADGE is not a second opinion. It was `($express + $market) <=
+     * $threshold` in PHP, two columns re-compared after the query had already decided something
+     * else, and it disagreed with the filter on the same screen for every out-of-stock row.
+     *
+     * Reading it off the query means the badge cannot drift from the filter, because there is no
+     * second expression to drift. MariaDB returns 1/0, which the caller casts.
+     *
+     * @return literal-string
+     */
+    public static function lowStockSelect(string $alias = ''): string
+    {
+        return match ($alias) {
+            '' => self::lowStock().' AS `is_low`',
+            'p' => self::lowStock('p').' AS `is_low`',
+            default => throw new InvalidArgumentException("Sql::lowStockSelect() has no arm for the alias [{$alias}]."),
         };
     }
 

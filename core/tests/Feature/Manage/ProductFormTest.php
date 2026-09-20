@@ -1,5 +1,6 @@
 <?php
 
+use App\Domain\Activity\ActivityLog;
 use App\Domain\Catalog\ProductWriter;
 use App\Domain\Catalog\SpecBlocks;
 use App\Support\ArabicSearch;
@@ -407,4 +408,161 @@ it('ships the create form with every block and lookup it might need', function (
          * switch has happened, so the prop is gone from the payload rather than merely empty.
          */
         ->and(array_key_exists('pre_switch_notice', $props))->toBeFalse();
+});
+
+// ── what a product save records (B4, 2026-09-20) ──────────────────────────────────────────────
+
+/*
+ * The live review's repro: edit any product's Arabic description, press Save, and the activity log
+ * grew TWO rows one second apart — both saying `is_active: 0 ← ` with a blank right-hand side, and
+ * neither mentioning the description. One PUT on the wire, two rows, and not one word about what
+ * the operator actually changed.
+ *
+ * Three causes, fixed as one change because fixing any of them alone makes it worse:
+ *
+ *   1. `ActivityLog::same()` read the database's `0` as different from the payload's `false`, so
+ *      every boolean column at 0 logged a phantom change on every save.
+ *   2. `ProductController::saveStorefrontSide()` calls the writer a second time to re-derive the
+ *      family. That call diffs to NOTHING once (1) is right, and `record()` already drops an
+ *      UPDATE with an empty diff — so the duplicate disappears rather than needing its own guard.
+ *   3. `ProductWriter::update()` audited `catalog_products` alone, and recorded BEFORE the
+ *      translations, specs, pivots and images were written. Fix (1) without (3) and a
+ *      description-only edit logs nothing at all: wrong becomes silent.
+ */
+
+it('records ONE row for one save, and names what actually changed', function () {
+    CatalogFixture::assumeSwitched();
+    $admin = Staff::admin();
+
+    $productId = CatalogFixture::product();
+    $payload = productPayload();
+
+    // A first save, so the row is in a known state and the snapshot has something to diff against.
+    actingAs($admin)->put("/manage/storefronts/1/products/{$productId}", $payload)
+        ->assertSessionHasNoErrors();
+
+    $mark = T::int(DB::table('core_activity_log')->max('id') ?? 0);
+
+    // The review's exact repro: change the Arabic description and nothing else.
+    actingAs($admin)->put("/manage/storefronts/1/products/{$productId}", productPayload([
+        'wa_code' => T::str(DB::table('catalog_products')->where('id', $productId)->value('wa_code')),
+        'long_description' => ['ar' => 'وصف تفصيلي جديد تمامًا', 'en' => 'Long description'],
+    ]))->assertSessionHasNoErrors();
+
+    $rows = T::many(DB::table('core_activity_log')->where('id', '>', $mark)
+        ->where('subject_type', 'catalog_products')->where('subject_id', $productId));
+
+    // ONE row. Two was the bug, and it came from the phantom diff rather than from a second request.
+    expect($rows)->toHaveCount(1, 'one save must leave one row');
+
+    $changes = T::arr(json_decode(T::str(Row::nstr(Row::cast($rows[0]), 'changes')), true));
+
+    // …and it names the DESCRIPTION, which is the whole point and what neither old row mentioned.
+    expect($changes)->toHaveKey('long_description_ar');
+
+    $description = T::arr($changes['long_description_ar']);
+    expect(T::str($description['to'] ?? null))->toContain('جديد تمامًا');
+
+    // …and it does NOT carry the phantom: `is_active` did not move, so it must not appear.
+    expect($changes)->not->toHaveKey('is_active');
+});
+
+it('logs nothing at all for a save that changed nothing', function () {
+    CatalogFixture::assumeSwitched();
+    $admin = Staff::admin();
+
+    $productId = CatalogFixture::product();
+    $payload = productPayload();
+
+    actingAs($admin)->put("/manage/storefronts/1/products/{$productId}", $payload)->assertSessionHasNoErrors();
+
+    $settled = productPayload([
+        'wa_code' => T::str(DB::table('catalog_products')->where('id', $productId)->value('wa_code')),
+    ]);
+    actingAs($admin)->put("/manage/storefronts/1/products/{$productId}", $settled)->assertSessionHasNoErrors();
+
+    $mark = T::int(DB::table('core_activity_log')->max('id') ?? 0);
+
+    // The same payload a third time: nothing moved, so nothing is recorded. This is the assertion
+    // that would catch the phantom coming back — it produced a row on EVERY save, including this one.
+    actingAs($admin)->put("/manage/storefronts/1/products/{$productId}", $settled)->assertSessionHasNoErrors();
+
+    expect(DB::table('core_activity_log')->where('id', '>', $mark)
+        ->where('subject_type', 'catalog_products')->count())->toBe(0);
+});
+
+it('treats a database 0 and a payload false as the same value', function () {
+    /*
+     * The unit behind cause 1, pinned on its own so the reason survives the screen it was found on.
+     * `is_numeric(false)` is FALSE, so the pair used to fall through to `'0' === ''`.
+     *
+     * The loose-comparison shortcut is deliberately NOT what fixes it: `'abc' == false` is true in
+     * PHP, and an audit trail that calls a title change "no change" is the failure this prevents.
+     */
+    expect(ActivityLog::diff(['is_active' => 0], ['is_active' => false]))->toBe([]);
+    expect(ActivityLog::diff(['is_active' => 1], ['is_active' => true]))->toBe([]);
+    expect(ActivityLog::diff(['is_active' => '0'], ['is_active' => false]))->toBe([]);
+
+    // …and a real change still reads as one, in both directions.
+    expect(ActivityLog::diff(['is_active' => 0], ['is_active' => true]))->toHaveKey('is_active');
+    expect(ActivityLog::diff(['is_active' => 1], ['is_active' => false]))->toHaveKey('is_active');
+
+    // …and a non-numeric string is not quietly equal to false, which loose comparison would make it.
+    expect(ActivityLog::diff(['title' => 'abc'], ['title' => false]))->toHaveKey('title');
+});
+
+it('leaves the specification block ALONE when a payload does not mention it', function () {
+    /*
+     * `writeSpecs()` was the one writer not guarded by `array_key_exists`, where `writePivots()`
+     * always has been. `SpecBlocks::watchColumns()` maps an absent key to a full set of nulls, so
+     * any caller omitting `specs` silently blanked TEN columns — case size, the materials, the
+     * movement, the water resistance — on a product that was merely being re-saved.
+     *
+     * It had never bitten because the only caller is the form and `currentPayload()` happens to
+     * carry the block. It surfaced when the audit snapshot grew to cover the spec table (B4) and a
+     * "changed nothing" save reported ten columns going to null.
+     *
+     * The guard is on the WRITER, so an importer or a CLI command nobody has written yet is covered
+     * by construction rather than by remembering.
+     */
+    CatalogFixture::assumeSwitched();
+    $admin = Staff::admin();
+
+    $productId = CatalogFixture::product();
+    $shapeId = T::int(DB::table('catalog_shapes')->orderBy('id')->value('id'));
+
+    actingAs($admin)->put("/manage/storefronts/1/products/{$productId}", productPayload([
+        'specs' => ['case_size' => '42.00', 'shape_id' => $shapeId],
+    ]))->assertSessionHasNoErrors();
+
+    $before = DB::table(SpecBlocks::WATCH_SPECS_TABLE)->where('product_id', $productId)->first();
+    expect($before)->not->toBeNull();
+
+    // A partial payload — everything except `specs`, exactly what a script would send.
+    app(ProductWriter::class)->update(
+        $productId,
+        array_diff_key(productPayload([
+            'wa_code' => T::str(DB::table('catalog_products')->where('id', $productId)->value('wa_code')),
+        ]), ['specs' => true]),
+        T::int($admin->getAuthIdentifier()),
+    );
+
+    $after = DB::table(SpecBlocks::WATCH_SPECS_TABLE)->where('product_id', $productId)->first();
+
+    expect($after)->toEqual($before, 'a payload that never mentioned the specs changed them');
+
+    // …and `specs => []` still CLEARS, because that is present and unambiguous — the same contract
+    // `feature_ids` and `colors` already have.
+    app(ProductWriter::class)->update(
+        $productId,
+        productPayload([
+            'wa_code' => T::str(DB::table('catalog_products')->where('id', $productId)->value('wa_code')),
+            'specs' => [],
+        ]),
+        T::int($admin->getAuthIdentifier()),
+    );
+
+    $cleared = DB::table(SpecBlocks::WATCH_SPECS_TABLE)->where('product_id', $productId)->first();
+    expect($cleared)->not->toBeNull()
+        ->and(Row::nstr(Row::cast(T::row($cleared)), 'case_size'))->toBeNull();
 });

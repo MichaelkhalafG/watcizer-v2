@@ -22,6 +22,7 @@ use App\Support\Coerce;
 use App\Support\FullReplace;
 use App\Support\LocalisedName;
 use App\Support\ManageText;
+use App\Support\Sql;
 use App\Support\Table\TableQuery;
 use App\Transform\Row;
 use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
@@ -121,7 +122,23 @@ final class ProductController
                 'p.in_stock' => ['0', '1'],
                 'sp.is_visible' => ['0', '1'],
                 'sp.is_featured' => ['0', '1'],
-                // Two filters that are not plain columns; applied by hand below and declared here
+                /*
+                 * WHICH CATALOGUE (W1, 2026-09-20) — and it defaults to `placed`.
+                 *
+                 * The catalogue is shared across storefronts (D3) and that is right. Presenting it
+                 * as "Products — Watchizer" was not: with Watchizer selected the list read 7,714
+                 * products of which 7,015 are not on Watchizer at all, and ZERO of the first 25
+                 * rows were live on the shop named in the selector. Switching shops changed two
+                 * badges per row and nothing else, which made the selector look broken while it
+                 * was working perfectly.
+                 *
+                 * So selecting a shop now means seeing that shop's products, and the whole shared
+                 * catalogue is one click away with its own count. `placed` is the DEFAULT rather
+                 * than a remembered preference: a filter nobody set must mean the same thing on
+                 * every machine, or two people reading "7,714" disagree about what it counts.
+                 */
+                'scope' => ['placed', 'all'],
+                // Filters that are not plain columns; applied by hand below and declared here
                 // so the whitelist, the URL and the reset button all know about them.
                 'category' => self::optionValues($categories),
                 'flag' => ['low_stock', 'no_arabic', 'unplaced', 'absent', 'has_variants', 'archived',
@@ -136,7 +153,7 @@ final class ProductController
             ])
             // …and declared VIRTUAL, because neither is a column: `category` is a whole branch of
             // the tree and `flag` is four different predicates. `listQuery()` applies them.
-            ->virtual(['category', 'flag'])
+            ->virtual(['category', 'flag', 'scope'])
             /** @param  EloquentBuilder<covariant \Illuminate\Database\Eloquent\Model>|Builder  $query */
             ->searchUsing(function (EloquentBuilder|Builder $query, string $term): void {
                 self::applySearch($query, $term);
@@ -341,6 +358,13 @@ final class ProductController
             'categories' => $categories,
             'families' => self::familyOptions(),
             'table' => $table->paginate($query, $map, $prepare),
+            /*
+             * How many products the default is HIDING — the number the escape hatch is labelled
+             * with (W1). Counted under the SAME filters as the list, so switching to "the whole
+             * catalogue" from a filtered view lands on the count it just promised rather than a
+             * global constant that happens to be right when nothing else is selected.
+             */
+            'scope' => $this->scopeCounts($table, $storefront->id, $filters),
             // Every active storefront, so the list can render one visibility chip each.
             'all_storefronts' => self::activeStorefrontsForList(),
             'pre_switch' => PreSwitch::state('product'),
@@ -779,6 +803,97 @@ final class ProductController
     /**
      * @param  array<string, string|null>  $filters
      */
+    /**
+     * Both totals for the scope control, in ONE query.
+     *
+     * `COUNT(*)` with a conditional `SUM` rather than two round trips: the join is the expensive
+     * part and it is identical for both numbers. Measured at 16 ms over 7,714 products on the live
+     * shape (699 on Watchizer, 7,015 not), which is why this runs on every page load rather than
+     * being cached into something that can go stale while somebody places a product.
+     *
+     * The `scope` key is stripped before the query is rebuilt, so this always counts the wider set
+     * whichever way the control is currently switched.
+     *
+     * ── It has to be given the TABLE, not just the filters ──────────────────────────
+     *
+     * The first version took `$filters` and rebuilt the query through `listQuery()` alone — which
+     * applies only the VIRTUAL filters (`category`, `flag`, `scope`). Every plain-column filter
+     * (`p.family`, `p.brand_id`, `p.is_active`, the search term) is applied by `TableQuery::apply()`
+     * afterwards, so the count ignored them: filtering the list to watches left the escape hatch
+     * still promising 7,714 when pressing it delivers 4,646. The docblock said "under the SAME
+     * filters as the list" while the code did not, which is the kind of comment that is worse than
+     * none. `ProductListTest` caught it.
+     *
+     * @param  array<string, mixed>  $filters
+     * @return array{current: string, placed: int, catalogue: int, hidden: int}
+     */
+    private function scopeCounts(TableQuery $table, int $storefrontId, array $filters): array
+    {
+        $unscoped = $filters;
+        unset($unscoped['scope']);
+        // …and `absent` too: it forces `all` on its own, and leaving it in would count only the
+        // products that are NOT here, which is not what either half of this control means.
+        unset($unscoped['flag']);
+
+        /*
+         * `select([])` before `selectRaw()` is not decoration: `listQuery()` already selects
+         * twenty columns, and `selectRaw()` APPENDS. Without the reset the query asks for
+         * `p.id, p.wa_code, …, COUNT(*)` with no GROUP BY, which MariaDB refuses outright —
+         * "Mixing of GROUP columns with no GROUP columns is illegal" — and every page of the
+         * list 500s. `reorder()` drops the ORDER BY for the same reason a count does not need one.
+         */
+        $query = $this->listQuery($storefrontId, $unscoped + ['scope' => 'all']);
+
+        // …and the column filters and the search, which `listQuery()` does not apply.
+        $table->apply($query);
+
+        $row = $query
+            ->reorder()
+            ->select([])
+            // `COALESCE` because `SUM()` over ZERO rows is NULL, not 0 — and a filter that
+            // matches nothing is an ordinary thing for a stale bookmark to do. Without it the
+            // page 500s on a query that should simply report an empty list.
+            ->selectRaw('COUNT(*) as catalogue, COALESCE(SUM(`sp`.`id` IS NOT NULL), 0) as placed')
+            ->first();
+
+        $counted = Row::cast(is_object($row) ? $row : (object) ['catalogue' => 0, 'placed' => 0]);
+        $catalogue = Row::int($counted, 'catalogue');
+        $placed = Row::int($counted, 'placed');
+
+        return [
+            'current' => self::scopeOf($filters),
+            'placed' => $placed,
+            'catalogue' => $catalogue,
+            'hidden' => max(0, $catalogue - $placed),
+        ];
+    }
+
+    /**
+     * Which catalogue this request is looking at: the selected shop's, or the whole shared one.
+     *
+     * One function, because three places need the same answer and they must not drift: the query
+     * that filters, the count that says how many rows the default is hiding, and the screen that
+     * has to show the control in the state the query is actually in.
+     *
+     * @param  array<string, mixed>  $filters
+     * @return 'placed'|'all'
+     */
+    private static function scopeOf(array $filters): string
+    {
+        // `absent` IS the complement of `placed`, so it forces the wider set rather than producing
+        // an empty list. See the note at the predicate.
+        if (($filters['flag'] ?? null) === 'absent') {
+            return 'all';
+        }
+
+        return ($filters['scope'] ?? null) === 'all' ? 'all' : 'placed';
+    }
+
+    /**
+     * The list query: every filter except the ones `TableQuery` applies as plain columns.
+     *
+     * @param  array<string, mixed>  $filters
+     */
     private function listQuery(int $storefrontId, array $filters): Builder
     {
         // The branch is resolved BEFORE the query is built, because whether a category filter is
@@ -853,6 +968,21 @@ final class ProductController
             $query->whereNull('p.deleted_at');
         }
 
+        /*
+         * ── ON THIS SHOP, unless asked otherwise (W1) ───────────────────────────────
+         *
+         * `sp` is already LEFT JOINed above and already scoped to this storefront, so "placed here"
+         * is `sp.id IS NOT NULL` — no extra subquery, no second index probe, and the plan the
+         * `STRAIGHT_JOIN` note above reasons about is unchanged.
+         *
+         * `absent` is exempt and must be: it means "NOT on this shop", so scoping it to this shop
+         * returns nothing, every time. The two would silently cancel each other out and the
+         * operator would conclude the filter was broken — which is how W1 started.
+         */
+        if (self::scopeOf($filters) === 'placed') {
+            $query->whereNotNull('sp.id');
+        }
+
         // A category filter includes the node's DESCENDANTS, because a team member filtering by
         // "Watches" means the whole branch. The ids come from the materialised path in one query
         // — the same read the visibility rule uses — and never from a recursive walk.
@@ -883,7 +1013,17 @@ final class ProductController
         }
 
         match ($filters['flag'] ?? null) {
-            'low_stock' => $query->whereRaw('(p.stock_express + p.stock_market) <= p.low_stock_threshold'),
+            /*
+             * ── The call site the 2026-09-19 pass built the tool FOR and never wired (B5)
+             *
+             * That pass added the `$alias` argument to the shared helper with a comment saying
+             * it existed “because the stock LIST joins `catalog_products as p`” — and then left
+             * this line as inline SQL. The helper gained an arm for a caller that was never
+             * connected, which looks identical to a helper in use, so nothing failed. The
+             * result was this screen answering 7,524 while the stock screen answered 4,946,
+             * in the same words, for a month.
+             */
+            'low_stock' => $query->whereRaw(Sql::lowStock('p')),
             'no_arabic' => $query->where(function (Builder $inner): void {
                 $inner->whereNull('ar.title')->orWhere('ar.title', '=', '');
             }),

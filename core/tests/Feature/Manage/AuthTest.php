@@ -143,19 +143,44 @@ it('keeps the 65-table legacy digest identical across a full dashboard session',
     expect(CoreChecksumCommand::compute(LegacySource::TABLES)['digest'])->toBe($legacyBefore);
 });
 
-it('has no route that could reach the password broker, which WOULD write users.password', function () {
-    // `password_reset_tokens` exists in the shared schema (the legacy app owns it), so the broker
-    // is one route away from `UPDATE users SET password = …`. Core publishes no such route, and
-    // this asserts it rather than trusting it.
+it('has no route that could reach the password BROKER, which writes users.password unguarded', function () {
+    /*
+     * `password_reset_tokens` exists in the shared schema (the legacy app owns it), so Laravel's
+     * broker is one published route away from `UPDATE users SET password = …` with no guard in
+     * front of it. Core publishes no such route.
+     *
+     * ── It names the broker's routes, not the word "password" (2026-09-20) ──────────
+     *
+     * This refused any route name CONTAINING `password`, which was a fine proxy while core wrote
+     * nothing to `users`. AGENTS §2.18 now permits an operator to change their own password through
+     * `DashboardAccounts`, so `manage.profile.password` exists — a deliberate, guarded route — and
+     * the test failed on the feature it should have been distinguishing from the hazard.
+     *
+     * The hazard was never "a route with password in its name". It is the BROKER: `password.request`,
+     * `password.email`, `password.reset`, `password.update`, `password.confirm`, plus the e-mail
+     * verification routes that write `email_verified_at`. Those are Laravel's, they are published by
+     * `Auth::routes()` or a starter kit, and none of them asks the current password or goes through
+     * the single door. They are named here exactly.
+     */
+    $broker = [
+        'password.request', 'password.email', 'password.reset', 'password.update',
+        'password.confirm', 'password.confirmation',
+        'verification.notice', 'verification.verify', 'verification.send',
+    ];
+
     $names = collect(Illuminate\Support\Facades\Route::getRoutes()->getRoutes())
         ->map(fn (Route $route): string => (string) $route->getName())
         ->filter(fn (string $name): bool => $name !== '')
         ->all();
 
-    foreach ($names as $name) {
-        expect($name)->not->toContain('password')
-            ->and($name)->not->toContain('verification');
-    }
+    expect(array_values(array_intersect($names, $broker)))->toBe([]);
+
+    /*
+     * And the one password route core DOES publish is the guarded one, under `/manage`, with no id
+     * in its path — so it can only ever change the requesting account's own credential.
+     */
+    $ours = array_values(array_filter($names, fn (string $n): bool => str_contains($n, 'password')));
+    expect($ours)->toBe(['manage.profile.password']);
 });
 
 it('cannot verify an e-mail either, because the model does not implement the contract', function () {
@@ -220,9 +245,21 @@ it('does not let .env.example reintroduce a different cost', function () {
 });
 
 it('has no call site for logoutOtherDevices — the one remaining framework write to users.password', function () {
-    // 🟡-C. `SessionGuard::logoutOtherDevices()` re-hashes the password to invalidate other
-    // sessions, i.e. it UPDATEs a legacy table (study §3.11.14). Nothing in core calls it, and this
-    // asserts that stays true: a grep over the source, excluding this file's own mention of it.
+    /*
+     * 🟡-C. `SessionGuard::logoutOtherDevices()` re-hashes the password to invalidate other
+     * sessions, i.e. it UPDATEs a legacy table (study §3.11.14). Nothing in core calls it, and this
+     * asserts that stays true.
+     *
+     * ── It looks for a CALL, not for the word (2026-09-20) ──────────────────────────
+     *
+     * This matched the bare identifier anywhere in the tree, so the first docblock that explained
+     * *why* core does not call it — in `DashboardAccounts`, which had to say what a password change
+     * deliberately does NOT do — failed the test by documenting the rule it was keeping.
+     *
+     * A prose mention is not a call site, and a codebase that cannot name the thing it is avoiding
+     * has to explain its own decisions in riddles. `->logoutOtherDevices(` is the shape that would
+     * actually write, and it is still refused everywhere.
+     */
     $offenders = [];
     foreach (['app', 'config', 'database', 'routes', 'bootstrap'] as $directory) {
         $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator(base_path($directory)));
@@ -231,7 +268,7 @@ it('has no call site for logoutOtherDevices — the one remaining framework writ
             if ($file->getExtension() !== 'php') {
                 continue;
             }
-            if (str_contains((string) file_get_contents($file->getPathname()), 'logoutOtherDevices')) {
+            if (str_contains((string) file_get_contents($file->getPathname()), '->logoutOtherDevices(')) {
                 $offenders[] = $file->getPathname();
             }
         }

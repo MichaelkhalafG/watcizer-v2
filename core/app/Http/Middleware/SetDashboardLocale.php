@@ -34,13 +34,29 @@ use Symfony\Component\HttpFoundation\Response;
  */
 final class SetDashboardLocale
 {
-    /** @param  Closure(Request): Response  $next */
+    /**
+     * ── The guest locale had TWO definitions, and they disagreed on the live host (2026-09-20)
+     *
+     * This used to set a locale only for a signed-in user and leave a guest to fall through to
+     * `config('app.locale')`. `LoginController::destroy()` meanwhile resolved its farewell through
+     * `Preferences::localeFor(null)`, whose comment states the two "cannot answer differently".
+     *
+     * On eleganceeg.com they did. `config/app.php` is `env('APP_LOCALE', 'en')`, the key was absent
+     * from a hand-written `.env`, and the result was the login screen — the first thing the team
+     * sees every morning — in English and left-to-right, carrying an Arabic sign-out message.
+     *
+     * So the fall-through is gone. `Preferences::localeFor()` answers for everybody, guest
+     * included, and it is the only thing that does. Setting `APP_LOCALE` can no longer contradict
+     * the flash message rendered beside it, because nothing reads that value to make this decision
+     * any more.
+     *
+     * @param  Closure(Request): Response  $next
+     */
     public function handle(Request $request, Closure $next): Response
     {
         $user = $request->user();
-        if ($user instanceof User) {
-            app()->setLocale(Preferences::localeFor($user));
-        }
+
+        app()->setLocale(Preferences::localeFor($user instanceof User ? $user : null));
 
         return $next($request);
     }

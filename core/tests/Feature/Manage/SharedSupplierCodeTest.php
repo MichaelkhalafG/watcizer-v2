@@ -164,9 +164,14 @@ it('selects exactly the products sharing a code, and nothing else', function () 
         DB::table('catalog_products')->where('id', $alone)->update(['sku' => 'FLAG-ALONE-01']);
     });
 
+    /*
+     * Catalogue-wide, explicitly. The list DEFAULTS to the selected shop since 2026-09-20 (W1), and
+     * `sharingProducts()` creates products without PLACING them — so the shop-scoped default would
+     * hide the very rows this test is about, for a reason that has nothing to do with shared codes.
+     */
     $props = Props::of(
         actingAs(Staff::admin())
-            ->get('/manage/storefronts/1/products?filters[flag]=shared_sku&per_page=100')
+            ->get('/manage/storefronts/1/products?filters[flag]=shared_sku&filters[scope]=all&per_page=100')
             ->assertOk()
     );
 
@@ -190,7 +195,7 @@ it('counts a shared code case-insensitively, the way the column compares it', fu
 
     $props = Props::of(
         actingAs(Staff::admin())
-            ->get('/manage/storefronts/1/products?filters[flag]=shared_sku&per_page=100')
+            ->get('/manage/storefronts/1/products?filters[flag]=shared_sku&filters[scope]=all&per_page=100')
             ->assertOk()
     );
 

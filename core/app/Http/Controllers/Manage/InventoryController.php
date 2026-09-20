@@ -2,12 +2,17 @@
 
 namespace App\Http\Controllers\Manage;
 
+use App\Domain\Activity\ActivityLog;
 use App\Domain\Catalog\ProductSearch;
 use App\Domain\Inventory\Actor;
 use App\Domain\Inventory\InsufficientStock;
 use App\Domain\Inventory\InventoryService;
 use App\Domain\Inventory\StockTarget;
+use App\Models\Catalog\Product;
+use App\Models\Storefront\Storefront;
+use App\Storefront\ImageUrl;
 use App\Support\Coerce;
+use App\Support\LocalisedName;
 use App\Support\ManageText;
 use App\Support\Sql;
 use App\Support\Table\TableQuery;
@@ -67,7 +72,10 @@ final class InventoryController
         $variants = [];
 
         $table = TableQuery::for($request)
-            ->sortable(['p.wa_code', 'p.stock_express', 'p.stock_market', 'p.low_stock_threshold'], default: 'p.wa_code')
+            // `t.title` added 2026-09-20 (6.1): the list could be sorted by code and by three
+            // numbers, and not by the one thing every row is headed with. Somebody hunting
+            // “the brown leather one” had no way to bring the names into an order.
+            ->sortable(['p.wa_code', 't.title', 'p.stock_express', 'p.stock_market', 'p.low_stock_threshold'], default: 'p.wa_code')
             /*
              * The SAME search the products list runs (D-8, 2026-09-19).
              *
@@ -84,8 +92,39 @@ final class InventoryController
             })
             // `view` and `bucket` are predicates, not columns: declared so they are whitelisted
             // and rendered, applied by hand below (the `flag` lesson of wave 4B).
-            ->filterable(['view' => ['', 'low', 'out'], 'bucket' => ['', 'express', 'market', 'out']])
-            ->virtual(['view', 'bucket'])
+            /*
+             * ── Narrowing, which this screen had none of (6.1, 2026-09-20) ──────────────
+             *
+             * It offered `view` and `bucket` and nothing else: no brand, no family, no category.
+             * Searching works and always did — `ProductSearch` covers the internal code, the model
+             * number and the product NAME in both languages — but a search only helps somebody who
+             * knows what to type. An operator hunting by memory had nothing to narrow by.
+             *
+             * The three added here are the products list's own filters, by the same keys and the
+             * same labels, because two screens over one catalogue must not have two vocabularies.
+             *
+             * ── …and `storefront`, which is a FILTER and never a default ────────────────
+             *
+             * Decision, 2026-09-20: this screen stays CATALOGUE-WIDE. Stock lives on
+             * `catalog_products` and nowhere else — `storefront_product` carries visibility,
+             * ordering, slug and price overrides, but no stock — so there is ONE physical figure
+             * per product backing both shops. Scoping the list to a storefront would show the same
+             * twelve units on the shelf as Watchizer's twelve AND Brand Fashion's twelve: a wrong
+             * number that looks right, which is worse than the confusion it would cure.
+             *
+             * So the shared warehouse stays the default and the filter is opt-in, for the operator
+             * who deliberately wants “stock of the things we sell on Watchizer” and knows they are
+             * asking about a subset.
+             */
+            ->filterable([
+                'view' => ['', 'low', 'out'],
+                'bucket' => ['', 'express', 'market', 'out'],
+                'p.family' => Product::FAMILIES,
+                'p.brand_id' => self::brandValues(),
+                'category' => self::categoryValues(),
+                'storefront' => self::storefrontValues(),
+            ])
+            ->virtual(['view', 'bucket', 'category', 'storefront'])
             /*
              * A stock take, as a file. `variants` is flattened to one cell rather than dropped:
              * a product with sizes is adjusted PER VARIANT, and a stock sheet that showed only
@@ -135,7 +174,19 @@ final class InventoryController
             ->select([
                 'p.id', 'p.wa_code', 'p.sku', 'p.stock_express', 'p.stock_market', 'p.in_stock',
                 'p.low_stock_threshold', 'p.family', 't.title as title_ar', 'te.title as title_en',
-            ]);
+            ])
+            /*
+             * The BADGE, answered by the query rather than re-derived in PHP (B5).
+             *
+             * It was `($express + $market) <= $threshold` in the row mapper: two columns compared
+             * again, after the query had already decided something else with three more clauses.
+             * So every out-of-stock row was badged «منخفض» while the filter beside it excluded
+             * all 2,578 of them — one screen contradicting itself.
+             *
+             * Selected from `Sql::lowStock()`, the badge cannot drift from the filter, because
+             * there is no second expression left to drift.
+             */
+            ->selectRaw(Sql::lowStockSelect('p'));
 
         // `resolvedFilters()`, never raw request input — see OrderController for why.
         $filters = $table->resolvedFilters();
@@ -150,11 +201,45 @@ final class InventoryController
          * this predicate is how the first three drifted.
          */
         if (Coerce::str($filters['view'] ?? null) === 'low') {
-            $query->where('p.is_active', 1)->where('p.in_stock', 1)
-                ->whereRaw(Sql::belowLowStockThreshold('p'));
+            // The whole rule, and nothing beside it: the clauses that used to be written here are
+            // inside `Sql::lowStock()` now, where the badge below reads them too (B5).
+            $query->whereRaw(Sql::lowStock('p'));
         } elseif (Coerce::str($filters['view'] ?? null) === 'out') {
             $query->where('p.is_active', 1)->where('p.in_stock', 0);
         }
+        /*
+         * A category filter means the whole BRANCH, exactly as it does on the products list — an
+         * operator filtering by "Watches" means the watches beneath it too. The node ids come from
+         * the same materialised path the visibility rule reads, never from a recursive walk.
+         */
+        $category = Coerce::nint($filters['category'] ?? null);
+        if ($category !== null) {
+            $branch = self::branchNodeIds($category);
+            $query->whereExists(function (QueryBuilder $sub) use ($branch): void {
+                $sub->from('storefront_category_product as scp')
+                    ->whereColumn('scp.product_id', 'p.id')
+                    ->whereIn('scp.storefront_category_id', $branch === [] ? [-1] : $branch)
+                    ->selectRaw('1')
+                    ->limit(1);
+            });
+        }
+
+        /*
+         * The storefront filter: OPT-IN, never a default (decision 2026-09-20 — see the note on
+         * `filterable()`). It narrows to the products a shop sells; it does not pretend the stock
+         * belongs to that shop, because it does not.
+         */
+        $storefront = Coerce::nint($filters['storefront'] ?? null);
+        if ($storefront !== null) {
+            $query->whereExists(function (QueryBuilder $sub) use ($storefront): void {
+                $sub->from('storefront_product as sp2')
+                    ->whereColumn('sp2.product_id', 'p.id')
+                    ->where('sp2.storefront_id', $storefront)
+                    ->selectRaw('1')
+                    ->limit(1);
+            });
+        }
+
         $bucket = Coerce::str($filters['bucket'] ?? null);
         if ($bucket === 'express') {
             $query->where('p.stock_express', '>', 0);
@@ -164,11 +249,22 @@ final class InventoryController
             $query->where('p.stock_express', 0)->where('p.stock_market', 0);
         }
 
-        $prepare = function (array $rows) use (&$variants): void {
-            $variants = self::variantsForPage(Coerce::objectList($rows));
+        /** @var array<int, string> $covers */
+        $covers = [];
+        /** @var array<int, list<array{id: int, name: string}>> $soldOn */
+        $soldOn = [];
+
+        $prepare = function (array $rows) use (&$variants, &$covers, &$soldOn): void {
+            $page = Coerce::objectList($rows);
+            $variants = self::variantsForPage($page);
+            // Two keyed reads for the PAGE, never a sub-select per row: the same shape the products
+            // list uses, and for the same reason its docblock gives — the correlated versions were
+            // that list's single biggest cost.
+            $covers = self::coversForPage($page);
+            $soldOn = self::soldOnForPage($page);
         };
 
-        $map = function (object $raw) use (&$variants): array {
+        $map = function (object $raw) use (&$variants, &$covers, &$soldOn): array {
             $row = Row::cast($raw);
             $id = Row::int($row, 'id');
             $express = Row::int($row, 'stock_express');
@@ -204,7 +300,23 @@ final class InventoryController
                 'total' => $express + $market,
                 'threshold' => $threshold,
                 'in_stock' => Row::bool($row, 'in_stock'),
-                'is_low' => ($express + $market) <= $threshold,
+                'is_low' => Row::bool($row, 'is_low'),
+                /*
+                 * The COVER (6.2, 2026-09-20). Every other catalogue screen has one and this did
+                 * not — on the screen where recognising a product at a glance matters most,
+                 * because the operator is holding the thing they are counting.
+                 */
+                'cover' => isset($covers[$id]) ? ImageUrl::src($covers[$id]) : null,
+                /*
+                 * WHICH SHOPS SELL IT (the scope decision, 2026-09-20).
+                 *
+                 * This list is catalogue-wide on purpose: stock is one physical figure per product
+                 * and both shops draw on it, so scoping the screen to a storefront would show the
+                 * same units twice. The cost of that correctness is a genuine question — "why is
+                 * this product on my screen when I am looking at Watchizer?" — and this column is
+                 * the answer, on the row, rather than a paragraph nobody reads.
+                 */
+                'sold_on' => $soldOn[$id] ?? [],
                 // A product with variants is adjusted PER VARIANT: the aggregate is derived
                 // and the service refuses a product-level movement on it (wave 3.5).
                 'variants' => $variants[$id] ?? [],
@@ -236,6 +348,20 @@ final class InventoryController
                     ['value' => 'market', 'label' => ManageText::t('inventory.market_only', 'ماركت فقط')],
                     ['value' => 'out', 'label' => ManageText::t('inventory.out_of_both', 'نفد بالكامل')],
                 ],
+                /*
+                 * 6.1 — the three the products list already offers, by the same keys and the same
+                 * labels. A stock screen and a catalogue screen that name "الماركة" differently
+                 * teach the operator that the two lists are different products.
+                 */
+                'families' => self::familyOptions(),
+                'brands' => self::brandOptions(),
+                'categories' => self::categoryOptions(),
+                /*
+                 * …and the storefront one, which the screen renders LAST and never pre-selects.
+                 * The decision and its reason live on `filterable()` above: stock is one physical
+                 * figure backing both shops, so a scoped default would show the same units twice.
+                 */
+                'storefronts' => self::storefrontOptions(),
             ],
             'reasons' => self::adjustmentReasons(),
             'alerts' => self::stockAlerts(),
@@ -562,6 +688,413 @@ final class InventoryController
     // ── reads ────────────────────────────────────────────────────────────────────────────────
 
     /**
+     * Apply one stock action to the SELECTED rows (6.3, 2026-09-20).
+     *
+     * ── The two modes are two ACTIONS, not one action with a flag ────────────────────
+     *
+     * `count_to` and `receive` are separate values with separate controls on the screen, and that
+     * is a safety decision rather than a styling one. The failure it prevents:
+     *
+     *     an operator means *"a shipment of 5 arrived"* and gets *"set the shelf to 5"*
+     *
+     * on a product holding 80 — which writes off 75 units, and the ledger records it as a
+     * deliberate correction because that is exactly what it was told. There is no error to notice
+     * afterwards: the number is plausible, the movement is signed, and the only trace is a stock
+     * figure that is quietly wrong until somebody counts the shelf again.
+     *
+     * A dropdown makes those two one control apart. Two buttons make them two decisions apart, and
+     * the screen shows the resulting number under each before it will submit.
+     *
+     * ── SELECTED rows only. There is no "apply to all matching" ──────────────────────
+     *
+     * The products list offers that for visibility and thresholds, which are reversible. This
+     * writes the LEDGER: every movement is permanent, signed, and reconciled against nightly. An
+     * "apply to everything matching" button on a stock screen is one crafted query away from
+     * rewriting the warehouse, so the ids are explicit and capped.
+     *
+     * Every movement goes through `InventoryService` with its reason — no direct column write —
+     * and the ledger records which MODE was used, so a later reader can tell a stock-take from a
+     * delivery without inferring it from the sign of a number.
+     */
+    public function bulk(Request $request): RedirectResponse
+    {
+        $data = Coerce::arr($request->validate([
+            'action' => ['required', 'string', Rule::in(['count_to', 'receive', 'set_threshold', 'move_bucket'])],
+            'ids' => ['required', 'array', 'min:1', 'max:'.self::BULK_MAX],
+            'ids.*' => ['integer', Rule::exists('catalog_products', 'id')->whereNull('deleted_at')],
+            'bucket' => ['required_unless:action,set_threshold', 'nullable', 'string', Rule::in(['express', 'market'])],
+            'to_bucket' => ['required_if:action,move_bucket', 'nullable', 'string', Rule::in(['express', 'market'])],
+            'quantity' => ['required', 'integer', 'min:-1000000', 'max:1000000'],
+            'reason' => ['required_unless:action,set_threshold', 'nullable', 'string', Rule::in(self::ADJUSTMENT_REASONS)],
+            'note' => ['nullable', 'string', 'max:255'],
+        ]));
+
+        $action = Coerce::str($data['action']);
+        $ids = Coerce::intList($data['ids']);
+        $quantity = Coerce::int($data['quantity']);
+        $bucket = Coerce::str($data['bucket'] ?? null, 'express');
+        $note = Coerce::nstr($data['note'] ?? null);
+        $reason = Coerce::str($data['reason'] ?? null, 'adjustment');
+
+        if ($action === 'receive' && $quantity === 0) {
+            throw ValidationException::withMessages([
+                'quantity' => ManageText::t('inventory.adjust_zero_delta',
+                    'التغيير النسبي لا يمكن أن يكون صفرًا. استخدم «تعيين» لضبط رقم مطلق.'),
+            ]);
+        }
+        if ($action !== 'receive' && $quantity < 0) {
+            throw ValidationException::withMessages([
+                'quantity' => ManageText::t('inventory.set_negative', 'الكمية المطلقة لا يمكن أن تكون سالبة.'),
+            ]);
+        }
+        if ($action === 'move_bucket' && Coerce::str($data['to_bucket'] ?? null) === $bucket) {
+            throw ValidationException::withMessages([
+                'to_bucket' => ManageText::t('inventory.move_same_bucket',
+                    'المخزن المصدر والوجهة واحد. اختر مخزنين مختلفين.'),
+            ]);
+        }
+
+        $actor = self::actor($request);
+        $done = 0;
+        /** @var list<string> $skipped */
+        $skipped = [];
+
+        foreach ($ids as $productId) {
+            /*
+             * A product with variants is skipped, NAMED, rather than failing the batch. Its stock
+             * lives per variant and the service refuses a product-level movement on it (wave 3.5) —
+             * which is right, and is not a reason to abandon the other forty rows the operator
+             * selected. The same shape the category bulk actions use: do what can be done, and say
+             * exactly what could not.
+             */
+            if (DB::table('catalog_product_variants')->where('product_id', $productId)->exists()) {
+                $skipped[] = self::productCode($productId);
+
+                continue;
+            }
+
+            try {
+                match ($action) {
+                    'count_to' => $this->inventory->set(
+                        StockTarget::product($productId), $bucket, $quantity, $reason,
+                        actor: $actor, note: $note,
+                    ),
+                    'receive' => $this->inventory->adjust(
+                        StockTarget::product($productId), $bucket, $quantity, $reason,
+                        actor: $actor, note: $note,
+                    ),
+                    'move_bucket' => $this->moveBetweenBuckets(
+                        $productId, $bucket, Coerce::str($data['to_bucket'] ?? null), $quantity, $reason, $actor, $note,
+                    ),
+                    'set_threshold' => self::setThreshold($productId, $quantity),
+                    default => null,
+                };
+                $done++;
+            } catch (InsufficientStock) {
+                $skipped[] = self::productCode($productId);
+            } catch (InvalidArgumentException|RuntimeException) {
+                $skipped[] = self::productCode($productId);
+            }
+        }
+
+        if ($action !== 'set_threshold') {
+            ActivityLog::record(
+                'catalog_products',
+                null,
+                ActivityLog::ADJUSTED,
+                ['bulk_stock' => null],
+                ['bulk_stock' => $action, 'products' => $done, 'bucket' => $bucket, 'quantity' => $quantity],
+                label: ManageText::t('inventory.bulk_label', ':count منتجًا', ['count' => $done]),
+            );
+        }
+
+        $status = ManageText::t('inventory.bulk_done', 'تم تنفيذ الإجراء على :count منتجًا.', ['count' => $done]);
+        if ($skipped !== []) {
+            $status .= ' '.ManageText::t(
+                'inventory.bulk_skipped',
+                'تُركت :count منتجات (لها مقاسات، أو لا يوجد مخزون كافٍ): :codes',
+                ['count' => count($skipped), 'codes' => implode(ManageText::t('common.list_separator', '، '), array_slice($skipped, 0, 10))],
+            );
+        }
+
+        return back()->with('status', $status);
+    }
+
+    /**
+     * Move stock from one bucket to the other: ONE transaction, TWO ledger movements.
+     *
+     * Not a single "transfer" movement, because the ledger's invariant is that the sum of a
+     * bucket's movements equals that bucket's column — `inventory:verify` checks exactly that
+     * nightly. A transfer that wrote one row would satisfy neither bucket. Two signed movements
+     * sharing a note is what a transfer IS, in a ledger.
+     */
+    private function moveBetweenBuckets(
+        int $productId, string $from, string $to, int $quantity, string $reason, Actor $actor, ?string $note,
+    ): void {
+        $target = StockTarget::product($productId);
+        $shared = $note ?? ManageText::t('inventory.move_note', 'نقل بين المخازن');
+
+        DB::transaction(function () use ($target, $from, $to, $quantity, $reason, $actor, $shared): void {
+            $this->inventory->adjust($target, $from, -$quantity, $reason, actor: $actor, note: $shared);
+            $this->inventory->adjust($target, $to, $quantity, $reason, actor: $actor, note: $shared);
+        });
+    }
+
+    /**
+     * The reorder point. NOT a stock movement and deliberately not through the service: it is a
+     * setting about when to warn, not a quantity of anything, and the ledger has no opinion on it.
+     */
+    private static function setThreshold(int $productId, int $threshold): void
+    {
+        DB::table('catalog_products')->where('id', $productId)
+            ->update(['low_stock_threshold' => max(0, $threshold), 'updated_at' => now()]);
+    }
+
+    /** The code an operator recognises, for a skipped row. */
+    private static function productCode(int $productId): string
+    {
+        $code = DB::table('catalog_products')->where('id', $productId)->value('wa_code');
+
+        return is_scalar($code) ? (string) $code : ('#'.$productId);
+    }
+
+    /**
+     * The cover image of each product on the page, in one read.
+     *
+     * `is_cover` first, then `sort`, then `id` — the same ordering the products list uses, so the
+     * two screens show the SAME picture for a product rather than each picking its own first row.
+     *
+     * @param  list<object>  $rows
+     * @return array<int, string>
+     */
+    private static function coversForPage(array $rows): array
+    {
+        $ids = [];
+        foreach ($rows as $raw) {
+            $ids[] = Row::int(Row::cast($raw), 'id');
+        }
+        if ($ids === []) {
+            return [];
+        }
+
+        $covers = [];
+        foreach (
+            DB::table('catalog_product_images')->whereIn('product_id', $ids)
+                ->orderBy('product_id')->orderByDesc('is_cover')->orderBy('sort')->orderBy('id')
+                ->get(['product_id', 'path']) as $raw
+        ) {
+            $row = Row::cast($raw);
+            $productId = Row::int($row, 'product_id');
+            if (! array_key_exists($productId, $covers)) {
+                $covers[$productId] = Row::str($row, 'path');
+            }
+        }
+
+        return $covers;
+    }
+
+    /**
+     * Which storefronts sell each product on the page, in one read.
+     *
+     * The NAME travels, not the id: "Brand Fashion" is what an operator recognises, and the id is
+     * an implementation detail of a table they have never seen.
+     *
+     * @param  list<object>  $rows
+     * @return array<int, list<array{id: int, name: string}>>
+     */
+    private static function soldOnForPage(array $rows): array
+    {
+        $ids = [];
+        foreach ($rows as $raw) {
+            $ids[] = Row::int(Row::cast($raw), 'id');
+        }
+        if ($ids === []) {
+            return [];
+        }
+
+        $names = [];
+        foreach (Storefront::query()->orderBy('id')->get(['id', 'name']) as $storefront) {
+            $names[Coerce::int($storefront->getAttribute('id'))] = Coerce::str($storefront->getAttribute('name'));
+        }
+
+        $out = [];
+        foreach (
+            DB::table('storefront_product')->whereIn('product_id', $ids)
+                ->orderBy('storefront_id')->get(['product_id', 'storefront_id']) as $raw
+        ) {
+            $row = Row::cast($raw);
+            $productId = Row::int($row, 'product_id');
+            $storefrontId = Row::int($row, 'storefront_id');
+            if (! isset($names[$storefrontId])) {
+                continue;
+            }
+            $out[$productId][] = ['id' => $storefrontId, 'name' => $names[$storefrontId]];
+        }
+
+        return $out;
+    }
+
+    /**
+     * The three narrowing pickers, in the products list's own vocabulary (6.1).
+     *
+     * @return list<array{value: string, label: string}>
+     */
+    private static function familyOptions(): array
+    {
+        $out = [['value' => '', 'label' => ManageText::t('products.all_families', 'كل العائلات')]];
+        foreach (Product::FAMILIES as $family) {
+            $out[] = ['value' => $family, 'label' => ManageText::t('products.family_'.$family, $family)];
+        }
+
+        return $out;
+    }
+
+    /** @return list<array{value: string, label: string}> */
+    private static function brandOptions(): array
+    {
+        $out = [['value' => '', 'label' => ManageText::t('products.all_brands', 'كل الماركات')]];
+        foreach (
+            DB::table('catalog_brands as b')
+                ->leftJoin('catalog_brand_translations as t', function (JoinClause $join): void {
+                    $join->on('t.brand_id', '=', 'b.id')->where('t.locale', '=', 'ar');
+                })
+                ->leftJoin('catalog_brand_translations as te', function (JoinClause $join): void {
+                    $join->on('te.brand_id', '=', 'b.id')->where('te.locale', '=', 'en');
+                })
+                ->orderBy('b.id')->get(['b.id', 't.name as name_ar', 'te.name as name_en']) as $raw
+        ) {
+            $row = Row::cast($raw);
+            $out[] = [
+                'value' => (string) Row::int($row, 'id'),
+                // The reader's language, through the same helper every other screen uses.
+                'label' => LocalisedName::pick(Row::nstr($row, 'name_ar'), Row::nstr($row, 'name_en'), '#'.Row::int($row, 'id')),
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Category nodes from EVERY storefront, each prefixed by its shop.
+     *
+     * The warehouse has no storefront of its own, so this picker cannot pick one tree. Both shops
+     * have a node called "ساعات"; without the prefix the operator would choose between two
+     * identical-looking entries and could not tell which they had picked.
+     *
+     * @return list<array{value: string, label: string}>
+     */
+    private static function categoryOptions(): array
+    {
+        $shops = [];
+        foreach (Storefront::query()->orderBy('id')->get(['id', 'name']) as $storefront) {
+            $shops[Coerce::int($storefront->getAttribute('id'))] = Coerce::str($storefront->getAttribute('name'));
+        }
+
+        $out = [['value' => '', 'label' => ManageText::t('products.all_categories', 'كل التصنيفات')]];
+        foreach (
+            DB::table('storefront_categories as c')
+                ->leftJoin('storefront_category_translations as t', function (JoinClause $join): void {
+                    $join->on('t.storefront_category_id', '=', 'c.id')->where('t.locale', '=', 'ar');
+                })
+                ->leftJoin('storefront_category_translations as te', function (JoinClause $join): void {
+                    $join->on('te.storefront_category_id', '=', 'c.id')->where('te.locale', '=', 'en');
+                })
+                ->orderBy('c.storefront_id')->orderBy('c.path')
+                ->get(['c.id', 'c.storefront_id', 't.name as name_ar', 'te.name as name_en']) as $raw
+        ) {
+            $row = Row::cast($raw);
+            $id = Row::int($row, 'id');
+            $shop = $shops[Row::int($row, 'storefront_id')] ?? '';
+            $name = LocalisedName::pick(Row::nstr($row, 'name_ar'), Row::nstr($row, 'name_en'), '#'.$id);
+            $out[] = ['value' => (string) $id, 'label' => $shop === '' ? $name : $shop.' · '.$name];
+        }
+
+        return $out;
+    }
+
+    /** @return list<array{value: string, label: string}> */
+    private static function storefrontOptions(): array
+    {
+        $out = [['value' => '', 'label' => ManageText::t('inventory.every_shop', 'كل المتاجر (المخزون مشترك)')]];
+        foreach (Storefront::query()->whereIn('id', Storefront::activeIds())->orderBy('id')->get(['id', 'name']) as $storefront) {
+            $out[] = [
+                'value' => (string) Coerce::int($storefront->getAttribute('id')),
+                'label' => Coerce::str($storefront->getAttribute('name')),
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Brand ids, for the filter whitelist.
+     *
+     * @return list<string>
+     */
+    private static function brandValues(): array
+    {
+        $out = [];
+        foreach (DB::table('catalog_brands')->orderBy('id')->pluck('id') as $id) {
+            $out[] = (string) Coerce::int($id);
+        }
+
+        return $out;
+    }
+
+    /**
+     * Category node ids across EVERY storefront.
+     *
+     * This screen has no storefront of its own — the warehouse does not — so the picker offers the
+     * nodes of both trees, prefixed by shop name where they would otherwise read the same. A
+     * category is a way of narrowing a stock take, not a claim about where a product is sold.
+     *
+     * @return list<string>
+     */
+    private static function categoryValues(): array
+    {
+        $out = [];
+        foreach (DB::table('storefront_categories')->orderBy('id')->pluck('id') as $id) {
+            $out[] = (string) Coerce::int($id);
+        }
+
+        return $out;
+    }
+
+    /** @return list<string> */
+    private static function storefrontValues(): array
+    {
+        $out = [];
+        foreach (Storefront::activeIds() as $id) {
+            $out[] = (string) $id;
+        }
+
+        return $out;
+    }
+
+    /**
+     * A category node and everything beneath it, from the materialised path.
+     *
+     * @return list<int>
+     */
+    private static function branchNodeIds(int $categoryId): array
+    {
+        $path = DB::table('storefront_categories')->where('id', $categoryId)->value('path');
+        if (! is_string($path) || $path === '') {
+            return [$categoryId];
+        }
+
+        $ids = [$categoryId];
+        foreach (
+            DB::table('storefront_categories')
+                ->where('path', 'like', $path.'%')->pluck('id') as $id
+        ) {
+            $ids[] = Coerce::int($id);
+        }
+
+        return array_values(array_unique($ids));
+    }
+
+    /**
      * The reasons an OPERATOR may choose, which is not every reason the service knows.
      *
      * `order`, `order_cancel`, `payment_failed` and `transform` are written by machinery — an
@@ -570,6 +1103,14 @@ final class InventoryController
      *
      * @var list<string>
      */
+    /**
+     * How many rows one bulk stock action may touch.
+     *
+     * Lower than the products list's 500 on purpose: this writes the LEDGER, and every movement is
+     * permanent and signed. A cap is not a performance limit here, it is a blast radius.
+     */
+    private const BULK_MAX = 100;
+
     private const ADJUSTMENT_REASONS = ['adjustment', 'restock', 'manual', 'import', 'erp_sync'];
 
     /** @return list<array{value: string, label: string}> */

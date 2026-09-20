@@ -170,8 +170,15 @@ it('answers a name search the same way on the stock list and the products list',
     // one ran FULLTEXT over the search index, the other ran LIKE over two code columns.
     $term = 'كرافت';
 
+    /*
+     * Both CATALOGUE-WIDE, so the comparison is about the two search mechanisms and not about
+     * placement. The products list defaults to the selected shop since 2026-09-20 (W1) while the
+     * stock list has no storefront at all, so without `scope=all` a product that exists but is not
+     * sold on Watchizer returns rows on one screen and none on the other — which is a real
+     * difference between the screens, and not the one this test is about.
+     */
     $stock = walkTotal('/manage/inventory?q='.urlencode($term));
-    $products = walkTotal('/manage/storefronts/1/products?q='.urlencode($term));
+    $products = walkTotal('/manage/storefronts/1/products?filters[scope]=all&q='.urlencode($term));
 
     expect($stock)->toBeGreaterThan(0)
         ->and($products)->toBeGreaterThan(0);
@@ -570,7 +577,10 @@ it('cannot be talked into selecting a row the screen would not have shown', func
         'action' => 'set_threshold',
         'scope' => 'matching',
         // `p.family=watch` is real; the rest is invented and must not narrow OR widen anything.
-        'query' => '?filters[p.family]=watch&filters[p.purchase_price]=0&filters[nonsense]=1&sort=password',
+        // `scope=all` is explicit because the list DEFAULTS to this shop (W1) and the assertion
+        // below counts watches across the whole catalogue. The coupling is deliberate and has its
+        // own test beneath this one: bulk-on-matching applies to exactly what the list showed.
+        'query' => '?filters[p.family]=watch&filters[scope]=all&filters[p.purchase_price]=0&filters[nonsense]=1&sort=password',
         'threshold' => 9,
     ])->assertSessionHasNoErrors();
 

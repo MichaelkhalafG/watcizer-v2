@@ -7,12 +7,15 @@ import {
     TextField,
     TextareaField,
 } from "@/components/form/TextField";
+import { ImageOff } from "lucide-react";
+
 import { DataTable, type Column } from "@/components/table/DataTable";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Select } from "@/components/ui/input";
+import { StockBulkBar } from "@/components/manage/StockBulkBar";
 import ManageLayout from "@/layouts/ManageLayout";
 import { useT, useLocale } from "@/lib/i18n";
 import { ProductName } from "@/components/manage/ProductName";
@@ -64,6 +67,16 @@ interface StockRow {
     threshold: number;
     in_stock: boolean;
     is_low: boolean;
+    /** The cover, so a row can be recognised at a glance (6.2). */
+    cover: string | null;
+    /**
+     * Which shops sell it (the scope decision, 2026-09-20).
+     *
+     * This screen is catalogue-wide because stock is ONE physical figure backing both shops.
+     * That is correct and it raises a fair question on every row — "why is this here?" — which
+     * these chips answer where the question is asked.
+     */
+    sold_on: Array<{ id: number; name: string }>;
     variants: Variant[];
 }
 
@@ -74,7 +87,16 @@ interface Option {
 
 interface Props {
     table: TablePayload<StockRow>;
-    filters: { views: Option[]; buckets: Option[] };
+    filters: {
+        views: Option[];
+        buckets: Option[];
+        /** 6.1 — the products list's own vocabulary, so two screens do not name one thing twice. */
+        families: Option[];
+        brands: Option[];
+        categories: Option[];
+        /** Opt-in only. Never a default: see the sentence under the title. */
+        storefronts: Option[];
+    };
     reasons: Option[];
     alerts: { low: number; out: number };
 }
@@ -165,6 +187,33 @@ export default function InventoryIndex({
 
     const columns: Array<Column<StockRow>> = [
         {
+            /* 6.2 — the picture. Every other catalogue screen has one, and this is the screen
+               where recognising a product matters most: the operator is holding the thing they
+               are counting. Same treatment and the same 40px frame as the products list, so a
+               row reads identically on both. */
+            key: "cover",
+            header: t("products.image", "صورة"),
+            sortable: false,
+            className: "w-14",
+            cell: (row) => (
+                <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded border bg-muted/40">
+                    {row.cover === null ? (
+                        <ImageOff
+                            className="h-4 w-4 text-muted-foreground"
+                            aria-label={t("products.no_image", "بلا صورة")}
+                        />
+                    ) : (
+                        <img
+                            src={row.cover}
+                            alt=""
+                            className="h-full w-full object-cover"
+                            loading="lazy"
+                        />
+                    )}
+                </div>
+            ),
+        },
+        {
             key: "p.wa_code",
             header: t("common.product", "المنتج"),
             sortable: true,
@@ -231,6 +280,28 @@ export default function InventoryIndex({
                     {row.threshold}
                 </span>
             ),
+        },
+        {
+            /* WHICH SHOPS SELL IT — the answer to the question this screen's catalogue-wide scope
+               raises on every row. Chips rather than a sentence: it is read at a glance, beside a
+               number, forty times on a page. */
+            key: "sold_on",
+            header: t("inventory.sold_on", "يُباع في"),
+            sortable: false,
+            cell: (row) =>
+                row.sold_on.length === 0 ? (
+                    <span className="text-xs text-muted-foreground">
+                        {t("inventory.sold_nowhere", "لا يُباع في أي متجر")}
+                    </span>
+                ) : (
+                    <span className="flex flex-wrap gap-1">
+                        {row.sold_on.map((shop) => (
+                            <Badge key={shop.id} variant="outline">
+                                {shop.name}
+                            </Badge>
+                        ))}
+                    </span>
+                ),
         },
         {
             key: "variants",
@@ -335,6 +406,22 @@ export default function InventoryIndex({
             }
         >
             <div className="space-y-4">
+                {/*
+                 * WHY THIS SCREEN IS NOT PER-SHOP (decision, 2026-09-20).
+                 *
+                 * Said once, on the screen, because the alternative is an operator quietly
+                 * concluding the shop selector is broken — which is what happened. Stock lives on
+                 * the product and nowhere else: one physical figure, both shops drawing on it. A
+                 * per-shop stock screen would show the same twelve units as Watchizer's twelve and
+                 * Brand Fashion's twelve, which is a wrong number that looks right.
+                 */}
+                <p className="text-sm text-muted-foreground">
+                    {t(
+                        "inventory.shared_warehouse",
+                        "المخزون مشترك بين المتاجر: الرقم هنا هو الكمية الفعلية في المخزن، لا حصة متجر. عمود «يُباع في» يوضّح أي المتاجر يبيع كل منتج، ويمكنك التصفية بمتجر واحد عند الحاجة.",
+                    )}
+                </p>
+
                 {/* Two alerts, because they are two jobs. "Low" means reorder soon; "out" means
                     it is already unbuyable and somebody should decide whether to hide it. They
                     were one number until 2026-09-19, added together into an alarm that covered
@@ -401,6 +488,21 @@ export default function InventoryIndex({
                     table={table}
                     columns={columns}
                     rowId={(row) => row.id}
+                    /*
+                     * The bulk bar takes the SELECTED ids and ignores `scope` — there is
+                     * deliberately no "apply to all matching" here (6.3). The products list offers
+                     * that for visibility and thresholds, which are reversible; this writes the
+                     * LEDGER, where every movement is permanent, signed and reconciled nightly, so
+                     * one crafted query must not be able to rewrite the warehouse.
+                     */
+                    bulkActions={(selected, clear) => (
+                        <StockBulkBar
+                            rows={table.data}
+                            selected={selected}
+                            clear={clear}
+                            reasons={reasons}
+                        />
+                    )}
                     // The placeholder is a PROMISE about what the box can see, and it used to
                     // promise less than the query delivers — it said "كود المنتج أو SKU" while
                     // every row on screen is headed by an Arabic name. Both the promise and the
@@ -467,6 +569,68 @@ export default function InventoryIndex({
                                         key={option.value}
                                         value={option.value}
                                     >
+                                        {option.label}
+                                    </option>
+                                ))}
+                            </Select>
+                            {/* 6.1 — the three narrowing pickers, in the products list's own
+                                vocabulary. Searching always worked (`ProductSearch` covers the
+                                code, the model number and the NAME in both languages); what was
+                                missing was a way to narrow when you do not know what to type. */}
+                            <Select
+                                className="w-full sm:w-44"
+                                aria-label={t("products.filter_by_family", "تصفية بالعائلة")}
+                                value={current["p.family"] ?? ""}
+                                onChange={(event) =>
+                                    setFilter("p.family", event.target.value || null)
+                                }
+                            >
+                                {filters.families.map((option) => (
+                                    <option key={option.value} value={option.value}>
+                                        {option.label}
+                                    </option>
+                                ))}
+                            </Select>
+                            <Select
+                                className="w-full sm:w-44"
+                                aria-label={t("products.filter_by_brand", "تصفية بالماركة")}
+                                value={current["p.brand_id"] ?? ""}
+                                onChange={(event) =>
+                                    setFilter("p.brand_id", event.target.value || null)
+                                }
+                            >
+                                {filters.brands.map((option) => (
+                                    <option key={option.value} value={option.value}>
+                                        {option.label}
+                                    </option>
+                                ))}
+                            </Select>
+                            <Select
+                                className="w-full sm:w-56"
+                                aria-label={t("products.filter_by_category", "تصفية بالتصنيف")}
+                                value={current.category ?? ""}
+                                onChange={(event) =>
+                                    setFilter("category", event.target.value || null)
+                                }
+                            >
+                                {filters.categories.map((option) => (
+                                    <option key={option.value} value={option.value}>
+                                        {option.label}
+                                    </option>
+                                ))}
+                            </Select>
+                            {/* LAST, and never pre-selected. The stock is shared; this narrows to
+                                what a shop sells without pretending the units are that shop's. */}
+                            <Select
+                                className="w-full sm:w-56"
+                                aria-label={t("inventory.filter_by_shop", "تصفية بالمتجر")}
+                                value={current.storefront ?? ""}
+                                onChange={(event) =>
+                                    setFilter("storefront", event.target.value || null)
+                                }
+                            >
+                                {filters.storefronts.map((option) => (
+                                    <option key={option.value} value={option.value}>
                                         {option.label}
                                     </option>
                                 ))}

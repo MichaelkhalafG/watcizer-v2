@@ -218,6 +218,27 @@ final class ActivityLog
             // One null and one empty string is the same absence, in a database sense.
             return ($a ?? '') === '' && ($b ?? '') === '';
         }
+        /*
+         * ── A BOOLEAN and the column it came from (B4, 2026-09-20) ──────────────────
+         *
+         * The database hands back `0`; the form payload carries `false`. `is_numeric(false)` is
+         * FALSE, so the pair fell past the numeric arm into `(string) 0 === (string) false`, which
+         * is `'0' === ''` — not equal. **Every boolean column sitting at 0 logged a change on every
+         * save**, and rendered as `is_active: 0 ← ` with a blank right-hand side, because `''` is
+         * what a cast bool prints.
+         *
+         * That single line is why editing a product's Arabic description produced two rows saying
+         * nothing about the description, and it is also why the duplicate existed at all: the
+         * follow-up write that re-derives the family diffs to NOTHING once this is right, and
+         * `record()` already drops an UPDATE with an empty diff.
+         *
+         * Normalised to int rather than compared loosely: `'abc' == false` is true in PHP, and an
+         * audit trail that calls a title change "no change" is the failure this exists to prevent.
+         * As an int, `'abc'` still differs from `0` through the string arm below.
+         */
+        $a = is_bool($a) ? (int) $a : $a;
+        $b = is_bool($b) ? (int) $b : $b;
+
         if (is_scalar($a) && is_scalar($b)) {
             if (is_numeric($a) && is_numeric($b)) {
                 return (float) $a === (float) $b;

@@ -404,7 +404,7 @@ final class ActivityController
             'storefront_payment_methods', 'core_user_roles', 'shipping_cities',
             // The eight screens covered on 2026-10-05.
             'catalog_units', 'catalog_lookups', 'storefront_banners', 'storefronts',
-            'core_user_preferences', 'media_files',
+            'core_user_preferences', 'media_files', 'users',
             /*
              * `orders` and `core_blogs` are WRITTEN to this log and were missing from the filter
              * (D-18, 2026-09-19) — so the subject the shop floor generates most, after products,
@@ -518,6 +518,13 @@ final class ActivityController
             'storefront_banners' => ManageText::t('activity.type_banner', 'بانر'),
             'storefronts' => ManageText::t('activity.type_storefront', 'إعدادات متجر'),
             'core_user_preferences' => ManageText::t('activity.type_preference', 'تفضيلات حساب'),
+            /*
+             * Accounts, as of 2026-09-20. Core writes `users` for exactly two operations —
+             * creating a dashboard account and changing a password — so those are the only
+             * rows this type can ever hold. The password VALUE is never among them:
+             * `ActivityLog::REDACTED_FIELDS` matches the field name and stores a marker.
+             */
+            'users' => ManageText::t('activity.type_account', 'حساب'),
             'media_files' => ManageText::t('activity.type_media', 'ملفات وسائط'),
             'orders' => ManageText::t('common.order', 'طلب'),
             'core_blogs' => ManageText::t('activity.type_blog', 'مقال'),

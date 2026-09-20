@@ -107,6 +107,27 @@ export default function UsersIndex({
         storefront_id: "",
     });
 
+    /*
+     * A SECOND form, deliberately not merged with the grant form beside it.
+     *
+     * They post to different routes and mean different things: one creates a person, the other
+     * gives an existing person a role. A single form with a "create if missing" checkbox would make
+     * the safe operation and the irreversible one the same button.
+     *
+     * `data_entry` is named rather than read off `roles[0]`, for the reason recorded on the grant
+     * form: a default taken from list ORDER becomes "administrator" the moment somebody reorders
+     * that array for an unrelated reason.
+     */
+    const account = useForm({
+        first_name: "",
+        last_name: "",
+        email: "",
+        password: "",
+        password_confirmation: "",
+        role: "data_entry",
+        storefront_id: "",
+    });
+
     const runSearch = () => {
         router.get("/manage/users", term === "" ? {} : { q: term }, {
             preserveState: true,
@@ -139,7 +160,7 @@ export default function UsersIndex({
                     tone="info"
                     title={t(
                         "users.grants_only_title",
-                        "هذه الشاشة تمنح الصلاحيات ولا تُنشئ حسابات",
+                        "من هنا تُنشئ حسابات الموظّفين وتمنح صلاحياتهم",
                     )}
                 >
                     {/* D-18: the sentence ended on `php artisan manage:role`. That command is the
@@ -150,13 +171,109 @@ export default function UsersIndex({
                         dashboard does not own accounts. */}
                     {t(
                         "users.grants_only_body",
-                        "جدول الحسابات مشترك مع المتجر والداشبورد القديم، فلا تُنشئ اللوحة حسابًا ولا تعدّله ولا تعيد تعيين كلمة مروره. الحساب يُنشأ من المتجر أو من الداشبورد القديم، ثم تُمنح صلاحياته من هنا.",
+                        "جدول الحسابات مشترك مع المتجر. من هنا تُنشئ حساب موظّف جديد وتُمنح صلاحياته، أو تُمنح صلاحية لحساب موجود. اللوحة لا تعدّل بيانات حساب ولا تحذفه، وكل موظّف يغيّر كلمة مروره من صفحة حسابه.",
                     )}
                 </Alert>
 
                 {errors.grant ? (
                     <Alert tone="error">{errors.grant}</Alert>
                 ) : null}
+
+                <Card>
+                    <CardHeader>
+                        <CardTitle>
+                            {t("users.add_heading", "إضافة موظّف")}
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <form
+                            className="space-y-4"
+                            onSubmit={(event) => {
+                                event.preventDefault();
+                                account.post("/manage/users", {
+                                    preserveScroll: true,
+                                    onSuccess: () => account.reset(),
+                                });
+                            }}
+                        >
+                            <p className="text-sm text-muted-foreground">
+                                {t(
+                                    "users.add_hint",
+                                    "يُنشئ الحساب ويمنح الصلاحية في خطوة واحدة. الموظّف يغيّر كلمة المرور بنفسه من صفحة حسابه.",
+                                )}
+                            </p>
+
+                            <div className="grid gap-4 sm:grid-cols-2">
+                                <TextField
+                                    label={t("users.add_first_name", "الاسم الأول")}
+                                    required
+                                    value={account.data.first_name}
+                                    onChange={(value) => account.setData("first_name", value)}
+                                    error={errors.first_name ?? null}
+                                />
+                                <TextField
+                                    label={t("users.add_last_name", "اسم العائلة")}
+                                    required
+                                    value={account.data.last_name}
+                                    onChange={(value) => account.setData("last_name", value)}
+                                    error={errors.last_name ?? null}
+                                />
+                                <TextField
+                                    label={t("users.add_email", "البريد الإلكتروني")}
+                                    required
+                                    dir="ltr"
+                                    type="email"
+                                    autoComplete="off"
+                                    value={account.data.email}
+                                    onChange={(value) => account.setData("email", value)}
+                                    error={errors.email ?? null}
+                                />
+                                <SelectField
+                                    label={t("users.role", "الصلاحية")}
+                                    required
+                                    value={account.data.role}
+                                    onChange={(value) => account.setData("role", value)}
+                                    options={roles}
+                                    error={errors.role ?? null}
+                                />
+                                <TextField
+                                    label={t("users.add_password", "كلمة مرور مبدئية")}
+                                    required
+                                    dir="ltr"
+                                    type="password"
+                                    autoComplete="new-password"
+                                    value={account.data.password}
+                                    onChange={(value) => account.setData("password", value)}
+                                    error={errors.password ?? null}
+                                />
+                                <TextField
+                                    label={t("users.add_password_confirm", "أعد كتابة كلمة المرور")}
+                                    required
+                                    dir="ltr"
+                                    type="password"
+                                    autoComplete="new-password"
+                                    value={account.data.password_confirmation}
+                                    onChange={(value) =>
+                                        account.setData("password_confirmation", value)
+                                    }
+                                />
+                                <div className="sm:col-span-2">
+                                    <SelectField
+                                        label={t("users.scope", "النطاق")}
+                                        value={account.data.storefront_id}
+                                        onChange={(value) => account.setData("storefront_id", value)}
+                                        options={storefronts}
+                                        error={errors.storefront_id ?? null}
+                                    />
+                                </div>
+                            </div>
+
+                            <Button type="submit" disabled={account.processing}>
+                                {t("users.add_submit", "أنشئ الحساب")}
+                            </Button>
+                        </form>
+                    </CardContent>
+                </Card>
 
                 <div className="grid gap-6 lg:grid-cols-2">
                     <Card>
@@ -279,7 +396,7 @@ export default function UsersIndex({
                                 <p className="text-sm text-muted-foreground">
                                     {t(
                                         "users.no_results",
-                                        "لا نتائج. الحساب يُنشأ من المتجر أو من الداشبورد القديم.",
+                                        "لا نتائج. أنشئ حسابًا جديدًا من «إضافة موظّف» بالأعلى.",
                                     )}
                                 </p>
                             ) : (
@@ -302,7 +419,7 @@ export default function UsersIndex({
                                                         was. The VALUE is real legacy data and
                                                         stays; only the label is new. */}
                                                     {found.legacy_type !== null
-                                                        ? ` · ${t("users.legacy_type", "في النظام القديم")}: ${found.legacy_type}`
+                                                        ? ` · ${t("users.legacy_type", "خانة قديمة")}: ${found.legacy_type}`
                                                         : ""}
                                                 </div>
                                             </div>
@@ -403,12 +520,12 @@ export default function UsersIndex({
                                                             <span
                                                                 title={t(
                                                                     "users.legacy_flag_hint",
-                                                                    "علم الداشبورد القديم — لا تقرأه اللوحة الجديدة",
+                                                                    "خانة قديمة في جدول الحسابات — لا تمنح أي صلاحية هنا",
                                                                 )}
                                                             >
                                                                 {" "}
                                                                 ·{" "}
-                                                                {t("users.legacy_type", "في النظام القديم")}
+                                                                {t("users.legacy_type", "خانة قديمة")}
                                                                 :{" "}
                                                                 {
                                                                     grant.legacy_type

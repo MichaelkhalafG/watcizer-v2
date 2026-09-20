@@ -145,7 +145,15 @@ final class HomeController
                 'key' => 'orders_today',
                 'label' => ManageText::t('home.stat_orders_today', 'طلبات اليوم'),
                 'value' => DB::table('orders')->where('created_at', '>=', $today)->count(),
-                'hint' => ManageText::t('home.stat_orders_today_hint', 'من الجدول المشترك (يشمل الطلبات من اللوحة القديمة)'),
+                /*
+                 * This said "from the shared table (includes orders placed in the old dashboard)"
+                 * — which on a standalone database is not merely stale but FALSE: the legacy
+                 * installation is unreachable and writes nothing here, so no order in this count
+                 * can have come from it. A hint that describes a source the number cannot have is
+                 * worse than no hint, because it invites somebody to reconcile against a system
+                 * that is not contributing.
+                 */
+                'hint' => ManageText::t('home.stat_orders_today_hint', 'كل طلب اليوم منذ منتصف الليل بتوقيت المتجر'),
             ],
             /*
              * NEW SINCE YOU LAST LOOKED — the same number as the sidebar badge, from the same

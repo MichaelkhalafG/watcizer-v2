@@ -124,16 +124,22 @@ it('guards EVERY /manage route with authentication and an ability', function () 
      *
      *   • `manage.logout`  — ending your own session;
      *   • `manage.profile` / `manage.profile.update` — your OWN profile. The route takes no id, it
-     *     reads `$request->user()`, and the only thing it can write is one row of
-     *     `core_user_preferences` keyed by that same user. Requiring an ability here would be a
-     *     category error, and gating it on `view-dashboard` would mean a future role that can work
-     *     but not see the home screen could not open its own settings.
+     *     reads `$request->user()`, and what it writes is one row of `core_user_preferences` keyed
+     *     by that same user. Requiring an ability here would be a category error, and gating it on
+     *     `view-dashboard` would mean a future role that can work but not see the home screen could
+     *     not open its own settings.
+     *   • `manage.profile.password` — your OWN password (AGENTS §2.18, 2026-09-20). Same argument,
+     *     and the reason it is not gated on an ability is the same reason it is SAFE without one:
+     *     there is no id in the path, so the only account it can reach is the requesting one, and
+     *     `DashboardAccounts::changePassword()` demands the current password before it writes.
+     *     An ability would say "this person may change passwords", which is a power over OTHER
+     *     accounts — and that power is deliberately not granted to anybody, anywhere.
      *
      * They are still asserted to carry `auth` and `EnsureDashboardAccess` below, and the list is
      * checked for staleness at the end — an exemption naming a route that no longer exists is an
      * exemption nobody is reading.
      */
-    $noAbilityNeeded = ['manage.logout', 'manage.profile', 'manage.profile.update'];
+    $noAbilityNeeded = ['manage.logout', 'manage.profile', 'manage.profile.update', 'manage.profile.password'];
 
     $unguarded = [];
     foreach (Route::getRoutes()->getRoutes() as $route) {

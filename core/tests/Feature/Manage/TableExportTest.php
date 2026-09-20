@@ -199,7 +199,7 @@ it('exports the dashboard GRANTS and never the customer account search', functio
     $body = csv('/manage/users?export=csv');
 
     // `users` holds real customers; the screen refuses to page through them and the file does too.
-    expect(str_getcsv(csvLines($body)[0]))->toBe(['البريد', 'الاسم', 'الصلاحية', 'النطاق', 'منحها', 'التاريخ', 'النوع في النظام القديم'])
+    expect(str_getcsv(csvLines($body)[0]))->toBe(['البريد', 'الاسم', 'الصلاحية', 'النطاق', 'منحها', 'التاريخ', 'خانة قديمة'])
         ->and($body)->not->toContain('password')
         ->and($body)->not->toContain('remember_token');
 });

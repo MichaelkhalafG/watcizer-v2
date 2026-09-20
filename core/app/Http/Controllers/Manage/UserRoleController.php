@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Manage;
 
+use App\Domain\Access\DashboardAccounts;
 use App\Domain\Access\Role;
 use App\Domain\Access\Roles;
 use App\Models\User;
@@ -22,16 +23,22 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 /**
  * Users and roles — the screen 4A promised (wave 4C, AGENTS §2.7).
  *
- * ── GRANTS ONLY. This screen never touches the `users` table ─────────────────────────────────
+ * ── It CREATES accounts now, and that is a change of rule (2026-09-20) ───────────────────────
  *
- * `users` is a SHARED legacy table and AGENTS §3 is explicit about it: core does not create,
- * rename, disable or password-reset an account, and four framework defaults that would have
- * written it on our behalf are off. So this screen does exactly one thing — it writes
- * `core_user_roles`, which is core's own table: a row saying "this existing account may do this
- * here". There is no "add user" button, and the absence is the feature.
+ * This screen granted roles and nothing else, because `users` is a SHARED legacy table core was
+ * forbidden to write. The notice on it said an account is "created on the storefront or in the old
+ * dashboard" — and on the standalone eleganceeg.com deployment neither is reachable, so that
+ * sentence described a workflow with nowhere to happen. An administrator could not onboard anybody
+ * at all, which was one of the two things keeping the legacy system alive (live review §3.2).
  *
- * An account is created where accounts are created: the storefront's own registration, or the
- * legacy dashboard. This screen finds it and grants it access.
+ * AGENTS §2.18 now permits two operations on that table, and this screen uses one of them through
+ * {@see DashboardAccounts} — the single door, which refuses every other write at the model. What
+ * has NOT changed: this screen never edits an account, never deletes one, and never sets somebody
+ * else's password. Removing a person's access is a revoked GRANT, which is a `core_user_roles` row.
+ *
+ * The role is granted in the SAME operation as the account, inside one transaction. An account
+ * created without a grant is a person who can sign in and is then refused with a 403 — a worse
+ * half-state than not having created them.
  *
  * ── The artisan command stays ────────────────────────────────────────────────────────────────
  *
@@ -78,7 +85,7 @@ final class UserRoleController
                 ?? ManageText::t('common.all_storefronts', 'كل المتاجر')],
             'granted_by' => ManageText::t('users.granted_by', 'منحها'),
             'created_at' => ManageText::t('common.date', 'التاريخ'),
-            'legacy_type' => ManageText::t('users.legacy_type', 'النوع في النظام القديم'),
+            'legacy_type' => ManageText::t('users.legacy_type', 'خانة قديمة'),
         ], $grants);
         if ($export !== null) {
             return $export;
@@ -128,7 +135,7 @@ final class UserRoleController
             'role' => ['required', 'string', Rule::in([Role::Admin->value, Role::DataEntry->value])],
             'storefront_id' => ['nullable', 'integer', Rule::exists('storefronts', 'id')],
         ], [
-            'email.exists' => ManageText::t('users.account_not_found_hint', 'لا يوجد حساب بهذا البريد. الحسابات تُنشأ من المتجر أو من الداشبورد القديم.'),
+            'email.exists' => ManageText::t('users.account_not_found_hint', 'لا يوجد حساب بهذا البريد. أنشئه من «إضافة موظّف» بالأعلى.'),
         ]));
 
         $user = User::query()->where('email', Coerce::str($data['email']))->first();
@@ -146,6 +153,56 @@ final class UserRoleController
         return back()->with('status', $storefrontId === null
             ? ManageText::t('users.granted_all_storefronts', 'تم منح الصلاحية على كل المتاجر.')
             : ManageText::t('users.granted_one_storefront', 'تم منح الصلاحية على متجر واحد.'));
+    }
+
+    /**
+     * Create a dashboard account AND grant its role, in one operation.
+     *
+     * ── The screen that ended the old dashboard (2026-09-20) ────────────────────────
+     *
+     * Until today this screen granted roles to accounts that had to already exist, and told the
+     * operator they were "created on the storefront or in the old dashboard". On the standalone
+     * deployment the old dashboard is not reachable and the storefront is not on this host, so that
+     * sentence described a workflow with nowhere to happen: an administrator could not onboard
+     * anybody. It was one of the two things keeping the legacy system alive (live review §3.2).
+     *
+     * The write goes through {@see DashboardAccounts}, the single permitted door, which also
+     * decides what a new row may contain — notably `type = 'User'`, never a legacy admin value.
+     * Access comes from the role granted alongside it, not from that column.
+     *
+     * Both halves are one transaction inside that class: an account created without a role is a
+     * person who can sign in and is then refused at the door with a 403, which is a worse state
+     * than not having created them.
+     */
+    public function storeAccount(Request $request, DashboardAccounts $accounts): RedirectResponse
+    {
+        $data = Coerce::arr($request->validate([
+            'first_name' => ['required', 'string', 'max:100'],
+            'last_name' => ['required', 'string', 'max:100'],
+            'email' => ['required', 'string', 'email', 'max:191', Rule::unique('users', 'email')],
+            'password' => ['required', 'string', 'min:'.DashboardAccounts::MIN_PASSWORD, 'confirmed'],
+            'role' => ['required', 'string', Rule::in([Role::Admin->value, Role::DataEntry->value])],
+            'storefront_id' => ['nullable', 'integer', Rule::exists('storefronts', 'id')],
+        ], [
+            'email.unique' => ManageText::t('users.email_taken', 'هذا البريد له حساب بالفعل.'),
+        ]));
+
+        $accounts->create(
+            [
+                'first_name' => Coerce::str($data['first_name']),
+                'last_name' => Coerce::str($data['last_name']),
+                'email' => Coerce::str($data['email']),
+                'password' => Coerce::str($data['password']),
+            ],
+            Role::from(Coerce::str($data['role'])),
+            Coerce::nint($data['storefront_id'] ?? null),
+            $request->user(),
+        );
+
+        return back()->with('status', ManageText::t(
+            'users.account_created',
+            'تم إنشاء الحساب ومنح الصلاحية. سلّم كلمة المرور للموظف واطلب منه تغييرها من صفحة حسابه.',
+        ));
     }
 
     /**

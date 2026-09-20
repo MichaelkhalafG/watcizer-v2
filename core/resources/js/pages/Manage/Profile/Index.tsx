@@ -1,5 +1,5 @@
 import { router, usePage } from '@inertiajs/react';
-import { Lock } from 'lucide-react';
+import { KeyRound, Lock } from 'lucide-react';
 import { useState } from 'react';
 
 import { Alert } from '@/components/ui/alert';
@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Ltr, Num } from '@/components/ui/bidi';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Select } from '@/components/ui/input';
+import { Input, Select } from '@/components/ui/input';
 import ManageLayout from '@/layouts/ManageLayout';
 import { useT } from '@/lib/i18n';
 import { abilityLabel } from '@/lib/labels';
@@ -16,15 +16,20 @@ import type { SharedProps } from '@/types';
 /**
  * The signed-in operator's own profile (wave 4D).
  *
- * ── Why three fields have a padlock instead of an input ─────────────────────────────────────
+ * ── Why the name has a padlock and the password does not ───────────────────────────────────
  *
- * The accounts table is shared with the live storefront and the old dashboard, and this
- * application reads it without ever writing to it — a rule enforced by the database itself, not by
- * a missing button. So name, e-mail and password are shown with a lock and a sentence saying where
- * they ARE changed. A disabled input with no explanation would leave the operator hunting for a
- * control that does not exist and cannot.
+ * The accounts table is shared with the storefront. Core writes exactly two things to it — a new
+ * dashboard account, and a password change — both through `DashboardAccounts` (AGENTS §2.18,
+ * rewritten 2026-09-20 when the standalone deployment left the legacy host unreachable).
  *
- * What this screen CAN save is one thing, and it says which table it lands in.
+ * So the PASSWORD has a real form here, and the name, e-mail and phone keep their padlock: those
+ * are the customer-facing identity the storefront owns, and nobody asked for them. A disabled
+ * input with no explanation would leave the operator hunting for a control that does not exist,
+ * so each lock carries the reason on its face.
+ *
+ * The password form says what it does NOT do, too: other devices stay signed in, because
+ * `logoutOtherDevices()` writes `users.remember_token` and that is one of the three framework
+ * writes wave 4A turned off deliberately.
  */
 
 interface Grant {
@@ -45,6 +50,8 @@ interface Props {
         legacy_type: string | null;
     };
     identity_notice: string;
+    password_note: string;
+    password_min: number;
     grants: Grant[];
     locale: string;
     locales: Array<{ value: string; label: string }>;
@@ -76,6 +83,8 @@ function LockedField({ label, value, dir }: { label: string; value: string | nul
 export default function ProfileIndex({
     identity,
     identity_notice,
+    password_note,
+    password_min,
     grants,
     locale,
     locales,
@@ -88,6 +97,39 @@ export default function ProfileIndex({
     const [saving, setSaving] = useState(false);
 
     const dirty = chosen !== locale;
+
+    /*
+     * The password form is its own state and its own request. Kept apart from the language save on
+     * purpose: they write different tables, they can fail for different reasons, and a single form
+     * would make "Save" ambiguous about which of the two it just did.
+     */
+    const [current, setCurrent] = useState('');
+    const [next, setNext] = useState('');
+    const [confirm, setConfirm] = useState('');
+    const [changing, setChanging] = useState(false);
+    const { errors } = usePage<SharedProps>().props;
+
+    const tooShort = next !== '' && next.length < password_min;
+    const mismatch = confirm !== '' && next !== confirm;
+    const canChange =
+        current !== '' && next !== '' && confirm !== '' && !tooShort && !mismatch && !changing;
+
+    const changePassword = () => {
+        setChanging(true);
+        router.put(
+            '/manage/profile/password',
+            { current_password: current, password: next, password_confirmation: confirm },
+            {
+                preserveScroll: true,
+                onSuccess: () => {
+                    setCurrent('');
+                    setNext('');
+                    setConfirm('');
+                },
+                onFinish: () => setChanging(false),
+            },
+        );
+    };
 
     const save = () => {
         setSaving(true);
@@ -144,24 +186,9 @@ export default function ProfileIndex({
                             <LockedField label={t('profile.phone', 'رقم الهاتف')} value={identity.phone} dir="ltr" />
                         </div>
 
-                        <div className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">
-                            <div className="flex items-center gap-1.5 font-medium text-foreground">
-                                <Lock className="h-3.5 w-3.5" aria-hidden="true" />
-                                {t('common.password', 'كلمة المرور')}
-                            </div>
-                            {/* Said plainly rather than shown as a dead button: the change is made
-                                where the account lives, and that is a decision, not a gap. */}
-                            <p className="mt-1">
-                                {t(
-                                    'profile.password_note',
-                                    'تغيير كلمة المرور يتم من المتجر أو من الداشبورد القديم. لوحة التحكم الجديدة لا تكتب في جدول الحسابات إطلاقًا.',
-                                )}
-                            </p>
-                        </div>
-
                         {identity.legacy_type === null ? null : (
                             <p className="text-xs text-muted-foreground">
-                                {t('profile.legacy_type_label', 'نوع الحساب في النظام القديم:')}{' '}
+                                {t('profile.legacy_type_label', 'خانة قديمة في جدول الحسابات:')}{' '}
                                 <Ltr className="font-medium">{identity.legacy_type}</Ltr>{' '}
                                 {t(
                                     'profile.legacy_type_note',
@@ -169,6 +196,77 @@ export default function ProfileIndex({
                                 )}
                             </p>
                         )}
+                    </CardContent>
+                </Card>
+
+                <Card>
+                    <CardHeader className="flex-row items-center gap-3">
+                        <KeyRound className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                        <CardTitle>{t('profile.password_heading', 'تغيير كلمة المرور')}</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        <p className="text-sm text-muted-foreground">{password_note}</p>
+
+                        {errors.current_password ? (
+                            <Alert tone="error">{errors.current_password}</Alert>
+                        ) : null}
+                        {errors.password ? <Alert tone="error">{errors.password}</Alert> : null}
+
+                        <div className="grid gap-3 sm:grid-cols-2">
+                            <label className="space-y-1 text-sm sm:col-span-2 sm:max-w-xs">
+                                <span>{t('profile.password_current', 'كلمة المرور الحالية')}</span>
+                                <Input
+                                    id="profile-password-current"
+                                    type="password"
+                                    autoComplete="current-password"
+                                    value={current}
+                                    onChange={(event) => setCurrent(event.target.value)}
+                                />
+                            </label>
+
+                            <label className="space-y-1 text-sm">
+                                <span>{t('profile.password_new', 'كلمة المرور الجديدة')}</span>
+                                <Input
+                                    id="profile-password-new"
+                                    type="password"
+                                    autoComplete="new-password"
+                                    value={next}
+                                    onChange={(event) => setNext(event.target.value)}
+                                />
+                                {/* Said as a requirement while they type, not as a refusal after
+                                    they submit — the server enforces the same number either way. */}
+                                {tooShort ? (
+                                    <span className="block text-xs text-destructive">
+                                        {t('profile.password_too_short', 'كلمة المرور لا تقل عن :count حروف.').replace(
+                                            ':count',
+                                            String(password_min),
+                                        )}
+                                    </span>
+                                ) : null}
+                            </label>
+
+                            <label className="space-y-1 text-sm">
+                                <span>{t('profile.password_confirm', 'أعد كتابة كلمة المرور الجديدة')}</span>
+                                <Input
+                                    id="profile-password-confirm"
+                                    type="password"
+                                    autoComplete="new-password"
+                                    value={confirm}
+                                    onChange={(event) => setConfirm(event.target.value)}
+                                />
+                                {mismatch ? (
+                                    <span className="block text-xs text-destructive">
+                                        {t('profile.password_mismatch', 'الكلمتان غير متطابقتين.')}
+                                    </span>
+                                ) : null}
+                            </label>
+                        </div>
+
+                        <Button onClick={changePassword} disabled={!canChange}>
+                            {changing
+                                ? t('common.saving', 'جارٍ الحفظ…')
+                                : t('profile.password_submit', 'تغيير كلمة المرور')}
+                        </Button>
                     </CardContent>
                 </Card>
 

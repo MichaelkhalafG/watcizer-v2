@@ -167,10 +167,27 @@ it('carries the shell keys in English and nothing in Arabic', function () {
     expect(T::arr(Props::of(get('/manage'))['translations'] ?? null))->toBe([]);
 });
 
-it('gives a signed-out visitor the default language and no user lookup', function () {
-    // The login screen has no user, so the middleware must leave the locale alone rather than
-    // reaching for a preference that cannot exist.
-    get('/manage/login')->assertOk();
+it('renders the signed-out login screen in the default language, whatever APP_LOCALE says', function () {
+    /*
+     * ── What this used to assert, and why it was worthless (2026-09-20) ──────────────
+     *
+     * It called `Preferences::localeFor(null)` and checked it equalled `DEFAULT_LOCALE` — a pure
+     * function compared with the constant it returns. It never asked what the PAGE rendered in, so
+     * it passed green for the entire time the live login screen was in English and left-to-right:
+     * the middleware skipped guests, and `config('app.locale')` (`env('APP_LOCALE', 'en')`, absent
+     * from a hand-written `.env`) answered instead.
+     *
+     * Third time this project has found that shape — a test that exercises the helper beside the
+     * behaviour rather than the behaviour. So this one reads the prop the screen actually shipped.
+     */
+    config()->set('app.locale', 'en');   // the live host's wrong value, reproduced on purpose
 
+    $props = Props::of(get('/manage/login')->assertOk());
+
+    expect(T::str($props['locale'] ?? null))->toBe(Preferences::DEFAULT_LOCALE)
+        ->and(T::str($props['dir'] ?? null))->toBe(Preferences::directionFor(Preferences::DEFAULT_LOCALE));
+
+    // …and the sign-out farewell is resolved through the same function, so the message and the page
+    // it lands on cannot disagree — which is exactly what happened on the live host (B2).
     expect(Preferences::localeFor(null))->toBe(Preferences::DEFAULT_LOCALE);
 });

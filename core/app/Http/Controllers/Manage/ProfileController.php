@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Manage;
 
+use App\Domain\Access\DashboardAccounts;
 use App\Domain\Access\Preferences;
 use App\Domain\Access\Role;
 use App\Domain\Activity\ActivityLog;
@@ -24,23 +25,26 @@ use Inertia\Response;
  *
  * ── The shape of this screen is decided by a rule, not by taste ─────────────────────────────
  *
- * A profile screen normally edits a name, an e-mail and a password. This one edits NONE of the
- * three, and the reason is `users`: it is a LEGACY table shared with the live storefront, AGENTS §3
- * forbids core writing it, and the prohibition is enforced by the database — the `legacy`
- * connection runs in `tx_read_only = 1`, so the UPDATE would be refused by the server rather than
- * by this class. Four framework defaults that would have written it silently are already off
- * (`hashing.rehash_on_login`, the remember token, `last_login_at`, the password broker), and the
- * acceptance test for anything in this area is that the 65-table legacy digest does not move.
+ * A profile screen normally edits a name, an e-mail and a password. This one edits the PASSWORD and
+ * the dashboard language, and nothing else — and the asymmetry is the rule, not an omission.
  *
- * So identity is shown READ-ONLY with a sentence saying where it is actually changed, and a save
- * here touches exactly one table:
+ * `users` is a LEGACY table. Until 2026-09-20 core wrote none of it, because the legacy application
+ * serialised every column of that row into the proxied `login`/`register`/`me` responses the live
+ * storefront consumed. On the standalone eleganceeg.com deployment those routes are closed and
+ * nothing else writes the table, so AGENTS §2.18 now permits exactly two operations — creating a
+ * dashboard account, and changing a password — both through {@see DashboardAccounts}, which is the
+ * only door and refuses everything else at the model.
  *
+ * So this screen writes:
+ *
+ *     users.password          (through DashboardAccounts, current password required)
  *     core_user_preferences   (core-owned, M1m, DASHBOARD_TABLES)
  *
- * and exactly one column in it. Nothing else. The screen says so too, because an operator who
- * cannot find the "change password" button deserves to be told why rather than left hunting.
- *
- * A password change is a separate decision, not a quiet exception (developer, 2026-09-14).
+ * and the NAME, E-MAIL and phone stay read-only, because those are the customer-facing identity the
+ * storefront owns and no one asked for them. The three framework defaults wave 4A turned off —
+ * password re-hashing, the remember token, the `last_login_at` stamp — stay off, which is why a
+ * password change here does not end sessions on other devices. The screen says so rather than
+ * letting an operator assume it did.
  *
  * ── No ability gate beyond the dashboard itself ─────────────────────────────────────────────
  *
@@ -74,7 +78,10 @@ final class ProfileController
              * explanation — the operator is entitled to know that this is a decision and where the
              * change is actually made.
              */
-            'identity_notice' => ManageText::t('profile.identity_notice', 'الاسم والبريد وكلمة المرور يملكها حساب المتجر، وجدول الحسابات مشترك مع المتجر والداشبورد القديم. لوحة التحكم الجديدة تقرأ هذا الجدول ولا تكتب فيه إطلاقًا، فالتعديل يتم من المتجر أو من الداشبورد القديم.'),
+            'identity_notice' => ManageText::t('profile.identity_notice', 'الاسم والبريد ورقم الهاتف تخص حساب المتجر ولا تُعدَّل من هنا. كلمة المرور تُغيَّر من هذه الصفحة.'),
+            // What a password change here does, and the one thing it does NOT do.
+            'password_note' => ManageText::t('profile.password_note', 'اكتب كلمة المرور الحالية ثم الجديدة. الأجهزة الأخرى المسجَّلة بحسابك تبقى مسجَّلة الدخول.'),
+            'password_min' => DashboardAccounts::MIN_PASSWORD,
             'grants' => self::grantsFor($user),
             'locale' => Preferences::localeFor($user),
             'locales' => self::localeOptions(),
@@ -88,7 +95,7 @@ final class ProfileController
             // D-18: the table name was in the parentheses. What the sentence is FOR is the second
             // half — this screen cannot touch your account — and a table name neither supports
             // that nor is checkable by anybody reading it.
-            'saves_notice' => ManageText::t('profile.saves_notice', 'الحفظ هنا يخصّ تفضيلات اللوحة وحدها، ولا يمس بيانات حسابك ولا كلمة مرورك.'),
+            'saves_notice' => ManageText::t('profile.saves_notice', 'حفظ اللغة يخصّ تفضيلات اللوحة وحدها، ولا يمس بيانات حسابك.'),
         ]);
     }
 
@@ -139,6 +146,53 @@ final class ProfileController
         );
 
         return back()->with('status', ManageText::t('profile.saved', 'تم حفظ تفضيلاتك.'));
+    }
+
+    /**
+     * Change this operator's own password.
+     *
+     * ── The second of the two things that kept the old dashboard alive ──────────────
+     *
+     * This screen used to say the password "is changed on the storefront or in the old dashboard".
+     * On the standalone deployment neither is reachable, so a forgotten or shared password was a
+     * lockout with no way back that did not involve the command line (live review §3.1).
+     *
+     * The route takes no id and there is no other person's profile to reach, so the account being
+     * changed is always the one making the request. An administrator cannot set somebody else's
+     * password here — that would be a second, different permission over a legacy table, and it is
+     * not one that was granted. A locked-out operator gets a NEW account, or `manage:role` and a
+     * hand-written row, deliberately: resetting another person's credential is the kind of power
+     * that should stay awkward.
+     *
+     * The current password is verified inside {@see DashboardAccounts::changePassword()} rather
+     * than here, because that class is the door and a check in front of it can be routed around.
+     */
+    public function password(Request $request, DashboardAccounts $accounts): RedirectResponse
+    {
+        $user = $request->user();
+        abort_if(! $user instanceof User, 403);
+
+        $data = Coerce::arr($request->validate([
+            'current_password' => ['required', 'string'],
+            'password' => ['required', 'string', 'min:'.DashboardAccounts::MIN_PASSWORD, 'confirmed'],
+        ]));
+
+        $accounts->changePassword(
+            $user,
+            Coerce::str($data['current_password']),
+            Coerce::str($data['password']),
+        );
+
+        /*
+         * Says what it did NOT do, on purpose. `logoutOtherDevices()` rewrites `users.remember_token`
+         * — one of the three framework writes wave 4A turned off at the model — so a password change
+         * here does not end sessions elsewhere. An operator who assumes it did would stop looking
+         * for the laptop they left signed in, which is worse than knowing.
+         */
+        return back()->with('status', ManageText::t(
+            'profile.password_changed',
+            'تم تغيير كلمة المرور. الأجهزة الأخرى تبقى مسجَّلة الدخول.',
+        ));
     }
 
     /**

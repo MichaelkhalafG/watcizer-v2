@@ -135,7 +135,10 @@ final class InventoryService
      */
     public static function lowStockProducts(): QueryBuilder
     {
-        return self::sellableProducts()->where('in_stock', 1)->whereRaw(Sql::belowLowStockThreshold());
+        // The WHOLE rule, from the one place that owns it (B5). `sellableProducts()` and the
+        // `in_stock` clause that used to sit here are inside `Sql::lowStock()` now, so this
+        // count and the two screens cannot disagree about what “low” means.
+        return DB::table('catalog_products')->whereNull('deleted_at')->whereRaw(Sql::lowStock());
     }
 
     /** Nothing left in either bucket. Separate from "low" because the answer is different. */
