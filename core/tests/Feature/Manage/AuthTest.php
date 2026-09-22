@@ -1,6 +1,7 @@
 <?php
 
 use App\Console\Commands\CoreChecksumCommand;
+use App\Domain\Access\UserWrites;
 use App\Models\User;
 use App\Transform\LegacySource;
 use Dotenv\Dotenv;
@@ -183,10 +184,23 @@ it('has no route that could reach the password BROKER, which writes users.passwo
     expect($ours)->toBe(['manage.profile.password']);
 });
 
-it('cannot verify an e-mail either, because the model does not implement the contract', function () {
-    // `markEmailAsVerified()` writes `users.email_verified_at`. The interface is what wires it into
-    // the framework's verification flow; without it there is nothing to call.
-    expect(class_implements(User::class))->not->toContain(MustVerifyEmail::class);
+it('verifies an e-mail through the DOOR, never through the framework contract', function () {
+    /*
+     * This used to read "cannot verify an e-mail either" and that is no longer the claim.
+     *
+     * Storefront Phase 1 piece 4 gave core its own verification route, because a customer who
+     * registers here has to be able to confirm their address here. What has NOT changed is how the
+     * column is written: `CustomerAccounts::markVerified()` opens `UserWrites` with its own
+     * `customer.verified` reason, and the framework's flow stays unwired.
+     *
+     * The assertion is the same one, and it is still the right one. `MustVerifyEmail` is what hooks
+     * a model into `markEmailAsVerified()`, `sendEmailVerificationNotification()` and the `verified`
+     * middleware — three more writers of `users.email_verified_at` that go nowhere near the door.
+     * Implementing the interface would publish all three for the convenience of one method core has
+     * already written eight lines of.
+     */
+    expect(class_implements(User::class))->not->toContain(MustVerifyEmail::class)
+        ->and(UserWrites::REASONS)->toHaveKey('customer.verified');
 });
 
 it('keeps the bcrypt cost PRODUCTION will use equal to the production hash cost', function () {

@@ -15,6 +15,7 @@
         "astrotomic/laravel-translatable": "^11.17",
         "inertiajs/inertia-laravel": "^2.0.26",
         "laravel/framework": "^13.17",
+        "laravel/socialite": "^5.31",
         "laravel/tinker": "^3.0"
     },
     "require-dev": {

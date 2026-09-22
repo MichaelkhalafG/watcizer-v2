@@ -85,6 +85,32 @@ return [
             'widths' => [640, 1024, 1600],
             'thumbnails' => [],
         ],
+
+        /*
+        | Customer avatars (storefront Phase 1, piece 3, 2026-09-21).
+        |
+        | The folder is the LEGACY folder, `Uploads_Images/User`, because `users.image` holds a bare
+        | filename and every avatar the storefront has ever shown is already in there. The legacy
+        | `AuthController` wrote one WebP per upload with no resize at all; 512 is a ceiling nobody's
+        | profile photo needs to exceed, and it is applied the same way every other master is.
+        |
+        | NO RENDITIONS, deliberately. `users.image` is a single filename with nowhere to record a
+        | rendition set — unlike `catalog_product_images`, which has a `renditions` column — so a
+        | ladder written here could never be referenced and would be pure disk. One file per avatar
+        | is also exactly what the Blade dashboard wrote, which keeps the two indistinguishable.
+        |
+        | Declaring the type has a second effect worth having: `media:prune` scans the folders of
+        | DECLARED types, so until now the `User` folder was scanned by nothing and an avatar
+        | replaced ten times left ten files nobody could find. `users.image` is already in
+        | `MediaPruneCommand::REFERENCE_COLUMNS`, so the live one is safe from the moment the folder
+        | becomes visible to the scan.
+        */
+        'user' => [
+            'folder' => 'User',
+            'master' => ['width' => 512, 'height' => 512, 'quality' => 85, 'pad_square' => false],
+            'widths' => [],
+            'thumbnails' => [],
+        ],
     ],
 
     /*

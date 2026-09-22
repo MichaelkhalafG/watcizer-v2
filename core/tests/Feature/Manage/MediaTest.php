@@ -260,5 +260,16 @@ it('still answers 500 when the HOST cannot do the work', function () {
 it('declares one folder per type, and they are the legacy folders', function () {
     $folders = array_map(fn (string $type): string => MediaStore::typeConfig($type)['folder'], MediaStore::types());
 
-    expect($folders)->toBe(['Product', 'Product_image', 'Brand', 'Category_type', 'Banner_home']);
+    /*
+     * `User` JOINED 2026-09-21 (storefront Phase 1, piece 3): customer avatars, in the folder the
+     * legacy `AuthController` already wrote them to, because `users.image` holds a bare filename
+     * and every avatar the storefront has ever shown is in there.
+     *
+     * Declaring the type has a second effect worth stating: `media:prune` scans the folders of
+     * DECLARED types, so until now `User` was scanned by nothing and an avatar replaced ten times
+     * left ten files nobody could find. `users.image` is already in
+     * `MediaPruneCommand::REFERENCE_COLUMNS`, so the LIVE one is safe from the moment the folder
+     * becomes visible to the scan — which is the order these two changes have to happen in.
+     */
+    expect($folders)->toBe(['Product', 'Product_image', 'Brand', 'Category_type', 'Banner_home', 'User']);
 });

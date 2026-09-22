@@ -270,6 +270,26 @@ Route::prefix('manage')->name('manage.')->group(function (): void {
             Route::get('customers', [CustomerController::class, 'index'])->name('customers.index');
             Route::get('customers/{customer}', [CustomerController::class, 'show'])
                 ->where('customer', '[A-Za-z0-9:@._+-]+')->name('customers.show');
+
+            /*
+            | The ONE write on this screen (piece 6, 2026-09-22): attach a guest's orders to a
+            | registered account.
+            |
+            | Behind MANAGE_USERS, not VIEW_ORDERS, and the difference is the whole authorisation
+            | decision. Everything else here is READING facts that are already on the order screens,
+            | which is why the screen sits under VIEW_ORDERS at all. This is not a read: it decides
+            | that two identities are ONE PERSON, and a wrong decision hands a stranger somebody's
+            | delivery addresses, telephone number and purchase history. Data-entry holds
+            | VIEW_ORDERS; they must not hold this.
+            |
+            | The guest grouping is a HEURISTIC the screen labels as one — orders sharing a
+            | telephone, or an address, or a cart token. A human confirming it is exactly what this
+            | path is for.
+            */
+            Route::post('customers/{customer}/attach', [CustomerController::class, 'attach'])
+                ->where('customer', '[A-Za-z0-9:@._+-]+')
+                ->middleware('can:'.Role::MANAGE_USERS)
+                ->name('customers.attach');
         });
 
         Route::put('orders/{order}/status', [OrderController::class, 'advance'])

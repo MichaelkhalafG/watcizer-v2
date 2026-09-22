@@ -5,18 +5,16 @@ declare(strict_types=1);
 namespace App\Domain\Access;
 
 use App\Domain\Activity\ActivityLog;
-use App\Domain\Catalog\PreSwitch;
 use App\Models\User;
 use App\Support\Coerce;
 use App\Support\ManageText;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
-use RuntimeException;
 use Throwable;
 
 /**
- * The ONLY code in core that writes the legacy `users` table (AGENTS §2.18, rewritten 2026-09-20).
+ * The DASHBOARD's two `users` operations (AGENTS §2.18, rewritten 2026-09-20, amended 2026-09-21).
  *
  * ── Why this exists at all ──────────────────────────────────────────────────────────────────
  *
@@ -27,30 +25,34 @@ use Throwable;
  *
  * On the standalone deployment those routes are closed at the web server, the legacy installation
  * is unreachable, and nothing else writes this table. The hazard is gone. The caution is not — so
- * the permission is two operations wide and this class is the whole of it:
+ * the permission was two operations wide and this class was the whole of it:
  *
  *   • {@see self::create()}         — a new dashboard account
  *   • {@see self::changePassword()} — an operator changing their own password
  *
- * Everything else about `users` is unchanged and still forbidden. If a second writer ever returns
- * — the legacy app restored, another application pointed at this database — this permission is void
- * and the total prohibition returns as written.
+ * ── What changed on 2026-09-21, and why it is not a loosening ───────────────────────────────
  *
- * ── A mechanism, not a promise ──────────────────────────────────────────────────────────────
+ * This class used to say it was "the ONLY code in core that writes `users`", and that its
+ * permission was void if a second writer appeared. Phase 1 of the storefront migration IS that
+ * second writer: customer registration, profile edits and password changes move off the legacy host
+ * and into core, because the storefront cannot be pointed at this database while its accounts are
+ * created on another one.
  *
- * "Core may write two things" enforced by a comment is a rule the next contributor breaks without
- * noticing. {@see User::booted()} refuses every save that is not inside {@see self::writing()}, so
- * a stray `$user->save()` anywhere in the application is a loud exception in a test rather than a
- * silent row change in production. The same shape as {@see PreSwitch::allowing()}.
+ * So the lock moved OUT of this class into {@see UserWrites}, which holds it once and declares
+ * every operation permitted to open it. This class kept its two operations and lost only its
+ * monopoly. The distinction matters: the permission did not become vaguer, it became enumerable —
+ * `UserWrites::REASONS` is the whole answer to "may core write this table, and for what", and
+ * widening it is one edit to one constant that a diff puts in front of a reviewer.
  *
  * ── The columns, and the ones deliberately left alone ───────────────────────────────────────
  *
  *   create          → first_name, last_name, email, password, type
  *   changePassword  → password
  *
- * NOT written, ever: `remember_token`, `last_login_at` and `last_reengagement_at` (the three
- * framework defaults wave 4A turned off precisely to keep core out of them — see {@see User}), and
- * `image` / `phone_number`, which belong to the customer and are edited on the storefront.
+ * NOT written by THIS class, ever: `remember_token`, `last_login_at` and `last_reengagement_at`
+ * (the three framework defaults wave 4A turned off precisely to keep core out of them — see
+ * {@see User}), and `image` / `phone_number`, which belong to the customer. A customer editing
+ * their own profile writes the last two through their own door, never this one.
  *
  * `type` is written as `'User'` on create and never `'Admin'` or `'SuperAdmin'`. Dashboard access
  * comes from `core_user_roles`; the legacy enum grants power in the LEGACY application, which is
@@ -64,38 +66,10 @@ final class DashboardAccounts
     /** Shortest password this dashboard will set. Legacy has no policy; eight is the framework's. */
     public const MIN_PASSWORD = 8;
 
-    /** Depth counter rather than a bool: a nested call must not re-open the door on its way out. */
-    private static int $writing = 0;
+    /** The two reasons this class may open the {@see UserWrites} door with, and no others. */
+    public const CREATE = 'dashboard.create';
 
-    /**
-     * Run `$work` with the `users` write-guard lifted.
-     *
-     * Public because {@see User} asks it whether a save is permitted, and for nothing else. Do not
-     * call it to write `users` from outside this class — that is the hole this guard exists to
-     * close, and `AccountWriteGuardTest` greps for it. (Named in prose, not `@see`: an import of
-     * a test class from production code is a class that does not exist in a deployed vendor.)
-     *
-     * @template T
-     *
-     * @param  callable(): T  $work
-     * @return T
-     */
-    public static function writing(callable $work): mixed
-    {
-        self::$writing++;
-
-        try {
-            return $work();
-        } finally {
-            self::$writing--;
-        }
-    }
-
-    /** Is a `users` write permitted at this instant? Asked by {@see User::booted()}. */
-    public static function permitted(): bool
-    {
-        return self::$writing > 0;
-    }
+    public const PASSWORD = 'dashboard.password';
 
     /**
      * Create a dashboard account AND grant its role, as one operation.
@@ -126,7 +100,7 @@ final class DashboardAccounts
         self::assertPassword($data['password']);
 
         return DB::transaction(function () use ($data, $email, $role, $storefrontId, $createdBy): User {
-            $user = self::writing(function () use ($data, $email): User {
+            $user = UserWrites::open(self::CREATE, function () use ($data, $email): User {
                 $user = new User;
                 $user->forceFill([
                     'first_name' => trim($data['first_name']),
@@ -196,7 +170,7 @@ final class DashboardAccounts
 
         self::assertPassword($replacement);
 
-        self::writing(function () use ($user, $replacement): void {
+        UserWrites::open(self::PASSWORD, function () use ($user, $replacement): void {
             $user->forceFill(['password' => $replacement]);
             $user->save();
         });
@@ -229,22 +203,6 @@ final class DashboardAccounts
                 ),
             ]);
         }
-    }
-
-    /**
-     * The refusal {@see User::booted()} throws, as its own method so the message is written once.
-     *
-     * Not a `ValidationException`: this is never something an operator did. It is a developer
-     * writing `users` from somewhere that is not this class, and it should read like a bug.
-     */
-    public static function refuse(string $operation): never
-    {
-        throw new RuntimeException(
-            "core may not {$operation} the legacy `users` table from here. Two operations are "
-            .'permitted and both live in App\Domain\Access\DashboardAccounts: creating a dashboard '
-            .'account, and changing a password. See AGENTS §2.18 — if you believe a third is needed, '
-            .'that is a decision about the rule, not a call to DashboardAccounts::writing().'
-        );
     }
 
     /** Swallow-free helper for callers that want a boolean rather than an exception. */

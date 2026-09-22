@@ -27,6 +27,8 @@ final class Sql
         // list, so a rule naming a column it has not declared fails loudly in this file
         // rather than reaching the database as text nobody vetted.
         'low_stock_threshold', 'is_active', 'in_stock',
+        // The three columns the GUEST-GROUPING rule names (piece 6, 2026-09-22).
+        'guest_phone', 'guest_email', 'guest_token',
     ];
 
     /** Every JSON column a lookup reference may be counted inside (wave 4D). */
@@ -175,6 +177,38 @@ final class Sql
             'p' => '(`p`.`is_active` = 1 AND `p`.`in_stock` = 1 AND `p`.`low_stock_threshold` > 0'
                 .' AND (`p`.`stock_express` + `p`.`stock_market`) <= `p`.`low_stock_threshold`)',
             default => throw new InvalidArgumentException("Sql::lowStock() has no arm for the alias [{$alias}]."),
+        };
+    }
+
+    /**
+     * WHO COUNTS AS ONE GUEST — the grouping expression, in one place.
+     *
+     * There is no customer table in this schema, so a guest “customer” is the set of orders sharing
+     * a telephone number, or failing that an address, or failing that the cart token the storefront
+     * issued. Telephone first on purpose: in Egypt it is the field the courier actually uses, it is
+     * required at checkout, and it is what the person on the telephone will read out.
+     *
+     * It lives HERE rather than as a private constant on the screen that first needed it, because
+     * piece 6 gave it a second reader: the customers screen groups orders under a `g:` key, and
+     * `GuestOrderLink` has to resolve that key back to exactly the orders the screen showed. Two
+     * copies would be two definitions of who counts as one guest — and the day they drift, an
+     * operator attaches a group that is not the group they were looking at.
+     *
+     * Two arms, like {@see self::lowStock()}, and for the same reason: concatenating the alias would
+     * destroy the `literal-string` type that lets `whereRaw()` accept this at level 10.
+     *
+     * @return literal-string
+     */
+    public static function guestKey(string $alias = ''): string
+    {
+        foreach (['guest_phone', 'guest_email', 'guest_token'] as $column) {
+            self::column($column);
+        }
+
+        return match ($alias) {
+            '' => "COALESCE(NULLIF(`guest_phone`, ''), NULLIF(`guest_email`, ''), NULLIF(`guest_token`, ''))",
+            'o' => "COALESCE(NULLIF(`o`.`guest_phone`, ''), NULLIF(`o`.`guest_email`, ''), NULLIF(`o`.`guest_token`, ''))",
+            default => throw new InvalidArgumentException("Sql::guestKey() has no arm for the alias [{$alias}]."),
         };
     }
 

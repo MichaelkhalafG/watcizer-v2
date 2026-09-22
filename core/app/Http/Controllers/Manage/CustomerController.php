@@ -6,12 +6,16 @@ namespace App\Http\Controllers\Manage;
 
 use App\Domain\Access\Roles;
 use App\Domain\Customers\Customers;
+use App\Domain\Customers\GuestOrderLink;
 use App\Models\Storefront\Storefront;
+use App\Models\User;
 use App\Support\Coerce;
 use App\Support\ManageText;
 use App\Support\Table\TableQuery;
 use App\Transform\Row;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -159,6 +163,54 @@ final class CustomerController
                 'بيانات العملاء يملكها المتجر، ولا تُعدَّل من اللوحة.',
             ),
         ]);
+    }
+
+    /**
+     * Attach a guest's orders to a registered account, by hand (piece 6, 2026-09-22).
+     *
+     * ── The ONE write on this screen, and the three refusals that make it safe ──────────
+     *
+     * 1. **Only a GUEST group may be the source.** A `u:` key is already somebody's account, and
+     *    moving orders between two registered accounts is a different operation nobody has asked
+     *    for — it would need a second confirmation and a way back.
+     * 2. **The target must exist and be a CUSTOMER**, not a dashboard operator and not an id
+     *    somebody typed hopefully.
+     * 3. **Scope is honoured first.** A customer outside the grant answers 404, exactly as
+     *    `show()` does and for the same reason: `g:01001234567` is a guessable key, and refusing
+     *    differently would confirm the person exists.
+     *
+     * The count comes back so the screen can say what happened. Zero is a legitimate answer — the
+     * orders may have been claimed a moment earlier by a verification — and the message says so
+     * rather than reporting a success that moved nothing.
+     */
+    public function attach(Request $request, string $customer): RedirectResponse
+    {
+        $scope = self::scope();
+        abort_if(! Customers::exists($customer, $scope), 404);
+
+        if (! str_starts_with($customer, 'g:')) {
+            throw ValidationException::withMessages([
+                'user_id' => ManageText::t('customers.attach_not_guest', 'هذا العميل مسجّل بالفعل، ولا يمكن ضمّ طلباته إلى حساب آخر.'),
+            ]);
+        }
+
+        $input = $request->validate(['user_id' => ['required', 'integer', 'min:1']]);
+        /** @var array<string, mixed> $input */
+        $target = User::query()->where('id', Coerce::int($input['user_id']))->where('type', 'User')->first();
+
+        if ($target === null) {
+            throw ValidationException::withMessages([
+                'user_id' => ManageText::t('customers.attach_no_account', 'لا يوجد حساب عميل بهذا الرقم.'),
+            ]);
+        }
+
+        $moved = app(GuestOrderLink::class)->attachGroup($customer, $target);
+
+        return redirect()
+            ->route('manage.customers.show', ['customer' => 'u:'.Coerce::int($target->getKey())])
+            ->with('status', $moved === 0
+                ? ManageText::t('customers.attach_none', 'لم يتم نقل أي طلب — ربما ضُمّت بالفعل.')
+                : ManageText::t('customers.attached', 'تم ضمّ :count طلب إلى الحساب.', ['count' => $moved]));
     }
 
     public function show(string $customer): Response

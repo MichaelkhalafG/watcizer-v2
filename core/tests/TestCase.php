@@ -2,6 +2,7 @@
 
 namespace Tests;
 
+use App\Domain\Customers\CustomerTokens;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 use Illuminate\Support\Facades\DB;
@@ -32,6 +33,18 @@ abstract class TestCase extends BaseTestCase
         }
 
         $this->withoutVite();
+
+        /*
+         * The token-epoch memo is per PROCESS, and a test process is many "requests".
+         *
+         * `CustomerTokens::epochFor()` caches the answer because `LegacyJwt::subject()` is called
+         * twice on the cart path and the table is almost always empty. In production a request IS a
+         * process, so the memo cannot outlive what it describes. In the SUITE it can: ids repeat
+         * between tests (every `Shopper` row rolls back), so an entry cached in one test would
+         * answer for a different person in the next — and the failure direction is permissive,
+         * which is the kind that passes.
+         */
+        CustomerTokens::forgetEpochs();
     }
 
     /**

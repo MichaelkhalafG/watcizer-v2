@@ -1,11 +1,17 @@
 <?php
 
+use App\Domain\Customers\CustomerMail;
 use App\Http\Controllers\Compat\AccountCompatController;
 use App\Http\Controllers\Compat\CartCompatController;
 use App\Http\Controllers\Compat\CatalogCompatController;
 use App\Http\Controllers\Compat\CheckoutCompatController;
 use App\Http\Controllers\Compat\GoneController;
 use App\Http\Controllers\Compat\ProxyController;
+use App\Http\Controllers\Customer\CustomerAuthController;
+use App\Http\Controllers\Customer\CustomerPasswordController;
+use App\Http\Controllers\Customer\CustomerProfileController;
+use App\Http\Controllers\Customer\CustomerSocialController;
+use App\Http\Controllers\Customer\CustomerVerificationController;
 use App\Http\Controllers\Payment\PaymentCallbackController;
 use App\Http\Controllers\V2\CategoryController;
 use App\Http\Controllers\V2\MetaController;
@@ -64,6 +70,45 @@ Route::middleware('api.code')->group(function (): void {
         Route::post('cart/validate', [CartCompatController::class, 'validateCart']);
         Route::post('add_order', [CheckoutCompatController::class, 'addOrder']);
     });
+    /*
+     * ── customer accounts (storefront Phase 1, piece 3, 2026-09-21) ──────────────────────────
+     *
+     * These were PROXIED to the legacy host for the whole compat period, and they are the reason
+     * Phase 2 could not simply be an environment flip: the storefront cannot be pointed at this
+     * database while its accounts are created on another one. A customer who registered over there
+     * would hold a token whose `sub` does not exist here, and every authenticated call would answer
+     * 401 with nothing to explain it.
+     *
+     * Both spellings are registered because both exist on the legacy host and the storefront uses
+     * each: `Login.jsx` posts `/login`, `ForgotPassword.jsx` posts `/auth/forgot-password`, and
+     * `AuthCallback.jsx` reads `/auth/me`. Same controller, same behaviour — the prefix is an
+     * accident of how the legacy routes grew, not a distinction.
+     */
+    Route::post('login', [CustomerAuthController::class, 'login']);
+    Route::post('register', [CustomerAuthController::class, 'register']);
+    Route::post('logout', [CustomerAuthController::class, 'logout']);
+    Route::post('auth/login', [CustomerAuthController::class, 'login']);
+    // Social sign-in START (piece 5). Keeps the API key: `SocialButtons.jsx` fetches this and
+    // then navigates itself, so the flow is stateless and there is no server session anywhere.
+    Route::get('auth/{provider}/redirect', [CustomerSocialController::class, 'redirect'])
+        ->where('provider', '[a-z]{2,20}');
+    Route::post('auth/register', [CustomerAuthController::class, 'register']);
+
+    // Password reset (piece 4). Unauthenticated by nature: the customer is here because they
+    // cannot sign in. The token is the credential, and the broker verifies it against
+    // `core_password_resets` — never the legacy table, which the legacy app still uses.
+    Route::post('auth/forgot-password', [CustomerPasswordController::class, 'forgot']);
+    Route::post('auth/reset-password', [CustomerPasswordController::class, 'reset']);
+
+    Route::middleware('compat.auth')->group(function (): void {
+        Route::get('auth/me', [CustomerAuthController::class, 'me']);
+        Route::post('auth/logout', [CustomerAuthController::class, 'logout']);
+        Route::post('auth/resend-verification', [CustomerVerificationController::class, 'resend']);
+        Route::post('updateProfile', [CustomerProfileController::class, 'update']);
+        Route::post('updatePassword', [CustomerProfileController::class, 'password']);
+        Route::delete('me/avatar', [CustomerProfileController::class, 'removeAvatar']);
+    });
+
     Route::middleware('compat.auth')->group(function (): void {
         Route::post('cart/merge', [CartCompatController::class, 'merge']);
         // The account reads carry the same locale negotiation as show_shipping_city: the legacy
@@ -83,6 +128,39 @@ Route::middleware('api.code')->group(function (): void {
         Route::get($path, GoneController::class);
     }
 });
+/*
+ * ── social sign-in CALLBACK (storefront Phase 1, piece 5) ────────────────────────────
+ *
+ * OUTSIDE the `api.code` group, and it has to be: the browser arrives here from Google, and no
+ * third-party redirect carries an `Api-Code` header this application invented. The legacy routes
+ * file puts its own callback outside `CheckApi` in the same words.
+ *
+ * What stands in the header's place is the provider's own signed exchange — Socialite trades the
+ * `code` with Google over TLS using the client secret, and a caller who cannot complete that
+ * exchange receives nothing. The response is always a REDIRECT to the storefront, never JSON: this
+ * is a page a person is looking at.
+ */
+Route::get('auth/{provider}/callback', [CustomerSocialController::class, 'callback'])
+    ->where('provider', '[a-z]{2,20}')
+    ->name('customer.social.callback');
+
+/*
+ * ── e-mail verification (storefront Phase 1, piece 4) ─────────────────────────────────
+ *
+ * OUTSIDE the `api.code` group, and it has to be: this URL is clicked by a person in their mail
+ * client, and no mail client sends an `Api-Code` header this application invented. The legacy
+ * routes file puts its own verification route outside `CheckApi` for the same stated reason.
+ *
+ * What stands in the header's place is `signed`, which is a stronger check than a shared public
+ * key: the signature is computed from this application's `APP_KEY` and cannot be forged by anybody
+ * who merely knows the customer's e-mail address — which is all the `{hash}` segment proves.
+ */
+Route::get('auth/verify-email/{id}/{hash}', [CustomerVerificationController::class, 'verify'])
+    ->middleware('signed')
+    ->where('id', '[0-9]+')
+    ->where('hash', '[0-9a-f]{40}')
+    ->name(CustomerMail::VERIFY_ROUTE);
+
 /*
  * ── payment callbacks (wave 4C, study §3.9.2) ────────────────────────────────────────────────
  *

@@ -53,6 +53,21 @@ final class CoreChecksumCommand extends Command
          * cannot also be a table whose digest is asserted unchanged end to end.
          */
         'shipping_cities', 'shipping_city_translations',
+        /*
+         * `users` JOINED 2026-09-21, storefront Phase 1.
+         *
+         * Core wrote nothing here until the dashboard was given two operations (AGENTS §2.18), and
+         * even then a dashboard login/logout left the table byte-identical — which is why it could
+         * stay in the FROZEN set while `DashboardAccounts` was the only writer. Phase 1 ends that:
+         * customers register, edit their own details and change their own passwords through core,
+         * so the table now moves in normal use, on the busiest path the application has.
+         *
+         * Leaving it frozen would mean a rehearsal reporting a successful registration as a broken
+         * invariant, which is how a real alarm gets trained away. The discipline moves with it:
+         * every write goes through `App\Domain\Access\UserWrites`, whose `REASONS` constant names
+         * each permitted operation and is measured against the code by `UserWritesTest`.
+         */
+        'users',
     ];
 
     /** @var list<string> */
@@ -143,6 +158,39 @@ final class CoreChecksumCommand extends Command
          * dropped them would delete the shop's articles and the URLs they are published under.
          */
         'core_blogs', 'core_blog_translations',
+        /*
+         * Revoked customer tokens (M1t, storefront Phase 1, 2026-09-21).
+         *
+         * The odd one out by NAME — no human types a row here — and squarely inside the line this
+         * list actually draws, which is "no transform can regenerate it". `payment_reconciliation_
+         * findings` and `core_activity_log` are here on the same footing. Dropping this table on
+         * switch night would sign every signed-out customer back in, quietly, for up to thirty days.
+         */
+        'core_revoked_tokens',
+        /*
+         * Password-reset tokens (M1u, storefront Phase 1, 2026-09-21).
+         *
+         * On the list for its FUNCTION rather than its value: this list is what
+         * `RebuildSurvivesTest` reads to require a `hasTable` guard on every table that
+         * survives `core:drop-clean`, and this one does. The rows themselves are genuinely
+         * disposable — a token lives sixty minutes — and saying so is better than inventing
+         * an importance the table does not have.
+         */
+        'core_password_resets',
+        /*
+         * Per-customer token epochs — "log out everywhere" (M1v, 2026-09-22).
+         *
+         * Here for the same reason as `core_revoked_tokens`, one level wider: dropping this
+         * would silently RE-VALIDATE every token a customer had invalidated, including the
+         * ones a password reset was performed to kill.
+         */
+        'core_user_token_epochs',
+        /*
+         * Social identities (M1w, 2026-09-22) — which Google account belongs to which shop
+         * account. No legacy source once core owns the mapping, and dropping it would
+         * disconnect every social login at once.
+         */
+        'core_social_identities',
     ];
 
     /**

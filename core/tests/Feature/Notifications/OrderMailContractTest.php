@@ -138,7 +138,20 @@ it('ports them byte for byte, except the one config key core does not have', fun
 
 it('loads NO asset from the legacy application for its branding', function () {
     $files = glob(resource_path('views/emails').'/{*.blade.php,partials/*.blade.php}', GLOB_BRACE) ?: [];
-    expect($files)->toHaveCount(6);
+
+    /*
+     * The rule below applies to EVERY customer e-mail this application renders, not only to the
+     * three ported order templates — so the glob is deliberately not narrowed, and the count is
+     * not pinned.
+     *
+     * It was pinned at 6 until storefront Phase 1 piece 4 (2026-09-21) added the password-reset and
+     * e-mail-verification templates, at which point the count failed on the FEATURE rather than on
+     * the hazard — the same defect AGENTS records twice under “grep the hazard, not the word”. The
+     * hazard was never “there are six files”; it is “a template pulls an asset from the legacy
+     * host”, which the loop below is what actually checks. What replaces the pin is a floor, so a
+     * glob that silently stops matching cannot turn this green.
+     */
+    expect(count($files))->toBeGreaterThanOrEqual(6);
 
     foreach ($files as $file) {
         $body = (string) file_get_contents($file);

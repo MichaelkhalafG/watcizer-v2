@@ -91,6 +91,44 @@ final class MediaStore
         return $path;
     }
 
+    /**
+     * Delete ONE file that a row pointed at, by type and stored filename.
+     *
+     * ── Why this is a different thing from `media:prune`, and safe where that is not ─────────
+     *
+     * `MediaAudit` owns bulk deletion and carries five guards, because it decides orphanhood by
+     * INFERENCE: it scans a folder, compares it against every reference column in the schema, and
+     * deletes what it could not account for. A wrong inference there deletes a live catalogue.
+     *
+     * This infers nothing. The caller holds a row, the row holds a filename, and the filename is
+     * being cleared in the same operation — "delete the file this record pointed at" is the whole
+     * of it. That is what the legacy `AuthController::removeAvatar()` did, and a customer asking
+     * for their photo to be removed should get it removed rather than hidden.
+     *
+     * The two refusals are about the NAME, not about orphanhood: anything carrying a path separator
+     * or resolving outside the type's own directory is refused, so a stored value that was never a
+     * plain filename cannot reach `unlink()`. Returns false when there was nothing to delete, which
+     * is not an error — a row can point at a file the tree no longer has.
+     */
+    public static function forgetFile(string $type, string $file): bool
+    {
+        $file = trim($file);
+        if ($file === '' || $file !== basename($file) || str_contains($file, '\\')) {
+            return false;
+        }
+
+        $directory = self::directory(self::typeConfig($type)['folder']);
+        $path = $directory.'/'.$file;
+
+        $real = realpath($path);
+        $realDirectory = realpath($directory);
+        if ($real === false || $realDirectory === false || ! str_starts_with($real, $realDirectory)) {
+            return false;
+        }
+
+        return is_file($real) && @unlink($real);
+    }
+
     /** Public URL of a stored file — the ONLY place the dashboard turns a filename into a URL. */
     public static function url(string $folder, string $file): string
     {

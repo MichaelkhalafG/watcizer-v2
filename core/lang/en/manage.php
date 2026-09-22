@@ -507,6 +507,14 @@ return [
 
     // ── customers: the list and one customer ──
     'customers' => [
+        'attach_heading' => 'Attach these orders to an account',
+        'attach_help' => 'Guest orders are grouped by telephone, or failing that by e-mail — a guess, not a record. Attaching them gives that account this order history, so confirm the person first.',
+        'attach_account_id' => 'Account number',
+        'attach_submit' => 'Attach the orders',
+        'attach_not_guest' => 'This customer is already registered, so their orders cannot be moved to another account.',
+        'attach_no_account' => 'There is no customer account with that number.',
+        'attach_none' => 'No orders moved — they may already have been attached.',
+        'attached' => 'Attached :count order(s) to the account.',
         'contact' => 'Contact',
         'empty_description' => 'Try changing the search or the filters.',
         'empty_title' => 'No customers',

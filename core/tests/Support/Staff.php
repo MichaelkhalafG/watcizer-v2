@@ -10,9 +10,15 @@ use PHPUnit\Framework\Assert;
 /**
  * Test accounts for the dashboard — grants, never users.
  *
- * `users` holds real customer accounts in every environment and this application may not fabricate
- * a row in it (App\Models\User has no factory, on purpose). So the suite does what production does:
- * it takes accounts that ALREADY exist and grants them a role. Every grant happens inside the
+ * `users` holds real customer accounts in every environment, and this helper may not fabricate a
+ * row in it (App\Models\User has no factory, on purpose). So it does what production does: it
+ * takes accounts that ALREADY exist and grants them a role.
+ *
+ * **That is a rule about STAFF, and since 2026-09-21 it is only about staff.** Storefront Phase 1
+ * gave core a door for creating CUSTOMER accounts, so `Tests\Support\Shopper` registers real ones
+ * through `CustomerAccounts::register()` — the same door the storefront uses. Nothing in this
+ * class creates anything, and nothing here should: a dashboard grant belongs on an account
+ * somebody already has, and a helper that could conjure a colleague is one that eventually does. Every grant happens inside the
  * test's transaction and rolls back, so the local database's real grants are neither read nor
  * disturbed — each helper first clears whatever grants its account has, so a test's premise
  * ("this user is data-entry and nothing else") is true regardless of what the developer granted

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Domain\Customers;
 
 use App\Support\Coerce;
+use App\Support\Sql;
 use Illuminate\Contracts\Database\Query\Expression as ExpressionContract;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Database\Query\JoinClause;
@@ -25,8 +26,15 @@ use Illuminate\Support\Facades\DB;
  *
  * AGENTS §3 forbids core writing a legacy table at all, and the `legacy` connection is held in
  * `tx_read_only = 1` for exactly this reason — a write would be refused by the SERVER, not by a
- * missing button. So this class has no sibling that writes, no update method, and no route behind
- * it that is not a GET.
+ * missing button. This class has no update method and it will not grow one.
+ *
+ * **What changed on 2026-09-22 (piece 6):** the SCREEN gained exactly one write — attaching a
+ * guest's orders to a registered account — and it lives in {@see GuestOrderLink}, behind
+ * `manage-users`, on the DEFAULT connection. `orders` is a shared commerce table core has
+ * written since wave 3 (`CoreChecksumCommand::SHARED_COMMERCE_TABLES`), so this is not a
+ * prohibition bending. What stopped being true is the sentence that used to end this
+ * paragraph — *“no route behind it that is not a GET”* — and saying so here is the point: a
+ * docblock still claiming otherwise would be the most convincing wrong thing in the file.
  *
  * ── What a "customer" IS in this schema, and why the query has two halves ───────────────────
  *
@@ -147,9 +155,9 @@ final class Customers
         $orders = DB::connection('legacy')
             ->table('orders as o')
             ->whereNull('o.user_id')
-            ->whereNotNull(DB::raw(self::GUEST_KEY))
+            ->whereNotNull(DB::raw(Sql::guestKey('o')))
             ->select([
-                DB::raw(self::GUEST_KEY.' as gkey'),
+                DB::raw(Sql::guestKey('o').' as gkey'),
                 'o.guest_token', 'o.guest_name', 'o.guest_email', 'o.guest_phone',
                 'o.created_at', 'o.status', 'o.total_price_for_order', 'o.storefront_id',
             ]);
@@ -187,7 +195,6 @@ final class Customers
     }
 
     /** The expression that decides which orders are the SAME guest. Phone, e-mail, then token. */
-    private const GUEST_KEY = "COALESCE(NULLIF(o.guest_phone, ''), NULLIF(o.guest_email, ''), NULLIF(o.guest_token, ''))";
 
     /**
      * `SUM(total) FILTERED TO MONEY ACTUALLY TAKEN` — delivered and completed, nothing else.
@@ -354,7 +361,7 @@ final class Customers
             return;
         }
 
-        $query->whereNull('o.user_id')->where(DB::raw(self::GUEST_KEY), $value);
+        $query->whereNull('o.user_id')->where(DB::raw(Sql::guestKey('o')), $value);
     }
 
     /**

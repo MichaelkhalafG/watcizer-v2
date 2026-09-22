@@ -100,6 +100,38 @@ it('names EVERY table the dashboard authors, in order, so adding one is a delibe
         // `blogs` tables are empty and carry no slug, no published flag and no SEO fields —
         // and a rebuild that dropped these would delete the shop's writing.
         'core_blogs', 'core_blog_translations',
+        /*
+         * SEVENTEEN since M1t (storefront Phase 1, 2026-09-21): `core_revoked_tokens`.
+         *
+         * Nobody types a row here, so it reads as the odd one out — but the line this list draws
+         * is "no transform can regenerate it", which is why the reconciliation findings and the
+         * activity log are already on it. A revocation has no legacy source. Dropping the table
+         * would sign every signed-out customer back in, silently, for the rest of their token's
+         * thirty days, and the only symptom would be a session nobody can explain.
+         */
+        'core_revoked_tokens',
+        /*
+         * EIGHTEEN since M1u (storefront Phase 1, 2026-09-21): `core_password_resets`.
+         *
+         * Here for its FUNCTION, not its value — this list is what `RebuildSurvivesTest`
+         * reads to require a `hasTable` guard on every table that survives the drop, and a
+         * bare `Schema::create` would kill switch night's `migrate` step. The rows are
+         * disposable: a reset token lives sixty minutes and the worst case is a customer
+         * asking for another link.
+         */
+        'core_password_resets',
+        /*
+         * NINETEEN since M1v (2026-09-22): `core_user_token_epochs`, the "log out
+         * everywhere" record. Dropping it would re-validate every token a customer had
+         * invalidated — including the ones a password reset existed to kill.
+         */
+        'core_user_token_epochs',
+        /*
+         * TWENTY since M1w (2026-09-22): `core_social_identities`. The mapping from a
+         * provider account to a shop account has no legacy source once core owns it, and a
+         * rebuild that dropped it would disconnect every social login at once.
+         */
+        'core_social_identities',
     ]);
 
     foreach (CoreChecksumCommand::DASHBOARD_TABLES as $table) {

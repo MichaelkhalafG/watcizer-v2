@@ -55,3 +55,15 @@ Schedule::command('inventory:verify')->dailyAt('03:30');
 | every run so a silent failure is visible. See `CoreBackupCommand` and study §5.6.
 */
 Schedule::command('core:backup --keep=7')->dailyAt('03:00')->withoutOverlapping();
+
+/*
+| Revoked-token housekeeping (M1t, storefront Phase 1, 2026-09-21).
+|
+| Daily at 03:15 — between the backup (03:00) and `inventory:verify` (03:30), so the night's dump
+| is taken BEFORE this deletes anything and a mistake here is recoverable from it.
+|
+| A pruned row can never sign anybody out or back in: its token is already past `exp`, so the clock
+| refuses it before revocation is consulted at all. Without the tick the table grows one row per
+| sign-out for ever. It rides the same one-minute `schedule:run` entry as everything above.
+*/
+Schedule::command('tokens:prune')->dailyAt('03:15');

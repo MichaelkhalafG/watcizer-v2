@@ -119,6 +119,13 @@ it('lists the shared commerce tables explicitly, so the exception stays visible'
     expect(CoreChecksumCommand::SHARED_COMMERCE_TABLES)->toBe([
         'addresses', 'carts', 'cart_items', 'orders', 'order_items', 'payment_statuses', 'offers',
         'shipping_cities', 'shipping_city_translations',
+        /*
+         * `users` JOINED 2026-09-21 (storefront Phase 1). Customers now register, edit their own
+         * details and change their own passwords through core, so this table moves in normal use.
+         * It could stay frozen while only `DashboardAccounts` wrote it, because a dashboard
+         * login/logout left it byte-identical; a registration does not.
+         */
+        'users',
     ]);
 
     // …and the frozen set is the rest of the 65: what core must never write, under any path.
@@ -126,6 +133,7 @@ it('lists the shared commerce tables explicitly, so the exception stays visible'
     expect(count($frozen))->toBe(count(LegacySource::TABLES) - count(CoreChecksumCommand::SHARED_COMMERCE_TABLES))
         ->and($frozen)->toContain('products')
         ->and($frozen)->toContain('product_translations')
-        ->and($frozen)->toContain('users')
+        // The catalogue stays frozen; `users` no longer is, and the two facts belong side by side.
+        ->and($frozen)->not->toContain('users')
         ->and($frozen)->not->toContain('orders');
 });

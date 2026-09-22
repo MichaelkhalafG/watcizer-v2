@@ -2,7 +2,7 @@
 
 namespace App\Models;
 
-use App\Domain\Access\DashboardAccounts;
+use App\Domain\Access\UserWrites;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Carbon;
@@ -93,13 +93,13 @@ class User extends Authenticatable
     }
 
     /**
-     * ── The write guard (AGENTS §2.18, rewritten 2026-09-20) ────────────────────────────────
+     * ── The write guard (AGENTS §2.18, rewritten 2026-09-20, widened 2026-09-21) ────────────
      *
-     * Core writes this legacy table for exactly two operations — creating a dashboard account and
-     * changing a password — and both live in {@see DashboardAccounts}. Everything else is refused
-     * HERE rather than by convention, because a rule enforced by a docblock is one the next
-     * contributor breaks without noticing, and the symptom would be a silently modified row in a
-     * table holding every customer account.
+     * Core writes this legacy table only for an operation DECLARED in
+     * {@see UserWrites::REASONS} — the dashboard's two, and the customer-account operations Phase 1
+     * of the storefront migration adds. Everything else is refused HERE rather than by convention,
+     * because a rule enforced by a docblock is one the next contributor breaks without noticing,
+     * and the symptom would be a silently modified row in a table holding every customer account.
      *
      * `saving` covers insert and update both. `deleting` is separate and absolute: core deletes no
      * account, ever — a person who should lose dashboard access has their ROLE revoked, which is a
@@ -120,13 +120,13 @@ class User extends Authenticatable
     protected static function booted(): void
     {
         static::saving(function (User $user): void {
-            if ($user->isDirty() && ! DashboardAccounts::permitted()) {
-                DashboardAccounts::refuse('write');
+            if ($user->isDirty() && ! UserWrites::permitted()) {
+                UserWrites::refuse('write');
             }
         });
 
         static::deleting(function (): void {
-            DashboardAccounts::refuse('delete from');
+            UserWrites::refuse('delete from');
         });
     }
 

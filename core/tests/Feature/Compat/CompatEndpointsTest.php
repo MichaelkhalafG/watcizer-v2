@@ -246,13 +246,48 @@ it('proxies every other /api path to the legacy host with the client address for
         withHeaders(['Api-Code' => API_KEY])->getJson('/api/'.$refused)->assertNotFound();
     }
     Http::assertNotSent(fn (ClientRequest $request) => str_contains($request->url(), 'definitely') || str_ends_with($request->url(), '/api/admin') || str_ends_with($request->url(), '/api/me'));
-    foreach (['auth/me', 'login', 'updateProfile', 'all_wishlist/3', 'all_offer', 'all_blog', 'add_product_rating'] as $allowed) {
+    foreach (['all_wishlist/3', 'all_offer', 'all_blog', 'add_product_rating',
+    ] as $allowed) {
         expect(ProxyController::allowed($allowed))->toBeTrue($allowed);
     }
 
     // …and every wave-3 path is now OFF the whitelist: it is answered here, never forwarded.
     foreach (['add_to_cart', 'remove_from_cart', 'delete_cart/9', 'me/cart', 'cart/validate', 'cart/merge',
         'add_order', 'callback_payment', 'me/orders', 'me/addresses', 'me/addresses/5', 'add_address'] as $moved) {
+        expect(ProxyController::allowed($moved))->toBeFalse($moved);
+    }
+
+    /*
+     * STOREFRONT PHASE 1 (2026-09-21) moved the customer-account paths the same way, and this
+     * assertion is the half that matters most of the whole piece.
+     *
+     * Core now ISSUES tokens and creates accounts. If any of these could still reach the legacy
+     * host, a customer would register over there, hold a token whose `sub` does not exist in this
+     * database, and get 401 on every authenticated call with nothing in any log to explain it. The
+     * proxy answering one of them is not a slow path — it is a split identity store.
+     */
+    foreach (['login', 'register', 'logout', 'auth/login', 'auth/register', 'auth/logout',
+        'auth/me', 'updateProfile', 'updatePassword', 'me/avatar',
+        /*
+         * PIECE 4 moved these, and the reset pair matters for a reason of its own: core's broker
+         * writes `core_password_resets` while the legacy one writes `password_reset_tokens`, and
+         * `DatabaseTokenRepository::create()` deletes every existing row for an address before
+         * inserting. A request that reached the legacy host would put the token in the wrong table
+         * AND delete whatever core had just issued — two applications quietly cancelling each
+         * other's reset links, with nothing wrong in either one's logs.
+         */
+        'auth/forgot-password', 'auth/reset-password',
+        'auth/verify-email/9/'.str_repeat('a', 40), 'auth/resend-verification',
+        /*
+         * PIECE 5 took the OAuth round trip, and with it the LAST auth path on the whitelist. That
+         * is the closing property of Phase 1: the legacy host now answers no authentication request
+         * from this application at all. One that could still reach it would create the account over
+         * THERE, and the customer would come back holding a token whose `sub` does not exist in this
+         * database — 401 on every call, with nothing in any log to explain it.
+         */
+        'auth/google/redirect', 'auth/google/callback',
+        'auth/microsoft/redirect', 'auth/microsoft/callback',
+    ] as $moved) {
         expect(ProxyController::allowed($moved))->toBeFalse($moved);
     }
 });

@@ -2,6 +2,7 @@
 
 use App\Domain\Access\DashboardAccounts;
 use App\Domain\Access\Role;
+use App\Domain\Access\UserWrites;
 use App\Domain\Activity\ActivityLog;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
@@ -15,22 +16,25 @@ use function Pest\Laravel\post;
 use function Pest\Laravel\put;
 
 /*
- * Core writes the legacy `users` table for exactly two operations (AGENTS §2.18, 2026-09-20).
+ * The DASHBOARD's two `users` operations (AGENTS §2.18): creating an account, and an operator
+ * changing their own password.
  *
  * The rule used to be absolute, and the reason was concurrency: the legacy application serialised
  * every column of a `users` row into the proxied `login`/`register`/`me` responses the live
- * storefront consumed. On the standalone eleganceeg.com deployment those routes are closed and
- * nothing else writes the table, so two operations are permitted — creating a dashboard account
- * and changing a password — and `DashboardAccounts` is the whole of the permission.
+ * storefront consumed. On the standalone eleganceeg.com deployment those routes are closed, so the
+ * permission was granted — first to this class alone, and since 2026-09-21 through the shared lock
+ * in `UserWrites`, because Phase 1 moved customer accounts into core as well.
  *
- * What is tested here is the GUARD as much as the features: a permission enforced by a docblock is
- * one the next contributor breaks without noticing, and the symptom would be a silently modified
- * row in a table holding every customer account.
+ * The LOCK's own properties are tested in `UserWritesTest`. What is tested HERE is that the
+ * dashboard's two operations still behave exactly as they did, and that the guard still refuses
+ * everything else — a permission enforced by a docblock is one the next contributor breaks without
+ * noticing, and the symptom would be a silently modified row in a table holding every customer
+ * account.
  */
 
 // ── the guard ────────────────────────────────────────────────────────────────────────────────
 
-it('REFUSES a users write from anywhere that is not DashboardAccounts', function () {
+it('REFUSES a users write from anywhere that did not open the door', function () {
     $user = Staff::admin();
     $before = T::str(DB::table('users')->where('id', $user->id)->value('first_name'));
 
@@ -63,49 +67,6 @@ it('lets a CLEAN save through, because the framework issues those and they write
     $user = Staff::admin();
 
     expect(fn () => $user->save())->not->toThrow(RuntimeException::class);
-});
-
-it('keeps the door shut again after a permitted write, including when one throws', function () {
-    // The counter is a depth, not a flag: a nested or failing call must not leave it open.
-    expect(DashboardAccounts::permitted())->toBeFalse();
-
-    try {
-        DashboardAccounts::writing(function (): void {
-            expect(DashboardAccounts::permitted())->toBeTrue();
-            throw new RuntimeException('something inside went wrong');
-        });
-    } catch (RuntimeException) {
-        // expected
-    }
-
-    expect(DashboardAccounts::permitted())->toBeFalse();
-});
-
-it('has no call site for DashboardAccounts::writing outside the class that owns it', function () {
-    /*
-     * The guard is only worth what the discipline around it is worth. `writing()` has to be public
-     * — the model asks it a question — so a caller elsewhere could lift the guard and write
-     * anything. Nothing does, and this is what keeps that true.
-     */
-    $offenders = [];
-    foreach (['app', 'database', 'routes', 'bootstrap'] as $directory) {
-        $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator(base_path($directory)));
-        /** @var SplFileInfo $file */
-        foreach ($iterator as $file) {
-            if ($file->getExtension() !== 'php') {
-                continue;
-            }
-            $path = $file->getPathname();
-            if (str_ends_with($path, 'DashboardAccounts.php')) {
-                continue;
-            }
-            if (str_contains((string) file_get_contents($path), 'DashboardAccounts::writing(')) {
-                $offenders[] = $path;
-            }
-        }
-    }
-
-    expect($offenders)->toBe([], 'the users write-guard may only be lifted inside DashboardAccounts');
 });
 
 // ── creating an account ──────────────────────────────────────────────────────────────────────
@@ -183,7 +144,7 @@ it('changes the operator OWN password, and leaves every other column alone', fun
     $user = Staff::admin();
 
     // A known starting point, written through the door so the guard does not refuse the fixture.
-    DashboardAccounts::writing(function () use ($user): void {
+    UserWrites::open(DashboardAccounts::PASSWORD, function () use ($user): void {
         $user->forceFill(['password' => 'the-old-password'])->save();
     });
 
@@ -212,7 +173,7 @@ it('changes the operator OWN password, and leaves every other column alone', fun
 
 it('REFUSES a wrong current password, and does not change anything', function () {
     $user = Staff::admin();
-    DashboardAccounts::writing(function () use ($user): void {
+    UserWrites::open(DashboardAccounts::PASSWORD, function () use ($user): void {
         $user->forceFill(['password' => 'the-real-password'])->save();
     });
 
@@ -230,7 +191,7 @@ it('REFUSES a wrong current password, and does not change anything', function ()
 
 it('records the change WITHOUT the password itself', function () {
     $user = Staff::admin();
-    DashboardAccounts::writing(function () use ($user): void {
+    UserWrites::open(DashboardAccounts::PASSWORD, function () use ($user): void {
         $user->forceFill(['password' => 'before-the-change'])->save();
     });
 
@@ -261,7 +222,7 @@ it('records the change WITHOUT the password itself', function () {
 
 it('REFUSES a password shorter than the declared minimum', function () {
     $user = Staff::admin();
-    DashboardAccounts::writing(function () use ($user): void {
+    UserWrites::open(DashboardAccounts::PASSWORD, function () use ($user): void {
         $user->forceFill(['password' => 'long-enough-password'])->save();
     });
 
