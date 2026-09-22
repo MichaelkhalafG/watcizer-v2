@@ -507,6 +507,13 @@ return [
 
     // ── customers: the list and one customer ──
     'customers' => [
+        'attach_confirm_title' => 'Attach these orders to this account?',
+        'attach_consequence' => ':count order(s) from «:guest» will move to the account «:account» and appear in their order history on the storefront.',
+        'attach_and_more' => 'and :count more',
+        'attach_no_undo' => 'There is no undo on this screen. Be sure the two are the same person.',
+        'attach_grouping_title' => 'This grouping is a guess',
+        'attach_who' => 'Type the account number to see whose it is.',
+        'attach_target_orders' => 'already has :count order(s)',
         'attach_heading' => 'Attach these orders to an account',
         'attach_help' => 'Guest orders are grouped by telephone, or failing that by e-mail — a guess, not a record. Attaching them gives that account this order history, so confirm the person first.',
         'attach_account_id' => 'Account number',

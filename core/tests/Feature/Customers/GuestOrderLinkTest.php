@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\URL;
 use Tests\Support\LegacyShadow;
+use Tests\Support\Props;
 use Tests\Support\Shopper;
 use Tests\Support\Staff;
 use Tests\Support\T;
@@ -405,4 +406,67 @@ it('does not fail a verification when the attach cannot run', function () {
     verifyThrough($user, $email);
 
     expect(DB::table('users')->where('id', $user->id)->value('email_verified_at'))->not->toBeNull();
+});
+
+// ── the control on the screen ────────────────────────────────────────────────────────────────
+
+/*
+ * The attach ACTION shipped in piece 6 without a button, and the screen half landed 2026-09-22 on
+ * the developer's instruction: *"the manual attach is needed from the first day customers register
+ * here"*. These four assert the affordance matches the authorisation \u2014 a screen that offers what the
+ * door turns away is worse than one that offers nothing.
+ */
+
+it('offers the attach control to an ADMIN on a guest customer', function () {
+    [, $key] = anyGuestGroup();
+    actingAs(Staff::admin());
+
+    $props = Props::of(get('/manage/customers/'.$key));
+
+    /*
+     * `array_key_exists`, not `?? 'missing'`. NULL is the value under test here — nothing typed yet,
+     * so nobody is named yet — and `??` treats a legitimate null as absent, which turned the first
+     * version of this assertion into one that could never pass. Same shape as the variadic
+     * `toContain()` trap already in the notes: an operator that defaults quietly hides the answer.
+     */
+    expect($props['can_attach'] ?? null)->toBeTrue()
+        ->and(array_key_exists('attach_target', $props))->toBeTrue()
+        ->and($props['attach_target'])->toBeNull();
+});
+
+it('does NOT offer it to data-entry, who may read this screen but not merge identities', function () {
+    [, $key] = anyGuestGroup();
+    actingAs(Staff::dataEntry());
+
+    expect(Props::of(get('/manage/customers/'.$key))['can_attach'] ?? null)->toBeFalse();
+});
+
+it('does NOT offer it on a REGISTERED customer, because there is nothing to merge', function () {
+    $customer = Staff::customer();
+    actingAs(Staff::admin());
+
+    expect(Props::of(get('/manage/customers/u:'.$customer->id))['can_attach'] ?? null)->toBeFalse();
+});
+
+it('names the account the operator typed, so the confirmation can show BOTH sides', function () {
+    /*
+     * The prop the screen reloads. It resolves through the SAME predicate the writer enforces
+     * (`type = User`), so the dialog cannot name somebody the attach would then refuse \u2014 and an
+     * unresolvable number leaves the confirm button unreachable rather than producing a refusal the
+     * operator meets after committing.
+     */
+    [, $key] = anyGuestGroup();
+    $target = Staff::customer();
+    actingAs(Staff::admin());
+
+    $resolved = T::arr(Props::of(get('/manage/customers/'.$key.'?user_id='.$target->id))['attach_target'] ?? null);
+
+    expect(T::int($resolved['id'] ?? null))->toBe((int) $target->id)
+        ->and(T::str($resolved['name'] ?? null))->toBe(Staff::nameOf($target))
+        ->and($resolved)->toHaveKey('orders_count');
+
+    // A number nobody owns names nobody, rather than naming the wrong person.
+    $unresolved = Props::of(get('/manage/customers/'.$key.'?user_id=999999'));
+    expect(array_key_exists('attach_target', $unresolved))->toBeTrue()
+        ->and($unresolved['attach_target'])->toBeNull();
 });

@@ -1,10 +1,13 @@
 import { router } from '@inertiajs/react';
+import { useState } from 'react';
 
 import { Alert } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Ltr, Num } from '@/components/ui/bidi';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { ConfirmAction } from '@/components/manage/ConfirmAction';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import ManageLayout from '@/layouts/ManageLayout';
 import { useT } from '@/lib/i18n';
@@ -39,7 +42,18 @@ interface Address {
     updated_at: string | null;
 }
 
+interface AttachTarget {
+    id: number;
+    name: string;
+    email: string | null;
+    orders_count: number;
+}
+
 interface Props {
+    /** Admin, on a GUEST customer. Absent for everyone and everything else. */
+    can_attach: boolean;
+    /** The account the typed number resolves to, or null — see AttachCard. */
+    attach_target: AttachTarget | null;
     customer: {
         ckey: string;
         kind: string;
@@ -67,7 +81,7 @@ const TONE: Record<string, 'default' | 'neutral' | 'success' | 'warning' | 'dest
 
 const money = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-export default function CustomerShow({ customer, orders, addresses }: Props) {
+export default function CustomerShow({ customer, orders, addresses, can_attach, attach_target }: Props) {
     const t = useT();
 
     /*
@@ -256,8 +270,143 @@ export default function CustomerShow({ customer, orders, addresses }: Props) {
                         )}
                     </CardContent>
                 </Card>
+
+                {can_attach ? (
+                    <AttachCard customer={customer} orders={orders} target={attach_target} />
+                ) : null}
             </div>
         </ManageLayout>
+    );
+}
+
+/**
+ * Join this guest's orders to a registered account (piece 6).
+ *
+ * ── Why the confirmation names BOTH sides ─────────────────────────────────────────
+ *
+ * This merges two identities. Getting it wrong hands one person another person's delivery
+ * addresses, telephone number and purchase history — and there is no undo on this screen. So the
+ * dialog names the orders BY NUMBER and the account BY NAME, and the operator confirms a sentence
+ * they can check rather than an intention they already had.
+ *
+ * The account is resolved by the SERVER, through a partial reload of `attach_target` on the screen
+ * they are already allowed to see. Typing a number that resolves to nobody leaves the confirm
+ * button unreachable, so the refusal the writer would give is never reached by surprise.
+ *
+ * The grouping under this `g:` key is a heuristic — orders sharing a telephone, or an address, or a
+ * cart token — and the help text says so. A human confirming it is the entire point of this path.
+ */
+function AttachCard({
+    customer,
+    orders,
+    target,
+}: {
+    customer: Props['customer'];
+    orders: Order[];
+    target: AttachTarget | null;
+}) {
+    const t = useT();
+    const [accountId, setAccountId] = useState('');
+
+    // Ask the server who that is, on the screen the operator is already authorised for.
+    const look = (value: string) => {
+        setAccountId(value);
+        router.reload({ only: ['attach_target'], data: { user_id: value || undefined } });
+    };
+
+    const shown = orders.slice(0, 5).map((order) => order.order_number);
+    const rest = orders.length - shown.length;
+
+    return (
+        <Card>
+            <CardHeader>
+                <CardTitle>{t('customers.attach_heading', 'ضمّ هذه الطلبات إلى حساب')}</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+                <Alert tone="warning" title={t('customers.attach_grouping_title', 'هذا التجميع تخمين')}>
+                    {t('customers.attach_help', '')}
+                </Alert>
+
+                <div className="grid gap-3 sm:grid-cols-[14rem_1fr] sm:items-end">
+                    <div className="space-y-1">
+                        <label className="text-xs text-muted-foreground" htmlFor="attach-account-id">
+                            {t('customers.attach_account_id', 'رقم الحساب')}
+                        </label>
+                        <Input
+                            id="attach-account-id"
+                            inputMode="numeric"
+                            value={accountId}
+                            onChange={(event) => look(event.target.value.replace(/[^0-9]/g, ''))}
+                        />
+                    </div>
+
+                    <div className="text-sm">
+                        {accountId === '' ? (
+                            <span className="text-muted-foreground">
+                                {t('customers.attach_who', 'اكتب رقم الحساب لنعرض صاحبه.')}
+                            </span>
+                        ) : target === null ? (
+                            <span className="text-destructive">{t('customers.attach_no_account', '')}</span>
+                        ) : (
+                            <span>
+                                <strong>{target.name}</strong>{' '}
+                                <Ltr className="text-muted-foreground">{target.email ?? '—'}</Ltr>{' '}
+                                <span className="text-muted-foreground">
+                                    ({t('customers.attach_target_orders', 'لديه :count طلب بالفعل', {
+                                        count: String(target.orders_count),
+                                    })}
+                                    )
+                                </span>
+                            </span>
+                        )}
+                    </div>
+                </div>
+
+                <ConfirmAction
+                    tone="default"
+                    disabled={target === null}
+                    title={t('customers.attach_confirm_title', 'ضمّ الطلبات إلى هذا الحساب؟')}
+                    consequence={
+                        target === null ? null : (
+                            <div className="space-y-2">
+                                <p>
+                                    {t(
+                                        'customers.attach_consequence',
+                                        ':count طلب من «:guest» ستنتقل إلى حساب «:account» وتظهر في سجل طلباته على المتجر.',
+                                        {
+                                            count: String(orders.length),
+                                            guest: customer.name,
+                                            account: target.name,
+                                        },
+                                    )}
+                                </p>
+                                <p className="text-sm">
+                                    <Ltr>{shown.join(t('common.list_separator', '، '))}</Ltr>
+                                    {rest > 0
+                                        ? ' ' + t('customers.attach_and_more', 'و:count طلب أخرى', { count: String(rest) })
+                                        : ''}
+                                </p>
+                                <p className="text-sm font-medium">
+                                    {t(
+                                        'customers.attach_no_undo',
+                                        'لا يوجد تراجع من هذه الشاشة. تأكّد أنّ الشخصين واحد.',
+                                    )}
+                                </p>
+                            </div>
+                        )
+                    }
+                    confirmLabel={t('customers.attach_submit', 'ضمّ الطلبات')}
+                    trigger={
+                        <Button disabled={target === null}>{t('customers.attach_submit', 'ضمّ الطلبات')}</Button>
+                    }
+                    onConfirm={() =>
+                        router.post(`/manage/customers/${encodeURIComponent(customer.ckey)}/attach`, {
+                            user_id: Number(accountId),
+                        })
+                    }
+                />
+            </CardContent>
+        </Card>
     );
 }
 

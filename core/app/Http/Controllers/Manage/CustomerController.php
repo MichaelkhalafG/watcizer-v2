@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Manage;
 
+use App\Domain\Access\Role;
 use App\Domain\Access\Roles;
 use App\Domain\Customers\Customers;
 use App\Domain\Customers\GuestOrderLink;
@@ -15,6 +16,8 @@ use App\Support\Table\TableQuery;
 use App\Transform\Row;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -213,7 +216,38 @@ final class CustomerController
                 : ManageText::t('customers.attached', 'تم ضمّ :count طلب إلى الحساب.', ['count' => $moved]));
     }
 
-    public function show(string $customer): Response
+    /**
+     * The account an operator has typed a number for, named — or null.
+     *
+     * Deliberately the SAME predicate the attach action enforces (`type = User`), so the screen
+     * cannot show a person the writer would then refuse. A screen that offers what the door turns
+     * away is worse than one that offers nothing.
+     *
+     * @return array{id: int, name: string, email: string|null, orders_count: int}|null
+     */
+    private static function attachTarget(Request $request): ?array
+    {
+        $id = Coerce::nint($request->query('user_id'));
+        if ($id === null || $id < 1) {
+            return null;
+        }
+
+        $user = User::query()->where('id', $id)->where('type', 'User')->first();
+        if ($user === null) {
+            return null;
+        }
+
+        return [
+            'id' => $id,
+            'name' => trim(Coerce::str($user->getAttribute('first_name')).' '.Coerce::str($user->getAttribute('last_name'))),
+            'email' => Coerce::nstr($user->getAttribute('email')),
+            // What they already have, so "merging into an empty account" and "merging into one with
+            // a history" are visibly different decisions.
+            'orders_count' => DB::connection('legacy')->table('orders')->where('user_id', $id)->count(),
+        ];
+    }
+
+    public function show(Request $request, string $customer): Response
     {
         $scope = self::scope();
 
@@ -226,7 +260,26 @@ final class CustomerController
         $customerRow = Row::cast((object) $row);
         $kind = Row::str($customerRow, 'kind');
 
+        /*
+         * ── What the ATTACH control needs, and why the target is resolved HERE ─────────────
+         *
+         * Joining a guest's orders to an account merges two identities, so the operator has to see
+         * BOTH sides before they commit — the orders by number, and the person by name. The orders
+         * are already on this page; the person is not, because the operator types an account
+         * number.
+         *
+         * So `show()` accepts an optional `?user_id=` and resolves it. The screen asks for it with
+         * an Inertia PARTIAL reload of this one prop, which means no second route, no lookup
+         * endpoint and no new thing to authorise — the answer arrives through the door that is
+         * already guarded by this method's own scope check.
+         *
+         * `null` covers both "nothing typed yet" and "no such customer", and the screen says which.
+         */
+        $canAttach = $kind === 'guest' && Gate::allows(Role::MANAGE_USERS);
+
         return Inertia::render('Manage/Customers/Show', [
+            'can_attach' => $canAttach,
+            'attach_target' => $canAttach ? self::attachTarget($request) : null,
             'customer' => [
                 'ckey' => Row::str($customerRow, 'ckey'),
                 'kind' => $kind,
