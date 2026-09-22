@@ -723,6 +723,95 @@ rollback is the one you do before the first customer order.**
    by reference, so a pattern in them is a configuration problem, not a leak.
 5. The hand-entry backlog: every order and registration taken on the legacy host since 2026-09-21
    still has to be re-entered. That list stops growing today.
+6. Start the three deferred pieces in §11 — the rating write, the Conversions API for card
+   payments, and the banners. Until §11's piece 2 lands, **card sales record no `Purchase` event**;
+   read the pixel's numbers with that in mind rather than as a fault.
+
+---
+
+## 11. Pieces scheduled for immediately after the cutover
+
+Three pieces are deliberately deferred past the window. None of them blocks the flip; all three are
+things the cutover leaves in a known, named state rather than a surprise.
+
+| # | Piece | Why it waits | State it is left in |
+|---|---|---|---|
+| 1 | **The rating write in core** (`add_product_rating`) | §8 decision, 2026-09-22. Production holds zero ratings, so a week dark costs nothing real | Submitting a review shows *"Could not send"*. Reading is unaffected |
+| 2 | **Meta Conversions API from the payment callback** | Decided 2026-09-22 with the pixel work. Needs a core change, and a core change does not belong in a cutover window | **Card orders record no `Purchase` event at all.** Under-counted, never over-counted — see below |
+| 3 | **Home banners on `meta.banners[]`** | §8 decision, 2026-09-22. Not in use — paused for the season | Banner areas render empty |
+
+**Blogs** are a fourth, but they are not scheduled: `core_blogs` exists and the per-storefront
+scoping decision (Phase 0, G9) has to be made before anything is built.
+
+### 11.1 The card-payment analytics gap — why piece 2 exists
+
+**Stated plainly: there is no `Purchase` event for a card order, and there cannot be one from the
+browser.** This is recorded here because it is the kind of gap that gets discovered six weeks later
+as "the pixel is broken", and it is neither broken nor an oversight.
+
+The mechanism, end to end:
+
+1. `Checkout.jsx` posts `add_order`. For a card order the response carries `redirect_url`, and the
+   storefront leaves the site — `window.location.href = data.redirect_url`.
+2. The shopper pays (or does not) on Paymob.
+3. `PaymentCallbackController::done()` — and the legacy alias in `CheckoutCompatController` — send
+   them back to `config('compat.payment_return_url')`, which is `https://watchizereg.com/`.
+4. On **failure** the callback appends `?payment_error=1`. **On success it appends nothing.**
+
+So the browser is never told *which* order was paid, or that any order was. The storefront therefore
+fires nothing, deliberately:
+
+> **A `Purchase` that fires for a failed card payment makes every campaign report a lie.** Firing at
+> the Paymob hand-off (step 1) would count every abandoned basket and every declined card as a sale.
+> Under-counting is recoverable; a poisoned conversion history is not.
+
+Cash on delivery is unaffected — that order is confirmed at creation, reaches
+`/order-confirmation`, and fires `Purchase` there, once per order number, with the record persisted
+so a reload does not report the sale twice.
+
+**The fix, and why it is the Conversions API rather than the cheaper option.** The callback is the
+only place in the system that knows a payment cleared, so that is where the event belongs:
+
+- it cannot be forged by typing a URL, which a success marker on the return URL can;
+- it is not lost to an ad-blocker or a tracking-prevention default;
+- and it does not depend on the shopper returning to the site at all — a large share of Paymob
+  returns are simply abandoned, and every one of those is a real sale the browser never sees.
+
+It needs a Meta system-user access token (an env secret, by name only, like every other secret in
+§3), a hashed-e-mail `user_data` block, and one `POST` placed beside the existing `flush($mailIds)`
+call — which already sits exactly where "the money is confirmed" is known.
+
+The cheaper option — appending an order marker to `payment_return_url` and having the storefront
+verify it — was considered and is worse on all three counts above, and still requires the same core
+change. It is not the recommendation.
+
+### 11.2 The two Meta pixels
+
+Recorded so nobody reads it as a bug. `NEXT_PUBLIC_META_PIXEL_ID` is a **comma-separated list** and
+carries two ids:
+
+```
+NEXT_PUBLIC_META_PIXEL_ID=1611910119460872,1614877760150035
+```
+
+`1611910119460872` is the incumbent — it ran on the Vite storefront and holds the campaign history;
+`1614877760150035` is the new one. Both are initialised; both receive every event. Dropping either
+later is one line in `.env.production`.
+
+**There is still exactly one event per action.** `fbq('track', ...)` delivers to every initialised
+pixel — that is fbevents.js's own behaviour — so nothing in the codebase loops over the ids, the
+init guard is a single flag, and the persisted `Purchase` dedupe is keyed on the order number and
+knows nothing about how many pixels are listening.
+
+**In the Pixel Helper each event therefore appears once per pixel, with DIFFERENT ids.** Two rows
+carrying the same id would be a real double-fire; two rows carrying different ids are two pixels.
+
+One asymmetry, measured 2026-09-22 and not caused by this code: after a **link or button click**,
+the incumbent pixel records **one more** event than the new one. That is Meta's own automatic
+click-event detection, which is switched on in `1611910119460872`'s Events Manager settings and off
+in the new pixel's. A route change with no click increments both by exactly one. Turning automatic
+event logging on or off for both pixels in Events Manager is the way to make them match — it is a
+Meta-side setting, not a code change.
 
 ---
 

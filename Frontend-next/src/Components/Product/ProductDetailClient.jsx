@@ -369,7 +369,13 @@ function ProductDetailClient({ param, isOffer = false }) {
         const existing = cart?.cart_item?.find((i) => getItemKey(i) === key)
         if (existing) await updateQuantity(key, existing.quantity + quantity)
         else
-          await addItem({ offer_id: offer.id, quantity, piece_price: finalPrice, type_stock: 'Express' })
+          await addItem({
+            offer_id: offer.id,
+            quantity,
+            piece_price: finalPrice,
+            type_stock: 'Express',
+            name: getName(item, 'en'), // analytics only
+          })
       } else {
         const key = `product_${product.id}`
         const existing = cart?.cart_item?.find((i) => getItemKey(i) === key)
@@ -382,6 +388,7 @@ function ProductDetailClient({ param, isOffer = false }) {
             type_stock: expressStock > 0 ? 'Express' : 'Market',
             color_band: selectedBand || null,
             color_dial: selectedDial || null,
+            name: getName(item, 'en'), // analytics only
           })
       }
       showToast(isRTL ? 'تمت الإضافة إلى السلة!' : 'Added to cart!', 'success')
@@ -394,6 +401,8 @@ function ProductDetailClient({ param, isOffer = false }) {
     isOffer,
     offer,
     product,
+    item, // getName(item) for the AddToCart pixel event
+    getName,
     cart,
     quantity,
     finalPrice,

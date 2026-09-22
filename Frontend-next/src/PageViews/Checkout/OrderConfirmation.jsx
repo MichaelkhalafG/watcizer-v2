@@ -46,6 +46,7 @@ function OrderConfirmation() {
     total = 0,
     shippingName = '',
     shippingPrice = 0,
+    paymentMethod = 'cash',
   } = state || {}
 
   const [days] = useState(() => deliveryWindow(shippingPrice))
@@ -94,10 +95,20 @@ function OrderConfirmation() {
   // No state (direct hit / refresh) → graceful fallback.
   const hasOrder = useMemo(() => Boolean(orderNumber), [orderNumber])
 
-  // ── Analytics: Purchase (FB) / CompletePayment (TikTok). Deduped per order
-  //    inside trackPurchase, so a remount / back-forward never double-counts. ──
+  /*
+   * ── Analytics: Purchase (FB) / CompletePayment (TikTok) ───────────────────────
+   *
+   * CASH ON DELIVERY ONLY. A card order is handed to Paymob with a full page navigation and
+   * never reaches this component, so the guard below is unreachable today — which is exactly
+   * why it is written down. The day someone routes a card order through here, this one line is
+   * what stops a Purchase firing for money nobody has confirmed arrived.
+   *
+   * Deduped per order number inside trackPurchase, and that record now survives a reload, so a
+   * refresh of this page does not report the sale twice.
+   */
   useEffect(() => {
     if (!orderNumber) return
+    if (paymentMethod !== 'cash') return
     trackPurchase({
       orderNumber,
       value: total,
@@ -108,7 +119,7 @@ function OrderConfirmation() {
         price: it.price ?? (it.qty ? Number(it.lineTotal) / it.qty : 0),
       })),
     })
-  }, [orderNumber, total, items])
+  }, [orderNumber, total, items, paymentMethod])
 
   return (
     <div className="wz-oc" dir={isRTL ? 'rtl' : 'ltr'}>
