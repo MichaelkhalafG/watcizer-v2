@@ -1,6 +1,7 @@
 <?php
 
 use App\Console\Commands\CoreChecksumCommand;
+use App\Domain\Access\UserWriteGuard;
 use App\Domain\Access\UserWrites;
 use App\Models\User;
 use App\Transform\LegacySource;
@@ -36,7 +37,10 @@ use function Pest\Laravel\post;
  */
 function staffWithPassword(User $user, string $password = 'wave4a-test-password'): User
 {
-    DB::table('users')->where('id', $user->id)->update(['password' => Hash::make($password)]);
+    // A hash the LEGACY app would have written. Core has no door for this and should not:
+    // see UserWriteGuard::fixture().
+    UserWriteGuard::fixture(fn () => DB::table('users')->where('id', $user->id)
+        ->update(['password' => Hash::make($password)]));
 
     return $user->refresh();
 }
@@ -51,7 +55,9 @@ it('signs a staff account in with its EXISTING legacy password hash', function (
     // The point of the shared table: the hash the legacy app wrote is the hash core verifies.
     // `$2y$` bcrypt at cost 10 — exactly what production holds.
     $user = Staff::admin();
-    DB::table('users')->where('id', $user->id)->update(['password' => '$2y$10$'.substr(password_hash('legacy-secret', PASSWORD_BCRYPT, ['cost' => 10]), 7)]);
+    UserWriteGuard::fixture(fn () => DB::table('users')->where('id', $user->id)->update([
+        'password' => '$2y$10$'.substr(password_hash('legacy-secret', PASSWORD_BCRYPT, ['cost' => 10]), 7),
+    ]));
 
     post('/manage/login', ['email' => $user->email, 'password' => 'legacy-secret'])
         ->assertRedirect('/manage');
@@ -80,7 +86,8 @@ it('leaves an EXISTING remember_token untouched through login AND logout', funct
     // the whole session leaves it alone.
     $user = staffWithPassword(Staff::admin());
     $token = 'legacy-remember-token-'.str_repeat('a', 40);
-    DB::table('users')->where('id', $user->id)->update(['remember_token' => $token, 'last_login_at' => null]);
+    UserWriteGuard::fixture(fn () => DB::table('users')->where('id', $user->id)
+        ->update(['remember_token' => $token, 'last_login_at' => null]));
 
     $legacyBefore = CoreChecksumCommand::compute(LegacySource::TABLES)['digest'];
 
@@ -103,7 +110,8 @@ it('writes nothing even if someone later asks for remember-me explicitly', funct
     // overrides make both branches unreachable, so a future caller cannot reopen the hole by
     // adding a checkbox.
     $user = Staff::admin();
-    DB::table('users')->where('id', $user->id)->update(['remember_token' => null]);
+    UserWriteGuard::fixture(fn () => DB::table('users')->where('id', $user->id)
+        ->update(['remember_token' => null]));
     // Re-read: a model still holding a stale non-null token in memory would make the pre-fix
     // framework skip the cycling branch, and this test would pass for the wrong reason — the very
     // shape of mistake 🔴-1 was. Verified by hand: without the overrides this writes a 60-character
@@ -119,7 +127,8 @@ it('writes nothing even if someone later asks for remember-me explicitly', funct
 
 it('reports no remember token to the framework, which is what makes both doors shut', function () {
     $user = Staff::admin();
-    DB::table('users')->where('id', $user->id)->update(['remember_token' => 'whatever-is-in-there']);
+    UserWriteGuard::fixture(fn () => DB::table('users')->where('id', $user->id)
+        ->update(['remember_token' => 'whatever-is-in-there']));
     $fresh = User::query()->findOrFail($user->id);
 
     expect($fresh->getRememberToken())->toBeNull()
@@ -131,7 +140,8 @@ it('reports no remember token to the framework, which is what makes both doors s
 it('keeps the 65-table legacy digest identical across a full dashboard session', function () {
     // THE acceptance test for wave 4A: sign in, work, sign out — the legacy side does not move.
     $user = staffWithPassword(Staff::admin());
-    DB::table('users')->where('id', $user->id)->update(['remember_token' => 'held-token-'.str_repeat('b', 30)]);
+    UserWriteGuard::fixture(fn () => DB::table('users')->where('id', $user->id)
+        ->update(['remember_token' => 'held-token-'.str_repeat('b', 30)]));
 
     $legacyBefore = CoreChecksumCommand::compute(LegacySource::TABLES)['digest'];
 

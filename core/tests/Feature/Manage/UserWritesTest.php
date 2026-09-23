@@ -114,11 +114,42 @@ function userWriteSources(): array
             if ($file->getExtension() !== 'php' || str_ends_with($file->getPathname(), 'UserWrites.php')) {
                 continue;
             }
-            $sources[$file->getPathname()] = (string) file_get_contents($file->getPathname());
+            /*
+             * COMMENTS BLANKED, line count preserved.
+             *
+             * This census looks for `UserWrites::open(` in source TEXT, so it counted every
+             * docblock that MENTIONS the door as a call site with an undeclared reason. It started
+             * failing the moment `UserWriteGuard` was written — a file whose whole job is to
+             * explain that door — and the failure read as "a users write was opened with an
+             * undeclared reason", which is the opposite of what was happening.
+             *
+             * Prose about the rule must not be readable as a use of it.
+             */
+            $sources[$file->getPathname()] = userWriteCodeOnly(
+                (string) file_get_contents($file->getPathname())
+            );
         }
     }
 
     return $sources;
+}
+
+/**
+ * A file's code with every comment blanked out, newlines preserved so line numbers still hold.
+ */
+function userWriteCodeOnly(string $source): string
+{
+    $out = '';
+    foreach (token_get_all($source) as $token) {
+        if (is_array($token) && in_array($token[0], [T_COMMENT, T_DOC_COMMENT], true)) {
+            $out .= str_repeat("\n", substr_count($token[1], "\n"));
+
+            continue;
+        }
+        $out .= is_array($token) ? $token[1] : $token;
+    }
+
+    return $out;
 }
 
 /**

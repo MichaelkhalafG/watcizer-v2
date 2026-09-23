@@ -20,13 +20,15 @@ use stdClass;
  * reproducing `OrderController::AddOrder` / `CallbackPayment` while every stock mutation goes
  * through {@see InventoryService}.
  *
- * Two behaviours are reproduced on purpose even though they look like defects, because the
- * running frontend depends on them and the harness compares bytes:
+ * One behaviour is reproduced on purpose even though it looks like a defect, because the running
+ * frontend depends on it and the harness compares bytes:
  *
- *  • the buyer is taken from the request body (`user_id`), not from the JWT. A caller can
- *    therefore attribute an order to another account. It reads nothing back, so it is
- *    mis-attribution rather than disclosure — but it IS a real weakness and it is on the wave-4
- *    auth list, to be closed together with the frontend that sends the field.
+ *  • (CLOSED 2026-09-23, security audit Finding 2.) This list used to say the buyer is taken from
+ *    the request body and call that "mis-attribution rather than disclosure". The assessment was
+ *    wrong: `billingData()` read the named customer's name, phone, street and e-mail onto a
+ *    Paymob page whose URL went back to the caller, and `me/orders` read an unowned address back
+ *    with its guest token. The buyer now comes from the JWT only, and the address must belong to
+ *    that buyer — see `CheckoutCompatController::addOrder()`.
  *  • `items[]` from the client is the authoritative SET of lines. Prices are always recomputed
  *    server-side, so this is not a pricing hole; it exists because a stale DB cart row used to
  *    resurrect a line the shopper had removed and reject the checkout as a total mismatch.
@@ -321,6 +323,17 @@ final class CompatCheckout
     {
         if ($key === 'order') {
             $candidates = ['obj.order.id', 'order.id', 'order'];
+        } elseif ($key === 'merchant_order_id') {
+            /*
+             * The MERCHANT reference — our own order key, echoed back by Paymob.
+             *
+             * It is NOT one of the twenty signed fields, so this arm cannot affect
+             * {@see self::isValidPaymobHmac()}: that method walks a fixed, explicit list and this
+             * name is not on it. It is here because the reference lives in a THIRD place in the
+             * nested shape — `obj.order.merchant_order_id`, one level deeper than everything else
+             * — and the handler that reads it had no way to find it (review 🔴-2).
+             */
+            $candidates = ['obj.order.merchant_order_id', 'order.merchant_order_id', 'merchant_order_id'];
         } elseif (str_starts_with($key, 'source_data.')) {
             $suffix = substr($key, strlen('source_data.'));
             $candidates = ['obj.'.$key, $key, 'source_data_'.$suffix];

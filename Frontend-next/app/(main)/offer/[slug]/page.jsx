@@ -3,6 +3,7 @@ import { QueryClient, dehydrate, HydrationBoundary } from '@tanstack/react-query
 import { getServerCatalog, getServerOffers, findOfferInCatalog } from '@/src/lib/serverCatalog'
 import { buildOfferSeo } from '@/src/lib/detailSeo'
 import ProductDetailClient from '@/src/Components/Product/ProductDetailClient'
+import { safeJsonLd } from '@/src/lib/safeJsonLd'
 
 export const revalidate = 300
 
@@ -69,11 +70,11 @@ export default async function OfferPage({ params }) {
     <HydrationBoundary state={dehydrate(qc)}>
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(productLd) }}
+        dangerouslySetInnerHTML={{ __html: safeJsonLd(productLd) }}
       />
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbLd) }}
+        dangerouslySetInnerHTML={{ __html: safeJsonLd(breadcrumbLd) }}
       />
       <ProductDetailClient param={slug} isOffer={true} />
     </HydrationBoundary>

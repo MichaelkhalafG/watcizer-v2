@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Support\Coerce;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Password;
 
 /**
@@ -43,6 +44,14 @@ use Illuminate\Support\Facades\Password;
  * The consequence to accept knowingly: a customer who mistypes their address gets a cheerful
  * message and no e-mail, and there is no way to tell them apart from one who did not. The wording
  * says *"if that email is registered"* for exactly that reason.
+ *
+ * `reset` answers one sentence for every failure for the SAME reason (review 🟠-4). It used to
+ * return the broker's status, and those statuses distinguish "no such user" from "bad token" —
+ * which made this route the enumeration oracle `forgot` exists to withhold. A caller needs no
+ * valid link to ask: a wrong token is a free string in a POST body.
+ *
+ * Both routes are also rate-limited per endpoint rather than only by the global 60/min
+ * (`throttle:customer-reset`, `throttle:customer-register`; see `AppServiceProvider`).
  */
 final class CustomerPasswordController extends Controller
 {
@@ -68,7 +77,31 @@ final class CustomerPasswordController extends Controller
              * out through `CustomerMail` and nowhere else.
              */
             Password::sendResetLink(['email' => $email], function (User $user, string $token): void {
-                $this->mail->sendPasswordReset($user, $token);
+                /*
+                 * ── DEFERRED, and that is a security fix, not a performance one (review 🟠) ──
+                 *
+                 * `QUEUE_CONNECTION` is `sync` by project decision, so this used to send inline.
+                 * The two branches of this endpoint then took wildly different amounts of time:
+                 *
+                 *   unknown address   → one SELECT, answered in milliseconds
+                 *   known address     → SELECT + DELETE + INSERT + a full SMTP conversation
+                 *
+                 * Which makes the response TIME the answer the response BODY is carefully shaped
+                 * never to give. Anyone could ask "does this person shop here?" with a stopwatch,
+                 * and the whole same-sentence-every-time design above is defeated by it.
+                 *
+                 * `defer()` runs the closure after the response has been sent, so both branches
+                 * answer at the same moment. It needs no queue worker, which is what makes it the
+                 * right tool here — the project deliberately runs `sync` plus a one-minute cron,
+                 * and a reset e-mail has no page waiting on it the way an order confirmation does.
+                 *
+                 * WHAT REMAINS, stated rather than glossed: the broker's throttle lookup and the
+                 * token write still happen only on the known branch, so a sub-millisecond
+                 * difference is still there in principle. It is DB work on a warm connection
+                 * against an SMTP round trip — three orders of magnitude smaller, and below the
+                 * noise of the network the attacker is measuring across.
+                 */
+                defer(fn () => $this->mail->sendPasswordReset($user, $token));
             });
         } catch (\Throwable $e) {
             /*
@@ -115,11 +148,30 @@ final class CustomerPasswordController extends Controller
         }
 
         /*
-         * Everything else — an unknown address, a token that does not match, one that has expired,
-         * one already spent — is 422 with the broker's own translated reason, which is what the
-         * legacy endpoint answered. The reset PAGE is reached from a link, so unlike `forgot` there
-         * is nothing to protect here: whoever is holding the link already knows the address.
+         * ── ONE message for every failure, like `forgot` (review 🟠-4) ─────────────────────
+         *
+         * This returned the broker's own reason, and the reasons differ in the one way that
+         * matters: `passwords.user` is *"We can't find a user with that email address"* while
+         * `passwords.token` is *"This password reset token is invalid"*. So anyone could POST a
+         * junk token with any address and read which of the two came back — the account-enumeration
+         * oracle that `forgot` is carefully shaped to avoid, sitting on the next route along.
+         *
+         * The argument that used to be written here — "whoever is holding the link already knows
+         * the address" — assumed the caller had a link. Nothing requires one: the token is just a
+         * string in a POST body, and a wrong one is free.
+         *
+         * So all four outcomes (unknown address, wrong token, expired token, spent token) answer
+         * the same sentence, and it is true of every one of them. The broker's status is still
+         * logged — by reference, never with the token — so a genuine configuration fault is
+         * diagnosable without being disclosed.
          */
-        return response()->json(['error' => __(Coerce::str($status))], 422);
+        Log::info('customer password reset refused.', [
+            'status' => Coerce::str($status),
+            'ip' => $request->ip(),
+        ]);
+
+        return response()->json([
+            'error' => 'This password reset link is invalid or has expired. Please request a new one.',
+        ], 422);
     }
 }

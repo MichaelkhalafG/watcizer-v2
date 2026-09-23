@@ -152,6 +152,86 @@ final class PaymentFixture
         return $payload;
     }
 
+    /**
+     * The PROCESSED callback — Paymob's server-to-server POST, in its NESTED shape (review G2b).
+     *
+     * A different payload from {@see callback()}, not a reformat of it: the processed callback
+     * wraps everything under `obj`, puts the merchant reference at `obj.order.merchant_order_id`,
+     * nests the card details under `obj.source_data`, and sends real JSON booleans rather than the
+     * strings the browser's query string carries. Paymob signs the SAME twenty values — with
+     * booleans rendered lowercase — and delivers the `hmac` on the query string, not in the body.
+     *
+     * Built from this class's own field list, like `callback()`, so the test cannot pass by
+     * agreeing with a bug in the extractor it is exercising.
+     *
+     * @param  array<string, mixed>  $objOverrides  merged into `obj`
+     * @return array{body: array<string, mixed>, hmac: string}
+     */
+    public static function processedCallback(
+        string $orderReference,
+        int $amountMinor,
+        bool $success = true,
+        string $secret = 'test-hmac-secret',
+        int $transactionId = 987654,
+        int $integrationId = 4001,
+        array $objOverrides = [],
+    ): array {
+        $obj = array_merge([
+            'id' => $transactionId,
+            'amount_cents' => $amountMinor,
+            'created_at' => '2026-09-12T10:00:00.000000',
+            'currency' => 'EGP',
+            'error_occured' => false,
+            'has_parent_transaction' => false,
+            'integration_id' => $integrationId,
+            'is_3d_secure' => true,
+            'is_auth' => false,
+            'is_capture' => false,
+            'is_refunded' => false,
+            'is_standalone_payment' => true,
+            'is_voided' => false,
+            'order' => ['id' => 55555, 'merchant_order_id' => $orderReference],
+            'owner' => 12345,
+            'pending' => false,
+            'source_data' => ['pan' => '2346', 'sub_type' => 'MasterCard', 'type' => 'card'],
+            'success' => $success,
+        ], $objOverrides);
+
+        $flat = [
+            'amount_cents' => $obj['amount_cents'],
+            'created_at' => $obj['created_at'],
+            'currency' => $obj['currency'],
+            'error_occured' => $obj['error_occured'],
+            'has_parent_transaction' => $obj['has_parent_transaction'],
+            'id' => $obj['id'],
+            'integration_id' => $obj['integration_id'],
+            'is_3d_secure' => $obj['is_3d_secure'],
+            'is_auth' => $obj['is_auth'],
+            'is_capture' => $obj['is_capture'],
+            'is_refunded' => $obj['is_refunded'],
+            'is_standalone_payment' => $obj['is_standalone_payment'],
+            'is_voided' => $obj['is_voided'],
+            // `order` is signed as the Paymob ORDER ID, not the merchant reference.
+            'order' => data_get($obj, 'order.id'),
+            'owner' => $obj['owner'],
+            'pending' => $obj['pending'],
+            'source_data_pan' => data_get($obj, 'source_data.pan'),
+            'source_data_sub_type' => data_get($obj, 'source_data.sub_type'),
+            'source_data_type' => data_get($obj, 'source_data.type'),
+            'success' => $obj['success'],
+        ];
+
+        $concatenated = '';
+        foreach (self::HMAC_FIELDS as $field) {
+            $concatenated .= self::field($flat, $field);
+        }
+
+        return [
+            'body' => ['type' => 'TRANSACTION', 'obj' => $obj],
+            'hmac' => hash_hmac('sha512', $concatenated, $secret),
+        ];
+    }
+
     /** @param array<string, mixed> $payload */
     private static function field(array $payload, string $key): string
     {
@@ -159,6 +239,9 @@ final class PaymentFixture
             ? 'source_data_'.substr($key, strlen('source_data.'))
             : $key;
         $value = $payload[$flat] ?? '';
+        if (is_bool($value)) {
+            return $value ? 'true' : 'false';
+        }
 
         return is_scalar($value) ? (string) $value : '';
     }

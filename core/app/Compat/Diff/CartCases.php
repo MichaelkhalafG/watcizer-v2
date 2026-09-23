@@ -128,6 +128,11 @@ final class CartCases
             new DiffCase('cart:add:overstock', 'api/add_to_cart', 'json', $guest, true, 'cart-errors', DiffCase::ACCEPT_AXIOS, 'POST', ['product_id' => $id, 'quantity' => 999999, 'piece_price' => $price, 'total_price' => $price, 'type_stock' => 'Express'], 'cart-err'),
             new DiffCase('cart:remove:no-keys', 'api/remove_from_cart', 'json', $guest, true, 'cart-errors', DiffCase::ACCEPT_AXIOS, 'POST', [], 'cart-err'),
             new DiffCase('cart:remove:bad-type', 'api/remove_from_cart', 'json', $guest, true, 'cart-errors', DiffCase::ACCEPT_AXIOS, 'POST', ['product_id' => 'abc'], 'cart-err'),
+            // The same refusals from an ARABIC browser (2026-09-23). The legacy host negotiates
+            // Accept-Language on every request, so the field errors come back in Arabic; these are
+            // what caught core answering them in English. Phrasing differences: D-25.
+            new DiffCase('cart:remove:no-keys:ar', 'api/remove_from_cart', 'json', $guest + ['Accept-Language' => 'ar-EG,ar;q=0.9'], true, 'cart-errors', DiffCase::ACCEPT_AXIOS, 'POST', [], 'cart-err'),
+            new DiffCase('cart:remove:bad-type:ar', 'api/remove_from_cart', 'json', $guest + ['Accept-Language' => 'ar-EG,ar;q=0.9'], true, 'cart-errors', DiffCase::ACCEPT_AXIOS, 'POST', ['product_id' => 'abc'], 'cart-err'),
             new DiffCase('cart:delete:404', 'api/delete_cart/999999', 'json', $guest, true, 'cart-errors', DiffCase::ACCEPT_AXIOS, 'DELETE', null, 'cart-err'),
             new DiffCase('cart:delete:non-numeric', 'api/delete_cart/abc', 'json', $guest, true, 'cart-errors', DiffCase::ACCEPT_AXIOS, 'DELETE', null, 'cart-err'),
             // Someone else's cart line: the id exists, but not under this token.
@@ -153,6 +158,10 @@ final class CartCases
             new DiffCase('address:bad-city', 'api/add_address', 'json', [], true, 'address', DiffCase::ACCEPT_AXIOS, 'POST', ['shipping_city_id' => 999999, 'address_line' => 'Harness Street 1', 'phone_number_one' => '01000000000'], 'address'),
             new DiffCase('address:short-line', 'api/add_address', 'json', [], true, 'address', DiffCase::ACCEPT_AXIOS, 'POST', ['shipping_city_id' => $city['id'], 'address_line' => 'x', 'phone_number_one' => '01000000000'], 'address'),
             new DiffCase('address:short-phone', 'api/add_address', 'json', [], true, 'address', DiffCase::ACCEPT_AXIOS, 'POST', ['shipping_city_id' => $city['id'], 'address_line' => 'Harness Street 1', 'phone_number_one' => '123'], 'address'),
+            // Arabic browser: see the note on cart:remove:*:ar.
+            new DiffCase('address:invalid:ar', 'api/add_address', 'json', ['Accept-Language' => 'ar-EG,ar;q=0.9'], true, 'address', DiffCase::ACCEPT_AXIOS, 'POST', [], 'address'),
+            new DiffCase('address:bad-city:ar', 'api/add_address', 'json', ['Accept-Language' => 'ar-EG,ar;q=0.9'], true, 'address', DiffCase::ACCEPT_AXIOS, 'POST', ['shipping_city_id' => 999999, 'address_line' => 'Harness Street 1', 'phone_number_one' => '01000000000'], 'address'),
+            new DiffCase('address:short-phone:ar', 'api/add_address', 'json', ['Accept-Language' => 'ar-EG,ar;q=0.9'], true, 'address', DiffCase::ACCEPT_AXIOS, 'POST', ['shipping_city_id' => $city['id'], 'address_line' => 'Harness Street 1', 'phone_number_one' => '123'], 'address'),
         ];
     }
 
@@ -177,6 +186,9 @@ final class CartCases
             new DiffCase('checkout:empty-cart', 'api/add_order', 'json', $guest, true, 'checkout', DiffCase::ACCEPT_AXIOS, 'POST', self::orderBody($city['id'], $total, [], ['total_price_for_order' => 0]), 'checkout'),
             new DiffCase('checkout:no-address', 'api/add_order', 'json', $guest, true, 'checkout', DiffCase::ACCEPT_AXIOS, 'POST', self::orderBody($city['id'], $total, [$item], ['shipping_city_id' => null, 'address_line' => null, 'phone' => null]), 'checkout'),
             new DiffCase('checkout:bad-method', 'api/add_order', 'json', $guest, true, 'checkout', DiffCase::ACCEPT_AXIOS, 'POST', self::orderBody($city['id'], $total, [$item], ['payment_method' => 'bitcoin']), 'checkout'),
+            // Arabic browser: see the note on cart:remove:*:ar.
+            new DiffCase('checkout:no-address:ar', 'api/add_order', 'json', $guest + ['Accept-Language' => 'ar-EG,ar;q=0.9'], true, 'checkout', DiffCase::ACCEPT_AXIOS, 'POST', self::orderBody($city['id'], $total, [$item], ['shipping_city_id' => null, 'address_line' => null, 'phone' => null]), 'checkout'),
+            new DiffCase('checkout:bad-method:ar', 'api/add_order', 'json', $guest + ['Accept-Language' => 'ar-EG,ar;q=0.9'], true, 'checkout', DiffCase::ACCEPT_AXIOS, 'POST', self::orderBody($city['id'], $total, [$item], ['payment_method' => 'bitcoin']), 'checkout'),
             // The client's total is authoritative for nothing: a wrong one is refused with the
             // server's own number, which both hosts must compute identically.
             new DiffCase('checkout:total-mismatch', 'api/add_order', 'json', $guest, true, 'checkout', DiffCase::ACCEPT_AXIOS, 'POST', self::orderBody($city['id'], $total, [$item], ['total_price_for_order' => $total + 100]), 'checkout'),

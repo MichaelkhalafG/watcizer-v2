@@ -5,6 +5,10 @@ use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
 
 /**
+ * ⚠ DATA REPAIR: a silent no-op on an EMPTY catalogue — `migrate` runs before `core:transform` on
+ * a rebuild, so it finds no rows and reports zero (security audit, 2026-09-23). Only valid AFTER
+ * the catalogue exists; production is never rebuilt, and a new repair written this way is inert.
+ *
  * `model_number` and `sku` were the same thing. Now there is one (second browser pass, item 4).
  *
  * ── The measurement that decided which column survives ──────────────────────────────────────

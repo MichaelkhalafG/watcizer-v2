@@ -23,7 +23,12 @@ final class Abilities
         Gate::before(function (User $user, string $ability) use ($roles): ?bool {
             // Only ever GRANTS. Returning false here would deny everything else outright and make
             // every later check unreachable; returning null falls through to the ability closure.
-            if (in_array($ability, Role::ABILITIES, true) && $roles->isAdmin($user)) {
+            //
+            // UNSCOPED admins only (security audit, Finding 1, 2026-09-23). This used to ask
+            // `isAdmin()`, which ignores scope, so a Brand-Fashion-scoped admin short-circuited to
+            // every ability on every storefront. A scoped admin now falls through to the defined
+            // closure below, which asks `Roles::can()` with the storefront when there is one.
+            if (in_array($ability, Role::ABILITIES, true) && $roles->isUnscopedAdmin($user)) {
                 return true;
             }
 

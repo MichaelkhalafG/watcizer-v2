@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 namespace App\Domain\Payment;
 
+use App\Models\Storefront\Storefront;
 use App\Models\Storefront\StorefrontPaymentProvider;
 use App\Support\Coerce;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Starting a payment against the STOREFRONT'S OWN provider contract (wave 4D, task C2).
@@ -49,6 +52,13 @@ final class PaymentInitiator
      *                               caller's signal to keep the wave-3 path
      */
     public function initiate(
+        /*
+         * The request the payment is being started from, passed rather than pulled off a facade.
+         * It decides the callback destination (see below), so it is a real input to this method:
+         * hiding it behind `request()` made a domain service depend on ambient state, and the way
+         * that surfaced was three tests asserting `ok` on a host no provider could call back to.
+         */
+        Request $request,
         int $storefrontId,
         string $locale,
         int|string|null $postedMethod,
@@ -56,7 +66,6 @@ final class PaymentInitiator
         string $orderNumber,
         float $amount,
         array $billing,
-        ?string $returnUrl = null,
     ): ?InitiationResult {
         $method = MethodList::resolve($storefrontId, $locale, $postedMethod);
         if ($method === null) {
@@ -69,7 +78,10 @@ final class PaymentInitiator
             ->where('is_enabled', true)
             ->first();
 
-        if (! $contract instanceof StorefrontPaymentProvider || ! $contract->credentialsSet()) {
+        // COMPLETE, not merely set — the same gate `aliasIsLive()` asks, so initiation and
+        // verification cannot disagree about whether a half-entered contract is live.
+        if (! $contract instanceof StorefrontPaymentProvider
+            || ! $contract->credentialsComplete($this->registry->credentialFields(Coerce::str($contract->getAttribute('provider'))))) {
             return null;                        // not cut over yet — see the class note
         }
 
@@ -81,6 +93,37 @@ final class PaymentInitiator
         $integrationId = Coerce::nstr(
             $contract->methods()->where('method', $method['method'])->where('is_enabled', true)->value('integration_id')
         );
+
+        /*
+         * ── The callback destination travels WITH the transaction (review 🔴-2) ─────────────
+         *
+         * Not sending these left the destination to Paymob's merchant portal, whose URL names the
+         * legacy host — and `.htaccess` §4 closes `/api` there. A callback sent to it after the
+         * flip 404s with the money already taken.
+         *
+         * A FAILED initiation is the right answer when the pair cannot be built, and is why this
+         * returns a failure rather than an intent with nulls: omitting the URLs would silently
+         * restore the portal's authority, which is the defect. A shopper told the payment could
+         * not be started has lost nothing.
+         */
+        $storefront = Storefront::query()->whereKey($storefrontId)->first();
+        if (! $storefront instanceof Storefront) {
+            return InitiationResult::failed('The storefront starting this payment no longer exists.');
+        }
+
+        $callbacks = CallbackDestination::for($request, $storefront, $contract);
+        if ($callbacks === null) {
+            // Names the contract, never a credential. The host is diagnostic and not secret.
+            Log::error('payment initiation refused: no usable https callback base.', [
+                'storefront_id' => $storefrontId,
+                'provider' => Coerce::str($contract->getAttribute('provider')),
+                'observed_host' => $request->getSchemeAndHttpHost(),
+            ]);
+
+            return InitiationResult::failed(
+                'This shop has no usable payment callback address, so the payment was not started.'
+            );
+        }
 
         $intent = new PaymentIntent(
             orderId: $orderId,
@@ -98,7 +141,8 @@ final class PaymentInitiator
             amountMinor: (int) round($amount * 100),
             currency: 'EGP',
             billing: $billing,
-            returnUrl: $returnUrl,
+            redirectUrl: $callbacks['redirection_url'],
+            notifyUrl: $callbacks['notification_url'],
         );
 
         return $implementation->initiate($intent, ProviderCredentials::fromArray(

@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domain\Payment;
 
-use App\Support\Coerce;
+use App\Compat\CompatCheckout;
 use App\Support\DeadlockRetry;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
@@ -89,12 +89,28 @@ final class CallbackPolicy
      * same way, so the reversal flags are tested before success. `pending` outranks everything —
      * nothing has happened yet.
      *
+     * ── Why this reads through paymobField() and not `$payload[$key]` (review G2b) ─────────
+     *
+     * The same callback arrives in two shapes: FLATTENED on the shopper's browser redirect, and
+     * NESTED under `obj.*` on the server-to-server processed callback, with real JSON booleans
+     * instead of the strings "true"/"false".
+     *
+     * Top-level array access saw none of the nested fields. So on a processed callback every flag
+     * below read false — including `success` — and a payment that had SUCCEEDED came out of here
+     * as `OUTCOME_FAILED`. On a `pending` order that is `ACT_CANCEL`: **the order cancelled and
+     * its stock released, with the money taken.** Registering the POST route without this fix
+     * would have turned a stuck order into a destroyed one.
+     *
+     * {@see CompatCheckout::paymobField()} is the extractor the signature check already uses, and
+     * it reads both shapes and normalises booleans. Using it here is what makes the two deliveries
+     * of one payment reach the same verdict — which is the whole property idempotency rests on.
+     *
      * @param  array<string, mixed>  $payload
      */
     public static function outcomeFromPaymob(array $payload): string
     {
         $flag = static fn (string $key): bool => in_array(
-            strtolower(Coerce::str($payload[$key] ?? '')), ['true', '1'], true
+            strtolower(CompatCheckout::paymobField($payload, $key)), ['true', '1'], true
         );
 
         if ($flag('pending')) {

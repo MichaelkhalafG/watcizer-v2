@@ -101,4 +101,20 @@ return [
         'inside_transaction' => (bool) env('ORDER_MAIL_SEND_IN_TRANSACTION', false),
     ],
 
+    /*
+    | Where the dashboard lives, for the "Open Order" button in the admin order e-mail
+    | (review 🟠-5).
+    |
+    | PINNED, and deliberately not derived. This link used to be built with
+    | `route('manage.orders.show')`, which resolves its host from the current request — or from
+    | APP_URL on the console. Both are wrong here, and after Phase 2 the first one is actively
+    | broken: the e-mail is composed while serving `add_order` on **api.watchizereg.com**, and
+    | `.htaccess` §4 answers 404 for `/manage` on that host. Every admin order e-mail would have
+    | carried a button to a 404.
+    |
+    | The dashboard has exactly ONE address, and this is the place that says so. It is not a
+    | secret and it is not per-storefront: the dashboard is one application serving all of them.
+    | `MANAGE_URL` overrides it for a staging host.
+    */
+    'manage_url' => rtrim((string) env('MANAGE_URL', 'https://eleganceeg.com'), '/'),
 ];

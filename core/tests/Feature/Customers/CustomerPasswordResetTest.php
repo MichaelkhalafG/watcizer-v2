@@ -246,6 +246,112 @@ it('REFUSES a forged token for a real address', function () {
         ->toBeTrue();
 });
 
+it('answers ONE indistinguishable sentence for every kind of failure', function () {
+    /*
+     * ── The enumeration oracle this endpoint used to be (review 🟠-4) ────────────────────────
+     *
+     * `reset` returned the broker's own status, and the statuses differ in the one way that
+     * matters: `passwords.user` is "We can't find a user with that email address" while
+     * `passwords.token` is "This password reset token is invalid". A junk token plus any address
+     * therefore answered the question `forgot` is carefully shaped never to answer.
+     *
+     * No valid link is needed to ask, which is why the old justification ("whoever holds the link
+     * already knows the address") did not hold: the token is a free string in a POST body.
+     *
+     * So this compares the FOUR failure modes against each other. It fails if any of them can be
+     * told apart by status, body, or the shape of the body.
+     */
+    $registered = Shopper::email();
+    Shopper::register(['email' => $registered, 'password' => 'the-original-password']);
+    $spent = requestResetToken($registered);
+    withHeaders(resetKey())->postJson('/api/auth/reset-password', [
+        'token' => $spent, 'email' => $registered,
+        'password' => 'used-it-already', 'password_confirmation' => 'used-it-already',
+    ])->assertOk();
+
+    $expiredEmail = Shopper::email();
+    Shopper::register(['email' => $expiredEmail]);
+    $expired = requestResetToken($expiredEmail);
+    DB::table('core_password_resets')->where('email', $expiredEmail)
+        ->update(['created_at' => Carbon::now()->subMinutes(61)->toDateTimeString()]);
+
+    $cases = [
+        // An address that has never shopped here. THE leak: this was "we can't find a user".
+        'unknown address' => ['token' => str_repeat('a', 64), 'email' => 'nobody-'.uniqid().'@example.com'],
+        // A real address, a token that is not its token.
+        'forged token' => ['token' => str_repeat('f', 64), 'email' => $registered],
+        // A token that was genuinely issued and is past its window.
+        'expired token' => ['token' => $expired, 'email' => $expiredEmail],
+        // A token that worked once.
+        'spent token' => ['token' => $spent, 'email' => $registered],
+    ];
+
+    $answers = [];
+    foreach ($cases as $label => $payload) {
+        $response = withHeaders(resetKey())->postJson('/api/auth/reset-password', $payload + [
+            'password' => 'a-new-password-here', 'password_confirmation' => 'a-new-password-here',
+        ]);
+        $answers[$label] = [$response->status(), $response->json()];
+    }
+
+    // `json_encode` can return false; a failure to encode must not silently collapse two answers
+    // into one and make this test pass.
+    $distinct = array_unique(array_map(
+        fn (array $a): string => (string) json_encode($a, JSON_THROW_ON_ERROR),
+        $answers,
+    ));
+
+    expect($distinct)->toHaveCount(1, 'every failure must be indistinguishable: '.json_encode($answers))
+        ->and(array_values($answers)[0][0])->toBe(422);
+
+    // And the one sentence must be true of all four, not just accurate for one of them.
+    expect(array_values($answers)[0][1])
+        ->toBe(['error' => 'This password reset link is invalid or has expired. Please request a new one.']);
+});
+
+it('throttles reset-password per endpoint, not only by the global 60 a minute', function () {
+    /*
+     * A one-hour token behind a 60-guesses-a-minute ceiling is a guessing budget nobody granted,
+     * and `reset` had no counter of its own at all — unlike `login`, which has had one since
+     * piece 3. Keyed by IP and NOT by e-mail: an e-mail key would let an attacker exhaust a real
+     * customer's budget and lock them out of their own reset.
+     */
+    $email = Shopper::email();
+    Shopper::register(['email' => $email, 'password' => 'the-original-password']);
+
+    $statuses = [];
+    for ($i = 0; $i < 7; $i++) {
+        $statuses[] = withHeaders(resetKey())->postJson('/api/auth/reset-password', [
+            'token' => str_repeat('b', 64), 'email' => $email,
+            'password' => 'guess-number-'.$i, 'password_confirmation' => 'guess-number-'.$i,
+        ])->status();
+    }
+
+    // Five guesses, then the door. The exact cut is configuration; that it CLOSES is the property.
+    expect($statuses)->toContain(429)
+        ->and(array_slice($statuses, 0, 5))->each->toBe(422);
+});
+
+it('throttles register per endpoint, because it creates an account AND sends mail', function () {
+    // At the global 60/min one IP could mint 3,600 accounts an hour and have this application send
+    // 3,600 e-mails from the shop's own domain — somebody else destroying its sender reputation.
+    $statuses = [];
+    for ($i = 0; $i < 5; $i++) {
+        $statuses[] = withHeaders(resetKey())->postJson('/api/register', [
+            'first_name' => 'Flood', 'last_name' => 'Test',
+            'email' => 'flood-'.$i.'-'.uniqid().'@example.com',
+            'password' => 'a-valid-password', 'password_confirmation' => 'a-valid-password',
+        ])->status();
+    }
+
+    expect($statuses)->toContain(429);
+    // And the refusal is in the shape the storefront reads, not the framework default.
+    expect(withHeaders(resetKey())->postJson('/api/register', [
+        'first_name' => 'Flood', 'last_name' => 'Test', 'email' => 'one-more-'.uniqid().'@example.com',
+        'password' => 'a-valid-password', 'password_confirmation' => 'a-valid-password',
+    ])->assertStatus(429)->json())->toBe(['error' => 'Too many attempts. Please try again later.']);
+});
+
 it('REFUSES a short or unconfirmed new password before anything is spent', function (array $payload) {
     $email = Shopper::email();
     Shopper::register(['email' => $email]);

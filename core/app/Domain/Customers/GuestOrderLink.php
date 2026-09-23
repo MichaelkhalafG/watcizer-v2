@@ -98,18 +98,40 @@ final class GuestOrderLink
      *
      * @param  string  $guestKey  the `g:`-prefixed key from the customers screen
      */
-    public function attachGroup(string $guestKey, User $user): int
+    /**
+     * @param  list<int>|null  $storefrontScope  the operator's storefronts; null = unscoped (admin)
+     */
+    public function attachGroup(string $guestKey, User $user, ?array $storefrontScope = null): int
     {
         $value = str_starts_with($guestKey, 'g:') ? substr($guestKey, 2) : '';
         if ($value === '') {
             return 0;
         }
 
-        $orders = DB::table('orders')
+        $query = DB::table('orders')
             ->whereNull('user_id')
-            ->whereRaw(Sql::guestKey().' = ?', [$value])
-            ->orderBy('id')
-            ->get(['id', 'order_number', 'guest_email']);
+            ->whereRaw(Sql::guestKey().' = ?', [$value]);
+
+        /*
+         * ── The SAME scope rule Customers::exists() applies (review: informational) ─────────
+         *
+         * The controller already checks the customer is in the operator's scope before getting
+         * here. That is not the same question: a guest KEY is a telephone number, an address or a
+         * cart token, and one shopper can have checked out as a guest on more than one storefront
+         * with the same one. So a scoped operator who could legitimately see the guest on THEIR
+         * storefront was moving that shopper's orders from every other storefront too — writes
+         * outside their grant, made through a screen that had correctly authorised them for one
+         * order and then acted on several.
+         *
+         * `[0]` for an empty grant, exactly as `Customers::exists()` does: an operator with a
+         * grant naming no storefront must match nothing, and an unconstrained `whereIn` on `[]`
+         * is a WHERE clause that matches everything in some drivers.
+         */
+        if ($storefrontScope !== null) {
+            $query->whereIn('storefront_id', $storefrontScope === [] ? [0] : $storefrontScope);
+        }
+
+        $orders = $query->orderBy('id')->get(['id', 'order_number', 'guest_email']);
 
         return $this->attach($orders, $user, self::BY_DASHBOARD);
     }

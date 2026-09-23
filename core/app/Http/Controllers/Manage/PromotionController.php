@@ -52,6 +52,23 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  * `PromotionState::of()` per row: running / scheduled / expired / inactive / no-storefront /
  * no-stock / not-visible, with the skip counter beside it. Same principle as the catalogue's four
  * at-a-glance states (task 4.3) — `is_active` is what the admin typed, not what the shop is doing.
+ *
+ * ── ⚠ KNOWN GAP, LEFT OPEN ON PURPOSE: NO STOREFRONT SCOPE CHECK (2026-09-23) ─────────────────
+ *
+ * Nothing in this controller asks WHICH storefront the operator may act on. `storefront_id` comes
+ * from the request body and is used as given, so an operator holding a grant SCOPED to one
+ * storefront could create or edit a discount on another — money, on a shop they were never given.
+ *
+ * It is not reachable today, and the reason is a BUSINESS decision, not code: every operator is
+ * either an unscoped admin or data-entry; Watchizer and Brand Fashion are run by one team and nobody
+ * is split by storefront (developer, 2026-09-23). Scoped grants are a capability the system HAS and
+ * the business does not use.
+ *
+ * **It becomes real the day anybody issues a scoped grant.** Before that day, give this controller
+ * the same treatment the security audit's Finding 1 gave the grant screen and the storefront
+ * settings: check `Roles::scopeForAbility($actor, Role::MANAGE_PROMOTIONS)` against every
+ * `storefront_id` it reads, writes or lists. The same warning sits on `UserRoleController::store()`,
+ * which is where a scoped grant would be issued.
  */
 final class PromotionController
 {

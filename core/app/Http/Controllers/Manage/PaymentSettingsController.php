@@ -499,7 +499,9 @@ final class PaymentSettingsController
                 'credentials_set' => $row->credentialsSet(),
                 'credential_fields' => $fields,
                 'credential_keys_present' => $present,
-                'credentials_complete' => $fields === [] || array_values(array_intersect($fields, $present)) === $fields,
+                // The model's ONE definition of usable — the same one aliasIsLive() and the
+                // runbook's §3A.3 check ask, so the badge cannot disagree with the switch.
+                'credentials_complete' => $row->credentialsComplete($fields),
                 'needs_credentials' => $fields !== [],
                 'methods' => self::methodRows(Coerce::int($row->getAttribute('id'))),
                 'updated_at' => Coerce::nstr($row->getAttribute('updated_at')),

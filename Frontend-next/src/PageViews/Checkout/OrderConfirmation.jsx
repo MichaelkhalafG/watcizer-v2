@@ -44,6 +44,9 @@ function OrderConfirmation() {
     isGuest = false,
     items = [],
     total = 0,
+    // The MERCHANDISE value, handed over separately by Checkout for the Purchase pixel event.
+    // Falls back to `total` only for an order placed before this field existed.
+    subtotal = null,
     shippingName = '',
     shippingPrice = 0,
     paymentMethod = 'cash',
@@ -111,7 +114,14 @@ function OrderConfirmation() {
     if (paymentMethod !== 'cash') return
     trackPurchase({
       orderNumber,
-      value: total,
+      /*
+       * MERCHANDISE value, not `total` — `total` includes shipping, and shipping is the courier's
+       * share rather than a conversion value. It also has to equal what `InitiateCheckout`
+       * reported on the previous page, or the funnel shows every order growing by its delivery
+       * cost between the two steps (review 🟠 minor: Checkout's comment claimed this was already
+       * true while this line was still sending `total`).
+       */
+      value: subtotal ?? total,
       contents: items.map((it) => ({
         id: it.id,
         name: it.name,
@@ -119,7 +129,7 @@ function OrderConfirmation() {
         price: it.price ?? (it.qty ? Number(it.lineTotal) / it.qty : 0),
       })),
     })
-  }, [orderNumber, total, items, paymentMethod])
+  }, [orderNumber, total, subtotal, items, paymentMethod])
 
   return (
     <div className="wz-oc" dir={isRTL ? 'rtl' : 'ltr'}>

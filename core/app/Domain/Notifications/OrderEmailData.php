@@ -40,7 +40,8 @@ use stdClass;
  * `trackUrl` is the ORDER'S OWN storefront (`storefronts.domain`), not one global `FRONTEND_URL`
  * as in legacy. That is a deliberate improvement, not a port: the whole point of the clean core
  * is two storefronts, and mailing a Brand Fashion customer a watchizereg.com tracking link is the
- * defect the legacy shape guarantees. `dashboardUrl` is core's own order screen
+ * defect the legacy shape guarantees. `dashboardUrl` is core's own order screen, on the dashboard's
+ * PINNED host (`notifications.manage_url`) rather than on whatever host is serving the request
  * (`manage.orders.show`), so the admin notification's button opens the dashboard the operator
  * actually uses after the switch.
  */
@@ -130,7 +131,7 @@ final class OrderEmailData
             'copyright' => config()->string('notifications.brand.copyright'),
             'whatsappUrl' => self::whatsappSupportUrl(),
             'trackUrl' => self::trackUrl(Row::nstr($order, 'storefront_domain')),
-            'dashboardUrl' => self::dashboardUrl(Row::int($order, 'id')),
+            'dashboardUrl' => self::dashboardUrlFor(Row::int($order, 'id')),
         ];
     }
 
@@ -457,6 +458,9 @@ final class OrderEmailData
         return "https://wa.me/{$number}?text={$text}";
     }
 
+    /** The dashboard path an order opens at. Pinned beside the host it hangs on. */
+    public const MANAGE_ORDER_PATH = '/manage/orders/';
+
     /** The order's OWN storefront, falling back to the primary one's domain. */
     private static function trackUrl(?string $domain): string
     {
@@ -465,8 +469,21 @@ final class OrderEmailData
         return 'https://'.$domain.'/order-list';
     }
 
-    private static function dashboardUrl(int $orderId): string
+    /**
+     * The "Open Order" button, on the dashboard's ONE address (review 🟠-5).
+     *
+     * Built from `notifications.manage_url` and not from `route()`. `route()` takes its host from
+     * the current request, and this e-mail is composed while serving `add_order` on
+     * **api.watchizereg.com** — where `.htaccess` §4 answers 404 for `/manage`. So every admin
+     * order e-mail would have carried a button to a 404, and the sender would have been the one
+     * application that knew the right address.
+     *
+     * The PATH is a literal for the same reason `CallbackDestination::path()` is, and
+     * `OrderMailLinksTest` asserts it still matches the registered `manage.orders.show` route, so
+     * the two cannot drift apart without a test failing.
+     */
+    public static function dashboardUrlFor(int $orderId): string
     {
-        return route('manage.orders.show', ['order' => $orderId]);
+        return config()->string('notifications.manage_url').self::MANAGE_ORDER_PATH.$orderId;
     }
 }

@@ -274,9 +274,15 @@ function Checkout() {
    * cart is a live store, so this component re-renders on every quantity change, and an
    * unguarded effect would report a fresh checkout each time someone adjusts a line.
    *
-   * The value is the MERCHANDISE subtotal, not `total` — shipping is not known until a
-   * governorate is picked, and it is not merchandise value in any case. Reporting it here would
-   * make InitiateCheckout and Purchase disagree by the shipping cost on every order.
+   * The value is the MERCHANDISE subtotal, not `total`. Two reasons, and the second is the one
+   * that was briefly wrong here: shipping is not known until a governorate is picked, and it is
+   * not our revenue in any case — the courier's share is not a conversion value.
+   *
+   * `Purchase` reports the SAME figure, for the same reason. This comment used to claim that as an
+   * accomplished fact while `OrderConfirmation` was still sending `total`, so the two events
+   * really did disagree by the shipping cost on every order (review 🟠 minor). The subtotal is now
+   * handed to the confirmation page explicitly, below, rather than re-derived there — two places
+   * subtracting shipping is two places to drift.
    */
   const initiateFired = useRef(false)
   useEffect(() => {
@@ -421,6 +427,9 @@ function Checkout() {
           isGuest,
           items: snapshot,
           total,
+          // The MERCHANDISE value, carried separately from `total` for the Purchase pixel event:
+          // it must equal what InitiateCheckout reported, and `total` includes shipping.
+          subtotal,
           shippingName,
           shippingPrice: shippingCost,
           paymentMethod,
@@ -447,6 +456,7 @@ function Checkout() {
     canSubmit, items, paymentMethod, notes, total, isLoggedIn, userId, useInline, street,
     apartment, shippingid, phone, selectedAddressId, isGuest, firstName, lastName, email,
     products, offers, isRTL, cleanupAfterOrder, router, setOrderData, shippingName, shippingCost, user, t,
+    subtotal,
   ])
 
   const handleSignOut = useCallback(() => {

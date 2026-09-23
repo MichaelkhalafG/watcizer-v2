@@ -106,4 +106,41 @@ class StorefrontPaymentProvider extends Model
 
         return $out;
     }
+
+    /**
+     * The required credential keys this contract does NOT hold — names only, never a value.
+     *
+     * `$required` comes from the provider implementation (`ProviderRegistry::credentialFields()`),
+     * because what Paymob needs is Paymob's business and not this model's.
+     *
+     * @param  list<string>  $required
+     * @return list<string>
+     */
+    public function missingCredentials(array $required): array
+    {
+        return array_values(array_diff($required, $this->credentialKeys()));
+    }
+
+    /**
+     * Whether the contract holds EVERY credential its provider needs — usable, not merely present.
+     *
+     * ── Why `credentialsSet()` is not enough (2026-09-23) ───────────────────────────────────
+     *
+     * `credentialsSet()` answers "is the array non-empty". A contract holding `public_key` and
+     * nothing else passes it — and that contract cannot verify a single callback, because the
+     * signature check needs `hmac_secret`. So a switch gated on `credentialsSet()` goes live on a
+     * half-entered contract and every callback answers 403: the money taken, the order pending,
+     * and a check that read green.
+     *
+     * This is the ONE definition. The providers screen's "complete" badge, `aliasIsLive()`, the
+     * initiator's cutover gate and the runbook's §3A.3 check all ask it, so none of them can call
+     * a contract usable that another would refuse. A provider with no required fields (`cod`,
+     * `whatsapp`) is complete by definition.
+     *
+     * @param  list<string>  $required
+     */
+    public function credentialsComplete(array $required): bool
+    {
+        return $this->missingCredentials($required) === [];
+    }
 }

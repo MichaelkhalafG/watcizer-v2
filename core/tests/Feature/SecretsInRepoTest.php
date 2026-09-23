@@ -17,6 +17,16 @@ use Tests\Support\T;
  * scratch file is a local hygiene problem, and a secret in a tracked file is a disclosure. Asking
  * git rather than the filesystem is also what makes the test honest about `.gitignore`.
  *
+ * ── What it CANNOT see: git HISTORY (security audit, 2026-09-23) ─────────────────────────────
+ *
+ * It reads the WORKING TREE of the current checkout — `git ls-files`, then each file as it is now.
+ * A secret committed once and deleted later is invisible to it, and still published: this is a
+ * public repository and every past commit is downloadable. The audit found exactly that — an OAuth
+ * client secret file removed from the tree but retrievable with `git show`, while this test read
+ * "clean". So "clean" here means **"nothing in the current tree"**, never "nothing was ever
+ * leaked". Purging history is a separate, manual step (a history rewrite plus a force-push), and
+ * rotating the credential is the only thing that actually disarms a historic leak.
+ *
  * ── The inventory, and why it is not an allowlist ───────────────────────────────────────────
  *
  * {@see KNOWN} is not permission — it is the list of exposures that EXIST TODAY and are waiting on
@@ -157,6 +167,53 @@ function secretsIn(string $path, string $contents): array
         }
     }
 
+    /*
+     * 4. A Google OAuth client secret (audit 2026-09-23). Its fixed `GOCSPX-` prefix makes it
+     * identifiable wherever it sits — quoted in the downloaded `client_secret_*.json`, bare in a
+     * note — so it is matched structurally and bypasses the shape filter, like a JWT.
+     */
+    if (preg_match_all('/(GOCSPX-[A-Za-z0-9_-]{20,})/', $contents, $matches) > 0) {
+        foreach ($matches[1] as $google) {
+            $named[] = $google;
+        }
+    }
+
+    /*
+     * 5. UNQUOTED values in Markdown (audit 2026-09-23). Rule 2 only sees a literal inside quotes
+     * or backticks, which is how source code writes one — not how a person pastes one into a
+     * runbook line or a fenced block. In `.md` files every bare token of key length goes through
+     * the same shape filter as rule 2.
+     */
+    if (str_ends_with(strtolower($path), '.md')
+        && preg_match_all('/(?<![A-Za-z0-9_-])([A-Za-z0-9_-]{32,})(?![A-Za-z0-9_-])/', $contents, $matches) > 0) {
+        foreach ($matches[1] as $bare) {
+            $out[] = $bare;
+        }
+    }
+
+    /*
+     * 6. LOWER-CASE HEX, where the line says it is a credential (audit 2026-09-23).
+     *
+     * The shape filter drops lower-hex on purpose: bare, it is indistinguishable from a git SHA or
+     * a sha256 digest, which the docs quote legitimately. But this project's own keys ARE 64-char
+     * lower-hex (the public API key, the HMAC secret), and the shape they leak in is a line that
+     * NAMES them — `Api-Code: 3d6a…` in a curl example, `hmac secret 9c1e…` in a note. So a hex run
+     * of 32+ is flagged when the same line names a credential and does not say it is a digest.
+     */
+    foreach (preg_split('/\R/', $contents) ?: [] as $line) {
+        if (preg_match('/secret|token|password|api[-_ ]?(key|code)|hmac|bearer/i', $line) !== 1) {
+            continue;
+        }
+        if (preg_match('/sha\d|digest|checksum|fingerprint|commit|integrity/i', $line) === 1) {
+            continue;
+        }
+        if (preg_match_all('/(?<![0-9a-fA-F])([0-9a-f]{32,})(?![0-9a-fA-F])/', $line, $hex) > 0) {
+            foreach ($hex[1] as $value) {
+                $named[] = $value;
+            }
+        }
+    }
+
     $shaped = array_filter($out, static fn (string $value): bool => looksLikeASecret($value));
 
     return array_values(array_unique(array_merge($named, $shaped)));
@@ -282,11 +339,24 @@ it('CATCHES every credential shape this project has actually leaked', function (
             .".QZm9vYmFyYmF6cXV4c2VjcmV0c2lnbmF0dXJldmFsdWVoZXJlMTIzNDU2'",
     ];
 
+    // The shapes the 2026-09-23 audit found this scanner blind to. Synthetic values.
+    $shapes['a Google client secret'] = '{"client_secret":"GOCSPX-'.'Ab3dEf6hIj9kLm2nOp5qRs8tUv1w"}';
+    $shapes['the same, BARE in a note'] = 'rotated it, the old one was GOCSPX-'.'Ab3dEf6hIj9kLm2nOp5qRs8tUv1w — dead';
+    // Split with `.` like every other synthetic value here: the pre-commit hook scans THIS file
+    // (the test skips itself; the hook does not), and a whole fixture on one line is what it blocks.
+    $shapes['lower-hex in a curl example'] = "curl -H 'Api-Code: 5e2a9c1f7b3d8e0a6c4f2b9d".'1e7a3c5f8b0d6e2a4c9f'.'1b7d3e5a0c8f6b2d4e9a1c'."'";
+    $shapes['lower-hex named in prose'] = 'the hmac secret was 5e2a9c1f7b3d8e0a'.'6c4f2b9d1e7a3c5f8b0d6e2a';
+
     $missed = [];
     foreach ($shapes as $label => $sample) {
         if (secretsIn('probe.php', $sample) === []) {
             $missed[] = $label;
         }
+    }
+
+    // A key pasted UNQUOTED into Markdown — invisible to the quoted-literal rule.
+    if (secretsIn('RUNBOOK.md', "set it to\n\n    Qm8xT2vN5kR7pW3aL9dF4hJ6sY1cB0eGzU\n") === []) {
+        $missed[] = 'an unquoted key in Markdown';
     }
 
     expect($missed)->toBe([]);
@@ -300,6 +370,10 @@ it('still ignores the things that merely LOOK like keys', function () {
         'a placeholder' => 'APP_SECRET=your-application-secret-value-goes-right-here',
         'a namespaced class' => "'Illuminate\\\\Foundation\\\\Console\\\\AboutCommand\\\\Something'",
     ];
+
+    // Lower-hex that is NOT a credential, on lines that say what it is (rule 6's exclusions).
+    $benign['a commit SHA in prose'] = 'fixed in commit 3fa8c1e9b27d4f60a1c3e5b7d9f2a4c6e8b0d1f3';
+    $benign['a digest next to the word token'] = 'token table checksum 5e2a9c1f7b3d8e0a6c4f2b9d1e7a3c5f8b0d6e2a';
 
     $falsePositives = [];
     foreach ($benign as $label => $sample) {
@@ -335,6 +409,20 @@ it('fails when a KNOWN exposure has been cleaned up, so the list cannot rot', fu
     }
 
     expect($cleared)->toBe([], "these exposures are GONE — delete them from KNOWN:\n  ".implode("\n  ", $cleared));
+});
+
+it('tracks no downloaded Google client secret FILE, whatever its contents', function () {
+    // The audit's leak was a whole `client_secret_<id>.apps.googleusercontent.com.json` committed
+    // at the repo root. A NAME rule, so it is caught even if the value inside took a new shape.
+    $root = dirname(base_path());
+    $listing = T::str(shell_exec('cd '.escapeshellarg($root).' && git ls-files'));
+
+    $tracked = array_values(array_filter(
+        array_map('trim', explode("\n", $listing)),
+        static fn (string $p): bool => preg_match('#(^|/)client_secret[^/]*\.json$#i', $p) === 1,
+    ));
+
+    expect($tracked)->toBe([]);
 });
 
 it('keeps every real .env out of git, and every .env.example free of real values', function () {

@@ -179,7 +179,13 @@ final class CompatAccount
         return [
             'id' => Row::int($row, 'id'),
             'user_id' => Row::nint($row, 'user_id'),
-            'guest_token' => Row::nstr($row, 'guest_token'),
+            /*
+             * `guest_token` is deliberately NOT emitted (security audit, Finding 2; D-26). It is a
+             * BEARER credential for the guest cart (`GET me/cart`, `POST cart/merge`), and this row
+             * rides along in `me/orders` — where an order placed against somebody else's address
+             * handed their token back. No storefront screen reads it. Legacy emits it; the
+             * difference is sanctioned.
+             */
             'shipping_city_id' => Row::int($row, 'shipping_city_id'),
             'address_line' => Row::str($row, 'address_line'),
             'phone_number_one' => Row::str($row, 'phone_number_one'),

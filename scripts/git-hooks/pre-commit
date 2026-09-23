@@ -10,11 +10,30 @@
 #   4b. an agent/planning file named AGENTS.md or CLAUDE.md at ANY path
 #      (solo-developer policy: these exist on the developer's machine only;
 #      no allowlist applies to them, ever)
-#   5. added content containing: "BEGIN RSA", "BEGIN OPENSSH", a bcrypt hash
-#      ($2a$/$2b$/$2y$), a Paymob key WITH a value, or more than PHONE_LIMIT
-#      distinct Egyptian mobile numbers (01xxxxxxxxx) in one file.
+#   4c. a downloaded Google OAuth client file: *client_secret*.json (any path)
+#   5. added content containing: "BEGIN RSA", "BEGIN OPENSSH", any
+#      "BEGIN ... PRIVATE KEY", a bcrypt hash ($2a$/$2b$/$2y$), a Paymob key
+#      WITH a value, or more than PHONE_LIMIT distinct Egyptian mobile numbers.
+#   6. the SIX secret rules of core/tests/Feature/SecretsInRepoTest.php, kept
+#      in step with it (security audit, 2026-09-23):
+#        S1 a credential-NAMED assignment with a 16+ char value
+#        S2 a quoted 32+ char literal shaped like a key (mixed case + digit)
+#        S3 a JWT (eyJ….eyJ…) — dotted, so S2 alone would miss it
+#        S4 a Google OAuth client secret (GOCSPX-…), quoted or bare
+#        S5 in .md files, the S2 shape UNQUOTED (a key pasted into a runbook)
+#        S6 lower-case hex of 32+ on a line that names a credential and does
+#           not say it is a digest/commit/checksum
 #      Content rules skip scripts/git-hooks/* only (the guard defines the
 #      patterns, so its own source would always match); name rules still apply.
+#
+# WHAT THIS CANNOT SEE: git HISTORY. It reads the lines being STAGED now. A
+# secret committed before this hook existed, or with FORCE_COMMIT, and removed
+# later, is still in every clone of this PUBLIC repository and this hook will
+# never mention it. "The hook passed" means "this commit adds no known shape",
+# not "the repository is clean". History needs a separate purge (rewrite +
+# force-push), and the leaked credential needs ROTATING either way. The same
+# limit applies to core/tests/Feature/SecretsInRepoTest.php (security audit,
+# 2026-09-23: both read "clean" over an OAuth secret sitting in history).
 #
 # Bypass (loud): FORCE_COMMIT=1 git commit ...
 # Self-test:     scripts/git-hooks/pre-commit --test   (stages nothing)
@@ -76,6 +95,11 @@ check_name() { # $1 = repo-relative path
     CLAUDE.md) add_fail "$p :: CLAUDE.md is never published (solo-developer policy) — keep it on disk only" ;;
   esac
 
+  # 4c. a downloaded Google OAuth client file — the audit's leak, by name
+  case "$base" in
+    *client_secret*.json) add_fail "$p :: Google OAuth client file (client_secret*.json) — never commit it; rotate if it ever was" ;;
+  esac
+
   # 4. environment files
   case "$base" in
     .env|.env.*|*.env)
@@ -87,6 +111,22 @@ check_name() { # $1 = repo-relative path
       (( ok )) || add_fail "$p :: environment file (.env*) — secrets never enter the repo"
       ;;
   esac
+}
+
+# The shape filter of SecretsInRepoTest::looksLikeASecret(), for S2 and S5:
+# 32+ chars, mixes lower case, upper case AND digits, not a placeholder, not a
+# hash/integrity prefix, and not a kebab/snake identifier (> 3 '-' or '_').
+# Reads candidate tokens on stdin; prints the ones that look like keys.
+key_shaped() {
+  local t
+  while IFS= read -r t; do
+    (( ${#t} >= 32 )) || continue
+    [[ $t =~ [a-z] && $t =~ [A-Z] && $t =~ [0-9] ]] || continue
+    [[ $t =~ ^(your|example|changeme|placeholder|test|dummy|sample|xxx|sha[0-9]|md5|integrity) ]] && continue
+    local hy=${t//[^-]/} us=${t//[^_]/}
+    (( ${#hy} > 3 || ${#us} > 3 )) && continue
+    printf '%s\n' "$t"
+  done
 }
 
 check_content() { # $1 = repo-relative path, $2 = added text (staged '+' lines)
@@ -102,6 +142,44 @@ check_content() { # $1 = repo-relative path, $2 = added text (staged '+' lines)
 
   grep -q -- 'BEGIN RSA'     <<<"$txt" && add_fail "$p :: private key material ('BEGIN RSA')"
   grep -q -- 'BEGIN OPENSSH' <<<"$txt" && add_fail "$p :: private key material ('BEGIN OPENSSH')"
+  grep -qE -- '-----BEGIN [A-Z ]*PRIVATE KEY-----' <<<"$txt" \
+    && add_fail "$p :: private key material ('BEGIN ... PRIVATE KEY')"
+
+  # ---- S1..S6: the SecretsInRepoTest rules (keep the two in step) ----------
+
+  # S1 a credential-NAMED assignment with a real value (16+, not a placeholder
+  # or ${INTERPOLATION}). The name says it is a secret, so no shape test.
+  grep -E -- '^[[:space:]]*(export[[:space:]]+)?[A-Z0-9_]*(KEY|SECRET|TOKEN|PASSWORD|DSN)[A-Z0-9_]*[[:space:]]*=[[:space:]]*["'"'"']?[^[:space:]"'"'"'#]{16,}' <<<"$txt" \
+    | grep -viqE -- '=[[:space:]]*["'"'"']?(your|example|changeme|placeholder|test|dummy|sample|xxx|null|true|false|base64:|\$\{?[A-Z0-9_]+\}?)' \
+    && add_fail "$p :: S1 a credential-named assignment with a real value"
+
+  # S2 a quoted literal shaped like a key.
+  [[ -n $(grep -oE -- '["'"'"'`][A-Za-z0-9_-]{32,}["'"'"'`]' <<<"$txt" | tr -d '"'"'"'`' | key_shaped) ]] \
+    && add_fail "$p :: S2 a quoted key-shaped literal (32+ chars, mixed case and digits)"
+
+  # S3 a JWT — a Paymob API key is one; its dots defeat S2.
+  grep -qE -- 'eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}' <<<"$txt" \
+    && add_fail "$p :: S3 a JWT (eyJ….eyJ…)"
+
+  # S4 a Google OAuth client secret — a fixed prefix, identifiable quoted or bare.
+  grep -qE -- 'GOCSPX-[A-Za-z0-9_-]{20,}' <<<"$txt" \
+    && add_fail "$p :: S4 a Google OAuth client secret (GOCSPX-...)"
+
+  # S5 Markdown: the S2 shape with NO quotes — how a person pastes a key into a
+  # runbook line or a fenced block.
+  case "$p" in
+    *.md|*.MD)
+      [[ -n $(grep -oE -- '[A-Za-z0-9_-]{32,}' <<<"$txt" | key_shaped) ]] \
+        && add_fail "$p :: S5 an unquoted key-shaped token in Markdown"
+      ;;
+  esac
+
+  # S6 lower-case hex of 32+ on a line that NAMES a credential and does not say
+  # it is a digest. This project's own keys are 64-char lower hex.
+  grep -iE -- 'secret|token|password|api[-_ ]?(key|code)|hmac|bearer' <<<"$txt" \
+    | grep -viE -- 'sha[0-9]|digest|checksum|fingerprint|commit|integrity' \
+    | grep -qE -- '(^|[^0-9a-fA-F])[0-9a-f]{32,}([^0-9a-fA-F]|$)' \
+    && add_fail "$p :: S6 lower-case hex on a line that names a credential"
 
   # bcrypt: $2a$/$2b$/$2y$ + cost + 53 chars of salt+hash
   grep -qE -- '\$2[aby]\$[0-9]{2}\$[./A-Za-z0-9]{53}' <<<"$txt" \
@@ -164,13 +242,39 @@ selftest() {
   check_content "keys/id_rsa"        "-----BEGIN RSA PRIVATE KEY-----";                        expect block "BEGIN RSA"
   check_content "keys/id_ed25519"    "-----BEGIN OPENSSH PRIVATE KEY-----";                    expect block "BEGIN OPENSSH"
   check_content "seed/users.sql"     "'\$2y\$10\$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi'"; expect block "bcrypt hash"
-  check_content "config/paymob.php"  "'api_key' => 'ZXlKMGVYQWlPaUpLVjFRaUxDSmhiR2NpT2lKSVV6VXhNaUo5'"; expect allow "paymob-looking value without PAYMOB/KEY words"
+  # Was "expect allow" until 2026-09-23: the old hook only knew the PAYMOB-named rule, so a key
+  # under a neutral name passed. S2 now blocks it, as SecretsInRepoTest rule 2 always did — a
+  # 48-char mixed-case literal under `api_key` IS a pasted key, whatever the variable is called.
+  check_content "config/paymob.php"  "'api_key' => 'ZXlKMGVYQWlPaUpLVjFRaUxDSmhiR2NpT2lKSVV6VXhNaUo5'"; expect block "a key under a neutral name (S2; allowed before 2026-09-23)"
   check_content "config/paymob.php"  "PAYMOB_API_KEY=ZXlKMGVYQWlPaUpLVjFRaUxDSmhiR2NpT2lKSVV6VXhNaUo5"; expect block "PAYMOB_*KEY with literal value"
   check_content "config/services.php" "'api_key' => env('PAYMOB_API_KEY'),";                    expect allow "env('PAYMOB_API_KEY') reference"
   check_content ".env.production.example" "PAYMOB_SECRET_KEY=                    # YOUR PAYMOB SECRET KEY"; expect allow "empty example value"
   check_content "export/customers.csv" "$phones21";                                            expect block "21 distinct Egyptian phones"
   check_content "seed/cities.php"      "$phones5";                                             expect allow "5 phones (below limit)"
   check_content "assets/icon.svg"      "M0100000000010000000001100000000L01000000000 01000000000";  expect allow "digits glued to other digits/letters do not count"
+
+  echo "== audit 2026-09-23: name + the six secret rules =="
+  # Synthetic Google fixtures are SPLIT across adjacent quoted pieces (sh joins them at run time)
+  # so no line carries a whole OAuth shape: GitHub push protection rightly blocks one. Never
+  # "allow-secret" a fixture — that teaches the scanner to ignore the shape for good.
+  check_name    "client_secret_1042467027439-abc.apps.google""usercontent.com.json"; expect block "client_secret*.json at the root"
+  check_name    "config/google/client_secret.json";                              expect block "client_secret*.json at any path"
+  check_content "keys/service.pem"    "-----BEGIN PRIVATE KEY-----";               expect block "BEGIN PRIVATE KEY (PKCS#8)"
+  check_content "backend/.env.x"      "PUBLIC_API_KEY=3f8a1c9e2b7d4f6a8c0e1b3d5f7a9c2e4b6d8f0a";  expect block "S1 named assignment"
+  check_content ".env.example"        "APP_SECRET=your-application-secret-value-goes-here";  expect allow "S1 placeholder"
+  check_content ".env.example"        "VITE_KEY=\"\${PUSHER_APP_KEY}\"";              expect allow "S1 interpolation"
+  check_content "src/api.js"          "const API_CODE = \"Qm8xT2vN5kR7pW3aL9dF4hJ6sY1cB0eGzU\"";  expect block "S2 quoted key-shaped literal"
+  check_content "pnpm-lock.yaml"      "\"sha512-AbCdEfGhIjKlMnOpQrStUvWxYz0123456789AbCd\"";  expect allow "S2 integrity hash"
+  check_content "src/pay.php"         "'eyJhbGciOiJIUzUxMiJ9.eyJjbGFzcyI6Ik1lcmNoYW50In0.sig'";  expect block "S3 JWT"
+  check_content "notes/oauth.txt"     "old secret was GOCSPX""-Ab3dEf6hIj""9kLm2nOp5qRs8tUv1w";  expect block "S4 GOCSPX bare"
+  check_content "docs/RUNBOOK.md"     "    Qm8xT2vN5kR7pW3aL9dF4hJ6sY1cB0eGzU";       expect block "S5 unquoted key in Markdown"
+  check_content "src/notes.txt"       "    Qm8xT2vN5kR7pW3aL9dF4hJ6sY1cB0eGzU";       expect allow "S5 is Markdown-only"
+  check_content "docs/RUNBOOK.md"     "Api-Code: 5e2a9c1f7b3d8e0a6c4f2b9d1e7a3c5f8b0d6e2a4c9f1b7d3e5a0c8f6b2d4e9a1c";  expect block "S6 lower-hex api code"
+  check_content "docs/notes.md"       "the hmac secret was 5e2a9c1f7b3d8e0a6c4f2b9d1e7a3c5f8b0d6e2a";  expect block "S6 lower-hex in prose"
+  check_content "docs/notes.md"       "token table checksum 5e2a9c1f7b3d8e0a6c4f2b9d1e7a3c5f8b0d6e2a";  expect allow "S6 digest wording"
+  check_content "docs/notes.md"       "fixed in commit 3fa8c1e9b27d4f60a1c3e5b7d9f2a4c6e8b0d1f3";  expect allow "S6 commit SHA, no credential word"
+  check_content "config/services.php" "'hmac_secret' => env('PAYMOB_HMAC_SECRET'),";  expect allow "env() reference"
+  check_content "docs/audit.md"       "client_secret len 35, prefix GOCSPX, sha256 006fabe1";  expect allow "a description, no value"
 
   echo "== self-exemption =="
   local self_src; self_src=$(cat "${BASH_SOURCE[0]}")

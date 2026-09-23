@@ -1,5 +1,6 @@
 <?php
 
+use App\Domain\Access\UserWriteGuard;
 use App\Domain\Customers\CustomerAccounts;
 use App\Domain\Customers\CustomerPayload;
 use App\Domain\Customers\CustomerTokens;
@@ -334,7 +335,9 @@ it('reports has_password FALSE for a social-shaped account, which is what the sc
 
     // A password-less account is what piece 5 creates; the payload has to describe one correctly
     // before then, because the account screen decides "Set password" vs "Change password" on it.
-    DB::table('users')->where('id', $user->id)->update(['password' => null]);
+    // The social-only account shape. Core never writes a NULL password; the legacy app did.
+    UserWriteGuard::fixture(fn () => DB::table('users')->where('id', $user->id)
+        ->update(['password' => null]));
 
     expect(CustomerPayload::of($user->refresh())['has_password'])->toBeFalse();
 });

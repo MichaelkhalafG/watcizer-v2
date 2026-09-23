@@ -2,11 +2,17 @@
 import { useCallback, useState } from 'react'
 import { useUIStore } from '../../Store/uiStore'
 import http from '../../Context/api'
+import { issueNonce } from '../../lib/socialNonce'
 import { GoogleIcon, MicrosoftIcon } from './SocialIcons'
 
 // "Continue with Google / Microsoft". Asks the backend for the OAuth URL, then
 // hands the browser off to the provider. The backend redirects back to
-// /auth/callback?token=… which AuthCallback consumes.
+// /auth/callback?token=…&nonce=… which AuthCallback consumes.
+//
+// The NONCE is generated here and kept in sessionStorage. The flow previously ran
+// with no OAuth `state` at all, which let an attacker's authorisation code sign a
+// victim's browser into the attacker's account — see src/lib/socialNonce.js for
+// the full argument. Core will not start a flow without one.
 export default function SocialButtons({ onError }) {
   const { language } = useUIStore()
   const isRTL = language === 'ar'
@@ -17,7 +23,9 @@ export default function SocialButtons({ onError }) {
       if (busy) return
       setBusy(provider)
       try {
-        const { data } = await http.get(`/auth/${provider}/redirect`)
+        const nonce = issueNonce()
+        if (!nonce) throw new Error('no nonce')
+        const { data } = await http.get(`/auth/${provider}/redirect`, { params: { nonce } })
         if (data?.url) {
           window.location.href = data.url
           return

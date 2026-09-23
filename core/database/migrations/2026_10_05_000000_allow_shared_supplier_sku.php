@@ -8,6 +8,10 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 /**
+ * ⚠ DATA REPAIR: a silent no-op on an EMPTY catalogue — `migrate` runs before `core:transform` on
+ * a rebuild, so it finds no rows and reports zero (security audit, 2026-09-23). Only valid AFTER
+ * the catalogue exists; production is never rebuilt, and a new repair written this way is inert.
+ *
  * Two products may carry one supplier code.
  *
  * ── The contradiction this settles ──────────────────────────────────────────────────────────

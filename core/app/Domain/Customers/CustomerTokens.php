@@ -63,9 +63,20 @@ use RuntimeException;
  * refresh path, and a thirty-day token that the customer re-earns by signing in is the behaviour
  * being replaced. Adding a refresh flow is a decision about sessions, not a detail of issuance.
  *
- * **No "log out everywhere".** That would mean revoking tokens this table has never seen — the
- * ones minted before a `jti` was recorded — which cannot be done by `jti` at all. It needs a
- * per-user epoch column and it is a feature, not a fix.
+ * ── "Log out everywhere" — BUILT, and this docblock used to deny it ─────────────────────────
+ *
+ * This paragraph read *"No 'log out everywhere'. … It needs a per-user epoch column and it is a
+ * feature, not a fix."* That was true when it was written and stopped being true the same day
+ * (piece 4b, M1v, 2026-09-22): the epoch column exists, {@see self::invalidateAllFor()} bumps it,
+ * and {@see LegacyJwt::subject()} refuses any token issued strictly before it.
+ *
+ * Left uncorrected it was the worst kind of comment — a confident denial of a security control
+ * that is right there in the same class, which is exactly what somebody reasoning about "can we
+ * sign a thief out?" would have read and believed (review 🟠 minor).
+ *
+ * What is still true is WHY it needed an epoch: a `jti` revocation can only reach tokens this
+ * table has seen, and tokens minted before a `jti` was recorded cannot be named individually. The
+ * epoch reaches them all by time instead.
  */
 final class CustomerTokens
 {

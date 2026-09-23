@@ -1,4 +1,5 @@
 import HomeClient from './HomeClient'
+import { safeJsonLd } from '@/src/lib/safeJsonLd'
 
 // ISR: render on the server (with catalog data in the HTML for SEO), cache, and
 // revalidate every 5 min — matching the products query staleTime.
@@ -83,7 +84,7 @@ export default function HomePage() {
     <>
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(storeJsonLd) }}
+        dangerouslySetInnerHTML={{ __html: safeJsonLd(storeJsonLd) }}
       />
       <HomeClient />
     </>

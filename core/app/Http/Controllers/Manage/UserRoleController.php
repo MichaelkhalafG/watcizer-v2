@@ -64,7 +64,8 @@ final class UserRoleController
     public function index(Request $request): Response|StreamedResponse
     {
         $term = trim(Coerce::str($request->input('q')));
-        $grants = self::grantRows();
+        $actorScope = $this->actorScope($request);
+        $grants = self::grantRows($actorScope);
 
         /*
          * WHO CAN GET INTO THE DASHBOARD, as a file — the list somebody reviews quarterly.
@@ -117,13 +118,23 @@ final class UserRoleController
                 ['value' => Role::DataEntry->value, 'label' => ManageText::t('users.role_data_entry', 'إدخال بيانات')],
                 ['value' => Role::Admin->value, 'label' => ManageText::t('users.role_admin_full', 'مدير (كل الصلاحيات)')],
             ],
-            'storefronts' => self::storefrontOptions(),
+            // Only what this actor may grant: a scoped admin is never offered "all storefronts"
+            // or a storefront outside its own grant (security audit, Finding 1).
+            'storefronts' => self::storefrontOptions($actorScope),
             'current_user_id' => Coerce::int($request->user()?->getAuthIdentifier()),
         ]);
     }
 
     /**
      * Grant a role to an EXISTING account, optionally scoped to one storefront.
+     *
+     * ⚠ BEFORE ISSUING THE FIRST SCOPED GRANT, READ THIS (2026-09-23). The business does not use
+     * scoped grants — one team runs both storefronts; every operator is an unscoped admin or
+     * data-entry. The system supports them, and the grant screen, the Gate and the storefront
+     * settings are scope-safe (security audit, Finding 1). `PromotionController` is NOT: it takes
+     * `storefront_id` from the body with no scope check, so a scoped operator could put a discount
+     * on a shop they were never given. That gap is left open deliberately and is harmless until a
+     * `storefront_id` other than null is granted here. Close it first — see its class docblock.
      *
      * The e-mail must already exist: `Rule::exists` is the whole enforcement of "grants only", and
      * the message says where an account comes from instead of offering to create one.
@@ -147,6 +158,7 @@ final class UserRoleController
 
         $role = Role::from(Coerce::str($data['role']));
         $storefrontId = Coerce::nint($data['storefront_id'] ?? null);
+        $this->assertWithinActorScope($request, $storefrontId);
 
         $this->roles->assign($user, $role, $storefrontId, $request->user());
 
@@ -187,6 +199,9 @@ final class UserRoleController
             'email.unique' => ManageText::t('users.email_taken', 'هذا البريد له حساب بالفعل.'),
         ]));
 
+        // BEFORE the account is created: a refused grant must not leave a role-less account behind.
+        $this->assertWithinActorScope($request, Coerce::nint($data['storefront_id'] ?? null));
+
         $accounts->create(
             [
                 'first_name' => Coerce::str($data['first_name']),
@@ -224,6 +239,10 @@ final class UserRoleController
         $storefrontId = Row::nint($grantRow, 'storefront_id');
         $currentUserId = Coerce::int($request->user()?->getAuthIdentifier());
 
+        // A scoped admin may revoke only grants inside its own storefronts — which also means it
+        // can never touch an UNSCOPED grant, the last global admin's included (Finding 1).
+        $this->assertWithinActorScope($request, $storefrontId);
+
         if ($role === Role::Admin->value && $userId === $currentUserId) {
             throw ValidationException::withMessages([
                 'grant' => ManageText::t('users.revoke_self_refused', 'لا يمكنك سحب صلاحية المدير من نفسك. اطلب من مدير آخر أن يفعلها.'),
@@ -252,15 +271,20 @@ final class UserRoleController
     // ── reads ────────────────────────────────────────────────────────────────────────────────
 
     /**
-     * Every grant, with the account it belongs to.
+     * Every grant, with the account it belongs to — or, for a scoped actor, every grant inside its
+     * scope.
      *
+     * @param  list<int>|null  $actorScope
      * @return list<array<string, mixed>>
      */
-    private static function grantRows(): array
+    private static function grantRows(?array $actorScope = null): array
     {
         $out = [];
         foreach (
             DB::table('core_user_roles as r')
+                // A scoped actor sees only the grants it could act on. Unscoped grants, and those
+                // of other storefronts, are not its business (Finding 1).
+                ->when($actorScope !== null, fn (Builder $q) => $q->whereIn('r.storefront_id', $actorScope === [] ? [0] : $actorScope))
                 ->leftJoin('users as u', 'u.id', '=', 'r.user_id')
                 ->leftJoin('users as g', 'g.id', '=', 'r.granted_by')
                 ->leftJoin('storefronts as s', 's.id', '=', 'r.storefront_id')
@@ -334,17 +358,63 @@ final class UserRoleController
         return $name === '' ? null : $name;
     }
 
+    /**
+     * The storefronts the ACTOR may grant or revoke on: null = all of them.
+     *
+     * ── Security audit, Finding 1 (2026-09-23) ───────────────────────────────────────────────
+     *
+     * These three writes checked the ROLE being granted and never the actor's own reach. A
+     * Brand-Fashion-scoped admin passes `can:manage-users` (the route asks the question without a
+     * storefront), and could then POST `{role: admin, storefront_id: null}` — minting itself an
+     * UNSCOPED admin — or revoke any grant by id, every other operator's included. The Gate fix
+     * stops the short-circuit; this is the check that stops the write.
+     *
+     * Read per ABILITY (`manage-users`), not per user: an unscoped grant that cannot manage users
+     * must not widen where this actor may grant.
+     *
+     * @return list<int>|null
+     */
+    private function actorScope(Request $request): ?array
+    {
+        $actor = $request->user();
+        abort_if(! $actor instanceof User, 403);
+
+        return $this->roles->scopeForAbility($actor, Role::MANAGE_USERS);
+    }
+
+    /**
+     * Refuse a grant or revocation outside the actor's scope — 403, not a form error: the form
+     * never offers such a target, so reaching here takes a hand-built request.
+     */
+    private function assertWithinActorScope(Request $request, ?int $targetStorefrontId): void
+    {
+        $scope = $this->actorScope($request);
+        if ($scope === null) {
+            return;                                          // an unscoped admin: unaffected
+        }
+        abort_if($targetStorefrontId === null || ! in_array($targetStorefrontId, $scope, true), 403);
+    }
+
     private static function unscopedAdminCount(): int
     {
         return (int) DB::table('core_user_roles')
             ->where('role', Role::Admin->value)->whereNull('storefront_id')->count();
     }
 
-    /** @return list<array{value: string, label: string}> */
-    private static function storefrontOptions(): array
+    /**
+     * @param  list<int>|null  $actorScope
+     * @return list<array{value: string, label: string}>
+     */
+    private static function storefrontOptions(?array $actorScope = null): array
     {
-        $out = [['value' => '', 'label' => ManageText::t('common.all_storefronts', 'كل المتاجر')]];
-        foreach (DB::table('storefronts')->orderBy('id')->get(['id', 'name']) as $raw) {
+        $out = $actorScope === null
+            ? [['value' => '', 'label' => ManageText::t('common.all_storefronts', 'كل المتاجر')]]
+            : [];
+        $query = DB::table('storefronts')->orderBy('id');
+        if ($actorScope !== null) {
+            $query->whereIn('id', $actorScope === [] ? [0] : $actorScope);
+        }
+        foreach ($query->get(['id', 'name']) as $raw) {
             $row = Row::cast($raw);
             $out[] = ['value' => (string) Row::int($row, 'id'), 'label' => Row::nstr($row, 'name') ?? ''];
         }

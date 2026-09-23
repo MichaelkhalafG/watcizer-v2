@@ -169,7 +169,16 @@ return [
     |
     */
 
-    'secure' => env('SESSION_SECURE_COOKIE'),
+    /*
+     * Secure UNLESS the app runs locally (security audit Finding 9, 2026-09-23). With no default,
+     * a host whose `.env` did not mention it served the dashboard session cookie without `Secure`,
+     * so it could travel over plain HTTP. Now forgetting is the safe direction everywhere except
+     * `APP_ENV=local`, where `php artisan serve` is plain http:// and a Secure cookie would never
+     * come back — dashboard sign-in would loop. Nobody has to edit anything on either side;
+     * `SESSION_SECURE_COOKIE` still overrides explicitly. Runbook §7 checks the live header, because
+     * a config default is a claim until the response shows it.
+     */
+    'secure' => env('SESSION_SECURE_COOKIE', env('APP_ENV') !== 'local'),
 
     /*
     |--------------------------------------------------------------------------

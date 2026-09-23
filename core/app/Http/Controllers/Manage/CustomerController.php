@@ -207,7 +207,9 @@ final class CustomerController
             ]);
         }
 
-        $moved = app(GuestOrderLink::class)->attachGroup($customer, $target);
+        // The scope goes THROUGH, not just checked at the door: one guest key can span
+        // storefronts, so a scoped operator must move only the orders they are granted.
+        $moved = app(GuestOrderLink::class)->attachGroup($customer, $target, $scope);
 
         return redirect()
             ->route('manage.customers.show', ['customer' => 'u:'.Coerce::int($target->getKey())])

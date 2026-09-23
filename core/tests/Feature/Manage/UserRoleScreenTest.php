@@ -113,10 +113,20 @@ it('refuses to revoke the LAST unscoped admin grant, which would lock the dashbo
             ->whereNull('storefront_id')->value('id')
     );
 
-    actingAs($admin)->delete("/manage/users/grants/{$lastGrant}")->assertSessionHasErrors('grant');
+    /*
+     * Refused EARLIER than it used to be (security audit, Finding 1, 2026-09-23). The acting
+     * admin is now storefront-scoped, and a scoped admin may not touch an UNSCOPED grant at all —
+     * so this is a 403 from the actor-scope check, before the last-admin guard is reached. The
+     * property the test exists for is unchanged: the last global admin grant survives.
+     *
+     * The last-admin guard stays as defence in depth. Through this screen it is now reachable only
+     * by an unscoped actor, who is itself an unscoped admin and is refused revoking its own grant
+     * first — which is the point: two independent refusals, either of which keeps the dashboard
+     * administrable.
+     */
+    actingAs($admin)->delete("/manage/users/grants/{$lastGrant}")->assertForbidden();
 
-    expect(DB::table('core_user_roles')->where('id', $lastGrant)->exists())->toBeTrue()
-        ->and(T::err('grant'))->toContain('آخر صلاحية مدير عامة');
+    expect(DB::table('core_user_roles')->where('id', $lastGrant)->exists())->toBeTrue();
 });
 
 it('revokes an ordinary grant and leaves the account alone', function () {

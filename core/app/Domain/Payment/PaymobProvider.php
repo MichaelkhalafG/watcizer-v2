@@ -103,8 +103,25 @@ final class PaymobProvider implements PaymentProvider
             ],
             'extras' => ['order_id' => $intent->orderId, 'storefront_id' => $intent->storefrontId],
         ];
-        if ($intent->returnUrl !== null) {
-            $payload['redirection_url'] = $intent->returnUrl;
+        /*
+         * BOTH callback urls, on EVERY intention (review 🔴-2).
+         *
+         * Before this, core sent neither and the destination was whatever Paymob's merchant portal
+         * held — a URL in somebody else's web interface, naming the legacy host, which `.htaccess`
+         * §4 closes `/api` on. A callback sent there after the flip 404s with the money taken.
+         *
+         * `redirection_url` is the shopper's return (a GET); `notification_url` is the processed
+         * callback (a POST). Sending both means a payment this application started can only call
+         * back to this application. `PaymentInitiator` will not build an intent without them, so
+         * the null arms are unreachable from that path; they exist so a future caller constructing
+         * an intent by hand degrades to the old behaviour rather than sending a null URL, which
+         * Paymob rejects outright.
+         */
+        if ($intent->redirectUrl !== null) {
+            $payload['redirection_url'] = $intent->redirectUrl;
+        }
+        if ($intent->notifyUrl !== null) {
+            $payload['notification_url'] = $intent->notifyUrl;
         }
 
         try {

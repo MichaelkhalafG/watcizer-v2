@@ -7,6 +7,7 @@ import {
 import { buildProductSeo } from '@/src/lib/detailSeo'
 import { toSlug } from '@/src/utils/slugs'
 import ProductDetailClient from '@/src/Components/Product/ProductDetailClient'
+import { safeJsonLd } from '@/src/lib/safeJsonLd'
 
 // ISR: server-render the PDP (with product data + JSON-LD in the HTML for SEO),
 // cache, revalidate every 5 min — matching the products query staleTime.
@@ -85,11 +86,11 @@ export default async function ProductPage({ params }) {
           scrapers see it without executing JS (the core SEO deliverable). */}
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(productLd) }}
+        dangerouslySetInnerHTML={{ __html: safeJsonLd(productLd) }}
       />
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbLd) }}
+        dangerouslySetInnerHTML={{ __html: safeJsonLd(breadcrumbLd) }}
       />
       <ProductDetailClient param={slug} isOffer={false} />
     </>

@@ -82,8 +82,17 @@ Route::prefix('manage')->name('manage.')->group(function (): void {
         // Storefronts: admin only (§2.7 — creating/disabling a storefront is not a data-entry job).
         Route::middleware('can:'.Role::MANAGE_STOREFRONTS)->group(function (): void {
             Route::get('storefronts', [StorefrontController::class, 'index'])->name('storefronts.index');
-            Route::get('storefronts/{storefront}/edit', [StorefrontController::class, 'edit'])->name('storefronts.edit');
-            Route::put('storefronts/{storefront}', [StorefrontController::class, 'update'])->name('storefronts.update');
+            /*
+             * SCOPED (security audit, Finding 1, 2026-09-23). These two carried `can:` alone, which
+             * asks the unscoped question — so a Brand-Fashion-scoped admin could rename or disable
+             * the live Watchizer storefront by editing `/manage/storefronts/1`. The audit's step 4
+             * reached it through the escalation; with the escalation closed it was still reachable
+             * directly.
+             */
+            Route::middleware(EnsureStorefrontScope::with(Role::MANAGE_STOREFRONTS))->group(function (): void {
+                Route::get('storefronts/{storefront}/edit', [StorefrontController::class, 'edit'])->name('storefronts.edit');
+                Route::put('storefronts/{storefront}', [StorefrontController::class, 'update'])->name('storefronts.update');
+            });
         });
 
         /*

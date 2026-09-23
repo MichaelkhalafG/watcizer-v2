@@ -6,6 +6,10 @@ use Illuminate\Database\Query\JoinClause;
 use Illuminate\Support\Facades\DB;
 
 /**
+ * ⚠ DATA REPAIR: a silent no-op on an EMPTY catalogue — `migrate` runs before `core:transform` on
+ * a rebuild, so it finds no rows and reports zero (security audit, 2026-09-23). Only valid AFTER
+ * the catalogue exists; production is never rebuilt, and a new repair written this way is inert.
+ *
  * Electronics on Watchizer, the Joyroom products on both shops, and the Joyroom brand.
  *
  * ── What was lost, and how ──────────────────────────────────────────────────────────────────

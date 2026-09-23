@@ -3,6 +3,7 @@ import { getServerCatalog } from '@/src/lib/serverCatalog'
 import { parseListingParams } from '@/src/utils/listingParams'
 import { objectToSearchParams, listingMetadata, listingBreadcrumbLd } from '@/src/lib/listingSeo'
 import ListingClient from './ListingClient'
+import { safeJsonLd } from '@/src/lib/safeJsonLd'
 
 // ISR knob (harmless — the page reads searchParams so it renders dynamically):
 // keeps parity with the other routes' 5-min revalidate.
@@ -46,7 +47,7 @@ export default async function ListingPage({ searchParams }) {
       {/* BreadcrumbList structured data — in the initial HTML for scrapers. */}
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbLd) }}
+        dangerouslySetInnerHTML={{ __html: safeJsonLd(breadcrumbLd) }}
       />
       {/* ListingClient reads useSearchParams() → wrap in Suspense. */}
       <Suspense fallback={null}>

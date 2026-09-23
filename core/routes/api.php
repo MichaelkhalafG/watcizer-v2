@@ -63,12 +63,42 @@ Route::middleware('api.code')->group(function (): void {
     // the next. `compat.guest` mints and echoes the X-Guest-Token; `compat.auth` is the core
     // equivalent of `auth:api`, validating the legacy JWT with the shared secret.
     Route::middleware('compat.guest')->group(function (): void {
+        /*
+         * ── Locale NEGOTIATED on the two writes here whose errors reach the shopper (2026-09-23) ──────────────────
+         *
+         * The legacy host sets the locale from Accept-Language on EVERY request (default `en`, hard-
+         * coded in its config/app.php) and ships `lang/ar/validation.php`: an Arabic phone gets
+         * Arabic field errors under the checkout inputs, anything else English (`Checkout.jsx`
+         * renders `errors[field][0]`). Outside this group core answered in `APP_LOCALE`, which is
+         * `ar` on the server since 2026-09-20 (the dashboard's Arabic front door) — so after the
+         * flip EVERY shopper, English browser included, would have got Arabic field errors. That
+         * came AFTER the last compat:diff run, which is why no harness case had caught it: the
+         * header-less `address:invalid`, `cart:remove:*` and `checkout:no-address` cases would all
+         * have failed the next re-diff.
+         *
+         * Only the routes whose RESPONSE carries the validator's text are here. `add_to_cart`
+         * validates too, but legacy catches `\Exception` around it and answers a 500 with a ref, so
+         * no field text ever reaches the client and the locale changes nothing it can see (compat
+         * reproduces that, see CartCases `cart:add:invalid`). `delete_cart`, `me/cart` and
+         * `cart/validate` produce nothing locale-dependent in core. Negotiating on any of those
+         * would add risk and change nothing.
+         * Nothing PERSISTED depends on it either: the method list LEFT JOINs its labels with a
+         * fallback, the mail path reads no locale, and the order's city name is pinned to `en`.
+         *
+         * What is NOT byte-identical: core's Arabic phrasing for a few rules (`exists`, `integer`,
+         * some attribute names) differs from legacy's file — same language, same status, same field
+         * keys. Sanctioned as D-25 in DeviationRules rather than copying legacy's strings into a
+         * file the dashboard shares.
+         */
         Route::post('add_to_cart', [CartCompatController::class, 'add']);
-        Route::post('remove_from_cart', [CartCompatController::class, 'remove']);
+        Route::middleware('legacy.locale')->group(function (): void {
+            Route::post('remove_from_cart', [CartCompatController::class, 'remove']);
+            // Throttled per endpoint (security audit, Finding 2): each accepted call reserves stock.
+            Route::post('add_order', [CheckoutCompatController::class, 'addOrder'])->middleware('throttle:add-order');
+        });
         Route::delete('delete_cart/{id}', [CartCompatController::class, 'destroy']);
         Route::get('me/cart', [CartCompatController::class, 'show']);
         Route::post('cart/validate', [CartCompatController::class, 'validateCart']);
-        Route::post('add_order', [CheckoutCompatController::class, 'addOrder']);
     });
     /*
      * ── customer accounts (storefront Phase 1, piece 3, 2026-09-21) ──────────────────────────
@@ -85,20 +115,27 @@ Route::middleware('api.code')->group(function (): void {
      * accident of how the legacy routes grew, not a distinction.
      */
     Route::post('login', [CustomerAuthController::class, 'login']);
-    Route::post('register', [CustomerAuthController::class, 'register']);
+    // Per-endpoint throttle (review 🟠-4 / 🟡-11): registration creates an account AND sends mail
+    // from the shop's own domain, so the global 60/min is not a ceiling anyone would have chosen.
+    Route::post('register', [CustomerAuthController::class, 'register'])
+        ->middleware('throttle:customer-register');
     Route::post('logout', [CustomerAuthController::class, 'logout']);
     Route::post('auth/login', [CustomerAuthController::class, 'login']);
     // Social sign-in START (piece 5). Keeps the API key: `SocialButtons.jsx` fetches this and
     // then navigates itself, so the flow is stateless and there is no server session anywhere.
     Route::get('auth/{provider}/redirect', [CustomerSocialController::class, 'redirect'])
         ->where('provider', '[a-z]{2,20}');
-    Route::post('auth/register', [CustomerAuthController::class, 'register']);
+    Route::post('auth/register', [CustomerAuthController::class, 'register'])
+        ->middleware('throttle:customer-register');
 
     // Password reset (piece 4). Unauthenticated by nature: the customer is here because they
     // cannot sign in. The token is the credential, and the broker verifies it against
     // `core_password_resets` — never the legacy table, which the legacy app still uses.
+    // `forgot` is throttled by the broker itself (one link per address per minute). `reset` had
+    // nothing but the global 60/min in front of a one-hour token — see AppServiceProvider.
     Route::post('auth/forgot-password', [CustomerPasswordController::class, 'forgot']);
-    Route::post('auth/reset-password', [CustomerPasswordController::class, 'reset']);
+    Route::post('auth/reset-password', [CustomerPasswordController::class, 'reset'])
+        ->middleware('throttle:customer-reset');
 
     Route::middleware('compat.auth')->group(function (): void {
         Route::get('auth/me', [CustomerAuthController::class, 'me']);
@@ -120,7 +157,9 @@ Route::middleware('api.code')->group(function (): void {
         });
         Route::delete('me/addresses/{id}', [AccountCompatController::class, 'deleteAddress']);
     });
-    Route::post('add_address', [AccountCompatController::class, 'addAddress']);
+    // Negotiated for the same reason as the three cart/checkout writes above: it validates, and
+    // the legacy host answers its field errors in the shopper's Accept-Language.
+    Route::post('add_address', [AccountCompatController::class, 'addAddress'])->middleware('legacy.locale');
 
     /** @var list<string> $gone */
     $gone = config()->array('compat.gone');
@@ -175,7 +214,21 @@ Route::get('auth/verify-email/{id}/{hash}', [CustomerVerificationController::cla
  * flight at that moment would call back to the old address, leaving money taken and an order with
  * nobody to confirm it. Both run the SAME four checks in the SAME controller.
  */
-Route::get('pay/{storefront}/{provider}/callback', [PaymentCallbackController::class, 'handle'])
+/*
+ * GET **and POST** (review G2b). Paymob delivers a callback twice and by two different methods:
+ *
+ *   - `redirection_url` — the SHOPPER'S BROWSER returning, a GET with the twenty signed fields
+ *     flattened into the query string;
+ *   - `notification_url` — the PROCESSED callback, a server-to-server POST whose JSON body nests
+ *     the same fields under `obj.*`, with the `hmac` on the query string.
+ *
+ * Registering GET only meant the processed callback got a 405 and the order depended entirely on
+ * the shopper coming back — and a shopper who closes the tab after paying is exactly the case the
+ * processed callback exists for. Both methods run the SAME four checks in the same controller;
+ * `CompatCheckout::paymobField()` already reads both payload shapes, which is why this is a route
+ * line and not a second handler.
+ */
+Route::match(['get', 'post'], 'pay/{storefront}/{provider}/callback', [PaymentCallbackController::class, 'handle'])
     ->where('storefront', '[a-z0-9-]{2,32}')
     ->where('provider', '[a-z0-9_]{2,32}')
     ->name('pay.callback');
@@ -186,7 +239,7 @@ Route::get('pay/{storefront}/{provider}/callback', [PaymentCallbackController::c
  * step is performed it falls through to the wave-3 handler, so today's live callback behaves
  * exactly as it does today. See PaymentCallbackController::alias().
  */
-Route::get('callback_payment', [PaymentCallbackController::class, 'alias'])->name('pay.callback.alias');
+Route::match(['get', 'post'], 'callback_payment', [PaymentCallbackController::class, 'alias'])->name('pay.callback.alias');
 
 Route::any('categories/{any}', GoneController::class)->where('any', '.*');
 

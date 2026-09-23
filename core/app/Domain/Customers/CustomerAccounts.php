@@ -256,12 +256,14 @@ final class CustomerAccounts
              * `setRememberToken(Str::random(60))` is what Laravel's own reset callback does here,
              * and it is deliberately NOT done: the model's three wave-4A overrides make it a no-op
              * anyway, and `remember_token` is named by no reason in `UserWrites::REASONS`. Core has
-             * no remember-me cookie to invalidate — the customer's sessions are JWTs, and the ones
-             * already issued stay valid until they expire or are revoked.
+             * no remember-me cookie to invalidate — the customer's sessions are JWTs.
              *
-             * That last sentence is a real consequence, not a detail: resetting a password does NOT
-             * sign out a thief who already holds a token. Closing it needs "log out everywhere",
-             * which needs a per-user epoch column, and it is a feature nobody has asked for yet.
+             * This comment used to continue: *"resetting a password does NOT sign out a thief who
+             * already holds a token. Closing it needs 'log out everywhere' … a feature nobody has
+             * asked for yet."* **It was built, and it is called eleven lines below** (piece 4b,
+             * M1v, 2026-09-22). The denial outlived the gap by one afternoon and is corrected here
+             * rather than left to be believed (review 🟠 minor) — a stale comment that understates
+             * a security control is read as a reason to go and add one somewhere else.
              */
             $user->forceFill(['password' => $replacement]);
             $user->save();

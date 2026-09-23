@@ -6,10 +6,12 @@ namespace App\Http\Controllers\Customer;
 
 use App\Domain\Customers\CustomerSocial;
 use App\Domain\Customers\CustomerTokens;
+use App\Domain\Customers\SocialNonce;
 use App\Http\Controllers\Controller;
 use App\Support\Coerce;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Laravel\Socialite\Facades\Socialite;
 use Laravel\Socialite\Two\AbstractProvider;
@@ -30,8 +32,14 @@ use Throwable;
  *
  * **`redirect` answers JSON**, `{"url": "https://accounts.google.com/…"}`, and does NOT redirect.
  * `SocialButtons.jsx` fetches it with the API key and then sets `window.location.href` itself, so
- * the flow is stateless — `->stateless()` on the driver, no server session, which is what lets an
- * SPA on another origin drive it at all.
+ * the flow keeps no SERVER session — `->stateless()` on the driver, which is what lets an SPA on
+ * another origin drive it at all.
+ *
+ * **It is not state-LESS any more (review 🟠-8).** `stateless()` removed the OAuth `state` check
+ * outright, which left login CSRF wide open: an attacker's `code`, fed to a victim's browser,
+ * signed that browser into the ATTACKER'S account. The state is now a nonce the STOREFRONT
+ * generates, signed by this application and verified on the way back — see {@see SocialNonce} for
+ * the whole argument, including why the comparison has to happen in the SPA and not here.
  *
  * **`callback` REDIRECTS to the storefront**, never JSON: the browser arrives here from Google, not
  * from the application, so whatever is returned is rendered as a page. It lands on
@@ -48,7 +56,8 @@ use Throwable;
  *
  * ── Failures redirect with a CODE and never with a reason ───────────────────────────────────
  *
- * Every failure lands on `/auth/callback?error=<code>`. The codes are stable and the storefront
+ * Every failure lands on `/auth/callback?error=<code>&nonce=<the nonce>`. The codes are stable and
+ * the storefront
  * renders one generic message for all of them today — see {@see CustomerSocial} for what the
  * customer actually experiences, particularly in the refused-unverified branch, and why saying more
  * would be the account-enumeration answer `login` and `forgot-password` both withhold.
@@ -60,10 +69,23 @@ final class CustomerSocialController extends Controller
         private readonly CustomerTokens $tokens,
     ) {}
 
-    public function redirect(string $provider): JsonResponse
+    public function redirect(Request $request, string $provider): JsonResponse
     {
         if (! CustomerSocial::supports($provider)) {
             return response()->json(['error' => 'Unsupported provider.'], 422);
+        }
+
+        /*
+         * ── The nonce, before anything else (review 🟠-8) ────────────────────────────────────
+         *
+         * Required, not optional. An optional nonce is a flow an attacker simply starts without
+         * one, and then the protection exists only for the honest caller.
+         */
+        $nonce = Coerce::str($request->query('nonce'));
+        if (! SocialNonce::valid($nonce)) {
+            return response()->json([
+                'error' => 'Could not start social login.',
+            ], 422);
         }
 
         /*
@@ -78,7 +100,18 @@ final class CustomerSocialController extends Controller
         }
 
         try {
-            $url = $this->driver($provider)->redirect()->getTargetUrl();
+            /*
+             * `with(['state' => …])` rather than Socialite's own state.
+             *
+             * Under `stateless()` Socialite adds no `state` at all (`getCodeFields()` includes it
+             * only when `usesState()`), but it does merge whatever `with()` was given — so this is
+             * how a state parameter reaches the provider on a flow that has no session to keep one
+             * in. Google echoes it back verbatim on the callback.
+             */
+            $url = $this->driver($provider)
+                ->with(['state' => SocialNonce::state($nonce)])
+                ->redirect()
+                ->getTargetUrl();
 
             return response()->json(['url' => $url]);
         } catch (Throwable $e) {
@@ -89,10 +122,29 @@ final class CustomerSocialController extends Controller
         }
     }
 
-    public function callback(string $provider): RedirectResponse
+    public function callback(Request $request, string $provider): RedirectResponse
     {
         if (! CustomerSocial::supports($provider)) {
             return $this->back('unsupported_provider');
+        }
+
+        /*
+         * ── The state check, BEFORE the code is exchanged (review 🟠-8) ──────────────────────
+         *
+         * First, because exchanging the `code` tells the provider this application accepted the
+         * callback, and there is no reason to do that for a callback we are about to refuse.
+         *
+         * A missing or unsigned state is the naive login-CSRF attempt and is refused here. The
+         * nonce that survives is handed back to the storefront, which compares it with the one it
+         * generated — that comparison is what defeats the attack where the attacker supplies a
+         * state of their own, because it will be THEIR nonce and the victim's browser has nothing
+         * matching it. See {@see SocialNonce}.
+         */
+        $nonce = SocialNonce::fromState(Coerce::nstr($request->query('state')));
+        if ($nonce === null) {
+            Log::warning('social callback rejected: missing or invalid state', ['provider' => $provider]);
+
+            return $this->back('invalid_state');
         }
 
         try {
@@ -105,16 +157,16 @@ final class CustomerSocialController extends Controller
              */
             Log::error('social callback failed', ['provider' => $provider, 'reason' => $e->getMessage()]);
 
-            return $this->back('social_failed');
+            return $this->back('social_failed', null, $nonce);
         }
 
         $outcome = $this->social->resolve($provider, $account);
 
         if (array_key_exists('refused', $outcome)) {
-            return $this->back(Coerce::str($outcome['refused']));
+            return $this->back(Coerce::str($outcome['refused']), null, $nonce);
         }
 
-        return $this->back(null, $this->tokens->issue($outcome['user']));
+        return $this->back(null, $this->tokens->issue($outcome['user']), $nonce);
     }
 
     /**
@@ -137,11 +189,22 @@ final class CustomerSocialController extends Controller
         return $driver->stateless();
     }
 
-    /** Back to the storefront's callback page, with a token or an error code and nothing else. */
-    private function back(?string $error, ?string $token = null): RedirectResponse
+    /**
+     * Back to the storefront's callback page, with a token or an error code — and the nonce.
+     *
+     * The nonce rides on EVERY answer, including the refusals (review 🟠-8). A storefront that
+     * only got it on success could not tell "my flow was refused" from "somebody else's flow
+     * landed in my tab", and the second is the case worth refusing. It is absent only when the
+     * state itself did not verify, because then there is no nonce this application issued.
+     */
+    private function back(?string $error, ?string $token = null, ?string $nonce = null): RedirectResponse
     {
         $base = rtrim(config()->string('customers.storefront_url'), '/').'/auth/callback';
+        $query = $error !== null ? ['error' => $error] : ['token' => $token];
+        if ($nonce !== null) {
+            $query['nonce'] = $nonce;
+        }
 
-        return redirect($base.'?'.http_build_query($error !== null ? ['error' => $error] : ['token' => $token]));
+        return redirect($base.'?'.http_build_query($query));
     }
 }

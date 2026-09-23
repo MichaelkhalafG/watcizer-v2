@@ -131,6 +131,14 @@ final class DeviationRules
                 'id' => 'D-22', 'cases' => 'all_product*|sitemap*', 'paths' => ['$[*].updated_at', 'url:/product/*'], 'kinds' => ['value'], 'direction' => 'compat_newer',
                 'why' => 'The `updated_at` (and the sitemap `lastmod` derived from it) of a product whose stock the harness just moved: the ledger touches `updated_at` exactly as the legacy decrement did, and core re-renders while the legacy cache still holds the old page. Directional: compat may be NEWER, never older.',
             ],
+            [
+                'id' => 'D-26', 'cases' => 'account:*', 'paths' => ['$[*].guest_token', '$[*].address.guest_token'], 'kinds' => ['missing_in_compat'],
+                'why' => 'An ADDRESS row no longer carries `guest_token` (security audit Finding 2, 2026-09-23). It is a bearer credential for the guest cart (`me/cart`, `cart/merge`), and the address rides along in `me/orders`: an order placed against the address of somebody else handed their token back to the caller. No storefront screen reads it. Scoped to the address object only — the own `guest_token` of the ORDER row is unchanged, since it is the former session of the viewer.',
+            ],
+            [
+                'id' => 'D-25', 'cases' => 'address:*|cart:remove:*|checkout:*', 'paths' => ['$.errors.*[*]'], 'kinds' => ['value'],
+                'why' => 'ENGLISH field-error attribute names, ACCEPTED 2026-09-23 (security audit Part A, Cause 1): core names a field through its `attributes` map (`Product`, `Payment method`), where legacy ships `attributes => []` and Laravel humanises the raw key (`product id`, `payment method`). The map exists for the English-speaking operators of the dashboard and reads better to a shopper too; it reaches these routes because they now negotiate Accept-Language (default `en`). Same status, same field KEYS, same meaning. AND Arabic field-error PHRASING on the three writes whose validator text reaches the shopper (decision 2026-09-23). Both hosts now negotiate Accept-Language on `add_address`, `remove_from_cart` and `add_order`, so an Arabic browser gets Arabic errors from both — same status, same field keys, same language. The wording differs where the two `lang/ar/validation.php` files differ (`exists`, `integer`, and which attribute names are translated). Core keeps its own file because the dashboard shares it; copying the legacy strings in would change operator-facing messages to buy byte-parity on a 422 the client-side checks in the storefront almost always pre-empt. Scoped to `errors.*` only: a difference in `message`, the status or the field KEYS is still a failure.',
+            ],
         ];
     }
 

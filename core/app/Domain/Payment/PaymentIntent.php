@@ -29,6 +29,18 @@ final class PaymentIntent
         public readonly int $amountMinor,
         public readonly string $currency,
         public readonly array $billing = [],
-        public readonly ?string $returnUrl = null,
+        /*
+         * Where the provider must call back to — both of them, always set for a provider that
+         * supports them (review 🔴-2). They are NOT optional-by-convenience: a null pair means the
+         * provider falls back to whatever its merchant portal holds, which is the defect
+         * {@see CallbackDestination} exists to close. The initiator refuses to build an intent it
+         * cannot fill these from.
+         *
+         * `redirectUrl` is where the SHOPPER'S BROWSER returns (a GET); `notifyUrl` is the
+         * server-to-server processed callback (a POST). They are the same address here, told
+         * apart by method — see CallbackDestination.
+         */
+        public readonly ?string $redirectUrl = null,
+        public readonly ?string $notifyUrl = null,
     ) {}
 }

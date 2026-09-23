@@ -3,6 +3,7 @@
 use App\Domain\Access\UserWrites;
 use App\Domain\Customers\CustomerAccounts;
 use App\Domain\Customers\CustomerSocial;
+use App\Domain\Customers\SocialNonce;
 use App\Mail\CustomerEmailVerification;
 use App\Models\User;
 use App\Support\LegacyJwt;
@@ -254,19 +255,33 @@ it('writes the account through the DOOR, with its own reason', function () {
     expect(UserWrites::REASONS)->toHaveKey(CustomerSocial::REGISTER);
 });
 
+/*
+ * ── The nonce every one of these flows now carries (review 🟠-8) ──────────────────────
+ *
+ * `->stateless()` used to remove the OAuth state check outright, so the callback accepted any
+ * `code` from anyone — login CSRF. The storefront now generates a nonce, core signs it into the
+ * `state`, and the storefront compares it on the way back.
+ */
+const SOCIAL_NONCE = 'test-nonce-AAAAAAAAAAAAAAAA';
+
+function socialState(?string $nonce = null): string
+{
+    return SocialNonce::state($nonce ?? SOCIAL_NONCE);
+}
+
 // ── the endpoints ────────────────────────────────────────────────────────────────────────────
 
 it('answers the provider URL as JSON, and does not redirect', function () {
     // `SocialButtons.jsx` reads `data.url` and navigates itself; a 302 here would be followed by
     // axios and the customer would never leave the page.
-    $response = withHeaders(['Api-Code' => SOCIAL_API_KEY])->getJson('/api/auth/google/redirect')->assertOk();
+    $response = withHeaders(['Api-Code' => SOCIAL_API_KEY])->getJson('/api/auth/google/redirect?nonce='.SOCIAL_NONCE)->assertOk();
 
     expect(T::str($response->json('url')))->toContain('accounts.google.com')
         ->and(T::str($response->json('url')))->toContain('test-client-id');
 });
 
 it('REFUSES an unsupported provider at the door', function () {
-    withHeaders(['Api-Code' => SOCIAL_API_KEY])->getJson('/api/auth/facebook/redirect')
+    withHeaders(['Api-Code' => SOCIAL_API_KEY])->getJson('/api/auth/facebook/redirect?nonce='.SOCIAL_NONCE)
         ->assertStatus(422)->assertExactJson(['error' => 'Unsupported provider.']);
 });
 
@@ -278,21 +293,23 @@ it('REFUSES to start a flow for a provider that is not configured', function () 
      */
     config(['services.google.client_secret' => null]);
 
-    withHeaders(['Api-Code' => SOCIAL_API_KEY])->getJson('/api/auth/google/redirect')
+    withHeaders(['Api-Code' => SOCIAL_API_KEY])->getJson('/api/auth/google/redirect?nonce='.SOCIAL_NONCE)
         ->assertStatus(500)->assertExactJson(['error' => 'Could not start social login.']);
 });
 
 it('sends the CALLBACK back to the storefront with an error code, never as JSON', function () {
     // The browser arrives here from Google, so whatever is returned is rendered as a page. An
     // unsupported provider is the branch that needs no OAuth exchange to reach.
-    withHeaders([])->get('/api/auth/facebook/callback')
+    // No nonce on this one: an unsupported provider is refused BEFORE the state is read, so
+    // there is no nonce this application has vouched for yet.
+    withHeaders([])->get('/api/auth/facebook/callback?state='.socialState())
         ->assertRedirect('https://watchizereg.test/auth/callback?error=unsupported_provider');
 });
 
 it('carries NO API key requirement on the callback, because a redirect cannot send one', function () {
     // Reached without `Api-Code` and still answered — the provider's signed exchange is what
     // authenticates it. A 401 here would break every social login silently.
-    withHeaders([])->get('/api/auth/google/callback')->assertRedirect();
+    withHeaders([])->get('/api/auth/google/callback?state='.socialState())->assertRedirect();
 });
 
 it('signs the customer in through the callback, handing the token to the storefront URL', function () {
@@ -309,7 +326,7 @@ it('signs the customer in through the callback, handing the token to the storefr
     $provider->shouldReceive('user')->andReturn(socialAccount('google-cb', $email, verified: true));
     Socialite::shouldReceive('driver')->with('google')->andReturn($provider);
 
-    $response = withHeaders([])->get('/api/auth/google/callback');
+    $response = withHeaders([])->get('/api/auth/google/callback?state='.socialState());
 
     $location = T::str($response->headers->get('Location'));
     expect($location)->toStartWith('https://watchizereg.test/auth/callback?token=');
@@ -327,8 +344,8 @@ it('sends the REFUSAL code back through the same door, with no token', function 
     $provider->shouldReceive('user')->andReturn(socialAccount('attacker-2', $email, verified: false));
     Socialite::shouldReceive('driver')->with('google')->andReturn($provider);
 
-    withHeaders([])->get('/api/auth/google/callback')
-        ->assertRedirect('https://watchizereg.test/auth/callback?error='.CustomerSocial::REFUSED_UNVERIFIED);
+    withHeaders([])->get('/api/auth/google/callback?state='.socialState())
+        ->assertRedirect('https://watchizereg.test/auth/callback?error='.CustomerSocial::REFUSED_UNVERIFIED.'&nonce='.SOCIAL_NONCE);
 });
 
 it('never puts a provider exception message into the redirect', function () {
@@ -341,10 +358,10 @@ it('never puts a provider exception message into the redirect', function () {
     $provider->shouldReceive('user')->andThrow(new RuntimeException('client_secret=test-client-secret rejected'));
     Socialite::shouldReceive('driver')->with('google')->andReturn($provider);
 
-    $response = withHeaders([])->get('/api/auth/google/callback');
+    $response = withHeaders([])->get('/api/auth/google/callback?state='.socialState());
     $location = T::str($response->headers->get('Location'));
 
-    expect($location)->toBe('https://watchizereg.test/auth/callback?error=social_failed')
+    expect($location)->toBe('https://watchizereg.test/auth/callback?error=social_failed&nonce='.SOCIAL_NONCE)
         ->and($location)->not->toContain('client_secret')
         ->and($location)->not->toContain('test-client-secret');
 });
@@ -373,4 +390,150 @@ it('still proxies what piece 5 did NOT move, so the list is not merely empty', f
 
     expect($paths)->toContain('all_wishlist')
         ->and($paths)->toContain('all_blog');
+});
+
+// ── the OAuth state / login-CSRF hole (review 🟠-8) ───────────────────────────────────────────
+
+it('REFUSES a callback with NO state at all — the naive login-CSRF attempt', function () {
+    /*
+     * The attack `->stateless()` left open, in its simplest form: an attacker completes a Google
+     * sign-in as themselves, keeps the `code`, and gets a victim to visit the callback with it.
+     * With no state check the victim's storefront stored a token for the ATTACKER'S account, and
+     * the victim then shopped, saved an address and placed orders inside somebody else's account.
+     *
+     * The `user()` expectation is `never()`: the state is checked BEFORE the code is exchanged, so
+     * a refused callback never even tells Google the application accepted it.
+     */
+    $provider = Mockery::mock(GoogleProvider::class);
+    $provider->shouldReceive('stateless')->andReturnSelf();
+    $provider->shouldReceive('user')->never();
+    Socialite::shouldReceive('driver')->with('google')->andReturn($provider);
+
+    withHeaders([])->get('/api/auth/google/callback?code=an-attackers-code')
+        ->assertRedirect('https://watchizereg.test/auth/callback?error=invalid_state');
+});
+
+it('REFUSES a state this application did not sign', function () {
+    // A hand-written state, of the right shape, with a made-up signature.
+    $provider = Mockery::mock(GoogleProvider::class);
+    $provider->shouldReceive('stateless')->andReturnSelf();
+    $provider->shouldReceive('user')->never();
+    Socialite::shouldReceive('driver')->with('google')->andReturn($provider);
+
+    withHeaders([])->get('/api/auth/google/callback?state=forged-nonce-AAAAAAAAAA.'.str_repeat('f', 64))
+        ->assertRedirect('https://watchizereg.test/auth/callback?error=invalid_state');
+});
+
+it('REFUSES a state signed under a DIFFERENT app key', function () {
+    // The signature is keyed on APP_KEY, so a state minted by another deployment is not this
+    // one's. Written as a whole-flow test rather than a unit one because the key is read at
+    // signing time, and a cached config is exactly how this would silently stop mattering.
+    $foreign = SocialNonce::state(SOCIAL_NONCE);
+    config(['app.key' => 'base64:'.base64_encode(str_repeat('k', 32))]);
+
+    $provider = Mockery::mock(GoogleProvider::class);
+    $provider->shouldReceive('stateless')->andReturnSelf();
+    $provider->shouldReceive('user')->never();
+    Socialite::shouldReceive('driver')->with('google')->andReturn($provider);
+
+    withHeaders([])->get('/api/auth/google/callback?state='.$foreign)
+        ->assertRedirect('https://watchizereg.test/auth/callback?error=invalid_state');
+});
+
+it('hands the NONCE back on success, so the storefront can match its own flow', function () {
+    $email = Shopper::email();
+    Shopper::register(['email' => $email]);
+
+    $provider = Mockery::mock(GoogleProvider::class);
+    $provider->shouldReceive('stateless')->andReturnSelf();
+    $provider->shouldReceive('user')->andReturn(socialAccount('google-nonce', $email, verified: true));
+    Socialite::shouldReceive('driver')->with('google')->andReturn($provider);
+
+    $location = T::str(withHeaders([])->get('/api/auth/google/callback?state='.socialState())
+        ->headers->get('Location'));
+
+    parse_str((string) parse_url($location, PHP_URL_QUERY), $query);
+
+    /*
+     * The nonce comes back EXACTLY as the storefront sent it. `AuthCallback.jsx` compares it with
+     * sessionStorage and keeps the token only on a match — and THAT comparison is what defeats the
+     * attacker who supplies a perfectly valid state of their own, because it carries THEIR nonce
+     * and the victim's browser has nothing matching it.
+     */
+    expect($query['nonce'] ?? null)->toBe(SOCIAL_NONCE)
+        ->and($query['token'] ?? null)->not->toBeEmpty();
+});
+
+it('carries the nonce on a REFUSAL too, not only on success', function () {
+    /*
+     * A storefront that only got the nonce back on success could not tell "my flow was refused"
+     * from "somebody else's flow landed in my tab" — and the second is the one worth refusing.
+     */
+    $email = Shopper::email();
+    Shopper::register(['email' => $email]);
+
+    $provider = Mockery::mock(GoogleProvider::class);
+    $provider->shouldReceive('stateless')->andReturnSelf();
+    $provider->shouldReceive('user')->andReturn(socialAccount('unverified-1', $email, verified: false));
+    Socialite::shouldReceive('driver')->with('google')->andReturn($provider);
+
+    $location = T::str(withHeaders([])->get('/api/auth/google/callback?state='.socialState())
+        ->headers->get('Location'));
+
+    expect($location)->toContain('nonce='.SOCIAL_NONCE)
+        ->and($location)->toContain('error='.CustomerSocial::REFUSED_UNVERIFIED);
+});
+
+it('REFUSES to start a flow with no nonce, or one too weak to be unguessable', function (string $query) {
+    // An OPTIONAL nonce is a flow an attacker simply starts without one, leaving the protection in
+    // place only for the honest caller. 22 characters is 128 bits at the low end.
+    withHeaders(['Api-Code' => SOCIAL_API_KEY])->getJson('/api/auth/google/redirect'.$query)
+        ->assertStatus(422);
+})->with([
+    'absent' => [''],
+    'empty' => ['?nonce='],
+    'too short' => ['?nonce=abc'],
+    'twenty-one characters' => ['?nonce=a1234567890123456789b'],
+    'not url-safe' => ['?nonce=has+plus+and%2Fslash+aaaaaaaa'],
+    'a dot, which would break the separator' => ['?nonce=has.a.dot.aaaaaaaaaaaaaaaaaa'],
+]);
+
+it('puts the SIGNED state on the provider URL, and the raw nonce nowhere on it', function () {
+    $response = withHeaders(['Api-Code' => SOCIAL_API_KEY])
+        ->getJson('/api/auth/google/redirect?nonce='.SOCIAL_NONCE)->assertOk();
+
+    $url = T::str($response->json('url'));
+    parse_str((string) parse_url($url, PHP_URL_QUERY), $query);
+
+    expect($query['state'] ?? null)->toBe(SocialNonce::state(SOCIAL_NONCE))
+        // Signed, so the nonce alone is not what travels: a state Google echoes back has to be one
+        // this application can recognise as its own.
+        ->and($query['state'] ?? null)->not->toBe(SOCIAL_NONCE);
+});
+
+it('round-trips a nonce through state, and refuses every mangling of it', function () {
+    $state = SocialNonce::state(SOCIAL_NONCE);
+
+    expect(SocialNonce::fromState($state))->toBe(SOCIAL_NONCE)
+        ->and(SocialNonce::fromState(null))->toBeNull()
+        ->and(SocialNonce::fromState(''))->toBeNull()
+        // No separator at all.
+        ->and(SocialNonce::fromState(SOCIAL_NONCE))->toBeNull()
+        // A separator with nothing after it.
+        ->and(SocialNonce::fromState(SOCIAL_NONCE.'.'))->toBeNull()
+        // A signature with no nonce.
+        ->and(SocialNonce::fromState('.'.str_repeat('f', 64)))->toBeNull()
+        // One character of the nonce changed: the signature no longer matches it.
+        ->and(SocialNonce::fromState('X'.substr($state, 1)))->toBeNull()
+        // One character of the signature changed. Flipped RELATIVE to what is there, because
+        // appending a fixed '0' is a no-op one time in sixteen — which is exactly how it failed
+        // the first time this test ran.
+        ->and(SocialNonce::fromState(substr($state, 0, -1).(str_ends_with($state, '0') ? '1' : '0')))
+        ->toBeNull();
+});
+
+it('REFUSES to sign an empty APP_KEY, because an empty-key HMAC verifies everything', function () {
+    config(['app.key' => '']);
+
+    expect(fn () => SocialNonce::state(SOCIAL_NONCE))->toThrow(RuntimeException::class);
 });

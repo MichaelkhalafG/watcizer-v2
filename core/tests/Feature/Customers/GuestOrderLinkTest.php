@@ -4,6 +4,7 @@ use App\Domain\Activity\ActivityLog;
 use App\Domain\Customers\CustomerMail;
 use App\Domain\Customers\CustomerSocial;
 use App\Domain\Customers\GuestOrderLink;
+use App\Models\Storefront\Storefront;
 use App\Models\User;
 use App\Support\Sql;
 use Illuminate\Support\Facades\DB;
@@ -470,3 +471,80 @@ it('names the account the operator typed, so the confirmation can show BOTH side
     expect(array_key_exists('attach_target', $unresolved))->toBeTrue()
         ->and($unresolved['attach_target'])->toBeNull();
 });
+
+it('moves ONLY the orders inside the operator scope, even for one guest key', function () {
+    /*
+     * ── The informational finding, made permanent ────────────────────────────────────────────
+     *
+     * `CustomerController::attach()` checks `Customers::exists($customer, $scope)` before getting
+     * here, and that is a DIFFERENT question from the one that matters: a guest key is a telephone
+     * number, an address or a cart token, and one shopper can have checked out as a guest on more
+     * than one storefront with the same one.
+     *
+     * So a scoped operator who could legitimately see the guest on THEIR storefront was moving
+     * that shopper's orders from every other storefront as well — writes outside their grant, made
+     * through a screen that had correctly authorised them for one order and then acted on several.
+     */
+    $phone = '0100'.random_int(1000000, 9999999);
+    $inScope = guestOrderFor($phone, Storefront::WATCHIZER_ID);
+    $outOfScope = guestOrderFor($phone, Storefront::BRAND_FASHION_ID);
+
+    $target = Shopper::register();
+
+    // An operator granted Watchizer only.
+    $moved = app(GuestOrderLink::class)->attachGroup('g:'.$phone, $target, [Storefront::WATCHIZER_ID]);
+
+    expect($moved)->toBe(1)
+        ->and(DB::table('orders')->where('id', $inScope)->value('user_id'))->toBe((int) $target->id)
+        // The other storefront's order is untouched: still a guest order, still unclaimed.
+        ->and(DB::table('orders')->where('id', $outOfScope)->value('user_id'))->toBeNull();
+});
+
+it('moves BOTH when the operator is unscoped, which is what an admin is', function () {
+    $phone = '0100'.random_int(1000000, 9999999);
+    $one = guestOrderFor($phone, Storefront::WATCHIZER_ID);
+    $two = guestOrderFor($phone, Storefront::BRAND_FASHION_ID);
+
+    $target = Shopper::register();
+
+    // null, not an empty array — the same distinction `Customers::exists()` draws.
+    $moved = app(GuestOrderLink::class)->attachGroup('g:'.$phone, $target, null);
+
+    expect($moved)->toBe(2)
+        ->and(DB::table('orders')->where('id', $one)->value('user_id'))->toBe((int) $target->id)
+        ->and(DB::table('orders')->where('id', $two)->value('user_id'))->toBe((int) $target->id);
+});
+
+it('moves NOTHING for a grant that names no storefront', function () {
+    /*
+     * `[]` is not "everywhere" — it is a grant that names no storefront, and an unconstrained
+     * `whereIn` on an empty list is a clause some drivers treat as matching everything. `[0]` is
+     * what makes it match nothing, copied from `Customers::exists()` rather than reasoned about
+     * again here.
+     */
+    $phone = '0100'.random_int(1000000, 9999999);
+    $order = guestOrderFor($phone, Storefront::WATCHIZER_ID);
+
+    $moved = app(GuestOrderLink::class)->attachGroup('g:'.$phone, Shopper::register(), []);
+
+    expect($moved)->toBe(0)
+        ->and(DB::table('orders')->where('id', $order)->value('user_id'))->toBeNull();
+});
+
+/** A guest order on one storefront, keyed by telephone. */
+function guestOrderFor(string $phone, int $storefrontId): int
+{
+    return (int) DB::table('orders')->insertGetId([
+        'user_id' => null,
+        'address_id' => T::int(DB::table('addresses')->orderBy('id')->value('id')),
+        'storefront_id' => $storefrontId,
+        'total_price_for_order' => '100.00',
+        'payment_method' => 'cash',
+        'order_number' => 'SC-'.bin2hex(random_bytes(4)),
+        'status' => 'pending',
+        'guest_name' => 'scope-test',
+        'guest_phone' => $phone,
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+}

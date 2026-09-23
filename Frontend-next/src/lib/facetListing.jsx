@@ -9,6 +9,7 @@ import {
   listingBreadcrumbLd,
 } from './listingSeo'
 import ListingClient from '@/app/(main)/listing/ListingClient'
+import { safeJsonLd } from './safeJsonLd'
 
 // Shared server logic for the facet alias routes (/brand/[brand],
 // /category/[category], /subtypes/[subtype], /grade/[grade], /[suptype]/[brand]).
@@ -59,7 +60,7 @@ export async function FacetPage({ facet, pathname }) {
     <HydrationBoundary state={dehydrate(qc)}>
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbLd) }}
+        dangerouslySetInnerHTML={{ __html: safeJsonLd(breadcrumbLd) }}
       />
       <Suspense fallback={null}>
         <ListingClient seedParams={seedParams} />

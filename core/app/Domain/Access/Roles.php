@@ -67,6 +67,55 @@ final class Roles
     }
 
     /**
+     * Does this user hold an ADMIN grant that covers EVERY storefront?
+     *
+     * ── Why this is not `isAdmin() && storefrontScope() === null` (security audit, Finding 1) ──
+     *
+     * `isAdmin()` ignores scope, so the Gate's admin short-circuit used to make a Brand-Fashion-
+     * scoped admin a global one. The obvious repair — "admin, and unscoped" — combines two
+     * questions about DIFFERENT grants: `storefrontScope()` answers null when ANY grant is
+     * unscoped, so admin@Brand-Fashion plus an unscoped data-entry grant would still have read as
+     * a global admin. The question has to be asked of one grant: is there an admin row whose
+     * `storefront_id` is null.
+     */
+    public function isUnscopedAdmin(User $user): bool
+    {
+        foreach ($this->for($user) as $grant) {
+            if ($grant->asRole() === Role::Admin && $grant->storefront_id === null) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * The storefronts on which this user holds `$ability`: null when some grant carrying it is
+     * unscoped (every storefront), otherwise the list — empty when no grant carries it.
+     *
+     * Per ABILITY, not per user, for the same reason as {@see self::isUnscopedAdmin()}: an unscoped
+     * grant that does NOT carry the ability must not widen what the ability reaches.
+     *
+     * @return list<int>|null
+     */
+    public function scopeForAbility(User $user, string $ability): ?array
+    {
+        $ids = [];
+        foreach ($this->for($user) as $grant) {
+            $role = $grant->asRole();
+            if ($role === null || ! $role->can($ability)) {
+                continue;
+            }
+            if ($grant->storefront_id === null) {
+                return null;
+            }
+            $ids[] = $grant->storefront_id;
+        }
+
+        return array_values(array_unique($ids));
+    }
+
+    /**
      * Does this user hold an ability — optionally on ONE storefront?
      *
      * A grant with `storefront_id = NULL` covers every storefront. A scoped grant covers only its
