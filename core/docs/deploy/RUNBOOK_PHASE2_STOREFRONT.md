@@ -36,7 +36,50 @@ THE NIGHT
 
 DAYS AFTER
   switch the legacy storefront off — NOT on the night (§4A.4)
+  the "Found on the night" list below
 ```
+
+**Found on the night (2026-09-24) — recorded, not all fixed.**
+
+*What was true and is now corrected on the server:*
+- **Core's log channel was broken from the first deployment until the night.** `LOG_CHANNEL` had a
+  secret fused onto it (§3.3's append trap), so the channel did not exist and **nothing core logged
+  on this server was ever written**: callback refusals, amount mismatches, mail failures, parked
+  mail — everything this project built to be VISIBLE was not. Fixed on the night
+  (`LOG_CHANNEL=daily`); from 2026-09-24 it is. Any "the log was clean" statement about production
+  before that date means nothing.
+- **Two `.env` append traps** — an empty key wins over an appended one, and an append with no
+  leading newline fuses onto the line above. §3.3 now carries the only safe form.
+
+*To do after the night:*
+- **Rotate `JWT_SECRET`** — its value was exposed in a terminal pasted into a chat while diagnosing.
+  Not done on the night because rotating signs every customer out. Rotate it WITH the storefront's
+  public key and the Paymob credentials, on BOTH hosts at once while legacy is still up (tokens from
+  either host must verify on core), then `config:cache`.
+- **Email verification lands on bare JSON** — the same as legacy, on the API host now. Smallest fix:
+  `verify()` redirects a browser to `FRONTEND_URL/account?verified=1|already|invalid|expired` (JSON
+  callers unchanged), the account page shows a toast, and a "send a new link" button calls the
+  existing `resend-verification` — which nothing in the storefront calls today.
+- **Pin the verification link's host** in `CustomerMail::sendEmailVerification()`. It is built from
+  the REQUEST host, correct only because every sender is a customer route on the API host; a CLI or
+  dashboard sender would build it on `eleganceeg.com`, which §4 404s. `APP_URL` stays
+  `eleganceeg.com` (mail EHLO) — §3.1's row claiming links are "built from APP_URL" is wrong.
+- **§4.3's probe list:** `api/login` and `api/add_order` are POST-only and `api/auth/google` is not a
+  route — probe `POST api/login` (401), `POST api/add_order` (401) and `api/auth/google/redirect`
+  (401). The default-arm probe cannot pass through the CDN (it refuses unknown hosts: `000`), and
+  Hostinger's shared Apache sends unknown hosts to its own vhost — untestable on this host.
+- **`compat:env-parity`:** the `[key]` arm reports "could not reach" against §7.2's deliberately dead
+  `COMPAT_LEGACY_BASE` — say so and suggest `--base`; and it needs a path `CheckApiMiddleware`
+  actually guards (`catalog/meta` and `all_product` both answered 200 without the header). The
+  `[assets]` rule should check that `MEDIA_ROOT` RESOLVES to the served tree, not that it is written
+  absolute (a false positive on this host, verified by `realpath`).
+- **The legacy gate question:** `dash.watchizereg.com/api/catalog/meta` answered 200 WITHOUT
+  `Api-Code`, though the route sits inside `CheckApi`. Either the CDN served a cached copy
+  (`Cache-Control: public`) or legacy's cached config holds an empty key and the gate is open. Two
+  reads settle it (a cache-busted curl, `strlen(config('services.public_api_key'))` on legacy); if
+  it is open, the residual-risk row in §9.1A is wrong as written.
+- **The first verification mail (user 7) never arrived**, before the log channel was fixed. A broken
+  log channel does not stop SMTP, so that one is not fully explained — check that inbox's spam folder.
 
 **Why each early step is safe to do early.** `/api` stays shut on both hosts until §4 — that is the
 one property everything rests on, and §2.4 now ends by proving it (`/api` → 404 on eleganceeg.com
@@ -614,6 +657,30 @@ Set the matching keys in `core/.env`:
 | `COMPAT_API_KEY` | `PUBLIC_API_KEY` |
 | `JWT_SECRET` | `JWT_SECRET` |
 
+> **⚠ Both keys already EXIST in `core/.env`, EMPTY — so appending a line does nothing.**
+> Found on the night, 2026-09-24. The eleganceeg deployment (§7.2) closed `/api` by blanking these
+> two keys, not by removing them, so the server file carries `JWT_SECRET=` with nothing after it.
+> Laravel's `.env` reader keeps the FIRST definition of a key and ignores later ones, so an appended
+> `JWT_SECRET=<value>` sits underneath the blank line, is never read, and nothing reports it —
+> `config('compat.jwt_secret')` is still `''`.
+>
+> **And the append bit a SECOND way the same night:** the server file had no trailing newline, so an
+> appended `JWT_SECRET=…` fused onto the end of the line above it — `LOG_CHANNEL=dailyJWT_SECRET=…`.
+> That left core with a log channel that does not exist, so nothing core logged was written anywhere
+> (see "Found on the night" below), while the key itself still read correctly from a later line.
+>
+> **The only safe form for ANY `.env` edit on the server — delete, append WITH a leading newline,
+> then look:**
+>
+> ```bash
+> sed -i '/^JWT_SECRET=/d' .env
+> printf '\nJWT_SECRET=%s\n' "$V" >> .env
+> grep -n '^JWT_SECRET=' .env            # exactly one line, and it is its own line
+> grep -nE '^[A-Z0-9_]+=[^#]*[A-Z][A-Z0-9_]{2,}=' .env   # fused lines: must print nothing you did not expect
+> ```
+>
+> The same holds for every key §7.2 blanked and every `.env` edit made by appending.
+
 Then, **before anything else**:
 
 ```bash
@@ -752,8 +819,9 @@ refuses `/manage` there):
 ```
 
 1. Add the **Paymob** provider for Watchizer if the row is not there, and paste `secret_key`,
-   `public_key` and `hmac_secret` from the legacy `.env` (`PAYMOB_*`). The fields show presence and
-   last-4 afterwards, never the value.
+   `public_key` and `hmac_secret` from the legacy `.env` (`PAYMOB_*`). The fields show PRESENCE only
+   afterwards — no value and no part of one, not even a last-4 (`PaymobCredentialLeakTest`,
+   2026-09-24; this line used to promise a last-4 the screen never had).
 2. Leave the contract **enabled**. Disabling it is the rollback — it puts the alias straight back
    on the wave-3 path with no deploy.
 3. Confirm the **card** method under it carries its `integration_id` (done 2026-09-22 — this is the
