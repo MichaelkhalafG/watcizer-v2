@@ -46,6 +46,23 @@ final class PaymobProvider implements PaymentProvider
     }
 
     /**
+     * Paymob routes by a numeric integration id; every method needs its own.
+     *
+     * Digits only, because `initiate()` sends a non-numeric value as a string that the intention
+     * call refuses — a pasted label or a stray letter would reach a customer as "Payment session
+     * failed". Surrounding whitespace is tolerated, as `initiate()` tolerates it.
+     */
+    public function integrationIdProblem(?string $integrationId): ?string
+    {
+        $id = trim((string) $integrationId);
+        if ($id === '') {
+            return 'missing';
+        }
+
+        return ctype_digit($id) ? null : 'malformed';
+    }
+
+    /**
      * Three secrets per contract, and the dashboard renders them in this order.
      *
      * `secret_key` authenticates the intention call, `public_key` builds the checkout URL, and
@@ -103,8 +120,25 @@ final class PaymobProvider implements PaymentProvider
             ],
             'extras' => ['order_id' => $intent->orderId, 'storefront_id' => $intent->storefrontId],
         ];
-        if ($intent->returnUrl !== null) {
-            $payload['redirection_url'] = $intent->returnUrl;
+        /*
+         * BOTH callback urls, on EVERY intention (review 🔴-2).
+         *
+         * Before this, core sent neither and the destination was whatever Paymob's merchant portal
+         * held — a URL in somebody else's web interface, naming the legacy host, which `.htaccess`
+         * §4 closes `/api` on. A callback sent there after the flip 404s with the money taken.
+         *
+         * `redirection_url` is the shopper's return (a GET); `notification_url` is the processed
+         * callback (a POST). Sending both means a payment this application started can only call
+         * back to this application. `PaymentInitiator` will not build an intent without them, so
+         * the null arms are unreachable from that path; they exist so a future caller constructing
+         * an intent by hand degrades to the old behaviour rather than sending a null URL, which
+         * Paymob rejects outright.
+         */
+        if ($intent->redirectUrl !== null) {
+            $payload['redirection_url'] = $intent->redirectUrl;
+        }
+        if ($intent->notifyUrl !== null) {
+            $payload['notification_url'] = $intent->notifyUrl;
         }
 
         try {

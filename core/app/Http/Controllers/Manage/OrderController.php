@@ -2,20 +2,27 @@
 
 namespace App\Http\Controllers\Manage;
 
+use App\Domain\Access\Preferences;
 use App\Domain\Access\Role;
 use App\Domain\Access\Roles;
 use App\Domain\Inventory\Actor;
+use App\Domain\Inventory\InventoryService;
 use App\Domain\Notifications\OrderMailer;
 use App\Domain\Orders\OrderFulfilment;
+use App\Domain\Orders\ProductPeek;
 use App\Domain\Payment\CallbackPolicy;
+use App\Domain\Promotions\PromotionDiscounts;
+use App\Models\User;
 use App\Support\Coerce;
+use App\Support\LocalisedName;
+use App\Support\ManageText;
+use App\Support\Table\TableExport;
 use App\Support\Table\TableQuery;
 use App\Transform\Row;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Database\Query\JoinClause;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rule;
@@ -51,10 +58,31 @@ final class OrderController
      * The list, with the filters the brief names: storefront, status, date range, provider,
      * method, and a search over order number or phone.
      */
-    public function index(Request $request): Response
+    public function index(Request $request): Response|StreamedResponse
     {
         /** @var array{items: array<int, int>, attempts: array<int, array<string, mixed>>} $extras */
         $extras = ['items' => [], 'attempts' => []];
+
+        /*
+         * ── The filter dropdowns, read ONCE ──────────────────────────────────────────────────
+         *
+         * Each of these lists is needed twice in this method: once as the filter's ALLOW-LIST (a
+         * value outside it is discarded by `resolvedFilters()`) and once as the OPTIONS the screen
+         * renders. They used to be called in both places, and each call is a separate read — three
+         * for a `distinct()` (orders, attempts, configured) and one for the storefronts. Fourteen
+         * queries per page load to populate three dropdowns, all of them asking the same question
+         * in the same request and getting the same answer.
+         *
+         * Two of those reads are `SELECT DISTINCT` over `orders` on `paid_via_provider` and
+         * `paid_via_method`, and NEITHER column is indexed: at 67 orders that is invisible, at the
+         * 7,000 this screen is being built for it is a full scan and a filesort, twice over, for
+         * nothing. Hoisting to a local is the whole fix — no cache, no memo, nothing with a
+         * lifetime to get wrong, and the values cannot drift between the allow-list and the options
+         * because there is now only one of each.
+         */
+        $storefronts = self::storefrontOptions();
+        $providers = self::distinct('paid_via_provider');
+        $methods = self::distinct('paid_via_method');
 
         $table = TableQuery::for($request)
             ->sortable(['o.created_at', 'o.total_price_for_order', 'o.status', 'o.order_number'], default: 'o.created_at', direction: 'desc')
@@ -62,17 +90,58 @@ final class OrderController
             // query string and a seat in the reset button — and the ones that are not a plain
             // `where(column, value)` are declared VIRTUAL and applied by `applyFilters()`.
             ->filterable([
-                'storefront_id' => array_map(fn (array $o): string => $o['value'], self::storefrontOptions()),
+                'storefront_id' => array_map(fn (array $o): string => $o['value'], $storefronts),
                 'status' => OrderFulfilment::STATUSES,
-                'provider' => array_map(fn (array $o): string => $o['value'], self::distinct('paid_via_provider')),
-                'method' => array_map(fn (array $o): string => $o['value'], self::distinct('paid_via_method')),
+                'provider' => array_map(fn (array $o): string => $o['value'], $providers),
+                'method' => array_map(fn (array $o): string => $o['value'], $methods),
                 // `null` = any scalar. An empty ARRAY would be an allow-list of nothing, and
                 // `resolvedFilters()` drops a value that is not in it — so `[]` silently discards
                 // every date the operator picks.
                 'from' => null,
                 'to' => null,
             ])
-            ->virtual(['storefront_id', 'status', 'provider', 'method', 'from', 'to']);
+            ->virtual(['storefront_id', 'status', 'provider', 'method', 'from', 'to'])
+            /*
+             * ── THE ONE EXPORT THAT CARRIES PERSONAL DATA ──────────────────────────────────
+             *
+             * `customer` and `phone` are here because the ORDER QUEUE already shows them: the
+             * export rule is "what this operator can see", and a fulfilment sheet without a phone
+             * number is useless in Egypt, where the courier's whole workflow is a phone call.
+             *
+             * What is deliberately NOT here, and why:
+             *   • the street address, the second phone and the e-mail — they live on the order
+             *     DETAIL screen, not the queue, so they are not in this payload to pick from;
+             *   • the customer's account id, so an export cannot be joined back to `users`;
+             *   • every payment identifier beyond "who took it and how" — no token, no card, no
+             *     provider reference. `SettlementExport` is the reconciliation file and it is
+             *     behind MANAGE_PAYMENTS, a different ability on purpose.
+             *
+             * A scoped grant exports only its own storefronts' orders, because `applyScope()`
+             * narrowed the QUERY before this ever runs (§2.18) — not because the file filters.
+             *
+             * FLAGGED FOR THE DEVELOPER (2026-09-14): if a customer phone in a downloadable file
+             * is not acceptable, the single change is to drop the two lines below; nothing else
+             * moves. See docs/wave4d.
+             */
+            ->exportable([
+                'order_number' => ManageText::t('common.order_number', 'رقم الطلب'),
+                'created_at' => ManageText::t('common.date', 'التاريخ'),
+                'status_label' => ManageText::t('common.status', 'الحالة'),
+                'total' => ManageText::t('common.total', 'الإجمالي'),
+                'payment_method' => ManageText::t('orders.payment_method', 'طريقة الدفع'),
+                'paid_via_provider' => ManageText::t('orders.payment_provider', 'مزوّد الدفع'),
+                // NOT `orders.payment_method`: that column is what the customer CHOSE, this one is
+                // what the money actually came through. Same word in English until you read both
+                // columns side by side in the file, which is exactly when it matters.
+                'paid_via_method' => ManageText::t('orders.payment_channel', 'وسيلة الدفع'),
+                'customer' => ManageText::t('common.customer', 'العميل'),
+                'phone' => ManageText::t('common.phone', 'الهاتف'),
+                'items' => ManageText::t('orders.item_count', 'عدد الأصناف'),
+                'storefront' => ManageText::t('common.storefront', 'المتجر'),
+                'last_attempt' => [ManageText::t('orders.last_attempt', 'آخر محاولة دفع'), fn (array $row): string => Coerce::str(
+                    Coerce::arr($row['last_attempt'] ?? null)['status'] ?? null
+                )],
+            ], 'orders');
 
         $query = DB::table('orders as o')
             ->leftJoin('storefronts as s', 's.id', '=', 'o.storefront_id')
@@ -91,50 +160,67 @@ final class OrderController
 
         self::applyFilters($query, $table->resolvedFilters(), $request);
 
-        return Inertia::render('Manage/Orders/Index', [
-            'table' => $table->paginate(
-                $query,
-                function (object $raw) use (&$extras): array {
-                    $row = Row::cast($raw);
-                    $id = Row::int($row, 'id');
-                    $status = Row::str($row, 'status');
+        $prepare = function (array $rows) use (&$extras): void {
+            $extras = self::pageExtras(Coerce::objectList($rows));
+        };
 
-                    return [
-                        'id' => $id,
-                        'order_number' => Row::str($row, 'order_number'),
-                        'status' => $status,
-                        'status_label' => OrderFulfilment::label($status),
-                        'total' => Row::str($row, 'total_price_for_order'),
-                        'payment_method' => Row::nstr($row, 'payment_method'),
-                        // Who took the money, from the attempt that succeeded (§3.9.6). A plain
-                        // column, NOT an append-only record: `CallbackPolicy` is what stops a
-                        // second success from overwriting it.
-                        'paid_via_provider' => Row::nstr($row, 'paid_via_provider'),
-                        'paid_via_method' => Row::nstr($row, 'paid_via_method'),
-                        'customer' => Row::nstr($row, 'guest_name') ?? '—',
-                        'phone' => Row::nstr($row, 'guest_phone'),
-                        'storefront' => Row::nstr($row, 'storefront_name'),
-                        'storefront_id' => Row::nint($row, 'storefront_id'),
-                        'created_at' => Row::nstr($row, 'created_at'),
-                        'items' => Coerce::int($extras['items'][$id] ?? null),
-                        // The last attempt's outcome, so a "paid but pending" order is visible
-                        // from the list rather than only from the detail.
-                        'last_attempt' => $extras['attempts'][$id] ?? null,
-                        'url' => route('manage.orders.show', ['order' => $id]),
-                    ];
-                },
-                function (array $rows) use (&$extras): void {
-                    $extras = self::pageExtras($rows);
-                },
-            ),
+        $map = function (object $raw) use (&$extras): array {
+            $row = Row::cast($raw);
+            $id = Row::int($row, 'id');
+            $status = Row::str($row, 'status');
+
+            return [
+                'id' => $id,
+                'order_number' => Row::str($row, 'order_number'),
+                'status' => $status,
+                'status_label' => OrderFulfilment::label($status),
+                'total' => Row::str($row, 'total_price_for_order'),
+                'payment_method' => Row::nstr($row, 'payment_method'),
+                // Who took the money, from the attempt that succeeded (§3.9.6). A plain
+                // column, NOT an append-only record: `CallbackPolicy` is what stops a
+                // second success from overwriting it.
+                'paid_via_provider' => Row::nstr($row, 'paid_via_provider'),
+                'paid_via_method' => Row::nstr($row, 'paid_via_method'),
+                'customer' => Row::nstr($row, 'guest_name') ?? '—',
+                'phone' => Row::nstr($row, 'guest_phone'),
+                'storefront' => Row::nstr($row, 'storefront_name'),
+                'storefront_id' => Row::nint($row, 'storefront_id'),
+                'created_at' => Row::nstr($row, 'created_at'),
+                'items' => Coerce::int($extras['items'][$id] ?? null),
+                // The last attempt's outcome, so a "paid but pending" order is visible
+                // from the list rather than only from the detail.
+                'last_attempt' => $extras['attempts'][$id] ?? null,
+                'url' => route('manage.orders.show', ['order' => $id]),
+            ];
+        };
+
+        if ($table->wantsExport()) {
+            return $table->export($query, $map, $prepare);
+        }
+
+        /*
+         * Opening the queue discharges the badge's promise — "there is something here you have not
+         * looked at" — so the stamp moves now, for THIS operator only.
+         *
+         * After the render data is built, and not on the export path: a CSV download is not looking
+         * at the queue, and clearing somebody's badge because they exported a file would hide the
+         * orders they were about to work.
+         */
+        $actor = $request->user();
+        if ($actor instanceof User) {
+            Preferences::markOrdersSeen($actor);
+        }
+
+        return Inertia::render('Manage/Orders/Index', [
+            'table' => $table->paginate($query, $map, $prepare),
             'filters' => [
-                'storefronts' => self::storefrontOptions(),
+                'storefronts' => $storefronts,
                 'statuses' => array_map(
                     fn (string $s): array => ['value' => $s, 'label' => OrderFulfilment::label($s)],
                     OrderFulfilment::STATUSES,
                 ),
-                'providers' => self::distinct('paid_via_provider'),
-                'methods' => self::distinct('paid_via_method'),
+                'providers' => $providers,
+                'methods' => $methods,
             ],
             'abilities' => [
                 'fulfil' => Gate::allows(Role::MANAGE_ORDER_FULFILMENT),
@@ -171,6 +257,16 @@ final class OrderController
         self::requireInScope($order);
         $status = Row::str($orderRow, 'status');
 
+        // Built once and read twice: the lines carry the ids the product panel is keyed on.
+        $items = self::items($order);
+        $productIds = [];
+        foreach ($items as $item) {
+            $id = Coerce::nint($item['product_id'] ?? null);
+            if ($id !== null) {
+                $productIds[] = $id;
+            }
+        }
+
         return Inertia::render('Manage/Orders/Show', [
             'order' => [
                 'id' => Row::int($orderRow, 'id'),
@@ -193,7 +289,25 @@ final class OrderController
                 'created_at' => Row::nstr($orderRow, 'created_at'),
                 'updated_at' => Row::nstr($orderRow, 'updated_at'),
             ],
-            'items' => self::items($order),
+            'items' => $items,
+            'totals' => self::totals($orderRow, $items),
+            /*
+             * The products behind those lines, in enough detail to CONFIRM one (item 12).
+             *
+             * Keyed by product id and loaded with the page rather than fetched when the panel
+             * opens: an order has a handful of lines, so the cost is four grouped queries and
+             * nothing that can fail halfway. {@see ProductPeek}.
+             */
+            'products' => ProductPeek::forProducts($productIds),
+            /*
+             * Why this order's total is lower than its lines (M1r).
+             *
+             * NULL for the overwhelming majority of orders, which is the honest shape. When it is
+             * set, the screen owes the operator an explanation rather than a number: a total that
+             * does not match the lines, with nothing saying why, is the thing somebody telephones
+             * about.
+             */
+            'discount' => PromotionDiscounts::forOrder($order),
             'address' => self::address(Row::nint($orderRow, 'address_id')),
             'attempts' => self::attempts($order),
             // The ledger rows this order caused — the reservation AND any release. This is what
@@ -218,6 +332,15 @@ final class OrderController
                 'cancel' => Gate::allows(Role::CANCEL_ORDERS),
                 // Clearing a money finding is payment work, not shop-floor work.
                 'resolve_findings' => Gate::allows(Role::MANAGE_PAYMENTS),
+                /*
+                 * Whether the product panel may offer a link to the product SCREEN (item 12).
+                 *
+                 * The panel's facts are order data, and everyone who can read the order can read
+                 * them. Editing the product is catalogue work, so the link is offered only to
+                 * somebody the product route would actually admit — a link that 403s teaches the
+                 * team to distrust the ones that work.
+                 */
+                'catalog' => Gate::allows(Role::MANAGE_CATALOG),
                 // The settlement export is payment reconciliation, not order work: its route sits
                 // behind `manage-payments`, so the button must ask for that ability and not guess
                 // from a neighbouring one.
@@ -245,7 +368,9 @@ final class OrderController
         abort_if(! is_object($row), 404);
 
         if (Row::nstr(Row::cast($row), 'resolved_at') !== null) {
-            throw ValidationException::withMessages(['note' => 'هذه المطابقة مُصفّاة بالفعل.']);
+            throw ValidationException::withMessages([
+                'note' => ManageText::t('orders.finding_already_resolved', 'هذه المطابقة مُصفّاة بالفعل.'),
+            ]);
         }
 
         DB::table('payment_reconciliation_findings')->where('id', $finding)->update([
@@ -254,7 +379,10 @@ final class OrderController
             'note' => Coerce::str($data['note']),
         ]);
 
-        return back()->with('status', 'تم تصفية المطابقة مع تسجيل السبب.');
+        return back()->with('status', ManageText::t(
+            'orders.finding_resolved',
+            'تم تصفية المطابقة مع تسجيل السبب.',
+        ));
     }
 
     /** Move an order forward — the `manage-order-fulfilment` ability's whole purpose. */
@@ -276,7 +404,7 @@ final class OrderController
             throw ValidationException::withMessages(['status' => $e->getMessage()]);
         }
 
-        return back()->with('status', 'تم تحديث حالة الطلب.');
+        return back()->with('status', ManageText::t('orders.status_updated', 'تم تحديث حالة الطلب.'));
     }
 
     /**
@@ -297,9 +425,27 @@ final class OrderController
             throw ValidationException::withMessages(['cancel' => $e->getMessage()]);
         }
 
+        /*
+         * Somebody else cancelled it a moment ago (🔵). A STATUS, not an error: the order is
+         * cancelled, which is what this operator wanted, and refusing them for a thing that
+         * succeeded would send them back to look at a screen that already agrees with them.
+         */
+        if ($result['already_cancelled']) {
+            return back()->with('status', ManageText::t('orders.already_cancelled', 'هذا الطلب ملغى بالفعل.'));
+        }
+
+        // `:count`, not `{$…}` interpolation: the number has to be able to move inside the sentence
+        // when the sentence is English, and a placeholder is the only thing that lets it.
         return back()->with('status', $result['released']
-            ? "تم إلغاء الطلب وإرجاع المخزون ({$result['movements']} حركة في السجل)."
-            : 'تم إلغاء الطلب. المخزون كان قد أُرجع سابقًا، فلم تُسجَّل حركة جديدة.');
+            ? ManageText::t(
+                'orders.cancelled_with_release',
+                'تم إلغاء الطلب وإرجاع المخزون (:count حركة في السجل).',
+                ['count' => $result['movements']],
+            )
+            : ManageText::t(
+                'orders.cancelled_already_released',
+                'تم إلغاء الطلب. المخزون كان قد أُرجع سابقًا، فلم تُسجَّل حركة جديدة.',
+            ));
     }
 
     /**
@@ -322,6 +468,23 @@ final class OrderController
                 'ps.created_at', 'o.order_number', 'ps.provider', 'ps.method',
                 'ps.pay_transaction_id', 'ps.amount_cents', 'ps.success', 'ps.outcome',
             ])
+            /*
+             * One correlated sub-select, deliberately — and it is the exception AGENTS §2.24's rule
+             * allows for: this query is `chunk()`ed for a streamed download, not a paginated screen,
+             * so there is no page of ids to prepare extras for. It reads a tiny index range per row
+             * and only for orders that HAVE reward lines.
+             */
+            ->selectRaw('(SELECT GROUP_CONCAT(DISTINCT oi.promotion_rule_id ORDER BY oi.promotion_rule_id) FROM order_items oi WHERE oi.order_id = o.id AND oi.is_reward = 1) AS reward_rules')
+            /*
+             * The MONEY half of the same question (M1r). `reward_rules` above names the promotions
+             * that gave an ITEM away; these two name the one that took money OFF, and by how much.
+             *
+             * A LEFT JOIN rather than a third sub-select: `promotion_order_discounts` carries a
+             * UNIQUE on `order_id`, so it cannot multiply the payment-attempt rows this query is
+             * built from — which is exactly the reason the reward column had to be a sub-select.
+             */
+            ->leftJoin('promotion_order_discounts as pod', 'pod.order_id', '=', 'o.id')
+            ->addSelect(['pod.amount as discount_amount', 'pod.promotion_rule_id as discount_rule'])
             ->orderBy('ps.created_at')->orderBy('ps.id');
 
         if ($from !== null && $from !== '') {
@@ -330,49 +493,122 @@ final class OrderController
         if ($to !== null && $to !== '') {
             $query->where('ps.created_at', '<=', $to.' 23:59:59');
         }
+
+        /*
+         * ── The SAME scope the list applies (🟠-1, 2026-09-17) ────────────────────────────────
+         *
+         * This export carried no storefront scope at all. The route is gated on `manage-payments`,
+         * but that ability can be granted SCOPED — and a scoped holder was downloading every
+         * storefront's payment history: transaction ids, amounts and order numbers for a shop they
+         * cannot open a single order of.
+         *
+         * The screen had `applyScope()` from the day the scope existed; the export is the same
+         * question asked in a different verb and simply never got it. It is applied here through
+         * the same helper rather than a second copy of the rule, because two copies of an
+         * authorisation rule agree only by coincidence — which is the finding that produced
+         * `Navigation`'s admin short-circuit fix as well.
+         */
+        self::applyScope($query);
+
         $storefrontId = Coerce::nint($request->input('storefront_id'));
         if ($storefrontId !== null) {
+            /*
+             * …and a NAMED storefront outside the grant is a 404, not a silently empty file.
+             *
+             * `applyScope()` alone would already return nothing for such a request, but "no rows"
+             * and "not yours" read identically to the caller, and a finance operator handed an
+             * empty CSV concludes the day had no takings. 404 rather than 403 for the reason
+             * §3.11.14 gives everywhere else: a 403 confirms the storefront exists.
+             */
+            $scope = self::storefrontScope();
+            abort_if($scope !== null && ! in_array($storefrontId, $scope, true), 404);
+
             $query->where('o.storefront_id', $storefrontId);
         }
 
-        $filename = 'settlement-'.now()->format('Ymd-His').'.csv';
+        /*
+         * `rewards` since wave 4D (study §3.16.5): which promotion, if any, gave something away on
+         * this order. Finance opens this file to reconcile takings, and a sale that carried a gift
+         * is a different sale — without the column the only way to know is to join `order_items`
+         * by hand, which nobody does.
+         *
+         * Empty for the overwhelming majority of rows, which is the honest shape: most orders
+         * carry no promotion.
+         */
+        /*
+         * ── The headings are TRANSLATED now (🟡-5, 2026-09-17) ────────────────────────────────
+         *
+         * They used to be the raw column keys — `order_number`, `transaction_id` — in every locale,
+         * on the one file an Egyptian accountant opens every morning. Every other export in the
+         * dashboard names its columns in the operator's language; this one shipped its database
+         * identifiers and nobody noticed because the developers reading it could read them.
+         *
+         * The keys are unchanged, so nothing that reads the file by key moves. Only the first row
+         * does — which is what a person reads.
+         */
+        $columns = [
+            ['key' => 'date', 'label' => ManageText::t('common.date', 'التاريخ'), 'value' => null],
+            ['key' => 'order_number', 'label' => ManageText::t('common.order_number', 'رقم الطلب'), 'value' => null],
+            ['key' => 'provider', 'label' => ManageText::t('orders.payment_provider', 'مزوّد الدفع'), 'value' => null],
+            ['key' => 'method', 'label' => ManageText::t('orders.payment_method', 'طريقة الدفع'), 'value' => null],
+            ['key' => 'transaction_id', 'label' => ManageText::t('orders.transaction_id', 'رقم العملية'), 'value' => null],
+            ['key' => 'amount', 'label' => ManageText::t('orders.amount', 'المبلغ'), 'value' => null],
+            ['key' => 'status', 'label' => ManageText::t('common.status', 'الحالة'), 'value' => null],
+            ['key' => 'rewards', 'label' => ManageText::t('orders.settlement_rewards', 'عروض الهدايا'), 'value' => null],
+            /*
+             * `discount` is the column finance needs most of the three. The `amount` above is what
+             * the PROVIDER took; when a promotion reduced the order, that figure is already the
+             * discounted one — so without this column a reconciled day's takings look simply lower
+             * than the catalogue says, with no line explaining it.
+             */
+            ['key' => 'discount', 'label' => ManageText::t('orders.discount', 'الخصم'), 'value' => null],
+            ['key' => 'discount_rule', 'label' => ManageText::t('orders.settlement_discount_rule', 'رقم عرض الخصم'), 'value' => null],
+        ];
 
-        return response()->streamDownload(function () use ($query): void {
-            $out = fopen('php://output', 'w');
-            if ($out === false) {
-                return;
+        /*
+         * Chunked through a generator: a settlement export must not hold a year of attempts in
+         * memory, and `TableExport` writes what it yields a row at a time.
+         *
+         * @return iterable<int, array<string, mixed>>
+         */
+        $rows = (function () use ($query): iterable {
+            foreach ($query->orderBy('ps.id')->cursor() as $raw) {
+                $row = Row::cast($raw);
+                $minor = Row::nint($row, 'amount_cents');
+
+                yield [
+                    'date' => Row::nstr($row, 'created_at'),
+                    'order_number' => Row::nstr($row, 'order_number') ?? '',
+                    'provider' => Row::nstr($row, 'provider') ?? '',
+                    'method' => Row::nstr($row, 'method') ?? '',
+                    'transaction_id' => Row::nstr($row, 'pay_transaction_id') ?? '',
+                    'amount' => $minor === null ? '' : number_format($minor / 100, 2, '.', ''),
+                    /*
+                     * The real outcome, not `success`/`failed` (🟡-4). Paymob sends a refund as
+                     * `success=true` with `is_refunded=true`, so this column used to call a refund
+                     * a sale — and a finance sheet that adds a refund to the day's takings is a
+                     * reconciliation error found months after the fact. Rows written before the
+                     * `outcome` column existed fall back to what they DO claim rather than to an
+                     * invented distinction.
+                     */
+                    'status' => CallbackPolicy::outcomeOf(Row::nstr($row, 'outcome'), Row::nstr($row, 'success')),
+                    // The promotion(s) this order's reward lines were granted by, or ''.
+                    'rewards' => Row::nstr($row, 'reward_rules') ?? '',
+                    // What a money reward took off this order, and which rule took it. Empty for
+                    // every order that carried no discount, which is nearly all of them.
+                    'discount' => Row::nmoney($row, 'discount_amount') ?? '',
+                    'discount_rule' => ($ruleId = Row::nint($row, 'discount_rule')) === null ? '' : (string) $ruleId,
+                ];
             }
-            // UTF-8 BOM: Excel opens an Arabic CSV as mojibake without it, and this file exists to
-            // be opened in Excel.
-            fwrite($out, "\xEF\xBB\xBF");
-            fputcsv($out, ['date', 'order_number', 'provider', 'method', 'transaction_id', 'amount', 'status']);
+        })();
 
-            // Chunked: a settlement export must not hold a year of attempts in memory.
-            $query->orderBy('ps.id')->chunk(500, function (Collection $rows) use ($out): void {
-                foreach ($rows as $raw) {
-                    $row = Row::cast($raw);
-                    $minor = Row::nint($row, 'amount_cents');
-                    fputcsv($out, [
-                        Row::nstr($row, 'created_at'),
-                        Row::nstr($row, 'order_number') ?? '',
-                        Row::nstr($row, 'provider') ?? '',
-                        Row::nstr($row, 'method') ?? '',
-                        Row::nstr($row, 'pay_transaction_id') ?? '',
-                        $minor === null ? '' : number_format($minor / 100, 2, '.', ''),
-                        /*
-                         * The real outcome, not `success`/`failed` (🟡-4). Paymob sends a refund as
-                         * `success=true` with `is_refunded=true`, so this column used to call a
-                         * refund a sale — and a finance sheet that adds a refund to the day's
-                         * takings is a reconciliation error found months after the fact. Rows
-                         * written before the `outcome` column existed fall back to what they DO
-                         * claim rather than to an invented distinction.
-                         */
-                        CallbackPolicy::outcomeOf(Row::nstr($row, 'outcome'), Row::nstr($row, 'success')),
-                    ]);
-                }
-            });
-            fclose($out);
-        }, $filename, ['Content-Type' => 'text/csv; charset=UTF-8']);
+        /*
+         * Through the SHARED writer since wave 4D. It was already streamed and already carried the
+         * BOM; what it gained is the row count in the filename and — the one that matters here —
+         * the leading-character defusing. An order number or a provider reference beginning `=` or
+         * `-` is a cell Excel EXECUTES, and this is the file finance opens every morning.
+         */
+        return TableExport::respond('settlement', $query->count(), $columns, $rows);
     }
 
     // ── reads ────────────────────────────────────────────────────────────────────────────────
@@ -569,11 +805,17 @@ final class OrderController
     private static function items(int $orderId): array
     {
         $out = [];
+        $hexes = [];
         foreach (
             DB::table('order_items as oi')
                 ->leftJoin('catalog_products as p', 'p.id', '=', 'oi.product_id')
                 ->leftJoin('catalog_product_translations as pt', function (JoinClause $join): void {
                     $join->on('pt.product_id', '=', 'oi.product_id')->where('pt.locale', '=', 'ar');
+                })
+                // The English name too (2026-10-05): this query joined the Arabic translation
+                // alone, so an order opened in English listed its lines in Arabic.
+                ->leftJoin('catalog_product_translations as pte', function (JoinClause $join): void {
+                    $join->on('pte.product_id', '=', 'oi.product_id')->where('pte.locale', '=', 'en');
                 })
                 ->leftJoin('catalog_product_variants as v', 'v.id', '=', 'oi.variant_id')
                 ->where('oi.order_id', $orderId)
@@ -581,7 +823,8 @@ final class OrderController
                 ->get([
                     'oi.id', 'oi.product_id', 'oi.variant_id', 'oi.offer_id', 'oi.quantity',
                     'oi.piece_price', 'oi.total_price', 'oi.type_stock', 'oi.color_band', 'oi.color_dial',
-                    'p.wa_code', 'pt.title as title_ar', 'v.label as variant_label', 'v.sku as variant_sku',
+                    'p.wa_code', 'pt.title as title_ar', 'pte.title as title_en',
+                    'v.label as variant_label', 'v.sku as variant_sku',
                 ]) as $raw
         ) {
             $row = Row::cast($raw);
@@ -589,7 +832,20 @@ final class OrderController
                 'id' => Row::int($row, 'id'),
                 'product_id' => Row::nint($row, 'product_id'),
                 'wa_code' => Row::nstr($row, 'wa_code'),
-                'title' => Row::nstr($row, 'title_ar'),
+                /*
+                 * The product's CURRENT name, in the reader's language.
+                 *
+                 * An order line is a historical record, but the product's NAME is not part of what
+                 * it records — the line stores the price, the quantity and the codes, which are the
+                 * things that must not drift. The name is looked up so it reads for whoever is
+                 * looking, and it falls back to the internal code when the product is gone, which
+                 * is what an operator would search for anyway.
+                 */
+                'title' => LocalisedName::pick(
+                    Row::nstr($row, 'title_ar'),
+                    Row::nstr($row, 'title_en'),
+                    Row::nstr($row, 'wa_code') ?? '',
+                ),
                 'variant_id' => Row::nint($row, 'variant_id'),
                 'variant' => Row::nstr($row, 'variant_label'),
                 'variant_sku' => Row::nstr($row, 'variant_sku'),
@@ -597,13 +853,70 @@ final class OrderController
                 'quantity' => Row::int($row, 'quantity'),
                 'piece_price' => Row::str($row, 'piece_price'),
                 'total_price' => Row::str($row, 'total_price'),
-                'bucket' => Row::nstr($row, 'type_stock'),
-                'color_band' => Row::nstr($row, 'color_band'),
-                'color_dial' => Row::nstr($row, 'color_dial'),
+                /*
+                 * The CANONICAL bucket key, not the legacy column's casing (D-10, 2026-09-19).
+                 *
+                 * `order_items.type_stock` holds `Express` / `Market` with a capital, while the
+                 * whole rest of the system — the stock screen, the ledger, the home tiles — speaks
+                 * `express` / `market`. The client's label map is keyed lowercase, so a capitalised
+                 * value fell straight through it and the order line printed the raw `Market` beside
+                 * a stock screen calling the same shelf «ماركت». Mapped through the one function
+                 * that owns this translation, which is the same one the checkout used.
+                 */
+                'bucket' => Row::nstr($row, 'type_stock') === null
+                    ? null
+                    : InventoryService::bucketForTypeStock(Row::nstr($row, 'type_stock')),
+                'color_band' => self::colour(Row::nstr($row, 'color_band')),
+                'color_dial' => self::colour(Row::nstr($row, 'color_dial')),
             ];
+
+            foreach ([Row::nstr($row, 'color_band'), Row::nstr($row, 'color_dial')] as $hex) {
+                if ($hex !== null) {
+                    $hexes[] = $hex;
+                }
+            }
+        }
+
+        /*
+         * ── The hex becomes a NAME (item 12, 2026-09-18) ─────────────────────────────────────
+         *
+         * `order_items.color_band` and `color_dial` store what the legacy cart stored: `#1F3A5F`.
+         * The screen printed it, so a team member packing the order read "#1F3A5F / #1F3A5F" where
+         * they needed to read "أزرق". Nobody picks a watch off a shelf by its hex code.
+         *
+         * Resolved in ONE grouped query after the lines are built, not per line — an order of six
+         * watches would otherwise ask the colour table twelve times for four distinct answers.
+         *
+         * The hex is KEPT alongside the name, because it is what draws the swatch and it is what
+         * the row actually stores. A colour the catalogue has never heard of keeps its hex and gets
+         * no name: see {@see ProductPeek::colourNames()} for why that is not a near-match.
+         */
+        $names = ProductPeek::colourNames($hexes);
+        foreach ($out as $index => $item) {
+            foreach (['color_band', 'color_dial'] as $slot) {
+                $colour = Coerce::arr($item[$slot] ?? null);
+                $hex = Coerce::nstr($colour['hex'] ?? null);
+                if ($hex !== null) {
+                    $out[$index][$slot]['name'] = $names[strtoupper($hex)] ?? null;
+                }
+            }
         }
 
         return $out;
+    }
+
+    /**
+     * One stored colour as `{hex, name}` — or null when the line carries none.
+     *
+     * The name is filled in by the caller once every hex on the order has been resolved together.
+     *
+     * @return array{hex: string, name: array{ar: string, en: string}|null}|null
+     */
+    private static function colour(?string $hex): ?array
+    {
+        $clean = $hex === null ? '' : trim($hex);
+
+        return $clean === '' ? null : ['hex' => $clean, 'name' => null];
     }
 
     /**
@@ -643,6 +956,72 @@ final class OrderController
         return $out;
     }
 
+    /**
+     * What the order's total is MADE OF (D-22, 2026-09-19).
+     *
+     * ── The problem ─────────────────────────────────────────────────────────────────────────
+     *
+     * Order 000009 showed `الإجمالي 4300.00` against a single line of `4200.00 × 1`; order 000008
+     * showed 1099.00 against 999.00. The difference is the Cairo delivery price and nothing on the
+     * screen said so — somebody checking an invoice saw a total that contradicted the only line on
+     * the page, with no account of the gap.
+     *
+     * ── Why this is DERIVED and says so ─────────────────────────────────────────────────────
+     *
+     * `orders` carries one money column: `total_price_for_order`. There is no subtotal, no
+     * shipping and no discount column — measured on the live schema, not assumed. So the block
+     * cannot report a stored breakdown, because there is not one. What it can do honestly is:
+     *
+     *   • add the lines up,
+     *   • look up what delivery to this order's city costs TODAY,
+     *   • and show whatever is left over as exactly that — unexplained — rather than silently
+     *     labelling it "shipping" and being wrong the day a discount or a price change is the
+     *     real cause.
+     *
+     * The shipping price is today's, not the one charged at checkout: nothing stored it. The
+     * screen says that too, in `shipping_is_current`, rather than presenting a current number as
+     * a historical fact.
+     *
+     * @param  list<array<string, mixed>>  $items
+     * @return array<string, mixed>
+     */
+    private static function totals(\stdClass $orderRow, array $items): array
+    {
+        $order = Row::cast($orderRow);
+
+        $lines = 0.0;
+        foreach ($items as $item) {
+            $lines += (float) Coerce::str(Coerce::arr($item)['total_price'] ?? '0');
+        }
+
+        $total = (float) Row::str($order, 'total_price_for_order');
+
+        $shipping = null;
+        $addressId = Row::nint($order, 'address_id');
+        if ($addressId !== null) {
+            $cost = DB::table('addresses as a')
+                ->join('shipping_cities as c', 'c.id', '=', 'a.shipping_city_id')
+                ->where('a.id', $addressId)
+                ->value('c.shipping_cost');
+            $shipping = is_numeric($cost) ? (float) $cost : null;
+        }
+
+        $gap = round($total - $lines, 2);
+        // A cent of float noise is not a discrepancy worth a sentence.
+        $explained = $shipping !== null && abs($gap - $shipping) < 0.01;
+
+        return [
+            'items' => number_format($lines, 2, '.', ''),
+            'shipping' => $shipping === null ? null : number_format($shipping, 2, '.', ''),
+            'total' => number_format($total, 2, '.', ''),
+            // What the lines plus the known delivery price still do not account for. Zero on a
+            // healthy order; a number here means a discount, a manual adjustment, or a price that
+            // moved since — and all three are worth seeing rather than hiding.
+            'unexplained' => number_format($explained ? 0.0 : $gap - ($shipping ?? 0.0), 2, '.', ''),
+            'shipping_is_current' => $shipping !== null,
+        ];
+    }
+
     /** @return array<string, mixed>|null */
     private static function address(?int $addressId): ?array
     {
@@ -655,10 +1034,20 @@ final class OrderController
             ->leftJoin('shipping_city_translations as ct', function (JoinClause $join): void {
                 $join->on('ct.shipping_city_id', '=', 'a.shipping_city_id')->where('ct.locale', '=', 'ar');
             })
+            /*
+             * The English name of the city too (2026-10-05).
+             *
+             * This query joined the Arabic translation alone, so an order opened in English showed
+             * its delivery city as «القاهرة». Both locales exist for all 27 cities — checked,
+             * not assumed — so there was nothing to add to the data, only a join to write.
+             */
+            ->leftJoin('shipping_city_translations as cte', function (JoinClause $join): void {
+                $join->on('cte.shipping_city_id', '=', 'a.shipping_city_id')->where('cte.locale', '=', 'en');
+            })
             ->where('a.id', $addressId)
             ->first([
                 'a.id', 'a.address_line', 'a.phone_number_one', 'a.phone_number_two',
-                'a.shipping_city_id', 'ct.city_name',
+                'a.shipping_city_id', 'ct.city_name', 'cte.city_name as city_name_en',
             ]);
 
         if (! is_object($row)) {
@@ -671,7 +1060,10 @@ final class OrderController
             'line' => Row::nstr($address, 'address_line'),
             'phone' => Row::nstr($address, 'phone_number_one'),
             'phone_alt' => Row::nstr($address, 'phone_number_two'),
-            'city' => Row::nstr($address, 'city_name'),
+            'city' => LocalisedName::pick(
+                Row::nstr($address, 'city_name'),
+                Row::nstr($address, 'city_name_en'),
+            ) ?: null,
         ];
     }
 

@@ -1,0 +1,420 @@
+import { router } from '@inertiajs/react';
+import { useState } from 'react';
+
+import { Alert } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
+import { Ltr, Num } from '@/components/ui/bidi';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { ConfirmAction } from '@/components/manage/ConfirmAction';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import ManageLayout from '@/layouts/ManageLayout';
+import { useT } from '@/lib/i18n';
+import { methodLabel, providerLabel } from '@/lib/labels';
+
+/**
+ * One customer (wave 4D) — what somebody needs while the person is on the telephone.
+ *
+ * Their orders, newest first, each one a click from its own screen; the addresses those orders went
+ * to, with the phone numbers written on them. Nothing here is editable, and there is no route that
+ * would let it be: the tables belong to the storefront.
+ */
+
+interface Order {
+    id: number;
+    order_number: string;
+    status: string;
+    total: string;
+    payment_method: string | null;
+    provider: string | null;
+    storefront: string | null;
+    created_at: string | null;
+    url: string;
+}
+
+interface Address {
+    id: number;
+    line: string | null;
+    city: string | null;
+    phone_one: string | null;
+    phone_two: string | null;
+    updated_at: string | null;
+}
+
+interface AttachTarget {
+    id: number;
+    name: string;
+    email: string | null;
+    orders_count: number;
+}
+
+interface Props {
+    /** Admin, on a GUEST customer. Absent for everyone and everything else. */
+    can_attach: boolean;
+    /** The account the typed number resolves to, or null — see AttachCard. */
+    attach_target: AttachTarget | null;
+    customer: {
+        ckey: string;
+        kind: string;
+        kind_label: string;
+        name: string;
+        email: string | null;
+        phone: string | null;
+        orders_count: number;
+        spent: string;
+        ordered: string;
+        last_order_at: string | null;
+        joined_at: string | null;
+        storefronts: string[];
+    };
+    orders: Order[];
+    addresses: Address[];
+}
+
+const TONE: Record<string, 'default' | 'neutral' | 'success' | 'warning' | 'destructive'> = {
+    completed: 'success',
+    delivered: 'success',
+    cancelled: 'destructive',
+    pending: 'warning',
+};
+
+const money = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+export default function CustomerShow({ customer, orders, addresses, can_attach, attach_target }: Props) {
+    const t = useT();
+
+    /*
+     * The statuses live here rather than in a module constant because reading them needs the hook.
+     *
+     * All six are `common.status_*`, and the wording is the ORDER screen's. This screen used to
+     * carry its own four — مكتمل/"Completed" where the order screen says مغلق/"Closed", قيد التجهيز
+     * where it says قيد التنفيذ — so an operator opening a customer, reading "Completed", and
+     * clicking through to that same order was shown "Closed". One order, two words, in both
+     * languages. The conflict test could not see it: they were different KEYS, not one key with two
+     * Arabics. The order screen wins because the state belongs to the order.
+     */
+    const STATUS: Record<string, string> = {
+        pending: t('common.status_pending', 'قيد الانتظار'),
+        processing: t('common.status_processing', 'قيد التنفيذ'),
+        shipped: t('common.status_shipped', 'تم الشحن'),
+        delivered: t('common.status_delivered', 'تم التوصيل'),
+        completed: t('common.status_completed', 'مغلق'),
+        cancelled: t('common.status_cancelled', 'ملغى'),
+    };
+
+    return (
+        <ManageLayout
+            title={customer.name}
+            crumbs={[
+                { label: t('common.home', 'الرئيسية'), href: '/manage' },
+                { label: t('common.customers', 'العملاء'), href: '/manage/customers' },
+                { label: customer.name },
+            ]}
+        >
+            <div className="space-y-4">
+                <Alert tone="info" title={t('common.read_only', 'للقراءة فقط')}>
+                    {t(
+                        'customers.show_read_only_body',
+                        'بيانات العميل يملكها المتجر. لا تُعدَّل من لوحة التحكم، ولا يوجد مسار يسمح بذلك.',
+                    )}
+                </Alert>
+
+                <Card>
+                    <CardHeader className="flex-row items-center justify-between gap-3">
+                        <CardTitle>{customer.name}</CardTitle>
+                        <Badge variant={customer.kind === 'registered' ? 'default' : 'neutral'}>{customer.kind_label}</Badge>
+                    </CardHeader>
+                    <CardContent className="grid gap-4 sm:grid-cols-3">
+                        <Field label={t('common.phone', 'الهاتف')}>
+                            <Num className="font-medium">{customer.phone ?? '—'}</Num>
+                        </Field>
+                        <Field label={t('common.email', 'البريد')}>
+                            <Ltr className="text-sm">{customer.email ?? '—'}</Ltr>
+                        </Field>
+                        <Field label={t('common.storefronts', 'المتاجر')}>
+                            <span className="text-sm">{customer.storefronts.join(t('common.list_separator', '، ')) || '—'}</span>
+                        </Field>
+                        <Field label={t('customers.show_orders_count', 'عدد الطلبات')}>
+                            <Num className="text-lg font-semibold">{customer.orders_count}</Num>
+                        </Field>
+                        {/* ── Two figures, because one of them was unreadable alone (D-23) ─────
+
+                            `إجمالي المشتريات 0.00` sat beside `عدد الطلبات 5`, with five orders of
+                            3,190 listed underneath. The query was right — a pending order is not a
+                            purchase — but no order in this database has ever reached `delivered`
+                            or `completed`, so the column is 0.00 for every customer and an
+                            unqualified label beside an order count reads as broken data.
+
+                            Loosening the query would have been the wrong repair: it would make the
+                            number that means "money actually taken" stop meaning that. So both are
+                            named for exactly what they are, and the gap between them is the shop's
+                            open exposure. */}
+                        <Field label={t('customers.ordered_total', 'إجمالي ما طلبه')}>
+                            <Num className="text-lg font-semibold">{money.format(Number(customer.ordered))}</Num>
+                            <p className="mt-0.5 text-[11px] text-muted-foreground">
+                                {t('customers.ordered_hint', 'كل الطلبات عدا الملغاة.')}
+                            </p>
+                        </Field>
+                        <Field label={t('customers.delivered_total', 'إجمالي ما استلمه')}>
+                            <Num className="text-lg font-semibold">{money.format(Number(customer.spent))}</Num>
+                            <p className="mt-0.5 text-[11px] text-muted-foreground">
+                                {t('customers.delivered_hint', 'الطلبات التي وصلت العميل فعلًا — لا تشمل قيد التنفيذ ولا الملغاة.')}
+                            </p>
+                        </Field>
+                        <Field label={t('customers.show_first_seen_last_order', 'أول ظهور / آخر طلب')}>
+                            <Num className="text-sm">
+                                {customer.joined_at?.slice(0, 10) ?? '—'} → {customer.last_order_at?.slice(0, 10) ?? '—'}
+                            </Num>
+                        </Field>
+                    </CardContent>
+                </Card>
+
+                <Card>
+                    <CardHeader>
+                        <CardTitle>{t('customers.show_orders_title', 'الطلبات (:count)', { count: orders.length })}</CardTitle>
+                    </CardHeader>
+                    <CardContent className="px-0">
+                        {orders.length === 0 ? (
+                            <p className="px-6 pb-4 text-sm text-muted-foreground">
+                                {t('customers.show_no_orders', 'لا توجد طلبات لهذا العميل.')}
+                            </p>
+                        ) : (
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead>{t('common.order_number', 'رقم الطلب')}</TableHead>
+                                        <TableHead>{t('common.date', 'التاريخ')}</TableHead>
+                                        <TableHead>{t('common.status', 'الحالة')}</TableHead>
+                                        <TableHead>{t('common.total', 'الإجمالي')}</TableHead>
+                                        <TableHead>{t('common.payment', 'الدفع')}</TableHead>
+                                        <TableHead>{t('common.storefront', 'المتجر')}</TableHead>
+                                        <TableHead align="end">…</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {orders.map((order) => (
+                                        <TableRow key={order.id}>
+                                            <TableCell>
+                                                <Num className="font-medium">{order.order_number}</Num>
+                                            </TableCell>
+                                            <TableCell>
+                                                <Num className="text-xs text-muted-foreground">{order.created_at?.slice(0, 16) ?? '—'}</Num>
+                                            </TableCell>
+                                            <TableCell>
+                                                <Badge variant={TONE[order.status] ?? 'neutral'}>{STATUS[order.status] ?? order.status}</Badge>
+                                            </TableCell>
+                                            <TableCell>
+                                                <Num>{money.format(Number(order.total))}</Num>
+                                            </TableCell>
+                                            <TableCell className="text-xs text-muted-foreground">
+                                                {order.provider !== null
+                                                    ? providerLabel(t, order.provider)
+                                                    : methodLabel(t, order.payment_method)}
+                                            </TableCell>
+                                            <TableCell className="text-xs">{order.storefront ?? '—'}</TableCell>
+                                            <TableCell align="end">
+                                                <Button variant="outline" size="sm" onClick={() => router.visit(order.url)}>
+                                                    {t('customers.show_open_order', 'فتح')}
+                                                </Button>
+                                            </TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        )}
+                    </CardContent>
+                </Card>
+
+                <Card>
+                    <CardHeader>
+                        <CardTitle>{t('customers.show_addresses_title', 'العناوين (:count)', { count: addresses.length })}</CardTitle>
+                    </CardHeader>
+                    <CardContent className="px-0">
+                        {addresses.length === 0 ? (
+                            <p className="px-6 pb-4 text-sm text-muted-foreground">
+                                {t('customers.show_no_addresses', 'لا توجد عناوين — الطلبات هنا بلا عنوان مسجَّل.')}
+                            </p>
+                        ) : (
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead>{t('common.address', 'العنوان')}</TableHead>
+                                        <TableHead>{t('common.city', 'المدينة')}</TableHead>
+                                        <TableHead>{t('customers.show_address_phones', 'هواتف العنوان')}</TableHead>
+                                        <TableHead>{t('common.last_updated', 'آخر تحديث')}</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {addresses.map((address) => (
+                                        <TableRow key={address.id}>
+                                            <TableCell className="max-w-md">{address.line ?? '—'}</TableCell>
+                                            <TableCell>{address.city ?? '—'}</TableCell>
+                                            <TableCell>
+                                                <div className="space-y-0.5 text-sm">
+                                                    <Num>{address.phone_one ?? '—'}</Num>
+                                                    {address.phone_two ? (
+                                                        <div className="text-xs text-muted-foreground">
+                                                            <Num>{address.phone_two}</Num>
+                                                        </div>
+                                                    ) : null}
+                                                </div>
+                                            </TableCell>
+                                            <TableCell>
+                                                <Num className="text-xs text-muted-foreground">{address.updated_at?.slice(0, 10) ?? '—'}</Num>
+                                            </TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        )}
+                    </CardContent>
+                </Card>
+
+                {can_attach ? (
+                    <AttachCard customer={customer} orders={orders} target={attach_target} />
+                ) : null}
+            </div>
+        </ManageLayout>
+    );
+}
+
+/**
+ * Join this guest's orders to a registered account (piece 6).
+ *
+ * ── Why the confirmation names BOTH sides ─────────────────────────────────────────
+ *
+ * This merges two identities. Getting it wrong hands one person another person's delivery
+ * addresses, telephone number and purchase history — and there is no undo on this screen. So the
+ * dialog names the orders BY NUMBER and the account BY NAME, and the operator confirms a sentence
+ * they can check rather than an intention they already had.
+ *
+ * The account is resolved by the SERVER, through a partial reload of `attach_target` on the screen
+ * they are already allowed to see. Typing a number that resolves to nobody leaves the confirm
+ * button unreachable, so the refusal the writer would give is never reached by surprise.
+ *
+ * The grouping under this `g:` key is a heuristic — orders sharing a telephone, or an address, or a
+ * cart token — and the help text says so. A human confirming it is the entire point of this path.
+ */
+function AttachCard({
+    customer,
+    orders,
+    target,
+}: {
+    customer: Props['customer'];
+    orders: Order[];
+    target: AttachTarget | null;
+}) {
+    const t = useT();
+    const [accountId, setAccountId] = useState('');
+
+    // Ask the server who that is, on the screen the operator is already authorised for.
+    const look = (value: string) => {
+        setAccountId(value);
+        router.reload({ only: ['attach_target'], data: { user_id: value || undefined } });
+    };
+
+    const shown = orders.slice(0, 5).map((order) => order.order_number);
+    const rest = orders.length - shown.length;
+
+    return (
+        <Card>
+            <CardHeader>
+                <CardTitle>{t('customers.attach_heading', 'ضمّ هذه الطلبات إلى حساب')}</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+                <Alert tone="warning" title={t('customers.attach_grouping_title', 'هذا التجميع تخمين')}>
+                    {t('customers.attach_help', '')}
+                </Alert>
+
+                <div className="grid gap-3 sm:grid-cols-[14rem_1fr] sm:items-end">
+                    <div className="space-y-1">
+                        <label className="text-xs text-muted-foreground" htmlFor="attach-account-id">
+                            {t('customers.attach_account_id', 'رقم الحساب')}
+                        </label>
+                        <Input
+                            id="attach-account-id"
+                            inputMode="numeric"
+                            value={accountId}
+                            onChange={(event) => look(event.target.value.replace(/[^0-9]/g, ''))}
+                        />
+                    </div>
+
+                    <div className="text-sm">
+                        {accountId === '' ? (
+                            <span className="text-muted-foreground">
+                                {t('customers.attach_who', 'اكتب رقم الحساب لنعرض صاحبه.')}
+                            </span>
+                        ) : target === null ? (
+                            <span className="text-destructive">{t('customers.attach_no_account', '')}</span>
+                        ) : (
+                            <span>
+                                <strong>{target.name}</strong>{' '}
+                                <Ltr className="text-muted-foreground">{target.email ?? '—'}</Ltr>{' '}
+                                <span className="text-muted-foreground">
+                                    ({t('customers.attach_target_orders', 'لديه :count طلب بالفعل', {
+                                        count: String(target.orders_count),
+                                    })}
+                                    )
+                                </span>
+                            </span>
+                        )}
+                    </div>
+                </div>
+
+                <ConfirmAction
+                    tone="default"
+                    disabled={target === null}
+                    title={t('customers.attach_confirm_title', 'ضمّ الطلبات إلى هذا الحساب؟')}
+                    consequence={
+                        target === null ? null : (
+                            <div className="space-y-2">
+                                <p>
+                                    {t(
+                                        'customers.attach_consequence',
+                                        ':count طلب من «:guest» ستنتقل إلى حساب «:account» وتظهر في سجل طلباته على المتجر.',
+                                        {
+                                            count: String(orders.length),
+                                            guest: customer.name,
+                                            account: target.name,
+                                        },
+                                    )}
+                                </p>
+                                <p className="text-sm">
+                                    <Ltr>{shown.join(t('common.list_separator', '، '))}</Ltr>
+                                    {rest > 0
+                                        ? ' ' + t('customers.attach_and_more', 'و:count طلب أخرى', { count: String(rest) })
+                                        : ''}
+                                </p>
+                                <p className="text-sm font-medium">
+                                    {t(
+                                        'customers.attach_no_undo',
+                                        'لا يوجد تراجع من هذه الشاشة. تأكّد أنّ الشخصين واحد.',
+                                    )}
+                                </p>
+                            </div>
+                        )
+                    }
+                    confirmLabel={t('customers.attach_submit', 'ضمّ الطلبات')}
+                    trigger={
+                        <Button disabled={target === null}>{t('customers.attach_submit', 'ضمّ الطلبات')}</Button>
+                    }
+                    onConfirm={() =>
+                        router.post(`/manage/customers/${encodeURIComponent(customer.ckey)}/attach`, {
+                            user_id: Number(accountId),
+                        })
+                    }
+                />
+            </CardContent>
+        </Card>
+    );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+    return (
+        <div className="space-y-1">
+            <div className="text-xs text-muted-foreground">{label}</div>
+            <div>{children}</div>
+        </div>
+    );
+}

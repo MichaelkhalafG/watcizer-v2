@@ -2,7 +2,6 @@
 
 export interface BrandingProps {
     name: string;
-    suffix: string;
     logo: string;
     logo_light: string;
     logo_width: number;
@@ -30,8 +29,16 @@ export interface NavItem {
     route: string | null;
     href: string | null;
     ability: string;
-    /** Set when the screen is not built yet ("4B"), which renders the item disabled. */
-    wave: string | null;
+    /**
+     * The item is PARKED: it renders disabled with a "later" badge and links nowhere.
+     *
+     * Either the screen does not exist yet, or it exists and the team is not meant to use it. The
+     * sidebar draws both the same way on purpose — "not for you today" is the whole message, and
+     * an operator has no use for the difference.
+     */
+    later: boolean;
+    /** A count worth the operator's eye, or null. Zero is never sent. */
+    badge: number | null;
     active: boolean;
 }
 
@@ -56,6 +63,8 @@ export interface SharedProps {
     auth: { user: AuthUser | null };
     abilities: Abilities;
     nav: NavGroup[];
+    /** The active locale's dictionary. Empty until the i18n backlog's step 1 — `t()` falls back. */
+    translations: Translations;
     flash: { status: string | null; error: string | null };
     errors: Record<string, string>;
     [key: string]: unknown;
@@ -70,6 +79,14 @@ export interface Crumb {
 }
 
 // ── the server-side table contract (App\Support\Table\TableQuery) ────────────────────────────
+
+/**
+ * The flat `key => string` dictionary for the active locale (i18n step 0).
+ *
+ * Empty today: `t()` from `@/lib/i18n` falls back to the literal it is given, so the seam exists
+ * without anything having been translated yet.
+ */
+export type Translations = Record<string, string>;
 
 export interface TableMeta {
     page: number;
@@ -90,6 +107,12 @@ export interface TableMeta {
      * the distinction only matters on the server.
      */
     virtual: string[];
+    /**
+     * Did the SERVER offer a CSV of this view? The button is rendered from this and nothing else:
+     * a screen whose controller declared no export columns has no export, and the client never
+     * decides what may leave the database.
+     */
+    exportable: boolean;
 }
 
 export interface TablePayload<Row> {
@@ -108,7 +131,16 @@ export interface TablePayload<Row> {
  */
 export interface PreSwitchState {
     write_switch_completed: boolean;
+    /** The control is refused. `message` says why; `caveat` is null. */
     blocked: boolean;
     message: string | null;
+    /**
+     * The control WORKS, and still costs something (item 5, 2026-09-18).
+     *
+     * Exactly one of `message` and `caveat` is ever set, and both are null once the switch has
+     * happened — then there is nothing left to say and the sentence disappears rather than
+     * becoming furniture nobody reads.
+     */
+    caveat: string | null;
     label: string;
 }

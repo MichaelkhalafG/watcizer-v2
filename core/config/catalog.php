@@ -5,6 +5,23 @@
 | Catalog dashboard (CLEAN_CORE_STUDY §3.12 — wave 4B)
 |--------------------------------------------------------------------------
 |
+| i18n-exempt-file: every Arabic value here is a LABEL and every label is a
+| FALLBACK, resolved through `ManageText::t()` by the two consumers that read
+| this file — `App\Domain\Catalog\SpecBlocks::for()` keys the block and field
+| names as `specs.block_<family>` / `specs.field_<key>`, and
+| `App\Domain\Catalog\LookupWriter::narrow()` keys the list and column names as
+| `lookups.list_<key>` / `lookups.column_<list>_<column>`.
+|
+| The seam CANNOT be called from this file: `php artisan config:cache` would
+| resolve every label once, in whatever locale happened to be active when the
+| cache was built, and freeze it there for every operator until the next
+| deploy. So the Arabic stays here as the fallback, exactly as a `t()` call's
+| second argument does, and the key is derived from the stable `key` beside it.
+|
+| `ConfigTranslationTest` holds the other half: every label declared below has
+| an English entry, and the consumers really do resolve one. Without that this
+| marker would be a mute switch (🟠-4, 2026-09-17).
+|
 | What the product form SHOWS for a given family, and which lookup lists the
 | dashboard maintains. It is configuration and not code for one specific
 | reason: a product's family is derived from its CATEGORY (see
@@ -49,24 +66,24 @@ return [
             'fields' => [
                 // A dimension and its unit are ONE control on screen, because the table pairs
                 // them and a number without a unit is not a measurement.
-                ['key' => 'case_size', 'label' => 'قياس العلبة', 'type' => 'decimal', 'unit' => 'case_size_unit_id'],
-                ['key' => 'case_thickness', 'label' => 'سماكة العلبة', 'type' => 'decimal', 'unit' => 'case_thickness_unit_id'],
-                ['key' => 'case_shape_id', 'label' => 'شكل العلبة', 'type' => 'lookup', 'lookup' => 'shapes'],
-                ['key' => 'case_material_id', 'label' => 'مادة العلبة', 'type' => 'lookup', 'lookup' => 'materials'],
+                ['key' => 'case_size', 'label' => 'قياس جسم الساعة', 'type' => 'decimal', 'unit' => 'case_size_unit_id', 'hint' => 'قُطر جسم الساعة بالمليمتر عادةً — وليس محيطه.'],
+                ['key' => 'case_thickness', 'label' => 'سماكة جسم الساعة', 'type' => 'decimal', 'unit' => 'case_thickness_unit_id'],
+                ['key' => 'case_shape_id', 'label' => 'شكل جسم الساعة', 'type' => 'lookup', 'lookup' => 'shapes'],
+                ['key' => 'case_material_id', 'label' => 'مادة جسم الساعة', 'type' => 'lookup', 'lookup' => 'materials'],
                 ['key' => 'glass_material_id', 'label' => 'مادة الزجاج', 'type' => 'lookup', 'lookup' => 'materials'],
                 ['key' => 'band_material_id', 'label' => 'مادة السوار', 'type' => 'lookup', 'lookup' => 'materials'],
                 ['key' => 'band_closure_id', 'label' => 'نوع الإغلاق', 'type' => 'lookup', 'lookup' => 'closure_types'],
                 ['key' => 'band_length', 'label' => 'طول السوار', 'type' => 'decimal', 'unit' => 'band_length_unit_id'],
                 ['key' => 'band_width', 'label' => 'عرض السوار', 'type' => 'decimal', 'unit' => 'band_width_unit_id'],
-                ['key' => 'dial_display_type_id', 'label' => 'نوع العرض', 'type' => 'lookup', 'lookup' => 'display_types'],
+                ['key' => 'dial_display_type_id', 'label' => 'نوع عرض القرص', 'type' => 'lookup', 'lookup' => 'display_types'],
                 ['key' => 'movement_type_id', 'label' => 'نوع الحركة', 'type' => 'lookup', 'lookup' => 'movements'],
                 ['key' => 'water_resistance', 'label' => 'مقاومة الماء', 'type' => 'integer', 'unit' => 'water_resistance_unit_id'],
-                ['key' => 'height', 'label' => 'الارتفاع', 'type' => 'decimal', 'unit' => 'height_unit_id'],
-                ['key' => 'width', 'label' => 'العرض', 'type' => 'decimal', 'unit' => 'width_unit_id'],
-                ['key' => 'length', 'label' => 'الطول', 'type' => 'decimal', 'unit' => 'length_unit_id'],
+                ['key' => 'height', 'label' => 'ارتفاع الساعة', 'type' => 'decimal', 'unit' => 'height_unit_id'],
+                ['key' => 'width', 'label' => 'عرض الساعة', 'type' => 'decimal', 'unit' => 'width_unit_id'],
+                ['key' => 'length', 'label' => 'طول الساعة', 'type' => 'decimal', 'unit' => 'length_unit_id'],
                 ['key' => 'interchangeable_dial', 'label' => 'إمكانية تغيير القرص', 'type' => 'boolean'],
                 ['key' => 'interchangeable_strap', 'label' => 'إمكانية تغيير السوار', 'type' => 'boolean'],
-                ['key' => 'watch_box', 'label' => 'علبة أصلية', 'type' => 'boolean'],
+                ['key' => 'watch_box', 'label' => 'هل معه علبة؟', 'type' => 'boolean'],
             ],
         ],
 
@@ -82,6 +99,10 @@ return [
             'label' => 'مواصفات الحقيبة',
             'table' => 'specs',
             'fields' => [
+                // Wave 4D: the supplier files carry a MATERIAL for bags, wallets and fashion goods,
+                // and until now `catalog_materials` attached only to a watch (case / glass / band).
+                // A leather handbag had nowhere to record that it is leather.
+                ['key' => 'material_id', 'label' => 'الخامة', 'type' => 'lookup', 'lookup' => 'materials'],
                 ['key' => 'bag_type', 'label' => 'نوع الحقيبة', 'type' => 'string'],
                 ['key' => 'strap_length_cm', 'label' => 'طول الحمّالة (سم)', 'type' => 'decimal'],
                 ['key' => 'bag_compartments', 'label' => 'عدد الجيوب', 'type' => 'integer'],
@@ -95,10 +116,24 @@ return [
             'label' => 'مواصفات المحفظة',
             'table' => 'specs',
             'fields' => [
+                ['key' => 'material_id', 'label' => 'الخامة', 'type' => 'lookup', 'lookup' => 'materials'],
                 ['key' => 'wallet_card_slots', 'label' => 'جيوب البطاقات', 'type' => 'integer'],
                 ['key' => 'coin_pocket', 'label' => 'جيب للعملات', 'type' => 'boolean'],
                 ['key' => 'width_cm', 'label' => 'العرض (سم)', 'type' => 'decimal'],
                 ['key' => 'height_cm', 'label' => 'الارتفاع (سم)', 'type' => 'decimal'],
+            ],
+        ],
+
+        /*
+         * `fashion` is the DEFAULT family (config/transform.php) and had no block at all, so the
+         * largest non-watch bucket in the catalogue could record nothing about itself. One field to
+         * start with — the one the supplier files actually carry.
+         */
+        'fashion' => [
+            'label' => 'مواصفات المنتج',
+            'table' => 'specs',
+            'fields' => [
+                ['key' => 'material_id', 'label' => 'الخامة', 'type' => 'lookup', 'lookup' => 'materials'],
             ],
         ],
 
@@ -130,6 +165,38 @@ return [
         | "whatever did not match" is how a form starts lying about the data.
         | They get the shared fields and a hint that says why.
         */
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Which COLOUR questions each family is asked (J-6, 2026-09-19)
+    |--------------------------------------------------------------------------
+    |
+    | The product form rendered three colour selects for every product
+    | regardless of family — `اللون الأساسي`, `لون القرص` and `لون السوار` —
+    | from a fixed array in the component, while the rest of the specification
+    | block has been family-gated through this file since wave 4B.
+    |
+    | So a hat was asked for its dial colour and a handbag for its strap
+    | colour, and whoever answered wrote into the column the storefront
+    | renders as a WATCH BAND. The form looked entirely correct while it
+    | happened, which is what makes it a trap rather than a mistake.
+    |
+    | Here rather than in a `match` for the same reason every other
+    | family-dependent thing is here: a product's family comes from its
+    | CATEGORY and the team invents categories. A new family is a line in this
+    | file, never a hotfix in a component — which is precisely what the legacy
+    | dashboard needed when it checked families against hard-coded ids.
+    |
+    | `default` answers for every family with no entry of its own, including
+    | `other`. A family that genuinely has no colour at all would be `[]`.
+    */
+    'color_roles' => [
+        'default' => ['main'],
+        // A watch's colours ARE the dial and the band. "Primary colour" means
+        // nothing on a watch, and asking for it invited a third answer that no
+        // storefront surface reads.
+        'watch' => ['dial', 'band'],
     ],
 
     /*
@@ -194,6 +261,15 @@ return [
             'translations' => 'catalog_material_translations',
             'fk' => 'material_id',
             'extra' => [],
+            /*
+             * Wave 4D: material is also a LOOKUP FIELD inside the JSON `specs` of a bag, a wallet
+             * and a fashion product. Declared separately because it is counted differently — the
+             * delete guard reads it with JSON_EXTRACT, not with `where(column, id)` — and a
+             * material used only there would otherwise look unused and be deletable.
+             */
+            'json_usage' => [
+                ['catalog_products', 'specs', 'material_id'],
+            ],
             'usage' => [
                 ['catalog_product_watch_specs', 'case_material_id'],
                 ['catalog_product_watch_specs', 'glass_material_id'],
@@ -225,7 +301,7 @@ return [
             'usage' => [['catalog_product_watch_specs', 'band_closure_id']],
         ],
         'display_types' => [
-            'label' => 'أنواع العرض',
+            'label' => 'أنواع عرض القرص',
             'master' => 'catalog_display_types',
             'translations' => 'catalog_display_type_translations',
             'fk' => 'display_type_id',
@@ -237,6 +313,9 @@ return [
             'master' => 'catalog_units',
             'translations' => 'catalog_unit_translations',
             'fk' => 'unit_id',
+            // Wave 4D task C3: this list — and only this list — can retire a row instead of
+            // deleting it, so the pickers skip the retired ones. See `UnitCleanup`.
+            'retirable' => true,
             'extra' => ['code' => ['label' => 'الرمز', 'type' => 'string', 'required' => true]],
             'usage' => [
                 ['catalog_product_watch_specs', 'case_size_unit_id'],

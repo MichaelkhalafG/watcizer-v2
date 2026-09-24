@@ -2,9 +2,11 @@
 
 namespace App\Domain\Catalog;
 
+use App\Domain\Activity\ActivityLog;
 use App\Models\Catalog\Product;
 use App\Storefront\StorefrontCache;
 use App\Support\Coerce;
+use App\Support\ManageText;
 use App\Transform\Row;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -41,7 +43,7 @@ final class ProductWriter
      * @var list<string>
      */
     public const COLUMNS = [
-        'family', 'brand_id', 'grade_id', 'wa_code', 'sku', 'model_number', 'hs_code',
+        'family', 'brand_id', 'grade_id', 'wa_code', 'sku', 'hs_code',
         'purchase_price', 'selling_price', 'sale_price', 'currency', 'low_stock_threshold',
         'warranty_years', 'is_active', 'search_keywords', 'specs',
     ];
@@ -96,8 +98,29 @@ final class ProductWriter
             $this->indexer->reindex($id);
             $this->flush($id);
 
+            // No diff on a creation: there is no `before`, and logging forty fields as "changed
+            // from nothing" would drown the updates that carry the real answers.
+            ActivityLog::record('catalog_products', $id, ActivityLog::CREATED, label: $this->labelFor($id));
+
             return $id;
         });
+    }
+
+    /**
+     * What to call this product in the log.
+     *
+     * Captured at write time and stored on the row, because a log entry has to outlive its subject:
+     * six months later "catalog_products 512" is unreadable and "512 — Rolex Submariner" is the
+     * answer somebody was looking for. Arabic first, since that is the dashboard's language.
+     */
+    private function labelFor(int $productId): ?string
+    {
+        $title = DB::table('catalog_product_translations')
+            ->where('product_id', $productId)
+            ->orderByRaw("FIELD(locale, 'ar', 'en')")
+            ->value('title');
+
+        return is_string($title) && $title !== '' ? $title : null;
     }
 
     /**
@@ -113,10 +136,40 @@ final class ProductWriter
                 throw new RuntimeException("Product {$productId} does not exist.");
             }
 
+            $this->assertVisibleProductStaysComplete($productId, $data);
+
             $family = $this->familyFor($data, $productId);
             $row = $this->scalarColumns($data, $family);
             $row['updated_by'] = $actorId;
             $row['updated_at'] = now();
+
+            /*
+             * The BEFORE snapshot, taken inside the transaction and limited to the columns this
+             * update actually writes. Reading the whole row would log forty fields to report two,
+             * and reading it outside the transaction would race the very write it describes.
+             *
+             * `updated_by` / `updated_at` are excluded: they change on every save by construction,
+             * so logging them would put a "changed" row against a save that changed nothing — the
+             * shape that turns an audit trail into something nobody reads.
+             */
+            $audited = array_diff_key($row, ['updated_by' => true, 'updated_at' => true]);
+
+            /*
+             * ── The snapshot covers the WHOLE edit, and is taken before ANY of it (B4)
+             *
+             * This used to audit `catalog_products` alone, and it recorded the row immediately
+             * after that one UPDATE — before `writeTranslations()`, `writeSpecs()`, `writePivots()`
+             * and `writeImages()` had run. Those four write the title, the description, the
+             * specification block, the categories, the colours and the images: in other words,
+             * nearly everything an operator actually changes on this form. None of it was logged.
+             *
+             * It was invisible because a second defect filled the gap with noise: `ActivityLog::same()`
+             * read the database's `0` as different from the payload's `false`, so every save produced
+             * a phantom `is_active` row and the log looked busy. Fix that alone and a description
+             * edit logs NOTHING AT ALL — the audit trail goes from wrong to silent, which is worse.
+             * That is why the two are one change.
+             */
+            $before = self::auditSnapshot($productId);
 
             DB::table('catalog_products')->where('id', $productId)->update($row);
 
@@ -125,6 +178,16 @@ final class ProductWriter
             $this->writePivots($productId, $data);
             $this->writeImages($productId, $data);
 
+            // AFTER all five writes, so one save is one row and it names what actually moved.
+            ActivityLog::record(
+                'catalog_products',
+                $productId,
+                ActivityLog::UPDATED,
+                $before,
+                self::auditSnapshot($productId),
+                label: $this->labelFor($productId),
+            );
+
             // A price change has to reach every storefront row, because `effective_price` is a
             // maintained mirror of the catalog price while the override gate is off (§2.4, D3).
             // Forgetting this is how a storefront keeps selling at yesterday's price.
@@ -132,6 +195,208 @@ final class ProductWriter
             $this->indexer->reindex($productId);
             $this->flush($productId);
         });
+    }
+
+    /**
+     * The `catalog_products` columns the audit snapshot carries.
+     *
+     * Exactly what {@see self::scalarColumns()} writes, minus the two it always moves
+     * (`updated_by`, `updated_at`) and minus the two that belong to the LEDGER (`stock_express`,
+     * `stock_market` — `InventoryService` records those against this same subject type, with the
+     * movement that caused them). `model_number` is not here because nothing writes it any more.
+     *
+     * @var list<string>
+     */
+    /**
+     * The translated columns the snapshot carries, per locale.
+     *
+     * Read off the schema rather than guessed: the first version of this asked for `description`,
+     * which does not exist — the table carries `short_description` and `long_description` — and
+     * every product save 500'd with a 1054 until `ProductFormTest` said so.
+     *
+     * `is_machine` is not here on purpose: it is a MARKER about a translation's provenance, moved
+     * by the importer and by the machine-translation badge, not something an operator edits.
+     *
+     * @var list<string>
+     */
+    private const AUDITED_TRANSLATION_COLUMNS = [
+        'title', 'short_description', 'long_description', 'model_name', 'country', 'stone',
+        'meta_title', 'meta_description',
+    ];
+
+    private const AUDITED_COLUMNS = [
+        'family', 'brand_id', 'grade_id', 'wa_code', 'sku', 'hs_code',
+        'purchase_price', 'selling_price', 'sale_price', 'currency',
+        'low_stock_threshold', 'warranty_years', 'is_active', 'search_keywords', 'specs',
+    ];
+
+    /**
+     * Everything one product save can change, as one flat map (B4, 2026-09-20).
+     *
+     * Read twice per update — once before the writes, once after — which is two extra indexed reads
+     * on a screen the team saves a few hundred times a day. That is the price of an audit trail that
+     * answers the question it exists for; the alternative measured for a month as "who changed this
+     * description?" having no answer.
+     *
+     * ── What is in it, and what is deliberately NOT ──────────────────────────────────
+     *
+     * The scalar columns, both titles and both descriptions, the specification block, and a COUNT
+     * or a sorted id list for the things that are sets. A set is summarised rather than expanded
+     * because the useful audit fact is "the colours changed, from these three to those two" — and
+     * `2,7,9 → 2,9` says that in a cell somebody can read, where forty rows of pivot diff would not.
+     *
+     * `updated_by` / `updated_at` are excluded for the reason they always were: they move on every
+     * save by construction, so including them would log a change against a save that changed
+     * nothing. `stock_express` / `stock_market` are excluded because they are the LEDGER's, recorded
+     * against this same subject type by `InventoryService` with the movement that caused them —
+     * two writers on one fact is how a log starts contradicting itself.
+     *
+     * @return array<string, mixed>
+     */
+    private static function auditSnapshot(int $productId): array
+    {
+        $row = DB::table('catalog_products')->where('id', $productId)->first();
+        if (! is_object($row)) {
+            return [];
+        }
+        $product = Row::cast($row);
+
+        $out = [];
+        foreach (self::AUDITED_COLUMNS as $column) {
+            $value = $product->{$column} ?? null;
+            $out[$column] = is_scalar($value) ? $value : null;
+        }
+
+        // Both languages: an edit that touched only the English is still an edit, and a snapshot
+        // carrying one locale would report it as nothing happening.
+        foreach (['ar', 'en'] as $locale) {
+            $translation = DB::table('catalog_product_translations')
+                ->where('product_id', $productId)->where('locale', $locale)
+                ->first(self::AUDITED_TRANSLATION_COLUMNS);
+
+            $fields = is_object($translation) ? Row::cast($translation) : null;
+            foreach (self::AUDITED_TRANSLATION_COLUMNS as $field) {
+                $out[$field.'_'.$locale] = $fields === null ? null : Row::nstr($fields, $field);
+            }
+        }
+
+        // The specification block, as its own columns — this is the tab the team spends the most
+        // time in, and "the movement changed" is exactly what somebody comes to the log to find.
+        $specs = DB::table(SpecBlocks::WATCH_SPECS_TABLE)->where('product_id', $productId)->first();
+        if (is_object($specs)) {
+            foreach ((array) $specs as $column => $value) {
+                if ($column === 'product_id' || $column === 'id') {
+                    continue;
+                }
+                $out['spec_'.$column] = is_scalar($value) ? $value : null;
+            }
+        }
+
+        // The sets, as sorted id lists. Sorted so a re-save in a different order is not a change.
+        $out['features'] = self::idList('catalog_product_feature', 'feature_id', $productId);
+        $out['genders'] = self::idList('catalog_product_gender', 'gender_id', $productId);
+        $out['colours'] = self::idList('catalog_product_color', 'color_id', $productId);
+
+        // Images: the count and the cover, which is what changes visibly. The full list would be
+        // a wall of filenames nobody reads.
+        $out['image_count'] = DB::table('catalog_product_images')->where('product_id', $productId)->count();
+        $out['cover_image'] = Coerce::nstr(
+            DB::table('catalog_product_images')->where('product_id', $productId)
+                ->where('is_cover', 1)->value('path')
+        );
+
+        return $out;
+    }
+
+    /** One pivot as a sorted, comma-joined id list — `2,7,9`, which reads as a diff. */
+    private static function idList(string $table, string $column, int $productId): string
+    {
+        $ids = [];
+        foreach (DB::table($table)->where('product_id', $productId)->pluck($column) as $id) {
+            $ids[] = Coerce::int($id);
+        }
+        sort($ids);
+
+        return implode(',', $ids);
+    }
+
+    /**
+     * Refuse a REPLACE payload that would strip a live product of a field it needs to stay on sale.
+     *
+     * ── What this is for ────────────────────────────────────────────────────────────────────
+     *
+     * `update()` is a full-replace contract: {@see self::writeTranslations()} reads every column in
+     * {@see self::TRANSLATED} out of the payload and writes `null` for any that is absent. That is
+     * correct for the form — it is how an operator empties a field — and it is how a five-field
+     * script silently erases the other thirty-five.
+     *
+     * Since 2026-09-18 the consequence got worse: those descriptions gate visibility, so blanking
+     * them does not merely lose text, it takes the product off the storefront. The form is
+     * unaffected because it always sends every field. What this stops is a caller that should have
+     * been on the PARTIAL path ({@see ProductPatcher}) and was not.
+     *
+     * It lives on the writer rather than in a controller deliberately (developer, 2026-09-18):
+     * *"a future caller should hit it wherever it comes from."*
+     *
+     * Only VISIBLE products are guarded. A hidden product has nothing to lose by being emptied, and
+     * refusing there would block the legitimate act of clearing a field on a draft.
+     *
+     * @param  array<string, mixed>  $data
+     *
+     * @throws RuntimeException naming the fields it would have removed
+     */
+    private function assertVisibleProductStaysComplete(int $productId, array $data): void
+    {
+        $visibleOn = DB::table('storefront_product')
+            ->where('product_id', $productId)->where('is_visible', true)->count();
+        if ($visibleOn === 0) {
+            return;
+        }
+
+        $labels = [
+            'title' => ManageText::t('products.field_title', 'العنوان'),
+            'short_description' => ManageText::t('products.field_short_description', 'وصف مختصر'),
+            'long_description' => ManageText::t('products.field_long_description', 'الوصف الكامل'),
+        ];
+        $locales = [
+            'ar' => ManageText::t('common.arabic', 'عربي'),
+            'en' => ManageText::t('common.english', 'إنجليزي'),
+        ];
+
+        $rows = DB::table('catalog_product_translations')
+            ->where('product_id', $productId)
+            ->get(array_merge(['locale'], PlacementWriter::REQUIRED_TRANSLATED));
+
+        $losing = [];
+        $firstColumn = null;
+        foreach ($rows as $raw) {
+            $row = Row::cast($raw);
+            $locale = Row::str($row, 'locale');
+            if (! isset($locales[$locale])) {
+                continue;
+            }
+
+            foreach (PlacementWriter::REQUIRED_TRANSLATED as $column) {
+                $held = trim(Row::nstr($row, $column) ?? '') !== '';
+                $incoming = trim(Coerce::str(Coerce::arr($data[$column] ?? null)[$locale] ?? null));
+                if ($held && $incoming === '') {
+                    $losing[] = $labels[$column].' — '.$locales[$locale];
+                    $firstColumn ??= $column;
+                }
+            }
+        }
+
+        if ($losing === []) {
+            return;
+        }
+
+        // Declares its field, so the message lands beside a box rather than at the top of a form
+        // whose fields all look fine ({@see FieldRefusal}).
+        throw new FieldRefusal($firstColumn ?? 'short_description', ManageText::t(
+            'products.replace_would_hide',
+            'هذا الطلب سيمسح حقولًا يحتاجها المنتج ليبقى ظاهرًا، وسيختفي من المتجر: :fields. أرسل الحقول كاملة، أو استخدم مسار التحديث الجزئي.',
+            ['fields' => implode(ManageText::t('common.list_separator', '، '), $losing)],
+        ));
     }
 
     /**
@@ -147,6 +412,12 @@ final class ProductWriter
                 'updated_by' => $actorId,
                 'updated_at' => now(),
             ]);
+
+            ActivityLog::record(
+                'catalog_products', $productId, ActivityLog::DELETED,
+                label: $this->labelFor($productId),
+            );
+
             $this->flush($productId);
         });
     }
@@ -159,6 +430,11 @@ final class ProductWriter
                 'updated_by' => $actorId,
                 'updated_at' => now(),
             ]);
+
+            ActivityLog::record(
+                'catalog_products', $productId, ActivityLog::RESTORED,
+                label: $this->labelFor($productId),
+            );
             $this->flush($productId);
         });
     }
@@ -212,13 +488,43 @@ final class ProductWriter
             'grade_id' => Coerce::nint($data['grade_id'] ?? null),
             'wa_code' => Coerce::str($data['wa_code'] ?? null),
             'sku' => Coerce::nstr($data['sku'] ?? null),
-            'model_number' => Coerce::nstr($data['model_number'] ?? null),
+            /*
+             * `model_number` is no longer written (item 4, 2026-09-19). It and `sku` held the same
+             * thing, the dashboard asked for it twice, and the merge migration moved the 59 values
+             * that only existed here into `sku`.
+             *
+             * The COLUMN stays, and is deliberately left untouched rather than nulled: fifteen
+             * products carry a `model_number` that disagrees with their `sku`, and in fourteen of
+             * them it is the truer manufacturer code. Clearing it would destroy the only remaining
+             * copy of something nobody has reconciled — see the migration's own note and
+             * `docs/wave4d/sku-model-conflicts.tsv`.
+             */
             'hs_code' => Coerce::nstr($data['hs_code'] ?? null),
             'purchase_price' => Coerce::float($data['purchase_price'] ?? null),
             'selling_price' => $selling,
             'sale_price' => $sale,
             'currency' => strtoupper(Coerce::str($data['currency'] ?? null, 'EGP')),
-            'low_stock_threshold' => Coerce::int($data['low_stock_threshold'] ?? null, 5),
+            /*
+             * ── The default is 0 — "no alert" — since 2026-09-19 (W-2) ──────────────────────
+             *
+             * It was 5, and 5 turned out to be an assertion nobody had made: **7,578 of the
+             * 7,713 live products carry it untouched**, while almost all stock sits between 0 and
+             * 3 units. So the low-stock alert fired on 97.5% of the shop — every product was
+             * permanently "below its threshold", which is the same as no alert at all, except it
+             * is also an alarm the team learns to ignore.
+             *
+             * A default of 0 says the honest thing: nobody has decided a reorder point for this
+             * product yet, so it is not claiming to be low. A product that DOES have a reorder
+             * point gets one typed in, or set in bulk from the list — which is the other half of
+             * W-2 and the reason this change is safe to make: before it, correcting the 7,578
+             * would have meant 7,578 individual form saves.
+             *
+             * The 7,578 existing rows are NOT rewritten by this. A default only applies to a
+             * payload that omits the field, and the column default in the schema is still 5 for
+             * anything that writes around this class. Changing 7,578 live rows is the team's
+             * decision to make with the bulk action, not a migration's to make for them.
+             */
+            'low_stock_threshold' => Coerce::int($data['low_stock_threshold'] ?? null, 0),
             'warranty_years' => Coerce::nint($data['warranty_years'] ?? null),
             'is_active' => Coerce::bool($data['is_active'] ?? null),
             'search_keywords' => Coerce::nstr($data['search_keywords'] ?? null),
@@ -273,17 +579,71 @@ final class ProductWriter
 
             // `title` is NOT NULL in the schema: a locale with any content must have a title.
             if (($values['title'] ?? null) === null) {
-                throw new RuntimeException("اللغة [{$locale}] بها بيانات بدون عنوان. أدخل العنوان أو اترك اللغة فارغة تمامًا.");
+                throw new RuntimeException(ManageText::t(
+                    'products.locale_needs_title',
+                    'اللغة [:locale] بها بيانات بدون عنوان. أدخل العنوان أو اترك اللغة فارغة تمامًا.',
+                    ['locale' => $locale],
+                ));
+            }
+
+            /*
+             * ── The machine-translation badge clears on a CHANGE, not on a save (A-BUG-1) ─────
+             *
+             * The requirement is still what it always was — the badge *"disappears when a human
+             * edits that translation"* — and the door is still the thing that enforces it, not a
+             * screen remembering to send a flag. What was wrong was the trigger: this wrote
+             * `is_machine = 0` on EVERY pass, whether or not a single character of the translation
+             * had moved.
+             *
+             * That made the badge drain through work that has nothing to do with Arabic. Measured
+             * by the review on 2026-09-17:
+             *
+             *   • changing ONLY `selling_price` on product 635 cleared the flag, Arabic provably
+             *     identical;
+             *   • a bulk deactivate of 25 products — the form never opened — cleared 25, taking the
+             *     review queue from 7,087 to 7,061.
+             *
+             * `flag=machine_ar` is the queue for 7,087 imported Arabic titles, and it was emptying
+             * itself through price edits and bulk actions. Nothing recorded why: the activity log
+             * holds `is_active`, so the rows simply stopped appearing.
+             *
+             * So the write compares first. If every translated column for this locale is byte-
+             * identical to what is stored, the row is left as it is — including its badge. A
+             * genuinely new locale row has no stored value to match and is a human's writing by
+             * definition, so it starts cleared; the importer sets its own flag afterwards, in the
+             * one place that is allowed to.
+             */
+            $stored = DB::table('catalog_product_translations')
+                ->where('product_id', $productId)->where('locale', $locale)
+                ->first(array_merge(self::TRANSLATED, ['is_machine']));
+
+            $unchanged = $stored !== null;
+            if ($stored !== null) {
+                foreach (self::TRANSLATED as $column) {
+                    $was = $stored->{$column} ?? null;
+                    if (Coerce::nstr($was) !== ($values[$column] ?? null)) {
+                        $unchanged = false;
+                        break;
+                    }
+                }
             }
 
             DB::table('catalog_product_translations')->updateOrInsert(
                 ['product_id' => $productId, 'locale' => $locale],
-                $values,
+                $unchanged
+                    // Nothing moved: preserve the badge exactly as it was, including when it is
+                    // already 0. Writing the stored value back rather than omitting the column
+                    // keeps this one statement the single writer of the row.
+                    ? $values + ['is_machine' => Coerce::int($stored->is_machine ?? 0) === 1 ? 1 : 0]
+                    : $values + ['is_machine' => 0],
             );
         }
 
         if (! DB::table('catalog_product_translations')->where('product_id', $productId)->where('locale', 'ar')->exists()) {
-            throw new RuntimeException('العنوان العربي مطلوب: الترجمة الاحتياطية مُعطّلة، والمنتج بدون عربي لا يصلح للعرض.');
+            throw new RuntimeException(ManageText::t(
+                'products.arabic_title_required',
+                'العنوان العربي مطلوب: الترجمة الاحتياطية مُعطّلة، والمنتج بدون عربي لا يصلح للعرض.',
+            ));
         }
     }
 
@@ -308,7 +668,28 @@ final class ProductWriter
             return;
         }
 
-        $columns = SpecBlocks::watchColumns(Coerce::arr($data['specs'] ?? null));
+        /*
+         * ── A payload that does not MENTION the specs does not touch them (2026-09-20) ──
+         *
+         * `writePivots()` has always been guarded this way and this was not, and the asymmetry was
+         * a live trap: `SpecBlocks::watchColumns()` maps an absent key to a full set of nulls, so
+         * any caller omitting `specs` silently blanked TEN columns — case size, the materials, the
+         * movement, the water resistance — on a product that was merely being re-saved.
+         *
+         * It had not bitten because the only caller is the form, and `ProductController::currentPayload()`
+         * happens to carry the block. It surfaced the day the audit snapshot grew to cover the spec
+         * table (B4) and a "changed nothing" save reported ten columns going to null.
+         *
+         * The guard belongs HERE rather than at the call sites, so an importer, a CLI command or a
+         * bulk action nobody has written yet is covered by construction. A caller that genuinely
+         * means "clear the specifications" sends `specs => []`, which is present, empty, and
+         * unambiguous — the same contract `feature_ids` and `colors` already have.
+         */
+        if (! array_key_exists('specs', $data)) {
+            return;
+        }
+
+        $columns = SpecBlocks::watchColumns(Coerce::arr($data['specs']));
         DB::table(SpecBlocks::WATCH_SPECS_TABLE)->updateOrInsert(['product_id' => $productId], $columns);
     }
 
@@ -427,6 +808,20 @@ final class ProductWriter
                 $row['renditions'] = $image['renditions'];
             }
 
+            /*
+             * A human just put an image on this row, so whatever `media:verify` found wrong with the
+             * old one is no longer true (M1s). Cleared here for the same reason `is_machine` is
+             * cleared on a human edit: the marker exists to ask somebody to act, and it has to stop
+             * asking the moment they have.
+             *
+             * If the NEW file also encodes badly, nothing broken is served — the pipeline removes an
+             * empty rendition rather than recording it — and the next `media:verify --mark` marks
+             * the row again. Re-flagging it here would need the upload's `skipped` list to survive a
+             * round trip through the browser, which is a lot of plumbing for a case that is already
+             * both harmless and detected.
+             */
+            $row['renditions_failed'] = null;
+
             if ($image['id'] !== null && DB::table('catalog_product_images')->where('id', $image['id'])->where('product_id', $productId)->exists()) {
                 DB::table('catalog_product_images')->where('id', $image['id'])->update($row);
                 $keptIds[] = $image['id'];
@@ -476,7 +871,15 @@ final class ProductWriter
      * and the compat payloads are all derived (study §3.7.6). The transform bumps the version on
      * every real run for the same reason; an edit made through the dashboard is no different.
      */
-    private function flush(int $productId): void
+    /**
+     * Invalidate every cached payload that carries this product.
+     *
+     * PUBLIC since wave 4D so {@see ProductPatcher} can call the same invalidation rather than
+     * keep a second copy of it — the per-storefront forget AND the catalogue-wide fallback for a
+     * product with no placement yet. Two copies of a cache-invalidation rule is how one of them
+     * quietly stops invalidating something.
+     */
+    public function flush(int $productId): void
     {
         $storefronts = DB::table('storefront_product')->where('product_id', $productId)->pluck('storefront_id');
         $ids = [];

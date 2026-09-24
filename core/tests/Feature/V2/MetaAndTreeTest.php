@@ -13,8 +13,9 @@ beforeEach(fn () => H::flush());
 it('serves the storefront meta with both-locale names and the visible tree', function () {
     $res = getJson(H::base('meta'))->assertOk();
     $res->assertJsonPath('storefront.code', 'watchizer')
-        ->assertJsonPath('storefront.default_locale', 'ar')
-        ->assertJsonPath('locale', 'ar')
+        // the storefront opens in ENGLISH — it always has, and the customer switches for themselves (developer, 2026-09-18).
+        ->assertJsonPath('storefront.default_locale', 'en')
+        ->assertJsonPath('locale', 'en')
         ->assertJsonStructure(['storefront' => ['code', 'name', 'locales', 'currency', 'settings'], 'brands', 'grades', 'filters' => ['colors', 'materials', 'shapes', 'display_types', 'movements', 'genders'], 'tree', 'banners']);
 
     $brand = H::arr($res->json('brands.0'));
@@ -32,7 +33,8 @@ it('serves the storefront meta with both-locale names and the visible tree', fun
 
 it('honours ?locale= within the storefront locales and falls back to the default otherwise', function () {
     getJson(H::base('meta?locale=en'))->assertOk()->assertJsonPath('locale', 'en');
-    getJson(H::base('meta?locale=fr'))->assertOk()->assertJsonPath('locale', 'ar');
+    // An unsupported locale falls back to the storefront's default, which is English.
+    getJson(H::base('meta?locale=fr'))->assertOk()->assertJsonPath('locale', 'en');
 });
 
 it('404s an unknown or inactive storefront', function () {

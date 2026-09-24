@@ -2,9 +2,11 @@
 
 namespace App\Domain\Access;
 
+use App\Domain\Orders\NewOrders;
 use App\Http\Middleware\EnsureStorefrontScope;
 use App\Models\Storefront\Storefront;
 use App\Models\User;
+use App\Support\ManageText;
 use Illuminate\Support\Facades\Route;
 
 /**
@@ -17,14 +19,22 @@ use Illuminate\Support\Facades\Route;
  *     cannot open also cannot appear in their sidebar, and neither statement is written twice.
  *     (The nav is presentation; the route middleware is the authorisation. Hiding is never the
  *     control — `RouteAuthorizationTest` proves the server refuses.)
- *  2. **Stub screens announce themselves.** Anything not built yet carries its wave (`4C`, `4D`)
- *     and renders disabled, so the team can see the shape of what is coming instead of finding
- *     dead links. Wave 4B turned four of those stubs into real links — products, categories,
- *     placement and the lookup lists — and `ShellTest` asserts the flip in both directions: a
- *     built item must carry an href and NO wave badge, which is the test that would catch a
- *     shipped screen the sidebar still calls "coming in 4B".
+ *  2. **Parked screens announce themselves.** Anything the team is not meant to use yet renders
+ *     disabled with a "later" badge, so they can see the shape of what is coming instead of
+ *     finding dead links. `ShellTest` asserts the flip in both directions: a live item must carry
+ *     an href and NOT be parked, which is the test that would catch a shipped screen the sidebar
+ *     still calls "later".
  *
- * @phpstan-type NavItem array{key: string, label: string, icon: string, route: string|null, href: string|null, ability: string, wave: string|null, active: bool}
+ *     This used to be `wave: string|null` — the wave NUMBER a stub was promised for (`4B`, `4C`,
+ *     `4D`) — and the sidebar printed that token straight into its badge. Every one of those
+ *     promises has now been kept, so the only value the field ever carried was the literal string
+ *     `'later'`, which the badge rendered verbatim: an Arabic screen showing the English word
+ *     "later", and a tooltip reading "قادم في later". A string field with one possible value is a
+ *     boolean wearing a costume, and the costume was leaking onto the screen. It is now a
+ *     boolean. If a future wave wants to promise a number again, it can be added back then, with
+ *     the reason that is true then.
+ *
+ * @phpstan-type NavItem array{key: string, label: string, icon: string, route: string|null, href: string|null, ability: string, later: bool, active: bool, badge: int|null}
  * @phpstan-type NavGroup array{key: string, label: string, items: list<NavItem>}
  */
 final class Navigation
@@ -34,59 +44,140 @@ final class Navigation
      */
     public static function for(?User $user): array
     {
+        // One indexed COUNT, and only for somebody who may see orders — see {@see NewOrders}.
+        $newOrders = app(NewOrders::class)->countFor($user);
+
         $roles = app(Roles::class);
-        $can = fn (string $ability): bool => $user !== null && ($roles->isAdmin($user) || $roles->can($user, $ability));
+        /*
+         * MIRRORS `Abilities::register()` EXACTLY, and must keep doing so.
+         *
+         * This was `isAdmin($user) || can(...)` — a second authorisation rule that agreed with the
+         * Gate only by coincidence. The moment `MANAGE_MEDIA_PRUNE` became an ability admins do
+         * NOT hold, the two disagreed: the route refused and the sidebar still offered the link.
+         *
+         * So the admin short-circuit is scoped to `Role::ABILITIES` here for the same reason
+         * `Gate::before` scopes it there. Presentation may hide more than the server refuses; it
+         * must never offer more.
+         */
+        $can = fn (string $ability): bool => $user !== null && (
+            (in_array($ability, Role::ABILITIES, true) && $roles->isAdmin($user))
+            || $roles->can($user, $ability)
+        );
         $storefrontId = self::storefrontForNav($user);
 
+        /*
+         * ── Labels come off the SHARED English file, and mostly off keys that already exist ──
+         *
+         * The nav says "الطلبات" and so does the orders screen's own breadcrumb, so both read
+         * `common.orders`. That is the point of the server and the client sharing one
+         * `lang/en/manage.php`: a second key with the same text is not a duplicate, it is two
+         * English strings that will drift the first time somebody edits one of them.
+         *
+         * Only the GROUP headings are new (`nav.*`) — nothing else in the dashboard says them.
+         */
         $groups = [
             [
                 'key' => 'overview',
-                'label' => 'نظرة عامة',
+                'label' => ManageText::t('nav.overview', 'نظرة عامة'),
                 'items' => [
-                    self::item('home', 'الرئيسية', 'LayoutDashboard', Role::VIEW_DASHBOARD, route: 'manage.home'),
+                    self::item('home', ManageText::t('common.home', 'الرئيسية'), 'LayoutDashboard', Role::VIEW_DASHBOARD, route: 'manage.home'),
                 ],
             ],
             [
                 'key' => 'catalog',
-                'label' => 'الكتالوج',
+                'label' => ManageText::t('nav.catalog', 'الكتالوج'),
                 'items' => [
                     // Wave 4B, built. Three of these name a storefront in their URL, so the nav
                     // carries the storefront the user is currently looking at (or the first one
                     // their grant reaches) — a link that dropped the segment would 404.
-                    self::item('products', 'المنتجات', 'Package', Role::MANAGE_CATALOG, route: 'manage.products.index', params: ['storefront' => $storefrontId]),
-                    self::item('categories', 'التصنيفات', 'FolderTree', Role::MANAGE_CATALOG, route: 'manage.categories.index', params: ['storefront' => $storefrontId]),
-                    self::item('placement', 'العرض والترتيب', 'ListOrdered', Role::MANAGE_PLACEMENT, route: 'manage.placement.index', params: ['storefront' => $storefrontId]),
+                    self::item('products', ManageText::t('products.title', 'المنتجات'), 'Package', Role::MANAGE_CATALOG, route: 'manage.products.index', params: ['storefront' => $storefrontId]),
+                    self::item('categories', ManageText::t('categories.title', 'التصنيفات'), 'FolderTree', Role::MANAGE_CATALOG, route: 'manage.categories.index', params: ['storefront' => $storefrontId]),
+                    self::item('placement', ManageText::t('placement.title', 'العرض والترتيب'), 'ListOrdered', Role::MANAGE_PLACEMENT, route: 'manage.placement.index', params: ['storefront' => $storefrontId]),
                     // Brands and the eleven lookup lists are one screen, so one item. There is no
                     // "variants" item on purpose: the panel lives inside the product form, and a
                     // nav entry for it would promise a screen that does not exist.
-                    self::item('lookups', 'الماركات والقوائم', 'Ruler', Role::MANAGE_CATALOG, route: 'manage.lookups.index', params: ['list' => 'brands']),
+                    self::item('lookups', ManageText::t('lookups.title', 'الماركات والقوائم'), 'Ruler', Role::MANAGE_CATALOG, route: 'manage.lookups.index', params: ['list' => 'brands']),
+                    /*
+                     * Units get an item of their OWN, beside the lookup lists rather than inside
+                     * them (wave 4D, task C3). The lookup screen edits a row's name; this one moves
+                     * 231 measurements off a unit that is really a clothing size and then takes it
+                     * out of the picker. Different verb, different refusal, different screen.
+                     */
+                    self::item('units', ManageText::t('units.title', 'وحدات القياس'), 'Scale', Role::MANAGE_CATALOG, route: 'manage.units.index'),
                 ],
             ],
             [
                 'key' => 'operations',
-                'label' => 'التشغيل',
+                'label' => ManageText::t('nav.operations', 'التشغيل'),
                 'items' => [
                     // Wave 4C, built. Neither names a storefront in its URL: the team works ONE
                     // order queue and ONE stock list and filters them, because partitioning the
                     // shop floor by storefront would mean two tabs to run one day.
-                    self::item('orders', 'الطلبات', 'ShoppingCart', Role::VIEW_ORDERS, route: 'manage.orders.index'),
-                    self::item('inventory', 'المخزون', 'Boxes', Role::MANAGE_INVENTORY, route: 'manage.inventory.index'),
+                    self::item('orders', ManageText::t('common.orders', 'الطلبات'), 'ShoppingCart', Role::VIEW_ORDERS, route: 'manage.orders.index', badge: $newOrders),
+                    // The people who buy — read-only, same ability as the queue (wave 4D).
+                    self::item('customers', ManageText::t('common.customers', 'العملاء'), 'Contact', Role::VIEW_ORDERS, route: 'manage.customers.index'),
+                    self::item('inventory', ManageText::t('common.inventory', 'المخزون'), 'Boxes', Role::MANAGE_INVENTORY, route: 'manage.inventory.index'),
+                    // Shipping prices (wave 4D). The ability here is the one that opens the
+                    // SCREEN — deliberately `VIEW_DASHBOARD`, because data-entry quote the
+                    // delivery price on the telephone. Every write is behind MANAGE_SHIPPING
+                    // on the route, so a data-entry operator sees the list and no buttons.
+                    self::item('shipping', ManageText::t('shipping.title', 'أسعار الشحن'), 'Truck', Role::VIEW_DASHBOARD, route: 'manage.shipping.index'),
                     // Still a stub: offers, banners and blogs were NOT in the 4C brief (orders,
                     // inventory, users-and-roles and payments were), so the badge says 4D rather
                     // than keeping a wave number the screen missed.
-                    self::item('legacy-content', 'العروض والبانرات والمقالات', 'Megaphone', Role::MANAGE_LEGACY_CONTENT, wave: '4D'),
+                    /*
+                     * Banners and Blogs are TWO items now (developer, 2026-09-14). The combined
+                     * "offers, banners and articles" label is gone: offers became the promotions
+                     * engine (§3.16), so the section is two unrelated jobs — a home-page image with
+                     * a window, and long-form content — and one label for both described neither.
+                     *
+                     * Blogs became a real screen on 2026-09-18 (item 14). It is CORE-owned —
+                     * `core_blogs`, not the empty legacy `blogs` — because the legacy table has no
+                     * slug, no published flag and no SEO fields, and core may not write it anyway.
+                     */
+                    self::item('banners', ManageText::t('banners.title', 'البانرات'), 'Image', Role::MANAGE_LEGACY_CONTENT, route: 'manage.banners.index', params: ['storefront' => $storefrontId]),
+                    self::item('blogs', ManageText::t('nav.blogs', 'المقالات'), 'Newspaper', Role::MANAGE_LEGACY_CONTENT, route: 'manage.blogs.index'),
+                    /*
+                     * Promotions — BUILT, and deliberately PARKED (developer, 2026-09-17).
+                     *
+                     * The engine is finished and tested: rules, conditions, rewards, the skip
+                     * ledger, the preview, and the discount audit trail that records which rule
+                     * discounted which order and by how much. Nothing here is a stub.
+                     *
+                     * It is off the sidebar because the developer does not want the team using it
+                     * yet — item 13 of the 2026-09-17 dashboard review, "the way Articles is". The
+                     * ROUTES stay registered (see routes/web.php): they are admin-only, no rule
+                     * exists to apply, and deleting a tested engine to hide a link would be the
+                     * expensive way to do a cheap thing. An admin who knows the URL still reaches
+                     * the screen — that is the intended shape, not an oversight.
+                     *
+                     * To bring it back: give this item its route again and drop `later`.
+                     */
+                    self::item('promotions', ManageText::t('promotions.title', 'العروض الترويجية'), 'Gift', Role::MANAGE_PROMOTIONS, later: true),
                 ],
             ],
             [
                 'key' => 'settings',
-                'label' => 'الإعدادات',
+                'label' => ManageText::t('nav.settings', 'الإعدادات'),
                 'items' => [
-                    self::item('storefronts', 'المتاجر', 'Store', Role::MANAGE_STOREFRONTS, route: 'manage.storefronts.index'),
-                    self::item('users', 'المستخدمون والصلاحيات', 'Users', Role::MANAGE_USERS, route: 'manage.users.index'),
+                    self::item('storefronts', ManageText::t('common.storefronts', 'المتاجر'), 'Store', Role::MANAGE_STOREFRONTS, route: 'manage.storefronts.index'),
+                    self::item('users', ManageText::t('users.title', 'المستخدمون والصلاحيات'), 'Users', Role::MANAGE_USERS, route: 'manage.users.index'),
+                    // Who changed what (wave 4D). Beside the users screen because it answers the
+                    // question that screen raises: these people can change things — what did they?
+                    self::item('activity', ManageText::t('activity.title', 'سجل النشاط'), 'History', Role::MANAGE_USERS, route: 'manage.activity.index'),
                     // Payments ARE per-storefront — "which account takes this money" is a
                     // per-storefront question — so this link carries the segment like the catalog
                     // ones do, and the scope middleware checks the grant behind it.
-                    self::item('payments', 'وسائل الدفع', 'CreditCard', Role::MANAGE_PAYMENTS, route: 'manage.payments.index', params: ['storefront' => $storefrontId]),
+                    self::item('payments', ManageText::t('payments.title', 'وسائل الدفع'), 'CreditCard', Role::MANAGE_PAYMENTS, route: 'manage.payments.index', params: ['storefront' => $storefrontId]),
+                    /*
+                     * Media cleanup sits in SETTINGS, not in the catalogue (wave 4D, task C4).
+                     * `manage-catalog` is data-entry's ability and this page deletes files the live
+                     * legacy storefront serves; it is gated on `manage-settings`, which only an
+                     * administrator holds.
+                     */
+                    // Hidden unless the person holds the restricted ability — which no role
+                    // grants implicitly, so for everybody else this item simply is not there.
+                    self::item('media-prune', ManageText::t('media.title', 'تنظيف الوسائط'), 'Trash2', Role::MANAGE_MEDIA_PRUNE, route: 'manage.media.prune'),
                 ],
             ],
         ];
@@ -140,7 +231,7 @@ final class Navigation
      * @param  array<string, int|string>  $params
      * @return NavItem
      */
-    private static function item(string $key, string $label, string $icon, string $ability, ?string $route = null, ?string $wave = null, array $params = []): array
+    private static function item(string $key, string $label, string $icon, string $ability, ?string $route = null, bool $later = false, array $params = [], ?int $badge = null): array
     {
         $href = $route !== null && Route::has($route) ? route($route, $params) : null;
 
@@ -158,8 +249,14 @@ final class Navigation
             'route' => $route,
             'href' => $href,
             'ability' => $ability,
-            'wave' => $wave,
+            'later' => $later,
             'active' => $active,
+            /*
+             * A COUNT, or null for "nothing to say". Zero is deliberately NOT rendered: a badge
+             * reading 0 beside every item is chrome the eye learns to skip, and the one day it
+             * says 3 it will be skipped too.
+             */
+            'badge' => $badge !== null && $badge > 0 ? $badge : null,
         ];
     }
 }

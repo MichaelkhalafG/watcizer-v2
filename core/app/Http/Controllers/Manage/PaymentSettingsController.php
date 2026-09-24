@@ -2,12 +2,16 @@
 
 namespace App\Http\Controllers\Manage;
 
+use App\Domain\Access\Roles;
+use App\Domain\Activity\ActivityLog;
 use App\Domain\Payment\MethodList;
 use App\Domain\Payment\ProviderRegistry;
 use App\Models\Storefront\Storefront;
 use App\Models\Storefront\StorefrontPaymentMethod;
 use App\Models\Storefront\StorefrontPaymentProvider;
+use App\Models\User;
 use App\Support\Coerce;
+use App\Support\ManageText;
 use App\Transform\Row;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -51,6 +55,23 @@ final class PaymentSettingsController
 
         return Inertia::render('Manage/Payments/Index', [
             'storefront' => ['id' => $storefrontId, 'code' => (string) $storefront->code, 'name' => (string) $storefront->name],
+            /*
+             * The storefronts this operator may switch to (item 15, 2026-09-18).
+             *
+             * Every other per-storefront screen — products, categories, placement, banners — offers
+             * this. Payments did not, so the only way onto Brand Fashion's payment settings was to
+             * type its id into the address bar: the sidebar links to whichever storefront you were
+             * last looking at, and there was nothing on the screen to say another existed. The
+             * developer's report was "the payment methods screen only shows Watchizer", and that is
+             * exactly what it did.
+             *
+             * SCOPED, unlike the catalogue screens' switcher. Payments is behind a per-storefront
+             * grant and answers 404 for a storefront outside it (§3.11.14 — out of scope is 404, not
+             * 403, so an id cannot be confirmed by probing). A switcher that listed every storefront
+             * would hand a scoped operator a link that 404s, which reads as a broken dashboard
+             * rather than as a permission they do not have.
+             */
+            'storefronts' => self::switchableStorefronts(),
             'providers' => $this->providerRows($storefrontId),
             // The MERGED list: every candidate row across every provider, in the storefront's own
             // order, each saying whether it currently SERVES its method key and who took it if
@@ -84,11 +105,11 @@ final class PaymentSettingsController
             ->where('storefront_id', $storefront->id)->where('provider', $provider)->exists();
         if ($exists) {
             throw ValidationException::withMessages([
-                'provider' => 'هذا المتجر يملك عقدًا مع هذا المزوّد بالفعل. عدّله بدلًا من إضافة ثانٍ — العقد واحد لكل مزوّد لكل متجر.',
+                'provider' => ManageText::t('payments.contract_exists', 'هذا المتجر يملك عقدًا مع هذا المزوّد بالفعل. عدّله بدلًا من إضافة ثانٍ — العقد واحد لكل مزوّد لكل متجر.'),
             ]);
         }
 
-        StorefrontPaymentProvider::query()->create([
+        $row = StorefrontPaymentProvider::query()->create([
             'storefront_id' => (int) $storefront->id,
             'provider' => $provider,
             'is_enabled' => (bool) $data['is_enabled'],
@@ -96,7 +117,24 @@ final class PaymentSettingsController
             'settings' => null,
         ]);
 
-        return back()->with('status', 'تمت إضافة العقد.');
+        /*
+         * Recorded since 2026-09-24: adding a contract WITH its keys, enabled, was the one payment
+         * change that left no row — the credential leak check found edits and deletes logged and
+         * creation silent. Same redaction as `updateProvider()`: THAT keys were set, never what.
+         */
+        ActivityLog::record(
+            'storefront_payment_providers',
+            Coerce::nint($row->getKey()),
+            ActivityLog::CREATED,
+            after: [
+                'is_enabled' => (bool) $data['is_enabled'],
+                'credentials' => self::credentialPrint($row->getAttribute('credentials')),
+            ],
+            label: $provider,
+            storefrontId: Coerce::nint($storefront->getKey()),
+        );
+
+        return back()->with('status', ManageText::t('payments.contract_added', 'تمت إضافة العقد.'));
     }
 
     /**
@@ -116,12 +154,37 @@ final class PaymentSettingsController
         ]);
 
         $key = Coerce::str($row->getAttribute('provider'));
+        $wasEnabled = (bool) $row->getAttribute('is_enabled');
+        $oldCredentials = $row->getAttribute('credentials');
+
         $row->update([
             'is_enabled' => (bool) $request->input('is_enabled'),
             'credentials' => self::mergeCredentials($row, $request, $key, $this->registry),
         ]);
 
-        return back()->with('status', 'تم حفظ العقد.');
+        /*
+         * MONEY, so it is logged — and the credential VALUES never enter the log.
+         *
+         * `ActivityLog::REDACTED_FIELDS` matches `credentials` and replaces both sides with a
+         * marker. The row still records THAT the Paymob secret changed and who changed it, which is
+         * the whole audit question; copying it into a second, less-guarded table would undo the
+         * encryption it sits behind in the first place. A hash of the value is passed instead of the
+         * value, so "did it actually change?" stays answerable without the secret being present.
+         */
+        ActivityLog::record(
+            'storefront_payment_providers',
+            $provider,
+            ActivityLog::UPDATED,
+            ['is_enabled' => $wasEnabled, 'credentials' => self::credentialPrint($oldCredentials)],
+            [
+                'is_enabled' => (bool) $request->input('is_enabled'),
+                'credentials' => self::credentialPrint($row->getAttribute('credentials')),
+            ],
+            label: $key,
+            storefrontId: Coerce::nint($storefront->getKey()),
+        );
+
+        return back()->with('status', ManageText::t('payments.contract_saved', 'تم حفظ العقد.'));
     }
 
     /**
@@ -134,11 +197,19 @@ final class PaymentSettingsController
     {
         $row = self::requireProvider($storefront, $provider);
         $methods = (int) $row->methods()->count();
+        $key = Coerce::str($row->getAttribute('provider'));
         $row->delete();
 
+        ActivityLog::record(
+            'storefront_payment_providers', $provider, ActivityLog::DELETED,
+            before: ['provider' => $key, 'methods_removed' => $methods],
+            label: $key,
+            storefrontId: Coerce::nint($storefront->getKey()),
+        );
+
         return back()->with('status', $methods === 0
-            ? 'تم حذف العقد.'
-            : "تم حذف العقد و{$methods} طريقة دفع تابعة له.");
+            ? ManageText::t('payments.contract_deleted', 'تم حذف العقد.')
+            : ManageText::t('payments.contract_deleted_with_methods', 'تم حذف العقد و:count طريقة دفع تابعة له.', ['count' => $methods]));
     }
 
     /** Add a method under a contract of THIS storefront. */
@@ -150,13 +221,14 @@ final class PaymentSettingsController
 
         $providerRow = self::requireProvider($storefront, Coerce::int($data['storefront_payment_provider_id']));
         $method = Coerce::str($data['method']);
+        $this->refuseUnusableEnable($providerRow, $data);
 
         $duplicate = StorefrontPaymentMethod::query()
             ->where('storefront_payment_provider_id', $providerRow->getAttribute('id'))
             ->where('method', $method)->exists();
         if ($duplicate) {
             throw ValidationException::withMessages([
-                'method' => 'هذه الطريقة موجودة بالفعل تحت هذا العقد. (نفس الطريقة تحت عقد آخر مسموحة — العميل يرى واحدة فقط.)',
+                'method' => ManageText::t('payments.method_exists', 'هذه الطريقة موجودة بالفعل تحت هذا العقد. (نفس الطريقة تحت عقد آخر مسموحة — العميل يرى واحدة فقط.)'),
             ]);
         }
 
@@ -172,13 +244,33 @@ final class PaymentSettingsController
 
         self::writeLabels($row, $request);
 
-        return back()->with('status', 'تمت إضافة طريقة الدفع.');
+        ActivityLog::record(
+            'storefront_payment_methods',
+            Coerce::nint($row->getKey()),
+            ActivityLog::CREATED,
+            after: ['method' => Coerce::str($data['method']), 'is_enabled' => (bool) $data['is_enabled']],
+            label: Coerce::str($data['method']),
+            storefrontId: Coerce::nint($storefront->getKey()),
+        );
+
+        return back()->with('status', ManageText::t('payments.method_added', 'تمت إضافة طريقة الدفع.'));
     }
 
     public function updateMethod(Request $request, Storefront $storefront, int $method): RedirectResponse
     {
         $row = self::requireMethod($storefront, $method);
         $data = Coerce::arr($request->validate(self::methodRules($storefront)));
+        $contract = $row->provider;
+        abort_unless($contract instanceof StorefrontPaymentProvider, 404);
+        $this->refuseUnusableEnable($contract, $data);
+
+        /*
+         * A payment METHOD is what the customer sees and picks, so who enabled or disabled one is
+         * a money question in the same way the contract above is. No credential lives on this row
+         * — `integration_id` is an identifier, not a secret (study §3.9.1) — so the values are
+         * logged in full.
+         */
+        $before = ActivityLog::fields($row->only(['method', 'integration_id', 'icon', 'is_enabled', 'sort']));
 
         $row->update([
             'method' => Coerce::str($data['method']),
@@ -190,14 +282,33 @@ final class PaymentSettingsController
 
         self::writeLabels($row, $request);
 
-        return back()->with('status', 'تم حفظ طريقة الدفع.');
+        ActivityLog::record(
+            'storefront_payment_methods', $method, ActivityLog::UPDATED,
+            $before,
+            ActivityLog::fields($row->fresh()?->only(['method', 'integration_id', 'icon', 'is_enabled', 'sort'])),
+            label: Coerce::str($data['method']),
+            storefrontId: Coerce::nint($storefront->getKey()),
+        );
+
+        return back()->with('status', ManageText::t('payments.method_saved', 'تم حفظ طريقة الدفع.'));
     }
 
     public function destroyMethod(Request $request, Storefront $storefront, int $method): RedirectResponse
     {
-        self::requireMethod($storefront, $method)->delete();
+        // Named BEFORE the delete: afterwards there is nothing left to name it by, and "method 7
+        // was deleted" is not an answer anybody can act on.
+        $row = self::requireMethod($storefront, $method);
+        $name = Coerce::str($row->getAttribute('method'));
+        $row->delete();
 
-        return back()->with('status', 'تم حذف طريقة الدفع.');
+        ActivityLog::record(
+            'storefront_payment_methods', $method, ActivityLog::DELETED,
+            before: ['method' => $name],
+            label: $name,
+            storefrontId: Coerce::nint($storefront->getKey()),
+        );
+
+        return back()->with('status', ManageText::t('payments.method_deleted', 'تم حذف طريقة الدفع.'));
     }
 
     /**
@@ -229,7 +340,7 @@ final class PaymentSettingsController
         $foreign = array_values(array_diff($ids, $owned));
         if ($foreign !== []) {
             throw ValidationException::withMessages([
-                'ids' => 'القائمة تحتوي طريقة دفع لا تتبع هذا المتجر.',
+                'ids' => ManageText::t('payments.method_not_of_storefront', 'القائمة تحتوي طريقة دفع لا تتبع هذا المتجر.'),
             ]);
         }
 
@@ -240,7 +351,7 @@ final class PaymentSettingsController
             }
         });
 
-        return back()->with('status', 'تم حفظ الترتيب. الطريقة الأعلى في القائمة هي التي تستقبل الأموال عند التكرار.');
+        return back()->with('status', ManageText::t('payments.order_saved', 'تم حفظ الترتيب. الطريقة الأعلى في القائمة هي التي تستقبل الأموال عند التكرار.'));
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────────────────────
@@ -249,9 +360,18 @@ final class PaymentSettingsController
      * The method keys the screen offers. Application constants, never an enum in the database
      * (§2.1-6) — and valU and Tamara appear here as METHODS, which is the whole point.
      *
+     * Widened 2026-09-24 to every method asked of Paymob, so each integration id can be entered the
+     * day it arrives. A key here is a LABEL AND A ROUTE NAME, not a payment type: nothing branches
+     * on the new keys, the integration id on the row is what Paymob routes by, and the storefront's
+     * checkout offers only cash and card — a new key reaches a customer only through
+     * `payment_method_id` on `add_order` (see `MethodList::resolve()`), never through the page.
+     *
      * @var list<string>
      */
-    private const METHOD_KEYS = ['card', 'valu', 'tamara', 'wallet', 'fawry_code', 'cod', 'whatsapp'];
+    private const METHOD_KEYS = [
+        'card', 'valu', 'tamara', 'wallet', 'cagg', 'bank_installment', 'apple_pay', 'kiosk',
+        'souhoola', 'aman', 'halan', 'sympl', 'forsa', 'premium', 'contact', 'fawry_code', 'cod', 'whatsapp',
+    ];
 
     /** @return array<string, list<mixed>> */
     private static function methodRules(Storefront $storefront): array
@@ -334,6 +454,36 @@ final class PaymentSettingsController
      * A contract of THIS storefront, or 404 — never 403, which would confirm it exists somewhere
      * else (§3.11.14).
      */
+    /**
+     * Refuse to ENABLE a method its provider cannot route (2026-09-24).
+     *
+     * Saving it DISABLED stays allowed, so a row can be prepared before its integration id
+     * arrives. Enabling it is the moment it could take a customer's order, and "Payment session
+     * failed" at a checkout is the wrong place for an operator to learn the id was never entered.
+     *
+     * @param  array<array-key, mixed>  $data  the validated method fields
+     */
+    private function refuseUnusableEnable(StorefrontPaymentProvider $contract, array $data): void
+    {
+        if (! (bool) ($data['is_enabled'] ?? false)) {
+            return;
+        }
+
+        $implementation = $this->registry->for($contract);
+        $problem = $implementation?->integrationIdProblem(Coerce::nstr($data['integration_id'] ?? null));
+        if ($problem === null && $implementation !== null) {
+            return;
+        }
+
+        throw ValidationException::withMessages([
+            'integration_id' => match ($problem) {
+                'missing' => ManageText::t('payments.integration_id_missing', 'لا يمكن تفعيل هذه الطريقة بدون رقم التكامل (integration id). احفظها موقوفة حتى يصل الرقم.'),
+                'malformed' => ManageText::t('payments.integration_id_malformed', 'رقم التكامل يجب أن يكون أرقامًا فقط. راجع الرقم الذي أرسلته Paymob.'),
+                default => ManageText::t('payments.provider_unknown', 'لا يوجد تنفيذ لهذا العقد، فلا يمكن تفعيل طرق الدفع تحته.'),
+            },
+        ]);
+    }
+
     private static function requireProvider(Storefront $storefront, int $providerId): StorefrontPaymentProvider
     {
         $row = StorefrontPaymentProvider::query()
@@ -354,6 +504,33 @@ final class PaymentSettingsController
         abort_if($row === null, 404);
 
         return $row;
+    }
+
+    /**
+     * The ACTIVE storefronts this operator's grant reaches, for the switcher (item 15).
+     *
+     * @return list<array{value: string, label: string}>
+     */
+    private static function switchableStorefronts(): array
+    {
+        $user = auth()->user();
+        $scope = $user instanceof User ? app(Roles::class)->storefrontScope($user) : [];
+
+        $query = DB::table('storefronts')->where('is_active', true)->orderBy('id');
+        // An EMPTY scope means unscoped — every storefront — which is what an administrator holds.
+        // A non-empty one is the exact list, so the switcher and the route agree by construction.
+        if (is_array($scope) && $scope !== []) {
+            $query->whereIn('id', $scope);
+        }
+
+        $out = [];
+        foreach ($query->get(['id', 'name']) as $raw) {
+            $row = Row::cast($raw);
+            $id = Row::int($row, 'id');
+            $out[] = ['value' => (string) $id, 'label' => Row::nstr($row, 'name') ?? ('#'.$id)];
+        }
+
+        return $out;
     }
 
     /**
@@ -382,7 +559,9 @@ final class PaymentSettingsController
                 'credentials_set' => $row->credentialsSet(),
                 'credential_fields' => $fields,
                 'credential_keys_present' => $present,
-                'credentials_complete' => $fields === [] || array_values(array_intersect($fields, $present)) === $fields,
+                // The model's ONE definition of usable — the same one aliasIsLive() and the
+                // runbook's §3A.3 check ask, so the badge cannot disagree with the switch.
+                'credentials_complete' => $row->credentialsComplete($fields),
                 'needs_credentials' => $fields !== [],
                 'methods' => self::methodRows(Coerce::int($row->getAttribute('id'))),
                 'updated_at' => Coerce::nstr($row->getAttribute('updated_at')),
@@ -425,5 +604,25 @@ final class PaymentSettingsController
         }
 
         return $out;
+    }
+
+    /**
+     * A credential set as a FINGERPRINT, never as a value.
+     *
+     * Answers "did the credentials change?" without putting them anywhere. A SHA-256 prefix of the
+     * canonical JSON: two identical sets print the same, two different sets print differently, and
+     * nothing about the secret can be recovered from it. `ActivityLog` redacts the field as well —
+     * this is the belt behind that brace, so a future caller that forgets the field name still
+     * cannot leak a key through this path.
+     */
+    private static function credentialPrint(mixed $credentials): string
+    {
+        if ($credentials === null || $credentials === [] || $credentials === '') {
+            return '(none)';
+        }
+
+        $canonical = json_encode($credentials, JSON_UNESCAPED_UNICODE);
+
+        return 'set:'.substr(hash('sha256', is_string($canonical) ? $canonical : ''), 0, 8);
     }
 }

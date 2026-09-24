@@ -57,8 +57,26 @@ return [
     | /api/. Anything else answers 404 here and never reaches the legacy host (review 🟡-8).
     */
     'proxy_paths' => [
-        // auth (OAuth redirect URIs registered on the legacy host; token issuance stays there)
-        'login', 'register', 'logout', 'auth/*', 'updateProfile', 'updatePassword', 'me/avatar',
+        /*
+         * auth — what is LEFT of it. Storefront Phase 1 (2026-09-21) moved `login`, `register`,
+         * `logout`, `auth/login`, `auth/register`, `auth/logout`, `auth/me`, `updateProfile`,
+         * `updatePassword` and `me/avatar` into core, so none of them may reach the legacy host any
+         * more — an account created over there would be invisible here, which is the whole reason
+         * the move had to happen before the storefront is repointed.
+         *
+         * Piece 4 (2026-09-21) took the password-reset pair and e-mail verification. **Piece 5
+         * (2026-09-22) took the OAuth round trip, and with it the last auth path on this list: the
+         * legacy host now answers NO authentication request from this application at all.**
+         *
+         * That is the property Phase 2 needs. An auth path that could still reach the legacy host
+         * would create the account over THERE, and the customer would come back holding a token
+         * whose `sub` does not exist in this database — 401 on every call, with nothing in any log
+         * to explain it.
+         *
+         * `auth/*` is deliberately NOT a wildcard: each remaining path is named, so nothing joins
+         * the proxy by accident when a new one appears under that prefix.
+         */
+        // (auth is GONE from this list as of piece 5, 2026-09-22 — see the note above.)
         // legacy content (D5)
         'all_offer', 'all_offer_rating', 'all_blog', 'all_banner_home', 'all_banner_side', 'all_banner_bottom',
         // wishlist + ratings (post-season auth wave)
@@ -75,6 +93,13 @@ return [
     'jwt_secret' => env('JWT_SECRET'),
     'jwt_algo' => env('JWT_ALGO', 'HS256'),
     'jwt_leeway' => (int) env('JWT_LEEWAY', 0),
+
+    /*
+     * Token lifetime in MINUTES, and 43200 is not a round number somebody liked: it is the
+     * legacy app's own `jwt.ttl` default (30 days), so a token core issues expires exactly when
+     * one the legacy app issued would have. Phase 1, 2026-09-21.
+     */
+    'jwt_ttl' => (int) env('JWT_TTL', 43200),
 
     // Where callback_payment sends the shopper back to, hard-coded in the legacy controller.
     'payment_return_url' => env('COMPAT_PAYMENT_RETURN_URL', 'https://watchizereg.com/'),

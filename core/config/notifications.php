@@ -54,6 +54,23 @@ return [
     'send' => [
         'inline' => (bool) env('ORDER_MAIL_INLINE', true),
 
+        /*
+        | PARK every outbox row this process writes (🟠-5, 2026-09-17).
+        |
+        | Set by the compat harness and by the WriteTarget tools — anything that places ORDERS
+        | THAT ARE NOT REAL. Those runs already set `MAIL_MAILER=log`, which stops mail going out
+        | DURING the run; it does nothing about the rows left behind. A `pending` row written by a
+        | harness order sits in the outbox until somebody runs `php artisan mail:drain` on a host
+        | with real SMTP — and then four real admin addresses are told about test order 3381.
+        |
+        | A parked row is never claimed: `deliver()` and `mail:drain` both select `pending`. It
+        | stays visible, and it stays honest about what it is.
+        |
+        | Default FALSE, so a normal run is unchanged and forgetting the flag can only ever mean
+        | "a real e-mail was sent", never "a real e-mail was silently dropped".
+        */
+        'park' => (bool) env('CORE_MAIL_PARK', false),
+
         // Attempts before a row is parked as `failed` and stops being retried. Five one-minute
         // ticks with the backoff below spans roughly an hour and a half of relay trouble.
         'max_attempts' => (int) env('ORDER_MAIL_MAX_ATTEMPTS', 5),
@@ -84,4 +101,20 @@ return [
         'inside_transaction' => (bool) env('ORDER_MAIL_SEND_IN_TRANSACTION', false),
     ],
 
+    /*
+    | Where the dashboard lives, for the "Open Order" button in the admin order e-mail
+    | (review 🟠-5).
+    |
+    | PINNED, and deliberately not derived. This link used to be built with
+    | `route('manage.orders.show')`, which resolves its host from the current request — or from
+    | APP_URL on the console. Both are wrong here, and after Phase 2 the first one is actively
+    | broken: the e-mail is composed while serving `add_order` on **api.watchizereg.com**, and
+    | `.htaccess` §4 answers 404 for `/manage` on that host. Every admin order e-mail would have
+    | carried a button to a 404.
+    |
+    | The dashboard has exactly ONE address, and this is the place that says so. It is not a
+    | secret and it is not per-storefront: the dashboard is one application serving all of them.
+    | `MANAGE_URL` overrides it for a staging host.
+    */
+    'manage_url' => rtrim((string) env('MANAGE_URL', 'https://eleganceeg.com'), '/'),
 ];

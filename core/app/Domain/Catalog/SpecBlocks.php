@@ -4,6 +4,7 @@ namespace App\Domain\Catalog;
 
 use App\Models\Catalog\Product;
 use App\Support\Coerce;
+use App\Support\ManageText;
 use App\Transform\FamilyResolver;
 use App\Transform\Row;
 use Illuminate\Database\Query\JoinClause;
@@ -38,6 +39,63 @@ final class SpecBlocks
     public const TYPES = ['string', 'integer', 'decimal', 'boolean', 'lookup'];
 
     /**
+     * Which colour questions each family is asked, labelled (J-6, 2026-09-19).
+     *
+     * Every family at once, keyed by family, because the product form derives the family in the
+     * BROWSER as the operator changes the primary category — the same `option.family` mechanism
+     * task 4.1 built so the specification block could react without a round trip. Sending one
+     * family's roles would mean a request per category change, or a second copy of the derivation
+     * rule in JavaScript, and wave 4B rejected both.
+     *
+     * ── Shown, not required ─────────────────────────────────────────────────────────────────
+     *
+     * J-6 asked for these to be REQUIRED per family. Measured against the live catalogue first,
+     * as every field rule on this project is:
+     *
+     *     main colour missing:  7,713 of 7,713   (no product has ever had one)
+     *     watch dial missing:   4,264 of 4,645
+     *     watch band missing:   4,263 of 4,645
+     *
+     * A required colour would refuse a save on essentially every product in the shop, which is the
+     * exact failure the 2026-09-18 field-rules decision was written to avoid: *"a rule that
+     * refuses the save punishes whoever is fixing something rather than whoever left it
+     * incomplete."* Legacy has these `nullable` too.
+     *
+     * So the FAMILY SCOPING ships — which is the half that closes the trap, because a handbag is
+     * no longer asked for a strap colour and cannot write into the column the storefront renders
+     * as a watch band — and the requirement does not. The form says which colours matter for this
+     * family instead of refusing to save without them.
+     *
+     * @return array<string, list<array{key: string, label: string}>>
+     */
+    public static function colorRoles(): array
+    {
+        $labels = [
+            'main' => ManageText::t('products.color_main', 'اللون الأساسي'),
+            'dial' => ManageText::t('products.color_dial', 'لون القرص'),
+            'band' => ManageText::t('products.color_band', 'لون السوار'),
+        ];
+
+        /** @var array<string, mixed> $config */
+        $config = config('catalog.color_roles', []);
+
+        $out = [];
+        foreach (array_merge(['default'], Product::FAMILIES) as $family) {
+            $roles = $config[$family] ?? $config['default'] ?? [];
+            $list = [];
+            foreach (is_array($roles) ? $roles : [] as $role) {
+                if (! is_string($role) || ! isset($labels[$role])) {
+                    throw new InvalidArgumentException('config/catalog.php: unknown colour role ['.Coerce::str($role).'].');
+                }
+                $list[] = ['key' => $role, 'label' => $labels[$role]];
+            }
+            $out[$family] = $list;
+        }
+
+        return $out;
+    }
+
+    /**
      * The block for a family, or null when the family has none (`fashion`, `other`).
      *
      * @return SpecBlock|null
@@ -60,9 +118,29 @@ final class SpecBlocks
             if (! in_array($type, self::TYPES, true)) {
                 throw new InvalidArgumentException("config/catalog.php: field [{$field['key']}] has unknown type [{$type}].");
             }
+            /*
+             * ── The label goes through the seam HERE, not in config (🟠-4, 2026-09-17) ────────
+             *
+             * `config/catalog.php` holds 589 Arabic characters — spec-block names, field labels —
+             * and neither ratchet looked at `config/`, so an English operator read the whole
+             * specifications panel in Arabic and nothing failed.
+             *
+             * The fix cannot be a `ManageText::t()` inside the config file: config is CACHED
+             * (`php artisan config:cache`), so the translation would be resolved once, at cache
+             * time, in whatever locale happened to be active — and then frozen for every operator
+             * until the next deploy. That is worse than the bug.
+             *
+             * So the config value stays as the ARABIC FALLBACK, exactly like a `t()` call's second
+             * argument, and the key is derived from the field's own stable `key`. Same contract as
+             * the rest of the seam: Arabic renders with `lang/ar` empty, English comes from
+             * `lang/en/manage.php`, and `ConfigTranslationTest` asserts every declared field has an
+             * English entry.
+             */
+            $label = is_string($field['label'] ?? null) ? $field['label'] : $field['key'];
+
             $one = [
                 'key' => $field['key'],
-                'label' => is_string($field['label'] ?? null) ? $field['label'] : $field['key'],
+                'label' => ManageText::t('specs.field_'.$field['key'], $label),
                 'type' => $type,
             ];
             if (is_string($field['unit'] ?? null)) {
@@ -71,15 +149,56 @@ final class SpecBlocks
             if (is_string($field['lookup'] ?? null)) {
                 $one['lookup'] = $field['lookup'];
             }
+            /*
+             * A field's HINT, through the same seam as its label and for the same reason: the
+             * config value is the Arabic fallback and the key is derived from the field's own
+             * stable `key`, so `config:cache` cannot freeze one locale's text.
+             *
+             * Added 2026-10-05 for `case_size`, where the label names the measurement and only a
+             * sentence can say WHICH measurement it is — a diameter, not a circumference. Optional
+             * everywhere: a field that says all it needs to in its label carries none.
+             */
+            if (is_string($field['hint'] ?? null)) {
+                $one['hint'] = ManageText::t('specs.hint_'.$field['key'], $field['hint']);
+            }
             $fields[] = $one;
         }
 
         return [
             'family' => $family,
-            'label' => is_string($block['label'] ?? null) ? $block['label'] : $family,
+            // The block's own name ("مواصفات الساعة"), keyed on the FAMILY — same reasoning as the
+            // field labels above: the config value is the fallback, the key is derived and stable.
+            'label' => ManageText::t(
+                'specs.block_'.$family,
+                is_string($block['label'] ?? null) ? $block['label'] : $family,
+            ),
             'table' => is_string($block['table'] ?? null) ? $block['table'] : 'specs',
             'fields' => $fields,
         ];
+    }
+
+    /**
+     * Does this family's block declare this field?
+     *
+     * Asked by the wave-4D importer before it writes a material: `material_id` exists on a bag, a
+     * wallet and a fashion product, and not on a perfume or an electronics item. Reading the block
+     * beats a hard-coded family list, which is the mistake the legacy dashboard made about watches
+     * and had to be hotfixed for.
+     */
+    public static function hasField(string $family, string $key): bool
+    {
+        $block = self::for($family);
+        if ($block === null) {
+            return false;
+        }
+
+        foreach ($block['fields'] as $field) {
+            if ($field['key'] === $key) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -257,6 +376,17 @@ final class SpecBlocks
             ->leftJoin($translations.' as en', function (JoinClause $join) use ($fk): void {
                 $join->on('en.'.$fk, '=', 'm.id')->where('en.locale', '=', 'en');
             })
+            /*
+             * A RETIRED row is not offered (wave 4D, task C3). Declared per lookup in
+             * `config/catalog.php` rather than sniffed from the schema: `catalog_units` is the only
+             * list with a retirement column today, and a helper that quietly filtered on a column
+             * "if it happens to exist" would be the kind of rule nobody can find later.
+             *
+             * It filters the PICKER only. A product already pointing at a retired unit keeps
+             * rendering it, which is the point: hiding the row must not silently blank a
+             * measurement on a live page.
+             */
+            ->when(Coerce::bool($entry['retirable'] ?? null), fn ($query) => $query->whereNull('m.retired_at'))
             ->orderBy('m.id')
             ->get(['m.id', 'ar.name as name_ar', 'en.name as name_en']);
 

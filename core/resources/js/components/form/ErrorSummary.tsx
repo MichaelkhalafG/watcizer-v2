@@ -1,0 +1,142 @@
+import { AlertCircle } from 'lucide-react';
+import { useEffect, useRef } from 'react';
+
+import { Alert } from '@/components/ui/alert';
+import { useT } from '@/lib/i18n';
+
+/**
+ * Everything the server refused, at the top of the form, each one a link to its field (D-19).
+ *
+ * ── The problem this solves ─────────────────────────────────────────────────────────────────
+ *
+ * The product form is 4,868 px tall — 7.4 screens at the measured viewport — and its Save button
+ * is at the bottom. An incomplete save posted, the server answered 422, and the messages rendered
+ * inline beside their fields, six screens above the button that had just been pressed. Nothing
+ * moved, nothing was announced, and the operator's honest reading was that the button was broken.
+ *
+ * So: the count and the list, where the eye already is after a failed submit, with the page
+ * scrolled to it. Every entry is a link, because knowing that `العنوان (عربي)` is empty is only
+ * half an answer when it is five screens away.
+ *
+ * ── Why it moves the page, and why that is not rude ─────────────────────────────────────────
+ *
+ * Scrolling the operator somewhere they did not ask to go is normally a bad idea. This is the
+ * exception: they asked for a save, the save did not happen, and the only thing that can tell them
+ * why is off-screen. The alternative is not "a calm page" — it is a page that appears to have
+ * ignored them.
+ *
+ * `role="alert"` (through `Alert`'s error tone) announces it to a screen reader as well, so this
+ * is not a sighted-only fix.
+ */
+export function ErrorSummary({
+    errors,
+    labels = {},
+    title,
+}: {
+    /** Laravel's error bag, straight from Inertia's `errors` prop. */
+    errors: Record<string, string>;
+    /**
+     * Field name → the words on its label, for the list.
+     *
+     * A form that passes none still gets a useful summary — the server's messages are sentences,
+     * not codes — but naming the field is what lets somebody scan ten of them.
+     */
+    labels?: Record<string, string>;
+    title?: string;
+}) {
+    const t = useT();
+    const box = useRef<HTMLDivElement>(null);
+    const keys = Object.keys(errors);
+    const count = keys.length;
+
+    // Only when the set of errors CHANGES. Re-scrolling on every render would fight an operator
+    // who has scrolled away to fix the first one.
+    const signature = keys.sort().join('|');
+    useEffect(() => {
+        if (count > 0) {
+            box.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+    }, [signature, count]);
+
+    if (count === 0) {
+        return null;
+    }
+
+    return (
+        <div ref={box} data-testid="error-summary">
+            <Alert
+                tone="error"
+                title={
+                    title ??
+                    t('form.error_summary_title', 'لم يُحفَظ: :count حقل يحتاج تصحيحًا', {
+                        count,
+                    })
+                }
+            >
+                <ul className="mt-1 space-y-1">
+                    {keys.map((key) => (
+                        <li key={key}>
+                            <a
+                                href={`#field-${key}`}
+                                className="underline underline-offset-2"
+                                onClick={(event) => {
+                                    /*
+                                     * The anchor is a real `href` so it works without JS and reads
+                                     * as a link — but the scroll is taken over here, because the
+                                     * default jump slams the field to the very top of the viewport
+                                     * where its own label is often the first thing cut off.
+                                     */
+                                    const target = document.getElementById(`field-${key}`);
+                                    if (target !== null) {
+                                        event.preventDefault();
+                                        target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                        const focusable = target.querySelector<HTMLElement>(
+                                            'input, select, textarea, [tabindex]',
+                                        );
+                                        focusable?.focus({ preventScroll: true });
+                                    }
+                                }}
+                            >
+                                <span className="font-medium">{labels[key] ?? key}</span>
+                                {' — '}
+                                {errors[key]}
+                            </a>
+                        </li>
+                    ))}
+                </ul>
+            </Alert>
+        </div>
+    );
+}
+
+/**
+ * The anchor an `ErrorSummary` link lands on. Wrap the field that owns `name`.
+ *
+ * A plain `id` on a wrapper rather than on the control itself: the control's own id is generated by
+ * `useId()` and is not knowable from the error bag, and landing on the WRAPPER puts the label and
+ * the message in view too, which is the whole point of going there.
+ */
+export function FieldAnchor({ name, children }: { name: string; children: React.ReactNode }) {
+    return (
+        <div id={`field-${name}`} className="scroll-mt-24">
+            {children}
+        </div>
+    );
+}
+
+/** A small count badge for a sticky save bar — `null` when there is nothing wrong. */
+export function ErrorCount({ errors }: { errors: Record<string, string> }) {
+    const t = useT();
+    const count = Object.keys(errors).length;
+
+    if (count === 0) {
+        return null;
+    }
+
+    return (
+        <span className="inline-flex items-center gap-1 rounded-full bg-destructive/10 px-2.5 py-0.5 text-xs font-medium text-destructive dark:bg-red-950 dark:text-red-300">
+            <AlertCircle className="h-3.5 w-3.5" aria-hidden="true" />
+            {t('form.error_count', ':count حقل يحتاج تصحيحًا', { count })}
+        </span>
+    );
+}

@@ -40,9 +40,19 @@ function editPayload(int $productId, array $section = [], array $overrides = [])
         'wa_code' => T::str(DB::table('catalog_products')->where('id', $productId)->value('wa_code')),
         'brand_id' => T::int(DB::table('catalog_brands')->orderBy('id')->value('id')),
         'selling_price' => '500.00',
+        'purchase_price' => '0.00',
         'currency' => 'EGP',
         'is_active' => true,
         'title' => ['ar' => 'منتج اختبار المنع', 'en' => 'Prevention test'],
+        /*
+         * `_complete` above means this payload REPLACES the record, so the descriptions and the
+         * gender have to be in it or every edit made through this helper would blank them — and
+         * since 2026-09-18 that quietly takes the product off the storefront, which would make
+         * these tests describe the demotion instead of the rule each one is actually about.
+         */
+        'short_description' => ['ar' => 'وصف مختصر', 'en' => 'Short description'],
+        'long_description' => ['ar' => 'وصف تفصيلي', 'en' => 'Long description'],
+        'gender_ids' => [T::int(DB::table('catalog_genders')->orderBy('id')->value('id'))],
         'storefronts' => [
             '1' => array_merge([
                 'category_ids' => [$watches],
@@ -85,13 +95,25 @@ it('BLOCKS visibility without an image', function () {
     CatalogFixture::place($productId, CatalogFixture::watchesRoot());
     CatalogFixture::onStorefront($productId, visible: false);
 
+    /*
+     * ── The save GOES THROUGH; the product just does not go on sale ─────────────────────────
+     *
+     * This asserted a refusal until 2026-09-18. The developer changed the rule, and the reason is
+     * the point: *"a rule that refuses the save punishes whoever is fixing something rather than
+     * whoever left it incomplete."* With 7,087 imported products missing a description, a refusal
+     * here would have locked the team out of editing a price on almost the whole catalogue.
+     *
+     * So the three things asserted now are the whole contract: the save succeeds, the product is
+     * NOT visible, and the operator is told which field did it — *"so it is never a silent
+     * disappearance."*
+     */
     actingAs(Staff::dataEntry())
         ->put("/manage/storefronts/1/products/{$productId}", editPayload($productId, ['is_visible' => true]))
-        ->assertSessionHasErrors('storefronts.1.is_visible');
+        ->assertSessionHasNoErrors();
 
     expect(Row::bool(T::one(DB::table('storefront_product')->where('storefront_id', 1)->where('product_id', $productId)), 'is_visible'))
         ->toBeFalse();
-    expect(T::err('storefronts.1.is_visible'))->toContain('صورة');
+    expect(T::str(session('error')))->toContain('صورة');
 });
 
 it('BLOCKS visibility with no category on THAT storefront', function () {
@@ -141,7 +163,7 @@ it('REFUSES a CREATE with no category on the storefront that decides the family'
     actingAs(Staff::dataEntry())->post('/manage/storefronts/1/products', [
         'wa_code' => 'prevent-'.bin2hex(random_bytes(4)),
         'brand_id' => T::int(DB::table('catalog_brands')->orderBy('id')->value('id')),
-        'selling_price' => '100.00', 'currency' => 'EGP', 'is_active' => true,
+        'selling_price' => '100.00', 'purchase_price' => '0.00', 'currency' => 'EGP', 'is_active' => true,
         'title' => ['ar' => 'بلا تصنيف', 'en' => 'No category'],
         'storefronts' => ['1' => [
             'category_ids' => [], 'primary_category_id' => null,
@@ -168,6 +190,11 @@ it('REJECTS a negative price and a non-numeric one at the field', function () {
 
 it('REFUSES a duplicate slug inside one storefront, by name, instead of silently suffixing it', function () {
     /*
+     * ADMIN since item 6 (2026-09-18). These two are about slug UNIQUENESS, not about who may type
+     * a slug — and typing one became admin work, so a data-entry actor is now refused for a reason
+     * that has nothing to do with what is under test. `SlugAndTreeGrantTest` owns that rule.
+     */
+    /*
      * This one CHANGED behaviour, and the old behaviour is the point: `uniqueSlug()` appended `-2`
      * and saved. The operator typed `rolex-daytona`, got `rolex-daytona-2`, and found out by
      * reading the URL some time later. A silent correction is the same failure as a warning
@@ -186,11 +213,11 @@ it('REFUSES a duplicate slug inside one storefront, by name, instead of silently
     CatalogFixture::onStorefront($first, visible: false);
     CatalogFixture::onStorefront($second, visible: false);
 
-    actingAs(Staff::dataEntry())
+    actingAs(Staff::admin())
         ->put("/manage/storefronts/1/products/{$first}", editPayload($first, ['slug' => 'taken-slug']))
         ->assertSessionHasNoErrors();
 
-    actingAs(Staff::dataEntry())
+    actingAs(Staff::admin())
         ->put("/manage/storefronts/1/products/{$second}", editPayload($second, ['slug' => 'taken-slug']))
         ->assertSessionHasErrors('storefronts.1.slug');
 
@@ -201,6 +228,11 @@ it('REFUSES a duplicate slug inside one storefront, by name, instead of silently
 });
 
 it('ALLOWS the same slug on a DIFFERENT storefront, because that is what the schema says', function () {
+    /*
+     * ADMIN since item 6 (2026-09-18). These two are about slug UNIQUENESS, not about who may type
+     * a slug — and typing one became admin work, so a data-entry actor is now refused for a reason
+     * that has nothing to do with what is under test. `SlugAndTreeGrantTest` owns that rule.
+     */
     // `sp_storefront_slug_unique` is (storefront_id, slug). Two sites are two domains; the same
     // product answering `/product/x` on both is the correct answer, not a collision.
     CatalogFixture::assumeSwitched();
@@ -210,11 +242,11 @@ it('ALLOWS the same slug on a DIFFERENT storefront, because that is what the sch
     CatalogFixture::place($productId, $watches);
     CatalogFixture::onStorefront($productId, visible: false);
 
-    actingAs(Staff::dataEntry())->put("/manage/storefronts/1/products/{$productId}", [
+    actingAs(Staff::admin())->put("/manage/storefronts/1/products/{$productId}", [
         '_complete' => 1,
         'wa_code' => T::str(DB::table('catalog_products')->where('id', $productId)->value('wa_code')),
         'brand_id' => T::int(DB::table('catalog_brands')->orderBy('id')->value('id')),
-        'selling_price' => '500.00', 'currency' => 'EGP', 'is_active' => true,
+        'selling_price' => '500.00', 'purchase_price' => '0.00', 'currency' => 'EGP', 'is_active' => true,
         'title' => ['ar' => 'منتج', 'en' => 'Product'],
         'storefronts' => [
             '1' => ['category_ids' => [$watches], 'primary_category_id' => $watches, 'is_visible' => false, 'is_featured' => false, 'sort_order' => 0, 'slug' => 'shared-across-sites'],
@@ -282,4 +314,98 @@ it('never offers data-entry an action the server would refuse', function () {
         // dashboard advertising a door it locks.
         actingAs(Staff::dataEntry())->get($href)->assertOk();
     }
+});
+
+it('DEMOTES on the product form but REFUSES on the placement screen — and that difference is deliberate', function () {
+    /*
+     * ── Do not "make these consistent" ──────────────────────────────────────────────────────
+     *
+     * The same incomplete product, the same request to make it visible, two different answers.
+     * That looks like an inconsistency worth tidying and it is not; it is the decision, approved
+     * on 2026-09-18, and this test exists so that tidying it breaks the build.
+     *
+     * The PRODUCT FORM demotes and says so. The operator went there to change a price or a title;
+     * refusing the whole save *"punishes whoever is fixing something rather than whoever left it
+     * incomplete"*, and with 7,087 imported products missing a description that refusal would lock
+     * the team out of most of the catalogue.
+     *
+     * The PLACEMENT SCREEN refuses. Visibility is the only thing that screen does, so there is no
+     * other work being punished — and a toggle that silently springs back is worse than one that
+     * says why.
+     *
+     * Change either half and the other stops making sense, so both are pinned here together.
+     */
+    $productId = CatalogFixture::productWithoutImage();
+    CatalogFixture::place($productId, CatalogFixture::watchesRoot());
+    CatalogFixture::onStorefront($productId, visible: false);
+
+    // 1. The product form: the save lands, the product does not go on sale, the reason is stated.
+    actingAs(Staff::admin())
+        ->put("/manage/storefronts/1/products/{$productId}", editPayload($productId, ['is_visible' => true]))
+        ->assertSessionHasNoErrors();
+
+    expect(Row::bool(T::one(DB::table('storefront_product')->where('storefront_id', 1)->where('product_id', $productId)), 'is_visible'))
+        ->toBeFalse('the product form let an incomplete product onto the storefront');
+    expect(T::str(session('error')))->toContain('صورة');
+
+    // 2. The placement screen, same product, same request: refused, on the field, with the reason.
+    actingAs(Staff::admin())
+        ->put("/manage/storefronts/1/placement/{$productId}", ['is_visible' => true, 'is_featured' => false])
+        ->assertSessionHasErrors('is_visible');
+
+    expect(T::err('is_visible'))->toContain('صورة');
+    expect(Row::bool(T::one(DB::table('storefront_product')->where('storefront_id', 1)->where('product_id', $productId)), 'is_visible'))
+        ->toBeFalse();
+});
+
+it('REFUSES a partial replace that would strip a VISIBLE product and take it off the storefront', function () {
+    /*
+     * The residual risk from the full-replace audit, closed on the WRITER so a future caller hits it
+     * wherever it comes from — a command, a job, a script, not just this endpoint.
+     *
+     * `update()` clears any translated column the payload omits. That is right for the form, which
+     * always sends everything, and it is how a five-field script erases the other thirty-five. Since
+     * the descriptions started gating visibility, doing it to a LIVE product does not merely lose
+     * text — the product leaves the shop.
+     */
+    $productId = CatalogFixture::product();
+    CatalogFixture::place($productId, CatalogFixture::watchesRoot());
+    CatalogFixture::onStorefront($productId, visible: true);
+
+    $before = T::str(DB::table('catalog_product_translations')
+        ->where('product_id', $productId)->where('locale', 'ar')->value('short_description'));
+    expect($before)->not->toBe('', 'the fixture no longer has a description — this test proves nothing');
+
+    // A payload with the titles but NOT the descriptions: the shape a script sends.
+    actingAs(Staff::admin())
+        ->put("/manage/storefronts/1/products/{$productId}", editPayload($productId, [], [
+            'short_description' => null,
+            'long_description' => null,
+        ]))
+        ->assertSessionHasErrors();
+
+    // Nothing was written: the description is intact and the product is still on sale.
+    expect(T::str(DB::table('catalog_product_translations')
+        ->where('product_id', $productId)->where('locale', 'ar')->value('short_description')))->toBe($before);
+    expect(Row::bool(T::one(DB::table('storefront_product')->where('storefront_id', 1)->where('product_id', $productId)), 'is_visible'))
+        ->toBeTrue('the product was taken off the storefront by a request that should have been refused');
+});
+
+it('ALLOWS the same partial replace on a product that is NOT visible', function () {
+    // The other half of the rule, and the reason it is scoped to visible products: clearing a field
+    // on a draft is an ordinary edit, and refusing it would make a draft harder to change than a
+    // live product.
+    $productId = CatalogFixture::product();
+    CatalogFixture::place($productId, CatalogFixture::watchesRoot());
+    CatalogFixture::onStorefront($productId, visible: false);
+
+    actingAs(Staff::admin())
+        ->put("/manage/storefronts/1/products/{$productId}", editPayload($productId, [], [
+            'short_description' => null,
+            'long_description' => null,
+        ]))
+        ->assertSessionHasNoErrors();
+
+    expect(DB::table('catalog_product_translations')
+        ->where('product_id', $productId)->where('locale', 'ar')->value('short_description'))->toBeNull();
 });

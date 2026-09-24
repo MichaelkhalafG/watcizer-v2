@@ -133,7 +133,15 @@ final class PaymentCallbackController
             ->where('is_enabled', true)
             ->first();
 
-        return $contract !== null && $contract->credentialsSet();
+        /*
+         * COMPLETE, not merely set (2026-09-23). `credentialsSet()` is true for a contract holding
+         * `public_key` alone — and that contract cannot verify a signature, so going live on it
+         * would answer every callback 403 with the money taken. A half-entered contract keeps the
+         * proven wave-3 path until the last key is in.
+         */
+        return $contract !== null && $contract->credentialsComplete(
+            app(ProviderRegistry::class)->credentialFields(PaymobProvider::KEY)
+        );
     }
 
     private function process(Request $request, int $storefrontId, string $provider, bool $alias = false): JsonResponse|RedirectResponse
@@ -389,16 +397,16 @@ final class PaymentCallbackController
                     'transaction' => $verdict->providerTransactionId,
                 ]);
 
-                return $this->done($request, false);
+                return self::done($request, false);
             }
 
-            return $this->done($request, $verdict->isSuccess);
+            return self::done($request, $verdict->isSuccess);
         } catch (Throwable $e) {
             // The message may quote the payload; the payload may quote the contract. Log the class
             // and the place, never the exception's own text next to payment context.
             Log::error('payment callback failed: '.$e::class.' at '.basename($e->getFile()).':'.$e->getLine(), $context);
 
-            return $this->done($request, false);
+            return self::done($request, false);
         }
     }
 
@@ -528,11 +536,51 @@ final class PaymentCallbackController
         return response()->json(['message' => $status === 404 ? 'Not found' : 'Forbidden'], $status);
     }
 
-    /** Where the customer lands. A provider's server-to-server call gets JSON instead. */
-    private function done(Request $request, bool $ok): JsonResponse|RedirectResponse
+    /**
+     * Where the customer lands. A provider's server-to-server call gets JSON instead.
+     *
+     * ── Why the METHOD decides this, and not the Accept header (review G2b) ─────────────────
+     *
+     * The processed callback is a POST; the shopper's return is a GET. That distinction is a fact
+     * about the protocol. `expectsJson()` is a guess about a header: Paymob's POST sends an
+     * any-type `Accept` and no `X-Requested-With`, so it read as a BROWSER and was answered with a
+     * 302 to the storefront — a redirect sent to a machine that will not follow it, and a
+     * response that says nothing about whether the callback was accepted.
+     *
+     * ── A GET ALWAYS redirects, whatever its Accept header — legacy parity (2026-09-23) ─────
+     *
+     * There used to be a second arm: a GET sending `Accept: application/json` got JSON. The legacy
+     * handler redirects every GET unconditionally, so that arm was a divergence the compat harness
+     * could see — and it served nobody. Paymob's GET is the shopper's BROWSER returning, which
+     * never sends that header, and a monitoring probe that did would lose nothing by getting a
+     * 302. Developer decision: byte-parity is worth more than the improvement, so the METHOD is
+     * the only thing that decides, in both directions.
+     *
+     * ── PUBLIC and STATIC, because the wave-3 handler needs the same answer (review 🔴-2) ────
+     *
+     * {@see CheckoutCompatController::callbackPayment()} serves the
+     * alias whenever the Paymob contract is not live, and it was answering a **302 to every
+     * caller** — including the processed POST. A 302 is not the 200 a provider stops retrying on,
+     * so each retry ran the handler again; with the identifier bug that was in it at the time,
+     * each retry also wrote another orphan row. Two handlers on one URL must not disagree about
+     * what a POST means, so this is one method rather than a second copy of the same three lines
+     * (AGENTS §3: share the CODE, not the description).
+     *
+     * ── What does NOT come through here, in either handler ──────────────────────────────────
+     *
+     * "Already processed" and "Recorded for reconciliation" are a plain JSON 200 on BOTH handlers,
+     * whatever the method. They are answers to the PROVIDER — "stop retrying, this is on record" —
+     * and a browser arriving on a replay is a rare case that has always seen that body. Routing
+     * them through here would have changed what a GET sees, which the compat harness compares byte
+     * for byte, for no gain: a 200 already tells the provider everything it needs.
+     *
+     * `$message` is therefore unused today. It stays because the next caller with its own sentence
+     * should reach for it rather than for a second copy of the method rule.
+     */
+    public static function done(Request $request, bool $ok, ?string $message = null): JsonResponse|RedirectResponse
     {
-        if ($request->expectsJson() && ! $request->acceptsHtml()) {
-            return response()->json(['message' => $ok ? 'ok' : 'failed'], 200);
+        if ($request->isMethod('POST')) {
+            return response()->json(['message' => $message ?? ($ok ? 'ok' : 'failed')], 200);
         }
 
         $base = config()->string('compat.payment_return_url');

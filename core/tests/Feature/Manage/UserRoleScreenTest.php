@@ -14,12 +14,17 @@ use Tests\Support\T;
 use function Pest\Laravel\actingAs;
 
 /*
- * Users & roles: GRANTS ONLY (wave 4C, AGENTS §2.7 and §3).
+ * Users & roles (wave 4C, AGENTS §2.7 and §2.18).
  *
- * The claim this file has to prove is negative — that the screen cannot create, rename, disable or
- * password-reset an account in the shared `users` table — so it is proven three ways: the row
- * count does not change, a grant to an unknown e-mail is refused instead of creating one, and
- * there is no route on the surface that writes `users` at all.
+ * The claim used to be wholly negative — that this screen could not touch the shared `users` table
+ * at all. Since 2026-09-20 it can do exactly one thing to it: CREATE a dashboard account, through
+ * `DashboardAccounts`, because on the standalone deployment nothing else writes that table and the
+ * old "create it on the storefront or in the old dashboard" workflow had nowhere left to happen.
+ *
+ * So the claim is now bounded rather than absent, and it is proven the same three ways: a GRANT
+ * still never conjures an account, the surface's writes are named exactly, and no write anywhere
+ * takes an account id — which is the shape an edit or a delete would have. The creation flow
+ * itself, and the guard that refuses every other write, live in `AccountWriteGuardTest`.
  */
 
 it('grants a role to an EXISTING account without touching the users table', function () {
@@ -38,16 +43,23 @@ it('grants a role to an EXISTING account without touching the users table', func
         ->and(User::query()->count())->toBe($before);
 });
 
-it('refuses an e-mail that has no account, and says where accounts come from', function () {
+it('refuses a GRANT to an e-mail that has no account, and points at the form that makes one', function () {
     $before = User::query()->count();
 
     actingAs(Staff::admin())
         ->post('/manage/users/grants', ['email' => 'nobody-here@example.test', 'role' => Role::Admin->value])
         ->assertSessionHasErrors('email');
 
-    // No account was conjured to satisfy the grant — the whole point of `Rule::exists`.
+    /*
+     * No account is conjured to satisfy a grant — `Rule::exists` on this route is unchanged, and
+     * creating one is a different, deliberate request to `POST /manage/users`. What changed on
+     * 2026-09-20 is the SENTENCE: it used to send the operator to "the storefront or the old
+     * dashboard", which on the standalone deployment is a workflow with nowhere to happen. It now
+     * names the form on the same screen.
+     */
     expect(User::query()->count())->toBe($before)
-        ->and(T::err('email'))->toContain('الحسابات تُنشأ من المتجر أو من الداشبورد القديم');
+        ->and(T::err('email'))->toContain('إضافة موظّف')
+        ->and(T::err('email'))->not->toContain('الداشبورد القديم');
 });
 
 it('scopes a grant to one storefront when asked', function () {
@@ -101,10 +113,20 @@ it('refuses to revoke the LAST unscoped admin grant, which would lock the dashbo
             ->whereNull('storefront_id')->value('id')
     );
 
-    actingAs($admin)->delete("/manage/users/grants/{$lastGrant}")->assertSessionHasErrors('grant');
+    /*
+     * Refused EARLIER than it used to be (security audit, Finding 1, 2026-09-23). The acting
+     * admin is now storefront-scoped, and a scoped admin may not touch an UNSCOPED grant at all —
+     * so this is a 403 from the actor-scope check, before the last-admin guard is reached. The
+     * property the test exists for is unchanged: the last global admin grant survives.
+     *
+     * The last-admin guard stays as defence in depth. Through this screen it is now reachable only
+     * by an unscoped actor, who is itself an unscoped admin and is refused revoking its own grant
+     * first — which is the point: two independent refusals, either of which keeps the dashboard
+     * administrable.
+     */
+    actingAs($admin)->delete("/manage/users/grants/{$lastGrant}")->assertForbidden();
 
-    expect(DB::table('core_user_roles')->where('id', $lastGrant)->exists())->toBeTrue()
-        ->and(T::err('grant'))->toContain('آخر صلاحية مدير عامة');
+    expect(DB::table('core_user_roles')->where('id', $lastGrant)->exists())->toBeTrue();
 });
 
 it('revokes an ordinary grant and leaves the account alone', function () {
@@ -152,15 +174,41 @@ it('shows the legacy users.type flag for contrast, and does not read it as a gra
     expect(app(Roles::class)->hasAnyRole($customer))->toBeFalse();
 });
 
-it('exposes NO route that writes the shared users table', function () {
-    // The negative claim, asserted rather than described: the users surface has exactly three
-    // routes and the two writes both name `grants`. A future `POST /manage/users` — an "add user"
-    // button — fails here before it can reach the shared table.
+it('writes the shared users table for CREATE and nothing else', function () {
+    /*
+     * ── The rule this test encodes changed on 2026-09-20, and did not disappear ──────
+     *
+     * It used to assert that every write on this surface named `grants` — the negative claim that
+     * core never touched `users` at all. AGENTS §2.18 now permits exactly two operations on that
+     * table, one of which lives here: creating a dashboard account. So the assertion is no longer
+     * "no writes", it is "these writes and no others", which is the stricter and more useful shape.
+     *
+     * What must stay impossible is an EDIT or a DELETE of an account. Revoking access is a deleted
+     * GRANT — a `core_user_roles` row — and `manage/users/grants/{grant}` is that route. A future
+     * `PUT /manage/users/{user}` or `DELETE /manage/users/{user}` fails here before it can reach a
+     * table holding every customer account, which is the same protection the old test gave.
+     */
     $writes = Routes::writeUris('manage/users');
 
     expect($writes)->not->toBeEmpty();
+
     foreach ($writes as $uri) {
-        expect(str_contains($uri, 'grants'))
-            ->toBeTrue("every write on the users surface must be a grant, found [{$uri}]");
+        $isCreate = $uri === 'manage/users';
+        $isGrant = str_contains($uri, 'grants');
+
+        expect($isCreate || $isGrant)->toBeTrue(
+            "a write on the users surface must be the account CREATE or a grant, found [{$uri}]"
+        );
+
+        // …and no write may carry an account id in its path. That is the shape an edit or a delete
+        // would take, and `{grant}` is a grant id, not a person.
+        if (! $isGrant) {
+            expect(str_contains($uri, '{'))->toBeFalse(
+                "no users write may take an account id — found [{$uri}]"
+            );
+        }
     }
+
+    // Named exactly, so adding a route is a decision somebody makes here on purpose.
+    expect($writes)->toBe(['manage/users', 'manage/users/grants', 'manage/users/grants/{grant}']);
 });

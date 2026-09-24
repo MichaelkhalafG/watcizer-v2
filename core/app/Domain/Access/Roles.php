@@ -2,6 +2,7 @@
 
 namespace App\Domain\Access;
 
+use App\Domain\Activity\ActivityLog;
 use App\Models\Access\UserRole;
 use App\Models\Storefront\Storefront;
 use App\Models\User;
@@ -66,6 +67,55 @@ final class Roles
     }
 
     /**
+     * Does this user hold an ADMIN grant that covers EVERY storefront?
+     *
+     * ── Why this is not `isAdmin() && storefrontScope() === null` (security audit, Finding 1) ──
+     *
+     * `isAdmin()` ignores scope, so the Gate's admin short-circuit used to make a Brand-Fashion-
+     * scoped admin a global one. The obvious repair — "admin, and unscoped" — combines two
+     * questions about DIFFERENT grants: `storefrontScope()` answers null when ANY grant is
+     * unscoped, so admin@Brand-Fashion plus an unscoped data-entry grant would still have read as
+     * a global admin. The question has to be asked of one grant: is there an admin row whose
+     * `storefront_id` is null.
+     */
+    public function isUnscopedAdmin(User $user): bool
+    {
+        foreach ($this->for($user) as $grant) {
+            if ($grant->asRole() === Role::Admin && $grant->storefront_id === null) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * The storefronts on which this user holds `$ability`: null when some grant carrying it is
+     * unscoped (every storefront), otherwise the list — empty when no grant carries it.
+     *
+     * Per ABILITY, not per user, for the same reason as {@see self::isUnscopedAdmin()}: an unscoped
+     * grant that does NOT carry the ability must not widen what the ability reaches.
+     *
+     * @return list<int>|null
+     */
+    public function scopeForAbility(User $user, string $ability): ?array
+    {
+        $ids = [];
+        foreach ($this->for($user) as $grant) {
+            $role = $grant->asRole();
+            if ($role === null || ! $role->can($ability)) {
+                continue;
+            }
+            if ($grant->storefront_id === null) {
+                return null;
+            }
+            $ids[] = $grant->storefront_id;
+        }
+
+        return array_values(array_unique($ids));
+    }
+
+    /**
      * Does this user hold an ability — optionally on ONE storefront?
      *
      * A grant with `storefront_id = NULL` covers every storefront. A scoped grant covers only its
@@ -125,6 +175,23 @@ final class Roles
         );
         unset($this->memo[$user->id]);
 
+        /*
+         * Logged only when the grant is NEW. `firstOrCreate` is idempotent, so re-granting a role
+         * somebody already holds is a no-op — and a log row saying a permission was given when
+         * nothing changed is worse than no row: it is a false positive in the one place a reader
+         * is looking for the truth about who can do what.
+         */
+        if ($grant->wasRecentlyCreated) {
+            ActivityLog::record(
+                'core_user_roles',
+                (int) $grant->id,
+                ActivityLog::GRANTED,
+                after: ['role' => $role->value, 'user_id' => $user->id, 'storefront_id' => $storefrontId],
+                label: $role->value,
+                storefrontId: $storefrontId,
+            );
+        }
+
         return $grant;
     }
 
@@ -137,6 +204,18 @@ final class Roles
         }
         $removed = $query->delete();
         unset($this->memo[$user->id]);
+
+        // Only when something was actually removed — revoking a role nobody held changed nothing.
+        if (is_int($removed) && $removed > 0) {
+            ActivityLog::record(
+                'core_user_roles',
+                null,                                  // the grant rows are gone; the subject is the person
+                ActivityLog::REVOKED,
+                before: ['role' => $role->value, 'user_id' => $user->id, 'storefront_id' => $storefrontId],
+                label: $role->value,
+                storefrontId: $storefrontId,
+            );
+        }
 
         return is_int($removed) ? $removed : 0;
     }

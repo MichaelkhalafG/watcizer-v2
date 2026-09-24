@@ -2,12 +2,15 @@
 
 namespace App\Http\Controllers\Manage;
 
+use App\Domain\Access\Role;
+use App\Domain\Activity\ActivityLog;
 use App\Domain\Catalog\ConversionGuard;
 use App\Domain\Catalog\FamilyForCategory;
 use App\Domain\Catalog\FieldRefusal;
 use App\Domain\Catalog\PlacementWriter;
 use App\Domain\Catalog\PreSwitch;
 use App\Domain\Catalog\ProductIndexer;
+use App\Domain\Catalog\ProductSearch;
 use App\Domain\Catalog\ProductWriter;
 use App\Domain\Catalog\SpecBlocks;
 use App\Domain\Catalog\VariantWriter;
@@ -17,6 +20,9 @@ use App\Models\Storefront\Storefront;
 use App\Storefront\ImageUrl;
 use App\Support\Coerce;
 use App\Support\FullReplace;
+use App\Support\LocalisedName;
+use App\Support\ManageText;
+use App\Support\Sql;
 use App\Support\Table\TableQuery;
 use App\Transform\Row;
 use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
@@ -25,12 +31,14 @@ use Illuminate\Database\Query\JoinClause;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 use RuntimeException;
 use stdClass;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * /manage/products — the list and the product form (wave 4B scope items 1–3, 5).
@@ -90,12 +98,22 @@ final class ProductController
         private readonly ConversionGuard $conversion,
     ) {}
 
-    public function index(Request $request, Storefront $storefront): Response
+    /**
+     * The list's DECLARATION — sortable columns, filter whitelists, search.
+     *
+     * Extracted (W-3, 2026-09-19) so that `bulk()` can answer "every row matching what is on
+     * screen" by re-running the SAME declaration against the screen's query string. That is the
+     * whole safety argument for select-all: the ids a bulk action touches are produced by the same
+     * whitelists the list renders from, so a hand-written request cannot reach a row the screen
+     * would not have shown. Two copies of these lists would be two things to keep in step, and the
+     * day they drifted the bulk action would quietly act on a different set from the one selected.
+     *
+     * @param  list<array<string, mixed>>  $brands
+     * @param  list<array<string, mixed>>  $categories
+     */
+    private function listTable(Request $request, array $brands, array $categories): TableQuery
     {
-        $brands = self::brandOptions();
-        $categories = self::categoryOptions($storefront->id);
-
-        $table = TableQuery::for($request)
+        return TableQuery::for($request)
             ->sortable(self::SORTABLE, default: 'p.id', direction: 'desc')
             ->filterable([
                 'p.family' => Product::FAMILIES,
@@ -104,27 +122,125 @@ final class ProductController
                 'p.in_stock' => ['0', '1'],
                 'sp.is_visible' => ['0', '1'],
                 'sp.is_featured' => ['0', '1'],
-                // Two filters that are not plain columns; applied by hand below and declared here
+                /*
+                 * WHICH CATALOGUE (W1, 2026-09-20) — and it defaults to `placed`.
+                 *
+                 * The catalogue is shared across storefronts (D3) and that is right. Presenting it
+                 * as "Products — Watchizer" was not: with Watchizer selected the list read 7,714
+                 * products of which 7,015 are not on Watchizer at all, and ZERO of the first 25
+                 * rows were live on the shop named in the selector. Switching shops changed two
+                 * badges per row and nothing else, which made the selector look broken while it
+                 * was working perfectly.
+                 *
+                 * So selecting a shop now means seeing that shop's products, and the whole shared
+                 * catalogue is one click away with its own count. `placed` is the DEFAULT rather
+                 * than a remembered preference: a filter nobody set must mean the same thing on
+                 * every machine, or two people reading "7,714" disagree about what it counts.
+                 */
+                'scope' => ['placed', 'all'],
+                // Filters that are not plain columns; applied by hand below and declared here
                 // so the whitelist, the URL and the reset button all know about them.
                 'category' => self::optionValues($categories),
-                'flag' => ['low_stock', 'no_arabic', 'unplaced', 'has_variants', 'archived'],
+                'flag' => ['low_stock', 'no_arabic', 'unplaced', 'absent', 'has_variants', 'archived',
+                    // …and the one the dropped UNIQUE index used to make impossible: a supplier
+                    // code carried by more than one product (2026-10-05).
+                    'shared_sku',
+                    // Wave 4D, the importer's two: everything a row is MISSING (derived, never
+                    // stored — a marker that cannot go stale while somebody fixes the data), and
+                    // the Arabic titles a machine wrote, so the team can work through them.
+                    // …and M1s: an image that exists but did not process cleanly.
+                    'missing_data', 'machine_ar', 'image_problem'],
             ])
             // …and declared VIRTUAL, because neither is a column: `category` is a whole branch of
             // the tree and `flag` is four different predicates. `listQuery()` applies them.
-            ->virtual(['category', 'flag'])
+            ->virtual(['category', 'flag', 'scope'])
             /** @param  EloquentBuilder<covariant \Illuminate\Database\Eloquent\Model>|Builder  $query */
             ->searchUsing(function (EloquentBuilder|Builder $query, string $term): void {
                 self::applySearch($query, $term);
-            })
+            });
+    }
+
+    public function index(Request $request, Storefront $storefront): Response|StreamedResponse
+    {
+        $brands = self::brandOptions();
+        $categories = self::categoryOptions($storefront->id);
+
+        $table = $this->listTable($request, $brands, $categories)
             ->perPage(
                 default: config()->integer('catalog.list.per_page'),
                 max: config()->integer('catalog.list.per_page_max'),
-            );
+            )
+            /*
+             * ── What leaves in the CSV, and what deliberately does not ──────────────────────
+             *
+             * These are KEYS OF THE ROW THE SCREEN ALREADY RENDERS, so the file is the list the
+             * operator is looking at, filters and all. Two consequences worth stating out loud:
+             *
+             *  • `purchase_price` is absent. Not excluded by a rule — it was never in the list
+             *    payload, because the product LIST does not show cost. The form does, behind
+             *    `MANAGE_CATALOG`; the list never did and so the export cannot.
+             *  • `edit_url`, `cover` and the derived booleans the badges are drawn from are left
+             *    out as noise: a URL column in a spreadsheet helps nobody, and `has_image` says
+             *    the same thing the cover column would.
+             */
+            /*
+             * The column HEADINGS go through the seam like anything else an operator reads: the
+             * file lands on the desk of whoever asked for it, and a spreadsheet of Arabic headings
+             * is exactly as unreadable to an English-speaking buyer as the screen was. Most of
+             * them reuse the key the LIST already renders above the same column — a second key
+             * with the same text is two Englishes waiting to drift.
+             */
+            ->exportable([
+                'wa_code' => ManageText::t('products.wa_code', 'الكود الداخلي'),
+                'sku' => ManageText::t('products.sku', 'رقم الموديل (SKU)'),
+                'title' => [ManageText::t('common.name_ar', 'الاسم (عربي)'), fn (array $row): string => Coerce::str(Coerce::arr($row['title'] ?? null)['ar'] ?? null)],
+                'title_en' => [ManageText::t('common.name_en', 'الاسم (إنجليزي)'), fn (array $row): string => Coerce::str(Coerce::arr($row['title'] ?? null)['en'] ?? null)],
+                /*
+                 * BOTH languages, like `title` above (2026-09-16). The database stores `ar` and
+                 * `en` for every translated thing, and an export that emits one of them loses half
+                 * the record — the file is opened to bulk-edit and to send to the client, and both
+                 * of those need the pair. A MISSING translation is an EMPTY cell, never the other
+                 * language: an empty cell is information, a duplicated one hides the gap.
+                 */
+                'brand' => [ManageText::t('products.brand_ar', 'الماركة (عربي)'), fn (array $row): string => Coerce::str(Coerce::arr($row['brand'] ?? null)['ar'] ?? null)],
+                'brand_en' => [ManageText::t('products.brand_en', 'الماركة (إنجليزي)'), fn (array $row): string => Coerce::str(Coerce::arr($row['brand'] ?? null)['en'] ?? null)],
+                'family' => ManageText::t('products.family', 'العائلة'),
+                'selling_price' => ManageText::t('common.price', 'السعر'),
+                // NOT `products.sale_price`: that one's Arabic is «سعر التخفيض» and this column says
+                // «سعر العرض». Same column, two Arabic names — one key would mean one English
+                // standing for two different Arabic strings, which is the defect, not the tidy-up.
+                'sale_price' => ManageText::t('products.offer_price', 'سعر العرض'),
+                'currency' => ManageText::t('common.currency', 'العملة'),
+                'stock_express' => ManageText::t('common.stock_express', 'إكسبريس'),
+                'stock_market' => ManageText::t('common.stock_market', 'ماركت'),
+                'in_stock' => ManageText::t('products.in_stock', 'متوفر'),
+                'is_active' => ManageText::t('common.active', 'مفعّل'),
+                'is_visible' => [ManageText::t('products.visible_on_this_storefront', 'ظاهر على هذا المتجر'), fn (array $row): string => match ($row['is_visible'] ?? null) {
+                    true => ManageText::t('common.yes', 'نعم'),
+                    false => ManageText::t('common.no', 'لا'),
+                    default => ManageText::t('home.not_added', 'غير مضاف'),
+                }],
+                'is_featured' => [ManageText::t('products.featured', 'مميّز'), fn (array $row): string => $row['is_featured'] === true
+                    ? ManageText::t('common.yes', 'نعم')
+                    : ManageText::t('common.no', 'لا')],
+                'variants' => ManageText::t('inventory.variants', 'المقاسات/الألوان'),
+                'placement' => ManageText::t('banners.category', 'التصنيف'),
+                'missing' => [ManageText::t('products.missing_data_filter', 'بيانات ناقصة'), fn (array $row): string => implode(' | ', array_map(
+                    static fn (mixed $token): string => Coerce::str($token),
+                    Coerce::arr($row['missing'] ?? null),
+                ))],
+                'machine_ar' => ManageText::t('products.machine_translation', 'ترجمة آلية'),
+                'has_image' => ManageText::t('products.has_image', 'له صورة'),
+                'updated_at' => ManageText::t('products.last_edited', 'آخر تعديل'),
+            ], 'products');
 
         $filters = $table->resolvedFilters();
         $query = $this->listQuery($storefront->id, $filters);
 
         $brandNames = self::nameMap('catalog_brands', 'catalog_brand_translations', 'brand_id');
+        // One read for the page: the missing-data marker needs to know which brand means "nobody
+        // has assigned one yet" (the importer's `Generic`).
+        $genericBrand = self::genericBrandId();
 
         // Filled by the `prepare` callback below, before a single row is mapped. See
         // `TableQuery::paginate()` for why these two are not columns of the list query. The empty
@@ -133,72 +249,130 @@ final class ProductController
         // Read ONCE for the page, never inside the row mapper.
         $activeStorefronts = Storefront::activeIds();
 
+        /*
+         * The row callback and the batch loader are NAMED, because the CSV export runs the very
+         * same two. An export that built its own rows would be a second definition of "what this
+         * screen shows" — and the first time the two drifted, the file would carry a column the
+         * operator's role does not see.
+         */
+        $prepare = function (array $rows) use (&$extras, $storefront): void {
+            $extras = self::pageExtras(Coerce::objectList($rows), $storefront->id);
+        };
+
+        $map = function (object $raw) use ($brandNames, $storefront, $activeStorefronts, $genericBrand, &$extras): array {
+            $row = Row::cast($raw);
+            $id = Row::int($row, 'id');
+            $cover = $extras['covers'][$id] ?? null;
+            $titleAr = Row::nstr($row, 'title_ar');
+
+            // Lowercased to match `pageExtras`' key: the column's collation is case-insensitive
+            // and PHP's array lookup is not — the real pair differs by one letter's case.
+            $code = Row::nstr($row, 'sku');
+            $sharedCode = $code === null || $code === ''
+                ? 0
+                : ($extras['shared_sku'][mb_strtolower($code)] ?? 0);
+
+            return [
+                'id' => $id,
+                'wa_code' => Row::str($row, 'wa_code'),
+                'sku' => Row::nstr($row, 'sku'),
+                /*
+                 * How many live products carry this supplier code, counting this one — so `2` is
+                 * "shared with one other" and `0`/`1` is "nobody else". Shown beside the code and
+                 * selectable with `flag=shared_sku`, because since 2026-10-05 the database allows
+                 * it and a thing the database allows has to be a thing the screen can show.
+                 */
+                'sku_shared' => $sharedCode,
+                'title' => [
+                    'ar' => $titleAr ?? '',
+                    'en' => Row::nstr($row, 'title_en') ?? '',
+                ],
+                'family' => Row::str($row, 'family'),
+                'brand' => $brandNames[Row::int($row, 'brand_id')] ?? ['ar' => '', 'en' => ''],
+                'selling_price' => Row::str($row, 'selling_price'),
+                'sale_price' => Row::nstr($row, 'sale_price'),
+                'currency' => Row::str($row, 'currency'),
+                'stock_express' => Row::int($row, 'stock_express'),
+                'stock_market' => Row::int($row, 'stock_market'),
+                'in_stock' => Row::bool($row, 'in_stock'),
+                'is_active' => Row::bool($row, 'is_active'),
+                'archived' => Row::nstr($row, 'deleted_at') !== null,
+                'variants' => $extras['variants'][$id] ?? 0,
+                'is_visible' => Row::nstr($row, 'sp_id') === null ? null : Row::bool($row, 'is_visible'),
+                'is_featured' => Row::nstr($row, 'sp_id') === null ? null : Row::bool($row, 'is_featured'),
+                'slug' => Row::nstr($row, 'slug'),
+                // ── the four at-a-glance states (task 4.3) ────────────────────────────────
+                'has_arabic' => trim($titleAr ?? '') !== '',
+                /*
+                 * ── wave 4D: what this row is MISSING, and who wrote its Arabic ──────────
+                 *
+                 * Derived on every render rather than stored, deliberately. A stored marker
+                 * would have to be recomputed by every write path in the application, and the
+                 * first one that forgot would leave a product wearing a warning it had already
+                 * earned its way out of. These six are all answerable from the row in front of
+                 * us, so they are always true.
+                 *
+                 * `machine_ar` is the exception and IS stored, because "a machine wrote this"
+                 * is history and cannot be derived from the text. `ProductWriter` clears it the
+                 * moment a human edits that translation.
+                 */
+                'missing' => self::missingFor($row, $cover, $extras['placement'][$id] ?? null, $genericBrand,
+                    ($extras['image_problem'][$id] ?? false) === true,
+                    array_key_exists($storefront->id, $extras['storefronts'][$id] ?? [])),
+                'machine_ar' => Row::nbool($row, 'ar_is_machine') === true,
+                'has_image' => $cover !== null,
+                'has_stock' => Row::bool($row, 'in_stock'),
+                /*
+                 * Placement shape on THIS storefront (rehearsal #3):
+                 *   'absent'    — not on this storefront at all. NOT a fault and NOT a to-do
+                 *                 (D-3): it is the ordinary state of the 7,087 Brand Fashion
+                 *                 products when Watchizer is the shop being looked at;
+                 *   'none'      — on this storefront, with no category, so it appears in no
+                 *                 listing. THIS is the one worth a red badge;
+                 *   'root_only' — on the root and nowhere else, no primary category. The
+                 *                 transform leaves a legacy product with no `sub_type_id`
+                 *                 exactly here, and the site shows it only under the top-level
+                 *                 section with a one-step breadcrumb;
+                 *   'placed'    — a primary category, the ordinary state.
+                 */
+                'placement' => self::placementState(
+                    $extras['placement'][$id] ?? null,
+                    array_key_exists($storefront->id, $extras['storefronts'][$id] ?? []),
+                ),
+                // Per storefront: true = visible, false = hidden, MISSING = no row at all.
+                'visibility' => self::visibilityFor($extras['storefronts'][$id] ?? [], $activeStorefronts),
+                'cover' => $cover === null ? null : ImageUrl::src($cover),
+                'updated_at' => Row::nstr($row, 'updated_at'),
+                'edit_url' => route('manage.products.edit', ['product' => $id, 'storefront' => $storefront->id]),
+            ];
+        };
+
+        if ($table->wantsExport()) {
+            return $table->export($query, $map, $prepare);
+        }
+
         return Inertia::render('Manage/Products/Index', [
             'storefront' => ['id' => $storefront->id, 'code' => $storefront->code, 'name' => $storefront->name],
             'storefronts' => self::storefrontOptions(),
             'brands' => $brands,
             'categories' => $categories,
             'families' => self::familyOptions(),
-            'table' => $table->paginate($query, function (object $raw) use ($brandNames, $storefront, $activeStorefronts, &$extras): array {
-                $row = Row::cast($raw);
-                $id = Row::int($row, 'id');
-                $cover = $extras['covers'][$id] ?? null;
-                $titleAr = Row::nstr($row, 'title_ar');
-
-                return [
-                    'id' => $id,
-                    'wa_code' => Row::str($row, 'wa_code'),
-                    'sku' => Row::nstr($row, 'sku'),
-                    'title' => [
-                        'ar' => $titleAr ?? '',
-                        'en' => Row::nstr($row, 'title_en') ?? '',
-                    ],
-                    'family' => Row::str($row, 'family'),
-                    'brand' => $brandNames[Row::int($row, 'brand_id')] ?? ['ar' => '', 'en' => ''],
-                    'selling_price' => Row::str($row, 'selling_price'),
-                    'sale_price' => Row::nstr($row, 'sale_price'),
-                    'currency' => Row::str($row, 'currency'),
-                    'stock_express' => Row::int($row, 'stock_express'),
-                    'stock_market' => Row::int($row, 'stock_market'),
-                    'in_stock' => Row::bool($row, 'in_stock'),
-                    'is_active' => Row::bool($row, 'is_active'),
-                    'archived' => Row::nstr($row, 'deleted_at') !== null,
-                    'variants' => $extras['variants'][$id] ?? 0,
-                    'is_visible' => Row::nstr($row, 'sp_id') === null ? null : Row::bool($row, 'is_visible'),
-                    'is_featured' => Row::nstr($row, 'sp_id') === null ? null : Row::bool($row, 'is_featured'),
-                    'slug' => Row::nstr($row, 'slug'),
-                    // ── the four at-a-glance states (task 4.3) ────────────────────────────────
-                    'has_arabic' => trim($titleAr ?? '') !== '',
-                    'has_image' => $cover !== null,
-                    'has_stock' => Row::bool($row, 'in_stock'),
-                    /*
-                     * Placement shape on THIS storefront (rehearsal #3):
-                     *   'none'      — no category at all, so it appears in no listing;
-                     *   'root_only' — on the root and nowhere else, no primary category. The
-                     *                 transform leaves a legacy product with no `sub_type_id`
-                     *                 exactly here, and the site shows it only under the top-level
-                     *                 section with a one-step breadcrumb;
-                     *   'placed'    — a primary category, the ordinary state.
-                     */
-                    'placement' => self::placementState($extras['placement'][$id] ?? null),
-                    // Per storefront: true = visible, false = hidden, MISSING = no row at all.
-                    'visibility' => self::visibilityFor($extras['storefronts'][$id] ?? [], $activeStorefronts),
-                    'cover' => $cover === null ? null : ImageUrl::src($cover),
-                    'updated_at' => Row::nstr($row, 'updated_at'),
-                    'edit_url' => route('manage.products.edit', ['product' => $id, 'storefront' => $storefront->id]),
-                ];
-            }, function (array $rows) use (&$extras, $storefront): void {
-                $extras = self::pageExtras($rows, $storefront->id);
-            }),
+            'table' => $table->paginate($query, $map, $prepare),
+            /*
+             * How many products the default is HIDING — the number the escape hatch is labelled
+             * with (W1). Counted under the SAME filters as the list, so switching to "the whole
+             * catalogue" from a filtered view lands on the count it just promised rather than a
+             * global constant that happens to be right when nothing else is selected.
+             */
+            'scope' => $this->scopeCounts($table, $storefront->id, $filters),
             // Every active storefront, so the list can render one visibility chip each.
             'all_storefronts' => self::activeStorefrontsForList(),
-            'pre_switch_notice' => self::preSwitchNotice(),
             'pre_switch' => PreSwitch::state('product'),
         ]);
     }
 
     /**
-     * The three placement shapes, named once so the list, the form and the tests agree.
+     * The FOUR placement shapes, named once so the list, the form and the tests agree.
      *
      * `root_only` is the state rehearsal #3 (2026-09-12) put in front of the team: a legacy
      * product with a `category_type_id` and no `sub_type_id` is placed on the ROOT node with
@@ -207,10 +381,36 @@ final class ProductController
      * invisible in every sub-category listing, and until now the list showed it as an ordinary
      * placed product.
      *
+     * ── `absent` — the fourth state, and the reason this method was dangerous (D-3 / J-3) ────
+     *
+     * 7,087 of the catalogue's 7,713 products wore a red `بلا تصنيف` badge whose tooltip told the
+     * operator to *"choose a category for it from the product screen or the placement screen"*.
+     *
+     * They do not need one. They are the Brand Fashion catalogue, and they are **not sold on
+     * Watchizer at all** — which the very same row states correctly two columns away as
+     * `— Watchizer`. Home has always called the same set `غير مضاف` and reported Watchizer's
+     * `بلا تصنيف` as **0**, because `HomeController` counts products that HAVE a
+     * `storefront_product` row and no category; this method did not look at that row at all.
+     *
+     * So: one Arabic phrase, two predicates, two screens, and a 7,087-row disagreement. The
+     * dangerous half is the instruction. A diligent junior working that list as a to-do would file
+     * the entire Brand Fashion catalogue into the Watchizer taxonomy — the Watchizer tree fills
+     * with bonnets and phone chargers, and `غير مضاف`, the number that says what is NOT on this
+     * site, collapses to zero and stops being a signal. Nothing would refuse any of it: every
+     * individual action is legal.
+     *
+     * The red badge now means what it says — on this shop, with no category — and that is 0 rows
+     * on Watchizer, which is the truth. Being absent is a neutral FACT, badged with the word Home
+     * already uses.
+     *
      * @param  array{nodes: int, primaries: int}|null  $counts
+     * @param  bool  $onStorefront  does a `storefront_product` row exist for this shop at all?
      */
-    private static function placementState(?array $counts): string
+    private static function placementState(?array $counts, bool $onStorefront): string
     {
+        if (! $onStorefront) {
+            return 'absent';
+        }
         if ($counts === null || $counts['nodes'] === 0) {
             return 'none';
         }
@@ -277,9 +477,10 @@ final class ProductController
 
         $this->saveStorefrontSide($productId, $data);
 
-        return redirect()
-            ->route('manage.products.edit', ['product' => $productId, 'storefront' => $storefront->id])
-            ->with('status', 'تم إنشاء المنتج.');
+        return $this->withDemotions(
+            redirect()->route('manage.products.edit', ['product' => $productId, 'storefront' => $storefront->id])
+                ->with('status', ManageText::t('products.created', 'تم إنشاء المنتج.'))
+        );
     }
 
     public function edit(Request $request, Storefront $storefront, int $product): Response
@@ -295,17 +496,28 @@ final class ProductController
          * product's grade, specs, descriptions, sale price and placements (see {@see FullReplace}).
          * The screen declares completeness; nothing else may.
          */
-        FullReplace::assert($request, 'بيانات المنتج', 'wa_code');
+        // The record's NAME, which {@see FullReplace} drops into the sentence it shows the
+        // operator — so it goes through the seam even though the sentence around it does not
+        // belong to this file.
+        FullReplace::assert($request, ManageText::t('products.record_name', 'بيانات المنتج'), 'wa_code');
 
         $productId = Row::int(self::productRow($product), 'id');
         $data = $this->validated($request, $productId);
 
-        $this->products->update($productId, $data, self::actorId($request));
+        try {
+            $this->products->update($productId, $data, self::actorId($request));
+        } catch (FieldRefusal $e) {
+            // A writer refusal becomes an error on the field it named, not a 500 — the same shape
+            // the placement writer's refusals already take.
+            throw ValidationException::withMessages([$e->field() => $e->getMessage()]);
+        }
+
         $this->saveStorefrontSide($productId, $data);
 
-        return redirect()
-            ->route('manage.products.edit', ['product' => $productId, 'storefront' => $storefront->id])
-            ->with('status', 'تم حفظ المنتج.');
+        return $this->withDemotions(
+            redirect()->route('manage.products.edit', ['product' => $productId, 'storefront' => $storefront->id])
+                ->with('status', ManageText::t('products.saved', 'تم حفظ المنتج.'))
+        );
     }
 
     /**
@@ -318,37 +530,369 @@ final class ProductController
     public function bulk(Request $request, Storefront $storefront): RedirectResponse
     {
         $request->validate([
-            'action' => ['required', 'string', Rule::in(['activate', 'deactivate', 'archive', 'restore'])],
-            'ids' => ['required', 'array', 'min:1', 'max:500'],
+            'action' => ['required', 'string', Rule::in(['activate', 'deactivate', 'archive', 'restore', 'set_threshold'])],
+            /*
+             * `ids` OR `scope=matching` (W-3, 2026-09-19).
+             *
+             * The header checkbox selects the 25 rows ON SCREEN, and nothing offered "all 627
+             * matching" — so every bulk action was capped at 25 per round trip, and the one this
+             * screen most needs (`set_threshold` over 7,578 products) was unusable.
+             *
+             * "All matching" is NOT a list of ids: 7,578 of them would not fit a request, would
+             * blow the 500 cap, and would be stale by the time they arrived. It is a SCOPE — the
+             * screen's own query string — re-resolved server-side through the same declaration the
+             * list renders from ({@see self::listTable()}). Nothing a caller writes can select a
+             * row the screen would not have shown.
+             */
+            'scope' => ['nullable', 'string', Rule::in(['ids', 'matching'])],
+            'ids' => ['required_unless:scope,matching', 'array', 'min:1', 'max:500'],
             'ids.*' => ['integer', 'min:1'],
+            // The screen's query string, verbatim, so the server can reproduce exactly the rows
+            // the operator was looking at. Parsed, then discarded — only the declared whitelists
+            // survive into the query.
+            'query' => ['nullable', 'string', 'max:2000'],
+            /*
+             * Required only for `set_threshold`, and bounded by the column (W-2).
+             *
+             * `min:0` rather than `min:1`: **0 is the value this action exists to set.** 7,578 of
+             * 7,713 products sit on the old default of 5 while their stock is 0–3, which is why
+             * the low-stock alert covered 97.5% of the catalogue. Turning the alert OFF for the
+             * products nobody has set a reorder point for is the single most useful thing this
+             * action does, and a validator that refused 0 would forbid exactly that.
+             */
+            'threshold' => ['required_if:action,set_threshold', 'integer', 'min:0', 'max:65535'],
         ]);
 
-        $ids = Coerce::intList($request->input('ids'));
         $action = $request->string('action')->toString();
         $actorId = self::actorId($request);
+        $matching = $request->string('scope')->toString() === 'matching';
 
-        $done = 0;
-        foreach ($ids as $id) {
-            match ($action) {
-                'activate', 'deactivate' => $this->products->update(
-                    $id,
-                    self::currentPayload($id, ['is_active' => $action === 'activate']),
-                    $actorId,
-                ),
-                'archive' => $this->products->archive($id, $actorId),
-                'restore' => $this->products->restore($id, $actorId),
-                default => null,
-            };
-            $done++;
+        $ids = $matching
+            ? $this->idsMatching($request, $storefront)
+            : Coerce::intList($request->input('ids'));
+
+        if ($ids === []) {
+            return back()->with('error', ManageText::t(
+                'products.bulk_nothing',
+                'لم يُحدَّد أي منتج، فلم يتغيّر شيء.',
+            ));
         }
 
-        return back()->with('status', "تم تنفيذ الإجراء على {$done} منتجًا.");
+        /*
+         * ── Why `set_threshold` is answered in ONE statement, and the others row by row ──────
+         *
+         * The four original actions each have a per-product consequence that the writer has to
+         * compute — a product's visibility gate, its slug, its search row, its audit entry — so
+         * they go through `ProductWriter` one at a time and are capped at what a page can select.
+         * That cost is the price of the guarantees, and it is documented below.
+         *
+         * A reorder threshold has none of that. It is one unsigned integer with no translation, no
+         * effect on what the storefront shows, and nothing derived from it. Running 7,578 products
+         * through the full writer would be ~220,000 queries and several minutes holding row locks,
+         * to achieve exactly what one `UPDATE … WHERE id IN (…)` achieves — and the whole reason
+         * this action exists (W-2) is that 7,578 is the number that needs fixing.
+         *
+         * The audit is ONE row for the batch rather than 7,578, which is the same call
+         * `CategoryController::reorder()` already makes for the same reason: "who reordered this
+         * level?" is a question about the level. "Who set thresholds to 0?" is a question about
+         * the batch, and 7,578 identical rows would bury it.
+         */
+        if ($action === 'set_threshold') {
+            return $this->bulkThreshold($request, $ids, $actorId);
+        }
+
+        if (count($ids) > 500) {
+            return back()->with('error', ManageText::t(
+                'products.bulk_too_many',
+                'هذا الإجراء يُنفَّذ منتجًا منتجًا، فحدّه :max منتج في المرة. :count منتج مطابق الآن — ضيّق التصفية ثم أعد المحاولة.',
+                ['max' => 500, 'count' => count($ids)],
+            ));
+        }
+
+        /*
+         * ── A-BUG-2: one stale id used to crash the batch HALF-APPLIED (2026-09-17) ─────────
+         *
+         * `currentPayload()` throws for an id that is not in the table, and this loop had no
+         * transaction — so ids `[real, 99999999, real]` produced an HTTP 500 with the FIRST product
+         * already deactivated and the third untouched. The operator got a crash page and no way to
+         * tell how much of their batch had applied; the only way to find out was to go and look.
+         *
+         * It takes nothing exotic to trigger. A tab left open while a colleague archives a product,
+         * or a selection made before someone else's delete, is enough.
+         *
+         * Two changes, and they answer different halves:
+         *
+         *  1. **The unknown ids are found FIRST and skipped**, so the common case never throws at
+         *     all. Reported rather than silently dropped — an operator who selected 25 and sees "23
+         *     done" must be told why, or the number reads as a bug.
+         *
+         *  2. **The rest runs in ONE transaction**, so anything else that refuses mid-batch — a
+         *     writer rule, a deadlock, a constraint — leaves the catalogue exactly as it was rather
+         *     than half-changed. "Nothing happened" is a state an operator can act on; "some of it
+         *     happened, in an order nobody recorded" is not.
+         *
+         * The lock cost is accepted deliberately: a 100-id batch is ~2,900 queries and a couple of
+         * seconds (the review measured it, and the per-product write cost is on the "live with it"
+         * list), so this holds row locks for that long. A partial write is the worse failure, and
+         * the selection is capped at one page.
+         *
+         * No `deleted_at` filter on the existence read: `restore` acts on archived rows, so
+         * "exists" here means the row is in the table, which is exactly what the writers require.
+         */
+        $existing = DB::table('catalog_products')->whereIn('id', $ids)->pluck('id')->all();
+        $known = [];
+        foreach ($existing as $value) {
+            $known[] = Coerce::int($value);
+        }
+        $missing = array_values(array_diff($ids, $known));
+        $targets = array_values(array_intersect($ids, $known));
+
+        $done = 0;
+        DB::transaction(function () use ($targets, $action, $actorId, &$done): void {
+            foreach ($targets as $id) {
+                match ($action) {
+                    'activate', 'deactivate' => $this->products->update(
+                        $id,
+                        self::currentPayload($id, ['is_active' => $action === 'activate']),
+                        $actorId,
+                    ),
+                    'archive' => $this->products->archive($id, $actorId),
+                    'restore' => $this->products->restore($id, $actorId),
+                    default => null,
+                };
+                $done++;
+            }
+        });
+
+        $status = ManageText::t('products.bulk_done', 'تم تنفيذ الإجراء على :count منتجًا.', ['count' => $done]);
+
+        if ($missing !== []) {
+            // The COUNT, not the ids: an operator cannot act on `99999999`, and the number is what
+            // explains the gap between what they selected and what the first sentence reports.
+            $status .= ' '.ManageText::t(
+                'products.bulk_skipped_missing',
+                'وتُخطّي :count منتجًا لم يعد موجودًا — على الأرجح حُذف أو أُرشف بينما كانت الصفحة مفتوحة. حدّث الصفحة لترى الحالة الجديدة.',
+                ['count' => count($missing)],
+            );
+        }
+
+        return back()->with('status', $status);
+    }
+
+    /**
+     * Every product id matching what is on the operator's screen (W-3).
+     *
+     * The screen's query string arrives as data and is re-resolved through the SAME declaration
+     * the list renders from, so:
+     *
+     *  • an unknown filter key is dropped by `filterable()`'s whitelist,
+     *  • an unknown value for a known filter is dropped the same way,
+     *  • an unknown sort column falls back to the default,
+     *  • the search runs through `ProductSearch`, identically.
+     *
+     * A hand-written request therefore cannot reach a product the screen would not have listed —
+     * which is the property that makes "apply to all 7,578 matching" safe to offer at all.
+     *
+     * Ordering and paging are irrelevant here and deliberately not applied: this is a SET.
+     *
+     * @return list<int>
+     */
+    private function idsMatching(Request $request, Storefront $storefront): array
+    {
+        $params = [];
+        parse_str(ltrim(Coerce::str($request->input('query')), '?'), $params);
+
+        // A GET request carrying only the screen's own query string — nothing of the POST body
+        // reaches the whitelists, so `action`, `ids` and `threshold` cannot become filters.
+        $scoped = Request::create('/', 'GET', $params);
+
+        $table = $this->listTable($scoped, self::brandOptions(), self::categoryOptions($storefront->id));
+
+        /*
+         * BOTH halves, and forgetting the second one is a trap this very method fell into.
+         *
+         * `listQuery()` applies only the VIRTUAL filters — `category` (a whole branch) and `flag`
+         * (several predicates). Every plain column filter, and the search, are applied by
+         * `TableQuery::apply()`, which the list reaches through `paginate()`. Resolving a scope
+         * without calling it produced a query with no filters at all: "all matching watches"
+         * silently meant "all 7,713 products", and the first version of the test could not see it
+         * because it counted the intersection rather than the whole set.
+         *
+         * `apply()` also adds ORDER BY, which is harmless here and not worth a second code path.
+         */
+        $query = $this->listQuery($storefront->id, $table->resolvedFilters());
+
+        $out = [];
+        foreach ($table->apply($query)->pluck('p.id') as $value) {
+            $out[] = Coerce::int($value);
+        }
+
+        return $out;
+    }
+
+    /**
+     * Set the reorder threshold on a batch, in one statement (W-2).
+     *
+     * See the note in `bulk()` for why this does not go through `ProductWriter` row by row. The
+     * short version: there is nothing per-product to compute, and the batch that needs fixing is
+     * 7,578 rows.
+     *
+     * `updated_by` and `updated_at` are written here rather than left to the column default,
+     * because "who changed this and when" is exactly what a bulk edit must not lose.
+     *
+     * @param  list<int>  $ids
+     */
+    private function bulkThreshold(Request $request, array $ids, ?int $actorId): RedirectResponse
+    {
+        $threshold = Coerce::int($request->input('threshold'));
+
+        $done = DB::table('catalog_products')
+            ->whereIn('id', $ids)
+            ->whereNull('deleted_at')
+            ->update([
+                'low_stock_threshold' => $threshold,
+                'updated_by' => $actorId,
+                'updated_at' => now(),
+            ]);
+
+        /*
+         * ONE audit row for the batch, like `CategoryController::reorder()` and for the same
+         * reason: "who set thresholds to 0?" is a question about the batch, and 7,578 identical
+         * rows saying `حد التنبيه: 0 ← 5` would bury the answer rather than record it.
+         */
+        if ($done > 0) {
+            ActivityLog::record(
+                'catalog_products', null, ActivityLog::UPDATED,
+                ['low_stock_threshold' => null], ['low_stock_threshold' => $threshold],
+                label: ManageText::t('products.bulk_threshold_label', ':count منتجًا', ['count' => $done]),
+            );
+        }
+
+        return back()->with('status', ManageText::t(
+            'products.bulk_threshold_done',
+            'تم ضبط حد التنبيه على :threshold لـ :count منتجًا.',
+            ['count' => $done, 'threshold' => $threshold],
+        ));
+    }
+
+    /**
+     * Archive one product, from its own form (W-6).
+     *
+     * A soft delete, exactly as the bulk action's `archive` is: order lines, the stock ledger and
+     * the legacy id map all point at the row, and §2.9.6 rule 2 is that this application does not
+     * delete catalogue history. {@see ProductWriter::archive()} is the one writer for both paths,
+     * so "archive" cannot come to mean two different things depending on which screen said it.
+     *
+     * Lands back on the LIST rather than on the form: the form now shows an archived product, and
+     * a screen that stays put after an action looks like a screen where nothing happened (D-20).
+     */
+    public function destroy(Request $request, Storefront $storefront, int $product): RedirectResponse
+    {
+        $exists = DB::table('catalog_products')->where('id', $product)->exists();
+        abort_if(! $exists, 404);
+
+        $this->products->archive($product, self::actorId($request));
+
+        return redirect()
+            ->route('manage.products.index', ['storefront' => $storefront->id])
+            ->with('status', ManageText::t('products.archived_one', 'تمت أرشفة المنتج. يمكن إرجاعه من قائمة «المؤرشف».'));
     }
 
     // ── the query ────────────────────────────────────────────────────────────────────────────
 
     /**
      * @param  array<string, string|null>  $filters
+     */
+    /**
+     * Both totals for the scope control, in ONE query.
+     *
+     * `COUNT(*)` with a conditional `SUM` rather than two round trips: the join is the expensive
+     * part and it is identical for both numbers. Measured at 16 ms over 7,714 products on the live
+     * shape (699 on Watchizer, 7,015 not), which is why this runs on every page load rather than
+     * being cached into something that can go stale while somebody places a product.
+     *
+     * The `scope` key is stripped before the query is rebuilt, so this always counts the wider set
+     * whichever way the control is currently switched.
+     *
+     * ── It has to be given the TABLE, not just the filters ──────────────────────────
+     *
+     * The first version took `$filters` and rebuilt the query through `listQuery()` alone — which
+     * applies only the VIRTUAL filters (`category`, `flag`, `scope`). Every plain-column filter
+     * (`p.family`, `p.brand_id`, `p.is_active`, the search term) is applied by `TableQuery::apply()`
+     * afterwards, so the count ignored them: filtering the list to watches left the escape hatch
+     * still promising 7,714 when pressing it delivers 4,646. The docblock said "under the SAME
+     * filters as the list" while the code did not, which is the kind of comment that is worse than
+     * none. `ProductListTest` caught it.
+     *
+     * @param  array<string, mixed>  $filters
+     * @return array{current: string, placed: int, catalogue: int, hidden: int}
+     */
+    private function scopeCounts(TableQuery $table, int $storefrontId, array $filters): array
+    {
+        $unscoped = $filters;
+        unset($unscoped['scope']);
+        // …and `absent` too: it forces `all` on its own, and leaving it in would count only the
+        // products that are NOT here, which is not what either half of this control means.
+        unset($unscoped['flag']);
+
+        /*
+         * `select([])` before `selectRaw()` is not decoration: `listQuery()` already selects
+         * twenty columns, and `selectRaw()` APPENDS. Without the reset the query asks for
+         * `p.id, p.wa_code, …, COUNT(*)` with no GROUP BY, which MariaDB refuses outright —
+         * "Mixing of GROUP columns with no GROUP columns is illegal" — and every page of the
+         * list 500s. `reorder()` drops the ORDER BY for the same reason a count does not need one.
+         */
+        $query = $this->listQuery($storefrontId, $unscoped + ['scope' => 'all']);
+
+        // …and the column filters and the search, which `listQuery()` does not apply.
+        $table->apply($query);
+
+        $row = $query
+            ->reorder()
+            ->select([])
+            // `COALESCE` because `SUM()` over ZERO rows is NULL, not 0 — and a filter that
+            // matches nothing is an ordinary thing for a stale bookmark to do. Without it the
+            // page 500s on a query that should simply report an empty list.
+            ->selectRaw('COUNT(*) as catalogue, COALESCE(SUM(`sp`.`id` IS NOT NULL), 0) as placed')
+            ->first();
+
+        $counted = Row::cast(is_object($row) ? $row : (object) ['catalogue' => 0, 'placed' => 0]);
+        $catalogue = Row::int($counted, 'catalogue');
+        $placed = Row::int($counted, 'placed');
+
+        return [
+            'current' => self::scopeOf($filters),
+            'placed' => $placed,
+            'catalogue' => $catalogue,
+            'hidden' => max(0, $catalogue - $placed),
+        ];
+    }
+
+    /**
+     * Which catalogue this request is looking at: the selected shop's, or the whole shared one.
+     *
+     * One function, because three places need the same answer and they must not drift: the query
+     * that filters, the count that says how many rows the default is hiding, and the screen that
+     * has to show the control in the state the query is actually in.
+     *
+     * @param  array<string, mixed>  $filters
+     * @return 'placed'|'all'
+     */
+    private static function scopeOf(array $filters): string
+    {
+        // `absent` IS the complement of `placed`, so it forces the wider set rather than producing
+        // an empty list. See the note at the predicate.
+        if (($filters['flag'] ?? null) === 'absent') {
+            return 'all';
+        }
+
+        return ($filters['scope'] ?? null) === 'all' ? 'all' : 'placed';
+    }
+
+    /**
+     * The list query: every filter except the ones `TableQuery` applies as plain columns.
+     *
+     * @param  array<string, mixed>  $filters
      */
     private function listQuery(int $storefrontId, array $filters): Builder
     {
@@ -412,7 +956,7 @@ final class ProductController
                 $lead, 'p.wa_code', 'p.sku', 'p.family', 'p.brand_id', 'p.selling_price', 'p.sale_price',
                 'p.currency', 'p.stock_express', 'p.stock_market', 'p.in_stock', 'p.is_active',
                 'p.deleted_at', 'p.updated_at',
-                'ar.title as title_ar', 'en.title as title_en',
+                'ar.title as title_ar', 'en.title as title_en', 'ar.is_machine as ar_is_machine',
                 'sp.id as sp_id', 'sp.is_visible', 'sp.is_featured', 'sp.slug',
             ]);
 
@@ -422,6 +966,21 @@ final class ProductController
             $query->whereNotNull('p.deleted_at');
         } else {
             $query->whereNull('p.deleted_at');
+        }
+
+        /*
+         * ── ON THIS SHOP, unless asked otherwise (W1) ───────────────────────────────
+         *
+         * `sp` is already LEFT JOINed above and already scoped to this storefront, so "placed here"
+         * is `sp.id IS NOT NULL` — no extra subquery, no second index probe, and the plan the
+         * `STRAIGHT_JOIN` note above reasons about is unchanged.
+         *
+         * `absent` is exempt and must be: it means "NOT on this shop", so scoping it to this shop
+         * returns nothing, every time. The two would silently cancel each other out and the
+         * operator would conclude the filter was broken — which is how W1 started.
+         */
+        if (self::scopeOf($filters) === 'placed') {
+            $query->whereNotNull('sp.id');
         }
 
         // A category filter includes the node's DESCENDANTS, because a team member filtering by
@@ -454,28 +1013,207 @@ final class ProductController
         }
 
         match ($filters['flag'] ?? null) {
-            'low_stock' => $query->whereRaw('(p.stock_express + p.stock_market) <= p.low_stock_threshold'),
+            /*
+             * ── The call site the 2026-09-19 pass built the tool FOR and never wired (B5)
+             *
+             * That pass added the `$alias` argument to the shared helper with a comment saying
+             * it existed “because the stock LIST joins `catalog_products as p`” — and then left
+             * this line as inline SQL. The helper gained an arm for a caller that was never
+             * connected, which looks identical to a helper in use, so nothing failed. The
+             * result was this screen answering 7,524 while the stock screen answered 4,946,
+             * in the same words, for a month.
+             */
+            'low_stock' => $query->whereRaw(Sql::lowStock('p')),
             'no_arabic' => $query->where(function (Builder $inner): void {
                 $inner->whereNull('ar.title')->orWhere('ar.title', '=', '');
             }),
-            // `limit(1)` for the same reason as the category filter above: an un-flattened
-            // subquery keeps the driving table's primary-key ordering.
-            // `NOT EXISTS` is an anti-join: there is no semi-join for MariaDB to materialise, so
-            // these two keep the driving table's ordering without a hint (both measured indexed).
-            'unplaced' => $query->whereNotExists(function (Builder $sub) use ($storefrontId): void {
-                $sub->from('storefront_category_product as scp2')
-                    ->whereColumn('scp2.product_id', 'p.id')
-                    ->where('scp2.storefront_id', $storefrontId)
+            /*
+             * ── `unplaced` now means what its badge says (D-3 / J-3, 2026-09-19) ────────────
+             *
+             * It used to select "no category row on this storefront" WITHOUT asking whether the
+             * product is on this storefront at all — so it returned 7,087 rows on Watchizer while
+             * Home, counting the same phrase correctly, reported 0. The filter and the badge were
+             * both telling the operator to fix 7,087 products that have nothing wrong with them.
+             *
+             * It is now the same predicate Home uses: ON this shop, and in no category here. The
+             * "not on this shop" set has its own entry below, under its own honest name.
+             *
+             * `limit(1)` for the same reason as the category filter above: an un-flattened
+             * subquery keeps the driving table's primary-key ordering. `NOT EXISTS` is an
+             * anti-join — no semi-join for MariaDB to materialise — so these keep the driving
+             * table's ordering without a hint (all measured indexed).
+             */
+            'unplaced' => $query
+                ->whereExists(function (Builder $sub) use ($storefrontId): void {
+                    $sub->from('storefront_product as sp2')
+                        ->whereColumn('sp2.product_id', 'p.id')
+                        ->where('sp2.storefront_id', $storefrontId)
+                        ->selectRaw('1')
+                        ->limit(1);
+                })
+                ->whereNotExists(function (Builder $sub) use ($storefrontId): void {
+                    $sub->from('storefront_category_product as scp2')
+                        ->whereColumn('scp2.product_id', 'p.id')
+                        ->where('scp2.storefront_id', $storefrontId)
+                        ->selectRaw('1')
+                        ->limit(1);
+                }),
+            // "Not sold here." A fact, not a fault — and the list the team uses when they are
+            // deciding what to ADD to this shop, which is a different job from fixing anything.
+            'absent' => $query->whereNotExists(function (Builder $sub) use ($storefrontId): void {
+                $sub->from('storefront_product as sp2')
+                    ->whereColumn('sp2.product_id', 'p.id')
+                    ->where('sp2.storefront_id', $storefrontId)
                     ->selectRaw('1')
                     ->limit(1);
             }),
             'has_variants' => $query->whereExists(function (Builder $sub): void {
                 $sub->from('catalog_product_variants as v2')->whereColumn('v2.product_id', 'p.id')->selectRaw('1')->limit(1);
             }),
+            /*
+             * "Show me everything that is not finished." The SEVEN conditions are exactly the seven
+             * markers the row renders, because a filter that selects a different set from the one
+             * the badge shows is worse than no filter (§4). image_problem joined them in M1s, and
+             * it had to join here at the same time for that reason.
+             */
+            'missing_data' => $query->where(function (Builder $inner) use ($storefrontId): void {
+                $generic = self::genericBrandId();
+                $inner->whereNull('p.sku')
+                    ->orWhere('p.selling_price', '<=', 0)
+                    ->orWhereNull('ar.title')
+                    ->orWhere('ar.title', '=', '')
+                    ->orWhereNotExists(function (Builder $sub): void {
+                        $sub->from('catalog_product_images as i2')
+                            ->whereColumn('i2.product_id', 'p.id')->selectRaw('1')->limit(1);
+                    })
+                    ->orWhereNotExists(function (Builder $sub) use ($storefrontId): void {
+                        $sub->from('storefront_category_product as scp3')
+                            ->whereColumn('scp3.product_id', 'p.id')
+                            ->where('scp3.storefront_id', $storefrontId)
+                            ->selectRaw('1')->limit(1);
+                    });
+                $inner->orWhereExists(function (Builder $sub): void {
+                    $sub->from('catalog_product_images as i4')
+                        ->whereColumn('i4.product_id', 'p.id')
+                        ->whereNotNull('i4.renditions_failed')
+                        ->selectRaw('1')->limit(1);
+                });
+                if ($generic !== null) {
+                    $inner->orWhere('p.brand_id', $generic);
+                }
+            }),
+            'machine_ar' => $query->where('ar.is_machine', 1),
+            /*
+             * ── A supplier code two products carry (2026-10-05) ─────────────────────────────
+             *
+             * This filter exists because the UNIQUE index that used to forbid this was dropped:
+             * the SKU is the manufacturer's code and two of our products may legitimately share
+             * one. The constraint moved out of the schema and onto the screen, and this is the
+             * screen half — without it, a duplicate is simply invisible until a customer finds it.
+             *
+             * `limit(1)` for the same reason as every EXISTS above: an un-flattened subquery keeps
+             * the driving table's primary-key ordering. The probe is served by
+             * `catalog_products_sku_index`, which the same migration added in the unique index's
+             * place precisely so this question stays cheap.
+             *
+             * The comparison is the COLUMN's own collation, which is case-insensitive — so
+             * `Ap0012` and `AP0012` are one code here, exactly as the database read them when it
+             * still refused the pair.
+             */
+            'shared_sku' => $query
+                ->whereNotNull('p.sku')
+                ->where('p.sku', '<>', '')
+                ->whereExists(function (Builder $sub): void {
+                    $sub->from('catalog_products as dup')
+                        ->whereColumn('dup.sku', 'p.sku')
+                        ->whereColumn('dup.id', '<>', 'p.id')
+                        ->whereNull('dup.deleted_at')
+                        ->selectRaw('1')
+                        ->limit(1);
+                }),
+            /*
+             * M1s. An EXISTS over the image rows, like the missing_data conditions beside it —
+             * renditions_failed is nullable and null on the overwhelming majority of rows, so this
+             * selects the handful that need somebody.
+             */
+            'image_problem' => $query->whereExists(function (Builder $sub): void {
+                $sub->from('catalog_product_images as i3')
+                    ->whereColumn('i3.product_id', 'p.id')
+                    ->whereNotNull('i3.renditions_failed')
+                    ->selectRaw('1')->limit(1);
+            }),
             default => null,
         };
 
         return $query;
+    }
+
+    /**
+     * What this product is missing, as the tokens the badge renders and the filter selects.
+     *
+     * The same six the importer marks (`ImportReport::MISSING_*`), because the import and the
+     * screen must agree about what "not finished" means — the import writes nothing for this, so
+     * agreement is the only thing that keeps them honest.
+     *
+     * @param  stdClass  $row  a list-query row, already cast
+     * @param  array{nodes: int, primaries: int}|null  $placement  this storefront's placement counts
+     * @param  int|null  $generic  the Generic brand's id, read once for the page
+     * @param  bool  $onStorefront  is the product on this shop at all? (D-3)
+     * @return list<string>
+     */
+    private static function missingFor(stdClass $row, ?string $cover, ?array $placement, ?int $generic, bool $imageProblem = false, bool $onStorefront = true): array
+    {
+        $out = [];
+
+        if (Row::nstr($row, 'sku') === null) {
+            $out[] = 'sku';
+        }
+        if ($cover === null) {
+            $out[] = 'image';
+        }
+        /*
+         * It HAS an image and something is wrong with it (M1s) — a rendition the encoder wrote as
+         * zero bytes. Separate from image because the action differs: image means find a
+         * photo, image_problem means the photo we have did not process and wants re-uploading.
+         */
+        if ($imageProblem) {
+            $out[] = 'image_problem';
+        }
+        if (trim(Row::nstr($row, 'title_ar') ?? '') === '') {
+            $out[] = 'arabic';
+        }
+        /*
+         * `nodes === 0` as well as null: "on the root and nowhere else" is the same problem for a
+         * customer as no placement at all.
+         *
+         * …but only for a product that IS on this shop (D-3). A product with no
+         * `storefront_product` row here is not missing a category — it is not sold here, and
+         * "missing: category" on 7,087 rows was the badge that told a junior to file the whole
+         * Brand Fashion catalogue into the Watchizer tree.
+         */
+        if ($onStorefront && ($placement === null || $placement['nodes'] === 0)) {
+            $out[] = 'category';
+        }
+        if ($generic !== null && Row::int($row, 'brand_id') === $generic) {
+            $out[] = 'brand';
+        }
+        if ((float) Row::str($row, 'selling_price') <= 0) {
+            $out[] = 'price';
+        }
+
+        return $out;
+    }
+
+    /**
+     * The `Generic` brand, or null when the importer has never run.
+     *
+     * Read once per page and passed down — not memoised in a static. A static would be read once
+     * per PROCESS, which is right for a web request and wrong for a test suite, where the brand
+     * may not exist yet when the first list renders and does by the time the tenth does.
+     */
+    private static function genericBrandId(): ?int
+    {
+        return Coerce::nint(DB::table('catalog_brands')->where('slug', 'generic')->value('id'));
     }
 
     /**
@@ -495,7 +1233,7 @@ final class ProductController
      * grouped query, never per row (AGENTS §2.24).
      *
      * @param  list<object>  $rows
-     * @return array{covers: array<int, string>, variants: array<int, int>, storefronts: array<int, array<int, bool>>, placement: array<int, array{nodes: int, primaries: int}>}
+     * @return array{covers: array<int, string>, variants: array<int, int>, storefronts: array<int, array<int, bool>>, placement: array<int, array{nodes: int, primaries: int}>, image_problem: array<int, bool>, shared_sku: array<string, int>}
      */
     private static function pageExtras(array $rows, ?int $storefrontId = null): array
     {
@@ -504,7 +1242,7 @@ final class ProductController
             $ids[] = Row::int(Row::cast($raw), 'id');
         }
         if ($ids === []) {
-            return ['covers' => [], 'variants' => [], 'storefronts' => [], 'placement' => []];
+            return ['covers' => [], 'variants' => [], 'storefronts' => [], 'placement' => [], 'image_problem' => [], 'shared_sku' => []];
         }
 
         // Placement shape on THIS storefront: how many nodes, and how many of them are primary.
@@ -539,6 +1277,47 @@ final class ProductController
             $visibility[Row::int($row, 'product_id')][Row::int($row, 'storefront_id')] = Row::bool($row, 'is_visible');
         }
 
+        /*
+         * ── Supplier codes this page shares with another product (2026-10-05) ───────────────
+         *
+         * One grouped read for the page's codes, not one per row. It answers the question the
+         * dropped UNIQUE index used to answer by refusing: *is anybody else carrying this?*
+         *
+         * Keyed LOWERCASE on both sides, and that is load-bearing: the column's collation is
+         * case-insensitive, so MariaDB groups `Ap0012` with `AP0012` and hands back whichever
+         * casing it met first — while PHP's array lookup is case-sensitive and would miss the
+         * other row. The real pair in this catalogue differs by exactly one letter's case.
+         */
+        $sharedSku = [];
+        $codes = [];
+        foreach ($rows as $raw) {
+            $code = Row::nstr(Row::cast($raw), 'sku');
+            if ($code !== null && $code !== '') {
+                $codes[mb_strtolower($code)] = $code;
+            }
+        }
+        /*
+         * Run unconditionally, even when the page holds no codes at all.
+         *
+         * Skipping it on an empty list looks like a free optimisation and is not: it makes the
+         * number of queries a page costs depend on its CONTENT, and `ProductListTest` asserts the
+         * opposite — that a page of 100 costs exactly what a page of 25 costs, which is the
+         * property that keeps this list free of N+1 reads. An empty `whereIn` is one round trip
+         * that returns nothing; a conditional read is a count that moves for reasons nobody can
+         * see from the outside.
+         */
+        foreach (
+            DB::table('catalog_products')
+                ->whereIn('sku', array_values($codes))
+                ->whereNull('deleted_at')
+                ->groupBy('sku')
+                ->havingRaw('COUNT(*) > 1')
+                ->get(['sku', DB::raw('COUNT(*) as shared')]) as $raw
+        ) {
+            $row = Row::cast($raw);
+            $sharedSku[mb_strtolower(Row::str($row, 'sku'))] = Row::int($row, 'shared');
+        }
+
         $variants = [];
         foreach (
             DB::table('catalog_product_variants')
@@ -553,58 +1332,52 @@ final class ProductController
         // The cover rule is the read layer's own — `is_cover` first, then `sort` — so the first
         // row seen per product wins. One ordered read over 25 ids, not one query per row.
         $covers = [];
+        /*
+         * …and the image PROBLEM comes off the same read (M1s), because it is a fact about a row
+         * this query is already fetching. Any image of the product counts, not only the cover: a
+         * broken gallery rendition is still a broken image on the product page, and asking the team
+         * to re-upload "the one that is wrong" is better served by them opening the product than by
+         * this list guessing which.
+         *
+         * `renditions_failed` is the one STORED image marker, and it has to be. The others are
+         * derived per render (see `missingFor()`), which works because each is a question SQL can
+         * ask. "Does a file on disk have zero bytes" is not — answering it per row would mean
+         * stat()-ing several files per product on every page of the list.
+         */
+        $imageProblem = [];
         foreach (
             DB::table('catalog_product_images')
                 ->whereIn('product_id', $ids)
                 ->orderBy('product_id')->orderByDesc('is_cover')->orderBy('sort')->orderBy('id')
-                ->get(['product_id', 'path']) as $raw
+                ->get(['product_id', 'path', 'renditions_failed']) as $raw
         ) {
             $row = Row::cast($raw);
             $productId = Row::int($row, 'product_id');
             if (! array_key_exists($productId, $covers)) {
                 $covers[$productId] = Row::str($row, 'path');
             }
+            if (Row::nstr($row, 'renditions_failed') !== null) {
+                $imageProblem[$productId] = true;
+            }
         }
 
-        return ['covers' => $covers, 'variants' => $variants, 'storefronts' => $visibility, 'placement' => $placement];
+        return ['covers' => $covers, 'variants' => $variants, 'storefronts' => $visibility,
+            'placement' => $placement, 'image_problem' => $imageProblem, 'shared_sku' => $sharedSku];
     }
 
     /**
-     * Search: FULLTEXT over `catalog_product_search` for terms of three characters or more, and
-     * `LIKE` under that.
+     * Search: delegated to {@see ProductSearch}, which is the ONE implementation.
      *
-     * The threshold is not a preference — `innodb_ft_min_token_size` is 3 on this server and
-     * cannot be changed on the shared host, so a shorter term matches NOTHING through the index
-     * and would return an empty list while looking like it worked.
-     *
-     * `wa_code` is always searched with `LIKE`: it is a code, and a team member typing half of one
-     * expects a prefix match, which a word-based index cannot give.
+     * It used to live here as a private method, which is why the stock screen — a second list of
+     * the same products — could not use it and searched codes only (D-8). Moving it out was the
+     * fix; this wrapper stays because the table builder wants a closure and the alias pair this
+     * screen joins under is its own business.
      *
      * @param  EloquentBuilder<covariant \Illuminate\Database\Eloquent\Model>|Builder  $query
      */
     private static function applySearch(EloquentBuilder|Builder $query, string $term): void
     {
-        $escaped = self::escapeLike($term);
-
-        $query->where(function (Builder $inner) use ($term, $escaped): void {
-            $inner->where('p.wa_code', 'like', '%'.$escaped.'%')
-                ->orWhere('p.sku', 'like', '%'.$escaped.'%');
-
-            if (mb_strlen($term) >= 3) {
-                $inner->orWhereExists(function (Builder $sub) use ($term): void {
-                    $sub->from('catalog_product_search as s')
-                        ->whereColumn('s.product_id', 'p.id')
-                        ->whereRaw('MATCH(s.body) AGAINST (? IN BOOLEAN MODE)', [self::booleanTerm($term)])
-                        ->selectRaw('1');
-                });
-
-                return;
-            }
-
-            // Under three characters the index is blind, so fall back to the titles directly.
-            $inner->orWhere('ar.title', 'like', '%'.$escaped.'%')
-                ->orWhere('en.title', 'like', '%'.$escaped.'%');
-        });
+        ProductSearch::apply($query, $term);
     }
 
     /**
@@ -630,27 +1403,6 @@ final class ProductController
     private static function idString(?int $value): string
     {
         return $value === null ? '' : (string) $value;
-    }
-
-    /**
-     * A BOOLEAN MODE term built from the caller's words, with every operator character stripped.
-     *
-     * The user's string never reaches the parser as syntax: `+`, `-`, `*`, `"`, `(`, `)`, `~`, `<`,
-     * `>` and `@` all mean something to MariaDB's boolean parser, and a stray `@distance` or an
-     * unbalanced quote is a 1064 in the middle of a search box. Each remaining word gets a `*`
-     * suffix so typing part of a model number still finds it.
-     */
-    private static function booleanTerm(string $term): string
-    {
-        $clean = (string) preg_replace('/[+\-*~<>()"@]+/u', ' ', $term);
-        $words = array_values(array_filter(preg_split('/\s+/u', $clean) ?: [], fn (string $w): bool => mb_strlen($w) >= 3));
-
-        if ($words === []) {
-            // Every word was too short for the index; match nothing rather than everything.
-            return '"'.'zzz-no-such-token'.'"';
-        }
-
-        return implode(' ', array_map(fn (string $w): string => '+'.$w.'*', $words));
     }
 
     // ── the form ─────────────────────────────────────────────────────────────────────────────
@@ -684,7 +1436,7 @@ final class ProductController
                 'id' => $productId,
                 'wa_code' => Row::str($product, 'wa_code'),
                 'sku' => Row::nstr($product, 'sku') ?? '',
-                'model_number' => Row::nstr($product, 'model_number') ?? '',
+
                 'hs_code' => Row::nstr($product, 'hs_code') ?? '',
                 'brand_id' => (string) Row::int($product, 'brand_id'),
                 'grade_id' => self::idString(Row::nint($product, 'grade_id')),
@@ -721,7 +1473,22 @@ final class ProductController
             // Slug editing is one rule for every storefront (it is the flag, not the storefront),
             // so it is shipped once rather than per section.
             'slug_lock' => PreSwitch::slugState(),
-            'missing_arabic' => $productId === null ? [] : $this->placements->missingArabic($productId),
+            /*
+             * Who may type a slug (item 6, 2026-09-18) — a different rule from `slug_lock`, which
+             * is about the calendar. The product form writes a slug PER STOREFRONT, through the
+             * same `PlacementWriter` the placement screen uses, so it is refused in the same place
+             * and has to say so in the same way. A field that looks live and fails on save is how
+             * an operator learns to distrust the screen.
+             */
+            'slug_role' => [
+                'allowed' => Gate::allows(Role::EDIT_PRODUCT_SLUG),
+                'message' => Gate::allows(Role::EDIT_PRODUCT_SLUG) ? null : ManageText::t(
+                    'placement.slug_admin_only',
+                    'تغيير رابط المنتج متاح للمدير فقط. الرابط هو عنوان الصفحة عند العملاء وفي جوجل، وتغييره ينقل الصفحة ويعتمد على تحويل 301 لكي لا تصبح 404. لو الرابط يحتاج تعديلًا اطلب ذلك من المدير.',
+                ),
+            ],
+            // Everything that keeps the product off the storefront, not just the Arabic half.
+            'missing_arabic' => $productId === null ? [] : $this->placements->missingForVisibility($productId),
             // The storefront whose primary category decides the family and therefore the spec
             // block, named so the screen can say it out loud.
             'family_storefront' => self::familyStorefront(),
@@ -730,20 +1497,56 @@ final class ProductController
             // category change will discard the block it is showing.
             'family' => $this->families->explain($primaryNode, $product === null ? null : Row::str($product, 'family')),
             'blocks' => SpecBlocks::all(),
+            // Which colour questions each family is asked (J-6). Every family at once, because
+            // the form re-derives the family in the browser when the primary category changes.
+            'color_roles' => SpecBlocks::colorRoles(),
             'lookups' => self::allLookupOptions(),
             // EVERY option carries the family the SERVER resolves for it (task 4.1). The browser
             // looks it up when the category changes instead of mirroring the rule in TypeScript —
             // the mirror is what was broken, and a second implementation of one rule always is.
             'categories' => $this->categoryOptionsWithFamily($storefront->id),
             'brands' => self::brandOptions(),
+            /*
+             * Brand and category names in BOTH locales, keyed by id (item 8, 2026-09-18).
+             *
+             * The SEO generator writes an Arabic sentence and an English one, so it needs each name
+             * in each language. The pickers above carry a single combined label — Arabic first with
+             * the English in the hint position — which is right for a dropdown and useless for
+             * composing a sentence in one language.
+             *
+             * Sent as maps rather than resolved on the server because the generator runs on what is
+             * ON SCREEN: the brand the operator has just selected, on a form that may not be saved
+             * yet, or a product that does not exist at all. 78 brands and 61 nodes — the payload is
+             * a rounding error next to the spec blocks already here.
+             */
+            'brand_names' => self::namePairs('catalog_brands', 'catalog_brand_translations', 'brand_id'),
+            'category_names' => self::categoryNamePairs(),
+            /*
+             * The same, for the three lookups the rebuilt generator describes the product WITH
+             * (item 5, 2026-09-19): the audience, the material and the colour.
+             *
+             * The brief asked for keywords "drawn from what the product IS (brand, family,
+             * material, colour, gender, category)". The form already holds those as ids — it draws
+             * pickers with them — but a picker's label is in the ACTIVE locale only, and a
+             * generator that writes an Arabic sentence and an English one in the same click needs
+             * both names at once. So the three lists travel as name pairs, exactly as the brands
+             * and the category nodes do.
+             *
+             * Three lists and not eleven: the rest (shapes, closures, movements, units) do not
+             * appear in a sentence anybody would click.
+             */
+            'lookup_names' => [
+                'genders' => self::namePairs('catalog_genders', 'catalog_gender_translations', 'gender_id'),
+                'colors' => self::namePairs('catalog_colors', 'catalog_color_translations', 'color_id'),
+                'materials' => self::namePairs('catalog_materials', 'catalog_material_translations', 'material_id'),
+            ],
             'families' => self::familyOptions(),
             'variants' => [
                 'rows' => $productId === null ? [] : $this->variants->rows($productId),
                 'state' => $productId === null
-                    ? ['has_variants' => false, 'may_convert' => false, 'reason' => 'احفظ المنتج أولًا ثم أضف المقاسات.', 'write_switch_completed' => ConversionGuard::writeSwitchCompleted(), 'legacy_backed' => false]
+                    ? ['has_variants' => false, 'may_convert' => false, 'reason' => ManageText::t('variants.save_product_first_reason', 'احفظ المنتج أولًا ثم أضف المقاسات.'), 'write_switch_completed' => ConversionGuard::writeSwitchCompleted(), 'legacy_backed' => false]
                     : $this->conversion->state($productId),
             ],
-            'pre_switch_notice' => self::preSwitchNotice(),
             // Per-action state, so the screen can disable the control it must not offer AND say
             // why. The server refuses again on the write path.
             'pre_switch' => PreSwitch::state('product'),
@@ -761,12 +1564,25 @@ final class ProductController
     {
         $base = [
             'wa_code' => ['required', 'string', 'max:64', Rule::unique('catalog_products', 'wa_code')->ignore($productId)],
-            'sku' => ['nullable', 'string', 'max:64', Rule::unique('catalog_products', 'sku')->ignore($productId)],
-            'model_number' => ['nullable', 'string', 'max:100'],
+            /*
+             * NOT unique, since 2026-10-05.
+             *
+             * `sku` is the manufacturer's code: it comes from outside, it may be empty, and two of
+             * our products may legitimately carry one — the developer's own definition, and the
+             * merge migration hit a real pair (413 and 414, `Ap0012`/`AP0012`). The UNIQUE index
+             * that contradicted it has been dropped, and this rule went with it: a form that
+             * refuses a true value is the same mistake one layer up.
+             *
+             * Duplicates are not unnoticed, they are SHOWN — the list marks a shared code beside
+             * it and `?filters[flag]=shared_sku` selects every row carrying one, so somebody can
+             * judge whether it is a supplier's habit or a typo. `max:64` is the column.
+             */
+            'sku' => ['nullable', 'string', 'max:64'],
+
             'hs_code' => ['nullable', 'string', 'max:32'],
             'brand_id' => ['required', 'integer', Rule::exists('catalog_brands', 'id')],
             'grade_id' => ['nullable', 'integer', Rule::exists('catalog_grades', 'id')],
-            'purchase_price' => ['nullable', 'numeric', 'min:0', 'max:99999999'],
+            'purchase_price' => ['required', 'numeric', 'min:0', 'max:99999999'],
             'selling_price' => ['required', 'numeric', 'min:0', 'max:99999999'],
             'sale_price' => ['nullable', 'numeric', 'min:0', 'max:99999999'],
             'currency' => ['required', 'string', 'size:3'],
@@ -775,8 +1591,8 @@ final class ProductController
             'is_active' => ['required', 'boolean'],
             'search_keywords' => ['nullable', 'string', 'max:65535'],
 
-            'title.ar' => ['required', 'string', 'max:255'],
-            'title.en' => ['nullable', 'string', 'max:255'],
+            'title.ar' => ['required', 'string', 'min:2', 'max:255'],
+            'title.en' => ['required', 'string', 'min:2', 'max:255'],
             'short_description.ar' => ['nullable', 'string', 'max:65535'],
             'short_description.en' => ['nullable', 'string', 'max:65535'],
             'long_description.ar' => ['nullable', 'string'],
@@ -998,25 +1814,72 @@ final class ProductController
             $field = "storefronts.{$key}.primary_category_id";
 
             if ($ids !== [] && $primary === null) {
-                $errors[$field] = 'اختر التصنيف الأساسي من بين التصنيفات المحددة: هو الذي يحدد مسار المنتج على هذا المتجر، '
-                    .'ومنه تُشتق مواصفاته.';
+                $errors[$field] = ManageText::t(
+                    'products.primary_category_required',
+                    'اختر التصنيف الأساسي من بين التصنيفات المحددة: هو الذي يحدد مسار المنتج على هذا المتجر، ومنه تُشتق مواصفاته.',
+                );
 
                 continue;
             }
             if ($primary !== null && ! in_array($primary, $ids, true)) {
-                $errors[$field] = 'التصنيف الأساسي يجب أن يكون واحدًا من التصنيفات المحددة بالأعلى. ضع علامة على التصنيف أولًا.';
+                $errors[$field] = ManageText::t(
+                    'products.primary_category_must_be_chosen',
+                    'التصنيف الأساسي يجب أن يكون واحدًا من التصنيفات المحددة.',
+                );
 
                 continue;
             }
             if ($creating && (int) $key === $decider && $ids === []) {
-                $errors["storefronts.{$key}.category_ids"] = 'اختر تصنيفًا واحدًا على الأقل: التصنيف هو ما يحدد نوع المنتج '
-                    .'وقائمة مواصفاته، ولا يمكن إنشاء منتج بلا تصنيف.';
+                $errors["storefronts.{$key}.category_ids"] = ManageText::t(
+                    'products.category_required_to_create',
+                    'اختر تصنيفًا واحدًا على الأقل: التصنيف هو ما يحدد نوع المنتج وقائمة مواصفاته، ولا يمكن إنشاء منتج بلا تصنيف.',
+                );
             }
         }
 
         if ($errors !== []) {
             throw ValidationException::withMessages($errors);
         }
+    }
+
+    /**
+     * Say it out loud when a save took a product off sale.
+     *
+     * ── Why this exists ─────────────────────────────────────────────────────────────────────
+     *
+     * The completeness gate demotes rather than refuses, which means a product can go from visible
+     * to hidden as a side effect of the save the operator just made — they blank a description,
+     * press save, and the product leaves the shop. The developer's instruction was that this must
+     * never be quiet: *"Make sure the operator is told clearly at the moment it happens ('this
+     * product is no longer visible — it needs X'), so it is never a silent disappearance."*
+     *
+     * It rides the ERROR channel, beside the green "saved". The save genuinely succeeded, so the
+     * success message stays; the demotion is the part that needs acting on, and a warning the
+     * colour of success is a warning nobody reads.
+     */
+    private function withDemotions(RedirectResponse $response): RedirectResponse
+    {
+        $demotions = $this->placements->demotions();
+        if ($demotions === []) {
+            return $response;
+        }
+
+        $names = DB::table('storefronts')->whereIn('id', array_keys($demotions))->pluck('name', 'id');
+        $separator = ManageText::t('common.list_separator', '، ');
+
+        $lines = [];
+        foreach ($demotions as $storefrontId => $missing) {
+            $lines[] = ManageText::t(
+                'products.demoted_from_storefront',
+                'المنتج لم يعد ظاهرًا على :storefront — ينقصه: :fields.',
+                [
+                    'storefront' => Coerce::str($names[$storefrontId] ?? (string) $storefrontId),
+                    'fields' => implode($separator, $missing),
+                ],
+            );
+        }
+
+        return $response->with('error', implode(' ', $lines));
     }
 
     /**
@@ -1149,7 +2012,15 @@ final class ProductController
         return $out;
     }
 
-    /** One product's placement shape on one storefront: placed / root_only / none. */
+    /**
+     * One product's placement shape on one storefront: placed / root_only / none.
+     *
+     * `absent` never comes back from here, and that is not an omission. This feeds the product
+     * FORM, where each storefront has its own section and being on a shop is expressed by that
+     * section's own "add to this shop" control — so the fourth state (D-3) would be a second way
+     * of saying something the section already says with a switch. The LIST has no such control,
+     * which is exactly why it needs the word.
+     */
     private static function placementStateOn(int $storefrontId, int $productId): string
     {
         // COALESCE, because an aggregate over ZERO rows returns COUNT 0 and SUM **NULL** — and a
@@ -1165,7 +2036,10 @@ final class ProductController
 
         $cast = Row::cast($row);
 
-        return self::placementState(['nodes' => Row::int($cast, 'nodes'), 'primaries' => Row::int($cast, 'primaries')]);
+        return self::placementState(
+            ['nodes' => Row::int($cast, 'nodes'), 'primaries' => Row::int($cast, 'primaries')],
+            onStorefront: true,
+        );
     }
 
     /** A product's primary category ON ONE STOREFRONT — the per-section answer. */
@@ -1231,7 +2105,7 @@ final class ProductController
         $payload = [
             'wa_code' => Row::str($product, 'wa_code'),
             'sku' => Row::nstr($product, 'sku'),
-            'model_number' => Row::nstr($product, 'model_number'),
+
             'hs_code' => Row::nstr($product, 'hs_code'),
             'brand_id' => Row::int($product, 'brand_id'),
             'grade_id' => Row::nint($product, 'grade_id'),
@@ -1414,15 +2288,81 @@ final class ProductController
         return SpecBlocks::options('brands');
     }
 
+    /**
+     * `id => {ar, en}` for a lookup table and its translations (item 8).
+     *
+     * @return array<int, array{ar: string, en: string}>
+     */
+    private static function namePairs(string $master, string $translations, string $fk): array
+    {
+        $out = [];
+        foreach (
+            DB::table($master.' as m')
+                ->leftJoin($translations.' as ar', function (JoinClause $join) use ($fk): void {
+                    $join->on('ar.'.$fk, '=', 'm.id')->where('ar.locale', '=', 'ar');
+                })
+                ->leftJoin($translations.' as en', function (JoinClause $join) use ($fk): void {
+                    $join->on('en.'.$fk, '=', 'm.id')->where('en.locale', '=', 'en');
+                })
+                ->get(['m.id', 'ar.name as name_ar', 'en.name as name_en']) as $raw
+        ) {
+            $row = Row::cast($raw);
+            $out[Row::int($row, 'id')] = [
+                'ar' => Row::nstr($row, 'name_ar') ?? '',
+                'en' => Row::nstr($row, 'name_en') ?? '',
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * The same for category nodes, across EVERY storefront.
+     *
+     * Not narrowed to one storefront on purpose: the form renders a section per storefront and the
+     * generator may be asked about the primary category of any of them.
+     *
+     * @return array<int, array{ar: string, en: string}>
+     */
+    private static function categoryNamePairs(): array
+    {
+        $out = [];
+        foreach (
+            DB::table('storefront_categories as c')
+                ->leftJoin('storefront_category_translations as ar', function (JoinClause $join): void {
+                    $join->on('ar.storefront_category_id', '=', 'c.id')->where('ar.locale', '=', 'ar');
+                })
+                ->leftJoin('storefront_category_translations as en', function (JoinClause $join): void {
+                    $join->on('en.storefront_category_id', '=', 'c.id')->where('en.locale', '=', 'en');
+                })
+                ->get(['c.id', 'ar.name as name_ar', 'en.name as name_en']) as $raw
+        ) {
+            $row = Row::cast($raw);
+            $out[Row::int($row, 'id')] = [
+                'ar' => Row::nstr($row, 'name_ar') ?? '',
+                'en' => Row::nstr($row, 'name_en') ?? '',
+            ];
+        }
+
+        return $out;
+    }
+
     /** @return list<array{value: string, label: string}> */
     private static function familyOptions(): array
     {
         // One label per family in Product::FAMILIES — the list is exhaustive by construction,
         // so a family added there without a label here is a PHPStan error rather than a screen
         // showing the raw key.
+        // The very keys the product form's family picker renders, so the filter and the field
+        // cannot end up calling one family two things.
         $labels = [
-            'watch' => 'ساعات', 'fashion' => 'أزياء', 'bag' => 'حقائب', 'wallet' => 'محافظ',
-            'perfume' => 'عطور', 'electronics' => 'إلكترونيات', 'other' => 'أخرى',
+            'watch' => ManageText::t('products.family_watch', 'ساعات'),
+            'fashion' => ManageText::t('products.family_fashion', 'أزياء'),
+            'bag' => ManageText::t('products.family_bag', 'حقائب'),
+            'wallet' => ManageText::t('products.family_wallet', 'محافظ'),
+            'perfume' => ManageText::t('products.family_perfume', 'عطور'),
+            'electronics' => ManageText::t('products.family_electronics', 'إلكترونيات'),
+            'other' => ManageText::t('products.family_other', 'أخرى'),
         ];
         $out = [];
         foreach (Product::FAMILIES as $family) {
@@ -1445,7 +2385,7 @@ final class ProductController
      * changes the primary category, and the save re-derives the same answer from the same class.
      * `FamilyForCategory::explainMany()` costs two queries for the whole tree.
      *
-     * @return list<array{value: string, label: string, depth: int, path: string, family: string, family_reason: string}>
+     * @return list<array{value: string, label: string, name: string, en: string, depth: int, path: string, selectable: bool, family: string, family_reason: string}>
      */
     private function categoryOptionsWithFamily(int $storefrontId): array
     {
@@ -1463,13 +2403,19 @@ final class ProductController
             $out[] = [
                 'value' => $option['value'],
                 'label' => $option['label'],
+                'name' => $option['name'],
+                'en' => $option['en'],
                 'depth' => $option['depth'],
                 'path' => $option['path'],
+                'selectable' => $option['selectable'],
                 // A node with a malformed `path` has no family here; the SAVE refuses it loudly
                 // rather than the dropdown guessing one.
                 'family' => $resolved === null ? '' : $resolved['family'],
                 'family_reason' => $resolved === null
-                    ? 'مسار هذا التصنيف غير سليم في قاعدة البيانات — لا يمكن اشتقاق العائلة منه.'
+                    ? ManageText::t(
+                        'products.family_reason_bad_path',
+                        'مسار هذا التصنيف غير سليم في قاعدة البيانات — لا يمكن اشتقاق العائلة منه.',
+                    )
                     : $resolved['reason'],
             ];
         }
@@ -1480,7 +2426,12 @@ final class ProductController
     /**
      * Every category of one storefront, deepest-path order, labelled for a dropdown.
      *
-     * @return list<array{value: string, label: string, depth: int, path: string}>
+     * `label` carries the `— ` depth prefix because a native `<select>` has no other way to show
+     * nesting; `name` is the same text without it, for the tree picker, which indents properly.
+     * `en` is carried too so the picker can be SEARCHED in either language — the team is bilingual
+     * and half of them will type "watches" into a tree labelled «ساعات».
+     *
+     * @return list<array{value: string, label: string, name: string, en: string, depth: int, path: string, selectable: bool}>
      */
     private static function categoryOptions(int $storefrontId): array
     {
@@ -1493,21 +2444,67 @@ final class ProductController
             })
             ->where('c.storefront_id', $storefrontId)
             ->orderBy('c.path')
-            ->get(['c.id', 'c.depth', 'c.path', 'c.slug', 'ar.name as name_ar', 'en.name as name_en']);
+            ->get(['c.id', 'c.depth', 'c.path', 'c.slug', 'c.legacy_source', 'ar.name as name_ar', 'en.name as name_en']);
+
+        /*
+         * ── The dead taxonomy, and why it is offered but not pickable (J-9) ─────────────────
+         *
+         * `شجرة التصنيفات القديمة` is a parked copy of the pre-migration tree. Nothing on either
+         * storefront lists from it — measured: 7 nodes per shop, **0 products** — and it was
+         * offered in both category pickers exactly like a live section. A product filed there is
+         * filed into a taxonomy the storefront will never read, and it looks completely normal on
+         * the form while it happens.
+         *
+         * Marked rather than removed. Removing it would hide a placement that already exists from
+         * the one screen that could take it off — and the picker re-enables any node the product is
+         * ALREADY in, precisely so a mistake made before today can still be undone.
+         */
+        $legacyRoots = [];
+        foreach ($rows as $raw) {
+            $row = Row::cast($raw);
+            if (Row::nstr($row, 'legacy_source') === 'category_root') {
+                $legacyRoots[] = Row::str($row, 'path');
+            }
+        }
 
         $out = [];
         foreach ($rows as $raw) {
             $row = Row::cast($raw);
             $id = Row::int($row, 'id');
             $depth = Row::int($row, 'depth');
-            $ar = trim(Row::nstr($row, 'name_ar') ?? '');
+            $path = Row::str($row, 'path');
+            /*
+             * The READER's language, not Arabic-always (2026-10-05).
+             *
+             * This one line built four things — the form's category picker, its primary-category
+             * select, the products list's category filter and the placement tree — and every one
+             * of them showed an English operator sixty-one Arabic names. The client could not have
+             * corrected it: by the time the option reached the browser it was a single string.
+             */
             $en = trim(Row::nstr($row, 'name_en') ?? '');
-            $label = $ar !== '' ? $ar : ($en !== '' ? $en : (Row::nstr($row, 'slug') ?? ('#'.$id)));
+            $label = LocalisedName::pick(
+                Row::nstr($row, 'name_ar'),
+                $en,
+                Row::nstr($row, 'slug') ?? ('#'.$id),
+            );
+
+            $inDeadTree = false;
+            foreach ($legacyRoots as $root) {
+                if (str_starts_with($path, $root)) {
+                    $inDeadTree = true;
+
+                    break;
+                }
+            }
+
             $out[] = [
                 'value' => (string) $id,
                 'label' => str_repeat('— ', max(0, $depth - 1)).$label,
+                'name' => $label,
+                'en' => $en,
                 'depth' => $depth,
-                'path' => Row::str($row, 'path'),
+                'path' => $path,
+                'selectable' => ! $inDeadTree,
             ];
         }
 
@@ -1522,7 +2519,12 @@ final class ProductController
             $row = Row::cast($raw);
             $id = Row::int($row, 'id');
             $name = Row::nstr($row, 'name') ?? ('#'.$id);
-            $out[] = ['value' => (string) $id, 'label' => $name.(Row::bool($row, 'is_active') ? '' : ' (معطّل)')];
+            // Interpolated rather than a suffix concatenated onto the name: in English the marker
+            // belongs after the name, in another language it may not, and a bare ' (…)' fragment
+            // is not a string anybody can translate.
+            $out[] = ['value' => (string) $id, 'label' => Row::bool($row, 'is_active')
+                ? $name
+                : ManageText::t('products.storefront_option_inactive', ':name (معطّل)', ['name' => $name])];
         }
 
         return $out;
@@ -1566,30 +2568,6 @@ final class ProductController
         }
 
         return $out;
-    }
-
-    /**
-     * The sentence every catalogue screen carries until the write-switch.
-     *
-     * It is not decoration. Until the switch the legacy Blade dashboard is the system of record
-     * and switch night REBUILDS these tables from legacy (`core:drop-clean` → `migrate` →
-     * `core:transform`), so a product authored here now is replaced by the rebuild — exactly the
-     * class of loss AGENTS §2.20 was written for, with the difference that `catalog_products` IS
-     * transform output and so cannot simply be excluded from the drop list. The team has to know
-     * that before they spend an afternoon typing.
-     *
-     * @return array{pre_switch: bool, message: string}|null
-     */
-    /**
-     * Delegated to `PreSwitch::noticeFor()` since review 🟠-3, which found this screen's generic
-     * sentence doing duty on the placement screen where it named none of the work that screen
-     * actually loses. One home for the wording, one per-screen switch inside it.
-     *
-     * @return array{pre_switch: bool, message: string}|null
-     */
-    private static function preSwitchNotice(): ?array
-    {
-        return PreSwitch::noticeFor('product');
     }
 
     private static function escapeLike(string $value): string

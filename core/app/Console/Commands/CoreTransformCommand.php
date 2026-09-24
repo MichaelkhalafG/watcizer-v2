@@ -197,6 +197,20 @@ final class CoreTransformCommand extends Command
         $exit = self::SUCCESS;
         $autoIncrement = null;
 
+        /*
+         * The level we START at, so the dry run's rollback can never take the CALLER's transaction
+         * with it (2026-10-05).
+         *
+         * The `catch` below used to be guarded by `transactionLevel() > 0`, which reads as "is my
+         * transaction still open" and actually means "is ANY transaction open". Under the test
+         * suite the answer is yes even after the dry-run rollback at the end of the `try` — the
+         * only transaction left there is the suite's own — so a throw in the narrow window after
+         * it would have rolled the suite out of its transaction, making everything that TEST wrote
+         * afterwards permanent. The same shape was live in `PromotionController::preview()` and
+         * `CheckoutCompatController::addOrder()`; this is the third and last instance.
+         */
+        $outer = $db->transactionLevel();
+
         if ($options->dryRun) {
             $db->beginTransaction();
         }
@@ -252,7 +266,8 @@ final class CoreTransformCommand extends Command
                 }
             }
         } catch (Throwable $e) {
-            if ($options->dryRun && $db->transactionLevel() > 0) {
+            // Down to where we started and no further — never to zero.
+            while ($db->transactionLevel() > $outer) {
                 $db->rollBack();
             }
             $this->error(get_class($e).': '.$e->getMessage());

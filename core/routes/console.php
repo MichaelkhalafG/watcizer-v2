@@ -39,3 +39,31 @@ Schedule::command('mail:drain --reclaim')->everyMinute()->withoutOverlapping();
 // The invariant that makes the ledger trustworthy: Σ quantity_delta = the stock column. Reports
 // only; a re-base is a deliberate `--fix` run by a human who has read the drift.
 Schedule::command('inventory:verify')->dailyAt('03:30');
+
+/*
+| Nightly database backup (wave 4D, developer decision 2026-09-15).
+|
+| 03:00, half an hour before `inventory:verify`, so a night that goes wrong leaves the dump taken
+| BEFORE the verifier's findings rather than after them. It rides the same one-minute
+| `schedule:run` cron entry as everything above, so switch night adds no crontab line.
+|
+| `withoutOverlapping` because a dump that runs long must not be joined by the next night's — two
+| mysqldumps against one shared host is how a backup becomes the outage.
+|
+| NOT encrypted, by decision: a key in `.env` beside the dump on the same host protects nothing.
+| The real controls are in the command — outside the web root, 0600, retention, and a log line
+| every run so a silent failure is visible. See `CoreBackupCommand` and study §5.6.
+*/
+Schedule::command('core:backup --keep=7')->dailyAt('03:00')->withoutOverlapping();
+
+/*
+| Revoked-token housekeeping (M1t, storefront Phase 1, 2026-09-21).
+|
+| Daily at 03:15 — between the backup (03:00) and `inventory:verify` (03:30), so the night's dump
+| is taken BEFORE this deletes anything and a mistake here is recoverable from it.
+|
+| A pruned row can never sign anybody out or back in: its token is already past `exp`, so the clock
+| refuses it before revocation is consulted at all. Without the tick the table grows one row per
+| sign-out for ever. It rides the same one-minute `schedule:run` entry as everything above.
+*/
+Schedule::command('tokens:prune')->dailyAt('03:15');

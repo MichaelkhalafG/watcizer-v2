@@ -326,7 +326,7 @@ brief asked to include.
 
 | Check | Result |
 |---|---|
-| `compat:diff` (126 cases, real HTTP both sides) | **PASS — zero unexplained**, 58 byte-identical, 68 sanctioned-only. Compat checkout responses did not change shape because sending moved |
+| `compat:diff` (126 cases as it stood that day; 127 since — study §3.8.6) | **PASS — zero unexplained**, 58 byte-identical, 68 sanctioned-only. Compat checkout responses did not change shape because sending moved |
 | Pest ×2 | **808 passed / 12 008 and 11 980 assertions, 0 failed**, 7 skipped (the opt-in `CAPTURE_SCREENS` captures) |
 | PHPStan (level 10, **default flags**) | no errors |
 | Pint | passed |

@@ -30,6 +30,16 @@ const ProductCard = ({ product, showBrand = true, showRating = true }) => {
       : product.product_title || product.name_en || product.product_title_ar || product.name_ar || ''
   })()
 
+  // The same name, but always English — for analytics only. ViewContent on the PDP
+  // reports the English title too, and a report where one product appears under two
+  // names depending on which language the shopper happened to be browsing in is a
+  // report nobody can read.
+  const analyticsName = (() => {
+    const t = product.translations?.find((x) => x.locale === 'en')
+    if (t?.product_title) return t.product_title
+    return product.product_title || product.name_en || name
+  })()
+
   /* ── Brand ── */
   const brand = (() => {
     const t =
@@ -98,6 +108,7 @@ const ProductCard = ({ product, showBrand = true, showRating = true }) => {
         quantity: 1,
         piece_price: hasSale ? salePrice : price,
         type_stock: isExpress ? 'Express' : 'Market',
+        name: analyticsName, // analytics only — see the note beside analyticsName
       })
     } finally {
       setPending(false)

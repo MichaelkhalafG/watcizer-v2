@@ -51,6 +51,48 @@ it('falls through when the contract exists but holds no credentials', function (
     get('/api/callback_payment?'.http_build_query($payload))->assertForbidden();
 });
 
+it('falls through on a HALF-entered contract, instead of 403ing every callback', function () {
+    /*
+     * ── The gate asks COMPLETE, not merely SET (2026-09-23) ──────────────────────────────────
+     *
+     * An operator pastes `secret_key` and `public_key` and has not yet pasted `hmac_secret`. The
+     * old gate — `credentialsSet()`, "is the array non-empty" — called that contract LIVE, handed
+     * the URL to the 4C checks, and those cannot verify a signature without the HMAC secret: every
+     * real callback answered 403, with the money taken and the order pending.
+     *
+     * Signed with the wave-3 GLOBAL secret, so success here can only mean the fall-through.
+     */
+    config(['services.paymob.hmac_secret' => 'the-global-wave3-secret', 'compat.payment_return_url' => 'https://watchizereg.test/']);
+    StorefrontPaymentProvider::query()->updateOrCreate(
+        ['storefront_id' => 1, 'provider' => 'paymob'],
+        ['is_enabled' => true, 'settings' => null,
+            'credentials' => ['secret_key' => 'sk-present', 'public_key' => 'pk-present']],
+    );
+
+    $orderId = PaymentFixture::order(total: 100.0);
+    // The wave-3 handler reads `merchant_order_id` as the order ID, where the 4C path takes the
+    // order NUMBER — so a success here is only possible through the fall-through.
+    $payload = PaymentFixture::callback((string) $orderId, 10000, secret: 'the-global-wave3-secret');
+
+    get('/api/callback_payment?'.http_build_query($payload))->assertRedirect();
+
+    expect(T::str(DB::table('orders')->where('id', $orderId)->value('status')))->toBe('processing');
+});
+
+it('reports exactly which required keys a contract is missing, by NAME', function () {
+    $contract = StorefrontPaymentProvider::query()->updateOrCreate(
+        ['storefront_id' => 1, 'provider' => 'paymob'],
+        ['is_enabled' => true, 'settings' => null,
+            'credentials' => ['secret_key' => 'sk', 'public_key' => '   ', 'hmac_secret' => '']],
+    );
+    $required = ['secret_key', 'public_key', 'hmac_secret'];
+
+    // Blank and whitespace-only values are NOT present: a pasted space is not a key.
+    expect($contract->credentialsSet())->toBeTrue()
+        ->and($contract->credentialsComplete($required))->toBeFalse()
+        ->and($contract->missingCredentials($required))->toBe(['public_key', 'hmac_secret']);
+});
+
 it('hands the URL to the wave-4C checks once the contract holds credentials', function () {
     $provider = PaymentFixture::paymob(hmacSecret: 'the-cutover-secret');
     PaymentFixture::method($provider);

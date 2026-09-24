@@ -1,9 +1,12 @@
 import { Info } from 'lucide-react';
+import type { ReactNode } from 'react';
 
 import { SelectField, TextField } from '@/components/form/TextField';
 import { Alert } from '@/components/ui/alert';
 import { SwitchField } from '@/components/form/SwitchField';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useT } from '@/lib/i18n';
+import { familyLabel } from '@/lib/labels';
 
 export interface SpecField {
     key: string;
@@ -13,6 +16,8 @@ export interface SpecField {
     unit?: string;
     /** A lookup key from config('catalog.lookups'). */
     lookup?: string;
+    /** One line under the control saying what to type, when the label cannot say it alone. */
+    hint?: string;
 }
 
 export interface SpecBlockDef {
@@ -74,6 +79,7 @@ export function SpecBlock({
     values,
     onChange,
     errors,
+    extra,
 }: {
     explanation: FamilyExplanation;
     blocks: Record<string, SpecBlockDef>;
@@ -81,7 +87,18 @@ export function SpecBlock({
     values: SpecValues;
     onChange: (values: SpecValues) => void;
     errors: Record<string, string>;
+    /**
+     * Fields that belong BESIDE the block on screen without belonging to it in the schema.
+     *
+     * `catalog_products.warranty_years` is the one today: it is a column of the product, not of
+     * `catalog_product_watch_specs`, and it does not move — but a buyer asks about the guarantee
+     * in the same breath as the water resistance, and it used to be asked six fields away on the
+     * price tab. A slot rather than a config entry, because the config drives what the SERVER
+     * validates and writes into the specs table, and this field is neither.
+     */
+    extra?: ReactNode;
 }) {
+    const t = useT();
     const block = blocks[explanation.family];
 
     /*
@@ -112,34 +129,49 @@ export function SpecBlock({
     return (
         <Card>
             <CardHeader className="gap-2">
-                <CardTitle>{block === undefined ? 'مواصفات إضافية' : block.label}</CardTitle>
+                <CardTitle>{block === undefined ? t('specs.extra_specs', 'مواصفات إضافية') : block.label}</CardTitle>
                 {/* The derivation, in words. This is the sentence that makes the whole screen
                     trustworthy: the team can see WHY they are being shown watch fields. */}
                 <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
                     <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                     <span>
-                        العائلة المحسوبة: <strong className="text-foreground">{explanation.family}</strong> — {explanation.reason}
+                        {t('specs.derived_family', 'العائلة المحسوبة:')}{' '}
+                        {/* The family as a WORD (item 10). `watch` is a column value. */}
+                        <strong className="text-foreground">{familyLabel(t, explanation.family)}</strong> — {explanation.reason}
                     </span>
                 </p>
             </CardHeader>
 
             <CardContent className="space-y-4">
                 {losing === undefined ? null : (
-                    <Alert tone="warning" title="تغيير التصنيف يغيّر نوع المواصفات">
-                        هذا المنتج محفوظ الآن كـ «{losing.label}». بعد الحفظ ستصبح مواصفاته «
-                        {block === undefined ? 'بلا مواصفات' : block.label}»، و
+                    <Alert tone="warning" title={t('specs.family_change_title', 'تغيير التصنيف يغيّر نوع المواصفات')}>
+                        {t('specs.family_change_body', 'هذا المنتج محفوظ الآن كـ «:saved». بعد الحفظ ستصبح مواصفاته «:next».', {
+                            saved: losing.label,
+                            next: block === undefined ? t('specs.no_specs_at_all', 'بلا مواصفات') : block.label,
+                        })}{' '}
                         {losingFilled.length === 0
-                            ? 'لا توجد قيم قديمة ستُفقد.'
-                            : `ستُحذف القيم المكتوبة في: ${losingFilled.join('، ')}.`}{' '}
-                        لو لم يكن هذا ما تريده، أعِد اختيار التصنيف الأساسي السابق قبل الحفظ.
+                            ? t('specs.family_change_loses_nothing', 'لا توجد قيم قديمة ستُفقد.')
+                            : t('specs.family_change_loses', 'ستُحذف القيم المكتوبة في: :list.', { list: losingFilled.join(t('common.list_separator', '، ')) })}{' '}
+                        {t('specs.family_change_undo', 'لو لم يكن هذا ما تريده، أعِد اختيار التصنيف الأساسي السابق قبل الحفظ.')}
                     </Alert>
                 )}
 
                 {block === undefined ? (
                     <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-                        لا توجد مواصفات خاصة بهذه العائلة. العائلتان <code>fashion</code> و<code>other</code> هما الحالة الافتراضية لقاعدة
-                        الاشتقاق، وإضافة حقول لهما تعني اختراع بيانات لا يعرفها النظام. لو احتاج هذا النوع مواصفات، يُضاف قسم له في{' '}
-                        <code dir="ltr">config/catalog.php</code> وتُشتق العائلة من تصنيف مناسب.
+                        {/* Item 10: the two families NAMED, not quoted as config keys. */}
+                        {t('specs.no_block_before_families', 'لا توجد مواصفات خاصة بهذه العائلة. العائلتان')}{' '}
+                        <strong>{familyLabel(t, 'fashion')}</strong>{' '}
+                        {t('specs.no_block_and', 'و')} <strong>{familyLabel(t, 'other')}</strong>{' '}
+                        {t(
+                            'specs.no_block_after_families',
+                            'هما الحالة الافتراضية لقاعدة الاشتقاق، وإضافة حقول لهما تعني اختراع بيانات لا يعرفها النظام.',
+                        )}{' '}
+                        {/* The source-file path is gone (item 10): a data-entry operator
+                            cannot edit `config/catalog.php`, and naming it tells them only
+                            that the answer is somewhere they cannot reach. The sentence now
+                            says what to do — choose a category that carries specifications —
+                            which is the part that is actually theirs. */}
+                        {t('specs.no_block_ask_admin', 'لو احتاج هذا النوع مواصفات، اختر تصنيفًا أساسيًا لعائلة تحمل مواصفات، أو اطلب من المدير إضافة مواصفات لهذه العائلة.')}
                     </p>
                 ) : (
                     <div className="grid gap-4 sm:grid-cols-2">
@@ -149,6 +181,7 @@ export function SpecBlock({
                             if (field.type === 'boolean') {
                                 return (
                                     <SwitchField
+                                        hint={field.hint}
                                         key={field.key}
                                         label={field.label}
                                         error={error}
@@ -161,6 +194,7 @@ export function SpecBlock({
                             if (field.type === 'lookup') {
                                 return (
                                     <SelectField
+                                        hint={field.hint}
                                         key={field.key}
                                         label={field.label}
                                         error={error}
@@ -177,6 +211,7 @@ export function SpecBlock({
                             return (
                                 <div key={field.key} className={field.unit === undefined ? '' : 'grid grid-cols-[1fr_8rem] gap-2'}>
                                     <TextField
+                                        hint={field.hint}
                                         label={field.label}
                                         error={error}
                                         dir="ltr"
@@ -186,7 +221,7 @@ export function SpecBlock({
                                     />
                                     {field.unit === undefined ? null : (
                                         <SelectField
-                                            label="الوحدة"
+                                            label={t('common.unit', 'الوحدة')}
                                             error={errors[`specs.${field.unit}`] ?? null}
                                             placeholder="—"
                                             value={text(field.unit)}
@@ -199,6 +234,11 @@ export function SpecBlock({
                         })}
                     </div>
                 )}
+
+                {/* Outside the `block === undefined` branch on purpose: the warranty is a
+                    question about any product, so a family with no specification block of its
+                    own still asks it. Same grid, so it lines up with the fields above. */}
+                {extra === undefined ? null : <div className="grid gap-4 sm:grid-cols-2">{extra}</div>}
             </CardContent>
         </Card>
     );

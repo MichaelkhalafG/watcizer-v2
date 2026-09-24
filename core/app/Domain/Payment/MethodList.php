@@ -74,10 +74,17 @@ final class MethodList
      * wording on the storefront. The schema cannot prevent it (labels are per row, which every
      * non-duplicated method needs), so the screen warns.
      *
-     * @return list<array{id: int, method: string, label: string, icon: string|null, sort: int, provider: string, provider_id: int, is_enabled: bool, provider_enabled: bool, serves: bool, served_by: string|null, label_mismatch: bool}>
+     * `unusable` (2026-09-24) is the reason a row CANNOT take a payment even when enabled — no
+     * integration id, a malformed one, or a provider nobody implements — so the operator sees it
+     * on the screen instead of a customer meeting it as "Payment session failed". It is reported,
+     * not acted on: `serves` still says which row the list would route to, because hiding an
+     * unusable winner would make the routing look healthier than it is.
+     *
+     * @return list<array{id: int, method: string, label: string, icon: string|null, sort: int, provider: string, provider_id: int, is_enabled: bool, provider_enabled: bool, integration_id: string|null, serves: bool, served_by: string|null, label_mismatch: bool, unusable: string|null}>
      */
     public static function forAdmin(int $storefrontId, string $locale): array
     {
+        $registry = app(ProviderRegistry::class);
         $candidates = self::candidates($storefrontId, $locale, onlyEnabled: false);
 
         // The winner per key, computed from the ENABLED rows only and in the same order the
@@ -106,6 +113,9 @@ final class MethodList
                 'serves' => $winningId === $row['id'],
                 'served_by' => $winningId === null || $winningId === $row['id'] ? null : $winner[$key]['provider'],
                 'label_mismatch' => count($labels[$key] ?? []) > 1,
+                'unusable' => $registry->has($row['provider'])
+                    ? $registry->get($row['provider'])->integrationIdProblem($row['integration_id'])
+                    : 'unknown_provider',
             ];
         }
 
@@ -118,7 +128,7 @@ final class MethodList
      * ORDER BY `m.sort, p.provider, m.method, m.id` — the sort the admin drags, then a total
      * tie-break so two requests cannot disagree about who wins a duplicated key.
      *
-     * @return list<array{id: int, method: string, label: string, icon: string|null, sort: int, provider: string, provider_id: int, is_enabled: bool, provider_enabled: bool}>
+     * @return list<array{id: int, method: string, label: string, icon: string|null, sort: int, provider: string, provider_id: int, is_enabled: bool, provider_enabled: bool, integration_id: string|null}>
      */
     private static function candidates(int $storefrontId, string $locale, bool $onlyEnabled = true): array
     {
@@ -137,7 +147,7 @@ final class MethodList
         $out = [];
         foreach (
             $query->get([
-                'm.id', 'm.method', 'm.icon', 'm.sort', 'm.is_enabled',
+                'm.id', 'm.method', 'm.icon', 'm.sort', 'm.is_enabled', 'm.integration_id',
                 'p.provider', 'p.id as provider_id', 'p.is_enabled as provider_enabled', 't.label',
             ]) as $raw
         ) {
@@ -155,6 +165,7 @@ final class MethodList
                 'provider_id' => Row::int($row, 'provider_id'),
                 'is_enabled' => Row::bool($row, 'is_enabled'),
                 'provider_enabled' => Row::bool($row, 'provider_enabled'),
+                'integration_id' => Row::nstr($row, 'integration_id'),
             ];
         }
 

@@ -15,7 +15,12 @@ Route::middleware('guest')->group(function () {
     Route::get('register', [RegisteredUserController::class, 'create'])
                 ->name('register');
 
-    Route::post('register', [RegisteredUserController::class, 'store']);
+    // Throttled (security audit 2026-09-23, Finding 5): anonymous, and it writes the shared
+    // `users` table core also uses — core's UserWriteGuard cannot constrain this process. Five an
+    // hour per IP: nobody legitimately registers on the dashboard host at all. Minimal on
+    // purpose; this app is retired after the cutover.
+    Route::post('register', [RegisteredUserController::class, 'store'])
+                ->middleware('throttle:5,60');
 
     Route::get('login', [AuthenticatedSessionController::class, 'create'])
                 ->name('login');

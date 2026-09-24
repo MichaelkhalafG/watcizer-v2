@@ -2,6 +2,7 @@
 
 namespace Tests\Support;
 
+use App\Domain\Access\UserWriteGuard;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
 
@@ -33,7 +34,20 @@ final class LegacyShadow
         $c->statement("INSERT INTO fx_$table SELECT * FROM `$table`");
         $c->statement("ALTER TABLE fx_$table RENAME TO `$table`");
         self::$open[] = $table;
-        $inject(fn () => $c->table($table));
+
+        /*
+         * Wrapped in the FIXTURE window, at the shadow rather than at each caller.
+         *
+         * `UserWriteGuard` reads the SQL, and an insert into the shadow is spelled
+         * `INSERT INTO users …` — indistinguishable from a real write, which is the guard being
+         * right rather than wrong. But the base table is never touched: this is a session
+         * TEMPORARY table that will be dropped after the test.
+         *
+         * Opening the window here rather than in each test means a future fixture cannot forget
+         * it, and it stays honest about scope: the guard is only lifted for the callback that
+         * populates the shadow.
+         */
+        UserWriteGuard::fixture(fn () => $inject(fn () => $c->table($table)));
     }
 
     /** Drop every shadow this test opened, newest first; the base tables reappear untouched. */

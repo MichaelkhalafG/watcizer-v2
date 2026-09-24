@@ -95,7 +95,19 @@ return [
     'passwords' => [
         'users' => [
             'provider' => 'users',
-            'table' => env('AUTH_PASSWORD_RESET_TOKEN_TABLE', 'password_reset_tokens'),
+            /*
+             * CORE'S OWN TABLE since storefront Phase 1 (2026-09-21, M1u).
+             *
+             * The default was `password_reset_tokens` — the LEGACY table — and AGENTS §3 names
+             * that as a standing hazard: *the broker is one route away from a legacy write*.
+             * Phase 1 is that route arriving, so the broker moves rather than the rule bending.
+             *
+             * It also has to move for a plainer reason: the legacy application is still running
+             * and still resetting passwords, and `DatabaseTokenRepository::create()` deletes
+             * every existing row for an address before inserting. Two brokers on one table would
+             * silently invalidate each other's links.
+             */
+            'table' => env('AUTH_PASSWORD_RESET_TOKEN_TABLE', 'core_password_resets'),
             'expire' => 60,
             'throttle' => 60,
         ],

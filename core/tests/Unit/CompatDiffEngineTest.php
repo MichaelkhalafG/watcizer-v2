@@ -42,6 +42,13 @@ it('absorbs only listed deviations and fails anything else', function () {
         ->and(DeviationRules::match('product:404:no-accept', ['path' => 'header:content-type', 'kind' => 'value', 'legacy' => 'text/html; charset=utf-8', 'compat' => 'application/json']))->toBe('D-14')
         ->and(DeviationRules::match('product:404', ['path' => 'header:content-type', 'kind' => 'value', 'legacy' => 'text/html; charset=utf-8', 'compat' => 'application/json']))->toBeNull()
         ->and(DeviationRules::match('meta', ['path' => 'header:access-control-allow-origin', 'kind' => 'value', 'legacy' => '', 'compat' => '*']))->toBeNull()
+        // D-27: the X-Guest-Token exposed header (Finding 9) is absorbed only on the storefront-origin
+        // CORS cases, only on access-control-expose-headers — and nowhere else.
+        ->and(DeviationRules::match('meta:cors:storefront-origin', ['path' => 'header:access-control-expose-headers', 'kind' => 'value', 'legacy' => '', 'compat' => 'x-guest-token']))->toBe('D-27')
+        ->and(DeviationRules::match('proxy:all_offer:cors:storefront-origin', ['path' => 'header:access-control-expose-headers', 'kind' => 'value', 'legacy' => '', 'compat' => 'x-guest-token']))->toBe('D-27')
+        ->and(DeviationRules::match('meta:cors:foreign-origin', ['path' => 'header:access-control-expose-headers', 'kind' => 'value', 'legacy' => '', 'compat' => 'x-guest-token']))->toBeNull()
+        ->and(DeviationRules::match('meta:cors:storefront-origin', ['path' => 'header:access-control-allow-origin', 'kind' => 'value', 'legacy' => '', 'compat' => 'https://evil.test']))->toBeNull()
+        ->and(DeviationRules::match('meta', ['path' => 'header:access-control-expose-headers', 'kind' => 'value', 'legacy' => '', 'compat' => 'x-guest-token']))->toBeNull()
         ->and(DeviationRules::match('all_product:ar', ['path' => '$[3].product_title', 'kind' => 'value', 'legacy' => 'ساعة', 'compat' => 'Watch']))->toBe('D-13')
         ->and(DeviationRules::match('all_product', ['path' => '$[3].product_title', 'kind' => 'value', 'legacy' => 'ساعة', 'compat' => 'Watch']))->toBeNull()
         ->and(DeviationRules::match('all_product', ['path' => 'status', 'kind' => 'value', 'legacy' => 200, 'compat' => 410]))->toBeNull();

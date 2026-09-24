@@ -37,6 +37,14 @@ export default {
                     muted: 'hsl(var(--brand-muted))',
                     strong: 'hsl(var(--brand-strong))',
                 },
+                // The shell's own surface, so the rail follows the theme (item 11, 2026-09-19).
+                sidebar: {
+                    DEFAULT: 'hsl(var(--sidebar))',
+                    foreground: 'hsl(var(--sidebar-foreground))',
+                    muted: 'hsl(var(--sidebar-muted))',
+                    accent: 'hsl(var(--sidebar-accent))',
+                    border: 'hsl(var(--sidebar-border))',
+                },
             },
             spacing: {
                 sidebar: 'var(--sidebar-width)',

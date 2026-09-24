@@ -2,6 +2,7 @@ import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogClose, DialogContent } from '@/components/ui/dialog';
+import { useT } from '@/lib/i18n';
 
 /**
  * A confirmation that SAYS WHAT WILL HAPPEN (task 4.4).
@@ -43,6 +44,7 @@ export function ConfirmAction({
     trigger: React.ReactNode;
     onConfirm: () => void;
 }) {
+    const t = useT();
     const [open, setOpen] = useState(false);
 
     if (disabled) {
@@ -62,7 +64,7 @@ export function ConfirmAction({
                     <div className="flex flex-wrap justify-end gap-2">
                         <DialogClose asChild>
                             <Button type="button" variant="outline">
-                                إلغاء
+                                {t('common.cancel', 'إلغاء')}
                             </Button>
                         </DialogClose>
                         <Button

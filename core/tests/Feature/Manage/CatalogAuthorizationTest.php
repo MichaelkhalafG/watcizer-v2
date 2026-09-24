@@ -158,14 +158,13 @@ it('carries EnsureStorefrontScope on every manage route whose URL names a storef
         if (! str_contains($route->uri(), '{'.EnsureStorefrontScope::PARAMETER.'}')) {
             continue;
         }
-        // Wave 4A's storefront SETTINGS screens are admin-only and unscoped by design: creating
-        // or disabling a storefront is not a per-storefront job, and `manage-storefronts` is
-        // never granted with a scope. They are listed here on purpose rather than skipped by a
-        // prefix, so a new one has to be considered.
-        if (in_array($name, ['manage.storefronts.edit', 'manage.storefronts.update'], true)) {
-            continue;
-        }
-
+        /*
+         * NO exemptions (security audit, Finding 1, 2026-09-23). The storefront SETTINGS routes
+         * used to be excused here on the premise that "`manage-storefronts` is never granted with
+         * a scope". It is: a scoped ADMIN grant holds every ability, that one included — so a
+         * Brand-Fashion admin could rename or disable Watchizer through the two routes this list
+         * waved through. They now carry the middleware like every other `{storefront}` route.
+         */
         $middleware = array_map(fn (mixed $m): string => is_string($m) ? $m : '', $route->gatherMiddleware());
         $scoped = array_filter($middleware, fn (string $m): bool => str_starts_with($m, EnsureStorefrontScope::class.':'));
 

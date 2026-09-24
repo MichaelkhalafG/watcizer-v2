@@ -30,6 +30,30 @@ return [
     */
     'write_switch_completed' => (bool) env('CORE_WRITE_SWITCH_COMPLETED', false),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Do the pre-switch gates REFUSE, or warn? (item 5, developer 2026-09-18)
+    |--------------------------------------------------------------------------
+    |
+    | `enforce` — App\Domain\Catalog\PreSwitch refuses every creation, slug
+    | change and secondary-tree edit, because the next rebuild deletes them.
+    | `warn` — the same screens carry the same sentence as a CAVEAT and the
+    | controls work.
+    |
+    | It defaults to `warn` because the developer asked for every gated feature
+    | open and exercised before the switch: a gate nobody has opened is a gate
+    | nobody knows the shape of, and switch night is the worst time to learn.
+    | Set CORE_PRE_SWITCH_GATES=enforce to put the refusals back.
+    |
+    | This is deliberately NOT the same flag as write_switch_completed above.
+    | That one means "legacy has stopped writing"; this one means "we accept
+    | losing this work to a rebuild". ConversionGuard reads that one and keeps
+    | refusing, because converting a live product to variants while legacy can
+    | still write `products.quantity` corrupts stock — and stock is not
+    | recoverable by typing it again.
+    */
+    'pre_switch_gates' => env('CORE_PRE_SWITCH_GATES', 'warn'),
+
     // Rows per chunked legacy read and per batched clean-table upsert.
     'chunk' => (int) env('TRANSFORM_CHUNK', 500),
 
@@ -64,6 +88,19 @@ return [
     */
     'family' => [
         'watch_category_type_names' => ['watches'],
+
+        /*
+        | Any ROOT category name => the family it implies. The watch list above is the original
+        | special case and stays; this is the general form of the same rule, added 2026-09-14 when
+        | the wave-4D importer created an ELECTRONICS root and all 86 Joyroom products resolved to
+        | the default `fashion` — a declared family with its own spec block, reached by nothing.
+        |
+        | Matched on the lower-cased EN name of the node's root ancestor, so it serves the transform
+        | and the dashboard through the one resolver they share.
+        */
+        'category_type_names' => [
+            'electronics' => 'electronics',
+        ],
         'extra_attribute_prefixes' => [
             'perfume_' => 'perfume',
             'elec_' => 'electronics',
@@ -84,8 +121,8 @@ return [
         | is placed. A name matching both lists (or neither) is treated as ambiguous and is not
         | reported. Substring match on the lower-cased EN and AR names.
         */
-        'watch_sub_type_name_hints' => ['watch', 'automatic', 'chronograph', 'chronometer', 'diver', 'pilot', 'gmt', 'tourbillon', 'skeleton', 'moonphase', 'quartz', 'mechanical', 'ساعة', 'ساعات', 'اوتوماتيك', 'أوتوماتيك'],
-        'fashion_sub_type_name_hints' => ['bag', 'wallet', 'perfume', 'cap', 'belt', 'sunglass', 'scarf', 'keychain', 'cufflink', 'jewel', 'bracelet', 'shoe', 'حقيبة', 'حقائب', 'محفظة', 'عطر', 'حزام', 'أحزمة', 'نظارة', 'مجوهرات'],
+        'watch_sub_type_name_hints' => ['watch', 'automatic', 'chronograph', 'chronometer', 'diver', 'pilot', 'gmt', 'tourbillon', 'skeleton', 'moonphase', 'quartz', 'mechanical', 'ساعة', 'ساعات', 'اوتوماتيك', 'أوتوماتيك'],  // i18n-exempt: MATCHING TOKENS compared against legacy sub-type names, never rendered
+        'fashion_sub_type_name_hints' => ['bag', 'wallet', 'perfume', 'cap', 'belt', 'sunglass', 'scarf', 'keychain', 'cufflink', 'jewel', 'bracelet', 'shoe', 'حقيبة', 'حقائب', 'محفظة', 'عطر', 'حزام', 'أحزمة', 'نظارة', 'مجوهرات'],  // i18n-exempt: MATCHING TOKENS compared against legacy sub-type names, never rendered
     ],
 
     /*
@@ -134,7 +171,7 @@ return [
     'legacy_tree_root' => [
         'slug' => 'legacy-tree',
         'name_en' => 'Legacy category tree',
-        'name_ar' => 'شجرة التصنيفات القديمة',
+        'name_ar' => 'شجرة التصنيفات القديمة',  // i18n-exempt: written into storefront_category_translations — a stored NAME, catalogue content
     ],
 
 ];

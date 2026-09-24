@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Domain\Access\UserWrites;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Carbon;
@@ -89,6 +90,44 @@ class User extends Authenticatable
     public function getRememberTokenName(): string
     {
         return '';
+    }
+
+    /**
+     * ── The write guard (AGENTS §2.18, rewritten 2026-09-20, widened 2026-09-21) ────────────
+     *
+     * Core writes this legacy table only for an operation DECLARED in
+     * {@see UserWrites::REASONS} — the dashboard's two, and the customer-account operations Phase 1
+     * of the storefront migration adds. Everything else is refused HERE rather than by convention,
+     * because a rule enforced by a docblock is one the next contributor breaks without noticing,
+     * and the symptom would be a silently modified row in a table holding every customer account.
+     *
+     * `saving` covers insert and update both. `deleting` is separate and absolute: core deletes no
+     * account, ever — a person who should lose dashboard access has their ROLE revoked, which is a
+     * `core_user_roles` row and nothing to do with this table.
+     *
+     * ── It guards a CHANGE, not a call ──────────────────────────────────────────────
+     *
+     * `isDirty()` is load-bearing, not a nicety. Eloquent fires `saving` before it checks whether
+     * anything is actually dirty, and the three overrides above work precisely by leaving the model
+     * CLEAN — `setRememberToken()` is a no-op, so the `save()` the framework issues inside
+     * `updateRememberToken()` writes no columns. A guard on the call rather than the change turned
+     * that documented no-op into an exception and broke `Auth::login($user, remember: true)`, which
+     * is the one path wave 4A's overrides exist to render harmless.
+     *
+     * So the overrides stay the first line of defence — they stop the framework reaching for
+     * `remember_token` at all — and this refuses anything that would genuinely alter a row.
+     */
+    protected static function booted(): void
+    {
+        static::saving(function (User $user): void {
+            if ($user->isDirty() && ! UserWrites::permitted()) {
+                UserWrites::refuse('write');
+            }
+        });
+
+        static::deleting(function (): void {
+            UserWrites::refuse('delete from');
+        });
     }
 
     /** @return array<string, string> */

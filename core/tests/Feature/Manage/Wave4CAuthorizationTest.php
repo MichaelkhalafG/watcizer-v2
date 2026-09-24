@@ -165,12 +165,30 @@ it('404s a payments screen for a storefront outside the grant, never 403', funct
 });
 
 it('exposes NO route that writes the inventory ledger', function () {
-    // The ledger is append-only through InventoryService. This asserts the ABSENCE of a door
-    // rather than trusting a paragraph: any future `PUT /manage/inventory/ledger/{id}` or a delete
-    // would fail here before it could ship.
-    // The ONE write the inventory surface has is the adjustment, which goes through the service
-    // and appends a movement. Anything else would be a ledger edit by another name.
-    $offenders = array_values(array_diff(Routes::writeUris('manage/inventory'), ['manage/inventory/adjust']));
+    /*
+     * The ledger is APPEND-ONLY through `InventoryService`. This asserts the absence of a door
+     * rather than trusting a paragraph: a future `PUT /manage/inventory/ledger/{id}`, or a delete,
+     * would fail here before it could ship.
+     *
+     * ── It names TWO appenders now, and the rule did not loosen (6.3, 2026-09-20) ────
+     *
+     * It listed one, `adjust`, and `bulk` joined it: the same service, the same reasons, the same
+     * signed movements — one row at a time versus up to a hundred. Widening the allow-list is the
+     * whole of the change, and the protection is unchanged and stated more strictly below: what
+     * must stay impossible is a write that names a MOVEMENT, which is the shape an edit or a
+     * delete of the ledger would take. Appending is not editing.
+     */
+    $writes = Routes::writeUris('manage/inventory');
+    $appenders = ['manage/inventory/adjust', 'manage/inventory/bulk'];
 
-    expect($offenders)->toBe([], 'the ledger must have no write route, found: '.implode(', ', $offenders));
+    expect($writes)->not->toBeEmpty();
+
+    $offenders = array_values(array_diff($writes, $appenders));
+    expect($offenders)->toBe([], 'the ledger must have no write route beyond its two appenders, found: '.implode(', ', $offenders));
+
+    // …and neither appender takes an id in its path. A movement is never addressed, so it can
+    // never be the thing a request modifies.
+    foreach ($writes as $uri) {
+        expect(str_contains($uri, '{'))->toBeFalse("an inventory write takes an id: [{$uri}]");
+    }
 });

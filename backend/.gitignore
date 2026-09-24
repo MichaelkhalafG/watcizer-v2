@@ -16,3 +16,14 @@ yarn-error.log
 /.fleet
 /.idea
 /.vscode
+
+# ── The whole log directory, not just `*.log` ───────────────────────────────────────────────
+#
+# A Laravel log carries stack traces, and a stack trace carries whatever was in the request —
+# e-mail addresses, phone numbers, SQL with customer values. This repository is PUBLIC.
+#
+# `laravel.log` was already covered by name, but a rotated or renamed copy is not:
+# `storage/logs/laravel.log.before-probe` was sitting untracked and WOULD have been committed by
+# `git add -A`. Ignoring the directory closes the whole class rather than that one file.
+# Found in the wave-4D reviewer's pass, 2026-09-16.
+/storage/logs

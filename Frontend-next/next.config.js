@@ -65,6 +65,17 @@ const nextConfig = {
     // next/image rejects any hostname not listed here — keep in sync with
     // NEXT_PUBLIC_ASSET_BASE.
     remotePatterns: [
+      /*
+       * Storefront Phase 2 (2026-09-22): the API and asset host moves to a sub-domain of this
+       * site's own domain, which is what lets `CompatStorefront` resolve the shop from the request
+       * host rather than from a configured default.
+       *
+       * `next/image` REFUSES any hostname not on this list, so without this entry every optimised
+       * image 400s while the raw <img> tags keep working — a half-broken catalogue that reads as a
+       * CDN fault. `dash.watchizereg.com` stays until the rollback window has closed: reverting
+       * `.env.production` alone must be enough to put the storefront back.
+       */
+      { protocol: 'https', hostname: 'api.watchizereg.com' },
       { protocol: 'https', hostname: 'dash.watchizereg.com' },
       { protocol: 'http', hostname: '127.0.0.1', port: '8000' },
       { protocol: 'http', hostname: 'localhost', port: '8000' },

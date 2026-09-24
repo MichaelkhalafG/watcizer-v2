@@ -11,11 +11,22 @@ use App\Domain\Inventory\InsufficientStock;
 use App\Domain\Inventory\InventoryService;
 use App\Domain\Notifications\OrderMailer;
 use App\Domain\Payment\CallbackPolicy;
+use App\Domain\Payment\PaymentInitiator;
+use App\Domain\Promotions\CartLine;
+use App\Domain\Promotions\CartSnapshot;
+use App\Domain\Promotions\PromotionDiscounts;
+use App\Domain\Promotions\PromotionEngine;
+use App\Domain\Promotions\PromotionOutcome;
+use App\Domain\Promotions\PromotionSkips;
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Payment\PaymentCallbackController;
 use App\Http\Middleware\CompatGuestCart;
+use App\Support\Coerce;
 use App\Support\DeadlockRetry;
+use App\Support\LegacyJwt;
 use App\Support\Val;
 use App\Transform\Row;
+use Illuminate\Database\Query\Builder;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -43,17 +54,101 @@ class CheckoutCompatController extends Controller
         private readonly CompatServices $compat,
         private readonly InventoryService $inventory,
         private readonly OrderMailer $mailer,
+        private readonly PromotionEngine $promotions,
+        private readonly PromotionSkips $skips,
+        private readonly PaymentInitiator $initiator,
     ) {}
 
     /** POST add_order */
+    /**
+     * Roll back down to `$outer` and no further.
+     *
+     * A bare `DB::rollBack()` rolls back ONE level, and one level below our own is the caller's.
+     * This is a loop rather than a single call because the level can be more than one above
+     * `$outer` if something inside opened a nested transaction of its own.
+     */
+    private static function unwindTo(int $outer): void
+    {
+        while (DB::transactionLevel() > $outer) {
+            DB::rollBack();
+        }
+    }
+
     public function addOrder(Request $request): JsonResponse
     {
+        /*
+         * ── Unwind to the level we FOUND, not to zero (2026-10-05) ──────────────────
+         *
+         * `DB::commit()` below is INSIDE this `try`, and four things run after it: the skipped-
+         * promotion counter (a database write), the order e-mail, the Paymob leg (an outbound HTTP
+         * call) and the order-number read. A throw from any of them lands in
+         * `catch (Throwable) { DB::rollBack(); }` at a moment when this method's own transaction is
+         * already committed — so the rollback unwinds whatever transaction is open OUTSIDE this
+         * call instead.
+         *
+         * In production that is usually nothing. The test suite runs every request inside a
+         * transaction, so it is the suite's, and once it is gone everything that TEST writes
+         * afterwards is permanent — the same failure `PromotionController::preview()` was fixed
+         * for on the same day. Found there by asserting `transactionLevel() >= 1` after every
+         * test, and found here by an audit that went looking for the same shape.
+         *
+         * `$outer` makes every rollback in this method a no-op once our own transaction is gone,
+         * which is the correct behaviour on all four paths.
+         */
+        $outer = DB::transactionLevel();
+
+        /*
+         * ── The BUYER comes from the JWT, never from the body (security audit, Finding 2) ─────
+         *
+         * This used to read `user_id` from the body, reproducing the legacy app. With an
+         * `address_id` equally unowned, an anonymous caller could name ANY customer and ANY
+         * address: `billingData()` loaded that person's name, phone, street and e-mail and put
+         * them on the Paymob page whose URL was handed back to the caller; `me/orders` read the
+         * address straight back with its `guest_token`; and the `server_total` 422 disclosed the
+         * governorate of an address the caller did not own. The class docblock called the body
+         * `user_id` "mis-attribution rather than disclosure" — it was disclosure.
+         *
+         * The storefront sends `user_id` in the body only when it ALSO sends the bearer token it
+         * came from (`Checkout.jsx` derives `isLoggedIn` from that token), so a legitimate
+         * checkout is byte-for-byte unchanged. A body `user_id` with no verified token behind it
+         * — or naming somebody else — is answered exactly as `compat.auth` answers any
+         * unauthenticated account call: 401 `{"message":"Unauthenticated."}`. The storefront's response
+         * interceptor already signs the shopper out on a 401, which is the right outcome for the
+         * one legitimate way to arrive here: an expired session.
+         */
+        $userId = LegacyJwt::userId($request);
+        if ($request->filled('user_id')) {
+            $claimed = Coerce::nint($request->input('user_id'));
+            if ($userId === null || $claimed !== $userId) {
+                return response()->json(['message' => 'Unauthenticated.'], 401);
+            }
+        }
+        $isGuest = $userId === null;
+        $guestToken = $this->guestToken($request);
+
         DB::beginTransaction();
 
         try {
             $data = Validator::make($request->all(), [
                 'user_id' => 'nullable|integer',
-                'address_id' => 'required_without:address_line|nullable|integer|exists:addresses,id',
+                /*
+                 * The address must be the BUYER's: the account's own, or — for a guest — one this
+                 * guest session created. One rule rather than `exists` plus a later check, so a
+                 * foreign address and a non-existent one produce the SAME validation message:
+                 * the bare `exists` rule was itself an oracle for which address ids are real.
+                 */
+                'address_id' => ['required_without:address_line', 'nullable', 'integer',
+                    Rule::exists('addresses', 'id')->where(function (Builder $query) use ($userId, $guestToken): void {
+                        if ($userId !== null) {
+                            $query->where('user_id', $userId);
+                        } elseif ($guestToken !== null) {
+                            $query->whereNull('user_id')->where('guest_token', $guestToken);
+                        } else {
+                            // No guest session at all means no address can be this caller's.
+                            $query->whereRaw('1 = 0');
+                        }
+                    }),
+                ],
                 'address_line' => 'required_without:address_id|nullable|string|min:3|max:500',
                 'shipping_city_id' => 'required_without:address_id|nullable|integer|exists:shipping_cities,id',
                 'phone' => 'required_without:address_id|nullable|string|min:7|max:20',
@@ -74,12 +169,7 @@ class CheckoutCompatController extends Controller
                 'items.*.color_dial' => 'nullable|string',
             ])->validate();
 
-            // The buyer comes from the BODY, not the JWT — legacy behaviour, reproduced; see the
-            // class docblock of App\Compat\CompatCheckout for why and what is owed.
-            $claimed = $request->filled('user_id') ? Val::nint($data, 'user_id') : null;
-            $userId = $claimed !== null && $claimed > 0 ? $claimed : null;
-            $isGuest = $userId === null;
-            $guestToken = $this->guestToken($request);
+            // The buyer and the guest session were resolved above, before the transaction.
 
             $paymentMethod = Val::str($data, 'payment_method') === 'card' ? 'paymob' : Val::str($data, 'payment_method');
 
@@ -107,7 +197,7 @@ class CheckoutCompatController extends Controller
                 }
             }
             if ($lines === []) {
-                DB::rollBack();
+                self::unwindTo($outer);
 
                 return response()->json(['success' => false, 'message' => 'Cart is empty'], 422);
             }
@@ -115,7 +205,7 @@ class CheckoutCompatController extends Controller
             // ── authoritative server-side pricing ───────────────────────────────
             $priced = $this->compat->checkout->priceLines($lines);
             if (isset($priced['error'])) {
-                DB::rollBack();
+                self::unwindTo($outer);
 
                 return response()->json($priced['error'], 422);
             }
@@ -123,13 +213,55 @@ class CheckoutCompatController extends Controller
             $serverTotal = round($priced['total'] + $this->compat->checkout->shippingCost($addressId), 2);
             $clientTotal = round((float) Val::str($data, 'total_price_for_order'), 2);
             if (abs($clientTotal - $serverTotal) > 0.01) {
-                DB::rollBack();
+                self::unwindTo($outer);
 
                 return response()->json([
                     'success' => false,
                     'message' => 'Order total mismatch — your cart may be out of date. Please review and try again.',
                     'server_total' => $serverTotal,
                 ], 422);
+            }
+
+            /*
+             * ── promotions (wave 4D, study §3.16) ─────────────────────────────────────────────
+             *
+             * Evaluated HERE: after the authoritative pricing, because a rule reads the server's
+             * own subtotal and never the client's; and before `placeOrder()`, because a granted
+             * reward is a line of the order being written.
+             *
+             * ── The total guard is ABOVE this, and it stays there ─────────────────────────────
+             *
+             * The client's number has already been compared against the server's own UNDISCOUNTED
+             * total and accepted. A promotion is applied to the order total only after that, which
+             * keeps two properties at once:
+             *
+             *  - the anti-tampering guard is exactly what it was. A client that sends the wrong
+             *    total is still refused, on the same arithmetic, with the same message. Nothing
+             *    about the discount is negotiable by the caller — it is computed here, from rules
+             *    the client never sees.
+             *  - a money-reducing reward no longer 422s the checkout that earned it. The order
+             *    simply carries a smaller total than the cart quoted.
+             *
+             * The second point is a DISCLOSURE problem rather than a correctness one, and it is why
+             * the money family is unlocked per storefront: a frontend that cannot show the discount
+             * would quote one number and charge a smaller one. `PromotionRules::isRewardAvailableOn`
+             * refuses those rewards on any storefront whose settings have not said otherwise, so a
+             * storefront that has never heard of the setting behaves precisely as it did before.
+             *
+             * `evaluate()` writes nothing. The refusals it reports are recorded AFTER the
+             * transaction, below — a skip is a fact about an attempt that happened, and it must
+             * survive the order rolling back.
+             */
+            $promotion = $this->evaluatePromotions($priced, $addressId, $paymentMethod);
+
+            /*
+             * Clamped at zero, belt and braces. `PromotionRules::discountFor()` already caps each
+             * reward at what the cart can bear, but the order total is the number a payment
+             * provider is charged and a courier collects: it is worth one more line here to make a
+             * negative total unrepresentable rather than merely unreachable.
+             */
+            if ($promotion->discount > 0.0) {
+                $serverTotal = round(max(0.0, $serverTotal - $promotion->discount), 2);
             }
 
             $orderId = $this->compat->checkout->placeOrder(
@@ -143,7 +275,22 @@ class CheckoutCompatController extends Controller
                 $this->nullableString($request->input('guest_email')),
                 $this->nullableString($request->input('guest_phone') ?? $request->input('phone')),
                 $priced['lines'],
+                $promotion,
             );
+
+            /*
+             * ── The discount's audit trail (M1r) ──────────────────────────────────────────────
+             *
+             * A free-item reward is already explained by its own `order_items` row. A money reward
+             * is only a smaller total, so the reason has to be recorded deliberately — otherwise an
+             * order whose lines sum to 500 and whose total reads 475 has nothing to say why, and
+             * the settlement export cannot attribute the difference.
+             *
+             * INSIDE the transaction, unlike the skip counter below: a skip is a fact about an
+             * ATTEMPT and must survive the order rolling back, while this is a fact about an ORDER
+             * and must not exist if that order does not.
+             */
+            PromotionDiscounts::record($orderId, $promotion);
 
             // Clear the cart so an ordered/removed line can never inflate the NEXT order's total.
             if (! $isGuest && $cart !== null) {
@@ -156,6 +303,15 @@ class CheckoutCompatController extends Controller
             }
 
             DB::commit();
+
+            /*
+             * The promotions that MATCHED this cart and were refused — recorded after the commit,
+             * outside the transaction, for the same reason the lost-callback finding is: the
+             * attempt happened whether or not the order survived, and an admin whose gift is never
+             * delivered learns it from this counter and nothing else. The customer saw the cart
+             * they would have had, which is the requirement.
+             */
+            $this->skips->record($promotion->skipped, $this->compat->storefrontId);
 
             /*
              * -- order e-mail (prerequisite (a), 2026-09-13) --------------------------------
@@ -184,16 +340,16 @@ class CheckoutCompatController extends Controller
                 'order_number' => $this->compat->checkout->orderNumber($orderId),
             ], 200);
         } catch (InsufficientStock|InsufficientOfferStock $e) {
-            DB::rollBack();
+            self::unwindTo($outer);
             $response = CompatCheckout::insufficientStockResponse($e);
 
             return response()->json($response['body'], $response['status']);
         } catch (ValidationException $e) {
-            DB::rollBack();
+            self::unwindTo($outer);
 
             return response()->json(['success' => false, 'message' => 'Validation failed', 'errors' => $e->errors()], 422);
         } catch (Throwable $e) {
-            DB::rollBack();
+            self::unwindTo($outer);
             Log::error($e);
 
             return response()->json(['success' => false, 'message' => 'An error occurred', 'ref' => (string) Str::uuid()], 500);
@@ -227,15 +383,50 @@ class CheckoutCompatController extends Controller
                 return response()->json(['message' => 'Invalid signature'], 403);
             }
 
-            $transactionId = $request->input('id');
-            $transactionId = is_scalar($transactionId) && (string) $transactionId !== '' ? (int) $transactionId : null;
+            /*
+             * ── Every identifier through `paymobField()`, like the outcome beside them (🔴-2) ──
+             *
+             * These four were `$request->input(...)`, which reads the TOP LEVEL only. That was
+             * harmless while this handler could only be reached by the shopper's browser on a GET,
+             * where the twenty fields are flattened into the query string. Registering POST on
+             * `callback_payment` (§4A.2) changed it: the PROCESSED callback nests everything under
+             * `obj.*`, and the alias falls through to this method whenever the Paymob contract is
+             * not live yet.
+             *
+             * The signature verified — `isValidPaymobHmac()` has always read through the
+             * extractor — and then all four of these read NULL on the same payload. Measured, with
+             * a genuine signed success: the order stayed `pending` with the money taken, and a
+             * `payment_statuses` row was written naming no order, no transaction and no amount.
+             * Worse, the idempotency lookup below keys on that null transaction id, so it never
+             * matched and Paymob's retries each wrote another orphan row.
+             *
+             * `CompatCheckout::paymobField()` is the ONE extractor that reads both shapes, which
+             * is why `CallbackPolicy::outcomeFromPaymob()` was moved onto it in the same review.
+             * Half a handler reading one shape and half reading the other is how the two deliveries
+             * of one payment reach two different verdicts.
+             *
+             * It returns `''` for a field it cannot find, and `''` must stay NULL here rather than
+             * becoming `0`: a null amount means "nothing to compare" to `paymobAmountMismatch()`,
+             * where a zero would mean "the shopper paid nothing" and fail the order closed.
+             */
+            $field = static fn (string $key): ?string => ($v = CompatCheckout::paymobField($input, $key)) === '' ? null : $v;
+
+            $transactionId = $field('id');
+            $transactionId = $transactionId === null ? null : (int) $transactionId;
             if ($transactionId !== null && DB::table('payment_statuses')->where('pay_transaction_id', $transactionId)->exists()) {
                 return response()->json(['message' => 'Already processed'], 200);
             }
 
-            $merchantOrderId = $request->input('merchant_order_id');
-            $orderId = is_scalar($merchantOrderId) && (int) $merchantOrderId > 0 ? (int) $merchantOrderId : null;
-            $amountCents = is_scalar($request->input('amount_cents')) ? (int) $request->input('amount_cents') : null;
+            /*
+             * The merchant reference the wave-3 intention sent is `<order id>-<timestamp>`
+             * (`CompatCheckout::createPaymobIntention()`), so the integer prefix IS the order id
+             * and the coercion below is deliberate rather than lax. Unchanged — only WHERE the
+             * value is read from has moved.
+             */
+            $merchantOrderId = $field('merchant_order_id');
+            $orderId = $merchantOrderId !== null && (int) $merchantOrderId > 0 ? (int) $merchantOrderId : null;
+            $amountCentsRaw = $field('amount_cents');
+            $amountCents = $amountCentsRaw === null ? null : (int) $amountCentsRaw;
 
             $amountMismatch = $this->paymobAmountMismatch($orderId, $amountCents);
 
@@ -271,8 +462,8 @@ class CheckoutCompatController extends Controller
 
             // Built BEFORE the transaction, so the fallback can write it if the commit is lost.
             $attemptRow = [
-                'order_id' => is_scalar($merchantOrderId) ? (int) $merchantOrderId : null,
-                'pay_order_id' => is_scalar($request->input('order')) ? (int) $request->input('order') : null,
+                'order_id' => $merchantOrderId === null ? null : (int) $merchantOrderId,
+                'pay_order_id' => ($payOrder = $field('order')) === null ? null : (int) $payOrder,
                 'pay_transaction_id' => $transactionId,
                 'amount_cents' => $amountCents,
                 // An amount that disagrees with the order is never recorded as a success, whatever
@@ -391,15 +582,69 @@ class CheckoutCompatController extends Controller
             if ($amountMismatch !== null) {
                 Log::error('Paymob callback amount does not match the order total; order left untouched.', $amountMismatch);
 
-                return redirect(config()->string('compat.payment_return_url').'?payment_error=1');
+                return self::callbackDone($request, false);
             }
 
-            return redirect(config()->string('compat.payment_return_url'));
+            /*
+             * `true` unconditionally, and that is the LEGACY behaviour preserved rather than an
+             * oversight: this handler redirects a returning shopper to the storefront root whether
+             * the payment succeeded or was declined, and only an AMOUNT MISMATCH gets the error
+             * flag. The compat harness compares that redirect byte for byte, so the GET arm must
+             * not start distinguishing outcomes now. What changes is only the POST arm, which had
+             * no answer of its own at all.
+             */
+            return self::callbackDone($request, true);
         } catch (Throwable $e) {
             Log::error($e);
 
-            return redirect(config()->string('compat.payment_return_url').'?payment_error=1');
+            return self::callbackDone($request, false);
         }
+    }
+
+    /**
+     * How this handler answers — the SAME rule the wave-4C handler uses, not a second copy.
+     *
+     * A browser gets the redirect it has always got; a server-to-server POST gets JSON with 200,
+     * which is what stops Paymob retrying (review 🔴-2). Delegated to
+     * {@see PaymentCallbackController::done()} so the two handlers that share one URL cannot
+     * disagree about what a POST means.
+     */
+    private static function callbackDone(Request $request, bool $ok, ?string $message = null): JsonResponse|RedirectResponse
+    {
+        return PaymentCallbackController::done($request, $ok, $message);
+    }
+
+    /**
+     * Build the snapshot and ask the engine. Never throws at the checkout: a promotion that cannot
+     * be evaluated is a promotion that does not apply.
+     *
+     * @param  array{lines: list<array<string, mixed>>, total: float}  $priced
+     */
+    private function evaluatePromotions(array $priced, int $addressId, string $paymentMethod): PromotionOutcome
+    {
+        $lines = [];
+        foreach ($priced['lines'] as $line) {
+            $lines[] = new CartLine(
+                productId: Val::nint($line, 'product_id'),
+                variantId: Val::nint($line, 'variant_id'),
+                offerId: Val::nint($line, 'offer_id'),
+                quantity: Val::int($line, 'quantity'),
+                unitPrice: (float) Val::str($line, 'piece_price'),
+                typeStock: Val::nstr($line, 'type_stock'),
+            );
+        }
+
+        $snapshot = new CartSnapshot(
+            storefrontId: $this->compat->storefrontId,
+            lines: $lines,
+            // The SERVER's subtotal, from `priceLines()`. A condition that read the client's
+            // number would be a discount a shopper could grant themselves.
+            subtotal: $priced['total'],
+            shippingCost: $this->compat->checkout->shippingCost($addressId),
+            paymentMethod: $paymentMethod,
+        );
+
+        return $this->promotions->evaluate($snapshot);
     }
 
     /**
@@ -497,19 +742,68 @@ class CheckoutCompatController extends Controller
     }
 
     /**
-     * The Paymob branch. Structurally complete, locally unproven: the keys are developer-handled
-     * and are never in this repo, so with none configured the intention call throws and the
-     * caller sees the legacy "Payment could not be initiated" 422 — the same branch the legacy
-     * code takes for the same reason.
+     * The Paymob branch — the storefront's OWN contract first, the wave-3 path while none is live.
+     *
+     * ── Why initiation and verification must move together (wave 4D, task C2) ────────────────
+     *
+     * Until this branch asked the table, a customer could be sent to ONE Paymob account to pay
+     * while the callback was verified against ANOTHER account's HMAC secret — because wave 4C moved
+     * verification onto `storefront_payment_providers` and initiation was still reading
+     * `config('services.paymob.*')`. The symptom would be a signature that does not verify, with
+     * the money taken and the order left pending, which reads like a provider outage rather than a
+     * configuration split across two places.
+     *
+     * `PaymentInitiator` asks the SAME question the callback's `aliasIsLive()` asks — contract
+     * enabled AND credentials present — and answers null when it is not yet true. So inserting the
+     * credentials cuts BOTH halves over at once, with no deploy, and disabling the contract moves
+     * both back. Prerequisite (d) closes here.
+     *
+     * The keys themselves are developer-handled and never in this repo, so with nothing configured
+     * either path fails the same way: the legacy "Payment could not be initiated" 422, which is the
+     * branch the legacy code takes for the same reason.
      */
     private function paymob(Request $request, int $orderId, ?int $userId, int $addressId): JsonResponse
     {
         $orderNumber = $this->compat->checkout->orderNumber($orderId);
         $order = $this->compat->checkout->order($orderId);
         $amount = $order === null ? 0.0 : (float) Row::money($order, 'total_price_for_order');
+        $billing = $this->billingData($request, $userId, $addressId);
 
         try {
-            $result = $this->compat->checkout->createPaymobIntention($amount, $this->billingData($request, $userId, $addressId), $orderId);
+            $contracted = $this->initiator->initiate(
+                // The host serving THIS request is the host the provider must call back to.
+                $request,
+                $this->compat->storefrontId,
+                app()->getLocale(),
+                Coerce::nstr($request->input('payment_method_id')) ?? Coerce::nstr($request->input('payment_method')),
+                $orderId,
+                $orderNumber,
+                $amount,
+                $billing,
+            );
+
+            if ($contracted !== null) {
+                if ($contracted->ok && $contracted->checkoutUrl !== null) {
+                    return response()->json([
+                        'success' => true,
+                        'order_number' => $orderNumber,
+                        'redirect_url' => $contracted->checkoutUrl,
+                    ], 200);
+                }
+
+                // Refused by the provider: give the reserved stock back and cancel, exactly as the
+                // wave-3 path does. The REASON is the provider's own sentence and carries no key.
+                $this->cancelAndRelease($orderId);
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Payment session failed',
+                    'order_number' => $orderNumber,
+                    'paymob_error' => $contracted->failureReason,
+                ], 422);
+            }
+
+            $result = $this->compat->checkout->createPaymobIntention($amount, $billing, $orderId);
 
             if ($result['ok']) {
                 return response()->json(['success' => true, 'order_number' => $orderNumber, 'redirect_url' => $result['redirect_url']], 200);

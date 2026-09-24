@@ -335,12 +335,23 @@ it('shows the team the THREE reasons a node is out of the menu', function () {
         $byId[T::int($node['id'])] = $node;
     }
 
+    /*
+     * The reason is a WHOLE SENTENCE ending in the remedy since 2026-09-19 (item 6).
+     *
+     * It used to be a fragment — `معطّل`, `مستبعد من القائمة يدويًا` — printed in a badge beside
+     * another badge reading `مفعّل`, and the two read as a contradiction because nothing said
+     * which caused which. Each case is asserted on the phrase that identifies it AND on naming the
+     * control that changes it, because a reason with no remedy is what this fix replaced.
+     */
     expect($byId[$empty['id']]['in_menu'])->toBeFalse()
-        ->and(T::str($byId[$empty['id']]['in_menu_reason']))->toContain('لا يوجد منتج ظاهر')
+        ->and(T::str($byId[$empty['id']]['in_menu_reason']))->toContain('لا يوجد بداخله')
+        ->and(T::str($byId[$empty['id']]['in_menu_reason']))->toContain('أضِف')
         ->and($byId[$hidden['id']]['in_menu'])->toBeFalse()
         ->and(T::str($byId[$hidden['id']]['in_menu_reason']))->toContain('مستبعد من القائمة')
+        ->and(T::str($byId[$hidden['id']]['in_menu_reason']))->toContain('في القائمة')
         ->and($byId[$off['id']]['in_menu'])->toBeFalse()
-        ->and(T::str($byId[$off['id']]['in_menu_reason']))->toContain('معطّل');
+        ->and(T::str($byId[$off['id']]['in_menu_reason']))->toContain('موقوف')
+        ->and(T::str($byId[$off['id']]['in_menu_reason']))->toContain('مفعّل');
 
     // …and the rule's own answer is read from the SAME query the read layer uses, so the screen
     // cannot disagree with the storefront.

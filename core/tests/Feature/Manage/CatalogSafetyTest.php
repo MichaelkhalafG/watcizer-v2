@@ -59,8 +59,12 @@ it('writes NO legacy table across a full catalogue editing session', function ()
     actingAs($admin)->post('/manage/storefronts/1/products', [
         'wa_code' => '4b-safety-'.bin2hex(random_bytes(4)),
         'brand_id' => T::int(DB::table('catalog_brands')->orderBy('id')->value('id')),
-        'selling_price' => '1500.00', 'currency' => 'EGP', 'is_active' => true,
+        'selling_price' => '1500.00', 'purchase_price' => '0.00', 'currency' => 'EGP', 'is_active' => true,
         'title' => ['ar' => 'ساعة السلامة', 'en' => 'Safety watch'],
+        // Completeness gates VISIBILITY since 2026-09-18, and step 5 below publishes this product.
+        'short_description' => ['ar' => 'وصف مختصر', 'en' => 'Short description'],
+        'long_description' => ['ar' => 'وصف تفصيلي', 'en' => 'Long description'],
+        'gender_ids' => [T::int(DB::table('catalog_genders')->orderBy('id')->value('id'))],
         'specs' => ['case_size' => '40', 'case_size_unit_id' => $unitId],
         'category_ids' => [$watches], 'primary_category_id' => $watches,
         'is_visible' => true, 'is_featured' => true, 'sort_order' => 3,
@@ -74,8 +78,11 @@ it('writes NO legacy table across a full catalogue editing session', function ()
         '_complete' => 1,
         'wa_code' => T::str(DB::table('catalog_products')->where('id', $productId)->value('wa_code')),
         'brand_id' => T::int(DB::table('catalog_brands')->orderBy('id')->value('id')),
-        'selling_price' => '1600.00', 'currency' => 'EGP', 'is_active' => true,
+        'selling_price' => '1600.00', 'purchase_price' => '0.00', 'currency' => 'EGP', 'is_active' => true,
         'title' => ['ar' => 'ساعة السلامة المعدلة', 'en' => 'Safety watch edited'],
+        'short_description' => ['ar' => 'وصف مختصر', 'en' => 'Short description'],
+        'long_description' => ['ar' => 'وصف تفصيلي', 'en' => 'Long description'],
+        'gender_ids' => [T::int(DB::table('catalog_genders')->orderBy('id')->value('id'))],
         'specs' => ['case_size' => '41'],
         'category_ids' => [$watches], 'primary_category_id' => $watches,
         'is_visible' => true, 'is_featured' => false, 'sort_order' => 4, 'slug' => 'safety-watch-edited',
@@ -206,8 +213,13 @@ it('bumps the storefront cache version from the UI path, so v2 cannot serve a st
         '_complete' => 1,
         'wa_code' => T::str(DB::table('catalog_products')->where('id', $productId)->value('wa_code')),
         'brand_id' => T::int(DB::table('catalog_brands')->orderBy('id')->value('id')),
-        'selling_price' => '640.00', 'currency' => 'EGP', 'is_active' => true,
+        'selling_price' => '640.00', 'purchase_price' => '0.00', 'currency' => 'EGP', 'is_active' => true,
         'title' => ['ar' => 'عنوان جديد للكاش', 'en' => 'Cache bump title'],
+        // `_complete` REPLACES the record, so the descriptions have to be resent or the product
+        // would be saved incomplete and taken off the storefront by the visibility gate.
+        'short_description' => ['ar' => 'وصف مختصر', 'en' => 'Short description'],
+        'long_description' => ['ar' => 'وصف تفصيلي', 'en' => 'Long description'],
+        'gender_ids' => [T::int(DB::table('catalog_genders')->orderBy('id')->value('id'))],
         'is_visible' => true, 'is_featured' => false,
     ])->assertRedirect();
 
@@ -231,8 +243,13 @@ it('serves the edited product through the v2 API, not a cached copy', function (
         '_complete' => 1,
         'wa_code' => T::str(DB::table('catalog_products')->where('id', $productId)->value('wa_code')),
         'brand_id' => T::int(DB::table('catalog_brands')->orderBy('id')->value('id')),
-        'selling_price' => '4321.00', 'currency' => 'EGP', 'is_active' => true,
+        'selling_price' => '4321.00', 'purchase_price' => '0.00', 'currency' => 'EGP', 'is_active' => true,
         'title' => ['ar' => 'منتج يظهر في الواجهة', 'en' => 'Visible through v2'],
+        // Resent for the same reason as above: this product has to stay visible to be readable
+        // through the public API, and an incomplete one is taken off the storefront.
+        'short_description' => ['ar' => 'وصف مختصر', 'en' => 'Short description'],
+        'long_description' => ['ar' => 'وصف تفصيلي', 'en' => 'Long description'],
+        'gender_ids' => [T::int(DB::table('catalog_genders')->orderBy('id')->value('id'))],
         'category_ids' => [$watches], 'primary_category_id' => $watches,
         'is_visible' => true, 'is_featured' => false, 'slug' => $slug,
     ])->assertRedirect();

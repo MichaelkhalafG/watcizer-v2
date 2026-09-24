@@ -9,6 +9,7 @@ use App\Transform\Row;
 use Illuminate\Database\Query\JoinClause;
 use Illuminate\Support\Facades\DB;
 use Tests\Support\CatalogFixture;
+use Tests\Support\Gates;
 use Tests\Support\Props;
 use Tests\Support\Staff;
 use Tests\Support\T;
@@ -104,6 +105,12 @@ it('PRODUCT FORM: one placement and visibility section per storefront, each inde
 });
 
 it('PRODUCT FORM: saves both storefronts in one submit, with independent values', function () {
+    /*
+     * ADMIN since item 6 (2026-09-18). This payload sets a slug per storefront, and typing a slug
+     * became admin work — so a data-entry actor is refused here for a reason that has nothing to do
+     * with what is under test, which is that ONE submit writes BOTH storefronts independently.
+     * `SlugAndTreeGrantTest` owns the role rule; this owns the two-storefront write.
+     */
     CatalogFixture::assumeSwitched();
     $productId = CatalogFixture::product('watch');
     $watches = CatalogFixture::watchesRoot();
@@ -113,12 +120,17 @@ it('PRODUCT FORM: saves both storefronts in one submit, with independent values'
 
     $code = T::str(DB::table('catalog_products')->where('id', $productId)->value('wa_code'));
 
-    actingAs(Staff::dataEntry())->put("/manage/storefronts/1/products/{$productId}", [
+    actingAs(Staff::admin())->put("/manage/storefronts/1/products/{$productId}", [
         '_complete' => 1,
         'wa_code' => $code,
         'brand_id' => T::int(DB::table('catalog_brands')->orderBy('id')->value('id')),
-        'selling_price' => '900.00', 'currency' => 'EGP', 'is_active' => true,
+        'selling_price' => '900.00', 'purchase_price' => '0.00', 'currency' => 'EGP', 'is_active' => true,
         'title' => ['ar' => 'منتج بمتجرين', 'en' => 'Two storefront product'],
+        // `_complete` replaces the record, and storefront 1 below is being made VISIBLE — so the
+        // descriptions and the gender have to be resent or the product is demoted on save.
+        'short_description' => ['ar' => 'وصف مختصر', 'en' => 'Short description'],
+        'long_description' => ['ar' => 'وصف تفصيلي', 'en' => 'Long description'],
+        'gender_ids' => [T::int(DB::table('catalog_genders')->orderBy('id')->value('id'))],
         'storefronts' => [
             '1' => [
                 'category_ids' => [$watches], 'primary_category_id' => $watches,
@@ -216,16 +228,39 @@ it('PRODUCTS LIST: a category filter names only ITS OWN storefront’s nodes', f
     $meta = T::arr($filtered['meta'] ?? null);
     expect(T::arr($meta['filters'] ?? null)['category'] ?? null)->toBeNull('a foreign storefront node must be dropped, never passed to SQL');
 
-    // Belt and braces: no row on that page belongs to a product that is only on storefront 2.
+    /*
+     * Belt and braces: no row on that page belongs to a product that is only on storefront 2.
+     *
+     * Scoped to products the TRANSFORM created (`import_ref IS NULL`). The list deliberately shows
+     * the whole catalogue with a per-storefront chip — a product that is not on this storefront
+     * renders as "not added" rather than disappearing — and since wave 4D an IMPORTED product
+     * really can belong to one storefront only (Brand Fashion's own export goes to Brand Fashion).
+     * What this assertion is about is the transform's placement, which is still every product on
+     * every storefront.
+     */
     foreach (Props::rows($filtered) as $row) {
-        expect(DB::table('storefront_product')->where('storefront_id', 1)->where('product_id', T::int($row['id']))->exists())
+        $productId = T::int($row['id']);
+        if (DB::table('catalog_products')->where('id', $productId)->whereNotNull('import_ref')->exists()) {
+            continue;
+        }
+        expect(DB::table('storefront_product')->where('storefront_id', 1)->where('product_id', $productId)->exists())
             ->toBeTrue();
     }
 });
 
 it('CATEGORY TREE: each storefront has its own tree, and deleting in one cannot touch the other', function () {
-    $watchizerCount = DB::table('storefront_categories')->where('storefront_id', 1)->count();
-    $brandCount = DB::table('storefront_categories')->where('storefront_id', brandFashion())->count();
+    /*
+     * The MIRROR is a property of the transform's nodes, so it is measured on those.
+     *
+     * Wave 4D's importer creates category nodes where a supplier file needs them, and those belong
+     * to one storefront by design — Brand Fashion's export produced twenty nodes that Watchizer has
+     * no products for. Counting every node would make this assertion fail for a reason that is not
+     * the mirror failing, and the mirror is what it is here to protect.
+     */
+    $watchizerCount = DB::table('storefront_categories')
+        ->where('storefront_id', 1)->whereNotNull('legacy_source')->count();
+    $brandCount = DB::table('storefront_categories')
+        ->where('storefront_id', brandFashion())->whereNotNull('legacy_source')->count();
 
     expect($brandCount)->toBe($watchizerCount, 'the mirror must produce the same shape')
         ->and($brandCount)->toBeGreaterThan(5);
@@ -327,28 +362,59 @@ it('SYNC ON (pre-switch): a change to storefront 1’s tree propagates to storef
 });
 
 it('SYNC ON (pre-switch): the dashboard REFUSES tree edits on storefront 2', function () {
+    /*
+     * ADMIN since item 6, and the reason is the point of keeping this test.
+     *
+     * Two rules now guard a secondary tree, and they answer in order: `can:edit-category-tree`
+     * refuses a data-entry request at the ROUTE (403), and only then does `PreSwitch` refuse the
+     * mirrored tree (a validation error). Run as data-entry, this test would still go red — and
+     * would be proving the wrong rule, with `assertSessionHasErrors()` failing on a 403 that never
+     * reached a session. It needs an actor the role rule lets through.
+     */
+    /*
+     * This test is ABOUT the refusal, so it asks for the mode that refuses (item 5, 2026-09-18).
+     * The shipped default is `warn` — the gates carry their sentence as a caveat and the controls
+     * work. `enforce` is still supported and still has to be proved. {@see Tests\Support\Gates}.
+     */
+    Gates::enforcePreSwitch();
+
     expect(PreSwitch::mayEditTree(1))->toBeTrue()
         ->and(PreSwitch::mayEditTree(brandFashion()))->toBeFalse();
 
     $node = CatalogFixture::anyNodeOf(brandFashion());
 
     // Rename, move, reorder, flags and delete — every write path on the tree writer, refused.
-    actingAs(Staff::dataEntry())
+    actingAs(Staff::admin())
         ->put("/manage/storefronts/2/categories/{$node}", ['name' => ['ar' => 'اسم جديد', 'en' => 'New name'], 'is_active' => true, 'show_in_menu' => true])
         ->assertSessionHasErrors();
 
-    actingAs(Staff::dataEntry())
+    actingAs(Staff::admin())
         ->delete("/manage/storefronts/2/categories/{$node}")
         ->assertSessionHasErrors();
 
-    // The screen says so before the click, rather than after it.
-    $props = Props::of(actingAs(Staff::dataEntry())->get('/manage/storefronts/2/categories')->assertOk());
+    /*
+     * The screen says so before the click, rather than after it.
+     *
+     * This used to be pinned on the word «مرآة» — the message called the tree a MIRROR and explained
+     * the sync. The 2026-09-18 sweep rewrote it: an operator does not need our word for the
+     * mechanism, they need to know the tree follows Watchizer and is edited there. So what is
+     * asserted now is that the message points them at the right storefront, and — the half that
+     * would otherwise rot — that it still names none of our machinery.
+     */
+    $props = Props::of(actingAs(Staff::admin())->get('/manage/storefronts/2/categories')->assertOk());
     $tree = T::arr($props['tree_sync']);
+    $message = T::str($tree['message'] ?? '');
+
     expect($tree['blocked'])->toBeTrue()
-        ->and(T::str($tree['message'] ?? ''))->toContain('مرآة');
+        ->and($message)->toContain('واتشيزر');
+
+    foreach (['ليلة التحويل', 'إعادة البناء', 'core:', 'migrate'] as $forbidden) {
+        expect(str_contains($message, $forbidden))
+            ->toBeFalse("the tree refusal says “{$forbidden}” — operator copy names no machinery");
+    }
 
     // …and the same screen on storefront 1 is open.
-    $own = T::arr(T::arr(Props::of(actingAs(Staff::dataEntry())->get('/manage/storefronts/1/categories')->assertOk())['tree_sync']));
+    $own = T::arr(T::arr(Props::of(actingAs(Staff::admin())->get('/manage/storefronts/1/categories')->assertOk())['tree_sync']));
     expect($own['blocked'])->toBeFalse();
 });
 
@@ -400,13 +466,20 @@ it('SYNC OFF (post-switch): a node CREATED on storefront 2 is not a storefront-1
 // ── TASK 3: visible by default, and insert-only for ever after ────────────────────────────
 
 it('places every product on every active storefront, visible by default', function () {
-    $live = DB::table('catalog_products')->whereNull('deleted_at')->count();
+    // BOTH sides count transform-owned products only — see the note below.
+    $live = DB::table('catalog_products')->whereNull('deleted_at')->whereNull('import_ref')->count();
 
+    /*
+     * "Every product on every storefront" is the TRANSFORM's rule (step 18), so both sides of the
+     * comparison exclude imported products — which are placed where the developer's mapping put
+     * them, and only there.
+     */
     foreach (Storefront::activeIds() as $storefrontId) {
         $rows = DB::table('storefront_product as sp')
             ->join('catalog_products as p', 'p.id', '=', 'sp.product_id')
             ->where('sp.storefront_id', $storefrontId)
             ->whereNull('p.deleted_at')
+            ->whereNull('p.import_ref')
             ->count();
         expect($rows)->toBe($live, "storefront {$storefrontId} is missing placement rows");
     }
@@ -428,7 +501,7 @@ it('writes NO legacy table while placing a second storefront', function () {
         '_complete' => 1,
         'wa_code' => T::str(DB::table('catalog_products')->where('id', $productId)->value('wa_code')),
         'brand_id' => T::int(DB::table('catalog_brands')->orderBy('id')->value('id')),
-        'selling_price' => '500.00', 'currency' => 'EGP', 'is_active' => true,
+        'selling_price' => '500.00', 'purchase_price' => '0.00', 'currency' => 'EGP', 'is_active' => true,
         'title' => ['ar' => 'منتج', 'en' => 'Product'],
         'storefronts' => [
             '1' => ['category_ids' => [$watches], 'primary_category_id' => $watches, 'is_visible' => true, 'is_featured' => false, 'sort_order' => 0, 'slug' => null],

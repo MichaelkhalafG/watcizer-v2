@@ -101,10 +101,31 @@ it('writes only clean tables and the shared commerce ones, across every wave-3 e
 });
 
 it('lists the shared commerce tables explicitly, so the exception stays visible', function () {
-    // A reviewer should be able to read the exception, not infer it. Six shared commerce tables
-    // plus `offers`, whose `stock` column InventoryService::adjustOffer() decrements.
+    /*
+     * A reviewer should be able to read the exception, not infer it. Six shared commerce tables,
+     * plus `offers` (whose `stock` column `InventoryService::adjustOffer()` decrements), plus the
+     * two shipping tables.
+     *
+     * SHIPPING JOINED 2026-09-15, deliberately. `shipping_cities` and `shipping_city_translations`
+     * were frozen — tables core promised never to write — and that promise had to end when the
+     * dashboard became the only editor of the delivery price (the Blade `shipping_city` screen is
+     * retired at handover, and without a replacement the next courier price rise is hand-typed SQL
+     * against production). Every write goes through `App\Domain\Shipping\ShippingCities`.
+     *
+     * This list growing is not routine. Each entry is a table core promised not to touch, so a
+     * change here should arrive with the reason attached — which is why this assertion is exact
+     * rather than a `toContain`.
+     */
     expect(CoreChecksumCommand::SHARED_COMMERCE_TABLES)->toBe([
         'addresses', 'carts', 'cart_items', 'orders', 'order_items', 'payment_statuses', 'offers',
+        'shipping_cities', 'shipping_city_translations',
+        /*
+         * `users` JOINED 2026-09-21 (storefront Phase 1). Customers now register, edit their own
+         * details and change their own passwords through core, so this table moves in normal use.
+         * It could stay frozen while only `DashboardAccounts` wrote it, because a dashboard
+         * login/logout left it byte-identical; a registration does not.
+         */
+        'users',
     ]);
 
     // …and the frozen set is the rest of the 65: what core must never write, under any path.
@@ -112,6 +133,7 @@ it('lists the shared commerce tables explicitly, so the exception stays visible'
     expect(count($frozen))->toBe(count(LegacySource::TABLES) - count(CoreChecksumCommand::SHARED_COMMERCE_TABLES))
         ->and($frozen)->toContain('products')
         ->and($frozen)->toContain('product_translations')
-        ->and($frozen)->toContain('users')
+        // The catalogue stays frozen; `users` no longer is, and the two facts belong side by side.
+        ->and($frozen)->not->toContain('users')
         ->and($frozen)->not->toContain('orders');
 });

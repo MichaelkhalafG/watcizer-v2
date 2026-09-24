@@ -7,6 +7,7 @@ namespace App\Console\Commands;
 use App\Domain\Notifications\OrderMailer;
 use App\Transform\Row;
 use Illuminate\Console\Command;
+use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -97,6 +98,27 @@ final class MailDrainCommand extends Command
             ->where('channel', OrderMailer::CHANNEL)
             ->where('status', OrderMailer::STATUS_PENDING)
             ->where('available_at', '<=', now())
+            /*
+             * ── Never an order the harness created (🟠-5, 2026-09-17) ─────────────────────────
+             *
+             * A parked row is already excluded by the `pending` filter above. This is the second
+             * guard, and it covers the case that filter cannot: a row written for a harness order
+             * by a process that was NOT parking — an inline send during the run that failed and
+             * retried, a status change made afterwards from the dashboard, a row that predates the
+             * park flag. Those are `pending`, and their recipient is a real admin address.
+             *
+             * An order is "not real" if ANY of its outbox rows is parked. That is a fact the
+             * harness itself recorded, so it needs no marker on the legacy `orders` table — which
+             * core does not own and must not alter.
+             */
+            ->whereNotExists(function (Builder $parked): void {
+                $parked->from('integration_outbox as p')
+                    ->whereColumn('p.aggregate_id', 'integration_outbox.aggregate_id')
+                    ->where('p.aggregate_type', 'orders')
+                    ->where('p.channel', OrderMailer::CHANNEL)
+                    ->where('p.status', OrderMailer::STATUS_PARKED)
+                    ->selectRaw('1');
+            })
             ->orderBy('available_at')->orderBy('id')
             ->limit(max(1, (int) $this->option('limit')));
 

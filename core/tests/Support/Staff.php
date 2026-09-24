@@ -10,9 +10,15 @@ use PHPUnit\Framework\Assert;
 /**
  * Test accounts for the dashboard — grants, never users.
  *
- * `users` holds real customer accounts in every environment and this application may not fabricate
- * a row in it (App\Models\User has no factory, on purpose). So the suite does what production does:
- * it takes accounts that ALREADY exist and grants them a role. Every grant happens inside the
+ * `users` holds real customer accounts in every environment, and this helper may not fabricate a
+ * row in it (App\Models\User has no factory, on purpose). So it does what production does: it
+ * takes accounts that ALREADY exist and grants them a role.
+ *
+ * **That is a rule about STAFF, and since 2026-09-21 it is only about staff.** Storefront Phase 1
+ * gave core a door for creating CUSTOMER accounts, so `Tests\Support\Shopper` registers real ones
+ * through `CustomerAccounts::register()` — the same door the storefront uses. Nothing in this
+ * class creates anything, and nothing here should: a dashboard grant belongs on an account
+ * somebody already has, and a helper that could conjure a colleague is one that eventually does. Every grant happens inside the
  * test's transaction and rolls back, so the local database's real grants are neither read nor
  * disturbed — each helper first clears whatever grants its account has, so a test's premise
  * ("this user is data-entry and nothing else") is true regardless of what the developer granted
@@ -77,6 +83,30 @@ final class Staff
         app(Roles::class)->assign($user, $role);
 
         return $user;
+    }
+
+    /**
+     * The name `core_activity_log.user_name` captures for an account — first and last, or the
+     * email when the account carries neither.
+     *
+     * Composed here rather than asserted as "not empty", because the log CAPTURES the operator's
+     * name at write time (so the row still reads correctly after the account is deleted) and a
+     * test that only checked for a non-empty string would pass on anybody's name, including the
+     * wrong one's.
+     */
+    public static function nameOf(User $user): string
+    {
+        $first = $user->getAttribute('first_name');
+        $last = $user->getAttribute('last_name');
+        $name = trim((is_string($first) ? $first : '').' '.(is_string($last) ? $last : ''));
+
+        if ($name !== '') {
+            return $name;
+        }
+
+        $email = $user->getAttribute('email');
+
+        return is_string($email) ? $email : 'user';
     }
 
     private static function clear(User $user): void

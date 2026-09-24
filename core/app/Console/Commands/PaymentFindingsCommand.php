@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Domain\Payment\CallbackPolicy;
 use App\Support\Coerce;
+use App\Support\ManageText;
 use App\Transform\Row;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -85,7 +86,10 @@ final class PaymentFindingsCommand extends Command
         $this->line('  '.CallbackPolicy::KIND_FAILED_AFTER_PAID.'       a decline after the order was already paid');
         $this->line('  '.CallbackPolicy::KIND_AMOUNT.'            the provider named an amount the order does not agree with');
         $this->newLine();
-        $this->line('Clear one from the order screen (المطابقات المعلّقة on /manage/orders/{id}), which records who and why.');
+        // The panel is named in the OPERATOR'S language so the sentence points at the words they
+        // will actually see on the order screen.
+        $panel = ManageText::t('payments.pending_reconciliations', 'المطابقات المعلّقة');
+        $this->line('Clear one from the order screen ('.$panel.' on /manage/orders/{id}), which records who and why.');
 
         // Loud by default: a scheduled run should fail while anything is open.
         return (bool) $this->option('quiet-exit') || $open === 0 ? self::SUCCESS : self::FAILURE;

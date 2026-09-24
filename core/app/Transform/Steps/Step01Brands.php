@@ -74,7 +74,16 @@ final class Step01Brands implements Step
                 $result->read++;
             }
 
-            $result->writes->add($ctx->writer->upsert('catalog_brands', self::COLUMNS, ['id'], ['slug', 'logo_path', 'is_active', 'updated_at'], $brands));
+            /*
+             * `created_at` IS in the update list (security audit Part A, Cause 2, 2026-09-23). A
+             * rebuild runs `migrate` before this step, and a repair migration can insert into the
+             * then-empty table and take a legacy id — on the audit's scratch copy the Joyroom
+             * repair took id 1 and this upsert overwrote it as Rolex, keeping the migration's
+             * `now()`. The compat contract then diffed on `brands[0].created_at`. Production is
+             * never rebuilt again (runbook, the prohibition in the rebuild section), so this
+             * only keeps a non-production rebuild honest.
+             */
+            $result->writes->add($ctx->writer->upsert('catalog_brands', self::COLUMNS, ['id'], ['slug', 'logo_path', 'is_active', 'created_at', 'updated_at'], $brands));
             $result->writes->add($ctx->writer->upsert('catalog_brand_translations', self::TR_COLUMNS, ['brand_id', 'locale'], ['name'], $translations));
         });
     }

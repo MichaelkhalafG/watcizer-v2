@@ -73,9 +73,13 @@ const setExtra = (patch) => {
 }
 
 // Server sync for one line. The backend AddToCart OVERWRITES the line quantity to
-// the value sent, so we always pass the absolute quantity. Returns the promise so
-// callers that want an in-flight/pending UI can await it (errors are swallowed —
-// the local optimistic update already succeeded, so the sync never rejects).
+// the value sent, so we always pass the absolute quantity. Returns a promise so
+// callers that want an in-flight/pending UI can await it; it never rejects, because
+// the local optimistic update already succeeded.
+//
+// It resolves TRUE only when the server accepted the line. That boolean is what the
+// AddToCart pixel event waits on: an add the API refused is not a cart addition, and
+// counting it teaches the ad auction to chase people whose basket never changed.
 const syncLine = (item, quantity) =>
   http
     .post('add_to_cart', {
@@ -88,7 +92,24 @@ const syncLine = (item, quantity) =>
       color_band: item.color_band ?? null,
       color_dial: item.color_dial ?? null,
     })
-    .catch((err) => console.warn('Cart sync failed:', err))
+    .then(() => true)
+    .catch((err) => {
+      console.warn('Cart sync failed:', err)
+      return false
+    })
+
+// The one place AddToCart is fired. Both write paths land here — a new line from
+// addItem, and an INCREASE from updateQuantity (the drawer's "+", and the PDP when
+// the item is already in the cart, which used to fire nothing at all). `added` is
+// the delta, so the value reflects this action rather than the whole line, and a
+// DECREASE fires nothing: removing two of something is not an add.
+const trackConfirmedAdd = (synced, { id, name, unitPrice, added }) =>
+  synced.then((ok) => {
+    if (ok && added > 0) {
+      trackAddToCart({ id, name, value: parseFloat(unitPrice) * added, quantity: added })
+    }
+    return ok
+  })
 
 // Server delete for a removed line. Mirrors syncLine: fire-and-forget, errors are
 // swallowed. The line is keyed by product_id/offer_id (same as getItemKey), so the
@@ -127,6 +148,10 @@ export const cartStore = {
     type_stock = 'Market',
     color_band = null,
     color_dial = null,
+    // Optional, for analytics only — the cart itself resolves names from the catalog.
+    // Passing it makes the event readable in Meta's Events Manager, where a bare id is
+    // not something a human can check a report against.
+    name = undefined,
   }) => {
     let absoluteQty = quantity
     updateCart((cart) => {
@@ -165,22 +190,23 @@ export const cartStore = {
       { product_id, offer_id, piece_price, type_stock, color_band, color_dial },
       absoluteQty,
     )
-    // Analytics: AddToCart on both pixels. `quantity` is the amount just added
-    // (the delta), so value reflects this action, not the whole line.
-    trackAddToCart({
-      id: product_id ?? offer_id,
-      value: parseFloat(piece_price) * quantity,
-      quantity,
-    })
     // Return the sync promise so callers can await it for a pending/disabled UI.
-    return synced
+    // The AddToCart event rides on it rather than firing here: see trackConfirmedAdd.
+    return trackConfirmedAdd(synced, {
+      id: product_id ?? offer_id,
+      name,
+      unitPrice: piece_price,
+      added: quantity,
+    })
   },
 
   updateQuantity: (identifier, newQuantity) => {
     let synced = null
+    let previousQty = 0
     updateCart((cart) => {
       const items = cart.cart_item.map((item) => {
         if (getItemKey(item) === identifier) {
+          previousQty = item.quantity
           synced = { ...item, quantity: newQuantity }
           return {
             ...item,
@@ -194,7 +220,12 @@ export const cartStore = {
       return { ...cart, cart_item: items }
     })
     // backend overwrites to absolute qty; return the promise for a pending UI
-    return synced ? syncLine(synced, newQuantity) : Promise.resolve()
+    if (!synced) return Promise.resolve()
+    return trackConfirmedAdd(syncLine(synced, newQuantity), {
+      id: synced.product_id ?? synced.offer_id,
+      unitPrice: synced.piece_price,
+      added: newQuantity - previousQty,
+    })
   },
 
   removeItem: (identifier) => {

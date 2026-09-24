@@ -2,7 +2,12 @@
 
 namespace App\Http\Controllers\Manage;
 
+use App\Domain\Activity\ActivityLog;
+use App\Domain\Promotions\PromotionRules;
 use App\Models\Storefront\Storefront;
+use App\Storefront\StorefrontCache;
+use App\Support\Coerce;
+use App\Support\ManageText;
 use App\Support\Table\TableQuery;
 use App\Transform\Row;
 use Illuminate\Http\RedirectResponse;
@@ -11,6 +16,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * /manage/storefronts — the admin-only storefront list and settings form (wave 4A, scope item 7).
@@ -39,38 +45,64 @@ use Inertia\Response;
  */
 final class StorefrontController
 {
-    public function index(Request $request): Response
+    public function __construct(private readonly StorefrontCache $cache) {}
+
+    public function index(Request $request): Response|StreamedResponse
     {
         $table = TableQuery::for($request)
             ->sortable(['id', 'code', 'name', 'is_active', 'created_at'], default: 'id')
             ->searchable(['code', 'name', 'domain'])
             ->filterable(['is_active' => ['0', '1']])
-            ->perPage(default: 25, max: 100);
+            ->perPage(default: 25, max: 100)
+            // Two rows today, and still worth exporting: this is the list somebody pastes into a
+            // switch-night checklist. No payment credential is in this payload — those live on the
+            // payments screen behind MANAGE_PAYMENTS, encrypted, and never leave the database.
+            ->exportable([
+                'id' => ManageText::t('common.id', 'الرقم'),
+                // `الكود` here and `الرمز` on the screen are two different Arabic words for the same
+                // column, so they are two keys on purpose: one key cannot hold both Arabics.
+                // A STOREFRONT's code, which borrowed a product key and would have been
+                // renamed to «الكود الداخلي» by the item-4 sweep. It is neither of the two
+                // product codes.
+                'code' => ManageText::t('storefronts.shop_code', 'رمز المتجر'),
+                'name' => ManageText::t('common.name', 'الاسم'),
+                'domain' => ManageText::t('common.domain', 'النطاق'),
+                'locales' => [ManageText::t('storefronts.locales', 'اللغات'), fn (array $row): string => implode(' | ', array_map(
+                    static fn (mixed $locale): string => Coerce::str($locale),
+                    Coerce::arr($row['locales'] ?? null),
+                ))],
+                'default_locale' => ManageText::t('storefronts.edit_default_locale', 'اللغة الافتراضية'),
+                'currency' => ManageText::t('common.currency', 'العملة'),
+                'is_active' => ManageText::t('common.active', 'مفعّل'),
+                'updated_at' => ManageText::t('storefronts.last_modified', 'آخر تعديل'),
+            ], 'storefronts');
 
         $query = DB::table('storefronts')->select(['id', 'code', 'name', 'domain', 'locales', 'default_locale', 'currency', 'is_active', 'updated_at']);
 
-        return Inertia::render('Manage/Storefronts/Index', [
-            // `Row` is the app's existing narrowing helper for raw query rows (the transform uses
-            // it everywhere); a dashboard screen has no business inventing a second convention.
-            'table' => $table->paginate($query, function (object $raw): array {
-                $row = Row::cast($raw);
+        // `Row` is the app's existing narrowing helper for raw query rows (the transform uses
+        // it everywhere); a dashboard screen has no business inventing a second convention.
+        $map = function (object $raw): array {
+            $row = Row::cast($raw);
 
-                return [
-                    'id' => Row::int($row, 'id'),
-                    'code' => Row::str($row, 'code'),
-                    'name' => Row::str($row, 'name'),
-                    'domain' => Row::nstr($row, 'domain'),
-                    'locales' => self::locales(Row::nstr($row, 'locales')),
-                    'default_locale' => Row::str($row, 'default_locale'),
-                    'currency' => Row::str($row, 'currency'),
-                    'is_active' => Row::bool($row, 'is_active'),
-                    'updated_at' => Row::nstr($row, 'updated_at'),
-                ];
-            }),
-            // The finding above, on the screen. It is a fact about the deployment procedure, so it
-            // belongs where the person editing can read it.
-            'rebuild_warning' => 'جدول المتاجر محميّ من إعادة البناء (AGENTS §2.20) فلا تُفقد هذه الإعدادات. لكن قبل ليلة التحويل '
-                .'يبقى النظام القديم هو مصدر البيانات، وأي تعديل في شاشات الكتالوج يُستبدل بما فيه.',
+            return [
+                'id' => Row::int($row, 'id'),
+                'code' => Row::str($row, 'code'),
+                'name' => Row::str($row, 'name'),
+                'domain' => Row::nstr($row, 'domain'),
+                'locales' => self::locales(Row::nstr($row, 'locales')),
+                'default_locale' => Row::str($row, 'default_locale'),
+                'currency' => Row::str($row, 'currency'),
+                'is_active' => Row::bool($row, 'is_active'),
+                'updated_at' => Row::nstr($row, 'updated_at'),
+            ];
+        };
+
+        if ($table->wantsExport()) {
+            return $table->export($query, $map);
+        }
+
+        return Inertia::render('Manage/Storefronts/Index', [
+            'table' => $table->paginate($query, $map),
         ]);
     }
 
@@ -86,10 +118,16 @@ final class StorefrontController
                 'default_locale' => $storefront->default_locale,
                 'currency' => $storefront->currency,
                 'is_active' => $storefront->is_active,
+                'money_rewards' => PromotionRules::moneyRewardsEnabled($storefront->id),
             ],
+            /*
+             * `value` is the stored locale code and never moves. Only `label` is read by a person,
+             * and the screen renders it straight out of these props — which is why it has to come
+             * off the seam here rather than in the component.
+             */
             'locale_options' => [
-                ['value' => 'ar', 'label' => 'العربية'],
-                ['value' => 'en', 'label' => 'English'],
+                ['value' => 'ar', 'label' => ManageText::t('common.locale_arabic', 'العربية')],
+                ['value' => 'en', 'label' => 'English'],   // i18n-exempt: the endonym is already the English word
             ],
         ]);
     }
@@ -104,19 +142,26 @@ final class StorefrontController
             'default_locale' => ['required', 'string', 'size:2', Rule::in(['ar', 'en'])],
             'currency' => ['required', 'string', 'size:3'],
             'is_active' => ['required', 'boolean'],
+            'money_rewards' => ['required', 'boolean'],
         ]);
 
         $locales = self::stringList($request->input('locales'));
         $defaultLocale = $request->string('default_locale')->toString();
 
         if (! in_array($defaultLocale, $locales, true)) {
-            return back()->withErrors(['default_locale' => 'اللغة الافتراضية يجب أن تكون من اللغات المفعّلة.'])->withInput();
+            return back()->withErrors([
+                'default_locale' => ManageText::t('storefronts.default_locale_not_enabled', 'اللغة الافتراضية يجب أن تكون من اللغات المفعّلة.'),
+            ])->withInput();
         }
 
         // `code` is NOT editable: it is the storefront's identity in every URL, cache key and
         // compat payload (`/api/v2/{storefront}/…`), and the transform's deterministic-id guard
         // refuses a code/id disagreement. Renaming one is a migration, not a form field.
         $domain = $request->string('domain')->toString();
+
+        // Read BEFORE the fill: the model is about to hold the new values, and this is the only
+        // moment the old currency, the old domain and the old money switch still exist anywhere.
+        $before = self::logFields($storefront->id);
 
         $storefront->fill([
             'name' => $request->string('name')->toString(),
@@ -125,12 +170,141 @@ final class StorefrontController
             'default_locale' => $defaultLocale,
             'currency' => $request->string('currency')->upper()->toString(),
             'is_active' => $request->boolean('is_active'),
+            /*
+             * MERGED into whatever `settings` already holds, never replacing it. The column is a
+             * general per-storefront bag and this screen owns exactly one key in it; writing the
+             * whole object would silently drop anything another feature has put there.
+             */
+            'settings' => self::withMoneyRewards($storefront->settings, $request->boolean('money_rewards')),
         ]);
         $storefront->save();
 
+        /*
+         * ── The shop has to SEE the save (C-BUG-1, 2026-09-17) ──────────────────────────────
+         *
+         * Nothing here invalidated anything, and `ResolveStorefront` caches the whole storefront row
+         * for ten minutes. Measured end to end before this fix:
+         *
+         *   • deactivate a storefront through this screen → the database says `is_active = 0` and a
+         *     customer request immediately afterwards is still served 200. A deactivated shop kept
+         *     trading for up to ten minutes.
+         *   • rename it, change the currency EGP→USD, change the default locale → the database is
+         *     right and the shop keeps serving the old name, currency and locale.
+         *
+         * The screen said "saved" and meant it — the row was written. What it could not say was that
+         * the shop would not agree for another ten minutes, and nothing on it mentioned a delay.
+         *
+         * `forgetStorefront()` does both halves: it forgets the resolved row, which is the one with
+         * no version in its key, and bumps the version so `meta` and the rest go with it. This is the
+         * `StorefrontSettingsChanged` event `StorefrontCache::INVALIDATION_MAP` has always listed and
+         * nothing ever fired.
+         */
+        $this->cache->forgetStorefront((int) $storefront->id, (string) $storefront->code);
+
+        ActivityLog::record(
+            'storefronts',
+            $storefront->id,
+            ActivityLog::UPDATED,
+            $before,
+            self::logFields($storefront->id),
+            // The shop's NAME, which is what an operator calls it. `code` is the stable identity and
+            // is on the row already as `subject_id`'s twin; the name is the word in the sentence.
+            label: $storefront->name,
+            storefrontId: $storefront->id,
+        );
+
         return redirect()
             ->route('manage.storefronts.index')
-            ->with('status', "تم حفظ إعدادات متجر {$storefront->name}.");
+            ->with('status', ManageText::t('storefronts.saved', 'تم حفظ إعدادات متجر :name.', ['name' => $storefront->name]));
+    }
+
+    /**
+     * What a storefront is, for the log — the seven values this form can actually change.
+     *
+     * ── Why this screen is logged at all (2026-10-05) ───────────────────────────
+     *
+     * Every field on it changes what a CUSTOMER sees: `is_active` closes the shop, `currency`
+     * changes the sign in front of every price, `default_locale` changes the language the site
+     * opens in, `domain` moves it. One admin-only form, no trace of any of it — so "the shop was
+     * down on Friday morning" and "prices showed in dollars" were questions with no author.
+     *
+     * `code` is not here because the form refuses to change it, and `created_at`/`updated_at`
+     * because the log's own timestamp already says when.
+     *
+     * ── The `settings` JSON: ONE key, not the blob ──────────────────────────────
+     *
+     * `settings` is a general per-storefront bag and this screen owns exactly one key in it,
+     * `promotions.money_rewards`. The whole column is deliberately NOT snapshotted:
+     *
+     *  • it is a diff nobody can read. `ActivityLog::diff()` renders a non-scalar as JSON truncated
+     *    to 300 characters, so a grown bag would log two truncated dumps whose visible halves are
+     *    identical — a row that says something changed and cannot say what.
+     *  • it belongs to other features. A key written by a background job would surface in this
+     *    screen's log, attributed to whoever last pressed Save here, which is the log asserting
+     *    something that did not happen.
+     *  • redaction is by FIELD NAME (`ActivityLog::REDACTED_FIELDS`), and `settings` matches none of
+     *    them. A secret nested inside the bag one day would be copied into this table in the clear,
+     *    which is the one thing the log promises never to do.
+     *
+     * So the one key this form writes is logged as its own flat boolean, where it reads as what it
+     * is: a money switch that decides whether this shop shows promotion discounts at all.
+     *
+     * @return array<string, mixed>
+     */
+    private static function logFields(int $id): array
+    {
+        $raw = DB::table('storefronts')->where('id', $id)
+            ->first(['name', 'domain', 'locales', 'default_locale', 'currency', 'is_active']);
+        if (! is_object($raw)) {
+            return [];
+        }
+        $row = Row::cast($raw);
+
+        return [
+            'name' => Row::str($row, 'name'),
+            'domain' => Row::nstr($row, 'domain'),
+            // Flattened to `ar, en` rather than left as raw JSON: the list is two items and a
+            // reader should not have to parse `["ar","en"]` to see which language was dropped.
+            'locales' => implode(', ', self::locales(Row::nstr($row, 'locales'))),
+            'default_locale' => Row::str($row, 'default_locale'),
+            'currency' => Row::str($row, 'currency'),
+            'is_active' => Row::bool($row, 'is_active'),
+            'money_rewards' => PromotionRules::moneyRewardsEnabled($id),
+        ];
+    }
+
+    /**
+     * `settings` with `promotions.money_rewards` set, and everything else in it left alone.
+     *
+     * The value is written as a real boolean, because `PromotionRules::moneyRewardsEnabled()` reads
+     * it with a strict `=== true`: a storefront whose setting arrived as the STRING "true" from a
+     * hand-edit is treated as off, deliberately, and this is the writer that makes sure the screen
+     * never produces that shape.
+     *
+     * @return array<string, mixed>
+     */
+    private static function withMoneyRewards(mixed $settings, bool $enabled): array
+    {
+        /** @var array<string, mixed> $out */
+        $out = [];
+        if (is_array($settings)) {
+            foreach ($settings as $key => $value) {
+                $out[(string) $key] = $value;
+            }
+        }
+
+        $promotions = $out['promotions'] ?? [];
+        /** @var array<string, mixed> $bag */
+        $bag = [];
+        if (is_array($promotions)) {
+            foreach ($promotions as $key => $value) {
+                $bag[(string) $key] = $value;
+            }
+        }
+        $bag[PromotionRules::MONEY_REWARDS_KEY] = $enabled;
+        $out['promotions'] = $bag;
+
+        return $out;
     }
 
     /**

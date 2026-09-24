@@ -3,9 +3,12 @@
 namespace App\Http\Controllers\Manage;
 
 use App\Domain\Inventory\InventoryService;
+use App\Domain\Orders\NewOrders;
 use App\Models\Storefront\Storefront;
-use App\Support\Sql;
+use App\Models\User;
+use App\Support\ManageText;
 use Illuminate\Database\Query\Builder;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -29,10 +32,12 @@ use Inertia\Response;
  */
 final class HomeController
 {
-    public function __invoke(): Response
+    public function __construct(private readonly NewOrders $newOrders) {}
+
+    public function __invoke(Request $request): Response
     {
         return Inertia::render('Manage/Home', [
-            'stats' => $this->stats(),
+            'stats' => $this->stats($request->user()),
             'inventory' => $this->inventory(),
             'storefronts' => $this->storefronts(),
         ]);
@@ -104,35 +109,76 @@ final class HomeController
         return $out;
     }
 
-    /** @return list<array{key: string, label: string, value: int, hint: string}> */
-    private function stats(): array
+    /**
+     * The headline numbers.
+     *
+     * @param  User|null  $user  the operator, for the per-person unseen count
+     * @return list<array{key: string, label: string, value: int, hint: string}>
+     */
+    private function stats(?User $user): array
     {
         $today = now()->startOfDay();
 
+        /*
+         * `key` is the tile's identity and stays English; `label` and `hint` are the two strings a
+         * person reads, and the home screen renders both straight out of this payload — nothing in
+         * `Home.tsx` can translate them, which is why they come off the seam here.
+         */
         return [
             [
                 'key' => 'products',
-                'label' => 'المنتجات',
+                'label' => ManageText::t('products.title', 'المنتجات'),
                 'value' => DB::table('catalog_products')->whereNull('deleted_at')->count(),
-                'hint' => 'في الكتالوج النظيف',
+                'hint' => ManageText::t('home.stat_products_hint', 'في الكتالوج النظيف'),
             ],
             [
                 'key' => 'active_products',
-                'label' => 'منتجات مفعّلة',
+                'label' => ManageText::t('home.stat_active_products', 'منتجات مفعّلة'),
                 'value' => DB::table('catalog_products')->whereNull('deleted_at')->where('is_active', 1)->count(),
-                'hint' => 'is_active = 1',
+                // The exemption that used to sit here read "a column name and its value, not a
+                // sentence". True, and beside the point: it was printed under a KPI tile on the
+                // first screen the shop floor opens every morning (D-18). A column name is not a
+                // sentence and it is not an explanation either.
+                'hint' => ManageText::t('home.stat_active_products_hint', 'معروضة للبيع، غير موقوفة'),
             ],
             [
                 'key' => 'orders_today',
-                'label' => 'طلبات اليوم',
+                'label' => ManageText::t('home.stat_orders_today', 'طلبات اليوم'),
                 'value' => DB::table('orders')->where('created_at', '>=', $today)->count(),
-                'hint' => 'من الجدول المشترك (يشمل الطلبات من اللوحة القديمة)',
+                /*
+                 * This said "from the shared table (includes orders placed in the old dashboard)"
+                 * — which on a standalone database is not merely stale but FALSE: the legacy
+                 * installation is unreachable and writes nothing here, so no order in this count
+                 * can have come from it. A hint that describes a source the number cannot have is
+                 * worse than no hint, because it invites somebody to reconcile against a system
+                 * that is not contributing.
+                 */
+                'hint' => ManageText::t('home.stat_orders_today_hint', 'كل طلب اليوم منذ منتصف الليل بتوقيت المتجر'),
+            ],
+            /*
+             * NEW SINCE YOU LAST LOOKED — the same number as the sidebar badge, from the same
+             * source, deliberately.
+             *
+             * It is here as well as in the sidebar because the two answer the question at different
+             * moments: the badge catches the eye mid-task, and this is what somebody reads when
+             * they open the dashboard to decide what to do first. Two numbers that disagreed would
+             * be worse than either alone, so both come from `NewOrders::countFor()`.
+             *
+             * "Today" above and "new" here are NOT the same figure and the hint says so: an order
+             * from yesterday evening that nobody has opened is new to this operator and not
+             * today's.
+             */
+            [
+                'key' => 'orders_unseen',
+                'label' => ManageText::t('home.stat_orders_unseen', 'جديد منذ آخر زيارة'),
+                'value' => $this->newOrders->countFor($user),
+                'hint' => ManageText::t('home.stat_orders_unseen_hint', 'طلبات وصلت منذ آخر مرة فتحتَ فيها شاشة الطلبات — لك وحدك'),
             ],
             [
                 'key' => 'orders_total',
-                'label' => 'إجمالي الطلبات',
+                'label' => ManageText::t('home.stat_orders_total', 'إجمالي الطلبات'),
                 'value' => DB::table('orders')->count(),
-                'hint' => 'كل الطلبات المسجّلة',
+                'hint' => ManageText::t('home.stat_orders_total_hint', 'كل الطلبات المسجّلة'),
             ],
         ];
     }
@@ -149,12 +195,10 @@ final class HomeController
         $columns = InventoryService::columns();
 
         return [
-            'out_of_stock' => $live()->where('in_stock', 0)->count(),
-            // At or below the product's OWN threshold, and still orderable — the list a buyer acts on.
-            'low_stock' => $live()->where('in_stock', 1)
-                // Built by App\Support\Sql, the one place a column name becomes SQL text.
-                ->whereRaw(Sql::belowLowStockThreshold())
-                ->count(),
+            // Both numbers come from InventoryService, which owns the one definition the stock
+            // screen counts off too — see the note on `lowStockProducts()`.
+            'out_of_stock' => InventoryService::outOfStockProducts()->count(),
+            'low_stock' => InventoryService::lowStockProducts()->count(),
             'variants' => DB::table('catalog_product_variants')->count(),
             'threshold_products' => $live()->where('low_stock_threshold', '>', 0)->count(),
             'buckets' => [

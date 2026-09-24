@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { useT } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 
 export interface GalleryImage {
@@ -52,6 +53,7 @@ export function ImageGallery({
     onChange: (images: GalleryImage[]) => void;
     disabled?: boolean;
 }) {
+    const t = useT();
     const input = useRef<HTMLInputElement>(null);
     const [busy, setBusy] = useState(false);
     const [failure, setFailure] = useState<string | null>(null);
@@ -80,7 +82,7 @@ export function ImageGallery({
                         const message =
                             typeof payload === 'object' && payload !== null && 'message' in payload
                                 ? String((payload as { message: unknown }).message)
-                                : 'تعذّر رفع الصورة.';
+                                : t('common.upload_failed', 'تعذّر رفع الصورة.');
                         setFailure(message);
                         continue;
                     }
@@ -109,7 +111,7 @@ export function ImageGallery({
                         renditions: stored.renditions ?? {},
                     });
                 } catch {
-                    setFailure('تعذّر الاتصال بالخادم. حاول مرة أخرى.');
+                    setFailure(t('common.server_unreachable', 'تعذّر الاتصال بالخادم. حاول مرة أخرى.'));
                 }
             }
 
@@ -124,7 +126,7 @@ export function ImageGallery({
                 onChange(next);
             }
         },
-        [images, onChange],
+        [images, onChange, t],
     );
 
     const move = (index: number, delta: number) => {
@@ -153,9 +155,11 @@ export function ImageGallery({
     return (
         <Card>
             <CardHeader className="flex-row items-center justify-between gap-3">
-                <CardTitle>الصور</CardTitle>
+                <CardTitle>{t('gallery.title', 'الصور')}</CardTitle>
                 <div className="flex items-center gap-2">
-                    <span className="text-xs text-muted-foreground">{images.length} صورة</span>
+                    <span className="text-xs text-muted-foreground">
+                        {t('gallery.image_count', ':count صورة', { count: images.length })}
+                    </span>
                     <input
                         ref={input}
                         type="file"
@@ -172,7 +176,7 @@ export function ImageGallery({
                     />
                     <Button type="button" variant="outline" size="sm" disabled={disabled || busy} onClick={() => input.current?.click()} className="gap-2">
                         {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <ImageUp className="h-4 w-4" aria-hidden="true" />}
-                        {busy ? 'جارٍ الرفع…' : 'إضافة صور'}
+                        {busy ? t('common.uploading', 'جارٍ الرفع…') : t('gallery.add_images', 'إضافة صور')}
                     </Button>
                 </div>
             </CardHeader>
@@ -186,7 +190,7 @@ export function ImageGallery({
 
                 {images.length === 0 ? (
                     <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-                        لا توجد صور. أول صورة تُرفع تصبح صورة الغلاف تلقائيًا.
+                        {t('gallery.empty', 'لا توجد صور. أول صورة تُرفع تصبح صورة الغلاف تلقائيًا.')}
                     </p>
                 ) : null}
 
@@ -202,10 +206,15 @@ export function ImageGallery({
 
                             <div className="min-w-[12rem] flex-1 space-y-2">
                                 <div className="flex flex-wrap items-center gap-2">
+                                    {/* The FILE, not the storage path (D-18). `Product_image/…` is
+                                        the folder layout of a shared disk the operator has no
+                                        access to; the filename is what they quote when they say
+                                        "the third picture is wrong". The full path stays in the
+                                        `title` for whoever is matching it against the disk. */}
                                     <span className="truncate font-mono text-[11px] text-muted-foreground" dir="ltr" title={image.path}>
-                                        {image.path}
+                                        {image.path.split('/').pop()}
                                     </span>
-                                    {image.is_cover ? <Badge variant="default">الغلاف</Badge> : null}
+                                    {image.is_cover ? <Badge variant="default">{t('gallery.cover', 'الغلاف')}</Badge> : null}
                                     {image.width !== null ? (
                                         <span className="text-[11px] text-muted-foreground" dir="ltr">
                                             {image.width}×{image.height}
@@ -216,28 +225,42 @@ export function ImageGallery({
                                     ) : null}
                                 </div>
 
+                                {/* ── Labels, not placeholders (item 3 sweep, 2026-10-05) ────────
+
+                                    Same defect the variants form was reported for: a placeholder is
+                                    the text a box shows WHILE IT IS EMPTY, so on every image that
+                                    already has alt text — which is every image somebody has worked
+                                    through — the two boxes were unlabelled and indistinguishable
+                                    apart from the direction of the text in them.
+
+                                    The alt text is per locale for the same reason the title is:
+                                    fallback is off, and an Arabic page with English alt text is an
+                                    accessibility hole rather than a nicety. */}
                                 <div className="grid gap-2 sm:grid-cols-2">
-                                    {/* The alt text is per locale for the same reason the title is:
-                                        fallback is off, and an Arabic page with English alt text is
-                                        an accessibility hole rather than a nicety. */}
-                                    <Input
-                                        dir="rtl"
-                                        lang="ar"
-                                        placeholder="نص بديل (عربي)"
-                                        aria-label={`نص بديل عربي للصورة ${index + 1}`}
-                                        value={image.alt_ar}
-                                        disabled={disabled}
-                                        onChange={(event) => setAlt(index, 'ar', event.target.value)}
-                                    />
-                                    <Input
-                                        dir="ltr"
-                                        lang="en"
-                                        placeholder="Alt text (English)"
-                                        aria-label={`Alt text for image ${index + 1}`}
-                                        value={image.alt_en}
-                                        disabled={disabled}
-                                        onChange={(event) => setAlt(index, 'en', event.target.value)}
-                                    />
+                                    <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+                                        {t('gallery.alt_ar', 'نص بديل (عربي)')}
+                                        <Input
+                                            dir="rtl"
+                                            lang="ar"
+                                            aria-label={t('gallery.alt_ar_for_image', 'نص بديل عربي للصورة :number', {
+                                                number: index + 1,
+                                            })}
+                                            value={image.alt_ar}
+                                            disabled={disabled}
+                                            onChange={(event) => setAlt(index, 'ar', event.target.value)}
+                                        />
+                                    </label>
+                                    <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+                                        {t('gallery.alt_en', 'نص بديل (إنجليزي)')}
+                                        <Input
+                                            dir="ltr"
+                                            lang="en"
+                                            aria-label={t('gallery.alt_en_for_image', 'نص بديل إنجليزي للصورة :number', { number: index + 1 })}
+                                            value={image.alt_en}
+                                            disabled={disabled}
+                                            onChange={(event) => setAlt(index, 'en', event.target.value)}
+                                        />
+                                    </label>
                                 </div>
                             </div>
 
@@ -246,7 +269,7 @@ export function ImageGallery({
                                     type="button"
                                     variant="ghost"
                                     size="icon"
-                                    aria-label={`اجعل الصورة ${index + 1} غلافًا`}
+                                    aria-label={t('gallery.make_cover', 'اجعل الصورة :number غلافًا', { number: index + 1 })}
                                     disabled={disabled || image.is_cover}
                                     onClick={() => setCover(index)}
                                 >
@@ -256,7 +279,7 @@ export function ImageGallery({
                                     type="button"
                                     variant="ghost"
                                     size="icon"
-                                    aria-label={`حرّك الصورة ${index + 1} لأعلى`}
+                                    aria-label={t('gallery.move_up', 'حرّك الصورة :number لأعلى', { number: index + 1 })}
                                     disabled={disabled || index === 0}
                                     onClick={() => move(index, -1)}
                                 >
@@ -266,7 +289,7 @@ export function ImageGallery({
                                     type="button"
                                     variant="ghost"
                                     size="icon"
-                                    aria-label={`حرّك الصورة ${index + 1} لأسفل`}
+                                    aria-label={t('gallery.move_down', 'حرّك الصورة :number لأسفل', { number: index + 1 })}
                                     disabled={disabled || index === images.length - 1}
                                     onClick={() => move(index, 1)}
                                 >
@@ -277,7 +300,7 @@ export function ImageGallery({
                                     variant="ghost"
                                     size="icon"
                                     className="text-destructive"
-                                    aria-label={`أزل الصورة ${index + 1}`}
+                                    aria-label={t('gallery.remove_image', 'أزل الصورة :number', { number: index + 1 })}
                                     disabled={disabled}
                                     onClick={() => remove(index)}
                                 >
@@ -289,9 +312,17 @@ export function ImageGallery({
                 </ul>
 
                 {images.length > 0 ? (
+                    // D-18: the sentence used to end "…ويُنظَّف بأمر `media:prune` بعد مراجعة
+                    // تقريره". `media:prune` answers 403 to EVERY role including administrators
+                    // (`Role::RESTRICTED`), so the one instruction on the line was an instruction
+                    // nobody reading it could carry out. What matters to the operator is the
+                    // consequence — the picture is gone from the shop, the file is not gone from
+                    // the disk — and that somebody else clears the disk later.
                     <p className="text-xs text-muted-foreground">
-                        الترتيب هنا هو الترتيب على المتجر. إزالة صورة تحذف السجل فقط — الملف يبقى في المجلد المشترك، ويُنظَّف بأمر{' '}
-                        <code dir="ltr">media:prune</code> بعد مراجعة تقريره.
+                        {t(
+                            'gallery.order_note',
+                            'الترتيب هنا هو الترتيب على المتجر. إزالة صورة تُخرجها من المنتج فورًا، لكن الملف نفسه يبقى في المجلد المشترك ويُحذف لاحقًا في عملية تنظيف يقوم بها مسؤول النظام.',
+                        )}
                     </p>
                 ) : null}
             </CardContent>

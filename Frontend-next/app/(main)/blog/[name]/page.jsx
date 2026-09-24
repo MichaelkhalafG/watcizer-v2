@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation'
 import { getServerBlogs, findBlogByName, blogTitleEn } from '@/src/lib/serverBlogs'
 import { getImageUrl } from '@/src/utils/imageUrl'
 import BlogClient from './BlogClient'
+import { safeJsonLd } from '@/src/lib/safeJsonLd'
 
 // ISR: server-render the post (content + metadata in the initial HTML for SEO),
 // cache, revalidate hourly — matching the /blogs list.
@@ -98,7 +99,7 @@ export default async function BlogPage({ params }) {
     <>
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        dangerouslySetInnerHTML={{ __html: safeJsonLd(jsonLd) }}
       />
       <BlogClient blog={blog} />
     </>

@@ -2,6 +2,7 @@
 
 use App\Domain\Inventory\Actor;
 use App\Domain\Inventory\InventoryService;
+use App\Domain\Notifications\MailFailure;
 use App\Domain\Notifications\OrderMailer;
 use App\Domain\Orders\OrderFulfilment;
 use App\Mail\OrderStatusUpdate;
@@ -132,13 +133,16 @@ it('advances the order and answers a redirect even though the relay is dead', fu
 
     expect(T::str(DB::table('orders')->where('id', $f['order'])->value('status')))->toBe('shipped');
 
-    // …and the failure is RECORDED against the order, with the exception class in it, rather than
-    // living only in a log line nobody greps.
+    // …and the failure is RECORDED against the order — CLASSIFIED rather than quoted (🟠-2) — instead
+    // of living only in a log line nobody greps.
     $row = mailRow($f['order']);
     expect($row['status'])->toBe('pending')
         ->and($row['attempts'])->toBe(1)
         ->and($row['event'])->toBe('order.status.shipped')
-        ->and($row['last_error'])->toContain('TransportException');
+        ->and($row['error_kind'])->toBe(MailFailure::CONNECT)
+        // The screen shows the SENTENCE, and it says whose problem this is: the relay's, not this
+        // order's. That is the whole point of storing a classification instead of transport text.
+        ->and($row['error_label'])->toContain('خادم البريد');
 });
 
 it('keeps the order and its stock when the checkout e-mail cannot be sent', function () {
@@ -157,7 +161,7 @@ it('keeps the order and its stock when the checkout e-mail cannot be sent', func
     $rows = OrderMailer::forOrder($f['order']);
     expect($rows)->toHaveCount(2);
     foreach ($rows as $row) {
-        expect($row['status'])->toBe('pending')->and($row['last_error'])->toContain('TransportException');
+        expect($row['status'])->toBe('pending')->and($row['error_kind'])->toBe(MailFailure::CONNECT);
     }
 });
 
@@ -202,7 +206,7 @@ it('retries a deferred message and sends it once the relay comes back', function
         // TWO attempts: the failed inline one and the successful drained one. The count is the
         // evidence that this was a retry and not a fresh message.
         ->and($row['attempts'])->toBe(2)
-        ->and($row['last_error'])->toBeNull()
+        ->and($row['error_kind'])->toBeNull()
         ->and($row['processed_at'])->not->toBeNull();
 });
 
@@ -220,7 +224,7 @@ it('parks a message after max_attempts and refuses to keep pretending', function
     $row = mailRow($f['order']);
     expect($row['status'])->toBe('failed')
         ->and($row['attempts'])->toBe(config()->integer('notifications.send.max_attempts'))
-        ->and($row['last_error'])->toContain('TransportException');
+        ->and($row['error_kind'])->toBe(MailFailure::CONNECT);
 
     // A failed row is never retried again — that is what `failed` means, and a queue that retries
     // forever is a queue nobody reads.

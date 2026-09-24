@@ -2,18 +2,27 @@
 
 use App\Domain\Access\Role;
 use App\Http\Controllers\Compat\SitemapCompatController;
+use App\Http\Controllers\Manage\ActivityController;
 use App\Http\Controllers\Manage\Auth\LoginController;
+use App\Http\Controllers\Manage\BannerController;
+use App\Http\Controllers\Manage\BlogController;
 use App\Http\Controllers\Manage\CategoryController;
+use App\Http\Controllers\Manage\CustomerController;
 use App\Http\Controllers\Manage\HomeController;
 use App\Http\Controllers\Manage\InventoryController;
 use App\Http\Controllers\Manage\LookupController;
 use App\Http\Controllers\Manage\MediaController;
+use App\Http\Controllers\Manage\MediaPruneController;
 use App\Http\Controllers\Manage\OrderController;
 use App\Http\Controllers\Manage\PaymentSettingsController;
 use App\Http\Controllers\Manage\PlacementController;
 use App\Http\Controllers\Manage\ProductController;
 use App\Http\Controllers\Manage\ProductVariantController;
+use App\Http\Controllers\Manage\ProfileController;
+use App\Http\Controllers\Manage\PromotionController;
+use App\Http\Controllers\Manage\ShippingController;
 use App\Http\Controllers\Manage\StorefrontController;
+use App\Http\Controllers\Manage\UnitController;
 use App\Http\Controllers\Manage\UserRoleController;
 use App\Http\Middleware\EnsureDashboardAccess;
 use App\Http\Middleware\EnsureStorefrontScope;
@@ -49,14 +58,41 @@ Route::prefix('manage')->name('manage.')->group(function (): void {
     Route::middleware(['auth', EnsureDashboardAccess::class])->group(function (): void {
         Route::get('/', HomeController::class)->middleware('can:'.Role::VIEW_DASHBOARD)->name('home');
 
+        /*
+        | PROFILE -- the signed-in operator's own, and no ability beyond reaching the
+        | dashboard: the route takes no id, so there is no other person's profile to
+        | authorise. Name, e-mail and password are READ-ONLY here because `users` is a
+        | legacy table core may not write (AGENTS 3); the save touches
+        | `core_user_preferences` and nothing else.
+        */
+        Route::get('profile', [ProfileController::class, 'show'])->name('profile');
+        Route::put('profile', [ProfileController::class, 'update'])->name('profile.update');
+        /*
+        | The operator's OWN password (AGENTS §2.18, 2026-09-20). No id in the path and
+        | none accepted: this changes the requesting account and there is no other one to
+        | reach. Throttled because it takes a current password, which makes it a place to
+        | guess one.
+        */
+        Route::put('profile/password', [ProfileController::class, 'password'])
+            ->middleware('throttle:10,1')->name('profile.password');
+
         // Uploads: data-entry needs them for 4B's product forms, so the ability is theirs too.
         Route::post('media', [MediaController::class, 'store'])->middleware('can:'.Role::MANAGE_MEDIA)->name('media.store');
 
         // Storefronts: admin only (§2.7 — creating/disabling a storefront is not a data-entry job).
         Route::middleware('can:'.Role::MANAGE_STOREFRONTS)->group(function (): void {
             Route::get('storefronts', [StorefrontController::class, 'index'])->name('storefronts.index');
-            Route::get('storefronts/{storefront}/edit', [StorefrontController::class, 'edit'])->name('storefronts.edit');
-            Route::put('storefronts/{storefront}', [StorefrontController::class, 'update'])->name('storefronts.update');
+            /*
+             * SCOPED (security audit, Finding 1, 2026-09-23). These two carried `can:` alone, which
+             * asks the unscoped question — so a Brand-Fashion-scoped admin could rename or disable
+             * the live Watchizer storefront by editing `/manage/storefronts/1`. The audit's step 4
+             * reached it through the escalation; with the escalation closed it was still reachable
+             * directly.
+             */
+            Route::middleware(EnsureStorefrontScope::with(Role::MANAGE_STOREFRONTS))->group(function (): void {
+                Route::get('storefronts/{storefront}/edit', [StorefrontController::class, 'edit'])->name('storefronts.edit');
+                Route::put('storefronts/{storefront}', [StorefrontController::class, 'update'])->name('storefronts.update');
+            });
         });
 
         /*
@@ -91,14 +127,40 @@ Route::prefix('manage')->name('manage.')->group(function (): void {
             Route::get('storefronts/{storefront}/products/{product}/edit', [ProductController::class, 'edit'])->name('products.edit');
             Route::put('storefronts/{storefront}/products/{product}', [ProductController::class, 'update'])->name('products.update');
             Route::post('storefronts/{storefront}/products/bulk', [ProductController::class, 'bulk'])->name('products.bulk');
+            /*
+            | Archive ONE product, from the form that created it (W-6, 2026-09-19).
+            |
+            | There was no DELETE route for a product at all: archiving existed only as a bulk
+            | action on the list, so a junior who had just created a duplicate had to leave the
+            | form, find the row again among 7,713, tick it and use the bulk bar.
+            |
+            | `DELETE` and not `POST`, because the verb is the truth: it soft-deletes. Same
+            | ability, same storefront scope and the same writer the bulk action calls -- the
+            | route is new, the rule is not.
+            */
+            Route::delete('storefronts/{storefront}/products/{product}', [ProductController::class, 'destroy'])->name('products.destroy');
 
-            // The category tree, per storefront.
+            /*
+            | The category tree, per storefront -- and SPLIT BY BLAST RADIUS (item 6, 2026-09-18).
+            |
+            | Reading it and RENAMING a node stay on manage-catalog, which data-entry holds: that
+            | is their daily work and a rename changes a word on a page.
+            |
+            | Creating, moving, reordering and deactivating change the tree's SHAPE, and on 7,713
+            | products that moves every item underneath, the breadcrumb, the menu and the derived
+            | family. A mis-drag is one gesture and a day's work to unpick, so those four are
+            | admin-only through edit-category-tree. The SCREEN says so rather than hiding the
+            | controls -- an operator who cannot click needs to know it is a rule, not a fault.
+            */
             Route::get('storefronts/{storefront}/categories', [CategoryController::class, 'index'])->name('categories.index');
-            Route::post('storefronts/{storefront}/categories', [CategoryController::class, 'store'])->name('categories.store');
             Route::put('storefronts/{storefront}/categories/{category}', [CategoryController::class, 'update'])->name('categories.update');
-            Route::put('storefronts/{storefront}/categories/{category}/move', [CategoryController::class, 'move'])->name('categories.move');
-            Route::post('storefronts/{storefront}/categories/reorder', [CategoryController::class, 'reorder'])->name('categories.reorder');
-            Route::delete('storefronts/{storefront}/categories/{category}', [CategoryController::class, 'destroy'])->name('categories.destroy');
+
+            Route::middleware('can:'.Role::EDIT_CATEGORY_TREE)->group(function (): void {
+                Route::post('storefronts/{storefront}/categories', [CategoryController::class, 'store'])->name('categories.store');
+                Route::put('storefronts/{storefront}/categories/{category}/move', [CategoryController::class, 'move'])->name('categories.move');
+                Route::post('storefronts/{storefront}/categories/reorder', [CategoryController::class, 'reorder'])->name('categories.reorder');
+                Route::delete('storefronts/{storefront}/categories/{category}', [CategoryController::class, 'destroy'])->name('categories.destroy');
+            });
         });
 
         /*
@@ -129,6 +191,56 @@ Route::prefix('manage')->name('manage.')->group(function (): void {
         });
 
         /*
+        | BANNERS -- the home slot, per storefront (wave 4D). Under MANAGE_LEGACY_CONTENT, which is
+        | the ability that was always meant for the offers/banners/blogs section; offers became the
+        | promotions engine, so this is the first screen the ability actually opens. Scoped like
+        | placement: a banner decides what one storefront's home page SHOWS.
+        */
+        Route::middleware([
+            'can:'.Role::MANAGE_LEGACY_CONTENT,
+            EnsureStorefrontScope::with(Role::MANAGE_LEGACY_CONTENT),
+        ])->group(function (): void {
+            Route::get('storefronts/{storefront}/banners', [BannerController::class, 'index'])->name('banners.index');
+            Route::post('storefronts/{storefront}/banners', [BannerController::class, 'store'])->name('banners.store');
+            Route::put('storefronts/{storefront}/banners/{banner}', [BannerController::class, 'update'])
+                ->where('banner', '[0-9]+')->name('banners.update');
+            Route::delete('storefronts/{storefront}/banners/{banner}', [BannerController::class, 'destroy'])
+                ->where('banner', '[0-9]+')->name('banners.destroy');
+        });
+
+        /*
+        |--------------------------------------------------------------------------
+        | ARTICLES -- item 14 (developer 2026-09-18)
+        |--------------------------------------------------------------------------
+        |
+        | Under MANAGE_LEGACY_CONTENT, beside banners: they are the same job, which
+        | is the storefront's words and pictures rather than its catalogue.
+        |
+        | NO {storefront} segment, unlike banners. A banner decides what one shop's
+        | home page shows; an article is a piece of writing that belongs to the
+        | business. The same reasoning kept promotions storefront-free (2026-09-13):
+        | inventing a path segment would imply articles are partitioned per shop
+        | when they are not, and it is a much smaller change to add one later than
+        | to explain away one that was never true.
+        */
+        Route::middleware('can:'.Role::MANAGE_LEGACY_CONTENT)->group(function (): void {
+            Route::get('blogs', [BlogController::class, 'index'])->name('blogs.index');
+            Route::get('blogs/create', [BlogController::class, 'create'])->name('blogs.create');
+            Route::post('blogs', [BlogController::class, 'store'])->name('blogs.store');
+
+            // Constrained to digits so `blogs/create` cannot be swallowed by `blogs/{blog}` --
+            // the same trap `orders/export/settlement` fell into in wave 4C.
+            Route::get('blogs/{blog}/edit', [BlogController::class, 'edit'])
+                ->where('blog', '[0-9]+')->name('blogs.edit');
+            Route::put('blogs/{blog}', [BlogController::class, 'update'])
+                ->where('blog', '[0-9]+')->name('blogs.update');
+            Route::put('blogs/{blog}/publish', [BlogController::class, 'publish'])
+                ->where('blog', '[0-9]+')->name('blogs.publish');
+            Route::delete('blogs/{blog}', [BlogController::class, 'destroy'])
+                ->where('blog', '[0-9]+')->name('blogs.destroy');
+        });
+
+        /*
         |--------------------------------------------------------------------------
         | Wave 4C — the shop floor: orders, inventory, users, payments
         |--------------------------------------------------------------------------
@@ -152,6 +264,41 @@ Route::prefix('manage')->name('manage.')->group(function (): void {
             Route::get('orders', [OrderController::class, 'index'])->name('orders.index');
             Route::get('orders/{order}', [OrderController::class, 'show'])
                 ->where('order', '[0-9]+')->name('orders.show');
+
+            /*
+            | CUSTOMERS -- the people who BUY, read-only (wave 4D).
+            |
+            | Two GETs and nothing else: every table it reads is LEGACY and shared with the live
+            | storefront, so there is no write path to authorise. It sits under VIEW_ORDERS rather
+            | than an ability of its own because everything on it is already on the order screens
+            | -- it groups the same facts by person instead of by order.
+            |
+            | The key is `u:41` or `g:01001234567`, so the pattern admits a colon and refuses a
+            | slash; a customer outside the grant's scope answers 404, never 403.
+            */
+            Route::get('customers', [CustomerController::class, 'index'])->name('customers.index');
+            Route::get('customers/{customer}', [CustomerController::class, 'show'])
+                ->where('customer', '[A-Za-z0-9:@._+-]+')->name('customers.show');
+
+            /*
+            | The ONE write on this screen (piece 6, 2026-09-22): attach a guest's orders to a
+            | registered account.
+            |
+            | Behind MANAGE_USERS, not VIEW_ORDERS, and the difference is the whole authorisation
+            | decision. Everything else here is READING facts that are already on the order screens,
+            | which is why the screen sits under VIEW_ORDERS at all. This is not a read: it decides
+            | that two identities are ONE PERSON, and a wrong decision hands a stranger somebody's
+            | delivery addresses, telephone number and purchase history. Data-entry holds
+            | VIEW_ORDERS; they must not hold this.
+            |
+            | The guest grouping is a HEURISTIC the screen labels as one — orders sharing a
+            | telephone, or an address, or a cart token. A human confirming it is exactly what this
+            | path is for.
+            */
+            Route::post('customers/{customer}/attach', [CustomerController::class, 'attach'])
+                ->where('customer', '[A-Za-z0-9:@._+-]+')
+                ->middleware('can:'.Role::MANAGE_USERS)
+                ->name('customers.attach');
         });
 
         Route::put('orders/{order}/status', [OrderController::class, 'advance'])
@@ -186,19 +333,51 @@ Route::prefix('manage')->name('manage.')->group(function (): void {
             Route::get('inventory/ledger', [InventoryController::class, 'ledger'])->name('inventory.ledger');
             Route::get('inventory/reconciliation', [InventoryController::class, 'reconciliation'])->name('inventory.reconciliation');
             Route::post('inventory/adjust', [InventoryController::class, 'adjust'])->name('inventory.adjust');
+            /*
+            | Bulk stock work on the SELECTED rows (6.3, 2026-09-20). Throttled and capped at
+            | 100 ids in the controller: this writes the ledger, where every movement is
+            | permanent and signed, so the blast radius is bounded on purpose. There is
+            | deliberately no "apply to all matching" here, unlike the products list.
+            */
+            Route::post('inventory/bulk', [InventoryController::class, 'bulk'])
+                ->middleware('throttle:30,1')->name('inventory.bulk');
         });
 
         /*
-        | USERS AND ROLES -- admin only, promised in 4A. Grants ONLY: this screen never
-        | creates, edits or deletes a row in the shared users table (AGENTS 3), it
-        | writes core_user_roles. The artisan command stays the bootstrap path, for
-        | the case where nobody has a grant yet and therefore nobody can open this.
+        | USERS AND ROLES -- admin only, promised in 4A.
+        |
+        | Grants, AND account creation as of 2026-09-20 (AGENTS 2.18). Until then this
+        | screen never touched the shared users table and told the operator accounts were
+        | made "on the storefront or in the old dashboard" -- a workflow with nowhere to
+        | happen once the legacy host was unreachable, which meant nobody could be
+        | onboarded at all. The create route writes through DashboardAccounts, the single
+        | permitted door; it still never EDITS or DELETES an account.
+        |
+        | The artisan command stays the bootstrap path, for the case where nobody has a
+        | grant yet and therefore nobody can open this.
         */
         Route::middleware('can:'.Role::MANAGE_USERS)->group(function (): void {
             Route::get('users', [UserRoleController::class, 'index'])->name('users.index');
+            Route::post('users', [UserRoleController::class, 'storeAccount'])
+                ->middleware('throttle:20,1')->name('users.store');
             Route::post('users/grants', [UserRoleController::class, 'store'])->name('users.grants.store');
             Route::delete('users/grants/{grant}', [UserRoleController::class, 'destroy'])
                 ->where('grant', '[0-9]+')->name('users.grants.destroy');
+        });
+
+        /*
+        | MEDIA CLEANUP -- its OWN ability, held by nobody until granted (review, 2026-09-15).
+        |
+        | `manage-settings` was the wrong gate: every administrator holds it, and this button
+        | removes files the LIVE legacy storefront is still serving, with no undo. `MANAGE_MEDIA_PRUNE`
+        | is in `Role::RESTRICTED`, so `Gate::before` does not hand it to admins either -- the screen
+        | and both routes are absent and refused for everyone until:
+        |
+        |     php artisan manage:role grant <email> media_pruner
+        */
+        Route::middleware('can:'.Role::MANAGE_MEDIA_PRUNE)->group(function (): void {
+            Route::get('media/prune', [MediaPruneController::class, 'index'])->name('media.prune');
+            Route::delete('media/prune', [MediaPruneController::class, 'destroy'])->name('media.prune.destroy');
         });
 
         /*
@@ -228,6 +407,48 @@ Route::prefix('manage')->name('manage.')->group(function (): void {
             Route::post('storefronts/{storefront}/payments/order', [PaymentSettingsController::class, 'reorder'])->name('payments.order');
         });
 
+        /*
+        |--------------------------------------------------------------------------
+        | PROMOTIONS -- admin only (study §3.16.6), and NOT per storefront in the URL
+        |--------------------------------------------------------------------------
+        |
+        | A rule is authored ONCE and the operator ticks which storefronts it applies to, exactly
+        | like product placement (developer decision 2026-09-13). So there is no `{storefront}`
+        | segment: partitioning the screen by storefront would mean authoring the same promotion
+        | twice, which is the shape this model was chosen to avoid.
+        |
+        | `manage-promotions` is admin-only and absent from data-entry's abilities: a promotion
+        | moves money and gives away stock, the same reasoning that keeps `cancel-orders` from them.
+        */
+        Route::middleware(['can:'.Role::MANAGE_PROMOTIONS])->group(function (): void {
+            Route::get('promotions', [PromotionController::class, 'index'])->name('promotions.index');
+            Route::get('promotions/create', [PromotionController::class, 'create'])->name('promotions.create');
+            // Search and preview come BEFORE `{promotion}` so neither is swallowed by the
+            // numeric-id route; both are POST/GET reads that write nothing permanent.
+            Route::get('promotions/products', [PromotionController::class, 'search'])->name('promotions.products');
+            Route::post('promotions/preview', [PromotionController::class, 'preview'])->name('promotions.preview');
+            Route::post('promotions', [PromotionController::class, 'store'])->name('promotions.store');
+            Route::get('promotions/{promotion}', [PromotionController::class, 'edit'])
+                ->where('promotion', '[0-9]+')->name('promotions.edit');
+            Route::put('promotions/{promotion}', [PromotionController::class, 'update'])
+                ->where('promotion', '[0-9]+')->name('promotions.update');
+            Route::delete('promotions/{promotion}', [PromotionController::class, 'destroy'])
+                ->where('promotion', '[0-9]+')->name('promotions.destroy');
+        });
+
+        /*
+         * THE ACTIVITY LOG (wave 4D) — read-only, and administrator-only.
+         *
+         * One GET. There is deliberately no edit and no delete, not even for an admin: a log
+         * somebody can change answers nothing, and the absence of the route is the guarantee.
+         *
+         * Admin-only because it shows what every named person did — a management view, not a
+         * working one.
+         */
+        Route::middleware('can:'.Role::MANAGE_USERS)->group(function (): void {
+            Route::get('activity', [ActivityController::class, 'index'])->name('activity.index');
+        });
+
         // Brands and the lookup lists. Catalogue-wide, not per storefront: a colour is a
         // colour on every storefront (D3, the shared catalogue).
         Route::middleware('can:'.Role::MANAGE_CATALOG)->group(function (): void {
@@ -235,6 +456,36 @@ Route::prefix('manage')->name('manage.')->group(function (): void {
             Route::post('lookups/{list}', [LookupController::class, 'store'])->name('lookups.store');
             Route::put('lookups/{list}/{id}', [LookupController::class, 'update'])->name('lookups.update');
             Route::delete('lookups/{list}/{id}', [LookupController::class, 'destroy'])->name('lookups.destroy');
+
+            /*
+             * The units cleanup screen (wave 4D, task C3). Its own routes rather than a mode of the
+             * lookup screen: a unit is not edited here, it is MERGED into another one and then
+             * retired, and that is a different verb with a different refusal.
+             */
+            /*
+             * SHIPPING (wave 4D — the handover blocker).
+             *
+             * The LIST is inside the catalogue group so data-entry reach it: the delivery price is
+             * something they quote on the telephone. Every WRITE is wrapped again in
+             * `can:manage-shipping` below, because the price is money — the same split the orders
+             * export settled (screen for both roles, act for administrators).
+             */
+            Route::get('shipping', [ShippingController::class, 'index'])->name('shipping.index');
+
+            Route::middleware('can:'.Role::MANAGE_SHIPPING)->group(function (): void {
+                Route::post('shipping', [ShippingController::class, 'store'])->name('shipping.store');
+                Route::put('shipping/{city}', [ShippingController::class, 'update'])
+                    ->where('city', '[0-9]+')->name('shipping.update');
+                Route::delete('shipping/{city}', [ShippingController::class, 'destroy'])
+                    ->where('city', '[0-9]+')->name('shipping.destroy');
+            });
+
+            Route::get('units', [UnitController::class, 'index'])->name('units.index');
+            Route::post('units/merge', [UnitController::class, 'merge'])->name('units.merge');
+            Route::post('units/{unit}/retire', [UnitController::class, 'retire'])
+                ->where('unit', '[0-9]+')->name('units.retire');
+            Route::post('units/{unit}/restore', [UnitController::class, 'restore'])
+                ->where('unit', '[0-9]+')->name('units.restore');
         });
     });
 });

@@ -1,6 +1,8 @@
 <?php
 
 use App\Console\Commands\CoreChecksumCommand;
+use App\Domain\Access\UserWriteGuard;
+use App\Domain\Access\UserWrites;
 use App\Models\User;
 use App\Transform\LegacySource;
 use Dotenv\Dotenv;
@@ -35,7 +37,10 @@ use function Pest\Laravel\post;
  */
 function staffWithPassword(User $user, string $password = 'wave4a-test-password'): User
 {
-    DB::table('users')->where('id', $user->id)->update(['password' => Hash::make($password)]);
+    // A hash the LEGACY app would have written. Core has no door for this and should not:
+    // see UserWriteGuard::fixture().
+    UserWriteGuard::fixture(fn () => DB::table('users')->where('id', $user->id)
+        ->update(['password' => Hash::make($password)]));
 
     return $user->refresh();
 }
@@ -50,7 +55,9 @@ it('signs a staff account in with its EXISTING legacy password hash', function (
     // The point of the shared table: the hash the legacy app wrote is the hash core verifies.
     // `$2y$` bcrypt at cost 10 — exactly what production holds.
     $user = Staff::admin();
-    DB::table('users')->where('id', $user->id)->update(['password' => '$2y$10$'.substr(password_hash('legacy-secret', PASSWORD_BCRYPT, ['cost' => 10]), 7)]);
+    UserWriteGuard::fixture(fn () => DB::table('users')->where('id', $user->id)->update([
+        'password' => '$2y$10$'.substr(password_hash('legacy-secret', PASSWORD_BCRYPT, ['cost' => 10]), 7),
+    ]));
 
     post('/manage/login', ['email' => $user->email, 'password' => 'legacy-secret'])
         ->assertRedirect('/manage');
@@ -79,7 +86,8 @@ it('leaves an EXISTING remember_token untouched through login AND logout', funct
     // the whole session leaves it alone.
     $user = staffWithPassword(Staff::admin());
     $token = 'legacy-remember-token-'.str_repeat('a', 40);
-    DB::table('users')->where('id', $user->id)->update(['remember_token' => $token, 'last_login_at' => null]);
+    UserWriteGuard::fixture(fn () => DB::table('users')->where('id', $user->id)
+        ->update(['remember_token' => $token, 'last_login_at' => null]));
 
     $legacyBefore = CoreChecksumCommand::compute(LegacySource::TABLES)['digest'];
 
@@ -102,7 +110,8 @@ it('writes nothing even if someone later asks for remember-me explicitly', funct
     // overrides make both branches unreachable, so a future caller cannot reopen the hole by
     // adding a checkbox.
     $user = Staff::admin();
-    DB::table('users')->where('id', $user->id)->update(['remember_token' => null]);
+    UserWriteGuard::fixture(fn () => DB::table('users')->where('id', $user->id)
+        ->update(['remember_token' => null]));
     // Re-read: a model still holding a stale non-null token in memory would make the pre-fix
     // framework skip the cycling branch, and this test would pass for the wrong reason — the very
     // shape of mistake 🔴-1 was. Verified by hand: without the overrides this writes a 60-character
@@ -118,7 +127,8 @@ it('writes nothing even if someone later asks for remember-me explicitly', funct
 
 it('reports no remember token to the framework, which is what makes both doors shut', function () {
     $user = Staff::admin();
-    DB::table('users')->where('id', $user->id)->update(['remember_token' => 'whatever-is-in-there']);
+    UserWriteGuard::fixture(fn () => DB::table('users')->where('id', $user->id)
+        ->update(['remember_token' => 'whatever-is-in-there']));
     $fresh = User::query()->findOrFail($user->id);
 
     expect($fresh->getRememberToken())->toBeNull()
@@ -130,7 +140,8 @@ it('reports no remember token to the framework, which is what makes both doors s
 it('keeps the 65-table legacy digest identical across a full dashboard session', function () {
     // THE acceptance test for wave 4A: sign in, work, sign out — the legacy side does not move.
     $user = staffWithPassword(Staff::admin());
-    DB::table('users')->where('id', $user->id)->update(['remember_token' => 'held-token-'.str_repeat('b', 30)]);
+    UserWriteGuard::fixture(fn () => DB::table('users')->where('id', $user->id)
+        ->update(['remember_token' => 'held-token-'.str_repeat('b', 30)]));
 
     $legacyBefore = CoreChecksumCommand::compute(LegacySource::TABLES)['digest'];
 
@@ -143,25 +154,63 @@ it('keeps the 65-table legacy digest identical across a full dashboard session',
     expect(CoreChecksumCommand::compute(LegacySource::TABLES)['digest'])->toBe($legacyBefore);
 });
 
-it('has no route that could reach the password broker, which WOULD write users.password', function () {
-    // `password_reset_tokens` exists in the shared schema (the legacy app owns it), so the broker
-    // is one route away from `UPDATE users SET password = …`. Core publishes no such route, and
-    // this asserts it rather than trusting it.
+it('has no route that could reach the password BROKER, which writes users.password unguarded', function () {
+    /*
+     * `password_reset_tokens` exists in the shared schema (the legacy app owns it), so Laravel's
+     * broker is one published route away from `UPDATE users SET password = …` with no guard in
+     * front of it. Core publishes no such route.
+     *
+     * ── It names the broker's routes, not the word "password" (2026-09-20) ──────────
+     *
+     * This refused any route name CONTAINING `password`, which was a fine proxy while core wrote
+     * nothing to `users`. AGENTS §2.18 now permits an operator to change their own password through
+     * `DashboardAccounts`, so `manage.profile.password` exists — a deliberate, guarded route — and
+     * the test failed on the feature it should have been distinguishing from the hazard.
+     *
+     * The hazard was never "a route with password in its name". It is the BROKER: `password.request`,
+     * `password.email`, `password.reset`, `password.update`, `password.confirm`, plus the e-mail
+     * verification routes that write `email_verified_at`. Those are Laravel's, they are published by
+     * `Auth::routes()` or a starter kit, and none of them asks the current password or goes through
+     * the single door. They are named here exactly.
+     */
+    $broker = [
+        'password.request', 'password.email', 'password.reset', 'password.update',
+        'password.confirm', 'password.confirmation',
+        'verification.notice', 'verification.verify', 'verification.send',
+    ];
+
     $names = collect(Illuminate\Support\Facades\Route::getRoutes()->getRoutes())
         ->map(fn (Route $route): string => (string) $route->getName())
         ->filter(fn (string $name): bool => $name !== '')
         ->all();
 
-    foreach ($names as $name) {
-        expect($name)->not->toContain('password')
-            ->and($name)->not->toContain('verification');
-    }
+    expect(array_values(array_intersect($names, $broker)))->toBe([]);
+
+    /*
+     * And the one password route core DOES publish is the guarded one, under `/manage`, with no id
+     * in its path — so it can only ever change the requesting account's own credential.
+     */
+    $ours = array_values(array_filter($names, fn (string $n): bool => str_contains($n, 'password')));
+    expect($ours)->toBe(['manage.profile.password']);
 });
 
-it('cannot verify an e-mail either, because the model does not implement the contract', function () {
-    // `markEmailAsVerified()` writes `users.email_verified_at`. The interface is what wires it into
-    // the framework's verification flow; without it there is nothing to call.
-    expect(class_implements(User::class))->not->toContain(MustVerifyEmail::class);
+it('verifies an e-mail through the DOOR, never through the framework contract', function () {
+    /*
+     * This used to read "cannot verify an e-mail either" and that is no longer the claim.
+     *
+     * Storefront Phase 1 piece 4 gave core its own verification route, because a customer who
+     * registers here has to be able to confirm their address here. What has NOT changed is how the
+     * column is written: `CustomerAccounts::markVerified()` opens `UserWrites` with its own
+     * `customer.verified` reason, and the framework's flow stays unwired.
+     *
+     * The assertion is the same one, and it is still the right one. `MustVerifyEmail` is what hooks
+     * a model into `markEmailAsVerified()`, `sendEmailVerificationNotification()` and the `verified`
+     * middleware — three more writers of `users.email_verified_at` that go nowhere near the door.
+     * Implementing the interface would publish all three for the convenience of one method core has
+     * already written eight lines of.
+     */
+    expect(class_implements(User::class))->not->toContain(MustVerifyEmail::class)
+        ->and(UserWrites::REASONS)->toHaveKey('customer.verified');
 });
 
 it('keeps the bcrypt cost PRODUCTION will use equal to the production hash cost', function () {
@@ -220,9 +269,21 @@ it('does not let .env.example reintroduce a different cost', function () {
 });
 
 it('has no call site for logoutOtherDevices — the one remaining framework write to users.password', function () {
-    // 🟡-C. `SessionGuard::logoutOtherDevices()` re-hashes the password to invalidate other
-    // sessions, i.e. it UPDATEs a legacy table (study §3.11.14). Nothing in core calls it, and this
-    // asserts that stays true: a grep over the source, excluding this file's own mention of it.
+    /*
+     * 🟡-C. `SessionGuard::logoutOtherDevices()` re-hashes the password to invalidate other
+     * sessions, i.e. it UPDATEs a legacy table (study §3.11.14). Nothing in core calls it, and this
+     * asserts that stays true.
+     *
+     * ── It looks for a CALL, not for the word (2026-09-20) ──────────────────────────
+     *
+     * This matched the bare identifier anywhere in the tree, so the first docblock that explained
+     * *why* core does not call it — in `DashboardAccounts`, which had to say what a password change
+     * deliberately does NOT do — failed the test by documenting the rule it was keeping.
+     *
+     * A prose mention is not a call site, and a codebase that cannot name the thing it is avoiding
+     * has to explain its own decisions in riddles. `->logoutOtherDevices(` is the shape that would
+     * actually write, and it is still refused everywhere.
+     */
     $offenders = [];
     foreach (['app', 'config', 'database', 'routes', 'bootstrap'] as $directory) {
         $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator(base_path($directory)));
@@ -231,7 +292,7 @@ it('has no call site for logoutOtherDevices — the one remaining framework writ
             if ($file->getExtension() !== 'php') {
                 continue;
             }
-            if (str_contains((string) file_get_contents($file->getPathname()), 'logoutOtherDevices')) {
+            if (str_contains((string) file_get_contents($file->getPathname()), '->logoutOtherDevices(')) {
                 $offenders[] = $file->getPathname();
             }
         }
@@ -266,9 +327,18 @@ it('throttles repeated failures for one address', function () {
         post('/manage/login', ['email' => $user->email, 'password' => 'wrong'])->assertSessionHasErrors('email');
     }
 
-    // The sixth attempt is refused by the limiter rather than by the password check.
+    /*
+     * The sixth attempt is refused by the limiter rather than by the password check.
+     *
+     * Asserted against a fragment of the TRANSLATED message since item 16 (2026-09-18). It used to
+     * look for the English "Too many login attempts", which passed only because `lang/ar/auth.php`
+     * did not exist and Laravel fell through to its own copy — so this test was quietly pinning the
+     * defect that item fixed: an Arabic operator being refused in English.
+     *
+     * A fragment rather than the whole sentence, because the message carries a live countdown.
+     */
     post('/manage/login', ['email' => $user->email, 'password' => 'wrong'])
-        ->assertInvalid(['email' => 'Too many login attempts']);
+        ->assertInvalid(['email' => 'محاولات دخول كثيرة']);
 });
 
 it('validates the form before it touches the database', function () {

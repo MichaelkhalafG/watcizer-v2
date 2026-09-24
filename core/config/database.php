@@ -163,6 +163,23 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | The mysqldump binary `core:backup` runs
+    |--------------------------------------------------------------------------
+    |
+    | `CoreBackupCommand` already read `config('database.mysqldump')` with a
+    | `'mysqldump'` fallback, but the key was never declared — so on a host where
+    | the binary is not on the cron user's PATH there was no way to point at it
+    | without editing the command. On shared hosting that is the normal case, and
+    | the failure is the worst shape available: the nightly schedule keeps running,
+    | `core:backup` fails inside it, and the only signal is that no dump appears.
+    |
+    | `which mysqldump` on the host, and if it answers with a path, set
+    | DB_DUMP_BINARY to it. `backup:verify` is what proves the answer was right.
+    */
+    'mysqldump' => env('DB_DUMP_BINARY', 'mysqldump'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Redis Databases
     |--------------------------------------------------------------------------
     |

@@ -23,6 +23,7 @@ import useCart, { getGuestToken } from '../../Hooks/useCart'
 import { getImageUrl, handleImgError, PLACEHOLDER_IMG } from '../../utils/imageUrl'
 import TrustSignals from '../../Components/Merchandising/TrustSignals'
 import { PAYMOB_ENABLED } from '../../lib/env'
+import { trackInitiateCheckout } from '../../scripts/pixels'
 import { useOrderConfirmStore } from '../../Store/orderConfirmStore'
 import './Checkout.css'
 
@@ -266,6 +267,38 @@ function Checkout() {
     return s
   }, [items, products, offers])
 
+  /*
+   * ── Analytics: InitiateCheckout ─────────────────────────────────────────
+   *
+   * Once per visit to this page with something in the cart. The ref is what makes it once: the
+   * cart is a live store, so this component re-renders on every quantity change, and an
+   * unguarded effect would report a fresh checkout each time someone adjusts a line.
+   *
+   * The value is the MERCHANDISE subtotal, not `total`. Two reasons, and the second is the one
+   * that was briefly wrong here: shipping is not known until a governorate is picked, and it is
+   * not our revenue in any case — the courier's share is not a conversion value.
+   *
+   * `Purchase` reports the SAME figure, for the same reason. This comment used to claim that as an
+   * accomplished fact while `OrderConfirmation` was still sending `total`, so the two events
+   * really did disagree by the shipping cost on every order (review 🟠 minor). The subtotal is now
+   * handed to the confirmation page explicitly, below, rather than re-derived there — two places
+   * subtracting shipping is two places to drift.
+   */
+  const initiateFired = useRef(false)
+  useEffect(() => {
+    if (initiateFired.current) return
+    if (items.length === 0 || subtotal <= 0) return
+    initiateFired.current = true
+    trackInitiateCheckout({
+      value: subtotal,
+      contents: items.map((i) => ({
+        id: i.product_id ?? i.offer_id ?? null,
+        quantity: i.quantity,
+        price: Number(i.piece_price),
+      })),
+    })
+  }, [items, subtotal])
+
   const shippingCost = activeCity ? Number(activeCity.Price) || 0 : 0
   const shippingName = activeCity ? (isRTL ? activeCity.GovernorateAr : activeCity.GovernorateEn) : ''
   const total = subtotal + shippingCost
@@ -353,6 +386,11 @@ function Checkout() {
       const { data } = await http.post('/add_order', body)
       if (data?.success) {
         // Online payment → hand off to Paymob (cart cleared by the callback).
+        //
+        // NO Purchase event here, deliberately. The shopper has been sent to a payment page,
+        // not paid: firing Purchase at this line would count every abandoned and every declined
+        // card payment as a sale. See the card-payment note at the top of src/scripts/pixels.js
+        // for what closing that gap properly requires.
         if (data.redirect_url) {
           window.location.href = data.redirect_url
           return
@@ -389,6 +427,9 @@ function Checkout() {
           isGuest,
           items: snapshot,
           total,
+          // The MERCHANDISE value, carried separately from `total` for the Purchase pixel event:
+          // it must equal what InitiateCheckout reported, and `total` includes shipping.
+          subtotal,
           shippingName,
           shippingPrice: shippingCost,
           paymentMethod,
@@ -415,6 +456,7 @@ function Checkout() {
     canSubmit, items, paymentMethod, notes, total, isLoggedIn, userId, useInline, street,
     apartment, shippingid, phone, selectedAddressId, isGuest, firstName, lastName, email,
     products, offers, isRTL, cleanupAfterOrder, router, setOrderData, shippingName, shippingCost, user, t,
+    subtotal,
   ])
 
   const handleSignOut = useCallback(() => {

@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace App\Domain\Orders;
 
+use App\Domain\Activity\ActivityLog;
 use App\Domain\Inventory\Actor;
 use App\Domain\Inventory\InventoryService;
 use App\Domain\Notifications\OrderMailer;
+use App\Support\ManageText;
 use App\Transform\Row;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -111,6 +113,30 @@ final class OrderFulfilment
         DB::table('orders')->where('id', $orderId)->update(['status' => $to, 'updated_at' => now()]);
 
         /*
+         * ── WHO moved this order, and when (B-GUARD-2, 2026-09-17) ─────────────────────────────
+         *
+         * Order transitions were not audited at all. The review read every writer and found
+         * `ActivityLog::record()` called by the product, stock, category, payment-settings,
+         * placement, promotion and role writers — and by nothing on the order path. A status change
+         * mails a customer and moves an order towards money, and the only trace it left was the
+         * column it changed.
+         *
+         * Recorded AFTER the update lands and BEFORE the mail goes, because the audit describes the
+         * state change, not the notification: a relay that is down must not cost the audit row.
+         * `record()` swallows its own failures by design, so it cannot turn a successful transition
+         * into an error either way.
+         */
+        ActivityLog::record(
+            'orders',
+            $orderId,
+            ActivityLog::UPDATED,
+            ['status' => $from],
+            ['status' => $to],
+            self::orderLabel($order),
+            Row::nint($order, 'storefront_id'),
+        );
+
+        /*
          * -- the customer is told (prerequisite (a), 2026-09-13) ---------------------------------
          *
          * The legacy Blade dashboard mailed `OrderStatusUpdate` on every status change that was a
@@ -141,7 +167,7 @@ final class OrderFulfilment
      * the units twice. The order row and the ledger rows commit or roll back together: an order
      * marked cancelled whose stock never came back is the failure this shape prevents.
      *
-     * @return array{status: string, released: bool, movements: int}
+     * @return array{status: string, released: bool, movements: int, already_cancelled: bool}
      *
      * @throws RuntimeException when the order cannot be cancelled
      */
@@ -151,7 +177,7 @@ final class OrderFulfilment
         $from = Row::str($order, 'status');
 
         if ($from === 'cancelled') {
-            throw new RuntimeException('هذا الطلب ملغى بالفعل.');
+            throw new RuntimeException(ManageText::t('orders.already_cancelled', 'هذا الطلب ملغى بالفعل.'));
         }
         if (in_array($from, self::UNCANCELLABLE, true)) {
             /*
@@ -166,7 +192,10 @@ final class OrderFulfilment
              * the release when the decision is made, which is the same guarantee wave 3 gives for
              * every other cancellation.
              */
-            throw new RuntimeException('لا يمكن إلغاء طلب وصل إلى العميل من هذه الشاشة. تعامل معه كمرتجع.');
+            throw new RuntimeException(ManageText::t(
+                'orders.cancel_after_delivery',
+                'لا يمكن إلغاء طلب وصل إلى العميل. تعامل معه كمرتجع.',
+            ));
         }
 
         $storefrontId = Row::nint($order, 'storefront_id');
@@ -174,10 +203,41 @@ final class OrderFulfilment
         /** @var list<int> $mailIds */
         $mailIds = [];
 
-        $result = DB::transaction(function () use ($orderId, $actor, $storefrontId, $note, &$mailIds): array {
-            $alreadyReleased = $this->inventory->isReleased($orderId);
+        $result = DB::transaction(function () use ($orderId, $order, $from, $actor, $storefrontId, $note, &$mailIds): array {
+            /*
+             * ── The UPDATE is the claim (🔵, 2026-09-17) ──────────────────────────────────────
+             *
+             * The `$from === 'cancelled'` check above happens OUTSIDE this transaction, so two
+             * operators clicking at the same instant both read `pending`, both pass it, and both
+             * arrive here. The second used to set `cancelled` over `cancelled` and report a fresh
+             * cancellation — "stock returned, 0 movements" — which is a sentence about something
+             * that did not happen.
+             *
+             * `where('status', '!=', 'cancelled')` makes the row itself the arbiter: the loser
+             * updates zero rows and says so. Same shape as `OrderMailer::deliver()`'s claim and as
+             * the payment callback's, and for the same reason — a pre-check plus a write has a
+             * window, and a conditional write does not.
+             */
+            $claimed = DB::table('orders')
+                ->where('id', $orderId)
+                ->where('status', '!=', 'cancelled')
+                ->update(['status' => 'cancelled', 'updated_at' => now()]);
 
-            DB::table('orders')->where('id', $orderId)->update(['status' => 'cancelled', 'updated_at' => now()]);
+            if ($claimed === 0) {
+                /*
+                 * Somebody else cancelled it between our read and this write. Not an error: the
+                 * order IS cancelled, which is what the operator wanted. They are told plainly
+                 * rather than shown a refusal for a thing that succeeded.
+                 */
+                return [
+                    'status' => 'cancelled',
+                    'released' => false,
+                    'movements' => 0,
+                    'already_cancelled' => true,
+                ];
+            }
+
+            $alreadyReleased = $this->inventory->isReleased($orderId);
 
             // THE one door. `order_cancel` is a declared release reason, so the ledger says why the
             // units came back and `inventory:verify` can still reconcile the row.
@@ -195,10 +255,46 @@ final class OrderFulfilment
              */
             $mailIds = $this->mailer->statusChanged($orderId, 'cancelled');
 
+            /*
+             * ── The one action that moves money, on the record (B-GUARD-2, 2026-09-17) ────────
+             *
+             * A cancellation returns stock, stops a sale and is admin-only, and it was audited
+             * nowhere the activity screen could show. The stock half already leaves an
+             * `inventory_movements` row carrying the actor — but that answers "which units came
+             * back", not "who cancelled order 1234, when, and why". The note in particular existed
+             * only as an argument passed to the ledger.
+             *
+             * INSIDE the transaction, deliberately. If the stock release fails and the whole
+             * cancellation rolls back, the audit row must go with it — an audit trail that records
+             * cancellations which did not happen is worse than one that records none, because it is
+             * the one source a dispute would be settled from.
+             *
+             * The `already_cancelled` path above returns before reaching here, and must: nothing
+             * happened on that request, and a second row would make one cancellation look like two.
+             *
+             * `note` and the release facts travel as fields so the screen renders them in the same
+             * `{field: from → to}` shape it uses everywhere. `ActivityLog::diff()` stores only what
+             * differs, so a cancellation with no note writes no `note` field at all.
+             */
+            ActivityLog::record(
+                'orders',
+                $orderId,
+                ActivityLog::UPDATED,
+                ['status' => $from, 'note' => null, 'stock_movements' => 0],
+                [
+                    'status' => 'cancelled',
+                    'note' => $note,
+                    'stock_movements' => count($movements),
+                ],
+                self::orderLabel($order),
+                $storefrontId,
+            );
+
             return [
                 'status' => 'cancelled',
                 'released' => ! $alreadyReleased,
                 'movements' => count($movements),
+                'already_cancelled' => false,
             ];
         });
 
@@ -223,17 +319,41 @@ final class OrderFulfilment
     /** The Arabic label for a status — one home, so the list, the detail and the filter agree. */
     public static function label(string $status): string
     {
+        /*
+         * Every key here is one `Orders/Show.tsx` ALREADY renders on its own status buttons — the
+         * server and the client share `lang/en/manage.php`, so the queue's `status_label` and the
+         * button beside it cannot say two different things in English.
+         */
         return match ($status) {
-            'pending' => 'قيد الانتظار',
-            'processing' => 'قيد التنفيذ',
-            'shipped' => 'تم الشحن',
-            'delivered' => 'تم التوصيل',
+            'pending' => ManageText::t('common.status_pending', 'قيد الانتظار'),
+            'processing' => ManageText::t('common.status_processing', 'قيد التنفيذ'),
+            'shipped' => ManageText::t('common.status_shipped', 'تم الشحن'),
+            'delivered' => ManageText::t('common.status_delivered', 'تم التوصيل'),
             // `completed` now means CLOSED, not "fulfilled" — `delivered` is the state that tells
             // the customer their order arrived, so this label had to stop claiming that.
-            'completed' => 'مغلق',
-            'cancelled' => 'ملغى',
+            'completed' => ManageText::t('common.status_completed', 'مغلق'),
+            'cancelled' => ManageText::t('common.status_cancelled', 'ملغى'),
+            // The raw column value, untranslated on purpose: a status outside the enum is DATA the
+            // operator needs to see verbatim, not a label to guess an English word for.
             default => $status,
         };
+    }
+
+    /**
+     * How an order is NAMED in the activity log.
+     *
+     * The operator knows an order by the number printed on it, not by its primary key — and
+     * `subject_label` is captured at write time precisely so the log still reads correctly when the
+     * row it points at has changed or gone. Falls back to the id when the number is missing, because
+     * a label is the one field here that must never be empty.
+     */
+    private static function orderLabel(\stdClass $order): string
+    {
+        $number = Row::nstr($order, 'order_number');
+
+        return $number === null || trim($number) === ''
+            ? '#'.Row::int($order, 'id')
+            : $number;
     }
 
     private static function require(int $orderId): \stdClass
@@ -253,11 +373,33 @@ final class OrderFulfilment
     /** @param  list<string>  $allowed */
     private static function refusal(string $from, string $to, array $allowed): string
     {
+        /*
+         * ONE sentence per refusal, with `:name` placeholders — not a sentence assembled from six
+         * fragments. The concatenated version could not be translated at all: half of its words
+         * were in the glue between the calls, and an English reader would have got Arabic
+         * punctuation around English labels.
+         */
         if ($allowed === []) {
-            return 'لا يمكن تغيير حالة هذا الطلب: حالته الحالية ('.self::label($from).') نهائية.';
+            return ManageText::t(
+                'orders.transition_terminal',
+                'لا يمكن تغيير حالة هذا الطلب: حالته الحالية (:status) نهائية.',
+                ['status' => self::label($from)],
+            );
         }
 
-        return 'لا يمكن الانتقال من ('.self::label($from).') إلى ('.self::label($to).'). '
-            .'الخطوة المتاحة الآن: '.implode('، ', array_map(self::label(...), $allowed)).'.';
+        return ManageText::t(
+            'orders.transition_not_allowed',
+            'لا يمكن الانتقال من (:from) إلى (:to). الخطوة المتاحة الآن: :allowed.',
+            [
+                'from' => self::label($from),
+                'to' => self::label($to),
+                // The separator is the SHARED one the client joins lists with, so a list built
+                // here and a list built in React read the same in both languages.
+                'allowed' => implode(
+                    ManageText::t('common.list_separator', '، '),
+                    array_map(self::label(...), $allowed),
+                ),
+            ],
+        );
     }
 }

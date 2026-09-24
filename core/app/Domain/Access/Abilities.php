@@ -23,14 +23,25 @@ final class Abilities
         Gate::before(function (User $user, string $ability) use ($roles): ?bool {
             // Only ever GRANTS. Returning false here would deny everything else outright and make
             // every later check unreachable; returning null falls through to the ability closure.
-            if (in_array($ability, Role::ABILITIES, true) && $roles->isAdmin($user)) {
+            //
+            // UNSCOPED admins only (security audit, Finding 1, 2026-09-23). This used to ask
+            // `isAdmin()`, which ignores scope, so a Brand-Fashion-scoped admin short-circuited to
+            // every ability on every storefront. A scoped admin now falls through to the defined
+            // closure below, which asks `Roles::can()` with the storefront when there is one.
+            if (in_array($ability, Role::ABILITIES, true) && $roles->isUnscopedAdmin($user)) {
                 return true;
             }
 
             return null;
         });
 
-        foreach (Role::ABILITIES as $ability) {
+        /*
+         * Every ability is DEFINED, restricted ones included — an undefined ability is denied for
+         * the wrong reason: nobody could be granted it and nothing would say why. The admin
+         * short-circuit above stays on `ABILITIES` alone, which is what keeps `manage-media-prune`
+         * out of an administrator's hands until it is granted by name.
+         */
+        foreach (Role::ALL as $ability) {
             Gate::define($ability, fn (User $user, ?int $storefrontId = null): bool => $roles->can($user, $ability, $storefrontId));
         }
     }

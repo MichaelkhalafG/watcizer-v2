@@ -1,5 +1,6 @@
 <?php
 
+use App\Domain\Notifications\MailFailure;
 use App\Domain\Notifications\OrderEmailData;
 use App\Domain\Notifications\OrderMailer;
 use App\Domain\Orders\OrderFulfilment;
@@ -137,7 +138,20 @@ it('ports them byte for byte, except the one config key core does not have', fun
 
 it('loads NO asset from the legacy application for its branding', function () {
     $files = glob(resource_path('views/emails').'/{*.blade.php,partials/*.blade.php}', GLOB_BRACE) ?: [];
-    expect($files)->toHaveCount(6);
+
+    /*
+     * The rule below applies to EVERY customer e-mail this application renders, not only to the
+     * three ported order templates — so the glob is deliberately not narrowed, and the count is
+     * not pinned.
+     *
+     * It was pinned at 6 until storefront Phase 1 piece 4 (2026-09-21) added the password-reset and
+     * e-mail-verification templates, at which point the count failed on the FEATURE rather than on
+     * the hazard — the same defect AGENTS records twice under “grep the hazard, not the word”. The
+     * hazard was never “there are six files”; it is “a template pulls an asset from the legacy
+     * host”, which the loop below is what actually checks. What replaces the pin is a floor, so a
+     * glob that silently stops matching cannot turn this green.
+     */
+    expect(count($files))->toBeGreaterThanOrEqual(6);
 
     foreach ($files as $file) {
         $body = (string) file_get_contents($file);
@@ -302,7 +316,15 @@ it('records a visible failure when no admin recipient is configured', function (
     expect($rows)->toHaveCount(1)
         ->and($rows[0]['status'])->toBe('failed')
         ->and($rows[0]['recipient'])->toBeNull()
-        ->and($rows[0]['last_error'])->toContain('ORDER_ADMIN_EMAILS');
+        /*
+         * CONFIG, not `unknown`. 🟠-2 stopped `last_error` leaving the server, and the naive reading
+         * of that would have classified this row — which we composed ourselves, from no transport at
+         * all — as "failed for an unrecognised reason, needs a developer". It needs an administrator
+         * and one environment variable, and the label has to say so or the finding made the screen
+         * worse than it was.
+         */
+        ->and($rows[0]['error_kind'])->toBe(MailFailure::CONFIG)
+        ->and($rows[0]['error_label'])->toContain('ORDER_ADMIN_EMAILS');
 
     // …and `mail:drain --report` is non-zero while it stands, so a cron or a deploy check sees it.
     contractDrain('mail:drain', ['--report' => true, '--order' => $orderId])->assertExitCode(Command::FAILURE);
@@ -319,7 +341,8 @@ it('records a skip, not a silence, when the order has no customer address', func
         // `skipped`, not `failed`: there was nobody to tell. That is information, not a fault,
         // and the two must not look the same to an operator.
         ->and($rows[0]['status'])->toBe('skipped')
-        ->and($rows[0]['last_error'])->toContain('no customer e-mail');
+        // …and the label says "not a fault" in as many words, for the same reason the status does.
+        ->and($rows[0]['error_kind'])->toBe(MailFailure::NO_ADDRESS);
 
     // A skipped row is not a failure, so the report stays green.
     contractDrain('mail:drain', ['--report' => true, '--order' => $orderId])->assertExitCode(Command::SUCCESS);

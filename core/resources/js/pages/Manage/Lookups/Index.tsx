@@ -12,8 +12,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Num } from '@/components/ui/bidi';
+import { useT } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import type { PreSwitchState, SharedProps } from '@/types';
+import { ExportLink } from '@/components/table/ExportLink';
 
 type ExtraField = { label: string; type: 'string' | 'integer' | 'boolean' | 'hex' | 'slug' | 'image'; required?: boolean; default?: unknown; media_type?: string };
 
@@ -25,7 +28,7 @@ interface Row {
 }
 
 interface Props {
-    list: { key: string; label: string; extra: Record<string, ExtraField>; usage_tables: string[] };
+    list: { key: string; label: string; extra: Record<string, ExtraField>; usage_counts: 'products' | 'variants' };
     lists: Array<{ key: string; label: string; url: string }>;
     rows: Row[];
     pre_switch: PreSwitchState;
@@ -53,6 +56,7 @@ interface Props {
  * blank row and a missing row look the same to a reader and completely different to the storefront.
  */
 export default function LookupsIndex({ list, lists, rows, pre_switch }: Props) {
+    const t = useT();
     const { errors } = usePage<SharedProps>().props;
     const [draft, setDraft] = useState<{ ar: string; en: string; extra: Record<string, string | boolean> }>({ ar: '', en: '', extra: {} });
     const [edits, setEdits] = useState<Record<number, { ar?: string; en?: string; extra?: Record<string, string | boolean> }>>({});
@@ -103,6 +107,7 @@ export default function LookupsIndex({ list, lists, rows, pre_switch }: Props) {
                 // column it knows about and declares the payload complete. Without `_complete`
                 // the server refuses: a caller that omits `extra.hex` would clear the colour.
                 _complete: 1,
+                // name-seam-exempt: the inline EDITOR's payload — both languages are saved, so both are read.
                 name: { ar: patch.ar ?? row.name.ar, en: patch.en ?? row.name.en },
                 extra: extraPayload(extra),
             },
@@ -113,10 +118,15 @@ export default function LookupsIndex({ list, lists, rows, pre_switch }: Props) {
     return (
         <ManageLayout
             title={list.label}
-            crumbs={[{ label: 'الرئيسية', href: '/manage' }, { label: 'الماركات والقوائم' }, { label: list.label }]}
+            crumbs={[
+                { label: t('common.home', 'الرئيسية'), href: '/manage' },
+                { label: t('lookups.title', 'الماركات والقوائم') },
+                { label: list.label },
+            ]}
+            actions={<ExportLink count={rows.length} />}
         >
             {/* The lists, as tabs. One screen, twelve datasets. */}
-            <nav aria-label="القوائم المرجعية" className="flex flex-wrap gap-1.5">
+            <nav aria-label={t('lookups.lists_nav', 'القوائم المرجعية')} className="flex flex-wrap gap-1.5">
                 {lists.map((item) => (
                     <Link
                         key={item.key}
@@ -133,7 +143,7 @@ export default function LookupsIndex({ list, lists, rows, pre_switch }: Props) {
             </nav>
 
             {errors.delete ? (
-                <Alert tone="error" title="تعذّر الحذف">
+                <Alert tone="error" title={t('lookups.delete_failed', 'تعذّر الحذف')}>
                     {errors.delete}
                 </Alert>
             ) : null}
@@ -141,42 +151,64 @@ export default function LookupsIndex({ list, lists, rows, pre_switch }: Props) {
             <Card>
                 <CardHeader className="gap-1">
                     <CardTitle>{list.label}</CardTitle>
+                    {/* Item 10: what the number MEANS and what to do about it. It used to name
+                        the tables it was counted from, in a monospace span. */}
                     <p className="text-xs text-muted-foreground">
-                        عمود «الاستخدام» يحسب الإشارات من{' '}
-                        <span dir="ltr" className="font-mono">
-                            {list.usage_tables.join(' · ')}
-                        </span>
-                        . الحذف مرفوض ما دام العدد أكبر من صفر — المفاتيح الأجنبية ترفضه أصلًا، وهذه هي الرسالة قبل أن تصير خطأ.
+                        {list.usage_counts === 'variants'
+                            ? t(
+                                  'lookups.usage_note_variants',
+                                  'عمود «الاستخدام» يعرض عدد المنتجات والمقاسات/الألوان التي تستخدم هذا العنصر. لا يمكن حذف عنصر مستخدم: انقل تلك المنتجات إلى عنصر آخر أولاً.',
+                              )
+                            : t(
+                                  'lookups.usage_note',
+                                  'عمود «الاستخدام» يعرض عدد المنتجات التي تستخدم هذا العنصر. لا يمكن حذف عنصر مستخدم: انقل تلك المنتجات إلى عنصر آخر أولاً.',
+                              )}
                     </p>
                 </CardHeader>
 
                 <CardContent className="space-y-4">
+                    {/* ── The sentence, ONCE (2026-10-05) ─────────────────────────
+
+                        It used to be printed inside the usage column on every unused row, where
+                        Arabic wrapped to about one word per line and each row grew to ~300px. It
+                        explains a state, not a row — so it is said once, and only when a row on
+                        this page is actually in that state. */}
+                    {rows.some((row) => row.uses === 0) ? (
+                        <p className="text-xs leading-snug text-muted-foreground">
+                            {t(
+                                'lookups.unused_explained',
+                                'مفعّلة، لكن لا يظهر لها أثر على المتجر: لا يوجد منتج واحد مرتبط بها. اربطها بمنتج من شاشة المنتجات.',
+                            )}
+                        </p>
+                    ) : null}
+
                     <div className="overflow-x-auto">
                         <Table>
                             <TableHeader>
                                 <TableRow>
-                                    <TableHead className="w-14">#</TableHead>
-                                    <TableHead>الاسم (عربي)</TableHead>
-                                    <TableHead>Name (English)</TableHead>
+                                    <TableHead className="w-10">#</TableHead>
+                                    <TableHead>{t('common.name_ar', 'الاسم (عربي)')}</TableHead>
+                                    <TableHead>{t('common.name_en', 'الاسم (إنجليزي)')}</TableHead>
                                     {columns.map(([column, field]) => (
                                         <TableHead key={column}>{field.label}</TableHead>
                                     ))}
-                                    <TableHead>الاستخدام</TableHead>
-                                    <TableHead className="text-end">إجراءات</TableHead>
+                                    <TableHead>{t('lookups.uses', 'الاستخدام')}</TableHead>
+                                    <TableHead className="text-end">{t('common.actions', 'إجراءات')}</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
                                 {rows.map((row) => (
                                     <TableRow key={row.id}>
-                                        <TableCell className="font-mono text-xs" dir="ltr">
-                                            {row.id}
+                                        <TableCell className="font-mono text-xs">
+                                            <Num>{row.id}</Num>
                                         </TableCell>
                                         <TableCell>
                                             <Input
                                                 dir="rtl"
                                                 lang="ar"
-                                                aria-label={`الاسم العربي للعنصر ${row.id}`}
-                                                className="min-w-[9rem]"
+                                                aria-label={t('lookups.row_name_ar_aria', 'الاسم العربي للعنصر :id', { id: row.id })}
+                                                className="min-w-[7.5rem]"
+                                                // name-seam-exempt: the Arabic name's own input box
                                                 value={edits[row.id]?.ar ?? row.name.ar}
                                                 onChange={(event) => setEdits((current) => ({ ...current, [row.id]: { ...(current[row.id] ?? {}), ar: event.target.value } }))}
                                             />
@@ -185,8 +217,9 @@ export default function LookupsIndex({ list, lists, rows, pre_switch }: Props) {
                                             <Input
                                                 dir="ltr"
                                                 lang="en"
-                                                aria-label={`English name for item ${row.id}`}
-                                                className="min-w-[9rem]"
+                                                aria-label={t('lookups.row_name_en_aria', 'الاسم الإنجليزي للعنصر :id', { id: row.id })}
+                                                className="min-w-[7.5rem]"
+                                                // name-seam-exempt: the English name's own input box
                                                 value={edits[row.id]?.en ?? row.name.en}
                                                 onChange={(event) => setEdits((current) => ({ ...current, [row.id]: { ...(current[row.id] ?? {}), en: event.target.value } }))}
                                             />
@@ -208,14 +241,40 @@ export default function LookupsIndex({ list, lists, rows, pre_switch }: Props) {
                                             </TableCell>
                                         ))}
 
+                                        {/* ── The same contradiction as the category tree, and the
+                                               same correction to how it is SHOWN ────────────
+
+                                            item 7 (2026-09-19): a brand row showed `غير مستخدم`
+                                            beside a toggle reading `مفعّلة` and nothing said how the
+                                            two relate. It was replaced with a sentence ending in
+                                            the remedy.
+
+                                            2026-10-05: the sentence was printed in a NARROW
+                                            COLUMN, on every unused row. Arabic wrapped to roughly
+                                            one word per line and rows grew to about 300px — three
+                                            brands filled a screen. The explanation was right and
+                                            the place was wrong.
+
+                                            Now: a chip in the cell, and the sentence once, above
+                                            the table, shown only when some row on this page is
+                                            unused. A column this narrow does not get a sentence.
+
+                                            A row that IS used keeps a bare number, because there
+                                            is nothing to explain — §2.4: a count is a fact. */}
                                         <TableCell>
-                                            {row.uses === 0 ? <Badge variant="neutral">غير مستخدم</Badge> : <Badge variant="outline">{row.uses}</Badge>}
+                                            {row.uses === 0 ? (
+                                                <Badge variant="neutral" className="whitespace-nowrap">
+                                                    {t('lookups.unused_chip', 'غير مستخدمة')}
+                                                </Badge>
+                                            ) : (
+                                                <Num>{row.uses}</Num>
+                                            )}
                                         </TableCell>
 
                                         <TableCell className="text-end">
                                             <div className="flex items-center justify-end gap-1">
                                                 <Button type="button" size="sm" variant={dirty(row.id) ? 'default' : 'outline'} disabled={!dirty(row.id)} onClick={() => saveRow(row)}>
-                                                    حفظ
+                                                    {t('common.save', 'حفظ')}
                                                 </Button>
                                                 <Button
                                                     type="button"
@@ -223,8 +282,19 @@ export default function LookupsIndex({ list, lists, rows, pre_switch }: Props) {
                                                     variant="ghost"
                                                     className="text-destructive"
                                                     disabled={row.uses > 0}
-                                                    title={row.uses > 0 ? `مستخدم في ${row.uses} سجل` : 'حذف'}
-                                                    aria-label={row.uses > 0 ? `لا يمكن حذف العنصر ${row.id}: مستخدم في ${row.uses} سجل` : `حذف العنصر ${row.id}`}
+                                                    title={
+                                                        row.uses > 0
+                                                            ? t('lookups.used_in_records', 'مستخدم في :count سجل', { count: row.uses })
+                                                            : t('common.delete', 'حذف')
+                                                    }
+                                                    aria-label={
+                                                        row.uses > 0
+                                                            ? t('lookups.delete_blocked_aria', 'لا يمكن حذف العنصر :id: مستخدم في :count سجل', {
+                                                                  id: row.id,
+                                                                  count: row.uses,
+                                                              })
+                                                            : t('lookups.delete_row_aria', 'حذف العنصر :id', { id: row.id })
+                                                    }
                                                     onClick={() => router.delete(`${base}/${row.id}`, { preserveScroll: true })}
                                                 >
                                                     <Trash2 className="h-4 w-4" />
@@ -237,8 +307,14 @@ export default function LookupsIndex({ list, lists, rows, pre_switch }: Props) {
                         </Table>
                     </div>
 
+                    {/* Item 5: the refusal became a caveat. `blocked` and `caveat` are mutually
+                        exclusive, so this renders whichever one the server set — the same fact, in
+                        the voice the situation calls for. */}
                     {pre_switch.blocked ? (
-                        <Alert tone="warning" title="الإضافة موقوفة قبل ليلة التحويل">
+                        <Alert
+                            tone="warning"
+                            title={t('lookups.pre_switch_blocked_title', 'الإضافة موقوفة حاليًا')}
+                        >
                             {pre_switch.message}
                         </Alert>
                     ) : null}
@@ -249,12 +325,12 @@ export default function LookupsIndex({ list, lists, rows, pre_switch }: Props) {
                     <div className="grid gap-3 rounded-lg border border-dashed p-4 sm:grid-cols-2 lg:grid-cols-4">
                         <div className="space-y-1.5">
                             <Label htmlFor="new-ar" required>
-                                الاسم (عربي)
+                                {t('common.name_ar', 'الاسم (عربي)')}
                             </Label>
                             <Input id="new-ar" dir="rtl" lang="ar" value={draft.ar} onChange={(event) => setDraft({ ...draft, ar: event.target.value })} />
                         </div>
                         <div className="space-y-1.5">
-                            <Label htmlFor="new-en">Name (English)</Label>
+                            <Label htmlFor="new-en">{t('common.name_en', 'الاسم (إنجليزي)')}</Label>
                             <Input id="new-en" dir="ltr" lang="en" value={draft.en} onChange={(event) => setDraft({ ...draft, en: event.target.value })} />
                         </div>
 
@@ -277,7 +353,7 @@ export default function LookupsIndex({ list, lists, rows, pre_switch }: Props) {
                             <Button
                                 type="button"
                                 className="gap-1.5"
-                                title={pre_switch.message ?? undefined}
+                                title={(pre_switch.message ?? pre_switch.caveat) ?? undefined}
                                 disabled={draft.ar.trim() === '' || pre_switch.blocked}
                                 onClick={() =>
                                     router.post(
@@ -288,7 +364,7 @@ export default function LookupsIndex({ list, lists, rows, pre_switch }: Props) {
                                 }
                             >
                                 <Plus className="h-4 w-4" />
-                                إضافة
+                                {t('common.add', 'إضافة')}
                             </Button>
                         </div>
                     </div>
@@ -318,15 +394,31 @@ function ExtraCell({
     urlHint: string | null;
     onChange: (value: string | boolean) => void;
 }) {
+    // Its own hook rather than a `t` prop: this renders once per row per extra column, and
+    // threading the translator through every call site would be noise at every one of them.
+    const t = useT();
+
     if (field.type === 'boolean') {
         return <Switch id={id} aria-label={field.label} checked={value === true} onCheckedChange={onChange} />;
     }
 
     if (field.type === 'image') {
+        /*
+         * ── A whole upload form does not fit inside a table cell (2026-10-05) ─────────
+         *
+         * `ImageField` is the product form's control: an 80px preview, a dashed drop frame, two
+         * buttons and the stored file path. Rendered once per brand it made every row on this
+         * screen **211px tall** and pushed the table 335px past the window at 1366 — 79 brands,
+         * three to a screen, and the usage column scrolled off the side.
+         *
+         * `compact` is the same control with the frame, the padding and the path line dropped and
+         * a 40px preview. Nothing is removed that is not still reachable: the file name is on the
+         * image's own `title`, and every other property of the row is editable in place beside it.
+         */
         return (
-            <div className="min-w-[10rem] space-y-1">
-                {urlHint === null ? null : <img src={urlHint} alt="" className="h-10 w-10 rounded border object-contain" />}
+            <div className="min-w-[7.5rem]">
                 <ImageField
+                    compact
                     label={field.label}
                     type={field.media_type ?? 'brand'}
                     value={
@@ -341,14 +433,41 @@ function ExtraCell({
     }
 
     if (field.type === 'hex') {
+        /*
+         * ── A picker AND a hex box, either of which fills the other (item 9, 2026-09-18) ────
+         *
+         * The swatch used to be a read-only `<span>`: it showed the colour and could not set it, so
+         * the only way in was to type six hexadecimal digits from memory. Nobody knows that
+         * ذهبي وردي is `#B76E79`.
+         *
+         * Both controls now write. The picker is for choosing, the box is for pasting a code a
+         * supplier sent — two different jobs that happen to share a value, which is why the answer
+         * is both and not one.
+         *
+         * The box keeps whatever is typed, character by character, INVALID INCLUDED. Normalising as
+         * somebody types turns `#B7` into a fight with the cursor, and the server refuses a bad hex
+         * with a sentence of its own. Only the picker writes a normalised value, because a picker
+         * cannot produce an invalid one.
+         */
+        const text = String(value);
+        const valid = /^#[0-9A-Fa-f]{6}$/.test(text);
+
         return (
             <div className="flex items-center gap-2">
-                <span
-                    aria-hidden="true"
-                    className="h-6 w-6 shrink-0 rounded border"
-                    style={{ background: typeof value === 'string' && /^#[0-9A-Fa-f]{6}$/.test(value) ? value : 'transparent' }}
+                <input
+                    type="color"
+                    // `<input type="color">` always HAS a value, so an empty field would show black
+                    // and imply somebody chose black. The dashed ring is what says "nothing yet".
+                    value={valid ? text : '#000000'}
+                    onChange={(event) => onChange(event.target.value.toUpperCase())}
+                    aria-label={t('lookups.pick_colour', 'اختر اللون')}
+                    title={t('lookups.pick_colour', 'اختر اللون')}
+                    className={cn(
+                        'h-8 w-10 shrink-0 cursor-pointer rounded border bg-transparent p-0.5',
+                        valid ? '' : 'border-dashed',
+                    )}
                 />
-                <Input id={id} dir="ltr" className="w-28" placeholder="#RRGGBB" aria-label={field.label} value={String(value)} onChange={(event) => onChange(event.target.value)} />
+                <Input id={id} dir="ltr" className="w-28" placeholder="#RRGGBB" aria-label={field.label} value={text} onChange={(event) => onChange(event.target.value)} />
             </div>
         );
     }

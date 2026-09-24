@@ -28,7 +28,14 @@ return [
 
     'allowed_headers' => ['*'],
 
-    'exposed_headers' => [],
+    /*
+     * `X-Guest-Token` MUST be readable cross-origin (security audit Finding 9, 2026-09-23). The
+     * storefront reads it off every response to keep the guest cart (`api.jsx`), and a browser
+     * hides any non-safelisted response header from a cross-origin caller unless it is listed
+     * here. Same-origin through the old proxy it did not matter; on `api.watchizereg.com` it does
+     * — without this every request mints a fresh guest cart and the basket empties itself.
+     */
+    'exposed_headers' => ['X-Guest-Token'],
 
     'max_age' => 0,
 

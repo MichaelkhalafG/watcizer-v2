@@ -19,8 +19,11 @@ it('counts products and orders from the live tables', function () {
     actingAs(Staff::admin())->get('/manage')->assertInertia(fn (AssertableInertia $page) => $page
         ->where('stats.0.key', 'products')
         ->where('stats.0.value', $products)
-        ->where('stats.3.key', 'orders_total')
-        ->where('stats.3.value', $orders));
+        // Index 4, not 3: `orders_unseen` (the badge's number) was inserted above it in wave 4D.
+        // Pinned by INDEX on purpose — a new headline number should be a deliberate edit here,
+        // because the home screen's four figures are what somebody reads first every morning.
+        ->where('stats.4.key', 'orders_total')
+        ->where('stats.4.value', $orders));
 });
 
 it('counts today\'s orders by the shared table, so a legacy-placed order shows up too', function () {
@@ -32,9 +35,16 @@ it('counts today\'s orders by the shared table, so a legacy-placed order shows u
 });
 
 it('reads low stock from each product own threshold column', function () {
-    // The same predicate the screen uses, from the same helper — a reconciliation, not a copy.
-    $expected = DB::table('catalog_products')->whereNull('deleted_at')->where('is_active', 1)->where('in_stock', 1)
-        ->whereRaw(Sql::belowLowStockThreshold())
+    /*
+     * The same predicate the screen uses, from the same helper — a reconciliation, not a copy.
+     *
+     * The two `where()` clauses that used to sit here are gone because they are INSIDE the rule
+     * now (B5, 2026-09-20). That is the point of the change: a caller adding its own idea of what
+     * "low" means beside the helper is exactly how three screens came to give two answers, and
+     * this test was quietly one of the callers doing it.
+     */
+    $expected = DB::table('catalog_products')->whereNull('deleted_at')
+        ->whereRaw(Sql::lowStock())
         ->count();
 
     actingAs(Staff::admin())->get('/manage')->assertInertia(fn (AssertableInertia $page) => $page

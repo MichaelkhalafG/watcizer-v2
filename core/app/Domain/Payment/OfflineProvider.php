@@ -43,6 +43,12 @@ final class OfflineProvider implements PaymentProvider
         return [];
     }
 
+    /** Nothing is routed to a provider, so no id is needed and none can be wrong. */
+    public function integrationIdProblem(?string $integrationId): ?string
+    {
+        return null;
+    }
+
     public function initiate(PaymentIntent $intent, ProviderCredentials $credentials): InitiationResult
     {
         // Nothing to redirect to: the order is placed and settled offline.

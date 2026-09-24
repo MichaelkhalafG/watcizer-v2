@@ -2,6 +2,7 @@
 
 use App\Transform\Row;
 use Illuminate\Database\Events\QueryExecuted;
+use Illuminate\Database\Query\JoinClause;
 use Illuminate\Support\Facades\DB;
 use Tests\Support\CatalogFixture;
 use Tests\Support\Props;
@@ -9,6 +10,7 @@ use Tests\Support\Staff;
 use Tests\Support\T;
 
 use function Pest\Laravel\actingAs;
+use function Pest\Laravel\get;
 
 /*
  * The product list: filters, sort, search — and the HOSTILE PARAMETERS the non-negotiables name
@@ -19,6 +21,27 @@ use function Pest\Laravel\actingAs;
  * not a 500 and not a 422 the team cannot act on: `TableQuery` drops an out-of-range value rather
  * than rejecting the request, on purpose (see its docblock).
  */
+
+/**
+ * A query for the whole shared catalogue, for the tests that mean catalogue-wide counts.
+ *
+ * The list DEFAULTS to the selected shop as of 2026-09-20 (W1), so a test asserting "every watch in
+ * `catalog_products`" has to say so. Named rather than spelled inline at seven call sites, because
+ * the next person needs to see that those seven are deliberate and not a copied habit.
+ *
+ * A FUNCTION rather than a constant, and the difference is not style: `scope` is a filter, so it
+ * travels inside `filters[]`, and `CONST + ['filters' => [...]]` keeps the LEFT operand's value for
+ * a shared key — which silently threw away the family filter the caller had just written, leaving a
+ * test that passed for a reason nobody intended. Merging one level down is the whole job.
+ *
+ * @param  array<string, mixed>  $filters
+ * @param  array<string, mixed>  $query
+ * @return array<string, mixed>
+ */
+function wholeCatalogue(array $filters = [], array $query = []): array
+{
+    return $query + ['filters' => $filters + ['scope' => 'all']];
+}
 
 /**
  * @param  array<string, mixed>  $query
@@ -59,13 +82,34 @@ it('renders the list with the server deciding sort, page size and filters', func
 
     expect($meta['page'])->toBe(1)
         ->and($meta['per_page'])->toBe(config('catalog.list.per_page'))
-        ->and($meta['sort'])->toBe('p.id')
+        /*
+         * The PUBLIC name, not the join alias (D-18, 2026-09-19). The screen still declares
+         * `p.id` — that is what the query orders by — but `?sort=p.id` published this
+         * application's aliases as a URL people bookmark and paste. The alias is stripped once, in
+         * `TableQuery`, and this is the assertion that says which side of that line `meta` is on.
+         */
+        ->and($meta['sort'])->toBe('id')
         ->and($meta['direction'])->toBe('desc')
         ->and($meta['total'])->toBeGreaterThan(0)
         // The whitelists are part of the payload, so the table component can only OFFER what the
         // server accepts — the list is code, the request is data.
-        ->and($meta['sortable'])->toContain('p.wa_code')
+        ->and($meta['sortable'])->toContain('wa_code')
         ->and($meta['filterable'])->toContain('p.family');
+});
+
+it('still honours a bookmark saved before the sort names were cleaned up', function () {
+    // `?sort=p.wa_code` is what every link written before 2026-09-19 carries. It keeps working,
+    // and comes back normalised — so a link SHARED from this page today is the clean form.
+    $meta = listMeta(['sort' => 'p.wa_code', 'direction' => 'asc']);
+
+    expect($meta['sort'])->toBe('wa_code')
+        ->and($meta['direction'])->toBe('asc');
+});
+
+it('refuses a sort column the screen never offered, rather than erroring', function () {
+    $meta = listMeta(['sort' => 'password']);
+
+    expect($meta['sort'])->toBe('id');
 });
 
 it('survives every hostile paging and sorting parameter the brief names', function () {
@@ -120,9 +164,11 @@ it('drops an out-of-range filter value instead of 422ing a stale bookmark', func
 });
 
 it('filters by family, brand, active and stock, and the counts move', function () {
-    $all = T::int(listMeta()['total']);
-    $watches = T::int(listMeta(['filters' => ['p.family' => 'watch']])['total']);
-    $bags = T::int(listMeta(['filters' => ['p.family' => 'bag']])['total']);
+    // Catalogue-wide on purpose: every assertion below compares against a `COUNT(*)` over
+    // `catalog_products`, which is the shared catalogue and not this shop's slice of it.
+    $all = T::int(listMeta(wholeCatalogue())['total']);
+    $watches = T::int(listMeta(wholeCatalogue(['p.family' => 'watch']))['total']);
+    $bags = T::int(listMeta(wholeCatalogue(['p.family' => 'bag']))['total']);
 
     $realWatches = DB::table('catalog_products')->whereNull('deleted_at')->where('family', 'watch')->count();
 
@@ -131,8 +177,8 @@ it('filters by family, brand, active and stock, and the counts move', function (
         ->and($bags)->toBeGreaterThan(0)
         ->and($watches + $bags)->toBeLessThanOrEqual($all);
 
-    $inactive = T::int(listMeta(['filters' => ['p.is_active' => '0']])['total']);
-    $active = T::int(listMeta(['filters' => ['p.is_active' => '1']])['total']);
+    $inactive = T::int(listMeta(wholeCatalogue(['p.is_active' => '0']))['total']);
+    $active = T::int(listMeta(wholeCatalogue(['p.is_active' => '1']))['total']);
     expect($active + $inactive)->toBe($all);
 });
 
@@ -290,7 +336,9 @@ it('finds a product through the FULLTEXT index, and through LIKE under three cha
     }
     expect($word)->not->toBe('', 'no indexable word found in the committed search index');
 
-    $viaIndex = listMeta(['q' => $word]);
+    // Catalogue-wide: the committed row this word came from is any product in
+    // `catalog_product_search`, and nothing says it is placed on Watchizer.
+    $viaIndex = listMeta(wholeCatalogue([], ['q' => $word]));
     expect($viaIndex['search'])->toBe($word)
         ->and(T::int($viaIndex['total']))->toBeGreaterThan(0, "searching [{$word}] through the FULLTEXT index found nothing");
 
@@ -300,11 +348,11 @@ it('finds a product through the FULLTEXT index, and through LIKE under three cha
     $productId = CatalogFixture::product();
     DB::table('catalog_products')->where('id', $productId)->update(['wa_code' => $code]);
 
-    expect(T::int(listMeta(['q' => substr($code, 0, 8)])['total']))->toBe(1);
+    expect(T::int(listMeta(wholeCatalogue([], ['q' => substr($code, 0, 8)]))['total']))->toBe(1);
 
     // …and a two-character term still runs (through the LIKE fallback) instead of silently
     // returning nothing because the index ignored it.
-    $short = listMeta(['q' => 'Ze']);
+    $short = listMeta(wholeCatalogue([], ['q' => 'Ze']));
     expect($short['search'])->toBe('Ze');
 });
 
@@ -312,8 +360,11 @@ it('never returns an archived product unless the archived flag asks for it', fun
     $productId = CatalogFixture::product();
     DB::table('catalog_products')->where('id', $productId)->update(['deleted_at' => now()]);
 
-    $default = listProps(['q' => (string) $productId]);
-    $archived = listProps(['filters' => ['flag' => 'archived']]);
+    // Catalogue-wide: `CatalogFixture::product()` creates a product, it does not PLACE one on a
+    // storefront, so the shop-scoped default would exclude it for a reason that has nothing to do
+    // with archiving — which is what this test is about.
+    $default = listProps(wholeCatalogue([], ['q' => (string) $productId]));
+    $archived = listProps(wholeCatalogue(['flag' => 'archived']));
 
     $ids = array_map(fn (array $row): int => T::int($row['id']), Props::rows($default));
     expect($ids)->not->toContain($productId);
@@ -325,7 +376,8 @@ it('never returns an archived product unless the archived flag asks for it', fun
 it('flags the three states that stop a product from selling', function () {
     $noArabic = CatalogFixture::productWithoutArabic();
 
-    $rows = Props::rows(listProps(['filters' => ['flag' => 'no_arabic']]));
+    // Catalogue-wide, for the same reason as the archived test above.
+    $rows = Props::rows(listProps(wholeCatalogue(['flag' => 'no_arabic'])));
     $ids = array_map(fn (array $row): int => T::int($row['id']), $rows);
 
     expect($ids)->toContain($noArabic);
@@ -349,4 +401,209 @@ it('pages without repeating or losing a row', function () {
     expect($first)->toHaveCount(5)
         ->and($second)->toHaveCount(5)
         ->and(array_intersect($firstIds, $secondIds))->toBe([], 'page 2 repeated a row from page 1');
+});
+
+it('finds Arabic products however the operator spells the word (A-UX-1)', function () {
+    /*
+     * The END-TO-END guard for the Arabic search fix. The unit test proves the fold; this proves the
+     * two sides AGREE — which is where the bug actually lived and the only place it can return, by
+     * someone normalising the index and not the query or the other way round.
+     *
+     * ── Why it searches the COMMITTED catalogue instead of making a product ─────────────────
+     *
+     * The first draft created a product and searched for it, and every spelling failed — including
+     * the one already in the catalogue. The cause is InnoDB, not the fix: a FULLTEXT index is
+     * updated when the transaction COMMITS, and every test here runs inside a transaction that is
+     * rolled back, so a row written by the test is invisible to `MATCH … AGAINST` for the whole of
+     * its life. A product fixture can never exercise this path.
+     *
+     * Asserting over the real index is also the better test: it is the same measurement the review
+     * made, against the same 7,713 products.
+     */
+    // Catalogue-wide: this searches the COMMITTED catalogue (see the note above), and nothing
+    // guarantees the row it finds is placed on Watchizer.
+    $total = static fn (string $typed): int => T::int(listMeta(wholeCatalogue([], ['q' => $typed, 'per_page' => 1]))['total']);
+
+    /*
+     * Each pair is one word written the two ordinary ways. The review measured the left-hand
+     * spelling of each returning ZERO while the right-hand one returned thousands.
+     */
+    $pairs = [
+        'ساعه' => 'ساعة',        // ta-marbuta ↔ ha
+        'حقيبه' => 'حقيبة',
+        'نظاره' => 'نظارة',
+        'الرجالى' => 'الرجالي',   // alef maqsura ↔ ya
+        'سـاعة' => 'ساعة',        // tatweel
+        'سَاعة' => 'ساعة',        // diacritics
+    ];
+
+    $broken = [];
+    foreach ($pairs as $typed => $canonical) {
+        $a = $total($typed);
+        $b = $total($canonical);
+        if ($a !== $b || $a === 0) {
+            $broken[] = "{$typed}={$a} vs {$canonical}={$b}";
+        }
+    }
+
+    expect($broken)->toBe([], 'spellings that disagree: '.implode(' · ', $broken));
+
+    /*
+     * …and the fold has not turned the search into "match everything", which is the failure that
+     * would make all of the above pass for the wrong reason.
+     */
+    // The SAME catalogue the searches above ran against, or the comparison is between a
+    // catalogue-wide result and this shop's 699 and means nothing.
+    $everything = T::int(listMeta(wholeCatalogue([], ['per_page' => 1]))['total']);
+    expect($total('ساعه'))->toBeLessThan($everything)
+        ->and($total('حقيبه'))->toBeLessThan($total('ساعه'));
+
+    // English is untouched: half the catalogue is Latin and its behaviour must not move.
+    expect($total('Hilfiger'))->toBeGreaterThan(0)
+        ->and($total('Hilfiger'))->toBeLessThan($everything);
+});
+
+it('finds a word carrying the Arabic definite article, which the index cannot prefix-match (A-UX-2)', function () {
+    /*
+     * Arabic attaches `ال` to the FRONT of a noun, so `الأسود` is the word `أسود` wearing "the". A
+     * word-prefix FULLTEXT index cannot see inside a token, so typing the bare word — which is what
+     * an operator does — missed every product that spelled it with the article.
+     *
+     * Measured over the real catalogue: 429 products have it as a word, 79 more only as `الاسود`,
+     * and 429 + 79 = 508. The MATCH alone returns 429; the ORed LIKE is what reaches 508.
+     *
+     * The assertion is RELATIVE, deliberately. Pinning 508 would make this test a tripwire for
+     * ordinary catalogue edits — a colour renamed, a product archived — and a test that fails when
+     * nothing is wrong gets deleted. What must hold is that the bare word finds AT LEAST what the
+     * article-carrying spelling finds, which is the property the fix delivers.
+     */
+    // Catalogue-wide: this searches the COMMITTED catalogue (see the note above), and nothing
+    // guarantees the row it finds is placed on Watchizer.
+    $total = static fn (string $typed): int => T::int(listMeta(wholeCatalogue([], ['q' => $typed, 'per_page' => 1]))['total']);
+
+    $bare = $total('اسود');
+    $withArticle = $total('الاسود');
+
+    expect($withArticle)->toBeGreaterThan(0, 'the catalogue has no article-carrying rows to prove anything with')
+        // The bare word must reach the article-carrying products as well as its own.
+        ->and($bare)->toBeGreaterThan($withArticle)
+        // …and must not have become "match everything", which is the other way to pass.
+        ->and($bare)->toBeLessThan(T::int(listMeta(['per_page' => 1])['total']));
+});
+
+// ── which catalogue the list is showing (W1, 2026-09-20) ─────────────────────────────────────
+
+/*
+ * The catalogue is SHARED across storefronts (D3) and that stays right. What was wrong was the
+ * default: with Watchizer selected the list read 7,714 products, 7,015 of which are not on
+ * Watchizer at all, and not one of the first 25 rows was live on the shop named in the selector.
+ * Switching shops changed two badges per row, which made the selector look broken while it worked.
+ */
+
+it('shows only THIS shop products by default, and says how many it is hiding', function () {
+    actingAs(Staff::admin());
+    $props = Props::of(get('/manage/storefronts/1/products')->assertOk());
+
+    $scope = T::arr($props['scope'] ?? null);
+
+    expect(T::str($scope['current'] ?? null))->toBe('placed')
+        ->and(T::int($scope['placed'] ?? null))->toBeGreaterThan(0)
+        // The number the escape hatch is labelled with — not a guess, and not zero.
+        ->and(T::int($scope['catalogue'] ?? null))->toBeGreaterThan(T::int($scope['placed'] ?? null))
+        ->and(T::int($scope['hidden'] ?? null))
+        ->toBe(T::int($scope['catalogue'] ?? null) - T::int($scope['placed'] ?? null));
+
+    // …and every row on the page really is on this shop. The list drives from `catalog_products`,
+    // which is shared, so this is the assertion the query's own shape cannot make for us.
+    $rows = T::arr(T::arr($props['table'] ?? null)['data'] ?? null);
+    expect($rows)->not->toBe([]);
+
+    foreach ($rows as $row) {
+        $id = T::int(T::arr($row)['id'] ?? null);
+        expect(DB::table('storefront_product')->where('storefront_id', 1)->where('product_id', $id)->exists())
+            ->toBeTrue("product {$id} is on the Watchizer list but is not placed on Watchizer");
+    }
+});
+
+it('shows the whole shared catalogue when asked, and it is bigger', function () {
+    actingAs(Staff::admin());
+
+    $placed = T::int(T::arr(T::arr(Props::of(get('/manage/storefronts/1/products'))['table'] ?? null)['meta'] ?? null)['total'] ?? null);
+    $all = T::int(T::arr(T::arr(Props::of(get('/manage/storefronts/1/products?filters%5Bscope%5D=all'))['table'] ?? null)['meta'] ?? null)['total'] ?? null);
+
+    expect($all)->toBeGreaterThan($placed);
+
+    // The control reports the state the QUERY is in, or the screen and the list disagree.
+    expect(T::str(T::arr(Props::of(get('/manage/storefronts/1/products?filters%5Bscope%5D=all'))['scope'] ?? null)['current'] ?? null))
+        ->toBe('all');
+});
+
+it('lets the absent filter override the default instead of cancelling it out', function () {
+    /*
+     * `absent` means "NOT on this shop". Scoped to this shop it returns nothing, every time — two
+     * filters silently cancelling, which is the exact shape of confusion W1 came from. It forces
+     * the wider set instead, and the control says so.
+     */
+    actingAs(Staff::admin());
+    $props = Props::of(get('/manage/storefronts/1/products?filters%5Bflag%5D=absent')->assertOk());
+
+    expect(T::str(T::arr($props['scope'] ?? null)['current'] ?? null))->toBe('all');
+
+    $rows = T::arr(T::arr($props['table'] ?? null)['data'] ?? null);
+    expect($rows)->not->toBe([], 'the absent filter returned nothing, which is the bug it used to have');
+
+    foreach (array_slice($rows, 0, 5) as $row) {
+        $id = T::int(T::arr($row)['id'] ?? null);
+        expect(DB::table('storefront_product')->where('storefront_id', 1)->where('product_id', $id)->exists())
+            ->toBeFalse("product {$id} is in the ABSENT list but is placed on Watchizer");
+    }
+});
+
+it('counts the hidden products under the SAME filters as the list', function () {
+    // A global constant would be right only when nothing else is selected. Narrow the list with a
+    // family and the escape hatch must promise the number it will actually land on.
+    actingAs(Staff::admin());
+
+    $props = Props::of(get('/manage/storefronts/1/products?filters%5Bp.family%5D=watch')->assertOk());
+    $scope = T::arr($props['scope'] ?? null);
+
+    $all = T::int(T::arr(T::arr(Props::of(get('/manage/storefronts/1/products?filters%5Bp.family%5D=watch&filters%5Bscope%5D=all'))['table'] ?? null)['meta'] ?? null)['total'] ?? null);
+
+    expect(T::int($scope['catalogue'] ?? null))->toBe($all);
+});
+
+it('applies a bulk action to exactly what the list SHOWED, not to the shared catalogue', function () {
+    /*
+     * The coupling between the scope default and "apply to all matching" (W1, 2026-09-20).
+     *
+     * `bulk` with `scope=matching` re-resolves the operator's query through the same whitelists the
+     * list renders from — so the shop default applies there too, and a bulk threshold change on
+     * "all matching watches" touches the watches ON THIS SHOP and not the 4,646 in the catalogue.
+     *
+     * That is the safe direction and the one the screen implies, but it is worth pinning: the
+     * alternative is an operator looking at 385 rows, pressing "apply to all matching", and editing
+     * ten times that many products. This is the assertion that says which of the two it is.
+     */
+    $admin = Staff::admin();
+
+    $placedWatches = T::int(DB::table('catalog_products as p')
+        ->join('storefront_product as sp', function (JoinClause $join): void {
+            $join->on('sp.product_id', '=', 'p.id')->where('sp.storefront_id', '=', 1);
+        })
+        ->whereNull('p.deleted_at')->where('p.family', 'watch')->count());
+
+    $catalogueWatches = T::int(DB::table('catalog_products')
+        ->whereNull('deleted_at')->where('family', 'watch')->count());
+
+    expect($placedWatches)->toBeLessThan($catalogueWatches, 'this catalogue no longer proves anything here');
+
+    actingAs($admin)->post('/manage/storefronts/1/products/bulk', [
+        'action' => 'set_threshold',
+        'scope' => 'matching',
+        'query' => '?filters[p.family]=watch',
+        'threshold' => 11,
+    ])->assertSessionHasNoErrors();
+
+    expect(T::int(DB::table('catalog_products')->where('low_stock_threshold', 11)->count()))
+        ->toBe($placedWatches);
 });

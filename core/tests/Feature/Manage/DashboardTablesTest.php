@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Tests\Support\LedgerState;
+use Tests\Support\Scratch;
 
 /*
  * The rule the 2026-09-11 decision settled (AGENTS §2.20): a table whose content is AUTHORED IN
@@ -44,7 +45,7 @@ it('keeps every dashboard-authored table out of the drop list', function () {
     );
 });
 
-it('names the SEVEN tables the dashboard authors today', function () {
+it('names EVERY table the dashboard authors, in order, so adding one is a deliberate edit', function () {
     /*
      * A change to this list is a decision, so it fails a test rather than passing silently — which
      * is exactly what happened on 2026-09-13 when the findings table was added.
@@ -59,11 +60,78 @@ it('names the SEVEN tables the dashboard authors today', function () {
      * MONEY and that nobody has judged it yet. A rebuild that erased it would erase the only
      * evidence that a refund, a double charge or a decline-after-payment ever arrived.
      */
+    /*
+     * Fourteen since M1o (2026-09-15): `core_activity_log` — who changed what, and what it was
+     * before. It is the one table on this list whose entire value is in being OLD, so it is the
+     * last one that may ever be dropped: a rebuild that erased it would erase the history of the
+     * rebuild itself, including the answer to whatever question prompted somebody to look.
+     *
+     * Thirteen since M1m (2026-09-14): `core_user_preferences` — the dashboard language an
+     * operator chose. It is the smallest row on this list and it is here for the same reason as
+     * the largest: a human typed it and no transform can regenerate it.
+     *
+     * Twelve since wave 4D (M1l): the five promotion tables joined the list on 2026-09-13
+     * (study §3.16.9 resolution 🔴-3). A rule, its storefronts, its conditions, its rewards and
+     * its skip counters are all typed by an admin and have no legacy source, so a rebuild would
+     * delete a promotion the shop is running — and the `promotion_rule_id` on the order lines it
+     * already granted would point at nothing.
+     *
+     * FIFTEEN since M1r added `promotion_order_discounts` — what a money reward took off an order
+     * and which rule took it. It is on the list for the reasons above and one more: it describes an
+     * ORDER, and orders are legacy rows a rebuild never touches. Dropping the discount record would
+     * leave those orders permanently unexplained — a total of 475 against lines of 500, with
+     * nothing left to say why.
+     *
+     * The list is pinned BY NAME on purpose: adding a table here must be a deliberate edit to this
+     * assertion, because the alternative is a table quietly joining the never-dropped set and
+     * nobody noticing until switch night proves it should not have.
+     */
     expect(CoreChecksumCommand::DASHBOARD_TABLES)->toBe([
         'storefronts', 'storefront_banners', 'core_user_roles',
         'storefront_payment_providers', 'storefront_payment_methods',
         'storefront_payment_method_translations',
         'payment_reconciliation_findings',
+        'promotion_rules', 'promotion_rule_storefront', 'promotion_rule_conditions',
+        'promotion_rule_rewards', 'promotion_rule_skips',
+        'promotion_order_discounts',
+        'core_user_preferences',
+        'core_activity_log',
+        // Articles join the list in item 14 (2026-09-18). Core-owned because the legacy
+        // `blogs` tables are empty and carry no slug, no published flag and no SEO fields —
+        // and a rebuild that dropped these would delete the shop's writing.
+        'core_blogs', 'core_blog_translations',
+        /*
+         * SEVENTEEN since M1t (storefront Phase 1, 2026-09-21): `core_revoked_tokens`.
+         *
+         * Nobody types a row here, so it reads as the odd one out — but the line this list draws
+         * is "no transform can regenerate it", which is why the reconciliation findings and the
+         * activity log are already on it. A revocation has no legacy source. Dropping the table
+         * would sign every signed-out customer back in, silently, for the rest of their token's
+         * thirty days, and the only symptom would be a session nobody can explain.
+         */
+        'core_revoked_tokens',
+        /*
+         * EIGHTEEN since M1u (storefront Phase 1, 2026-09-21): `core_password_resets`.
+         *
+         * Here for its FUNCTION, not its value — this list is what `RebuildSurvivesTest`
+         * reads to require a `hasTable` guard on every table that survives the drop, and a
+         * bare `Schema::create` would kill switch night's `migrate` step. The rows are
+         * disposable: a reset token lives sixty minutes and the worst case is a customer
+         * asking for another link.
+         */
+        'core_password_resets',
+        /*
+         * NINETEEN since M1v (2026-09-22): `core_user_token_epochs`, the "log out
+         * everywhere" record. Dropping it would re-validate every token a customer had
+         * invalidated — including the ones a password reset existed to kill.
+         */
+        'core_user_token_epochs',
+        /*
+         * TWENTY since M1w (2026-09-22): `core_social_identities`. The mapping from a
+         * provider account to a shop account has no legacy source once core owns it, and a
+         * rebuild that dropped it would disconnect every social login at once.
+         */
+        'core_social_identities',
     ]);
 
     foreach (CoreChecksumCommand::DASHBOARD_TABLES as $table) {
@@ -133,7 +201,7 @@ it('runs the transform with storefronts preserved: the row survives and reconcil
     $storefront = Storefront::query()->findOrFail(Storefront::WATCHIZER_ID);
     $storefront->forceFill(['name' => 'Edited before the transform'])->save();
 
-    expect(Artisan::call('core:transform', ['--force' => true]))->toBe(0);
+    expect(Artisan::call('core:transform', ['--force' => true, '--output' => Scratch::dir('dashboard-tables')]))->toBe(0);
 
     expect(Artisan::output())->toContain('ALL COUNTS RECONCILE')
         ->and(Storefront::query()->findOrFail(Storefront::WATCHIZER_ID)->name)->toBe('Edited before the transform');

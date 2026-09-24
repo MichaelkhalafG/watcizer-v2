@@ -39,13 +39,16 @@ class AccountCompatController extends Controller
                 'phone_number_two' => 'nullable|string|max:20',
             ])->validate();
 
-            // Prefer the authenticated caller so a logged-in user's address is always tied to
-            // them; guests fall back to the optional user_id in the payload.
+            /*
+             * The owner is the AUTHENTICATED caller or nobody (security audit, Finding 2).
+             *
+             * There used to be a fallback to a `user_id` in the body — `nullable|integer`, not even
+             * `exists` — so an anonymous caller could drop an address into any customer's address
+             * book, which is delivery redirection: the next checkout that picks a saved address
+             * ships to the attacker. A real guest never needed it; it already gets `user_id = null`.
+             * The body field is still ACCEPTED (legacy clients send it) and simply not believed.
+             */
             $userId = LegacyJwt::userId($request);
-            if ($userId === null && $request->filled('user_id')) {
-                $claimed = Val::nint($data, 'user_id');
-                $userId = $claimed !== null && $claimed > 0 ? $claimed : null;
-            }
 
             // `phone_number_tow` is a real typo in the legacy body handling, still accepted as an
             // alias by the running app; the frontend has sent both spellings at different times.

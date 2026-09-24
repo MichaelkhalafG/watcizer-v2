@@ -6,6 +6,9 @@ use App\Transform\Row;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Testing\PendingCommand;
 use Tests\Support\CatalogFixture;
+use Tests\Support\Gates;
+use Tests\Support\LedgerState;
+use Tests\Support\Scratch;
 use Tests\Support\T;
 
 use function Pest\Laravel\artisan;
@@ -32,7 +35,21 @@ use function Pest\Laravel\artisan;
 /** @param  list<int>  $steps */
 function runSteps(array $steps): void
 {
-    $pending = artisan('core:transform', ['--force' => true, '--only' => implode(',', $steps)]);
+    /*
+     * The same guard the other six transform test files carry (review 2026-09-10 🟡-6), which this
+     * file never got — it was written later, in wave 4B round 2.
+     *
+     * `core:transform` REFUSES to run once `inventory_movements` holds a row it did not write:
+     * legacy `products.stock` has stopped being the truth, so re-baselining from it would
+     * contradict the movements that are. Without this, a single real movement — one `restock` from
+     * the inventory screen was enough on 2026-09-13 — turns all six tests below red with
+     * "Expected status code 0 but received 1", which reads as a broken codebase and is actually a
+     * one-sentence statement about the database's state. The fix is the documented rebuild
+     * (§3.4 step 3b), and until then these tests have no precondition, so they skip saying why.
+     */
+    LedgerState::skipIfDirty();
+
+    $pending = artisan('core:transform', ['--force' => true, '--only' => implode(',', $steps), '--output' => Scratch::dir('multi-storefront')]);
     if (! $pending instanceof PendingCommand) {
         throw new RuntimeException('artisan() did not return a PendingCommand');
     }
@@ -187,6 +204,13 @@ it('INSERT-ONLY: a NEW product gets its rows on the next run, visible by default
 });
 
 it('never lets the transform be refused by the pre-switch block it does not go through', function () {
+    /*
+     * This test is ABOUT the refusal, so it asks for the mode that refuses (item 5, 2026-09-18).
+     * The shipped default is `warn` — the gates carry their sentence as a caveat and the controls
+     * work. `enforce` is still supported and still has to be proved. {@see Tests\Support\Gates}.
+     */
+    Gates::enforcePreSwitch();
+
     /*
      * The non-negotiable, asserted rather than assumed: `PreSwitch` gates the DASHBOARD writers,
      * and the transform writes through `App\Transform\CategoryNodes` / `Writer`. If a future edit
