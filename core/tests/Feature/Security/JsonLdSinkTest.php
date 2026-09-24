@@ -18,7 +18,11 @@
  * written the old way fails here rather than on a customer.
  */
 
-/** Every .js/.jsx source file of the storefront, excluding build output and dependencies. */
+/**
+ * Every .js/.jsx source file of the storefront, excluding build output and dependencies.
+ *
+ * @return list<string>
+ */
 function storefrontSources(): array
 {
     $root = realpath(base_path('../Frontend-next'));

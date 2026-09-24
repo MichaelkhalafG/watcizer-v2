@@ -2,6 +2,7 @@
 
 use App\Compat\CompatCart;
 use App\Compat\Diff\HarnessJwt;
+use App\Models\User;
 use App\Transform\Row;
 use Illuminate\Database\Query\JoinClause;
 use Illuminate\Support\Facades\DB;
@@ -48,7 +49,11 @@ function ownershipProduct(): array
     ];
 }
 
-/** A registered victim with a saved address in a governorate whose cost we know. */
+/**
+ * A registered victim with a saved address in a governorate whose cost we know.
+ *
+ * @return array{user: User, address_id: int, cost: float}
+ */
 function victimWithAddress(): array
 {
     $victim = Shopper::register();
@@ -63,7 +68,11 @@ function victimWithAddress(): array
     return ['user' => $victim, 'address_id' => $addressId, 'cost' => round((float) Row::money($city, 'shipping_cost'), 2)];
 }
 
-/** Everything add_order could have written. */
+/**
+ * Everything add_order could have written.
+ *
+ * @return array<string, int>
+ */
 function ownershipWrites(): array
 {
     return [
@@ -75,6 +84,10 @@ function ownershipWrites(): array
     ];
 }
 
+/**
+ * @param  array{id: int, price: float}  $product
+ * @return list<array<string, int|float|string>>
+ */
 function orderLine(array $product): array
 {
     return [['product_id' => $product['id'], 'quantity' => 1, 'piece_price' => $product['price'],

@@ -1,10 +1,10 @@
-# Security audit 2026-09-23: fix record (session stopped mid-battery)
+# Security audit 2026-09-23: fix record
 
-Branch `wave-4d`. **Uncommitted, nothing pushed.** The audit itself is `AUDIT_2026-09-23.md` in this folder.
+Branch `wave-4d`. The fixes are pushed as `5422a31`. The battery's PHPStan fixes to four test files, and this record's update, are uncommitted. The audit itself is `AUDIT_2026-09-23.md` in this folder.
 
 ## FIRST THING NEXT SESSION
 
-Run the full battery off one finished run of the final tree: Pest (full), Pint `--test`, PHPStan, the core build, `next build`, `next lint` on the changed storefront files, and `sh scripts/git-hooks/pre-commit --self-test`. Then hand findings 1, 2 and 3 and the legacy gate to the reviewer for re-check.
+The battery is green (below). Hand findings 1, 2 and 3 and the legacy gate to the reviewer for re-check.
 
 ## Items
 
@@ -44,9 +44,25 @@ Run the full battery off one finished run of the final tree: Pest (full), Pint `
   - Then a full rebuild and visual check.
 - **The developer decides.**
 
-## Battery: NOT RUN (stopped by the developer)
+## Battery: GREEN, 2026-09-24, off one finished run of the final tree
 
-- **Pint:** failed on an import order in `CheckoutCompatController.php`. Fixed by hand (`DeadlockRetry` now comes before `LegacyJwt`). Re-check not yet run.
-- **Pest:** a run started before that import fix, so it does not count as off the final tree. Rerun it.
-- **Not started:** PHPStan, builds, lint, hook self-test.
-- **Also unrun:** the reviewer's re-check of findings 1, 2, 3 and the legacy gate.
+The tree was `5422a31` plus the PHPStan fixes to four test files.
+
+| Check | Result |
+|---|---|
+| Pest (full) | 1,689 passed, 38 skipped, 0 failed, 585 s |
+| PHPStan level 10 | no errors |
+| Pint `--test` | passed |
+| core `tsc --noEmit` | 0 errors |
+| core `vite build` | built |
+| `next build` | compiled, 18/18 pages |
+| `next lint` (12 changed storefront files) | 0 errors; 7 warnings, all of the accepted kinds listed in `next.config.js` |
+| `pre-commit --test` | 52 passed, 0 failed |
+
+**Found by the battery:** PHPStan reported 41 errors, all in the four test files added this round. They were mixed-typed Inertia props and untyped array helpers. Fixed with array shapes, `Tests\Support\Props`, and a runtime `is_array` check on the evaluated `config/session.php`. No ignores, casts or baseline entries. PHPStan analyses `tests/` too: run it on new tests before calling them done.
+
+**The earlier red Pest run was not a defect.** One `ProductsTest` case took 17 h and ended "MySQL server has gone away", because the laptop slept mid-suite. On its own the case passes in seconds.
+
+## Still open
+
+The reviewer's re-check of findings 1, 2 and 3 and of the legacy gate.

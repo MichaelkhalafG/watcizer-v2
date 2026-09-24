@@ -13,6 +13,7 @@ use function Pest\Laravel\withHeaders;
  * so the file itself is evaluated with the variables set exactly as a host would have them.
  *
  * @param  array<string, string|null>  $env  null = the variable is absent
+ * @return array<array-key, mixed>
  */
 function sessionConfigUnder(array $env): array
 {
@@ -28,7 +29,12 @@ function sessionConfigUnder(array $env): array
     }
 
     try {
-        return require config_path('session.php');
+        $config = require config_path('session.php');
+        if (! is_array($config)) {
+            throw new RuntimeException('config/session.php did not return an array.');
+        }
+
+        return $config;
     } finally {
         foreach ($saved as $key => [$e, $srv, $g]) {
             unset($_ENV[$key], $_SERVER[$key]);

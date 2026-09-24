@@ -6,6 +6,7 @@ use App\Models\Storefront\Storefront;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
+use Tests\Support\Props;
 use Tests\Support\Staff;
 use Tests\Support\T;
 
@@ -151,14 +152,19 @@ it('lets a scoped admin grant and revoke INSIDE its own storefront', function ()
 it('offers a scoped admin only its own storefronts, and only the grants inside them', function () {
     $scoped = Staff::adminFor(Storefront::BRAND_FASHION_ID);
 
-    $props = actingAs($scoped)->get('/manage/users')->assertOk()
-        ->viewData('page')['props'];
+    $props = Props::of(actingAs($scoped)->get('/manage/users')->assertOk());
 
-    $offered = array_map(fn (array $o): string => (string) $o['value'], $props['storefronts']);
-    $grantScopes = array_unique(array_map(fn (array $g) => $g['storefront_id'], $props['grants']));
+    // Option values are strings on the wire and grant scopes are ?int — compared exactly, no casts.
+    $offered = array_map(fn (array $o): mixed => $o['value'] ?? null, Props::rows(['data' => $props['storefronts'] ?? null]));
+    $grantScopes = [];
+    foreach (Props::rows(['data' => $props['grants'] ?? null]) as $grant) {
+        if (! in_array($grant['storefront_id'] ?? null, $grantScopes, true)) {
+            $grantScopes[] = $grant['storefront_id'] ?? null;
+        }
+    }
 
     expect($offered)->toBe([(string) Storefront::BRAND_FASHION_ID])   // no "all storefronts" entry
-        ->and(array_values($grantScopes))->toBe([Storefront::BRAND_FASHION_ID]);
+        ->and($grantScopes)->toBe([Storefront::BRAND_FASHION_ID]);
 });
 
 it('leaves an UNSCOPED admin exactly as it was', function () {
@@ -176,8 +182,8 @@ it('leaves an UNSCOPED admin exactly as it was', function () {
     expect(DB::table('core_user_roles')->where('user_id', $target->id)
         ->where('role', Role::Admin->value)->whereNull('storefront_id')->exists())->toBeTrue();
 
-    $props = actingAs($global)->get('/manage/users')->assertOk()->viewData('page')['props'];
-    expect($props['storefronts'][0]['value'])->toBe('');                 // "all storefronts" still offered
+    $options = Props::rows(['data' => Props::of(actingAs($global)->get('/manage/users')->assertOk())['storefronts'] ?? null]);
+    expect($options[0]['value'] ?? null)->toBe('');                      // "all storefronts" still offered
 });
 
 it('REFUSES a scoped admin opening or editing ANOTHER storefront settings', function () {
