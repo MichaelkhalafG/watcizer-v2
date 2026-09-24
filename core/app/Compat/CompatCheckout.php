@@ -365,7 +365,7 @@ final class CompatCheckout
      * cash-on-delivery flow is exercised end to end by the harness.
      *
      * @param  array<string, mixed>  $billing
-     * @return array{ok: true, redirect_url: string}|array{ok: false, error: mixed}
+     * @return array{ok: true, redirect_url: string}|array{ok: false, error: string}
      */
     public function createPaymobIntention(float $amount, array $billing, int $orderId): array
     {
@@ -390,7 +390,13 @@ final class CompatCheckout
         ]);
 
         if (! $response->successful()) {
-            return ['ok' => false, 'error' => $response->json()];
+            /*
+             * The STATUS only, never Paymob's body (2026-09-24). This went to the buyer verbatim as
+             * `paymob_error`, and the credential leak check showed a refusal body quoting the token
+             * back reaching the browser whole. `PaymobProvider` already reports status only; this
+             * wave-3 path is what production runs until a contract is entered, so it gets the same.
+             */
+            return ['ok' => false, 'error' => 'Paymob refused the intention (HTTP '.$response->status().').'];
         }
 
         $clientSecret = $response->json('client_secret');

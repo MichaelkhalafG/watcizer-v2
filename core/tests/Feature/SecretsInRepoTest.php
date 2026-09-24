@@ -214,6 +214,32 @@ function secretsIn(string $path, string $contents): array
         }
     }
 
+    /*
+     * 7. A PAYMOB key by its own prefix (credential leak check, 2026-09-24). The live secret key is
+     * `egy_sk_live_` + 64 LOWER-case hex: no capital, so rule 2's shape filter drops it, and rule 6
+     * needs a credential word on the line. Measured against the hook: missed quoted under a neutral
+     * name and bare in Markdown. The prefix is unambiguous, so it needs no context.
+     */
+    if (preg_match_all('/(egy_(?:sk|pk)_(?:live|test)_[A-Za-z0-9]{16,})/', $contents, $prefixed) > 0) {
+        foreach ($prefixed[1] as $value) {
+            $named[] = $value;
+        }
+    }
+
+    /*
+     * 8. UPPER-case hex of 32+ with both a letter and a digit, anywhere (2026-09-24). The Paymob
+     * HMAC secret is 64 upper-case hex; rule 6 reads lower-case only, so even `'hmac' => '…'` in PHP
+     * got through. Zero such runs exist in the tracked tree, which is what makes a context-free
+     * rule affordable — git SHAs and sha256 digests are written in lower case.
+     */
+    if (preg_match_all('/(?<![0-9A-Za-z])([0-9A-F]{32,})(?![0-9A-Za-z])/', $contents, $upper) > 0) {
+        foreach ($upper[1] as $value) {
+            if (preg_match('/[A-F]/', $value) === 1 && preg_match('/\d/', $value) === 1) {
+                $named[] = $value;
+            }
+        }
+    }
+
     $shaped = array_filter($out, static fn (string $value): bool => looksLikeASecret($value));
 
     return array_values(array_unique(array_merge($named, $shaped)));
@@ -347,6 +373,13 @@ it('CATCHES every credential shape this project has actually leaked', function (
     $shapes['lower-hex in a curl example'] = "curl -H 'Api-Code: 5e2a9c1f7b3d8e0a6c4f2b9d".'1e7a3c5f8b0d6e2a4c9f'.'1b7d3e5a0c8f6b2d4e9a1c'."'";
     $shapes['lower-hex named in prose'] = 'the hmac secret was 5e2a9c1f7b3d8e0a'.'6c4f2b9d1e7a3c5f8b0d6e2a';
 
+    // Paymob's live shapes, which the 2026-09-24 leak check found the hook missing (rules 7 and 8).
+    $paymobSecret = 'egy_sk_'.'live_'.'3f9a1c7e5b2d8f0a4c6e'.'9b1d3f5a7c0e2b4d6f8a'.'1c3e5b7d9f0a2c4e6b8d1f3a';
+    $paymobHmac = '9C1E5A7B3D0F2A4C6E8B'.'1D3F5A7C9E0B2D4F6A8C'.'1E3B5D7F9A0C2E4B6D8F1A3C';
+    $shapes['a Paymob secret key, quoted under a neutral name'] = "const k = '".$paymobSecret."'";
+    $shapes['a Paymob HMAC, quoted under hmac'] = "'hmac' => '".$paymobHmac."',";
+    $shapes['a Paymob HMAC, quoted under a neutral name'] = 'const h = "'.$paymobHmac.'"';
+
     $missed = [];
     foreach ($shapes as $label => $sample) {
         if (secretsIn('probe.php', $sample) === []) {
@@ -357,6 +390,12 @@ it('CATCHES every credential shape this project has actually leaked', function (
     // A key pasted UNQUOTED into Markdown — invisible to the quoted-literal rule.
     if (secretsIn('RUNBOOK.md', "set it to\n\n    Qm8xT2vN5kR7pW3aL9dF4hJ6sY1cB0eGzU\n") === []) {
         $missed[] = 'an unquoted key in Markdown';
+    }
+    if (secretsIn('RUNBOOK.md', "paste this:\n\n    ".$paymobSecret."\n") === []) {
+        $missed[] = 'a Paymob secret key, bare in Markdown';
+    }
+    if (secretsIn('RUNBOOK.md', '    '.$paymobHmac."\n") === []) {
+        $missed[] = 'a Paymob HMAC, bare in Markdown';
     }
 
     expect($missed)->toBe([]);
@@ -374,6 +413,10 @@ it('still ignores the things that merely LOOK like keys', function () {
     // Lower-hex that is NOT a credential, on lines that say what it is (rule 6's exclusions).
     $benign['a commit SHA in prose'] = 'fixed in commit 3fa8c1e9b27d4f60a1c3e5b7d9f2a4c6e8b0d1f3';
     $benign['a digest next to the word token'] = 'token table checksum 5e2a9c1f7b3d8e0a6c4f2b9d1e7a3c5f8b0d6e2a';
+
+    // Rule 8's edges: digits alone are not hex-with-letters, and a UUID's runs are too short.
+    $benign['a 40-digit number'] = 'reference 1234567890123456789012345678901234567890';
+    $benign['an upper-case UUID'] = 'id 3F2504E0-4F89-11D3-9A0C-0305E82C3301';
 
     $falsePositives = [];
     foreach ($benign as $label => $sample) {

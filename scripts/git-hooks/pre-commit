@@ -14,8 +14,8 @@
 #   5. added content containing: "BEGIN RSA", "BEGIN OPENSSH", any
 #      "BEGIN ... PRIVATE KEY", a bcrypt hash ($2a$/$2b$/$2y$), a Paymob key
 #      WITH a value, or more than PHONE_LIMIT distinct Egyptian mobile numbers.
-#   6. the SIX secret rules of core/tests/Feature/SecretsInRepoTest.php, kept
-#      in step with it (security audit, 2026-09-23):
+#   6. the EIGHT secret rules of core/tests/Feature/SecretsInRepoTest.php, kept
+#      in step with it (security audit 2026-09-23; S7-S8 2026-09-24):
 #        S1 a credential-NAMED assignment with a 16+ char value
 #        S2 a quoted 32+ char literal shaped like a key (mixed case + digit)
 #        S3 a JWT (eyJ….eyJ…) — dotted, so S2 alone would miss it
@@ -23,6 +23,8 @@
 #        S5 in .md files, the S2 shape UNQUOTED (a key pasted into a runbook)
 #        S6 lower-case hex of 32+ on a line that names a credential and does
 #           not say it is a digest/commit/checksum
+#        S7 a Paymob key by its prefix (egy_sk_/egy_pk_ + live|test)
+#        S8 upper-case hex of 32+ with a letter and a digit (the HMAC shape)
 #      Content rules skip scripts/git-hooks/* only (the guard defines the
 #      patterns, so its own source would always match); name rules still apply.
 #
@@ -145,7 +147,7 @@ check_content() { # $1 = repo-relative path, $2 = added text (staged '+' lines)
   grep -qE -- '-----BEGIN [A-Z ]*PRIVATE KEY-----' <<<"$txt" \
     && add_fail "$p :: private key material ('BEGIN ... PRIVATE KEY')"
 
-  # ---- S1..S6: the SecretsInRepoTest rules (keep the two in step) ----------
+  # ---- S1..S8: the SecretsInRepoTest rules (keep the two in step) ----------
 
   # S1 a credential-NAMED assignment with a real value (16+, not a placeholder
   # or ${INTERPOLATION}). The name says it is a secret, so no shape test.
@@ -180,6 +182,23 @@ check_content() { # $1 = repo-relative path, $2 = added text (staged '+' lines)
     | grep -viE -- 'sha[0-9]|digest|checksum|fingerprint|commit|integrity' \
     | grep -qE -- '(^|[^0-9a-fA-F])[0-9a-f]{32,}([^0-9a-fA-F]|$)' \
     && add_fail "$p :: S6 lower-case hex on a line that names a credential"
+
+  # S7 a Paymob key by its own prefix (2026-09-24). The live secret key is
+  # egy_sk_live_ + 64 LOWER hex: no capital, so S2 drops it, and S6 needs a
+  # credential word on the line. The prefix is unambiguous; no context needed.
+  grep -qE -- 'egy_(sk|pk)_(live|test)_[A-Za-z0-9]{16,}' <<<"$txt" \
+    && add_fail "$p :: S7 a Paymob key (egy_sk_/egy_pk_ prefix)"
+
+  # S8 UPPER-case hex of 32+ with a letter AND a digit, anywhere (2026-09-24).
+  # The Paymob HMAC secret is 64 upper hex; S6 reads lower case only. The
+  # tracked tree held zero such runs when this was added.
+  local uh
+  while IFS= read -r uh; do
+    if [[ $uh =~ [A-F] && $uh =~ [0-9] ]]; then
+      add_fail "$p :: S8 upper-case hex of 32+ (the Paymob HMAC shape)"
+      break
+    fi
+  done < <(grep -oE -- '(^|[^0-9A-Za-z])[0-9A-F]{32,}([^0-9A-Za-z]|$)' <<<"$txt" | tr -cd '0-9A-F\n')
 
   # bcrypt: $2a$/$2b$/$2y$ + cost + 53 chars of salt+hash
   grep -qE -- '\$2[aby]\$[0-9]{2}\$[./A-Za-z0-9]{53}' <<<"$txt" \
@@ -275,6 +294,18 @@ selftest() {
   check_content "docs/notes.md"       "fixed in commit 3fa8c1e9b27d4f60a1c3e5b7d9f2a4c6e8b0d1f3";  expect allow "S6 commit SHA, no credential word"
   check_content "config/services.php" "'hmac_secret' => env('PAYMOB_HMAC_SECRET'),";  expect allow "env() reference"
   check_content "docs/audit.md"       "client_secret len 35, prefix GOCSPX, sha256 006fabe1";  expect allow "a description, no value"
+
+  echo "== S7-S8: Paymob live shapes (2026-09-24) =="
+  # Split like every fixture above: sh joins the pieces at run time.
+  local pm_sk pm_hmac
+  pm_sk="egy_sk""_live_""3f9a1c7e5b2d8f0a4c6e""9b1d3f5a7c0e2b4d6f8a""1c3e5b7d9f0a2c4e6b8d1f3a"
+  pm_hmac="9C1E5A7B3D0F2A4C6E8B""1D3F5A7C9E0B2D4F6A8C""1E3B5D7F9A0C2E4B6D8F1A3C"
+  check_content "src/pay.js"          "const k = \"$pm_sk\"";                         expect block "S7 Paymob secret key, neutral name"
+  check_content "docs/RUNBOOK.md"     "paste this: $pm_sk";                           expect block "S7 Paymob secret key, bare in Markdown"
+  check_content "config/pay.php"      "'hmac' => '$pm_hmac',";                        expect block "S8 Paymob HMAC under 'hmac'"
+  check_content "docs/RUNBOOK.md"     "    $pm_hmac";                                 expect block "S8 Paymob HMAC, bare in Markdown"
+  check_content "docs/notes.md"       "reference 1234567890123456789012345678901234567890";  expect allow "S8 digits alone"
+  check_content "docs/notes.md"       "id 3F2504E0-4F89-11D3-9A0C-0305E82C3301";      expect allow "S8 an upper-case UUID"
 
   echo "== self-exemption =="
   local self_src; self_src=$(cat "${BASH_SOURCE[0]}")

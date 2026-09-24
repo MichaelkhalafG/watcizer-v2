@@ -37,6 +37,16 @@ interface PaymentProvider
     public function credentialFields(): array;
 
     /**
+     * Why a method's `integration_id` cannot route a payment through this provider, or null.
+     *
+     * `missing` (the provider needs one and the row has none) or `malformed` (not the shape the
+     * provider accepts). A WRONG but well-formed id is not detectable here: only the provider can
+     * say, and it says so at initiation, which is a customer's checkout. The dashboard shows this
+     * reason on every row and refuses to ENABLE a row that has one (2026-09-24).
+     */
+    public function integrationIdProblem(?string $integrationId): ?string;
+
+    /**
      * Start a payment for ONE method of this contract.
      *
      * Returns a hosted-checkout URL or an inline token, plus the provider's own reference, so the

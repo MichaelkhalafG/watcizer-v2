@@ -109,13 +109,30 @@ final class PaymentSettingsController
             ]);
         }
 
-        StorefrontPaymentProvider::query()->create([
+        $row = StorefrontPaymentProvider::query()->create([
             'storefront_id' => (int) $storefront->id,
             'provider' => $provider,
             'is_enabled' => (bool) $data['is_enabled'],
             'credentials' => self::mergeCredentials(null, $request, $provider, $this->registry),
             'settings' => null,
         ]);
+
+        /*
+         * Recorded since 2026-09-24: adding a contract WITH its keys, enabled, was the one payment
+         * change that left no row — the credential leak check found edits and deletes logged and
+         * creation silent. Same redaction as `updateProvider()`: THAT keys were set, never what.
+         */
+        ActivityLog::record(
+            'storefront_payment_providers',
+            Coerce::nint($row->getKey()),
+            ActivityLog::CREATED,
+            after: [
+                'is_enabled' => (bool) $data['is_enabled'],
+                'credentials' => self::credentialPrint($row->getAttribute('credentials')),
+            ],
+            label: $provider,
+            storefrontId: Coerce::nint($storefront->getKey()),
+        );
 
         return back()->with('status', ManageText::t('payments.contract_added', 'تمت إضافة العقد.'));
     }
@@ -204,6 +221,7 @@ final class PaymentSettingsController
 
         $providerRow = self::requireProvider($storefront, Coerce::int($data['storefront_payment_provider_id']));
         $method = Coerce::str($data['method']);
+        $this->refuseUnusableEnable($providerRow, $data);
 
         $duplicate = StorefrontPaymentMethod::query()
             ->where('storefront_payment_provider_id', $providerRow->getAttribute('id'))
@@ -242,6 +260,9 @@ final class PaymentSettingsController
     {
         $row = self::requireMethod($storefront, $method);
         $data = Coerce::arr($request->validate(self::methodRules($storefront)));
+        $contract = $row->provider;
+        abort_unless($contract instanceof StorefrontPaymentProvider, 404);
+        $this->refuseUnusableEnable($contract, $data);
 
         /*
          * A payment METHOD is what the customer sees and picks, so who enabled or disabled one is
@@ -339,9 +360,18 @@ final class PaymentSettingsController
      * The method keys the screen offers. Application constants, never an enum in the database
      * (§2.1-6) — and valU and Tamara appear here as METHODS, which is the whole point.
      *
+     * Widened 2026-09-24 to every method asked of Paymob, so each integration id can be entered the
+     * day it arrives. A key here is a LABEL AND A ROUTE NAME, not a payment type: nothing branches
+     * on the new keys, the integration id on the row is what Paymob routes by, and the storefront's
+     * checkout offers only cash and card — a new key reaches a customer only through
+     * `payment_method_id` on `add_order` (see `MethodList::resolve()`), never through the page.
+     *
      * @var list<string>
      */
-    private const METHOD_KEYS = ['card', 'valu', 'tamara', 'wallet', 'fawry_code', 'cod', 'whatsapp'];
+    private const METHOD_KEYS = [
+        'card', 'valu', 'tamara', 'wallet', 'cagg', 'bank_installment', 'apple_pay', 'kiosk',
+        'souhoola', 'aman', 'halan', 'sympl', 'forsa', 'premium', 'contact', 'fawry_code', 'cod', 'whatsapp',
+    ];
 
     /** @return array<string, list<mixed>> */
     private static function methodRules(Storefront $storefront): array
@@ -424,6 +454,36 @@ final class PaymentSettingsController
      * A contract of THIS storefront, or 404 — never 403, which would confirm it exists somewhere
      * else (§3.11.14).
      */
+    /**
+     * Refuse to ENABLE a method its provider cannot route (2026-09-24).
+     *
+     * Saving it DISABLED stays allowed, so a row can be prepared before its integration id
+     * arrives. Enabling it is the moment it could take a customer's order, and "Payment session
+     * failed" at a checkout is the wrong place for an operator to learn the id was never entered.
+     *
+     * @param  array<array-key, mixed>  $data  the validated method fields
+     */
+    private function refuseUnusableEnable(StorefrontPaymentProvider $contract, array $data): void
+    {
+        if (! (bool) ($data['is_enabled'] ?? false)) {
+            return;
+        }
+
+        $implementation = $this->registry->for($contract);
+        $problem = $implementation?->integrationIdProblem(Coerce::nstr($data['integration_id'] ?? null));
+        if ($problem === null && $implementation !== null) {
+            return;
+        }
+
+        throw ValidationException::withMessages([
+            'integration_id' => match ($problem) {
+                'missing' => ManageText::t('payments.integration_id_missing', 'لا يمكن تفعيل هذه الطريقة بدون رقم التكامل (integration id). احفظها موقوفة حتى يصل الرقم.'),
+                'malformed' => ManageText::t('payments.integration_id_malformed', 'رقم التكامل يجب أن يكون أرقامًا فقط. راجع الرقم الذي أرسلته Paymob.'),
+                default => ManageText::t('payments.provider_unknown', 'لا يوجد تنفيذ لهذا العقد، فلا يمكن تفعيل طرق الدفع تحته.'),
+            },
+        ]);
+    }
+
     private static function requireProvider(Storefront $storefront, int $providerId): StorefrontPaymentProvider
     {
         $row = StorefrontPaymentProvider::query()

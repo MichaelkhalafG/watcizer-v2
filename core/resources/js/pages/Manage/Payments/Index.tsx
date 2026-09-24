@@ -78,6 +78,9 @@ interface MergedRow {
     serves: boolean;
     served_by: string | null;
     label_mismatch: boolean;
+    integration_id: string | null;
+    /** Why this row cannot take a payment even when enabled (`missing`, `malformed`, `unknown_provider`), or null. */
+    unusable: string | null;
 }
 
 interface Props {
@@ -468,7 +471,7 @@ export default function PaymentsIndex({
                                                             {t("common.sort", "الترتيب")} {method.sort}
                                                             {method.integration_id !==
                                                             null
-                                                                ? ` · ${t("payments.integration_id", "رقم العملية لدى المزوّد")}: ${method.integration_id}`
+                                                                ? ` · ${t("payments.integration_id", "رقم التكامل (Integration ID)")}: ${method.integration_id}`
                                                                 : ""}
                                                             {method.label.en !==
                                                             ""
@@ -640,6 +643,33 @@ export default function PaymentsIndex({
                                                           )}
                                                 </Badge>
                                             )}
+
+                                            {/* Shown enabled or not: a row being prepared for an id
+                                                that has not arrived yet reads as unusable until it has. */}
+                                            {row.unusable !== null ? (
+                                                <Badge
+                                                    variant="destructive"
+                                                    title={t(
+                                                        "payments.unusable_hint",
+                                                        "هذه الطريقة لا يمكنها استقبال الدفع. العميل الذي يصل إليها سيرى «فشل بدء عملية الدفع». أدخل رقم التكامل الذي أرسلته Paymob لها.",
+                                                    )}
+                                                >
+                                                    {row.unusable === "missing"
+                                                        ? t(
+                                                              "payments.unusable_missing",
+                                                              "لا تعمل: بدون رقم تكامل",
+                                                          )
+                                                        : row.unusable === "malformed"
+                                                          ? t(
+                                                                "payments.unusable_malformed",
+                                                                "لا تعمل: رقم التكامل ليس أرقامًا",
+                                                            )
+                                                          : t(
+                                                                "payments.unusable_provider",
+                                                                "لا تعمل: لا يوجد تنفيذ لهذا العقد",
+                                                            )}
+                                                </Badge>
+                                            ) : null}
 
                                             {row.label_mismatch ? (
                                                 <Badge
@@ -1038,7 +1068,7 @@ function MethodDialog({
                         error={errors["label.en"] ?? null}
                     />
                     <TextField
-                        label={t("payments.integration_id", "رقم العملية لدى المزوّد")}
+                        label={t("payments.integration_id", "رقم التكامل (Integration ID)")}
                         dir="ltr"
                         value={form.data.integration_id}
                         onChange={(value) =>
@@ -1047,16 +1077,15 @@ function MethodDialog({
                         error={errors.integration_id ?? null}
                         hint={t(
                             "payments.integration_id_hint",
-                            "ليس مفتاحًا سريًّا: يأتي في حمولة الرد الموقَّعة ويُستخدم لمطابقة العملية في لوحة المزوّد.",
+                            "الرقم الذي أرسلته Paymob لهذه الطريقة بالذات (أرقام فقط)، وهو ما يوجّه العميل إليها. ليس مفتاحًا سريًّا. بدونه لا يمكن تفعيل الطريقة.",
                         )}
                     />
-                    <TextField
-                        label={t("payments.icon", "الأيقونة")}
-                        dir="ltr"
-                        value={form.data.icon}
-                        onChange={(value) => form.setData("icon", value)}
-                        error={errors.icon ?? null}
-                    />
+                    {/* No icon input (hidden 2026-09-24). The column takes free text of up to 64
+                        characters, but NOTHING renders it: the storefront never fetches the method
+                        list and the preview above does not draw icons, so no operator could know
+                        what to type. The stored value still travels in `form.data.icon`, so an
+                        edit keeps it. Bring the input back with the first screen that draws one,
+                        labelled with what that screen accepts. */}
                     <TextField
                         label={t("common.sort", "الترتيب")}
                         type="number"

@@ -46,6 +46,23 @@ final class PaymobProvider implements PaymentProvider
     }
 
     /**
+     * Paymob routes by a numeric integration id; every method needs its own.
+     *
+     * Digits only, because `initiate()` sends a non-numeric value as a string that the intention
+     * call refuses — a pasted label or a stray letter would reach a customer as "Payment session
+     * failed". Surrounding whitespace is tolerated, as `initiate()` tolerates it.
+     */
+    public function integrationIdProblem(?string $integrationId): ?string
+    {
+        $id = trim((string) $integrationId);
+        if ($id === '') {
+            return 'missing';
+        }
+
+        return ctype_digit($id) ? null : 'malformed';
+    }
+
+    /**
      * Three secrets per contract, and the dashboard renders them in this order.
      *
      * `secret_key` authenticates the intention call, `public_key` builds the checkout URL, and

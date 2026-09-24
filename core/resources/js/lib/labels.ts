@@ -107,6 +107,28 @@ export function methodLabel(t: Translator, method: string | null): string {
             return 'Tamara'; // i18n-exempt: a brand name
         case 'wallet':
             return t('payments.method_wallet', 'محفظة');
+        case 'cagg':
+            return t('payments.method_cagg', 'تقسيط');
+        case 'bank_installment':
+            return t('payments.method_bank_installment', 'تقسيط بنكي');
+        case 'apple_pay':
+            return 'Apple Pay'; // i18n-exempt: a brand name, the same in both languages
+        case 'kiosk':
+            return t('payments.method_kiosk', 'كشك');
+        case 'souhoola':
+            return t('payments.method_souhoola', 'سهولة');
+        case 'aman':
+            return t('payments.method_aman', 'أمان');
+        case 'halan':
+            return t('payments.method_halan', 'حالا');
+        case 'sympl':
+            return 'Sympl'; // i18n-exempt: a brand name, the same in both languages
+        case 'forsa':
+            return t('payments.method_forsa', 'فرصة');
+        case 'premium':
+            return t('payments.method_premium', 'بريميوم');
+        case 'contact':
+            return t('payments.method_contact', 'كونتاكت');
         case 'fawry_code':
             return t('payments.method_fawry_code', 'كود فوري');
         case 'cod':
@@ -337,7 +359,7 @@ export function changedFieldLabel(t: Translator, field: string): string {
         case 'method':
             return t('payments.method_column', 'طريقة الدفع');
         case 'integration_id':
-            return t('payments.integration_id', 'رقم العملية لدى المزوّد');
+            return t('payments.integration_id', 'رقم التكامل (Integration ID)');
         case 'icon':
             return t('common.icon', 'الأيقونة');
         case 'sort':
