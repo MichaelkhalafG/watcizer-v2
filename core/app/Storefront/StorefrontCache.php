@@ -100,6 +100,7 @@ final class StorefrontCache
         // The host → storefront map (StorefrontHost) holds every active shop's domain: a domain or
         // is_active change must reach the host binding as fast as it reaches the row above.
         Cache::forget(self::HOSTS_KEY);
+        Cache::forget(StorefrontUrls::CACHE_KEY);
 
         return $this->flush($storefrontId);
     }

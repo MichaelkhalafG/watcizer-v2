@@ -22,6 +22,13 @@ return [
         'https://dash.watchizereg.com',
         env('APP_ENV') === 'local' ? 'http://localhost:3000' : null,
         env('APP_ENV') === 'local' ? 'http://localhost:5173' : null,
+        /*
+         * Every OTHER storefront's site (L5, 2026-09-26) — a comma-separated list, empty today. Config
+         * is cached, so this cannot be read from `storefronts`; when Brand Fashion's frontend goes
+         * up, set `CORS_EXTRA_ORIGINS="https://brandfashionegy.com,https://www.brandfashionegy.com"`
+         * and `config:cache`, or every call its browser makes to the API is refused.
+         */
+        ...array_map('trim', explode(',', (string) env('CORS_EXTRA_ORIGINS', ''))),
     ])),
 
     'allowed_origins_patterns' => [],

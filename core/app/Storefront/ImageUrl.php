@@ -10,7 +10,10 @@ final class ImageUrl
 {
     public static function src(string $path): string
     {
-        $base = rtrim(config()->string('storefront.asset_base'), '/');
+        // A v2 request names ITS storefront's image host (ResolveStorefront sets this, and clears it
+        // when the request ends); everything else — the dashboard, e-mails — keeps the .env value.
+        $request = config('storefront.request_asset_base');
+        $base = rtrim(is_string($request) && $request !== '' ? $request : config()->string('storefront.asset_base'), '/');
 
         return $base.'/Uploads_Images/'.ltrim($path, '/');
     }

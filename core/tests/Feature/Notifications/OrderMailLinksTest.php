@@ -143,8 +143,11 @@ it('the two CUSTOMER mails hang their link on the storefront, or on an allow-lis
     /*
      * `password-reset` and `email-verification` each print one `$url`, built in `CustomerMail`:
      *
-     *   • the reset link on `customers.storefront_url` (FRONTEND_URL) — the page is the
-     *     storefront's, not core's;
+     *   • the reset link on the STOREFRONT's own site — the page is the storefront's, not
+     *     core's. Since L5 (2026-09-26) that is the site of the shop the reset was asked for on
+     *     (`StorefrontUrls::frontend()`, passed in by the controller), no longer one global
+     *     `customers.storefront_url` that sent every shop's customers to Watchizer. The behaviour
+     *     itself is proven by StorefrontUrlsTest; this pins where the value comes from;
      *   • the verification link through `URL::temporarySignedRoute`, which DOES resolve the
      *     request host — and that is correct here, because the route is
      *     `api/auth/verify-email/{id}/{hash}` and §4's allow-list opens `/api/auth/` on the API
@@ -153,7 +156,11 @@ it('the two CUSTOMER mails hang their link on the storefront, or on an allow-lis
      */
     $source = (string) file_get_contents(app_path('Domain/Customers/CustomerMail.php'));
 
-    expect($source)->toContain("config()->string('customers.storefront_url')")
+    $controller = (string) file_get_contents(app_path('Http/Controllers/Customer/CustomerPasswordController.php'));
+
+    expect($source)->toContain('public function sendPasswordReset(User $user, string $token, string $frontend)')
+        ->and($source)->not->toContain("config()->string('customers.storefront_url')")
+        ->and($controller)->toContain('StorefrontUrls::frontend(StorefrontUrls::storefrontOf($request))')
         ->and($source)->toContain('temporarySignedRoute');
 
     // And the signed route really is under the prefix the allow-list opens.

@@ -16,6 +16,7 @@ use App\Http\Controllers\Compat\CheckoutCompatController;
 use App\Models\Storefront\Storefront;
 use App\Models\Storefront\StorefrontPaymentProvider;
 use App\Storefront\StorefrontHost;
+use App\Storefront\StorefrontUrls;
 use App\Support\Coerce;
 use App\Support\DeadlockRetry;
 use App\Transform\Row;
@@ -587,7 +588,10 @@ final class PaymentCallbackController
             return response()->json(['message' => $message ?? ($ok ? 'ok' : 'failed')], 200);
         }
 
-        $base = config()->string('compat.payment_return_url');
+        // The shop the shopper paid ON (L5, 2026-09-26): the return GET arrives on that shop's
+        // own API host, because the redirection URL is built from it. One global sent every
+        // storefront's shoppers back to Watchizer.
+        $base = StorefrontUrls::paymentReturn(StorefrontUrls::storefrontOf($request));
 
         return redirect($ok ? $base : $base.'?payment_error=1');
     }
