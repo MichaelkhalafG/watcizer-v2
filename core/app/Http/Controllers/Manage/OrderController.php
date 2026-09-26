@@ -9,6 +9,7 @@ use App\Domain\Inventory\Actor;
 use App\Domain\Inventory\InventoryService;
 use App\Domain\Notifications\OrderMailer;
 use App\Domain\Orders\OrderFulfilment;
+use App\Domain\Orders\OrderTotals;
 use App\Domain\Orders\ProductPeek;
 use App\Domain\Payment\CallbackPolicy;
 use App\Domain\Promotions\PromotionDiscounts;
@@ -987,38 +988,34 @@ final class OrderController
      */
     private static function totals(\stdClass $orderRow, array $items): array
     {
-        $order = Row::cast($orderRow);
-
-        $lines = 0.0;
-        foreach ($items as $item) {
-            $lines += (float) Coerce::str(Coerce::arr($item)['total_price'] ?? '0');
+        /*
+         * One definition, shared with both order e-mails (OrderTotals, 2026-09-26). This used to be
+         * its own arithmetic — lines, today's city price, and a remainder — while the e-mail did
+         * something else, and the two could disagree about what one order cost.
+         *
+         * `shipping` stays what the order SHOULD have cost to deliver (the city's price today, or 0
+         * under free shipping) and `unexplained` whatever the charged delivery differs from it by:
+         * so items − promotion + shipping + unexplained = total, on every order.
+         */
+        $totals = OrderTotals::of(Row::int(Row::cast($orderRow), 'id'));
+        if ($totals === null) {
+            return ['items' => '0.00', 'shipping' => null, 'total' => '0.00', 'unexplained' => '0.00',
+                'shipping_is_current' => false, 'promotion' => '0.00', 'free_shipping' => false];
         }
 
-        $total = (float) Row::str($order, 'total_price_for_order');
-
-        $shipping = null;
-        $addressId = Row::nint($order, 'address_id');
-        if ($addressId !== null) {
-            $cost = DB::table('addresses as a')
-                ->join('shipping_cities as c', 'c.id', '=', 'a.shipping_city_id')
-                ->where('a.id', $addressId)
-                ->value('c.shipping_cost');
-            $shipping = is_numeric($cost) ? (float) $cost : null;
-        }
-
-        $gap = round($total - $lines, 2);
-        // A cent of float noise is not a discrepancy worth a sentence.
-        $explained = $shipping !== null && abs($gap - $shipping) < 0.01;
+        $money = fn (float $v): string => number_format($v, 2, '.', '');
 
         return [
-            'items' => number_format($lines, 2, '.', ''),
-            'shipping' => $shipping === null ? null : number_format($shipping, 2, '.', ''),
-            'total' => number_format($total, 2, '.', ''),
-            // What the lines plus the known delivery price still do not account for. Zero on a
-            // healthy order; a number here means a discount, a manual adjustment, or a price that
-            // moved since — and all three are worth seeing rather than hiding.
-            'unexplained' => number_format($explained ? 0.0 : $gap - ($shipping ?? 0.0), 2, '.', ''),
-            'shipping_is_current' => $shipping !== null,
+            'items' => $money($totals->paid()),
+            'shipping' => $totals->expectedShipping === null ? null : $money($totals->expectedShipping),
+            'total' => $money($totals->total),
+            // What the lines, the promotion and the expected delivery price still do not account
+            // for. Zero on a healthy order; a number here means a manual adjustment or a price that
+            // moved since — and both are worth seeing rather than hiding.
+            'unexplained' => $money($totals->unexplained()),
+            'shipping_is_current' => $totals->expectedShipping !== null && ! $totals->freeShipping,
+            'promotion' => $money($totals->promotion),
+            'free_shipping' => $totals->freeShipping,
         ];
     }
 

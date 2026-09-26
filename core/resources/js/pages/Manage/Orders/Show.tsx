@@ -201,6 +201,9 @@ interface Props {
         total: string;
         unexplained: string;
         shipping_is_current: boolean;
+        /** A MONEY promotion's amount (OrderTotals); free shipping is shown on the shipping line instead. */
+        promotion: string;
+        free_shipping: boolean;
     };
     items: Item[];
     /** The product behind each line, keyed by product id — see `App\Domain\Orders\ProductPeek`. */
@@ -858,7 +861,34 @@ export default function OrderShow({
                             <Line label={t("orders.items_total", "الأصناف")}>
                                 <Num>{totals.items}</Num>
                             </Line>
-                            {totals.shipping === null ? null : (
+                            {/* The same block as the customer's e-mail (OrderTotals), so the column
+                                adds up: items − promotion + shipping + unexplained = total. A
+                                promotion is named by its RULE — an amount alone would replace one
+                                unexplained number with two. */}
+                            {Number(totals.promotion) > 0 ? (
+                                <Line label={t("orders.discount", "الخصم")}>
+                                    <span dir="ltr">−{totals.promotion}</span>
+                                    {discount !== null ? (
+                                        <span className="block text-xs text-muted-foreground">
+                                            {t("orders.discount_from_rule", "من عرض: :name", {
+                                                name: discount.rule_name ?? `#${discount.rule_id}`,
+                                            })}
+                                        </span>
+                                    ) : null}
+                                </Line>
+                            ) : null}
+                            {totals.free_shipping ? (
+                                <Line label={t("orders.discount_shipping", "خصم (شحن مجاني)")}>
+                                    {t("orders.shipping_free", "مجاني")}
+                                    {discount !== null ? (
+                                        <span className="block text-xs text-muted-foreground">
+                                            {t("orders.discount_from_rule", "من عرض: :name", {
+                                                name: discount.rule_name ?? `#${discount.rule_id}`,
+                                            })}
+                                        </span>
+                                    ) : null}
+                                </Line>
+                            ) : totals.shipping === null ? null : (
                                 <Line
                                     label={t("orders.shipping_total", "الشحن")}
                                     hint={t(
@@ -888,36 +918,6 @@ export default function OrderShow({
                                     <Num>{order.total}</Num>
                                 </strong>
                             </Line>
-                            {/*
-                             * Why the total is lower than the lines. Rendered only when there IS a
-                             * discount, and it names the RULE — an amount alone would replace one
-                             * unexplained number with two.
-                             */}
-                            {discount !== null ? (
-                                <Line
-                                    label={
-                                        discount.free_shipping
-                                            ? t(
-                                                  "orders.discount_shipping",
-                                                  "خصم (شحن مجاني)",
-                                              )
-                                            : t("orders.discount", "الخصم")
-                                    }
-                                >
-                                    <span dir="ltr">−{discount.amount}</span>
-                                    <span className="block text-xs text-muted-foreground">
-                                        {t(
-                                            "orders.discount_from_rule",
-                                            "من عرض: :name",
-                                            {
-                                                name:
-                                                    discount.rule_name ??
-                                                    `#${discount.rule_id}`,
-                                            },
-                                        )}
-                                    </span>
-                                </Line>
-                            ) : null}
                             <Line label={t("common.payment", "الدفع")}>
                                 {/* Item 10: the company and the method in words. It read
                                     "paymob · card" — two stored tokens — on the line a person

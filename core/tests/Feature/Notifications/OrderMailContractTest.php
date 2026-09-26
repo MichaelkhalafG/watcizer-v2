@@ -109,15 +109,40 @@ it('ports them byte for byte, except the one config key core does not have', fun
     expect(is_dir($legacy))->toBeTrue('the legacy templates must be present to compare against');
 
     foreach ([
-        'order-confirmation.blade.php',
-        'admin-order-notification.blade.php',
         'order-status-update.blade.php',
         'partials/header.blade.php',
-        'partials/product-row.blade.php',
     ] as $file) {
         // Identical. The copy is not to be "improved": it is live customer-facing wording in two
         // languages, and the brief for this port said so explicitly.
         expect(md5_file($core.'/'.$file))->toBe(md5_file($legacy.'/'.$file), "{$file} has drifted from the legacy original");
+    }
+
+    /*
+     * The THREE files that carry money differ from legacy on purpose (2026-09-26, OrderTotals).
+     * Legacy printed "Subtotal 999 · Discount −501 · Shipping 100 · Total 1,099" — a column no
+     * customer could add up — so matching it byte for byte stopped being the goal for those lines.
+     *
+     * The exemption is narrow and TESTED, not a premise: every legacy line that no longer appears
+     * in core must be a MONEY line (a formatted figure, the totals labels, the row include that now
+     * passes the decimals). A changed greeting, a changed footer, any other wording that drifts
+     * still fails here exactly as before. The new figures themselves are proven by
+     * OrderTotalsTest, which renders the e-mail and asserts the column adds up.
+     */
+    foreach ([
+        'order-confirmation.blade.php',
+        'admin-order-notification.blade.php',
+        'partials/product-row.blade.php',
+    ] as $file) {
+        $coreLines = array_map('trim', file($core.'/'.$file, FILE_IGNORE_NEW_LINES) ?: []);
+        $legacyLines = array_map('trim', file($legacy.'/'.$file, FILE_IGNORE_NEW_LINES) ?: []);
+        $gone = array_values(array_diff($legacyLines, $coreLines));
+
+        $notMoney = array_values(array_filter(
+            $gone,
+            fn (string $line): bool => preg_match('/number_format|\$egp\(|Subtotal|Discount|emails\.partials\.product-row/', $line) !== 1,
+        ));
+        expect($gone)->not->toBe([], "{$file} was expected to carry the OrderTotals block")
+            ->and($notMoney)->toBe([], "{$file} changed a line that is not about money");
     }
 
     /*
@@ -191,7 +216,10 @@ it('hands the templates every key they can read', function () {
         'paymentEn', 'paymentAr', 'paymentStatus',
         'brandName', 'copyright', 'whatsappUrl', 'trackUrl', 'dashboardUrl',
     ];
-    expect(OrderEmailData::keys())->toEqualCanonicalizing($legacyKeys);
+    // Added deliberately 2026-09-26 (OrderTotals): the promotion gets its own line, free shipping
+    // reads as free, and every figure shares one decimals setting so the column adds up.
+    $added = ['promotion', 'promotionName', 'freeShipping', 'moneyDecimals'];
+    expect(OrderEmailData::keys())->toEqualCanonicalizing([...$legacyKeys, ...$added]);
 });
 
 it('gives every LINE the keys the product-row partial reads', function () {
@@ -208,6 +236,9 @@ it('gives every LINE the keys the product-row partial reads', function () {
     expect(array_keys($line))->toEqualCanonicalizing([
         'name_en', 'name_ar', 'image', 'qty', 'unit_price', 'line_total',
         'code', 'model', 'type_stock', 'color_band', 'color_dial',
+        // Added deliberately 2026-09-26 (OrderTotals): a gift reads as a gift, and a line sold below
+        // list shows its list price struck through, so the rows explain the Subtotal/Discount block.
+        'is_gift', 'list_total',
     ])
         ->and($line['qty'])->toBe(2)
         ->and($line['line_total'])->toBe(1000.0);

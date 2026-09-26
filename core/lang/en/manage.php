@@ -865,6 +865,7 @@ return [
         'discount' => 'Discount',
         'discount_from_rule' => 'From promotion: :name',
         'discount_shipping' => 'Discount (free shipping)',
+        'shipping_free' => 'Free',
         'empty_description' => 'Try changing the filters or the date range.',
         'empty_title' => 'No orders',
         'failed_attempt' => 'Failed attempt',
