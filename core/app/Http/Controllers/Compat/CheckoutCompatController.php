@@ -11,6 +11,7 @@ use App\Domain\Inventory\InsufficientStock;
 use App\Domain\Inventory\InventoryService;
 use App\Domain\Notifications\OrderMailer;
 use App\Domain\Payment\CallbackPolicy;
+use App\Domain\Payment\CheckoutMethods;
 use App\Domain\Payment\PaymentInitiator;
 use App\Domain\Promotions\CartLine;
 use App\Domain\Promotions\CartSnapshot;
@@ -57,6 +58,7 @@ class CheckoutCompatController extends Controller
         private readonly PromotionEngine $promotions,
         private readonly PromotionSkips $skips,
         private readonly PaymentInitiator $initiator,
+        private readonly CheckoutMethods $methods,
     ) {}
 
     /** POST add_order */
@@ -170,6 +172,34 @@ class CheckoutCompatController extends Controller
             ])->validate();
 
             // The buyer and the guest session were resolved above, before the transaction.
+
+            /*
+             * ── The payment method is checked BEFORE anything is written (batch 1, 2026-09-26) ──
+             *
+             * `payment_method_id` used to be taken unvalidated and resolved against any enabled row,
+             * so a card order naming the cash row was created, sent to an offline provider, then
+             * cancelled with a bare "Payment session failed". And with a live Paymob contract and
+             * the card row disabled, a card order fell through to the wave-3 `.env` account. Both
+             * are now refused here, with no address, order or reservation behind them, in the
+             * shopper's language and saying what to do next. Cash stays unchecked: it is always
+             * offered, independent of the method rows (CheckoutMethods).
+             */
+            $refusal = $this->methods->refusal(
+                $this->compat->storefrontId,
+                Coerce::nstr($request->input('payment_method_id')),
+                Val::str($data, 'payment_method'),
+                (float) Val::str($data, 'total_price_for_order'),
+            );
+            if ($refusal !== null) {
+                self::unwindTo($outer);
+
+                return response()->json([
+                    'success' => false,
+                    'message' => $refusal['messages'][app()->getLocale() === 'ar' ? 'ar' : 'en'],
+                    'messages' => $refusal['messages'],
+                    'code' => $refusal['code'],
+                ], 422);
+            }
 
             $paymentMethod = Val::str($data, 'payment_method') === 'card' ? 'paymob' : Val::str($data, 'payment_method');
 

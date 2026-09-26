@@ -47,6 +47,9 @@ interface MethodRow {
     icon: string | null;
     is_enabled: boolean;
     sort: number;
+    /** Order limits the checkout enforces; null = no limit. */
+    min_total: number | null;
+    max_total: number | null;
     label: { ar: string; en: string };
 }
 
@@ -994,6 +997,8 @@ function MethodDialog({
         icon: method?.icon ?? "",
         is_enabled: method?.is_enabled ?? true,
         sort: String(method?.sort ?? provider.methods.length),
+        min_total: method?.min_total == null ? "" : String(method.min_total),
+        max_total: method?.max_total == null ? "" : String(method.max_total),
         label: { ar: method?.label.ar ?? "", en: method?.label.en ?? "" },
     });
 
@@ -1097,6 +1102,32 @@ function MethodDialog({
                         hint={t(
                             "payments.sort_hint",
                             "الأقل يفوز عند تكرار المفتاح.",
+                        )}
+                    />
+                    <TextField
+                        label={t("payments.min_total", "أقل قيمة للطلب (ج.م)")}
+                        type="number"
+                        dir="ltr"
+                        min={0}
+                        value={form.data.min_total}
+                        onChange={(value) => form.setData("min_total", value)}
+                        error={errors.min_total ?? null}
+                        hint={t(
+                            "payments.min_total_hint",
+                            "اتركه فارغًا إن لم يكن هناك حد. تحت هذه القيمة يرى العميل الطريقة غير متاحة مع السبب.",
+                        )}
+                    />
+                    <TextField
+                        label={t("payments.max_total", "أعلى قيمة للطلب (ج.م)")}
+                        type="number"
+                        dir="ltr"
+                        min={0}
+                        value={form.data.max_total}
+                        onChange={(value) => form.setData("max_total", value)}
+                        error={errors.max_total ?? null}
+                        hint={t(
+                            "payments.max_total_hint",
+                            "اتركه فارغًا إن لم يكن هناك حد.",
                         )}
                     />
                     <SwitchField
