@@ -12,6 +12,8 @@ export function passesFilters(p, f = {}, except = null) {
   const on = (key) => except !== key
 
   if (on('brands') && f.brands?.length && !f.brands.includes(p.brand_id)) return false
+  if (on('categories') && f.categories?.length && !f.categories.includes(p.category_type_id))
+    return false
   if (on('subTypes') && f.subTypes?.length && !f.subTypes.includes(p.sub_type_id)) return false
   if (
     on('genders') &&

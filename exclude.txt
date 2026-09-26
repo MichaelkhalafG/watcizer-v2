@@ -1,0 +1,11 @@
+core/.env
+core/node_modules
+core/tests
+core/docs
+core/.git
+core/storage
+core/public/Uploads_Images
+core/public/dumps
+core/public/hot
+core/phpunit.xml
+core/phpstan.neon
