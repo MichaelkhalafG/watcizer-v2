@@ -599,13 +599,6 @@ function Header() {
               <button
                 type="button"
                 className="wz-drawer-link"
-                onClick={() => goTo('/account?tab=wishlist')}
-              >
-                {isRTL ? 'قائمة الأمنيات' : 'Wishlist'}
-              </button>
-              <button
-                type="button"
-                className="wz-drawer-link"
                 onClick={() => goTo('/account?tab=orders')}
               >
                 {isRTL ? 'طلباتي' : 'My Orders'}
@@ -618,13 +611,6 @@ function Header() {
             <>
               <button type="button" className="wz-drawer-link" onClick={() => goTo('/login')}>
                 {isRTL ? 'تسجيل الدخول' : 'Login'}
-              </button>
-              <button
-                type="button"
-                className="wz-drawer-link"
-                onClick={() => goTo('/account?tab=wishlist')}
-              >
-                {isRTL ? 'قائمة الأمنيات' : 'Wishlist'}
               </button>
             </>
           )}

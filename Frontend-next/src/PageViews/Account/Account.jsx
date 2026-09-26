@@ -42,7 +42,9 @@ import './Account.css'
 // email) — used for the "Track Order" action since there is no tracking page.
 const SUPPORT_WHATSAPP = '201274550956'
 
-const TABS = ['profile', 'orders', 'addresses', 'wishlist', 'password']
+// No 'wishlist' tab (batch 1, 2026-09-26): the wishlist was deleted in Phase 0 (G6) and its
+// endpoints with it. An old `?tab=wishlist` link lands on the default tab.
+const TABS = ['profile', 'orders', 'addresses', 'password']
 
 // ── helpers ────────────────────────────────────────────────────────────────
 const money = (v, isRTL) =>
@@ -149,7 +151,6 @@ const Sidebar = memo(function Sidebar({ tab, onSelect, onSignOut, user, avatar, 
     { key: 'profile', icon: <FiUser />, label: t('Personal Info', 'المعلومات الشخصية') },
     { key: 'orders', icon: <FiPackage />, label: t('My Orders', 'طلباتي') },
     { key: 'addresses', icon: <FiMapPin />, label: t('Addresses', 'العناوين') },
-    { key: 'wishlist', icon: <FiHeart />, label: t('Wishlist', 'المفضلة') },
     { key: 'password', icon: <FiLock />, label: t('Change Password', 'تغيير كلمة المرور') },
   ]
 
@@ -804,114 +805,6 @@ function AddressesTab({ t, isRTL }) {
 }
 
 // =============================================================================
-//  TAB: Wishlist
-// =============================================================================
-function WishlistTab({ t, isRTL }) {
-  // Wishlist state from Zustand (uiStore); products/offers from the shared query cache.
-  const wishList = useUIStore((s) => s.wishList)
-  const setwishList = useUIStore((s) => s.setWishList)
-  const { products } = useCatalog()
-  const { data: offers = [] } = useOffers()
-  const router = useRouter()
-
-  const remove = useCallback(
-    async (id) => {
-      try {
-        const res = await http.delete(`/delete_wishlist/${id}`)
-        if (res.status === 200) {
-          setwishList((prev) => prev.filter((item) => item.id !== id))
-        }
-      } catch {
-        // ignore
-      }
-    },
-    [setwishList],
-  )
-
-  // Resolve each wishlist entry against the live catalog so the title, image
-  // (proper URL) and current price are always correct — the raw wishlist entry
-  // may carry a bare filename or a stale/absent price. Falls back to whatever
-  // the entry itself holds when the product/offer isn't in the loaded catalog.
-  const items = useMemo(() => {
-    if (!wishList?.length) return []
-    return wishList
-      .map((item) => {
-        if (item.product_id) {
-          const p = products?.find((pp) => pp.id === item.product_id)
-          return {
-            key: item.id,
-            wishlistId: item.id,
-            title:
-              (isRTL ? p?.product_title_ar || p?.product_title : p?.product_title) ||
-              item.product_title,
-            image: p ? getImageUrl(p.image, 'Product') : item.product_image,
-            price: p ? p.sale_price_after_discount || p.selling_price : item.product_price,
-            to: productUrl(p || item),
-          }
-        }
-        if (item.offer_id) {
-          const o = offers?.find((oo) => oo.id === item.offer_id)
-          return {
-            key: item.id,
-            wishlistId: item.id,
-            title: o ? (isRTL ? o.offer_name_ar : o.offer_name_en) : item.offer_title,
-            image: o?.image || item.offer_image,
-            price: o ? o.sale_price_after_discount || o.selling_price : item.offer_price,
-            to: `/offer/${item.offer_id}`,
-          }
-        }
-        return null
-      })
-      .filter(Boolean)
-  }, [wishList, products, offers, isRTL])
-
-  if (!items.length) {
-    return (
-      <div>
-        <SectionTitle>{t('My Wishlist', 'المفضلة')}</SectionTitle>
-        <EmptyState
-          icon={<FiHeart />}
-          title={t('Your wishlist is empty', 'المفضلة فارغة')}
-          cta={t('Discover our collection', 'اكتشف مجموعتنا')}
-          onCta={() => router.push('/listing')}
-        />
-      </div>
-    )
-  }
-
-  return (
-    <div>
-      <SectionTitle>{t('My Wishlist', 'المفضلة')}</SectionTitle>
-      <div className="wz-acc-wishgrid">
-        {items.map((it) => (
-          <div className="wz-acc-card wz-acc-wishitem" key={it.key}>
-            <Link href={it.to} className="wz-acc-wishitem-media">
-              {it.image ? <img src={it.image} alt={it.title} width="72" height="72" loading="lazy" onError={handleImgError} /> : null}
-            </Link>
-            <div className="wz-acc-wishitem-body">
-              <Link href={it.to} className="wz-acc-wishitem-title">
-                {it.title}
-              </Link>
-              {it.price != null && it.price !== '' && (
-                <p className="wz-acc-wishitem-price">{money(it.price, isRTL)}</p>
-              )}
-            </div>
-            <button
-              type="button"
-              className="wz-acc-wishitem-remove"
-              onClick={() => remove(it.wishlistId)}
-              aria-label={t('Remove', 'حذف')}
-            >
-              <FiTrash2 size={15} />
-            </button>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-// =============================================================================
 //  TAB: Change Password
 // =============================================================================
 function PasswordTab({ t }) {
@@ -1137,7 +1030,6 @@ function Account() {
           {tab === 'profile' && <ProfileTab t={t} isRTL={isRTL} />}
           {tab === 'orders' && <OrdersTab t={t} isRTL={isRTL} />}
           {tab === 'addresses' && <AddressesTab t={t} isRTL={isRTL} />}
-          {tab === 'wishlist' && <WishlistTab t={t} isRTL={isRTL} />}
           {tab === 'password' && <PasswordTab t={t} />}
         </main>
         {/* Sign-out is hidden from the horizontal tab row on mobile — this

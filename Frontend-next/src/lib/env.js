@@ -7,6 +7,8 @@ export const IMAGE_CDN_BASE = process.env.NEXT_PUBLIC_IMAGE_CDN_BASE || ''
 export const PUBLIC_API_KEY = process.env.NEXT_PUBLIC_PUBLIC_API_KEY || ''
 // Matches the Vite default: online payment enabled unless explicitly 'false'.
 export const PAYMOB_ENABLED = process.env.NEXT_PUBLIC_PAYMOB_ENABLED !== 'false'
+// The storefront's code in core's v2 paths (/api/v2/{code}/…). Watchizer unless the build says otherwise.
+export const STOREFRONT_CODE = process.env.NEXT_PUBLIC_STOREFRONT_CODE || 'watchizer'
 // Meta (Facebook) pixel ids. Public by nature — they ship in the HTML of every page —
 // but they live here rather than pasted into the markup so a pixel can be added,
 // swapped or dropped by editing one env line. An empty list = no script, no noscript

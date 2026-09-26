@@ -191,20 +191,6 @@
   font-weight: 600;
   color: var(--wz-danger);
 }
-.wz-cart-item-wish {
-  align-self: flex-start;
-  margin-top: 4px;
-  padding: 0;
-  border: none;
-  background: none;
-  font-size: 11px;
-  color: rgba(0, 0, 0, 0.55);
-  cursor: pointer;
-  text-decoration: underline;
-}
-.wz-cart-item-wish:hover {
-  color: var(--wz-gold);
-}
 
 .wz-cart-item-side {
   display: flex;

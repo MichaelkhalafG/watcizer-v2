@@ -2,12 +2,8 @@
 
 import { useEffect } from 'react'
 import { useUIStore } from '@/src/Store/uiStore'
-import { useAuthStore } from '@/src/Store/authStore'
 import { useShippingStore } from '@/src/Store/shippingStore'
 import { useShippingPrices } from '@/src/Hooks/useShippingPrices'
-import { useCatalog } from '@/src/Hooks/queries/useCatalog'
-import { useOffers } from '@/src/Hooks/queries/useOffers'
-import { fetchWishList } from '@/src/Context/api'
 
 // Headless effect runner — replaces the cross-cutting effects that used to live
 // in <MyProvider>. Mounted INSIDE the (main) layout's HydrationBoundary (where
@@ -16,16 +12,12 @@ import { fetchWishList } from '@/src/Context/api'
 // nothing (mirrors <AuthHydrator/>/<HtmlDirSync/> in app/providers.jsx).
 export default function AppStateBridge() {
   const language = useUIStore((s) => s.language)
-  const user_id = useAuthStore((s) => s.userId)
 
   const setShippingid = useShippingStore((s) => s.setShippingid)
   const setShipping = useShippingStore((s) => s.setShipping)
   const setShippingName = useShippingStore((s) => s.setShippingName)
-  const setwishList = useUIStore((s) => s.setWishList)
 
   const shippingPrices = useShippingPrices()
-  const { products } = useCatalog()
-  const { data: offers = [] } = useOffers()
 
   // Default shipping selection once the city list resolves (verbatim from
   // MyProvider). Deps are [shippingPrices, language] only — it does NOT re-run on
@@ -44,12 +36,10 @@ export default function AppStateBridge() {
     }
   }, [shippingPrices, language, setShippingid, setShipping, setShippingName])
 
-  // Fetch the wishlist once a user is present (verbatim from MyProvider).
-  useEffect(() => {
-    if (user_id) {
-      fetchWishList(user_id, products, offers, language, setwishList)
-    }
-  }, [user_id, offers, products, language, setwishList])
+  // No wishlist fetch here any more (batch 1, 2026-09-26). The wishlist was deleted (Phase 0, G6)
+  // and `/all_wishlist` no longer exists, so every page view by a signed-in shopper logged a failed
+  // request. No offers either: `useOffers` answers an empty list without asking.
+
 
   return null
 }

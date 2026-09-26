@@ -18,7 +18,6 @@ import { useUIStore } from '../../Store/uiStore'
 import { useAuthStore } from '../../Store/authStore'
 import { useShippingStore } from '../../Store/shippingStore'
 import { useShippingPrices } from '../../Hooks/useShippingPrices'
-import { useWishlist } from '../../Hooks/useWishlist'
 import useCart, { getItemKey } from '../../Hooks/useCart'
 import ProductSlider from '../../Components/Product/ProductSlider'
 import { getImageUrl, handleImgError, PLACEHOLDER_IMG } from '../../utils/imageUrl'
@@ -35,8 +34,6 @@ const CartItem = memo(function CartItem({
   currency,
   onQty,
   onRemove,
-  onWishlist,
-  canWishlist,
   navigate,
 }) {
   const key = getItemKey(item)
@@ -120,11 +117,6 @@ const CartItem = memo(function CartItem({
         )}
         {unavailable && <p className="wz-cart-warn-text">{t('This item is unavailable', 'هذا المنتج غير متوفر')}</p>}
 
-        {canWishlist && (
-          <button className="wz-cart-item-wish" onClick={() => onWishlist(item)}>
-            {t('Move to wishlist', 'نقل للمفضلة')}
-          </button>
-        )}
       </div>
 
       <div className="wz-cart-item-side">
@@ -151,9 +143,8 @@ const CartItem = memo(function CartItem({
 
 // ── Page ───────────────────────────────────────────────────────────────────
 function Cart() {
-  // Server data from TanStack Query; wishlist toggle from Zustand (useWishlist),
-  // shipping selection from Zustand + the derived city-price list from the query.
-  const { handleAddTowishlist } = useWishlist()
+  // Server data from TanStack Query; shipping selection from Zustand + the derived
+  // city-price list from the query.
   const shippingPrices = useShippingPrices()
   const shippingid = useShippingStore((s) => s.shippingid)
   const setShippingid = useShippingStore((s) => s.setShippingid)
@@ -318,13 +309,6 @@ function Cart() {
 
   const onQty = useCallback((key, q) => updateQuantity(key, q), [updateQuantity])
   const onRemove = useCallback((item) => removeItem(getItemKey(item)), [removeItem])
-  const onWishlist = useCallback(
-    (item) => {
-      handleAddTowishlist(item.product_id || item.offer_id, item.product_id ? 'p' : 'o')
-      removeItem(getItemKey(item))
-    },
-    [handleAddTowishlist, removeItem],
-  )
 
   const goToCheckout = useCallback(async () => {
     if (processing) return
@@ -406,8 +390,6 @@ function Cart() {
                   currency={currency}
                   onQty={onQty}
                   onRemove={onRemove}
-                  onWishlist={onWishlist}
-                  canWishlist={!!userId}
                   navigate={navigate}
                 />
               ))
