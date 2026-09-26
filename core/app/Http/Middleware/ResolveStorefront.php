@@ -8,6 +8,7 @@ use App\Storefront\CategoryTree;
 use App\Storefront\Lookups;
 use App\Storefront\StorefrontCache;
 use App\Storefront\StorefrontContext;
+use App\Storefront\StorefrontHost;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -48,6 +49,12 @@ class ResolveStorefront
         /** @var Storefront $storefront */
         $storefront = (new Storefront)->newFromBuilder($row);
         if (! $storefront->is_active) {
+            throw new NotFoundHttpException('Storefront not found');
+        }
+        // Bound to the HOST (brand separation, 2026-09-26): Watchizer's API host answered
+        // `/api/v2/brandfashion/…` with Brand Fashion's catalogue. A host that belongs to another
+        // storefront gets exactly the unknown-storefront answer above. See StorefrontHost.
+        if (! StorefrontHost::serves($request, (int) $storefront->id)) {
             throw new NotFoundHttpException('Storefront not found');
         }
 

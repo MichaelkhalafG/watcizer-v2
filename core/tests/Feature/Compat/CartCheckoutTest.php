@@ -6,8 +6,10 @@ use App\Domain\Inventory\InventoryService;
 use App\Domain\Inventory\StockTarget;
 use App\Transform\Row;
 use Illuminate\Database\Query\JoinClause;
+use Illuminate\Log\Events\MessageLogged;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
 use Tests\Support\T;
 
@@ -195,6 +197,30 @@ it('answers a validation failure on add_to_cart with the legacy 500 + ref, not a
 
     $response->assertStatus(500)->assertJson(['success' => false, 'message' => 'An error occurred']);
     expect($response->json('ref'))->toMatch('/^[0-9a-f-]{36}$/');
+});
+
+it('logs an invalid add_to_cart body as ONE warning naming the fields — never an error with a trace', function () {
+    // Anyone can post junk here; each one used to write an 8 KB ERROR with a stack trace. The
+    // response is unchanged (legacy's 500 + ref, harness D-19) — only what reaches the log moved.
+    /** @var list<MessageLogged> $logged */
+    $logged = [];
+    Event::listen(MessageLogged::class, function (MessageLogged $m) use (&$logged): void {
+        $logged[] = $m;
+    });
+
+    withHeaders(guestHeaders((string) Str::uuid()))->postJson('/api/add_to_cart', ['bad' => true])
+        ->assertStatus(500)->assertJson(['success' => false, 'message' => 'An error occurred']);
+
+    $lines = array_map(fn (MessageLogged $m): string => $m->level.': '.$m->message, $logged);
+    $fields = [];
+    foreach ($logged as $m) {
+        if ($m->message === 'add_to_cart refused an invalid body' && is_array($m->context['fields'] ?? null)) {
+            $fields = $m->context['fields'];
+        }
+    }
+
+    expect($lines)->toBe(['warning: add_to_cart refused an invalid body'])   // exactly one line, a warning
+        ->and($fields)->toContain('quantity', 'piece_price', 'total_price');
 });
 
 it('removes every line of a product and stays successful when there is nothing to remove', function () {

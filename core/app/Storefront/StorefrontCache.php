@@ -71,6 +71,9 @@ final class StorefrontCache
         return "sf:code:{$code}";
     }
 
+    /** The key StorefrontHost caches the active shops' `[id => domain]` map under. */
+    public const HOSTS_KEY = 'sf:hosts';
+
     /**
      * Everything that goes stale when a storefront's own settings change (C-BUG-1, 2026-09-17).
      *
@@ -94,6 +97,9 @@ final class StorefrontCache
     public function forgetStorefront(int $storefrontId, string $code): int
     {
         Cache::forget(self::resolvedKey($code));
+        // The host → storefront map (StorefrontHost) holds every active shop's domain: a domain or
+        // is_active change must reach the host binding as fast as it reaches the row above.
+        Cache::forget(self::HOSTS_KEY);
 
         return $this->flush($storefrontId);
     }
