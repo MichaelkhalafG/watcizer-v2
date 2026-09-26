@@ -73,9 +73,9 @@ final class CompatNames
                 $id = Row::int($row, 'id');
                 $m = ['id' => $id, 'created_at' => Row::nstr($row, 'created_at'), 'updated_at' => Row::nstr($row, 'updated_at')];
                 if ($legacy === 'brands') {
-                    $m['image'] = LegacyJson::basename(Row::nstr($row, 'logo_path'));
+                    $m['image'] = LegacyJson::legacyImage(Row::nstr($row, 'logo_path'), 'Brand');
                 } elseif ($legacy === 'grades') {
-                    $m['image'] = LegacyJson::basename(Row::nstr($row, 'image_path'));
+                    $m['image'] = LegacyJson::legacyImage(Row::nstr($row, 'image_path'), 'Grade');
                 } elseif ($legacy === 'colors') {
                     $m['color_value'] = Row::nstr($row, 'hex');
                 }

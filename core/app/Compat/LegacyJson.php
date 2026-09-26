@@ -41,14 +41,48 @@ final class LegacyJson
         return Carbon::parse($dbValue, config()->string('app.timezone'))->toAtomString();
     }
 
-    public static function basename(?string $path): ?string
+    /**
+     * An image's stored path, in the form the legacy payload carries it.
+     *
+     * ── THE RULE: the stored path is the only truth about where an image lives ───────────────
+     *
+     * Legacy kept ONE folder per image type — every product cover in `Product/`, every gallery
+     * image in `Product_image/`, every brand logo in `Brand/`, every sub-type image in `Sub_type/` —
+     * so its payloads carried a bare filename and every reader (the storefront's `getImageUrl`,
+     * `imageUrl()` below, the sitemap) put the type's folder back. Compat relied on that and used
+     * `basename()`.
+     *
+     * The dashboard broke the assumption. A cover is now one of the gallery images, so a cover
+     * uploaded after the cutover lives in `Product_image/`; category images are written to
+     * `Category_type/`. Stripping the folder and letting a reader re-add the type's folder sent
+     * every new cover to `Product/` — 404 on the listing, the product page and the image sitemap
+     * (found 2026-09-26, the day after the team started uploading).
+     *
+     * So the folder is dropped ONLY when it is the one legacy used for this field — the only case
+     * in which a reader re-adding it lands on the same file, and the case that keeps every
+     * legacy-origin row byte-identical to what the legacy host emitted. Anything else keeps its
+     * folder, and every reader already passes `folder/file` through unchanged. **Do not
+     * reintroduce a bare `basename()` on an image path**: the day one more image type moves
+     * folder, it silently breaks every image of that type.
+     *
+     * @param  string  $legacyFolder  the folder legacy used for THIS field, and the one its readers re-add
+     */
+    public static function legacyImage(?string $path, string $legacyFolder): ?string
     {
         if ($path === null || $path === '') {
             return null;
         }
-        $pos = strrpos($path, '/');
+        if (preg_match('#^https?://#i', $path) === 1) {
+            return $path;
+        }
 
-        return $pos === false ? $path : substr($path, $pos + 1);
+        $path = ltrim($path, '/');
+        $pos = strrpos($path, '/');
+        if ($pos === false) {
+            return $path;
+        }
+
+        return substr($path, 0, $pos) === $legacyFolder ? substr($path, $pos + 1) : $path;
     }
 
     /**
