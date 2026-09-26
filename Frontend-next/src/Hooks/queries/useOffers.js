@@ -1,57 +1,17 @@
 import { useQuery } from '@tanstack/react-query'
-import http from '../../Context/api'
-import { getImageUrl } from '../../utils/imageUrl'
 
-// Offer transform — identical to the old api.jsx fetchOffers(), producing the flat
-// bilingual shape (offer_name_en/ar, prices, image URL, offer_rating[]) consumers read.
-const transformOffers = (data) =>
-  (data || []).map((offer) => {
-    const tr = (locale, key) =>
-      offer.translations.find((t) => t.locale === locale)?.[key]
-    return {
-      id: offer.id,
-      main_product_id: offer.main_product_id,
-      category_type_id: offer.category_type_id,
-      gift_product_ids: offer.gift_product_ids.map((id) => parseInt(id)),
-      selling_price: parseFloat(offer.selling_price),
-      sale_price_after_discount: parseFloat(offer.sale_price_after_discount),
-      stock: offer.stock,
-      image: getImageUrl(offer.image, 'Offer'),
-      average_rate: offer.average_rate ? parseFloat(offer.average_rate) : null,
-      created_at: offer.created_at,
-      updated_at: offer.updated_at,
-      short_description_en: tr('en', 'short_description') || 'No Description',
-      short_description_ar: tr('ar', 'short_description') || 'No Description',
-      long_description_en: tr('en', 'long_description') || 'No Description',
-      in_season: offer.in_season,
-      long_description_ar: tr('ar', 'long_description') || 'No Description',
-      offer_name_en: tr('en', 'offer_name') || 'Unnamed Offer',
-      offer_name_ar: tr('ar', 'offer_name') || 'Unnamed Offer',
-      offer_rating: offer.offer_rating.map((rating) => ({
-        id: rating.id,
-        user_id: rating.user_id,
-        offer_id: rating.offer_id,
-        rating: parseInt(rating.rating),
-        comment: rating.comment,
-        created_at: rating.created_at,
-        updated_at: rating.updated_at,
-      })),
-    }
-  })
-
-// Shared query fn: client `http` by default; the SERVER passes serverFetch so the
-// SSR prefetch reuses the exact same fetch + transform + return shape (queryKey
-// ['offers'] and the data stay identical → client cache-hits, no refetch).
-export const offersQueryFn = (client = http) => async () => {
-  const { data } = await client.get('/all_offer')
-  return transformOffers(data)
-}
+// Legacy OFFERS were deleted (Phase 0, G11 — promotions replace them), and `/all_offer` no longer
+// exists: core forwards it to the retired legacy host, which answers nothing, so EVERY page view
+// logged a failed request (batch 1, 2026-09-26). The hook stays — cart, checkout, product and
+// account read `offers` — but it returns the empty list legacy was already returning, with no
+// request at all. `client` is kept so the server-side prefetch's call still type-checks.
+export const offersQueryFn = (client) => async () => []
 
 export const useOffers = () =>
   useQuery({
     queryKey: ['offers'],
     queryFn: offersQueryFn(),
-    staleTime: 5 * 60 * 1000, // 5 min
+    staleTime: Infinity,
   })
 
 export default useOffers

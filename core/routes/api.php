@@ -15,6 +15,7 @@ use App\Http\Controllers\Customer\CustomerVerificationController;
 use App\Http\Controllers\Payment\PaymentCallbackController;
 use App\Http\Controllers\V2\CategoryController;
 use App\Http\Controllers\V2\MetaController;
+use App\Http\Controllers\V2\PaymentMethodController;
 use App\Http\Controllers\V2\ProductController;
 use App\Http\Controllers\V2\SitemapController;
 use Illuminate\Support\Facades\Route;
@@ -37,6 +38,12 @@ Route::prefix('v2/{storefront}')->middleware(['storefront', 'http.cache'])->wher
     Route::get('products/{slug}', [ProductController::class, 'show'])->where('slug', '[^/]+');
     Route::get('sitemap.xml', [SitemapController::class, 'index']);
     Route::get('sitemaps/{locale}/{file}.xml', [SitemapController::class, 'chunk'])->where(['locale' => '[a-z]{2}', 'file' => '[a-z0-9\-]+']);
+});
+
+// The checkout's payment methods: v2, but NOT under http.cache — its ten minutes plus an hour of
+// stale would keep a switched-off method on the checkout for that long (PaymentMethodController).
+Route::prefix('v2/{storefront}')->middleware('storefront')->where(['storefront' => '[a-z0-9_-]+'])->group(function (): void {
+    Route::get('payment-methods', [PaymentMethodController::class, 'index']);
 });
 
 // ── 2. compat (legacy paths, legacy shapes) ───────────────────────────────

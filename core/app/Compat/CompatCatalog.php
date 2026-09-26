@@ -64,7 +64,7 @@ final class CompatCatalog
             foreach (CompatProducts::WATCH_COLUMNS as $col) {
                 $r[$col] = CompatProducts::watch($row, $col);
             }
-            $r['image'] = LegacyJson::basename(Row::nstr($row, 'cover_path')) ?? '';
+            $r['image'] = LegacyJson::legacyImage(Row::nstr($row, 'cover_path'), 'Product') ?? '';
             $r['warranty_years'] = CompatProducts::warranty($row);
             $r['interchangeable_dial'] = CompatProducts::watch($row, 'interchangeable_dial');
             $r['interchangeable_strap'] = CompatProducts::watch($row, 'interchangeable_strap');
@@ -173,7 +173,7 @@ final class CompatCatalog
                 $out[] = [
                     'id' => Row::int($row, 'id'),
                     'product_id' => Row::int($row, 'product_id'),
-                    'image' => LegacyJson::basename(Row::str($row, 'path')) ?? '',
+                    'image' => LegacyJson::legacyImage(Row::str($row, 'path'), 'Product_image') ?? '',
                     'is_cover' => false,
                     'sort' => max(0, Row::int($row, 'sort') - 1),
                     'alt_ar' => Row::nstr($row, 'alt_ar'),

@@ -1,15 +1,15 @@
 import { cache } from 'react'
-import serverHttp from './serverFetch'
 
 // SERVER-ONLY blog access for the /blogs list + /blog/[name] detail routes.
 // React-cached so generateMetadata() and the page body share ONE upstream fetch
 // per request (same pattern as serverCatalog.js).
 
 // Raw /all_blog array (each: { id, image, images:[{image}], translations:[{locale,title,text}] }).
-export const getServerBlogs = cache(async () => {
-  const { data } = await serverHttp.get('/all_blog')
-  return Array.isArray(data) ? data : []
-})
+// `/all_blog` no longer exists (core forwards it to the retired legacy host), so the blog pages
+// asked for it on every render and got an error (batch 1, 2026-09-26). Blogs come back per
+// storefront later; until then the list is empty WITHOUT a request, and both pages keep showing
+// their existing empty state.
+export const getServerBlogs = cache(async () => [])
 
 // english title of a blog (the URL key + SEO title source)
 export const blogTitleEn = (blog) =>

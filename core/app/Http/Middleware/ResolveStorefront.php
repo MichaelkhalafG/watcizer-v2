@@ -8,6 +8,8 @@ use App\Storefront\CategoryTree;
 use App\Storefront\Lookups;
 use App\Storefront\StorefrontCache;
 use App\Storefront\StorefrontContext;
+use App\Storefront\StorefrontHost;
+use App\Storefront\StorefrontUrls;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -50,6 +52,18 @@ class ResolveStorefront
         if (! $storefront->is_active) {
             throw new NotFoundHttpException('Storefront not found');
         }
+        // Bound to the HOST (brand separation, 2026-09-26): Watchizer's API host answered
+        // `/api/v2/brandfashion/…` with Brand Fashion's catalogue. A host that belongs to another
+        // storefront gets exactly the unknown-storefront answer above. See StorefrontHost.
+        if (! StorefrontHost::serves($request, (int) $storefront->id)) {
+            throw new NotFoundHttpException('Storefront not found');
+        }
+        // This storefront's image host for everything this v2 request builds (L5, 2026-09-26): one
+        // global made Brand Fashion's payloads name Watchizer's host, which its own frontend's image
+        // allow-list would refuse. A SEPARATE key, never `storefront.asset_base` itself: overwriting
+        // the .env value let the next request in the same process read another shop's host as
+        // Watchizer's own (caught by StorefrontUrlsTest). Cleared again in terminate().
+        config(['storefront.request_asset_base' => StorefrontUrls::assetBase((int) $storefront->id)]);
 
         $tags = new CacheTags;
         $tags->storefront((int) $storefront->id);
@@ -79,5 +93,11 @@ class ResolveStorefront
         $default = $storefront->getAttribute('default_locale');
 
         return is_string($default) && $default !== '' ? $default : 'ar';
+    }
+
+    /** Nothing after this request may inherit its storefront's image host (see handle()). */
+    public function terminate(): void
+    {
+        config(['storefront.request_asset_base' => null]);
     }
 }

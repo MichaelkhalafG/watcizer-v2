@@ -195,6 +195,14 @@ Do them in one push, not two.
 **Both are already written on `wave-4d` (2026-09-22) and not pushed.** What follows is what they
 contain, so you can read the diff rather than take it on trust.
 
+> **⚠ The Hostinger panel WINS over this file (found on the night, 2026-09-24).** The Node app's
+> build environment variables override every `.env*` file in `next build`, and the panel held the
+> legacy hosts — so this edit shipped, the build ignored it, and the storefront stayed on legacy
+> while looking cut over. **Set the same three values in the panel's build environment variables
+> as well, then rebuild**, and prove it with §7's bundle check (the API base compiled into the JS
+> chunks, and `/api/v2/…` answering 200 through the storefront — legacy has no v2). See §9.1: the
+> rollback has the same trap.
+
 **(a) `Frontend-next/.env.production`** — three keys move:
 
 ```
@@ -1279,6 +1287,8 @@ git log --oneline main..wave-4d       # read every commit that is about to becom
 
 - [ ] **The full battery is green off a FINISHED run** — not a tail, not a partial: Pest, Pint,
       PHPStan level 10, `tsc`, and `npm run build` in both `core/` and `Frontend-next/`.
+- [ ] **The Hostinger panel's build environment variables name `api.watchizereg.com` too** — they
+      override `.env.production` (§1.3's box). A correct file with a stale panel ships legacy.
 - [ ] **`Frontend-next/.env.production` names `api.watchizereg.com`** in all three host values, and
       carries `NEXT_PUBLIC_META_PIXEL_ID`. This file IS the rollback (§9.1), so read it rather than
       trusting it.
@@ -1363,6 +1373,26 @@ The v2 routes are unaffected either way: `/api/v2/{storefront}/…` carries the 
 ---
 
 ## 7. Verification, on the live site
+
+**Step 0 — the bundle check. Before any browser step, and after EVERY rebuild (added 2026-09-24).**
+On the night the storefront looked cut over and was still on legacy (§1.3's panel box), and a
+working page proves nothing about which host served it. These three lines do:
+
+```bash
+S=https://watchizereg.com; P="probe=$(date +%s%N)"
+# a) what the BROWSER calls — the API base compiled into the JS chunks (https-prefixed, so the
+#    bare hostnames in next/image's allow-list, where dash. stays on purpose, cannot count)
+curl -s "$S/?$P" | grep -oE '/_next/static/chunks/[^"]+\.js' | sort -u | sed "s#^#$S#" | xargs -n1 curl -s \
+  | grep -oE 'https://(api|dash)\.watchizereg\.com/api' | sort | uniq -c        # ONLY api.watchizereg.com/api
+# b) what the storefront SERVER rewrites to (LARAVEL_ORIGIN) — /api/v2 exists ONLY on core
+curl -s -o /dev/null -w 'v2 via storefront: %{http_code}\n' "$S/api/v2/watchizer/meta?$P"   # 200 (legacy: 404)
+# c) the image host inside real data — set by CORE's COMPAT_ASSET_BASE, not by the bundle
+curl -s "$S/?$P" | grep -oE 'https(://|%3A%2F%2F)(api|dash)\.watchizereg\.com(/|%2F)Uploads_Images' | sort | uniq -c   # only api.
+```
+
+(a) or (b) wrong → the BUILD is wrong (panel variables, then rebuild). (c) alone wrong → core's
+`.env` (`COMPAT_ASSET_BASE`, one line, `config:cache`, then `cache:clear`). Do not judge an image
+URL in the page as evidence of the API host: it comes from the payload, i.e. from core's setting.
 
 In a browser you are **not** signed into, and in this order. Each step is chosen because it fails
 differently from the ones around it.
@@ -1468,6 +1498,21 @@ that must work.
 Nothing here is irreversible while the legacy host is up. Rollback is **one file**.
 
 ### 9.1 Put the storefront back — EDIT THREE LINES AND PUSH
+
+> **⚠ Since the night (2026-09-24) the file below is NOT what the build reads for these names.**
+> The Hostinger Node app's **build environment variables** define `NEXT_PUBLIC_API_BASE`,
+> `NEXT_PUBLIC_ASSET_BASE`, `LARAVEL_ORIGIN`, `NEXT_PUBLIC_PUBLIC_API_KEY` and
+> `NEXT_PUBLIC_PAYMOB_ENABLED`, and a real environment variable ALWAYS beats a `.env*` file in
+> `next build`. The cutover's `.env.production` edit was silently overridden by stale panel values —
+> the merge looked done and the storefront stayed on legacy. **A rollback done by editing this file
+> alone therefore changes nothing.**
+>
+> **Rollback is now: set those names in the panel back to the legacy hosts, then rebuild** (the
+> panel's redeploy, or an empty commit pushed to `main`). Change `.env.production` too, so the two
+> stay identical — but the panel is the one that counts. Verify with §7's bundle check, never by eye.
+> Still read from the FILE, because the panel does not define them: `NEXT_PUBLIC_META_PIXEL_ID`,
+> `NEXT_PUBLIC_IMAGE_CDN_BASE`. The cleaner end state, after the season: delete the panel's
+> variables so the tracked file is the single source again, and this box can go.
 
 ```bash
 cd "D:/coding/watchizer website/new watchizer/Frontend-next"

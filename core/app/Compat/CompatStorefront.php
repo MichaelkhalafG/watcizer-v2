@@ -2,8 +2,8 @@
 
 namespace App\Compat;
 
+use App\Storefront\StorefrontHost;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 
 /**
  * Which storefront is this compat request for? (review 🔴-4)
@@ -62,7 +62,7 @@ final class CompatStorefront
             return $this->resolved;
         }
 
-        $match = $this->fromHost($this->request->getHost());
+        $match = StorefrontHost::storefrontIdFor($this->request->getHost());
         $this->matched = $match !== null;
         $this->resolved = $match ?? config()->integer('compat.storefront_id');
 
@@ -82,45 +82,5 @@ final class CompatStorefront
         $this->id();
 
         return ! $this->matched;
-    }
-
-    /**
-     * Host → storefront id, or null when nothing matches.
-     *
-     * Only ACTIVE storefronts are considered: a shop that has been switched off must not start
-     * claiming requests because its domain is still in the row.
-     */
-    private function fromHost(string $host): ?int
-    {
-        $host = strtolower(trim($host));
-        if ($host === '') {
-            return null;
-        }
-
-        // A port never reaches getHost(), but a trailing dot (the fully-qualified form) can.
-        $host = rtrim($host, '.');
-        $host = str_starts_with($host, 'www.') ? substr($host, 4) : $host;
-
-        $best = null;
-        $bestLength = 0;
-
-        foreach (DB::table('storefronts')->where('is_active', 1)->get(['id', 'domain']) as $row) {
-            $raw = $row->domain ?? null;
-            $domain = is_string($raw) ? strtolower(trim($raw)) : '';
-            if ($domain === '') {
-                continue;
-            }
-
-            // Exact, or a sub-domain of it — never a bare suffix match, which would let
-            // `notwatchizereg.com` resolve to Watchizer.
-            $isMatch = $host === $domain || str_ends_with($host, '.'.$domain);
-
-            if ($isMatch && strlen($domain) > $bestLength && is_numeric($row->id)) {
-                $best = (int) $row->id;
-                $bestLength = strlen($domain);
-            }
-        }
-
-        return $best;
     }
 }

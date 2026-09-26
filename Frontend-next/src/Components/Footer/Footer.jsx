@@ -31,7 +31,6 @@ function Footer() {
   const accountLinks = [
     { label: t('Profile', 'الملف الشخصي'), to: '/account?tab=profile' },
     { label: t('My Orders', 'طلباتي'), to: '/account?tab=orders' },
-    { label: t('Wishlist', 'قائمة الأمنيات'), to: '/account?tab=wishlist' },
     { label: t('Cart', 'سلة المشتريات'), to: '/cart' },
     { label: t('Sign In', 'تسجيل الدخول'), to: '/login' },
   ]

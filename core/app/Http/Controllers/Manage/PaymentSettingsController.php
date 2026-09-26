@@ -13,6 +13,7 @@ use App\Models\User;
 use App\Support\Coerce;
 use App\Support\ManageText;
 use App\Transform\Row;
+use Closure;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -239,7 +240,7 @@ final class PaymentSettingsController
             'icon' => Coerce::nstr($data['icon'] ?? null),
             'is_enabled' => (bool) $data['is_enabled'],
             'sort' => Coerce::int($data['sort'] ?? 0),
-            'settings' => null,
+            'settings' => self::withLimits(null, $data),
         ]);
 
         self::writeLabels($row, $request);
@@ -270,7 +271,7 @@ final class PaymentSettingsController
          * — `integration_id` is an identifier, not a secret (study §3.9.1) — so the values are
          * logged in full.
          */
-        $before = ActivityLog::fields($row->only(['method', 'integration_id', 'icon', 'is_enabled', 'sort']));
+        $before = ActivityLog::fields($row->only(['method', 'integration_id', 'icon', 'is_enabled', 'sort', 'settings']));
 
         $row->update([
             'method' => Coerce::str($data['method']),
@@ -278,6 +279,7 @@ final class PaymentSettingsController
             'icon' => Coerce::nstr($data['icon'] ?? null),
             'is_enabled' => (bool) $data['is_enabled'],
             'sort' => Coerce::int($data['sort'] ?? 0),
+            'settings' => self::withLimits(Coerce::arr($row->getAttribute('settings')), $data),
         ]);
 
         self::writeLabels($row, $request);
@@ -285,7 +287,7 @@ final class PaymentSettingsController
         ActivityLog::record(
             'storefront_payment_methods', $method, ActivityLog::UPDATED,
             $before,
-            ActivityLog::fields($row->fresh()?->only(['method', 'integration_id', 'icon', 'is_enabled', 'sort'])),
+            ActivityLog::fields($row->fresh()?->only(['method', 'integration_id', 'icon', 'is_enabled', 'sort', 'settings'])),
             label: Coerce::str($data['method']),
             storefrontId: Coerce::nint($storefront->getKey()),
         );
@@ -373,6 +375,32 @@ final class PaymentSettingsController
         'souhoola', 'aman', 'halan', 'sympl', 'forsa', 'premium', 'contact', 'fawry_code', 'cod', 'whatsapp',
     ];
 
+    /**
+     * The method's `settings` with the submitted order limits written in: a blank limit is
+     * removed rather than stored as zero, and every other key already there is kept.
+     *
+     * @param  array<array-key, mixed>|null  $settings
+     * @param  array<array-key, mixed>  $data
+     * @return array<string, mixed>|null
+     */
+    private static function withLimits(?array $settings, array $data): ?array
+    {
+        $out = [];
+        foreach ($settings ?? [] as $key => $value) {
+            $out[(string) $key] = $value;
+        }
+        foreach (['min_total', 'max_total'] as $key) {
+            $value = $data[$key] ?? null;
+            if (is_numeric($value) && (float) $value > 0) {
+                $out[$key] = round((float) $value, 2);
+            } else {
+                unset($out[$key]);
+            }
+        }
+
+        return $out === [] ? null : $out;
+    }
+
     /** @return array<string, list<mixed>> */
     private static function methodRules(Storefront $storefront): array
     {
@@ -383,6 +411,17 @@ final class PaymentSettingsController
             'icon' => ['nullable', 'string', 'max:64'],
             'is_enabled' => ['required', 'boolean'],
             'sort' => ['nullable', 'integer', 'min:0', 'max:65535'],
+            // Order limits the checkout enforces (batch 1): blank = no limit. Kept in `settings`.
+            'min_total' => ['nullable', 'numeric', 'min:0', 'max:10000000'],
+            'max_total' => ['nullable', 'numeric', 'min:0', 'max:10000000',
+                // Only when BOTH are filled: `gte:min_total` fails whenever the minimum is blank.
+                function (string $attribute, mixed $value, Closure $fail): void {
+                    $min = request()->input('min_total');
+                    if (is_numeric($value) && is_numeric($min) && (float) $min > 0 && (float) $value < (float) $min) {
+                        $fail(ManageText::t('payments.max_below_min', 'أعلى قيمة يجب ألا تقل عن أقل قيمة.'));
+                    }
+                },
+            ],
             'label' => ['required', 'array'],
             'label.ar' => ['required', 'string', 'max:191'],
             'label.en' => ['nullable', 'string', 'max:191'],
@@ -571,6 +610,14 @@ final class PaymentSettingsController
         return $out;
     }
 
+    /** @param array<array-key, mixed> $settings */
+    private static function limit(array $settings, string $key): ?float
+    {
+        $value = $settings[$key] ?? null;
+
+        return is_numeric($value) && (float) $value > 0 ? (float) $value : null;
+    }
+
     /** @return list<array<string, mixed>> */
     private static function methodRows(int $providerId): array
     {
@@ -579,10 +626,12 @@ final class PaymentSettingsController
             DB::table('storefront_payment_methods as m')
                 ->where('m.storefront_payment_provider_id', $providerId)
                 ->orderBy('m.sort')->orderBy('m.id')
-                ->get(['m.id', 'm.method', 'm.integration_id', 'm.icon', 'm.is_enabled', 'm.sort']) as $raw
+                ->get(['m.id', 'm.method', 'm.integration_id', 'm.icon', 'm.is_enabled', 'm.sort', 'm.settings']) as $raw
         ) {
             $row = Row::cast($raw);
             $id = Row::int($row, 'id');
+            $decoded = json_decode(Row::nstr($row, 'settings') ?? '', true);
+            $settings = is_array($decoded) ? $decoded : [];
             $labels = [];
             foreach (
                 DB::table('storefront_payment_method_translations')
@@ -599,6 +648,8 @@ final class PaymentSettingsController
                 'icon' => Row::nstr($row, 'icon'),
                 'is_enabled' => Row::bool($row, 'is_enabled'),
                 'sort' => Row::int($row, 'sort'),
+                'min_total' => self::limit($settings, 'min_total'),
+                'max_total' => self::limit($settings, 'max_total'),
                 'label' => ['ar' => $labels['ar'] ?? '', 'en' => $labels['en'] ?? ''],
             ];
         }

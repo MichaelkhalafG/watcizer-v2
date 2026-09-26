@@ -76,7 +76,7 @@
             </thead>
             <tbody>
                 @foreach($items as $item)
-                    @include('emails.partials.product-row', ['item' => $item, 'mode' => 'admin'])
+                    @include('emails.partials.product-row', ['item' => $item, 'mode' => 'admin', 'decimals' => $moneyDecimals])
                 @endforeach
             </tbody>
         </table>
@@ -87,24 +87,31 @@
         <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:#f8f8f8;border-radius:8px;">
             <tr><td style="padding:14px 16px;">
                 <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
+                    {{-- Same block as the customer's, from OrderTotals: the column adds up. --}}
                     <tr>
-                        <td style="font-size:13px;color:#555;padding:3px 0;">Subtotal</td>
-                        <td style="font-size:13px;color:#111;text-align:right;padding:3px 0;">{{ number_format($subtotal) }} EGP</td>
+                        <td style="font-size:13px;color:#555;padding:3px 0;">Subtotal (list price)</td>
+                        <td style="font-size:13px;color:#111;text-align:right;padding:3px 0;">{{ number_format($subtotal, $moneyDecimals) }} EGP</td>
                     </tr>
                     @if($discount > 0)
                     <tr>
-                        <td style="font-size:13px;color:#16a34a;padding:3px 0;">Discount</td>
-                        <td style="font-size:13px;color:#16a34a;text-align:right;padding:3px 0;">- {{ number_format($discount) }} EGP</td>
+                        <td style="font-size:13px;color:#16a34a;padding:3px 0;">Discount (sale)</td>
+                        <td style="font-size:13px;color:#16a34a;text-align:right;padding:3px 0;">&minus;{{ number_format($discount, $moneyDecimals) }} EGP</td>
+                    </tr>
+                    @endif
+                    @if($promotion > 0)
+                    <tr>
+                        <td style="font-size:13px;color:#16a34a;padding:3px 0;">Promotion{{ $promotionName ? ' · ' . $promotionName : '' }}</td>
+                        <td style="font-size:13px;color:#16a34a;text-align:right;padding:3px 0;">&minus;{{ number_format($promotion, $moneyDecimals) }} EGP</td>
                     </tr>
                     @endif
                     <tr>
                         <td style="font-size:13px;color:#555;padding:3px 0;">Shipping</td>
-                        <td style="font-size:13px;color:#111;text-align:right;padding:3px 0;">{{ number_format($shippingCost) }} EGP</td>
+                        <td style="font-size:13px;color:#111;text-align:right;padding:3px 0;">@if($freeShipping || $shippingCost <= 0) Free @else {{ number_format($shippingCost, $moneyDecimals) }} EGP @endif</td>
                     </tr>
                     <tr><td colspan="2" style="border-top:1px solid rgba(0,0,0,0.1);padding-top:8px;font-size:0;line-height:0;">&nbsp;</td></tr>
                     <tr>
                         <td style="font-size:16px;font-weight:700;color:#111;padding:3px 0;">Grand Total</td>
-                        <td style="font-size:18px;font-weight:800;color:#111;text-align:right;padding:3px 0;">{{ number_format($total) }} EGP</td>
+                        <td style="font-size:18px;font-weight:800;color:#111;text-align:right;padding:3px 0;">{{ number_format($total, $moneyDecimals) }} EGP</td>
                     </tr>
                 </table>
             </td></tr>

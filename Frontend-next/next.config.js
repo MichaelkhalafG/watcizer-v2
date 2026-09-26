@@ -54,16 +54,21 @@ const nextConfig = {
       { source: '/listingsearch', destination: '/listing', permanent: true },
       { source: '/edit-profile', destination: '/account?tab=profile', permanent: true },
       { source: '/order-list', destination: '/account?tab=orders', permanent: true },
-      { source: '/wish-list', destination: '/account?tab=wishlist', permanent: true },
+      { source: '/wish-list', destination: '/account', permanent: true }, // the wishlist is gone (batch 1)
       { source: '/Search', destination: '/listing', permanent: true },
     ]
   },
   images: {
     // Self-hosted catalog/brand images live on the Laravel origin
-    // (dash.watchizereg.com in prod, 127.0.0.1:8000 / localhost:8000 in dev);
+    // (api.watchizereg.com in prod, 127.0.0.1:8000 / localhost:8000 in dev);
     // cdn-images.farfetch-contents.com is the seeder's external placeholder host.
     // next/image rejects any hostname not listed here — keep in sync with
     // NEXT_PUBLIC_ASSET_BASE.
+    //
+    // The dev-only hosts are left out of a PRODUCTION build (2026-09-26): an allowed
+    // plain-http loopback host lets anyone ask the live optimiser to fetch from the
+    // server's own port 8000, and no production image names either of them or
+    // Farfetch (none in the 2026-09-17 data).
     remotePatterns: [
       /*
        * Storefront Phase 2 (2026-09-22): the API and asset host moves to a sub-domain of this
@@ -77,9 +82,13 @@ const nextConfig = {
        */
       { protocol: 'https', hostname: 'api.watchizereg.com' },
       { protocol: 'https', hostname: 'dash.watchizereg.com' },
-      { protocol: 'http', hostname: '127.0.0.1', port: '8000' },
-      { protocol: 'http', hostname: 'localhost', port: '8000' },
-      { protocol: 'https', hostname: 'cdn-images.farfetch-contents.com' },
+      ...(process.env.NODE_ENV === 'production'
+        ? []
+        : [
+            { protocol: 'http', hostname: '127.0.0.1', port: '8000' },
+            { protocol: 'http', hostname: 'localhost', port: '8000' },
+            { protocol: 'https', hostname: 'cdn-images.farfetch-contents.com' },
+          ]),
     ],
     // AVIF first (30–50% smaller than WebP), WebP fallback.
     formats: ['image/avif', 'image/webp'],

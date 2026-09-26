@@ -8,6 +8,7 @@ use App\Domain\Customers\CustomerSocial;
 use App\Domain\Customers\CustomerTokens;
 use App\Domain\Customers\SocialNonce;
 use App\Http\Controllers\Controller;
+use App\Storefront\StorefrontUrls;
 use App\Support\Coerce;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -125,7 +126,7 @@ final class CustomerSocialController extends Controller
     public function callback(Request $request, string $provider): RedirectResponse
     {
         if (! CustomerSocial::supports($provider)) {
-            return $this->back('unsupported_provider');
+            return $this->back($request, 'unsupported_provider');
         }
 
         /*
@@ -144,7 +145,7 @@ final class CustomerSocialController extends Controller
         if ($nonce === null) {
             Log::warning('social callback rejected: missing or invalid state', ['provider' => $provider]);
 
-            return $this->back('invalid_state');
+            return $this->back($request, 'invalid_state');
         }
 
         try {
@@ -157,16 +158,16 @@ final class CustomerSocialController extends Controller
              */
             Log::error('social callback failed', ['provider' => $provider, 'reason' => $e->getMessage()]);
 
-            return $this->back('social_failed', null, $nonce);
+            return $this->back($request, 'social_failed', null, $nonce);
         }
 
         $outcome = $this->social->resolve($provider, $account);
 
         if (array_key_exists('refused', $outcome)) {
-            return $this->back(Coerce::str($outcome['refused']), null, $nonce);
+            return $this->back($request, Coerce::str($outcome['refused']), null, $nonce);
         }
 
-        return $this->back(null, $this->tokens->issue($outcome['user']), $nonce);
+        return $this->back($request, null, $this->tokens->issue($outcome['user']), $nonce);
     }
 
     /**
@@ -197,9 +198,11 @@ final class CustomerSocialController extends Controller
      * landed in my tab", and the second is the case worth refusing. It is absent only when the
      * state itself did not verify, because then there is no nonce this application issued.
      */
-    private function back(?string $error, ?string $token = null, ?string $nonce = null): RedirectResponse
+    private function back(Request $request, ?string $error, ?string $token = null, ?string $nonce = null): RedirectResponse
     {
-        $base = rtrim(config()->string('customers.storefront_url'), '/').'/auth/callback';
+        // Back to the shop the sign-in STARTED from (L5, 2026-09-26): the provider calls back to
+        // that shop's own API host. One global landed every storefront's shoppers on Watchizer.
+        $base = StorefrontUrls::frontend(StorefrontUrls::storefrontOf($request)).'/auth/callback';
         $query = $error !== null ? ['error' => $error] : ['token' => $token];
         if ($nonce !== null) {
             $query['nonce'] = $nonce;

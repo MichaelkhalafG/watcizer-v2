@@ -159,3 +159,27 @@ it('still refuses a key that is not on the list', function () {
     actingAs(Staff::admin())->post('/manage/storefronts/1/payments/methods', methodForm($contract, 'tabby', '5943099', true))
         ->assertRedirect()->assertSessionHasErrors('method');
 });
+
+it('saves a method\'s order limits, clears a blank one, keeps other settings, and refuses max below min', function () {
+    /*
+     * Batch 1 (2026-09-26): the checkout greys a method out outside these limits and `add_order`
+     * refuses it, so the numbers the screen saves are the numbers a shopper meets.
+     */
+    $contract = keysContract();
+    $admin = Staff::admin();
+
+    actingAs($admin)->post('/manage/storefronts/1/payments/methods', methodForm($contract, 'bank_installment', '5943061', true) + ['min_total' => '1000', 'max_total' => '50000'])
+        ->assertRedirect()->assertSessionHasNoErrors();
+    $id = T::int(DB::table('storefront_payment_methods')->where('storefront_payment_provider_id', $contract->getAttribute('id'))->where('method', 'bank_installment')->value('id'));
+    expect(json_decode(T::str(DB::table('storefront_payment_methods')->where('id', $id)->value('settings')), true))
+        ->toBe(['min_total' => 1000, 'max_total' => 50000]);
+
+    DB::table('storefront_payment_methods')->where('id', $id)->update(['settings' => json_encode(['min_total' => 1000, 'max_total' => 50000, 'other' => 'kept'])]);
+    actingAs($admin)->put("/manage/storefronts/1/payments/methods/{$id}", methodForm($contract, 'bank_installment', '5943061', true) + ['min_total' => '', 'max_total' => '40000'])
+        ->assertRedirect()->assertSessionHasNoErrors();
+    expect(json_decode(T::str(DB::table('storefront_payment_methods')->where('id', $id)->value('settings')), true))
+        ->toBe(['max_total' => 40000, 'other' => 'kept']);
+
+    actingAs($admin)->put("/manage/storefronts/1/payments/methods/{$id}", methodForm($contract, 'bank_installment', '5943061', true) + ['min_total' => '5000', 'max_total' => '100'])
+        ->assertSessionHasErrors('max_total');
+});

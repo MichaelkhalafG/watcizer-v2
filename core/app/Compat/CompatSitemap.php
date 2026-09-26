@@ -49,9 +49,12 @@ final class CompatSitemap
                 continue;
             }
             $imageXml = '';
-            $file = LegacyJson::basename(Row::nstr($row, 'cover_path'));
+            // The stored path decides the folder (LegacyJson::legacyImage). This line used to append
+            // `Product/` to a bare filename, which handed Google a 404 for every cover uploaded
+            // after the cutover, on every crawl.
+            $file = LegacyJson::legacyImage(Row::nstr($row, 'cover_path'), 'Product');
             if ($file !== null && $file !== '') {
-                $imgUrl = $imageHost.'/Uploads_Images/Product/'.$file;
+                $imgUrl = $imageHost.'/Uploads_Images/'.(str_contains($file, '/') ? $file : 'Product/'.$file);
                 $imageXml = '
         <image:image>
             <image:loc>'.htmlspecialchars($imgUrl).'</image:loc>

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domain\Notifications;
 
+use App\Domain\Orders\OrderTotals;
 use App\Storefront\ImageUrl;
 use App\Transform\Row;
 use Illuminate\Database\Query\JoinClause;
@@ -76,19 +77,13 @@ final class OrderEmailData
         $user = self::user(Row::nint($order, 'user_id'));
         $address = self::address(Row::nint($order, 'address_id'));
 
-        [$items, $grossSubtotal] = self::items($orderId);
-
-        $shippingCost = $address['shipping_cost'];
-        $total = (float) Row::money($order, 'total_price_for_order');
-
         /*
-         * The legacy arithmetic, ported exactly: the stored total INCLUDES shipping, so the
-         * subtotal is derived by subtracting it, and the discount is whatever the list prices add
-         * up to beyond that. Recomputing the subtotal from the lines instead would make the
-         * e-mail disagree with the order whenever a line was priced by hand.
+         * The totals block comes from OrderTotals — the same answer the dashboard shows. The old
+         * derivation here (total minus today's city price) printed a Subtotal that was already
+         * post-sale beside a Discount off list price, a column no customer could add up.
          */
-        $subtotal = max(0.0, round($total - $shippingCost, 2));
-        $discount = max(0.0, round($grossSubtotal - $subtotal, 2));
+        $totals = OrderTotals::of($orderId);
+        $items = self::items($orderId, $totals);
 
         $status = Row::str($order, 'status');
         $paymentMethod = Row::nstr($order, 'payment_method') ?? '';
@@ -116,10 +111,16 @@ final class OrderEmailData
             'cityAr' => $address['city_ar'],
 
             'items' => $items,
-            'subtotal' => $subtotal,
-            'shippingCost' => $shippingCost,
-            'discount' => $discount,
-            'total' => $total,
+            'subtotal' => $totals === null ? 0.0 : $totals->list,
+            'discount' => $totals === null ? 0.0 : $totals->saleDiscount,
+            'promotion' => $totals === null ? 0.0 : $totals->promotion,
+            'promotionName' => $totals?->promotionName,
+            'freeShipping' => $totals !== null && $totals->freeShipping,
+            'shippingCost' => $totals === null ? 0.0 : $totals->shipping,
+            'total' => $totals === null ? (float) Row::money($order, 'total_price_for_order') : $totals->total,
+            // Whole pounds when every figure is whole, else two decimals for ALL of them: rounding
+            // each line on its own could make a correct column add up one pound out.
+            'moneyDecimals' => $totals === null ? 0 : self::moneyDecimals($totals),
             'note' => Row::nstr($order, 'note'),
 
             'paymentEn' => self::paymentLabel($paymentMethod, 'en'),
@@ -147,13 +148,24 @@ final class OrderEmailData
             'orderNumber', 'orderId', 'createdAt', 'status', 'statusEn', 'statusAr',
             'customerName', 'customerEmail', 'customerPhone', 'isGuest',
             'addressLine', 'cityEn', 'cityAr',
-            'items', 'subtotal', 'shippingCost', 'discount', 'total', 'note',
+            'items', 'subtotal', 'discount', 'promotion', 'promotionName', 'freeShipping', 'shippingCost', 'total', 'moneyDecimals', 'note',
             'paymentEn', 'paymentAr', 'paymentStatus',
             'brandName', 'copyright', 'whatsappUrl', 'trackUrl', 'dashboardUrl',
         ];
     }
 
     // ── the pieces ───────────────────────────────────────────────────────────────────────────
+
+    private static function moneyDecimals(OrderTotals $t): int
+    {
+        foreach ([$t->list, $t->saleDiscount, $t->promotion, $t->shipping, $t->total] as $v) {
+            if (abs($v - round($v)) > 0.001) {
+                return 2;
+            }
+        }
+
+        return 0;
+    }
 
     /** @return array<string, mixed>|null */
     private static function user(?int $userId): ?array
@@ -220,17 +232,17 @@ final class OrderEmailData
     }
 
     /**
-     * The lines in the shape `partials/product-row.blade.php` reads, plus the gross subtotal the
-     * discount line is derived from.
+     * The lines in the shape `partials/product-row.blade.php` reads. The totals are NOT derived here
+     * any more — OrderTotals owns them, so the e-mail and the dashboard cannot disagree.
      *
      * An order line points at a PRODUCT or at an OFFER, never both, and offers are still on the
      * legacy-shaped `offers` table (the clean offers module is wave 4D) — so both are read, and a
      * line whose subject has since been deleted still renders with its stored price and quantity
      * rather than disappearing from the customer's own receipt.
      *
-     * @return array{0: list<array<string, mixed>>, 1: float}
+     * @return list<array<string, mixed>>
      */
-    private static function items(int $orderId): array
+    private static function items(int $orderId, ?OrderTotals $totals): array
     {
         $rows = DB::table('order_items as oi')
             ->leftJoin('catalog_products as p', 'p.id', '=', 'oi.product_id')
@@ -258,11 +270,11 @@ final class OrderEmailData
              */
             ->select([
                 'oi.id', 'oi.product_id', 'oi.offer_id', 'oi.quantity', 'oi.piece_price', 'oi.total_price',
-                'oi.type_stock', 'oi.color_band', 'oi.color_dial',
-                'p.wa_code', 'p.sku', 'p.selling_price',
+                'oi.type_stock', 'oi.color_band', 'oi.color_dial', 'oi.is_reward',
+                'p.wa_code', 'p.sku',
                 'pen.title as title_en', 'par.title as title_ar',
                 'v.label as variant_label', 'v.sku as variant_sku',
-                'f.wa_code as offer_code', 'f.image as offer_image', 'f.selling_price as offer_selling_price',
+                'f.wa_code as offer_code', 'f.image as offer_image',
                 'fen.offer_name as offer_name_en', 'far.offer_name as offer_name_ar',
             ])
             // The cover image, one sub-select in the projection rather than a query per line.
@@ -270,7 +282,6 @@ final class OrderEmailData
             ->get();
 
         $items = [];
-        $gross = 0.0;
 
         foreach ($rows as $raw) {
             $row = Row::cast($raw);
@@ -283,13 +294,6 @@ final class OrderEmailData
             $unit = (float) Row::money($row, 'piece_price');
             $lineTotal = (float) (Row::nmoney($row, 'total_price') ?? '0');
             $lineTotal = $lineTotal > 0.0 ? $lineTotal : $unit * $qty;
-
-            // The LIST price, so the discount line says what the shopper saved. Falls back to
-            // what they actually paid, which makes the saving zero rather than negative.
-            $listPrice = $isProduct
-                ? (float) (Row::nmoney($row, 'selling_price') ?? (string) $unit)
-                : (float) (Row::nmoney($row, 'offer_selling_price') ?? (string) $unit);
-            $gross += $listPrice * $qty;
 
             /*
              * The VARIANT is named in the English line when the order carries one — core sells a
@@ -314,10 +318,16 @@ final class OrderEmailData
                 'type_stock' => Row::nstr($row, 'type_stock'),
                 'color_band' => Row::nstr($row, 'color_band'),
                 'color_dial' => Row::nstr($row, 'color_dial'),
+                // A promotion's free item: a real line at zero price, shown as a GIFT so the
+                // customer reads it as one rather than as a product priced at nothing.
+                'is_gift' => Row::bool($row, 'is_reward'),
+                // The list price of THIS line, when it sold below it — struck through beside what
+                // was paid, so the rows explain the Subtotal/Discount block underneath them.
+                'list_total' => $totals?->lineList[Row::int($row, 'id')] ?? $lineTotal,
             ];
         }
 
-        return [$items, round($gross, 2)];
+        return $items;
     }
 
     /** @param  list<string|null>  $candidates */

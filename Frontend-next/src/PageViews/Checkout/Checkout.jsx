@@ -3,6 +3,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
+  FiCalendar,
   FiCheck,
   FiChevronDown,
   FiCreditCard,
@@ -10,10 +11,12 @@ import {
   FiPhone,
   FiRefreshCw,
   FiShield,
+  FiSmartphone,
   FiUser,
 } from 'react-icons/fi'
 import { useCatalog } from '../../Hooks/queries/useCatalog'
 import { useOffers } from '../../Hooks/queries/useOffers'
+import { usePaymentMethods } from '../../Hooks/queries/usePaymentMethods'
 import { useUIStore } from '../../Store/uiStore'
 import { useAuthStore } from '../../Store/authStore'
 import { useShippingStore } from '../../Store/shippingStore'
@@ -31,6 +34,38 @@ import './Checkout.css'
 // replacement for Vite's import.meta.env.VITE_PAYMOB_ENABLED.
 
 const isValidEgPhone = (v) => /^01\d{9}$/.test(String(v || '').trim())
+
+// ── Online payment methods (batch 1, 2026-09-26) ──────────────────────────────
+// The list comes from core (usePaymentMethods). Cash is always offered and is not driven by it;
+// offline keys are skipped if a row for them exists. The icon and the one-line note are the
+// storefront's, by method KEY — the label is the merchant's, from the dashboard.
+const OFFLINE_KEYS = ['cod', 'whatsapp']
+const METHOD_ICON = {
+  card: FiCreditCard,
+  bank_installment: FiCalendar,
+  cagg: FiCalendar,
+  valu: FiCalendar,
+  wallet: FiSmartphone,
+  apple_pay: FiSmartphone,
+}
+const METHOD_NOTE = {
+  card: ['Visa / Mastercard / Meeza', 'فيزا / ماستركارد / ميزة'],
+  wallet: ['Vodafone Cash, Orange, Etisalat and other mobile wallets', 'فودافون كاش وأورانج واتصالات وباقي المحافظ'],
+  bank_installment: ['Split the amount on your bank credit card', 'قسّط المبلغ على بطاقة البنك الائتمانية'],
+  cagg: ['Pay in instalments through a finance provider', 'قسّط المبلغ عبر إحدى شركات التمويل'],
+  valu: ['Pay in instalments with valU', 'قسّط المبلغ مع valU'],
+  apple_pay: ['Pay with Face ID or Touch ID', 'ادفع ببصمة الوجه أو الإصبع'],
+}
+const egp = (n) => Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 })
+
+// Why a method cannot take THIS order, in the shopper's language — or null when it can.
+const limitReason = (m, total, t) => {
+  if (m.min_total != null && total < m.min_total)
+    return t(`For orders of EGP ${egp(m.min_total)} or more`, `للطلبات من ${egp(m.min_total)} ج.م فأكثر`)
+  if (m.max_total != null && total > m.max_total)
+    return t(`For orders of up to EGP ${egp(m.max_total)}`, `للطلبات حتى ${egp(m.max_total)} ج.م`)
+  return null
+}
 
 // ── Order summary (memoized — re-renders only when the cart/shipping change,
 //    not on every keystroke in the form) ────────────────────────────────────
@@ -186,6 +221,23 @@ function Checkout() {
   const [apartment, setApartment] = useState('')
   const [phone, setPhone] = useState('')
   const [paymentMethod, setPaymentMethod] = useState('cash')
+  // The chosen row of core's list, posted as `payment_method_id`. null = cash, or the fallback
+  // card option when the list could not be loaded (core then routes "card" to its card row).
+  const [methodId, setMethodId] = useState(null)
+  const { data: onlineList, isError: onlineListFailed, refetch: refetchMethods } = usePaymentMethods()
+  // Apple Pay is offered only where it can work: Safari on an Apple device with a card in the
+  // wallet. Read after mount — `window` does not exist on the server render.
+  const [canApplePay, setCanApplePay] = useState(false)
+  useEffect(() => {
+    let supported = false
+    try {
+      supported = Boolean(window.ApplePaySession?.canMakePayments?.())
+    } catch {
+      supported = false
+    }
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- a browser capability, known only after mount
+    setCanApplePay(supported)
+  }, [])
   const [notes, setNotes] = useState('')
 
   const [addresses, setAddresses] = useState([])
@@ -303,10 +355,23 @@ function Checkout() {
   const shippingName = activeCity ? (isRTL ? activeCity.GovernorateAr : activeCity.GovernorateEn) : ''
   const total = subtotal + shippingCost
 
+  const onlineMethods = useMemo(
+    () =>
+      (onlineList || [])
+        .filter((m) => !OFFLINE_KEYS.includes(m.method))
+        .filter((m) => m.method !== 'apple_pay' || canApplePay)
+        .map((m) => ({ ...m, reason: limitReason(m, total, t) })),
+    [onlineList, canApplePay, total, t],
+  )
+  // A chosen method the order has since outgrown (or that disappeared): nothing counts as
+  // selected, so the shopper picks again instead of meeting a refusal after pressing the button.
+  const chosenOnline = methodId == null ? null : onlineMethods.find((m) => m.id === methodId)
+  const choiceLost = methodId != null && (!chosenOnline || Boolean(chosenOnline.reason))
+
   // ── Validation gate ──────────────────────────────────────────────────────
   const canSubmit = useMemo(() => {
     if (items.length === 0) return false
-    if (!paymentMethod) return false
+    if (!paymentMethod || choiceLost) return false
     if (useInline) {
       if (!shippingid) return false
       if (!street.trim()) return false
@@ -322,6 +387,7 @@ function Checkout() {
   }, [
     items.length,
     paymentMethod,
+    choiceLost,
     useInline,
     shippingid,
     street,
@@ -361,6 +427,9 @@ function Checkout() {
 
     const body = {
       payment_method: paymentMethod, // 'cash' | 'card' (backend maps card→paymob)
+      // Which online method: core checks it (this shop's, switched on, inside its limits) before
+      // any order is written. Absent for cash, and for the fallback card option.
+      ...(methodId != null ? { payment_method_id: methodId } : {}),
       note: notes,
       total_price_for_order: total,
       items: orderItems,
@@ -443,6 +512,11 @@ function Checkout() {
       if (status === 422 && err.response.data?.errors) {
         setErrors(err.response.data.errors)
         setBanner(t('Please check the highlighted fields.', 'يرجى مراجعة الحقول المظللة.'))
+      } else if (status === 422 && err.response.data?.messages) {
+        // A payment-method refusal: nothing was written. Both languages come back because the
+        // request's Accept-Language is the browser's, not the language this page is shown in.
+        setBanner(err.response.data.messages[isRTL ? 'ar' : 'en'] || err.response.data.message)
+        refetchMethods()
       } else if (status === 422 && err.response.data?.message) {
         setBanner(err.response.data.message)
       } else {
@@ -453,7 +527,7 @@ function Checkout() {
       setProcessing(false)
     }
   }, [
-    canSubmit, items, paymentMethod, notes, total, isLoggedIn, userId, useInline, street,
+    canSubmit, items, paymentMethod, methodId, refetchMethods, notes, total, isLoggedIn, userId, useInline, street,
     apartment, shippingid, phone, selectedAddressId, isGuest, firstName, lastName, email,
     products, offers, isRTL, cleanupAfterOrder, router, setOrderData, shippingName, shippingCost, user, t,
     subtotal,
@@ -694,7 +768,10 @@ function Checkout() {
                     value="cash"
                     style={{ display: 'none' }}
                     checked={paymentMethod === 'cash'}
-                    onChange={() => setPaymentMethod('cash')}
+                    onChange={() => {
+                      setPaymentMethod('cash')
+                      setMethodId(null)
+                    }}
                   />
                   <span className="wz-checkout-dot" />
                   <div className="wz-checkout-payopt-main">
@@ -705,35 +782,83 @@ function Checkout() {
                   </div>
                 </label>
 
-                <label
-                  className={`wz-checkout-payopt${paymentMethod === 'card' ? ' is-active' : ''}${
-                    PAYMOB_ENABLED ? '' : ' is-disabled'
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name="payment"
-                    value="card"
-                    style={{ display: 'none' }}
-                    disabled={!PAYMOB_ENABLED}
-                    checked={paymentMethod === 'card'}
-                    onChange={() => PAYMOB_ENABLED && setPaymentMethod('card')}
-                  />
-                  <span className="wz-checkout-dot" />
-                  <div className="wz-checkout-payopt-main">
-                    <div className="wz-checkout-payopt-title">
-                      {t('Pay Online', 'دفع إلكتروني')}
-                      {PAYMOB_ENABLED ? (
-                        <span className="wz-checkout-cards"><FiCreditCard /></span>
-                      ) : (
-                        <span className="wz-checkout-soon">{t('Coming soon', 'قريباً')}</span>
-                      )}
+                {/* Core's list once it has loaded. While it loads, if it fails, or with online payment
+                    switched off for the build, the one "Pay Online" option as before — posted as
+                    plain "card", which core routes to its card row. */}
+                {PAYMOB_ENABLED && onlineList && !onlineListFailed ? (
+                  onlineMethods.map((m) => {
+                    const Icon = METHOD_ICON[m.method] || FiCreditCard
+                    const note = METHOD_NOTE[m.method]
+                    const active = paymentMethod === 'card' && methodId === m.id
+                    return (
+                      <label
+                        key={m.id}
+                        className={`wz-checkout-payopt${active ? ' is-active' : ''}${m.reason ? ' is-disabled' : ''}`}
+                      >
+                        <input
+                          type="radio"
+                          name="payment"
+                          value={`method-${m.id}`}
+                          style={{ display: 'none' }}
+                          disabled={Boolean(m.reason)}
+                          checked={active}
+                          onChange={() => {
+                            if (m.reason) return
+                            setPaymentMethod('card')
+                            setMethodId(m.id)
+                          }}
+                        />
+                        <span className="wz-checkout-dot" />
+                        <div className="wz-checkout-payopt-main">
+                          <div className="wz-checkout-payopt-title">
+                            {isRTL ? m.label?.ar : m.label?.en || m.label?.ar}
+                            <span className="wz-checkout-cards">
+                              <Icon />
+                            </span>
+                          </div>
+                          <div className="wz-checkout-payopt-note">
+                            {m.reason ||
+                              (note ? t(note[0], note[1]) : t('Secure online payment', 'دفع إلكتروني آمن'))}
+                          </div>
+                        </div>
+                      </label>
+                    )
+                  })
+                ) : (
+  <label
+                    className={`wz-checkout-payopt${paymentMethod === 'card' ? ' is-active' : ''}${
+                      PAYMOB_ENABLED ? '' : ' is-disabled'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="payment"
+                      value="card"
+                      style={{ display: 'none' }}
+                      disabled={!PAYMOB_ENABLED}
+                      checked={paymentMethod === 'card'}
+                      onChange={() => {
+                      if (!PAYMOB_ENABLED) return
+                      setPaymentMethod('card')
+                      setMethodId(null)
+                    }}
+                    />
+                    <span className="wz-checkout-dot" />
+                    <div className="wz-checkout-payopt-main">
+                      <div className="wz-checkout-payopt-title">
+                        {t('Pay Online', 'دفع إلكتروني')}
+                        {PAYMOB_ENABLED ? (
+                          <span className="wz-checkout-cards"><FiCreditCard /></span>
+                        ) : (
+                          <span className="wz-checkout-soon">{t('Coming soon', 'قريباً')}</span>
+                        )}
+                      </div>
+                      <div className="wz-checkout-payopt-note">
+                        {t('Secure payment via Paymob · Visa / Mastercard', 'دفع آمن عبر Paymob · فيزا / ماستركارد')}
+                      </div>
                     </div>
-                    <div className="wz-checkout-payopt-note">
-                      {t('Secure payment via Paymob · Visa / Mastercard', 'دفع آمن عبر Paymob · فيزا / ماستركارد')}
-                    </div>
-                  </div>
-                </label>
+                  </label>
+                )}
               </div>
             </section>
 

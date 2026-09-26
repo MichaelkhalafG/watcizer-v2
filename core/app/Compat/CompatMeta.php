@@ -98,7 +98,7 @@ final class CompatMeta
         foreach ($this->categories->categoryTypes() as $node) {
             $out[] = [
                 'id' => CompatCategories::legacyIdOf($node),
-                'image' => LegacyJson::basename(self::nstr($node['image_path'])),
+                'image' => LegacyJson::legacyImage(self::nstr($node['image_path']), 'Category_type'),
                 'created_at' => LegacyJson::ts(self::nstr($node['created_at'])),
                 'updated_at' => LegacyJson::ts(self::nstr($node['updated_at'])),
                 'category_type_name' => $this->categories->name($node, $appLocale),
@@ -114,7 +114,7 @@ final class CompatMeta
     {
         $out = [];
         foreach ($this->categories->subTypes() as $node) {
-            $image = LegacyJson::basename(self::nstr($node['image_path']));
+            $image = LegacyJson::legacyImage(self::nstr($node['image_path']), 'Sub_type');
             $out[] = [
                 'id' => CompatCategories::legacyIdOf($node),
                 'image' => $image,
@@ -201,7 +201,9 @@ final class CompatMeta
             return null;
         }
 
-        return rtrim(config()->string('compat.asset_base'), '/').'/Uploads_Images/'.$folder.'/'.$file;
+        // A value that already carries a folder keeps it (LegacyJson::legacyImage): the dashboard
+        // writes category images to `Category_type/`, not legacy's `Sub_type/`.
+        return rtrim(config()->string('compat.asset_base'), '/').'/Uploads_Images/'.(str_contains($file, '/') ? $file : $folder.'/'.$file);
     }
 
     private static function nstr(mixed $v): ?string

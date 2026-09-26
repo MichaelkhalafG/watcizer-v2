@@ -112,9 +112,22 @@ class CartCompatController extends Controller
             ]);
 
             return response()->json(['success' => true, 'message' => 'Cart updated successfully'], 200);
+        } catch (ValidationException $e) {
+            /*
+             * Legacy catches \Exception here — a ValidationException included — so an invalid body
+             * is a 500 with a ref, not a 422. The RESPONSE is copied, not corrected (harness D-19).
+             *
+             * The LOG is not (2026-09-26). This used to go through serverError(), which writes the
+             * whole exception as an ERROR with a stack trace — 8 KB for one junk POST, from anybody,
+             * burying the callback refusals and mail failures the log exists to show. A client's bad
+             * body is not a server fault: one WARNING line naming the failed FIELDS, never their
+             * values and never the validator's messages (which are in the app locale, not the
+             * caller's). The 422-with-messages version, and its locale, are batch 2.
+             */
+            Log::warning('add_to_cart refused an invalid body', ['fields' => array_keys($e->errors())]);
+
+            return response()->json(['success' => false, 'message' => 'An error occurred', 'ref' => (string) Str::uuid()], 500);
         } catch (Throwable $e) {
-            // Legacy catches \Exception here — a ValidationException included — so an invalid body
-            // is a 500 with a ref, not a 422. Copied, not corrected.
             return $this->serverError($e);
         }
     }

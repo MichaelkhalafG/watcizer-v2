@@ -69,7 +69,7 @@ final class CompatProductDetail
         $market = Row::int($row, 'stock_market');
         $selling = Row::nstr($row, 'selling_price');
         $sale = Row::nstr($row, 'sale_price');
-        $coverFile = LegacyJson::basename(Row::nstr($row, 'cover_path'));
+        $coverFile = LegacyJson::legacyImage(Row::nstr($row, 'cover_path'), 'Product');
 
         $images = [];
         if ($coverFile !== null) {
@@ -320,7 +320,7 @@ final class CompatProductDetail
         $sale = Row::nstr($row, 'sale_price');
         $stock = Row::int($row, 'stock_express');
         $market = Row::int($row, 'stock_market');
-        $image = LegacyJson::imageUrl(LegacyJson::basename(Row::nstr($row, 'cover_path')));
+        $image = LegacyJson::imageUrl(LegacyJson::legacyImage(Row::nstr($row, 'cover_path'), 'Product'));
         $genderNames = fn (string $locale): array => array_values(array_filter(array_map(fn (int $i) => $this->names->name('genders', $i, $locale), $genderIds), fn (?string $n) => $n !== null && $n !== ''));
         $avg = $stats === null ? null : $stats['avg'];
 
@@ -371,7 +371,7 @@ final class CompatProductDetail
         $out = [];
         $rows = DB::table('catalog_product_images')->select(['path'])->where('product_id', $productId)->where('is_cover', 0)->orderBy('sort')->orderBy('id')->get();
         foreach ($rows as $r) {
-            $file = LegacyJson::basename(Row::str($r, 'path'));
+            $file = LegacyJson::legacyImage(Row::str($r, 'path'), 'Product_image');
             if ($file !== null) {
                 $out[] = $file;
             }

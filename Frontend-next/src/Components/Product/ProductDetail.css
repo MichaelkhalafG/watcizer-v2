@@ -407,7 +407,7 @@
   font-size: 14px;
 }
 
-/* The action row holds: [qty] then add + wish + share stacked below.
+/* The action row holds: [qty] then add + share stacked below.
    We use a wrapper layout: qty inline above, then full-width buttons. */
 .wz-pd-add {
   width: 100%;
@@ -437,30 +437,6 @@
   background: #e5e5e5;
   color: rgba(0, 0, 0, 0.3);
   cursor: not-allowed;
-}
-
-.wz-pd-wish {
-  width: 100%;
-  height: 48px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  border: 1px solid rgba(0, 0, 0, 0.12);
-  border-radius: 6px;
-  background: transparent;
-  color: var(--wz-ink);
-  font-size: 18px;
-  cursor: pointer;
-  transition: border-color 0.25s ease, color 0.25s ease;
-}
-.wz-pd-wish:hover {
-  border-color: var(--pd-gold);
-  color: var(--pd-gold);
-}
-.wz-pd-wish.is-on {
-  color: var(--pd-gold);
-  border-color: var(--pd-gold);
 }
 
 .wz-pd-share {

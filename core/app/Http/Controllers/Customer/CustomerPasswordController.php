@@ -8,6 +8,7 @@ use App\Domain\Customers\CustomerAccounts;
 use App\Domain\Customers\CustomerMail;
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Storefront\StorefrontUrls;
 use App\Support\Coerce;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -68,6 +69,10 @@ final class CustomerPasswordController extends Controller
         ]);
 
         $email = CustomerAccounts::normaliseEmail(Coerce::str($request->input('email')));
+        // The shop this reset was asked for ON (L5, 2026-09-26), settled now while the request is
+        // certain — the mail itself is sent after the response. One global sent every storefront's
+        // shoppers to a reset page on Watchizer.
+        $frontend = StorefrontUrls::frontend(StorefrontUrls::storefrontOf($request));
 
         try {
             /*
@@ -76,7 +81,7 @@ final class CustomerPasswordController extends Controller
              * and should not grow one, because every customer e-mail this application sends goes
              * out through `CustomerMail` and nowhere else.
              */
-            Password::sendResetLink(['email' => $email], function (User $user, string $token): void {
+            Password::sendResetLink(['email' => $email], function (User $user, string $token) use ($frontend): void {
                 /*
                  * ── DEFERRED, and that is a security fix, not a performance one (review 🟠) ──
                  *
@@ -101,7 +106,7 @@ final class CustomerPasswordController extends Controller
                  * against an SMTP round trip — three orders of magnitude smaller, and below the
                  * noise of the network the attacker is measuring across.
                  */
-                defer(fn () => $this->mail->sendPasswordReset($user, $token));
+                defer(fn () => $this->mail->sendPasswordReset($user, $token, $frontend));
             });
         } catch (\Throwable $e) {
             /*

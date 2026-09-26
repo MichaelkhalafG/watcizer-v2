@@ -6,7 +6,6 @@ import { useRouter } from 'next/navigation'
 import { FiShare2 } from 'react-icons/fi'
 import ImageZoom from '../UI/ImageZoom'
 import DOMPurify from 'dompurify'
-import { useWishlist } from '../../Hooks/useWishlist'
 import { useCatalog } from '../../Hooks/queries/useCatalog'
 import { useOffers } from '../../Hooks/queries/useOffers'
 import { useUIStore } from '../../Store/uiStore'
@@ -89,8 +88,7 @@ function resolveColorList(...sources) {
 function ProductDetailClient({ param, isOffer = false }) {
   const router = useRouter()
 
-  // Server data from the shared TanStack Query cache; wishlist from Zustand.
-  const { handleAddTowishlist, wishList } = useWishlist()
+  // Server data from the shared TanStack Query cache.
   const { products, tables, isError: catalogIsError, refetch: refetchCatalog } = useCatalog()
   const { data: offers = [] } = useOffers()
   const { language } = useUIStore()
@@ -414,35 +412,6 @@ function ProductDetailClient({ param, isOffer = false }) {
     showToast,
     isRTL,
   ])
-
-  // ── Wishlist ────────────────────────────────────────────────────────────
-  // Reflect the ACTUAL wishlist membership (was a local flag that only ever
-  // flipped on, so it never showed removal or the real state on load).
-  const isWishlisted = useMemo(() => {
-    const targetId = isOffer ? offer?.id : product?.id
-    if (!targetId || !wishList?.length) return false
-    return wishList.some((w) =>
-      isOffer
-        ? Number(w.offer_id) === Number(targetId)
-        : Number(w.product_id) === Number(targetId),
-    )
-  }, [wishList, isOffer, offer, product])
-
-  const [wishlistPending, setWishlistPending] = useState(false)
-  const handleWishlist = useCallback(async () => {
-    if (!userId) {
-      showToast(isRTL ? 'يجب تسجيل الدخول أولاً' : 'Please login first', 'warning')
-      router.push('/login')
-      return
-    }
-    if (wishlistPending) return
-    setWishlistPending(true)
-    try {
-      await handleAddTowishlist(isOffer ? offer.id : product.id, isOffer ? 'o' : 'p')
-    } finally {
-      setWishlistPending(false)
-    }
-  }, [userId, isOffer, offer, product, handleAddTowishlist, router, showToast, isRTL, wishlistPending])
 
   // (SEO title/meta now live in the route's generateMetadata — server-rendered.)
 
@@ -1228,26 +1197,6 @@ function ProductDetailClient({ param, isOffer = false }) {
                 aria-busy={isAdding}
               >
                 {cartLabel}
-              </button>
-
-              <button
-                className={`wz-pd-wish${isWishlisted ? ' is-on' : ''}`}
-                onClick={handleWishlist}
-                disabled={wishlistPending}
-                aria-busy={wishlistPending}
-                style={wishlistPending ? { opacity: 0.55, cursor: 'wait' } : undefined}
-                aria-label={
-                  isWishlisted
-                    ? isRTL ? 'إزالة من قائمة الرغبات' : 'Remove from wishlist'
-                    : isRTL ? 'أضف إلى قائمة الرغبات' : 'Add to wishlist'
-                }
-                title={
-                  isWishlisted
-                    ? isRTL ? 'إزالة من قائمة الرغبات' : 'Remove from wishlist'
-                    : isRTL ? 'أضف إلى قائمة الرغبات' : 'Add to wishlist'
-                }
-              >
-                {isWishlisted ? '♥' : '♡'}
               </button>
 
               <button

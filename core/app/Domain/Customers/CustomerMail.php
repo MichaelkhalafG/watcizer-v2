@@ -60,9 +60,11 @@ final class CustomerMail
      * `forgotPassword` deliberately does not, because telling the caller would reveal whether the
      * address is registered.
      */
-    public function sendPasswordReset(User $user, string $token): bool
+    public function sendPasswordReset(User $user, string $token, string $frontend): bool
     {
-        $url = rtrim(config()->string('customers.storefront_url'), '/')
+        // `$frontend` is the site the link opens on — the storefront the reset was asked for on,
+        // passed in by the caller (StorefrontUrls, L5) rather than read from ambient state here.
+        $url = rtrim($frontend, '/')
             .'/reset-password?token='.urlencode($token)
             .'&email='.urlencode(Coerce::str($user->getAttribute('email')));
 

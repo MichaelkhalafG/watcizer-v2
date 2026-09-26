@@ -15,6 +15,8 @@ use App\Domain\Payment\ProviderRegistry;
 use App\Http\Controllers\Compat\CheckoutCompatController;
 use App\Models\Storefront\Storefront;
 use App\Models\Storefront\StorefrontPaymentProvider;
+use App\Storefront\StorefrontHost;
+use App\Storefront\StorefrontUrls;
 use App\Support\Coerce;
 use App\Support\DeadlockRetry;
 use App\Transform\Row;
@@ -74,9 +76,12 @@ final class PaymentCallbackController
     public function handle(Request $request, string $storefront, string $provider): JsonResponse|RedirectResponse
     {
         $storefrontRow = Storefront::query()->where('code', $storefront)->first();
-        if ($storefrontRow === null) {
-            // Unknown storefront: 404, and nothing about whether the provider exists.
-            return $this->fail(404, 'unknown storefront', ['storefront' => $storefront, 'provider' => $provider]);
+        // Unknown storefront: 404, and nothing about whether the provider exists. A storefront the
+        // request's HOST does not belong to answers identically (brand separation, 2026-09-26):
+        // a 403-vs-404 difference on another shop's code confirmed that shop exists. The host goes
+        // to the log only, so the operator can tell the two apart and nobody else can.
+        if ($storefrontRow === null || ! StorefrontHost::serves($request, (int) $storefrontRow->id)) {
+            return $this->fail(404, 'unknown storefront', ['storefront' => $storefront, 'provider' => $provider, 'host' => $request->getHost()]);
         }
 
         return $this->process($request, (int) $storefrontRow->id, $provider);
@@ -583,7 +588,10 @@ final class PaymentCallbackController
             return response()->json(['message' => $message ?? ($ok ? 'ok' : 'failed')], 200);
         }
 
-        $base = config()->string('compat.payment_return_url');
+        // The shop the shopper paid ON (L5, 2026-09-26): the return GET arrives on that shop's
+        // own API host, because the redirection URL is built from it. One global sent every
+        // storefront's shoppers back to Watchizer.
+        $base = StorefrontUrls::paymentReturn(StorefrontUrls::storefrontOf($request));
 
         return redirect($ok ? $base : $base.'?payment_error=1');
     }
