@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domain\Notifications;
 
+use App\Domain\Orders\OrderCustomer;
 use App\Mail\AdminOrderNotification;
 use App\Mail\OrderConfirmation;
 use App\Mail\OrderStatusUpdate;
@@ -619,21 +620,9 @@ final class OrderMailer
 
     private static function customerEmail(int $orderId): ?string
     {
-        $row = DB::table('orders as o')
-            ->leftJoin('users as u', 'u.id', '=', 'o.user_id')
-            ->where('o.id', $orderId)
-            ->first(['o.guest_email', 'u.email as user_email']);
-
-        if (! is_object($row)) {
-            return null;
-        }
-        $order = Row::cast($row);
-
-        // A registered order uses the account's address; a guest order its own. Legacy order of
-        // preference exactly (`$order->user?->email ?? $order->guest_email`).
-        $email = Row::nstr($order, 'user_email') ?? Row::nstr($order, 'guest_email');
-
-        return $email === null || trim($email) === '' ? null : trim($email);
+        // The account's address for a registered order, the order's own for a guest — from
+        // OrderCustomer, the one definition (legacy: `$order->user?->email ?? $order->guest_email`).
+        return OrderCustomer::of($orderId)?->email;
     }
 
     private static function orderNumber(int $orderId): string

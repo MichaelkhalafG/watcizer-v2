@@ -9,6 +9,157 @@ cannot get past tonight; every item is a known, named state. Pick batches from i
 
 ---
 
+## ▶ START HERE — session record, 2026-09-26 (evening)
+
+### State of the code, exactly
+
+- **Batch 1 is fully live.** Commits `23e2b5a` (core) and `3333a1f` (storefront) are on `main` and
+  `origin/main` (and `wave-4d`). The core half is DEPLOYED — verified: production answers
+  `GET https://api.watchizereg.com/api/v2/watchizer/payment-methods` with the live methods. The
+  storefront half is built and live.
+- **Written, tested, NOT committed, NOT deployed** (working tree of `wave-4d`, on top of `5704077`):
+  items 1 and 3 below, plus two small fixes found on the way. Code is complete, not half-written.
+  *(Corrected 2026-09-27: this line first said "full battery green (see Checks)" — no such run
+  had happened and no Checks section existed. The real results are in "Checks, 2026-09-27" at the
+  end of this record.)* Files:
+  `core/app/Domain/Orders/{UnpaidOrders,OrderCustomer}.php`,
+  `core/app/Console/Commands/OrdersExpireUnpaidCommand.php`, `core/routes/console.php`,
+  `core/config/compat.php` (`compat.unpaid.*`), `core/app/Domain/Payment/PaymobProvider.php`,
+  `core/app/Http/Controllers/Compat/CheckoutCompatController.php`,
+  `core/app/Http/Controllers/Manage/OrderController.php`,
+  `core/app/Domain/Notifications/{OrderEmailData,OrderMailer}.php`,
+  `core/tests/Feature/Orders/{UnpaidOrdersTest,OrderCustomerTest}.php`,
+  `core/tests/Feature/Payment/CheckoutMethodsTest.php` (+3 cases), and this file.
+  Core lane only — no storefront change, no migration, no new `.env` key required (defaults apply).
+  Ships as one core tar + `config:cache` + `route:cache`; the new scheduled command rides the
+  existing `schedule:run` cron.
+
+### LIVE AND UNFIXED IN PRODUCTION — in this order
+
+1. **Abandoned card payments hold stock forever.** `add_order` reserves stock for every order; a
+   card order then waits `pending`, and a shopper who leaves Paymob's page produces NO callback, so
+   nothing released it (only a Paymob decline, a failed session, a dashboard cancel, or the
+   reconciler for orders already `cancelled` do). Reproduced: open Paymob, come back, pick cash →
+   "Insufficient stock". **Built (uncommitted):**
+   - `orders:expire-unpaid`, every minute: cancels + releases (`payment_failed`, note
+     `payment_expired`) card orders `pending` with a core reservation, no successful attempt, older
+     than `compat.unpaid.expire_after_minutes` (default 60; refuses < 15; `--dry-run`). Pre-switch
+     legacy orders and WhatsApp orders are excluded by construction. Claim-based: cannot race a
+     callback or a dashboard cancel.
+   - Same-shopper rule in `add_order`: the SAME account/guest token's unpaid card orders are
+     cancelled and released (note `payment_superseded`) inside the new order's transaction, so the
+     unit comes back for the shopper who returned; another shopper still waits for the expiry.
+   - Intention `expiration`: **sent only when configured, and unset as shipped** (changed
+     2026-09-27 — first draft sent 1800 on an assumed unit). Paymob's Create Intention reference
+     lists the field with no unit, default or limits, and 1800 is 30 minutes in seconds but 30
+     days in minutes. Measure with `scripts/paymob-expiry-probe.php` on the server; then set
+     `PAYMOB_INTENTION_EXPIRATION_SECONDS` (must be under the 60-min window, or it is refused).
+     Until then a payment landing on an expired order is never lost silently: `CallbackPolicy`
+     never reopens a `cancelled` order and records a finding (→ refund or reopen by hand).
+   - No customer e-mail on expiry: a card order's confirmation is only sent when the money arrives.
+   - Tests: 7 in `UnpaidOrdersTest`; the developer's exact scenario goes RED with the same-shopper
+     rule disabled.
+2. **FK step 2 — `core:repoint-commerce-fks`, still to BUILD.** Step 1 done by the developer today:
+   `order_items_product_id_foreign` and `cart_items_product_id_foreign` (→ legacy `products`)
+   dropped by hand; orders for the 159 catalog-only products work. Rollback SQL saved on the server
+   at `~/fk-rollback-*.sql`. Background: this is the study's never-built M2 (CLEAN_CORE_STUDY §2.8.2,
+   risk R2-02); the Phase 2 runbook never ran it. Build it as an idempotent one-off COMMAND, not a
+   migration (the harness runs `migrate` on a bare dump before the catalog is filled, so M2's
+   orphan pre-flight would fail there): orphan pre-flight against `catalog_products` → add
+   `order_items.product_id → catalog_products` RESTRICT and `cart_items.product_id →
+   catalog_products` CASCADE (one deliberate deviation from the spec: `ProductImporter` can
+   hard-delete a fresh product sitting in a cart). Test first: order + cart add for a catalog-only
+   product, red on the legacy schema. Run it in the harness after `core:transform`;
+   `core:drop-clean` already disables FK checks, so rehearsals keep working. Out of scope on
+   purpose: `wishlist_items` (gone), `offers` (frozen), legacy junctions (unwritten),
+   `product_ratings` — **B1 (ratings) must repoint that key when it is built**, or it hits the same
+   bug.
+3. **Dashboard order detail shows Name/Phone/Email "—" for a REGISTERED customer.** Cause, verified:
+   `Manage\OrderController` (list lines ~185, detail ~282) and the list search read ONLY `guest_*`,
+   which the storefront fills for guests alone. **Built (uncommitted):** `OrderCustomer` — the one
+   answer (account name/e-mail, else guest; phone = order address → guest → account → address's
+   second) — used by the order list, the detail, the search (now matches address and account
+   phones), the order e-mails, the mailer's recipient and the Paymob billing. Tests: 5 in
+   `OrderCustomerTest`, red on the old controller.
+   - Found on the way, fixed in the same change: the Paymob billing sent `phone_number` and the
+     provider read `phone`, so EVERY intention went out with phone `-` — a mobile wallet pays by that
+     number. Test red on the old code.
+4. **Orders 000001 and 000002 — two units cancelled in the legacy (Blade) dashboard that never came
+   back** (legacy defect #6: its cancel only set the status). They cannot be cancelled again and the
+   reconciler skips them (no core reservation). Correct via Dashboard → Inventory → adjust, per
+   order LINE: mode **adjust** (relative, +quantity — never *set*, which would overwrite any sale in
+   between), the line's **bucket** (`type_stock` Express → express, anything else → market), the
+   variant if the line has one, reason **`adjustment`** ("Stock-count correction"), note e.g.
+   "Legacy order 000001 cancelled on <date> in the old dashboard; legacy never returned the stock
+   (defect #6)". Only for units that physically exist. (Order 000012 is a REAL order — leave it.)
+5. **React hydration mismatch (#418) on the storefront.** Not investigated yet; not reproduced in the
+   one home-page load checked tonight. Next: reproduce with the non-minified dev build to get the
+   differing node, then look for render-time `Date`/`Math.random`/locale formatting/`window` reads.
+6. **The methods screen accepts the same integration ID on two methods silently** (cause of today's
+   bank_installment = 5943060 slip). Warn, don't refuse: after save in
+   `PaymentSettingsController::storeMethod/updateMethod`, flash "this ID is already used by <key>"
+   when another method of the same contract carries it, and mark such rows on the screen
+   (`MethodList::forAdmin` can carry a `shares_integration_id_with`). ~1–2 h with a test.
+7. **Meta Pixel "Invalid parameter format for currency" — CLOSED 2026-09-27: Meta's, not ours.**
+   Verdict: on the home page our code makes only `init` ×2 + `PageView` with no currency, replaying
+   `PageView` does not trigger it, and it fires once per pixel inside Meta's code beside Meta's own
+   "conflicting pixel versions" warning — so it comes from Meta's per-pixel config scripts (an
+   inference: the captured stack URL was redacted). Our ViewContent / AddToCart / InitiateCheckout
+   / Purchase send `currency: 'EGP'` and a numeric `value`. **The one check that would prove this
+   wrong:** a real Purchase in Events Manager arriving WITHOUT its value in EGP — look at the first
+   real order's event; if it is missing, reopen this with `trackPurchase` as the suspect.
+   Evidence as recorded the night before: fires twice per home-page
+   load = once per pixel (1611910119460872, 1614877760150035); our code makes only `init` ×2 +
+   `PageView` there, with no currency; replaying `PageView` alone does not trigger it; neither
+   pixel's served config (`signals/config/<id>`) sets a currency rule; the page declares no currency
+   (JSON-LD, meta, microdata); the warning comes from Meta's `standardParamChecks` plugin, which
+   DELETES the failing parameter from that one event. Meta also reports "multiple pixels with
+   conflicting versions" — the two pixels' configs are built on different releases. So it is
+   probably Meta's own per-pixel config, not anything we send; our ViewContent/AddToCart/
+   InitiateCheckout/Purchase send `currency: 'EGP'` and a numeric `value`. **Next:** check both
+   pixels in Events Manager (a value/currency default, or a conversion rule); then prove in the
+   browser that an event we send keeps its currency — fire one AddToCart in a probe frame with
+   `facebook.com/tr` intercepted so nothing reaches the pixels, `EGP` vs a bad currency as control.
+   Also noted, no action: `THREE.Clock` is deprecated (→ `THREE.Timer`) — part of the Next 16 / React
+   19 work (A9). The 3D reflow/rAF timings the developer saw are unmeasured on a mid-range phone.
+
+### Lesson: "the third party accepted it" is not "we sent the right thing"
+
+The Paymob billing sent `phone_number`, the provider read `phone`, and every intention since the
+switch went out with phone `-`. Nothing on our side could catch it: Paymob accepted the payload,
+payments worked, and the only symptom was a field on someone else's page — no phone on any card
+transaction in Paymob's dashboard (the day we trace one with their support), and harder wallet /
+installment flows. For every OUTGOING integration payload (Paymob intention, Meta/TikTok events,
+mail, and CAPI/ERP when built), a test must assert the payload's MEANINGFUL fields carry the
+customer's real values end to end — built from a real checkout request, not from a hand-made array
+handed to the provider — and a placeholder (`-`, `Guest`, `01000000000`, `no-reply@…`) reaching
+the wire for a customer who gave the real value is a failure. `CheckoutMethodsTest` now does this
+for the phone; the same assertion is owed for name, e-mail and street.
+
+### Fixed today, for context
+
+Image folders (`78a43a6`), host binding + cart option A (`5c3586e`), order totals (`704ac61`), L5
+per-storefront URLs (`101d57c`), category filter (`7ff3a26`), batch 1 (`23e2b5a`, `3333a1f`), and
+the bank_installment integration ID — the developer's data-entry slip, corrected to 5943061 in the
+dashboard. Code was never at fault there: a test now pins that bank installments sends `[5943061]`
+and CAGG `[5943060]`.
+
+### Checks, 2026-09-27 — off finished runs, items 1 + 3 in the tree
+
+Full Pest suite: 1753 passed, 38 skipped, 0 failed. PHPStan level 10: no errors. Pint: passed.
+`tsc`: clean. Commit-hook self-test: 58/58. Compat harness on a scratch copy of the 2026-09-17
+dump: 134 cases, zero unexplained differences; `.env` restored (fingerprint `43fffada70388afe`),
+scratch database dropped. No storefront change in this batch, so no `next build` was needed.
+
+**Intention expiry, as shipped:** NOT sent. `PAYMOB_INTENTION_EXPIRATION_SECONDS` is unset, so no
+`expiration` goes to Paymob until its unit is measured with `scripts/paymob-expiry-probe.php` on the
+server (two 1-EGP test intentions; it reads the lifetime from Paymob's own payment key). Exposure
+until then: a shopper can still pay on Paymob's page after `orders:expire-unpaid` has cancelled the
+order (after 60 min); that payment is recorded as a finding and needs a refund or a manual re-open
+— never lost silently.
+
+---
+
 ## A. Storefront lane — one rebuild carries all of these
 
 | # | Item | What it costs | What breaks if never done |

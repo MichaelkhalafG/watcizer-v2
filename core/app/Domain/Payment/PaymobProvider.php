@@ -112,7 +112,10 @@ final class PaymobProvider implements PaymentProvider
             'billing_data' => [
                 'first_name' => self::str($billing, 'first_name', 'Customer'),
                 'last_name' => self::str($billing, 'last_name', '-'),
-                'phone_number' => self::str($billing, 'phone', '-'),
+                // `phone_number` is the key the checkout's billing has always sent; `phone` was read
+                // here alone, so every intention went out with '-' — and a mobile wallet pays BY
+                // that number (2026-09-26). Both are accepted.
+                'phone_number' => self::str($billing, 'phone_number', self::str($billing, 'phone', '-')),
                 'email' => self::str($billing, 'email', 'no-reply@example.com'),
                 'street' => self::str($billing, 'street', '-'),
                 'city' => self::str($billing, 'city', '-'),
@@ -120,6 +123,22 @@ final class PaymobProvider implements PaymentProvider
             ],
             'extras' => ['order_id' => $intent->orderId, 'storefront_id' => $intent->storefrontId],
         ];
+        /*
+         * How long the payment page takes money (2026-09-26) — sent ONLY when configured.
+         *
+         * Paymob's Create Intention reference lists `expiration` without a unit, and a guessed unit
+         * is worse than none: 1800 is thirty minutes in seconds and thirty days in minutes. So
+         * nothing is sent until `PAYMOB_INTENTION_EXPIRATION_SECONDS` is set from a MEASUREMENT
+         * (the probe in POST_CUTOVER_BACKLOG). When set it must be shorter than the window after
+         * which `orders:expire-unpaid` cancels the order, so the page stops accepting a payment
+         * before the order stops waiting for one; a value that is not is refused rather than sent.
+         * Without it, a payment on an already-expired order finds a cancelled order and becomes a
+         * finding (UnpaidOrders) — never a silent loss.
+         */
+        $expiration = self::intentionExpiration();
+        if ($expiration !== null) {
+            $payload['expiration'] = $expiration;
+        }
         /*
          * BOTH callback urls, on EVERY intention (review 🔴-2).
          *
@@ -290,6 +309,17 @@ final class PaymobProvider implements PaymentProvider
         'is_voided', 'order', 'owner', 'pending',
         'source_data.pan', 'source_data.sub_type', 'source_data.type', 'success',
     ];
+
+    /** The configured intention lifetime in seconds, or null when unset or not shorter than the order window. */
+    public static function intentionExpiration(): ?int
+    {
+        $raw = config('compat.unpaid.intention_expiration_seconds');
+        if (! is_numeric($raw) || (int) $raw <= 0) {
+            return null;
+        }
+
+        return (int) $raw < config()->integer('compat.unpaid.expire_after_minutes') * 60 ? (int) $raw : null;
+    }
 
     /** @param array<string, mixed> $data */
     private static function str(array $data, string $key, string $default): string

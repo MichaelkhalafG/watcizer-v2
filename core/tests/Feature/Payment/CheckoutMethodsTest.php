@@ -227,3 +227,39 @@ it('offers nothing through a contract that is not live', function () {
 
     get('https://api.watchizereg.com/api/v2/watchizer/payment-methods')->assertOk()->assertExactJson(['data' => []]);
 });
+
+it('sends bank installments and CAGG each their OWN integration id', function () {
+    // Reported 2026-09-26: both land on CAGG's Paymob page. This pins what core sends for each.
+    $paymob = PaymentFixture::paymob();
+    PaymentFixture::method($paymob, 'card', '4001');
+    $cagg = PaymentFixture::method($paymob, 'cagg', '5943060', sort: 1);
+    $bank = PaymentFixture::method($paymob, 'bank_installment', '5943061', sort: 2);
+
+    Http::fake(['*/intention/' => Http::response(['client_secret' => 'cs_test', 'id' => 'intent_1'], 200)]);
+
+    pmPost(pmOrder('card', ['payment_method_id' => (string) T::int($cagg->getKey())]))->assertOk();
+    pmPost(pmOrder('card', ['payment_method_id' => (string) T::int($bank->getKey())]))->assertOk();
+
+    $sent = [];
+    Http::assertSent(function (Request $r) use (&$sent): bool {
+        $sent[] = $r->data()['payment_methods'] ?? null;
+
+        return true;
+    });
+    expect($sent)->toBe([[5943060], [5943061]]);
+});
+
+it('sends Paymob the real phone of the shopper — a mobile wallet pays BY that number', function () {
+    // Before 2026-09-26 the billing carried `phone_number` and the provider read `phone`, so every
+    // intention went out with '-'.
+    $paymob = PaymentFixture::paymob();
+    PaymentFixture::method($paymob, 'card', '4001');
+    $wallet = PaymentFixture::method($paymob, 'wallet', '5943059', sort: 1);
+
+    Http::fake(['*/intention/' => Http::response(['client_secret' => 'cs_test', 'id' => 'intent_1'], 200)]);
+
+    pmPost(pmOrder('card', ['payment_method_id' => (string) T::int($wallet->getKey()), 'phone' => '01012345678', 'guest_phone' => '01012345678']))
+        ->assertOk();
+
+    Http::assertSent(fn (Request $r): bool => data_get($r->data(), 'billing_data.phone_number') === '01012345678');
+});
