@@ -1,6 +1,5 @@
 import { Suspense } from 'react'
 import { notFound } from 'next/navigation'
-import { QueryClient, dehydrate, HydrationBoundary } from '@tanstack/react-query'
 import { getServerCatalog } from './serverCatalog'
 import {
   resolveFacetFilters,
@@ -40,6 +39,12 @@ export async function facetMetadataFor({ facet, pathname }) {
 }
 
 // The facet page body: seeded, SSR-filtered ListingClient + BreadcrumbList JSON-LD.
+//
+// It reads the catalogue from the (main) layout's HydrationBoundary, exactly as /listing does. It
+// used to build its OWN query cache on top with the FULL, unprojected EN + AR catalogue (C-1 stage
+// 1, 2026-09-27): every brand/category/sub-type/grade page carried a second copy of the whole
+// catalogue, 14.2 MB of HTML against /listing's 3.7 MB, and that copy overwrote the projected one in
+// the browser's cache.
 export async function FacetPage({ facet, pathname }) {
   const { tables, filters, ok } = await facetContext(facet)
   if (!ok) notFound()
@@ -47,17 +52,8 @@ export async function FacetPage({ facet, pathname }) {
   const seedParams = buildListingSeed(tables, filters)
   const breadcrumbLd = listingBreadcrumbLd({ tables, filters, pathname })
 
-  const qc = new QueryClient()
-  try {
-    const { tables: tbl, ratings, productsEn, productsAr } = await getServerCatalog()
-    qc.setQueryData(['tables'], tbl)
-    qc.setQueryData(['products'], { ratings, productsEn, productsAr })
-  } catch {
-    // catalog was unreachable → client fetches + shows the inline error/retry.
-  }
-
   return (
-    <HydrationBoundary state={dehydrate(qc)}>
+    <>
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: safeJsonLd(breadcrumbLd) }}
@@ -65,6 +61,6 @@ export async function FacetPage({ facet, pathname }) {
       <Suspense fallback={null}>
         <ListingClient seedParams={seedParams} />
       </Suspense>
-    </HydrationBoundary>
+    </>
   )
 }
