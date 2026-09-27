@@ -296,8 +296,11 @@ final class OrderEmailData
                 // One code, one column (item 4). `sku` is the survivor of the merge.
                 'model' => $isProduct ? Row::nstr($row, 'sku') : null,
                 'type_stock' => Row::nstr($row, 'type_stock'),
-                'color_band' => Row::nstr($row, 'color_band'),
-                'color_dial' => Row::nstr($row, 'color_dial'),
+                // The line's FINISH as a list of hexes: one, or several for a two-tone finish stored
+                // joined by '/' (2026-09-27) — so the template draws one dot per colour instead of
+                // pasting "#C0C0C0/#1F3A5F" into a CSS background.
+                'color_band' => self::hexes(Row::nstr($row, 'color_band')),
+                'color_dial' => self::hexes(Row::nstr($row, 'color_dial')),
                 // A promotion's free item: a real line at zero price, shown as a GIFT so the
                 // customer reads it as one rather than as a product priced at nothing.
                 'is_gift' => Row::bool($row, 'is_reward'),
@@ -339,6 +342,12 @@ final class OrderEmailData
     }
 
     /** `d M Y, H:i`, the legacy format exactly — the string a customer compares with their bank. */
+    /** @return list<string> the '/'-joined finish split into hexes; [] when the line has none */
+    private static function hexes(?string $stored): array
+    {
+        return array_values(array_filter(array_map('trim', explode('/', $stored ?? '')), fn (string $h): bool => $h !== ''));
+    }
+
     private static function createdAt(?string $timestamp): string
     {
         if ($timestamp === null || $timestamp === '') {

@@ -51,8 +51,11 @@ class CartCompatController extends Controller
                 'piece_price' => 'required|numeric|min:0',
                 'total_price' => 'required|numeric|min:0',
                 'type_stock' => 'nullable|in:Express,Market',
-                'color_band' => 'nullable|string|max:7',
-                'color_dial' => 'nullable|string|max:7',
+                // A line's colour is the product's FINISH: one hex, or a two-tone (or more) finish as
+                // hexes joined by '/', e.g. "#C0C0C0/#1F3A5F" (2026-09-27). 31 = four colours. It was
+                // max:7 — one hex — which a two-tone line cannot fit.
+                'color_band' => 'nullable|string|max:31',
+                'color_dial' => 'nullable|string|max:31',
             ])->validate();
 
             $productId = Val::nint($data, 'product_id');

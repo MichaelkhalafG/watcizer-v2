@@ -190,9 +190,18 @@ return [
     |
     | `default` answers for every family with no entry of its own, including
     | `other`. A family that genuinely has no colour at all would be `[]`.
+    |
+    | 2026-09-27: non-watch families moved from `main` to `band`. `main` was the
+    | answer to the strap-colour trap above, but NO storefront surface reads
+    | `main` — so every colour entered on a bag, wallet or garment since went
+    | nowhere. `band` is the role the storefront shows as the product's colour
+    | (labelled "Color" for non-watch items on the product page), and the
+    | dashboard labels it "Colour" for these families (SpecBlocks::colorRoles),
+    | so the trap stays closed by the LABEL rather than by a role nothing
+    | reads. Existing `main` rows move with `catalog:colours-main-to-band`.
     */
     'color_roles' => [
-        'default' => ['main'],
+        'default' => ['band'],
         // A watch's colours ARE the dial and the band. "Primary colour" means
         // nothing on a watch, and asking for it invited a third answer that no
         // storefront surface reads.

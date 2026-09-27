@@ -23,6 +23,7 @@ import ProductSlider from '../../Components/Product/ProductSlider'
 import { getImageUrl, handleImgError, PLACEHOLDER_IMG } from '../../utils/imageUrl'
 import { productUrl, offerUrl } from '../../utils/productUrl'
 import './Cart.css'
+import { finishBackground } from '../../utils/finish'
 
 // ── Cart item ──────────────────────────────────────────────────────────────
 const CartItem = memo(function CartItem({
@@ -93,10 +94,10 @@ const CartItem = memo(function CartItem({
             </span>
           )}
           {item.color_band && (
-            <span className="wz-cart-swatch" style={{ background: item.color_band }} title={t('Band', 'السوار')} />
+            <span className="wz-cart-swatch" style={{ background: finishBackground(item.color_band) }} title={t('Band', 'السوار')} />
           )}
           {item.color_dial && (
-            <span className="wz-cart-swatch" style={{ background: item.color_dial }} title={t('Dial', 'الميناء')} />
+            <span className="wz-cart-swatch" style={{ background: finishBackground(item.color_dial) }} title={t('Dial', 'الميناء')} />
           )}
         </div>
 

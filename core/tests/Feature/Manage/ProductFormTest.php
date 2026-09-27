@@ -1,10 +1,12 @@
 <?php
 
+use App\Compat\CompatProducts;
 use App\Domain\Activity\ActivityLog;
 use App\Domain\Catalog\ProductWriter;
 use App\Domain\Catalog\SpecBlocks;
 use App\Support\ArabicSearch;
 use App\Transform\Row;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use stdClass;
 use Tests\Support\CatalogFixture;
@@ -565,4 +567,116 @@ it('leaves the specification block ALONE when a payload does not mention it', fu
     $cleared = DB::table(SpecBlocks::WATCH_SPECS_TABLE)->where('product_id', $productId)->first();
     expect($cleared)->not->toBeNull()
         ->and(Row::nstr(Row::cast(T::row($cleared)), 'case_size'))->toBeNull();
+});
+
+/*
+ * ── Two-tone finishes: several colours in one role, in order (2026-09-27) ─────────────────────
+ *
+ * A two-tone watch is one product with two colours in one role (strap Gold + Silver). The pivot has
+ * always stored that; the form showed ONE colour per role and replaced the whole role on change,
+ * so editing a two-tone product silently dropped its second colour.
+ */
+
+/**
+ * A real two-tone watch from the catalogue copy: two colours in one role.
+ *
+ * @return array{id: int, role: string, colours: list<int>}
+ */
+function twoToneWatch(): array
+{
+    $row = T::row(DB::table('catalog_product_color as pc')
+        ->join('catalog_products as p', 'p.id', '=', 'pc.product_id')
+        ->where('p.family', 'watch')->whereNull('p.deleted_at')
+        ->groupBy('pc.product_id', 'pc.role')->havingRaw('COUNT(*) = 2')
+        ->orderBy('pc.product_id')
+        ->first(['pc.product_id', 'pc.role']));
+    $id = Row::int($row, 'product_id');
+    $role = Row::str($row, 'role');
+    $colours = array_values(array_map(fn (mixed $c): int => T::int($c), DB::table('catalog_product_color')
+        ->where('product_id', $id)->where('role', $role)->orderBy('position')->orderBy('color_id')->pluck('color_id')->all()));
+
+    return ['id' => $id, 'role' => $role, 'colours' => $colours];
+}
+
+/** @return list<array{color_id: int, role: string}> the product's colours as the edit form loads them */
+function formColours(int $productId): array
+{
+    $props = Props::of(actingAs(Staff::admin())->get("/manage/storefronts/1/products/{$productId}/edit")->assertOk());
+
+    return array_values(array_map(fn (mixed $c): array => [
+        'color_id' => T::int(T::arr($c)['color_id'] ?? null),
+        'role' => T::str(T::arr($c)['role'] ?? null),
+    ], T::arr(T::arr($props['product'] ?? [])['colors'] ?? [])));
+}
+
+it('keeps BOTH colours of a two-tone product through an edit and save', function () {
+    $watch = twoToneWatch();
+    $loaded = formColours($watch['id']);
+
+    // The form loads both colours of the role…
+    $inRole = array_values(array_filter($loaded, fn (array $c): bool => $c['role'] === $watch['role']));
+    expect(array_column($inRole, 'color_id'))->toBe($watch['colours']);
+
+    // …and a save of an unrelated change, sending back what the form loaded, keeps both.
+    actingAs(Staff::admin())->put("/manage/storefronts/1/products/{$watch['id']}", productPayload([
+        'selling_price' => '1250.00',
+        'colors' => $loaded,
+    ]))->assertRedirect()->assertSessionHasNoErrors();
+
+    expect(array_map(fn (mixed $c): int => T::int($c), DB::table('catalog_product_color')
+        ->where('product_id', $watch['id'])->where('role', $watch['role'])->orderBy('position')->pluck('color_id')->all()))
+        ->toBe($watch['colours']);
+});
+
+it('saves the order of a role\'s colours: the first is the primary', function () {
+    $watch = twoToneWatch();
+    $reversed = array_reverse($watch['colours']);
+
+    actingAs(Staff::admin())->put("/manage/storefronts/1/products/{$watch['id']}", productPayload([
+        'colors' => array_map(fn (int $id): array => ['color_id' => $id, 'role' => $watch['role']], $reversed),
+    ]))->assertRedirect()->assertSessionHasNoErrors();
+
+    $saved = DB::table('catalog_product_color')->where('product_id', $watch['id'])->where('role', $watch['role'])
+        ->orderBy('position')->get(['color_id', 'position']);
+    expect(array_map(fn (mixed $c): int => T::int($c), $saved->pluck('color_id')->all()))->toBe($reversed)
+        ->and(array_map(fn (mixed $p): int => T::int($p), $saved->pluck('position')->all()))->toBe([0, 1])
+        // The form reads it back in that order.
+        ->and(array_column(array_values(array_filter(formColours($watch['id']), fn (array $c): bool => $c['role'] === $watch['role'])), 'color_id'))->toBe($reversed);
+
+    // …and so does what the storefront reads (the compat payloads order by position, then id).
+    $pivots = (new CompatProducts(1))->pivots([$watch['id']])[$watch['id']];
+    expect($pivots[$watch['role'] === 'dial' ? 'dial' : 'band'])->toBe($reversed);
+});
+
+it('asks non-watch families for the colour the storefront shows, labelled as a colour', function () {
+    $roles = SpecBlocks::colorRoles();
+
+    expect(array_column($roles['bag'], 'key'))->toBe(['band'])
+        ->and(array_column($roles['fashion'], 'key'))->toBe(['band'])
+        ->and(array_column($roles['watch'], 'key'))->toBe(['dial', 'band'])
+        // A handbag is asked for its colour, never its strap.
+        ->and($roles['bag'][0]['label'])->not->toBe($roles['watch'][1]['label']);
+});
+
+it('moves non-watch main colours to band, keeps an existing primary, and leaves watches alone', function () {
+    $bag = CatalogFixture::product('bag');
+    $watch = CatalogFixture::product('watch');
+    [$c1, $c2, $c3] = array_map(fn (mixed $id): int => T::int($id), DB::table('catalog_colors')->orderBy('id')->limit(3)->pluck('id')->all());
+    DB::table('catalog_product_color')->insert([
+        ['product_id' => $bag, 'color_id' => $c1, 'role' => 'band', 'position' => 0],
+        ['product_id' => $bag, 'color_id' => $c2, 'role' => 'main', 'position' => 0],
+        ['product_id' => $bag, 'color_id' => $c1, 'role' => 'main', 'position' => 1],   // already a band colour
+        ['product_id' => $watch, 'color_id' => $c3, 'role' => 'main', 'position' => 0],
+    ]);
+
+    // Dry run: nothing moves.
+    expect(Artisan::call('catalog:colours-main-to-band'))->toBe(0);
+    expect(DB::table('catalog_product_color')->where('product_id', $bag)->where('role', 'main')->count())->toBe(2);
+
+    expect(Artisan::call('catalog:colours-main-to-band', ['--apply' => true]))->toBe(0);
+
+    expect(array_map(fn (mixed $c): int => T::int($c), DB::table('catalog_product_color')->where('product_id', $bag)->where('role', 'band')->orderBy('position')->pluck('color_id')->all()))
+        ->toBe([$c1, $c2])   // existing primary stays first; the moved colour appended; no duplicate
+        ->and(DB::table('catalog_product_color')->where('product_id', $bag)->where('role', 'main')->count())->toBe(0)
+        ->and(DB::table('catalog_product_color')->where('product_id', $watch)->where('role', 'main')->count())->toBe(1);
 });

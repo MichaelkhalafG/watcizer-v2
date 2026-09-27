@@ -2230,7 +2230,9 @@ final class ProductController
     private static function colorRows(int $productId): array
     {
         $out = [];
-        foreach (DB::table('catalog_product_color')->where('product_id', $productId)->orderBy('role')->get(['color_id', 'role']) as $raw) {
+        // In each role's own order (position; primary first), so the form shows — and sends back —
+        // every colour of a two-tone finish in the order it was saved.
+        foreach (DB::table('catalog_product_color')->where('product_id', $productId)->orderBy('role')->orderBy('position')->orderBy('color_id')->get(['color_id', 'role']) as $raw) {
             $row = Row::cast($raw);
             $out[] = ['color_id' => Row::int($row, 'color_id'), 'role' => Row::str($row, 'role')];
         }

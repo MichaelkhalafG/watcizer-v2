@@ -1,5 +1,12 @@
 <?php
 
+use App\Transform\Row;
+use Illuminate\Database\Query\JoinClause;
+use Illuminate\Support\Facades\DB;
+use Tests\Support\T;
+
+use function Pest\Laravel\withHeaders;
+
 function nodeBinary(): string
 {
     return trim((string) shell_exec(PHP_OS_FAMILY === 'Windows' ? 'where node 2>NUL' : 'command -v node 2>/dev/null'));
@@ -93,3 +100,55 @@ it('narrows by category when the predicate actually RUNS', function () {
         'none' => [1, 2, 3],
     ]);
 })->skip(fn () => nodeBinary() === '', 'node is not installed here; the key check above still guards the predicate');
+
+it('finds a REAL two-tone product under EITHER of its colours', function () {
+    /*
+     * 2026-09-27. A two-tone finish is two colours in one role (strap Gold + Silver), and a
+     * shopper filtering for either colour must find it. The chain is the storefront's own: the
+     * compat `all_product` payload → `transformProduct`'s colour mapping (mirrored below: it
+     * imports other modules, and the mapping is one line) → `catalogProjection.js` →
+     * `filterPredicate.js`, both copied verbatim and run in node.
+     */
+    config(['compat.api_key' => 'filter-two-tone-key']);
+    $row = T::row(DB::table('catalog_product_color as pc')
+        ->join('catalog_products as p', 'p.id', '=', 'pc.product_id')
+        ->join('storefront_product as sp', function (JoinClause $j): void {
+            $j->on('sp.product_id', '=', 'p.id')->where('sp.storefront_id', '=', 1)->where('sp.is_visible', '=', 1);
+        })
+        ->where('p.family', 'watch')->whereNull('p.deleted_at')->where('pc.role', 'band')
+        ->groupBy('pc.product_id')->havingRaw('COUNT(*) = 2')->orderBy('pc.product_id')
+        ->first(['pc.product_id']));
+    $productId = Row::int($row, 'product_id');
+    $band = array_map(fn (mixed $c): int => T::int($c), DB::table('catalog_product_color')->where('product_id', $productId)->where('role', 'band')->orderBy('color_id')->pluck('color_id')->all());
+    $other = T::int(DB::table('catalog_colors')->whereNotIn('id', $band)->orderBy('id')->value('id'));
+
+    $all = withHeaders(['Api-Code' => 'filter-two-tone-key'])->getJson('/api/all_product')->assertOk()->json();
+    $product = collect(is_array($all) ? $all : [])->firstWhere('id', $productId);
+    expect($product)->not->toBeNull();
+
+    $dir = sys_get_temp_dir().DIRECTORY_SEPARATOR.'wz-twotone-'.bin2hex(random_bytes(4));
+    mkdir($dir);
+    file_put_contents($dir.'/predicate.mjs', storefrontFile('src/utils/filterPredicate.js'));
+    file_put_contents($dir.'/projection.mjs', storefrontFile('src/lib/catalogProjection.js'));
+    file_put_contents($dir.'/product.json', (string) json_encode($product));
+    file_put_contents($dir.'/run.mjs', str_replace(['__A__', '__B__', '__OTHER__'], [(string) $band[0], (string) $band[1], (string) $other], <<<'JS'
+        import { readFileSync } from 'node:fs'
+        import { passesFilters } from './predicate.mjs'
+        import { projectCatalogCard } from './projection.mjs'
+        const raw = JSON.parse(readFileSync(new URL('./product.json', import.meta.url)))
+        // transformProduct.js getColors(): each colour row's `id` becomes `color_id`.
+        const colors = (list) => (list || []).map((c) => ({ color_id: c.id, color_value: c.color_value }))
+        const p = projectCatalogCard({ ...raw, dial_colors: colors(raw.dial_color), band_colors: colors(raw.band_color) })
+        console.log(JSON.stringify({
+          first: passesFilters(p, { bandColors: [__A__] }),
+          second: passesFilters(p, { bandColors: [__B__] }),
+          unrelated: passesFilters(p, { bandColors: [__OTHER__] }),
+        }))
+        JS));
+
+    $out = shell_exec('node '.escapeshellarg($dir.DIRECTORY_SEPARATOR.'run.mjs').' 2>&1');
+    array_map('unlink', glob($dir.'/*') ?: []);
+    rmdir($dir);
+
+    expect(json_decode((string) $out, true))->toBe(['first' => true, 'second' => true, 'unrelated' => false]);
+})->skip(fn () => nodeBinary() === '', 'node is not installed here');
