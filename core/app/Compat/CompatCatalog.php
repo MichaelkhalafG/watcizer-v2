@@ -97,6 +97,95 @@ final class CompatCatalog
         return $out;
     }
 
+    /** Gender order in the menu, the sidebar and the chip strip; any other gender follows by name. */
+    private const GENDER_ORDER = ['Men', 'Women', 'Unisex', 'Kids', 'Boys', 'Girls'];
+
+    /**
+     * What the storefront's header menu needs to know about the catalogue (C-1 stage 2, 2026-09-27),
+     * so it no longer scans every product in the browser:
+     *
+     *  - `brand_ids`: brands with at least one product (no dead brand links);
+     *  - `sub_types_by_category`: category type id → the sub-type ids its products are in;
+     *  - `brands_by_category`: category type id → the brand ids with products in it;
+     *  - `genders`: every gender a product carries, with both names.
+     *
+     * Derived from the `all_product` rows themselves, so "has products" means exactly what the
+     * listing shows. Ids are the legacy ids the storefront's links and filters use. There is no
+     * legacy counterpart: this is a storefront-only read, not a compat shape.
+     *
+     * @return array{brand_ids: list<int>, sub_types_by_category: array<string, list<int>>, brands_by_category: array<string, list<int>>, genders: list<array{en: string, ar: string}>}
+     */
+    public function nav(): array
+    {
+        $ttl = config()->integer('compat.ttl.all_product');
+
+        /** @var array{brand_ids: list<int>, sub_types_by_category: array<string, list<int>>, brands_by_category: array<string, list<int>>, genders: list<array{en: string, ar: string}>} */
+        return $this->cache->remember($this->storefrontId, 'compat_nav', '', $ttl, fn () => $this->buildNav());
+    }
+
+    /** @return array{brand_ids: list<int>, sub_types_by_category: array<string, list<int>>, brands_by_category: array<string, list<int>>, genders: list<array{en: string, ar: string}>} */
+    private function buildNav(): array
+    {
+        $brands = [];
+        $subTypes = [];
+        $brandsByCategory = [];
+        $genders = [];
+        foreach ($this->allProduct(config()->string('compat.pinned_locale')) as $row) {
+            $brand = is_int($row['brand_id'] ?? null) ? $row['brand_id'] : null;
+            $type = is_int($row['category_type_id'] ?? null) ? $row['category_type_id'] : null;
+            $sub = is_int($row['sub_type_id'] ?? null) ? $row['sub_type_id'] : null;
+            if ($brand !== null) {
+                $brands[$brand] = true;
+            }
+            if ($type !== null && $sub !== null) {
+                $subTypes[$type][$sub] = true;
+            }
+            if ($type !== null && $brand !== null) {
+                $brandsByCategory[$type][$brand] = true;
+            }
+            foreach (is_array($row['gender'] ?? null) ? $row['gender'] : [] as $gender) {
+                $names = ['en' => '', 'ar' => ''];
+                foreach (is_array($gender) && is_array($gender['translations'] ?? null) ? $gender['translations'] : [] as $t) {
+                    if (is_array($t) && is_string($t['locale'] ?? null) && is_string($t['gender_name'] ?? null) && array_key_exists($t['locale'], $names)) {
+                        $names[$t['locale']] = $t['gender_name'];
+                    }
+                }
+                if ($names['en'] !== '' && ! isset($genders[$names['en']])) {
+                    $genders[$names['en']] = ['en' => $names['en'], 'ar' => $names['ar'] !== '' ? $names['ar'] : $names['en']];
+                }
+            }
+        }
+
+        $ids = static function (array $set): array {
+            $out = array_map('intval', array_keys($set));
+            sort($out);
+
+            return $out;
+        };
+        $byCategory = static function (array $map) use ($ids): array {
+            ksort($map);
+            $out = [];
+            foreach ($map as $type => $set) {
+                $out[(string) $type] = $ids(is_array($set) ? $set : []);
+            }
+
+            return $out;
+        };
+        uksort($genders, static function (string $a, string $b): int {
+            $ia = array_search($a, self::GENDER_ORDER, true);
+            $ib = array_search($b, self::GENDER_ORDER, true);
+
+            return [$ia === false ? 99 : $ia, $a] <=> [$ib === false ? 99 : $ib, $b];
+        });
+
+        return [
+            'brand_ids' => $ids($brands),
+            'sub_types_by_category' => $byCategory($subTypes),
+            'brands_by_category' => $byCategory($brandsByCategory),
+            'genders' => array_values($genders),
+        ];
+    }
+
     /**
      * Legacy `product_translations` rows for one product, locale ascending (the legacy index order).
      *

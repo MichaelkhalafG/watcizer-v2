@@ -30,6 +30,12 @@ class CatalogCompatController extends Controller
         return response()->json($this->compat->catalog->allProduct($this->locale()));
     }
 
+    /** The header menu's catalogue facts (C-1 stage 2) — storefront-only, no legacy counterpart. */
+    public function nav(): JsonResponse
+    {
+        return response()->json($this->compat->catalog->nav(), 200, [], JSON_UNESCAPED_UNICODE);
+    }
+
     public function allProductImage(): JsonResponse
     {
         return response()->json($this->compat->catalog->allProductImage());
