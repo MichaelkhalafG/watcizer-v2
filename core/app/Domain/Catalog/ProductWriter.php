@@ -720,7 +720,14 @@ final class ProductWriter
         }
 
         if (array_key_exists('colors', $data)) {
+            /*
+             * A role holds a LIST of colours — a two-tone finish is several colours in one role —
+             * and the list is ORDERED: the first is the primary colour (2026-09-27). `position` is
+             * the colour's place within its role, in the order the form sent them. Every colour
+             * the form sends is kept; nothing here collapses a role to one value.
+             */
             $rows = [];
+            $next = [];
             foreach (Coerce::arr($data['colors']) as $entry) {
                 $color = Coerce::arr($entry);
                 $colorId = Coerce::nint($color['color_id'] ?? null);
@@ -729,8 +736,13 @@ final class ProductWriter
                     continue;
                 }
                 // The pivot's primary key is (product, color, role): the same colour twice in one
-                // role is one row, and de-duplicating here beats a 1062 from the database.
-                $rows[$colorId.'|'.$role] = ['product_id' => $productId, 'color_id' => $colorId, 'role' => $role];
+                // role is one row (its first place wins), and de-duplicating here beats a 1062.
+                if (isset($rows[$colorId.'|'.$role])) {
+                    continue;
+                }
+                $position = $next[$role] ?? 0;
+                $next[$role] = $position + 1;
+                $rows[$colorId.'|'.$role] = ['product_id' => $productId, 'color_id' => $colorId, 'role' => $role, 'position' => $position];
             }
             DB::table('catalog_product_color')->where('product_id', $productId)->delete();
             foreach ($rows as $row) {

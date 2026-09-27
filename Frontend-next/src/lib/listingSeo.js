@@ -197,11 +197,11 @@ export function listingMetadata({ tables = {}, products = [], filters = {}, q = 
 
   // Social preview image: prefer the first catalog product's image (already a
   // fully-resolved absolute URL from the transform's getImageUrl); fall back to
-  // the site logo so every facet page always emits an og:image / twitter:image.
+  // the site preview image (a JPG — social platforms refuse SVG) so every facet page always emits an og:image / twitter:image.
   const ogImage =
     products?.[0]?.image && /^https?:\/\//.test(products[0].image)
       ? products[0].image
-      : `${SEO_DOMAIN}/logo.svg`
+      : `${SEO_DOMAIN}/og-image.jpg`
 
   return {
     title,

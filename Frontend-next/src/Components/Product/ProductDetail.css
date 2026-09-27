@@ -363,6 +363,19 @@
 .wz-pd-swatch.is-active {
   box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--pd-ink);
 }
+/* A finish (2026-09-27): one swatch per colour role, split for a two-tone finish, with its name. */
+.wz-pd-finish {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.wz-pd-swatch.is-finish {
+  cursor: default;
+}
+.wz-pd-finish-name {
+  font-size: 13px;
+  color: var(--pd-ink);
+}
 
 /* ── Actions ──────────────────────────────────── */
 .wz-pd-actions {

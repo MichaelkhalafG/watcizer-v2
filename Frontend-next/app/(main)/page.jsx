@@ -25,7 +25,7 @@ export const metadata = {
     locale: 'en_US',
     images: [
       {
-        url: 'https://watchizereg.com/logo.svg',
+        url: 'https://watchizereg.com/og-image.jpg',
         width: 1200,
         height: 630,
         alt: 'Watchizer — Luxury Watches',
@@ -36,6 +36,7 @@ export const metadata = {
     card: 'summary_large_image',
     title: HOME_TITLE,
     description: HOME_DESC,
+    images: ['https://watchizereg.com/og-image.jpg'],
   },
 }
 
@@ -47,7 +48,7 @@ const storeJsonLd = {
   name: 'Watchizer - Luxury Watches & Accessories',
   url: 'https://watchizereg.com',
   logo: 'https://watchizereg.com/logo.svg',
-  image: 'https://watchizereg.com/logo.svg',
+  image: 'https://watchizereg.com/og-image.jpg',
   description:
     'Discover a premium collection of luxury watches and fashion accessories at Watchizer. Shop exclusive timepieces with elegant designs and unbeatable prices in Egypt.',
   address: {

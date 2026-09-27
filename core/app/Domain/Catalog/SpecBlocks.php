@@ -75,6 +75,9 @@ final class SpecBlocks
             'dial' => ManageText::t('products.color_dial', 'لون القرص'),
             'band' => ManageText::t('products.color_band', 'لون السوار'),
         ];
+        // The `band` role is a watch's STRAP colour and every other family's colour — the storefront
+        // shows it that way (2026-09-27). So a handbag is asked for its "Colour", never its strap.
+        $productColour = ManageText::t('products.color_product', 'اللون');
 
         /** @var array<string, mixed> $config */
         $config = config('catalog.color_roles', []);
@@ -87,7 +90,7 @@ final class SpecBlocks
                 if (! is_string($role) || ! isset($labels[$role])) {
                     throw new InvalidArgumentException('config/catalog.php: unknown colour role ['.Coerce::str($role).'].');
                 }
-                $list[] = ['key' => $role, 'label' => $labels[$role]];
+                $list[] = ['key' => $role, 'label' => $role === 'band' && $family !== 'watch' ? $productColour : $labels[$role]];
             }
             $out[$family] = $list;
         }

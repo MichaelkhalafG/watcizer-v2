@@ -27,8 +27,8 @@
             </div>
             @if($item['color_dial'] || $item['color_band'])
                 <div style="margin-top:5px;font-size:11px;color:#999;">
-                    @if($item['color_dial'])Dial <span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:{{ $item['color_dial'] }};border:1px solid #ccc;vertical-align:middle;"></span>&nbsp;@endif
-                    @if($item['color_band'])Band <span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:{{ $item['color_band'] }};border:1px solid #ccc;vertical-align:middle;"></span>@endif
+                    @if($item['color_dial'])Dial @foreach($item['color_dial'] as $hex)<span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:{{ $hex }};border:1px solid #ccc;vertical-align:middle;"></span>@endforeach&nbsp;@endif
+                    @if($item['color_band'])Band @foreach($item['color_band'] as $hex)<span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:{{ $hex }};border:1px solid #ccc;vertical-align:middle;"></span>@endforeach @endif
                 </div>
             @endif
         </td>

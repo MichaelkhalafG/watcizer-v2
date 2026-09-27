@@ -36,12 +36,22 @@ export const metadata = {
   // Google showed the Next.js mark. The file-convention assets are the square
   // Watchizer "W" monogram generated from public/logo.png.
   verification: { google: 'ySFGJkGj9eU9lzj8qAvuoqI9xt4Wcaswa_Q0Ke4Uoqg' },
+  // The link-preview image (2026-09-27): a 1200×630 JPG. It was logo.svg, and Facebook,
+  // WhatsApp, X and LinkedIn refuse SVG, so a shared link showed no picture at all. Replace
+  // public/og-image.jpg with new artwork under the same name and nothing here changes.
   openGraph: {
     type: 'website',
     title: 'Watchizer - أفخم الساعات والإكسسوارات الفاخرة',
     description:
       'اكتشف مجموعة رائعة من الساعات الفاخرة والإكسسوارات العصرية في Watchizer. جودة استثنائية، تصاميم راقية، وعروض لا تُقاوم.',
-    images: ['https://watchizereg.com/logo.svg'],
+    images: [
+      {
+        url: 'https://watchizereg.com/og-image.jpg',
+        width: 1200,
+        height: 630,
+        alt: 'Watchizer',
+      },
+    ],
     url: 'https://watchizereg.com',
     siteName: 'Watchizer',
     locale: 'ar_EG',
@@ -51,7 +61,7 @@ export const metadata = {
     title: 'Watchizer - أفخم الساعات والإكسسوارات الفاخرة',
     description:
       'تسوق أحدث موديلات الساعات الفاخرة والإكسسوارات الراقية بأفضل الأسعار فقط على Watchizer.',
-    images: ['https://watchizereg.com/logo.svg'],
+    images: ['https://watchizereg.com/og-image.jpg'],
     site: '@Watchizer',
     creator: '@Watchizer',
   },

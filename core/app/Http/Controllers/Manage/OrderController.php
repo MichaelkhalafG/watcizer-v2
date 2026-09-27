@@ -886,9 +886,9 @@ final class OrderController
                 'color_dial' => self::colour(Row::nstr($row, 'color_dial')),
             ];
 
-            foreach ([Row::nstr($row, 'color_band'), Row::nstr($row, 'color_dial')] as $hex) {
-                if ($hex !== null) {
-                    $hexes[] = $hex;
+            foreach (['color_band', 'color_dial'] as $slot) {
+                foreach (self::colour(Row::nstr($row, $slot)) ?? [] as $part) {
+                    $hexes[] = $part['hex'];
                 }
             }
         }
@@ -910,10 +910,11 @@ final class OrderController
         $names = ProductPeek::colourNames($hexes);
         foreach ($out as $index => $item) {
             foreach (['color_band', 'color_dial'] as $slot) {
-                $colour = Coerce::arr($item[$slot] ?? null);
-                $hex = Coerce::nstr($colour['hex'] ?? null);
-                if ($hex !== null) {
-                    $out[$index][$slot]['name'] = $names[strtoupper($hex)] ?? null;
+                foreach (Coerce::arr($item[$slot] ?? null) as $part => $colour) {
+                    $hex = Coerce::nstr(Coerce::arr($colour)['hex'] ?? null);
+                    if ($hex !== null) {
+                        $out[$index][$slot][$part]['name'] = $names[strtoupper($hex)] ?? null;
+                    }
                 }
             }
         }
@@ -922,17 +923,26 @@ final class OrderController
     }
 
     /**
-     * One stored colour as `{hex, name}` — or null when the line carries none.
+     * A line's stored colour as a LIST of `{hex, name}` — or null when the line carries none.
      *
-     * The name is filled in by the caller once every hex on the order has been resolved together.
+     * A list because a line's colour is the product's FINISH, and a two-tone finish is stored as
+     * its hexes joined by '/' ("#C0C0C0/#1F3A5F", 2026-09-27); a legacy line's single hex is a
+     * list of one. The names are filled in by the caller once every hex on the order has been
+     * resolved together.
      *
-     * @return array{hex: string, name: array{ar: string, en: string}|null}|null
+     * @return list<array{hex: string, name: array{ar: string, en: string}|null}>|null
      */
-    private static function colour(?string $hex): ?array
+    private static function colour(?string $stored): ?array
     {
-        $clean = $hex === null ? '' : trim($hex);
+        $out = [];
+        foreach (explode('/', $stored ?? '') as $hex) {
+            $hex = trim($hex);
+            if ($hex !== '') {
+                $out[] = ['hex' => $hex, 'name' => null];
+            }
+        }
 
-        return $clean === '' ? null : ['hex' => $clean, 'name' => null];
+        return $out === [] ? null : $out;
     }
 
     /**

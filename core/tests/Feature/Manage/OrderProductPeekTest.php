@@ -58,7 +58,7 @@ it('gives NO name to a hex the catalogue has never seen, rather than the nearest
     expect(ProductPeek::colourNames([$invented]))->toBe([]);
 });
 
-it('sends every order line a colour as an object, never as a bare hex', function () {
+it('sends every order line its colours as {hex, name} objects, never as a bare hex', function () {
     $order = T::one(DB::table('order_items')->whereNotNull('color_band')->where('color_band', '<>', ''));
     $orderId = T::int($order->order_id ?? null);
 
@@ -74,8 +74,17 @@ it('sends every order line a colour as an object, never as a bare hex', function
             if ($value === null) {
                 continue;
             }
-            if (! is_array($value) || ! array_key_exists('hex', $value) || ! array_key_exists('name', $value)) {
-                $wrong[] = $slot.': '.get_debug_type($value);
+            // Since 2026-09-27 a slot is the line's FINISH: a LIST of {hex, name} — one entry, or
+            // several for a two-tone finish stored as "#C0C0C0/#1F3A5F".
+            if (! is_array($value) || ! array_is_list($value) || $value === []) {
+                $wrong[] = $slot.': '.get_debug_type($value).' (expected a list)';
+
+                continue;
+            }
+            foreach ($value as $colour) {
+                if (! is_array($colour) || ! array_key_exists('hex', $colour) || ! array_key_exists('name', $colour)) {
+                    $wrong[] = $slot.': '.get_debug_type($colour);
+                }
             }
         }
     }

@@ -227,11 +227,11 @@ final class ProductDetail
     {
         $out = ['features' => [], 'genders' => [], 'dial' => [], 'band' => [], 'main' => []];
         $rows = DB::query()->fromSub(
-            DB::table('catalog_product_feature')->selectRaw("'features' AS kind, feature_id AS ref_id, '' AS role")->where('product_id', $productId)
-                ->unionAll(DB::table('catalog_product_gender')->selectRaw("'genders' AS kind, gender_id AS ref_id, '' AS role")->where('product_id', $productId))
-                ->unionAll(DB::table('catalog_product_color')->selectRaw("'colors' AS kind, color_id AS ref_id, role")->where('product_id', $productId)),
+            DB::table('catalog_product_feature')->selectRaw("'features' AS kind, feature_id AS ref_id, '' AS role, 0 AS position")->where('product_id', $productId)
+                ->unionAll(DB::table('catalog_product_gender')->selectRaw("'genders' AS kind, gender_id AS ref_id, '' AS role, 0 AS position")->where('product_id', $productId))
+                ->unionAll(DB::table('catalog_product_color')->selectRaw("'colors' AS kind, color_id AS ref_id, role, position")->where('product_id', $productId)),
             'piv'
-        )->orderBy('kind')->orderBy('ref_id')->get();
+        )->orderBy('kind')->orderBy('position')->orderBy('ref_id')->get();   // colours: role order (position) first
         foreach ($rows as $r) {
             $kind = Row::str($r, 'kind');
             $id = Row::int($r, 'ref_id');

@@ -2137,10 +2137,15 @@ function CheckList({
 }
 
 /**
- * Colours with their ROLE (dial / band / main).
+ * Colours with their ROLE (dial / band / main) — several per role, in order (2026-09-27).
  *
- * The pivot's primary key is (product, colour, role), so the same colour can legitimately be both
- * the dial and the band colour — which is why this is a grid of roles rather than a flat list.
+ * A two-tone finish is several colours in ONE role (strap Gold + Silver, dial Navy + White), and
+ * the pivot has always stored that. This picker used to show one select per role — it displayed
+ * the first colour only and REPLACED the whole role on change, so editing a two-tone product
+ * silently dropped its second colour. Now each role is an ordered list: the first colour is the
+ * primary one (named first on the storefront, "Silver & Blue"), any colour can be moved first or
+ * removed, and "Add colour" offers only colours the role does not have yet. The order of `value`
+ * within a role IS the saved order (`position`).
  */
 function ColorRoles({
     options,
@@ -2155,23 +2160,14 @@ function ColorRoles({
     onChange: (rows: Array<{ color_id: number; role: string }>) => void;
 }) {
     const t = useT();
+    const nameOf = (colorId: number) =>
+        options.find((o) => o.value === String(colorId))?.label ?? `#${colorId}`;
 
-    /*
-     * The roles come from the SERVER, per family (J-6). They used to be this fixed array, so a hat
-     * and a handbag were asked for their dial and strap colours — and whoever answered wrote into
-     * the column the storefront renders as a watch band, with the form looking entirely correct
-     * while it happened.
-     *
-     * `roles` is already narrowed to the family on screen by the caller, which re-derives it from
-     * the primary category without a round trip (task 4.1).
-     */
-    const set = (role: string, colorId: string) => {
-        const without = value.filter((row) => row.role !== role);
-        onChange(
-            colorId === ""
-                ? without
-                : [...without, { color_id: Number(colorId), role }],
-        );
+    // Rewrite ONE role's list and keep every other role's rows exactly as they are — including a
+    // role this family is not shown, which must never be lost by an edit here.
+    const setRole = (role: string, ids: number[]) => {
+        const others = value.filter((row) => row.role !== role);
+        onChange([...others, ...ids.map((id) => ({ color_id: id, role }))]);
     };
 
     if (roles.length === 0) {
@@ -2179,24 +2175,66 @@ function ColorRoles({
     }
 
     return (
-        <div className="space-y-3">
+        <div className="space-y-4">
             <Label>{t("products.colors", "الألوان")}</Label>
             {roles.map((role) => {
-                const current = value.find((row) => row.role === role.key);
+                const ids = value.filter((row) => row.role === role.key).map((row) => row.color_id);
+                const available = options.filter((o) => !ids.includes(Number(o.value)));
 
                 return (
-                    <SelectField
-                        key={role.key}
-                        label={role.label}
-                        placeholder="—"
-                        value={
-                            current === undefined
-                                ? ""
-                                : String(current.color_id)
-                        }
-                        options={options}
-                        onChange={(colorId) => set(role.key, colorId)}
-                    />
+                    <div key={role.key} className="space-y-2">
+                        <div className="text-sm font-medium">{role.label}</div>
+                        {ids.length > 0 && (
+                            <ul className="flex flex-wrap gap-2">
+                                {ids.map((id, index) => (
+                                    <li
+                                        key={id}
+                                        className="flex items-center gap-1 rounded-md border px-2 py-1 text-sm"
+                                    >
+                                        <span>{nameOf(id)}</span>
+                                        {index === 0 && ids.length > 1 && (
+                                            <span className="text-xs text-muted-foreground">
+                                                ({t("products.color_primary", "أساسي")})
+                                            </span>
+                                        )}
+                                        {index > 0 && (
+                                            <Button
+                                                type="button"
+                                                variant="ghost"
+                                                size="sm"
+                                                className="h-6 px-1 text-xs"
+                                                onClick={() => setRole(role.key, [id, ...ids.filter((x) => x !== id)])}
+                                                aria-label={t("products.color_make_primary", "اجعله أساسيًا")}
+                                                title={t("products.color_make_primary", "اجعله أساسيًا")}
+                                            >
+                                                {t("products.color_first", "الأول")}
+                                            </Button>
+                                        )}
+                                        <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="sm"
+                                            className="h-6 px-1 text-destructive"
+                                            onClick={() => setRole(role.key, ids.filter((x) => x !== id))}
+                                            aria-label={t("products.color_remove", "إزالة اللون")}
+                                            title={t("products.color_remove", "إزالة اللون")}
+                                        >
+                                            <Trash2 className="h-3.5 w-3.5" />
+                                        </Button>
+                                    </li>
+                                ))}
+                            </ul>
+                        )}
+                        <SelectField
+                            label={ids.length === 0 ? t("products.color_add_first", "اختر لونًا") : t("products.color_add_another", "أضف لونًا آخر (لتشطيب بلونين)")}
+                            placeholder="—"
+                            value=""
+                            options={available}
+                            onChange={(colorId) => {
+                                if (colorId !== "") setRole(role.key, [...ids, Number(colorId)]);
+                            }}
+                        />
+                    </div>
                 );
             })}
         </div>

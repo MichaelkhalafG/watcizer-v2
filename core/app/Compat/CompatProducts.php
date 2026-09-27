@@ -142,7 +142,9 @@ final class CompatProducts
     }
 
     /**
-     * product id => {features: ids, genders: ids, dial: color ids, band: color ids}, each ascending.
+     * product id => {features: ids, genders: ids, dial: color ids, band: color ids}, each ascending —
+     * except colours, which follow their `position` first (primary first; 2026-09-27). Every
+     * existing row is position 0, so the legacy colour-id order the harness froze is unchanged.
      *
      * @param  list<int>  $ids
      * @return array<int, array{features: list<int>, genders: list<int>, dial: list<int>, band: list<int>}>
@@ -166,7 +168,7 @@ final class CompatProducts
         foreach (DB::table('catalog_product_gender')->select(['product_id', 'gender_id'])->whereIn('product_id', $ids)->orderBy('product_id')->orderBy('gender_id')->get() as $r) {
             $genders[Row::int($r, 'product_id')][] = Row::int($r, 'gender_id');
         }
-        foreach (DB::table('catalog_product_color')->select(['product_id', 'color_id', 'role'])->whereIn('product_id', $ids)->whereIn('role', ['dial', 'band'])->orderBy('product_id')->orderBy('color_id')->get() as $r) {
+        foreach (DB::table('catalog_product_color')->select(['product_id', 'color_id', 'role'])->whereIn('product_id', $ids)->whereIn('role', ['dial', 'band'])->orderBy('product_id')->orderBy('position')->orderBy('color_id')->get() as $r) {
             if (Row::str($r, 'role') === 'dial') {
                 $dial[Row::int($r, 'product_id')][] = Row::int($r, 'color_id');
             } else {

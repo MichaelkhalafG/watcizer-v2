@@ -23,7 +23,8 @@ export interface Peek {
 export interface PeekLine {
     variant: string | null;
     variant_sku: string | null;
-    colours: Array<{ label: string; colour: StoredColour }>;
+    /** Per slot, the line's finish: one colour, or several for a two-tone finish. */
+    colours: Array<{ label: string; colours: StoredColour[] }>;
     quantity: number;
     piece_price: string;
 }
@@ -151,14 +152,19 @@ export function ProductPeekDialog({
                                             </dd>
                                         </>
                                     )}
-                                    {line.colours.map(({ label, colour }) => (
+                                    {line.colours.map(({ label, colours }) => (
                                         // A Fragment with a key, not a bare `<>`: a keyless fragment
                                         // in a list is React's own warning, and a `<div>` wrapper
                                         // here would break the two-column grid the dl draws.
                                         <Fragment key={label}>
                                             <dt className="text-muted-foreground">{label}</dt>
-                                            <dd>
-                                                <ColourChip colour={colour} />
+                                            <dd className="flex flex-wrap items-center gap-1.5">
+                                                {colours.map((colour, i) => (
+                                                    <span key={i} className="inline-flex items-center gap-1.5">
+                                                        {i > 0 && <span aria-hidden="true">+</span>}
+                                                        <ColourChip colour={colour} />
+                                                    </span>
+                                                ))}
                                             </dd>
                                         </Fragment>
                                     ))}

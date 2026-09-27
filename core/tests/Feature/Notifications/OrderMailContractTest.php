@@ -139,7 +139,12 @@ it('ports them byte for byte, except the one config key core does not have', fun
 
         $notMoney = array_values(array_filter(
             $gone,
-            fn (string $line): bool => preg_match('/number_format|\$egp\(|Subtotal|Discount|emails\.partials\.product-row/', $line) !== 1,
+            // …or one of the two colour-dot lines in the product row, which since 2026-09-27 draw one
+            // dot per colour of a two-tone finish. Tested, not assumed: see "draws one dot per
+            // colour" below.
+            fn (string $line): bool => preg_match('/number_format|\$egp\(|Subtotal|Discount|emails\.partials\.product-row/', $line) !== 1
+                && ! ($file === 'partials/product-row.blade.php'
+                    && (str_starts_with($line, "@if(\$item['color_dial'])Dial <span") || str_starts_with($line, "@if(\$item['color_band'])Band <span"))),
         ));
         expect($gone)->not->toBe([], "{$file} was expected to carry the OrderTotals block")
             ->and($notMoney)->toBe([], "{$file} changed a line that is not about money");
@@ -300,6 +305,25 @@ it('renders the admin notification with what an operator triages on', function (
     expect($subject)->toContain('طلب جديد')
         ->and($subject)->toContain(PaymentFixture::orderNumber($orderId))
         ->and($subject)->toContain('1,250 EGP');
+});
+
+it('draws one dot per colour of a two-tone finish in the admin e-mail', function () {
+    // 2026-09-27: a line's colour is the product's finish, stored as hexes joined by '/'. The
+    // product row used to paste the stored value into ONE CSS background, which for a two-tone
+    // finish is not a colour at all.
+    $orderId = contractOrder();
+    $line = T::int(DB::table('order_items')->where('order_id', $orderId)->orderBy('id')->value('id'));
+    DB::table('order_items')->where('id', $line)->update(['color_band' => '#C0C0C0/#1F3A5F', 'color_dial' => '#111111']);
+
+    $data = OrderEmailData::for($orderId);
+    expect($data)->toBeArray();
+    /** @var array<string, mixed> $data */
+    $html = (new AdminOrderNotification($data))->render();
+
+    expect($html)->toContain('background:#C0C0C0;')
+        ->and($html)->toContain('background:#1F3A5F;')
+        ->and($html)->toContain('background:#111111;')
+        ->and($html)->not->toContain('#C0C0C0/#1F3A5F');
 });
 
 it('renders each status’s own copy, in both languages', function () {

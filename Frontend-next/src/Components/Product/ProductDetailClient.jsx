@@ -16,6 +16,7 @@ import ProductSlider from './ProductSlider'
 import TrustSignals from '../Merchandising/TrustSignals'
 import BackToTop from '../BackToTop/BackToTop'
 import { trackViewContent } from '../../scripts/pixels'
+import { finishBackground } from '../../utils/finish'
 import { getImageUrl, PLACEHOLDER_IMG } from '../../utils/imageUrl'
 import { toSlug } from '../../utils/slugs'
 import { buildListingParams } from '../../utils/listingParams'
@@ -85,6 +86,26 @@ function resolveColorList(...sources) {
 // Client island for the product/offer detail routes. `param` (slug or id) and
 // `isOffer` are passed by the server page (which resolves the route + owns the
 // SEO metadata / JSON-LD / canonical redirect — none of that lives here anymore).
+// One colour role as the product's FINISH (2026-09-27): a single swatch — split into equal parts
+// for a two-tone finish, primary first — and its name, "Gold & Silver". Not a button: a finish is
+// what the product is, not an option to pick.
+function FinishRow({ label, colors, isRTL }) {
+  const background = finishBackground(colors.map((c) => c.color_value || '#f0f0f0'))
+  const names = colors
+    .map((c) => (isRTL ? c.color_name_ar || c.color_name_en : c.color_name_en || c.color_name_ar))
+    .filter(Boolean)
+  const name = names.join(isRTL ? ' و' : ' & ')
+  return (
+    <div className="wz-pd-colors">
+      <span className="wz-pd-colors-label">{label}</span>
+      <span className="wz-pd-finish">
+        <span className="wz-pd-swatch is-finish" style={{ background }} role="img" aria-label={name} />
+        {name && <span className="wz-pd-finish-name">{name}</span>}
+      </span>
+    </div>
+  )
+}
+
 function ProductDetailClient({ param, isOffer = false }) {
   const router = useRouter()
 
@@ -248,15 +269,16 @@ function ProductDetailClient({ param, isOffer = false }) {
   // full ProductResource record doesn't drop the swatches.
   const dialColors = resolveColorList(product?.dial_color, product?.dial_colors)
   const bandColors = resolveColorList(product?.band_color, product?.band_colors)
-  const [selectedDial, setSelectedDial] = useState(null)
-  const [selectedBand, setSelectedBand] = useState(null)
-  useEffect(() => {
-    // Seed the default dial/band selection when the item changes — intentional.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setSelectedDial(dialColors?.[0]?.color_value || null)
-    setSelectedBand(bandColors?.[0]?.color_value || null)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [item])
+  // A role's colours are the product's FINISH, not a choice (2026-09-27): a two-tone strap is
+  // Gold AND Silver on the same watch, so there is nothing for the shopper to pick. The cart line
+  // records the whole finish — its hexes in order, primary first, joined by '/' — which is what
+  // the order e-mail and the dashboard read back as "Gold + Silver".
+  const finishOf = (colors) => {
+    const hexes = (colors || []).map((c) => c.color_value).filter(Boolean)
+    return hexes.length ? hexes.join('/') : null
+  }
+  const selectedDial = finishOf(dialColors)
+  const selectedBand = finishOf(bandColors)
 
   // ── Images ──────────────────────────────────────────────────────────────
   // Catalog MAIN image (same source the product cards use — resolved from the
@@ -1133,40 +1155,20 @@ function ProductDetailClient({ param, isOffer = false }) {
                 product colour — hide the watch-only "Dial Color" and relabel the band
                 swatch as plain "Color" so bags/belts don't show watch terminology. */}
             {!isOffer && !isFashion && dialColors.length > 0 && (
-              <div className="wz-pd-colors">
-                <span className="wz-pd-colors-label">{isRTL ? 'لون الميناء' : 'Dial Color'}</span>
-                <div className="wz-pd-swatches">
-                  {dialColors.map((c, i) => (
-                    <button
-                      key={i}
-                      className={`wz-pd-swatch${selectedDial === c.color_value ? ' is-active' : ''}`}
-                      style={{ background: c.color_value || '#f0f0f0' }}
-                      onClick={() => setSelectedDial(c.color_value)}
-                      title={isRTL ? c.color_name_ar : c.color_name_en}
-                      aria-label={isRTL ? c.color_name_ar : c.color_name_en}
-                    />
-                  ))}
-                </div>
-              </div>
+              <FinishRow
+                label={isRTL ? 'لون الميناء' : 'Dial Color'}
+                colors={dialColors}
+                isRTL={isRTL}
+              />
             )}
             {!isOffer && bandColors.length > 0 && (
-              <div className="wz-pd-colors">
-                <span className="wz-pd-colors-label">
-                  {isFashion ? (isRTL ? 'اللون' : 'Color') : isRTL ? 'لون السوار' : 'Band Color'}
-                </span>
-                <div className="wz-pd-swatches">
-                  {bandColors.map((c, i) => (
-                    <button
-                      key={i}
-                      className={`wz-pd-swatch${selectedBand === c.color_value ? ' is-active' : ''}`}
-                      style={{ background: c.color_value || '#f0f0f0' }}
-                      onClick={() => setSelectedBand(c.color_value)}
-                      title={isRTL ? c.color_name_ar : c.color_name_en}
-                      aria-label={isRTL ? c.color_name_ar : c.color_name_en}
-                    />
-                  ))}
-                </div>
-              </div>
+              <FinishRow
+                label={
+                  isFashion ? (isRTL ? 'اللون' : 'Color') : isRTL ? 'لون السوار' : 'Band Color'
+                }
+                colors={bandColors}
+                isRTL={isRTL}
+              />
             )}
 
             {/* Quantity + actions */}

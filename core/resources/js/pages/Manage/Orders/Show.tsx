@@ -62,19 +62,20 @@ type Translate = ReturnType<typeof useT>;
 function lineColours(
     item: Item,
     t: Translate,
-): Array<{ label: string; colour: StoredColour }> {
-    const out: Array<{ label: string; colour: StoredColour }> = [];
+): Array<{ label: string; colours: StoredColour[] }> {
+    // Each slot is the product's FINISH: one colour, or several for a two-tone finish (2026-09-27).
+    const out: Array<{ label: string; colours: StoredColour[] }> = [];
 
-    if (item.color_dial !== null) {
+    if (item.color_dial !== null && item.color_dial.length > 0) {
         out.push({
             label: t("orders.colour_dial", "لون القرص"),
-            colour: item.color_dial,
+            colours: item.color_dial,
         });
     }
-    if (item.color_band !== null) {
+    if (item.color_band !== null && item.color_band.length > 0) {
         out.push({
             label: t("orders.colour_band", "لون السوار"),
-            colour: item.color_band,
+            colours: item.color_band,
         });
     }
 
@@ -99,8 +100,9 @@ interface Item {
      * legacy cart wrote and what draws the swatch; the name is what `catalog_colors` calls it, and
      * is null for a hex the catalogue has never seen.
      */
-    color_band: StoredColour | null;
-    color_dial: StoredColour | null;
+    /** The line's finish: one colour, or several for a two-tone finish. */
+    color_band: StoredColour[] | null;
+    color_dial: StoredColour[] | null;
 }
 
 interface Attempt {
@@ -1154,15 +1156,20 @@ export default function OrderShow({
                                                         </span>
                                                     ) : (
                                                         lineColours(item, t).map(
-                                                            ({ label, colour }) => (
+                                                            ({ label, colours }) => (
                                                                 <div
                                                                     key={label}
-                                                                    className="flex items-center gap-1.5"
+                                                                    className="flex flex-wrap items-center gap-1.5"
                                                                 >
                                                                     <span className="text-muted-foreground">
                                                                         {label}
                                                                     </span>
-                                                                    <ColourChip colour={colour} />
+                                                                    {colours.map((colour, i) => (
+                                                                        <span key={i} className="inline-flex items-center gap-1.5">
+                                                                            {i > 0 && <span aria-hidden="true">+</span>}
+                                                                            <ColourChip colour={colour} />
+                                                                        </span>
+                                                                    ))}
                                                                 </div>
                                                             ),
                                                         )
