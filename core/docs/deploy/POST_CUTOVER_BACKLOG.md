@@ -136,6 +136,47 @@ handed to the provider — and a placeholder (`-`, `Guest`, `01000000000`, `no-r
 the wire for a customer who gave the real value is a failure. `CheckoutMethodsTest` now does this
 for the phone; the same assertion is owed for name, e-mail and street.
 
+### Lesson: a browser pass writes real rows, and nothing rolls them back
+
+The Pest suite runs every test inside a transaction that is rolled back, and the compat harness
+builds its own scratch database and drops it. A BROWSER pass against the running app does neither:
+every account it registers, role it grants, cart it fills and product it saves is a real row in
+whatever database `.env` points at. On 2026-09-27 that left a throwaway account, its admin grant,
+an activity-log entry, a cart and a re-saved product in the local dev copy — found and removed the
+same day, but only because someone looked. Unchecked, the dev copy drifts from production one
+session at a time, and the drift is invisible until a count does not match.
+
+**Rule:** any browser testing plans, from the start, EITHER a scratch database (clone the dev copy,
+point `.env` at it with a restore trap, drop it afterwards — the harness's own procedure) OR an
+inventory-and-clean step: list every row created (accounts, roles, carts, orders, products,
+colours, activity log) and delete them before the report, which states what was created and that
+it is gone. Row timestamps cannot be restored, so a record of what was touched is part of the
+report too.
+
+### Colours — decided 2026-09-27
+
+- **The ~7,090 products with no colour are a DATA-ENTRY job, not an import fix.** Measured: the
+  WooCommerce export (8,614 rows, the bulk of the catalogue) carries a colour attribute on 7 rows.
+  Re-importing cannot recover a colour the source never recorded — do not propose an import fix
+  again. The team fills them in from the actual products, with the dashboard's colour picker
+  (several colours per role since 2026-09-27).
+- **Do not infer colours from product titles.** 1,065 product names contain a colour word; guessing
+  from them is right most of the time and wrong in a way nobody notices until a customer receives
+  the wrong item. Rejected by the developer.
+- Open: the Joyroom sheet does carry a colour per row — backfill and linking its variant colours to
+  the taxonomy are scoped separately.
+- **`catalog:colours-main-to-band` MOVED NOTHING on production.** The developer counted it before
+  the deploy (2026-09-27): 0 products, 0 colours in the `main` role on non-watch families. Those
+  families never had a colour entered at all. The command ships as a PREVENTIVE fix (the dashboard
+  now asks these families for `band`, so nothing new lands in `main`). Its existence is NOT
+  evidence that any colour data was migrated: there was none to migrate.
+- **Gold is `#D4AF37`, not `#FFD700`** (developer's call, 2026-09-27). `#FFD700` was also Yellow's
+  hex, so every gold watch showed a yellow swatch on the product page and in the filter. Changed as
+  DATA in the dashboard (Lookups → Colours → Gold → hex), not in code, so it is in the activity
+  log. Consequence: an order line saved before the change stores `#FFD700`, and the dashboard's
+  hex→name lookup now names it "Yellow". The swatch colour on those lines is unchanged. Count them:
+  `SELECT COUNT(*) FROM order_items WHERE color_band LIKE '%#FFD700%' OR color_dial LIKE '%#FFD700%';`
+
 ### Fixed today, for context
 
 Image folders (`78a43a6`), host binding + cart option A (`5c3586e`), order totals (`704ac61`), L5

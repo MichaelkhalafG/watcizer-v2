@@ -69,6 +69,12 @@ param(
     [switch] $SkipRun,
     [int]    $Pace = 0,
     [int]    $LegacyPort = 8011,
+    # The only database the harness writes to without being told otherwise (see the guard below).
+    [string] $ScratchDatabase = 'wz_scratch',
+    [switch] $AllowNonScratchDatabase,
+    # Seconds ONE readiness probe waits for an answer, and seconds the whole start may take.
+    [int]    $ProbeTimeoutSec = 30,
+    [int]    $StartDeadlineSec = 150,
     [int]    $CorePort = 8001
 )
 
@@ -174,6 +180,18 @@ if ($localDb['DB_HOST'] -notin @('127.0.0.1', 'localhost', '::1')) {
     Fail "core/.env DB_HOST is not local. The harness PLACES REAL ORDERS — it runs against a local database only."
 }
 
+<#
+  …and only against the SCRATCH copy (2026-09-27). The harness places real orders, fills carts,
+  writes addresses, moves stock and queues e-mails: on a scratch database those rows are dropped
+  with it, on the local DEV copy they stay and the copy drifts from production. It happened: the
+  script was started directly, core/.env still named the dev copy, and it ran all 134 cases there.
+  The normal procedure clones production into $ScratchDatabase, points core/.env at it, runs this
+  and drops it; anything else must be asked for by name.
+#>
+if ($localDb['DB_DATABASE'] -ne $ScratchDatabase -and -not $AllowNonScratchDatabase) {
+    Fail "core/.env names database '$($localDb['DB_DATABASE'])', not the scratch copy '$ScratchDatabase'. The harness WRITES (orders, carts, addresses, stock, e-mail rows) and would leave them there. Point core/.env at a scratch clone first, or pass -AllowNonScratchDatabase if you really mean this database."
+}
+
 $legacyDbName = Read-EnvValue $legacyEnv 'DB_DATABASE'
 Write-Host "  database name  core $(Fingerprint $localDb['DB_DATABASE'])  legacy $(Fingerprint $legacyDbName)"
 if ($legacyDbName -ne $localDb['DB_DATABASE']) {
@@ -272,17 +290,54 @@ try {
       database is not — the single most likely local failure, and the one worth naming precisely
       instead of letting it surface 127 cases later.
     #>
+    <#
+      The probe waits up to $ProbeTimeoutSec for ONE answer, and the whole start gets
+      $StartDeadlineSec (2026-09-27). It used to be 5 s and 45 s: `catalog/meta` is the heaviest read
+      the legacy app has, so on a machine busy with the Pest suite every probe timed out and the
+      run failed with "never answered" while both hosts were perfectly healthy — three attempts and
+      an hour to tell apart from a real failure. Why the LAST probe failed is kept, and printed.
+    #>
+    $script:lastProbe = @{}
     function Probe-Host([int] $port) {
         try {
-            $r = Invoke-WebRequest "http://127.0.0.1:$port/api/catalog/meta" -Headers @{ 'Api-Code' = $coreKey } -TimeoutSec 5 -UseBasicParsing
+            $r = Invoke-WebRequest "http://127.0.0.1:$port/api/catalog/meta" -Headers @{ 'Api-Code' = $coreKey } -TimeoutSec $ProbeTimeoutSec -UseBasicParsing
             return [int] $r.StatusCode
         } catch {
+            $script:lastProbe[$port] = $_.Exception.Message
             if ($_.Exception.Response -ne $null) { return [int] $_.Exception.Response.StatusCode }
-            return 0                          # not listening yet
+            return 0                          # not listening yet, or no answer within the probe timeout
         }
     }
 
-    $deadline = (Get-Date).AddSeconds(45)
+    <#
+      A failed START says WHY, instead of pointing at a file: which host, how long it was given,
+      whether its process is still alive (a slow host) or has exited (a crash, with the exit code),
+      what the last probe got back, and the last lines of what the process printed. "Did not start"
+      and "ran and found differences" must never look alike.
+    #>
+    function Fail-Start([string] $name, [int] $port, $process, [string] $logBase) {
+        Write-Host "  FAIL  the $name host did not answer on port $port within $StartDeadlineSec s (probe timeout $ProbeTimeoutSec s). The harness never ran a case." -ForegroundColor Red
+        if ($process -and $process.HasExited) {
+            Write-Host "        its process EXITED with code $($process.ExitCode) — it crashed or refused to start." -ForegroundColor Red
+        } else {
+            Write-Host "        its process is still RUNNING — it is slow or stuck, not dead (a busy machine looks like this)." -ForegroundColor Yellow
+        }
+        $last = $script:lastProbe[$port]
+        if ($last) { Write-Host "        last probe: $last" }
+        foreach ($suffix in 'log', 'err') {
+            $file = Join-Path $env:TEMP "$logBase.$suffix"
+            Write-Host "        --- last lines of $file"
+            if (Test-Path $file) {
+                $tail = Get-Content $file -Tail 15 -ErrorAction SilentlyContinue
+                if ($tail) { $tail | ForEach-Object { Write-Host "        $_" } } else { Write-Host '        (empty)' }
+            } else {
+                Write-Host '        (no such file)'
+            }
+        }
+        exit 1
+    }
+
+    $deadline = (Get-Date).AddSeconds($StartDeadlineSec)
     $legacyStatus = 0
     $coreStatus   = 0
 
@@ -292,8 +347,8 @@ try {
         if ($coreStatus   -eq 0) { $coreStatus   = Probe-Host $CorePort }
     }
 
-    if ($legacyStatus -eq 0) { Fail "the legacy host never answered on $LegacyPort — see $env:TEMP\harness-legacy.err" }
-    if ($coreStatus   -eq 0) { Fail "the core host never answered on $CorePort — see $env:TEMP\harness-core.err" }
+    if ($legacyStatus -eq 0) { Fail-Start 'legacy' $LegacyPort $servers[0] 'harness-legacy' }
+    if ($coreStatus   -eq 0) { Fail-Start 'core' $CorePort $servers[1] 'harness-core' }
 
     foreach ($host_ in @(@{ name = 'legacy'; status = $legacyStatus; log = 'harness-legacy' }, @{ name = 'core'; status = $coreStatus; log = 'harness-core' })) {
         if ($host_.status -ge 500) {
