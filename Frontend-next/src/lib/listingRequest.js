@@ -1,4 +1,4 @@
-import http from '../Context/api'
+import publicHttp from '../Context/publicApi'
 
 // The listing request (C-1 stage 3, 2026-09-27) — pure, so the SERVER pages can import it too.
 // ONE builder turns the filter state into the request, and the request string IS the query key.
@@ -7,7 +7,8 @@ import http from '../Context/api'
 
 const PRICE_MAX = 99999999
 
-export function listingRequest({ filters = {}, q = '', sort = 'default', page = 1, perPage = 24, lang = 'en' }) {
+// `lang` is accepted and ignored (callers may still pass it).
+export function listingRequest({ filters = {}, q = '', sort = 'default', page = 1, perPage = 24, lang }) {
   const p = new URLSearchParams()
   const list = (key, values) => {
     if (values?.length) p.set(key, values.join(','))
@@ -28,12 +29,9 @@ export function listingRequest({ filters = {}, q = '', sort = 'default', page = 
   if (Number(min) > 0) p.set('minPrice', String(min))
   if (Number(max) < PRICE_MAX) p.set('maxPrice', String(max))
   const term = (q || '').trim()
-  if (term) {
-    p.set('q', term)
-    // Only a search depends on the language (it matches the title in the shopper's language), so
-    // only a search carries it — a language switch does not refetch a plain listing.
-    p.set('lang', lang === 'ar' ? 'ar' : 'en')
-  }
+  // The search reads both languages (2026-09-27), so the shop language is not part of the request:
+  // switching language never refetches the listing.
+  if (term) p.set('q', term)
   if (sort && sort !== 'default') p.set('sort', sort)
   if (Number(page) > 1) p.set('page', String(page))
   if (perPage !== 24) p.set('per_page', String(perPage))
@@ -41,7 +39,8 @@ export function listingRequest({ filters = {}, q = '', sort = 'default', page = 
 }
 
 export const listingQueryFn =
-  (qs, client = http) =>
+  // The browser default is the header-less client (no CORS preflight); the server passes serverFetch.
+  (qs, client = publicHttp) =>
   async () => {
     // One template literal (not a ternary): the allow-list test reads storefront calls from source.
     const { data } = await client.get(`catalog/listing?${qs}`)

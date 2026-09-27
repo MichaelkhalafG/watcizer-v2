@@ -9,7 +9,76 @@ cannot get past tonight; every item is a known, named state. Pick batches from i
 
 ---
 
-## ▶ START HERE — session record, 2026-09-26 (evening)
+## ▶ START HERE — session record, 2026-09-27 (evening)
+
+**The next session starts with:** run the checkout reproduction until its CONTROL works (a fresh,
+undrifted guest cart must reach /checkout locally), THEN prove or disprove the drifted-cart cause,
+THEN build fix 1 alone.
+
+### Live on production (main)
+- Colour batch (two-tone finishes, `catalog:colours-main-to-band` — moved 0 rows on production), link
+  preview JPG, dashboard favicon, robots.txt.
+- C-1 stage 1: facet pages 14.25 MB → 3.75 MB. Stage 2: `catalog/nav` (with its `.htaccess` line).
+  Stage 3 (`7854d90`, main `7d9ba1c`): the listing on core's `catalog/listing` / `catalog/cards`;
+  `/listing` 334 KB, `/brand/Rolex` 304 KB, verified live.
+
+### Committed, NOT deployed (commit made at the end of this session)
+- The three parity fixes (price = what the shopper pays; facets follow the search; search in both
+  languages with Arabic folding + a narrow one-typo fallback) — `CompatListing`, tests
+  `CatalogListingTest` (reference rewritten to the new rules) and `CatalogSearchTest` (mutation-checked).
+- The preflight removal: `CheckApiCode` accepts `?api_code=` on GET/HEAD; the storefront's catalogue
+  reads go through `src/Context/publicApi.js` (no custom headers). `Server-Timing` +
+  `Timing-Allow-Origin` on `catalog/listing`.
+- **Verification level:** the targeted Pest files, PHPStan and Pint pass; the storefront builds and
+  lints. NOT yet done: the full Pest suite on this batch, and a browser check that the listing
+  request really goes out with no preflight. Do both before deploying.
+- **Deploy order:** core first (no `.htaccess` change: same paths), then the storefront. After it,
+  re-measure live taps and take the spread apart with `Server-Timing` (the developer's ask: if the
+  slowest taps stay over 400 ms without the preflight, find out why before stage 4). Local numbers
+  already point at two costs: fetching a page's 24 rows reads the whole cached catalogue (~26 ms warm
+  locally), and the listing index REBUILDS (~0.9 s locally) whenever the cache version bumps (any
+  product/stock/placement change) or its 10-minute TTL lapses.
+
+### Checkout does nothing for some returning browsers — OPEN, cause NOT confirmed
+- Developer's evidence: a fresh profile (desktop or phone, private window, even after a browser
+  restart) checks out; the developer's long-lived phone profile did not; clearing that site's data
+  fixed it (so that profile's evidence is gone). So it is state PERSISTED before today's changes.
+- Candidate from the code (a diagnosis agent's reading, spot-checked): `Cart.jsx` `goToCheckout`
+  returns SILENTLY when `cart/validate` answers `valid:false` — it only scrolls up; the server's
+  `warnings` are never shown (the banner is driven by a separate client-side check). The guard dates
+  from the cutover (c1447d3, 2026-07-06), not from today. `validate` judges the SERVER cart found by
+  the long-lived `localStorage.wz_guest_token`, while the order is built from the tab's
+  `sessionStorage.user_cart`: the two can drift apart and nothing reconciles them.
+- **Not proven.** My reproduction (drift the server line's price, tap) did NOT work as a test: even
+  the CONTROL — a fresh, undrifted guest cart — produced no `cart/validate` request at all and stayed
+  on /cart, by touch and by mouse, at 390 px on the local build. Either the script's tap does not
+  reach the handler, or it reproduces a different failure locally. The control must work before
+  the drift result means anything. Script: `tmp/cdp/checkout_repro.mjs` in this job's directory
+  (copy it out before that directory is cleaned up).
+- Stage 3 did NOT cause the silent guard; rolling back stage 3 would not fix it (a fresh guest
+  checks out on live stage 3, throttled). Stage 3 DID cause a speed regression on this path: the
+  /cart → /checkout navigation now downloads a 3.24 MB RSC payload (681 KB compressed, ~5 s on Slow
+  4G), because `checkout/layout.jsx` embeds the catalogue again (`CatalogBoundary`). Caused by stage
+  3, not inherited.
+- **Developer's decisions:** build fix 1 FIRST and ship it alone — the checkout must TELL the shopper
+  why it will not proceed (show `validate`'s warnings per line; a failed validate shows a message and
+  a retry, never a silent pass or a silent stop). Then fix 2 — heal the drift automatically (make the
+  server cart match what the shopper sees before validating), so existing browsers recover on their
+  own and nobody loses a cart. Then fix 4 — one shared layout for cart and checkout (or stage 4,
+  whichever lands first) to remove the 3.24 MB re-send. NOT fix 3 (a blunt guest-token wipe drops
+  real carts).
+- **Source of truth for the cart (to be written into the code with fix 2):** the cart currently
+  lives in two places that are never reconciled. The intended truth is the SERVER cart (it is what
+  `validate` judges, what survives a browser restart, and what an order must be built from); the
+  tab's `sessionStorage.user_cart` is a display cache that must be rebuilt from it. Do not add a third
+  copy.
+- Side effects: the diagnosis agent created 2 guest carts on PRODUCTION (tokens `67734d20-…` and
+  `ae07ec48-…`); the developer removes them with the SQL given at the end of the session. All local
+  test carts (agent's and mine) are deleted; the dev copy's 128 tables match the clean snapshot.
+
+---
+
+## ▶ session record, 2026-09-26 (evening)
 
 ### State of the code, exactly
 
@@ -186,9 +255,15 @@ report too.
     SideBar glue, in node over the same data for 36 scenarios and compares the totals, the page ids
     in order and every facet count. Mutation-checked: breaking the facet rule, the default order,
     the blank-price handling or the substring search each fails it.
-  - Kept on purpose, product decisions and not a port: facet counts ignore the search text; a blank
-    sale price counts as 0 in the price filter and sorts; search is a substring match in the
-    shopper's language only.
+  - Shipped in stage 3 as inherited, then FIXED by the developer's decision (2026-09-27): these were
+    bugs, not decisions. (1) Facet counts follow the search. (2) The price filter and sorts use what
+    the shopper pays (`CompatCart::catalogPrice`: sale only when 0 < sale < list), so a blank sale
+    price is the list price, not 0. 438 products elsewhere in the catalogue have no sale price
+    today; Brand Fashion would have hit this. (3) Search reads both languages with Arabic spelling
+    folded, and only when nothing matches exactly it tolerates one typo per word of 4+ letters (2 for
+    8+, a neighbour swap is one) against title and brand words. A search that matches never gains
+    results. Parity reference rewritten to the new rules; `CatalogSearchTest` pins each case and is
+    mutation-checked (always-add-near-misses and two-typos-on-short-words both fail it).
   - Browser, stage-2 build vs stage-3 build, 10 real interactions (sidebar, chips, colour, clear,
     page 2, sort, brand page): count, cards, every sidebar entry and count, chips and tags
     IDENTICAL. Search "rol": identical, "View all results (95)" = what `/listing?q=rol` shows.
@@ -204,6 +279,18 @@ report too.
     ~240 ms synchronous filtering on desktop, and much less than today on a slow phone. Removing
     the preflight (the key is public in the JS bundle; send it without a custom header, or serve
     the catalogue reads same-origin) would save ~90 ms per tap. **Developer's decision, open.**
+  - **SHIPPED 2026-09-27, verified live:** `/listing` 3.75 MB → 334 KB, `/brand/Rolex` → 304 KB.
+  - **Taps MEASURED LIVE (desktop, 2026-09-27), until the result count changes:** a filter
+    combination already fetched once answers in 106–221 ms (the query cache, and the CDN: responses
+    are `public, max-age=600`). A NEW combination took 295, 343, 579, 580 ms — worse than the ~240 ms
+    of the old in-browser filtering on desktop, and worse than the ~300 ms predicted. Breakdown, same
+    day: CORS preflight ~90–130 ms; the listing GET ~90–170 ms to first byte (occasionally ~400);
+    the body is brotli-compressed (58 KB → 8 KB, so the transfer is small); render ~90 ms. The page
+    never blocks while it waits. (A measurement trap fixed on the way: the script's "updated" had
+    fired on the first DOM change, which since stage 3 is the checkbox, not the results; it now waits
+    for the result count to change.)
+  - The preflight is being removed: the catalogue reads go header-less with `?api_code=` (see the
+    parity-fix batch).
 - Stage 4 (by-ids for cart, checkout and account; related products; home rails; drop the remaining
   catalogue copies and the client transform) follows.
 

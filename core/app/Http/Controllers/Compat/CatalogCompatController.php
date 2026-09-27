@@ -51,6 +51,7 @@ class CatalogCompatController extends Controller
             'sort' => ['nullable', 'string', 'in:'.implode(',', CompatListing::SORTS)],
             'page' => ['nullable', 'integer', 'min:1', 'max:10000'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:96'],
+            // Accepted and ignored: search reads both languages since 2026-09-27; the stage-3 storefront still sends it.
             'lang' => ['nullable', 'string', 'in:en,ar'],
             'minPrice' => ['nullable', 'numeric', 'min:0'],
             'maxPrice' => ['nullable', 'numeric', 'min:0'],
@@ -78,14 +79,22 @@ class CatalogCompatController extends Controller
             'grades' => $ids('grades'),
         ];
 
-        return response()->json($this->compat->listing->query(
+        $listing = $this->compat->listing;
+        $payload = $listing->query(
             $filters,
             $request->string('q')->toString(),
             $request->string('sort', 'default')->toString(),
             $request->integer('page', 1),
             $request->integer('per_page', 24),
-            $request->string('lang', 'en')->toString(),
-        ), 200, [], JSON_UNESCAPED_UNICODE);
+        );
+        $t = $listing->timing;
+
+        // Where the server's time went, readable from the storefront's browser (Timing-Allow-Origin:
+        // timings only, no data), so a slow tap can be taken apart instead of guessed at.
+        return response()->json($payload, 200, [
+            'Server-Timing' => sprintf('index;dur=%.1f;desc="%s", filter;dur=%.1f, cards;dur=%.1f', $t['index'], $t['cold'] ? 'built' : 'cached', $t['filter'], $t['cards']),
+            'Timing-Allow-Origin' => '*',
+        ], JSON_UNESCAPED_UNICODE);
     }
 
     /** Raw product rows (with ratings and gallery images) for up to 100 ids — the cart drawer's lines (C-1 stage 3). */
