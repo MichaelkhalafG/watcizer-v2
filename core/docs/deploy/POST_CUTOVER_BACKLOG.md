@@ -173,7 +173,7 @@ order (after 60 min); that payment is recorded as a finding and needs a refund o
 | A6 | **Before promotions go on: raise the installment fee.** Promotions are keyed on `paymob` (`PromotionRules::PAYMENT_METHODS` = cash, paymob, whatsapp), not on the method row. Since batch 1 (2026-09-26) every Paymob method — card, wallet, valU/CAGG, bank installments, Apple Pay — posts `payment_method=card` and so counts as `paymob` for a promotion. Installment providers charge the merchant a higher fee, and shops commonly exclude installments from discounts. Kept as is by decision; decide per promotion whether an installment order may take it, and if not, key the rule on the method row (the id `add_order` validates; today it is recorded only on the payment attempt, `payment_statuses.storefront_payment_method_id`) | S: one more condition in `PromotionRules`, one dashboard field | A promotion stacked on an installment order the margin was never meant to carry |
 | A7 | **Next.js 15.5.27 on or after 30 September** (Vercel's scheduled security release: 1 critical, 2 high, 5 medium, 1 low). Batch 1 ships 15.5.26; this is its own follow-up, decided 2026-09-26. **A ten-minute job:** the `next` line in `package.json` → `pnpm install` (lockfile) → one storefront build → a check of product images (AVIF served, not broken) and one checkout to the payment page | ~10 min + the build | A published critical left open on the storefront |
 | A8 | **AVIF quality — decided 2026-09-26: keep 15.5.2x's lower AVIF quality.** Since 15.5.24 Next encodes AVIF at `quality × 50/80` (was `quality − 20`): measured on 40 product photos, files 20–33% smaller, the only visible difference a slightly softer dial print at 2× zoom. **The one-line undo if anyone complains:** raise the `quality` props 80→96, 70→80, 75→88, 90→100 and `images.qualities` in `next.config.js` to match. **Do not misread #97954** (the 15.5.24 follow-up that "re-enables AVIF"): it re-enables DECODING AVIF *sources* when sharp's libheif is ≥ 1.23.2 (`isAvifDecodeSafe`) — that is why the sharp override is now `^0.35.4` (libheif 1.23.2). It does NOT change the output quality, and our masters are WebP anyway | One line per component | — |
-| A9 | **Next.js 16 — after Brand Fashion's launch, not before** (decided 2026-09-26). 15.5 is Maintenance LTS (security fixes only); 16.x is Active LTS. **Estimate: about a week, mostly testing.** The real work is **React 18 → 19.2** (Next 16 requires it) — and it is OVERDUE rather than optional: `@react-three/fiber` 9 and `drei` 10 already require React 19 and are unmet peers today (`pnpm peers check`), i.e. the 3D home runs on a combination nobody supports. MUI 6, emotion, framer-motion 12, TanStack Query and zustand support 19; `prop-types` is used in one file. Already compatible: `params` awaited, no `middleware` file, no `next lint`, `eslint-config-next` on 16, `qualities`/`minimumCacheTTL` set explicitly. **Watch:** Turbopack becomes the default build — check the React-resolution note for the 3D packages in `next.config.js` (`transpilePackages`, "do NOT alias react"). **Then:** a browser pass through home (3D), listing, product, cart and checkout | ~1 week | Security fixes only on 15.5; the 3D stack stays on an unsupported React |
+| A9 | **Next.js 16 — after Brand Fashion's launch, not before** (decided 2026-09-26). 15.5 is Maintenance LTS (security fixes only); 16.x is Active LTS. **Estimate: about a week, mostly testing.** The real work is **React 18 → 19.2** (Next 16 requires it) — and it is OVERDUE rather than optional: `@react-three/fiber` 9 and `drei` 10 already require React 19 and are unmet peers today (`pnpm peers check`), i.e. the 3D home runs on a combination nobody supports. MUI 6, emotion, framer-motion 12, TanStack Query and zustand support 19; `prop-types` is used in one file. Already compatible: `params` awaited, no `middleware` file, no `next lint`, `eslint-config-next` on 16, `qualities`/`minimumCacheTTL` set explicitly. **Watch:** Turbopack becomes the default build — check the React-resolution note for the 3D packages in `next.config.js` (`transpilePackages`, "do NOT alias react"). **Then:** a browser pass through home (3D), listing, product, cart and checkout. **Also in this work:** `THREE.Clock` is deprecated (console warning on every home load, 2026-09-27) — move to `THREE.Timer` with the three/fiber upgrade | ~1 week | Security fixes only on 15.5; the 3D stack stays on an unsupported React |
 
 ## B. Core lane — one tar deploy carries all of these
 
@@ -213,6 +213,65 @@ What remains is what would otherwise be BROKEN on Brand Fashion:
 | L2 | **Accounts per storefront** — design first; built last, immediately before launch, so it is the freshest change when the second shop goes up | Last | M–L |
 | — | **Ordering:** set `storefronts.domain` for Brand Fashion BEFORE pointing `api.brandfashionegy.com` at the server — `CompatStorefront` falls back to Watchizer for an unknown host and would serve Watchizer's catalogue | At DNS time | none |
 | L4, L7 | Paymob merchant account, legal entity, owner checklist | Owner | — |
+
+## SEO. Audit of the live storefront, 2026-09-27 (read-only; M = measured, I = inferred)
+
+**Before anything else — the bot wall (M, cause; I, effect on Google).** Hostinger's CDN answers
+any request that asks for compressed content (`Accept-Encoding`) with a 403 "Checking your
+browser" challenge, whatever the user agent — which is why Lighthouse/PageSpeed get 403 and plain
+curl gets 200. Real Googlebot is PROBABLY let through by IP (Hostinger's docs), but that cannot be
+proven from outside. **Owner check (minutes):** Search Console → URL Inspection → Test live URL on
+the home page and a product; Settings → Crawl stats → 403 count. If Googlebot is refused, turn off
+the bot protection / whitelist verified bots in hPanel → CDN — nothing below matters until then.
+
+| # | Finding | Fix | Cost |
+|---|---|---|---|
+| S1 | ~~Every product image blocked: `core/public/robots.txt` on api.watchizereg.com was `Disallow: /`~~ **FIXED 2026-09-27** (`Allow: /Uploads_Images/`, everything else still closed; `RobotsTxtTest`) — ships with the next core deploy | — | 15 min |
+| S2 | **Arabic is invisible to Google** — language comes only from the `wz-lang` cookie, the server always renders English, no `/ar` URLs, no hreflang. Scoped as a staged project below (S-AR) | see S-AR | project |
+| S3 | Product `meta_title` / `meta_description` never used (titles are a template in `src/lib/detailSeo.js`); Arabic filled on ~8–10%, English 83–92%; about half the English meta titles end in the junk text " \| Select…" | S-AR stage 2 | hours–1 day |
+| S4 | HTML weight: 3.4–4 MB on home/product pages, 12.8–14 MB on every facet page (`/category/*`, `/brand/*`, `/grade/*`, `/subtypes/*`) — the C-1 double catalogue copy is still in `src/lib/facetListing.js:50-57`; HTML is `private, no-store` | remove the facet pages' second copy (hours); C-1 proper (days) | hours / project |
+| S5 | Sitemap (`core/app/Compat/CompatSitemap.php`): 5 static URLs 404 (`/products`, `/about-us`, `/contact-us`, `/privacy-policy`, `/terms-and-conditions`); 28 multi-word brands encoded with `%20` → 404; `/offers` redirects; `/blogs` empty but indexable; 15 duplicate `<loc>`; zero-product brands listed | drop/fix entries, slugify brands with `LegacySlug`, dedupe — or move to the v2 sitemap in S-AR stage 3 (the compat sitemap is a harness case, so fixing it in place is a sanctioned deviation) | hours |
+| S6 | Category/brand landing pages linked only from the sitemap (nav links go to `/listing?…`, canonicalised to `/listing`); listing pagination is `<button>`, not links; no related products on product pages | point nav/footer/breadcrumbs at `/category/*`, `/brand/*`; `<a href="?page=n">` pager | 1–2 days |
+| S7 | Fuzzy/case-insensitive facet matching makes `/brand/rol`, `/brand/Rolex`, `/brand/rolex` separate self-canonical pages; facet titles say "Watches" for bags/belts | canonicalise to the slug + 308; titles by category type | hours |
+| S8 | Product JSON-LD missing `hasMerchantReturnPolicy`, `shippingDetails`, `itemCondition`, `mpn`; says `InStock` where the page shows "Pre-Order" (market stock); home `Store` block has wrong `sameAs` and generic geo; no `WebSite`/`Organization` | complete the markup; `PreOrder` for market-only stock | hours |
+| S9 | `www.watchizereg.com` serves 200 (not a 301 to the apex); root layout's default metadata is Arabic while pages are English; `/blogs` should be noindex | redirects / metadata | hours |
+
+**Owner decision (not an open item):** several products are priced far below genuine retail while
+every page and description says "Authentic, certified & guaranteed". Whether those claims stand is
+the client's call, raised with them by the developer (2026-09-27). It matters before any Google
+Merchant Center feed (counterfeit / misrepresentation policies), which also requires the trust
+pages that currently 404 (about, contact, privacy, terms, returns).
+
+### S-AR — Arabic for Google, in stages that each ship
+
+Decision to take first: **English keeps the bare URLs** (they carry today's ranking and links) and
+Arabic moves under `/ar/…` — the reverse of the v2 sitemap's current default-locale-unprefixed
+rule, which must be flipped for Watchizer.
+
+1. **Arabic pages that exist for Google (4–6 days).** `/ar/…` for home, product, category/brand
+   facet pages and listing, served by a middleware rewrite onto the existing routes with the locale
+   passed down. The server renders Arabic — the server catalogue already carries `productsAr` — and
+   the client store starts from the URL's language, not only after mount (the cookie becomes a
+   preference for the language switch, not the source of truth). Per-locale `<title>`, description,
+   H1, alt text and JSON-LD names from the Arabic title + short description (≈100% filled, so no
+   hand-written meta needed); self-canonical per language; hreflang ar/en/x-default on every page;
+   the language switch links between the two URLs. **Buys on its own:** every product and category
+   becomes indexable in Arabic — the Arabic queries that are most of Egyptian search volume.
+   Browser pass in both languages (RTL), and a check that the English pages are byte-for-byte
+   unchanged apart from the hreflang tags.
+2. **Metadata quality (1–2 days).** Clean the " | Select…" junk out of `meta_title` (one-off
+   command, dry run first); wire `meta_title`/`meta_description` with the fallback
+   meta[locale] → title[locale] + brand, and meta_description[locale] → short_description[locale]
+   → template. **Buys:** better snippets and click-through in both languages.
+3. **Sitemap per language (1–2 days).** Serve the v2 per-locale sitemaps (flipped prefix rule) with
+   `xhtml:link` alternates; fold in S5's dead-URL fixes; image host = the host pages use. **Buys:**
+   faster, complete discovery of the Arabic URLs, and no 404s in the sitemap.
+4. **Optional, later: Arabic slugs** (`/ar/product/ساعة-…`) and Arabic landing copy for
+   categories/brands. Marginal ranking gain, real redirect/duplicate risk — decide after stage 1's
+   Search Console data.
+
+Total ≈ 1.5–2.5 weeks, stage 1 alone ≈ one week. Prerequisite for all of it: the bot-wall check
+above.
 
 ## C. Operations and security — no code, or not ours
 
