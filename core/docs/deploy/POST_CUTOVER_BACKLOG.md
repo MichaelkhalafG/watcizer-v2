@@ -53,8 +53,8 @@ THEN build fix 1 alone.
   the CONTROL — a fresh, undrifted guest cart — produced no `cart/validate` request at all and stayed
   on /cart, by touch and by mouse, at 390 px on the local build. Either the script's tap does not
   reach the handler, or it reproduces a different failure locally. The control must work before
-  the drift result means anything. Script: `tmp/cdp/checkout_repro.mjs` in this job's directory
-  (copy it out before that directory is cleaned up).
+  the drift result means anything. Script: `scripts/checkout-repro.mjs` (committed; its header says
+  how to run it, what it writes to the dev database, and its known broken probe).
 - Stage 3 did NOT cause the silent guard; rolling back stage 3 would not fix it (a fresh guest
   checks out on live stage 3, throttled). Stage 3 DID cause a speed regression on this path: the
   /cart → /checkout navigation now downloads a 3.24 MB RSC payload (681 KB compressed, ~5 s on Slow
