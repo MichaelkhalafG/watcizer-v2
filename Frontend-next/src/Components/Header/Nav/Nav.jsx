@@ -27,7 +27,8 @@ import {
 import { BsSmartwatch, BsWatch } from 'react-icons/bs'
 import { TbShirt, TbShoppingBag, TbCategory, TbBuildingStore } from 'react-icons/tb'
 import { RiPercentLine } from 'react-icons/ri'
-import { useCatalog } from '../../../Hooks/queries/useCatalog'
+import { useTables } from '../../../Hooks/queries/useTables'
+import { useNav } from '../../../Hooks/queries/useNav'
 import { useUIStore } from '../../../Store/uiStore'
 import { getImageUrl } from '../../../utils/imageUrl'
 import { buildListingParams } from '../../../utils/listingParams'
@@ -106,7 +107,9 @@ const getCategoryIcon = (name, size = 16) => {
 }
 
 function Nav() {
-  const { products, tables } = useCatalog()
+  // The lookup tables for names and the menu's facts from core (C-1 stage 2) — not the catalogue.
+  const { data: tables = {} } = useTables()
+  const { data: nav } = useNav()
   const { language, setCurrentPage } = useUIStore()
   const pathname = usePathname()
 
@@ -123,8 +126,6 @@ function Nav() {
   const isRTL = language === 'ar'
   const categoryTypes = tables?.categoryTypes || []
   const allSubTypes = tables?.subTypes || []
-  const allBrands = tables?.brands || []
-  const list = products || []
 
   // Translated label: current language → English fallback → flat field.
   const label = (item, key) =>
@@ -138,51 +139,40 @@ function Nav() {
   // Brand logo URL (full URL as-is, or relative filename → asset base + Brand folder).
   const brandLogo = (b) => getImageUrl(b?.image, 'Brand')
 
-  // Sub-types that actually have products inside a given category type (derived
-  // from the product set — no assumption about sub_type schema). When a category
+  // Sub-types that actually have products inside a given category type (core's
+  // `catalog/nav`, derived from the same rows as the listing). When a category
   // type has no products yet (fresh catalog), fall back to classifying sub-types
   // by their English name so the Watches / Fashion dropdowns still populate.
   const subTypesFor = (ct) => {
-    const byProducts = allSubTypes.filter((st) =>
-      list.some((p) => p.category_type_id === ct.id && p.sub_type_id === st.id),
-    )
+    const ids = nav?.sub_types_by_category?.[ct.id] || []
+    const byProducts = allSubTypes.filter((st) => ids.includes(st.id))
     return byProducts.length ? byProducts : subTypesByName(ct, allSubTypes)
   }
   // Brands that have at least one product (avoids dead filter links).
-  const brands = allBrands.filter((b) => list.some((p) => p.brand_id === b.id))
+  const brands = useMemo(() => {
+    const ids = new Set(nav?.brand_ids || [])
+    return (tables?.brands || []).filter((b) => ids.has(b.id))
+  }, [nav, tables])
 
-  // Brands grouped by the category type(s) their products live in (products-based,
-  // derived from the live product set — a brand can appear under multiple category
-  // types if it has products in several). Empty groups are dropped.
-  const brandsByCategory = useMemo(() => {
-    const brandCategoryMap = {}
-    ;(products || []).forEach((p) => {
-      if (p.brand_id && p.category_type_id) {
-        ;(brandCategoryMap[p.brand_id] ||= new Set()).add(p.category_type_id)
-      }
-    })
-    const cats = tables?.categoryTypes || []
-    const withProducts = (tables?.brands || []).filter((b) =>
-      (products || []).some((p) => p.brand_id === b.id),
-    )
-    return cats
-      .map((cat) => ({
-        category: cat,
-        brands: withProducts.filter((b) => brandCategoryMap[b.id]?.has(cat.id)),
-      }))
-      .filter((g) => g.brands.length > 0)
-  }, [products, tables])
+  // Brands grouped by the category type(s) their products live in — a brand can
+  // appear under several category types. Empty groups are dropped.
+  const brandsByCategory = useMemo(
+    () =>
+      (tables?.categoryTypes || [])
+        .map((cat) => {
+          const ids = new Set(nav?.brands_by_category?.[cat.id] || [])
+          return { category: cat, brands: brands.filter((b) => ids.has(b.id)) }
+        })
+        .filter((g) => g.brands.length > 0),
+    [nav, tables, brands],
+  )
 
-  // Genders are not in `tables`, so derive them from the product set. Each entry
-  // keeps the stable English name (`en`, used as the filter value) alongside the
-  // localized `label` (used for display) — indexes of genders_en / gender align.
-  const genderMap = new Map()
-  list.forEach((p) => {
-    ;(p.genders_en || []).forEach((en, i) => {
-      if (en && !genderMap.has(en)) genderMap.set(en, (p.gender || [])[i] || en)
-    })
-  })
-  const genders = [...genderMap.entries()].map(([en, lbl]) => ({ en, label: lbl }))
+  // Genders are not in `tables`: core lists every gender a product carries, with both
+  // names. `en` is the filter value, `label` the name in the current language.
+  const genders = (nav?.genders || []).map((g) => ({
+    en: g.en,
+    label: isRTL ? g.ar || g.en : g.en,
+  }))
 
   // ── hover open/close with a 300ms grace delay (time to reach the dropdown) ──
   const openMenu = (key) => {

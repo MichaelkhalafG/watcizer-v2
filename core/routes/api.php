@@ -55,6 +55,8 @@ Route::middleware('api.code')->group(function (): void {
     });
     Route::middleware('cache.headers:public;max_age=600;etag')->group(function (): void {
         Route::get('all_product', [CatalogCompatController::class, 'allProduct']);
+        // Storefront-only (C-1 stage 2): the header menu's catalogue facts, derived from all_product.
+        Route::get('catalog/nav', [CatalogCompatController::class, 'nav']);
         Route::get('all_product_image', [CatalogCompatController::class, 'allProductImage']);
         Route::get('all_product_rating', [CatalogCompatController::class, 'allProductRating']);
         Route::get('products/by-name/{name}', [CatalogCompatController::class, 'showByName']);

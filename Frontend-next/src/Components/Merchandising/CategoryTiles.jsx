@@ -2,7 +2,7 @@
 import { memo } from 'react'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
-import { useCatalog } from '../../Hooks/queries/useCatalog'
+import { useTables } from '../../Hooks/queries/useTables'
 import { useUIStore } from '../../Store/uiStore'
 import { getImageUrl } from '../../utils/imageUrl'
 import { buildListingParams } from '../../utils/listingParams'
@@ -10,7 +10,8 @@ import { Carousel, CarouselSlide } from '../UI/Carousel'
 import './CategoryTiles.css'
 
 const CategoryTiles = () => {
-  const { tables, isFetching } = useCatalog()
+  // The lookup tables only — not the catalogue (C-1 stage 2).
+  const { data: tables, isFetching } = useTables()
   const { language } = useUIStore()
   const router = useRouter()
 

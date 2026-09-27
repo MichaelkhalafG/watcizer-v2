@@ -3,6 +3,7 @@ import serverHttp from './serverFetch'
 import { tablesQueryFn } from '../Hooks/queries/useTables'
 import { productsQueryFn } from '../Hooks/queries/useProducts'
 import { offersQueryFn } from '../Hooks/queries/useOffers'
+import { navQueryFn } from '../Hooks/queries/useNav'
 import { toSlug } from '../utils/slugs'
 
 // SERVER-ONLY catalog access for the product/offer detail routes.
@@ -43,6 +44,21 @@ export const getServerCatalog = cache(async () => {
     })
   }
   return _catalogPromise
+})
+
+// The header menu's facts (C-1 stage 2) — a few KB, memoised like the catalogue.
+let _navPromise = null
+let _navAt = 0
+export const getServerNav = cache(async () => {
+  const now = Date.now()
+  if (!_navPromise || now - _navAt >= CATALOG_TTL) {
+    _navAt = now
+    _navPromise = navQueryFn(serverHttp)().catch((e) => {
+      _navPromise = null
+      throw e
+    })
+  }
+  return _navPromise
 })
 
 // Transformed offers array (same shape as the useOffers hook).

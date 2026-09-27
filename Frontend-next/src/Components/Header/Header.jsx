@@ -15,7 +15,8 @@ import { useUIStore } from '../../Store/uiStore'
 import { useAuthStore } from '../../Store/authStore'
 import { useShippingStore } from '../../Store/shippingStore'
 import useCart from '../../Hooks/useCart'
-import { useCatalog } from '../../Hooks/queries/useCatalog'
+import { useTables } from '../../Hooks/queries/useTables'
+import { useNav } from '../../Hooks/queries/useNav'
 import { buildListingParams } from '../../utils/listingParams'
 import { subTypesByName } from '../../utils/subTypeGroups'
 import { getImageUrl } from '../../utils/imageUrl'
@@ -23,8 +24,8 @@ import { FaFacebookF, FaInstagram } from 'react-icons/fa'
 
 function Header() {
   // Cart-derived counters (were MyProvider state) are derived here from the cart
-  // + selected shipping. Server data (products/tables) comes from TanStack Query
-  // via useCatalog (shared, cached — no extra fetch).
+  // + selected shipping. Server data (the lookup tables and the menu's facts)
+  // comes from TanStack Query — not the catalogue (C-1 stage 2).
   const { cart } = useCart()
   const shipping = useShippingStore((s) => s.shipping)
   const { productsCount, total_cart_price } = useMemo(() => {
@@ -42,7 +43,8 @@ function Header() {
     const total = (count > 0 ? subtotal + parseFloat(shipping || 0) : 0).toFixed(2)
     return { productsCount: count, total_cart_price: total }
   }, [cart, shipping])
-  const { products, tables } = useCatalog()
+  const { data: tables = {} } = useTables()
+  const { data: nav } = useNav()
   const { language, setLanguage } = useUIStore()
   const { userId: user_id, user } = useAuthStore()
   const router = useRouter()
@@ -103,17 +105,15 @@ function Header() {
     ''
 
   // Sub-types / brands that actually have products (no dead links).
-  const list = products || []
   const categoryTypes = tables?.categoryTypes || []
   const allSubTypes = tables?.subTypes || []
-  const drawerBrands = (tables?.brands || []).filter((b) => list.some((p) => p.brand_id === b.id))
+  const drawerBrands = (tables?.brands || []).filter((b) => (nav?.brand_ids || []).includes(b.id))
   // Sub-types grouped under the category type their products live in. When a
   // category type has no products yet (fresh catalog), fall back to classifying
   // sub-types by their English name so the Watches / Fashion menus still populate.
   const subTypesForCat = (ct) => {
-    const byProducts = allSubTypes.filter((st) =>
-      list.some((p) => p.category_type_id === ct.id && p.sub_type_id === st.id),
-    )
+    const ids = nav?.sub_types_by_category?.[ct.id] || []
+    const byProducts = allSubTypes.filter((st) => ids.includes(st.id))
     return byProducts.length ? byProducts : subTypesByName(ct, allSubTypes)
   }
   // Whether any category type has sub-types to show (drives the Shop accordion).

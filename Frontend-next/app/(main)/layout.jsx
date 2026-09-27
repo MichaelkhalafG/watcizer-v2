@@ -1,5 +1,5 @@
 import { QueryClient, dehydrate, HydrationBoundary } from '@tanstack/react-query'
-import { getServerCatalog } from '@/src/lib/serverCatalog'
+import { getServerCatalog, getServerNav } from '@/src/lib/serverCatalog'
 import { projectCatalogForHydration } from '@/src/lib/catalogProjection'
 import AppStateBridge from './app-state-bridge'
 import Header from '@/src/Components/Header/Header'
@@ -30,6 +30,12 @@ export default async function MainLayout({ children }) {
     qc.setQueryData(['products'], projectCatalogForHydration(catalog))
   } catch {
     // Catalog unreachable server-side → client fetches + shows error/retry.
+  }
+  try {
+    // The header menu's facts (C-1 stage 2): the menu renders in the server HTML without the catalogue.
+    qc.setQueryData(['nav'], await getServerNav())
+  } catch {
+    // Unreachable → the menu fills in when the client fetch lands.
   }
 
   return (

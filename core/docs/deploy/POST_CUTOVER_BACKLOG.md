@@ -153,6 +153,51 @@ colours, activity log) and delete them before the report, which states what was 
 it is gone. Row timestamps cannot be restored, so a record of what was touched is part of the
 report too.
 
+### C-1 — the catalogue moves to the server (developer's go, 2026-09-27: stages 1–4 in order, then Arabic; ship each as ready)
+
+- **Stage 1 — SHIPPED, verified live:** `/brand/Rolex` 14,250,000 → 3,746,271 bytes (−74%). See S4.
+- **Stage 2 — built 2026-09-27:** the header menu, the mobile drawer and the category tiles no longer
+  read the catalogue. They read the lookup tables plus core's new `GET /api/catalog/nav` (the brands
+  with products, the sub-types and brands per category type, the genders with both names), which is
+  derived from the `all_product` rows themselves (`CompatCatalog::nav`, cache family `compat_nav`,
+  the same invalidation events as `compat_all_product`), with no legacy counterpart. Proof: every entry
+  of the menu and the drawer (203, hovered and opened in a browser) is identical in English. Arabic
+  differs only in the gender labels, which is a FIX: the trimmed catalogue copy dropped the localised
+  gender name, so the Arabic menu said "رولكس Men".
+  - **Prediction that did NOT hold:** the menu scanning the catalogue on every render was expected
+    to make filter taps faster once removed. Measured, no change beyond run-to-run noise (±20%). The
+    tap cost is the listing itself: the grid, the filter pass and the facet counts. That is stage 3.
+  - **Moved to stage 3: the search box.** Its "View all results (N)" leads to `/listing?q=`, which
+    still searches in the browser by substring. Server search (FULLTEXT, Arabic folding) matches
+    differently, so moving only the dropdown would promise N results and list a different number.
+    Both move together in stage 3.
+- Stage 3 (listing, sidebar, strip and search on the server) and stage 4 (by-ids for cart, checkout
+  and account; related products; home rails; drop the site-wide catalogue copy) follow.
+
+### Listing interaction — measured 2026-09-27
+
+- **Filter taps (sidebar and quick-filter strip): the same cost, the same place.** Live, desktop, real clicks:
+  sidebar median 239 ms (199–296), strip median 271 ms (241–426). Every tap re-renders ~630 components,
+  192 of them the 24 product cards, in one synchronous task. The developer tested on a phone and it
+  feels instant, so it is NOT treated as a defect. It disappears by construction in C-1 stage 3.
+- **Strip scrolling is not a React problem.** Phone profile (390×844 @3×, touch, CPU ×4 and ×6), 20
+  drags + 18 flicks: 0 grid renders, 0 long tasks, exactly ONE component re-rendered per gesture (the
+  carousel's own position). Worst frame 50 ms at ×6, on the first flicks only, while the chip logos
+  load. The whole-store subscriptions (`useUIStore()` with no selector, 33 call sites) are NOT what
+  stutters it. **OBSERVED BUT UNREPRODUCED** (developer's decision, 2026-09-27): a fast flick of the
+  strip hitches on the developer's phone; nobody else has reported it and emulation does not show it
+  (candidates it cannot model: raster, image decode, Embla moving the strip from JavaScript every
+  frame). Do NOT chase it now: re-check it on a real phone AFTER C-1 lands, because C-1 stage 3
+  changes how that page works. If it is still there, take a phone trace first (`chrome://inspect`
+  over USB); native `overflow-x` scrolling for the strip is the likely fix.
+- Also left, by decision: the 239–271 ms filter taps (not felt on a phone; C-1 stage 3 removes them)
+  and moving the 33 `useUIStore()` call sites to selectors (C-1 stage 3 makes it moot).
+- **Measurement trap: a Chrome window that is covered or unfocused LIES.** It reports taps under 16 ms
+  (it never paints), and it throttles animation frames to one per second while reporting
+  `visibilityState: visible`. Launch with `--disable-features=CalculateNativeWinOcclusion
+  --disable-backgrounding-occluded-windows --disable-renderer-backgrounding`, call
+  `Page.bringToFront`, and throw away any run whose frame intervals jump to ~1000 ms.
+
 ### Colours — decided 2026-09-27
 
 - **The ~7,090 products with no colour are a DATA-ENTRY job, not an import fix.** Measured: the
@@ -270,7 +315,7 @@ the bot protection / whitelist verified bots in hPanel → CDN — nothing below
 | S1 | ~~Every product image blocked: `core/public/robots.txt` on api.watchizereg.com was `Disallow: /`~~ **FIXED 2026-09-27** (`Allow: /Uploads_Images/`, everything else still closed; `RobotsTxtTest`) — ships with the next core deploy | — | 15 min |
 | S2 | **Arabic is invisible to Google** — language comes only from the `wz-lang` cookie, the server always renders English, no `/ar` URLs, no hreflang. Scoped as a staged project below (S-AR) | see S-AR | project |
 | S3 | Product `meta_title` / `meta_description` never used (titles are a template in `src/lib/detailSeo.js`); Arabic filled on ~8–10%, English 83–92%; about half the English meta titles end in the junk text " \| Select…" | S-AR stage 2 | hours–1 day |
-| S4 | HTML weight: 3.4–4 MB on home/product pages, 12.8–14 MB on every facet page (`/category/*`, `/brand/*`, `/grade/*`, `/subtypes/*`) — the C-1 double catalogue copy is still in `src/lib/facetListing.js:50-57`; HTML is `private, no-store` | remove the facet pages' second copy (hours); C-1 proper (days) | hours / project |
+| S4 | HTML weight: 3.4–4 MB on home/product pages, 12.8–14 MB on every facet page (`/category/*`, `/brand/*`, `/grade/*`, `/subtypes/*`); HTML is `private, no-store` | **C-1 stage 1 DONE 2026-09-27 (in the tree, ships with the next storefront build):** the facet pages' second, unprojected catalogue copy is gone from `src/lib/facetListing.jsx`. Measured on the local build: every facet route 10.65 MB → 3.22 MB, the same as `/listing`; same counts, same 24 cards, same titles; no catalogue refetch in the browser. Live before: 14.25 MB, 9.8–11 s. The remaining 3.2–4 MB on every page goes in C-1 stage 4. | stages 2–4: days |
 | S5 | Sitemap (`core/app/Compat/CompatSitemap.php`): 5 static URLs 404 (`/products`, `/about-us`, `/contact-us`, `/privacy-policy`, `/terms-and-conditions`); 28 multi-word brands encoded with `%20` → 404; `/offers` redirects; `/blogs` empty but indexable; 15 duplicate `<loc>`; zero-product brands listed | drop/fix entries, slugify brands with `LegacySlug`, dedupe — or move to the v2 sitemap in S-AR stage 3 (the compat sitemap is a harness case, so fixing it in place is a sanctioned deviation) | hours |
 | S6 | Category/brand landing pages linked only from the sitemap (nav links go to `/listing?…`, canonicalised to `/listing`); listing pagination is `<button>`, not links; no related products on product pages | point nav/footer/breadcrumbs at `/category/*`, `/brand/*`; `<a href="?page=n">` pager | 1–2 days |
 | S7 | Fuzzy/case-insensitive facet matching makes `/brand/rol`, `/brand/Rolex`, `/brand/rolex` separate self-canonical pages; facet titles say "Watches" for bags/belts | canonicalise to the slug + 308; titles by category type | hours |
