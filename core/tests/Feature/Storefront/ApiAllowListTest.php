@@ -55,6 +55,8 @@ function storefrontCalls(): array
                     str_contains($p[1], 'provider') => 'google',
                     default => '1',
                 }, $raw), '/');
+                // Apache's REQUEST_URI carries no query string, and routes match the path alone.
+                $path = (string) preg_replace('/\?.*$/', '', $path);
                 $key = strtoupper($method).' '.$path;
                 $calls[$key] ??= ['method' => strtoupper($method), 'path' => $path, 'files' => []];
                 $calls[$key]['files'][] = $file->getFilename();

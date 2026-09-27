@@ -34,6 +34,8 @@ final class StorefrontCache
         'compat_all_product_image' => ['ProductUpdated'],
         // Derived from compat_all_product (the header menu's facts, C-1 stage 2): the same events.
         'compat_nav' => ['ProductUpdated', 'StockChanged', 'StorefrontProductChanged', 'PlacementChanged', 'LookupChanged'],
+        // The listing index (C-1 stage 3): derived from compat_all_product and the brand names in compat_meta.
+        'compat_listing' => ['ProductUpdated', 'StockChanged', 'StorefrontProductChanged', 'PlacementChanged', 'LookupChanged'],
     ];
 
     public function version(int $storefrontId): int

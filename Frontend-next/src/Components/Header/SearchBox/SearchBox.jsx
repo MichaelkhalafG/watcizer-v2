@@ -1,7 +1,7 @@
 'use client'
 import { IoIosSearch } from 'react-icons/io'
-import { useState, useEffect, useRef, useMemo } from 'react'
-import { useCatalog } from '../../../Hooks/queries/useCatalog'
+import { useState, useEffect, useRef } from 'react'
+import { useListing, useCardsOf } from '../../../Hooks/queries/useListing'
 import { useUIStore } from '../../../Store/uiStore'
 import { useRouter } from 'next/navigation'
 import { getImageUrl, handleImgError, PLACEHOLDER_IMG } from '../../../utils/imageUrl'
@@ -9,65 +9,40 @@ import { productUrl } from '../../../utils/productUrl'
 
 const MAX_RESULTS = 6
 
+// The dropdown asks core's `catalog/listing` with the typed text (C-1 stage 3) — the SAME search
+// `/listing?q=` runs, so "View all results (N)" is exactly what the listing then shows. It used to
+// search the whole downloaded catalogue in the browser.
 function SearchBox() {
-  // setFilteredProducts is UI state (now in uiStore); products from the shared catalog.
-  const setFilteredProducts = useUIStore((s) => s.setFilteredProducts)
-  const { products } = useCatalog()
   const { language } = useUIStore()
   const [searchTerm, setSearchTerm] = useState('')
+  const [debounced, setDebounced] = useState('')
   const [open, setOpen] = useState(false)
   const wrapperRef = useRef(null)
   const router = useRouter()
   const isRTL = language === 'ar'
 
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(searchTerm), 300)
+    return () => clearTimeout(t)
+  }, [searchTerm])
+
+  const term = debounced.trim()
+  const { data, isError } = useListing(
+    { q: term, perPage: MAX_RESULTS, lang: language },
+    { enabled: term !== '' },
+  )
+  const results = useCardsOf(term ? data : null, language)
+  // Still typing, or the first answer not back yet: say so, rather than "no results".
+  const waiting = searchTerm.trim() !== term || (term !== '' && !data && !isError)
+  const total = term ? data?.total ?? 0 : 0
+
   const handleSearch = () => {
     if (searchTerm.trim() !== '') {
-      const filtered = products.filter(
-        (product) =>
-          product.product_title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          product.short_description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          product.brand.toLowerCase().includes(searchTerm.toLowerCase()),
-      )
-      setFilteredProducts(filtered)
       setOpen(false)
       router.push(`/listing?q=${encodeURIComponent(searchTerm)}`)
     }
   }
 
-  useEffect(() => {
-    const delayDebounce = setTimeout(() => {
-      if (searchTerm.trim() === '') {
-        setFilteredProducts(products)
-      } else {
-        const filtered = products.filter(
-          (product) =>
-            product.product_title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            product.short_description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            product.brand.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            product.search_keywords?.toLowerCase().includes(searchTerm.toLowerCase()),
-        )
-        setFilteredProducts(filtered)
-      }
-    }, 300)
-
-    return () => clearTimeout(delayDebounce)
-  }, [searchTerm, products, setFilteredProducts])
-
-  // Local preview list for the dropdown — independent of the global
-  // filteredProducts state above (which still drives the /listingsearch page).
-  const matches = useMemo(() => {
-    const q = searchTerm.trim().toLowerCase()
-    if (q === '') return []
-    return (products || []).filter(
-      (product) =>
-        product.product_title?.toLowerCase().includes(q) ||
-        product.short_description?.toLowerCase().includes(q) ||
-        product.brand?.toLowerCase().includes(q) ||
-        product.search_keywords?.toLowerCase().includes(q),
-    )
-  }, [searchTerm, products])
-
-  const results = matches.slice(0, MAX_RESULTS)
   const showDropdown = open && searchTerm.trim() !== ''
 
   // Close the dropdown when clicking outside the search box.
@@ -152,13 +127,23 @@ function SearchBox() {
               })}
               <button type="button" className="wz-search-viewall" onClick={handleSearch}>
                 {isRTL
-                  ? `عرض كل النتائج (${matches.length})`
-                  : `View all results (${matches.length})`}
+                  ? `عرض كل النتائج (${total})`
+                  : `View all results (${total})`}
               </button>
             </>
           ) : (
             <div className="wz-search-empty">
-              {isRTL ? 'لا توجد نتائج' : 'No results found'}
+              {waiting
+                ? isRTL
+                  ? 'جارٍ البحث…'
+                  : 'Searching…'
+                : isError
+                  ? isRTL
+                    ? 'تعذّر البحث الآن'
+                    : "Couldn't search right now"
+                  : isRTL
+                    ? 'لا توجد نتائج'
+                    : 'No results found'}
             </div>
           )}
         </div>

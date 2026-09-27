@@ -1,9 +1,8 @@
 'use client'
 import { memo, useMemo } from 'react'
 import Image from 'next/image'
-import { useCatalog } from '../../Hooks/queries/useCatalog'
+import { useTables } from '../../Hooks/queries/useTables'
 import { useUIStore } from '../../Store/uiStore'
-import { passesFilters } from '../../utils/filterPredicate'
 import { getImageUrl } from '../../utils/imageUrl'
 import { Carousel, CarouselSlide } from '../UI/Carousel'
 import './SmartSuggestions.css'
@@ -65,11 +64,11 @@ function Chip({ active, label, count, logo, onClick }) {
 // Smart suggestions chip bar: contextual gender / category / brand chips with
 // faceted counts. Toggles filters through the store (which the Listing page
 // mirrors to the URL), so chips read AND write the active filter state.
-function SmartSuggestions() {
-  const { products, tables } = useCatalog()
+// `facets`: the counts from core's `catalog/listing` (C-1 stage 3) — counted there, not here.
+function SmartSuggestions({ facets }) {
+  const { data: tables } = useTables()
   const { language, filters, setFilters, setCurrentPage } = useUIStore()
   const isRTL = language === 'ar'
-  const list = products || []
 
   const toggleArr = (key, value) => {
     setCurrentPage(1)
@@ -84,9 +83,8 @@ function SmartSuggestions() {
 
   // A) GENDER — derived from product genders_en (language-safe English names).
   const genders = useMemo(() => {
-    const seen = new Set()
-    list.forEach((p) => (p.genders_en || []).forEach((g) => g && seen.add(g)))
-    return [...seen]
+    const counts = facets?.genders || {}
+    return Object.keys(counts)
       .sort((a, b) => {
         const ia = GENDER_ORDER.indexOf(a)
         const ib = GENDER_ORDER.indexOf(b)
@@ -95,13 +93,11 @@ function SmartSuggestions() {
       .map((name) => ({
         name,
         label: isRTL ? GENDER_AR[name] || name : name,
-        count: list.filter(
-          (p) => passesFilters(p, filters, 'genders') && (p.genders_en || []).includes(name),
-        ).length,
+        count: counts[name] || 0,
       }))
       .filter((g) => g.count > 0)
       .sort(activeFirst(filters.genders || [], (g) => g.name))
-  }, [list, filters, isRTL])
+  }, [facets, filters, isRTL])
 
   // B) CATEGORY — all category types with faceted counts.
   const categories = useMemo(
@@ -110,14 +106,12 @@ function SmartSuggestions() {
         .map((cat) => ({
           id: cat.id,
           label: trName(cat, 'category_type_name', language) || `#${cat.id}`,
-          count: list.filter(
-            (p) => passesFilters(p, filters, 'categories') && p.category_type_id === cat.id,
-          ).length,
+          count: facets?.categories?.[String(cat.id)] || 0,
         }))
         .filter((c) => c.count > 0)
         .sort((a, b) => b.count - a.count)
         .sort(activeFirst(filters.categories || [], (c) => c.id)),
-    [tables, list, filters, language],
+    [tables, facets, filters, language],
   )
 
   // C) BRANDS — sorted by count, top 15, with logo.
@@ -128,9 +122,7 @@ function SmartSuggestions() {
           id: b.id,
           label: trName(b, 'brand_name', language) || `#${b.id}`,
           logo: getImageUrl(b.image, 'Brand'),
-          count: list.filter(
-            (p) => passesFilters(p, filters, 'brands') && p.brand_id === b.id,
-          ).length,
+          count: facets?.brands?.[String(b.id)] || 0,
         }))
         .filter((b) => b.count > 0)
         .sort((a, b) => b.count - a.count)
@@ -138,10 +130,10 @@ function SmartSuggestions() {
         // the top-15 slice
         .sort(activeFirst(filters.brands || [], (b) => b.id))
         .slice(0, MAX_BRANDS),
-    [tables, list, filters, language],
+    [tables, facets, filters, language],
   )
 
-  if (!list.length) return null
+  if (!facets) return null
 
   // Build each group as a FLAT array of chips (no wrapper div). Group wrappers
   // create extra flex containers in the overflow chain, so the chips go directly

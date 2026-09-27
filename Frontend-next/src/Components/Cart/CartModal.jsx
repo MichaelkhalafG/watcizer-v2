@@ -2,7 +2,7 @@
 import { memo, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { FiX } from 'react-icons/fi'
-import { useCatalog } from '../../Hooks/queries/useCatalog'
+import { useCards, useCardsOf } from '../../Hooks/queries/useListing'
 import { useOffers } from '../../Hooks/queries/useOffers'
 import { useUIStore } from '../../Store/uiStore'
 import { getImageUrl, handleImgError, PLACEHOLDER_IMG } from '../../utils/imageUrl'
@@ -15,7 +15,6 @@ import './Cart.css'
 // of the cart, with a subtotal + actions footer. Auto-closes after 6s unless the
 // user interacts. No MUI.
 function CartModal({ open, onClose, cart }) {
-  const { products } = useCatalog()
   const { data: offers = [] } = useOffers()
   const { language } = useUIStore()
   const isRTL = language === 'ar'
@@ -31,6 +30,9 @@ function CartModal({ open, onClose, cart }) {
   }, [onClose])
 
   const items = cart?.cart_item || []
+  // The lines' products by id (C-1 stage 3) — the drawer used to look them up in the whole catalogue.
+  const { data: cardsPayload } = useCards(items.map((i) => i.product_id))
+  const products = useCardsOf(cardsPayload, language)
   // The most-recently added/updated line sits last in the array.
   const justAdded = items[items.length - 1]
   const others = items.slice(0, -1)

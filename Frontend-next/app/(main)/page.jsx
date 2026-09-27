@@ -1,3 +1,4 @@
+import CatalogBoundary from '@/src/lib/CatalogBoundary'
 import HomeClient from './HomeClient'
 import { safeJsonLd } from '@/src/lib/safeJsonLd'
 
@@ -87,7 +88,9 @@ export default function HomePage() {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: safeJsonLd(storeJsonLd) }}
       />
-      <HomeClient />
+      <CatalogBoundary>
+        <HomeClient />
+      </CatalogBoundary>
     </>
   )
 }

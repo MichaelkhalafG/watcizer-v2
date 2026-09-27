@@ -57,6 +57,9 @@ Route::middleware('api.code')->group(function (): void {
         Route::get('all_product', [CatalogCompatController::class, 'allProduct']);
         // Storefront-only (C-1 stage 2): the header menu's catalogue facts, derived from all_product.
         Route::get('catalog/nav', [CatalogCompatController::class, 'nav']);
+        // Storefront-only (C-1 stage 3): the listing with its facet counts, and product cards by id.
+        Route::get('catalog/listing', [CatalogCompatController::class, 'listing']);
+        Route::get('catalog/cards', [CatalogCompatController::class, 'cards']);
         Route::get('all_product_image', [CatalogCompatController::class, 'allProductImage']);
         Route::get('all_product_rating', [CatalogCompatController::class, 'allProductRating']);
         Route::get('products/by-name/{name}', [CatalogCompatController::class, 'showByName']);

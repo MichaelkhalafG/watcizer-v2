@@ -1,4 +1,7 @@
 import { Suspense } from 'react'
+import { QueryClient, dehydrate, HydrationBoundary } from '@tanstack/react-query'
+import serverHttp from '@/src/lib/serverFetch'
+import { listingRequest, listingQueryFn } from '@/src/lib/listingRequest'
 import { getServerCatalog } from '@/src/lib/serverCatalog'
 import { parseListingParams } from '@/src/utils/listingParams'
 import { objectToSearchParams, listingMetadata, listingBreadcrumbLd } from '@/src/lib/listingSeo'
@@ -25,8 +28,8 @@ async function loadContext(searchParams) {
     // catalog unreachable server-side → client fetches; metadata degrades to the
     // "all products" defaults.
   }
-  const { filters, q } = parseListingParams(usp, tables)
-  return { tables, productsEn, filters, q }
+  const { filters, q, sort, page } = parseListingParams(usp, tables)
+  return { tables, productsEn, filters, q, sort, page }
 }
 
 export async function generateMetadata({ searchParams }) {
@@ -35,15 +38,22 @@ export async function generateMetadata({ searchParams }) {
 }
 
 export default async function ListingPage({ searchParams }) {
-  const { tables, filters } = await loadContext(searchParams)
+  const { tables, filters, q, sort, page } = await loadContext(searchParams)
   const breadcrumbLd = listingBreadcrumbLd({ tables, filters, pathname: '/listing' })
 
-  // The (main) layout already prefetches + hydrates the catalog for every page, so
-  // this page does NOT re-dehydrate it — a second copy just doubled the HTML (C-1).
-  // ListingClient reads the layout-hydrated catalog and still server-renders the
-  // filtered count + first page.
+  // The first page and its facet counts, from core (C-1 stage 3) — with the SAME request builder
+  // ListingClient uses, so its first render hits this data. The server renders in English (the
+  // shop's language is applied on the client), hence lang 'en'.
+  const qc = new QueryClient()
+  const qs = listingRequest({ filters, q, sort, page, lang: 'en' })
+  try {
+    qc.setQueryData(['listing', qs], await listingQueryFn(qs, serverHttp)())
+  } catch {
+    // core unreachable → the client fetches and shows the inline error/retry.
+  }
+
   return (
-    <>
+    <HydrationBoundary state={dehydrate(qc)}>
       {/* BreadcrumbList structured data — in the initial HTML for scrapers. */}
       <script
         type="application/ld+json"
@@ -53,6 +63,6 @@ export default async function ListingPage({ searchParams }) {
       <Suspense fallback={null}>
         <ListingClient />
       </Suspense>
-    </>
+    </HydrationBoundary>
   )
 }

@@ -981,7 +981,7 @@ what §4.3 does and why it is a mandatory step rather than a suggestion.
     RewriteCond %{REQUEST_URI} !^/index\.php
     RewriteCond %{HTTP_HOST} ^api\.watchizereg\.com$ [NC]
     RewriteCond %{REQUEST_URI} !^/api/v2/
-    RewriteCond %{REQUEST_URI} !^/api/(catalog/(meta|nav)|all_product|all_product_image|all_product_rating|show_shipping_city)$
+    RewriteCond %{REQUEST_URI} !^/api/(catalog/(meta|nav|listing|cards)|all_product|all_product_image|all_product_rating|show_shipping_city)$
     RewriteCond %{REQUEST_URI} !^/api/products(/|$)
     RewriteCond %{REQUEST_URI} !^/api/(add_to_cart|remove_from_cart|me/cart|cart/validate|cart/merge|add_order|add_address)$
     RewriteCond %{REQUEST_URI} !^/api/(delete_cart|me/addresses)(/|$)

@@ -1,3 +1,4 @@
+import CatalogBoundary from '@/src/lib/CatalogBoundary'
 import { notFound, permanentRedirect } from 'next/navigation'
 import { QueryClient, dehydrate, HydrationBoundary } from '@tanstack/react-query'
 import { getServerCatalog, getServerOffers, findOfferInCatalog } from '@/src/lib/serverCatalog'
@@ -76,7 +77,9 @@ export default async function OfferPage({ params }) {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: safeJsonLd(breadcrumbLd) }}
       />
-      <ProductDetailClient param={slug} isOffer={true} />
+      <CatalogBoundary>
+        <ProductDetailClient param={slug} isOffer={true} />
+      </CatalogBoundary>
     </HydrationBoundary>
   )
 }

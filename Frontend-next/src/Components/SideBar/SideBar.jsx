@@ -1,8 +1,7 @@
 'use client'
 import { memo, useState, useMemo } from 'react'
-import { useCatalog } from '../../Hooks/queries/useCatalog'
+import { useTables } from '../../Hooks/queries/useTables'
 import { useUIStore } from '../../Store/uiStore'
-import { passesFilters } from '../../utils/filterPredicate'
 import './SideBar.css'
 
 const PRICE_MAX = 10000000 // slider ceiling (EGP); maps to "no upper cap" in store
@@ -82,11 +81,13 @@ function FilterSection({ title, items, selectedIds, onToggle, onClear, searchabl
   )
 }
 
-function SideBar() {
-  const { tables, products } = useCatalog()
+// `facets`: the option counts from core's `catalog/listing` (C-1 stage 3) — for each section, the
+// products matching that option AND every OTHER active filter. The sidebar used to count them
+// itself over the whole catalogue, once per option.
+function SideBar({ facets }) {
+  const { data: tables = {} } = useTables()
   const { language, filters, setFilters, setCurrentPage } = useUIStore()
   const isRTL = language === 'ar'
-  const list = products || []
 
   const toggle = (key, id) => {
     setCurrentPage(1)
@@ -119,13 +120,12 @@ function SideBar() {
   }
 
   // Gender is filtered by language-stable English NAME (genders_en), not a table
-  // id — so its items are derived from the products, with Arabic display labels.
+  // id — so its items come from the gender counts, with Arabic display labels.
   const genderItems = useMemo(() => {
     const AR = { Men: 'رجالي', Women: 'نسائي', Unisex: 'للجنسين', Kids: 'أطفال', Boys: 'أولاد', Girls: 'بنات' }
     const ORDER = ['Men', 'Women', 'Unisex', 'Kids', 'Boys', 'Girls']
-    const seen = new Set()
-    list.forEach((p) => (p.genders_en || []).forEach((g) => g && seen.add(g)))
-    return [...seen]
+    const counts = facets?.genders || {}
+    return Object.keys(counts)
       .sort((a, b) => {
         const ia = ORDER.indexOf(a)
         const ib = ORDER.indexOf(b)
@@ -134,25 +134,20 @@ function SideBar() {
       .map((name) => ({
         id: name, // English name doubles as the toggle key
         name: isRTL ? AR[name] || name : name,
-        count: list.filter(
-          (p) => passesFilters(p, filters, 'genders') && (p.genders_en || []).includes(name),
-        ).length,
+        count: counts[name] || 0,
       }))
       .filter((g) => g.count > 0)
-  }, [list, filters, isRTL])
+  }, [facets, isRTL])
 
-  // ── Dynamic option counts: for each section, count products that match this
-  // option AND every OTHER active filter (faceted search). ──
+  // ── Option counts: for each section, products matching this option AND every
+  // OTHER active filter (faceted search) — counted by core, looked up here. ──
   const sections = useMemo(() => {
-    const count = (key, matcher) => (item) =>
-      list.filter((p) => passesFilters(p, filters, key) && matcher(p, item.id)).length
-
-    const build = (source, key, nameKey, matcher) =>
+    const build = (source, key, nameKey) =>
       (source || [])
         .map((item) => ({
           id: item.id,
           name: trName(item, nameKey, language) || `#${item.id}`,
-          count: count(key, matcher)(item),
+          count: facets?.[key]?.[String(item.id)] || 0,
         }))
         .filter((x) => x.count > 0)
         .sort((a, b) => b.count - a.count)
@@ -162,13 +157,13 @@ function SideBar() {
         title: isRTL ? 'العلامة التجارية' : 'Brand',
         key: 'brands',
         searchable: true,
-        items: build(tables?.brands, 'brands', 'brand_name', (p, id) => p.brand_id === id),
+        items: build(tables?.brands, 'brands', 'brand_name'),
       },
       {
         title: isRTL ? 'النوع الفرعي' : 'Sub Type',
         key: 'subTypes',
         searchable: true,
-        items: build(tables?.subTypes, 'subTypes', 'sub_type_name', (p, id) => p.sub_type_id === id),
+        items: build(tables?.subTypes, 'subTypes', 'sub_type_name'),
       },
       {
         title: isRTL ? 'النوع' : 'Gender',
@@ -179,55 +174,36 @@ function SideBar() {
         title: isRTL ? 'لون الميناء' : 'Dial Color',
         key: 'dialColors',
         searchable: true,
-        items: build(tables?.colors, 'dialColors', 'color_name', (p, id) =>
-          (p.dial_colors || []).some((c) => c.color_id === id),
-        ),
+        items: build(tables?.colors, 'dialColors', 'color_name'),
       },
       {
         title: isRTL ? 'لون السوار' : 'Band Color',
         key: 'bandColors',
         searchable: true,
-        items: build(tables?.colors, 'bandColors', 'color_name', (p, id) =>
-          (p.band_colors || []).some((c) => c.color_id === id),
-        ),
+        items: build(tables?.colors, 'bandColors', 'color_name'),
       },
       {
         title: isRTL ? 'الخامة' : 'Material',
         key: 'materials',
-        items: build(
-          tables?.materials,
-          'materials',
-          'material_name',
-          (p, id) => p.band_material_id === id,
-        ),
+        items: build(tables?.materials, 'materials', 'material_name'),
       },
       {
         title: isRTL ? 'شكل العلبة' : 'Watch Shape',
         key: 'shapes',
-        items: build(tables?.shapes, 'shapes', 'shape_name', (p, id) => p.case_shape_id === id),
+        items: build(tables?.shapes, 'shapes', 'shape_name'),
       },
       {
         title: isRTL ? 'نوع العرض' : 'Display Type',
         key: 'displayTypes',
-        items: build(
-          tables?.displayTypes,
-          'displayTypes',
-          'display_type_name',
-          (p, id) => p.dial_display_type_id === id,
-        ),
+        items: build(tables?.displayTypes, 'displayTypes', 'display_type_name'),
       },
       {
         title: isRTL ? 'نوع الحركة' : 'Movement',
         key: 'movements',
-        items: build(
-          tables?.movementTypes,
-          'movements',
-          'movement_type_name',
-          (p, id) => p.watch_movement_id === id,
-        ),
+        items: build(tables?.movementTypes, 'movements', 'movement_type_name'),
       },
     ]
-  }, [tables, list, filters, language, isRTL, genderItems])
+  }, [tables, facets, language, isRTL, genderItems])
 
   // ── Price ──
   const priceMin = filters.price?.[0] ?? 0

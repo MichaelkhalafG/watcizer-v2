@@ -176,8 +176,52 @@ report too.
     still searches in the browser by substring. Server search (FULLTEXT, Arabic folding) matches
     differently, so moving only the dropdown would promise N results and list a different number.
     Both move together in stage 3.
-- Stage 3 (listing, sidebar, strip and search on the server) and stage 4 (by-ids for cart, checkout
-  and account; related products; home rails; drop the site-wide catalogue copy) follow.
+- **Stage 3 — built 2026-09-27:** the listing, the sidebar, the chip strip and the search dropdown
+  read core's `GET /api/catalog/listing` (one page of rows + every facet count, `CompatListing`),
+  and the cart drawer `GET /api/catalog/cards?ids=`. The (main) layout no longer embeds the
+  catalogue. Only home, product/offer detail, cart, checkout and account do (`CatalogBoundary`),
+  until stage 4.
+  - Contract = the storefront's previous behaviour, bug for bug. `CatalogListingTest` runs the
+    storefront's own `transformProduct.js` + `filterPredicate.js`, plus the old ListingClient /
+    SideBar glue, in node over the same data for 36 scenarios and compares the totals, the page ids
+    in order and every facet count. Mutation-checked: breaking the facet rule, the default order,
+    the blank-price handling or the substring search each fails it.
+  - Kept on purpose, product decisions and not a port: facet counts ignore the search text; a blank
+    sale price counts as 0 in the price filter and sorts; search is a substring match in the
+    shopper's language only.
+  - Browser, stage-2 build vs stage-3 build, 10 real interactions (sidebar, chips, colour, clear,
+    page 2, sort, brand page): count, cards, every sidebar entry and count, chips and tags
+    IDENTICAL. Search "rol": identical, "View all results (95)" = what `/listing?q=rol` shows.
+  - HTML (local build): `/listing` 3.23 MB → 0.31 MB, `/brand/Rolex` 3.23 → 0.30, `/blogs`
+    3.09 → 0.12. The ~45 KB target is NOT met: every page still carries the lookup tables (61 KB
+    of JSON) plus the chrome, and the page's 24 rows (trimmed to card fields, 51 KB). That is stage 4
+    work and beyond.
+  - Taps (local, same machine): sidebar 196–238 → 104 ms, strip 284–351 → 160 ms to updated
+    results; the main thread is no longer blocked by the filtering. **Live adds the network:**
+    measured to api.watchizereg.com from the workstation, ~90 ms per request on a reused
+    connection, and EVERY listing request is preceded by a CORS preflight (`Api-Code` is a custom
+    header, `cors.max_age` = 0), another ~90 ms. Expect ~300 ms tap-to-results live, against today's
+    ~240 ms synchronous filtering on desktop, and much less than today on a slow phone. Removing
+    the preflight (the key is public in the JS bundle; send it without a custom header, or serve
+    the catalogue reads same-origin) would save ~90 ms per tap. **Developer's decision, open.**
+- Stage 4 (by-ids for cart, checkout and account; related products; home rails; drop the remaining
+  catalogue copies and the client transform) follows.
+
+### "THREE.WebGLRenderer: Context Lost" — CLOSED, not a defect (measured 2026-09-27)
+
+The message is the 3D hero RELEASING its GPU context on purpose. `@react-three/fiber` 9.6.1's
+`unmountComponentAtNode` waits 500 ms after the canvas unmounts and calls `gl.forceContextLoss()`
+(`node_modules/@react-three/fiber/dist/events-*.esm.js`), and three.js logs that line on the
+`webglcontextlost` event. That is why it appears just after you leave the home page. It is library
+code on the unmount path and does not depend on the frameloop change.
+
+Measured live, 8 round trips home → `/category/Watches` (two chip taps) → home, by in-app navigation,
+with every WebGL context counted: at most ONE context alive at any time, each one released when you
+leave (8 departures, 8 "Context Lost" lines), no browser "too many active WebGL contexts" warning,
+and the watch still drawn on the 8th return (screenshot). The tab's context cap is never approached.
+
+Not tested, and a separate question: a REAL loss while the hero is on screen (GPU reset, driver
+crash). Whether the hero then falls back to its poster is unverified.
 
 ### Listing interaction — measured 2026-09-27
 
