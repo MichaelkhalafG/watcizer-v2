@@ -217,6 +217,15 @@ function Checkout() {
   const [email, setEmail] = useState(user?.email || '')
   const [firstName, setFirstName] = useState(user?.first_name || '')
   const [lastName, setLastName] = useState(user?.last_name || '')
+  // The session arrives after mount (the auth store starts logged-out so server and
+  // client render alike), so fill what the shopper has not typed once it does.
+  useEffect(() => {
+    if (!user) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- the session is only readable after mount
+    setEmail((v) => v || user.email || '')
+    setFirstName((v) => v || user.first_name || '')
+    setLastName((v) => v || user.last_name || '')
+  }, [user])
   const [street, setStreet] = useState('')
   const [apartment, setApartment] = useState('')
   const [phone, setPhone] = useState('')

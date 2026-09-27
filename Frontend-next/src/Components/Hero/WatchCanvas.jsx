@@ -1,6 +1,6 @@
 'use client'
 import { Component, Suspense, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Canvas, useFrame } from '@react-three/fiber'
+import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { OrbitControls, Environment, useGLTF } from '@react-three/drei'
 import { Box3, Vector3, ACESFilmicToneMapping, SRGBColorSpace } from 'three'
 import { useUIStore } from '../../Store/uiStore'
@@ -13,6 +13,13 @@ const logo = '/logo.webp'
 // so the compressed .glb decodes with no extra wiring.
 const MODEL_URL = '/Watchizer_Gold.glb'
 useGLTF.preload(MODEL_URL)
+
+// The studio lighting for the gold reflections, at 512×256 (2026-09-27). The original 1024×512
+// file was 1.6 MB — the heaviest download on the home page; this one is 411 KB and was compared
+// side by side with it at rest and turned: indistinguishable. 256×128 was tried and rejected (the
+// bracelet goes greyer), so was a 1024 base-colour texture on the model (the hands' centre cap
+// turns from black to gold). Made with a box-filter downsample of the same HDR.
+const ENV_URL = '/studio_small_03_512.hdr'
 
 const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768
 
@@ -34,6 +41,9 @@ const modelOffsetX = (isRTL) => (isMobile ? 0.4 : isRTL ? 0.3 : -0.3)
 const FROM = { x: 0.45, y: -1.6 }
 const TO = { x: 0.2, y: -0.38 }
 const INTRO_DURATION = 2.5 // seconds
+// Opacity of the crystal once it is plain transparent glass (see WatchModel). Low: the dial must
+// read through it; the clearcoat reflections are what make it look like glass.
+const CRYSTAL_OPACITY = 0.12
 const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3)
 
 function WatchModel({ onIntroDone, onLoaded, modelX }) {
@@ -41,12 +51,26 @@ function WatchModel({ onIntroDone, onLoaded, modelX }) {
   const group = useRef()
   const start = useRef(null)
   const done = useRef(false)
+  const gl = useThree((state) => state.gl)
+  const camera = useThree((state) => state.camera)
+  const root = useThree((state) => state.scene)
 
-  // This component only mounts once useGLTF has resolved (it's inside Suspense),
-  // so this effect signals "model ready" → triggers the canvas fade-in.
+  // This component only mounts once the model AND the environment have resolved (one Suspense),
+  // so every shader variant the first frame needs is known here. Compile them BEFORE any frame is
+  // drawn (the canvas renders nothing until onLoaded — see the frameloop in WatchCanvas): with
+  // compileAsync the browser can compile in parallel instead of freezing the page on the first
+  // frame (2026-09-27). Then signal "model ready" → the canvas fades in and the intro starts.
   useEffect(() => {
-    onLoaded?.()
-  }, [onLoaded])
+    let alive = true
+    const ready = () => {
+      if (alive) onLoaded?.()
+    }
+    if (typeof gl.compileAsync === 'function') gl.compileAsync(root, camera).then(ready, ready)
+    else ready()
+    return () => {
+      alive = false
+    }
+  }, [gl, camera, root, onLoaded])
 
   // Centre the model at the origin (NO scale on the object — scale lives on the
   // group below, so centring is preserved and rotation is around the centre).
@@ -65,6 +89,19 @@ function WatchModel({ onIntroDone, onLoaded, modelX }) {
         // white metallic F0 to the model's own gold so it reads gold again.
         if (o.material.metalness >= 0.9 && o.material.color?.getHexString?.() === 'ffffff') {
           o.material.color.setHex(0xf0dda7)
+        }
+        // The crystal is modelled as physically accurate glass (transmission + volume). For that,
+        // three.js renders the whole scene a SECOND time into an off-screen buffer on every frame,
+        // and compiles its most expensive shader — measured as the largest single block of main-
+        // thread time the hero costs on a throttled phone (2026-09-27). Plain transparency with the
+        // same clearcoat keeps the look of glass over the dial: reflections, no second pass.
+        if (o.material.transmission > 0) {
+          o.material.transmission = 0
+          o.material.thickness = 0
+          o.material.transparent = true
+          o.material.opacity = CRYSTAL_OPACITY
+          o.material.depthWrite = false
+          o.material.needsUpdate = true
         }
         o.castShadow = false
         o.receiveShadow = false
@@ -116,6 +153,17 @@ class ModelErrorBoundary extends Component {
     if (this.state.hasError) return this.props.fallback
     return this.props.children
   }
+}
+
+// In `demand` mode nothing redraws on its own, and the environment is set in an effect that does not
+// ask for a frame — so an HDR that finishes downloading AFTER the intro would leave the watch without
+// its reflections until the shopper touched it. This asks for one frame when it lands.
+function InvalidateOnMount() {
+  const invalidate = useThree((state) => state.invalidate)
+  useEffect(() => {
+    invalidate()
+  }, [invalidate])
+  return null
 }
 
 // Isolates the HDR environment. If the .hdr fails to load (missing file, offline,
@@ -177,13 +225,14 @@ const Scene = memo(function Scene({ frameloop, introComplete, modelX, onIntroDon
           copy in /public (no raw.githubusercontent.com runtime dependency, so it
           works offline / on slow networks). EnvBoundary + own Suspense mean a
           slow OR failed env load never blocks or crashes the model. */}
-      <EnvBoundary>
-        <Suspense fallback={null}>
-          <Environment files="/studio_small_03_1k.hdr" />
-        </Suspense>
-      </EnvBoundary>
-
+      {/* ONE Suspense for the environment and the model, so the model mounts with its lighting
+          already in place and compiles its shaders once (WatchModel). EnvBoundary still isolates
+          a failed .hdr: the watch then shows without env reflections instead of not at all. */}
       <Suspense fallback={null}>
+        <EnvBoundary>
+          <Environment files={ENV_URL} />
+          <InvalidateOnMount />
+        </EnvBoundary>
         <WatchModel onIntroDone={onIntroDone} onLoaded={onLoaded} modelX={modelX} />
       </Suspense>
 
@@ -232,11 +281,17 @@ export default function WatchCanvas({ onReady }) {
   // the WebGLRenderer that would throw during commit is never constructed.
   const webglOk = hasWebGL()
 
-  // ── GPU throttle ──────────────────────────────────────────────────────────
-  // The Canvas defaults to frameloop="always" (renders 60fps forever). Left on,
-  // it saturates the GPU even after the intro, starving CSS hover transitions on
-  // the cards below → the "freeze on hover" lag. Render only while the hero is
-  // actually on screen; stop completely once the user scrolls to the sliders.
+  // ── Render only when something moves (2026-09-27) ─────────────────────────
+  // frameloop="always" redrew the watch 60 times a second for as long as the hero
+  // was on screen — measured at ~9 s of blocked main thread on a throttled mid-range
+  // phone profile, and the page never went idle. Now:
+  //   • off screen            → 'never' (as before);
+  //   • loading               → 'never': the canvas is still invisible, and a frame drawn
+  //     before WatchModel's compileAsync finishes would compile the shaders synchronously;
+  //   • after the intro        → 'demand': a frame only when asked. OrbitControls asks
+  //     on every drag and while its damping settles, so rotating feels the same;
+  //     the environment asks once when it lands (InvalidateOnMount);
+  //   • the 2.5 s intro        → 'always', because it is driven frame by frame.
   const wrapRef = useRef(null)
   const [inView, setInView] = useState(true)
   useEffect(() => {
@@ -278,7 +333,7 @@ export default function WatchCanvas({ onReady }) {
         }}
       >
         <Scene
-          frameloop={inView ? 'always' : 'never'}
+          frameloop={!inView || !modelLoaded ? 'never' : !introComplete ? 'always' : 'demand'}
           introComplete={introComplete}
           modelX={modelX}
           onIntroDone={handleIntroDone}

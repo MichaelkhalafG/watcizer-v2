@@ -45,10 +45,20 @@ const clearStorage = () => {
 }
 
 export const useAuthStore = create((set, get) => ({
-  userId: ss('user_id') || null,
-  token: ss('token') || null,
-  user: readUser(),
-  isAuthenticated: !!ss('token'),
+  // LOGGED-OUT on the server AND on the client's first render (2026-09-27). This
+  // used to read sessionStorage here, at module load — which on the client happens
+  // BEFORE React hydrates, so a signed-in shopper's first render showed the account
+  // button where the server had rendered "Sign in / Register": React error #418 on
+  // every page, for every signed-in visitor, and the tree thrown away and re-rendered.
+  // The session is read by rehydrate(), after mount, from <AuthHydrator/>.
+  userId: null,
+  token: null,
+  user: null,
+  isAuthenticated: false,
+  // False until rehydrate() has read the real session. A guard that redirects the
+  // logged-out (the account page) must wait for it, or it bounces signed-in
+  // shoppers: a page's effects run BEFORE the provider's AuthHydrator effect.
+  hydrated: false,
 
   // Re-read sessionStorage on the client after hydration and sync state. Called
   // by <AuthHydrator/> so SSR (logged-out) and the client (real session) agree
@@ -59,6 +69,7 @@ export const useAuthStore = create((set, get) => ({
       token: ss('token') || null,
       user: readUser(),
       isAuthenticated: !!ss('token'),
+      hydrated: true,
     }),
 
   setUserId: (id) => {
@@ -74,6 +85,7 @@ export const useAuthStore = create((set, get) => ({
       userId: String(data.id),
       user: { ...readUser(), ...data, image: avatarUrl(data.image) },
       isAuthenticated: true,
+      hydrated: true,
     })
   },
 
