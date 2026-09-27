@@ -101,6 +101,18 @@ return [
      */
     'jwt_ttl' => (int) env('JWT_TTL', 43200),
 
+    /*
+     * Unpaid card orders (2026-09-26, App\Domain\Orders\UnpaidOrders). A card order reserves its
+     * stock at checkout; one still unpaid after `expire_after_minutes` is cancelled and its stock
+     * returned by `orders:expire-unpaid`. `intention_expiration_seconds` is NOT sent to Paymob
+     * until it is set in `.env` from a measurement — Paymob does not document the field's unit
+     * (see PaymobProvider). When set, it must be shorter than the window or it is not sent.
+     */
+    'unpaid' => [
+        'expire_after_minutes' => (int) env('UNPAID_ORDER_EXPIRY_MINUTES', 60),
+        'intention_expiration_seconds' => is_numeric(env('PAYMOB_INTENTION_EXPIRATION_SECONDS')) ? (int) env('PAYMOB_INTENTION_EXPIRATION_SECONDS') : null,
+    ],
+
     // Where callback_payment sends the shopper back to, hard-coded in the legacy controller.
     'payment_return_url' => env('COMPAT_PAYMENT_RETURN_URL', 'https://watchizereg.com/'),
 

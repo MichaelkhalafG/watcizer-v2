@@ -1,2 +1,12 @@
+# Core's hosts: api.watchizereg.com (the storefront's API and image host) and the dashboard's.
+#
+# Closed to crawlers: the API, the dashboard and everything else. Open (2026-09-27): the public
+# IMAGES under /Uploads_Images/. The storefront's product pages, their structured data and og:image
+# all name images on this host, and a blanket "Disallow: /" kept every one of them out of Google
+# Images, product rich results and free listings.
+#
+# Google and Bing apply the MOST SPECIFIC matching rule, so the Allow wins over "Disallow: /" for
+# that folder only. It is listed first for older crawlers that stop at the first matching line.
 User-agent: *
+Allow: /Uploads_Images/
 Disallow: /

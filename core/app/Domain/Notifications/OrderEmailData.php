@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domain\Notifications;
 
+use App\Domain\Orders\OrderCustomer;
 use App\Domain\Orders\OrderTotals;
 use App\Storefront\ImageUrl;
 use App\Transform\Row;
@@ -74,7 +75,7 @@ final class OrderEmailData
         }
         $order = Row::cast($raw);
 
-        $user = self::user(Row::nint($order, 'user_id'));
+        $customer = OrderCustomer::of($orderId);
         $address = self::address(Row::nint($order, 'address_id'));
 
         /*
@@ -96,14 +97,11 @@ final class OrderEmailData
             'statusEn' => self::statusLabel($status, 'en'),
             'statusAr' => self::statusLabel($status, 'ar'),
 
-            'customerName' => self::customerName($order, $user),
-            'customerEmail' => self::customerEmail($order, $user),
-            // The legacy order of preference, exactly: the address's first phone, then the
-            // guest's, then the address's second. A `??` chain would not do it — an absent
-            // address yields '' rather than null, so the fallbacks are explicit.
-            'customerPhone' => self::firstNonEmpty([
-                $address['phone'], Row::nstr($order, 'guest_phone'), $address['phone_alt'],
-            ]),
+            // Who the customer is comes from OrderCustomer — the ONE definition the dashboard's
+            // order screens use too (2026-09-26). The rules are the ones this builder always had.
+            'customerName' => $customer->name ?? 'Guest',
+            'customerEmail' => $customer?->email,
+            'customerPhone' => $customer->phone ?? '',
             'isGuest' => Row::nint($order, 'user_id') === null,
 
             'addressLine' => $address['line'],
@@ -165,24 +163,6 @@ final class OrderEmailData
         }
 
         return 0;
-    }
-
-    /** @return array<string, mixed>|null */
-    private static function user(?int $userId): ?array
-    {
-        if ($userId === null) {
-            return null;
-        }
-        $row = DB::table('users')->where('id', $userId)->first(['first_name', 'last_name', 'email']);
-        if (! is_object($row)) {
-            return null;
-        }
-        $user = Row::cast($row);
-
-        return [
-            'name' => trim((Row::nstr($user, 'first_name') ?? '').' '.(Row::nstr($user, 'last_name') ?? '')),
-            'email' => Row::nstr($user, 'email'),
-        ];
     }
 
     /**
@@ -330,18 +310,6 @@ final class OrderEmailData
         return $items;
     }
 
-    /** @param  list<string|null>  $candidates */
-    private static function firstNonEmpty(array $candidates): string
-    {
-        foreach ($candidates as $candidate) {
-            if ($candidate !== null && trim($candidate) !== '') {
-                return $candidate;
-            }
-        }
-
-        return '';
-    }
-
     private static function itemName(?string $preferred, ?string $fallback, ?string $variant, string $last): string
     {
         $name = $preferred ?? $fallback ?? $last;
@@ -380,26 +348,6 @@ final class OrderEmailData
         $time = strtotime($timestamp);
 
         return $time === false ? '' : date('d M Y, H:i', $time);
-    }
-
-    /** @param  array<string, mixed>|null  $user */
-    private static function customerName(stdClass $order, ?array $user): string
-    {
-        $name = $user === null
-            ? (Row::nstr($order, 'guest_name') ?? '')
-            : trim(is_string($user['name'] ?? null) ? $user['name'] : '');
-
-        return $name !== '' ? $name : 'Guest';
-    }
-
-    /** @param  array<string, mixed>|null  $user */
-    private static function customerEmail(stdClass $order, ?array $user): ?string
-    {
-        if ($user !== null && is_string($user['email'] ?? null) && $user['email'] !== '') {
-            return $user['email'];
-        }
-
-        return Row::nstr($order, 'guest_email');
     }
 
     /**

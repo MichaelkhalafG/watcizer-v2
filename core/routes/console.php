@@ -16,6 +16,12 @@ use Illuminate\Support\Facades\Schedule;
 // future customer-cancel button — gives its reserved stock back within a minute (deviation D-20).
 Schedule::command('inventory:reconcile-cancellations')->everyMinute()->withoutOverlapping();
 
+/*
+| Unpaid card orders (2026-09-26). A shopper who leaves Paymob's page without paying produces no
+| callback, so this is the only thing that gives their reserved stock back. Same cron entry.
+*/
+Schedule::command('orders:expire-unpaid')->everyMinute()->withoutOverlapping();
+
 // The Morabaa connector does not exist yet, so the outbox is drained by a no-op consumer to keep
 // the table bounded (study §4.2). The `mail` channel is deliberately never drained.
 Schedule::command('integration:drain --channel=morabaa')->hourly()->withoutOverlapping();

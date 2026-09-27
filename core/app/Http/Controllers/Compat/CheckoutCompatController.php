@@ -10,6 +10,8 @@ use App\Domain\Inventory\InsufficientOfferStock;
 use App\Domain\Inventory\InsufficientStock;
 use App\Domain\Inventory\InventoryService;
 use App\Domain\Notifications\OrderMailer;
+use App\Domain\Orders\OrderCustomer;
+use App\Domain\Orders\UnpaidOrders;
 use App\Domain\Payment\CallbackPolicy;
 use App\Domain\Payment\CheckoutMethods;
 use App\Domain\Payment\PaymentInitiator;
@@ -59,6 +61,7 @@ class CheckoutCompatController extends Controller
         private readonly PromotionSkips $skips,
         private readonly PaymentInitiator $initiator,
         private readonly CheckoutMethods $methods,
+        private readonly UnpaidOrders $unpaid,
     ) {}
 
     /** POST add_order */
@@ -200,6 +203,17 @@ class CheckoutCompatController extends Controller
                     'code' => $refusal['code'],
                 ], 422);
             }
+
+            /*
+             * ── The shopper's own unpaid card order gives its units back first (2026-09-26) ──
+             *
+             * A shopper who opened Paymob's page, came back without paying and now pays another way
+             * still has that first order holding the stock — so this order was refused with
+             * "Insufficient stock" for the shopper's OWN unit. Their earlier unpaid card orders are
+             * cancelled and released here, inside this transaction, so a refusal further down
+             * rolls the cancellation back with everything else. See UnpaidOrders.
+             */
+            $this->unpaid->supersedeFor($userId, $isGuest ? $guestToken : null, $this->compat->storefrontId);
 
             $paymentMethod = Val::str($data, 'payment_method') === 'card' ? 'paymob' : Val::str($data, 'payment_method');
 
@@ -797,7 +811,7 @@ class CheckoutCompatController extends Controller
         $orderNumber = $this->compat->checkout->orderNumber($orderId);
         $order = $this->compat->checkout->order($orderId);
         $amount = $order === null ? 0.0 : (float) Row::money($order, 'total_price_for_order');
-        $billing = $this->billingData($request, $userId, $addressId);
+        $billing = $this->billingData($orderId, $addressId);
 
         try {
             $contracted = $this->initiator->initiate(
@@ -868,28 +882,20 @@ class CheckoutCompatController extends Controller
     }
 
     /** @return array<string, string> */
-    private function billingData(Request $request, ?int $userId, int $addressId): array
+    private function billingData(int $orderId, int $addressId): array
     {
-        $first = 'Guest';
-        $last = 'User';
-        $email = 'guest@example.com';
-
-        $user = $userId === null ? null : DB::table('users')->where('id', $userId)->first();
-        if ($user !== null) {
-            $first = Row::nstr($user, 'first_name') ?? 'Guest';
-            $last = Row::nstr($user, 'last_name') ?? 'User';
-            $email = Row::nstr($user, 'email') ?? 'guest@example.com';
-        } else {
-            $parts = explode(' ', trim((string) ($this->nullableString($request->input('guest_name')) ?? 'Guest User')), 2);
-            $first = ($parts[0] !== '' ? $parts[0] : 'Guest');
-            $last = $parts[1] ?? 'User';
-            $email = $this->nullableString($request->input('guest_email')) ?? 'guest@example.com';
-        }
+        // Who is paying: OrderCustomer, the one definition the dashboard and the e-mails use —
+        // read off the ORDER that now exists rather than re-derived from the request body.
+        // Paymob requires every field, so the placeholders stay for a value blank everywhere.
+        $customer = OrderCustomer::of($orderId);
+        $parts = explode(' ', $customer->name ?? 'Guest User', 2);
+        $first = $parts[0] !== '' ? $parts[0] : 'Guest';
+        $last = $parts[1] ?? 'User';
+        $email = $customer->email ?? 'guest@example.com';
 
         $address = DB::table('addresses')->where('id', $addressId)->first();
         $street = $address === null ? 'N/A' : (Row::nstr($address, 'address_line') ?? 'N/A');
-        $phone = $address === null ? null : Row::nstr($address, 'phone_number_one');
-        $phone ??= $this->nullableString($request->input('guest_phone')) ?? '01000000000';
+        $phone = $customer->phone ?? '01000000000';
 
         $city = 'Cairo';
         if ($address !== null) {

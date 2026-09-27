@@ -8,6 +8,7 @@ use App\Domain\Access\Roles;
 use App\Domain\Inventory\Actor;
 use App\Domain\Inventory\InventoryService;
 use App\Domain\Notifications\OrderMailer;
+use App\Domain\Orders\OrderCustomer;
 use App\Domain\Orders\OrderFulfilment;
 use App\Domain\Orders\OrderTotals;
 use App\Domain\Orders\ProductPeek;
@@ -169,6 +170,7 @@ final class OrderController
             $row = Row::cast($raw);
             $id = Row::int($row, 'id');
             $status = Row::str($row, 'status');
+            $customer = $extras['customers'][$id] ?? null;
 
             return [
                 'id' => $id,
@@ -182,8 +184,8 @@ final class OrderController
                 // second success from overwriting it.
                 'paid_via_provider' => Row::nstr($row, 'paid_via_provider'),
                 'paid_via_method' => Row::nstr($row, 'paid_via_method'),
-                'customer' => Row::nstr($row, 'guest_name') ?? '—',
-                'phone' => Row::nstr($row, 'guest_phone'),
+                'customer' => $customer instanceof OrderCustomer ? ($customer->name ?? '—') : '—',
+                'phone' => $customer instanceof OrderCustomer ? $customer->phone : null,
                 'storefront' => Row::nstr($row, 'storefront_name'),
                 'storefront_id' => Row::nint($row, 'storefront_id'),
                 'created_at' => Row::nstr($row, 'created_at'),
@@ -257,6 +259,7 @@ final class OrderController
         // …and the same 404 for an order OUTSIDE the acting grant's storefronts (🟠-3).
         self::requireInScope($order);
         $status = Row::str($orderRow, 'status');
+        $customer = OrderCustomer::of($order);
 
         // Built once and read twice: the lines carry the ids the product panel is keyed on.
         $items = self::items($order);
@@ -279,10 +282,12 @@ final class OrderController
                 'paid_via_provider' => Row::nstr($orderRow, 'paid_via_provider'),
                 'paid_via_method' => Row::nstr($orderRow, 'paid_via_method'),
                 'note' => Row::nstr($orderRow, 'note'),
+                // OrderCustomer, not the guest_* columns: those are empty for a registered buyer,
+                // whose details are on their account and on the order's address.
                 'customer' => [
-                    'name' => Row::nstr($orderRow, 'guest_name'),
-                    'email' => Row::nstr($orderRow, 'guest_email'),
-                    'phone' => Row::nstr($orderRow, 'guest_phone'),
+                    'name' => $customer?->name,
+                    'email' => $customer?->email,
+                    'phone' => $customer?->phone,
                     'user_id' => Row::nint($orderRow, 'user_id'),
                 ],
                 'storefront' => Row::nstr($orderRow, 'storefront_name'),
@@ -740,10 +745,18 @@ final class OrderController
 
         $term = trim(Coerce::str($request->input('q')));
         if ($term !== '') {
-            // Order number or phone — the two things a customer says on the telephone.
+            // Order number or phone — the two things a customer says on the telephone. Every phone
+            // OrderCustomer can answer with, not only the guest's: a registered buyer's number is
+            // on the order's address or on their account.
             $query->where(function (Builder $outer) use ($term): void {
+                $like = '%'.$term.'%';
                 $outer->where('o.order_number', 'like', $term.'%')
-                    ->orWhere('o.guest_phone', 'like', '%'.$term.'%');
+                    ->orWhere('o.guest_phone', 'like', $like)
+                    ->orWhereExists(fn (Builder $a) => $a->selectRaw('1')->from('addresses as sa')
+                        ->whereColumn('sa.id', 'o.address_id')
+                        ->where(fn (Builder $p) => $p->where('sa.phone_number_one', 'like', $like)->orWhere('sa.phone_number_two', 'like', $like)))
+                    ->orWhereExists(fn (Builder $u) => $u->selectRaw('1')->from('users as su')
+                        ->whereColumn('su.id', 'o.user_id')->where('su.phone_number', 'like', $like));
             });
         }
     }
@@ -752,7 +765,7 @@ final class OrderController
      * Per-page extras, read once for the page's ids (AGENTS §2.24).
      *
      * @param  list<object>  $rows
-     * @return array{items: array<int, int>, attempts: array<int, array<string, mixed>>}
+     * @return array{items: array<int, int>, attempts: array<int, array<string, mixed>>, customers: array<int, OrderCustomer>}
      */
     private static function pageExtras(array $rows): array
     {
@@ -761,7 +774,7 @@ final class OrderController
             $ids[] = Row::int(Row::cast($raw), 'id');
         }
         if ($ids === []) {
-            return ['items' => [], 'attempts' => []];
+            return ['items' => [], 'attempts' => [], 'customers' => []];
         }
 
         $items = [];
@@ -795,7 +808,9 @@ final class OrderController
             }
         }
 
-        return ['items' => $items, 'attempts' => $attempts];
+        // Who each order's customer is, from the ONE definition (OrderCustomer) — for a guest and
+        // for a registered buyer alike, in one query for the page.
+        return ['items' => $items, 'attempts' => $attempts, 'customers' => OrderCustomer::forOrders($ids)];
     }
 
     /**
