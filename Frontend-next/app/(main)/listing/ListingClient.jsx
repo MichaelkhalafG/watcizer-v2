@@ -2,10 +2,10 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import { FiSliders, FiX, FiChevronDown, FiSearch, FiChevronLeft, FiChevronRight } from 'react-icons/fi'
-import { useCatalog } from '@/src/Hooks/queries/useCatalog'
+import { useTables } from '@/src/Hooks/queries/useTables'
+import { useListing, useCardsOf } from '@/src/Hooks/queries/useListing'
 import { useUIStore } from '@/src/Store/uiStore'
 import { buildListingParams, parseListingParams, paramsKey } from '@/src/utils/listingParams'
-import { passesFilters } from '@/src/utils/filterPredicate'
 import ProductCard from '@/src/Components/Product/ProductCard'
 import SideBar from '@/src/Components/SideBar/SideBar'
 import SmartSuggestions from '@/src/Components/Listing/SmartSuggestions'
@@ -53,7 +53,7 @@ function pageList(current, total) {
 // mount the Zustand store (written by SideBar/SmartSuggestions) takes over — the
 // URL→store effect seeds the store to match, so the two agree with no flash.
 export default function ListingClient({ seedParams = null }) {
-  const { tables, products, isFetching, isError, refetch } = useCatalog()
+  const { data: tables = {} } = useTables()
   const {
     language,
     currentPage: storeCurrentPage,
@@ -69,17 +69,6 @@ export default function ListingClient({ seedParams = null }) {
   const syncUrl = seedParams == null
 
   const [drawerOpen, setDrawerOpen] = useState(false)
-
-  // Category splits — derived locally (identical to MyProvider's old helper):
-  // filter the localized catalog by the English category_type literal.
-  const watches = useMemo(
-    () => (products || []).filter((p) => p.category_type === 'Watches'),
-    [products],
-  )
-  const fashion = useMemo(
-    () => (products || []).filter((p) => p.category_type === 'Fashion'),
-    [products],
-  )
 
   // Hydration flag: false during SSR + the first client render (so both agree),
   // then true — handing the source of truth to the client store.
@@ -159,60 +148,22 @@ export default function ListingClient({ seedParams = null }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storeFilters, storeCurrentPage, syncUrl, tablesReady])
 
-  // ── Filter + search + sort pipeline ──
-  // Derived synchronously (useMemo, not an effect) so the SERVER render already
-  // reflects the filtered count + first page — an effect wouldn't run during SSR.
-  const filteredProducts = useMemo(() => {
-    if (!products?.length && !watches?.length && !fashion?.length) return []
-
-    let base = products
-
-    if (filters.categories.length > 0) {
-      const names = filters.categories
-        .map((cat) => {
-          const c = tables.categoryTypes?.find((item) => item.id === cat)
-          return c?.translations?.find((t) => t.locale === language)?.category_type_name
-        })
-        .filter(Boolean)
-      if (names.length === 1) {
-        if (names[0] === 'Watches') base = watches
-        else if (names[0] === 'Fashion') base = fashion
-      }
-    }
-
-    let filtered = base.filter((product) => passesFilters(product, filters))
-
-    const q = parsed.q.trim().toLowerCase()
-    if (q) {
-      filtered = filtered.filter(
-        (p) =>
-          p.product_title?.toLowerCase().includes(q) ||
-          p.short_description?.toLowerCase().includes(q) ||
-          p.brand?.toLowerCase().includes(q) ||
-          p.search_keywords?.toLowerCase().includes(q),
-      )
-    }
-
-    if (parsed.sort === 'price_asc') {
-      filtered = [...filtered].sort((a, b) => a.sale_price_after_discount - b.sale_price_after_discount)
-    } else if (parsed.sort === 'price_desc') {
-      filtered = [...filtered].sort((a, b) => b.sale_price_after_discount - a.sale_price_after_discount)
-    } else if (parsed.sort === 'newest') {
-      filtered = [...filtered].sort((a, b) => b.id - a.id)
-    } else if (parsed.sort === 'rating') {
-      filtered = [...filtered].sort((a, b) => (b.rating || 0) - (a.rating || 0))
-    }
-
-    return filtered
-  }, [filters, products, watches, fashion, tables, language, parsed])
-
-  const totalPages = Math.max(1, Math.ceil(filteredProducts.length / PAGE_SIZE))
-
-  // Derived slice — no separate state/effect needed.
-  const displayedProducts = useMemo(
-    () => filteredProducts.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE),
-    [filteredProducts, currentPage],
-  )
+  // ── The page, its total and the facet counts: core's `catalog/listing` (C-1 stage 3) ──
+  // It searches, filters, sorts, pages and counts on the server — what this component used to do
+  // over the whole downloaded catalogue. The server page prefetches the same request (the same
+  // builder, src/lib/listingRequest.js), so the SERVER render already has the first page.
+  const listing = useListing({
+    filters,
+    q: parsed.q,
+    sort: parsed.sort,
+    page: currentPage,
+    lang: language,
+  })
+  const { data: listingData, isError, refetch } = listing
+  const displayedProducts = useCardsOf(listingData, language)
+  const facets = listingData?.facets
+  const resultCount = listingData?.total ?? 0
+  const totalPages = Math.max(1, Math.ceil(resultCount / PAGE_SIZE))
 
   // ── Sort dropdown (writes to URL directly) ──
   const handleSort = useCallback(
@@ -345,8 +296,9 @@ export default function ListingClient({ seedParams = null }) {
     return isRTL ? 'كل المنتجات' : 'All Products'
   }, [filters, nameMap, isRTL])
 
-  const resultCount = filteredProducts.length
-  const showSkeleton = isFetching && resultCount === 0
+  // Nothing yet (first load, no prefetched page): skeletons. A later filter change keeps the previous
+  // page on screen until the next one arrives (keepPreviousData), so there is no skeleton flash.
+  const showSkeleton = !listingData && !isError
 
   return (
     <div className="wz-listing" dir={isRTL ? 'rtl' : 'ltr'}>
@@ -364,12 +316,12 @@ export default function ListingClient({ seedParams = null }) {
         <h1 className="wz-listing-h1">{crumb}</h1>
 
         {/* Smart suggestions */}
-        <SmartSuggestions />
+        <SmartSuggestions facets={facets} />
 
         {/* Body: sidebar + content */}
         <div className="wz-listing-body">
           <aside className="wz-listing-aside">
-            <SideBar />
+            <SideBar facets={facets} />
           </aside>
 
           <div className="wz-listing-main">
@@ -544,7 +496,7 @@ export default function ListingClient({ seedParams = null }) {
           </button>
         </div>
         <div className="wz-fdrawer-body">
-          <SideBar />
+          <SideBar facets={facets} />
         </div>
         <div className="wz-fdrawer-foot">
           <button className="wz-fdrawer-apply" onClick={() => setDrawerOpen(false)}>

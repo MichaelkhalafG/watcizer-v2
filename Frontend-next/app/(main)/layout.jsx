@@ -1,6 +1,5 @@
 import { QueryClient, dehydrate, HydrationBoundary } from '@tanstack/react-query'
 import { getServerCatalog, getServerNav } from '@/src/lib/serverCatalog'
-import { projectCatalogForHydration } from '@/src/lib/catalogProjection'
 import AppStateBridge from './app-state-bridge'
 import Header from '@/src/Components/Header/Header'
 import CartModalHost from '../cart-modal-host'
@@ -24,10 +23,9 @@ export default async function MainLayout({ children }) {
     // page + generateMetadata, so this is ONE Laravel round-trip, not one per nav.
     const catalog = await getServerCatalog()
     qc.setQueryData(['tables'], catalog.tables)
-    // Dehydrate a LIGHT card projection — NOT the full ~17 MB catalog (C-1 fix).
-    // Cards/filters/search/facets read only these fields; the product detail page
-    // fetches the full record by id. See src/lib/catalogProjection.js.
-    qc.setQueryData(['products'], projectCatalogForHydration(catalog))
+    // The catalogue itself is NOT embedded here any more (C-1 stage 3): only the pages that still
+    // read it wrap themselves in <CatalogBoundary> (home, product/offer detail, cart, checkout,
+    // account). The listing, the brand/category pages and everything else carry no copy.
   } catch {
     // Catalog unreachable server-side → client fetches + shows error/retry.
   }

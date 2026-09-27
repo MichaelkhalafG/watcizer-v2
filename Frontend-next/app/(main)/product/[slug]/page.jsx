@@ -1,3 +1,4 @@
+import CatalogBoundary from '@/src/lib/CatalogBoundary'
 import { notFound, permanentRedirect } from 'next/navigation'
 import {
   getServerCatalog,
@@ -92,7 +93,9 @@ export default async function ProductPage({ params }) {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: safeJsonLd(breadcrumbLd) }}
       />
-      <ProductDetailClient param={slug} isOffer={false} />
+      <CatalogBoundary>
+        <ProductDetailClient param={slug} isOffer={false} />
+      </CatalogBoundary>
     </>
   )
 }
