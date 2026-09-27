@@ -7,6 +7,10 @@
 
         <title inertia>{{ config('app.name', 'Watchizer Core') }}</title>
 
+        {{-- The tab icon (2026-09-27): public/favicon.ico was an empty file and nothing named an icon. --}}
+        <link rel="icon" href="/favicon.ico" sizes="any">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+
         @viteReactRefresh
         @vite(['resources/js/app.tsx', "resources/js/pages/{$page['component']}.tsx"])
         @inertiaHead

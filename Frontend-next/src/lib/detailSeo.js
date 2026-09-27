@@ -84,7 +84,7 @@ export function buildProductSeo(product, { ratings = [], tables = null } = {}) {
   const canonicalPath = productUrl(product)
   const canonicalUrl = `${SEO_DOMAIN}${canonicalPath}`
   const ogTitle = `${name}${brand ? ` – ${brand}` : ''} | Watchizer`
-  const ogImage = images[0] || `${SEO_DOMAIN}/logo.svg`
+  const ogImage = images[0] || `${SEO_DOMAIN}/og-image.jpg`
 
   // Live review count/avg for aggregateRating (only emitted when reviews exist).
   const productRatings = (ratings || []).filter((r) => r.product_id === product.id)
@@ -163,7 +163,7 @@ export function buildOfferSeo(offer, offerProduct = null) {
   const canonicalPath = offerUrl(offer)
   const canonicalUrl = `${SEO_DOMAIN}${canonicalPath}`
   const ogTitle = `${name} | Watchizer`
-  const ogImage = images[0] || `${SEO_DOMAIN}/logo.svg`
+  const ogImage = images[0] || `${SEO_DOMAIN}/og-image.jpg`
 
   const reviewCount = offer.offer_rating?.length || 0
   const avgRating = reviewCount
