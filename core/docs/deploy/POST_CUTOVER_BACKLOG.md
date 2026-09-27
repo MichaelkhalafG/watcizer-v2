@@ -156,7 +156,12 @@ report too.
 ### C-1 — the catalogue moves to the server (developer's go, 2026-09-27: stages 1–4 in order, then Arabic; ship each as ready)
 
 - **Stage 1 — SHIPPED, verified live:** `/brand/Rolex` 14,250,000 → 3,746,271 bytes (−74%). See S4.
-- **Stage 2 — built 2026-09-27:** the header menu, the mobile drawer and the category tiles no longer
+- **Stage 2 — SHIPPED 2026-09-27**, after an `.htaccess` step the deploy notes missed: the API host's
+  allow-list named `catalog/meta` only, so Apache 404'd `catalog/nav` before core saw it. The
+  developer widened it to `catalog/(meta|nav)` (nav 401 / meta 401 without the key, `/manage` still
+  404). Now guarded: `ApiAllowListTest` fails when any storefront call is outside runbook §4.1.1's
+  block. **Stage 3 adds routes: each one needs that block AND the server file widened.**
+  The header menu, the mobile drawer and the category tiles no longer
   read the catalogue. They read the lookup tables plus core's new `GET /api/catalog/nav` (the brands
   with products, the sub-types and brands per category type, the genders with both names), which is
   derived from the `all_product` rows themselves (`CompatCatalog::nav`, cache family `compat_nav`,

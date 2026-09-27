@@ -948,6 +948,17 @@ what §4.3 does and why it is a mandatory step rather than a suggestion.
 
 ### 4.1.1 Replace the single line with this
 
+> **This block is the repository's copy of the server's allow-list, and a test reads it**
+> (`tests/Feature/Storefront/ApiAllowListTest.php`): every API call in the storefront's source must
+> pass one of these patterns. Edit the server file and this block TOGETHER, in the same change.
+>
+> **ANY new storefront API route needs this allow-list widened, or production 404s it.** Apache
+> answers before Laravel, so the route is in `route:list`, passes every local test and is still
+> invisible in production. Measured 2026-09-27: `catalog/nav` (C-1 stage 2) shipped without it and
+> 404'd until the `catalog/meta` line became `catalog/(meta|nav)`. Deploy note for such a change:
+> widen the line on the server, then probe the new path WITHOUT the key (401 from core = it got
+> through; 404 = Apache stopped it) and `/manage` on the API host (must stay 404).
+
 ```apache
     # ── Phase 2 (2026-09-22): one document root, two hosts, two policies ───────
     #
@@ -970,7 +981,7 @@ what §4.3 does and why it is a mandatory step rather than a suggestion.
     RewriteCond %{REQUEST_URI} !^/index\.php
     RewriteCond %{HTTP_HOST} ^api\.watchizereg\.com$ [NC]
     RewriteCond %{REQUEST_URI} !^/api/v2/
-    RewriteCond %{REQUEST_URI} !^/api/(catalog/meta|all_product|all_product_image|all_product_rating|show_shipping_city)$
+    RewriteCond %{REQUEST_URI} !^/api/(catalog/(meta|nav)|all_product|all_product_image|all_product_rating|show_shipping_city)$
     RewriteCond %{REQUEST_URI} !^/api/products(/|$)
     RewriteCond %{REQUEST_URI} !^/api/(add_to_cart|remove_from_cart|me/cart|cart/validate|cart/merge|add_order|add_address)$
     RewriteCond %{REQUEST_URI} !^/api/(delete_cart|me/addresses)(/|$)
