@@ -36,9 +36,16 @@ Git history holds the text it replaced.
   Googlebot is NOT blocked and the SEO section (Arabic included) is unblocked.
 
 ### 2. Committed, not deployed
-- **Checkout fix 2 + fix 4** (storefront only, 2026-09-28) — see "Fix 2 and fix 4" below.
-- **`3b31a78` — the search dropdown fix** (storefront only): it never shows another search's results
-  and starts at 2 letters. Verified locally at 400 and 150 ms per letter. Deploy with the next
+- **`149af67` — the storefront batch** (storefront only, 2026-09-28): the search dropdown fix, checkout
+  fix 4 and checkout fix 2 — see "Fix 2 and fix 4" below.
+- **The search dropdown fix** (in `149af67`): it never shows another search's results and starts at 2
+  letters. **Verified 2026-09-28 on a fresh local build of `149af67`, real browser, pass/fail:**
+  typing "rolex" at 150 ms a letter, then deleting back to "ro", the page sampled every 40 ms —
+  4/4 runs pass (2 English, 2 Arabic), ~1,260 samples showing results, every one the server's answer
+  for the text in the box; one letter shows "Type at least 2 letters" / "اكتب حرفين على الأقل" and
+  sends nothing. Two earlier runs with a 2.5 s wait saw an answer arrive late (never a wrong one):
+  local core is PHP's one-request-at-a-time server, and the next search queued behind the previous
+  results' images; the live host serves concurrently. Still hard-reload before the live check. Deploy with the next
   storefront build; hard-reload before checking (runbook §7 step 0).
 
 ### Done by the developer 2026-09-28 (afternoon)
@@ -129,12 +136,27 @@ Git history holds the text it replaced.
 - **Checkout fix 4** — the /cart → /checkout navigation re-sends a 3.24 MB RSC payload (681 KB
   compressed, ~5 s on Slow 4G) because `checkout/layout.jsx` embeds the catalogue again. CAUSED BY
   STAGE 3. One shared layout for cart + checkout, or stage 4, whichever lands first.
-- **The rows cache** (NEW, measured live 2026-09-28). To return a page, core reads the WHOLE cached
-  catalogue to pick 24 rows: 40–67 ms warm, **404 ms cold** (the slowest live tap, 695 ms). Cache
-  product rows individually so a page reads 24. Related, same place: the listing INDEX rebuilds
-  (~0.9 s locally) after every cache-version bump — any product, stock or placement change — so the
-  first tap after a stock change pays it; warm it on the write, not on the next shopper. ~1–2 h +
-  tests.
+- **The rows cache + index warm-up — BUILT 2026-09-28, not yet committed** (core). Was: to return a
+  page, core read the WHOLE cached catalogue to pick 24 rows (live: 40–67 ms warm, **404 ms cold**,
+  slowest tap 695 ms), and the listing index (~1 s) was rebuilt by whichever shopper tapped first
+  after it expired (every 10 min) or after any dashboard write. Now:
+  - each product's card row + gallery is its own cache entry (`compat_card`); a page reads its 24,
+    and a missing one is read live for just that product and stored;
+  - `catalog:warm` rebuilds the index, the catalogue and every card entry every 5 minutes
+    (`routes/console.php`, the existing `schedule:run` cron) — inside the 10-minute TTL, so a shopper
+    never meets an expired index — and again right after any request that flushed the cache has
+    sent its response (`compat.warm_on_write`); only the storefronts in `COMPAT_WARM_STOREFRONTS`
+    (default `1`: see L8 for why not Brand Fashion);
+  - `LegacyJson::ts` (a `Carbon::parse` per timestamp) is memoised — identical output.
+  **Measured locally, real HTTP, file cache (Server-Timing):** cold, right after a flush with no
+  warm-up: index 763 → **394 ms**, cards 359 → **67 ms**. Warm pages: cards **34–58 ms new vs 37–59
+  ms old — no gain on this machine**, one new request spiked to 490 ms. In-process a warm page of
+  cards costs ~11 ms, but the FIRST read of 24 entries costs ~47 ms: each page opens 24 files it
+  has not opened before, and this Windows machine has real-time antivirus scanning on the project
+  (likely cause, not proven). Linux on the host should not pay that; **live Server-Timing after the
+  deploy is the real measurement** (baseline above). If warm `cards` is not clearly under 40 ms
+  live, the per-product entries are not worth their 698 small files per warm-up and should go,
+  keeping the warm-up and the memo.
 - **C-1 stage 4** (home, product, cart, checkout, account off the client catalogue; related from the
   server; remove the remaining catalogue copies and the client transform), with **the home-page
   rail ordering** (new, below).
@@ -326,6 +348,22 @@ customer's real values end to end — built from a real checkout request, not fr
 handed to the provider — and a placeholder (`-`, `Guest`, `01000000000`, `no-reply@…`) reaching
 the wire for a customer who gave the real value is a failure. `CheckoutMethodsTest` now does this
 for the phone; the same assertion is owed for name, e-mail and street.
+
+### Lesson: cleaning git wipes the stash too — restore first, then clean (2026-09-28)
+
+To remove AI trailers from pushed commits, the working tree was cleared with a stash, the history
+rewritten, and the old objects purged with `git reflog expire --expire=now --all` + `git gc
+--prune=now`. **The stash lives in the reflog (`refs/stash`), so that purge deleted it** —
+`git fsck --unreachable` found nothing. Thirteen uncommitted files of item 4 were gone from git.
+
+- **The order is: restore, then clean.** `git stash pop` (and check `git status`) BEFORE any
+  `reflog expire` or `gc --prune`; purge last, when nothing you still need lives only in a stash.
+- **What saved it:** before pausing, the agent had copied every uncommitted file, plus `git diff HEAD`
+  as a patch, to a folder OUTSIDE the repository. Recovery was: `git apply --check` of the patch
+  against the new HEAD (read-only — proves the base files are identical), copy the files back,
+  confirm `git diff HEAD` is byte-for-byte the saved patch. Five minutes, nothing rebuilt.
+- **Standing practice:** before any pause for a git operation the developer will run, the agent saves
+  a copy of all uncommitted work outside the repo and says where.
 
 ### Lesson: a browser pass writes real rows, and nothing rolls them back
 
@@ -556,6 +594,7 @@ What remains is what would otherwise be BROKEN on Brand Fashion:
 | L5 | **Per-storefront values** — the post-payment return URL (a Brand Fashion shopper must land back on `brandfashionegy.com`), the password-reset and sign-in landing host, CORS for Brand Fashion's origin, and the asset host its payloads name | **Now** | S–M |
 | L3 | **Google sign-in per storefront** — a redirect URI (and credentials) per shop, or sign-in cannot complete on Brand Fashion. The consent screen's name is irrelevant | When Brand Fashion's frontend starts | M |
 | L2 | **Accounts per storefront** — design first; built last, immediately before launch, so it is the freshest change when the second shop goes up | Last | M–L |
+| **L8** | **🔴 LAUNCH BLOCKER — Brand Fashion's catalogue is too big for how core builds the listing** (measured 2026-09-28, local). The listing index, the header menu's facts (`compat_nav`) and the `all_product` payload are each built from the WHOLE catalogue in ONE request and stored as ONE cache entry. Watchizer: 698 products → ~1.5 s, 60 MB peak. **Brand Fashion: 7,579 products → 41 s and 206 MB**, over PHP's 128 MB `memory_limit` (the warm-up died on it). So the day a domain points at Brand Fashion, its first listing or menu request dies with a fatal error — and because nothing gets cached, **so does every request after it**. 11× the products took 27× the time, so something in the build scales worse than linearly; it has NOT been profiled. **What it takes:** (1) build the listing index and `compat_nav` from a lean SQL read of only the fields they filter, sort and search on — never from full `all_product` rows; (2) cards already come from per-product entries (item 4, 2026-09-28); (3) nothing on the request path may read the whole catalogue — which means C-1 stage 4 (the storefront's remaining client catalogue copies and the wholesale `all_product` read) has to be done first; (4) warm Brand Fashion off the request path (`COMPAT_WARM_STOREFRONTS=1,2`, item 4's warmer), chunked if one build is still too big; (5) prove it with Brand Fashion's real 7,579 products under `memory_limit=128M` and the host's execution-time limit, cold. Raising `memory_limit` is not a fix: it does nothing about 41 s. Profile first, then decide (1)'s shape | **Before Brand Fashion's domain is pointed; after C-1 stage 4** | M (~1–2 days, estimate before profiling) |
 | — | **Ordering:** set `storefronts.domain` for Brand Fashion BEFORE pointing `api.brandfashionegy.com` at the server — `CompatStorefront` falls back to Watchizer for an unknown host and would serve Watchizer's catalogue | At DNS time | none |
 | L4, L7 | Paymob merchant account, legal entity, owner checklist | Owner | — |
 
