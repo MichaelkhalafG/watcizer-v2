@@ -2,12 +2,14 @@
 
 namespace App\Providers;
 
+use App\Compat\CatalogWarmer;
 use App\Domain\Access\Abilities;
 use App\Domain\Access\Roles;
 use App\Domain\Access\UserWriteGuard;
 use App\Domain\Import\ImageCache;
 use App\Domain\Inventory\StockWriteGuard;
 use App\Domain\Payment\ProviderRegistry;
+use App\Storefront\StorefrontCache;
 use App\Support\LegacyReadOnly;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Database\Eloquent\Model;
@@ -16,6 +18,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 
@@ -178,6 +181,25 @@ class AppServiceProvider extends ServiceProvider
         foreach (DB::getConnections() as $connection) {
             UserWriteGuard::refuse($connection);
         }
+
+        /*
+         * The listing index, rebuilt right after a write made it stale (2026-09-28, CatalogWarmer).
+         * `terminating` runs once the response has been sent, so the dashboard user who saved does
+         * not wait for it and the next shopper does not pay it. A failure here is logged and
+         * forgotten: the next tap, or the 5-minute `catalog:warm`, builds the index anyway.
+         */
+        $this->app->terminating(function (): void {
+            $ids = StorefrontCache::takeFlushed();
+            if ($ids === [] || ! config()->boolean('compat.warm_on_write')) {
+                return;
+            }
+            try {
+                $warmer = $this->app->make(CatalogWarmer::class);
+                $warmer->warm($warmer->allowed($ids));
+            } catch (\Throwable $e) {
+                Log::warning('catalog warm-up after a write failed', ['storefronts' => $ids, 'error' => $e->getMessage()]);
+            }
+        });
     }
 
     /**

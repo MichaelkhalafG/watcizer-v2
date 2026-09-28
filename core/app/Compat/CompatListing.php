@@ -131,6 +131,13 @@ final class CompatListing
      * Raw `all_product` rows for these ids (in this order), with their ratings and gallery images —
      * what the storefront's card transform needs, for a handful of products.
      *
+     * Each product's row and gallery are cached ON THEIR OWN (`compat_card`, 2026-09-28), so a page
+     * reads its 24 entries. It used to read the whole cached catalogue to pick them: 40–67 ms warm,
+     * ~400 ms when that cache had just expired. `warm()` writes every entry; one that is missing is
+     * read live for just that product and stored. Ratings are always read live (no event forgets
+     * them). An id the catalogue no longer shows (hidden, deleted since the index was built) is
+     * left out.
+     *
      * @param  list<int>  $ids
      * @return Cards
      */
@@ -139,25 +146,74 @@ final class CompatListing
         if ($ids === []) {
             return ['products' => [], 'ratings' => [], 'images' => []];
         }
-        $wanted = array_flip($ids);
-        $byId = [];
-        foreach ($this->catalog->allProduct(config()->string('compat.pinned_locale')) as $row) {
-            if (is_int($row['id'] ?? null) && isset($wanted[$row['id']])) {
-                $byId[$row['id']] = $row;
-            }
-        }
-        $products = [];
+        $locale = config()->string('compat.pinned_locale');
+        $suffix = fn (int $id): string => "{$locale}:{$id}";
+        $cached = $this->cache->many($this->storefrontId, 'compat_card', array_map($suffix, $ids));
+
+        /** @var array<int, array{row: array<string, mixed>, images: list<array<string, mixed>>}> $entries */
+        $entries = [];
+        $missing = [];
         foreach ($ids as $id) {
-            if (isset($byId[$id])) {
-                $products[] = $byId[$id];
+            $hit = $cached[$suffix($id)] ?? null;
+            if (is_array($hit) && is_array($hit['row'] ?? null) && is_array($hit['images'] ?? null)) {
+                /** @var array{row: array<string, mixed>, images: list<array<string, mixed>>} $hit */
+                $entries[$id] = $hit;
+            } else {
+                $missing[] = $id;
             }
         }
+        if ($missing !== []) {
+            $built = self::cardEntries($this->catalog->productRows($locale, $missing), $this->catalog->productImages($missing));
+            $store = [];
+            foreach ($built as $id => $entry) {
+                $entries[$id] = $entry;
+                $store[$suffix($id)] = $entry;
+            }
+            $this->cache->putMany($this->storefrontId, 'compat_card', $store, config()->integer('compat.ttl.all_product'));
+        }
+
+        $products = [];
+        $images = [];
+        foreach ($ids as $id) {
+            if (isset($entries[$id])) {
+                $products[] = $entries[$id]['row'];
+                array_push($images, ...$entries[$id]['images']);
+            }
+        }
+        // The catalogue-wide order the storefront has always received: gallery rows by their id.
+        usort($images, fn (array $a, array $b): int => ($a['id'] ?? 0) <=> ($b['id'] ?? 0));
+        $byId = array_fill_keys(array_keys($entries), true);
 
         return [
             'products' => $products,
-            'ratings' => self::forProducts($this->catalog->allProductRating(), $byId),
-            'images' => self::forProducts($this->catalog->allProductImage(), $byId),
+            'ratings' => self::forProducts($this->catalog->productRatings(array_keys($entries)), $byId),
+            'images' => $images,
         ];
+    }
+
+    /**
+     * Rows and gallery images grouped into one `compat_card` entry per product.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @param  list<array<string, mixed>>  $images
+     * @return array<int, array{row: array<string, mixed>, images: list<array<string, mixed>>}>
+     */
+    private static function cardEntries(array $rows, array $images): array
+    {
+        $out = [];
+        foreach ($rows as $row) {
+            if (is_int($row['id'] ?? null)) {
+                $out[$row['id']] = ['row' => $row, 'images' => []];
+            }
+        }
+        foreach ($images as $image) {
+            $pid = $image['product_id'] ?? null;
+            if (is_int($pid) && isset($out[$pid])) {
+                $out[$pid]['images'][] = $image;
+            }
+        }
+
+        return $out;
     }
 
     /**
@@ -457,6 +513,29 @@ final class CompatListing
 
             return $this->buildIndex();
         });
+    }
+
+    /**
+     * Rebuild the index NOW, with the catalogue under it, and store both (2026-09-28). Run by
+     * `catalog:warm` on the schedule, so the index is replaced before it expires, and right after a
+     * dashboard write has made it stale — so neither the TTL nor the write leaves the ~1 s rebuild
+     * to the next shopper's tap.
+     */
+    public function warm(): void
+    {
+        $locale = config()->string('compat.pinned_locale');
+        $ttl = config()->integer('compat.ttl.all_product');
+        // The version is read before anything is built (see StorefrontCache::refresh): a write that
+        // lands meanwhile leaves these entries under the old version, which nothing reads.
+        $version = $this->cache->version($this->storefrontId);
+        $rows = $this->catalog->refreshAllProduct($locale);
+        $this->cache->refresh($this->storefrontId, 'compat_listing', '', $ttl, fn (): array => $this->buildIndex());
+
+        $store = [];
+        foreach (self::cardEntries($rows, $this->catalog->productImages(array_values(array_filter(array_map(fn (array $r): mixed => $r['id'] ?? null, $rows), 'is_int')))) as $id => $entry) {
+            $store["{$locale}:{$id}"] = $entry;
+        }
+        $this->cache->putMany($this->storefrontId, 'compat_card', $store, $ttl, $version);
     }
 
     /** @return Index */

@@ -116,6 +116,20 @@ return [
     // Where callback_payment sends the shopper back to, hard-coded in the legacy controller.
     'payment_return_url' => env('COMPAT_PAYMENT_RETURN_URL', 'https://watchizereg.com/'),
 
+    /*
+     * Rebuild a storefront's listing index right after a request or command that flushed its cache
+     * has answered (2026-09-28, App\Compat\CatalogWarmer). Off in the test suite (phpunit.xml): a
+     * dashboard-write test does not need the ~1 s rebuild after it.
+     */
+    'warm_on_write' => (bool) env('COMPAT_WARM_ON_WRITE', true),
+
+    /*
+     * The storefronts whose listing is warmed — the ones shoppers actually reach through this API.
+     * NOT every active storefront: measured 2026-09-28, Brand Fashion's build takes ~41 s and
+     * 206 MB (over PHP's 128 MB), so warming it every 5 minutes would crash the cron. Comma list.
+     */
+    'warm_storefronts' => array_values(array_filter(array_map('intval', explode(',', (string) env('COMPAT_WARM_STOREFRONTS', '1'))))),
+
     // Application-cache TTLs (seconds) — the legacy app used 3600 / 600 for the same payloads.
     'ttl' => [
         'meta' => 3600,

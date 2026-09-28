@@ -73,3 +73,11 @@ Schedule::command('core:backup --keep=7')->dailyAt('03:00')->withoutOverlapping(
 | sign-out for ever. It rides the same one-minute `schedule:run` entry as everything above.
 */
 Schedule::command('tokens:prune')->dailyAt('03:15');
+
+/*
+| The listing index (2026-09-28, CatalogWarmer). It lives 10 minutes (`compat.ttl.all_product`)
+| and takes ~1 s to build; rebuilt every 5 it never expires under a shopper, and the stock it
+| sorts by is never more than 5 minutes old. A write that makes it stale rebuilds it at once
+| (`compat.warm_on_write`); this tick covers everything else. Same `schedule:run` entry.
+*/
+Schedule::command('catalog:warm')->everyFiveMinutes()->withoutOverlapping();

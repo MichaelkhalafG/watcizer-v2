@@ -32,6 +32,7 @@
         <env name="BCRYPT_ROUNDS" value="4"/>
         <env name="BROADCAST_CONNECTION" value="null"/>
         <env name="CACHE_STORE" value="array"/>
+        <env name="COMPAT_WARM_ON_WRITE" value="false"/>
         <!-- DB_* deliberately NOT overridden: tests run on the local MariaDB copy inside rolled-back transactions (Tests\TestCase). -->
         <env name="MAIL_MAILER" value="array"/>
         <env name="PULSE_ENABLED" value="false"/>

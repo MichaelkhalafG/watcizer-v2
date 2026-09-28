@@ -55,6 +55,19 @@ final class CompatStorefront
 
     public function __construct(private readonly Request $request) {}
 
+    /**
+     * A given storefront, for work that has no shopper's request: `catalog:warm` builds each
+     * storefront's caches through the same `CompatServices` door with this.
+     */
+    public static function pinned(int $storefrontId): self
+    {
+        $s = new self(Request::create('/'));
+        $s->resolved = $storefrontId;
+        $s->matched = true;
+
+        return $s;
+    }
+
     /** The storefront this request belongs to. */
     public function id(): int
     {

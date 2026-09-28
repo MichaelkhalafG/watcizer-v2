@@ -34,10 +34,41 @@ final class CompatCatalog
         return $this->cache->remember($this->storefrontId, 'compat_all_product', $appLocale, $ttl, fn () => $this->buildAllProduct($appLocale));
     }
 
-    /** @return list<array<string, mixed>> */
-    private function buildAllProduct(string $appLocale): array
+    /**
+     * Rebuild and store the whole catalogue now, and return it (the warm-up; see `CompatListing::warm`).
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function refreshAllProduct(string $appLocale): array
     {
-        $rows = $this->products->query()->orderBy('p.id')->get();
+        return $this->cache->refresh($this->storefrontId, 'compat_all_product', $appLocale, config()->integer('compat.ttl.all_product'), fn () => $this->buildAllProduct($appLocale));
+    }
+
+    /**
+     * The `all_product` rows of just these products, read LIVE — no cache. A listing page needs 24
+     * rows; reading them out of the cached whole catalogue cost 40–67 ms warm and ~400 ms cold on
+     * the live host (2026-09-28), while these few indexed queries cost a few ms and are never stale.
+     * Same builder as `allProduct`, so a row is identical either way (CatalogCardsLiveTest).
+     *
+     * @param  list<int>  $ids
+     * @return list<array<string, mixed>>
+     */
+    public function productRows(string $appLocale, array $ids): array
+    {
+        return $ids === [] ? [] : $this->buildAllProduct($appLocale, $ids);
+    }
+
+    /**
+     * @param  list<int>|null  $only  these products only (null = the whole catalogue)
+     * @return list<array<string, mixed>>
+     */
+    private function buildAllProduct(string $appLocale, ?array $only = null): array
+    {
+        $query = $this->products->query()->orderBy('p.id');
+        if ($only !== null) {
+            $query->whereIn('p.id', $only);
+        }
+        $rows = $query->get();
         $ids = [];
         foreach ($rows as $row) {
             $ids[] = Row::int($row, 'id');
@@ -251,29 +282,49 @@ final class CompatCatalog
         $ttl = config()->integer('compat.ttl.all_product_image');
 
         /** @var list<array<string, mixed>> */
-        return $this->cache->remember($this->storefrontId, 'compat_all_product_image', '', $ttl, function (): array {
-            $out = [];
-            $rows = DB::table('catalog_product_images')
-                ->select(['id', 'product_id', 'path', 'sort', 'alt_ar', 'alt_en', 'created_at', 'updated_at'])
-                ->where('is_cover', 0)
-                ->orderBy('id')
-                ->get();
-            foreach ($rows as $row) {
-                $out[] = [
-                    'id' => Row::int($row, 'id'),
-                    'product_id' => Row::int($row, 'product_id'),
-                    'image' => LegacyJson::legacyImage(Row::str($row, 'path'), 'Product_image') ?? '',
-                    'is_cover' => false,
-                    'sort' => max(0, Row::int($row, 'sort') - 1),
-                    'alt_ar' => Row::nstr($row, 'alt_ar'),
-                    'alt_en' => Row::nstr($row, 'alt_en'),
-                    'created_at' => LegacyJson::ts(Row::nstr($row, 'created_at')),
-                    'updated_at' => LegacyJson::ts(Row::nstr($row, 'updated_at')),
-                ];
-            }
+        return $this->cache->remember($this->storefrontId, 'compat_all_product_image', '', $ttl, fn (): array => $this->buildProductImages(null));
+    }
 
-            return $out;
-        });
+    /**
+     * The gallery rows of just these products, read live (see `productRows`).
+     *
+     * @param  list<int>  $ids
+     * @return list<array<string, mixed>>
+     */
+    public function productImages(array $ids): array
+    {
+        return $ids === [] ? [] : $this->buildProductImages($ids);
+    }
+
+    /**
+     * @param  list<int>|null  $only
+     * @return list<array<string, mixed>>
+     */
+    private function buildProductImages(?array $only): array
+    {
+        $out = [];
+        $query = DB::table('catalog_product_images')
+            ->select(['id', 'product_id', 'path', 'sort', 'alt_ar', 'alt_en', 'created_at', 'updated_at'])
+            ->where('is_cover', 0)
+            ->orderBy('id');
+        if ($only !== null) {
+            $query->whereIn('product_id', $only);
+        }
+        foreach ($query->get() as $row) {
+            $out[] = [
+                'id' => Row::int($row, 'id'),
+                'product_id' => Row::int($row, 'product_id'),
+                'image' => LegacyJson::legacyImage(Row::str($row, 'path'), 'Product_image') ?? '',
+                'is_cover' => false,
+                'sort' => max(0, Row::int($row, 'sort') - 1),
+                'alt_ar' => Row::nstr($row, 'alt_ar'),
+                'alt_en' => Row::nstr($row, 'alt_en'),
+                'created_at' => LegacyJson::ts(Row::nstr($row, 'created_at')),
+                'updated_at' => LegacyJson::ts(Row::nstr($row, 'updated_at')),
+            ];
+        }
+
+        return $out;
     }
 
     /**
@@ -283,12 +334,34 @@ final class CompatCatalog
      */
     public function allProductRating(): array
     {
+        return $this->buildProductRatings(null);
+    }
+
+    /**
+     * The ratings of just these products (see `productRows`).
+     *
+     * @param  list<int>  $ids
+     * @return list<array<string, mixed>>
+     */
+    public function productRatings(array $ids): array
+    {
+        return $ids === [] ? [] : $this->buildProductRatings($ids);
+    }
+
+    /**
+     * @param  list<int>|null  $only
+     * @return list<array<string, mixed>>
+     */
+    private function buildProductRatings(?array $only): array
+    {
         $out = [];
-        $rows = DB::connection('legacy')->table('product_ratings')
+        $query = DB::connection('legacy')->table('product_ratings')
             ->select(['id', 'user_id', 'product_id', 'rating', 'comment', 'created_at', 'updated_at'])
-            ->orderBy('id')
-            ->get();
-        foreach ($rows as $row) {
+            ->orderBy('id');
+        if ($only !== null) {
+            $query->whereIn('product_id', $only);
+        }
+        foreach ($query->get() as $row) {
             $out[] = [
                 'id' => Row::int($row, 'id'),
                 'user_id' => Row::int($row, 'user_id'),
