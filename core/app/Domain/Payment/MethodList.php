@@ -80,12 +80,27 @@ final class MethodList
      * not acted on: `serves` still says which row the list would route to, because hiding an
      * unusable winner would make the routing look healthier than it is.
      *
-     * @return list<array{id: int, method: string, label: string, icon: string|null, sort: int, provider: string, provider_id: int, is_enabled: bool, provider_enabled: bool, integration_id: string|null, serves: bool, served_by: string|null, label_mismatch: bool, unusable: string|null}>
+     * `shares_integration_id_with` (2026-09-28) names the OTHER methods under the same contract that
+     * carry the same integration id — enabled or not, since a row prepared suspended is enabled
+     * later. Two methods on one id both charge through that one Paymob integration, whichever the
+     * shopper picked; it is how bank_installment ended up on 5943060, a digit away from its own
+     * number. Warned about, not refused: the screen and the save say so, the operator decides.
+     *
+     * @return list<array{id: int, method: string, label: string, icon: string|null, sort: int, provider: string, provider_id: int, is_enabled: bool, provider_enabled: bool, integration_id: string|null, serves: bool, served_by: string|null, label_mismatch: bool, unusable: string|null, shares_integration_id_with: list<string>}>
      */
     public static function forAdmin(int $storefrontId, string $locale): array
     {
         $registry = app(ProviderRegistry::class);
         $candidates = self::candidates($storefrontId, $locale, onlyEnabled: false);
+
+        // Methods per (contract, integration id).
+        $byId = [];
+        foreach ($candidates as $row) {
+            $id = self::normalisedId($row['integration_id']);
+            if ($id !== null) {
+                $byId[$row['provider_id']][$id][] = $row;
+            }
+        }
 
         // The winner per key, computed from the ENABLED rows only and in the same order the
         // customer list uses — a disabled row never takes the money.
@@ -116,7 +131,61 @@ final class MethodList
                 'unusable' => $registry->has($row['provider'])
                     ? $registry->get($row['provider'])->integrationIdProblem($row['integration_id'])
                     : 'unknown_provider',
+                'shares_integration_id_with' => self::others($byId[$row['provider_id']][self::normalisedId($row['integration_id']) ?? ''] ?? [], $row['id']),
             ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * The OTHER methods under this contract that carry this integration id (the save's warning).
+     *
+     * @return list<string> their method keys
+     */
+    public static function sharingIntegrationId(int $providerId, ?string $integrationId, int $exceptMethodId): array
+    {
+        $id = self::normalisedId($integrationId);
+        if ($id === null) {
+            return [];
+        }
+        $rows = [];
+        foreach (
+            DB::table('storefront_payment_methods')
+                ->where('storefront_payment_provider_id', $providerId)
+                ->where('id', '!=', $exceptMethodId)
+                ->whereNotNull('integration_id')
+                ->orderBy('sort')->orderBy('method')->orderBy('id')
+                ->get(['id', 'method', 'integration_id']) as $raw
+        ) {
+            $row = Row::cast($raw);
+            if (self::normalisedId(Row::nstr($row, 'integration_id')) === $id) {
+                $rows[] = ['id' => Row::int($row, 'id'), 'method' => Row::str($row, 'method')];
+            }
+        }
+
+        return self::others($rows, $exceptMethodId);
+    }
+
+    /** An integration id as compared: trimmed; blank is "none". */
+    private static function normalisedId(?string $id): ?string
+    {
+        $id = $id === null ? '' : trim($id);
+
+        return $id === '' ? null : $id;
+    }
+
+    /**
+     * @param  list<array{id: int, method: string}|array<string, mixed>>  $rows
+     * @return list<string>
+     */
+    private static function others(array $rows, int $exceptId): array
+    {
+        $out = [];
+        foreach ($rows as $r) {
+            if ($r['id'] !== $exceptId && is_string($r['method']) && ! in_array($r['method'], $out, true)) {
+                $out[] = $r['method'];
+            }
         }
 
         return $out;

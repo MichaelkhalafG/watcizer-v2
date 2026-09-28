@@ -6,15 +6,15 @@ use Illuminate\Support\Facades\File;
 
 /*
  * §5.2: no cache key may be written without a listed event that forgets it. Every
- * StorefrontCache::remember() / key() call in app/ names a key family; each family must be in
- * INVALIDATION_MAP with at least one event, and the map must not carry dead families.
+ * StorefrontCache::remember() / key() / refresh() call in app/ names a key family; each family must
+ * be in INVALIDATION_MAP with at least one event, and the map must not carry dead families.
  */
 
 it('lists every cache key family the application writes, and nothing else', function () {
     $used = [];
     foreach (File::allFiles(app_path()) as $file) {
         $src = $file->getContents();
-        if (preg_match_all("/->(?:remember|key)\\(\\s*[^,]+,\\s*'([a-z_]+)'/", $src, $m) > 0) {
+        if (preg_match_all("/->(?:remember|key|refresh|many|putMany)\\(\\s*[^,]+,\\s*'([a-z_]+)'/", $src, $m) > 0) {
             foreach ($m[1] as $what) {
                 $used[$what] = true;
             }

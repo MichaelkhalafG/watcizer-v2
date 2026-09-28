@@ -27,6 +27,7 @@ const useCart = () => {
     // new capabilities
     undoRemove: cartStore.undoRemove,
     validateCart: cartStore.validateCart,
+    reconcile: cartStore.reconcile,
     fetchCart: cartStore.fetchCart,
     mergeGuestCart: cartStore.mergeGuestCart,
     totals: extra.totals,

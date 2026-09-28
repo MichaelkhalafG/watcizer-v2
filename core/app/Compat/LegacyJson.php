@@ -17,9 +17,22 @@ final class LegacyJson
         if ($dbValue === null || $dbValue === '') {
             return null;
         }
+        // Memoised (2026-09-28): `Carbon::parse` was most of the time a page of cards took — two
+        // per product and two per gallery image — and the same stamps recur (imports share them).
+        // Same input, same zone, same answer; the memo is dropped before it can grow large.
+        $key = config()->string('app.timezone').'|'.$dbValue;
+        if (! isset(self::$ts[$key])) {
+            if (count(self::$ts) >= 50000) {
+                self::$ts = [];
+            }
+            self::$ts[$key] = Carbon::parse($dbValue, config()->string('app.timezone'))->toJSON();
+        }
 
-        return Carbon::parse($dbValue, config()->string('app.timezone'))->toJSON();
+        return self::$ts[$key];
     }
+
+    /** @var array<string, string> zone|db value => `ts()` */
+    private static array $ts = [];
 
     /** `Carbon::toIso8601String()` as used for rating rows: local offset form. */
     public static function iso8601(?string $dbValue): ?string

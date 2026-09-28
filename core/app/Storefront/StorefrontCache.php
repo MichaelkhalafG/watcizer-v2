@@ -32,11 +32,35 @@ final class StorefrontCache
         'compat_meta' => ['CategoryTreeChanged', 'LookupChanged', 'BannerChanged', 'PlacementChanged', 'StorefrontProductChanged'],
         'compat_all_product' => ['ProductUpdated', 'StockChanged', 'StorefrontProductChanged', 'PlacementChanged', 'LookupChanged'],
         'compat_all_product_image' => ['ProductUpdated'],
+        // One product's card row + gallery (2026-09-28): a listing page reads 24 of these instead of
+        // the whole catalogue. The union of compat_all_product's and compat_all_product_image's events.
+        'compat_card' => ['ProductUpdated', 'StockChanged', 'StorefrontProductChanged', 'PlacementChanged', 'LookupChanged'],
         // Derived from compat_all_product (the header menu's facts, C-1 stage 2): the same events.
         'compat_nav' => ['ProductUpdated', 'StockChanged', 'StorefrontProductChanged', 'PlacementChanged', 'LookupChanged'],
         // The listing index (C-1 stage 3): derived from compat_all_product and the brand names in compat_meta.
         'compat_listing' => ['ProductUpdated', 'StockChanged', 'StorefrontProductChanged', 'PlacementChanged', 'LookupChanged'],
     ];
+
+    /**
+     * Storefronts flushed during this request / command — warmed once it has answered
+     * (`catalog:warm`'s after-write half, wired in AppServiceProvider).
+     *
+     * @var array<int, true>
+     */
+    private static array $flushed = [];
+
+    /**
+     * The storefronts flushed since the last call, and forget them.
+     *
+     * @return list<int>
+     */
+    public static function takeFlushed(): array
+    {
+        $ids = array_keys(self::$flushed);
+        self::$flushed = [];
+
+        return $ids;
+    }
 
     public function version(int $storefrontId): int
     {
@@ -53,6 +77,7 @@ final class StorefrontCache
             Cache::forever($key, 1);
         }
         $v = Cache::increment($key);
+        self::$flushed[$storefrontId] = true;
 
         return is_int($v) ? $v : $this->version($storefrontId);
     }
@@ -129,6 +154,84 @@ final class StorefrontCache
     {
         /** @var T */
         return Cache::remember($this->key($storefrontId, $what, $suffix), $ttl, $build);
+    }
+
+    /**
+     * Build one entry NOW and store it, whether or not it is cached (the warm-up).
+     *
+     * The key is taken BEFORE the build: a write that bumps the version while this runs leaves the
+     * result under the old key, which nothing reads, instead of passing it off as current.
+     *
+     * @template T
+     *
+     * @param  Closure(): T  $build
+     * @return T
+     */
+    public function refresh(int $storefrontId, string $what, string $suffix, int $ttl, Closure $build): mixed
+    {
+        $key = $this->key($storefrontId, $what, $suffix);
+        $value = $build();
+        Cache::put($key, $value, $ttl);
+
+        return $value;
+    }
+
+    /**
+     * Several entries of one family at once — the version is read ONCE, not per key.
+     *
+     * @param  list<string>  $suffixes
+     * @return array<string, mixed> suffix => value, for the entries that are cached
+     */
+    public function many(int $storefrontId, string $what, array $suffixes): array
+    {
+        if ($suffixes === []) {
+            return [];
+        }
+        $keys = $this->keysFor($storefrontId, $what, $suffixes);
+        $found = Cache::many(array_values($keys));
+        $out = [];
+        foreach ($keys as $suffix => $key) {
+            if (($found[$key] ?? null) !== null) {
+                $out[$suffix] = $found[$key];
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  array<string, mixed>  $values  suffix => value
+     * @param  int|null  $version  store under this version — the one read BEFORE the values were
+     *                             built, so a write that bumped it meanwhile leaves them unread
+     *                             (as `refresh`); null = the current version
+     */
+    public function putMany(int $storefrontId, string $what, array $values, int $ttl, ?int $version = null): void
+    {
+        if ($values === []) {
+            return;
+        }
+        $keys = $this->keysFor($storefrontId, $what, array_map('strval', array_keys($values)), $version);
+        $byKey = [];
+        foreach ($values as $suffix => $value) {
+            $byKey[$keys[(string) $suffix]] = $value;
+        }
+        Cache::putMany($byKey, $ttl);
+    }
+
+    /**
+     * @param  list<string>  $suffixes
+     * @return array<string, string> suffix => key
+     */
+    private function keysFor(int $storefrontId, string $what, array $suffixes, ?int $version = null): array
+    {
+        $this->key($storefrontId, $what); // refuses a family that is not in INVALIDATION_MAP
+        $v = $version ?? $this->version($storefrontId);
+        $keys = [];
+        foreach ($suffixes as $suffix) {
+            $keys[$suffix] = "sf:{$storefrontId}:{$what}:{$suffix}:v{$v}";
+        }
+
+        return $keys;
     }
 
     private function versionKey(int $storefrontId): string

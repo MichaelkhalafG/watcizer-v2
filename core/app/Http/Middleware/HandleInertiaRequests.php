@@ -95,6 +95,8 @@ class HandleInertiaRequests extends Middleware
             'flash' => [
                 'status' => fn () => $request->session()->get('status'),
                 'error' => fn () => $request->session()->get('error'),
+                // A save that went through but deserves a second look (e.g. a shared integration id).
+                'warning' => fn () => $request->session()->get('warning'),
             ],
         ];
     }

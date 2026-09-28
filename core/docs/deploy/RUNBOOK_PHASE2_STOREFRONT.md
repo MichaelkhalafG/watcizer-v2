@@ -1389,6 +1389,16 @@ The v2 routes are unaffected either way: `/api/v2/{storefront}/…` carries the 
 On the night the storefront looked cut over and was still on legacy (§1.3's panel box), and a
 working page proves nothing about which host served it. These three lines do:
 
+> **HARD-RELOAD FIRST (added 2026-09-28).** After any storefront build, the first check from a
+> browser that already had the site open is unreliable: the tab can keep running the OLD JavaScript.
+> Before judging anything, hard-reload the page (Ctrl+Shift+R / Cmd+Shift+R; on a phone, close the tab
+> and reopen it) or use a fresh private window. Two false trails on 2026-09-28 came from skipping this.
+>
+> **The `curl` lines can be blocked (seen 2026-09-28).** Hostinger's bot protection may answer plain
+> `curl` with a "Checking your browser" JavaScript page instead of the file, so the checks below can
+> print nothing without meaning anything. If they come back empty, run the check from a real browser:
+> the page's own scripts (DevTools → Network → JS), or `scripts/`-style CDP tooling.
+
 ```bash
 S=https://watchizereg.com; P="probe=$(date +%s%N)"
 # a) what the BROWSER calls — the API base compiled into the JS chunks (https-prefixed, so the

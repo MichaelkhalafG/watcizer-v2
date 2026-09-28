@@ -79,6 +79,7 @@ export default function ManageLayout({
                 <main className="flex-1 px-4 py-6 sm:px-6">
                     <div className="mx-auto w-full max-w-7xl space-y-6">
                         {flash.status ? <Alert tone="success">{flash.status}</Alert> : null}
+                        {flash.warning ? <Alert tone="warning">{flash.warning}</Alert> : null}
                         {flash.error ? <Alert tone="error">{flash.error}</Alert> : null}
 
                         {title ? (
