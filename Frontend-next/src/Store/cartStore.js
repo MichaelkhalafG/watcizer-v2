@@ -72,14 +72,19 @@ const setExtra = (patch) => {
   notify()
 }
 
-// Server sync for one line. The backend AddToCart OVERWRITES the line quantity to
-// the value sent, so we always pass the absolute quantity. Returns a promise so
-// callers that want an in-flight/pending UI can await it; it never rejects, because
-// the local optimistic update already succeeded.
-//
-// It resolves TRUE only when the server accepted the line. That boolean is what the
-// AddToCart pixel event waits on: an add the API refused is not a cart addition, and
-// counting it teaches the ad auction to chase people whose basket never changed.
+// ── The cart's source of truth is the SERVER cart (2026-09-28) ─────────────────────────────
+// This tab's copy (sessionStorage `user_cart`) is a display cache of it. It used to drift:
+// a write the server REFUSED (e.g. "Requested quantity exceeds available stock") left the tab
+// saying the item was added while the server kept the old quantity, and the checkout's
+// validation then judged a cart the shopper could not see. Now a refused write is rolled back
+// in the tab and reported, and the checkout reconciles the two before it validates
+// (`reconcile`). Do not add a third copy.
+
+// Server sync for one line. The backend AddToCart OVERWRITES the line quantity to the value
+// sent, so we always pass the absolute quantity. It never rejects: it resolves to
+// { ok, status, message } — `message` is the server's own sentence when it refused.
+// `ok` is what the AddToCart pixel event waits on: an add the API refused is not a cart
+// addition, and counting it teaches the ad auction to chase people whose basket never changed.
 const syncLine = (item, quantity) =>
   http
     .post('add_to_cart', {
@@ -92,11 +97,25 @@ const syncLine = (item, quantity) =>
       color_band: item.color_band ?? null,
       color_dial: item.color_dial ?? null,
     })
-    .then(() => true)
+    .then(() => ({ ok: true, status: 200, message: null }))
     .catch((err) => {
       console.warn('Cart sync failed:', err)
-      return false
+      return {
+        ok: false,
+        status: err?.response?.status ?? 0,
+        message: err?.response?.data?.message ?? null,
+      }
     })
+
+// A line's SERVER key: the server keeps one row per (product, offer, colours, stock type). The
+// tab keys a line by product/offer alone, so a repeat add MUST reuse the existing line's colours
+// and stock type — a product card (no colours) adding to a line the product page created (with
+// colours) used to make a SECOND server row for the same product.
+const serverKeyOf = (item) => ({
+  type_stock: item.type_stock ?? 'Market',
+  color_band: item.color_band ?? null,
+  color_dial: item.color_dial ?? null,
+})
 
 // The one place AddToCart is fired. Both write paths land here — a new line from
 // addItem, and an INCREASE from updateQuantity (the drawer's "+", and the PDP when
@@ -104,12 +123,20 @@ const syncLine = (item, quantity) =>
 // the delta, so the value reflects this action rather than the whole line, and a
 // DECREASE fires nothing: removing two of something is not an add.
 const trackConfirmedAdd = (synced, { id, name, unitPrice, added }) =>
-  synced.then((ok) => {
-    if (ok && added > 0) {
+  synced.then((result) => {
+    if (result.ok && added > 0) {
       trackAddToCart({ id, name, value: parseFloat(unitPrice) * added, quantity: added })
     }
-    return ok
+    return result
   })
+
+// Put the tab's copy of ONE line back as it was before a refused write.
+const restoreLine = (key, previous) => {
+  updateCart((cart) => {
+    const others = cart.cart_item.filter((i) => getItemKey(i) !== key)
+    return { ...cart, cart_item: previous ? [...others, previous].sort((a, b) => a.id - b.id) : others }
+  })
+}
 
 // Server delete for a removed line. Mirrors syncLine: fire-and-forget, errors are
 // swallowed. The line is keyed by product_id/offer_id (same as getItemKey), so the
@@ -154,12 +181,17 @@ export const cartStore = {
     name = undefined,
   }) => {
     let absoluteQty = quantity
+    let previous = null
+    let syncAs = { product_id, offer_id, piece_price, type_stock, color_band, color_dial }
     updateCart((cart) => {
       const now = generateTimestamp()
       const items = [...cart.cart_item]
       const index = items.findIndex((i) => getItemKey(i) === getItemKey({ product_id, offer_id }))
       if (index !== -1) {
         const existing = items[index]
+        previous = existing
+        // Same server row as the existing line: its colours and stock type, not this call's.
+        syncAs = { product_id, offer_id, piece_price: existing.piece_price, ...serverKeyOf(existing) }
         const newQty = existing.quantity + quantity
         absoluteQty = newQty
         items[index] = {
@@ -186,10 +218,13 @@ export const cartStore = {
       }
       return { ...cart, cart_item: items }
     })
-    const synced = syncLine(
-      { product_id, offer_id, piece_price, type_stock, color_band, color_dial },
-      absoluteQty,
-    )
+    const key = getItemKey({ product_id, offer_id })
+    // The server's answer wins: a refused add is rolled back in the tab, and the caller gets
+    // { ok: false, message } to tell the shopper why (it used to say "Added to cart!").
+    const synced = syncLine(syncAs, absoluteQty).then((result) => {
+      if (!result.ok) restoreLine(key, previous)
+      return result
+    })
     // Return the sync promise so callers can await it for a pending/disabled UI.
     // The AddToCart event rides on it rather than firing here: see trackConfirmedAdd.
     return trackConfirmedAdd(synced, {
@@ -203,10 +238,12 @@ export const cartStore = {
   updateQuantity: (identifier, newQuantity) => {
     let synced = null
     let previousQty = 0
+    let previous = null
     updateCart((cart) => {
       const items = cart.cart_item.map((item) => {
         if (getItemKey(item) === identifier) {
           previousQty = item.quantity
+          previous = item
           synced = { ...item, quantity: newQuantity }
           return {
             ...item,
@@ -220,8 +257,12 @@ export const cartStore = {
       return { ...cart, cart_item: items }
     })
     // backend overwrites to absolute qty; return the promise for a pending UI
-    if (!synced) return Promise.resolve()
-    return trackConfirmedAdd(syncLine(synced, newQuantity), {
+    if (!synced) return Promise.resolve({ ok: true, status: 200, message: null })
+    const result = syncLine(synced, newQuantity).then((r) => {
+      if (!r.ok) restoreLine(identifier, previous)
+      return r
+    })
+    return trackConfirmedAdd(result, {
       id: synced.product_id ?? synced.offer_id,
       unitPrice: synced.piece_price,
       added: newQuantity - previousQty,
@@ -273,6 +314,48 @@ export const cartStore = {
       // SAY so and offer a retry (2026-09-28) instead of silently treating it as valid.
       return { valid: true, warnings: [], failed: true }
     }
+  },
+
+  // Make the SERVER cart match what the shopper sees, then rebuild this tab from the server's
+  // answer (2026-09-28, checkout fix 2). Called right before the checkout validates, so an old
+  // drift — a line stored at an old price, a quantity the server never accepted, a stray second
+  // row for the same product, an expired guest cart — is healed instead of blocking checkout.
+  // `priceOf(line)` gives the line's CURRENT price (the card's rule); lines are sent at it.
+  // Resolves to { refused: [{ key, message }], serverLines: number, failed: bool }.
+  reconcile: async (priceOf) => {
+    const lines = (currentCart || readCart()).cart_item
+    const refused = []
+    for (const line of lines) {
+      const price = priceOf ? priceOf(line) : null
+      const item = price ? { ...line, piece_price: price } : line
+      const r = await syncLine(item, line.quantity)
+      if (!r.ok) refused.push({ key: getItemKey(line), message: r.message, status: r.status })
+    }
+    let server
+    try {
+      const { data } = await http.get('me/cart')
+      server = Array.isArray(data?.cart_item) ? data.cart_item : []
+    } catch {
+      return { refused, serverLines: 0, failed: true }
+    }
+    // Server rows the shopper cannot see (another product, or a second row for the same one
+    // under different colours) are removed, one by one, by id.
+    const wanted = new Map(lines.map((l) => [getItemKey(l), serverKeyOf(l)]))
+    const keep = []
+    for (const row of server) {
+      const want = wanted.get(getItemKey(row))
+      const sameRow = want && ['type_stock', 'color_band', 'color_dial'].every((k) => (row[k] ?? null) === (want[k] ?? null))
+      if (sameRow && !keep.some((k) => getItemKey(k) === getItemKey(row))) keep.push(row)
+      else {
+        try {
+          await http.delete(`delete_cart/${row.id}`)
+        } catch {
+          // A stray row that will not delete is left; validation still judges it.
+        }
+      }
+    }
+    writeCart({ ...(currentCart || readCart()), updated_at: generateTimestamp(), cart_item: keep })
+    return { refused, serverLines: keep.length, failed: false }
   },
 
   // Hydrate the local cart from the server (used after login/merge).

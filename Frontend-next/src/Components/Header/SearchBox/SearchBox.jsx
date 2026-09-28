@@ -8,6 +8,8 @@ import { getImageUrl, handleImgError, PLACEHOLDER_IMG } from '../../../utils/ima
 import { productUrl } from '../../../utils/productUrl'
 
 const MAX_RESULTS = 6
+// One letter matches nearly the whole catalogue: the dropdown starts answering at two (2026-09-28).
+const MIN_LETTERS = 2
 
 // The dropdown asks core's `catalog/listing` with the typed text (C-1 stage 3) — the SAME search
 // `/listing?q=` runs, so "View all results (N)" is exactly what the listing then shows. It used to
@@ -26,15 +28,21 @@ function SearchBox() {
     return () => clearTimeout(t)
   }, [searchTerm])
 
+  // The dropdown is an answer to what is in the box NOW (2026-09-28). It used to keep the previous
+  // search's results on screen while the next one loaded — the listing grid's no-flash setting — so
+  // with "ro" typed it still showed the answer for "r": 799 results, effectively every watch. Here
+  // there is no placeholder data, and nothing is shown while the text and the answer disagree.
+  const typed = searchTerm.trim()
   const term = debounced.trim()
+  const tooShort = typed.length < MIN_LETTERS
   const { data, isError } = useListing(
     { q: term, perPage: MAX_RESULTS, lang: language },
-    { enabled: term !== '' },
+    { enabled: term.length >= MIN_LETTERS, placeholderData: undefined },
   )
-  const results = useCardsOf(term ? data : null, language)
-  // Still typing, or the first answer not back yet: say so, rather than "no results".
-  const waiting = searchTerm.trim() !== term || (term !== '' && !data && !isError)
-  const total = term ? data?.total ?? 0 : 0
+  // Still typing (the debounce has not caught up), or this text's answer not back yet.
+  const waiting = !tooShort && (typed !== term || (!data && !isError))
+  const results = useCardsOf(!tooShort && !waiting ? data : null, language)
+  const total = !tooShort && !waiting ? data?.total ?? 0 : 0
 
   const handleSearch = () => {
     if (searchTerm.trim() !== '') {
@@ -133,7 +141,11 @@ function SearchBox() {
             </>
           ) : (
             <div className="wz-search-empty">
-              {waiting
+              {tooShort
+                ? isRTL
+                  ? 'اكتب حرفين على الأقل'
+                  : 'Type at least 2 letters'
+                : waiting
                 ? isRTL
                   ? 'جارٍ البحث…'
                   : 'Searching…'

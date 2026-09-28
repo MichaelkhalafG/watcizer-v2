@@ -9,119 +9,198 @@ cannot get past tonight; every item is a known, named state. Pick batches from i
 
 ---
 
-## ▶ START HERE — session record, 2026-09-27 (evening)
+## ▶ START HERE — the state of everything, 2026-09-28
 
-**The next session starts with (updated 2026-09-28):** deploy fix 1 (storefront only) and
-`d6da058` + its follow-ups once the browser no-preflight check passes; then fix 2, then fix 4.
+Rewritten 2026-09-28 from a full read of this file, to replace two session records that had
+drifted. Older records below are HISTORY: where they disagree with this section, this section wins.
+Git history holds the text it replaced.
 
-### Checkout — cause CONFIRMED and fix 1 BUILT (2026-09-28)
-- **Reproduced**, with a working control (`scripts/checkout-repro.mjs`, local, 390×844 touch, every
-  tap verified on the button): a fresh guest cart reaches /checkout; the same cart after its SERVER
-  line is set to an old price gets `cart/validate` → `{"valid":false,"warnings":[{"message":"Price
-  changed to 5200"}]}` and the page stayed on /cart with NOTHING shown, tap after tap. That is the
-  developer's symptom. Yesterday's control "failed" only because the script's probe was broken.
-- **Why clearing site data "fixed" it:** a new guest token points at an EMPTY server cart, which
-  validates as `valid:true` (item_count 0) while the order is built from the tab's copy. So
-  validation passes on nothing. Fix 2 must close this, not just heal the drift.
-- **Fix 1 (built, not yet deployed; storefront only):** `Cart.jsx` `goToCheckout` never fails
-  silently now. When core says not valid, a notice right above the button names each line (read once
-  from `me/cart`, because core's warnings carry server line ids) with core's reason in the shopper's
-  language, and says what to do. When the check itself cannot run, it says "we couldn't check your
-  cart just now, try again" and does NOT proceed. `cartStore.validateCart` used to return
-  `valid:true` on a failed request; it now also flags `failed`. Proven in the browser, English and
-  Arabic: control proceeds, drifted shows the reason, unreachable shows the retry message. The
-  script cleans up its own dev-DB carts.
-- **Fix 1 closed TWO silent failures, not one:** the drifted cart (reported), and the check itself
-  failing to run (network or server error), which `validateCart` used to report as `valid:true`, so
-  checkout proceeded unchecked. Nobody had reported the second.
-- **Validation currently passes on an EMPTY server cart** — that is why clearing site data looks like
-  a cure and is not one. **Fix 2 must treat an empty (or missing) server cart while the tab has lines
-  as a FAILURE, not a pass**, as well as healing the drift.
-- Known, NOT introduced by fix 1: in the Arabic shop the notice names the product in English. The
-  cart page names every line that way (`resolve()` uses the English `name`), so the notice is
-  consistent with its surroundings. To be fixed with the cart page's naming, not in the notice.
-- Next: fix 2, then fix 4.
-- `d6da058`'s browser check PASSED (2026-09-28, local, built from `5932e05`): 4 catalogue GETs —
-  brand tap, chip, search dropdown, the cart drawer's `catalog/cards` — 0 preflights, no custom
-  headers, the key in the URL, all 200, `Server-Timing` readable in the page. The full suite passed
-  after `3fa23ae` (1781 passed).
+### 1. Live and closed
+- **Payments and orders:** batch 1 (payment methods at checkout, calls to deleted features removed,
+  Next 15.5.26 + sharp 0.35.4); order totals; image folders; host binding + cart option A; L5
+  per-storefront URLs; the category filter (A1); FK step 1 (two foreign keys dropped by hand);
+  `orders:expire-unpaid` with the same-shopper rule; `OrderCustomer`; the real phone to Paymob.
+- **Storefront:** #418 hydration fix; 3D hero on demand; robots.txt (S1); link-preview JPG;
+  dashboard favicon; two-tone colour batch (Gold `#D4AF37` as dashboard data; the main→band command
+  moved 0 rows on production).
+- **C-1 stages 1–3**, the three parity fixes, the preflight removal and `Server-Timing` (`d6da058`,
+  `3fa23ae`): `/listing` 3.75 MB → 334 KB, `/brand/Rolex` → 304 KB.
+- **Checkout fix 1** (`5932e05`), which closed TWO silent failures: a cart core says is invalid, and a
+  validation request that cannot run at all (it used to pass silently). Confirmed deployed by a
+  bundle check (both messages in the live cart chunk).
+- **Closed as not defects:** WebGL "Context Lost" (a deliberate release; not suppressed, so a real
+  leak would still show); Meta's currency warning (Meta's own; reopen only if a real Purchase event
+  arrives without its EGP value).
+- **Done by the developer 2026-09-28:** the diagnosis agent's two live guest carts deleted from
+  production; the Search Console check — `https://watchizereg.com/` is INDEXED and available, so
+  Googlebot is NOT blocked and the SEO section (Arabic included) is unblocked.
 
-### Decisions recorded 2026-09-28
-- **Horizontal header logo: DROPPED (developer, 2026-09-28).** No artwork will be produced; the
-  header keeps today's logo (`public/logo.webp`, a PNG of the stacked lockup under a .webp name,
-  drawn 46 px tall). Closed, not deferred. The link-preview JPG and the favicons shipped on
-  2026-09-27 are unaffected.
-- **Paymob will make the remaining integrations live and send the integration IDs** (their reply,
-  2026-09-28). No code change is needed when they arrive: the dashboard's payment-methods screen
-  takes each ID, and the checkout already offers exactly the rows that are usable (A4, batch 1).
-  Enter the IDs in the dashboard, and the method appears at checkout within ~60 s (its cache).
-  Watch B-item 6 while entering them: the screen accepts the same integration ID on two methods
-  without a word.
+### 2. Committed, not deployed
+- **Checkout fix 2 + fix 4** (storefront only, 2026-09-28) — see "Fix 2 and fix 4" below.
+- **`3b31a78` — the search dropdown fix** (storefront only): it never shows another search's results
+  and starts at 2 letters. Verified locally at 400 and 150 ms per letter. Deploy with the next
+  storefront build; hard-reload before checking (runbook §7 step 0).
 
-### Live on production (main)
-- Colour batch (two-tone finishes, `catalog:colours-main-to-band` — moved 0 rows on production), link
-  preview JPG, dashboard favicon, robots.txt.
-- C-1 stage 1: facet pages 14.25 MB → 3.75 MB. Stage 2: `catalog/nav` (with its `.htaccess` line).
-  Stage 3 (`7854d90`, main `7d9ba1c`): the listing on core's `catalog/listing` / `catalog/cards`;
-  `/listing` 334 KB, `/brand/Rolex` 304 KB, verified live.
+### Done by the developer 2026-09-28 (afternoon)
+- **C1: `JWT_SECRET` rotated on BOTH hosts**, fingerprints verified matching each other and different
+  from the exposed value. Every customer was signed out once; nothing else depends on it.
+- **`LOG_LEVEL` back to `error`**, config re-cached.
+- **The two stock units from orders 000001 / 000002** returned from the dashboard.
+- **CDN caching: CLOSED — not available.** The panel (api.watchizereg.com → Performance → CDN →
+  Manage) offers only Analytics, Website optimisation (image compression/resizing), Traffic blocking
+  and Security — no cache rules, no host/path/query-string scoping. Nothing enabled. Notes from the
+  same screens: do NOT touch Traffic blocking (its "allow only specific countries" view shows none
+  allowed — saving that would take the API down); Security level "Medium" is what challenges plain
+  `curl`; "Smart image optimisation" is ON for the API host (max 1600/800 px, quality 85/70) on top
+  of the storefront's own image optimiser — double compression, low priority.
+- **fb:app_id: CLOSED** — Watchizer has no Facebook App, only pixels.
 
-### Committed, NOT deployed (commit made at the end of this session)
-- The three parity fixes (price = what the shopper pays; facets follow the search; search in both
-  languages with Arabic folding + a narrow one-typo fallback) — `CompatListing`, tests
-  `CatalogListingTest` (reference rewritten to the new rules) and `CatalogSearchTest` (mutation-checked).
-- The preflight removal: `CheckApiCode` accepts `?api_code=` on GET/HEAD; the storefront's catalogue
-  reads go through `src/Context/publicApi.js` (no custom headers). `Server-Timing` +
-  `Timing-Allow-Origin` on `catalog/listing`.
-- **Verification level:** the targeted Pest files, PHPStan and Pint pass; the storefront builds and
-  lints. NOT yet done: the full Pest suite on this batch, and a browser check that the listing
-  request really goes out with no preflight. Do both before deploying.
-- **Deploy order:** core first (no `.htaccess` change: same paths), then the storefront. After it,
-  re-measure live taps and take the spread apart with `Server-Timing` (the developer's ask: if the
-  slowest taps stay over 400 ms without the preflight, find out why before stage 4). Local numbers
-  already point at two costs: fetching a page's 24 rows reads the whole cached catalogue (~26 ms warm
-  locally), and the listing index REBUILDS (~0.9 s locally) whenever the cache version bumps (any
-  product/stock/placement change) or its 10-minute TTL lapses.
+### Fix 2 and fix 4 — built and proven 2026-09-28, committed, not deployed
+- **Found first (the "duplicate cart line" check):** a double tap is guarded (the button is disabled
+  while adding) and a repeat add merges — the duplicate line did not reproduce. But two REAL faults:
+  (1) an add the server REFUSED ("Requested quantity exceeds available stock", 422) still showed
+  "Added to cart!" and left the tab at the higher quantity — the shopper walks away believing they
+  have it, and the tab and server disagree; (2) the tab keys a line by product, the server by product
+  + colours + stock type, and a product CARD sends no colours while the product PAGE does — so a card
+  add on a line the page created made a SECOND server row.
+- **Fix 2 (cartStore, Cart page, product page, product card):** the server's answer wins. A refused
+  add or quantity change is rolled back in the tab and the shopper is told why in both languages
+  ("Not enough stock for that quantity" / "لا يوجد مخزون كافٍ لهذه الكمية"); a repeat add reuses the
+  existing line's colours and stock type; before checkout `reconcile()` pushes what the shopper sees
+  to the server at today's prices, removes stray server rows, and rebuilds the tab from the server's
+  answer; an empty or unreadable server cart while the tab has lines is a stated failure, never a pass.
+  Source of truth, as written in the code: the SERVER cart; the tab is a display cache.
+- **Fix 4:** cart, checkout and account share ONE layout (`app/(main)/(shop)/layout.jsx`, route
+  group, no URL change), so moving between them no longer re-sends the catalogue: cart → checkout
+  RSC payload 3.24 MB → **2,602 bytes**.
+- **Proven (local, real taps, English AND Arabic), `fix2_proof`:** A refused add → message, tab
+  rolled back, server unchanged; B page-then-card on an in-stock product (526) → ONE server line,
+  qty 2, colours kept; C two drifted server prices → healed, reaches /checkout; D guest token lost
+  (server empty) → lines pushed back, reaches /checkout; E the payload above. Allow-list test passes
+  (the new `delete_cart` call is on the list). Not run: the full Pest suite and the harness — no core
+  change.
+- Noted, not chased: in one run a tap target was briefly covered (probably the "Added to cart" toast
+  over a button); it did not recur.
 
-### Checkout does nothing for some returning browsers — OPEN, cause NOT confirmed
-- Developer's evidence: a fresh profile (desktop or phone, private window, even after a browser
-  restart) checks out; the developer's long-lived phone profile did not; clearing that site's data
-  fixed it (so that profile's evidence is gone). So it is state PERSISTED before today's changes.
-- Candidate from the code (a diagnosis agent's reading, spot-checked): `Cart.jsx` `goToCheckout`
-  returns SILENTLY when `cart/validate` answers `valid:false` — it only scrolls up; the server's
-  `warnings` are never shown (the banner is driven by a separate client-side check). The guard dates
-  from the cutover (c1447d3, 2026-07-06), not from today. `validate` judges the SERVER cart found by
-  the long-lived `localStorage.wz_guest_token`, while the order is built from the tab's
-  `sessionStorage.user_cart`: the two can drift apart and nothing reconciles them.
-- **Not proven.** My reproduction (drift the server line's price, tap) did NOT work as a test: even
-  the CONTROL — a fresh, undrifted guest cart — produced no `cart/validate` request at all and stayed
-  on /cart, by touch and by mouse, at 390 px on the local build. Either the script's tap does not
-  reach the handler, or it reproduces a different failure locally. The control must work before
-  the drift result means anything. Script: `scripts/checkout-repro.mjs` (committed; its header says
-  how to run it, what it writes to the dev database, and its known broken probe).
-- Stage 3 did NOT cause the silent guard; rolling back stage 3 would not fix it (a fresh guest
-  checks out on live stage 3, throttled). Stage 3 DID cause a speed regression on this path: the
-  /cart → /checkout navigation now downloads a 3.24 MB RSC payload (681 KB compressed, ~5 s on Slow
-  4G), because `checkout/layout.jsx` embeds the catalogue again (`CatalogBoundary`). Caused by stage
-  3, not inherited.
-- **Developer's decisions:** build fix 1 FIRST and ship it alone — the checkout must TELL the shopper
-  why it will not proceed (show `validate`'s warnings per line; a failed validate shows a message and
-  a retry, never a silent pass or a silent stop). Then fix 2 — heal the drift automatically (make the
-  server cart match what the shopper sees before validating), so existing browsers recover on their
-  own and nobody loses a cart. Then fix 4 — one shared layout for cart and checkout (or stage 4,
-  whichever lands first) to remove the 3.24 MB re-send. NOT fix 3 (a blunt guest-token wipe drops
-  real carts).
-- **Source of truth for the cart (to be written into the code with fix 2):** the cart currently
-  lives in two places that are never reconciled. The intended truth is the SERVER cart (it is what
-  `validate` judges, what survives a browser restart, and what an order must be built from); the
-  tab's `sessionStorage.user_cart` is a display cache that must be rebuilt from it. Do not add a third
-  copy.
-- Side effects: the diagnosis agent created 2 guest carts on PRODUCTION (tokens `67734d20-…` and
-  `ae07ec48-…`); the developer removes them with the SQL given at the end of the session. All local
-  test carts (agent's and mine) are deleted; the dev copy's 128 tables match the clean snapshot.
+### 3. Open
+**Waiting on the developer (minutes each, no code):**
+- ~~C1~~ **DONE 2026-09-28** (see above). Kept for the record: **C1 — rotate `JWT_SECRET` on BOTH hosts** (core and the legacy app share it by design, and the
+  legacy host is still up). Rotating it signs every customer out and nothing else: customer tokens
+  are the only thing signed with it (`CustomerTokens` issues, `LegacyJwt` verifies); the dashboard
+  uses sessions, password resets and verification links have their own tokens / `APP_KEY`, and the
+  per-customer epoch cannot protect against a leaked secret (the holder writes their own `iat`).
+  **The public API key half of C1 is DROPPED** (2026-09-28): the key is public by design (it ships
+  in the storefront bundle, and since `d6da058` it is in every catalogue URL), so rotating it buys
+  nothing, and without a two-key overlap in core it would 401 the whole storefront until the rebuild
+  finished.
+- ~~`LOG_LEVEL`~~ **DONE 2026-09-28.** **`LOG_LEVEL` back to `error`** in `core/.env` (+ `config:cache`). It was lowered to `warning`
+  temporarily on 2026-09-26 while diagnosing; nothing tracked it until now.
+- ~~CDN caching~~ **CLOSED 2026-09-28: not available in the panel** (see above). **CDN caching of the catalogue reads** (hPanel → CDN). Measured 2026-09-28: the network is the
+  largest part of a new filter tap (133–341 ms) and the edge caches none of it
+  (`x-hcdn-cache-status: DYNAMIC`) although core marks the responses `public, max-age=600`. Cache
+  `GET /api/catalog/listing`, `/api/catalog/cards` and `/api/catalog/nav` by FULL URL (the query
+  string is the whole request; the answers do not depend on any header). **Never cache**
+  `/api/catalog/meta` (its answer depends on `Accept-Language`), `/api/me/*`, the cart and checkout
+  routes (`add_to_cart`, `remove_from_cart`, `cart/*`, `add_order`, `add_address`, `delete_cart`),
+  `/api/auth/*`, `/api/login`, `/api/register`, `/api/callback_payment`, `/api/pay/*`. Cost of
+  caching: a price or stock change reaches a cached answer up to 10 minutes late — the same as the
+  browser's own cache today.
+- ~~Orders 000001 / 000002~~ **DONE 2026-09-28.** Two units the legacy dashboard never returned to stock. Dashboard →
+  Inventory → adjust, per line (steps in the 2026-09-26 record, item 4).
+- **Paymob:** when the remaining integration IDs arrive, enter them in the dashboard — no code. Do the
+  duplicate-ID warning (below) BEFORE entering them. The intention-expiry unit still needs
+  `scripts/paymob-expiry-probe.php` run on the server; Apple Pay waits on Paymob's domain check.
+- **Record the Hostinger deploy key.** The repository is private and redeploy works, but nothing
+  here says which key Hostinger uses or what to do if it stops. Needed: where the key lives
+  (GitHub → repo Settings → Deploy keys, read-only; and its pair in hPanel → Git), and the recovery —
+  generate a new key in hPanel, add its public half as a read-only deploy key on GitHub, delete the
+  old one, redeploy.
+- **Server leftovers (C10)** once the rollback window is declared over (it ends with C3).
+- **Colour data entry** for ~7,090 products (the team). An importer colour mapping is CLOSED: the
+  export carries colour on 7 of 8,614 rows, so this is data entry, not import.
+- **Owner decision:** whether the "authentic, certified" claims stand (before any Merchant Center feed).
+
+**Mine, not started (the order is the sequence in the session report of 2026-09-28):**
+- **Checkout fix 2** — make the server cart match what the shopper sees before validating, and
+  treat an EMPTY or missing server cart while the tab has lines as a FAILURE, not a pass (today it
+  validates as `valid:true` on nothing — why clearing site data looked like a cure). Source of
+  truth, to be written into the code: the SERVER cart; the tab's `sessionStorage.user_cart` is a
+  display cache rebuilt from it; no third copy.
+- **Checkout fix 4** — the /cart → /checkout navigation re-sends a 3.24 MB RSC payload (681 KB
+  compressed, ~5 s on Slow 4G) because `checkout/layout.jsx` embeds the catalogue again. CAUSED BY
+  STAGE 3. One shared layout for cart + checkout, or stage 4, whichever lands first.
+- **The rows cache** (NEW, measured live 2026-09-28). To return a page, core reads the WHOLE cached
+  catalogue to pick 24 rows: 40–67 ms warm, **404 ms cold** (the slowest live tap, 695 ms). Cache
+  product rows individually so a page reads 24. Related, same place: the listing INDEX rebuilds
+  (~0.9 s locally) after every cache-version bump — any product, stock or placement change — so the
+  first tap after a stock change pays it; warm it on the write, not on the next shopper. ~1–2 h +
+  tests.
+- **C-1 stage 4** (home, product, cart, checkout, account off the client catalogue; related from the
+  server; remove the remaining catalogue copies and the client transform), with **the home-page
+  rail ordering** (new, below).
+- **Arabic S-AR stages 1–3** (see S-AR below; unblocked by the Search Console check).
+- **B2 Meta Conversions API** — about a day; STOP and report if it grows (developer's condition).
+- **C3 switch the legacy storefront off** — closes C4 and B7 with it, ends the rollback window.
+- **FK step 2** (`core:repoint-commerce-fks`), **Joyroom 3a/3b**, **the duplicate-integration-ID
+  warning** on the methods screen, **B1 ratings write** (+ its `.htaccess` line), **B8/B9 sitemap**
+  (fold into S-AR stage 3), **blogs per storefront** (needs the G9 scoping decision), **A7 Next
+  15.5.27** (dated: on or after 30 September).
+- ~~fb:app_id~~ **CLOSED 2026-09-28** (no Facebook App). **fb:app_id** (Facebook's debugger lists it missing): only meaningful if Watchizer has a Facebook
+  App (a pixel is not an app). Without one there is nothing to put there; the preview works without
+  it. Close unless the developer has an App ID.
+- ~~Unverified~~ **CHECKED 2026-09-28 — see "Fix 2 and fix 4".** A diagnosis run on 2026-09-28 left ONE guest cart with TWO lines for
+  the same product, added 3 s apart. If a double tap on Add to Cart creates a second line instead of
+  raising the quantity, that is a real bug. A five-minute look in `add_to_cart`.
+- **Minor, noted:** superseded dropdown searches are not cancelled (each keystroke's request runs to
+  the end); `Server-Timing` with `Timing-Allow-Origin: *` shows core's phase timings to any site
+  (timings only, no data — accepted).
+
+**New item — ordering the home-page rails from the dashboard (developer, 2026-09-28).** NOT the
+banners (A3, paused). Today the home page shows the category tiles, an offers rail, a featured block
+(5 random products) and then ONE RAIL PER GRADE, in the grades table's order, 8 cards each — all
+derived in the browser from the full catalogue. Grades have no sort column; `storefront_product`
+already has `is_featured` and `sort_order`; the dashboard has no screen for the home page. Build:
+a `storefront_home_rails` table (storefront, kind — grade / brand / category type / offers /
+featured / newest — its target, optional titles in both languages, position, active, card count),
+a dashboard screen to add, toggle and reorder rails (activity-logged, cache-busting), and a core
+read that returns each rail with its cards, so the home page stops needing the whole catalogue.
+~2 days on top of stage 4, and it belongs INSIDE stage 4: stage 4 moves the home rails to the
+server anyway, so doing it separately would build the rails twice.
+
+### 4. Deferred by decision — and what makes each urgent
+- **A3 banners** (paused for the season) — when the developer wants seasonal banners.
+- **A5 / A6** (account shipping display; installment fee) — before any promotion goes on.
+- **A9 Next 16 / React 19** — after Brand Fashion launches; sooner if 15.5 stops getting security
+  fixes or the 3D stack breaks on the unsupported React.
+- **L3 / L2** — when Brand Fashion's frontend starts; L2 last before its launch.
+- **B6** promotions scope — before anyone is given a SCOPED dashboard grant.
+- **B3 / B4** verification landing and host — when customers start verifying at scale, or the
+  first CLI/dashboard sender of a verification mail.
+- **S-AR stage 4** (Arabic slugs) — after stage 1's Search Console data.
+- **Strip flick stutter** — reopen only if a shopper reports it.
+- **Real GPU context loss while the hero is on screen** (fallback to the poster untested) — reopen
+  if the hero is ever reported blank.
+
+### 5. Closed or dropped 2026-09-28 (developer)
+- DROPPED: C6 (git history purge — private repo, every value dead or rotated), C9 (user 7's first
+  mail), section D (documentation nits), the horizontal header logo, the public-key half of C1.
+- CLOSED WITH C3 when it is done: C4 (legacy gate question), B7 (`compat:env-parity` tooling).
+- CLOSED as overtaken: the filter-tap cost and the `useUIStore()` selector work (stage 3 removed
+  them); the 2026-09-26 record's items 1, 3, 5 and 7 (shipped or closed); A1, A2, C2, S1, S4 as
+  pending items (shipped).
+- CLOSED: the importer colour mapping (data entry, as recorded under Colours).
+
+### Checkout — how the cause was confirmed (2026-09-28), kept for the next person
+`scripts/checkout-repro.mjs`, local, 390×844 touch, every tap verified on the button: a fresh guest
+cart reaches /checkout; the same cart with its SERVER line set to an old price got `cart/validate`
+→ `{"valid":false,"warnings":[{"message":"Price changed to 5200"}]}` and the page stayed on /cart
+with nothing shown, tap after tap — the developer's symptom. The guard dates from the cutover
+(c1447d3, 2026-07-06); stage 3 did not cause it. The script now refuses non-local origins, is
+bilingual, and deletes its own dev-DB carts on exit.
 
 ---
 
-## ▶ session record, 2026-09-26 (evening)
+## ▶ HISTORY — session record, 2026-09-26 (evening)
 
 ### State of the code, exactly
 
@@ -146,7 +225,7 @@ cannot get past tonight; every item is a known, named state. Pick batches from i
   Ships as one core tar + `config:cache` + `route:cache`; the new scheduled command rides the
   existing `schedule:run` cron.
 
-### LIVE AND UNFIXED IN PRODUCTION — in this order
+### LIVE AND UNFIXED IN PRODUCTION — in this order (STATUS 2026-09-28: 1, 3, 5 shipped; 7 closed; 2, 4, 6 still open — see START HERE)
 
 1. **Abandoned card payments hold stock forever.** `add_order` reserves stock for every order; a
    card order then waits `pending`, and a shopper who leaves Paymob's page produces NO callback, so
@@ -288,7 +367,7 @@ report too.
     still searches in the browser by substring. Server search (FULLTEXT, Arabic folding) matches
     differently, so moving only the dropdown would promise N results and list a different number.
     Both move together in stage 3.
-- **Stage 3 — built 2026-09-27:** the listing, the sidebar, the chip strip and the search dropdown
+- **Stage 3 — SHIPPED (live 2026-09-27; parity fixes and preflight removal live 2026-09-28):** the listing, the sidebar, the chip strip and the search dropdown
   read core's `GET /api/catalog/listing` (one page of rows + every facet count, `CompatListing`),
   and the cart drawer `GET /api/catalog/cards?ids=`. The (main) layout no longer embeds the
   catalogue. Only home, product/offer detail, cart, checkout and account do (`CatalogBoundary`),
@@ -387,6 +466,7 @@ crash). Whether the hero then falls back to its poster is unverified.
 - **Do not infer colours from product titles.** 1,065 product names contain a colour word; guessing
   from them is right most of the time and wrong in a way nobody notices until a customer receives
   the wrong item. Rejected by the developer.
+- **Importer colour mapping: CLOSED 2026-09-28** — data entry, as above.
 - Open: the Joyroom sheet does carry a colour per row — backfill and linking its variant colours to
   the taxonomy are scoped separately.
 - **`catalog:colours-main-to-band` MOVED NOTHING on production.** The developer counted it before
@@ -429,7 +509,7 @@ order (after 60 min); that payment is recorded as a finding and needs a refund o
 
 | # | Item | What it costs | What breaks if never done |
 |---|---|---|---|
-| A1 | **Category filter** — `passesFilters()` never read `filters.categories`; only Watches and Fashion filtered, via a hard-coded English-name pre-split. **Done on `wave-4d`** (2 lines + `FilterPredicateTest`, which runs the real predicate under Node and fails with the fix reverted) | Nothing more — ships with the next storefront build | Every category except Watches/Fashion shows the whole catalogue, in both languages. Pre-existing since July, on legacy too |
+| A1 | **SHIPPED.** **Category filter** — `passesFilters()` never read `filters.categories`; only Watches and Fashion filtered, via a hard-coded English-name pre-split. **Done on `wave-4d`** (2 lines + `FilterPredicateTest`, which runs the real predicate under Node and fails with the fix reverted) | Nothing more — ships with the next storefront build | Every category except Watches/Fashion shows the whole catalogue, in both languages. Pre-existing since July, on legacy too |
 | A2 | ~~**Calls to deleted features.**~~ **Done in batch 1 (2026-09-26), on `wave-4d`.** Removed: `all_offer` on every page, `all_wishlist` on every signed-in page, `all_blog` server-side, dead `show_cart`/`fetchBanners`/`fetchOffers`, the unused `useBanners` (`all_banner_*`). `all_offer_rating`/`add_offer_rating` are unreachable (no offers → `/offer/…` 404s). **The wishlist interface is removed** (developer decision: a heart that never saves reads as a broken site) — the product-page heart, the cart's "Move to wishlist" (which REMOVED the item from the cart and then failed to save it), the account tab, the header/footer links; `/wish-list` now redirects to `/account`. Left: `add_product_rating` (B1) | — | — |
 | A3 | **Banners — deferred, NOT dropped** (paused for the season; the developer will use them). Production has zero banner rows (2026-09-17 dump) and the storefront has no banner slot, so this is a build, not a switch. **What it needs:** (1) **the home-page slot** — a component that renders `meta.banners[]` with `placement=home`, picks the desktop or mobile image by `type_show` (`pc`/`mob`), links to `link_url` / the product (`product_id`) / the category (`category`, a tree reference), and renders NOTHING when the list is empty (no empty frame); where it sits on the home page is a design decision to make with the developer; (2) **the first v2 client** — the storefront reads only compat today; fetch `GET /api/v2/{STOREFRONT_CODE}/meta` (`STOREFRONT_CODE` exists since batch 1 in `src/lib/env.js`), mind v2's `http.cache` (10 min + 1 h stale, so a CDN purge after scheduling one) and that an image comes back as an `ImageUrl::object`, not a URL string; (3) **the dashboard screen that feeds it** — core already has it (placement is always `home`, by decision; scheduled with `starts_at`/`ends_at`, active flag, sort); check it uploads both a desktop and a mobile image | M: one component, one fetch, a browser pass on desktop and phone | The season's banners cannot be shown |
 | A4 | ~~**Offer the new Paymob methods at checkout.**~~ **Built in batch 1 (2026-09-26), on `wave-4d`.** Core: `GET /api/v2/{storefront}/payment-methods` (usable rows only — usable integration id, contract enabled with complete credentials; both labels; per-method `min_total`/`max_total` from the dashboard; `Cache-Control: public, max-age=0, s-maxage=60`), and `add_order` checks `payment_method_id` BEFORE anything is written (`CheckoutMethods`): this shop's, offered, key agrees with `payment_method`, inside its limits — else a 422 in both languages that says the order was not placed and what to do. The wave-3 fallback is closed when the contract is live. Cash is always offered, independent of the rows. Storefront: the list, disabled-with-reason outside a limit, `payment_method_id` posted, Cash + "Pay Online" if the list fails. **Apple Pay:** its dashboard switch is the flag (leave the row disabled until Paymob confirms the domain verification for `watchizereg.com`); the storefront also shows it only where `ApplePaySession.canMakePayments()` is true. **2026-09-28: Paymob will make the remaining integrations live and send the IDs — entering them in the dashboard is all it takes; the screen and the checkout are already ready for them** | — | — |
@@ -450,7 +530,7 @@ order (after 60 min); that payment is recorded as a finding and needs a refund o
 | B4 | **Pin the verification link's host** in `CustomerMail::sendEmailVerification()` | A few lines + a test (with B3) | Correct today only because every sender is a customer route on the API host. The first CLI or dashboard sender builds the link on `eleganceeg.com`, which §4 404s |
 | B5 | **Reordering payment methods is not in the activity log** — the order decides which contract takes the money | Small: one `ActivityLog::record` in `reorder()` + test | "Who moved card traffic to the other contract?" has no answer |
 | B6 | **`PromotionController` has no storefront-scope check** (audit, left open by decision) | Small | Nothing — until anyone issues a SCOPED grant. Close it before that day |
-| B7 | **`compat:env-parity`** — the `[key]` arm should say "proxy disabled on purpose, use `--base`" and needs a path legacy actually guards; the `[assets]` rule should check the media root RESOLVES to the served tree, not that it is written absolute | Small, tooling only | The command keeps reporting NOT READY on a healthy host, and people learn to ignore it |
+| B7 | **CLOSES WITH C3 (2026-09-28).** **`compat:env-parity`** — the `[key]` arm should say "proxy disabled on purpose, use `--base`" and needs a path legacy actually guards; the `[assets]` rule should check the media root RESOLVES to the served tree, not that it is written absolute | Small, tooling only | The command keeps reporting NOT READY on a healthy host, and people learn to ignore it |
 
 ## B+. Sitemap and SEO (found 2026-09-26, after resubmitting the sitemap)
 
@@ -481,7 +561,7 @@ What remains is what would otherwise be BROKEN on Brand Fashion:
 
 ## SEO. Audit of the live storefront, 2026-09-27 (read-only; M = measured, I = inferred)
 
-**Before anything else — the bot wall (M, cause; I, effect on Google).** Hostinger's CDN answers
+**RESOLVED 2026-09-28: Googlebot is NOT blocked** — the developer's Search Console check shows `https://watchizereg.com/` indexed and available. What follows is kept as the record. **Before anything else — the bot wall (M, cause; I, effect on Google).** Hostinger's CDN answers
 any request that asks for compressed content (`Accept-Encoding`) with a 403 "Checking your
 browser" challenge, whatever the user agent — which is why Lighthouse/PageSpeed get 403 and plain
 curl gets 200. Real Googlebot is PROBABLY let through by IP (Hostinger's docs), but that cannot be
@@ -494,7 +574,7 @@ the bot protection / whitelist verified bots in hPanel → CDN — nothing below
 | S1 | ~~Every product image blocked: `core/public/robots.txt` on api.watchizereg.com was `Disallow: /`~~ **FIXED 2026-09-27** (`Allow: /Uploads_Images/`, everything else still closed; `RobotsTxtTest`) — ships with the next core deploy | — | 15 min |
 | S2 | **Arabic is invisible to Google** — language comes only from the `wz-lang` cookie, the server always renders English, no `/ar` URLs, no hreflang. Scoped as a staged project below (S-AR) | see S-AR | project |
 | S3 | Product `meta_title` / `meta_description` never used (titles are a template in `src/lib/detailSeo.js`); Arabic filled on ~8–10%, English 83–92%; about half the English meta titles end in the junk text " \| Select…" | S-AR stage 2 | hours–1 day |
-| S4 | HTML weight: 3.4–4 MB on home/product pages, 12.8–14 MB on every facet page (`/category/*`, `/brand/*`, `/grade/*`, `/subtypes/*`); HTML is `private, no-store` | **C-1 stage 1 DONE 2026-09-27 (in the tree, ships with the next storefront build):** the facet pages' second, unprojected catalogue copy is gone from `src/lib/facetListing.jsx`. Measured on the local build: every facet route 10.65 MB → 3.22 MB, the same as `/listing`; same counts, same 24 cards, same titles; no catalogue refetch in the browser. Live before: 14.25 MB, 9.8–11 s. The remaining 3.2–4 MB on every page goes in C-1 stage 4. | stages 2–4: days |
+| S4 | **Stages 1–3 SHIPPED (listing and facet pages ~0.3 MB); the rest is stage 4.** HTML weight: 3.4–4 MB on home/product pages, 12.8–14 MB on every facet page (`/category/*`, `/brand/*`, `/grade/*`, `/subtypes/*`); HTML is `private, no-store` | **C-1 stage 1 DONE 2026-09-27 (in the tree, ships with the next storefront build):** the facet pages' second, unprojected catalogue copy is gone from `src/lib/facetListing.jsx`. Measured on the local build: every facet route 10.65 MB → 3.22 MB, the same as `/listing`; same counts, same 24 cards, same titles; no catalogue refetch in the browser. Live before: 14.25 MB, 9.8–11 s. The remaining 3.2–4 MB on every page goes in C-1 stage 4. | stages 2–4: days |
 | S5 | Sitemap (`core/app/Compat/CompatSitemap.php`): 5 static URLs 404 (`/products`, `/about-us`, `/contact-us`, `/privacy-policy`, `/terms-and-conditions`); 28 multi-word brands encoded with `%20` → 404; `/offers` redirects; `/blogs` empty but indexable; 15 duplicate `<loc>`; zero-product brands listed | drop/fix entries, slugify brands with `LegacySlug`, dedupe — or move to the v2 sitemap in S-AR stage 3 (the compat sitemap is a harness case, so fixing it in place is a sanctioned deviation) | hours |
 | S6 | Category/brand landing pages linked only from the sitemap (nav links go to `/listing?…`, canonicalised to `/listing`); listing pagination is `<button>`, not links; no related products on product pages | point nav/footer/breadcrumbs at `/category/*`, `/brand/*`; `<a href="?page=n">` pager | 1–2 days |
 | S7 | Fuzzy/case-insensitive facet matching makes `/brand/rol`, `/brand/Rolex`, `/brand/rolex` separate self-canonical pages; facet titles say "Watches" for bags/belts | canonicalise to the slug + 308; titles by category type | hours |
@@ -542,18 +622,18 @@ above.
 
 | # | Item | What it costs | What breaks if never done |
 |---|---|---|---|
-| C1 | **Rotate `JWT_SECRET` and the storefront's public API key** — the only two values pasted into a chat. **Paymob is NOT part of this:** nothing exposed its credentials (corrected 2026-09-24; an earlier note here listed it by mistake) | Every customer is signed out (tokens last 30 days). While legacy is up it must change on BOTH hosts at once; **after C3 it is core alone — simpler.** The public key means panel + `.env.production` + core's `COMPAT_API_KEY` together, then a rebuild (a short window of 401s) | **Anyone holding `JWT_SECRET` can mint a valid token for ANY customer id** — full access to that account's profile, addresses and orders. This is the one item whose risk is not cosmetic. Recommend days, not next season |
-| C2 | **Next.js 15.5.21 → 15.5.26** (critical RCE advisory GHSA-2xp9-vwfh-vxw4, fixed in 15.5.24) + `sharp` 0.35.3 → 0.35.4 | A lockfile refresh, a build, a visual check. Behaviour changes: AVIF *sources* served unoptimised; AVIF *output* quality rescaled (80 → 50, 70 → 44, 90 → 56 — smaller, slightly softer). Cheap hardening in the same build: remove `127.0.0.1:8000` and `localhost:8000` from production `remotePatterns`, and the Farfetch host if nothing uses it | Exposure is narrow — our uploads are re-encoded to WebP, so no outsider can place an AVIF on our hosts — but an allowed third-party host or a future upload path turns it into unauthenticated remote code execution on the storefront server |
+| C1 | **Rotate `JWT_SECRET` on BOTH hosts — the public-key half DROPPED 2026-09-28 (see START HERE).** ~~Rotate `JWT_SECRET` and the storefront's public API key~~ — the only two values pasted into a chat. **Paymob is NOT part of this:** nothing exposed its credentials (corrected 2026-09-24; an earlier note here listed it by mistake) | Every customer is signed out (tokens last 30 days). While legacy is up it must change on BOTH hosts at once; **after C3 it is core alone — simpler.** The public key means panel + `.env.production` + core's `COMPAT_API_KEY` together, then a rebuild (a short window of 401s) | **Anyone holding `JWT_SECRET` can mint a valid token for ANY customer id** — full access to that account's profile, addresses and orders. This is the one item whose risk is not cosmetic. Recommend days, not next season |
+| C2 | **SHIPPED in batch 1.** **Next.js 15.5.21 → 15.5.26** (critical RCE advisory GHSA-2xp9-vwfh-vxw4, fixed in 15.5.24) + `sharp` 0.35.3 → 0.35.4 | A lockfile refresh, a build, a visual check. Behaviour changes: AVIF *sources* served unoptimised; AVIF *output* quality rescaled (80 → 50, 70 → 44, 90 → 56 — smaller, slightly softer). Cheap hardening in the same build: remove `127.0.0.1:8000` and `localhost:8000` from production `remotePatterns`, and the Farfetch host if nothing uses it | Exposure is narrow — our uploads are re-encoded to WebP, so no outsider can place an AVIF on our hosts — but an allowed third-party host or a future upload path turns it into unauthenticated remote code execution on the storefront server |
 | C3 | **Switch the legacy storefront off** (§4A.4) — after any card payment started there has settled | Small. It also retires C4 and the undeployed `backend/` fixes, and makes C1 single-host | Legacy keeps answering; anyone who reaches it writes orders into the database nobody reads any more |
-| C4 | **The legacy gate question** — `dash.watchizereg.com/api/catalog/meta` answered 200 without `Api-Code` | Two reads (cache-busted curl; the key's length in legacy's cached config) | Moot once C3 is done. Until then, if the gate is open, runbook §9.1A's residual-risk row is wrong as written |
+| C4 | **CLOSES WITH C3 (2026-09-28).** **The legacy gate question** — `dash.watchizereg.com/api/catalog/meta` answered 200 without `Api-Code` | Two reads (cache-busted curl; the key's length in legacy's cached config) | Moot once C3 is done. Until then, if the gate is open, runbook §9.1A's residual-risk row is wrong as written |
 | C5 | **One source for the storefront's build values** — the Hostinger panel now overrides `.env.production` for five names (and the pixel list is in both) | Delete the panel variables, rebuild, run §7 step 0 | Two sources drift; rollback must be done in the panel (§9.1's box), and §11.2's "dropping a pixel is one line in `.env.production`" is no longer true |
-| C6 | **Git history purge** — the Google OAuth secret, the audit key, the July `api.jsx` literal | A history rewrite, a force-push, every clone re-cloned. All three are already dead or rotated | Nothing live — dead values stay readable in a public repo's history |
+| C6 | **DROPPED 2026-09-28.** **Git history purge** — the Google OAuth secret, the audit key, the July `api.jsx` literal | A history rewrite, a force-push, every clone re-cloned. All three are already dead or rotated | Nothing live — dead values stay readable in a public repo's history |
 | C7 | **55 missing media files** — `media:verify` found 10,003 of 10,058 | Identify the 55, re-upload or clear the references | Up to 55 image slots show a broken image |
 | C8 | **Confirm the logs are being written** — the log channel was dead from the first deploy until the night | One look tomorrow: `ls ~/domains/eleganceeg.com/core/storage/logs/` should show a `laravel-2026-09-2*.log` | Callback refusals, amount mismatches and mail failures go unseen again |
-| C9 | **User 7's first verification mail never arrived** (before the log fix; a broken log channel does not stop SMTP) | Check that inbox's spam folder | Probably nothing — later mails arrive. Unexplained, so recorded |
+| C9 | **DROPPED 2026-09-28.** **User 7's first verification mail never arrived** (before the log fix; a broken log channel does not stop SMTP) | Check that inbox's spam folder | Probably nothing — later mails arrive. Unexplained, so recorded |
 | C10 | **Server leftovers** — `~/core-phase1.tar.gz`, `~/deploy-staging/`, `~/s4-block.txt`, the `.bak` snapshots | Delete once the rollback window closes (keep `core-before-phase2.*.tar.gz` and `env.before-phase2.*.bak` until then) | Disk, and one `.env` copy (mode 600) lying in the home directory |
 
-## D. Documentation — owed, cheap
+## D. Documentation — DROPPED 2026-09-28 (developer)
 
 - §3.1's `APP_URL` row says signed links are "built from" it — they are built from the request host.
   `APP_URL` stays `eleganceeg.com` (it sets the mail EHLO name).

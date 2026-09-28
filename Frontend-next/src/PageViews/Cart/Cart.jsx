@@ -162,12 +162,12 @@ function Cart() {
   // by wrapping router.push — stable identity so CartItem's memo isn't broken.
   const navigate = useCallback((to) => router.push(to), [router])
   const { userId } = useAuthStore()
-  const { cart, updateQuantity, removeItem, undoRemove, validateCart, lastRemoved } = useCart()
+  const { cart, updateQuantity, removeItem, undoRemove, validateCart, reconcile, lastRemoved } = useCart()
 
   const [processing, setProcessing] = useState(false)
   const [warnDismissed, setWarnDismissed] = useState(false)
   // Why the last checkout tap did not proceed — shown right above the button (2026-09-28).
-  // null | { kind: 'invalid', lines: [{ name, reason }] } | { kind: 'error' }
+  // null | { kind: 'invalid', lines: [{ name, reason }] } | { kind: 'error' } | { kind: 'lost' }
   const [checkoutBlock, setCheckoutBlock] = useState(null)
 
   const items = cart?.cart_item || []
@@ -313,13 +313,6 @@ function Cart() {
   )
 
   // Any change to the cart makes the last "why not" stale.
-  const onQty = useCallback(
-    (key, q) => {
-      setCheckoutBlock(null)
-      updateQuantity(key, q)
-    },
-    [updateQuantity],
-  )
   const onRemove = useCallback(
     (item) => {
       setCheckoutBlock(null)
@@ -338,9 +331,32 @@ function Cart() {
       const only = msg.match(/^Only (\d+) available/i)
       if (only) return isRTL ? `المتاح ${only[1]} فقط` : `Only ${only[1]} available`
       if (/no longer available/i.test(msg)) return isRTL ? 'لم يعد متوفراً' : 'No longer available'
-      return msg
+      if (/exceeds available stock/i.test(msg))
+        return isRTL ? 'الكمية المطلوبة غير متوفرة في المخزون' : 'Not enough stock for this quantity'
+      return msg || (isRTL ? 'تعذّر تحديث هذا المنتج' : "This item couldn't be updated")
     },
     [isRTL, fmt, currency],
+  )
+
+  const onQty = useCallback(
+    async (key, q) => {
+      setCheckoutBlock(null)
+      // The server's answer wins (fix 2): a refused quantity is rolled back by the store, and the
+      // shopper is told why here instead of seeing a number the server never accepted.
+      const r = await updateQuantity(key, q)
+      if (r && r.ok === false) setCheckoutBlock({ kind: 'invalid', lines: [{ name: '', reason: reasonText(r.message) }] })
+    },
+    [updateQuantity, reasonText],
+  )
+  // A line's CURRENT price — the card's and the checkout's rule (sale only when 0 < sale < list).
+  const priceOf = useCallback(
+    (line) => {
+      const d = resolve(line)
+      if (!d.entity) return null
+      const cur = d.sale > 0 && d.sale < d.selling ? d.sale : d.selling
+      return cur > 0 ? cur : null
+    },
+    [resolve],
   )
 
   // The checkout step NEVER fails silently (2026-09-28). It used to scroll to the top and return
@@ -350,10 +366,42 @@ function Cart() {
     if (processing) return
     setProcessing(true)
     setCheckoutBlock(null)
+    const shownLines = items.length
+    // Fix 2 (2026-09-28): first make the SERVER cart match what the shopper sees, at today's
+    // prices, and rebuild this page from the server's answer. An old drift — a line stored at an
+    // old price, a quantity the server never accepted, a stray second row, an expired guest cart —
+    // is healed here instead of blocking checkout.
+    const rec = await reconcile(priceOf)
+    if (rec.failed) {
+      setProcessing(false)
+      setCheckoutBlock({ kind: 'error' })
+      return
+    }
+    // The page had lines and the server now holds none: never a pass (it used to validate an EMPTY
+    // server cart as fine while the order was built from this page).
+    if (shownLines > 0 && rec.serverLines === 0) {
+      setProcessing(false)
+      setCheckoutBlock({ kind: 'lost' })
+      return
+    }
+    if (rec.refused.length) {
+      const lines = rec.refused.map((f) => {
+        const line = items.find((i) => getItemKey(i) === f.key)
+        return { name: line ? resolve(line).name : '', reason: reasonText(f.message) }
+      })
+      setProcessing(false)
+      setCheckoutBlock({ kind: 'invalid', lines })
+      return
+    }
     const res = await validateCart()
     if (res?.failed) {
       setProcessing(false)
       setCheckoutBlock({ kind: 'error' })
+      return
+    }
+    if (shownLines > 0 && res?.totals && Number(res.totals.item_count) === 0) {
+      setProcessing(false)
+      setCheckoutBlock({ kind: 'lost' })
       return
     }
     if (res && res.valid === false) {
@@ -377,7 +425,7 @@ function Cart() {
     }
     setProcessing(false)
     navigate('/checkout')
-  }, [processing, validateCart, navigate, resolve, reasonText])
+  }, [processing, validateCart, navigate, resolve, reasonText, reconcile, priceOf, items])
 
   // ── Empty ──
   if (!loading && items.length === 0) {
@@ -521,6 +569,13 @@ function Cart() {
                         'تعذّر التحقق من سلتك الآن. حاول مرة أخرى.',
                       )}
                     </p>
+                  ) : checkoutBlock.kind === 'lost' ? (
+                    <p className="wz-cart-block-title">
+                      {t(
+                        "We couldn't save your cart just now. Please try again in a moment.",
+                        'تعذّر حفظ سلتك الآن. حاول مرة أخرى بعد قليل.',
+                      )}
+                    </p>
                   ) : (
                     <>
                       <p className="wz-cart-block-title">
@@ -540,8 +595,8 @@ function Cart() {
                       </ul>
                       <p className="wz-cart-block-hint">
                         {t(
-                          'Remove the item and add it again from its page to continue.',
-                          'احذف المنتج ثم أضفه مرة أخرى من صفحته للمتابعة.',
+                          'Your cart now shows what is available. Check it, then tap Checkout again.',
+                          'سلتك الآن تعرض المتاح فقط. راجعها ثم اضغط إتمام الشراء مرة أخرى.',
                         )}
                       </p>
                     </>

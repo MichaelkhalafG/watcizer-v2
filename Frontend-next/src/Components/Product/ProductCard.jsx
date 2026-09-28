@@ -102,8 +102,9 @@ const ProductCard = ({ product, showBrand = true, showRating = true }) => {
     e.stopPropagation()
     if (!inStock || added || pending) return
     setPending(true)
+    let result
     try {
-      await addItem({
+      result = await addItem({
         product_id: product.id,
         quantity: 1,
         piece_price: hasSale ? salePrice : price,
@@ -113,6 +114,8 @@ const ProductCard = ({ product, showBrand = true, showRating = true }) => {
     } finally {
       setPending(false)
     }
+    // A refused add was rolled back by the cart store (2026-09-28); do not show "added".
+    if (result && result.ok === false) return
     setAdded(true)
     setTimeout(() => setAdded(false), 1400)
   }

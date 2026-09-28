@@ -384,12 +384,13 @@ function ProductDetailClient({ param, isOffer = false }) {
     if (isAdding || !inStock) return
     setIsAdding(true)
     try {
+      let result
       if (isOffer) {
         const key = `offer_${offer.id}`
         const existing = cart?.cart_item?.find((i) => getItemKey(i) === key)
-        if (existing) await updateQuantity(key, existing.quantity + quantity)
+        if (existing) result = await updateQuantity(key, existing.quantity + quantity)
         else
-          await addItem({
+          result = await addItem({
             offer_id: offer.id,
             quantity,
             piece_price: finalPrice,
@@ -399,9 +400,9 @@ function ProductDetailClient({ param, isOffer = false }) {
       } else {
         const key = `product_${product.id}`
         const existing = cart?.cart_item?.find((i) => getItemKey(i) === key)
-        if (existing) await updateQuantity(key, existing.quantity + quantity)
+        if (existing) result = await updateQuantity(key, existing.quantity + quantity)
         else
-          await addItem({
+          result = await addItem({
             product_id: product.id,
             quantity,
             piece_price: finalPrice,
@@ -411,7 +412,18 @@ function ProductDetailClient({ param, isOffer = false }) {
             name: getName(item, 'en'), // analytics only
           })
       }
-      showToast(isRTL ? 'تمت الإضافة إلى السلة!' : 'Added to cart!', 'success')
+      // The server's answer wins (2026-09-28): a refused add was rolled back by the cart store.
+      if (result && result.ok === false) {
+        const stock = /exceeds available stock/i.test(result.message || '')
+        showToast(
+          stock
+            ? isRTL ? 'لا يوجد مخزون كافٍ لهذه الكمية' : 'Not enough stock for that quantity'
+            : isRTL ? 'تعذّرت الإضافة إلى السلة. حاول مرة أخرى.' : "Couldn't add to cart. Please try again.",
+          'error',
+        )
+      } else {
+        showToast(isRTL ? 'تمت الإضافة إلى السلة!' : 'Added to cart!', 'success')
+      }
     } finally {
       setIsAdding(false)
     }
