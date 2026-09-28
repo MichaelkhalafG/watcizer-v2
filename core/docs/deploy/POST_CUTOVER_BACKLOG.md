@@ -195,8 +195,11 @@ Git history holds the text it replaced.
       the storefront flip, so the eligible set grows by whoever crosses 30 days since their last
       legacy sign-in — not "everyone at once" (an overstatement corrected 2026-09-28). The six
       products it offers come from the FROZEN legacy `products` table (prices and stock as at the
-      write switch), the mail has NO unsubscribe link, and its logo loads from `dash.`. Whether it
-      actually sends depends on production's legacy queue — the read-only checks below settle it.
+      write switch), the mail has NO unsubscribe link, and its logo loads from `dash.`.
+      **Checked on production 2026-09-28: it has never sent anything.** No customer stamped in
+      `last_reengagement_at` in the last 60 days, zero `ReEngagementMail` rows in `jobs`, zero in
+      `failed_jobs`. The job existed and the stale-price fault was genuine, but **zero customers were
+      affected**. Removing the cron line with C3 is prevention, not damage control.
     - `carts:prune` — deletes guest carts where `expires_at < now()`. Core stamps `expires_at` =
       creation + 7 days and never extends it, so **today every guest cart is deleted 7 days after
       it was created, even mid-shopping**. Checkout fix 2 (`149af67`) heals it at checkout by
