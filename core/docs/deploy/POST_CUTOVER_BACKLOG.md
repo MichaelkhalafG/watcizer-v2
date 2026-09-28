@@ -9,6 +9,46 @@ cannot get past tonight; every item is a known, named state. Pick batches from i
 
 ---
 
+## ▶ SESSION RECORD — end of 2026-09-28 (read this first)
+
+**The next session starts with:** *"Report the results of the 2026-09-28 deploy checks (core half,
+storefront half, and the next-morning prune/backup check) — then run C3 from its read-only checks."*
+
+**Deployed 2026-09-28 by the developer** (merge `ed37d00` pushed to `main`; core tar
+`core-2026-09-28.tar.gz` built). Its verification results had NOT been reported when the session
+ended — until they are, treat these as deployed-unverified:
+- **Storefront** (`149af67`): search dropdown (2 letters, only the box's own answer — verified in a
+  real browser locally, 4/4 runs, EN+AR); checkout fix 2 (refused add says so and rolls back; one
+  server line per product; checkout reconciles the cart first); fix 4 (cart → checkout 3.24 MB →
+  2.6 KB).
+- **Core:** rows cache + index warm-up (`6e8cb8f`; `catalog:warm` every 5 min + after writes;
+  judge by live Server-Timing: warm `cards` under 40 ms keeps the per-product entries, 40 ms or
+  more removes them); duplicate-integration-ID warning (`b5f6e04`; any amber badge on production's
+  Payments screen is a real shared ID); sitemap images on the API host (`47a010f`); core's guest-cart
+  prune (`ef8f9f9`, daily 03:20).
+
+**Open, in order:**
+1. The deploy checks above, and the next-morning SQL (0 guest carts idle 30+ days; signed-in carts
+   untouched; 03:00 backup ran).
+2. **C3 — legacy `dash.watchizereg.com` off (disable, not delete)**, sequence in section 3. Until it
+   runs, the LEGACY cron still deletes every guest cart 7 days after creation (fix 2 heals it at
+   checkout). Its re-engagement job never sent anything (checked on production).
+   **C3-delete** no earlier than 7 quiet days after the recorded off moment.
+3. FK step 2 (the rest of queue item 7) — not started.
+4. Then the queue as agreed: C-1 stage 4 + home rails; Arabic S-AR 1–3 (+B8/B9); Joyroom 3a/3b;
+   B1 ratings, then blogs.
+- **Blocked:** B2 Conversions API — one pixel (`1614877760150035`); waiting on the client's token
+  (into `core/.env` as `META_CAPI_TOKEN`) and a test event code.
+- **Decided, design approved-pending:** re-engagement rebuilt on core (weekly, live prices, per
+  storefront, honoured unsubscribe). Needs from the developer: the mailbox's daily sending limit,
+  price hold or "unchanged 14 days", the client's consent position. After the current queue.
+- **Launch blocker for Brand Fashion:** L8 (listing build 41 s / 206 MB for 7,579 products).
+- **A7** Next 15.5.27 on or after 30 September.
+
+**Working rules added 2026-09-28:** git is the developer's — agents never run a state-changing git
+command; they hand over the commands. Before any pause, the agent saves all uncommitted work and a
+`git diff HEAD` patch outside the repo, and says where.
+
 ## ▶ START HERE — the state of everything, 2026-09-28
 
 Rewritten 2026-09-28 from a full read of this file, to replace two session records that had
