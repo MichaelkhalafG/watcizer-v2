@@ -7,11 +7,12 @@
 // localStorage.wz_guest_token and taps again — logging cart/validate's answer, the URL, and what the
 // shopper sees.
 //
-// STATUS: the CONTROL does not work yet. On the local build (2026-09-27) even the fresh, undrifted
-// cart produced NO cart/validate request and stayed on /cart, by touch and by mouse (MOUSE=1). Until
-// the control reaches /checkout, the drift result means nothing. Also: the elementFromPoint probe
-// prints "undefined" — its template interpolation is broken; fix it first, it is the quickest way to
-// see what the tap actually lands on.
+// STATUS: on 2026-09-27 the CONTROL did not work: even the fresh, undrifted cart produced NO
+// cart/validate request and stayed on /cart, by touch and by mouse (MOUSE=1). Until the control
+// reaches /checkout, the drift result means nothing. 2026-09-28: the under-the-tap probe is fixed
+// (it passed a literal "${pt.x}" into the page, the page threw, and `get` turned the error into
+// `undefined`); it now measures after the scroll settles and reports, BEFORE the tap, what the
+// point hits. Page errors now throw.
 //
 // Run it against a LOCAL stack only:
 //   core:        cd core && C:/tools/php83/php.exe artisan serve --host=127.0.0.1 --port=8000
@@ -22,10 +23,10 @@
 //   node scripts/checkout-repro.mjs http://localhost:3000        # touch taps
 //   MOUSE=1 node scripts/checkout-repro.mjs http://localhost:3000
 //
-// SIDE EFFECTS — it WRITES to the dev database (u591083448_watchizer): one guest cart per run, and
-// it edits that cart's line price. Record `SELECT MAX(id) FROM carts` / `cart_items` before, and
-// delete the rows above them after (the runs of 2026-09-27 were cleaned up that way). Never point it
-// at production.
+// SIDE EFFECTS — it WRITES to the dev database (u591083448_watchizer): a guest cart per run, and it
+// edits that cart's line price. Since 2026-09-28 it cleans up after itself on exit (every guest cart
+// created after its start marks, and their lines) and prints what it removed; it refuses any origin
+// that is not a local storefront. Never point it at production.
 //
 // ────────────────────────────────────────────────────────────────────────────────────────────────
 // Checkout tap with a DRIFTED server cart (a line stored at an old price), then with only the
@@ -38,6 +39,24 @@ import fs from 'node:fs'
 const origin = process.argv[2]
 const MYSQL = 'C:/xampp/mysql/bin/mysql.exe'
 const sql = (q) => execFileSync(MYSQL, ['-uroot', '-N', 'u591083448_watchizer', '-e', q], { encoding: 'utf8' }).trim()
+
+// It writes to the DEV database directly, so it refuses anything but a local storefront.
+if (!/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin || '')) {
+  console.error('refusing: origin must be a LOCAL storefront, e.g. http://localhost:3000')
+  process.exit(2)
+}
+// Clean up after itself, whatever happens: every GUEST cart created after these marks (and its
+// lines) is deleted on exit — including a run that crashes halfway.
+const baseline = { carts: Number(sql('SELECT COALESCE(MAX(id),0) FROM carts')), items: Number(sql('SELECT COALESCE(MAX(id),0) FROM cart_items')), at: sql('SELECT NOW()') }
+process.on('exit', () => {
+  const where = `id > ${baseline.carts} AND user_id IS NULL AND created_at >= '${baseline.at}'`
+  const ids = sql(`SELECT GROUP_CONCAT(id) FROM carts WHERE ${where}`)
+  if (ids && ids !== 'NULL') {
+    sql(`DELETE FROM cart_items WHERE cart_id IN (${ids}) AND id > ${baseline.items}`)
+    sql(`DELETE FROM carts WHERE id IN (${ids}) AND ${where}`)
+  }
+  console.log(`cleanup: removed test guest carts [${ids && ids !== 'NULL' ? ids : 'none'}]; carts above ${baseline.carts} now: ${sql(`SELECT COUNT(*) FROM carts WHERE id > ${baseline.carts}`)}, items above ${baseline.items}: ${sql(`SELECT COUNT(*) FROM cart_items WHERE id > ${baseline.items}`)}`)
+})
 const chrome = await chromeLauncher.launch({ chromeFlags: ['--no-first-run', '--window-size=600,1000', '--disable-features=CalculateNativeWinOcclusion', '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding'] })
 const client = await CDP({ port: chrome.port })
 const { Page, Runtime, Input, Network, Emulation } = client
@@ -57,22 +76,37 @@ await Promise.all([Page.enable(), Runtime.enable(), Network.enable()])
 await Page.bringToFront()
 await Emulation.setDeviceMetricsOverride({ width: 390, height: 844, deviceScaleFactor: 3, mobile: true })
 await Emulation.setTouchEmulationEnabled({ enabled: true, maxTouchPoints: 5 })
-const get = async (e) => (await Runtime.evaluate({ expression: e, returnByValue: true, awaitPromise: true })).result.value
+// A page error must fail loudly: it used to come back as `undefined` and read like a real answer.
+const get = async (e) => {
+  const r = await Runtime.evaluate({ expression: e, returnByValue: true, awaitPromise: true })
+  if (r.exceptionDetails) throw new Error('page error: ' + (r.exceptionDetails.exception?.description || r.exceptionDetails.text).slice(0, 300))
+  return r.result.value
+}
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 const log = (...a) => console.log(...a)
+// Tap the element `expr` finds: scroll it into view, let the layout settle, measure it THEN, and
+// record — BEFORE tapping — which element really sits under that point and whether it is the
+// target (or inside it). A tap that lands on something else is reported, not silently counted.
 async function tap(expr) {
-  const pt = await get(`(() => { const el = ${expr}; if (!el) return null; el.scrollIntoView({ block: 'center' }); const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2, text: el.textContent.trim().slice(0, 30) } })()`)
-  if (!pt) return null
-  await sleep(400)
+  const found = await get(`(() => { const el = ${expr}; if (!el) return false; window.__tapTarget = el; el.scrollIntoView({ block: 'center' }); return true })()`)
+  if (!found) {
+    events.push('tap: target not found')
+    return null
+  }
+  await sleep(800)
+  const pt = await get(`(() => { const el = window.__tapTarget; const r = el.getBoundingClientRect(); const x = r.left + r.width / 2, y = r.top + r.height / 2;
+    const hit = document.elementFromPoint(x, y);
+    const describe = (e) => e ? e.tagName.toLowerCase() + (e.className && typeof e.className === 'string' ? '.' + e.className.trim().split(/\\s+/).join('.') : '') : 'nothing';
+    return { x, y, text: el.textContent.trim().slice(0, 30), disabled: !!el.disabled, onTarget: !!hit && (hit === el || el.contains(hit)), under: describe(hit), viewport: innerWidth + 'x' + innerHeight } })()`)
+  events.push(`tap "${pt.text}" at ${Math.round(pt.x)},${Math.round(pt.y)} (viewport ${pt.viewport}) disabled=${pt.disabled} | under the point: ${pt.under} | on target: ${pt.onTarget}`)
   if (process.env.MOUSE) {
+    await Input.dispatchMouseEvent({ type: 'mouseMoved', x: pt.x, y: pt.y })
     await Input.dispatchMouseEvent({ type: 'mousePressed', x: pt.x, y: pt.y, button: 'left', clickCount: 1 })
     await Input.dispatchMouseEvent({ type: 'mouseReleased', x: pt.x, y: pt.y, button: 'left', clickCount: 1 })
   } else {
     await Input.dispatchTouchEvent({ type: 'touchStart', touchPoints: [{ x: pt.x, y: pt.y }] })
     await Input.dispatchTouchEvent({ type: 'touchEnd', touchPoints: [] })
   }
-  const under = await get(`(() => { const e = document.elementFromPoint(${'${pt.x}'}, ${'${pt.y}'}); return e ? e.tagName + '.' + String(e.className).slice(0, 40) + ' "' + e.textContent.trim().slice(0, 20) + '"' : null })()`)
-  events.push('tapped ' + pt.text + ' | under point: ' + under)
   return pt.text
 }
 const shopperSees = () => get(`({ url: location.pathname, button: [...document.querySelectorAll('button')].find((b) => /checkout|processing|جار/i.test(b.textContent))?.textContent.trim(),
