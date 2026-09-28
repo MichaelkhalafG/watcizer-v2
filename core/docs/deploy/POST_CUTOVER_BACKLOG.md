@@ -38,6 +38,16 @@ Git history holds the text it replaced.
 ### 2. Committed, not deployed
 - **`149af67` — the storefront batch** (storefront only, 2026-09-28): the search dropdown fix, checkout
   fix 4 and checkout fix 2 — see "Fix 2 and fix 4" below.
+- **`6e8cb8f` — the rows cache + index warm-up** (core, 2026-09-28): see "The rows cache" in section 3.
+  After the deploy: `config:cache`, then `php artisan catalog:warm` once; judge it by live
+  Server-Timing (bar: warm `cards` clearly under 40 ms).
+- **The duplicate-integration-ID warning** (core + dashboard, 2026-09-28, built — commit pending):
+  saving a method whose integration ID another method under the same contract already carries still
+  saves, and now says so ("Saved — but integration ID … is also used by …"); the methods screen marks
+  both rows "Same ID as …". Warn, not refuse. 5 tests, mutation-checked. The dev copy holds no
+  integration IDs, so the first real look is production's screen after the deploy — any row already
+  sharing an ID shows its badge there. Needs the dashboard assets rebuilt (`npm run build`) with the
+  core deploy.
 - **The search dropdown fix** (in `149af67`): it never shows another search's results and starts at 2
   letters. **Verified 2026-09-28 on a fresh local build of `149af67`, real browser, pass/fail:**
   typing "rolex" at 150 ms a letter, then deleting back to "ro", the page sampled every 40 ms —
@@ -162,9 +172,64 @@ Git history holds the text it replaced.
   rail ordering** (new, below).
 - **Arabic S-AR stages 1–3** (see S-AR below; unblocked by the Search Console check).
 - **B2 Meta Conversions API** — about a day; STOP and report if it grows (developer's condition).
-- **C3 switch the legacy storefront off** — closes C4 and B7 with it, ends the rollback window.
-- **FK step 2** (`core:repoint-commerce-fks`), **Joyroom 3a/3b**, **the duplicate-integration-ID
-  warning** on the methods screen, **B1 ratings write** (+ its `.htaccess` line), **B8/B9 sitemap**
+  **Scope (2026-09-28): ONE pixel, `1614877760150035`** — the client administers only the new one;
+  the incumbent `1611…872` keeps its browser-only events (status quo, no regression; its purchase
+  count stays under-reported and the two pixels will disagree — expected, not a fault). Blocked on
+  the client's system-user token (into `core/.env` as `META_CAPI_TOKEN`, never in chat) and a test
+  event code.
+- **C3 switch the legacy storefront OFF — disable, not delete** (developer, 2026-09-28: nothing
+  pending on the legacy host). The legacy app is **`dash.watchizereg.com`** — NOT `eleganceeg.com`,
+  which is core's dashboard and shares core's document root with `api.watchizereg.com`. Found while
+  planning it (2026-09-28):
+  - **Prerequisite, code:** the live sitemap (`watchizereg.com/sitemap.xml` → core) writes every
+    product and blog image as `https://dash.watchizereg.com/Uploads_Images/…` —
+    `compat.sitemap_image_host` is a hard-coded constant. Off without this fix = every image URL
+    Google reads is dead. Fix: the API host (same image tree, crawlers already allowed). **BUILT
+    2026-09-28** (`COMPAT_SITEMAP_IMAGE_HOST`, default `https://api.watchizereg.com`; test in
+    `CompatEndpointsTest`, red against the legacy host). Deploy it, `config:cache`, and confirm
+    `watchizereg.com/sitemap.xml` contains no "dash" BEFORE switching anything off.
+  - **"Off" includes the legacy CRON line**, which disabling a website does not stop. The legacy
+    schedule runs two daily jobs against the shared database:
+    - `emails:re-engagement` at 10:00 — mails customers whose last LEGACY sign-in is 30+ days old,
+      at most once per 30 days each (`last_reengagement_at`). `last_login_at` stopped advancing at
+      the storefront flip, so the eligible set grows by whoever crosses 30 days since their last
+      legacy sign-in — not "everyone at once" (an overstatement corrected 2026-09-28). The six
+      products it offers come from the FROZEN legacy `products` table (prices and stock as at the
+      write switch), the mail has NO unsubscribe link, and its logo loads from `dash.`. Whether it
+      actually sends depends on production's legacy queue — the read-only checks below settle it.
+    - `carts:prune` — deletes guest carts where `expires_at < now()`. Core stamps `expires_at` =
+      creation + 7 days and never extends it, so **today every guest cart is deleted 7 days after
+      it was created, even mid-shopping**. Checkout fix 2 (`149af67`) heals it at checkout by
+      re-pushing the lines; until that is deployed the loss is silent.
+  - **Core's own prune goes IN the sequence (developer, 2026-09-28) — BUILT:** `carts:prune` in core,
+    daily 03:20 (after the 03:00 backup). Guest carts only, idle = no activity on the cart OR any of
+    its lines for 30 days (`expires_at` is not read), batches of 500, `--dry-run`. 4 tests; the
+    still-shopping case mutation-checked. Deploy it before removing the legacy cron line, and run
+    `php artisan carts:prune --dry-run` once on the server to see the first night's number.
+  - **Never touch:** the MySQL database (core runs on it — refuse any hPanel offer to remove a
+    database with the site), `eleganceeg.com` and `api.watchizereg.com`, core's cron line
+    (`domains/eleganceeg.com/core`), the DNS record and SSL of `dash.watchizereg.com` (kept for the
+    grace week so re-enabling is one click), the Paymob portal URL, the Google OAuth redirect URIs.
+  - Once off, the storefront's §9 rollback is no longer a one-file change: it needs the site
+    re-enabled first. The rollback window closes with this.
+- **C3-delete — delete the legacy site: NOT BEFORE 7 days after the recorded "off" moment**, and
+  only if that week was quiet (no report, nothing in core's logs, no Paymob callback failure for a
+  legacy-created transaction) **and after a full backup of the legacy site's files and of the
+  database taken that day.** Then: delete the website, the `dash` DNS record and its certificate,
+  the legacy cron line, the `dash` Google OAuth redirect URI; point the Paymob portal URL at core's
+  callback or clear it; drop `dash.watchizereg.com` from `config/cors.php`, `next.config.js`
+  `remotePatterns` and the config defaults. **Never the database** — it is core's.
+  Off moment: ______ (record it) → earliest delete: ______.
+- **Re-engagement, rebuilt on core — DECIDED 2026-09-28 (developer), design first, after the current
+  queue.** The legacy job is removed with C3 now: a daily mail at stale prices is worse than no mail.
+  The new one must be: WEEKLY; live prices and stock from core, never a frozen table (never a price
+  we don't honour); never out of stock or not visible on the customer's storefront; a real "last
+  seen" that core owns and writes; per storefront (Watchizer products from Watchizer's sender); a
+  working, honoured unsubscribe; never the same customer two weeks running, never the same products
+  twice. Design (cost, who chooses the products, failure modes at scale) goes to the developer
+  BEFORE any build.
+- **FK step 2** (`core:repoint-commerce-fks`), **Joyroom 3a/3b**, ~~the duplicate-integration-ID
+  warning~~ (built 2026-09-28, see section 2), **B1 ratings write** (+ its `.htaccess` line), **B8/B9 sitemap**
   (fold into S-AR stage 3), **blogs per storefront** (needs the G9 scoping decision), **A7 Next
   15.5.27** (dated: on or after 30 September).
 - ~~fb:app_id~~ **CLOSED 2026-09-28** (no Facebook App). **fb:app_id** (Facebook's debugger lists it missing): only meaningful if Watchizer has a Facebook
@@ -308,7 +373,7 @@ bilingual, and deletes its own dev-DB carts on exit.
 5. **React hydration mismatch (#418) on the storefront.** Not investigated yet; not reproduced in the
    one home-page load checked tonight. Next: reproduce with the non-minified dev build to get the
    differing node, then look for render-time `Date`/`Math.random`/locale formatting/`window` reads.
-6. **The methods screen accepts the same integration ID on two methods silently** (cause of today's
+6. **BUILT 2026-09-28 (warn, not refuse — see START HERE section 2).** **The methods screen accepts the same integration ID on two methods silently** (cause of today's
    bank_installment = 5943060 slip). Warn, don't refuse: after save in
    `PaymentSettingsController::storeMethod/updateMethod`, flash "this ID is already used by <key>"
    when another method of the same contract carries it, and mark such rows on the screen
