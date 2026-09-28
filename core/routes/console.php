@@ -75,6 +75,13 @@ Schedule::command('core:backup --keep=7')->dailyAt('03:00')->withoutOverlapping(
 Schedule::command('tokens:prune')->dailyAt('03:15');
 
 /*
+| Guest carts (2026-09-28, C3). The legacy app pruned them; its cron line goes with the legacy site.
+| 03:20 — after the backup (03:00), so a mistake is recoverable from that night's dump. Idle = no
+| activity on the cart or any of its lines for 30 days; signed-in carts are never touched.
+*/
+Schedule::command('carts:prune')->dailyAt('03:20')->withoutOverlapping();
+
+/*
 | The listing index (2026-09-28, CatalogWarmer). It lives 10 minutes (`compat.ttl.all_product`)
 | and takes ~1 s to build; rebuilt every 5 it never expires under a shopper, and the stock it
 | sorts by is never more than 5 minutes old. A write that makes it stale rebuilds it at once
