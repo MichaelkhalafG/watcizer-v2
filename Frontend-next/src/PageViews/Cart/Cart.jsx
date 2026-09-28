@@ -13,6 +13,7 @@ import {
   FiChevronDown,
 } from 'react-icons/fi'
 import { useCatalog } from '../../Hooks/queries/useCatalog'
+import http from '../../Context/api'
 import { useOffers } from '../../Hooks/queries/useOffers'
 import { useUIStore } from '../../Store/uiStore'
 import { useAuthStore } from '../../Store/authStore'
@@ -165,6 +166,9 @@ function Cart() {
 
   const [processing, setProcessing] = useState(false)
   const [warnDismissed, setWarnDismissed] = useState(false)
+  // Why the last checkout tap did not proceed — shown right above the button (2026-09-28).
+  // null | { kind: 'invalid', lines: [{ name, reason }] } | { kind: 'error' }
+  const [checkoutBlock, setCheckoutBlock] = useState(null)
 
   const items = cart?.cart_item || []
   const list = products || []
@@ -308,21 +312,72 @@ function Cart() {
     [items, resolve],
   )
 
-  const onQty = useCallback((key, q) => updateQuantity(key, q), [updateQuantity])
-  const onRemove = useCallback((item) => removeItem(getItemKey(item)), [removeItem])
+  // Any change to the cart makes the last "why not" stale.
+  const onQty = useCallback(
+    (key, q) => {
+      setCheckoutBlock(null)
+      updateQuantity(key, q)
+    },
+    [updateQuantity],
+  )
+  const onRemove = useCallback(
+    (item) => {
+      setCheckoutBlock(null)
+      removeItem(getItemKey(item))
+    },
+    [removeItem],
+  )
 
+  // Core's warning text, in the shopper's language. Core sends English sentences; the known ones
+  // are translated, anything new is shown as sent rather than hidden.
+  const reasonText = useCallback(
+    (message) => {
+      const msg = String(message || '')
+      const price = msg.match(/^Price changed to ([\d.]+)/i)
+      if (price) return isRTL ? `تغيّر السعر إلى ${fmt(price[1])} ${currency}` : `Price changed to ${fmt(price[1])} ${currency}`
+      const only = msg.match(/^Only (\d+) available/i)
+      if (only) return isRTL ? `المتاح ${only[1]} فقط` : `Only ${only[1]} available`
+      if (/no longer available/i.test(msg)) return isRTL ? 'لم يعد متوفراً' : 'No longer available'
+      return msg
+    },
+    [isRTL, fmt, currency],
+  )
+
+  // The checkout step NEVER fails silently (2026-09-28). It used to scroll to the top and return
+  // when core said the cart was not valid — core's reasons were never shown, the button just went
+  // back to "CHECKOUT", on every tap. Now the reasons are shown next to the button, per line.
   const goToCheckout = useCallback(async () => {
     if (processing) return
     setProcessing(true)
+    setCheckoutBlock(null)
     const res = await validateCart()
-    setProcessing(false)
-    if (res && res.valid === false) {
-      setWarnDismissed(false)
-      window.scrollTo({ top: 0, behavior: 'smooth' })
+    if (res?.failed) {
+      setProcessing(false)
+      setCheckoutBlock({ kind: 'error' })
       return
     }
+    if (res && res.valid === false) {
+      // Core names its own cart lines (server ids); read them once to say WHICH item it means.
+      let serverLines = []
+      try {
+        const { data } = await http.get('me/cart')
+        serverLines = Array.isArray(data?.cart_item) ? data.cart_item : []
+      } catch {
+        // Without the names the reasons still show.
+      }
+      const lines = (res.warnings || []).map((w) => {
+        const line = serverLines.find((l) => l.id === w.item_id)
+        const name = line ? resolve(line).name : ''
+        return { name, reason: reasonText(w.message) }
+      })
+      setProcessing(false)
+      setWarnDismissed(false)
+      setCheckoutBlock({ kind: 'invalid', lines })
+      return
+    }
+    setProcessing(false)
     navigate('/checkout')
-  }, [processing, validateCart, navigate])
+  }, [processing, validateCart, navigate, resolve, reasonText])
 
   // ── Empty ──
   if (!loading && items.length === 0) {
@@ -457,6 +512,42 @@ function Cart() {
                 <span>{fmt(total)} {currency}</span>
               </div>
 
+              {checkoutBlock && (
+                <div className="wz-cart-block" role="alert">
+                  {checkoutBlock.kind === 'error' ? (
+                    <p className="wz-cart-block-title">
+                      {t(
+                        "We couldn't check your cart just now. Please try again.",
+                        'تعذّر التحقق من سلتك الآن. حاول مرة أخرى.',
+                      )}
+                    </p>
+                  ) : (
+                    <>
+                      <p className="wz-cart-block-title">
+                        {t(
+                          'Your cart changed since you added these items:',
+                          'تغيّرت سلتك منذ أضفت هذه المنتجات:',
+                        )}
+                      </p>
+                      <ul className="wz-cart-block-list">
+                        {checkoutBlock.lines.map((l, i) => (
+                          <li key={i}>
+                            {l.name ? <strong>{l.name}</strong> : null}
+                            {l.name ? ' — ' : ''}
+                            {l.reason}
+                          </li>
+                        ))}
+                      </ul>
+                      <p className="wz-cart-block-hint">
+                        {t(
+                          'Remove the item and add it again from its page to continue.',
+                          'احذف المنتج ثم أضفه مرة أخرى من صفحته للمتابعة.',
+                        )}
+                      </p>
+                    </>
+                  )}
+                </div>
+              )}
               <button
                 className="wz-cart-checkout"
                 onClick={goToCheckout}

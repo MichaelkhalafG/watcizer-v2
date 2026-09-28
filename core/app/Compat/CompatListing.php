@@ -8,24 +8,30 @@ use App\Storefront\StorefrontCache;
  * The storefront's listing, searched, filtered, sorted, paged and COUNTED on the server (C-1
  * stage 3, 2026-09-27) — what the browser used to do over the whole downloaded catalogue.
  *
- * ── The contract is the storefront's previous behaviour, bug for bug ─────────────────────────
+ * ── The contract ─────────────────────────────────────────────────────────────────────────────
  *
- * Every rule below reproduces the client code it replaces: `filterPredicate.js` (the predicate),
- * `ListingClient.jsx` (search, sorts, paging), `SideBar.jsx` + `SmartSuggestions.jsx` (the facet
- * counts) and `transformProduct.js` (the fields they read, and the default order). The parity test
- * (tests/Feature/Compat/CatalogListingTest.php) runs that JavaScript in node over the same
- * `all_product` rows and compares. Oddities kept on purpose, because changing them is a product
- * decision and not a port:
+ * It reproduces the client code it replaced — `filterPredicate.js` (the predicate),
+ * `ListingClient.jsx` (sorts, paging), `SideBar.jsx` + `SmartSuggestions.jsx` (the facet counts),
+ * `transformProduct.js` (the fields, the default order) — EXCEPT three inherited bugs, fixed on
+ * purpose by the developer's decision (2026-09-27). The parity test
+ * (tests/Feature/Compat/CatalogListingTest.php) runs that JavaScript in node over the same rows
+ * with the three new rules written into its reference:
  *
- *  - a product with no sale price is priced 0 by the filter and the price sorts (JS `null < n`);
- *  - search matches the title, short description and brand in the shopper's language only (no
- *    English fallback), plus the search keywords, by substring;
- *  - facet counts ignore the search text (the sidebar never applied it).
+ *  - PRICE is what the shopper pays: the sale price only when 0 < sale < list, else the list price
+ *    (`CompatCart::catalogPrice`, the card's own rule). It used to read a blank sale price as 0, so
+ *    a product without a discount vanished from every price range and sorted first.
+ *  - FACET COUNTS follow the search: a product the search does not match counts nowhere. They used
+ *    to count the whole catalogue while the grid showed the search results.
+ *  - SEARCH matches the title, brand and short description in BOTH languages plus the keywords,
+ *    with Arabic spelling folded (أ/إ/آ→ا, ة→ه, ى→ي, no tashkeel/tatweel, Arabic digits). Only when
+ *    that finds nothing anywhere, one typo is tolerated per word of 4+ letters (2 for 8+, a swap of
+ *    two neighbours counts as one) against the words of the titles and brand names.
  *
  * The rows it returns for a page are the RAW `all_product` rows, with their ratings and gallery
  * images, so the storefront runs its own card transform on 24 rows instead of the whole catalogue.
  *
- * @phpstan-type Entry array{id: int, brands: ?int, categories: ?int, subTypes: ?int, grades: ?int, materials: ?int, movements: ?int, shapes: ?int, displayTypes: ?int, genders: list<string>, dialColors: list<int>, bandColors: list<int>, pct: float, price: float, rating: ?float, text: array{en: list<string>, ar: list<string>}, keywords: ?string}
+ * @phpstan-type Entry array{id: int, brands: ?int, categories: ?int, subTypes: ?int, grades: ?int, materials: ?int, movements: ?int, shapes: ?int, displayTypes: ?int, genders: list<string>, dialColors: list<int>, bandColors: list<int>, pct: float, price: float, rating: ?float, search: list<string>, words: list<string>}
+ * @phpstan-type Index array{entries: list<Entry>, vocab: array<string, list<int>>}
  * @phpstan-type Filters array{brands: list<int>, categories: list<int>, subTypes: list<int>, genders: list<string>, offers: bool, price: array{0: float, 1: float}, dialColors: list<int>, bandColors: list<int>, materials: list<int>, movements: list<int>, shapes: list<int>, displayTypes: list<int>, grades: list<int>}
  * @phpstan-type Cards array{products: list<array<array-key, mixed>>, ratings: list<array<array-key, mixed>>, images: list<array<array-key, mixed>>}
  */
@@ -42,6 +48,15 @@ final class CompatListing
     /** `ListingClient`'s PRICE_MAX: a max at or above it means "no upper bound". */
     public const PRICE_MAX = 99999999;
 
+    /**
+     * Where the last query() spent its time, in ms — sent as a `Server-Timing` header so a slow tap
+     * can be taken apart from the browser (2026-09-27): `index` (and whether it had to be BUILT, i.e.
+     * the cache was cold), `filter` (search, filters, facets, sort), `cards` (the page's rows).
+     *
+     * @var array{index: float, cold: bool, filter: float, cards: float}
+     */
+    public array $timing = ['index' => 0.0, 'cold' => false, 'filter' => 0.0, 'cards' => 0.0];
+
     public function __construct(
         private readonly StorefrontCache $cache,
         private readonly CompatCatalog $catalog,
@@ -53,15 +68,26 @@ final class CompatListing
      * @param  Filters  $filters
      * @return array{total: int, page: int, per_page: int, products: list<array<array-key, mixed>>, ratings: list<array<array-key, mixed>>, images: list<array<array-key, mixed>>, facets: array<string, array<string, int>>}
      */
-    public function query(array $filters, string $q, string $sort, int $page, int $perPage, string $lang): array
+    public function query(array $filters, string $q, string $sort, int $page, int $perPage): array
     {
-        // JS `trim()` strips Unicode white space too.
-        $q = mb_strtolower((string) preg_replace('/^\s+|\s+$/u', '', $q));
+        $t0 = hrtime(true);
+        $this->timing['cold'] = false;
+        $index = $this->index();
+        $t1 = hrtime(true);
+        $q = self::fold($q);
+        // The products the search matches — decided once, for the whole catalogue, BEFORE the
+        // filters: a near miss is only tried when the exact search finds nothing anywhere, so a
+        // query with real matches never picks up fuzzy extras.
+        $matched = $q === '' ? null : self::searchMatches($index, $q);
 
         $hits = [];
         /** @var array<string, array<string, int>> $facets */
         $facets = array_fill_keys(self::FACETS, []);
-        foreach ($this->index() as $p) {
+        foreach ($index['entries'] as $i => $p) {
+            // A product the search does not match counts nowhere — not in the grid, not in a facet.
+            if ($matched !== null && ! isset($matched[$i])) {
+                continue;
+            }
             $failed = self::failedFilters($p, $filters);
             if (count($failed) > 1) {
                 continue;
@@ -76,7 +102,7 @@ final class CompatListing
                     $facets[$section][$v] = ($facets[$section][$v] ?? 0) + 1;
                 }
             }
-            if ($failed === [] && ($q === '' || self::matches($p, $q, $lang === 'ar' ? 'ar' : 'en'))) {
+            if ($failed === []) {
                 $hits[] = $p;
             }
         }
@@ -84,7 +110,11 @@ final class CompatListing
         $hits = self::sorted($hits, $sort);
         $page = max(1, $page);
         $ids = array_map(fn (array $p): int => $p['id'], array_slice($hits, ($page - 1) * $perPage, $perPage));
+        $t2 = hrtime(true);
         $cards = $this->cards($ids);
+        $this->timing['index'] = ($t1 - $t0) / 1e6;
+        $this->timing['filter'] = ($t2 - $t1) / 1e6;
+        $this->timing['cards'] = (hrtime(true) - $t2) / 1e6;
 
         return [
             'total' => count($hits),
@@ -266,18 +296,127 @@ final class CompatListing
     }
 
     /**
-     * @param  Entry  $p
-     * @param  'en'|'ar'  $lang
+     * The index positions of the entries the search matches: every entry whose folded text contains
+     * the folded query; if there is none in the whole catalogue, the near-miss fallback.
+     *
+     * @param  Index  $index
+     * @return array<int, true>
      */
-    private static function matches(array $p, string $q, string $lang): bool
+    private static function searchMatches(array $index, string $q): array
     {
-        foreach ([...$p['text'][$lang], $p['keywords']] as $text) {
-            if ($text !== null && str_contains($text, $q)) {
-                return true;
+        $exact = [];
+        foreach ($index['entries'] as $i => $p) {
+            foreach ($p['search'] as $text) {
+                if (str_contains($text, $q)) {
+                    $exact[$i] = true;
+                    break;
+                }
             }
         }
 
-        return false;
+        return $exact !== [] ? $exact : self::nearMisses($index, $q);
+    }
+
+    /**
+     * One typo per query word: a word of 4+ letters may be one edit away (2 for 8+ letters) from a
+     * word of a title or a brand name, where swapping two neighbouring letters is one edit. Shorter
+     * words must appear exactly. An entry matches when EVERY query word does.
+     *
+     * @param  Index  $index
+     * @return array<int, true>
+     */
+    private static function nearMisses(array $index, string $q): array
+    {
+        $tokens = self::words($q);
+        if ($tokens === []) {
+            return [];
+        }
+        $result = null;
+        foreach ($tokens as $token) {
+            $len = mb_strlen($token);
+            $max = $len >= 8 ? 2 : ($len >= 4 ? 1 : 0);
+            $hit = [];
+            foreach ($index['entries'] as $i => $p) {
+                foreach ($p['search'] as $text) {
+                    if (str_contains($text, $token)) {
+                        $hit[$i] = true;
+                        break;
+                    }
+                }
+            }
+            if ($max > 0) {
+                foreach ($index['vocab'] as $word => $positions) {
+                    if (abs(mb_strlen((string) $word) - $len) <= $max && self::editDistance($token, (string) $word, $max) <= $max) {
+                        foreach ($positions as $i) {
+                            $hit[$i] = true;
+                        }
+                    }
+                }
+            }
+            $result = $result === null ? $hit : array_intersect_key($result, $hit);
+            if ($result === []) {
+                return [];
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * Optimal string alignment distance (Levenshtein + adjacent transposition), on characters not
+     * bytes (Arabic is two bytes a letter). Stops early once every cell of a row exceeds `$cap`.
+     */
+    private static function editDistance(string $a, string $b, int $cap): int
+    {
+        $x = mb_str_split($a);
+        $y = mb_str_split($b);
+        $n = count($x);
+        $m = count($y);
+        $prev2 = [];
+        $prev = range(0, $m);
+        for ($i = 1; $i <= $n; $i++) {
+            $cur = [$i];
+            $best = $i;
+            for ($j = 1; $j <= $m; $j++) {
+                $cost = $x[$i - 1] === $y[$j - 1] ? 0 : 1;
+                $v = min($prev[$j] + 1, $cur[$j - 1] + 1, $prev[$j - 1] + $cost);
+                if ($i > 1 && $j > 1 && $x[$i - 1] === $y[$j - 2] && $x[$i - 2] === $y[$j - 1]) {
+                    $v = min($v, $prev2[$j - 2] + 1);
+                }
+                $cur[$j] = $v;
+                $best = min($best, $v);
+            }
+            if ($best > $cap) {
+                return $cap + 1;
+            }
+            $prev2 = $prev;
+            $prev = $cur;
+        }
+
+        return $prev[$m];
+    }
+
+    /**
+     * Lower case, trimmed, and Arabic spelling folded: hamza forms of alef → ا, ة → ه, ى → ي, no
+     * tashkeel or tatweel, Arabic-Indic digits → 0-9. Applied to the query AND to the text.
+     */
+    public static function fold(string $s): string
+    {
+        $s = mb_strtolower((string) preg_replace('/^\s+|\s+$/u', '', $s));
+        $s = (string) preg_replace('/[\x{064B}-\x{065F}\x{0670}\x{0640}]/u', '', $s);
+
+        return strtr($s, [
+            'أ' => 'ا', 'إ' => 'ا', 'آ' => 'ا', 'ٱ' => 'ا', 'ة' => 'ه', 'ى' => 'ي', // i18n-exempt: matching data, never rendered — a character-folding table compares text, it shows none (proven by CatalogSearchTest "folds Arabic spelling on both sides")
+            '٠' => '0', '١' => '1', '٢' => '2', '٣' => '3', '٤' => '4', '٥' => '5', '٦' => '6', '٧' => '7', '٨' => '8', '٩' => '9', // i18n-exempt: matching data, never rendered — digit folding for search comparison, shows nothing
+        ]);
+    }
+
+    /** @return list<string> the letter/digit runs of an already folded string */
+    private static function words(string $s): array
+    {
+        preg_match_all('/[\p{L}\p{N}]+/u', $s, $m);
+
+        return array_values(array_unique($m[0]));
     }
 
     /**
@@ -303,17 +442,24 @@ final class CompatListing
      * The listing index: one small entry per product with only what the filters, the search and the
      * sorts read, in the storefront's default order. Cached like the rows it is derived from.
      *
-     * @return list<Entry>
+     * Plus the search vocabulary: every word of 4+ letters in a title or brand name (both languages,
+     * folded) → the entries it appears in, for the near-miss fallback.
+     *
+     * @return Index
      */
     private function index(): array
     {
         $ttl = config()->integer('compat.ttl.all_product');
 
-        /** @var list<Entry> */
-        return $this->cache->remember($this->storefrontId, 'compat_listing', '', $ttl, fn () => $this->buildIndex());
+        /** @var Index */
+        return $this->cache->remember($this->storefrontId, 'compat_listing', '', $ttl, function (): array {
+            $this->timing['cold'] = true;
+
+            return $this->buildIndex();
+        });
     }
 
-    /** @return list<Entry> */
+    /** @return Index */
     private function buildIndex(): array
     {
         $brandNames = [];
@@ -341,15 +487,24 @@ final class CompatListing
             $title = self::translated($row['translations'] ?? null, 'product_title');
             $short = self::translated($row['translations'] ?? null, 'short_description');
             $brand = is_int($row['brand_id'] ?? null) && isset($brandNames[$row['brand_id']]) ? $brandNames[$row['brand_id']] : ['en' => null, 'ar' => null];
-            $text = ['en' => [], 'ar' => []];
-            foreach (['en', 'ar'] as $locale) {
-                foreach ([$title[$locale], $short[$locale], $brand[$locale]] as $s) {
-                    if ($s !== null) {
-                        $text[$locale][] = mb_strtolower($s);
+            // What the search reads: both languages, folded; the keywords too.
+            $search = [];
+            foreach ([$title['en'], $title['ar'], $short['en'], $short['ar'], $brand['en'], $brand['ar'], is_string($row['search_keywords'] ?? null) ? $row['search_keywords'] : null] as $text) {
+                if ($text !== null) {
+                    $search[] = self::fold($text);
+                }
+            }
+            // The near-miss vocabulary: title and brand words only (descriptions would match anything).
+            $words = [];
+            foreach ([$title['en'], $title['ar'], $brand['en'], $brand['ar']] as $text) {
+                foreach ($text === null ? [] : self::words(self::fold($text)) as $w) {
+                    if (mb_strlen($w) >= 4) {
+                        $words[$w] = true;
                     }
                 }
             }
-            $sale = $row['sale_price_after_discount'] ?? null;
+            $selling = is_numeric($row['selling_price'] ?? null) ? (string) $row['selling_price'] : '0';
+            $sale = is_numeric($row['sale_price_after_discount'] ?? null) ? (string) $row['sale_price_after_discount'] : null;
 
             $entries[] = [
                 'entry' => [
@@ -367,11 +522,11 @@ final class CompatListing
                     'bandColors' => self::relationIds($row['band_color'] ?? null),
                     // JS `Number(x) > 0`: null and '' are 0; a non-numeric string is NaN, never > 0.
                     'pct' => is_numeric($row['percentage_discount'] ?? null) ? (float) $row['percentage_discount'] : 0.0,
-                    // JS coercion in `<` / `-`: null is 0; a non-numeric string is NaN (every comparison false).
-                    'price' => $sale === null ? 0.0 : (is_numeric($sale) ? (float) $sale : NAN),
+                    // What the shopper pays — the card's and the checkout's rule, not a blank read as 0.
+                    'price' => CompatCart::catalogPrice($selling, $sale),
                     'rating' => isset($ratings[$id]) ? array_sum($ratings[$id]) / count($ratings[$id]) : null,
-                    'text' => $text,
-                    'keywords' => is_string($row['search_keywords'] ?? null) ? mb_strtolower($row['search_keywords']) : null,
+                    'search' => $search,
+                    'words' => array_keys($words),
                 ],
                 'out' => ($row['market_stock'] ?? 0) === 0 ? 1 : 0,
                 'created' => self::millis(is_string($row['created_at'] ?? null) ? $row['created_at'] : null),
@@ -381,7 +536,15 @@ final class CompatListing
         // transformProduct's order: market stock 0 last, then newest created first; stable.
         usort($entries, fn (array $a, array $b): int => [$a['out'], $b['created']] <=> [$b['out'], $a['created']]);
 
-        return array_map(fn (array $e): array => $e['entry'], $entries);
+        $list = array_map(fn (array $e): array => $e['entry'], $entries);
+        $vocab = [];
+        foreach ($list as $i => $entry) {
+            foreach ($entry['words'] as $w) {
+                $vocab[$w][] = $i;
+            }
+        }
+
+        return ['entries' => $list, 'vocab' => $vocab];
     }
 
     /** @return array{en: ?string, ar: ?string} the field per locale; null when missing or empty (JS `getTranslatedName`) */

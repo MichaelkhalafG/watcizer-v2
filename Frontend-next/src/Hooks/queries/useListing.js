@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { useQuery, keepPreviousData } from '@tanstack/react-query'
-import http from '../../Context/api'
+import publicHttp from '../../Context/publicApi'
 import { listingRequest, listingQueryFn } from '../../lib/listingRequest'
 import { useTables } from './useTables'
 import { transformProductData } from '../../utils/transformProduct'
@@ -45,7 +45,9 @@ export const useCards = (ids) => {
   return useQuery({
     queryKey: ['cards', key],
     queryFn: async () => {
-      const { data } = await http.get(`catalog/cards?ids=${key}`)
+      // Header-less (no CORS preflight) — see Context/publicApi.js.
+      const client = publicHttp
+      const { data } = await client.get(`catalog/cards?ids=${key}`)
       return data
     },
     enabled: key !== '',

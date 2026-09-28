@@ -47,7 +47,7 @@ function storefrontCalls(): array
             }
             $src = (string) file_get_contents($file->getPathname());
             // `http.get('x')`, and the chained form `http\n  .post('x', …)`, on the storefront's clients.
-            preg_match_all('/\b(?:http|serverHttp|client)\s*\.(get|post|put|patch|delete)\(\s*[`\'"]([^`\'"]+)/', $src, $m, PREG_SET_ORDER);
+            preg_match_all('/\b(?:http|serverHttp|publicHttp|client)\s*\.(get|post|put|patch|delete)\(\s*[`\'"]([^`\'"]+)/', $src, $m, PREG_SET_ORDER);
             foreach ($m as [, $method, $raw]) {
                 // A template placeholder stands for one path segment, given a value its route accepts.
                 $path = '/api/'.ltrim((string) preg_replace_callback('/\$\{([^}]*)\}/', fn (array $p): string => match (true) {

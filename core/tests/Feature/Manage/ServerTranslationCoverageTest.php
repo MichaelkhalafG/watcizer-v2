@@ -276,8 +276,9 @@ it('lets no server file produce Arabic the seam cannot reach', function () {
         ."     side reads, so a string can move between a PHP refusal and a label unchanged.\n"
         ."  3. Interpolate with Laravel's own :name, never string concatenation.\n"
         ."  4. If the Arabic is DATA rather than interface text — a product noun, a legacy category\n"
-        ."     name — do not wrap it. Mark the line `// i18n-exempt: <reason>`; the reason is\n"
-        ."     required.\n"
+        ."     name, a matching table that is never rendered (e.g. the search's letter folding in\n"
+        ."     CompatListing::fold) — do not wrap it. Mark the line `// i18n-exempt: <reason>`; the\n"
+        ."     reason is required. Never loosen this test to let such a line through.\n"
         ."  5. If it is an operator-facing CONSTANT, a const cannot call the seam — convert it to a\n"
         ."     static method and update its call sites.\n\n"
         ."STILL UNWIRED:\n  ".implode("\n  ", array_keys($unwired))

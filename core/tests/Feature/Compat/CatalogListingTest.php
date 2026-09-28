@@ -9,14 +9,23 @@ use function Pest\Laravel\withHeaders;
 /*
  * `catalog/listing` — the storefront's listing on the server (C-1 stage 3, 2026-09-27).
  *
- * THE CONTRACT IS THE STOREFRONT'S PREVIOUS BEHAVIOUR. The browser used to download the whole
- * catalogue and, per filter change, run `transformProduct.js` → `passesFilters` → search → sort →
- * page, and count every sidebar / chip option with `passesFilters(p, filters, ownSection)`. This
- * test runs exactly that — the storefront's own transform and predicate copied verbatim, and the
- * pipeline glue from ListingClient / SideBar / SmartSuggestions as it stood — in node, over the same
- * `all_product` / meta / ratings / images responses, for a battery of scenarios built from the
- * real data, and requires the endpoint to agree: the total, the page's ids IN ORDER, and every facet
- * count.
+ * THE CONTRACT IS THE STOREFRONT'S PREVIOUS BEHAVIOUR, WITH THREE BUGS FIXED ON PURPOSE. The
+ * browser used to download the whole catalogue and, per filter change, run `transformProduct.js` →
+ * `passesFilters` → search → sort → page, and count every sidebar / chip option with
+ * `passesFilters(p, filters, ownSection)`. This test runs that — the storefront's own transform and
+ * predicate copied verbatim, and the pipeline glue from ListingClient / SideBar / SmartSuggestions —
+ * in node, over the same responses, for a battery of scenarios built from the real data, and
+ * requires the endpoint to agree: the total, the page's ids IN ORDER, and every facet count.
+ *
+ * The reference asserts the NEW rules (developer's decision, 2026-09-27), deliberately, where the
+ * old glue was wrong — it is not loosened, it is changed:
+ *  1. PRICE — the filter and the price sorts read what the card shows and checkout charges (the
+ *     sale price only when 0 < sale < list, else the list price), not a blank sale price as 0.
+ *  2. FACETS — a product the search does not match counts in no facet.
+ *  3. SEARCH — title, short description and brand in BOTH languages plus the keywords, with Arabic
+ *     spelling folded (written here independently of the PHP). The near-miss fallback, which only
+ *     runs when nothing matches exactly, has its own tests below; every search scenario here must
+ *     have exact matches, and the reference says so if one does not.
  */
 
 const LISTING_API_KEY = 'catalog-listing-test-key';
@@ -124,7 +133,8 @@ it('reproduces the storefront listing — totals, page order and every facet cou
         $s(['grades' => [$grades[0]]]),
         $s(['brands' => [$brands[0]], 'genders' => ['Men'], 'dialColors' => [$dials[0]], 'price' => [1000, 99999999]], '', 'rating'),
         $s(['categories' => [$cats[0]], 'subTypes' => [$subs[0]], 'movements' => [$movs[0]]]),
-        $s([], 'rolex'), $s([], 'ROLEX  '), $s([], $firstTitle('en')), $s([], 'watch', 'price_asc'),
+        $s([], 'rolex'), $s([], 'ROLEX  '), $s([], $firstTitle('en')), $s([], 'watch', 'price_asc'), $s([], 'rol'),
+        $s([], 'rolex', 'default', 1, 'ar'), $s([], $firstTitle('ar'), 'default', 1, 'en'), $s(['brands' => [$brands[0]]], 'rol', 'price_desc'),
         $s([], $firstTitle('ar'), 'default', 1, 'ar'), $s(['brands' => [$brands[0]]], 'ساعة', 'default', 1, 'ar'), $s([], 'rolex', 'default', 1, 'ar'),
         $s(['genders' => ['Men']], 'a', 'newest', 2),
     ];
@@ -183,27 +193,40 @@ it('reproduces the storefront listing — totals, page order and every facet cou
           displayTypes: (p) => [p.dial_display_type_id], grades: (p) => [p.grade_id],
         }
         const bad = []
+        // Rule 3: search — both languages, Arabic folded; an independent implementation.
+        const fold = (t) =>
+          (t || '').trim().toLowerCase()
+            .replace(/[\u064B-\u065F\u0670\u0640]/g, '')
+            .replace(/[أإآٱ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي')
+            .replace(/[٠-٩]/g, (c) => String(c.charCodeAt(0) - 0x660))
+        const arById = new Map(lists.ar.map((p) => [p.id, p]))
+        const searchText = (p) => {
+          const a = arById.get(p.id) || {}
+          return [p.product_title, a.product_title, p.short_description, a.short_description, p.brand, a.brand, p.search_keywords]
+            .filter(Boolean).map(fold)
+        }
+        // Rule 1: price — the card's own rule (ProductCard.jsx: hasSale = 0 < sale < price).
+        const paid = (p) => {
+          const price = Number(p.selling_price || 0)
+          const sale = Number(p.sale_price_after_discount || 0)
+          return sale > 0 && sale < price ? sale : price
+        }
+        // passesFilters reads `sale_price_after_discount` for the price filter: hand it the paid price.
+        const priced = lists.en.map((p) => ({ ...p, sale_price_after_discount: paid(p) }))
+
         d.scenarios.forEach((sc, i) => {
-          const list = lists[sc.lang]
           const filters = sc.f
-          // ── ListingClient's pipeline, as it stood ──
+          const q = fold(sc.q)
+          const matches = (p) => !q || searchText(p).some((t) => t.includes(q))
+          if (q && !priced.some(matches)) bad.push(`#${i}: "${sc.q}" matches nothing exactly — that is the near-miss path, tested separately; pick another query`)
+          const list = priced.filter(matches)
           let filtered = list.filter((product) => passesFilters(product, filters))
-          const q = sc.q.trim().toLowerCase()
-          if (q) {
-            filtered = filtered.filter(
-              (p) =>
-                p.product_title?.toLowerCase().includes(q) ||
-                p.short_description?.toLowerCase().includes(q) ||
-                p.brand?.toLowerCase().includes(q) ||
-                p.search_keywords?.toLowerCase().includes(q),
-            )
-          }
           if (sc.sort === 'price_asc') filtered = [...filtered].sort((a, b) => a.sale_price_after_discount - b.sale_price_after_discount)
           else if (sc.sort === 'price_desc') filtered = [...filtered].sort((a, b) => b.sale_price_after_discount - a.sale_price_after_discount)
           else if (sc.sort === 'newest') filtered = [...filtered].sort((a, b) => b.id - a.id)
           else if (sc.sort === 'rating') filtered = [...filtered].sort((a, b) => (b.rating || 0) - (a.rating || 0))
           const ids = filtered.slice((sc.page - 1) * PAGE_SIZE, sc.page * PAGE_SIZE).map((p) => p.id)
-          // ── SideBar / SmartSuggestions counts: passesFilters(p, filters, ownSection) && matcher ──
+          // Rule 2: facets count only what the search matched — `list` is already the matches.
           const facets = {}
           for (const [key, values] of Object.entries(SECTION)) {
             const counts = {}

@@ -902,3 +902,26 @@
     justify-content: space-between;
   }
 }
+
+/* Why the checkout step did not proceed (2026-09-28) — right above the button. */
+.wz-cart-block {
+  margin: 14px 0 12px;
+  padding: 12px 14px;
+  border: 1px solid #e0b4a8;
+  border-radius: 8px;
+  background: #fdf3f0;
+  color: #7a2e1d;
+  font-size: 14px;
+  line-height: 1.45;
+}
+.wz-cart-block-title {
+  margin: 0 0 6px;
+  font-weight: 600;
+}
+.wz-cart-block-list {
+  margin: 0 0 6px;
+  padding-inline-start: 18px;
+}
+.wz-cart-block-hint {
+  margin: 0;
+}
