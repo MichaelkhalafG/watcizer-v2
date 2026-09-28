@@ -343,3 +343,15 @@ it('serves the legacy sitemap contract: bare path 302s to the negotiated locale,
         ->toContain('<loc>https://watchizereg.com/brand/');
     get('/fr/sitemap.xml')->assertNotFound();
 });
+
+it('points every sitemap image at the API host, never the legacy host that is being switched off', function () {
+    // C3 (2026-09-28): the image host mirrored the legacy constant, dash.watchizereg.com.
+    $xml = (string) get('/en/sitemap.xml')->assertOk()->getContent();
+    preg_match_all('#<image:loc>([^<]+)</image:loc>#', $xml, $m);
+
+    expect($m[1])->not->toBeEmpty()
+        ->and($xml)->not->toContain('dash.watchizereg.com');
+    foreach ($m[1] as $url) {
+        expect($url)->toStartWith('https://api.watchizereg.com/Uploads_Images/');
+    }
+});

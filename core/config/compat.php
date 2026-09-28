@@ -26,7 +26,13 @@ return [
 
     // Legacy SitemapController constants (hard-coded there, mirrored here).
     'sitemap_domain' => 'https://watchizereg.com',
-    'sitemap_image_host' => 'https://dash.watchizereg.com',
+    /*
+     * Where the sitemap's <image:loc> URLs point. It mirrored the legacy constant — the legacy host,
+     * `dash.watchizereg.com` — so switching the legacy site off would have left every image URL Google
+     * reads dead (found 2026-09-28, planning C3). The API host serves the same Uploads_Images tree
+     * and its allow-list lets crawlers fetch it. A deliberate break from legacy byte-parity.
+     */
+    'sitemap_image_host' => (string) env('COMPAT_SITEMAP_IMAGE_HOST', 'https://api.watchizereg.com'),
 
     /*
     | Locale of the appended translated attributes (`brand_name`, `product_title`, …) on the
