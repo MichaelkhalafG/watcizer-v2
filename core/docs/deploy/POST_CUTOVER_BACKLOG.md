@@ -31,8 +31,20 @@ cannot get past tonight; every item is a known, named state. Pick batches from i
   `valid:true` on a failed request; it now also flags `failed`. Proven in the browser, English and
   Arabic: control proceeds, drifted shows the reason, unreachable shows the retry message. The
   script cleans up its own dev-DB carts.
-- Next: fix 2 (heal the drift, and stop an empty server cart from validating a non-empty tab cart),
-  then fix 4.
+- **Fix 1 closed TWO silent failures, not one:** the drifted cart (reported), and the check itself
+  failing to run (network or server error), which `validateCart` used to report as `valid:true`, so
+  checkout proceeded unchecked. Nobody had reported the second.
+- **Validation currently passes on an EMPTY server cart** — that is why clearing site data looks like
+  a cure and is not one. **Fix 2 must treat an empty (or missing) server cart while the tab has lines
+  as a FAILURE, not a pass**, as well as healing the drift.
+- Known, NOT introduced by fix 1: in the Arabic shop the notice names the product in English. The
+  cart page names every line that way (`resolve()` uses the English `name`), so the notice is
+  consistent with its surroundings. To be fixed with the cart page's naming, not in the notice.
+- Next: fix 2, then fix 4.
+- `d6da058`'s browser check PASSED (2026-09-28, local, built from `5932e05`): 4 catalogue GETs —
+  brand tap, chip, search dropdown, the cart drawer's `catalog/cards` — 0 preflights, no custom
+  headers, the key in the URL, all 200, `Server-Timing` readable in the page. The full suite passed
+  after `3fa23ae` (1781 passed).
 
 ### Decisions recorded 2026-09-28
 - **Horizontal header logo: DROPPED (developer, 2026-09-28).** No artwork will be produced; the
