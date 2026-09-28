@@ -269,7 +269,9 @@ export const cartStore = {
       setExtra({ totals: data?.totals ?? null, warnings: data?.warnings ?? [] })
       return data
     } catch {
-      return { valid: true, warnings: [] }
+      // The check itself could not run (network, server error). `failed` lets the checkout step
+      // SAY so and offer a retry (2026-09-28) instead of silently treating it as valid.
+      return { valid: true, warnings: [], failed: true }
     }
   },
 

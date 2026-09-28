@@ -73,6 +73,8 @@ Network.requestWillBeSent(({ request }) => { if (/cart\/validate|\/checkout/.tes
 Network.loadingFailed(({ requestId, errorText, blockedReason, corsErrorStatus }) => { const r = bodies.get(requestId); events.push(`FAILED ${errorText} ${blockedReason || ''} ${corsErrorStatus ? JSON.stringify(corsErrorStatus) : ''} ${r ? r.url : ''}`) })
 Runtime.consoleAPICalled(({ type, args }) => { if (type === 'error') events.push('console.error ' + args.map((a) => a.value ?? a.description ?? '').join(' ').slice(0, 200)) })
 await Promise.all([Page.enable(), Runtime.enable(), Network.enable()])
+// WZ_LANG=ar runs the whole sequence in the Arabic shop (the language is a cookie).
+if (process.env.WZ_LANG === 'ar') await Network.setCookie({ name: 'wz-lang', value: 'ar', url: origin })
 await Page.bringToFront()
 await Emulation.setDeviceMetricsOverride({ width: 390, height: 844, deviceScaleFactor: 3, mobile: true })
 await Emulation.setTouchEmulationEnabled({ enabled: true, maxTouchPoints: 5 })
@@ -109,9 +111,9 @@ async function tap(expr) {
   }
   return pt.text
 }
-const shopperSees = () => get(`({ url: location.pathname, button: [...document.querySelectorAll('button')].find((b) => /checkout|processing|جار/i.test(b.textContent))?.textContent.trim(),
+const shopperSees = () => get(`({ url: location.pathname, button: [...document.querySelectorAll('button')].find((b) => /checkout|processing|جار|إتمام الشراء/i.test(b.textContent))?.textContent.trim(),
   banner: [...document.querySelectorAll('[class*="warn"], [role="alert"], [class*="toast"]')].map((e) => e.textContent.trim().slice(0, 120)).filter(Boolean) })`)
-const checkoutBtn = `[...document.querySelectorAll('button')].find((b) => /^checkout$/i.test(b.textContent.trim()))`
+const checkoutBtn = `[...document.querySelectorAll('button')].find((b) => /^(checkout|إتمام الشراء)$/i.test(b.textContent.trim()))`
 
 // 1. A fresh guest adds a product (the first one with a Pre-Order / Add to Cart button).
 await Page.navigate({ url: origin + '/listing' }); await sleep(8000)
@@ -119,7 +121,7 @@ const hrefs = await get(`[...document.querySelectorAll('.wz-listing-grid a[href^
 let added = null
 for (const href of hrefs) {
   await Page.navigate({ url: origin + href }); await sleep(7000)
-  const t = await tap(`[...document.querySelectorAll('button')].find((x) => /Add to Cart|Pre-Order/i.test(x.textContent) && !x.disabled)`)
+  const t = await tap(`[...document.querySelectorAll('button')].find((x) => /Add to Cart|Pre-Order|أضف إلى السلة|اطلب مسبقاً/i.test(x.textContent) && !x.disabled)`)
   if (t) { added = href; await sleep(3000); break }
 }
 const token = await get(`localStorage.getItem('wz_guest_token')`)
@@ -153,5 +155,13 @@ await Page.reload(); await sleep(6000)
 events.length = 0
 await tap(checkoutBtn); await sleep(7000)
 log('TOKEN REMOVED:', JSON.stringify(await shopperSees()), '\n   ', events.join('\n    '), '\n    new token', await get(`localStorage.getItem('wz_guest_token')`))
+// 5. The check itself cannot run (the validate request is blocked): the shopper must be TOLD, and
+//    must not be sent on — never a silent pass, never a silent stop.
+await Network.setBlockedURLs({ urls: ['*cart/validate*'] })
+await Page.navigate({ url: origin + '/cart' }); await sleep(6000)
+events.length = 0
+await tap(checkoutBtn); await sleep(5000)
+log('VALIDATE UNREACHABLE:', JSON.stringify(await shopperSees()), '\n   ', events.join('\n    '))
+await Network.setBlockedURLs({ urls: [] })
 await client.close()
 try { await chrome.kill() } catch {}

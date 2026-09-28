@@ -11,9 +11,28 @@ cannot get past tonight; every item is a known, named state. Pick batches from i
 
 ## ▶ START HERE — session record, 2026-09-27 (evening)
 
-**The next session starts with:** run the checkout reproduction until its CONTROL works (a fresh,
-undrifted guest cart must reach /checkout locally), THEN prove or disprove the drifted-cart cause,
-THEN build fix 1 alone.
+**The next session starts with (updated 2026-09-28):** deploy fix 1 (storefront only) and
+`d6da058` + its follow-ups once the browser no-preflight check passes; then fix 2, then fix 4.
+
+### Checkout — cause CONFIRMED and fix 1 BUILT (2026-09-28)
+- **Reproduced**, with a working control (`scripts/checkout-repro.mjs`, local, 390×844 touch, every
+  tap verified on the button): a fresh guest cart reaches /checkout; the same cart after its SERVER
+  line is set to an old price gets `cart/validate` → `{"valid":false,"warnings":[{"message":"Price
+  changed to 5200"}]}` and the page stayed on /cart with NOTHING shown, tap after tap. That is the
+  developer's symptom. Yesterday's control "failed" only because the script's probe was broken.
+- **Why clearing site data "fixed" it:** a new guest token points at an EMPTY server cart, which
+  validates as `valid:true` (item_count 0) while the order is built from the tab's copy. So
+  validation passes on nothing. Fix 2 must close this, not just heal the drift.
+- **Fix 1 (built, not yet deployed; storefront only):** `Cart.jsx` `goToCheckout` never fails
+  silently now. When core says not valid, a notice right above the button names each line (read once
+  from `me/cart`, because core's warnings carry server line ids) with core's reason in the shopper's
+  language, and says what to do. When the check itself cannot run, it says "we couldn't check your
+  cart just now, try again" and does NOT proceed. `cartStore.validateCart` used to return
+  `valid:true` on a failed request; it now also flags `failed`. Proven in the browser, English and
+  Arabic: control proceeds, drifted shows the reason, unreachable shows the retry message. The
+  script cleans up its own dev-DB carts.
+- Next: fix 2 (heal the drift, and stop an empty server cart from validating a non-empty tab cart),
+  then fix 4.
 
 ### Decisions recorded 2026-09-28
 - **Horizontal header logo: DROPPED (developer, 2026-09-28).** No artwork will be produced; the
