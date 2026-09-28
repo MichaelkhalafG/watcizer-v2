@@ -254,7 +254,10 @@ final class PaymentSettingsController
             storefrontId: Coerce::nint($storefront->getKey()),
         );
 
-        return back()->with('status', ManageText::t('payments.method_added', 'تمت إضافة طريقة الدفع.'));
+        return self::warnIfIdShared(
+            back()->with('status', ManageText::t('payments.method_added', 'تمت إضافة طريقة الدفع.')),
+            $row,
+        );
     }
 
     public function updateMethod(Request $request, Storefront $storefront, int $method): RedirectResponse
@@ -292,7 +295,37 @@ final class PaymentSettingsController
             storefrontId: Coerce::nint($storefront->getKey()),
         );
 
-        return back()->with('status', ManageText::t('payments.method_saved', 'تم حفظ طريقة الدفع.'));
+        return self::warnIfIdShared(
+            back()->with('status', ManageText::t('payments.method_saved', 'تم حفظ طريقة الدفع.')),
+            $row,
+        );
+    }
+
+    /**
+     * The save went through; if another method under the same contract carries the same
+     * integration id, say so beside the confirmation (2026-09-28).
+     *
+     * WARN, NOT REFUSE (developer decision): two methods on one id is almost always a data-entry
+     * slip — bank_installment was saved as 5943060, valU's number, instead of 5943061 — but it is
+     * the operator's contract and the operator's call. Refusing would also block the legitimate
+     * moment in between, while two numbers are being swapped one save at a time.
+     */
+    private static function warnIfIdShared(RedirectResponse $response, StorefrontPaymentMethod $row): RedirectResponse
+    {
+        $id = Coerce::nstr($row->getAttribute('integration_id'));
+        $shared = MethodList::sharingIntegrationId(
+            Coerce::int($row->getAttribute('storefront_payment_provider_id')),
+            $id,
+            Coerce::int($row->getKey()),
+        );
+        if ($shared === []) {
+            return $response;
+        }
+
+        // Method keys are Latin identifiers (`aman`, `valu`), so a plain comma joins them in both locales.
+        $replace = ['id' => trim((string) $id), 'methods' => implode(', ', $shared)];
+
+        return $response->with('warning', ManageText::t('payments.integration_id_shared', 'تم الحفظ — لكن رقم التكامل :id مستخدم أيضًا في :methods تحت هذا العقد. كل طريقة تحتاج رقمها الخاص من Paymob؛ بنفس الرقم يُحاسَب العميل عبر نفس التكامل أيًّا كانت الطريقة التي اختارها. راجع الأرقام التي أرسلتها Paymob.', $replace));
     }
 
     public function destroyMethod(Request $request, Storefront $storefront, int $method): RedirectResponse

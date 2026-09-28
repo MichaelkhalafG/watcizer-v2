@@ -65,7 +65,7 @@ export interface SharedProps {
     nav: NavGroup[];
     /** The active locale's dictionary. Empty until the i18n backlog's step 1 — `t()` falls back. */
     translations: Translations;
-    flash: { status: string | null; error: string | null };
+    flash: { status: string | null; error: string | null; warning: string | null };
     errors: Record<string, string>;
     [key: string]: unknown;
 }

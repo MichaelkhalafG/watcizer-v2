@@ -84,6 +84,8 @@ interface MergedRow {
     integration_id: string | null;
     /** Why this row cannot take a payment even when enabled (`missing`, `malformed`, `unknown_provider`), or null. */
     unusable: string | null;
+    /** The OTHER methods under this contract with the same integration id — almost always a data-entry slip. */
+    shares_integration_id_with: string[];
 }
 
 interface Props {
@@ -671,6 +673,27 @@ export default function PaymentsIndex({
                                                                 "payments.unusable_provider",
                                                                 "لا تعمل: لا يوجد تنفيذ لهذا العقد",
                                                             )}
+                                                </Badge>
+                                            ) : null}
+
+                                            {row.shares_integration_id_with.length > 0 ? (
+                                                <Badge
+                                                    variant="warning"
+                                                    title={t(
+                                                        "payments.shares_integration_id_hint",
+                                                        "طريقة أخرى تحت هذا العقد لها نفس رقم التكامل. كل طريقة تحتاج رقمها الخاص من Paymob — بالرقم المشترك تُحاسِب الطريقتان عبر نفس التكامل.",
+                                                    )}
+                                                >
+                                                    {t(
+                                                        "payments.shares_integration_id",
+                                                        "نفس الرقم مثل :methods",
+                                                        {
+                                                            methods:
+                                                                row.shares_integration_id_with.join(
+                                                                    ", ",
+                                                                ),
+                                                        },
+                                                    )}
                                                 </Badge>
                                             ) : null}
 
