@@ -21,7 +21,9 @@ use IntlChar;
  *                 its length and a fingerprint are, so a rotation can be seen to have landed);
  *   2. CHARS    — every character of the token that is not A–Z, a–z or 0–9, with its position and
  *                 Unicode name (a Cyrillic "х" shows up here, however right it looks);
- *   3. TOKEN    — Meta's own answer to "can this token see this pixel?" (a read, sends nothing);
+ *   3. TOKEN    — Meta's own answer to "can this token see this pixel?" (a read, sends nothing).
+ *                 FAIL only when Meta rejects the TOKEN; a valid token that may not read the pixel
+ *                 is OK, because a Conversions API token can send events without that right;
  *   4. EVENTS   — with --send-test: one Purchase to Events Manager → Test events. Refused unless
  *                 META_CAPI_TEST_EVENT_CODE is set, so this can never put a fake sale in the stats.
  * Plus the outbox: what real card Purchases are pending, sent or failed, and the last error.
@@ -78,11 +80,22 @@ final class MetaCapiCheckCommand extends Command
             $r = Http::timeout(Coerce::int($cfg['timeout'] ?? 10))
                 ->get(sprintf('https://graph.facebook.com/%s/%s', $version, $pixel), ['fields' => 'id,name', 'access_token' => $token]);
             $json = Coerce::arr($r->json());
+            $x = MetaConversions::explain($json, $r->status());
+            $code = Coerce::int(Coerce::arr($json['error'] ?? null)['code'] ?? 0);
             if ($r->successful() && Coerce::str($json['id'] ?? '') === $pixel) {
                 $this->info(sprintf('TOKEN   OK — Meta accepts it, and it can see pixel %s ("%s").', $pixel, Coerce::str($json['name'] ?? '?')));
+            } elseif (in_array($code, [10, 100, 200, 294], true)) {   // never a rejected-token code (190, 102, 463, 467)
+                /*
+                 * A valid token that may not READ the pixel (2026-09-30). This is the normal answer for
+                 * a Conversions API token: it is issued to SEND events to the dataset, not to read the
+                 * pixel's details. It used to be a FAIL — and read FAIL on the production token whose
+                 * test Purchase Meta then showed in Test events. Meta did not reject the token, so this
+                 * is not the "token is wrong" case; `--send-test` is what proves it can send. (Code 100
+                 * is also what a wrong pixel id returns — the EVENTS line would then fail too.)
+                 */
+                $this->info(sprintf('TOKEN   OK — Meta accepts the token. It may not read pixel %s (code %d), which is normal for a Conversions API token: it is allowed to send events, not to read the pixel. `--send-test` proves sending.', $pixel, $code));
             } else {
                 $bad = true;
-                $x = MetaConversions::explain($json, $r->status());
                 $this->error('TOKEN   FAIL — '.$x['error']);
             }
         } catch (ConnectionException $e) {

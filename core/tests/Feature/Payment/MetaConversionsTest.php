@@ -207,6 +207,34 @@ it('meta:capi-check says TOKEN OK when Meta accepts it, and sends a test event o
     expect($withCode)->not->toContain(CAPI_TOKEN);
 });
 
+it('meta:capi-check says TOKEN OK, not FAIL, for a valid token that may only send events', function () {
+    // What the production token got on 2026-09-29: the pixel read refused, yet the test Purchase
+    // reached Events Manager → Test events. A refused READ is not a rejected TOKEN.
+    // ONE fake with a swappable answer: Http::fake() stacks, and the first match would win.
+    $answer = [400, []];
+    Http::fake(['graph.facebook.com/*' => function () use (&$answer) {
+        return Http::response($answer[1], $answer[0]);
+    }]);
+    foreach ([10, 100, 200, 294] as $code) {
+        $answer = [400, ['error' => [
+            'message' => 'Unsupported get request. Object does not exist, cannot be loaded due to missing permissions',
+            'type' => 'GraphMethodException', 'code' => $code, 'error_subcode' => 33,
+        ]]];
+
+        $out = capiCheck();
+
+        expect($out)->toContain('TOKEN   OK', 'may not read pixel', "code {$code}")
+            ->and($out)->not->toContain('TOKEN   FAIL')
+            ->and(Artisan::call('meta:capi-check'))->toBe(0);
+    }
+
+    // …while a rejected token is still a loud FAIL, and a Meta outage is not waved through.
+    $answer = [400, ['error' => ['message' => 'Error validating access token', 'type' => 'OAuthException', 'code' => 190]]];
+    expect(capiCheck())->toContain('TOKEN   FAIL', 'THE TOKEN IS WRONG OR EXPIRED');
+    $answer = [500, ['error' => ['message' => 'An unknown error occurred', 'type' => 'OAuthException', 'code' => 1]]];
+    expect(capiCheck())->toContain('TOKEN   FAIL');
+});
+
 it('records the browser signals once per order and ignores a malformed _fbp', function () {
     $orderId = PaymentFixture::order();
     $r = Request::create('/api/add_order', 'POST', ['fbp' => '<script>'], [], [], ['HTTP_USER_AGENT' => 'UA-1']);
