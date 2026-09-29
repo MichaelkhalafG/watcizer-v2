@@ -6,6 +6,8 @@ import { useUIStore } from '../../Store/uiStore'
 import { getImageUrl, PLACEHOLDER_IMG } from '../../utils/imageUrl'
 import { productUrl } from '../../utils/productUrl'
 import useCart from '../../Hooks/useCart'
+import { refusedAddMessage } from '../../Store/cartStore'
+import { useToastStore } from '../../Store/toastStore'
 import './ProductCard.css'
 
 const NEW_WINDOW_MS = 30 * 24 * 60 * 60 * 1000
@@ -13,6 +15,7 @@ const NEW_WINDOW_MS = 30 * 24 * 60 * 60 * 1000
 const ProductCard = ({ product, showBrand = true, showRating = true }) => {
   const { language } = useUIStore()
   const { addItem } = useCart()
+  const showToast = useToastStore((s) => s.showToast)
   const [added, setAdded] = useState(false)
   const [pending, setPending] = useState(false)
   const isRTL = language === 'ar'
@@ -114,8 +117,12 @@ const ProductCard = ({ product, showBrand = true, showRating = true }) => {
     } finally {
       setPending(false)
     }
-    // A refused add was rolled back by the cart store (2026-09-28); do not show "added".
-    if (result && result.ok === false) return
+    // A refused add was rolled back by the cart store (2026-09-28); do not show "added" — and say
+    // why (2026-09-29): it used to return silently, so the button looked like it did nothing.
+    if (result && result.ok === false) {
+      showToast(refusedAddMessage(result, isRTL), 'error')
+      return
+    }
     setAdded(true)
     setTimeout(() => setAdded(false), 1400)
   }
