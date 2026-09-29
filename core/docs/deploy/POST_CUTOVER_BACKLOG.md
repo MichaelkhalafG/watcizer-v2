@@ -30,9 +30,9 @@ ended — until they are, treat these as deployed-unverified:
 **Open, in order:**
 1. The deploy checks above, and the next-morning SQL (0 guest carts idle 30+ days; signed-in carts
    untouched; 03:00 backup ran).
-2. **C3 — legacy `dash.watchizereg.com` off (disable, not delete)**, sequence in section 3. Until it
-   runs, the LEGACY cron still deletes every guest cart 7 days after creation (fix 2 heals it at
-   checkout). Its re-engagement job never sent anything (checked on production).
+2. **C3 — legacy `dash.watchizereg.com` off (disable, not delete)**, sequence in section 3. The
+   legacy app has NO cron on the server (checked 2026-09-29), so neither its cart prune nor its
+   re-engagement job ever ran here; there is no cron line to remove.
    **C3-delete** no earlier than 7 quiet days after the recorded off moment.
 3. FK step 2 (the rest of queue item 7) — not started.
 4. Then the queue as agreed: C-1 stage 4 + home rails; Arabic S-AR 1–3 (+B8/B9); Joyroom 3a/3b;
@@ -76,6 +76,26 @@ Git history holds the text it replaced.
   Googlebot is NOT blocked and the SEO section (Arabic included) is unblocked.
 
 ### 2. Committed, not deployed
+- **API responses no longer stored by the CDN — the intermittent CORS failure** (core, 2026-09-29,
+  built). Seen live as `No 'Access-Control-Allow-Origin' header` on `/api/all_product_rating` on
+  home, product and cart pages. Cause, measured live: the compat GETs were `Cache-Control: public`
+  (legacy parity) and Hostinger's CDN on `api.watchizereg.com` stores public responses keeping ONE
+  copy per URL — it replaces Laravel's `Vary: Origin` with `Vary: Accept-Encoding`. After a burst of
+  requests the copy went `x-hcdn-cache-status: HIT`, and a request from `www.watchizereg.com` got
+  `Access-Control-Allow-Origin: https://watchizereg.com` back from it. A copy filled by the
+  storefront's own server-side fetch (`serverCatalog.js`, no Origin) has no CORS header at all, and
+  every browser then fails on that URL for up to 10 minutes. Not one bad deploy: public headers +
+  a CDN that ignores `Vary: Origin` + origin-less server fetches, exposed since the storefront
+  started calling the API host directly (the 2026-09-24 flip). **Any** public API response had it —
+  the checkout's payment-methods list too (`public, s-maxage=60`). Fix: the compat cache groups are
+  `private` (browser cache and ETag kept), payment-methods `private, max-age=0`;
+  `NoSharedCacheTest` walks every GET the browser makes and fails on `public`/`s-maxage`
+  (mutation-checked). v2's catalogue endpoints keep their CDN headers — no browser calls them.
+  **Also found: production has ZERO product ratings** (`/api/all_product_rating` returns `[]`), so
+  ratings render nowhere regardless — and customers cannot add one until B1 (the ratings write).
+  compat:diff will now report `Cache-Control` against the legacy host: a deliberate divergence.
+  **After the deploy:** purge the CDN cache for the API host (or wait 10 minutes), then two requests
+  to `/api/all_product_rating` must show `cache-control: …private` and never `x-hcdn-cache-status: HIT`.
 - **`149af67` — the storefront batch** (storefront only, 2026-09-28): the search dropdown fix, checkout
   fix 4 and checkout fix 2 — see "Fix 2 and fix 4" below.
 - **`6e8cb8f` — the rows cache + index warm-up** (core, 2026-09-28): see "The rows cache" in section 3.
@@ -228,8 +248,11 @@ Git history holds the text it replaced.
     2026-09-28** (`COMPAT_SITEMAP_IMAGE_HOST`, default `https://api.watchizereg.com`; test in
     `CompatEndpointsTest`, red against the legacy host). Deploy it, `config:cache`, and confirm
     `watchizereg.com/sitemap.xml` contains no "dash" BEFORE switching anything off.
-  - **"Off" includes the legacy CRON line**, which disabling a website does not stop. The legacy
-    schedule runs two daily jobs against the shared database:
+  - **CORRECTION 2026-09-29: the legacy app has NO cron line on the server** (`crontab -l` holds one
+    line, core's). The two jobs below exist in the legacy code but **never ran here** — so the
+    "guest carts deleted 7 days after creation" finding was NEVER live (a code reading taken for
+    production behaviour; the 30 → 19 cart drop on 2026-09-29 was core's own prune), and there is
+    no cron line for C3 to remove. Kept below as what the code would have done:
     - `emails:re-engagement` at 10:00 — mails customers whose last LEGACY sign-in is 30+ days old,
       at most once per 30 days each (`last_reengagement_at`). `last_login_at` stopped advancing at
       the storefront flip, so the eligible set grows by whoever crosses 30 days since their last
@@ -241,14 +264,13 @@ Git history holds the text it replaced.
       `failed_jobs`. The job existed and the stale-price fault was genuine, but **zero customers were
       affected**. Removing the cron line with C3 is prevention, not damage control.
     - `carts:prune` — deletes guest carts where `expires_at < now()`. Core stamps `expires_at` =
-      creation + 7 days and never extends it, so **today every guest cart is deleted 7 days after
-      it was created, even mid-shopping**. Checkout fix 2 (`149af67`) heals it at checkout by
-      re-pushing the lines; until that is deployed the loss is silent.
+      creation + 7 days and never extends it, so IF it had run, every guest cart would have been
+      deleted 7 days after creation, even mid-shopping. It never ran (see the correction above).
   - **Core's own prune goes IN the sequence (developer, 2026-09-28) — BUILT:** `carts:prune` in core,
     daily 03:20 (after the 03:00 backup). Guest carts only, idle = no activity on the cart OR any of
     its lines for 30 days (`expires_at` is not read), batches of 500, `--dry-run`. 4 tests; the
-    still-shopping case mutation-checked. Deploy it before removing the legacy cron line, and run
-    `php artisan carts:prune --dry-run` once on the server to see the first night's number.
+    still-shopping case mutation-checked. **Deployed; first night 2026-09-29: 30 → 19 carts, exactly
+    the 11 the dry run predicted.**
   - **Never touch:** the MySQL database (core runs on it — refuse any hPanel offer to remove a
     database with the site), `eleganceeg.com` and `api.watchizereg.com`, core's cron line
     (`domains/eleganceeg.com/core`), the DNS record and SSL of `dash.watchizereg.com` (kept for the
@@ -259,7 +281,7 @@ Git history holds the text it replaced.
   only if that week was quiet (no report, nothing in core's logs, no Paymob callback failure for a
   legacy-created transaction) **and after a full backup of the legacy site's files and of the
   database taken that day.** Then: delete the website, the `dash` DNS record and its certificate,
-  the legacy cron line, the `dash` Google OAuth redirect URI; point the Paymob portal URL at core's
+  the `dash` Google OAuth redirect URI; point the Paymob portal URL at core's
   callback or clear it; drop `dash.watchizereg.com` from `config/cors.php`, `next.config.js`
   `remotePatterns` and the config defaults. **Never the database** — it is core's.
   Off moment: ______ (record it) → earliest delete: ______.
