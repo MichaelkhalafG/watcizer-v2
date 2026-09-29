@@ -48,12 +48,23 @@ Route::prefix('v2/{storefront}')->middleware('storefront')->where(['storefront' 
 
 // ── 2. compat (legacy paths, legacy shapes) ───────────────────────────────
 Route::middleware('api.code')->group(function (): void {
+    /*
+     * PRIVATE, not public (2026-09-29). These were `public` (legacy parity), and Hostinger's CDN in
+     * front of api.watchizereg.com stores public responses — ONE copy per URL: it drops Laravel's
+     * `Vary: Origin`. Whichever request filled the copy decided the CORS header for everyone for the
+     * max-age: the storefront's own server-side fetch sends no Origin, gets no
+     * Access-Control-Allow-Origin, and every browser then failed CORS ("No
+     * 'Access-Control-Allow-Origin' header") until the copy expired. Measured live: a request from
+     * www.watchizereg.com got `Access-Control-Allow-Origin: https://watchizereg.com` back from a
+     * cache HIT. `private` keeps the browser's own cache and ETag and forbids shared caches. A
+     * deliberate divergence from the legacy headers (compat:diff compares Cache-Control).
+     */
     // meta + shipping: the legacy cache holds Eloquent models, so these still localise per request (F-18).
-    Route::middleware(['cache.headers:public;max_age=1800;etag', 'legacy.locale'])->group(function (): void {
+    Route::middleware(['cache.headers:private;max_age=1800;etag', 'legacy.locale'])->group(function (): void {
         Route::get('catalog/meta', [CatalogCompatController::class, 'meta']);
         Route::get('show_shipping_city', [CatalogCompatController::class, 'shippingCities']);
     });
-    Route::middleware('cache.headers:public;max_age=600;etag')->group(function (): void {
+    Route::middleware('cache.headers:private;max_age=600;etag')->group(function (): void {
         Route::get('all_product', [CatalogCompatController::class, 'allProduct']);
         // Storefront-only (C-1 stage 2): the header menu's catalogue facts, derived from all_product.
         Route::get('catalog/nav', [CatalogCompatController::class, 'nav']);
