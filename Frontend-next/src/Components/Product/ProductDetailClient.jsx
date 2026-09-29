@@ -12,6 +12,7 @@ import { useUIStore } from '../../Store/uiStore'
 import { useAuthStore } from '../../Store/authStore'
 import { useToastStore } from '../../Store/toastStore'
 import useCart, { getItemKey } from '../../Hooks/useCart'
+import { refusedAddMessage } from '../../Store/cartStore'
 import ProductSlider from './ProductSlider'
 import TrustSignals from '../Merchandising/TrustSignals'
 import BackToTop from '../BackToTop/BackToTop'
@@ -414,13 +415,7 @@ function ProductDetailClient({ param, isOffer = false }) {
       }
       // The server's answer wins (2026-09-28): a refused add was rolled back by the cart store.
       if (result && result.ok === false) {
-        const stock = /exceeds available stock/i.test(result.message || '')
-        showToast(
-          stock
-            ? isRTL ? 'لا يوجد مخزون كافٍ لهذه الكمية' : 'Not enough stock for that quantity'
-            : isRTL ? 'تعذّرت الإضافة إلى السلة. حاول مرة أخرى.' : "Couldn't add to cart. Please try again.",
-          'error',
-        )
+        showToast(refusedAddMessage(result, isRTL), 'error')
       } else {
         showToast(isRTL ? 'تمت الإضافة إلى السلة!' : 'Added to cart!', 'success')
       }

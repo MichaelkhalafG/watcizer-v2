@@ -85,6 +85,14 @@ const setExtra = (patch) => {
 // { ok, status, message } — `message` is the server's own sentence when it refused.
 // `ok` is what the AddToCart pixel event waits on: an add the API refused is not a cart
 // addition, and counting it teaches the ad auction to chase people whose basket never changed.
+// What the shopper is told when the server refused an add (2026-09-29). ONE sentence for every
+// place that adds to the cart: the product card said nothing at all while the product page said
+// this, and a refused card add looked like a button that did nothing.
+export const refusedAddMessage = (result, isRTL) =>
+  /exceeds available stock/i.test(result?.message || '')
+    ? isRTL ? 'لا يوجد مخزون كافٍ لهذه الكمية' : 'Not enough stock for that quantity'
+    : isRTL ? 'تعذّرت الإضافة إلى السلة. حاول مرة أخرى.' : "Couldn't add to cart. Please try again."
+
 const syncLine = (item, quantity) =>
   http
     .post('add_to_cart', {
