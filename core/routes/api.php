@@ -75,6 +75,8 @@ Route::middleware('api.code')->group(function (): void {
         Route::get('catalog/related', [CatalogCompatController::class, 'related']);
         // C-1 stage 4: one product for the product page, by URL slug or id.
         Route::get('catalog/product', [CatalogCompatController::class, 'product']);
+        // C-1 stage 4, slice C: the home page's rails (dashboard-ordered) with their cards.
+        Route::get('catalog/home', [CatalogCompatController::class, 'home']);
         Route::get('all_product_image', [CatalogCompatController::class, 'allProductImage']);
         Route::get('all_product_rating', [CatalogCompatController::class, 'allProductRating']);
         Route::get('products/by-name/{name}', [CatalogCompatController::class, 'showByName']);

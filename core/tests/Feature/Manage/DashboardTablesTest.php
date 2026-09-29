@@ -139,6 +139,12 @@ it('names EVERY table the dashboard authors, in order, so adding one is a delibe
          * rebuild never touches; dropping it would strip every unpaid card order of its signals.
          */
         'core_order_signals',
+        /*
+         * TWENTY-TWO since M1y (C-1 stage 4 slice C, 2026-09-29): `storefront_home_rails` — the
+         * home page's rails and their order, set from the dashboard. A rebuild that dropped it
+         * would put the home page back to whatever the seed says and lose every edit.
+         */
+        'storefront_home_rails',
     ]);
 
     foreach (CoreChecksumCommand::DASHBOARD_TABLES as $table) {

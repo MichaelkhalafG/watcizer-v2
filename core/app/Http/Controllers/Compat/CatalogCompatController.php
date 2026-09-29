@@ -129,6 +129,16 @@ class CatalogCompatController extends Controller
     }
 
     /**
+     * GET catalog/home — the home page's rails, in the dashboard's order, each with its product ids,
+     * plus every card they need in the `catalog/cards` shape (C-1 stage 4, slice C, `CompatHome`).
+     * The home page used to load the whole catalogue to build these in the browser.
+     */
+    public function home(): JsonResponse
+    {
+        return response()->json($this->compat->home->build(), 200, [], JSON_UNESCAPED_UNICODE);
+    }
+
+    /**
      * GET catalog/related — the suggestion rails, as product cards in the `catalog/cards` shape, best
      * first (C-1 stage 4, `CompatRelated`, the developer's rules of 2026-09-29):
      *   ?cart=ID,ID,…                          the cart's add-ons ("Complete the look")
