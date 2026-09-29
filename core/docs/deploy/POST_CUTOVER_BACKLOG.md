@@ -37,7 +37,8 @@ ended — until they are, treat these as deployed-unverified:
    sitemap 0 hits for dash; in the browser zero requests to dash across home, listing, product, cart,
    checkout and account, Google sign-in works, console clean. The legacy app had no cron, so nothing
    else to stop. **C3-delete no earlier than 2026-10-06** (and only after a quiet week + a full backup).
-3. **FK step 2 — BUILT 2026-09-29, not yet run on production:** `php artisan
+3. **FK step 2 — LIVE on production 2026-09-29** (developer: both keys point at `catalog_products`, a
+   second run says "nothing to do"; also run on the dev DB, full suite green there). `php artisan
    core:repoint-commerce-fks` (see "FK step 2" in the live-and-unfixed list for the spec). Idempotent:
    drops a `product_id` key pointing anywhere but `catalog_products` (the legacy ones — already gone
    on production since step 1), adds `order_items → catalog_products` RESTRICT and `cart_items →
@@ -48,14 +49,35 @@ ended — until they are, treat these as deployed-unverified:
    blocked by RESTRICT: `ProductImporter` already refuses a hard delete once the product has an order
    line, dashboard deletes are soft (`deleted_at`), and the probes delete their order lines first.
    Tests: 5 in `CommerceForeignKeysTest` — red on the old schema (a catalog-only product refused in a
-   cart line and an order line). The dev DB itself is NOT changed (the suite's schema tests stay red
-   there until the command is run on it — the developer's call, same as production). Harness: runs it
-   after `core:transform`.
+   cart line and an order line). Harness: runs it after `core:transform`.
 4. Then the queue as agreed: C-1 stage 4 + home rails; Arabic S-AR 1–3 (+B8/B9); Joyroom 3a/3b;
    B1 ratings, then blogs.
-- **B2 Conversions API — BUILT 2026-09-29, not deployed** (see B2 in section 3). The token is on the
-  server; the first real test is `meta:capi-check --send-test` there. The token is TEMPORARY (exposed
-  in a chat): rotate it once B2 is proven — one `.env` line + `config:cache`.
+- **B2 Conversions API — DEPLOYED 2026-09-29 (migration M1x ran, one as expected); WAITING ON A
+  CORRECT TOKEN.** `meta:capi-check` on the server: CONFIG ok (200 chars), CHARS OK, **TOKEN FAIL —
+  "Malformed access token" (HTTP 400, code 190)**, EVENTS the same, OUTBOX none. So the token's
+  characters are all valid but it is not the real token — the paste lost or changed something that is
+  not a look-alike letter. The client is resending it as a FILE. Then: `config:cache`,
+  `meta:capi-check --send-test`, one real card order, empty the test code, rotate the token.
+- **Decisions, 2026-09-29 (developer):**
+  - **"Pre-Order" → "Add to cart" everywhere — DONE in the tree.** It was only the product page's
+    button label (Express stock 0, Market stock > 0); the order is identical either way. Market DOES
+    mean a longer delivery, but that is explained in the e-mail after ordering, deliberately NOT on
+    the product page. The cards' "Market · N available" badge is jargon too — cost of rewording or
+    dropping it to be decided separately.
+  - **Suggestions: the add-on rule and three rails APPROVED** — cart "Complete the look" / «أكمل
+    إطلالتك» (add-ons only); product page "Pairs well with" / «يتناسب مع» (add-ons) then "Similar
+    styles" / «تصاميم مشابهة» (alternatives, same family). Add-ons: in stock, not in the cart, a
+    DIFFERENT family; tier 1 same brand + same gender (or unisex), tier 2 same gender any brand, NO
+    tier 3; within a tier cheaper-first by closeness to the anchor's price, newest breaks ties; a
+    multi-item cart anchors on its most expensive line and excludes every family already in it. Plus
+    fixes 1–3 (out of stock, missing values never match, the price the shopper pays), the product page
+    excludes what is already in the cart, and the uniform shuffle is a DELIBERATE deviation from the
+    browser's biased one. Keep quirks 4 and 5.
+  - **Notify-me:** signed-in customers subscribe with ONE tap; notified rows deleted after 30 days,
+    unanswered after 180; at most 5 e-mails per unit restocked. Blocked on the mailbox's daily sending
+    limit (developer is getting it from Hostinger) — as is the re-engagement mail.
+- **FOR THE CLIENT (their stock decision, not ours): ALL 72 electronics are out of stock** (measured
+  2026-09-29) — a whole family effectively invisible on the site. They may not know.
 - **Decided, design approved-pending:** re-engagement rebuilt on core (weekly, live prices, per
   storefront, honoured unsubscribe). Needs from the developer: the mailbox's daily sending limit,
   price hold or "unchanged 14 days", the client's consent position. After the current queue.
@@ -246,7 +268,29 @@ Git history holds the text it replaced.
   keeping the warm-up and the memo.
 - **C-1 stage 4** (home, product, cart, checkout, account off the client catalogue; related from the
   server; remove the remaining catalogue copies and the client transform), with **the home-page
-  rail ordering** (new, below).
+  rail ordering** (new, below). Shipped in slices (2026-09-29 estimate: ~4–5 days in all — A cart /
+  checkout / account ~1, B product + offer pages ~1, C home + rails ~2–2.5, D cleanup ~0.5).
+  - **Slice A — BUILT 2026-09-29, not committed.** Core: `GET /api/catalog/related` (`CompatRelated`)
+    — the product page's related products (`?product=ID`) and the cart's suggestions (`?cart=ID,…`,
+    one id per cart line) as cards, scored on the server; both rules ported BUG FOR BUG (JS null and
+    string-truthiness semantics included) and pinned by `CatalogRelatedTest`, which runs a FROZEN
+    verbatim copy of both JavaScript rules (`tests/Fixtures/related-reference.js`, from 149af67) in
+    node over the storefront's own transformed catalogue and compares every candidate's score
+    (mutation-checked; the null semantics the real data never exercises are pinned by hand). The
+    listing index gained the raw price strings those rules read. Storefront: cart, checkout and the
+    account's order history fetch only their own products' cards (`useCards`), the cart's
+    suggestions come from `catalog/related` (asked only when the section scrolls near), and the
+    `(shop)` layout that embedded the catalogue is gone. **Measured locally: /cart, /checkout,
+    /account 3.09 MB → ~117 KB of HTML each.** Browser check (`slice_a_check`), 5/5 PASS: both lines
+    named and priced, only `catalog/cards` + `catalog/related` requested (never `all_product`),
+    12 suggestions rendered, checkout lines named. Found on the way and fixed: the suggestions'
+    IntersectionObserver was attached by an effect keyed on the item count — once the cards stopped
+    arriving with the page, one run in five never requested suggestions; now a callback ref.
+    Not browser-checked: the account's order history (needs a signed-in customer) — lint + the same
+    `useCards` path. **Deploy: CORE FIRST, and widen the API host's `.htaccess` allow-list line to
+    `catalog/(meta|nav|listing|cards|related)` in the same deploy** (runbook §4.1.1 updated) — else
+    production 404s the new read; probe `/api/catalog/related?product=1` without the key → 401.
+    Then the storefront.
 - **Arabic S-AR stages 1–3** (see S-AR below; unblocked by the Search Console check).
 - **B2 Meta Conversions API** — about a day; STOP and report if it grows (developer's condition).
   **Scope (2026-09-28): ONE pixel, `1614877760150035`** — the client administers only the new one;
