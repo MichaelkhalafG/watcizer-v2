@@ -132,6 +132,19 @@ it('names EVERY table the dashboard authors, in order, so adding one is a delibe
          * rebuild that dropped it would disconnect every social login at once.
          */
         'core_social_identities',
+        /*
+         * TWENTY-ONE since M1x (B2, 2026-09-29): `core_order_signals` — the shopper's browser
+         * (user agent, IP, Meta's browser ids) at `add_order`, which the card `Purchase` sent from
+         * the payment callback needs and cannot get anywhere else. It describes ORDERS, which a
+         * rebuild never touches; dropping it would strip every unpaid card order of its signals.
+         */
+        'core_order_signals',
+        /*
+         * TWENTY-TWO since M1y (C-1 stage 4 slice C, 2026-09-29): `storefront_home_rails` — the
+         * home page's rails and their order, set from the dashboard. A rebuild that dropped it
+         * would put the home page back to whatever the seed says and lose every edit.
+         */
+        'storefront_home_rails',
     ]);
 
     foreach (CoreChecksumCommand::DASHBOARD_TABLES as $table) {

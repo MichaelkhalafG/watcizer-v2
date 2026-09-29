@@ -10,7 +10,7 @@
 
 import { fromSlug, brandSlug, subTypeSlug, categorySlug, toSlug } from '../utils/slugs'
 import { buildListingParams } from '../utils/listingParams'
-import { passesFilters } from '../utils/filterPredicate'
+import { transformProductData } from '../utils/transformProduct'
 
 export const SEO_DOMAIN = 'https://watchizereg.com'
 const PRICE_MAX = 99999999
@@ -127,42 +127,21 @@ export function listingCrumbEn(tables = {}, filters = {}) {
   return 'All Products'
 }
 
-// Result count for the given filters + search — replicates ListingClient's
-// pipeline (category base-split + passesFilters + text search, sans sort/paging)
-// so the metadata description count matches what renders.
-export function countListing(products = [], tables = {}, filters = {}, q = '') {
-  let base = products
-  if ((filters.categories || []).length > 0) {
-    const names = filters.categories
-      .map((id) => {
-        const c = tables.categoryTypes?.find((i) => i.id === id)
-        return c?.translations?.find((t) => t.locale === 'en')?.category_type_name
-      })
-      .filter(Boolean)
-    if (names.length === 1) {
-      if (names[0] === 'Watches') base = products.filter((p) => p.category_type === 'Watches')
-      else if (names[0] === 'Fashion') base = products.filter((p) => p.category_type === 'Fashion')
-    }
-  }
-  let filtered = base.filter((p) => passesFilters(p, filters))
-  const query = (q || '').trim().toLowerCase()
-  if (query) {
-    filtered = filtered.filter(
-      (p) =>
-        p.product_title?.toLowerCase().includes(query) ||
-        p.short_description?.toLowerCase().includes(query) ||
-        p.brand?.toLowerCase().includes(query) ||
-        p.search_keywords?.toLowerCase().includes(query),
-    )
-  }
-  return filtered.length
+// What a listing's metadata needs from core's `catalog/listing` answer for the SAME request the page
+// renders (C-1 stage 4 slice D): the result count, and the first card's picture for the social
+// preview. It used to filter the whole catalogue on the server to count, and took the catalogue's
+// first product's picture for EVERY listing page; now the preview is this listing's own first card.
+export function listingSummary(listing, tables = {}) {
+  const row = listing?.products?.[0]
+  const [first] = row ? transformProductData([row], tables, listing.ratings || [], listing.images || [], 'en') : []
+  return { total: Number(listing?.total) || 0, image: first?.image || null }
 }
 
 // Next `metadata` object mirroring old Listing's <Helmet> (title / description /
 // canonical + OG / Twitter). `pathname` is the clean self-canonical path.
-export function listingMetadata({ tables = {}, products = [], filters = {}, q = '', pathname = '/listing' }) {
+export function listingMetadata({ tables = {}, total = 0, image = null, filters = {}, pathname = '/listing' }) {
   const crumb = listingCrumbEn(tables, filters)
-  const resultCount = countListing(products, tables, filters, q)
+  const resultCount = total
 
   const brandId = (filters.brands || []).length === 1 ? filters.brands[0] : null
   const catId = (filters.categories || []).length === 1 ? filters.categories[0] : null
@@ -195,13 +174,10 @@ export function listingMetadata({ tables = {}, products = [], filters = {}, q = 
   const description = `Browse ${resultCount} ${crumb} at Watchizer — luxury watches and accessories with premium designs and unbeatable prices in Egypt.`
   const canonical = `${SEO_DOMAIN}${pathname}`
 
-  // Social preview image: prefer the first catalog product's image (already a
-  // fully-resolved absolute URL from the transform's getImageUrl); fall back to
-  // the site preview image (a JPG — social platforms refuse SVG) so every facet page always emits an og:image / twitter:image.
-  const ogImage =
-    products?.[0]?.image && /^https?:\/\//.test(products[0].image)
-      ? products[0].image
-      : `${SEO_DOMAIN}/og-image.jpg`
+  // Social preview image: this listing's first card (an absolute URL from the transform's
+  // getImageUrl); fall back to the site preview image (a JPG — social platforms refuse SVG) so
+  // every listing page always emits an og:image / twitter:image.
+  const ogImage = image && /^https?:\/\//.test(image) ? image : `${SEO_DOMAIN}/og-image.jpg`
 
   return {
     title,

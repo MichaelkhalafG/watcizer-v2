@@ -1,10 +1,9 @@
 import { Suspense } from 'react'
 import { QueryClient, dehydrate, HydrationBoundary } from '@tanstack/react-query'
-import serverHttp from '@/src/lib/serverFetch'
-import { listingRequest, listingQueryFn } from '@/src/lib/listingRequest'
-import { getServerCatalog } from '@/src/lib/serverCatalog'
+import { listingRequest } from '@/src/lib/listingRequest'
+import { getServerTables, getServerListing } from '@/src/lib/serverCatalog'
 import { parseListingParams } from '@/src/utils/listingParams'
-import { objectToSearchParams, listingMetadata, listingBreadcrumbLd } from '@/src/lib/listingSeo'
+import { objectToSearchParams, listingMetadata, listingSummary, listingBreadcrumbLd } from '@/src/lib/listingSeo'
 import ListingClient from './ListingClient'
 import { safeJsonLd } from '@/src/lib/safeJsonLd'
 
@@ -12,45 +11,44 @@ import { safeJsonLd } from '@/src/lib/safeJsonLd'
 // keeps parity with the other routes' 5-min revalidate.
 export const revalidate = 300
 
-// Resolve the request context ONCE (getServerCatalog is React-cached, so
-// generateMetadata + the page share ONE upstream fetch). searchParams is the URL
-// source of truth → filters are parsed from it (resolving slugs via `tables`).
+// Resolve the request context ONCE (the getters are React-cached, so generateMetadata + the page
+// share ONE upstream fetch each). searchParams is the URL source of truth → filters are parsed from
+// it (resolving slugs via `tables`). The listing itself is core's first page for that request — the
+// page's prefetch and the metadata's count and preview image (C-1 stage 4 slice D: no catalogue).
 async function loadContext(searchParams) {
   const sp = await searchParams
   const usp = objectToSearchParams(sp)
   let tables = {}
-  let productsEn = []
   try {
-    const cat = await getServerCatalog()
-    tables = cat.tables || {}
-    productsEn = cat.productsEn || []
+    tables = (await getServerTables()) || {}
   } catch {
-    // catalog unreachable server-side → client fetches; metadata degrades to the
-    // "all products" defaults.
+    // tables unreachable server-side → the client fetches; metadata degrades to the defaults.
   }
   const { filters, q, sort, page } = parseListingParams(usp, tables)
-  return { tables, productsEn, filters, q, sort, page }
-}
-
-export async function generateMetadata({ searchParams }) {
-  const { tables, productsEn, filters, q } = await loadContext(searchParams)
-  return listingMetadata({ tables, products: productsEn, filters, q, pathname: '/listing' })
-}
-
-export default async function ListingPage({ searchParams }) {
-  const { tables, filters, q, sort, page } = await loadContext(searchParams)
-  const breadcrumbLd = listingBreadcrumbLd({ tables, filters, pathname: '/listing' })
-
-  // The first page and its facet counts, from core (C-1 stage 3) — with the SAME request builder
-  // ListingClient uses, so its first render hits this data. The server renders in English (the
-  // shop's language is applied on the client), hence lang 'en'.
-  const qc = new QueryClient()
+  // The server renders in English (the shop's language is applied on the client), hence lang 'en'.
   const qs = listingRequest({ filters, q, sort, page, lang: 'en' })
+  let listing = null
   try {
-    qc.setQueryData(['listing', qs], await listingQueryFn(qs, serverHttp)())
+    listing = await getServerListing(qs)
   } catch {
     // core unreachable → the client fetches and shows the inline error/retry.
   }
+  return { tables, filters, q, sort, page, qs, listing }
+}
+
+export async function generateMetadata({ searchParams }) {
+  const { tables, filters, listing } = await loadContext(searchParams)
+  return listingMetadata({ tables, ...listingSummary(listing, tables), filters, pathname: '/listing' })
+}
+
+export default async function ListingPage({ searchParams }) {
+  const { tables, filters, qs, listing } = await loadContext(searchParams)
+  const breadcrumbLd = listingBreadcrumbLd({ tables, filters, pathname: '/listing' })
+
+  // The first page and its facet counts, from core (C-1 stage 3) — with the SAME request builder
+  // ListingClient uses, so its first render hits this data.
+  const qc = new QueryClient()
+  if (listing) qc.setQueryData(['listing', qs], listing)
 
   return (
     <HydrationBoundary state={dehydrate(qc)}>

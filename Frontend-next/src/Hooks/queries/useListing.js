@@ -55,5 +55,46 @@ export const useCards = (ids) => {
   })
 }
 
+// The suggestion rails, chosen on the SERVER (C-1 stage 4, core's CompatRelated — the developer's rules
+// of 2026-09-29). `cart`: the cart's product ids → add-ons ("Complete the look"). `product` + `kind`:
+// 'addons' ("Pairs well with") or 'similar' ("Similar styles"); `exclude`: what is already in the cart.
+// Returns the catalog/cards payload, best first: pass it to useCardsOf.
+export const useRelated = ({ product, cart, kind = 'similar', exclude } = {}, { enabled = true } = {}) => {
+  const lines = (cart || []).filter(Boolean)
+  const skip = [...new Set((exclude || []).filter(Boolean))].sort((a, b) => a - b).join(',')
+  const q = product
+    ? `product=${product}&kind=${kind}${skip ? `&exclude=${skip}` : ''}`
+    : lines.length
+      ? `cart=${[...new Set(lines)].sort((a, b) => a - b).join(',')}`
+      : ''
+  return useQuery({
+    queryKey: ['related', q],
+    queryFn: async () => {
+      // Header-less (no CORS preflight) — see Context/publicApi.js.
+      const { data } = await publicHttp.get(`catalog/related?${q}`)
+      return data
+    },
+    enabled: enabled && q !== '',
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
+// The home page's rails (C-1 stage 4 slice C) — core's `catalog/home`: the rails in the dashboard's
+// order, each with its product ids, plus every card they need (the catalog/cards shape). `initialData`
+// is the server render's copy, so the first paint needs no request.
+export const homeQueryFn = (client) => async () => {
+  const { data } = await client.get('catalog/home')
+  return data
+}
+
+export const useHome = (initialData) =>
+  useQuery({
+    queryKey: ['home'],
+    // Header-less (no CORS preflight) — see Context/publicApi.js.
+    queryFn: homeQueryFn(publicHttp),
+    initialData: initialData || undefined,
+    staleTime: 5 * 60 * 1000,
+  })
+
 export { listingRequest, listingQueryFn }
 export default useListing

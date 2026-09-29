@@ -30,15 +30,77 @@ ended — until they are, treat these as deployed-unverified:
 **Open, in order:**
 1. The deploy checks above, and the next-morning SQL (0 guest carts idle 30+ days; signed-in carts
    untouched; 03:00 backup ran).
-2. **C3 — legacy `dash.watchizereg.com` off (disable, not delete)**, sequence in section 3. Until it
-   runs, the LEGACY cron still deletes every guest cart 7 days after creation (fix 2 heals it at
-   checkout). Its re-engagement job never sent anything (checked on production).
-   **C3-delete** no earlier than 7 quiet days after the recorded off moment.
-3. FK step 2 (the rest of queue item 7) — not started.
+2. ~~C3~~ **DONE 2026-09-29, 10:41 server time** — legacy `dash.watchizereg.com` is OFF. hPanel has
+   no disable action on this plan, so the legacy app's `public/.htaccess` answers **410 Gone** on
+   every path (the original is saved beside it as `.htaccess.pre-c3`; undo = copy it back). Verified:
+   dash `/` and `/api/all_product` 410, api `/api` 401, api `/manage` 404, eleganceeg `/manage` 302,
+   sitemap 0 hits for dash; in the browser zero requests to dash across home, listing, product, cart,
+   checkout and account, Google sign-in works, console clean. The legacy app had no cron, so nothing
+   else to stop. **C3-delete no earlier than 2026-10-06** (and only after a quiet week + a full backup).
+3. **FK step 2 — LIVE on production 2026-09-29** (developer: both keys point at `catalog_products`, a
+   second run says "nothing to do"; also run on the dev DB, full suite green there). `php artisan
+   core:repoint-commerce-fks` (see "FK step 2" in the live-and-unfixed list for the spec). Idempotent:
+   drops a `product_id` key pointing anywhere but `catalog_products` (the legacy ones — already gone
+   on production since step 1), adds `order_items → catalog_products` RESTRICT and `cart_items →
+   catalog_products` CASCADE, refuses on any orphan line, prints the plan and the rollback SQL
+   (`--dry-run` changes nothing). Rehearsed on a scratch copy of the dev DB: from the dev state (old
+   keys present) and from production's state (no key) — both end with exactly the two new keys; a
+   re-run is a no-op; the full suite passes against it with the keys in place. Nothing in core is
+   blocked by RESTRICT: `ProductImporter` already refuses a hard delete once the product has an order
+   line, dashboard deletes are soft (`deleted_at`), and the probes delete their order lines first.
+   Tests: 5 in `CommerceForeignKeysTest` — red on the old schema (a catalog-only product refused in a
+   cart line and an order line). Harness: runs it after `core:transform`.
 4. Then the queue as agreed: C-1 stage 4 + home rails; Arabic S-AR 1–3 (+B8/B9); Joyroom 3a/3b;
    B1 ratings, then blogs.
-- **Blocked:** B2 Conversions API — one pixel (`1614877760150035`); waiting on the client's token
-  (into `core/.env` as `META_CAPI_TOKEN`) and a test event code.
+- **B2 Conversions API — DEPLOYED 2026-09-29 (migration M1x ran, one as expected); WAITING ON A
+  CORRECT TOKEN.** `meta:capi-check` on the server: CONFIG ok (200 chars), CHARS OK, **TOKEN FAIL —
+  "Malformed access token" (HTTP 400, code 190)**, EVENTS the same, OUTBOX none. So the token's
+  characters are all valid but it is not the real token — the paste lost or changed something that is
+  not a look-alike letter. The client is resending it as a FILE. Then: `config:cache`,
+  `meta:capi-check --send-test`, one real card order, empty the test code, rotate the token.
+  - **PROVEN 2026-09-29 (evening):** with the resent token the media buyer saw the test Purchase in
+    Events Manager → Test events — the whole path works (callback → outbox → Meta). The check still
+    read **TOKEN FAIL** because it asks Meta to READ the pixel, which a Conversions API token may not
+    do. **Fixed in the tree (ships with stage 4):** a refused read (codes 10/100/200/294) is now
+    `TOKEN OK — … may not read pixel …`; FAIL is kept for a rejected token (190 and the OAuth token
+    codes) and anything else. Tested, mutation-checked.
+  - **Going live (not done yet):** on the server, empty the test code — `META_CAPI_TEST_EVENT_CODE=`
+    (keep the key, no value) — then `php artisan config:cache`, then `php artisan meta:capi-check`:
+    its CONFIG line must say `test code NOT SET (events count as real)`. The code is added when each
+    event is SENT, not when it is queued, so anything still waiting in the outbox goes out as real.
+    Don't run `--send-test` after that: it refuses without a test code, by design. **Then rotate the
+    token** (it went through a chat): the one `META_CAPI_TOKEN` line, `config:cache`, `meta:capi-check`
+    (the fingerprint changes; TOKEN must not say FAIL).
+- **Decisions, 2026-09-29 (developer):**
+  - **"Pre-Order" → "Add to cart" everywhere — DONE in the tree.** It was only the product page's
+    button label (Express stock 0, Market stock > 0); the order is identical either way. Market DOES
+    mean a longer delivery, but that is explained in the e-mail after ordering, deliberately NOT on
+    the product page.
+  - **Out-of-stock products in the home rails: LEFT IN (decided 2026-09-30).** `catalog/home` keeps
+    the browser's old rule and does not filter them. Each rail is the team's to control from the
+    dashboard's Home rails screen (switch it off, change its target or card count), so what a rail
+    shows is their call, not a rule in the code.
+  - **A7 (Next 15.5.27) stays OPEN (2026-09-30).** npm's latest is still 15.5.26; 15.5.27 is
+    scheduled and may land within hours. It does not hold up stage 4.
+  - **The stock badge stays UNCHANGED (decided 2026-09-29, final).** "Market · N available" /
+    «ماركت · N متاح» and "Express · N in stock" / «إكسبريس · N متاح» stay exactly as they are, on
+    the cards and on the product page — not reworded, not dropped. (Costed first: 558 of 698 visible
+    products show the Market badge, 63 Express, 77 out of stock. A reword to "In stock · N" was
+    briefly asked for and then cancelled before it shipped.)
+  - **Suggestions: the add-on rule and three rails APPROVED** — cart "Complete the look" / «أكمل
+    إطلالتك» (add-ons only); product page "Pairs well with" / «يتناسب مع» (add-ons) then "Similar
+    styles" / «تصاميم مشابهة» (alternatives, same family). Add-ons: in stock, not in the cart, a
+    DIFFERENT family; tier 1 same brand + same gender (or unisex), tier 2 same gender any brand, NO
+    tier 3; within a tier cheaper-first by closeness to the anchor's price, newest breaks ties; a
+    multi-item cart anchors on its most expensive line and excludes every family already in it. Plus
+    fixes 1–3 (out of stock, missing values never match, the price the shopper pays), the product page
+    excludes what is already in the cart, and the uniform shuffle is a DELIBERATE deviation from the
+    browser's biased one. Keep quirks 4 and 5.
+  - **Notify-me:** signed-in customers subscribe with ONE tap; notified rows deleted after 30 days,
+    unanswered after 180; at most 5 e-mails per unit restocked. Blocked on the mailbox's daily sending
+    limit (developer is getting it from Hostinger) — as is the re-engagement mail.
+- **FOR THE CLIENT (their stock decision, not ours): ALL 72 electronics are out of stock** (measured
+  2026-09-29) — a whole family effectively invisible on the site. They may not know.
 - **Decided, design approved-pending:** re-engagement rebuilt on core (weekly, live prices, per
   storefront, honoured unsubscribe). Needs from the developer: the mailbox's daily sending limit,
   price hold or "unchanged 14 days", the client's consent position. After the current queue.
@@ -76,6 +138,26 @@ Git history holds the text it replaced.
   Googlebot is NOT blocked and the SEO section (Arabic included) is unblocked.
 
 ### 2. Committed, not deployed
+- **API responses no longer stored by the CDN — the intermittent CORS failure** (core, 2026-09-29,
+  built). Seen live as `No 'Access-Control-Allow-Origin' header` on `/api/all_product_rating` on
+  home, product and cart pages. Cause, measured live: the compat GETs were `Cache-Control: public`
+  (legacy parity) and Hostinger's CDN on `api.watchizereg.com` stores public responses keeping ONE
+  copy per URL — it replaces Laravel's `Vary: Origin` with `Vary: Accept-Encoding`. After a burst of
+  requests the copy went `x-hcdn-cache-status: HIT`, and a request from `www.watchizereg.com` got
+  `Access-Control-Allow-Origin: https://watchizereg.com` back from it. A copy filled by the
+  storefront's own server-side fetch (`serverCatalog.js`, no Origin) has no CORS header at all, and
+  every browser then fails on that URL for up to 10 minutes. Not one bad deploy: public headers +
+  a CDN that ignores `Vary: Origin` + origin-less server fetches, exposed since the storefront
+  started calling the API host directly (the 2026-09-24 flip). **Any** public API response had it —
+  the checkout's payment-methods list too (`public, s-maxage=60`). Fix: the compat cache groups are
+  `private` (browser cache and ETag kept), payment-methods `private, max-age=0`;
+  `NoSharedCacheTest` walks every GET the browser makes and fails on `public`/`s-maxage`
+  (mutation-checked). v2's catalogue endpoints keep their CDN headers — no browser calls them.
+  **Also found: production has ZERO product ratings** (`/api/all_product_rating` returns `[]`), so
+  ratings render nowhere regardless — and customers cannot add one until B1 (the ratings write).
+  compat:diff will now report `Cache-Control` against the legacy host: a deliberate divergence.
+  **After the deploy:** purge the CDN cache for the API host (or wait 10 minutes), then two requests
+  to `/api/all_product_rating` must show `cache-control: …private` and never `x-hcdn-cache-status: HIT`.
 - **`149af67` — the storefront batch** (storefront only, 2026-09-28): the search dropdown fix, checkout
   fix 4 and checkout fix 2 — see "Fix 2 and fix 4" below.
 - **`6e8cb8f` — the rows cache + index warm-up** (core, 2026-09-28): see "The rows cache" in section 3.
@@ -209,14 +291,61 @@ Git history holds the text it replaced.
   keeping the warm-up and the memo.
 - **C-1 stage 4** (home, product, cart, checkout, account off the client catalogue; related from the
   server; remove the remaining catalogue copies and the client transform), with **the home-page
-  rail ordering** (new, below).
+  rail ordering** (new, below). Shipped in slices (2026-09-29 estimate: ~4–5 days in all — A cart /
+  checkout / account ~1, B product + offer pages ~1, C home + rails ~2–2.5, D cleanup ~0.5).
+  - **Slice A — BUILT 2026-09-29, not committed.** Core: `GET /api/catalog/related` (`CompatRelated`)
+    — the product page's related products (`?product=ID`) and the cart's suggestions (`?cart=ID,…`,
+    one id per cart line) as cards, scored on the server; both rules ported BUG FOR BUG (JS null and
+    string-truthiness semantics included) and pinned by `CatalogRelatedTest`, which runs a FROZEN
+    verbatim copy of both JavaScript rules (`tests/Fixtures/related-reference.js`, from 149af67) in
+    node over the storefront's own transformed catalogue and compares every candidate's score
+    (mutation-checked; the null semantics the real data never exercises are pinned by hand). The
+    listing index gained the raw price strings those rules read. Storefront: cart, checkout and the
+    account's order history fetch only their own products' cards (`useCards`), the cart's
+    suggestions come from `catalog/related` (asked only when the section scrolls near), and the
+    `(shop)` layout that embedded the catalogue is gone. **Measured locally: /cart, /checkout,
+    /account 3.09 MB → ~117 KB of HTML each.** Browser check (`slice_a_check`), 5/5 PASS: both lines
+    named and priced, only `catalog/cards` + `catalog/related` requested (never `all_product`),
+    12 suggestions rendered, checkout lines named. Found on the way and fixed: the suggestions'
+    IntersectionObserver was attached by an effect keyed on the item count — once the cards stopped
+    arriving with the page, one run in five never requested suggestions; now a callback ref.
+    Not browser-checked: the account's order history (needs a signed-in customer) — lint + the same
+    `useCards` path. **Deploy: CORE FIRST, and widen the API host's `.htaccess` allow-list line to
+    `catalog/(meta|nav|listing|cards|related)` in the same deploy** (runbook §4.1.1 updated) — else
+    production 404s the new read; probe `/api/catalog/related?product=1` without the key → 401.
+    Then the storefront.
 - **Arabic S-AR stages 1–3** (see S-AR below; unblocked by the Search Console check).
 - **B2 Meta Conversions API** — about a day; STOP and report if it grows (developer's condition).
   **Scope (2026-09-28): ONE pixel, `1614877760150035`** — the client administers only the new one;
   the incumbent `1611…872` keeps its browser-only events (status quo, no regression; its purchase
-  count stays under-reported and the two pixels will disagree — expected, not a fault). Blocked on
-  the client's system-user token (into `core/.env` as `META_CAPI_TOKEN`, never in chat) and a test
-  event code.
+  count stays under-reported and the two pixels will disagree — expected, not a fault).
+  **BUILT 2026-09-29 (core, not deployed):** the card `Purchase` is enqueued in the payment-success
+  transaction on BOTH callback paths (scoped + legacy alias) as an `integration_outbox` row on channel
+  `meta` (`dedupe_key meta:purchase:{order}` = once per order), sent right after the commit, retried
+  by `meta:drain` every minute with a backoff (1, 5, 15, 60, 240 min, then `failed`). A token Meta
+  rejects (OAuth 190) fails the row at once with "THE TOKEN IS WRONG OR EXPIRED" — never retried
+  forever. Declined cards send nothing. Customer data is hashed at enqueue (e-mail, phone as
+  20XXXXXXXXXX, first/last name, country, account id) — no raw PII in the outbox or on the wire. Meta
+  requires the shopper's user agent on a website event and the callback has no browser in it, so
+  `add_order` now records the browser's user agent, IP and `_fbp`/`_fbc` in a new core table
+  `core_order_signals` (migration M1x, on the never-dropped list); an order placed before the deploy
+  goes as `action_source: other`. Event id `purchase-{order number}` (a future browser event must use
+  the same). `meta:capi-check` prints separate verdicts for the token's CHARACTERS (every non-alphanumeric
+  one by position and Unicode name — a Cyrillic "х" shows up), whether Meta ACCEPTS the token and it
+  can see the pixel, and (`--send-test`, refused without a test code) one test Purchase; it never
+  prints the token, only a fingerprint. `.env`: `META_CAPI_TOKEN` (set), `META_CAPI_TEST_EVENT_CODE`
+  (set to `TEST24178` for the test; empty = events count as real), optional `META_CAPI_PIXEL_ID`
+  (defaults to the new pixel) and `META_GRAPH_API_VERSION` (defaults to v23.0). 9 tests
+  (`MetaConversionsTest`), the callback hook and the token verdict mutation-checked.
+  **Decision (developer, 2026-09-29): `core_order_signals` has NO retention rule — the IP and user
+  agent are kept indefinitely.** Raised because they are personal data about a shopper's device and
+  B2 only needs them until the order's Purchase is sent (a card payment settles within hours, the
+  retries end within a day), so they could be deleted after that. Kept by choice, not oversight. If a
+  rule is ever wanted, it is a prune command like `carts:prune` (e.g. signals of orders older than N
+  days), scheduled after the 03:00 backup.
+  **Not in B2:** COD purchases stay browser-only (they already fire `Purchase` at confirmation); the
+  storefront does not yet send `_fbp`/`_fbc` in `add_order` (the columns accept them — a small
+  storefront follow-up that would raise Meta's match rate).
 - **C3 switch the legacy storefront OFF — disable, not delete** (developer, 2026-09-28: nothing
   pending on the legacy host). The legacy app is **`dash.watchizereg.com`** — NOT `eleganceeg.com`,
   which is core's dashboard and shares core's document root with `api.watchizereg.com`. Found while
@@ -228,8 +357,11 @@ Git history holds the text it replaced.
     2026-09-28** (`COMPAT_SITEMAP_IMAGE_HOST`, default `https://api.watchizereg.com`; test in
     `CompatEndpointsTest`, red against the legacy host). Deploy it, `config:cache`, and confirm
     `watchizereg.com/sitemap.xml` contains no "dash" BEFORE switching anything off.
-  - **"Off" includes the legacy CRON line**, which disabling a website does not stop. The legacy
-    schedule runs two daily jobs against the shared database:
+  - **CORRECTION 2026-09-29: the legacy app has NO cron line on the server** (`crontab -l` holds one
+    line, core's). The two jobs below exist in the legacy code but **never ran here** — so the
+    "guest carts deleted 7 days after creation" finding was NEVER live (a code reading taken for
+    production behaviour; the 30 → 19 cart drop on 2026-09-29 was core's own prune), and there is
+    no cron line for C3 to remove. Kept below as what the code would have done:
     - `emails:re-engagement` at 10:00 — mails customers whose last LEGACY sign-in is 30+ days old,
       at most once per 30 days each (`last_reengagement_at`). `last_login_at` stopped advancing at
       the storefront flip, so the eligible set grows by whoever crosses 30 days since their last
@@ -241,14 +373,13 @@ Git history holds the text it replaced.
       `failed_jobs`. The job existed and the stale-price fault was genuine, but **zero customers were
       affected**. Removing the cron line with C3 is prevention, not damage control.
     - `carts:prune` — deletes guest carts where `expires_at < now()`. Core stamps `expires_at` =
-      creation + 7 days and never extends it, so **today every guest cart is deleted 7 days after
-      it was created, even mid-shopping**. Checkout fix 2 (`149af67`) heals it at checkout by
-      re-pushing the lines; until that is deployed the loss is silent.
+      creation + 7 days and never extends it, so IF it had run, every guest cart would have been
+      deleted 7 days after creation, even mid-shopping. It never ran (see the correction above).
   - **Core's own prune goes IN the sequence (developer, 2026-09-28) — BUILT:** `carts:prune` in core,
     daily 03:20 (after the 03:00 backup). Guest carts only, idle = no activity on the cart OR any of
     its lines for 30 days (`expires_at` is not read), batches of 500, `--dry-run`. 4 tests; the
-    still-shopping case mutation-checked. Deploy it before removing the legacy cron line, and run
-    `php artisan carts:prune --dry-run` once on the server to see the first night's number.
+    still-shopping case mutation-checked. **Deployed; first night 2026-09-29: 30 → 19 carts, exactly
+    the 11 the dry run predicted.**
   - **Never touch:** the MySQL database (core runs on it — refuse any hPanel offer to remove a
     database with the site), `eleganceeg.com` and `api.watchizereg.com`, core's cron line
     (`domains/eleganceeg.com/core`), the DNS record and SSL of `dash.watchizereg.com` (kept for the
@@ -259,10 +390,12 @@ Git history holds the text it replaced.
   only if that week was quiet (no report, nothing in core's logs, no Paymob callback failure for a
   legacy-created transaction) **and after a full backup of the legacy site's files and of the
   database taken that day.** Then: delete the website, the `dash` DNS record and its certificate,
-  the legacy cron line, the `dash` Google OAuth redirect URI; point the Paymob portal URL at core's
+  the `dash` Google OAuth redirect URI; point the Paymob portal URL at core's
   callback or clear it; drop `dash.watchizereg.com` from `config/cors.php`, `next.config.js`
   `remotePatterns` and the config defaults. **Never the database** — it is core's.
-  Off moment: ______ (record it) → earliest delete: ______.
+  Off moment: **2026-09-29 10:41 server time** (legacy `public/.htaccess` → 410; original in
+  `.htaccess.pre-c3`) → earliest delete: **2026-10-06**. The delete also removes that `.htaccess`
+  pair with the site.
 - **Re-engagement, rebuilt on core — DECIDED 2026-09-28 (developer), design first, after the current
   queue.** The legacy job is removed with C3 now: a daily mail at stale prices is worse than no mail.
   The new one must be: WEEKLY; live prices and stock from core, never a frozen table (never a price
@@ -297,7 +430,65 @@ read that returns each rail with its cards, so the home page stops needing the w
 ~2 days on top of stage 4, and it belongs INSIDE stage 4: stage 4 moves the home rails to the
 server anyway, so doing it separately would build the rails twice.
 
+**BUILT 2026-09-29 as stage 4 slice C (in the tree, ships with the stage 4 batch).**
+- **Table** `storefront_home_rails` (migration M1y, `2026_10_12_000000_home_rails.php`, `hasTable`
+  guard, on `DASHBOARD_TABLES`). No foreign key to the target: grades, brands and categories are
+  transform output, and a key would stop `core:drop-clean`. Seeded with TODAY's home page
+  (watchizer only): offers 12, featured 5, then every grade in id order at 8. So deploying it changes
+  nothing a shopper sees. Brand Fashion gets no rails until someone adds them.
+- **Read** `GET catalog/home` (`CompatHome`): the active rails in order, each with its product ids,
+  plus the cards. The cards follow the browser's old rules, unchanged (parity-tested against
+  `all_product` with the browser's own sort): offers = discounted, in catalogue order; grade / brand
+  / category = that target's products, in catalogue order; featured = products marked featured,
+  else the old pool (on sale with a picture), `card_count` picked at random; newest (a new kind) =
+  in stock, newest first. **Out-of-stock products are NOT filtered from the old kinds**: the browser
+  didn't filter them, and changing that is a decision, not part of the move. A rail with no cards is
+  left out.
+- **Dashboard** "Home rails" (`/manage/storefronts/{id}/home-rails`, beside Banners, same ability):
+  add, retitle (empty title = the target's own name), set the card count, switch off, move up/down
+  (the whole order is sent, and a stale list is refused), delete. Every write is activity-logged.
+  **No cache flush, deliberately**: `catalog/home` reads the table on every request, so a change is
+  live in core at once and reaches the shop within the home page's `revalidate = 300` (5 min).
+  Flushing would throw away the listing index for nothing.
+- **Storefront**: the home page renders the rails from `catalog/home` (server render carries them, so
+  the browser makes no request for them). Titles come from the tables (grade name + description,
+  brand, category) unless the rail has its own. The brand strip sits after the first rail. No
+  `all_product` on `/` any more.
+- **Deploy**: the API host's `.htaccess` line becomes
+  `catalog/(meta|nav|listing|cards|related|product|home)` (runbook §4.1.1 already says so), then
+  `php artisan migrate --force` (M1y seeds the rails).
+
+**Stage 4 slice D — cleanup, BUILT 2026-09-30 (in the tree, ships with the stage 4 batch).** No
+storefront page loads the whole catalogue any more.
+- **Listing and facet pages** (`/listing`, `/brand/…`, `/category/…`, `/grade/…`, `/subtypes/…`,
+  `/[suptype]/[brand]`) took the whole catalogue on the server only for their metadata. Now the
+  description's count is core's `catalog/listing` total for the same request the page prefetches
+  (one fetch, React-cached), so it matches what renders. The social preview image is that listing's
+  first card. Before, every listing page showed the catalogue's first product.
+- **Deleted:** `CatalogBoundary`, `catalogProjection`, `useCatalog`, `useProducts`,
+  `filterPredicate`, `getServerCatalog`, `findProductInCatalog`. `transformProduct.js` stays: it
+  turns the rows core sends into cards.
+- **Tests:** the predicate is frozen as `tests/Fixtures/filter-predicate-reference.js`, which
+  `CatalogListingTest` holds core's listing to. `FilterPredicateTest` now guards core's listing (the
+  Electronics category bug, two-tone colours, every settable key read).
+- **Found and fixed:** slice B (168983d) had dropped the layout's `setQueryData(['tables'], …)`,
+  so every server render lacked the lookup tables. The home page's HTML carried no rails and no
+  brand strip until the browser fetched the tables. Restored; the home HTML now carries 8 rail
+  titles and 65 cards. It was never deployed.
+- **Local only:** a production build refuses to optimise images from `127.0.0.1:8000` (by design
+  since 2026-09-26), so local listing pages log image 400s. Not a live issue.
+
 ### 4. Deferred by decision — and what makes each urgent
+- **Hero 3D: one-finger vertical swipe scrolls the page** (decided 2026-09-29, NOT built). Today the
+  hero canvas is `touch-action: none` (three's `OrbitControls` and `WatchHero.css`, deliberately:
+  one finger rotates), so on a phone a swipe that starts on the 50vh hero rotates the watch instead
+  of scrolling. **The fix, when triggered:** a one-finger VERTICAL swipe on the hero scrolls the
+  page; rotating needs a HORIZONTAL drag. A behaviour change. **Trigger: the day a shopper says the
+  page sticks.** Not the cause of anything today: the console's "non-passive `wheel` listener"
+  warning comes from `OrbitControls` (it cancels the wheel to zoom) and costs nothing on a phone —
+  touch scrolling fires no `wheel` events. Left alone, unmeasured (developer, 2026-09-29).
+  **One thing to measure, only when next in `WatchCanvas.jsx` anyway:** the warning repeats, so the
+  controls are being connected more than once — count the connects and find why.
 - **A3 banners** (paused for the season) — when the developer wants seasonal banners.
 - **A5 / A6** (account shipping display; installment fee) — before any promotion goes on.
 - **A9 Next 16 / React 19** — after Brand Fashion launches; sooner if 15.5 stops getting security

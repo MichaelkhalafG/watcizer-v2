@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Compat;
 use App\Compat\CartIdentity;
 use App\Compat\CompatCheckout;
 use App\Compat\CompatServices;
+use App\Domain\Analytics\MetaConversions;
 use App\Domain\Inventory\Actor;
 use App\Domain\Inventory\InsufficientOfferStock;
 use App\Domain\Inventory\InsufficientStock;
@@ -62,6 +63,7 @@ class CheckoutCompatController extends Controller
         private readonly PaymentInitiator $initiator,
         private readonly CheckoutMethods $methods,
         private readonly UnpaidOrders $unpaid,
+        private readonly MetaConversions $meta,
     ) {}
 
     /** POST add_order */
@@ -336,6 +338,11 @@ class CheckoutCompatController extends Controller
              */
             PromotionDiscounts::record($orderId, $promotion);
 
+            // The shopper's browser (user agent, IP, Meta's browser ids) — the card Purchase is sent
+            // from the payment callback, which has no browser in it (B2). A fact about this order:
+            // inside the transaction, gone with it if the order rolls back.
+            MetaConversions::recordSignals($orderId, $request);
+
             // Clear the cart so an ordered/removed line can never inflate the NEXT order's total.
             if (! $isGuest && $cart !== null) {
                 $this->compat->cart->destroy(Row::int($cart, 'id'));
@@ -500,6 +507,8 @@ class CheckoutCompatController extends Controller
              * @var list<int> $mailIds
              */
             $mailIds = [];
+            /** @var list<int> $metaIds the card Purchase (B2): enqueued inside, sent after, like the mail */
+            $metaIds = [];
             $order = $orderId === null ? null : $this->compat->checkout->order($orderId);
             $orderStatus = $order === null ? null : Row::str($order, 'status');
             $decision = CallbackPolicy::decide($outcome, $orderStatus ?? 'pending', $amountMismatch === null);
@@ -526,7 +535,7 @@ class CheckoutCompatController extends Controller
                  * deadlock against each other under concurrency. A deadlocked callback used to
                  * answer 500 with every trace of the attempt rolled back.
                  */
-                DeadlockRetry::run(function () use ($transactionId, $orderId, $amountMismatch, $order, $orderStatus, $outcome, $decision, $attemptRow, &$mailIds): void {
+                DeadlockRetry::run(function () use ($transactionId, $orderId, $amountMismatch, $order, $orderStatus, $outcome, $decision, $attemptRow, &$mailIds, &$metaIds): void {
                     $now = now();
                     $attemptId = (int) DB::table('payment_statuses')->insertGetId($attemptRow + [
                         'created_at' => $now,
@@ -564,6 +573,8 @@ class CheckoutCompatController extends Controller
                          * checkout.
                          */
                         $mailIds = $this->mailer->placed($orderId, notifyCustomer: true);
+                        // The card Purchase for Meta (B2): the only place that knows the money arrived.
+                        $metaIds = $this->meta->purchase($orderId);
                     } elseif ($decision['action'] === CallbackPolicy::ACT_CANCEL) {
                         DB::table('orders')->where('id', $orderId)->update(['status' => 'cancelled', 'updated_at' => now()]);
                         $this->inventory->releaseOrder($orderId, 'payment_failed', Actor::system(), $this->compat->storefrontId);
@@ -622,6 +633,8 @@ class CheckoutCompatController extends Controller
              * nothing -- the row stays pending and the cron retries.
              */
             $this->mailer->flush($mailIds);
+            // Never fails the callback: a send Meta did not accept stays pending for `meta:drain`.
+            $this->meta->flush($metaIds);
 
             if ($amountMismatch !== null) {
                 Log::error('Paymob callback amount does not match the order total; order left untouched.', $amountMismatch);

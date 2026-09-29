@@ -1,9 +1,5 @@
 import { notFound, permanentRedirect } from 'next/navigation'
-import {
-  getServerCatalog,
-  findProductInCatalog,
-  fetchProductByName,
-} from '@/src/lib/serverCatalog'
+import { getServerProductCard, fetchProductByName } from '@/src/lib/serverCatalog'
 import { productUrl } from '@/src/utils/productUrl'
 
 // Legacy id URL → canonical slug URL. Mirrors the SPA's /products/:id canonical
@@ -13,8 +9,8 @@ export default async function ProductByIdPage({ params }) {
 
   let product = null
   try {
-    const { productsEn } = await getServerCatalog()
-    product = findProductInCatalog(productsEn, id)
+    // One product from core by id (C-1 stage 4) — this used to load the whole catalogue.
+    product = (await getServerProductCard(id))?.product ?? null
   } catch {
     // catalog unreachable → try the by-name endpoint below
   }

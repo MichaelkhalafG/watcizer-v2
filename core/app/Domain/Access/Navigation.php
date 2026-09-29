@@ -136,6 +136,8 @@ final class Navigation
                      * slug, no published flag and no SEO fields, and core may not write it anyway.
                      */
                     self::item('banners', ManageText::t('banners.title', 'البانرات'), 'Image', Role::MANAGE_LEGACY_CONTENT, route: 'manage.banners.index', params: ['storefront' => $storefrontId]),
+                    // The home page's product rails and their order (C-1 stage 4 slice C, 2026-09-29).
+                    self::item('home_rails', ManageText::t('home_rails.title', 'أشرطة الصفحة الرئيسية'), 'Rows3', Role::MANAGE_LEGACY_CONTENT, route: 'manage.home_rails.index', params: ['storefront' => $storefrontId]),
                     self::item('blogs', ManageText::t('nav.blogs', 'المقالات'), 'Newspaper', Role::MANAGE_LEGACY_CONTENT, route: 'manage.blogs.index'),
                     /*
                      * Promotions — BUILT, and deliberately PARKED (developer, 2026-09-17).

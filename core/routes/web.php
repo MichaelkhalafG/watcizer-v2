@@ -9,6 +9,7 @@ use App\Http\Controllers\Manage\BlogController;
 use App\Http\Controllers\Manage\CategoryController;
 use App\Http\Controllers\Manage\CustomerController;
 use App\Http\Controllers\Manage\HomeController;
+use App\Http\Controllers\Manage\HomeRailController;
 use App\Http\Controllers\Manage\InventoryController;
 use App\Http\Controllers\Manage\LookupController;
 use App\Http\Controllers\Manage\MediaController;
@@ -206,6 +207,16 @@ Route::prefix('manage')->name('manage.')->group(function (): void {
                 ->where('banner', '[0-9]+')->name('banners.update');
             Route::delete('storefronts/{storefront}/banners/{banner}', [BannerController::class, 'destroy'])
                 ->where('banner', '[0-9]+')->name('banners.destroy');
+
+            // HOME RAILS (C-1 stage 4 slice C, 2026-09-29): which product rails the home page shows,
+            // in what order. Same ability and scope as banners — the other half of the home page.
+            Route::get('storefronts/{storefront}/home-rails', [HomeRailController::class, 'index'])->name('home_rails.index');
+            Route::post('storefronts/{storefront}/home-rails', [HomeRailController::class, 'store'])->name('home_rails.store');
+            Route::post('storefronts/{storefront}/home-rails/order', [HomeRailController::class, 'reorder'])->name('home_rails.reorder');
+            Route::put('storefronts/{storefront}/home-rails/{rail}', [HomeRailController::class, 'update'])
+                ->where('rail', '[0-9]+')->name('home_rails.update');
+            Route::delete('storefronts/{storefront}/home-rails/{rail}', [HomeRailController::class, 'destroy'])
+                ->where('rail', '[0-9]+')->name('home_rails.destroy');
         });
 
         /*

@@ -1,5 +1,5 @@
 import { QueryClient, dehydrate, HydrationBoundary } from '@tanstack/react-query'
-import { getServerCatalog, getServerNav } from '@/src/lib/serverCatalog'
+import { getServerTables, getServerNav } from '@/src/lib/serverCatalog'
 import AppStateBridge from './app-state-bridge'
 import Header from '@/src/Components/Header/Header'
 import CartModalHost from '../cart-modal-host'
@@ -19,15 +19,14 @@ import DesktopFooter from './desktop-footer'
 export default async function MainLayout({ children }) {
   const qc = new QueryClient()
   try {
-    // getServerCatalog is process-cached (5-min TTL) and shared with the listing
-    // page + generateMetadata, so this is ONE Laravel round-trip, not one per nav.
-    const catalog = await getServerCatalog()
-    qc.setQueryData(['tables'], catalog.tables)
-    // The catalogue itself is NOT embedded here any more (C-1 stage 3): only the pages that still
-    // read it wrap themselves in <CatalogBoundary> (home, product/offer detail, cart, checkout,
-    // account). The listing, the brand/category pages and everything else carry no copy.
+    // The lookup tables alone, process-cached (5-min TTL) — C-1 stage 4: this used to fetch the
+    // whole catalogue just to take the tables out of it. Every page's server render needs them
+    // (names, card transforms); without this line the home rails, the brand strip and every card
+    // rendered only after the BROWSER fetched the tables (slice B dropped it; restored in slice D).
+    // No page embeds the catalogue any more (C-1 stage 4, slice D).
+    qc.setQueryData(['tables'], await getServerTables())
   } catch {
-    // Catalog unreachable server-side → client fetches + shows error/retry.
+    // Tables unreachable server-side → the client fetches them + shows error/retry.
   }
   try {
     // The header menu's facts (C-1 stage 2): the menu renders in the server HTML without the catalogue.

@@ -26,7 +26,7 @@ import {
 } from 'react-icons/fi'
 import { FaWhatsapp } from 'react-icons/fa'
 import { FcGoogle } from 'react-icons/fc'
-import { useCatalog } from '../../Hooks/queries/useCatalog'
+import { useCards, useCardsOf } from '../../Hooks/queries/useListing'
 import { useOffers } from '../../Hooks/queries/useOffers'
 import { useUIStore } from '../../Store/uiStore'
 import { useAuthStore } from '../../Store/authStore'
@@ -523,10 +523,15 @@ const OrderCard = memo(function OrderCard({ order, resolveItem, user, isRTL, t }
 })
 
 function OrdersTab({ t, isRTL }) {
-  const { products } = useCatalog()
   const { data: offers = [] } = useOffers()
   const user = useAuthStore((s) => s.user)
   const [orders, setOrders] = useState(null) // null = loading
+  // Only the products these orders name, by id (C-1 stage 4) — the tab used to embed the whole
+  // catalogue. A product no longer on sale still shows as `#id`, as it did before.
+  const { data: cardsPayload } = useCards(
+    (orders || []).flatMap((o) => (Array.isArray(o.order_item) ? o.order_item : []).map((i) => i.product_id)),
+  )
+  const products = useCardsOf(cardsPayload, isRTL ? 'ar' : 'en')
   const router = useRouter()
 
   useEffect(() => {

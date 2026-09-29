@@ -191,6 +191,16 @@ final class CoreChecksumCommand extends Command
          * disconnect every social login at once.
          */
         'core_social_identities',
+        /*
+         * Order signals (M1x, B2, 2026-09-29) — the shopper's browser at `add_order`, which the
+         * card Purchase sent from the payment callback needs. Describes orders; no legacy source.
+         */
+        'core_order_signals',
+        /*
+         * Home-page rails (M1y, C-1 stage 4 slice C, 2026-09-29) — which rails the home page shows,
+         * in what order, with what titles. Authored in the dashboard; no legacy source.
+         */
+        'storefront_home_rails',
     ];
 
     /**

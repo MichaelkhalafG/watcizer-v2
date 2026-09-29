@@ -211,7 +211,7 @@ final class ActivityController
              * arrives with no row of its own, and it enters the log through whatever product,
              * banner or brand comes to reference it.
              */
-            'coverage' => ManageText::t('activity.coverage', 'يسجَّل كل تغيير يحفظه أحد من اللوحة: المنتجات والمتغيّرات، التصنيفات، العرض والترتيب، المخزون، الطلبات، العروض الترويجية، الشحن، البانرات، المقالات، القوائم المرجعية ووحدات القياس، إعدادات المتجر والدفع، الصلاحيات، وحذف ملفات الوسائط. لا تُسجَّل القراءات ولا عمليات الرفع بذاتها — يظهر الملف في السجل عند ربطه بمنتج أو بانر. قيم الأسرار لا تُكتب هنا أبدًا.'),
+            'coverage' => ManageText::t('activity.coverage', 'يسجَّل كل تغيير يحفظه أحد من اللوحة: المنتجات والمتغيّرات، التصنيفات، العرض والترتيب، المخزون، الطلبات، العروض الترويجية، الشحن، البانرات، أشرطة الصفحة الرئيسية، المقالات، القوائم المرجعية ووحدات القياس، إعدادات المتجر والدفع، الصلاحيات، وحذف ملفات الوسائط. لا تُسجَّل القراءات ولا عمليات الرفع بذاتها — يظهر الملف في السجل عند ربطه بمنتج أو بانر. قيم الأسرار لا تُكتب هنا أبدًا.'),
         ]);
     }
 
@@ -413,6 +413,8 @@ final class ActivityController
              * other, so they agreed about being wrong.
              */
             'orders', 'core_blogs',
+            // The home page's rails (C-1 stage 4 slice C, 2026-09-29).
+            'storefront_home_rails',
         ];
     }
 
@@ -528,6 +530,7 @@ final class ActivityController
             'media_files' => ManageText::t('activity.type_media', 'ملفات وسائط'),
             'orders' => ManageText::t('common.order', 'طلب'),
             'core_blogs' => ManageText::t('activity.type_blog', 'مقال'),
+            'storefront_home_rails' => ManageText::t('activity.type_home_rail', 'شريط الصفحة الرئيسية'),
             default => $type,
         };
     }

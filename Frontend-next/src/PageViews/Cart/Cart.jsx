@@ -12,7 +12,7 @@ import {
   FiCheck,
   FiChevronDown,
 } from 'react-icons/fi'
-import { useCatalog } from '../../Hooks/queries/useCatalog'
+import { useCards, useCardsOf, useRelated } from '../../Hooks/queries/useListing'
 import http from '../../Context/api'
 import { useOffers } from '../../Hooks/queries/useOffers'
 import { useUIStore } from '../../Store/uiStore'
@@ -152,7 +152,6 @@ function Cart() {
   const setShippingid = useShippingStore((s) => s.setShippingid)
   const setShipping = useShippingStore((s) => s.setShipping)
   const setShippingName = useShippingStore((s) => s.setShippingName)
-  const { products } = useCatalog()
   const { data: offers = [] } = useOffers()
   const { language } = useUIStore()
   const isRTL = language === 'ar'
@@ -163,6 +162,10 @@ function Cart() {
   const navigate = useCallback((to) => router.push(to), [router])
   const { userId } = useAuthStore()
   const { cart, updateQuantity, removeItem, undoRemove, validateCart, reconcile, lastRemoved } = useCart()
+  // Only THIS cart's products, by id (C-1 stage 4) — the page used to embed the whole catalogue to
+  // look up its own lines.
+  const { data: cardsPayload, isError: cardsError } = useCards((cart?.cart_item || []).map((i) => i.product_id))
+  const products = useCardsOf(cardsPayload, language)
 
   const [processing, setProcessing] = useState(false)
   const [warnDismissed, setWarnDismissed] = useState(false)
@@ -173,7 +176,9 @@ function Cart() {
   const items = cart?.cart_item || []
   const list = products || []
   const offerList = offers || []
-  const loading = items.length > 0 && list.length === 0
+  // Waiting only for cards that were actually asked for: a cart of offer lines alone asks for none
+  // (it used to wait on the whole catalogue, which always came).
+  const loading = items.some((i) => i.product_id) && cardsPayload === undefined && !cardsError
 
   // Validate against live catalog when the cart opens (authoritative gate).
   useEffect(() => {
@@ -250,42 +255,23 @@ function Cart() {
   )
 
   // ── Smart suggestions from the whole cart (lazy-rendered) ──
-  const cartSuggestions = useMemo(() => {
-    if (!items.length || !list.length) return []
-    const cartIds = new Set(items.map((i) => i.product_id).filter(Boolean))
-    return list
-      .filter((p) => !cartIds.has(p.id))
-      .map((p) => {
-        let score = 0
-        items.forEach((item) => {
-          const cp = list.find((x) => x.id === item.product_id)
-          if (!cp) return
-          if (p.brand_id === cp.brand_id) score += 2
-          if (p.sub_type_id === cp.sub_type_id) score += 2
-          if (p.category_type_id === cp.category_type_id) score += 1
-          const pg = Array.isArray(p.genders_en) ? p.genders_en : []
-          const cg = Array.isArray(cp.genders_en) ? cp.genders_en : []
-          if (pg.some((g) => cg.includes(g))) score += 1
-          if (p.sub_type_id !== cp.sub_type_id && p.category_type_id === cp.category_type_id) score += 1
-          const pp = Number(p.selling_price || 0)
-          const cpp = Number(cp.selling_price || 0)
-          if (pp > 0 && cpp > 0) {
-            const ratio = pp / cpp
-            if (ratio >= 0.5 && ratio <= 1.5) score += 1
-          }
-        })
-        return { product: p, score }
-      })
-      .filter((x) => x.score >= 2)
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 12)
-      .map((x) => x.product)
-  }, [items, list])
-
+  // ADD-ONS chosen on the SERVER (C-1 stage 4, core's CompatRelated — the developer's rule of
+  // 2026-09-29): other kinds of product that go with what is in the cart, never more of the same.
+  // It needed the whole catalogue here. Asked for only once the section scrolls near.
   const [showSuggest, setShowSuggest] = useState(false)
-  const suggestRef = useRef(null)
-  useEffect(() => {
-    const el = suggestRef.current
+  const { data: suggestPayload } = useRelated(
+    { cart: items.map((i) => i.product_id) },
+    { enabled: showSuggest },
+  )
+  const cartSuggestions = useCardsOf(suggestPayload, language)
+  // A CALLBACK ref (C-1 stage 4): the observer is attached whenever the anchor element mounts. It
+  // used to be attached by an effect keyed on the item count, which depends on render timing — once
+  // the cards stopped arriving with the page, a browser check saw the suggestions never requested in
+  // one run of five. Tied to the element itself, it cannot miss it.
+  const suggestObserver = useRef(null)
+  const suggestRef = useCallback((el) => {
+    suggestObserver.current?.disconnect()
+    suggestObserver.current = null
     if (!el) return
     const obs = new IntersectionObserver(
       ([entry]) => {
@@ -297,8 +283,8 @@ function Cart() {
       { rootMargin: '200px' },
     )
     obs.observe(el)
-    return () => obs.disconnect()
-  }, [items.length])
+    suggestObserver.current = obs
+  }, [])
 
   const hasWarnings = useMemo(
     () =>
@@ -639,7 +625,7 @@ function Cart() {
               <ProductSlider
                 gradeproducts={cartSuggestions}
                 text={{
-                  title: { en: 'Complete Your Collection', ar: 'أكمل مجموعتك' },
+                  title: { en: 'Complete the Look', ar: 'أكمل إطلالتك' },
                   description: { en: 'Based on your cart', ar: 'بناءً على سلتك' },
                 }}
               />

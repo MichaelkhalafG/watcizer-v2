@@ -19,6 +19,12 @@ use Illuminate\Http\JsonResponse;
  * reach the checkout within a minute, and `add_order` refuses a switched-off method regardless.
  * The browser keeps nothing (`max-age=0`): after a refusal the checkout refetches the list, and a
  * browser-cached copy would show the shopper the method they were just refused.
+ *
+ * And no SHARED cache either (2026-09-29): this was `public, s-maxage=60`, and Hostinger's CDN on
+ * the API host keeps one copy per URL regardless of `Vary: Origin` — a copy filled by a request with
+ * no or another Origin carries the wrong CORS header, and the checkout's method list then fails in
+ * the browser (see routes/api.php, the compat cache groups). `add_order` still refuses a switched-off
+ * method whatever any list said.
  */
 class PaymentMethodController extends Controller
 {
@@ -27,7 +33,7 @@ class PaymentMethodController extends Controller
         return response()->json(
             ['data' => $methods->offered($ctx->id())],
             200,
-            ['Cache-Control' => 'public, max-age=0, s-maxage=60'],
+            ['Cache-Control' => 'private, max-age=0'],
             JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES,
         );
     }

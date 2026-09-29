@@ -78,7 +78,7 @@ it('rejects a missing or wrong Api-Code with the legacy body', function () {
 });
 
 it('serves catalog/meta in the legacy shape; meta follows Accept-Language like legacy, all_product is pinned to EN (D-13 / F-18)', function () {
-    $en = compat('catalog/meta')->assertOk()->assertHeader('Cache-Control', 'max-age=1800, public');
+    $en = compat('catalog/meta')->assertOk()->assertHeader('Cache-Control', 'max-age=1800, private');
     $en->assertJsonStructure(['tables' => ['categoryTypes', 'brands', 'grades', 'subTypes', 'colors', 'materials', 'shapes', 'sizeTypes', 'displayTypes', 'closureTypes', 'movementTypes'], 'brands', 'categories', 'sub_types', 'genders', 'grades', 'dial_colors', 'band_colors', 'features', 'banners', 'shipping_cities']);
     $brand = arr($en->json('tables.brands.0'));
     expect(array_keys($brand))->toBe(['id', 'image', 'created_at', 'updated_at', 'brand_name', 'translations'])
@@ -116,7 +116,7 @@ it('serves catalog/meta in the legacy shape; meta follows Accept-Language like l
 });
 
 it('serves all_product with the 42 legacy columns (purchase_price hidden), the 6 appended attributes and the 5 relations, ordered by id', function () {
-    $rows = arr(compat('all_product')->assertOk()->assertHeader('Cache-Control', 'max-age=600, public')->json());
+    $rows = arr(compat('all_product')->assertOk()->assertHeader('Cache-Control', 'max-age=600, private')->json());
     expect(count($rows))->toBe(DB::table('storefront_product')->where('storefront_id', 1)->where('is_visible', 1)->count());
     $ids = array_map(fn (mixed $r) => arr($r)['id'], array_values($rows));
     $sorted = $ids;

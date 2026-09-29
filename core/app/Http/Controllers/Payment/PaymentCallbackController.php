@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Payment;
 
+use App\Domain\Analytics\MetaConversions;
 use App\Domain\Inventory\Actor;
 use App\Domain\Inventory\InventoryService;
 use App\Domain\Notifications\OrderMailer;
@@ -67,6 +68,7 @@ final class PaymentCallbackController
         private readonly ProviderRegistry $registry,
         private readonly InventoryService $inventory,
         private readonly OrderMailer $mailer,
+        private readonly MetaConversions $meta,
     ) {}
 
     /**
@@ -253,6 +255,8 @@ final class PaymentCallbackController
              * @var list<int> $mailIds
              */
             $mailIds = [];
+            /** @var list<int> $metaIds the card Purchase (B2): enqueued inside, sent after, like the mail */
+            $metaIds = [];
 
             $attemptRow = [
                 'order_id' => $orderId,
@@ -285,7 +289,7 @@ final class PaymentCallbackController
                  * Without it a deadlocked callback answered 500 and VANISHED: the provider had
                  * taken the money and the rollback removed every trace of the attempt.
                  */
-                DeadlockRetry::run(function () use ($provider, $verdict, $orderId, $amountMatches, $methodId, $storefrontId, $outcome, $orderStatus, $decision, $attemptRow, &$mailIds): void {
+                DeadlockRetry::run(function () use ($provider, $verdict, $orderId, $amountMatches, $methodId, $storefrontId, $outcome, $orderStatus, $decision, $attemptRow, &$mailIds, &$metaIds): void {
                     $now = now();
                     $attemptId = (int) DB::table('payment_statuses')->insertGetId($attemptRow + [
                         'created_at' => $now,
@@ -329,6 +333,8 @@ final class PaymentCallbackController
                          * because an SMTP round trip inside a transaction holds row locks.
                          */
                         $mailIds = $this->mailer->placed($orderId, notifyCustomer: true);
+                        // The card Purchase for Meta (B2): the only place that knows the money arrived.
+                        $metaIds = $this->meta->purchase($orderId);
                     } elseif ($decision['action'] === CallbackPolicy::ACT_CANCEL) {
                         DB::table('orders')->where('id', $orderId)->update(['status' => 'cancelled', 'updated_at' => now()]);
                         // The ONE door for stock, even here (D-21): a failed payment returns the
@@ -393,6 +399,8 @@ final class PaymentCallbackController
              * flagged rather than invented here.
              */
             $this->mailer->flush($mailIds);
+            // Never fails the callback: a send Meta did not accept stays pending for `meta:drain`.
+            $this->meta->flush($metaIds);
 
             if (! $amountMatches) {
                 Log::error('payment callback: amount does not match the order total; order left untouched.', $context + [

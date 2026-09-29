@@ -13,7 +13,9 @@ use function Pest\Laravel\withHeaders;
  * browser used to download the whole catalogue and, per filter change, run `transformProduct.js` →
  * `passesFilters` → search → sort → page, and count every sidebar / chip option with
  * `passesFilters(p, filters, ownSection)`. This test runs that — the storefront's own transform and
- * predicate copied verbatim, and the pipeline glue from ListingClient / SideBar / SmartSuggestions —
+ * predicate copied verbatim (the predicate from its frozen copy, `tests/Fixtures/filter-predicate-
+ * reference.js`, since the storefront no longer has one), and the pipeline glue from ListingClient /
+ * SideBar / SmartSuggestions —
  * in node, over the same responses, for a battery of scenarios built from the real data, and
  * requires the endpoint to agree: the total, the page's ids IN ORDER, and every facet count.
  *
@@ -170,7 +172,8 @@ it('reproduces the storefront listing — totals, page order and every facet cou
     file_put_contents($dir.'/utils/transformProduct.js', str_replace("from './imageUrl'", "from './imageUrl.js'", listingStorefrontFile('src/utils/transformProduct.js')));
     file_put_contents($dir.'/utils/imageUrl.js', str_replace("from '../lib/env'", "from '../lib/env.js'", listingStorefrontFile('src/utils/imageUrl.js')));
     file_put_contents($dir.'/lib/env.js', listingStorefrontFile('src/lib/env.js'));
-    file_put_contents($dir.'/utils/filterPredicate.js', listingStorefrontFile('src/utils/filterPredicate.js'));
+    // The predicate is FROZEN (stage 4 slice D deleted the storefront's copy): see the fixture's header.
+    file_put_contents($dir.'/utils/filterPredicate.js', (string) file_get_contents(base_path('tests/Fixtures/filter-predicate-reference.js')));
     file_put_contents($dir.'/package.json', '{"type":"module"}');
     file_put_contents($dir.'/data.json', json_encode(['all' => $all, 'tables' => $meta['tables'], 'ratings' => $ratings, 'images' => $images, 'scenarios' => $scenarios, 'results' => $results], JSON_UNESCAPED_UNICODE));
     file_put_contents($dir.'/run.js', <<<'JS'

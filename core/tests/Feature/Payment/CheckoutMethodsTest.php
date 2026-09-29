@@ -217,7 +217,8 @@ it('serves v2 only the methods a shopper can pay with, both labels, their limits
         ->and($response->json('data.1.min_total'))->toEqual(100)
         ->and($response->json('data.1.max_total'))->toEqual(20000)
         ->and((string) $response->getContent())->not->toContain('paymob')
-        ->and($response->headers->get('Cache-Control'))->toContain('s-maxage=60')
+        ->and($response->headers->get('Cache-Control'))->toContain('private')
+        ->and($response->headers->get('Cache-Control'))->not->toContain('s-maxage')
         ->and($response->headers->get('Cache-Control'))->toContain('max-age=0');
 });
 
