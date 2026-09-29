@@ -58,11 +58,30 @@ ended — until they are, treat these as deployed-unverified:
   characters are all valid but it is not the real token — the paste lost or changed something that is
   not a look-alike letter. The client is resending it as a FILE. Then: `config:cache`,
   `meta:capi-check --send-test`, one real card order, empty the test code, rotate the token.
+  - **PROVEN 2026-09-29 (evening):** with the resent token the media buyer saw the test Purchase in
+    Events Manager → Test events — the whole path works (callback → outbox → Meta). The check still
+    read **TOKEN FAIL** because it asks Meta to READ the pixel, which a Conversions API token may not
+    do. **Fixed in the tree (ships with stage 4):** a refused read (codes 10/100/200/294) is now
+    `TOKEN OK — … may not read pixel …`; FAIL is kept for a rejected token (190 and the OAuth token
+    codes) and anything else. Tested, mutation-checked.
+  - **Going live (not done yet):** on the server, empty the test code — `META_CAPI_TEST_EVENT_CODE=`
+    (keep the key, no value) — then `php artisan config:cache`, then `php artisan meta:capi-check`:
+    its CONFIG line must say `test code NOT SET (events count as real)`. The code is added when each
+    event is SENT, not when it is queued, so anything still waiting in the outbox goes out as real.
+    Don't run `--send-test` after that: it refuses without a test code, by design. **Then rotate the
+    token** (it went through a chat): the one `META_CAPI_TOKEN` line, `config:cache`, `meta:capi-check`
+    (the fingerprint changes; TOKEN must not say FAIL).
 - **Decisions, 2026-09-29 (developer):**
   - **"Pre-Order" → "Add to cart" everywhere — DONE in the tree.** It was only the product page's
     button label (Express stock 0, Market stock > 0); the order is identical either way. Market DOES
     mean a longer delivery, but that is explained in the e-mail after ordering, deliberately NOT on
     the product page.
+  - **Out-of-stock products in the home rails: LEFT IN (decided 2026-09-30).** `catalog/home` keeps
+    the browser's old rule and does not filter them. Each rail is the team's to control from the
+    dashboard's Home rails screen (switch it off, change its target or card count), so what a rail
+    shows is their call, not a rule in the code.
+  - **A7 (Next 15.5.27) stays OPEN (2026-09-30).** npm's latest is still 15.5.26; 15.5.27 is
+    scheduled and may land within hours. It does not hold up stage 4.
   - **The stock badge stays UNCHANGED (decided 2026-09-29, final).** "Market · N available" /
     «ماركت · N متاح» and "Express · N in stock" / «إكسبريس · N متاح» stay exactly as they are, on
     the cards and on the product page — not reworded, not dropped. (Costed first: 558 of 698 visible
@@ -438,6 +457,26 @@ server anyway, so doing it separately would build the rails twice.
 - **Deploy**: the API host's `.htaccess` line becomes
   `catalog/(meta|nav|listing|cards|related|product|home)` (runbook §4.1.1 already says so), then
   `php artisan migrate --force` (M1y seeds the rails).
+
+**Stage 4 slice D — cleanup, BUILT 2026-09-30 (in the tree, ships with the stage 4 batch).** No
+storefront page loads the whole catalogue any more.
+- **Listing and facet pages** (`/listing`, `/brand/…`, `/category/…`, `/grade/…`, `/subtypes/…`,
+  `/[suptype]/[brand]`) took the whole catalogue on the server only for their metadata. Now the
+  description's count is core's `catalog/listing` total for the same request the page prefetches
+  (one fetch, React-cached), so it matches what renders. The social preview image is that listing's
+  first card. Before, every listing page showed the catalogue's first product.
+- **Deleted:** `CatalogBoundary`, `catalogProjection`, `useCatalog`, `useProducts`,
+  `filterPredicate`, `getServerCatalog`, `findProductInCatalog`. `transformProduct.js` stays: it
+  turns the rows core sends into cards.
+- **Tests:** the predicate is frozen as `tests/Fixtures/filter-predicate-reference.js`, which
+  `CatalogListingTest` holds core's listing to. `FilterPredicateTest` now guards core's listing (the
+  Electronics category bug, two-tone colours, every settable key read).
+- **Found and fixed:** slice B (168983d) had dropped the layout's `setQueryData(['tables'], …)`,
+  so every server render lacked the lookup tables. The home page's HTML carried no rails and no
+  brand strip until the browser fetched the tables. Restored; the home HTML now carries 8 rail
+  titles and 65 cards. It was never deployed.
+- **Local only:** a production build refuses to optimise images from `127.0.0.1:8000` (by design
+  since 2026-09-26), so local listing pages log image 400s. Not a live issue.
 
 ### 4. Deferred by decision — and what makes each urgent
 - **Hero 3D: one-finger vertical swipe scrolls the page** (decided 2026-09-29, NOT built). Today the
