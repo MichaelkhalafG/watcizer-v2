@@ -3,6 +3,8 @@
 namespace App\Compat;
 
 use App\Storefront\StorefrontCache;
+use App\Support\LegacySlug;
+use Illuminate\Support\Facades\DB;
 
 /**
  * The storefront's listing, searched, filtered, sorted, paged and COUNTED on the server (C-1
@@ -30,7 +32,7 @@ use App\Storefront\StorefrontCache;
  * The rows it returns for a page are the RAW `all_product` rows, with their ratings and gallery
  * images, so the storefront runs its own card transform on 24 rows instead of the whole catalogue.
  *
- * @phpstan-type Entry array{id: int, brands: ?int, categories: ?int, subTypes: ?int, grades: ?int, materials: ?int, movements: ?int, shapes: ?int, displayTypes: ?int, genders: list<string>, dialColors: list<int>, bandColors: list<int>, pct: float, price: float, rating: ?float, search: list<string>, words: list<string>}
+ * @phpstan-type Entry array{id: int, brands: ?int, categories: ?int, subTypes: ?int, grades: ?int, materials: ?int, movements: ?int, shapes: ?int, displayTypes: ?int, genders: list<string>, dialColors: list<int>, bandColors: list<int>, pct: float, price: float, sellingRaw: ?string, saleRaw: ?string, rating: ?float, search: list<string>, words: list<string>, slug: string, family: ?string, inStock: bool, created: int}
  * @phpstan-type Index array{entries: list<Entry>, vocab: array<string, list<int>>}
  * @phpstan-type Filters array{brands: list<int>, categories: list<int>, subTypes: list<int>, genders: list<string>, offers: bool, price: array{0: float, 1: float}, dialColors: list<int>, bandColors: list<int>, materials: list<int>, movements: list<int>, shapes: list<int>, displayTypes: list<int>, grades: list<int>}
  * @phpstan-type Cards array{products: list<array<array-key, mixed>>, ratings: list<array<array-key, mixed>>, images: list<array<array-key, mixed>>}
@@ -44,6 +46,9 @@ final class CompatListing
     public const FACETS = ['brands', 'categories', 'subTypes', 'genders', 'dialColors', 'bandColors', 'materials', 'movements', 'shapes', 'displayTypes', 'grades'];
 
     public const SORTS = ['default', 'price_asc', 'price_desc', 'newest', 'rating'];
+
+    /** The listing index's shape version — its cache-key suffix (see `index()`). */
+    public const INDEX_SHAPE = 's4';
 
     /** `ListingClient`'s PRICE_MAX: a max at or above it means "no upper bound". */
     public const PRICE_MAX = 99999999;
@@ -495,6 +500,38 @@ final class CompatListing
     }
 
     /**
+     * Every visible product's index entry, in the storefront's catalogue order (market stock 0 last,
+     * then newest first) — what the related-products rules score (C-1 stage 4, `CompatRelated`).
+     *
+     * @return list<Entry>
+     */
+    public function entries(): array
+    {
+        return $this->index()['entries'];
+    }
+
+    /**
+     * The product a product-page URL names — the storefront's rule (`findProductInCatalog`): digits
+     * are an id; anything else is the slug of the English title, and the FIRST product in catalogue
+     * order with that slug wins (twins share a URL). Null when nothing visible matches.
+     */
+    public function idForParam(string $param): ?int
+    {
+        $param = trim($param);
+        if ($param === '') {
+            return null;
+        }
+        $isId = preg_match('/^\d+$/', $param) === 1;
+        foreach ($this->entries() as $e) {
+            if ($isId ? $e['id'] === (int) $param : $e['slug'] === $param) {
+                return $e['id'];
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * The listing index: one small entry per product with only what the filters, the search and the
      * sorts read, in the storefront's default order. Cached like the rows it is derived from.
      *
@@ -508,7 +545,10 @@ final class CompatListing
         $ttl = config()->integer('compat.ttl.all_product');
 
         /** @var Index */
-        return $this->cache->remember($this->storefrontId, 'compat_listing', '', $ttl, function (): array {
+        // The key's suffix is the index's SHAPE: bump it whenever an entry gains or loses a field, so an
+        // index cached by the previous deploy is never read by code that expects the new fields
+        // (C-1 stage 4 added slug / family / inStock / created).
+        return $this->cache->remember($this->storefrontId, 'compat_listing', self::INDEX_SHAPE, $ttl, function (): array {
             $this->timing['cold'] = true;
 
             return $this->buildIndex();
@@ -529,7 +569,7 @@ final class CompatListing
         // lands meanwhile leaves these entries under the old version, which nothing reads.
         $version = $this->cache->version($this->storefrontId);
         $rows = $this->catalog->refreshAllProduct($locale);
-        $this->cache->refresh($this->storefrontId, 'compat_listing', '', $ttl, fn (): array => $this->buildIndex());
+        $this->cache->refresh($this->storefrontId, 'compat_listing', self::INDEX_SHAPE, $ttl, fn (): array => $this->buildIndex());
 
         $store = [];
         foreach (self::cardEntries($rows, $this->catalog->productImages(array_values(array_filter(array_map(fn (array $r): mixed => $r['id'] ?? null, $rows), 'is_int')))) as $id => $entry) {
@@ -554,6 +594,14 @@ final class CompatListing
         foreach ($this->catalog->allProductRating() as $r) {
             if (is_int($r['product_id'] ?? null) && is_int($r['rating'] ?? null)) {
                 $ratings[$r['product_id']][] = $r['rating'];
+            }
+        }
+
+        // Each product's family (watch, bag, wallet, …) — not part of the legacy row shape, so read here.
+        $families = [];
+        foreach (DB::table('catalog_products')->whereNull('deleted_at')->pluck('family', 'id') as $pid => $family) {
+            if (is_string($family) && $family !== '') {
+                $families[(int) $pid] = $family;
             }
         }
 
@@ -603,9 +651,23 @@ final class CompatListing
                     'pct' => is_numeric($row['percentage_discount'] ?? null) ? (float) $row['percentage_discount'] : 0.0,
                     // What the shopper pays — the card's and the checkout's rule, not a blank read as 0.
                     'price' => CompatCart::catalogPrice($selling, $sale),
+                    // The raw price strings, for the related-products rules ported from the
+                    // storefront (C-1 stage 4): they score on `Number(sale || selling)` and on
+                    // `selling` alone — JavaScript's truthiness of a "0.00" string included.
+                    'sellingRaw' => is_numeric($row['selling_price'] ?? null) ? (string) $row['selling_price'] : null,
+                    'saleRaw' => is_numeric($row['sale_price_after_discount'] ?? null) ? (string) $row['sale_price_after_discount'] : null,
                     'rating' => isset($ratings[$id]) ? array_sum($ratings[$id]) / count($ratings[$id]) : null,
                     'search' => $search,
                     'words' => array_keys($words),
+                    // The product page's URL slug: the storefront's toSlug() of the ENGLISH title
+                    // (LegacySlug mirrors it exactly). Twins share one — the first in this order wins,
+                    // as `list.find()` did in the browser (C-1 stage 4).
+                    'slug' => LegacySlug::make((string) ($title['en'] ?? '')),
+                    // For the suggestion rails (C-1 stage 4, developer's rule 2026-09-29): what KIND of
+                    // product it is, whether it can be bought now, and how new it is (the tie-break).
+                    'family' => $families[$id] ?? null,
+                    'inStock' => (is_int($row['stock'] ?? null) ? $row['stock'] : 0) + (is_int($row['market_stock'] ?? null) ? $row['market_stock'] : 0) > 0,
+                    'created' => self::millis(is_string($row['created_at'] ?? null) ? $row['created_at'] : null),
                 ],
                 'out' => ($row['market_stock'] ?? 0) === 0 ? 1 : 0,
                 'created' => self::millis(is_string($row['created_at'] ?? null) ? $row['created_at'] : null),

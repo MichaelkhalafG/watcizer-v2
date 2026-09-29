@@ -28,7 +28,8 @@ it('marks every browser-read API response private, never public or s-maxage', fu
     $productId = T::int(DB::table('storefront_product')->where('storefront_id', 1)->where('is_visible', 1)->min('product_id'));
     $paths = [
         'catalog/meta', 'show_shipping_city', 'all_product', 'catalog/nav', 'catalog/listing',
-        'catalog/cards?ids='.$productId, 'all_product_image', 'all_product_rating', 'products/'.$productId,
+        'catalog/cards?ids='.$productId, 'catalog/related?product='.$productId, 'catalog/related?cart='.$productId, 'catalog/product?slug='.$productId,
+        'all_product_image', 'all_product_rating', 'products/'.$productId,
     ];
     $failures = [];
     foreach ($paths as $path) {

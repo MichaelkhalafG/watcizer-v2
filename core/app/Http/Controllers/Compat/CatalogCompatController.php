@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Compat;
 
 use App\Compat\CompatListing;
+use App\Compat\CompatRelated;
 use App\Compat\CompatServices;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
@@ -109,6 +110,62 @@ class CatalogCompatController extends Controller
         }
 
         return response()->json($this->compat->listing->cards(array_slice(array_values(array_unique($ids)), 0, 100)), 200, [], JSON_UNESCAPED_UNICODE);
+    }
+
+    /**
+     * GET catalog/product?slug= — ONE product for the product page, by its URL slug or id, as cards in
+     * the `catalog/cards` shape (C-1 stage 4). The page used to load the whole catalogue to find it.
+     * 404 when no visible product has that slug.
+     */
+    public function product(Request $request): JsonResponse
+    {
+        $request->validate(['slug' => ['required', 'string', 'max:300']]);
+        $id = $this->compat->listing->idForParam(rawurldecode($request->string('slug')->toString()));
+        if ($id === null) {
+            return response()->json(['products' => [], 'ratings' => [], 'images' => []], 404);
+        }
+
+        return response()->json($this->compat->listing->cards([$id]), 200, [], JSON_UNESCAPED_UNICODE);
+    }
+
+    /**
+     * GET catalog/related — the suggestion rails, as product cards in the `catalog/cards` shape, best
+     * first (C-1 stage 4, `CompatRelated`, the developer's rules of 2026-09-29):
+     *   ?cart=ID,ID,…                          the cart's add-ons ("Complete the look")
+     *   ?product=ID&kind=addons&exclude=…      the product page's add-ons ("Pairs well with")
+     *   ?product=ID&kind=similar&exclude=…     the product page's alternatives ("Similar styles")
+     * `exclude` is what is already in the cart — never suggested.
+     */
+    public function related(Request $request): JsonResponse
+    {
+        $request->validate([
+            'product' => ['nullable', 'integer', 'min:1', 'required_without:cart'],
+            'cart' => ['nullable', 'string', 'max:1000', 'required_without:product'],
+            'kind' => ['nullable', 'string', 'in:addons,similar'],
+            'exclude' => ['nullable', 'string', 'max:1000'],
+            'limit' => ['nullable', 'integer', 'min:1', 'max:24'],
+        ]);
+        $ids = function (string $key) use ($request): array {
+            $out = [];
+            foreach (explode(',', $request->string($key)->toString()) as $part) {
+                if (preg_match('/^\d{1,9}$/', trim($part)) === 1) {
+                    $out[] = (int) trim($part);
+                }
+            }
+
+            return array_slice(array_values(array_unique($out)), 0, 50);
+        };
+        $exclude = $ids('exclude');
+        if ($request->filled('cart')) {
+            $cart = $ids('cart');
+            $result = $this->compat->related->addOns($cart, $cart, $request->integer('limit', CompatRelated::LIMIT));
+        } elseif ($request->string('kind')->toString() === 'addons') {
+            $result = $this->compat->related->addOns([$request->integer('product')], $exclude, $request->integer('limit', CompatRelated::ADDON_LIMIT));
+        } else {
+            $result = $this->compat->related->similar($request->integer('product'), $exclude, $request->integer('limit', CompatRelated::LIMIT));
+        }
+
+        return response()->json($this->compat->listing->cards($result), 200, [], JSON_UNESCAPED_UNICODE);
     }
 
     public function allProductImage(): JsonResponse

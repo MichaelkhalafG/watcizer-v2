@@ -71,6 +71,10 @@ Route::middleware('api.code')->group(function (): void {
         // Storefront-only (C-1 stage 3): the listing with its facet counts, and product cards by id.
         Route::get('catalog/listing', [CatalogCompatController::class, 'listing']);
         Route::get('catalog/cards', [CatalogCompatController::class, 'cards']);
+        // C-1 stage 4: the product page's related products and the cart's suggestions, scored here.
+        Route::get('catalog/related', [CatalogCompatController::class, 'related']);
+        // C-1 stage 4: one product for the product page, by URL slug or id.
+        Route::get('catalog/product', [CatalogCompatController::class, 'product']);
         Route::get('all_product_image', [CatalogCompatController::class, 'allProductImage']);
         Route::get('all_product_rating', [CatalogCompatController::class, 'allProductRating']);
         Route::get('products/by-name/{name}', [CatalogCompatController::class, 'showByName']);

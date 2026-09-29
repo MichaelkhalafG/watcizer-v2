@@ -25,6 +25,8 @@ final class CompatServices
 
     public readonly CompatListing $listing;
 
+    public readonly CompatRelated $related;
+
     public readonly CompatProductDetail $detail;
 
     public readonly CompatSitemap $sitemap;
@@ -53,6 +55,7 @@ final class CompatServices
         $this->catalog = new CompatCatalog($cache, $this->names, $this->categories, $this->products, $this->storefrontId);
         $this->meta = new CompatMeta($cache, $this->names, $this->categories, $this->storefrontId);
         $this->listing = new CompatListing($cache, $this->catalog, $this->meta, $this->storefrontId);
+        $this->related = new CompatRelated($this->listing);
         $this->detail = new CompatProductDetail($this->names, $this->categories, $this->products, $this->storefrontId);
         $this->sitemap = new CompatSitemap($this->names, $this->categories, $this->products);
         $this->cart = new CompatCart($this->storefrontId);
