@@ -298,6 +298,16 @@ read that returns each rail with its cards, so the home page stops needing the w
 server anyway, so doing it separately would build the rails twice.
 
 ### 4. Deferred by decision — and what makes each urgent
+- **Hero 3D: one-finger vertical swipe scrolls the page** (decided 2026-09-29, NOT built). Today the
+  hero canvas is `touch-action: none` (three's `OrbitControls` and `WatchHero.css`, deliberately:
+  one finger rotates), so on a phone a swipe that starts on the 50vh hero rotates the watch instead
+  of scrolling. **The fix, when triggered:** a one-finger VERTICAL swipe on the hero scrolls the
+  page; rotating needs a HORIZONTAL drag. A behaviour change. **Trigger: the day a shopper says the
+  page sticks.** Not the cause of anything today: the console's "non-passive `wheel` listener"
+  warning comes from `OrbitControls` (it cancels the wheel to zoom) and costs nothing on a phone —
+  touch scrolling fires no `wheel` events. Left alone, unmeasured (developer, 2026-09-29).
+  **One thing to measure, only when next in `WatchCanvas.jsx` anyway:** the warning repeats, so the
+  controls are being connected more than once — count the connects and find why.
 - **A3 banners** (paused for the season) — when the developer wants seasonal banners.
 - **A5 / A6** (account shipping display; installment fee) — before any promotion goes on.
 - **A9 Next 16 / React 19** — after Brand Fashion launches; sooner if 15.5 stops getting security
