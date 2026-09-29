@@ -62,8 +62,12 @@ ended — until they are, treat these as deployed-unverified:
   - **"Pre-Order" → "Add to cart" everywhere — DONE in the tree.** It was only the product page's
     button label (Express stock 0, Market stock > 0); the order is identical either way. Market DOES
     mean a longer delivery, but that is explained in the e-mail after ordering, deliberately NOT on
-    the product page. The cards' "Market · N available" badge is jargon too — cost of rewording or
-    dropping it to be decided separately.
+    the product page.
+  - **The stock badge stays UNCHANGED (decided 2026-09-29, final).** "Market · N available" /
+    «ماركت · N متاح» and "Express · N in stock" / «إكسبريس · N متاح» stay exactly as they are, on
+    the cards and on the product page — not reworded, not dropped. (Costed first: 558 of 698 visible
+    products show the Market badge, 63 Express, 77 out of stock. A reword to "In stock · N" was
+    briefly asked for and then cancelled before it shipped.)
   - **Suggestions: the add-on rule and three rails APPROVED** — cart "Complete the look" / «أكمل
     إطلالتك» (add-ons only); product page "Pairs well with" / «يتناسب مع» (add-ons) then "Similar
     styles" / «تصاميم مشابهة» (alternatives, same family). Add-ons: in stock, not in the cart, a
@@ -406,6 +410,34 @@ a dashboard screen to add, toggle and reorder rails (activity-logged, cache-bust
 read that returns each rail with its cards, so the home page stops needing the whole catalogue.
 ~2 days on top of stage 4, and it belongs INSIDE stage 4: stage 4 moves the home rails to the
 server anyway, so doing it separately would build the rails twice.
+
+**BUILT 2026-09-29 as stage 4 slice C (in the tree, ships with the stage 4 batch).**
+- **Table** `storefront_home_rails` (migration M1y, `2026_10_12_000000_home_rails.php`, `hasTable`
+  guard, on `DASHBOARD_TABLES`). No foreign key to the target: grades, brands and categories are
+  transform output, and a key would stop `core:drop-clean`. Seeded with TODAY's home page
+  (watchizer only): offers 12, featured 5, then every grade in id order at 8. So deploying it changes
+  nothing a shopper sees. Brand Fashion gets no rails until someone adds them.
+- **Read** `GET catalog/home` (`CompatHome`): the active rails in order, each with its product ids,
+  plus the cards. The cards follow the browser's old rules, unchanged (parity-tested against
+  `all_product` with the browser's own sort): offers = discounted, in catalogue order; grade / brand
+  / category = that target's products, in catalogue order; featured = products marked featured,
+  else the old pool (on sale with a picture), `card_count` picked at random; newest (a new kind) =
+  in stock, newest first. **Out-of-stock products are NOT filtered from the old kinds**: the browser
+  didn't filter them, and changing that is a decision, not part of the move. A rail with no cards is
+  left out.
+- **Dashboard** "Home rails" (`/manage/storefronts/{id}/home-rails`, beside Banners, same ability):
+  add, retitle (empty title = the target's own name), set the card count, switch off, move up/down
+  (the whole order is sent, and a stale list is refused), delete. Every write is activity-logged.
+  **No cache flush, deliberately**: `catalog/home` reads the table on every request, so a change is
+  live in core at once and reaches the shop within the home page's `revalidate = 300` (5 min).
+  Flushing would throw away the listing index for nothing.
+- **Storefront**: the home page renders the rails from `catalog/home` (server render carries them, so
+  the browser makes no request for them). Titles come from the tables (grade name + description,
+  brand, category) unless the rail has its own. The brand strip sits after the first rail. No
+  `all_product` on `/` any more.
+- **Deploy**: the API host's `.htaccess` line becomes
+  `catalog/(meta|nav|listing|cards|related|product|home)` (runbook §4.1.1 already says so), then
+  `php artisan migrate --force` (M1y seeds the rails).
 
 ### 4. Deferred by decision — and what makes each urgent
 - **Hero 3D: one-finger vertical swipe scrolls the page** (decided 2026-09-29, NOT built). Today the
