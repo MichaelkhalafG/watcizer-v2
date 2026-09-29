@@ -82,4 +82,27 @@ return [
         'hmac_secret' => env('PAYMOB_HMAC_SECRET'),
         'payment_methods' => array_values(array_filter(array_map('intval', explode(',', (string) env('PAYMOB_PAYMENT_METHODS', '4988969,4627487,3961568'))))),
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Meta Conversions API (B2, 2026-09-29)
+    |--------------------------------------------------------------------------
+    | The server-side `Purchase` for a CARD order, sent when the payment callback confirms the money
+    | (runbook §11.1: the browser never learns a card payment cleared). ONE pixel — the new one; the
+    | incumbent is not ours to administer. Swapping the token is this one .env line + config:cache.
+    |
+    | `test_event_code` set = every event goes to Events Manager → Test events and counts nowhere.
+    | Unset it to go live. Check everything with `php artisan meta:capi-check` (never prints the token).
+    */
+    'meta_capi' => [
+        'token' => (string) env('META_CAPI_TOKEN', ''),
+        'pixel_id' => (string) env('META_CAPI_PIXEL_ID', '1614877760150035'),
+        'graph_version' => (string) env('META_GRAPH_API_VERSION', 'v23.0'),
+        'test_event_code' => (string) env('META_CAPI_TEST_EVENT_CODE', ''),
+        'timeout' => 10,
+        // Retry ladder (minutes) for a send Meta did not accept; after the last rung the row is `failed`.
+        'backoff_minutes' => [1, 5, 15, 60, 240],
+        // Tests only: they run inside a transaction, where a real flush leaves rows to meta:drain.
+        'send_inside_transaction' => false,
+    ],
 ];

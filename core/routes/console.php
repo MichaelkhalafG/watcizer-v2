@@ -82,6 +82,13 @@ Schedule::command('tokens:prune')->dailyAt('03:15');
 Schedule::command('carts:prune')->dailyAt('03:20')->withoutOverlapping();
 
 /*
+| Meta Conversions API (B2, 2026-09-29): the card Purchase events. The payment callback sends each one
+| right after its commit; this tick retries any Meta did not accept, with a backoff. Does nothing
+| while META_CAPI_TOKEN is empty.
+*/
+Schedule::command('meta:drain')->everyMinute()->withoutOverlapping();
+
+/*
 | The listing index (2026-09-28, CatalogWarmer). It lives 10 minutes (`compat.ttl.all_product`)
 | and takes ~1 s to build; rebuilt every 5 it never expires under a shopper, and the stock it
 | sorts by is never more than 5 minutes old. A write that makes it stale rebuilds it at once
