@@ -30,15 +30,32 @@ ended — until they are, treat these as deployed-unverified:
 **Open, in order:**
 1. The deploy checks above, and the next-morning SQL (0 guest carts idle 30+ days; signed-in carts
    untouched; 03:00 backup ran).
-2. **C3 — legacy `dash.watchizereg.com` off (disable, not delete)**, sequence in section 3. The
-   legacy app has NO cron on the server (checked 2026-09-29), so neither its cart prune nor its
-   re-engagement job ever ran here; there is no cron line to remove.
-   **C3-delete** no earlier than 7 quiet days after the recorded off moment.
-3. FK step 2 (the rest of queue item 7) — not started.
+2. ~~C3~~ **DONE 2026-09-29, 10:41 server time** — legacy `dash.watchizereg.com` is OFF. hPanel has
+   no disable action on this plan, so the legacy app's `public/.htaccess` answers **410 Gone** on
+   every path (the original is saved beside it as `.htaccess.pre-c3`; undo = copy it back). Verified:
+   dash `/` and `/api/all_product` 410, api `/api` 401, api `/manage` 404, eleganceeg `/manage` 302,
+   sitemap 0 hits for dash; in the browser zero requests to dash across home, listing, product, cart,
+   checkout and account, Google sign-in works, console clean. The legacy app had no cron, so nothing
+   else to stop. **C3-delete no earlier than 2026-10-06** (and only after a quiet week + a full backup).
+3. **FK step 2 — BUILT 2026-09-29, not yet run on production:** `php artisan
+   core:repoint-commerce-fks` (see "FK step 2" in the live-and-unfixed list for the spec). Idempotent:
+   drops a `product_id` key pointing anywhere but `catalog_products` (the legacy ones — already gone
+   on production since step 1), adds `order_items → catalog_products` RESTRICT and `cart_items →
+   catalog_products` CASCADE, refuses on any orphan line, prints the plan and the rollback SQL
+   (`--dry-run` changes nothing). Rehearsed on a scratch copy of the dev DB: from the dev state (old
+   keys present) and from production's state (no key) — both end with exactly the two new keys; a
+   re-run is a no-op; the full suite passes against it with the keys in place. Nothing in core is
+   blocked by RESTRICT: `ProductImporter` already refuses a hard delete once the product has an order
+   line, dashboard deletes are soft (`deleted_at`), and the probes delete their order lines first.
+   Tests: 5 in `CommerceForeignKeysTest` — red on the old schema (a catalog-only product refused in a
+   cart line and an order line). The dev DB itself is NOT changed (the suite's schema tests stay red
+   there until the command is run on it — the developer's call, same as production). Harness: runs it
+   after `core:transform`.
 4. Then the queue as agreed: C-1 stage 4 + home rails; Arabic S-AR 1–3 (+B8/B9); Joyroom 3a/3b;
    B1 ratings, then blogs.
-- **Blocked:** B2 Conversions API — one pixel (`1614877760150035`); waiting on the client's token
-  (into `core/.env` as `META_CAPI_TOKEN`) and a test event code.
+- **B2 Conversions API — BUILT 2026-09-29, not deployed** (see B2 in section 3). The token is on the
+  server; the first real test is `meta:capi-check --send-test` there. The token is TEMPORARY (exposed
+  in a chat): rotate it once B2 is proven — one `.env` line + `config:cache`.
 - **Decided, design approved-pending:** re-engagement rebuilt on core (weekly, live prices, per
   storefront, honoured unsubscribe). Needs from the developer: the mailbox's daily sending limit,
   price hold or "unchanged 14 days", the client's consent position. After the current queue.
@@ -234,9 +251,34 @@ Git history holds the text it replaced.
 - **B2 Meta Conversions API** — about a day; STOP and report if it grows (developer's condition).
   **Scope (2026-09-28): ONE pixel, `1614877760150035`** — the client administers only the new one;
   the incumbent `1611…872` keeps its browser-only events (status quo, no regression; its purchase
-  count stays under-reported and the two pixels will disagree — expected, not a fault). Blocked on
-  the client's system-user token (into `core/.env` as `META_CAPI_TOKEN`, never in chat) and a test
-  event code.
+  count stays under-reported and the two pixels will disagree — expected, not a fault).
+  **BUILT 2026-09-29 (core, not deployed):** the card `Purchase` is enqueued in the payment-success
+  transaction on BOTH callback paths (scoped + legacy alias) as an `integration_outbox` row on channel
+  `meta` (`dedupe_key meta:purchase:{order}` = once per order), sent right after the commit, retried
+  by `meta:drain` every minute with a backoff (1, 5, 15, 60, 240 min, then `failed`). A token Meta
+  rejects (OAuth 190) fails the row at once with "THE TOKEN IS WRONG OR EXPIRED" — never retried
+  forever. Declined cards send nothing. Customer data is hashed at enqueue (e-mail, phone as
+  20XXXXXXXXXX, first/last name, country, account id) — no raw PII in the outbox or on the wire. Meta
+  requires the shopper's user agent on a website event and the callback has no browser in it, so
+  `add_order` now records the browser's user agent, IP and `_fbp`/`_fbc` in a new core table
+  `core_order_signals` (migration M1x, on the never-dropped list); an order placed before the deploy
+  goes as `action_source: other`. Event id `purchase-{order number}` (a future browser event must use
+  the same). `meta:capi-check` prints separate verdicts for the token's CHARACTERS (every non-alphanumeric
+  one by position and Unicode name — a Cyrillic "х" shows up), whether Meta ACCEPTS the token and it
+  can see the pixel, and (`--send-test`, refused without a test code) one test Purchase; it never
+  prints the token, only a fingerprint. `.env`: `META_CAPI_TOKEN` (set), `META_CAPI_TEST_EVENT_CODE`
+  (set to `TEST24178` for the test; empty = events count as real), optional `META_CAPI_PIXEL_ID`
+  (defaults to the new pixel) and `META_GRAPH_API_VERSION` (defaults to v23.0). 9 tests
+  (`MetaConversionsTest`), the callback hook and the token verdict mutation-checked.
+  **Decision (developer, 2026-09-29): `core_order_signals` has NO retention rule — the IP and user
+  agent are kept indefinitely.** Raised because they are personal data about a shopper's device and
+  B2 only needs them until the order's Purchase is sent (a card payment settles within hours, the
+  retries end within a day), so they could be deleted after that. Kept by choice, not oversight. If a
+  rule is ever wanted, it is a prune command like `carts:prune` (e.g. signals of orders older than N
+  days), scheduled after the 03:00 backup.
+  **Not in B2:** COD purchases stay browser-only (they already fire `Purchase` at confirmation); the
+  storefront does not yet send `_fbp`/`_fbc` in `add_order` (the columns accept them — a small
+  storefront follow-up that would raise Meta's match rate).
 - **C3 switch the legacy storefront OFF — disable, not delete** (developer, 2026-09-28: nothing
   pending on the legacy host). The legacy app is **`dash.watchizereg.com`** — NOT `eleganceeg.com`,
   which is core's dashboard and shares core's document root with `api.watchizereg.com`. Found while
@@ -284,7 +326,9 @@ Git history holds the text it replaced.
   the `dash` Google OAuth redirect URI; point the Paymob portal URL at core's
   callback or clear it; drop `dash.watchizereg.com` from `config/cors.php`, `next.config.js`
   `remotePatterns` and the config defaults. **Never the database** — it is core's.
-  Off moment: ______ (record it) → earliest delete: ______.
+  Off moment: **2026-09-29 10:41 server time** (legacy `public/.htaccess` → 410; original in
+  `.htaccess.pre-c3`) → earliest delete: **2026-10-06**. The delete also removes that `.htaccess`
+  pair with the site.
 - **Re-engagement, rebuilt on core — DECIDED 2026-09-28 (developer), design first, after the current
   queue.** The legacy job is removed with C3 now: a daily mail at stale prices is worse than no mail.
   The new one must be: WEEKLY; live prices and stock from core, never a frozen table (never a price
