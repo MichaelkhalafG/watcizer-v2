@@ -7,19 +7,18 @@ import '@/src/Components/Home/home.css'
 import ProductSlider from '@/src/Components/Product/ProductSlider'
 import OfferSlider from '@/src/Components/Product/OfferSlider'
 import FeaturedBanner from '@/src/Components/Home/FeaturedBanner'
-import { useCatalog } from '@/src/Hooks/queries/useCatalog'
+import { useHome, useCardsOf } from '@/src/Hooks/queries/useListing'
+import { useTables } from '@/src/Hooks/queries/useTables'
 import { useUIStore } from '@/src/Store/uiStore'
 import CategoryTiles from '@/src/Components/Merchandising/CategoryTiles'
 import { getImageUrl } from '@/src/utils/imageUrl'
 import { buildListingParams } from '@/src/utils/listingParams'
 
-// Per-section render caps. The (main) layout prefetches the FULL catalog (~2k
-// products) into React Query for listing/search, but rendering all of them on the
-// home page cost ~13s Total Blocking Time. So each home rail renders only a small
-// visible slice — SSR still emits these cards for SEO. Max home total: 12 offers
-// + (4 grades × 8) = 44 cards, well below the previous ~2137.
-const OFFERS_RAIL_CAP = 12
-const GRADE_RAIL_CAP = 8
+// The home page's product rails come from core (C-1 stage 4 slice C, `catalog/home`): the rails the
+// dashboard's "Home rails" screen lists, in its order, each with its cards already chosen. The page
+// used to download the whole catalogue and derive offers, featured and one rail per grade here.
+// The hero, the category tiles and the brand strip stay fixed; the brand strip sits after the first
+// rail, where it sat after the offers rail before.
 
 // Module-level handler (stable identity, never recreated): hide a broken brand
 // logo and reveal its text fallback.
@@ -51,64 +50,81 @@ const sectionRetryStyle = {
   cursor: 'pointer',
 }
 
-export default function HomeClient() {
-  // Server data straight from TanStack Query (hydrated from the server prefetch,
-  // so this resolves instantly — no client refetch on first paint).
-  const { products, tables, isFetching, isError, refetch } = useCatalog()
+// A table row's name in `language`, English next, then the flat field.
+const nameIn = (row, key, language) =>
+  row?.translations?.find((t) => t.locale === language)?.[key] ||
+  row?.translations?.find((t) => t.locale === 'en')?.[key] ||
+  row?.[key] ||
+  ''
+
+// The fixed titles of the kinds that have no target to be named after.
+const KIND_TITLES = {
+  offers: { en: 'Season Offers', ar: 'عروض الموسم' },
+  newest: { en: 'New Arrivals', ar: 'وصل حديثًا' },
+}
+
+export default function HomeClient({ initialHome = null }) {
+  const { data: home, isFetching, isError, refetch } = useHome(initialHome)
+  const { data: tables } = useTables()
   const { language } = useUIStore()
   const router = useRouter()
   const isRTL = language === 'ar'
 
-  // Single source of truth for "still loading" on the home page. Once the fetch
-  // settles, empty derived lists mean genuinely-empty (render nothing), not
-  // loading. Each section below shows its own skeleton while this is true.
-  const loading = isFetching && (!products || products.length === 0)
-  // Fetch failed AND we have nothing to show → an inline error beats a blank gap.
-  const catalogError = isError && (!products || products.length === 0)
+  // Every rail's cards, transformed once in the shopper's language.
+  const cards = useCardsOf(home, language)
+  const cardById = useMemo(() => new Map(cards.map((c) => [c.id, c])), [cards])
 
-  // "Season Offers" surfaces discounted PRODUCTS so the unified ProductCard
-  // renders correctly and matches "All Offers →" → /listing?offers=true.
-  const offerProducts = useMemo(
-    () => (products || []).filter((p) => Number(p.percentage_discount) > 0).slice(0, OFFERS_RAIL_CAP),
-    [products],
-  )
+  const loading = !home && isFetching
+  const homeError = !home && isError
 
-  // Derived directly from tables — no state/effect needed.
-  const grades = useMemo(() => tables?.grades || [], [tables])
-
-  // Products grouped by grade. Pure derivation of products + grades.
-  const filteredProducts = useMemo(() => {
-    if (!products || !grades.length) return {}
-    return grades.reduce((acc, grade) => {
-      const filtered = products.filter((product) => product.grade_id === grade.id)
-      if (filtered.length > 0) acc[grade.id] = filtered
-      return acc
-    }, {})
-  }, [products, grades])
-
-  // Localized grade title/description map. Pure derivation of grades + language.
-  const gradeText = useMemo(() => {
-    if (!grades.length) return {}
-    return Object.fromEntries(
-      grades.map((grade) => [
-        grade.id,
-        {
-          title:
-            grade.translations?.find((t) => t.locale === language)?.grade_name ?? grade.grade_name,
-          description:
-            grade.translations?.find((t) => t.locale === language)?.description ??
-            grade.description,
-        },
-      ]),
-    )
-  }, [grades, language])
+  // Each rail with its cards, its title and where "View all" goes. A rail whose target is gone from
+  // the tables still shows, under its custom title if it has one.
+  const rails = useMemo(() => {
+    if (!home?.rails) return []
+    return home.rails
+      .map((rail) => {
+        const products = rail.products.map((id) => cardById.get(id)).filter(Boolean)
+        const custom = { en: rail.title?.en || '', ar: rail.title?.ar || '' }
+        let title = KIND_TITLES[rail.kind] || { en: '', ar: '' }
+        let description = { en: '', ar: '' }
+        let href
+        let moreid
+        if (rail.kind === 'grade') {
+          const grade = tables?.grades?.find((g) => g.id === rail.target)
+          const name = grade ? nameIn(grade, 'grade_name', language) : ''
+          title = { en: name, ar: name }
+          const desc = grade ? nameIn(grade, 'description', language) : ''
+          description = { en: desc, ar: desc }
+          moreid = rail.target
+        } else if (rail.kind === 'brand') {
+          const brand = tables?.brands?.find((b) => b.id === rail.target)
+          const name = brand ? nameIn(brand, 'brand_name', language) : ''
+          title = { en: name, ar: name }
+          href = `/listing?${buildListingParams({ brands: [rail.target] }, {}, tables).toString()}`
+        } else if (rail.kind === 'category_type') {
+          const category = tables?.categoryTypes?.find((c) => c.id === rail.target)
+          const name = category ? nameIn(category, 'category_type_name', language) : ''
+          title = { en: name, ar: name }
+          href = `/listing?${buildListingParams({ categories: [rail.target] }, {}, tables).toString()}`
+        } else if (rail.kind === 'newest') {
+          href = '/listing?sort=newest'
+        }
+        return {
+          ...rail,
+          products,
+          text: {
+            title: { en: custom.en || title.en, ar: custom.ar || title.ar },
+            description,
+          },
+          href,
+          moreid,
+        }
+      })
+      .filter((rail) => rail.products.length > 0)
+  }, [home, cardById, tables, language])
 
   const brands = tables?.brands || []
-  const brandName = (b) =>
-    b.translations?.find((t) => t.locale === language)?.brand_name ||
-    b.translations?.find((t) => t.locale === 'en')?.brand_name ||
-    b.brand_name ||
-    ''
+  const brandName = (b) => nameIn(b, 'brand_name', language)
 
   const handleBrandClick = useCallback(
     (brandId) => {
@@ -117,8 +133,67 @@ export default function HomeClient() {
     [router, tables],
   )
 
+  const brandStrip =
+    brands.length > 0 ? (
+      <div className="wz-brand-strip">
+        <div className="wz-brand-strip-track">
+          {[...brands, ...brands].map((b, i) => {
+            const img = getImageUrl(b.image, 'Brand')
+            const name = brandName(b)
+            return (
+              <button
+                key={`${b.id}-${i}`}
+                className="wz-brand-strip-item"
+                onClick={() => handleBrandClick(b.id)}
+                title={name}
+                type="button"
+              >
+                {img ? (
+                  <Image
+                    src={img}
+                    alt={name}
+                    className="wz-brand-strip-img"
+                    width={90}
+                    height={32}
+                    quality={70}
+                    sizes="90px"
+                    onError={onBrandImgError}
+                  />
+                ) : null}
+                <span className="wz-brand-strip-name" style={{ display: img ? 'none' : 'block' }}>
+                  {name}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+    ) : null
+
+  const renderRail = (rail) => {
+    if (rail.kind === 'featured') {
+      return <FeaturedBanner key={rail.id} products={rail.products} />
+    }
+    if (rail.kind === 'offers') {
+      return (
+        <section className="wz-home-section" key={rail.id}>
+          <div className="wz-container">
+            <OfferSlider text={{ title: rail.text.title, description: rail.text.title }} products={rail.products} />
+          </div>
+        </section>
+      )
+    }
+    return (
+      <section className="wz-home-section" key={rail.id}>
+        <div className="wz-container">
+          <ProductSlider text={rail.text} gradeproducts={rail.products} moreid={rail.moreid} href={rail.href} />
+        </div>
+      </section>
+    )
+  }
+
   return (
-    <div className="wz-home" dir={language === 'ar' ? 'rtl' : 'ltr'}>
+    <div className="wz-home" dir={isRTL ? 'rtl' : 'ltr'}>
       <WatchHero />
 
       <section className="wz-home-section">
@@ -127,10 +202,8 @@ export default function HomeClient() {
         </div>
       </section>
 
-      {/* Catalog fetch failed → inline error + retry (not a blank page). The
-          product sliders below derive from the (empty) catalog, so they render
-          nothing on error; this block gives the user a way to recover. */}
-      {catalogError && (
+      {/* The rails failed to load → inline error + retry (not a blank page). */}
+      {homeError && (
         <section className="wz-home-section">
           <div className="wz-container">
             <div style={sectionErrorStyle} role="alert">
@@ -147,107 +220,18 @@ export default function HomeClient() {
         </section>
       )}
 
-      {offerProducts.length !== 0 ? (
-        <section className="wz-home-section">
-          <div className="wz-container">
-            <OfferSlider
-              text={{
-                title: { en: 'Season Offers', ar: 'عروض الموسم' },
-                description: { en: 'Season Offers', ar: 'عروض الموسم' },
-              }}
-              products={offerProducts}
-            />
-          </div>
-        </section>
-      ) : loading ? (
-        <section className="wz-home-section">
-          <div className="wz-container">
-            <OfferSlider loading products={[]} text={{}} />
-          </div>
-        </section>
-      ) : null}
-
-      {brands.length === 0 && loading && (
-        <div className="wz-brand-strip-skeleton">
-          {Array.from({ length: 8 }).map((_, i) => (
-            <div className="wz-skel-brand-item" key={i} />
-          ))}
-        </div>
-      )}
-
-      {brands.length > 0 && (
-        <div className="wz-brand-strip">
-          <div className="wz-brand-strip-track">
-            {[...brands, ...brands].map((b, i) => {
-              const img = getImageUrl(b.image, 'Brand')
-              const name = brandName(b)
-              return (
-                <button
-                  key={`${b.id}-${i}`}
-                  className="wz-brand-strip-item"
-                  onClick={() => handleBrandClick(b.id)}
-                  title={name}
-                  type="button"
-                >
-                  {img ? (
-                    <Image
-                      src={img}
-                      alt={name}
-                      className="wz-brand-strip-img"
-                      width={90}
-                      height={32}
-                      quality={70}
-                      sizes="90px"
-                      onError={onBrandImgError}
-                    />
-                  ) : null}
-                  <span className="wz-brand-strip-name" style={{ display: img ? 'none' : 'block' }}>
-                    {name}
-                  </span>
-                </button>
-              )
-            })}
-          </div>
-        </div>
-      )}
-
-      <FeaturedBanner products={products || []} loading={loading} />
-
       {loading &&
         [0, 1].map((i) => (
-          <section className="wz-home-section" key={`grade-skel-${i}`}>
+          <section className="wz-home-section" key={`rail-skel-${i}`}>
             <div className="wz-container">
               <ProductSlider loading />
             </div>
           </section>
         ))}
 
-      {grades.map((grade) => {
-        const gradeProducts = filteredProducts?.[grade.id] ?? []
-        const gradeLocalization = gradeText?.[grade.id]
-        if (gradeProducts.length === 0) return null
-        return (
-          <section className="wz-home-section" key={grade.id}>
-            <div className="wz-container">
-              <ProductSlider
-                text={{
-                  title: {
-                    en: gradeLocalization?.title ?? grade.grade_name,
-                    ar: gradeLocalization?.title ?? grade.grade_name,
-                  },
-                  description: {
-                    en: gradeLocalization?.description ?? '',
-                    ar: gradeLocalization?.description ?? '',
-                  },
-                }}
-                gradeproducts={gradeProducts.slice(0, GRADE_RAIL_CAP)}
-                to={`/grade/${grade?.translations?.find((t) => t.locale === 'en')?.grade_name}`}
-                moreid={grade.id}
-              />
-            </div>
-          </section>
-        )
-      })}
+      {rails.length > 0 && renderRail(rails[0])}
+      {brandStrip}
+      {rails.slice(1).map(renderRail)}
     </div>
   )
 }

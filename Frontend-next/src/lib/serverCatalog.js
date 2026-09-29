@@ -4,6 +4,7 @@ import { tablesQueryFn } from '../Hooks/queries/useTables'
 import { productsQueryFn } from '../Hooks/queries/useProducts'
 import { offersQueryFn } from '../Hooks/queries/useOffers'
 import { navQueryFn } from '../Hooks/queries/useNav'
+import { homeQueryFn } from '../Hooks/queries/useListing'
 import { toSlug } from '../utils/slugs'
 import { transformProductData } from '../utils/transformProduct'
 
@@ -111,6 +112,18 @@ export const getServerProductCard = cache(async (param) => {
   }
   const [product] = transformProductData(payload.products, tables, payload.ratings || [], payload.images || [], 'en')
   return product ? { product, payload, ratings: payload.ratings || [], tables } : null
+})
+
+// The home page's rails with their cards (C-1 stage 4 slice C, core's `catalog/home`) — the raw
+// payload, which HomeClient transforms in the shopper's language. null on failure: the page then
+// renders without rails and the client retries. Not memoised across requests: the page's own
+// `revalidate = 300` is the cache, and the featured rail's random pick should change with it.
+export const getServerHome = cache(async () => {
+  try {
+    return await homeQueryFn(serverHttp)()
+  } catch {
+    return null
+  }
 })
 
 // Transformed offers array (same shape as the useOffers hook).

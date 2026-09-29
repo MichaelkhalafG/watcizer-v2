@@ -1,9 +1,9 @@
-import CatalogBoundary from '@/src/lib/CatalogBoundary'
 import HomeClient from './HomeClient'
 import { safeJsonLd } from '@/src/lib/safeJsonLd'
+import { getServerHome } from '@/src/lib/serverCatalog'
 
-// ISR: render on the server (with catalog data in the HTML for SEO), cache, and
-// revalidate every 5 min — matching the products query staleTime.
+// ISR: render on the server (with the rails' cards in the HTML for SEO), cache, and
+// revalidate every 5 min — also how soon a change on the dashboard's Home rails screen shows.
 export const revalidate = 300
 
 // Home metadata (overrides the layout defaults) — ported from Home.jsx's <Helmet>.
@@ -78,19 +78,17 @@ const storeJsonLd = {
   },
 }
 
-// The catalog is prefetched + hydrated by the (main) layout (inside the
-// HydrationBoundary), so this page just renders the client tree + the homepage
-// Store JSON-LD.
-export default function HomePage() {
+// The rails and their cards come from core's `catalog/home` (C-1 stage 4 slice C) — not the whole
+// catalogue. null on failure: the client shows its retry instead of rails.
+export default async function HomePage() {
+  const home = await getServerHome()
   return (
     <>
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: safeJsonLd(storeJsonLd) }}
       />
-      <CatalogBoundary>
-        <HomeClient />
-      </CatalogBoundary>
+      <HomeClient initialHome={home} />
     </>
   )
 }

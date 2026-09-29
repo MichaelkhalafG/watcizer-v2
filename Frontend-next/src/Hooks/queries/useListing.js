@@ -79,5 +79,22 @@ export const useRelated = ({ product, cart, kind = 'similar', exclude } = {}, { 
   })
 }
 
+// The home page's rails (C-1 stage 4 slice C) — core's `catalog/home`: the rails in the dashboard's
+// order, each with its product ids, plus every card they need (the catalog/cards shape). `initialData`
+// is the server render's copy, so the first paint needs no request.
+export const homeQueryFn = (client) => async () => {
+  const { data } = await client.get('catalog/home')
+  return data
+}
+
+export const useHome = (initialData) =>
+  useQuery({
+    queryKey: ['home'],
+    // Header-less (no CORS preflight) — see Context/publicApi.js.
+    queryFn: homeQueryFn(publicHttp),
+    initialData: initialData || undefined,
+    staleTime: 5 * 60 * 1000,
+  })
+
 export { listingRequest, listingQueryFn }
 export default useListing

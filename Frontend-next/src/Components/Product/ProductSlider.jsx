@@ -6,7 +6,7 @@ import { Carousel, CarouselSlide } from '../UI/Carousel'
 import ProductCard from './ProductCard'
 import './ProductSlider.css'
 
-const ProductSlider = ({ gradeproducts = [], text = {}, moreid, loading = false }) => {
+const ProductSlider = ({ gradeproducts = [], text = {}, moreid, href, loading = false }) => {
   const router = useRouter()
   const { language } = useUIStore()
 
@@ -19,7 +19,8 @@ const ProductSlider = ({ gradeproducts = [], text = {}, moreid, loading = false 
       : text.description?.en || text.description?.ar || ''
 
   const handleViewAll = () => {
-    router.push(moreid ? `/listing?grade=${moreid}` : '/listing')
+    // `href` for the home page's brand, category and newest rails; a grade rail keeps its old link.
+    router.push(href || (moreid ? `/listing?grade=${moreid}` : '/listing'))
   }
 
   // Loading placeholder — parent owns the "still fetching" signal so a genuinely
