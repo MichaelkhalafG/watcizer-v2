@@ -1,8 +1,8 @@
 // Client-side catalog transform. The API serves raw products + lookup tables +
 // ratings + images separately; this joins them into the rich, localized shape
 // every consumer reads (`.name`, `.brand`, `.category_type`, `.images[]`, …).
-// Extracted from the old FetchTablesAndProducts so the TanStack Query hooks
-// (Hooks/queries/useProducts) and any future consumer can share it.
+// Since C-1 stage 4 it transforms only the rows core sends for a page (catalog/cards, listing,
+// related, home, product) — never the whole catalogue (useCardsOf in Hooks/queries/useListing).
 import { getImageUrl } from './imageUrl'
 
 const getTranslatedName = (translations, locale, fallback) => {

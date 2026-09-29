@@ -1,3 +1,10 @@
+// FROZEN REFERENCE — the storefront's listing filter predicate as it ran in the browser at e078fd2
+// (C-1 stage 3 moved filtering to core: App\Compat\CompatListing; stage 4 slice D deleted the
+// storefront copy, whose last users were the listing pages' SEO counts). Copied VERBATIM from
+// Frontend-next/src/utils/filterPredicate.js. CatalogListingTest runs it in node as the rule core's
+// listing must reproduce. Do not "fix" anything here: a rule change goes into CompatListing by
+// decision, and this file stays the record of what the storefront did.
+
 // Shared product ↔ filters predicate, so the Listing results and the SideBar
 // option counts always agree. `except` lets the sidebar count an option as if
 // that option's OWN section were cleared (standard faceted-search behaviour).

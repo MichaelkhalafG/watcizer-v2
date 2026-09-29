@@ -20,8 +20,11 @@ export default async function MainLayout({ children }) {
   const qc = new QueryClient()
   try {
     // The lookup tables alone, process-cached (5-min TTL) — C-1 stage 4: this used to fetch the
-    // whole catalogue just to take the tables out of it. The catalogue itself has not been embedded
-    // here since stage 3; after stage 4 only the home page still wraps itself in <CatalogBoundary>.
+    // whole catalogue just to take the tables out of it. Every page's server render needs them
+    // (names, card transforms); without this line the home rails, the brand strip and every card
+    // rendered only after the BROWSER fetched the tables (slice B dropped it; restored in slice D).
+    // No page embeds the catalogue any more (C-1 stage 4, slice D).
+    qc.setQueryData(['tables'], await getServerTables())
   } catch {
     // Tables unreachable server-side → the client fetches them + shows error/retry.
   }
