@@ -6,7 +6,8 @@ import { useRouter } from 'next/navigation'
 import { FiShare2 } from 'react-icons/fi'
 import ImageZoom from '../UI/ImageZoom'
 import DOMPurify from 'dompurify'
-import { useCatalog } from '../../Hooks/queries/useCatalog'
+import { useTables } from '../../Hooks/queries/useTables'
+import { useCards, useCardsOf, useRelated } from '../../Hooks/queries/useListing'
 import { useOffers } from '../../Hooks/queries/useOffers'
 import { useUIStore } from '../../Store/uiStore'
 import { useAuthStore } from '../../Store/authStore'
@@ -107,13 +108,19 @@ function FinishRow({ label, colors, isRTL }) {
   )
 }
 
-function ProductDetailClient({ param, isOffer = false }) {
+// `productPayload`: this page's ONE product as core's `catalog/product` cards (C-1 stage 4), resolved
+// on the server — the page used to load the whole catalogue and search it. null when core found no
+// product for the URL (the by-name fallback below still runs).
+function ProductDetailClient({ param, isOffer = false, productPayload = null }) {
   const router = useRouter()
 
   // Server data from the shared TanStack Query cache.
-  const { products, tables, isError: catalogIsError, refetch: refetchCatalog } = useCatalog()
+  const { data: tablesData } = useTables()
+  const tables = useMemo(() => tablesData ?? {}, [tablesData])
   const { data: offers = [] } = useOffers()
   const { language } = useUIStore()
+  // This page's product, in the shopper's language (the server sent its raw card).
+  const pageCards = useCardsOf(productPayload, language)
   const isRTL = language === 'ar'
   const { userId } = useAuthStore()
   const showToast = useToastStore((s) => s.showToast)
@@ -150,17 +157,8 @@ function ProductDetailClient({ param, isOffer = false }) {
   }, [])
 
   // ── Data loading ────────────────────────────────────────────────────────
-  const contextProduct = useMemo(() => {
-    if (isOffer || !param) return null
-    const all = products || []
-    if (!all.length) return null
-    if (/^\d+$/.test(param)) return all.find((p) => p.id === Number(param)) || null
-    return (
-      all.find((p) => toSlug(p.name || '') === param) ||
-      all.find((p) => toSlug(p.product_title || '') === param) ||
-      null
-    )
-  }, [isOffer, param, products])
+  // Resolved by core on the server (`catalog/product`, the storefront's own slug rule) — no catalogue.
+  const contextProduct = isOffer ? null : pageCards[0] || null
 
   const [apiProduct, setApiProduct] = useState(null)
   const [fetchState, setFetchState] = useState('idle') // idle | loading | done | notfound | error
@@ -173,10 +171,9 @@ function ProductDetailClient({ param, isOffer = false }) {
   // this promotes to the full record once it arrives.
   useEffect(() => {
     if (isOffer || !param) return
+    // The server already asked core for this URL's product; when it found none, the by-name call is
+    // the legacy raw-title fallback and runs straight away (it used to wait for the catalogue).
     const byId = contextProduct?.id ?? (/^\d+$/.test(param) ? param : null)
-    // No id yet AND the catalog hasn't loaded → wait (avoids a premature by-name
-    // call / false 404 before the catalog can resolve the slug).
-    if (!byId && (!products || !products.length)) return
     let alive = true
     // Fetch-status sync for an external API call — intentional effect setState.
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -197,7 +194,7 @@ function ProductDetailClient({ param, isOffer = false }) {
     return () => {
       alive = false
     }
-  }, [isOffer, param, contextProduct, products])
+  }, [isOffer, param, contextProduct])
 
   const offer = useMemo(() => {
     if (!isOffer || !param) return null
@@ -211,10 +208,10 @@ function ProductDetailClient({ param, isOffer = false }) {
     )
   }, [isOffer, param, offers])
 
-  const offerProduct = useMemo(
-    () => (isOffer && offer ? (products || []).find((p) => p.id === offer.main_product_id) : null),
-    [isOffer, offer, products],
-  )
+  // An offer's linked product, by id (C-1 stage 4) — it used to be found in the whole catalogue.
+  const { data: offerCardsPayload } = useCards(isOffer && offer ? [offer.main_product_id] : [])
+  const offerCards = useCardsOf(offerCardsPayload, language)
+  const offerProduct = isOffer && offer ? offerCards[0] || null : null
 
   // Prefer the full API record, but ONLY when it matches the currently-resolved
   // product — otherwise (mid-navigation, before the new record arrives) the catalog
@@ -683,89 +680,31 @@ function ProductDetailClient({ param, isOffer = false }) {
     }
   }, [userId, newReview, setNewReview, isOffer, offer, product, fetchRatings, showToast, isRTL, router])
 
-  // ── Related products: relevance scoring (lazy-rendered when scrolled near) ──
-  // For offers, scoring runs against the offer's linked product so we recommend
-  // genuinely similar watches. A cheap pre-filter (share ≥1 core attribute)
-  // keeps the loop fast even on large catalogs.
-  const related = useMemo(() => {
-    const base = isOffer ? offerProduct : product
-    if (!base || !products?.length) return []
-    const exclude = base.id
-    const currentPrice = Number(base.sale_price_after_discount || base.selling_price || 0)
-    const baseGenders = Array.isArray(base.genders_en)
-      ? base.genders_en
-      : base.genders_en
-        ? [base.genders_en]
-        : []
-    const baseDialIds = new Set(
-      (base.dial_colors || base.dial_color || []).map((c) => c.color_id).filter(Boolean),
-    )
-
-    const scored = products
-      .filter((p) => p.id !== exclude)
-      // pre-filter: must share at least one core attribute to be worth scoring
-      .filter(
-        (p) =>
-          p.brand_id === base.brand_id ||
-          p.sub_type_id === base.sub_type_id ||
-          p.category_type_id === base.category_type_id,
-      )
-      .map((p) => {
-        let score = 0
-        if (p.brand_id && p.brand_id === base.brand_id) score += 3
-        if (p.sub_type_id && p.sub_type_id === base.sub_type_id) score += 3
-        if (p.category_type_id && p.category_type_id === base.category_type_id) score += 1
-        const pGenders = Array.isArray(p.genders_en)
-          ? p.genders_en
-          : p.genders_en
-            ? [p.genders_en]
-            : []
-        if (baseGenders.some((g) => pGenders.includes(g))) score += 2
-        if (p.watch_movement_id && p.watch_movement_id === base.watch_movement_id) score += 2
-        if (p.case_shape_id && p.case_shape_id === base.case_shape_id) score += 1
-        if (p.band_material_id && p.band_material_id === base.band_material_id) score += 1
-        if (
-          baseDialIds.size &&
-          (p.dial_colors || p.dial_color || []).some((c) => baseDialIds.has(c.color_id))
-        )
-          score += 1
-        const pPrice = Number(p.sale_price_after_discount || p.selling_price || 0)
-        if (currentPrice > 0 && pPrice > 0) {
-          const ratio = pPrice / currentPrice
-          if (ratio >= 0.7 && ratio <= 1.3) score += 2
-          else if (ratio >= 0.5 && ratio <= 1.5) score += 1
-        }
-        if (p.grade_id && p.grade_id === base.grade_id) score += 1
-        return { product: p, score }
-      })
-      .filter((x) => x.score >= 2)
-      .sort((a, b) => {
-        if (b.score !== a.score) return b.score - a.score
-        const aBrand = a.product.brand_id === base.brand_id ? 1 : 0
-        const bBrand = b.product.brand_id === base.brand_id ? 1 : 0
-        if (bBrand !== aBrand) return bBrand - aBrand
-        // Random tie-break for equally-scored related products — intentional variety.
-        // eslint-disable-next-line react-hooks/purity
-        return Math.random() - 0.5
-      })
-      .map((x) => x.product)
-
-    // Fallback for new/sparse products: top up from the same category.
-    let result = scored.slice(0, 12)
-    if (result.length < 4) {
-      const have = new Set(result.map((p) => p.id))
-      const fill = products.filter(
-        (p) => p.id !== exclude && p.category_type_id === base.category_type_id && !have.has(p.id),
-      )
-      result = [...result, ...fill].slice(0, 12)
-    }
-    return result
-  }, [product, offerProduct, isOffer, products])
-
+  // ── Related products: scored on the SERVER since C-1 stage 4 (core's CompatRelated — the same
+  //    rule, parity-tested; it used to run here over the whole catalogue). For an offer, against its
+  //    linked product. Asked for only when the section scrolls near. ──
   const [showRelated, setShowRelated] = useState(false)
-  const relatedRef = useRef(null)
-  useEffect(() => {
-    const el = relatedRef.current
+  const relatedBaseId = (isOffer ? offerProduct : product)?.id
+  // What is already in the cart is never suggested (developer, 2026-09-29).
+  const inCart = (cart?.cart_item || []).map((i) => i.product_id).filter(Boolean)
+  // Two rails (developer's decision, 2026-09-29): add-ons first — suggestions that ADD to the order —
+  // then alternatives for a shopper still choosing.
+  const { data: addOnsPayload } = useRelated(
+    { product: relatedBaseId, kind: 'addons', exclude: inCart },
+    { enabled: showRelated },
+  )
+  const addOns = useCardsOf(addOnsPayload, language)
+  const { data: relatedPayload } = useRelated(
+    { product: relatedBaseId, kind: 'similar', exclude: inCart },
+    { enabled: showRelated },
+  )
+  const related = useCardsOf(relatedPayload, language)
+  // A CALLBACK ref: the observer is attached whenever the band mounts (the cart's suggestions showed
+  // that an effect keyed on something else can miss the element once data stops arriving with the page).
+  const relatedObserver = useRef(null)
+  const relatedRef = useCallback((el) => {
+    relatedObserver.current?.disconnect()
+    relatedObserver.current = null
     if (!el) return
     const obs = new IntersectionObserver(
       ([entry]) => {
@@ -777,8 +716,8 @@ function ProductDetailClient({ param, isOffer = false }) {
       { rootMargin: '200px' },
     )
     obs.observe(el)
-    return () => obs.disconnect()
-  }, [item?.id])
+    relatedObserver.current = obs
+  }, [])
 
   // ── Mobile sticky buy bar ──
   const [showSticky, setShowSticky] = useState(false)
@@ -826,10 +765,10 @@ function ProductDetailClient({ param, isOffer = false }) {
     }
   }, [isOffer, offer, product, language, getName, showToast, isRTL])
 
-  // ── Render: catalog fetch failed (the product resolves from the catalog, so a
-  //    fetch failure means we can't load it) → inline error + retry, shown
-  //    immediately instead of a skeleton that decays into a wrong "not found". ──
-  if (catalogIsError && !item) {
+  // ── Render: the product fetch failed (a network error, not a 404) and nothing is on screen →
+  //    inline error + retry, shown immediately instead of a skeleton that decays into a wrong
+  //    "not found". (It keyed on the whole catalogue failing until C-1 stage 4.) ──
+  if (fetchState === 'error' && !item) {
     return (
       <div className="wz-pd">
         <div className="wz-pd-notfound" role="alert">
@@ -839,7 +778,7 @@ function ProductDetailClient({ param, isOffer = false }) {
               ? 'تحقّق من اتصالك وحاول مرة أخرى.'
               : 'Check your connection and try again.'}
           </p>
-          <button className="wz-pd-notfound-btn" onClick={refetchCatalog}>
+          <button className="wz-pd-notfound-btn" onClick={() => window.location.reload()}>
             {isRTL ? 'إعادة المحاولة' : 'Retry'}
           </button>
         </div>
@@ -912,13 +851,12 @@ function ProductDetailClient({ param, isOffer = false }) {
       ? isRTL
         ? 'جارٍ الإضافة…'
         : 'Adding…'
-      : !isOffer && expressStock <= 0 && marketStock > 0
-        ? isRTL
-          ? 'اطلب مسبقاً'
-          : 'Pre-Order'
-        : isRTL
-          ? 'أضف إلى السلة'
-          : 'Add to Cart'
+      : // "Add to Cart" for Market stock too (developer, 2026-09-29): the label was "Pre-Order", but the
+        // order is the same either way, and Market's longer delivery is explained in the e-mail sent
+        // after ordering — not weighed by the shopper before buying.
+        isRTL
+        ? 'أضف إلى السلة'
+        : 'Add to Cart'
 
   const stockTone = isOffer
     ? offerStock > 0
@@ -952,13 +890,6 @@ function ProductDetailClient({ param, isOffer = false }) {
 
   const lowStock = inStock && maxStock > 0 && maxStock <= 5
 
-  // Related grouped by brand for the two-section presentation.
-  const relatedBase = isOffer ? offerProduct : product
-  const relatedBrandId = relatedBase?.brand_id
-  const relatedBrandName = getBrand(relatedBase, language) || relatedBase?.brand || ''
-  const sameBrandRelated = related.filter((p) => p.brand_id === relatedBrandId)
-  const otherBrandRelated = related.filter((p) => p.brand_id !== relatedBrandId)
-  const splitRelated = sameBrandRelated.length >= 3 && otherBrandRelated.length >= 3
 
   return (
     <div className="wz-pd" dir={isRTL ? 'rtl' : 'ltr'}>
@@ -1370,36 +1301,24 @@ function ProductDetailClient({ param, isOffer = false }) {
 
       {/* ── Related (full-width band) ── */}
       <div className="wz-pd-related-band" ref={relatedRef}>
-        {showRelated && related.length > 0 && (
+        {showRelated && (addOns.length > 0 || related.length > 0) && (
           <div className="wz-pd-related-inner">
-            {splitRelated ? (
-              <>
-                <ProductSlider
-                  gradeproducts={sameBrandRelated}
-                  text={{
-                    title: {
-                      en: `More from ${relatedBrandName}`,
-                      ar: `المزيد من ${relatedBrandName}`,
-                    },
-                    description: { en: '', ar: '' },
-                  }}
-                />
-                <ProductSlider
-                  gradeproducts={otherBrandRelated}
-                  text={{
-                    title: {
-                      en: "Similar Products You'll Love",
-                      ar: 'منتجات مشابهة ستعجبك',
-                    },
-                    description: { en: '', ar: '' },
-                  }}
-                />
-              </>
-            ) : (
+            {/* Add-ons first: other kinds of product that go with this one (developer, 2026-09-29). */}
+            {addOns.length > 0 && (
+              <ProductSlider
+                gradeproducts={addOns}
+                text={{
+                  title: { en: 'Pairs Well With', ar: 'يتناسب مع' },
+                  description: { en: '', ar: '' },
+                }}
+              />
+            )}
+            {/* Then alternatives of the same kind, for a shopper still choosing. */}
+            {related.length > 0 && (
               <ProductSlider
                 gradeproducts={related}
                 text={{
-                  title: { en: 'You May Also Like', ar: 'قد يعجبك أيضاً' },
+                  title: { en: 'Similar Styles', ar: 'تصاميم مشابهة' },
                   description: { en: '', ar: '' },
                 }}
               />

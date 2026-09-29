@@ -1,7 +1,6 @@
-import CatalogBoundary from '@/src/lib/CatalogBoundary'
 import { notFound, permanentRedirect } from 'next/navigation'
 import { QueryClient, dehydrate, HydrationBoundary } from '@tanstack/react-query'
-import { getServerCatalog, getServerOffers, findOfferInCatalog } from '@/src/lib/serverCatalog'
+import { getServerProductCard, getServerOffers, findOfferInCatalog } from '@/src/lib/serverCatalog'
 import { buildOfferSeo } from '@/src/lib/detailSeo'
 import ProductDetailClient from '@/src/Components/Product/ProductDetailClient'
 import { safeJsonLd } from '@/src/lib/safeJsonLd'
@@ -18,8 +17,8 @@ async function resolveOffer(param) {
     if (!offer) return null
     let offerProduct = null
     try {
-      const { productsEn } = await getServerCatalog()
-      offerProduct = (productsEn || []).find((p) => p.id === offer.main_product_id) || null
+      // The offer's linked product, by id from core (C-1 stage 4) — not the whole catalogue.
+      offerProduct = (await getServerProductCard(String(offer.main_product_id)))?.product ?? null
     } catch {
       // catalog optional for the offer page (only enriches the image gallery)
     }
@@ -77,9 +76,7 @@ export default async function OfferPage({ params }) {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: safeJsonLd(breadcrumbLd) }}
       />
-      <CatalogBoundary>
-        <ProductDetailClient param={slug} isOffer={true} />
-      </CatalogBoundary>
+      <ProductDetailClient param={slug} isOffer={true} />
     </HydrationBoundary>
   )
 }

@@ -1,10 +1,5 @@
-import CatalogBoundary from '@/src/lib/CatalogBoundary'
 import { notFound, permanentRedirect } from 'next/navigation'
-import {
-  getServerCatalog,
-  findProductInCatalog,
-  fetchProductByName,
-} from '@/src/lib/serverCatalog'
+import { getServerProductCard, fetchProductByName } from '@/src/lib/serverCatalog'
 import { buildProductSeo } from '@/src/lib/detailSeo'
 import { toSlug } from '@/src/utils/slugs'
 import ProductDetailClient from '@/src/Components/Product/ProductDetailClient'
@@ -14,16 +9,17 @@ import { safeJsonLd } from '@/src/lib/safeJsonLd'
 // cache, revalidate every 5 min — matching the products query staleTime.
 export const revalidate = 300
 
-// Resolve the product ONCE per request. The catalog getters are React-cached, so
-// generateMetadata + the page body share ONE upstream fetch. Catalog hit first
-// (english slug / numeric id), then the by-name endpoint for legacy raw-title URLs.
+// Resolve the product ONCE per request. The getters are React-cached, so generateMetadata + the page
+// body share ONE upstream fetch. Core's slug/id lookup first, then the by-name endpoint for legacy
+// raw-title URLs.
 async function resolveProduct(param) {
   try {
-    const { productsEn, ratings, tables } = await getServerCatalog()
-    const inCatalog = findProductInCatalog(productsEn, param)
-    if (inCatalog) return { product: inCatalog, ratings, tables }
+    // ONE product from core (`catalog/product`, the same slug rule) — C-1 stage 4. The page used to
+    // load the whole catalogue here and search it.
+    const card = await getServerProductCard(param)
+    if (card) return { product: card.product, ratings: card.ratings, tables: card.tables, payload: card.payload }
   } catch {
-    // catalog unreachable → fall through to the by-name endpoint
+    // core unreachable → fall through to the by-name endpoint
   }
   const byName = await fetchProductByName(param)
   if (!byName) return null
@@ -45,7 +41,7 @@ async function resolveProduct(param) {
     requested === toSlug(byName.product_title || '') ||
     requested === toSlug(byName.name_en || '')
   if (!identifies) return null
-  return { product: byName, ratings: [], tables: null }
+  return { product: byName, ratings: [], tables: null, payload: null }
 }
 
 export async function generateMetadata({ params }) {
@@ -67,7 +63,7 @@ export default async function ProductPage({ params }) {
   const resolved = await resolveProduct(slug)
   if (!resolved) notFound()
 
-  const { product, ratings, tables } = resolved
+  const { product, ratings, tables, payload } = resolved
   const { canonicalPath, productLd, breadcrumbLd } = buildProductSeo(product, { ratings, tables })
 
   // Canonical redirect (replaces ProductDetail's client-side <Navigate>): any
@@ -93,9 +89,8 @@ export default async function ProductPage({ params }) {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: safeJsonLd(breadcrumbLd) }}
       />
-      <CatalogBoundary>
-        <ProductDetailClient param={slug} isOffer={false} />
-      </CatalogBoundary>
+      {/* No catalogue here since C-1 stage 4: the page carries its ONE product (core's card). */}
+      <ProductDetailClient param={slug} isOffer={false} productPayload={payload} />
     </>
   )
 }

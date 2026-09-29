@@ -14,7 +14,7 @@ import {
   FiSmartphone,
   FiUser,
 } from 'react-icons/fi'
-import { useCatalog } from '../../Hooks/queries/useCatalog'
+import { useCards, useCardsOf } from '../../Hooks/queries/useListing'
 import { useOffers } from '../../Hooks/queries/useOffers'
 import { usePaymentMethods } from '../../Hooks/queries/usePaymentMethods'
 import { useUIStore } from '../../Store/uiStore'
@@ -190,7 +190,6 @@ function Checkout() {
   const setShippingid = useShippingStore((s) => s.setShippingid)
   const setShipping = useShippingStore((s) => s.setShipping)
   const setShippingName = useShippingStore((s) => s.setShippingName)
-  const { products } = useCatalog()
   const { data: offers = [] } = useOffers()
   const { language } = useUIStore()
   const isRTL = language === 'ar'
@@ -212,6 +211,12 @@ function Checkout() {
 
   const { cart, clearCart } = useCart()
   const items = cart?.cart_item || []
+  // Only this order's products, by id (C-1 stage 4) — the page used to embed the whole catalogue.
+  // Every use below already tolerates a line whose card has not arrived yet (it falls back to the
+  // line's own saved price and a placeholder name), exactly as it did for a product the catalogue
+  // no longer showed.
+  const { data: cardsPayload } = useCards(items.map((i) => i.product_id))
+  const products = useCardsOf(cardsPayload, language)
 
   // ── Form state ───────────────────────────────────────────────────────────
   const [email, setEmail] = useState(user?.email || '')

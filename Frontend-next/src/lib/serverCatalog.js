@@ -5,6 +5,7 @@ import { productsQueryFn } from '../Hooks/queries/useProducts'
 import { offersQueryFn } from '../Hooks/queries/useOffers'
 import { navQueryFn } from '../Hooks/queries/useNav'
 import { toSlug } from '../utils/slugs'
+import { transformProductData } from '../utils/transformProduct'
 
 // SERVER-ONLY catalog access for the product/offer detail routes.
 //
@@ -59,6 +60,57 @@ export const getServerNav = cache(async () => {
     })
   }
   return _navPromise
+})
+
+// The lookup tables alone (C-1 stage 4) — what the (main) layout needs. It used to fetch the whole
+// catalogue on the server just to take the tables out of it. Memoised like nav.
+let _tablesPromise = null
+let _tablesAt = 0
+export const getServerTables = cache(async () => {
+  const now = Date.now()
+  if (!_tablesPromise || now - _tablesAt >= CATALOG_TTL) {
+    _tablesAt = now
+    _tablesPromise = tablesQueryFn(serverHttp)().catch((e) => {
+      _tablesPromise = null
+      throw e
+    })
+  }
+  return _tablesPromise
+})
+
+// ONE product for the product page, by URL param — numeric id or english slug — resolved by core
+// (`catalog/product`, the storefront's own findProductInCatalog rule) instead of loading the whole
+// catalogue to search it (C-1 stage 4). Returns core's raw cards payload ({ products: [row],
+// ratings, images }) or null when no visible product matches. Cached per request.
+export const getServerProduct = cache(async (param) => {
+  if (!param) return null
+  let decoded = param
+  try {
+    decoded = decodeURIComponent(param)
+  } catch {
+    // a malformed escape — look it up as typed
+  }
+  try {
+    const { data } = await serverHttp.get(`catalog/product?slug=${encodeURIComponent(decoded)}`)
+    return data?.products?.length ? data : null
+  } catch {
+    return null
+  }
+})
+
+// The product page's ENGLISH card (what SEO / JSON-LD / the canonical URL are built from) plus the
+// raw payload the client transforms into the shopper's language. null when core found nothing.
+export const getServerProductCard = cache(async (param) => {
+  const payload = await getServerProduct(param)
+  if (!payload) return null
+  let tables = {}
+  try {
+    tables = await getServerTables()
+  } catch {
+    // the card still renders from its own row; names from the tables fall back as they always did
+  }
+  const [product] = transformProductData(payload.products, tables, payload.ratings || [], payload.images || [], 'en')
+  return product ? { product, payload, ratings: payload.ratings || [], tables } : null
 })
 
 // Transformed offers array (same shape as the useOffers hook).
