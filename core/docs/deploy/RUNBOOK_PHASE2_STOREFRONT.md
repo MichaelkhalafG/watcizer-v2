@@ -773,6 +773,31 @@ php artisan tinker --execute="
   echo config('compat.legacy_base'), PHP_EOL;"
 ```
 
+### 3.6 The storefront server's own API limit — `STOREFRONT_SERVER_KEY` (added 2026-09-30)
+
+Every storefront page is rendered on the storefront server, which calls core once per page view from
+ONE address. Under the per-IP 60 a minute the whole site ran out at ~60 page views a minute (measured
+locally: request 59 of a burst was the first refused). With the same secret on both servers, the
+storefront server gets its own bucket (1200 a minute by default); browsers keep the per-IP 60.
+
+1. Generate it once, on either server — **do not paste it into chat, a ticket or the repo**:
+   ```bash
+   php -r "echo bin2hex(random_bytes(32)), PHP_EOL;"
+   ```
+2. `core/.env`: `STOREFRONT_SERVER_KEY=<it>` (optional: `STOREFRONT_SERVER_RATE=1200`), then §3.5.
+3. The storefront server's environment (where `LARAVEL_ORIGIN` lives): `STOREFRONT_SERVER_KEY=<the same
+   value>` — **never** `NEXT_PUBLIC_…` — and restart the Node process (it reads it at runtime; no
+   rebuild is needed for the key itself).
+4. Prove it without printing it: the fingerprint must match on both hosts.
+   ```bash
+   # core host
+   php artisan tinker --execute="echo substr(hash('sha256', config('compat.server_key')), 0, 12), PHP_EOL;"
+   # storefront host (in the app's directory, with its environment loaded)
+   node -e "console.log(require('crypto').createHash('sha256').update(process.env.STOREFRONT_SERVER_KEY||'').digest('hex').slice(0,12))"
+   ```
+   An empty or short key on core means the feature is simply off (the server is limited per IP, as
+   before) — nothing breaks, but nothing improves either.
+
 ---
 
 ## 3A. Paymob credentials into the TABLE — the step this runbook did not have
@@ -981,7 +1006,7 @@ what §4.3 does and why it is a mandatory step rather than a suggestion.
     RewriteCond %{REQUEST_URI} !^/index\.php
     RewriteCond %{HTTP_HOST} ^api\.watchizereg\.com$ [NC]
     RewriteCond %{REQUEST_URI} !^/api/v2/
-    RewriteCond %{REQUEST_URI} !^/api/(catalog/(meta|nav|listing|cards|related|product|home)|all_product|all_product_image|all_product_rating|show_shipping_city)$
+    RewriteCond %{REQUEST_URI} !^/api/(catalog/(meta|nav|listing|cards|related|product|home|blogs|blog)|all_product|all_product_image|all_product_rating|show_shipping_city)$
     RewriteCond %{REQUEST_URI} !^/api/products(/|$)
     RewriteCond %{REQUEST_URI} !^/api/(add_to_cart|remove_from_cart|me/cart|cart/validate|cart/merge|add_order|add_address)$
     RewriteCond %{REQUEST_URI} !^/api/(delete_cart|me/addresses)(/|$)
@@ -991,6 +1016,11 @@ what §4.3 does and why it is a mandatory step rather than a suggestion.
     RewriteCond %{REQUEST_URI} !^/api/(callback_payment|pay/)
     RewriteCond %{REQUEST_URI} !^/Uploads_Images/
     RewriteCond %{REQUEST_URI} !^/[a-z]{2}/sitemap\.xml$
+    RewriteCond %{REQUEST_URI} !^/sitemaps/(index|en|ar)\.xml$
+    RewriteCond %{REQUEST_URI} !^/api/stock-alerts$
+    RewriteCond %{REQUEST_URI} !^/api/add_product_rating$
+    RewriteCond %{REQUEST_URI} !^/stock-alerts/stop/[A-Za-z0-9]{40}$
+    RewriteCond %{REQUEST_URI} !^/unsubscribe/[0-9]+/[a-f0-9]{40}$
     RewriteCond %{REQUEST_URI} !^/(sitemap\.xml|robots\.txt|favicon\.ico)$
     RewriteRule ^ - [R=404,L]
 
