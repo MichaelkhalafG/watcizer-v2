@@ -1,8 +1,8 @@
 'use client'
 import { memo, useEffect, useMemo, useState, useCallback, useRef } from 'react'
-import Link from 'next/link'
+import Link from '@/src/Components/LocaleLink'
 import Image from 'next/image'
-import { useRouter } from 'next/navigation'
+import { useRouter } from '@/src/Hooks/useLocaleRouter'
 import { FiShare2 } from 'react-icons/fi'
 import ImageZoom from '../UI/ImageZoom'
 import DOMPurify from 'dompurify'
@@ -23,6 +23,7 @@ import { getImageUrl, PLACEHOLDER_IMG } from '../../utils/imageUrl'
 import { toSlug } from '../../utils/slugs'
 import { buildListingParams } from '../../utils/listingParams'
 import http from '../../Context/api'
+import StockAlertForm from './StockAlertForm'
 import './ProductDetail.css'
 
 // Lightweight star rating (no MUI). Read-only by default; pass onSelect to make
@@ -663,14 +664,12 @@ function ProductDetailClient({ param, isOffer = false, productPayload = null }) 
       return
     }
     try {
-      const endpoint = isOffer ? '/add_offer_rating' : '/add_product_rating'
-      await http.post(endpoint, null, {
-        params: {
-          [isOffer ? 'offer_id' : 'product_id']: isOffer ? offer.id : product.id,
-          rating: newReview.value,
-          comment,
-          user_id: userId,
-        },
+      // Core's rating write (B1, 2026-10-01) takes the customer from the token; one rating per
+      // product, a second one replaces the first. Offers are retired (backlog A2: `/offer/…` 404s),
+      // so there is no offer rating to send.
+      if (isOffer) return
+      await http.post('/add_product_rating', null, {
+        params: { product_id: product.id, rating: newReview.value, comment },
       })
       setNewReview({ value: 0, comment: '' })
       fetchRatings()
@@ -678,7 +677,7 @@ function ProductDetailClient({ param, isOffer = false, productPayload = null }) 
     } catch {
       showToast(isRTL ? 'تعذّر إرسال التقييم' : 'Could not submit review', 'error')
     }
-  }, [userId, newReview, setNewReview, isOffer, offer, product, fetchRatings, showToast, isRTL, router])
+  }, [userId, newReview, setNewReview, isOffer, product, fetchRatings, showToast, isRTL, router])
 
   // ── Related products: scored on the SERVER since C-1 stage 4 (core's CompatRelated — the same
   //    rule, parity-tested; it used to run here over the whole catalogue). For an offer, against its
@@ -1148,6 +1147,10 @@ function ProductDetailClient({ param, isOffer = false, productPayload = null }) 
                 <FiShare2 />
               </button>
             </div>
+
+            {/* Out of stock: the page still shows everything, and here the shopper can ask to be
+                e-mailed when it's back — one tap when signed in (2026-10-01). */}
+            {!inStock && !isOffer && product?.id ? <StockAlertForm productId={product.id} isRTL={isRTL} /> : null}
 
             {/* Short description */}
             {(item?.short_description ||

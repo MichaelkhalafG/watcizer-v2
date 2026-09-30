@@ -2,12 +2,15 @@
 import { useEffect } from 'react'
 import { MdLanguage } from 'react-icons/md'
 import { useUIStore } from '../../Store/uiStore'
+import { useSwitchLanguage } from '../../Hooks/useSwitchLanguage'
 import './LanguageDropdowen.css'
 
 // Two languages only → a single button that shows the OTHER language and
 // switches to it on one click. No dropdown, no dialog.
 export default function LanguageDropdown() {
-  const { language, setLanguage } = useUIStore()
+  const { language } = useUIStore()
+  // /x ↔ /ar/x (S-AR stage 1): the switch moves to the same page in the other language.
+  const setLanguage = useSwitchLanguage()
 
   // Keep <html dir/lang> in sync whenever the language changes (covers initial
   // mount + restored persisted language, not just the click handler).

@@ -1,5 +1,5 @@
 import './globals.css'
-import { cookies } from 'next/headers'
+import { requestLang } from '@/src/lib/requestLang'
 import { El_Messiri } from 'next/font/google'
 import Providers from './providers'
 import Analytics from './analytics'
@@ -74,20 +74,19 @@ export const viewport = {
 }
 
 export default async function RootLayout({ children }) {
-  // Read the wz-lang cookie (written by uiStore.setLanguage) so the FIRST server
-  // paint already matches the user's chosen language — no English flash on hard
-  // reload, and the client store is initialised from the same cookie in Providers
-  // so there is no hydration mismatch. <HtmlDirSync/> still keeps <html> in sync
-  // on subsequent client-side language toggles.
+  // The request's language (S-AR stage 1): Arabic under /ar/, else the wz-lang cookie
+  // (middleware.js). It sets <html lang/dir> AND starts the per-request UI store in that language,
+  // so the page's server HTML is already in it — Arabic pages exist for Google, and there is no
+  // English flash or hydration mismatch. <HtmlDirSync/> keeps <html> in sync on later toggles.
   //
-  // TRADEOFF: reading cookies() in the ROOT layout opts the whole app OUT of
+  // TRADEOFF: reading the request in the ROOT layout opts the whole app OUT of
   // static rendering — home/blog routes become dynamic (ƒ) instead of static (○).
-  const lang = (await cookies()).get('wz-lang')?.value === 'ar' ? 'ar' : 'en'
+  const { lang } = await requestLang()
   const dir = lang === 'ar' ? 'rtl' : 'ltr'
   return (
     <html lang={lang} dir={dir} className={elMessiri.variable}>
       <body>
-        <Providers>
+        <Providers language={lang}>
           {children}
           {/* Global chrome (all routes incl. auth) that does NOT read the catalog.
               The cart drawer moved into the (main) layout so it sits below the

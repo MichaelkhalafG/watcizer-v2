@@ -362,6 +362,32 @@
   width: 50%;
   height: 16px;
 }
+/* The frame's own placeholders in loading.jsx (2026-09-30), sized like what replaces them. */
+.wz-skel-crumb,
+.wz-skel-title,
+.wz-skel-chips,
+.wz-skel-toolbar {
+  display: block;
+  margin: 0;
+}
+.wz-skel-crumb {
+  width: 140px;
+  height: 14px;
+}
+.wz-skel-title {
+  width: 220px;
+  height: 26px;
+}
+.wz-skel-chips {
+  width: 100%;
+  height: 38px;
+  border-radius: 19px;
+}
+.wz-skel-toolbar {
+  width: 100%;
+  height: 46px;
+  border-radius: 8px;
+}
 .wz-skel-img,
 .wz-skel-line {
   background: linear-gradient(90deg, #ececec 25%, #f5f5f5 37%, #ececec 63%);

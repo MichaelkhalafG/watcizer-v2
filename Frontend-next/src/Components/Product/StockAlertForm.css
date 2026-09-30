@@ -1,0 +1,97 @@
+/* "E-mail me when it's back" under an out-of-stock product's disabled button (2026-10-01). */
+.wz-stock-alert {
+  margin-top: 14px;
+  padding: 16px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 8px;
+  background: #fafafa;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.wz-stock-alert__title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--wz-ink, #111);
+}
+.wz-stock-alert__hint {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: rgba(0, 0, 0, 0.6);
+}
+.wz-stock-alert__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+}
+.wz-stock-alert__input {
+  flex: 1 1 200px;
+  min-width: 0;
+  height: 46px;
+  padding: 0 12px;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  border-radius: 6px;
+  font-size: 14px;
+  background: #fff;
+}
+.wz-stock-alert__input:focus {
+  outline: 2px solid var(--pd-gold, #c8a45c);
+  outline-offset: 1px;
+}
+.wz-stock-alert__btn {
+  flex: 0 1 auto;
+  height: 46px;
+  padding: 0 22px;
+  border: none;
+  border-radius: 6px;
+  background: var(--wz-ink, #111);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.wz-stock-alert__btn:hover:not(:disabled) {
+  background: var(--pd-gold, #c8a45c);
+}
+.wz-stock-alert__btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.wz-stock-alert__btn:focus-visible,
+.wz-stock-alert__link:focus-visible {
+  outline: 2px solid var(--pd-gold, #c8a45c);
+  outline-offset: 2px;
+}
+.wz-stock-alert__error {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: #b42318;
+}
+.wz-stock-alert--done strong {
+  font-size: 14px;
+  color: #166534;
+}
+.wz-stock-alert--done span {
+  font-size: 13px;
+  color: rgba(0, 0, 0, 0.6);
+}
+.wz-stock-alert__link {
+  align-self: flex-start;
+  padding: 0;
+  border: none;
+  background: none;
+  font-size: 13px;
+  color: var(--wz-ink, #111);
+  text-decoration: underline;
+  cursor: pointer;
+}
+@media (max-width: 480px) {
+  .wz-stock-alert__btn {
+    flex: 1 1 100%;
+  }
+}

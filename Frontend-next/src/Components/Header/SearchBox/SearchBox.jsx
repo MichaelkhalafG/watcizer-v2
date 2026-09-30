@@ -3,7 +3,7 @@ import { IoIosSearch } from 'react-icons/io'
 import { useState, useEffect, useRef } from 'react'
 import { useListing, useCardsOf } from '../../../Hooks/queries/useListing'
 import { useUIStore } from '../../../Store/uiStore'
-import { useRouter } from 'next/navigation'
+import { useRouter } from '@/src/Hooks/useLocaleRouter'
 import { getImageUrl, handleImgError, PLACEHOLDER_IMG } from '../../../utils/imageUrl'
 import { productUrl } from '../../../utils/productUrl'
 

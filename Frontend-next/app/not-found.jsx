@@ -1,4 +1,4 @@
-import Link from 'next/link'
+import Link from '@/src/Components/LocaleLink'
 
 // Global 404 (App Router). notFound() from any route — e.g. an unknown product/
 // offer slug — renders this with a real 404 status so scrapers/search engines

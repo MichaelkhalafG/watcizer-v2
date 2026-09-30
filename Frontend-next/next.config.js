@@ -39,11 +39,13 @@ const nextConfig = {
   async rewrites() {
     // Proxy API + uploaded assets to Laravel so relative calls keep working.
     return [
-      // Serve the canonical sitemap from Laravel's SitemapController. Target the
-      // /en/ prefix directly: the backend's localization middleware 302-redirects
-      // the bare /sitemap.xml → /en/sitemap.xml, and a rewrite would forward that
-      // redirect (pointing at the backend origin) to crawlers instead of the XML.
-      { source: '/sitemap.xml', destination: process.env.LARAVEL_ORIGIN + '/en/sitemap.xml' },
+      // The sitemaps, one per language (S-AR stage 3, 2026-10-01): /sitemap.xml is an INDEX naming
+      // /sitemaps/en.xml (bare URLs) and /sitemaps/ar.xml (/ar URLs), each with hreflang
+      // alternates — all served by core (CompatLocaleSitemap) and listing only URLs this storefront
+      // answers. It used to be the legacy single sitemap (core's /en/sitemap.xml), which listed
+      // 404s, a redirect and an empty /blogs, and no Arabic URL at all.
+      { source: '/sitemap.xml', destination: process.env.LARAVEL_ORIGIN + '/sitemaps/index.xml' },
+      { source: '/sitemaps/:lang(en|ar).xml', destination: process.env.LARAVEL_ORIGIN + '/sitemaps/:lang.xml' },
       { source: '/api/:path*', destination: process.env.LARAVEL_ORIGIN + '/api/:path*' },
       { source: '/Uploads_Images/:path*', destination: process.env.LARAVEL_ORIGIN + '/Uploads_Images/:path*' },
     ]

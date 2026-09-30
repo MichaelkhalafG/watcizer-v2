@@ -2,6 +2,7 @@ import { notFound, permanentRedirect } from 'next/navigation'
 import { QueryClient, dehydrate, HydrationBoundary } from '@tanstack/react-query'
 import { getServerProductCard, getServerOffers, findOfferInCatalog } from '@/src/lib/serverCatalog'
 import { buildOfferSeo } from '@/src/lib/detailSeo'
+import { requestLang, localePath } from '@/src/lib/requestLang'
 import ProductDetailClient from '@/src/Components/Product/ProductDetailClient'
 import { safeJsonLd } from '@/src/lib/safeJsonLd'
 
@@ -9,23 +10,20 @@ export const revalidate = 300
 
 // Resolve the offer ONCE per request (cached getters shared with generateMetadata).
 // Offers resolve from the offers list (no single-offer endpoint); the linked main
-// product is looked up for the SEO gallery.
+// product is looked up for the SEO gallery. A failure to READ the offers list propagates (→ the error
+// page, a 5xx), never a 404 (2026-09-30); only an offer missing from a list core did send is not found.
 async function resolveOffer(param) {
+  const offers = await getServerOffers()
+  const offer = findOfferInCatalog(offers, param)
+  if (!offer) return null
+  let offerProduct = null
   try {
-    const offers = await getServerOffers()
-    const offer = findOfferInCatalog(offers, param)
-    if (!offer) return null
-    let offerProduct = null
-    try {
-      // The offer's linked product, by id from core (C-1 stage 4) — not the whole catalogue.
-      offerProduct = (await getServerProductCard(String(offer.main_product_id)))?.product ?? null
-    } catch {
-      // catalog optional for the offer page (only enriches the image gallery)
-    }
-    return { offer, offerProduct }
+    // The offer's linked product, by id from core (C-1 stage 4) — not the whole catalogue.
+    offerProduct = (await getServerProductCard(String(offer.main_product_id)))?.product ?? null
   } catch {
-    return null
+    // catalog optional for the offer page (only enriches the image gallery)
   }
+  return { offer, offerProduct }
 }
 
 export async function generateMetadata({ params }) {
@@ -50,7 +48,9 @@ export default async function OfferPage({ params }) {
 
   // Canonical redirect: non-canonical URL (numeric id, raw name) → /offer/{slug}.
   if (canonicalPath && canonicalPath !== `/offer/${slug}`) {
-    permanentRedirect(canonicalPath)
+    // Keeps the /ar prefix on an Arabic URL (S-AR stage 1). Offer METADATA stays English for now:
+    // there are no offers (the table is empty), so translating it is left until there are.
+    permanentRedirect(localePath(canonicalPath, (await requestLang()).urlLang))
   }
 
   // Seed ONLY offers here (the (main) layout doesn't hydrate offers). The catalog is

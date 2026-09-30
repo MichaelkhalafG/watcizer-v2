@@ -1,106 +1,70 @@
 import { notFound } from 'next/navigation'
-import { getServerBlogs, findBlogByName, blogTitleEn } from '@/src/lib/serverBlogs'
-import { getImageUrl } from '@/src/utils/imageUrl'
+import { getServerBlog, inLang } from '@/src/lib/serverBlogs'
+import { requestLang, alternatesFor, localePath, SITE } from '@/src/lib/requestLang'
 import BlogClient from './BlogClient'
 import { safeJsonLd } from '@/src/lib/safeJsonLd'
 
-// ISR: server-render the post (content + metadata in the initial HTML for SEO),
-// cache, revalidate hourly — matching the /blogs list.
-export const revalidate = 3600
+// ISR: the article in the initial HTML for SEO, revalidated every 10 minutes (2026-10-01: from
+// core, per storefront, at /blog/{slug}; Arabic at /ar/blog/{slug}).
+export const revalidate = 600
 
-const SEO_DOMAIN = 'https://watchizereg.com'
-
-// plain-text, collapsed, capped for meta/JSON-LD descriptions (HTML stripped)
-const stripText = (raw, max = 160) =>
+// plain text, collapsed, capped — for descriptions (the body is plain text with "## " / "- " lines)
+const plain = (raw, max = 160) =>
   (raw || '')
-    .toString()
-    .replace(/<[^>]*>/g, ' ')
+    .replace(/^(##\s+|-\s+)/gm, '')
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, max)
 
-// getServerBlogs is React-cached → generateMetadata + the page share ONE fetch.
-async function resolveBlog(name) {
-  let blogs = []
-  try {
-    blogs = await getServerBlogs()
-  } catch {
-    return null
-  }
-  return findBlogByName(blogs, name)
-}
-
 export async function generateMetadata({ params }) {
   const { name } = await params
-  const blog = await resolveBlog(name)
-  if (!blog) return { title: 'Blog | Watchizer' }
-
-  const en = blog.translations?.find((t) => t.locale === 'en')
-  const title = en?.title || blogTitleEn(blog) || 'Blog'
-  const description = stripText(en?.text)
-  const canonical = `${SEO_DOMAIN}/blog/${encodeURIComponent(title)}`
-  const image = getImageUrl(blog.image, 'Blog')
-
+  // notFound() here, before the page streams, is what makes the status a real 404.
+  const blog = await getServerBlog(name)
+  if (!blog) notFound()
+  const { urlLang } = await requestLang()
+  const title = inLang(blog.meta_title, urlLang) || `${inLang(blog.title, urlLang)} | Watchizer`
+  const description = inLang(blog.meta_description, urlLang) || plain(inLang(blog.body, urlLang))
+  const alternates = alternatesFor(`/blog/${blog.slug}`, urlLang)
   return {
-    title: `${title} | Watchizer`,
+    title,
     description,
-    alternates: { canonical },
+    alternates,
     openGraph: {
       type: 'article',
       title,
       description,
-      url: canonical,
+      url: alternates.canonical,
       siteName: 'Watchizer',
-      authors: ['Watchizer'],
-      ...(blog.created_at ? { publishedTime: blog.created_at } : {}),
-      ...(blog.updated_at ? { modifiedTime: blog.updated_at } : {}),
-      ...(image ? { images: [{ url: image }] } : {}),
+      locale: urlLang === 'ar' ? 'ar_EG' : 'en_US',
+      publishedTime: blog.published_at,
+      ...(blog.cover ? { images: [{ url: blog.cover }] } : {}),
     },
-    twitter: {
-      card: 'summary_large_image',
-      title,
-      description,
-      ...(image ? { images: [image] } : {}),
-    },
+    twitter: { card: 'summary_large_image', title, description, ...(blog.cover ? { images: [blog.cover] } : {}) },
   }
 }
 
 export default async function BlogPage({ params }) {
   const { name } = await params
-  const blog = await resolveBlog(name)
+  const blog = await getServerBlog(name)
   if (!blog) notFound()
-
-  const en = blog.translations?.find((t) => t.locale === 'en')
-  const headline = en?.title || blogTitleEn(blog) || 'Blog'
-  const image = getImageUrl(blog.image, 'Blog')
+  const { urlLang } = await requestLang()
+  const url = `${SITE}${localePath(`/blog/${blog.slug}`, urlLang)}`
   const jsonLd = {
     '@context': 'https://schema.org',
     '@type': 'BlogPosting',
-    headline,
-    description: stripText(en?.text, 200),
-    ...(image ? { image } : {}),
-    ...(blog.created_at ? { datePublished: blog.created_at } : {}),
-    ...(blog.updated_at || blog.created_at
-      ? { dateModified: blog.updated_at || blog.created_at }
-      : {}),
-    author: { '@type': 'Organization', name: 'Watchizer', url: SEO_DOMAIN },
-    publisher: {
-      '@type': 'Organization',
-      name: 'Watchizer',
-      logo: { '@type': 'ImageObject', url: `${SEO_DOMAIN}/logo.svg` },
-    },
-    mainEntityOfPage: {
-      '@type': 'WebPage',
-      '@id': `${SEO_DOMAIN}/blog/${encodeURIComponent(headline)}`,
-    },
+    headline: inLang(blog.title, urlLang),
+    description: inLang(blog.meta_description, urlLang) || plain(inLang(blog.body, urlLang), 200),
+    inLanguage: urlLang,
+    ...(blog.cover ? { image: blog.cover } : {}),
+    datePublished: blog.published_at,
+    author: { '@type': 'Organization', name: 'Watchizer', url: SITE },
+    publisher: { '@type': 'Organization', name: 'Watchizer', logo: { '@type': 'ImageObject', url: `${SITE}/logo.svg` } },
+    mainEntityOfPage: { '@type': 'WebPage', '@id': url },
   }
 
   return (
     <>
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: safeJsonLd(jsonLd) }}
-      />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: safeJsonLd(jsonLd) }} />
       <BlogClient blog={blog} />
     </>
   )

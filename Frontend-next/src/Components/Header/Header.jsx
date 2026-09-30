@@ -1,8 +1,9 @@
 'use client'
 import { useState, useEffect, useRef, useMemo } from 'react'
-import Link from 'next/link'
+import Link from '@/src/Components/LocaleLink'
 import Image from 'next/image'
-import { useRouter, usePathname } from 'next/navigation'
+import { usePathname } from 'next/navigation'
+import { useRouter } from '@/src/Hooks/useLocaleRouter'
 import { FiMenu, FiSearch, FiShoppingBag, FiX, FiChevronDown } from 'react-icons/fi'
 
 // Logo lives in /public (Vite imported it from src/assets; Next serves it from
@@ -11,6 +12,7 @@ const logo = '/logo.webp'
 import './Header.css'
 import SearchBox from './SearchBox/SearchBox'
 import Nav from './Nav/Nav'
+import { useSwitchLanguage } from '../../Hooks/useSwitchLanguage'
 import { useUIStore } from '../../Store/uiStore'
 import { useAuthStore } from '../../Store/authStore'
 import { useShippingStore } from '../../Store/shippingStore'
@@ -45,7 +47,9 @@ function Header() {
   }, [cart, shipping])
   const { data: tables = {} } = useTables()
   const { data: nav } = useNav()
-  const { language, setLanguage } = useUIStore()
+  const { language } = useUIStore()
+  // /x ↔ /ar/x (S-AR stage 1): the switch moves to the same page in the other language.
+  const setLanguage = useSwitchLanguage()
   const { userId: user_id, user } = useAuthStore()
   const router = useRouter()
   const pathname = usePathname()

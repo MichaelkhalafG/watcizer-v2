@@ -1,65 +1,42 @@
 'use client'
-import Link from 'next/link'
-import {
-  Card,
-  CardMedia,
-  CardContent,
-  CardActionArea,
-  Typography,
-  Button,
-  Grid,
-  Container,
-} from '@mui/material'
-import { getImageUrl } from '@/src/utils/imageUrl'
+import Link from '@/src/Components/LocaleLink'
+import { useUIStore } from '@/src/Store/uiStore'
+import '@/src/Components/Blog/blog.css'
 
-// Blogs list — ported from Frontend Blogs.jsx. The blog array is fetched on the
-// server (ISR) and passed in as a prop, so the list is in the initial HTML.
-// window.location navigation → next/link (client routing to /blog/[name]); the
-// URL key is the english blog title, url-encoded.
+const pick = (pair, lang) => (pair?.[lang] || pair?.[lang === 'ar' ? 'en' : 'ar'] || '').trim()
+
+// The articles list (2026-10-01): this storefront's published articles from core, newest first, in
+// the shopper's language (the other one when an article has only one).
 export default function BlogsClient({ blogs = [] }) {
-  return (
-    <Container sx={{ py: 6 }}>
-      <Grid container spacing={4}>
-        {blogs.map((blog) => {
-          const blogTitle =
-            blog.translations.find((t) => t.locale === 'en')?.title || 'No Title Available'
-          const blogContent =
-            blog.translations.find((t) => t.locale === 'en')?.text || 'No Content Available'
-          const href = `/blog/${encodeURIComponent(blogTitle)}`
+  const { language } = useUIStore()
+  const ar = language === 'ar'
+  const date = (iso) =>
+    iso ? new Date(iso.replace(' ', 'T')).toLocaleDateString(ar ? 'ar-EG' : 'en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : ''
 
-          return (
-            <Grid item key={blog.id} xs={12} sm={6} md={4}>
-              <Card sx={{ maxWidth: 345, boxShadow: 3 }}>
-                <CardActionArea component={Link} href={href}>
-                  <CardMedia
-                    component="img"
-                    height="200"
-                    image={getImageUrl(blog.image, 'Blog')}
-                    alt={blogTitle}
-                  />
-                  <CardContent>
-                    <Typography gutterBottom variant="h6" component="div">
-                      {blogTitle}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary" noWrap>
-                      {blogContent}
-                    </Typography>
-                  </CardContent>
-                </CardActionArea>
-                <Button
-                  fullWidth
-                  variant="contained"
-                  color="primary"
-                  component={Link}
-                  href={href}
-                >
-                  Read More
-                </Button>
-              </Card>
-            </Grid>
-          )
-        })}
-      </Grid>
-    </Container>
+  return (
+    <main className="wz-blogs" dir={ar ? 'rtl' : 'ltr'}>
+      <h1 className="wz-blogs__title">{ar ? 'مقالات ودليل الساعات' : 'Watch guides & articles'}</h1>
+      <p className="wz-blogs__lead">
+        {ar
+          ? 'كل ما تحتاج معرفته قبل أن تختار ساعتك وبعد أن تقتنيها.'
+          : 'What to know before you choose a watch, and after you own one.'}
+      </p>
+      {blogs.length === 0 ? (
+        <p className="wz-blogs__empty">{ar ? 'لا توجد مقالات بعد.' : 'No articles yet.'}</p>
+      ) : (
+        <div className="wz-blogs__grid">
+          {blogs.map((b) => (
+            <Link key={b.slug} href={`/blog/${b.slug}`} className="wz-blogs__card">
+              {b.cover ? <img className="wz-blogs__cover" src={b.cover} alt="" loading="lazy" /> : null}
+              <div className="wz-blogs__body">
+                <span className="wz-blogs__date">{date(b.published_at)}</span>
+                <h2>{pick(b.title, language)}</h2>
+                <p>{pick(b.excerpt, language)}</p>
+              </div>
+            </Link>
+          ))}
+        </div>
+      )}
+    </main>
   )
 }

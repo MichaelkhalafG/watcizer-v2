@@ -1,7 +1,7 @@
 'use client'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useRouter } from 'next/navigation'
-import Link from 'next/link'
+import { useRouter } from '@/src/Hooks/useLocaleRouter'
+import Link from '@/src/Components/LocaleLink'
 import {
   FiCalendar,
   FiCheck,

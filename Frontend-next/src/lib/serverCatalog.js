@@ -7,6 +7,7 @@ import { homeQueryFn } from '../Hooks/queries/useListing'
 import { listingQueryFn } from './listingRequest'
 import { toSlug } from '../utils/slugs'
 import { transformProductData } from '../utils/transformProduct'
+import { coreRead, MISS, CoreUnavailableError } from './coreRead'
 
 // SERVER-ONLY catalogue access for the pages' server renders.
 //
@@ -18,6 +19,11 @@ import { transformProductData } from '../utils/transformProduct'
 //
 // No page loads the whole catalogue any more (C-1 stage 4, slice D removed the
 // last `getServerCatalog`): each asks core for exactly what it shows.
+//
+// Every read goes through `coreRead` (2026-09-30): a 404/422 from core is a real "no such thing";
+// a 429, 5xx, timeout or dropped connection is retried once, then answered from this process's last
+// good copy, and only then thrown as CoreUnavailableError — which the pages let reach their error
+// boundary (a 5xx) instead of calling notFound(). A core failure never becomes a 404 again.
 
 // CROSS-REQUEST memo for the small, shared reads (nav, tables). React `cache()`
 // alone only dedupes within ONE request, and serverHttp is axios (which bypasses
@@ -33,7 +39,7 @@ export const getServerNav = cache(async () => {
   const now = Date.now()
   if (!_navPromise || now - _navAt >= CATALOG_TTL) {
     _navAt = now
-    _navPromise = navQueryFn(serverHttp)().catch((e) => {
+    _navPromise = coreRead('nav', navQueryFn(serverHttp)).catch((e) => {
       _navPromise = null
       throw e
     })
@@ -49,10 +55,15 @@ export const getServerTables = cache(async () => {
   const now = Date.now()
   if (!_tablesPromise || now - _tablesAt >= CATALOG_TTL) {
     _tablesAt = now
-    _tablesPromise = tablesQueryFn(serverHttp)().catch((e) => {
-      _tablesPromise = null
-      throw e
-    })
+    _tablesPromise = coreRead('tables', tablesQueryFn(serverHttp))
+      .then((tables) => {
+        if (tables === MISS) throw new CoreUnavailableError('tables', new Error('no tables'))
+        return tables
+      })
+      .catch((e) => {
+        _tablesPromise = null
+        throw e
+      })
   }
   return _tablesPromise
 })
@@ -60,7 +71,8 @@ export const getServerTables = cache(async () => {
 // ONE product for the product page, by URL param — numeric id or english slug — resolved by core
 // (`catalog/product`, the storefront's old findProductInCatalog rule) instead of loading the whole
 // catalogue to search it (C-1 stage 4). Returns core's raw cards payload ({ products: [row],
-// ratings, images }) or null when no visible product matches. Cached per request.
+// ratings, images }), or null when core says no visible product matches. THROWS
+// CoreUnavailableError when core could not answer — never null for that. Cached per request.
 export const getServerProduct = cache(async (param) => {
   if (!param) return null
   let decoded = param
@@ -69,16 +81,16 @@ export const getServerProduct = cache(async (param) => {
   } catch {
     // a malformed escape — look it up as typed
   }
-  try {
-    const { data } = await serverHttp.get(`catalog/product?slug=${encodeURIComponent(decoded)}`)
-    return data?.products?.length ? data : null
-  } catch {
-    return null
-  }
+  const data = await coreRead(`product:${decoded}`, async () => {
+    const res = await serverHttp.get(`catalog/product?slug=${encodeURIComponent(decoded)}`)
+    return res.data
+  })
+  return data?.products?.length ? data : null
 })
 
 // The product page's ENGLISH card (what SEO / JSON-LD / the canonical URL are built from) plus the
-// raw payload the client transforms into the shopper's language. null when core found nothing.
+// raw payload the client transforms into the shopper's language. null when core found nothing;
+// throws (from getServerProduct) when core could not answer.
 export const getServerProductCard = cache(async (param) => {
   const payload = await getServerProduct(param)
   if (!payload) return null
@@ -93,12 +105,12 @@ export const getServerProductCard = cache(async (param) => {
 })
 
 // The home page's rails with their cards (C-1 stage 4 slice C, core's `catalog/home`) — the raw
-// payload, which HomeClient transforms in the shopper's language. null on failure: the page then
-// renders without rails and the client retries. Not memoised across requests: the page's own
-// `revalidate = 300` is the cache, and the featured rail's random pick should change with it.
+// payload, which HomeClient transforms in the shopper's language. On failure: the last good copy
+// (coreRead), else null — the page then renders without rails and the browser fetches them (never a
+// 404; the home page cannot be "not found").
 export const getServerHome = cache(async () => {
   try {
-    return await homeQueryFn(serverHttp)()
+    return await coreRead('home', homeQueryFn(serverHttp))
   } catch {
     return null
   }
@@ -106,23 +118,35 @@ export const getServerHome = cache(async () => {
 
 // One listing page from core (`catalog/listing`), by its request string — shared by a listing
 // route's generateMetadata (its count and preview image) and the page (its prefetch) in ONE request.
-export const getServerListing = cache(async (qs) => listingQueryFn(qs, serverHttp)())
+// Throws when core could not answer and there is no last good copy; the callers then let the
+// browser fetch it (the listing is never "not found").
+export const getServerListing = cache(async (qs) => coreRead(`listing:${qs}`, listingQueryFn(qs, serverHttp)))
+
+// A resolved product card's text in `lang` (S-AR stage 1): the same raw row core sent, transformed
+// in that language — for the Arabic page's title, description and JSON-LD. null without a payload.
+export const localizedProduct = ({ payload, tables } = {}, lang) => {
+  if (!payload?.products?.length) return null
+  return transformProductData(payload.products, tables || {}, payload.ratings || [], payload.images || [], lang)[0] ?? null
+}
 
 // Transformed offers array (same shape as the useOffers hook).
-export const getServerOffers = cache(async () => offersQueryFn(serverHttp)())
+export const getServerOffers = cache(async () => coreRead('offers', offersQueryFn(serverHttp)))
 
 // By-name fallback for legacy raw-title URLs / catalog misses — the same endpoint
-// ProductDetail falls back to on the client. Returns the RAW product (untransformed)
-// or null on 404 / error. Cached so metadata + page don't double-fetch.
+// ProductDetail falls back to on the client. Returns the RAW product (untransformed),
+// null when core says there is none (404), and THROWS when core could not answer.
 export const fetchProductByName = cache(async (param) => {
+  let decoded = param
   try {
-    const { data } = await serverHttp.get(
-      `products/by-name/${encodeURIComponent(decodeURIComponent(param))}`,
-    )
-    return data?.product || null
+    decoded = decodeURIComponent(param)
   } catch {
-    return null
+    // a malformed escape — look it up as typed
   }
+  const product = await coreRead(`byname:${decoded}`, async () => {
+    const res = await serverHttp.get(`products/by-name/${encodeURIComponent(decoded)}`)
+    return res.data?.product || null
+  })
+  return product || null
 })
 
 // Resolve an offer from the offers array by URL param — numeric id OR english

@@ -1,6 +1,6 @@
 'use client'
 import { memo } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter } from '@/src/Hooks/useLocaleRouter'
 import { useUIStore } from '../../Store/uiStore'
 import { Carousel, CarouselSlide } from '../UI/Carousel'
 import ProductCard from './ProductCard'

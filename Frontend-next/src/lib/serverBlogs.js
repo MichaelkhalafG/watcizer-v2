@@ -1,32 +1,34 @@
 import { cache } from 'react'
+import serverHttp from './serverFetch'
+import { coreRead } from './coreRead'
 
-// SERVER-ONLY blog access for the /blogs list + /blog/[name] detail routes.
-// React-cached so generateMetadata() and the page body share ONE upstream fetch
-// per request (same pattern as serverCatalog.js).
+// SERVER-ONLY article access for the /blogs list and /blog/[name] detail routes (2026-10-01).
+// React-cached, so generateMetadata() and the page body share ONE upstream fetch per request.
+//
+// Articles are written on the dashboard, per storefront, and served by core: `catalog/blogs` (this
+// storefront's PUBLISHED articles, newest first) and `catalog/blog?slug=` (one). A draft never
+// reaches the storefront. The URL of an article is /blog/{slug}.
 
-// Raw /all_blog array (each: { id, image, images:[{image}], translations:[{locale,title,text}] }).
-// `/all_blog` no longer exists (core forwards it to the retired legacy host), so the blog pages
-// asked for it on every render and got an error (batch 1, 2026-09-26). Blogs come back per
-// storefront later; until then the list is empty WITHOUT a request, and both pages keep showing
-// their existing empty state.
-export const getServerBlogs = cache(async () => [])
+// [{ slug, cover, published_at, title: {en, ar}, excerpt: {en, ar} }]. THROWS when core could not
+// answer and no last good copy exists (2026-09-30): an empty list would mark /blogs noindex.
+export const getServerBlogs = cache(async () => {
+  const data = await coreRead('blogs', async () => (await serverHttp.get('catalog/blogs')).data)
+  return Array.isArray(data?.blogs) ? data.blogs : []
+})
 
-// english title of a blog (the URL key + SEO title source)
-export const blogTitleEn = (blog) =>
-  blog?.translations?.find((t) => t.locale === 'en')?.title || ''
-
-// Resolve a blog from the list by its URL param — the english title, matched raw
-// or url-decoded (titles carry spaces/punctuation → the segment is encoded).
-export const findBlogByName = (blogs, name) => {
-  if (!name) return null
-  let dec = name
+// { slug, cover, published_at, title, body, meta_title, meta_description } (each {en, ar}), null when
+// core says there is no such published article, and THROWS when core could not answer.
+export const getServerBlog = cache(async (slug) => {
+  if (!slug) return null
+  let decoded = slug
   try {
-    dec = decodeURIComponent(name)
+    decoded = decodeURIComponent(slug)
   } catch {
-    // malformed escape → keep raw
+    // a malformed escape — look it up as typed
   }
-  return (blogs || []).find((b) => {
-    const en = blogTitleEn(b)
-    return en && (en === name || en === dec)
-  }) || null
-}
+  const data = await coreRead(`blog:${decoded}`, async () => (await serverHttp.get(`catalog/blog?slug=${encodeURIComponent(decoded)}`)).data)
+  return data?.blog ?? null
+})
+
+// A text field in `lang`, the other language when that one is empty.
+export const inLang = (pair, lang) => (pair?.[lang] || pair?.[lang === 'ar' ? 'en' : 'ar'] || '').trim()

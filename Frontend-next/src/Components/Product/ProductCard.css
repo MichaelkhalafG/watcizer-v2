@@ -116,6 +116,9 @@
   position: absolute;
   inset: 0;
   z-index: 4;
+  /* Clicks pass through to the card's link (2026-10-01): a sold-out product must still open —
+     the overlay used to swallow every click on the picture. */
+  pointer-events: none;
   display: flex;
   align-items: center;
   justify-content: center;
