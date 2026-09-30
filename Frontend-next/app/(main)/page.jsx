@@ -1,44 +1,64 @@
 import HomeClient from './HomeClient'
 import { safeJsonLd } from '@/src/lib/safeJsonLd'
 import { getServerHome } from '@/src/lib/serverCatalog'
+import { requestLang, alternatesFor, localePath, SITE } from '@/src/lib/requestLang'
 
 // ISR: render on the server (with the rails' cards in the HTML for SEO), cache, and
 // revalidate every 5 min — also how soon a change on the dashboard's Home rails screen shows.
 export const revalidate = 300
 
-// Home metadata (overrides the layout defaults) — ported from Home.jsx's <Helmet>.
-// The layout's OpenGraph/Twitter defaults are Arabic (ar_EG); override them here so
-// the social cards match this page's English title/description (en_US).
-const HOME_TITLE = 'Watchizer | Luxury Watches & Accessories in Egypt'
-const HOME_DESC =
-  'Shop luxury watches and accessories at Watchizer — premium timepieces, elegant designs and unbeatable prices across Egypt.'
-
-export const metadata = {
-  title: HOME_TITLE,
-  description: HOME_DESC,
-  alternates: { canonical: 'https://watchizereg.com/' },
-  openGraph: {
-    title: HOME_TITLE,
-    description: HOME_DESC,
-    url: 'https://watchizereg.com/',
-    siteName: 'Watchizer',
-    type: 'website',
+// Home metadata (overrides the layout defaults) — ported from Home.jsx's <Helmet>, in the URL's
+// language (S-AR stage 1): English on /, Arabic on /ar, each self-canonical with hreflang to the
+// other. The Arabic copy is the site's own (the root layout's Arabic defaults), not new wording.
+const HOME_TEXT = {
+  en: {
+    title: 'Watchizer | Luxury Watches & Accessories in Egypt',
+    description:
+      'Shop luxury watches and accessories at Watchizer — premium timepieces, elegant designs and unbeatable prices across Egypt.',
+    alt: 'Watchizer — Luxury Watches',
     locale: 'en_US',
-    images: [
-      {
-        url: 'https://watchizereg.com/og-image.jpg',
-        width: 1200,
-        height: 630,
-        alt: 'Watchizer — Luxury Watches',
-      },
-    ],
   },
-  twitter: {
-    card: 'summary_large_image',
-    title: HOME_TITLE,
-    description: HOME_DESC,
-    images: ['https://watchizereg.com/og-image.jpg'],
+  ar: {
+    title: 'Watchizer - أفخم الساعات والإكسسوارات | تسوق الآن بأسعار مميزة',
+    description:
+      'اكتشف أفخم الساعات والإكسسوارات في Watchizer. تسوق الآن أرقى الساعات الفاخرة بتصاميم أنيقة وجودة عالمية بأسعار تنافسية.',
+    alt: 'Watchizer — ساعات فاخرة',
+    locale: 'ar_EG',
   },
+}
+
+export async function generateMetadata() {
+  const { urlLang } = await requestLang()
+  const t = HOME_TEXT[urlLang]
+  // English keeps its exact canonical, trailing slash included.
+  const url = urlLang === 'ar' ? `${SITE}${localePath('/', 'ar')}` : `${SITE}/`
+  return {
+    title: t.title,
+    description: t.description,
+    alternates: { ...alternatesFor('/', urlLang), canonical: url },
+    openGraph: {
+      title: t.title,
+      description: t.description,
+      url,
+      siteName: 'Watchizer',
+      type: 'website',
+      locale: t.locale,
+      images: [
+        {
+          url: 'https://watchizereg.com/og-image.jpg',
+          width: 1200,
+          height: 630,
+          alt: t.alt,
+        },
+      ],
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: t.title,
+      description: t.description,
+      images: ['https://watchizereg.com/og-image.jpg'],
+    },
+  }
 }
 
 // Organization/Store schema — emitted here (was App.jsx global) so it is in the

@@ -1,6 +1,6 @@
 'use client'
 import { Suspense, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter } from '@/src/Hooks/useLocaleRouter'
 import { useAuthStore } from '@/src/Store/authStore'
 import Account from '@/src/PageViews/Account/Account'
 

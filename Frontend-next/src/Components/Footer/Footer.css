@@ -2,6 +2,14 @@
    FOOTER — dark luxury
    ══════════════════════════════════════════════ */
 
+/* Desktop-only, by CSS so it is in the server HTML (2026-09-30) — same 768 px breakpoint the
+   useMediaQuery gate used ('(min-width:768px)'), see app/(main)/desktop-footer.jsx. */
+@media (max-width: 767.98px) {
+  .wz-desktop-footer {
+    display: none;
+  }
+}
+
 .wz-foot {
   --foot-gold: #c8a45c;
   position: relative;

@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
-import { useRouter, usePathname, useSearchParams } from 'next/navigation'
+import { usePathname, useSearchParams } from 'next/navigation'
+import { useRouter } from '@/src/Hooks/useLocaleRouter'
 import { FiSliders, FiX, FiChevronDown, FiSearch, FiChevronLeft, FiChevronRight } from 'react-icons/fi'
 import { useTables } from '@/src/Hooks/queries/useTables'
 import { useListing, useCardsOf } from '@/src/Hooks/queries/useListing'

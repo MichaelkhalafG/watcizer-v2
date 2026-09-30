@@ -50,6 +50,9 @@ it('keeps articles out of the rebuild, because nothing can regenerate them', fun
         ->toBe([], 'a dashboard-authored table is also in the transform drop list');
 });
 
+// `storefront_id` joined every save payload on 2026-10-01 (M2b): articles are per storefront, and
+// the form always sends the storefront — deliberately required, not defaulted.
+
 it('does not touch the legacy blog tables', function () {
     // They exist, they are empty, and this feature leaves them that way. Core writing `blogs` would
     // be an AGENTS §3 violation, and the legacy connection would refuse it anyway.
@@ -60,6 +63,7 @@ it('does not touch the legacy blog tables', function () {
     $before = DB::table('blogs')->count();
 
     actingAs(Staff::admin())->post('/manage/blogs', [
+        'storefront_id' => 1,
         'is_published' => false,
         'title' => ['ar' => 'مقال لا يلمس القديم', 'en' => 'Leaves legacy alone'],
         'body' => ['ar' => 'نص', 'en' => 'Text'],
@@ -71,6 +75,7 @@ it('does not touch the legacy blog tables', function () {
 
 it('creates an article, generates its link, and leaves it a draft', function () {
     actingAs(Staff::admin())->post('/manage/blogs', [
+        'storefront_id' => 1,
         'is_published' => false,
         'title' => ['ar' => 'كيف تختار ساعة', 'en' => 'How to choose a watch'],
         'body' => ['ar' => 'النص العربي', 'en' => 'The English text'],
@@ -95,6 +100,7 @@ it('refuses an article with no Arabic title', function () {
     // Arabic is the storefront's default and translation fallback is OFF, so a missing Arabic title
     // publishes a blank heading. The same rule the product form enforces, for the same reason.
     actingAs(Staff::admin())->post('/manage/blogs', [
+        'storefront_id' => 1,
         'is_published' => false,
         'title' => ['ar' => '', 'en' => 'English only'],
         'body' => ['ar' => '', 'en' => 'Text'],
@@ -104,6 +110,7 @@ it('refuses an article with no Arabic title', function () {
 it('refuses to PUBLISH an article with no text, and still allows the draft', function () {
     // The draft half first: a title and nothing else is what somebody has after five minutes.
     actingAs(Staff::admin())->post('/manage/blogs', [
+        'storefront_id' => 1,
         'is_published' => false,
         'title' => ['ar' => 'مسودة فارغة', 'en' => 'Empty draft'],
         'body' => ['ar' => '', 'en' => ''],
@@ -125,6 +132,7 @@ it('stamps the publish date once and does not move it on a later edit', function
      * "published today" after somebody fixed a typo.
      */
     actingAs(Staff::admin())->post('/manage/blogs', [
+        'storefront_id' => 1,
         'is_published' => true,
         'title' => ['ar' => 'مقال منشور', 'en' => 'Published article'],
         'body' => ['ar' => 'نص', 'en' => 'Text'],
@@ -137,6 +145,7 @@ it('stamps the publish date once and does not move it on a later edit', function
 
     actingAs(Staff::admin())->put("/manage/blogs/{$id}", [
         '_complete' => 1,
+        'storefront_id' => 1,
         'is_published' => true,
         'title' => ['ar' => 'مقال منشور (تصحيح)', 'en' => 'Published article'],
         'body' => ['ar' => 'نص', 'en' => 'Text'],
@@ -147,6 +156,7 @@ it('stamps the publish date once and does not move it on a later edit', function
 
 it('clears the date on unpublish and stamps a NEW one on the next publish', function () {
     actingAs(Staff::admin())->post('/manage/blogs', [
+        'storefront_id' => 1,
         'is_published' => true,
         'title' => ['ar' => 'مقال', 'en' => 'Article'],
         'body' => ['ar' => 'نص', 'en' => 'Text'],
@@ -166,6 +176,7 @@ it('clears the date on unpublish and stamps a NEW one on the next publish', func
 it('never lets two articles share a link', function () {
     foreach (['First one', 'First one'] as $title) {
         actingAs(Staff::admin())->post('/manage/blogs', [
+            'storefront_id' => 1,
             'is_published' => false,
             'title' => ['ar' => 'عنوان', 'en' => $title],
             'body' => ['ar' => 'نص', 'en' => 'Text'],
@@ -179,12 +190,14 @@ it('never lets two articles share a link', function () {
 
 it('shows drafts first, because a draft is the row somebody is coming back to', function () {
     actingAs(Staff::admin())->post('/manage/blogs', [
+        'storefront_id' => 1,
         'is_published' => true,
         'title' => ['ar' => 'منشور', 'en' => 'Published'],
         'body' => ['ar' => 'نص', 'en' => 'Text'],
     ])->assertSessionHasNoErrors();
 
     actingAs(Staff::admin())->post('/manage/blogs', [
+        'storefront_id' => 1,
         'is_published' => false,
         'title' => ['ar' => 'مسودة', 'en' => 'Draft'],
         'body' => ['ar' => 'نص', 'en' => 'Text'],
@@ -198,6 +211,7 @@ it('shows drafts first, because a draft is the row somebody is coming back to', 
 
 it('records who created, edited and published an article', function () {
     actingAs(Staff::admin())->post('/manage/blogs', [
+        'storefront_id' => 1,
         'is_published' => false,
         'title' => ['ar' => 'مقال للسجل', 'en' => 'For the log'],
         'body' => ['ar' => 'نص', 'en' => 'Text'],
@@ -220,6 +234,7 @@ it('404s an article that does not exist rather than rendering an empty form', fu
     actingAs(Staff::admin())->get('/manage/blogs/999999/edit')->assertNotFound();
     actingAs(Staff::admin())->put('/manage/blogs/999999', [
         '_complete' => 1,
+        'storefront_id' => 1,
         'is_published' => false,
         'title' => ['ar' => 'x', 'en' => 'x'],
     ])->assertNotFound();
@@ -232,6 +247,7 @@ it('keeps the screen behind the content grant, at the verb each control uses', f
 
     actingAs($stranger)->get('/manage/blogs')->assertForbidden();
     actingAs($stranger)->post('/manage/blogs', [
+        'storefront_id' => 1,
         'is_published' => false,
         'title' => ['ar' => 'x', 'en' => 'x'],
     ])->assertForbidden();

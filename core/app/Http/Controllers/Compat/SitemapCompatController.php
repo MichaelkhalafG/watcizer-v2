@@ -27,6 +27,21 @@ class SitemapCompatController extends Controller
         return redirect()->to(url("/{$locale}/sitemap.xml"), 302, ['Vary' => 'Accept-Language']);
     }
 
+    /** GET /sitemaps/index.xml — the shop's sitemap index: one sitemap per language (S-AR stage 3). */
+    public function localeIndex(): Response
+    {
+        return response($this->compat->localeSitemap->index(), 200)->header('Content-Type', 'application/xml; charset=UTF-8');
+    }
+
+    /** GET /sitemaps/{locale}.xml — every shop page in that language, with alternates (S-AR stage 3). */
+    public function localeUrlset(string $locale): Response
+    {
+        $xml = $this->compat->localeSitemap->urlset($locale);
+        abort_if($xml === null, 404);
+
+        return response($xml, 200)->header('Content-Type', 'application/xml; charset=UTF-8');
+    }
+
     public function show(string $locale): Response
     {
         /** @var array<string, string> $supported */

@@ -14,6 +14,15 @@ return [
     // The value the storefront sends in the `Api-Code` header (legacy CheckApiMiddleware).
     'api_key' => (string) env('COMPAT_API_KEY', ''),
 
+    /*
+     * The storefront SERVER's own rate limit (2026-09-30, option b) — App\Support\StorefrontServerKey.
+     * Unlike everything above, `server_key` IS a secret: it lifts the per-IP limit. Only in the two
+     * servers' environments, never NEXT_PUBLIC_. Empty (or under 32 characters) = off: the server is
+     * limited per IP like any browser, which is today's behaviour.
+     */
+    'server_key' => (string) env('STOREFRONT_SERVER_KEY', ''),
+    'server_rate_per_minute' => (int) env('STOREFRONT_SERVER_RATE', 1200),
+
     // Base of the image URLs the legacy resources emit (legacy `services.asset_base`).
     'asset_base' => (string) env('COMPAT_ASSET_BASE', 'https://dash.watchizereg.com'),
 

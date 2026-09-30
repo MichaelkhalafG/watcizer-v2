@@ -14,6 +14,16 @@ Disallow: /edit-profile
 Disallow: /order-list
 Disallow: /wish-list
 
+# The same private pages under the Arabic prefix (S-AR stage 1: every page also exists under /ar)
+Disallow: /ar/cart
+Disallow: /ar/checkout
+Disallow: /ar/account
+Disallow: /ar/login
+Disallow: /ar/register
+Disallow: /ar/forgot-password
+Disallow: /ar/reset-password
+Disallow: /ar/auth/
+
 # Block internal search with no SEO value
 Disallow: /search
 Disallow: /Search

@@ -56,8 +56,8 @@ final class BlogController
              * for it on the site.
              */
             'storefront_note' => ManageText::t(
-                'blogs.not_served_yet',
-                'المقالات تُكتب وتُحفظ هنا، لكن الموقع لا يعرضها بعد: صفحة المقالات على المتجر لم تُبنَ. النشر هنا يعني أن المقال جاهز، لا أنه ظاهر للعملاء.',
+                'blogs.served_on_storefront',
+                'المقال المنشور يظهر للعملاء في صفحة المقالات على موقع المتجر الذي اخترته له، بالعربية والإنجليزية. المسودة لا تظهر.',
             ),
         ]);
     }
@@ -66,6 +66,7 @@ final class BlogController
     {
         return Inertia::render('Manage/Blogs/Form', [
             'blog' => null,
+            'storefronts' => self::storefrontOptions(),
         ]);
     }
 
@@ -76,6 +77,7 @@ final class BlogController
 
         return Inertia::render('Manage/Blogs/Form', [
             'blog' => $row,
+            'storefronts' => self::storefrontOptions(),
         ]);
     }
 
@@ -176,8 +178,9 @@ final class BlogController
                 ->orderByRaw('b.published_at IS NULL DESC')
                 ->orderByDesc('b.published_at')
                 ->orderByDesc('b.id')
+                ->leftJoin('storefronts as s', 's.id', '=', 'b.storefront_id')
                 ->get([
-                    'b.id', 'b.slug', 'b.cover_path', 'b.published_at', 'b.updated_at',
+                    'b.id', 'b.slug', 'b.cover_path', 'b.published_at', 'b.updated_at', 's.name as storefront_name',
                     'ar.title as title_ar', 'en.title as title_en',
                     'ar.body as body_ar', 'en.body as body_en',
                 ]) as $raw
@@ -194,6 +197,7 @@ final class BlogController
                     'en' => Row::nstr($row, 'title_en') ?? '',
                 ],
                 'cover' => $cover === null ? null : ImageUrl::src($cover),
+                'storefront' => Row::nstr($row, 'storefront_name'),
                 'is_published' => $publishedAt !== null,
                 'published_at' => $publishedAt,
                 'updated_at' => Row::nstr($row, 'updated_at'),
@@ -244,6 +248,7 @@ final class BlogController
         return [
             'id' => Row::int($blog, 'id'),
             'slug' => Row::str($blog, 'slug'),
+            'storefront_id' => Row::int($blog, 'storefront_id'),
             'cover_path' => $cover,
             'cover_url' => $cover === null ? null : ImageUrl::src($cover),
             'is_published' => Row::nstr($blog, 'published_at') !== null,
@@ -266,7 +271,7 @@ final class BlogController
      */
     private static function logFields(int $id): array
     {
-        $row = DB::table('core_blogs')->where('id', $id)->first(['slug', 'published_at', 'cover_path']);
+        $row = DB::table('core_blogs')->where('id', $id)->first(['slug', 'storefront_id', 'published_at', 'cover_path']);
         if (! is_object($row)) {
             return [];
         }
@@ -274,9 +279,22 @@ final class BlogController
 
         return [
             'slug' => Row::str($blog, 'slug'),
+            'storefront_id' => Row::int($blog, 'storefront_id'),
             'published_at' => Row::nstr($blog, 'published_at'),
             'cover_path' => Row::nstr($blog, 'cover_path'),
         ];
+    }
+
+    /** @return list<array{value: string, label: string}> */
+    private static function storefrontOptions(): array
+    {
+        $out = [];
+        foreach (DB::table('storefronts')->where('is_active', true)->orderBy('id')->get(['id', 'name']) as $raw) {
+            $row = Row::cast($raw);
+            $out[] = ['value' => (string) Row::int($row, 'id'), 'label' => Row::str($row, 'name')];
+        }
+
+        return $out;
     }
 
     /** The Arabic title, which is what the log's reader recognises. */

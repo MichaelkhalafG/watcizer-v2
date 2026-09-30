@@ -19,12 +19,16 @@ use Illuminate\Support\Facades\DB;
  *   cart_items.product_id  → catalog_products.id  ON DELETE CASCADE   (one deliberate deviation from the
  *                                                 spec: ProductImporter can hard-delete a fresh product
  *                                                 sitting in a cart; its cart line goes with it)
+ *   product_ratings.product_id → catalog_products.id  ON DELETE CASCADE  (B1, 2026-10-01: the rating write
+ *                                                 made it matter — a product created on the dashboard
+ *                                                 could not be rated; a rating goes with its product,
+ *                                                 as it did on the legacy key)
  *
  * A COMMAND, not a migration: the harness runs `migrate` on a bare dump before the catalogue is
  * filled, where the orphan pre-flight would fail. Run it after `core:transform`. Idempotent: a key
  * already pointing at the right table with the right rule is left alone; one pointing anywhere else
  * on that column is dropped first. Out of scope on purpose: `wishlist_items` (gone), `offers` (frozen),
- * the legacy junctions (unwritten), `product_ratings` — B1 (ratings) must repoint that one when built.
+ * the legacy junctions (unwritten). `product_ratings` joined the list with B1 (ratings).
  *
  * Refuses to change anything while any line points at a product `catalog_products` does not have:
  * adding the key would fail half-way, and the orphan is the thing to look at.
@@ -36,12 +40,13 @@ final class CoreRepointCommerceFksCommand extends Command
 {
     protected $signature = 'core:repoint-commerce-fks {--dry-run : print the plan and the rollback SQL, change nothing}';
 
-    protected $description = 'Point order_items/cart_items.product_id at catalog_products (FK step 2)';
+    protected $description = 'Point order_items/cart_items/product_ratings.product_id at catalog_products (FK step 2)';
 
     /** table => [the key's name, ON DELETE rule] */
     private const TARGET = [
         'order_items' => ['order_items_product_id_catalog_foreign', 'RESTRICT'],
         'cart_items' => ['cart_items_product_id_catalog_foreign', 'CASCADE'],
+        'product_ratings' => ['product_ratings_product_id_catalog_foreign', 'CASCADE'],
     ];
 
     public function handle(): int
@@ -83,7 +88,7 @@ final class CoreRepointCommerceFksCommand extends Command
         }
 
         if ($plan === []) {
-            $this->info('core:repoint-commerce-fks — nothing to do: both keys already point at catalog_products.');
+            $this->info('core:repoint-commerce-fks — nothing to do: every key already points at catalog_products.');
 
             return self::SUCCESS;
         }

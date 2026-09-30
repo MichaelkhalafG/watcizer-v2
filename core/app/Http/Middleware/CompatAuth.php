@@ -2,6 +2,8 @@
 
 namespace App\Http\Middleware;
 
+use App\Compat\CompatStorefront;
+use App\Domain\Customers\CustomerSeen;
 use App\Support\LegacyJwt;
 use Closure;
 use Illuminate\Http\Request;
@@ -29,6 +31,8 @@ final class CompatAuth
             return response()->json(['message' => 'Unauthenticated.'], 401);
         }
         $request->attributes->set(self::ATTRIBUTE, $userId);
+        // The "last seen" core owns (re-engagement, 2026-10-01): at most once an hour, never fatal.
+        CustomerSeen::touch($userId, app(CompatStorefront::class)->id());
 
         return $next($request);
     }

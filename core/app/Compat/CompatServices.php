@@ -33,6 +33,10 @@ final class CompatServices
 
     public readonly CompatSitemap $sitemap;
 
+    public readonly CompatLocaleSitemap $localeSitemap;
+
+    public readonly CompatBlogs $blogs;
+
     public readonly CompatCart $cart;
 
     public readonly CompatCheckout $checkout;
@@ -61,6 +65,8 @@ final class CompatServices
         $this->home = new CompatHome($this->listing, $this->categories, $this->storefrontId);
         $this->detail = new CompatProductDetail($this->names, $this->categories, $this->products, $this->storefrontId);
         $this->sitemap = new CompatSitemap($this->names, $this->categories, $this->products);
+        $this->blogs = new CompatBlogs($this->storefrontId);
+        $this->localeSitemap = new CompatLocaleSitemap($this->listing, $this->names, $this->categories, $this->products, $this->blogs);
         $this->cart = new CompatCart($this->storefrontId);
         $this->checkout = new CompatCheckout($this->cart, $inventory, $this->storefrontId);
         $this->account = new CompatAccount;

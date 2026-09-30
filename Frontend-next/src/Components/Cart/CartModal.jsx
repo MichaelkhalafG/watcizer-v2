@@ -1,6 +1,6 @@
 'use client'
 import { memo, useEffect, useRef } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter } from '@/src/Hooks/useLocaleRouter'
 import { FiX } from 'react-icons/fi'
 import { useCards, useCardsOf } from '../../Hooks/queries/useListing'
 import { useOffers } from '../../Hooks/queries/useOffers'

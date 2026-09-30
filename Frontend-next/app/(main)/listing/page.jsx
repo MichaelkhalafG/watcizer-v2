@@ -1,7 +1,7 @@
-import { Suspense } from 'react'
 import { QueryClient, dehydrate, HydrationBoundary } from '@tanstack/react-query'
 import { listingRequest } from '@/src/lib/listingRequest'
 import { getServerTables, getServerListing } from '@/src/lib/serverCatalog'
+import { requestLang } from '@/src/lib/requestLang'
 import { parseListingParams } from '@/src/utils/listingParams'
 import { objectToSearchParams, listingMetadata, listingSummary, listingBreadcrumbLd } from '@/src/lib/listingSeo'
 import ListingClient from './ListingClient'
@@ -38,12 +38,14 @@ async function loadContext(searchParams) {
 
 export async function generateMetadata({ searchParams }) {
   const { tables, filters, listing } = await loadContext(searchParams)
-  return listingMetadata({ tables, ...listingSummary(listing, tables), filters, pathname: '/listing' })
+  const { urlLang } = await requestLang()
+  return listingMetadata({ tables, ...listingSummary(listing, tables), filters, pathname: '/listing', lang: urlLang })
 }
 
 export default async function ListingPage({ searchParams }) {
   const { tables, filters, qs, listing } = await loadContext(searchParams)
-  const breadcrumbLd = listingBreadcrumbLd({ tables, filters, pathname: '/listing' })
+  const { urlLang } = await requestLang()
+  const breadcrumbLd = listingBreadcrumbLd({ tables, filters, pathname: '/listing', lang: urlLang })
 
   // The first page and its facet counts, from core (C-1 stage 3) — with the SAME request builder
   // ListingClient uses, so its first render hits this data.
@@ -57,10 +59,10 @@ export default async function ListingPage({ searchParams }) {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: safeJsonLd(breadcrumbLd) }}
       />
-      {/* ListingClient reads useSearchParams() → wrap in Suspense. */}
-      <Suspense fallback={null}>
-        <ListingClient />
-      </Suspense>
+      {/* No <Suspense> here (2026-09-30). The page is dynamic, so useSearchParams() needs none; the
+          boundary only made React send the finished grid as a separate block swapped in LATER — a
+          page with an empty grid first, and on desktop the footer jumping down (CLS 0.50, measured). */}
+      <ListingClient />
     </HydrationBoundary>
   )
 }

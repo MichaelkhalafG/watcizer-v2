@@ -117,4 +117,34 @@ return [
     | `MANAGE_URL` overrides it for a staging host.
     */
     'manage_url' => rtrim((string) env('MANAGE_URL', 'https://eleganceeg.com'), '/'),
+
+    /*
+    | The mailbox's daily budget (2026-10-01), for BULK mail only: restock alerts and the
+    | re-engagement campaign. `daily_cap` is how many messages the mailbox may send in a day;
+    | `transactional_reserve` of those are kept for order and account mail, which never checks
+    | this budget at all — so a restock batch can use at most `daily_cap - transactional_reserve`
+    | minus whatever already went out today, and an order confirmation is never held back by one.
+    | Conservative defaults for today's plan (100 a day); raise both in .env when the plan grows.
+    | Counted per day in `core_mail_daily`, in the app's timezone.
+    */
+    'bulk' => [
+        'daily_cap' => (int) env('MAIL_DAILY_CAP', 100),
+        'transactional_reserve' => (int) env('MAIL_TRANSACTIONAL_RESERVE', 40),
+        'per_run' => (int) env('MAIL_BULK_PER_RUN', 20),
+        'max_attempts' => 3,
+    ],
+
+    /*
+    | "E-mail me when it's back" (2026-10-01): how many shoppers are told per unit restocked, and
+    | how long a row is kept — notified rows 30 days after the e-mail, unanswered ones 180 days
+    | after subscribing (developer's decisions, 2026-09-29).
+    */
+    'stock_alerts' => [
+        // Where the e-mail's "stop these e-mails" link points: the storefront's API host, which
+        // serves /stock-alerts/stop/{token} (on the .htaccess allow-list, runbook §4.1.1).
+        'public_url' => rtrim((string) env('STOCK_ALERTS_PUBLIC_URL', 'https://api.watchizereg.com'), '/'),
+        'per_unit' => 5,
+        'keep_notified_days' => 30,
+        'keep_waiting_days' => 180,
+    ],
 ];

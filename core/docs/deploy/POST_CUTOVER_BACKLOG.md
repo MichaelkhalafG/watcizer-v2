@@ -99,6 +99,50 @@ ended — until they are, treat these as deployed-unverified:
   - **Notify-me:** signed-in customers subscribe with ONE tap; notified rows deleted after 30 days,
     unanswered after 180; at most 5 e-mails per unit restocked. Blocked on the mailbox's daily sending
     limit (developer is getting it from Hostinger) — as is the re-engagement mail.
+    **BUILT 2026-10-01 (overnight, in the tree, not deployed; migration M1z applied to the dev DB
+    only).**
+    - **Tables** (M1z, `2026_10_13_000000_stock_alerts.php`, never-dropped):
+      - `core_stock_alerts`: one row per storefront, product and address; waiting → notified or
+        cancelled; a token for the stop link.
+      - `core_mail_daily`: messages sent per day, transactional vs bulk.
+    - **Subscribing:** `POST /api/stock-alerts` (5 a minute and 30 an hour per IP). A signed-in
+      customer is subscribed with their ACCOUNT address from a valid bearer token, so the page
+      shows one button; a guest types an address. It answers `subscribed`, `already` or `in_stock`.
+    - **Restock:** `StockChanged` with a positive delta (after the stock transaction commits) marks
+      up to 5 waiting shoppers per unit notified, oldest first, and queues one e-mail each.
+    - **Sending:** on the new outbox channel `mail_bulk`, sent by `bulk-mail:drain` (every 5 min)
+      only within the bulk budget: `MAIL_DAILY_CAP` (100) − `MAIL_TRANSACTIONAL_RESERVE` (40) −
+      messages already sent today (counted from Laravel's `MessageSent`, so customer mails that
+      bypass the outbox count too).
+    - **Order and account mail never check the budget**, so a restock batch can never hold one
+      back.
+    - **At send time the stock is re-checked.** If the product sold out again, the e-mail is
+      dropped and the shopper goes back to waiting.
+    - **The e-mail** is in the shopper's language (with the other beneath), with the product,
+      price, a "Shop now" button to the right-language URL, and a stop link. The stop page GET
+      shows a button; only its POST cancels, because link scanners open links.
+    - **Cleanup:** `stock-alerts:prune` at 03:20 (notified or cancelled after 30 days, waiting
+      after 180).
+    - **Dashboard:** the products list shows "N waiting" in the stock cell, per storefront.
+    - **Storefront:** under the disabled "Out of Stock" button on a product page (not offers), a
+      form. Signed in: one button; guest: e-mail + button. Afterwards it says "Done — we'll e-mail
+      you when it's back".
+    - **Tests:** `StockAlertTest` (10). Mutation-checked: 5 per unit, oldest first, the budget
+      stop, the send-time stock re-check, one tap using the account address.
+    - **Are out-of-stock products reachable today? MOSTLY, with one defect, fixed.** 77 of 698
+      visible products are out of stock. They stay in the listing (sorted last) and their product
+      pages open with everything (images, price, specs). BUT clicking a sold-out card's PICTURE did
+      nothing, because the "Sold Out" overlay (z-index 4) sat above the card's link and swallowed
+      the click; only the text under the picture opened the page. Measured in the browser, then
+      fixed with `pointer-events: none` on the overlay (`ProductCard.css`) and re-measured: the
+      picture now opens the product, in English and Arabic.
+    - **Browser-verified (EN + AR, local):** the sold-out card opens; the page shows the product
+      normally with the disabled "Out of Stock" / «غير متوفر» button and the form beneath; a
+      guest's address gets "Done — we'll e-mail you when it's back". The two test rows were
+      deleted from the dev DB.
+    - **Deploy:** `migrate` (M1z), the two allow-list lines (`/api/stock-alerts`,
+      `/stock-alerts/stop/…`), `config:cache`. Set `MAIL_DAILY_CAP` /
+      `MAIL_TRANSACTIONAL_RESERVE` when the new plan's limit is known.
 - **FOR THE CLIENT (their stock decision, not ours): ALL 72 electronics are out of stock** (measured
   2026-09-29) — a whole family effectively invisible on the site. They may not know.
 - **Decided, design approved-pending:** re-engagement rebuilt on core (weekly, live prices, per
@@ -222,6 +266,92 @@ Git history holds the text it replaced.
   over a button); it did not recur.
 
 ### 3. Open
+**Batch 2 — 2026-09-30, the developer's answers to the overnight report (in the tree, not deployed).**
+- **Failure ≠ 404 — BUILT (answers the rate-limit defect below, part 1).** `Frontend-next/src/lib/coreRead.js`:
+  core's 404/422 is a real miss; anything else (429, 5xx, 401/403, timeout, no answer) is retried once
+  after 300 ms, then served from the server process's last good copy (2000 keys, 24 h), and only then
+  thrown — the page's error boundary answers **500**, so Google retries instead of de-indexing. Product,
+  `/products/{id}`, offer, blog and facet pages; `/blogs` no longer turns into an empty `noindex` page.
+  Server HTTP timeout 5 s (there was none). A failure is held 5 s per key, so one page view does not
+  retry twice (a hanging core cost 6 lookups / 34 s per view before; 4 / 12 s after). The error page
+  says "temporarily unavailable" in the page's language. Verified with a fake core in front of the real
+  one (429/500/hang/fail-once): 22/22. Guard: `CoreFailureIsNot404Test`.
+- **The storefront server's own rate limit (option b) — BUILT.** `X-Storefront-Server-Key` (secret, ≥32
+  chars, both servers' env only) → its own bucket per server address at `STOREFRONT_SERVER_RATE` (1200/min);
+  everyone else keeps per-IP 60. Measured locally: 90 renders in 54 s with the key, 0 refused; without,
+  the first refusal at request 59 (each a 500, not a 404). Key found in 0 browser files with it set at
+  build time. Deploy: runbook §3.6. Guard: `StorefrontServerLimitTest`.
+- **D7 — links keep their language — BUILT.** Every link follows the language the page shows
+  (`LocaleLink`, `useLocaleRouter`, `localizeHref`; 28 files swapped). Crawler view of 10 `/ar` pages:
+  250/250 internal links bare before, 0/250 after; English pages unchanged. D3/D4 unchanged: an
+  Arabic-cookie visitor on a bare URL moves onto `/ar` at the first click. Guard:
+  `StorefrontLinksKeepLanguageTest`.
+- **Compression — MEASURED, NOT changed (developer asked to hear first).** Hostinger's CDN re-encodes
+  everything to a weak Brotli: home HTML 365 KB (Brotli) vs 215 KB (gzip); `/brand/rolex` 58 vs 38 KB; the
+  two main JS chunks 138+124 vs 101+88 KB; the main CSS 13.2 vs 7.9 KB. Asked for gzip, the CDN passes
+  the storefront's own gzip through unchanged. Options, cheapest first: (1) hPanel → CDN: a Brotli /
+  compression setting, or ask Hostinger support to raise the Brotli level or pass the origin's encoding
+  through; (2) `Cache-Control: no-transform` on the storefront's responses, which a CDN should honour by
+  not re-encoding — a one-line config change, but only a deploy and a measurement can prove this CDN
+  does; (3) serve Brotli from the storefront itself (a custom server) — the most work.
+- **Listing flicker and the 0.50 layout shift — FIXED.** Causes measured (live phone filmstrip): the
+  inner `<Suspense fallback={null}>` around the listing (React sent the grid as a separate block → an
+  empty grid first), a footer gated by `useMediaQuery` (never in the server HTML → popped in, shoved
+  down: CLS 0.50), and a desktop-only `listing/loading.jsx`. After (local): `/brand/rolex` paints whole on
+  its first frame, `/listing`'s skeleton has the page's shape, desktop CLS 0.0003–0.0028 on every page
+  checked. The footer's links are now in the HTML crawlers read (still hidden on phones). Guard:
+  `ListingPaintsInOnePieceTest`.
+- **Blog editor (B2 overruled) — OPTIONS given, nothing built.** Plain text is not enough: links, bold
+  and images inside an article. The choice is the developer's (see the 2026-09-30 report).
+- **K6 — a rating clears only its product — BUILT.** `StorefrontCache::forgetCard` + `forgetProduct`, no
+  storefront flush; grids catch up at the next 5-minute warm (10 minutes worst case, the cache TTL).
+  `ProductRatingTest` changed deliberately (it demanded the flush).
+- **R7 — no shared default for the preview — BUILT.** Only the storefront's own typed list; empty = the
+  week is not planned, and the screen says so. The order-notification list is never used.
+- **R4 — the team can pick the next e-mail's products — BUILT.** Migration **M2c**
+  (`2026_10_16_000000_reengagement_manual_picks`, applied to the dev copy). 3–6 products placed on the
+  storefront, in order, for the NEXT e-mail only (cleared when used, kept while paused); the same
+  rules as the algorithm's; none picked = automatic. Shared `ProductPicker` + `ProductPickerController`
+  (the `ProductSearch` answer), registered per screen inside its own permission group. Browser-checked
+  on a scratch copy (11/11).
+- **Trust pages — DRAFT only** (`/about-us`, `/contact-us`, `/privacy-policy`, `/terms-and-conditions`):
+  nine decisions for the developer first — above all the site's "100% authentic" claims next to Rolex /
+  Patek Philippe / Audemars Piguet listed at 4,500–10,600 EGP, and four different returns policies.
+- **Custom home rail — COSTED, not built** (developer asked for the cost first): fits the existing
+  `storefront_home_rails` table with one nullable JSON column (`product_ids`) and a new kind `custom`;
+  about half a day now that the picker exists.
+
+**🔴 SUSPECTED LIVE DEFECT — found 2026-10-01 (overnight), measured locally, NOT fixed, needs a
+decision: the storefront's server renders share ONE 60-a-minute API budget, and running out turns
+product pages into 404s.**
+- **What was measured (locally).** Core limits every `/api` route to **60 requests a minute per
+  IP** (`AppServiceProvider`: `Limit::perMinute(60)->by($request->ip())`). Checking the new sitemap's
+  URLs against the local storefront, core answered **`429 Too Many Attempts`** to the storefront
+  server's calls. The storefront turned each 429 into a **404** product page: `resolveProduct`
+  catches any core error, falls back to the by-name lookup (itself throttled), and calls
+  `notFound()`. So 368–460 of 842 product URLs came back 404 depending on the pace; every one of
+  them answered 200 when requested alone.
+- **Why it can happen live.** Every server render calls `LARAVEL_ORIGIN = https://api.watchizereg.com`
+  (`.env.production`) from the storefront server, so ONE IP (or a few CDN edge IPs) as core sees
+  it. Every visitor's and every crawler's server-rendered page shares those 60 calls a minute. The
+  limiter's comment says "the edge cache carries the read load", but since 2026-09-28's CORS fix
+  the compat responses are `private`, so the CDN no longer caches them. Home, product, listing and
+  facet pages each make about one core call per render; the tables and nav are memoised 5 min.
+- **What a shopper or Google would see.** At more than ~60 server renders a minute (a Googlebot
+  crawl of the sitemap, a campaign's traffic), product pages 404 and the listing and home show
+  their load error. A 404 is also cached for the page's 5-minute revalidate. And a product page
+  that 404s during a crawl can be dropped from the index.
+- **How to confirm on production, read-only:** count 429s in the API host's access log, e.g.
+  `grep -c '" 429 ' ~/domains/eleganceeg.com/logs/*access*` (or the panel's access log) for a busy
+  hour. Search Console → Pages → "Not found (404)" listing real product URLs is the other symptom.
+- **Options, cheapest first (your call; I changed nothing):**
+  1. Don't throttle the storefront server. Key the limiter on the client IP it forwards when the
+     request carries a server-only secret header, so the limit applies per shopper, not per server.
+  2. A much higher limit for requests that carry the storefront's server key.
+  3. On the storefront, treat a 429 or any 5xx from core as a 503 (retry later), never a 404.
+     Worth doing whatever else is chosen, because a core blip should never tell Google a product
+     is gone.
+
 **Waiting on the developer (minutes each, no code):**
 - ~~C1~~ **DONE 2026-09-28** (see above). Kept for the record: **C1 — rotate `JWT_SECRET` on BOTH hosts** (core and the legacy app share it by design, and the
   legacy host is still up). Rotating it signs every customer out and nothing else: customer tokens
@@ -404,10 +534,81 @@ Git history holds the text it replaced.
   working, honoured unsubscribe; never the same customer two weeks running, never the same products
   twice. Design (cost, who chooses the products, failure modes at scale) goes to the developer
   BEFORE any build.
+  **BUILT 2026-10-01 (overnight, on the developer's go in the overnight brief, which answered the
+  two open questions: no price hold, only prices unchanged for 14 days; the same mailbox).**
+  Migration M2a, applied to the dev DB only.
+  - **Last seen, owned by core:** `core_customer_seen`, stamped by `CompatAuth` on every signed-in
+    storefront call, at most once an hour. The legacy `last_login_at` is the fallback for
+    customers not back since the flip.
+  - **Price age:** `core_price_watch` (price and since when), refreshed daily at 02:45 and before
+    each plan. The first refresh seeds `since` as the LATEST of the product's creation, the start
+    of core's activity log, and its last logged price change. That's a lower bound, because the
+    importer sets prices only when it creates a product.
+  - **Schedule:** Monday 10:00 `reengagement plan` picks recipients and products, records them, and
+    mails the TEAM a preview (numbers, the send time, how to stop it, one sample). The hourly
+    `reengagement send` queues the run 24 hours later unless the storefront is paused by then.
+  - **Recipients** (audience = customers): an address; away 30+ days; not unsubscribed; not in last
+    week's run.
+  - **Products:** up to 6 per person; in stock, visible, price steady 14 days; never one that
+    address got before. Ranked by the customer's past orders (same brand +2, same gender +1), then
+    newest. Fewer than 3 → no e-mail.
+  - **At send time** everything is re-checked live (still in stock, still steady, not
+    unsubscribed), with today's price. Fewer than 3 left → not sent.
+  - **Sending** is bulk mail (`BulkMailer`), within the day's bulk budget, so the transactional
+    reserve protects order mail.
+  - **Unsubscribe:** an HMAC-signed link, `/unsubscribe/{send}/{sig}`; the GET shows a button, the
+    POST unsubscribes. There's also a `List-Unsubscribe` + one-click header. `core_marketing_optouts`
+    is honoured forever.
+  - **Dashboard** "Re-engagement e-mails" (`/manage/storefronts/{id}/reengagement`, admin
+    `MANAGE_STOREFRONTS`): pause/resume, audience (TEAM ONLY by default, or customers), team
+    addresses (empty = the order-notification addresses), unsubscribed count, the last 20 runs.
+    Activity-logged.
+  - **Tests:** `ReEngagementTest` (8). Mutation-checked, all caught: the unsubscribe skip, the
+    last-week skip, never the same products, the 30-day absence, pause at plan, pause at send, the
+    24 h wait, the live 3-product floor, the price clock, the unsubscribe signature.
+  - **Found and fixed:** a non-null `TIMESTAMP` column gets `ON UPDATE CURRENT_TIMESTAMP` from
+    MariaDB (`explicit_defaults_for_timestamp=0` locally). It silently made the price clock
+    restart on ANY row update and masked a mutation, so M2a now uses `DATETIME` for `since` and
+    `last_seen_at`. Checked M1y/M1z: their timestamps are nullable, so they're unaffected.
+  - **OPEN — your decision, not built around:** the CLIENT'S CONSENT position. Customers never
+    opted in to marketing mail. The switch ships on TEAM ONLY and stays there until someone
+    changes it on the dashboard; turning it to "customers" is the consent decision.
+  - **Samples** rendered with real dev products are in the job folder:
+    `overnight/preview-reengagement-email.html` and `preview-stock-alert-email-ar.html`.
+  - **Deploy:** `migrate` (M2a), the allow-list line `/unsubscribe/…`, `config:cache`. The first
+    Monday's plan goes to the team only.
 - **FK step 2** (`core:repoint-commerce-fks`), **Joyroom 3a/3b**, ~~the duplicate-integration-ID
   warning~~ (built 2026-09-28, see section 2), **B1 ratings write** (+ its `.htaccess` line), **B8/B9 sitemap**
   (fold into S-AR stage 3), **blogs per storefront** (needs the G9 scoping decision), **A7 Next
   15.5.27** (dated: on or after 30 September).
+  - **B8/B9: DONE 2026-10-01 in S-AR stage 3** (see S-AR). No sitemap route sets a cookie. The
+    storefront's sitemap no longer comes from the legacy compat one, so /offers and an empty
+    /blogs are gone. The compat /en/sitemap.xml is left byte-identical for the harness.
+  - **Blogs per storefront: BUILT 2026-10-01 (overnight; the brief decided per storefront).**
+    - **Data:** migration M2b adds `core_blogs.storefront_id` (existing rows → storefront 1; dev
+      DB only). The dashboard's article form gains a Storefront field and the list a storefront
+      badge. Its note now says truthfully where a published article appears. The body hint gives
+      the format: blank line = paragraph, "## " = subheading, "- " = list item.
+      `BlogScreenTest` payloads gained `storefront_id` deliberately (required, not defaulted).
+    - **Read:** `catalog/blogs` (published, this storefront, newest first, title + excerpt in both
+      languages) and `catalog/blog?slug=` (404 for a draft or another storefront's article).
+      Allow-list line becomes `catalog/(…|home|blogs|blog)`.
+    - **Storefront:** `/blogs` and `/blog/{slug}` rewritten to read core. Metadata is per
+      language, with the article's own meta title/description or a fallback, self-canonical, and
+      hreflang. BlogPosting JSON-LD. The body is rendered by `ArticleBody`, which never interprets
+      text as HTML. An empty `/blogs` is `noindex, follow` (S9); `/ar/…` works like every page.
+    - **Sitemap:** `/blogs` and each article are listed once one is published.
+    - **Four articles written, AR + EN, about watches, not our stock or prices:** automatic vs
+      quartz, sizing, water-resistance ratings, choosing a strap
+      (`core/database/data/articles/*.json`, ~300–480 words each).
+      `php artisan blogs:seed-drafts --storefront=watchizer --apply` loads them as DRAFTS; the team
+      reads them, adds covers, and publishes. Running it twice adds nothing.
+    - **Verified:** `CatalogBlogsTest` (4), `LocaleSitemapTest` (5), and the browser in EN + AR:
+      the list, an article's headings, lists and RTL, and a 404 for an unknown article. That used
+      4 temporarily published articles in the dev DB (ids 1112–1115, 8 translations,
+      activity-log 307608–307611), all deleted afterwards.
+    - **Deploy:** `migrate` (M2b), the allow-list line, then after deploy the seed command with
+      `--apply` if the team wants the drafts.
 - ~~fb:app_id~~ **CLOSED 2026-09-28** (no Facebook App). **fb:app_id** (Facebook's debugger lists it missing): only meaningful if Watchizer has a Facebook
   App (a pixel is not an app). Without one there is nothing to put there; the preview works without
   it. Close unless the developer has an App ID.
@@ -861,7 +1062,7 @@ order (after 60 min); that payment is recorded as a finding and needs a refund o
 
 | # | Item | What it costs | What breaks if never done |
 |---|---|---|---|
-| B1 | **The rating write** (`add_product_rating`) — the week agreed in §8 | Core endpoint + tests + a compat-harness case, **and one line in §4's `.htaccess` allow-list** (it is not on it — without that line the endpoint 404s even once built). No storefront change if the shape matches legacy | "Could not send" on every review; ratings stay at zero forever |
+| B1 | ~~**The rating write**~~ **BUILT 2026-10-01 (overnight), on `wave-4d`, not deployed.** `POST /api/add_product_rating` behind `compat.auth` (signed-in only, no purchase needed, no moderation), `throttle:rating` 5/min + 30/h per IP; one rating per customer per product, a second replaces the first (UNIQUE key; row id and `created_at` kept); 404 for a product the shop does not show; `rating_avg`/`rating_count` recomputed on every save, product DTO forgotten and the storefront flushed. **Deploy needs:** the allow-list line `!^/api/add_product_rating$` (in §4.1.1 now) and `php artisan core:repoint-commerce-fks` (now also moves `product_ratings.product_id` from `products` to `catalog_products`, CASCADE: without it a product created on the dashboard cannot be rated — MySQL error 1452). Found in the browser pass and fixed: `all_product_rating` was browser-cached 10 min, so a shopper's own review vanished on their next page — now `private, no-cache` + ETag. Tests: `ProductRatingTest` (5), `CommerceForeignKeysTest` extended. Verified on a scratch DB copy (sign-up → rate → re-rate → EN + AR pages). **Question for you:** reviews show "Customer"/"عميل" instead of a first name (the list has no names; unchanged). The dead offer-rating post was removed from the form (A2). Original entry: **The rating write** (`add_product_rating`) — the week agreed in §8 | Core endpoint + tests + a compat-harness case, **and one line in §4's `.htaccess` allow-list** (it is not on it — without that line the endpoint 404s even once built). No storefront change if the shape matches legacy | "Could not send" on every review; ratings stay at zero forever |
 | B2 | **Meta Conversions API for card payments** (§11.1) | About a day: one server-side `POST` beside `flush($mailIds)` in the payment callback, hashed-email `user_data`, an `event_id` that dedupes against the pixel, a retry path; a Meta system-user access token (new secret, env by name only); Events Manager's test-events tool to prove it | **Card sales never reach Meta.** Campaigns optimise on cash orders only and under-report return on ad spend — for as long as this is open |
 | B3 | **Verification lands on raw JSON; no way to ask for a new link.** `verify()` returns `{"message":…}` to a browser (as legacy did); nothing in the storefront calls `resend-verification`. Smallest fix: `verify()` redirects a browser to `FRONTEND_URL/account?verified=1\|already\|invalid\|expired` (JSON callers unchanged); **spans both lanes** — the account page shows a toast and a "send a new link" button | ~15 lines in core + a toast and a button in the storefront + tests | The bare-JSON page (cosmetic). Worse: a link expires after 48 h, or a pre-flip legacy link verifies the LEGACY database — either way the customer can never re-verify, **and guest-order linking happens on verification**, so their earlier guest orders never attach to the account |
 | B4 | **Pin the verification link's host** in `CustomerMail::sendEmailVerification()` | A few lines + a test (with B3) | Correct today only because every sender is a customer route on the API host. The first CLI or dashboard sender builds the link on `eleganceeg.com`, which §4 404s |
@@ -931,6 +1132,33 @@ Decision to take first: **English keeps the bare URLs** (they carry today's rank
 Arabic moves under `/ar/…` — the reverse of the v2 sitemap's current default-locale-unprefixed
 rule, which must be flipped for Watchizer.
 
+   **Stage 1 BUILT 2026-10-01 (overnight, in the tree, storefront only, not deployed).** How it works:
+   - **Middleware** (`Frontend-next/middleware.js`) rewrites `/ar/…` onto the existing routes and
+     marks the request Arabic. Visiting an `/ar` URL sets the `wz-lang=ar` preference.
+   - **Bare URLs are unchanged:** the cookie decides what a person sees, and the metadata is
+     always the English page's. Google has no cookie, so it sees English on bare URLs and Arabic
+     under `/ar`.
+   - **The UI store is now per request** (`src/Store/uiStore.js`, same `useUIStore` API), started
+     in the request's language. Before, zustand rendered the server HTML from the store's initial
+     state, always `'en'`, so Arabic existed only after mount.
+   - **Metadata in the URL's language, self-canonical, with hreflang en/ar/x-default:** home,
+     product (+ its JSON-LD and breadcrumbs), `/listing`, brand, category, grade, subtype and
+     suptype/brand pages. The Arabic home copy is the root layout's own Arabic defaults.
+   - **The language switch moves `/x` ↔ `/ar/x`.** Redirects (`/products/{id}`, non-canonical
+     slugs, offers) keep the `/ar` prefix.
+   - **Verified.** A local HEAD build was diffed against the new one on 8 English pages: the ONLY
+     change is the three hreflang tags. The home page's featured block is random per request, so
+     its text differs regardless. Arabic pages carry Arabic title, description, H1, JSON-LD and
+     breadcrumbs, as a Googlebot user agent sees them. In the browser, filters on `/ar/listing`
+     keep the prefix and the switch round-trips; the home/product/cart/facet checks pass in both
+     languages.
+   - **Not done, noted:**
+     - (a) Links INSIDE `/ar` pages are still bare. Shoppers stay in Arabic by cookie, but a
+       crawler following them lands on English. Stage 3's sitemap and the hreflang tags cover
+       discovery; prefixing internal links is a follow-up.
+     - (b) Offer pages keep English metadata (there are 0 offers).
+     - (c) `/listing`'s metadata is streamed into the body even for Googlebot. That's Next's
+       handling of a page that reads query parameters; it was the same before stage 1.
 1. **Arabic pages that exist for Google (4–6 days).** `/ar/…` for home, product, category/brand
    facet pages and listing, served by a middleware rewrite onto the existing routes with the locale
    passed down. The server renders Arabic — the server catalogue already carries `productsAr` — and
@@ -942,6 +1170,31 @@ rule, which must be flipped for Watchizer.
    becomes indexable in Arabic — the Arabic queries that are most of Egyptian search volume.
    Browser pass in both languages (RTL), and a check that the English pages are byte-for-byte
    unchanged apart from the hreflang tags.
+   **Stage 2 BUILT 2026-10-01 (overnight, in the tree, not deployed).**
+   - **`catalog:clean-meta-titles`** (dry run by default; `--apply` writes, activity-logs per product
+     and forgets that product's cached detail). On the dev copy: 380 titles on 380 products, all
+     English, e.g. "Hugo Boss Watch For Men 1513755 | Select…" → "Hugo Boss Watch For Men 1513755".
+     **NOT applied to the dev DB** (tested in a rolled-back transaction). Run it on production as a
+     deploy step.
+   - **The rule** (`MetaText::title`): the last " | " segment goes when it ends in "…" or "...". A
+     tail that ends in a word (" | Diver") stays.
+   - **Found while wiring it:** 215 stored titles are copied already cut off mid-word ("… Blue
+     Dial Silver ..."). The data keeps them. `MetaText::usableTitle` treats a title ending in
+     ".."/"…" as absent, so the page falls back to the product's full title.
+   - **`catalog/product` now also returns `meta`** (cleaned title and description per language),
+     beside the rows, which keep the legacy shape.
+   - **The product page (my call, overrule if you like):**
+     - It uses the team's meta title when it has 20+ characters, plus " | Watchizer". A bare
+       model code like "ar11348" doesn't count.
+     - It uses the team's meta description first.
+     - Otherwise it keeps TODAY's chain (the price-led description, then the short description,
+       then the template), in each language. The plan above had the short description ahead of
+       the price-led text. I kept the price-led text as the fallback, because it carries the
+       price and it's what every product has today; only products with written meta text change.
+   - **Arabic meta is empty everywhere** (0 of 698), so Arabic pages use the Arabic templates
+     from stage 1.
+   - **Category/brand meta is empty everywhere** (0 of 44 in either language), so the facet
+     pages keep their templates.
 2. **Metadata quality (1–2 days).** Clean the " | Select…" junk out of `meta_title` (one-off
    command, dry run first); wire `meta_title`/`meta_description` with the fallback
    meta[locale] → title[locale] + brand, and meta_description[locale] → short_description[locale]

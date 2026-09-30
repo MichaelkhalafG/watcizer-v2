@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useRef, useState } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
+import { useRouter } from '@/src/Hooks/useLocaleRouter'
 import http from '../../Context/api'
 import { useAuthStore } from '../../Store/authStore'
 import { useUIStore } from '../../Store/uiStore'

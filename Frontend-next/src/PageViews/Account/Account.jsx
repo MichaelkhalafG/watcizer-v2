@@ -7,8 +7,9 @@ import {
   useCallback,
   useRef,
 } from 'react'
-import Link from 'next/link'
-import { useRouter, useSearchParams, usePathname } from 'next/navigation'
+import Link from '@/src/Components/LocaleLink'
+import { useSearchParams, usePathname } from 'next/navigation'
+import { useRouter } from '@/src/Hooks/useLocaleRouter'
 import {
   FiUser,
   FiPackage,

@@ -1,11 +1,13 @@
 import { productUrl, offerUrl } from '../utils/productUrl'
 import { buildListingParams } from '../utils/listingParams'
+import { localePath } from '../utils/localePath'
 
 // Server-side SEO for the product/offer detail pages. Produces BOTH the Next
 // `metadata` object (→ generateMetadata, replacing the old <Helmet>) and the
 // Product + BreadcrumbList JSON-LD (→ emitted as <script> in the page's server
-// HTML). English-canonical: titles/slugs/JSON-LD are built from the english
-// fields so a single canonical URL + payload is served regardless of UI language.
+// HTML). The URL slug is always the English one (Arabic slugs are S-AR stage 4); the TEXT —
+// title, description, JSON-LD names, breadcrumbs — is in the URL's language (S-AR stage 1):
+// English on /product/…, Arabic on /ar/product/…, each self-canonical with hreflang to the other.
 
 export const SEO_DOMAIN = 'https://watchizereg.com'
 
@@ -25,10 +27,10 @@ const productImages = (item, extra) => {
   return [...new Set(list.filter(Boolean))]
 }
 
-const toMetadata = ({ title, seoDesc, canonicalUrl, ogTitle, ogImage }) => ({
+const toMetadata = ({ title, seoDesc, canonicalUrl, ogTitle, ogImage, languages }) => ({
   title,
   description: seoDesc,
-  alternates: { canonical: canonicalUrl },
+  alternates: { canonical: canonicalUrl, ...(languages ? { languages } : {}) },
   openGraph: {
     // Next's typed OpenGraph union rejects 'product' (throws → drops ALL
     // metadata), so og:type=product is emitted via `other` below instead.
@@ -48,12 +50,21 @@ const toMetadata = ({ title, seoDesc, canonicalUrl, ogTitle, ogImage }) => ({
 })
 
 // ── Product ────────────────────────────────────────────────────────────────
-export function buildProductSeo(product, { ratings = [], tables = null } = {}) {
-  const name = product.name || product.product_title || product.name_en || ''
+// `product` is the ENGLISH card (it names the URL); `localized` is the same product transformed in
+// `lang` (the text). Without `localized`, English text. `meta` is core's cleaned meta title and
+// description per language (S-AR stage 2, `catalog/product`): the team's words win where they wrote
+// some — a meta title only when it says more than a model code (20+ characters) — and the templates
+// below are the fallback, unchanged.
+const META_TITLE_MIN = 20
+
+export function buildProductSeo(product, { ratings = [], tables = null, lang = 'en', localized = null, meta = null } = {}) {
+  const ar = lang === 'ar'
+  const text = (ar && localized) || product
+  const name = (ar ? text.product_title : null) || product.name || product.product_title || product.name_en || ''
   const brand =
-    typeof product.brand === 'string'
-      ? product.brand
-      : product.brand?.brand_name || product.brand?.name_en || product.brand_name || ''
+    typeof text.brand === 'string'
+      ? text.brand
+      : text.brand?.brand_name || text.brand?.name_en || text.brand_name || ''
 
   const images = productImages(product)
   const price = Number(product.selling_price || 0)
@@ -64,26 +75,46 @@ export function buildProductSeo(product, { ratings = [], tables = null } = {}) {
 
   // Price-led meta description (reused for OG/Twitter via toMetadata). Null-guarded:
   // when no valid price is present we fall back to the short-description blurb.
+  const egp = (n) => Math.round(n).toLocaleString('en-US')
   const priceDesc =
     price > 0
-      ? `Buy ${name}${brand ? ` by ${brand}` : ''}. ${
-          hasSale
-            ? `Now EGP ${Math.round(priceNow).toLocaleString()} (was EGP ${Math.round(
-                price,
-              ).toLocaleString()})`
-            : `EGP ${Math.round(price).toLocaleString()}`
-        }. Authentic luxury, certified & guaranteed. Free delivery across Egypt.`
+      ? ar
+        ? `اشترِ ${name}${brand ? ` من ${brand}` : ''}. ${
+            hasSale ? `الآن ${egp(priceNow)} ج.م بدلاً من ${egp(price)} ج.م` : `${egp(price)} ج.م`
+          }. فخامة أصلية، معتمدة ومضمونة. توصيل مجاني لجميع أنحاء مصر.`
+        : `Buy ${name}${brand ? ` by ${brand}` : ''}. ${
+            hasSale
+              ? `Now EGP ${Math.round(priceNow).toLocaleString()} (was EGP ${Math.round(
+                  price,
+                ).toLocaleString()})`
+              : `EGP ${Math.round(price).toLocaleString()}`
+          }. Authentic luxury, certified & guaranteed. Free delivery across Egypt.`
       : null
+  const metaDesc = meta?.description?.[lang] ? stripDesc(meta.description[lang]) : ''
   const seoDesc =
+    metaDesc ||
     priceDesc ||
-    stripDesc(
-      product.short_description_en || product.short_description || product.short_description_ar,
-      `${name}${brand ? ` – ${brand}` : ''} — shop this timepiece at Watchizer.`,
-    )
+    (ar
+      ? stripDesc(text.short_description, `${name}${brand ? ` – ${brand}` : ''} — تسوّق هذه الساعة من Watchizer.`)
+      : stripDesc(
+          product.short_description_en || product.short_description || product.short_description_ar,
+          `${name}${brand ? ` – ${brand}` : ''} — shop this timepiece at Watchizer.`,
+        ))
 
   const canonicalPath = productUrl(product)
-  const canonicalUrl = `${SEO_DOMAIN}${canonicalPath}`
-  const ogTitle = `${name}${brand ? ` – ${brand}` : ''} | Watchizer`
+  const canonicalUrl = `${SEO_DOMAIN}${localePath(canonicalPath, lang)}`
+  const languages = {
+    en: `${SEO_DOMAIN}${canonicalPath}`,
+    ar: `${SEO_DOMAIN}${localePath(canonicalPath, 'ar')}`,
+    'x-default': `${SEO_DOMAIN}${canonicalPath}`,
+  }
+  const metaTitle = meta?.title?.[lang] || ''
+  const ogTitle =
+    metaTitle.length >= META_TITLE_MIN
+      ? /watchizer/i.test(metaTitle)
+        ? metaTitle
+        : `${metaTitle} | Watchizer`
+      : `${name}${brand ? ` – ${brand}` : ''} | Watchizer`
   const ogImage = images[0] || `${SEO_DOMAIN}/og-image.jpg`
 
   // Live review count/avg for aggregateRating (only emitted when reviews exist).
@@ -98,8 +129,8 @@ export function buildProductSeo(product, { ratings = [], tables = null } = {}) {
       ? `/listing?${buildListingParams({ brands: [product.brand_id] }, {}, tables).toString()}`
       : '/listing'
   const crumbMid = brand
-    ? { name: brand, item: `${SEO_DOMAIN}${brandHref}` }
-    : { name: 'All Products', item: `${SEO_DOMAIN}/listing` }
+    ? { name: brand, item: `${SEO_DOMAIN}${localePath(brandHref, lang)}` }
+    : { name: ar ? 'كل المنتجات' : 'All Products', item: `${SEO_DOMAIN}${localePath('/listing', lang)}` }
 
   const productLd = {
     '@context': 'https://schema.org/',
@@ -131,7 +162,7 @@ export function buildProductSeo(product, { ratings = [], tables = null } = {}) {
     '@context': 'https://schema.org/',
     '@type': 'BreadcrumbList',
     itemListElement: [
-      { '@type': 'ListItem', position: 1, name: 'Home', item: `${SEO_DOMAIN}/` },
+      { '@type': 'ListItem', position: 1, name: ar ? 'الرئيسية' : 'Home', item: `${SEO_DOMAIN}${localePath('/', lang)}` },
       { '@type': 'ListItem', position: 2, name: crumbMid.name, item: crumbMid.item },
       { '@type': 'ListItem', position: 3, name, item: canonicalUrl },
     ],
@@ -139,7 +170,7 @@ export function buildProductSeo(product, { ratings = [], tables = null } = {}) {
 
   return {
     canonicalPath,
-    metadata: toMetadata({ title: ogTitle, seoDesc, canonicalUrl, ogTitle, ogImage }),
+    metadata: toMetadata({ title: ogTitle, seoDesc, canonicalUrl, ogTitle, ogImage, languages }),
     productLd,
     breadcrumbLd,
   }

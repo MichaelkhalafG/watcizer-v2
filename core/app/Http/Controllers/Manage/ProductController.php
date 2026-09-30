@@ -14,6 +14,7 @@ use App\Domain\Catalog\ProductSearch;
 use App\Domain\Catalog\ProductWriter;
 use App\Domain\Catalog\SpecBlocks;
 use App\Domain\Catalog\VariantWriter;
+use App\Domain\Notifications\StockAlerts;
 use App\Http\Middleware\EnsureStorefrontScope;
 use App\Models\Catalog\Product;
 use App\Models\Storefront\Storefront;
@@ -255,11 +256,16 @@ final class ProductController
          * screen shows" — and the first time the two drifted, the file would carry a column the
          * operator's role does not see.
          */
-        $prepare = function (array $rows) use (&$extras, $storefront): void {
+        // How many shoppers wait for each product on THIS storefront (stock alerts, 2026-10-01) —
+        // one grouped query per page, filled beside the extras.
+        $waiting = [];
+        $prepare = function (array $rows) use (&$extras, &$waiting, $storefront): void {
             $extras = self::pageExtras(Coerce::objectList($rows), $storefront->id);
+            $ids = array_map(fn (object $r): int => Row::int(Row::cast($r), 'id'), Coerce::objectList($rows));
+            $waiting = StockAlerts::waitingCounts($ids, $storefront->id);
         };
 
-        $map = function (object $raw) use ($brandNames, $storefront, $activeStorefronts, $genericBrand, &$extras): array {
+        $map = function (object $raw) use ($brandNames, $storefront, $activeStorefronts, $genericBrand, &$extras, &$waiting): array {
             $row = Row::cast($raw);
             $id = Row::int($row, 'id');
             $cover = $extras['covers'][$id] ?? null;
@@ -298,6 +304,8 @@ final class ProductController
                 'is_active' => Row::bool($row, 'is_active'),
                 'archived' => Row::nstr($row, 'deleted_at') !== null,
                 'variants' => $extras['variants'][$id] ?? 0,
+                // Shoppers who asked to be e-mailed when it is back (stock alerts).
+                'waiting' => $waiting[$id] ?? 0,
                 'is_visible' => Row::nstr($row, 'sp_id') === null ? null : Row::bool($row, 'is_visible'),
                 'is_featured' => Row::nstr($row, 'sp_id') === null ? null : Row::bool($row, 'is_featured'),
                 'slug' => Row::nstr($row, 'slug'),

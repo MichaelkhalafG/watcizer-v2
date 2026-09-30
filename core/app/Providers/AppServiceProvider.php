@@ -11,6 +11,7 @@ use App\Domain\Inventory\StockWriteGuard;
 use App\Domain\Payment\ProviderRegistry;
 use App\Storefront\StorefrontCache;
 use App\Support\LegacyReadOnly;
+use App\Support\StorefrontServerKey;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Events\ConnectionEstablished;
@@ -65,8 +66,15 @@ class AppServiceProvider extends ServiceProvider
         DB::prohibitDestructiveCommands();
 
         // Per-IP limiter for every /api route (v2, compat and proxied): 60/min, the legacy app's
-        // `throttle:api` value (review 🟡-7); the edge cache carries the read load.
-        RateLimiter::for('api', fn (Request $request) => Limit::perMinute(60)->by($request->ip() ?? 'unknown'));
+        // `throttle:api` value (review 🟡-7). A browser, a bot and a crawler each get their own 60.
+        //
+        // EXCEPT the storefront server (2026-09-30, option b): it renders every page for every
+        // visitor from ONE address, so under the per-IP 60 the whole site had ~60 page views a minute
+        // before pages failed. With the server-only secret it gets its own bucket, per server address,
+        // at `compat.server_rate_per_minute` (1200). See App\Support\StorefrontServerKey.
+        RateLimiter::for('api', fn (Request $request) => StorefrontServerKey::matches($request)
+            ? Limit::perMinute(max(60, config()->integer('compat.server_rate_per_minute')))->by('storefront-server:'.($request->ip() ?? 'unknown'))
+            : Limit::perMinute(60)->by($request->ip() ?? 'unknown'));
 
         /*
          * ── Per-ENDPOINT limiters for the two unauthenticated writes (review 🟠-4 / 🟡-11) ───────
@@ -104,6 +112,19 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('add-order', fn (Request $request) => [
             Limit::perMinute(10)->by($request->ip() ?? 'unknown')->response(self::tooMany()),
             Limit::perHour(60)->by($request->ip() ?? 'unknown')->response(self::tooMany()),
+        ]);
+
+        // "E-mail me when it's back" (2026-10-01): unauthenticated and it stores an address — a
+        // shopper taps it once or twice; a script listing addresses does not get far.
+        RateLimiter::for('stock-alert', fn (Request $request) => [
+            Limit::perMinute(5)->by($request->ip() ?? 'unknown')->response(self::tooMany()),
+            Limit::perHour(30)->by($request->ip() ?? 'unknown')->response(self::tooMany()),
+        ]);
+
+        // Product ratings (B1): a signed-in customer rates a handful of products, never dozens a minute.
+        RateLimiter::for('rating', fn (Request $request) => [
+            Limit::perMinute(5)->by($request->ip() ?? 'unknown')->response(self::tooMany()),
+            Limit::perHour(30)->by($request->ip() ?? 'unknown')->response(self::tooMany()),
         ]);
 
         RateLimiter::for('customer-register', fn (Request $request) => [

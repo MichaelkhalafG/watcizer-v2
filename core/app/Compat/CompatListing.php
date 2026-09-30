@@ -2,6 +2,7 @@
 
 namespace App\Compat;
 
+use App\Domain\Catalog\MetaText;
 use App\Storefront\StorefrontCache;
 use App\Support\LegacySlug;
 use Illuminate\Support\Facades\DB;
@@ -508,6 +509,26 @@ final class CompatListing
     public function entries(): array
     {
         return $this->index()['entries'];
+    }
+
+    /**
+     * A product's meta title and description per language, cleaned (S-AR stage 2) — for the product
+     * page's <title> and description. Null where the team wrote none or the title is cut off; the
+     * storefront falls back.
+     *
+     * @return array{title: array{en: ?string, ar: ?string}, description: array{en: ?string, ar: ?string}}
+     */
+    public function productMeta(int $id): array
+    {
+        $out = ['title' => ['en' => null, 'ar' => null], 'description' => ['en' => null, 'ar' => null]];
+        foreach (DB::table('catalog_product_translations')->where('product_id', $id)->whereIn('locale', ['en', 'ar'])
+            ->get(['locale', 'meta_title', 'meta_description']) as $row) {
+            $locale = $row->locale === 'ar' ? 'ar' : 'en';
+            $out['title'][$locale] = MetaText::usableTitle(is_string($row->meta_title) ? $row->meta_title : null);
+            $out['description'][$locale] = MetaText::description(is_string($row->meta_description) ? $row->meta_description : null);
+        }
+
+        return $out;
     }
 
     /**

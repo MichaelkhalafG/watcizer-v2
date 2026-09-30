@@ -1,7 +1,7 @@
 'use client'
 import { memo, useState } from 'react'
 import Image from 'next/image'
-import Link from 'next/link'
+import Link from '@/src/Components/LocaleLink'
 import { useUIStore } from '../../Store/uiStore'
 import { getImageUrl, PLACEHOLDER_IMG } from '../../utils/imageUrl'
 import { productUrl } from '../../utils/productUrl'

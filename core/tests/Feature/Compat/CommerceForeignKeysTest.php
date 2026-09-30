@@ -41,9 +41,11 @@ function catalogOnlyProduct(): int
     return T::int(DB::table('catalog_products as c')->whereNotExists(fn (Builder $q) => $q->from('products as p')->whereColumn('p.id', 'c.id'))->min('c.id'));
 }
 
-it('points order lines at catalog_products with RESTRICT and cart lines with CASCADE', function () {
+it('points order lines at catalog_products with RESTRICT, and cart lines and ratings with CASCADE', function () {
     expect(productFk('order_items'))->toBe(['table' => 'order_items', 'ref' => 'catalog_products', 'delete_rule' => 'RESTRICT'])
-        ->and(productFk('cart_items'))->toBe(['table' => 'cart_items', 'ref' => 'catalog_products', 'delete_rule' => 'CASCADE']);
+        ->and(productFk('cart_items'))->toBe(['table' => 'cart_items', 'ref' => 'catalog_products', 'delete_rule' => 'CASCADE'])
+        // B1 (ratings, 2026-10-01): a product created on the dashboard can be rated.
+        ->and(productFk('product_ratings'))->toBe(['table' => 'product_ratings', 'ref' => 'catalog_products', 'delete_rule' => 'CASCADE']);
 });
 
 it('takes a product that exists only in the new catalogue into a cart line and an order line', function () {
@@ -81,7 +83,7 @@ it('refuses to repoint while a line points at a product the new catalogue does n
 });
 
 it('changes nothing on a dry run and says what it would do', function () {
-    $before = [productFk('order_items'), productFk('cart_items')];
+    $before = [productFk('order_items'), productFk('cart_items'), productFk('product_ratings')];
 
     $pending = artisan('core:repoint-commerce-fks', ['--dry-run' => true]);
     if (! $pending instanceof PendingCommand) {
@@ -89,5 +91,5 @@ it('changes nothing on a dry run and says what it would do', function () {
     }
     $pending->assertSuccessful()->run();
 
-    expect([productFk('order_items'), productFk('cart_items')])->toBe($before);
+    expect([productFk('order_items'), productFk('cart_items'), productFk('product_ratings')])->toBe($before);
 });

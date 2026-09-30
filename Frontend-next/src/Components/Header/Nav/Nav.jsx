@@ -1,6 +1,6 @@
 'use client'
 import { useState, useRef, useMemo, useLayoutEffect } from 'react'
-import Link from 'next/link'
+import Link from '@/src/Components/LocaleLink'
 import { usePathname } from 'next/navigation'
 import { MdOutlineKeyboardArrowDown, MdOutlineDiamond } from 'react-icons/md'
 // Watch / fashion / category icons (verified against react-icons@5.5.0)

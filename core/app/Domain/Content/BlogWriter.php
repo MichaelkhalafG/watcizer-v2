@@ -54,6 +54,8 @@ final class BlogWriter
             ],
             'cover_path' => ['nullable', 'string', 'max:255'],
             'is_published' => ['required', 'boolean'],
+            // Which storefront shows it (M2b, 2026-10-01): articles are per storefront.
+            'storefront_id' => ['required', 'integer', 'exists:storefronts,id'],
 
             'title' => ['required', 'array'],
             'title.ar' => ['required', 'string', 'max:255'],
@@ -105,6 +107,7 @@ final class BlogWriter
         return DB::transaction(function () use ($id, $data, $titles, $bodies, $published, $slug): int {
             $row = [
                 'slug' => $slug,
+                'storefront_id' => Coerce::int($data['storefront_id'] ?? null, 1),
                 'cover_path' => Coerce::nstr($data['cover_path'] ?? null),
                 'updated_at' => now(),
             ];

@@ -1,6 +1,6 @@
 'use client'
 import { memo, useCallback, useState } from 'react'
-import Link from 'next/link'
+import Link from '@/src/Components/LocaleLink'
 import http from '../../Context/api'
 import { useUIStore } from '../../Store/uiStore'
 import AuthShell from '../../Components/Auth/AuthShell'

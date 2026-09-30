@@ -11,6 +11,7 @@
 import { fromSlug, brandSlug, subTypeSlug, categorySlug, toSlug } from '../utils/slugs'
 import { buildListingParams } from '../utils/listingParams'
 import { transformProductData } from '../utils/transformProduct'
+import { localePath } from '../utils/localePath'
 
 export const SEO_DOMAIN = 'https://watchizereg.com'
 const PRICE_MAX = 99999999
@@ -18,6 +19,10 @@ const PRICE_MAX = 99999999
 // english table name (→ flat column → any) for a lookup item
 const nameEn = (item, key) =>
   item?.translations?.find((t) => t.locale === 'en')?.[key] ?? item?.[key] ?? ''
+
+// A lookup item's name in `lang` (S-AR stage 1): Arabic falls back to the English name.
+const nameIn = (item, key, lang) =>
+  (lang === 'ar' ? item?.translations?.find((t) => t.locale === 'ar')?.[key] : null) || nameEn(item, key)
 
 // Next server pages hand searchParams as a plain object ({ k: v | v[] }); turn it
 // into the URLSearchParams that parseListingParams / ListingClient expect.
@@ -104,27 +109,27 @@ export function buildListingSeed(tables, filters) {
   return buildListingParams(filters, {}, tables).toString()
 }
 
-// The active single-facet crumb (english), matching old Listing's `crumb`:
-// category → sub-type → brand → "All Products".
-export function listingCrumbEn(tables = {}, filters = {}) {
+// The active single-facet crumb, matching old Listing's `crumb`:
+// category → sub-type → brand → grade → "All Products". In `lang` (S-AR stage 1).
+export function listingCrumb(tables = {}, filters = {}, lang = 'en') {
   const one = (arr) => (arr || []).length === 1
   if (one(filters.categories)) {
     const c = tables.categoryTypes?.find((i) => i.id === filters.categories[0])
-    if (c) return nameEn(c, 'category_type_name')
+    if (c) return nameIn(c, 'category_type_name', lang)
   }
   if (one(filters.subTypes)) {
     const s = tables.subTypes?.find((i) => i.id === filters.subTypes[0])
-    if (s) return nameEn(s, 'sub_type_name')
+    if (s) return nameIn(s, 'sub_type_name', lang)
   }
   if (one(filters.brands)) {
     const b = tables.brands?.find((i) => i.id === filters.brands[0])
-    if (b) return nameEn(b, 'brand_name')
+    if (b) return nameIn(b, 'brand_name', lang)
   }
   if (one(filters.grades)) {
     const g = tables.grades?.find((i) => i.id === filters.grades[0])
-    if (g) return nameEn(g, 'grade_name')
+    if (g) return nameIn(g, 'grade_name', lang)
   }
-  return 'All Products'
+  return lang === 'ar' ? 'كل المنتجات' : 'All Products'
 }
 
 // What a listing's metadata needs from core's `catalog/listing` answer for the SAME request the page
@@ -139,8 +144,9 @@ export function listingSummary(listing, tables = {}) {
 
 // Next `metadata` object mirroring old Listing's <Helmet> (title / description /
 // canonical + OG / Twitter). `pathname` is the clean self-canonical path.
-export function listingMetadata({ tables = {}, total = 0, image = null, filters = {}, pathname = '/listing' }) {
-  const crumb = listingCrumbEn(tables, filters)
+export function listingMetadata({ tables = {}, total = 0, image = null, filters = {}, pathname = '/listing', lang = 'en' }) {
+  const ar = lang === 'ar'
+  const crumb = listingCrumb(tables, filters, lang)
   const resultCount = total
 
   const brandId = (filters.brands || []).length === 1 ? filters.brands[0] : null
@@ -160,19 +166,33 @@ export function listingMetadata({ tables = {}, total = 0, image = null, filters 
 
   let title
   if (activeCount === 1 && brandName) {
-    title = `${nameEn(brandName, 'brand_name')} Watches in Egypt | Watchizer`
+    title = ar
+      ? `ساعات ${nameIn(brandName, 'brand_name', lang)} في مصر | Watchizer`
+      : `${nameEn(brandName, 'brand_name')} Watches in Egypt | Watchizer`
   } else if (activeCount === 1 && catName) {
-    title = `${nameEn(catName, 'category_type_name')} | Watchizer`
+    title = `${nameIn(catName, 'category_type_name', lang)} | Watchizer`
   } else if (activeCount === 1 && subName) {
-    title = `${nameEn(subName, 'sub_type_name')} Watches | Watchizer`
+    title = ar
+      ? `ساعات ${nameIn(subName, 'sub_type_name', lang)} | Watchizer`
+      : `${nameEn(subName, 'sub_type_name')} Watches | Watchizer`
   } else if (activeCount === 1 && gradeName) {
-    title = `${nameEn(gradeName, 'grade_name')} Watches | Watchizer`
+    title = ar
+      ? `ساعات ${nameIn(gradeName, 'grade_name', lang)} | Watchizer`
+      : `${nameEn(gradeName, 'grade_name')} Watches | Watchizer`
   } else {
-    title = 'Shop All Luxury Watches & Accessories | Watchizer'
+    title = ar ? 'تسوّق كل الساعات والإكسسوارات الفاخرة | Watchizer' : 'Shop All Luxury Watches & Accessories | Watchizer'
   }
 
-  const description = `Browse ${resultCount} ${crumb} at Watchizer — luxury watches and accessories with premium designs and unbeatable prices in Egypt.`
-  const canonical = `${SEO_DOMAIN}${pathname}`
+  const description = ar
+    ? `تصفّح ${resultCount} من ${crumb} في Watchizer — ساعات وإكسسوارات فاخرة بتصاميم راقية وأسعار لا تُقاوم في مصر.`
+    : `Browse ${resultCount} ${crumb} at Watchizer — luxury watches and accessories with premium designs and unbeatable prices in Egypt.`
+  // Self-canonical in the URL's language, with hreflang to the other (S-AR stage 1).
+  const canonical = `${SEO_DOMAIN}${localePath(pathname, lang)}`
+  const languages = {
+    en: `${SEO_DOMAIN}${pathname}`,
+    ar: `${SEO_DOMAIN}${localePath(pathname, 'ar')}`,
+    'x-default': `${SEO_DOMAIN}${pathname}`,
+  }
 
   // Social preview image: this listing's first card (an absolute URL from the transform's
   // getImageUrl); fall back to the site preview image (a JPG — social platforms refuse SVG) so
@@ -182,7 +202,7 @@ export function listingMetadata({ tables = {}, total = 0, image = null, filters 
   return {
     title,
     description,
-    alternates: { canonical },
+    alternates: { canonical, languages },
     openGraph: {
       type: 'website',
       title,
@@ -201,14 +221,14 @@ export function listingMetadata({ tables = {}, total = 0, image = null, filters 
 }
 
 // BreadcrumbList JSON-LD: Home → active facet crumb (english-canonical).
-export function listingBreadcrumbLd({ tables = {}, filters = {}, pathname = '/listing' }) {
-  const crumb = listingCrumbEn(tables, filters)
+export function listingBreadcrumbLd({ tables = {}, filters = {}, pathname = '/listing', lang = 'en' }) {
+  const crumb = listingCrumb(tables, filters, lang)
   return {
     '@context': 'https://schema.org/',
     '@type': 'BreadcrumbList',
     itemListElement: [
-      { '@type': 'ListItem', position: 1, name: 'Home', item: `${SEO_DOMAIN}/` },
-      { '@type': 'ListItem', position: 2, name: crumb, item: `${SEO_DOMAIN}${pathname}` },
+      { '@type': 'ListItem', position: 1, name: lang === 'ar' ? 'الرئيسية' : 'Home', item: `${SEO_DOMAIN}${localePath('/', lang)}` },
+      { '@type': 'ListItem', position: 2, name: crumb, item: `${SEO_DOMAIN}${localePath(pathname, lang)}` },
     ],
   }
 }

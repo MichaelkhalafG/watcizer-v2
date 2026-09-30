@@ -1,5 +1,5 @@
 'use client'
-import Link from 'next/link'
+import Link from '@/src/Components/LocaleLink'
 import { useUIStore } from '../../Store/uiStore'
 import '../../PageViews/Auth/auth.css'
 

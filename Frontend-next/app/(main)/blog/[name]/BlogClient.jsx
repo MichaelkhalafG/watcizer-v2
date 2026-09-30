@@ -1,71 +1,31 @@
 'use client'
-import { useMemo } from 'react'
-import { Container, Typography, Box, Grid } from '@mui/material'
+import Link from '@/src/Components/LocaleLink'
 import { useUIStore } from '@/src/Store/uiStore'
-import { getImageUrl } from '@/src/utils/imageUrl'
+import ArticleBody from '@/src/Components/Blog/ArticleBody'
+import '@/src/Components/Blog/blog.css'
 
-// Blog detail — ported from Frontend Blog.jsx. The blog is resolved on the server
-// (by english title) and passed in as a prop, so the content is in the initial
-// HTML; the client only localizes the title/text to the active language.
-export default function BlogClient({ blog: raw }) {
+const pick = (pair, lang) => (pair?.[lang] || pair?.[lang === 'ar' ? 'en' : 'ar'] || '').trim()
+
+// One article (2026-10-01), in the shopper's language — the other one when the article has only
+// one. The body is rendered by ArticleBody, which never interprets it as HTML.
+export default function BlogClient({ blog }) {
   const { language } = useUIStore()
-
-  const blog = useMemo(() => {
-    if (!raw) return { title: 'Blog Not Found', content: 'No content available.', images: [], image: '' }
-    const translation =
-      raw.translations?.find((t) => t.locale === language) ||
-      raw.translations?.find((t) => t.locale === 'en')
-    return {
-      title: translation?.title,
-      content: translation?.text,
-      images: raw.images || [],
-      image: raw.image || '',
-    }
-  }, [raw, language])
+  const ar = language === 'ar'
+  // The language the TEXT is actually in (an Arabic-only article reads right-to-left on /en too).
+  const bodyLang = blog.body?.[language] ? language : ar ? 'en' : 'ar'
+  const date = blog.published_at
+    ? new Date(blog.published_at.replace(' ', 'T')).toLocaleDateString(ar ? 'ar-EG' : 'en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
+    : ''
 
   return (
-    <Container maxWidth="lg">
-      {blog.image && (
-        <Box display="flex" justifyContent="center" my={4}>
-          <img
-            src={getImageUrl(blog.image, 'Blog')}
-            alt="Blog"
-            style={{
-              width: '100%',
-              maxHeight: '400px',
-              objectFit: 'cover',
-              borderRadius: '12px',
-              boxShadow: '0px 4px 10px rgba(0, 0, 0, 0.2)',
-            }}
-          />
-        </Box>
-      )}
-      <Typography variant="h4" fontWeight="bold" textAlign="center" gutterBottom>
-        {blog.title}
-      </Typography>
-      <Typography
-        variant="body1"
-        color="text.secondary"
-        sx={{ textAlign: 'justify', lineHeight: 1.8, letterSpacing: '0.5px', mt: 2 }}
-      >
-        {blog.content}
-      </Typography>
-      <Grid container spacing={2} mt={4}>
-        {blog.images.map((image, index) => (
-          <Grid item xs={12} sm={6} key={index}>
-            <img
-              src={getImageUrl(image.image, 'Blog_image')}
-              alt="Blog"
-              style={{
-                width: '100%',
-                height: 'auto',
-                borderRadius: '10px',
-                boxShadow: '0px 4px 8px rgba(0, 0, 0, 0.1)',
-              }}
-            />
-          </Grid>
-        ))}
-      </Grid>
-    </Container>
+    <main className="wz-article" dir={bodyLang === 'ar' ? 'rtl' : 'ltr'}>
+      <Link href="/blogs" className="wz-article__back">
+        {ar ? '→ كل المقالات' : '← All articles'}
+      </Link>
+      <h1>{pick(blog.title, bodyLang)}</h1>
+      <span className="wz-article__date">{date}</span>
+      {blog.cover ? <img className="wz-article__cover" src={blog.cover} alt="" /> : null}
+      <ArticleBody text={pick(blog.body, bodyLang)} />
+    </main>
   )
 }

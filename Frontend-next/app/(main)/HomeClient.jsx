@@ -1,7 +1,7 @@
 'use client'
 import { useMemo, useCallback } from 'react'
 import Image from 'next/image'
-import { useRouter } from 'next/navigation'
+import { useRouter } from '@/src/Hooks/useLocaleRouter'
 import WatchHero from '@/src/Components/Hero/WatchHero'
 import '@/src/Components/Home/home.css'
 import ProductSlider from '@/src/Components/Product/ProductSlider'

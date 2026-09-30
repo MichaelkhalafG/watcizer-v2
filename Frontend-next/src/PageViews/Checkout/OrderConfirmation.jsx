@@ -1,6 +1,6 @@
 'use client'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter } from '@/src/Hooks/useLocaleRouter'
 import DOMPurify from 'dompurify'
 import { trackPurchase } from '../../scripts/pixels'
 import { useUIStore } from '../../Store/uiStore'

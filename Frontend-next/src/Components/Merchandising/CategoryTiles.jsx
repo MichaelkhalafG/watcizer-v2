@@ -1,7 +1,7 @@
 'use client'
 import { memo } from 'react'
 import Image from 'next/image'
-import { useRouter } from 'next/navigation'
+import { useRouter } from '@/src/Hooks/useLocaleRouter'
 import { useTables } from '../../Hooks/queries/useTables'
 import { useUIStore } from '../../Store/uiStore'
 import { getImageUrl } from '../../utils/imageUrl'

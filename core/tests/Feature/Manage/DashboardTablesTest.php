@@ -145,6 +145,18 @@ it('names EVERY table the dashboard authors, in order, so adding one is a delibe
          * would put the home page back to whatever the seed says and lose every edit.
          */
         'storefront_home_rails',
+        /*
+         * TWENTY-FOUR since M1z (2026-10-01): `core_stock_alerts` (shoppers waiting for a product to
+         * come back) and `core_mail_daily` (today's mail count, which paces bulk mail). Dropping the
+         * first would silently forget everyone who asked to be told.
+         */
+        'core_stock_alerts', 'core_mail_daily',
+        /*
+         * THIRTY since M2a (2026-10-01): the re-engagement e-mail's six tables. Dropping
+         * `core_marketing_optouts` would mail people who unsubscribed — the one thing it must never do.
+         */
+        'core_customer_seen', 'core_price_watch', 'core_marketing_optouts',
+        'core_reengagement_settings', 'core_reengagement_runs', 'core_reengagement_sends',
     ]);
 
     foreach (CoreChecksumCommand::DASHBOARD_TABLES as $table) {
