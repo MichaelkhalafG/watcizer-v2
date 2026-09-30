@@ -42,6 +42,24 @@ Schedule::command('integration:drain --channel=morabaa')->hourly()->withoutOverl
 */
 Schedule::command('mail:drain --reclaim')->everyMinute()->withoutOverlapping();
 
+/*
+| Bulk mail — restock alerts, and the re-engagement campaign (2026-10-01). Every five minutes,
+| within the day's bulk budget only (MAIL_DAILY_CAP − MAIL_TRANSACTIONAL_RESERVE − sent today), so
+| order mail above keeps its reserve. Stock alerts past keeping are pruned daily at 03:20, after
+| the 03:00 backup.
+*/
+Schedule::command('bulk-mail:drain')->everyFiveMinutes()->withoutOverlapping();
+Schedule::command('stock-alerts:prune')->dailyAt('03:20');
+
+/*
+| The weekly re-engagement e-mail (2026-10-01): prices watched daily (so "unchanged for 14 days" is
+| a fact), the run planned Monday 10:00 with the team's preview, and sent from the hourly tick once
+| its 24 hours have passed — unless the storefront is paused on the dashboard by then.
+*/
+Schedule::command('reengagement prices')->dailyAt('02:45');
+Schedule::command('reengagement plan')->weeklyOn(1, '10:00')->withoutOverlapping();
+Schedule::command('reengagement send')->hourly()->withoutOverlapping();
+
 // The invariant that makes the ledger trustworthy: Σ quantity_delta = the stock column. Reports
 // only; a re-base is a deliberate `--fix` run by a human who has read the drift.
 Schedule::command('inventory:verify')->dailyAt('03:30');

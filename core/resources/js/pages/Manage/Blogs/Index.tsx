@@ -19,6 +19,8 @@ interface Row {
     slug: string;
     title: { ar: string; en: string };
     cover: string | null;
+    /** The storefront that shows it (articles are per storefront since 2026-10-01). */
+    storefront: string | null;
     is_published: boolean;
     published_at: string | null;
     updated_at: string | null;
@@ -68,8 +70,8 @@ export default function BlogsIndex({
                 </Button>
             }
         >
-            {/* The honest limit of what this screen can do for a reader today. */}
-            <Alert tone="info" title={t("blogs.not_served_title", "المقالات لا تظهر على الموقع بعد")}>
+            {/* Where a published article appears (2026-10-01: the storefront serves them now). */}
+            <Alert tone="info" title={t("blogs.served_title", "أين تظهر المقالات")}>
                 {storefront_note}
             </Alert>
 
@@ -120,6 +122,7 @@ export default function BlogsIndex({
                                         <Num>/{row.slug}</Num>
                                     </div>
                                     <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                                        {row.storefront ? <Badge variant="outline">{row.storefront}</Badge> : null}
                                         {row.is_published ? (
                                             <Badge variant="success">
                                                 {t("blogs.published_badge", "منشور")}

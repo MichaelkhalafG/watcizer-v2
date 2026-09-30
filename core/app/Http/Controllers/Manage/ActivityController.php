@@ -415,6 +415,8 @@ final class ActivityController
             'orders', 'core_blogs',
             // The home page's rails (C-1 stage 4 slice C, 2026-09-29).
             'storefront_home_rails',
+            // The re-engagement e-mail's settings (2026-10-01).
+            'core_reengagement_settings',
         ];
     }
 
@@ -531,6 +533,7 @@ final class ActivityController
             'orders' => ManageText::t('common.order', 'طلب'),
             'core_blogs' => ManageText::t('activity.type_blog', 'مقال'),
             'storefront_home_rails' => ManageText::t('activity.type_home_rail', 'شريط الصفحة الرئيسية'),
+            'core_reengagement_settings' => ManageText::t('reengagement.title', 'رسائل العودة'),
             default => $type,
         };
     }

@@ -56,8 +56,12 @@ it('answers GET catalog/product with the one product as cards, or 404', function
     $e = app(CompatServices::class)->listing->entries()[0];
 
     $hit = T::arr(withHeaders(['Api-Code' => SLUG_API_KEY])->getJson('/api/catalog/product?slug='.rawurlencode($e['slug']))->assertOk()->json());
-    expect(array_keys($hit))->toBe(['products', 'ratings', 'images'])
-        ->and(array_column(T::arr($hit['products']), 'id'))->toBe([$e['id']]);
+    // `meta` joined the response in S-AR stage 2 (2026-10-01) — deliberately, beside the rows, which
+    // keep the legacy shape.
+    expect(array_keys($hit))->toBe(['products', 'ratings', 'images', 'meta'])
+        ->and(array_column(T::arr($hit['products']), 'id'))->toBe([$e['id']])
+        ->and(array_keys(T::arr($hit['meta'])))->toBe(['title', 'description'])
+        ->and(array_keys(T::arr(T::arr($hit['meta'])['title'])))->toBe(['en', 'ar']);
 
     withHeaders(['Api-Code' => SLUG_API_KEY])->getJson('/api/catalog/product?slug=no-such-watch-anywhere')->assertNotFound();
     withHeaders(['Api-Code' => SLUG_API_KEY])->getJson('/api/catalog/product')->assertStatus(422);

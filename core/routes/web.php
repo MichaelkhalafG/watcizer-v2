@@ -2,6 +2,8 @@
 
 use App\Domain\Access\Role;
 use App\Http\Controllers\Compat\SitemapCompatController;
+use App\Http\Controllers\Compat\StockAlertController;
+use App\Http\Controllers\Compat\UnsubscribeController;
 use App\Http\Controllers\Manage\ActivityController;
 use App\Http\Controllers\Manage\Auth\LoginController;
 use App\Http\Controllers\Manage\BannerController;
@@ -18,9 +20,11 @@ use App\Http\Controllers\Manage\OrderController;
 use App\Http\Controllers\Manage\PaymentSettingsController;
 use App\Http\Controllers\Manage\PlacementController;
 use App\Http\Controllers\Manage\ProductController;
+use App\Http\Controllers\Manage\ProductPickerController;
 use App\Http\Controllers\Manage\ProductVariantController;
 use App\Http\Controllers\Manage\ProfileController;
 use App\Http\Controllers\Manage\PromotionController;
+use App\Http\Controllers\Manage\ReEngagementController;
 use App\Http\Controllers\Manage\ShippingController;
 use App\Http\Controllers\Manage\StorefrontController;
 use App\Http\Controllers\Manage\UnitController;
@@ -28,7 +32,13 @@ use App\Http\Controllers\Manage\UserRoleController;
 use App\Http\Middleware\EnsureDashboardAccess;
 use App\Http\Middleware\EnsureStorefrontScope;
 use App\Http\Middleware\HandleInertiaRequests;
+use App\Http\Middleware\SetDashboardLocale;
+use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
+use Illuminate\Cookie\Middleware\EncryptCookies;
+use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
+use Illuminate\Session\Middleware\StartSession;
 use Illuminate\Support\Facades\Route;
+use Illuminate\View\Middleware\ShareErrorsFromSession;
 
 /*
 |--------------------------------------------------------------------------
@@ -93,6 +103,11 @@ Route::prefix('manage')->name('manage.')->group(function (): void {
             Route::middleware(EnsureStorefrontScope::with(Role::MANAGE_STOREFRONTS))->group(function (): void {
                 Route::get('storefronts/{storefront}/edit', [StorefrontController::class, 'edit'])->name('storefronts.edit');
                 Route::put('storefronts/{storefront}', [StorefrontController::class, 'update'])->name('storefronts.update');
+                // The weekly re-engagement e-mail: pause switch, audience, team addresses (2026-10-01).
+                Route::get('storefronts/{storefront}/reengagement', [ReEngagementController::class, 'index'])->name('reengagement.index');
+                Route::put('storefronts/{storefront}/reengagement', [ReEngagementController::class, 'update'])->name('reengagement.update');
+                // The products the team may pick for the next e-mail (R4) — the shared picker search.
+                Route::get('storefronts/{storefront}/reengagement/products', [ProductPickerController::class, 'search'])->name('reengagement.products');
             });
         });
 
@@ -211,6 +226,8 @@ Route::prefix('manage')->name('manage.')->group(function (): void {
             // HOME RAILS (C-1 stage 4 slice C, 2026-09-29): which product rails the home page shows,
             // in what order. Same ability and scope as banners — the other half of the home page.
             Route::get('storefronts/{storefront}/home-rails', [HomeRailController::class, 'index'])->name('home_rails.index');
+            // The custom rail's hand-picked products (2026-09-30) — the shared picker search.
+            Route::get('storefronts/{storefront}/home-rails/products', [ProductPickerController::class, 'search'])->name('home_rails.products');
             Route::post('storefronts/{storefront}/home-rails', [HomeRailController::class, 'store'])->name('home_rails.store');
             Route::post('storefronts/{storefront}/home-rails/order', [HomeRailController::class, 'reorder'])->name('home_rails.reorder');
             Route::put('storefronts/{storefront}/home-rails/{rail}', [HomeRailController::class, 'update'])
@@ -508,5 +525,29 @@ Route::get('/', fn () => redirect()->route('manage.home'))->name('dashboard');
 // Legacy Watchizer sitemap contract (CLEAN_CORE_STUDY §3.3, §6.4): the Next.js rewrite fetches
 // `/en/sitemap.xml`; the bare path 302s to the negotiated locale exactly like the legacy host.
 // Not Inertia responses: the dashboard middleware would add `Vary: X-Inertia`, which the legacy host never sends.
-Route::get('/sitemap.xml', [SitemapCompatController::class, 'redirect'])->withoutMiddleware(HandleInertiaRequests::class);
-Route::get('/{locale}/sitemap.xml', [SitemapCompatController::class, 'show'])->where('locale', '[a-z]{2}')->withoutMiddleware(HandleInertiaRequests::class);
+//
+// B8 (2026-10-01): no session, cookie or CSRF middleware on ANY sitemap route. Every crawl used to
+// open a session and get an XSRF-TOKEN and a session cookie back — a session nobody uses, and a
+// response no cache could keep. `SitemapCookieTest` holds every sitemap route to no Set-Cookie.
+$sitemapBare = [
+    HandleInertiaRequests::class, SetDashboardLocale::class,
+    EncryptCookies::class, AddQueuedCookiesToResponse::class, StartSession::class,
+    ShareErrorsFromSession::class, PreventRequestForgery::class,
+];
+Route::get('/sitemap.xml', [SitemapCompatController::class, 'redirect'])->withoutMiddleware($sitemapBare);
+Route::get('/{locale}/sitemap.xml', [SitemapCompatController::class, 'show'])->where('locale', '[a-z]{2}')->withoutMiddleware($sitemapBare);
+// The shop's sitemaps per language (S-AR stage 3): an index plus one urlset per language, served to
+// Google as watchizereg.com/sitemap.xml and /sitemaps/{en,ar}.xml through the storefront's rewrites.
+// The API host's .htaccess needs `/sitemaps/(index|en|ar).xml` on its allow-list (runbook §4.1.1).
+Route::get('/sitemaps/index.xml', [SitemapCompatController::class, 'localeIndex'])->withoutMiddleware($sitemapBare);
+Route::get('/sitemaps/{locale}.xml', [SitemapCompatController::class, 'localeUrlset'])->where('locale', '[a-z]{2}')->withoutMiddleware($sitemapBare);
+
+// The stock-alert e-mail's "stop" link (2026-10-01), on the API host (allow-list, runbook §4.1.1).
+// Cookieless like the sitemaps, and no CSRF token: the token in the path IS the authority, and a
+// GET only shows the button — link scanners open links, so only the POST cancels.
+Route::get('/stock-alerts/stop/{token}', [StockAlertController::class, 'stopPage'])->where('token', '[A-Za-z0-9]{40}')->withoutMiddleware($sitemapBare);
+Route::post('/stock-alerts/stop/{token}', [StockAlertController::class, 'stop'])->where('token', '[A-Za-z0-9]{40}')->withoutMiddleware($sitemapBare);
+// The re-engagement e-mail's unsubscribe (2026-10-01): same shape — GET shows a button, POST (also a
+// mail app's one-click) unsubscribes. The HMAC in the path is the authority. On the allow-list.
+Route::get('/unsubscribe/{send}/{signature}', [UnsubscribeController::class, 'page'])->where(['send' => '[0-9]+', 'signature' => '[a-f0-9]{40}'])->withoutMiddleware($sitemapBare);
+Route::post('/unsubscribe/{send}/{signature}', [UnsubscribeController::class, 'unsubscribe'])->where(['send' => '[0-9]+', 'signature' => '[a-f0-9]{40}'])->withoutMiddleware($sitemapBare);

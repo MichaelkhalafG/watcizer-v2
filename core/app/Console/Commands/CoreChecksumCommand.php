@@ -201,6 +201,19 @@ final class CoreChecksumCommand extends Command
          * in what order, with what titles. Authored in the dashboard; no legacy source.
          */
         'storefront_home_rails',
+        /*
+         * Stock alerts and the daily mail count (M1z, 2026-10-01) — shoppers' "e-mail me when it's
+         * back" requests, and how many messages went out today (it paces bulk mail so transactional
+         * mail keeps its reserve). No legacy source for either.
+         */
+        'core_stock_alerts', 'core_mail_daily',
+        /*
+         * The weekly re-engagement e-mail (M2a, 2026-10-01): the last-seen core owns, the price-age
+         * watch, unsubscribes (honoured forever), the per-storefront pause/audience switch, and
+         * each run with who got which products. None has a legacy source.
+         */
+        'core_customer_seen', 'core_price_watch', 'core_marketing_optouts',
+        'core_reengagement_settings', 'core_reengagement_runs', 'core_reengagement_sends',
     ];
 
     /**

@@ -7,6 +7,8 @@ use App\Http\Controllers\Compat\CatalogCompatController;
 use App\Http\Controllers\Compat\CheckoutCompatController;
 use App\Http\Controllers\Compat\GoneController;
 use App\Http\Controllers\Compat\ProxyController;
+use App\Http\Controllers\Compat\RatingCompatController;
+use App\Http\Controllers\Compat\StockAlertController;
 use App\Http\Controllers\Customer\CustomerAuthController;
 use App\Http\Controllers\Customer\CustomerPasswordController;
 use App\Http\Controllers\Customer\CustomerProfileController;
@@ -77,14 +79,26 @@ Route::middleware('api.code')->group(function (): void {
         Route::get('catalog/product', [CatalogCompatController::class, 'product']);
         // C-1 stage 4, slice C: the home page's rails (dashboard-ordered) with their cards.
         Route::get('catalog/home', [CatalogCompatController::class, 'home']);
+        // Articles, per storefront (2026-10-01): the published list, and one by slug.
+        Route::get('catalog/blogs', [CatalogCompatController::class, 'blogs']);
+        Route::get('catalog/blog', [CatalogCompatController::class, 'blog']);
         Route::get('all_product_image', [CatalogCompatController::class, 'allProductImage']);
-        Route::get('all_product_rating', [CatalogCompatController::class, 'allProductRating']);
         Route::get('products/by-name/{name}', [CatalogCompatController::class, 'showByName']);
         // Registered but never called by the storefront (§3.3 last row) — retired before the id route.
         Route::get('products/{product}/variants', GoneController::class);
         Route::get('products/{product}/variants/summary', GoneController::class);
         Route::get('products/{id}', [CatalogCompatController::class, 'show']);
     });
+
+    // Ratings (B1, 2026-10-01): written by the shopper, so the browser must not keep a copy unasked.
+    // Under max_age=600 a shopper who had just rated saw the list WITHOUT their review on the next page
+    // for ten minutes (measured, rating_check). no-cache + ETag: the browser revalidates, a 304 if unchanged.
+    Route::get('all_product_rating', [CatalogCompatController::class, 'allProductRating'])
+        ->middleware('cache.headers:private;no_cache;etag');
+
+    // "E-mail me when it's back" (2026-10-01): a signed-in customer with one tap (bearer token), a
+    // guest with an address. Not cached (a write), throttled per IP. On the API host's allow-list.
+    Route::post('stock-alerts', [StockAlertController::class, 'subscribe'])->middleware('throttle:stock-alert');
 
     // ── cart, checkout and account (wave 3) ───────────────────────────────
     // Never HTTP-cached: the legacy app puts every guest.cart / auth:api endpoint in its own
@@ -185,6 +199,9 @@ Route::middleware('api.code')->group(function (): void {
             Route::get('me/addresses', [AccountCompatController::class, 'addresses']);
         });
         Route::delete('me/addresses/{id}', [AccountCompatController::class, 'deleteAddress']);
+        // A product rating (B1, 2026-10-01): signed-in only, one per customer per product, the second
+        // replaces the first. Not cached (a write), throttled per IP. On the API host's allow-list.
+        Route::post('add_product_rating', [RatingCompatController::class, 'add'])->middleware('throttle:rating');
     });
     // Negotiated for the same reason as the three cart/checkout writes above: it validates, and
     // the legacy host answers its field errors in the shopper's Accept-Language.

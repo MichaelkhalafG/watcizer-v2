@@ -89,6 +89,17 @@ final class StorefrontCache
     }
 
     /**
+     * Forget one product's storefront CARD (the compat_card entry CompatListing::cards() reads — the
+     * product page's row, with its rating average). A new rating needs only this and forgetProduct
+     * (2026-09-30, K6): the listings' averages may lag until the next catalog:warm (5 min) or the
+     * cache TTL (compat.ttl.all_product, 10 min), which nobody notices in a grid.
+     */
+    public function forgetCard(int $storefrontId, int $productId): void
+    {
+        Cache::forget($this->key($storefrontId, 'compat_card', config()->string('compat.pinned_locale').':'.$productId));
+    }
+
+    /**
      * The key `ResolveStorefront` caches the raw storefront ROW under.
      *
      * Declared here rather than inline in the middleware so the writer and the reader cannot drift:

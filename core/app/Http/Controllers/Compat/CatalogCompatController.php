@@ -115,7 +115,9 @@ class CatalogCompatController extends Controller
     /**
      * GET catalog/product?slug= — ONE product for the product page, by its URL slug or id, as cards in
      * the `catalog/cards` shape (C-1 stage 4). The page used to load the whole catalogue to find it.
-     * 404 when no visible product has that slug.
+     * 404 when no visible product has that slug. Plus `meta` (S-AR stage 2): the product's cleaned meta
+     * title and description per language, for the page's <title> — kept OUT of the rows, which are
+     * the legacy shape.
      */
     public function product(Request $request): JsonResponse
     {
@@ -125,7 +127,27 @@ class CatalogCompatController extends Controller
             return response()->json(['products' => [], 'ratings' => [], 'images' => []], 404);
         }
 
-        return response()->json($this->compat->listing->cards([$id]), 200, [], JSON_UNESCAPED_UNICODE);
+        return response()->json([...$this->compat->listing->cards([$id]), 'meta' => $this->compat->listing->productMeta($id)], 200, [], JSON_UNESCAPED_UNICODE);
+    }
+
+    /**
+     * GET catalog/blogs — this storefront's PUBLISHED articles, newest first, each with its title and
+     * a short excerpt in both languages (2026-10-01). Drafts never leave core.
+     */
+    public function blogs(): JsonResponse
+    {
+        return response()->json(['blogs' => $this->compat->blogs->list()], 200, [], JSON_UNESCAPED_UNICODE);
+    }
+
+    /** GET catalog/blog?slug= — one published article of this storefront, or 404. */
+    public function blog(Request $request): JsonResponse
+    {
+        $request->validate(['slug' => ['required', 'string', 'max:191']]);
+        $blog = $this->compat->blogs->one($request->string('slug')->toString());
+
+        return $blog === null
+            ? response()->json(['blog' => null], 404)
+            : response()->json(['blog' => $blog], 200, [], JSON_UNESCAPED_UNICODE);
     }
 
     /**

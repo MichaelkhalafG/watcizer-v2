@@ -355,7 +355,9 @@ final class CompatCatalog
     private function buildProductRatings(?array $only): array
     {
         $out = [];
-        $query = DB::connection('legacy')->table('product_ratings')
+        // Core's own connection since B1 (2026-10-01): core WRITES this table now (ProductRatings), so it
+        // reads it where it writes it. The same database as `legacy` everywhere (LEGACY_DB_* unset).
+        $query = DB::table('product_ratings')
             ->select(['id', 'user_id', 'product_id', 'rating', 'comment', 'created_at', 'updated_at'])
             ->orderBy('id');
         if ($only !== null) {

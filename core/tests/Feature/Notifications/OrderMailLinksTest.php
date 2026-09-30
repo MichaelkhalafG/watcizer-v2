@@ -107,6 +107,32 @@ it('the builder calls no route helper and reads no host from app.url', function 
     expect($calls)->toBe([])->and($strings)->toBe([]);
 });
 
+/**
+ * Every link variable a BULK mail template may print, per template — exactly what its mailable
+ * hands the view (2026-10-01). `$p` is the product loop variable, whose `url` the mail builds on
+ * the storefront's own domain.
+ */
+const BULK_MAIL_LINKS = [
+    'stock-alert.blade.php' => ['product', 'stopUrl'],
+    'reengagement.blade.php' => ['p', 'unsubscribeUrl'],
+    'reengagement-preview.blade.php' => ['manageUrl', 'p'],
+];
+
+it('every BULK mail template links only what its mailable hands it', function () {
+    $undeclared = [];
+    foreach (BULK_MAIL_LINKS as $name => $allowed) {
+        $file = resource_path('views/emails/'.$name);
+        expect(is_file($file))->toBeTrue();
+        preg_match_all('/href="\{\{\s*\$([A-Za-z_][A-Za-z0-9_]*)/', (string) file_get_contents($file), $matches);
+        foreach ($matches[1] as $variable) {
+            if (! in_array($variable, $allowed, true)) {
+                $undeclared[] = "{$name} links with an undeclared \${$variable}";
+            }
+        }
+    }
+    expect($undeclared)->toBe([]);
+});
+
 it('every ORDER mail template links only variables the order builder declares', function () {
     /*
      * A template can only print what its builder hands it, so the builder's declared key list is
@@ -180,7 +206,10 @@ function orderMailTemplates(): array
         mailTemplates(),
         fn (string $file): bool => ! in_array(
             basename($file),
-            ['email-verification.blade.php', 'password-reset.blade.php'],
+            // Not order mail: the two CustomerMail templates, and — since 2026-10-01 — the three BULK
+            // templates (restock alert, re-engagement and its preview), whose links are pinned by the
+            // test right below instead.
+            ['email-verification.blade.php', 'password-reset.blade.php', ...array_keys(BULK_MAIL_LINKS)],
             true,
         ),
     ));

@@ -8,6 +8,7 @@ import { TranslatedField } from "@/components/form/TranslatedField";
 import { useDirtyGuard } from "@/components/form/useDirtyGuard";
 import { ImageField, type StoredImage } from "@/components/form/ImageField";
 import { Alert } from "@/components/ui/alert";
+import { Select } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useLocale, useT } from "@/lib/i18n";
 import { titleOrCode } from "@/lib/title";
@@ -18,6 +19,7 @@ type Pair = Record<string, string>;
 interface BlogPayload {
     id: number;
     slug: string;
+    storefront_id: number;
     cover_path: string | null;
     cover_url: string | null;
     is_published: boolean;
@@ -48,7 +50,13 @@ const EMPTY: Pair = { ar: "", en: "" };
  * slugifier every other public URL here goes through. Requiring it would make somebody invent a URL
  * before they have written the first sentence.
  */
-export default function BlogForm({ blog }: { blog: BlogPayload | null }) {
+export default function BlogForm({
+    blog,
+    storefronts,
+}: {
+    blog: BlogPayload | null;
+    storefronts: { value: string; label: string }[];
+}) {
     const t = useT();
     const locale = useLocale();
     const { errors } = usePage<SharedProps>().props;
@@ -57,6 +65,7 @@ export default function BlogForm({ blog }: { blog: BlogPayload | null }) {
     const form = useForm({
         _complete: 1,
         slug: blog?.slug ?? "",
+        storefront_id: String(blog?.storefront_id ?? storefronts[0]?.value ?? "1"),
         cover_path: blog?.cover_path ?? "",
         is_published: blog?.is_published ?? false,
         title: blog?.title ?? EMPTY,
@@ -118,10 +127,13 @@ export default function BlogForm({ blog }: { blog: BlogPayload | null }) {
                             label={t("blogs.body", "النص")}
                             name="body"
                             multiline
-                            hint={t(
+                            hint={`${t(
                                 "blogs.body_hint",
                                 "النص الكامل للمقال بالعربية والإنجليزية. المقال بلا نص يمكن حفظه كمسودة، ولا يمكن نشره.",
-                            )}
+                            )} ${t(
+                                "blogs.body_format_hint",
+                                "نص عادي. اترك سطراً فارغاً بين الفقرات. السطر الذي يبدأ بـ «## » يصبح عنواناً فرعياً، والذي يبدأ بـ «- » يصبح بنداً في قائمة.",
+                            )}`}
                             value={form.data.body}
                             onChange={(value) => form.setData("body", value)}
                             errors={errors}
@@ -167,6 +179,21 @@ export default function BlogForm({ blog }: { blog: BlogPayload | null }) {
                         <CardTitle>{t("blogs.publishing", "النشر والرابط")}</CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-5">
+                        {/* Which storefront shows it — articles are per storefront (2026-10-01). */}
+                        <label className="block space-y-1 text-sm">
+                            <span>{t("blogs.storefront", "المتجر")}</span>
+                            <Select
+                                value={form.data.storefront_id}
+                                onChange={(event) => form.setData("storefront_id", event.target.value)}
+                            >
+                                {storefronts.map((option) => (
+                                    <option key={option.value} value={option.value}>
+                                        {option.label}
+                                    </option>
+                                ))}
+                            </Select>
+                            {errors.storefront_id ? <span className="text-xs text-destructive">{errors.storefront_id}</span> : null}
+                        </label>
                         <TextField
                             label={t("common.slug", "الرابط (slug)")}
                             dir="ltr"

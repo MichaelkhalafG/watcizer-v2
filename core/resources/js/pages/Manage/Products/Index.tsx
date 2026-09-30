@@ -30,6 +30,8 @@ interface ProductRow {
     stock_express: number;
     stock_market: number;
     in_stock: boolean;
+    /** Shoppers who asked to be e-mailed when it is back (stock alerts). */
+    waiting: number;
     is_active: boolean;
     archived: boolean;
     variants: number;
@@ -504,6 +506,11 @@ export default function ProductsIndex({
                             {t("common.out_short", "نفد")}
                         </Badge>
                     )}
+                    {row.waiting > 0 ? (
+                        <Badge variant="outline" className="ms-1" title={t("products.waiting_hint", "عملاء طلبوا إشعاراً بالبريد عند توفر المنتج")}>
+                            {t("products.waiting", ":count بانتظار التوفر", { count: row.waiting })}
+                        </Badge>
+                    ) : null}
                 </span>
             ),
         },
