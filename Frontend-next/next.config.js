@@ -44,8 +44,12 @@ const nextConfig = {
       // alternates — all served by core (CompatLocaleSitemap) and listing only URLs this storefront
       // answers. It used to be the legacy single sitemap (core's /en/sitemap.xml), which listed
       // 404s, a redirect and an empty /blogs, and no Arabic URL at all.
-      { source: '/sitemap.xml', destination: process.env.LARAVEL_ORIGIN + '/sitemaps/index.xml' },
-      { source: '/sitemaps/:lang(en|ar).xml', destination: process.env.LARAVEL_ORIGIN + '/sitemaps/:lang.xml' },
+      //
+      // The sitemaps are NOT proxied to core (2026-10-01): proxying passed the crawler's
+      // Accept-Encoding through to the api host, and production answered 200 with an EMPTY body
+      // (content-encoding: br, content-length: 0). app/sitemaps/[file]/route.js fetches core itself
+      // and serves /sitemaps/{index,en,ar}.xml; /sitemap.xml is an INTERNAL rewrite onto the index.
+      { source: '/sitemap.xml', destination: '/sitemaps/index.xml' },
       { source: '/api/:path*', destination: process.env.LARAVEL_ORIGIN + '/api/:path*' },
       { source: '/Uploads_Images/:path*', destination: process.env.LARAVEL_ORIGIN + '/Uploads_Images/:path*' },
     ]
