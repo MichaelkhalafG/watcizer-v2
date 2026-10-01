@@ -162,3 +162,16 @@ it('routes every sitemap a crawler is given to that handler, and none of them th
     }
     expect($wrong)->toBe([]);
 });
+
+it('proxies nothing to core: /api and /Uploads_Images on the storefront host are 308s to core', function () {
+    // The same proxy answered live browsers and Googlebot with EMPTY 200s on /api/* and
+    // /Uploads_Images/* too (measured 2026-10-01). No rewrite may point at core again; the two
+    // legacy path families are permanent redirects to it instead.
+    $config = sitemapStorefrontSource('next.config.js');
+    expect(preg_match('/async rewrites\(\)\s*\{(.*?)\n  \},/s', $config, $block))->toBe(1);
+    expect(str_contains($block[1] ?? '', 'LARAVEL_ORIGIN'))->toBeFalse('a rewrite proxies to core');
+    foreach (['api', 'Uploads_Images'] as $family) {
+        expect(str_contains($config, "{ source: '/{$family}/:path*', destination: process.env.LARAVEL_ORIGIN + '/{$family}/:path*', permanent: true }"))
+            ->toBeTrue("/{$family}/* must be a permanent redirect to core");
+    }
+});

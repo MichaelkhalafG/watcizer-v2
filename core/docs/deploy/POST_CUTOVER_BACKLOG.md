@@ -295,7 +295,19 @@ Git history holds the text it replaced.
   not a 200 with at least one `<loc>` is now a `503 Retry-After: 300`, never an empty 200. Guard:
   `SitemapServedWholeTest` (runs the handler against core's real sitemaps). After the deploy: resubmit
   `https://watchizereg.com/sitemap.xml` in Search Console. `robots.txt`: no change.
-  **Open:** `/api/*` and `/Uploads_Images/*` use the same proxy mechanism and were not checked.
+  **`/api/*` and `/Uploads_Images/*` — CHECKED 2026-10-01 at the developer's request: the same fault,
+  FIXED.** Measured live from Chrome (Brotli on), as a browser and as Googlebot, each URL also fetched
+  straight from api.watchizereg.com:
+  - through the storefront, `/api/catalog/meta`, `/api/show_shipping_city` and `/api/all_product_rating`
+    answered **200 with an empty body** (`content-encoding: br`, `content-length: 0`); the api host gave
+    95 KB, 9 KB and 163 B;
+  - product images through the storefront: one **200 with 0 bytes** in each pass (a different image
+    each time; the api host served every one whole).
+
+  Nothing on the site requests these paths: 7 live pages (EN and AR) made 0 such requests and named
+  none in their HTML. So only old links and indexed image URLs reached the empty answers. Both are now
+  **308 redirects to core** (`next.config.js`); `next.config.js` has no rewrite to core left. Guard:
+  `SitemapServedWholeTest` ("proxies nothing to core").
 - **Next.js 15.5.26 → 15.5.27 (A7) + brace-expansion — BUILT.** Next: three advisories (metadata image
   routes with `dynamicParams`; two SSG/ISR cache-poisoning). The image code is byte-identical to
   15.5.26 (`image-optimizer`, `image-config`, `get-img-props`, `image-component`). brace-expansion:
@@ -308,8 +320,8 @@ Git history holds the text it replaced.
   | Message | Verdict |
   |---|---|
   | `THREE.Clock` deprecated (three r183+) | **FIXED.** Fiber 9.6.1 builds its clock with `new THREE.Clock()` (9.8.1, the latest, still does). A pnpm patch (`patches/@react-three__fiber@9.6.1.patch`) builds the same clock on `THREE.Timer`, same fields and arithmetic. Local: no warning; the hero intro still moves (4 of 6 frames differ). Drop the patch when fiber moves to Timer (v10) |
-  | Meta Pixel currency ×2 per load | **Stoppable, needs your decision.** Not our events — the Purchase event carries `EGP`. It is Meta's "automatic events" plugin, switched on for pixel 1611910119460872 in its signals config: it scrapes the page for a price and sends `cur:""`. Two ways to stop it: `fbq('set','autoConfig',false,id)` before each `init` (one line in `app/analytics.jsx`), or turn off "automatic events" for that pixel in Events Manager. Either way Meta stops guessing button clicks and page prices; our own PageView / ViewContent / AddToCart / Purchase are unchanged. It cannot be stopped from our side any other way — the text is written by Meta's script |
-  | `WebGLRenderer: Context Lost` (many; stack through `error-*.js`) | **Not an error, and not the error boundary.** The `error-*.js` chunk holds the zustand ui store alongside the error page; the frames are store notifications that unmount the hero. Each message is one departure from the home page: fiber disposes the renderer and forces the GPU context closed on purpose, and three logs the loss. The only real fix is a canvas that stays mounted across pages (hidden off home) — it keeps the GPU memory held on every page. PROPOSED, not built |
+  | Meta Pixel currency ×2 per load | **ACCEPTED EXCEPTION — decided by the developer 2026-10-01; do not reopen.** Meta's automatic events stay on: they are worth more than a cosmetic warning, and our own events carry EGP correctly. For the record: not our events — the Purchase event carries `EGP`. It is Meta's "automatic events" plugin, switched on for pixel 1611910119460872 in its signals config: it scrapes the page for a price and sends `cur:""`. Two ways to stop it: `fbq('set','autoConfig',false,id)` before each `init` (one line in `app/analytics.jsx`), or turn off "automatic events" for that pixel in Events Manager. Either would stop Meta guessing button clicks and page prices; both were declined. It cannot be stopped from our side any other way — the text is written by Meta's script. Reopen only if a real Purchase event arrives without its EGP value |
+  | `WebGLRenderer: Context Lost` (many; stack through `error-*.js`) | **Not an error, and not the error boundary.** The `error-*.js` chunk holds the zustand ui store alongside the error page; the frames are store notifications that unmount the hero. Each message is one departure from the home page: fiber disposes the renderer and forces the GPU context closed on purpose, and three logs the loss. The only real fix is a canvas that stays mounted across pages (hidden off home) — it keeps the GPU memory held on every page. **ACCEPTED EXCEPTION — decided by the developer 2026-10-01; do not reopen:** holding graphics memory on every page, on a phone, for a faster return to a page most shoppers visit once, is the wrong trade. The kept-alive canvas is NOT to be built |
   | X4122 shader warning | **Recorded exception.** Written by ANGLE's Direct3D compiler on Windows about three's own shader; not ours, and not reachable from our code |
   | Violations: message ~683 ms at hydration, rAF 153 ms, load 203 ms, forced reflow 33–39 ms | **Recorded with the numbers.** They are the home page's hydration and the hero's first frames; they shrink with the persistent canvas above, not with a targeted fix |
   | Violations: click 188/221 ms, setTimeout ×9, message ×9, non-passive listener ×6 | **Not reproduced** on desktop or with touch emulation. A DevTools Performance trace from the device that showed them is needed to find the handler |
@@ -332,7 +344,7 @@ Git history holds the text it replaced.
   officer. Not a code item.
 - **Compression — the developer is raising it with Hostinger.** Options 2 and 3 above are NOT to be
   built. The numbers for the ticket are the ones above (home HTML 365 KB Brotli vs 215 KB gzip).
-- **Re-engagement screen rework — PLAN given, waiting for agreement** (picker with search by name,
+- **Re-engagement screen rework — APPROVED 2026-10-01 as planned, being built** (picker with search by name,
   picture and price, drag to reorder; e-mail chips; every control says what it does; the state in
   plain words at the top).
 
