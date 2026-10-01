@@ -9,7 +9,81 @@ cannot get past tonight; every item is a known, named state. Pick batches from i
 
 ---
 
-## ▶ SESSION RECORD — end of 2026-09-28 (read this first)
+## ▶ SESSION RECORD — end of 2026-10-01 (read this first)
+
+**The next session starts with:** *"Confirm what is live — storefront rebuild of `main` at `6da75c9`, then merge
+`wave-4d` (`1a516a5` re-engagement rework, `bb61298` dompurify) and deploy it (core tar + dashboard assets +
+storefront rebuild) — then build the four trust pages from the approved text."*
+
+**Committed, by where it is (branch `wave-4d`, pushed):**
+- **On `main` (merges `1cef5cb`, then `6da75c9`):**
+  - `7eacecc` core: re-plan in place, English-only campaign e-mail, runbook §13 deploy checklist;
+  - `00e9ba0` storefront: Next 15.5.27, brace-expansion, fiber clock on `THREE.Timer`, gallery retry loop fixed;
+  - `04cd197` storefront: sitemaps served by a route handler (an empty or failed core reply is a 503);
+  - `1640502` storefront: `/api/*` and `/Uploads_Images/*` are 308s to core, no longer proxied;
+  - `e13ad75` storefront: axios 1.20.0.
+- **On `wave-4d` only, NOT merged to `main`:**
+  - `1a516a5` dashboard: the re-engagement screen rework;
+  - `bb61298` storefront: dompurify 3.4.16.
+
+**Deployed:**
+- **Core:** the batch-3 tar is LIVE (developer: caches rebuilt; `core:repoint-commerce-fks` says nothing to do).
+- **Storefront:** the developer merged and pushed `main`. This session did not confirm a Hostinger rebuild of `6da75c9`;
+  treat it as unverified until it is checked.
+
+  Checks after that rebuild:
+  - `https://watchizereg.com/api/catalog/meta` answers 308 to api.watchizereg.com;
+  - an `/Uploads_Images/…` URL answers 308 and the image shows;
+  - `/sitemap.xml` and `/sitemaps/{en,ar}.xml` list URLs in a browser;
+  - resubmit `https://watchizereg.com/sitemap.xml` in Search Console.
+
+**NOT deployed:**
+- **The re-engagement rework** (`1a516a5`): a core tar plus the dashboard assets (`public/build`); no migration.
+  Afterwards:
+  - the screen opens with the state line;
+  - picker results show a price;
+  - Pause asks first and does not save the form.
+- **dompurify 3.4.16** (`bb61298`): a storefront rebuild.
+
+**Decided this session (do not reopen):**
+- **Accepted exceptions:**
+  - the Meta Pixel currency warning: Meta's automatic events stay on;
+  - WebGL "Context Lost": no kept-alive canvas.
+- **Advisories:** axios 101906 and 101899 are unreachable — no proxy variables in the Hostinger Node environment
+  (developer, 2026-10-01). Every axios advisory is recorded under Batch 3.
+- **Blog Markdown:** it will NOT go through dompurify. It is rendered on the server to React elements, with raw HTML
+  off and link schemes allow-listed.
+
+**Where the three remaining items stand:**
+- **Trust pages:**
+  - the text is APPROVED (developer, 2026-10-01) — all four written-around points kept, "original packaging" stays;
+  - text: `new branding/docs/TRUST_PAGES_FINAL.md` (gitignored, like the rest of `new branding/`; copy before
+    editing);
+  - NOT started (developer: "don't start");
+  - to build: `/about-us`, `/contact-us`, `/privacy-policy` and `/terms-and-conditions`, each with an `/ar` version;
+    footer links; all 8 URLs in the sitemap.
+- **Blog editor (option A, Markdown with preview):**
+  - NOT started;
+  - before building, name the renderer and show the hostile-Markdown test (it must render as text).
+- **Custom home rail:**
+  - NOT started;
+  - costed at about half a day: `storefront_home_rails` gets a nullable JSON `product_ids` and a `custom` kind;
+  - the reworked `ProductPicker` (price, drag, failure messages) is ready for it, and its search route
+    `home_rails.products` already exists.
+
+**Still owed to the developer:**
+- the console violations they couldn't see locally (click 188/221 ms, setTimeout ×9, message ×9, non-passive ×6).
+  The developer is sending a DevTools Performance profile (`/listing`, about 40 s) plus the Verbose `[Violation]`
+  lines.
+
+**Recorded, not to fix now:**
+- the returns wording in cart/checkout;
+- the InstaPay and Vodafone Cash badges;
+- the cookie banner, with its cost and the risk of never doing it;
+- the Egyptian data-protection law, for legal review;
+- compression: the developer is taking it to Hostinger.
+
+## ▶ HISTORY — session record, end of 2026-09-28
 
 **The next session starts with:** *"Report the results of the 2026-09-28 deploy checks (core half,
 storefront half, and the next-morning prune/backup check) — then run C3 from its read-only checks."*
@@ -355,7 +429,26 @@ Git history holds the text it replaced.
   which is the likeliest reading of "the audience didn't save the first time". Found and fixed: Carbon's
   `startOfWeek()` follows the locale and is SATURDAY under `ar`. Tests: `ReEngagementTest` 20 (one changed
   deliberately: the form no longer carries `paused`, addresses are a list); browser pass on scratch 29/29.
-  **Deploy:** core tar + dashboard assets (no migration). (picker with search by name,
+  **Deploy:** core tar + dashboard assets (no migration).
+- **axios 1.18.1 → 1.20.0 — DONE 2026-10-01 (`e13ad75`).** The 12 advisories published 2026-09-30, all fixed in
+  1.20.0. axios runs at RUNTIME on both sides: the storefront server's core calls (Node `http` adapter, measured with
+  `axios.getAdapter()`) and the browser (`xhr`). None is directly reachable in our usage:
+  - fetch adapter only (101907, 101900, 101908) and HTTP/2 only (101898, 101901): we use neither;
+  - `data:` URLs (101903) and default-instance `axios({url})` (101902): every URL is a fixed relative path on
+    `axios.create()` instances (`catalog/product?slug=<encoded>`), so input never becomes a `data:` or absolute URL;
+  - **proxy variables (101906 ReDoS via redirect `Location`, 101899 CIDR `NO_PROXY`): UNREACHABLE — confirmed by
+    the developer 2026-10-01: the Hostinger Node app's environment has no `HTTP_PROXY`, `HTTPS_PROXY` or `NO_PROXY`.**
+    Our code sets no proxy either. Re-check only if a proxy is ever added to that environment;
+  - prototype-pollution gadgets (101905, 101904, 101909): need a SEPARATE same-process pollution bug first. 101905 is
+    the one that would matter (the server's `Api-Code` and `X-Storefront-Server-Key` sent to another socket); 101904
+    does not fire (our interceptors mutate and return the config); 101909 needs form bodies (the server only GETs).
+  Today's 308s (`/api/*`, `/Uploads_Images/*` on the storefront host) never reach axios: the server calls
+  `LARAVEL_ORIGIN`, the browser `API_BASE`, both api.watchizereg.com. Lock change: axios only.
+- **dompurify 3.4.14 → 3.4.16 — DONE 2026-10-01 (in the tree).** GHSA-p98j-92pf-mc4p (Low) needs `IN_PLACE` mode
+  AND a node-removing `afterSanitize` hook; we use neither (no `IN_PLACE`, no `addHook` anywhere) — not reachable.
+  Browser-only use: product description, review comment, sign-in/register/confirmation fields. Lock change: dompurify
+  only; sanitiser probe in Chrome strips `onerror`, `javascript:`, `<script>`, `onload`. The blog's Markdown will NOT
+  go through it: rendered on the server to React elements with raw HTML off and an allow-list of link schemes. (picker with search by name,
   picture and price, drag to reorder; e-mail chips; every control says what it does; the state in
   plain words at the top).
 
