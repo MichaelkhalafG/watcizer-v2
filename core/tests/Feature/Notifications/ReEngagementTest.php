@@ -9,6 +9,7 @@ use App\Domain\Notifications\BulkMailer;
 use App\Domain\Notifications\MailBudget;
 use App\Domain\Notifications\ReEngagement;
 use App\Mail\ReEngagementMail;
+use App\Mail\ReEngagementPreviewMail;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Database\Query\JoinClause;
 use Illuminate\Support\Facades\DB;
@@ -119,8 +120,11 @@ it('plans a team-only run by default, previews it, and sends it 24 hours later',
     $engine = app(ReEngagement::class);
 
     $plan = $engine->plan(1);
-    expect($plan['status'])->toBe('previewed')->and($plan['recipients'])->toBe(2)
-        ->and($engine->plan(1)['status'])->toBe('already planned');          // once per week
+    // Once per week — a second plan in the same week RE-PLANS the same run in place (developer,
+    // 2026-10-01: "already planned" used to do nothing, so changed settings silently never took effect).
+    expect($plan['status'])->toStartWith('planned — preview sent')->and($plan['recipients'])->toBe(2)
+        ->and($engine->plan(1)['status'])->toStartWith('re-planned from the current settings')
+        ->and(DB::table('core_reengagement_runs')->count())->toBe(1);
     $run = T::row(DB::table('core_reengagement_runs')->where('id', $plan['run_id'])->first());
     expect(T::str($run->audience))->toBe('team')
         ->and(DB::table('core_reengagement_sends')->where('run_id', $plan['run_id'])->pluck('email')->sort()->values()->all())
@@ -172,7 +176,7 @@ it('skips the week when paused — at planning or at sending', function () {
     steadyProducts(6);
     DB::table('core_reengagement_settings')->where('storefront_id', 1)->update(['paused' => true, 'audience' => 'team']);
     $engine = app(ReEngagement::class);
-    expect($engine->plan(1)['status'])->toBe('paused');
+    expect($engine->plan(1)['status'])->toContain('PAUSED');
 
     travel(1)->weeks();
     DB::table('core_reengagement_settings')->where('storefront_id', 1)->update(['paused' => false]);
@@ -213,7 +217,7 @@ it('carries a working unsubscribe — a button, the one-click header — honoure
     expect(ReEngagement::optedOut(1, T::str($send->email)))->toBeFalse();
     get(preg_replace('#/[a-f0-9]{40}$#', '/'.str_repeat('0', 40), $path) ?? '')->assertNotFound();
 
-    post($path)->assertOk()->assertSee('تم إلغاء الاشتراك');
+    post($path)->assertOk()->assertSee("You're unsubscribed", false);            // English only since 2026-10-01
     expect(ReEngagement::optedOut(1, T::str($send->email)))->toBeTrue()
         ->and($engine->mailData(T::int($send->id)))->toBeNull();             // a queued e-mail is not sent after it
 });
@@ -256,7 +260,36 @@ it('uses the team\'s picks, in their order, for the next e-mail only — skippin
     expect($sent)->toHaveCount(2)                                           // both team addresses
         ->and(array_map(fn (mixed $j): mixed => json_decode(T::str($j), true), $sent))->each->toBe([$ids[5], $ids[2], $ids[7]])
         ->and(json_decode(T::str(DB::table('core_reengagement_runs')->where('id', $plan['run_id'])->value('manual_product_ids')), true))->toBe($picks)
-        ->and(DB::table('core_reengagement_settings')->where('storefront_id', 1)->value('manual_product_ids'))->toBeNull();   // used → cleared
+        // Kept until the e-mail is SENT (developer, 2026-10-01 — cleared at send, not at plan, so a
+        // re-plan keeps them); this test used to demand they were cleared at plan.
+        ->and(DB::table('core_reengagement_settings')->where('storefront_id', 1)->value('manual_product_ids'))->not->toBeNull();
+    travel(25)->hours();
+    app(ReEngagement::class)->send();
+    expect(DB::table('core_reengagement_settings')->where('storefront_id', 1)->value('manual_product_ids'))->toBeNull();   // sent → cleared
+});
+
+it('re-plans an unsent week in place from the changed settings, with a fresh preview, and never re-plans a sent one', function () {
+    $ids = steadyProducts(8);
+    $engine = app(ReEngagement::class);
+    $first = $engine->plan(1);
+    $before = DB::table('core_reengagement_sends')->where('run_id', $first['run_id'])->pluck('email')->sort()->values()->all();
+
+    // The team changes its preview list and picks three products, then plans again the same week.
+    DB::table('core_reengagement_settings')->where('storefront_id', 1)->update([
+        'team_emails' => 'only.one@example.test', 'manual_product_ids' => json_encode([$ids[4], $ids[1], $ids[6]]),
+    ]);
+    $again = $engine->plan(1);
+
+    expect($again['run_id'])->toBe($first['run_id'])                              // the SAME run, rebuilt
+        ->and($again['status'])->toStartWith('re-planned')
+        ->and($before)->toBe(['team.one@example.test', 'team.two@example.test'])
+        ->and(DB::table('core_reengagement_sends')->where('run_id', $first['run_id'])->pluck('email')->all())->toBe(['only.one@example.test'])
+        ->and(json_decode(T::str(DB::table('core_reengagement_sends')->where('run_id', $first['run_id'])->value('product_ids')), true))->toBe([$ids[4], $ids[1], $ids[6]])
+        ->and(DB::table('integration_outbox')->where('channel', BulkMailer::CHANNEL)->where('event', ReEngagement::KIND.'_preview')->count())->toBe(3);   // 2 first + 1 new
+
+    travel(25)->hours();
+    $engine->send();
+    expect($engine->plan(1)['status'])->toStartWith('already sent this week');
 });
 
 it('sends nothing on picks that leave fewer than 3 eligible, and keeps the picks while the week is paused', function () {
@@ -295,4 +328,32 @@ it('serves the picker: chosen ids in their order, only this storefront\'s produc
 
     actingAs(Staff::dataEntry())->getJson('/manage/storefronts/1/reengagement/products?q=ab')->assertForbidden();
     actingAs(Staff::dataEntry())->getJson('/manage/storefronts/1/home-rails/products?q=ab')->assertOk();
+});
+
+it('writes the campaign e-mail, its subject, the team preview and the unsubscribe page in English only', function () {
+    $ids = steadyProducts(6);
+    foreach ($ids as $id) {                                  // the rule: the English title wherever one exists
+        DB::table('catalog_product_translations')->where('product_id', $id)->where('locale', 'en')->update(['title' => "English title {$id}"]);
+    }
+    $engine = app(ReEngagement::class);
+    $plan = $engine->plan(1);
+    $sendId = T::int(DB::table('core_reengagement_sends')->where('run_id', $plan['run_id'])->value('id'));
+    $data = $engine->mailData($sendId);
+    expect($data)->not->toBeNull();
+    $mail = new ReEngagementMail($data ?? ['email' => '', 'storefront_id' => 1, 'products' => []], BulkMailer::unsubscribeUrl($sendId));
+    $html = $mail->render();
+    $previewData = $engine->previewData(T::int($plan['run_id']));
+    expect($previewData)->not->toBeNull();
+    $preview = new ReEngagementPreviewMail($previewData ?? ['week' => '', 'audience' => 'team', 'recipients' => 0, 'send_after' => '', 'sample' => null], 'https://example.test/manage');
+    $previewHtml = $preview->render();
+    $page = get((string) parse_url(BulkMailer::unsubscribeUrl($sendId), PHP_URL_PATH))->assertOk()->getContent();
+
+    $arabic = '/\p{Arabic}/u';
+    expect(preg_match($arabic, $html))->toBe(0, 'the e-mail has Arabic in it')
+        ->and(preg_match($arabic, (string) $mail->subject))->toBe(0, 'the subject has Arabic in it')
+        ->and(preg_match($arabic, $previewHtml))->toBe(0, 'the preview has Arabic in it')
+        ->and(preg_match($arabic, (string) $preview->subject))->toBe(0, 'the preview subject has Arabic in it')
+        ->and(preg_match($arabic, (string) $page))->toBe(0, 'the unsubscribe page has Arabic in it')
+        ->and(str_contains($html, 'English title '.$ids[0]))->toBeTrue()
+        ->and(str_contains($html, '/ar/product/'))->toBeFalse();
 });

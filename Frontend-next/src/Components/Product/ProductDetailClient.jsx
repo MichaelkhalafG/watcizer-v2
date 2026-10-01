@@ -305,18 +305,26 @@ function ProductDetailClient({ param, isOffer = false, productPayload = null }) 
 
   // Graceful image fallback for the gallery (main image + thumbnails). A broken
   // gallery URL first swaps to the catalog image, then to the inline placeholder.
-  // The `fbStage` dataset flag prevents an infinite onError loop: each element
-  // advances at most one stage per failure, and the placeholder detaches onerror.
+  //
+  // It used to loop FOREVER (measured 2026-10-01: 4 gallery URLs requested ~1,310 times each within
+  // 12 s of opening a product whose images fail). Two reasons: next/image renders a `srcset` of
+  // optimised URLs and the browser loads from srcset, not src, so swapping `src` alone re-requested
+  // the SAME failing URL and fired onError again; and `img.onerror = null` never detached React's
+  // handler (React listens by delegation, not through the property). Now: srcset/sizes are dropped
+  // before every swap, and once on the placeholder any further error is ignored.
   const handleGalleryImgError = useCallback(
     (e) => {
       const img = e.currentTarget
+      if (img.dataset.fbStage === 'placeholder') return
+      img.removeAttribute('srcset')
+      img.removeAttribute('sizes')
       if (img.dataset.fbStage !== 'catalog' && catalogImg && img.src !== catalogImg) {
         img.dataset.fbStage = 'catalog'
         img.src = catalogImg
         return
       }
-      img.onerror = null // stop: placeholder is a data URI that cannot 404
-      img.src = PLACEHOLDER_IMG
+      img.dataset.fbStage = 'placeholder'
+      img.src = PLACEHOLDER_IMG // a data URI: cannot fail
     },
     [catalogImg],
   )

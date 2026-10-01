@@ -2,20 +2,34 @@ allowBuilds:
   sharp: true
   unrs-resolver: true
 
+minimumReleaseAgeExclude:
+  - '@next/env@15.5.27'
+  - '@next/swc-darwin-arm64@15.5.27'
+  - '@next/swc-darwin-x64@15.5.27'
+  - '@next/swc-linux-arm64-gnu@15.5.27'
+  - '@next/swc-linux-arm64-musl@15.5.27'
+  - '@next/swc-linux-x64-gnu@15.5.27'
+  - '@next/swc-linux-x64-musl@15.5.27'
+  - '@next/swc-win32-arm64-msvc@15.5.27'
+  - '@next/swc-win32-x64-msvc@15.5.27'
+  - next@15.5.27
+
 # Security overrides (transitive deps pulled in by next / eslint). pnpm 11 reads
 # overrides from here, not the package.json "pnpm" field. Ranges stay within the
 # same major / 0.x line so nothing jumps a major version.
 overrides:
-  sharp: "^0.35.4"                # <0.35.0 → libvips CVEs; 0.35.4 bundles libheif 1.23.2, which Next 15.5.2x requires before it will optimise an AVIF SOURCE (isAvifDecodeSafe)
-  postcss: "^8.5.18"              # <=8.5.17 → 3 advisories
-  # brace-expansion 1.x is pinned to the newest 1.x (1.1.18). NOTE: CVE-2026-14257
-  # (ReDoS/DoS) also affects 1.1.18 and the 1.x line has NO patched release — the
-  # only "fix" is 5.x. We do NOT force 5.x here: brace-expansion 5.x changed from a
-  # default function export to a named { expand } export, and minimatch@3 (pulled
-  # by eslint → @eslint/config-array) does `require('brace-expansion')()`, so 5.x
-  # throws "TypeError: expand is not a function" and crashes ESLint. This path is
-  # build/lint-time only (devDependency, not in the runtime bundle) and only ever
-  # sees trusted glob patterns from ESLint config, so the DoS is not reachable.
-  # Accepted risk; revisit if eslint/minimatch update to a patched brace-expansion.
-  "brace-expansion@1": "^1.1.17"
-  "brace-expansion@5": "^5.0.8"   # >=4.0.0 <5.0.8 on the 5.x line
+  sharp: "^0.35.4" # <0.35.0 → libvips CVEs; 0.35.4 bundles libheif 1.23.2, which Next 15.5.2x requires before it will optimise an AVIF SOURCE (isAvifDecodeSafe)
+  postcss: "^8.5.18" # <=8.5.17 → 3 advisories
+  # brace-expansion: BOTH lines now have patched releases (2026-10-01) — CVE-2026-102276/-102277/
+  # -102278 (DoS: recursion on nested braces, recursion in parseCommaParts, quadratic expansion).
+  # 1.1.21 and 5.0.12 cover all three. Each line keeps its own major: 5.x exports a named
+  # { expand } while minimatch@3 (eslint → @eslint/config-array) calls require('brace-expansion')()
+  # — forcing 5.x onto it throws "expand is not a function" and crashes ESLint.
+  # Reachability: devDependencies only (eslint → minimatch@3 / @typescript-eslint → minimatch@10);
+  # `pnpm why brace-expansion --prod` is empty, and Next's own vendored copy (compiled glob /
+  # @vercel/nft) runs at build time. The DoS was against the build machine, never the storefront.
+  "brace-expansion@1": "^1.1.21"
+  "brace-expansion@5": "^5.0.12"
+
+patchedDependencies:
+  '@react-three/fiber@9.6.1': patches/@react-three__fiber@9.6.1.patch

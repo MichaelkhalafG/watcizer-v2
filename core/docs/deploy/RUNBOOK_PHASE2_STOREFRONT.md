@@ -1865,6 +1865,44 @@ production dump in it is the thing that ends up being pointed at by accident nex
 
 ---
 
+## 13. Every deploy after the cutover — the checklist (added 2026-10-01)
+
+Written after the overnight batch's deploy, where three things had to be fixed live. Run these on
+**every** core deploy, in this order, whether or not the batch looks like it needs them — each is
+idempotent and says "nothing to do" when there is nothing to do.
+
+1. **Dashboard assets** — `npm run build` on the workstation and upload `public/build/` with the PHP
+   (§2.1: it is gitignored, so it is never in a commit). Then prove the live dashboard runs the bundle
+   you built — the two lines must be identical:
+   ```bash
+   sha256sum core/public/build/manifest.json                          # workstation
+   curl -s https://eleganceeg.com/build/manifest.json | sha256sum     # live
+   ```
+2. **Migrations** — `php artisan migrate --force` (runs only what is pending).
+3. **Foreign keys — `php artisan core:repoint-commerce-fks --dry-run`, then without `--dry-run`.**
+   *Missed on 2026-09-30:* `product_ratings.product_id` still pointed at the legacy `products` table, so
+   rating any product created after the transform was a 500 (`product_ratings_product_id_foreign …
+   REFERENCES products (id)`, product 25508). The command moves every product key it knows to
+   `catalog_products`; a second run must print `nothing to do: every key already points at
+   catalog_products`. Any NEW table with a product key must be added to the command's `TARGET` list
+   in the same change that creates it.
+4. **Caches** — `php artisan config:cache && php artisan route:cache` (§3.5).
+5. **`.htaccess`** — diff the server's API-host block against §4.1.1 and add any new line.
+6. **Re-engagement, if its settings changed in the batch or on the screen** — `php artisan
+   reengagement plan`. *Since 2026-10-01* it RE-PLANS this week's run in place when that run has not
+   been sent (new recipients and products from the current settings, a fresh preview to the team, the
+   24 hours restarting), and says so. It used to answer "already planned" and do nothing, so a changed
+   setting silently never took effect. A week already SENT is final; the command says when it went.
+7. **The re-engagement screen's audience** — *reported 2026-09-30:* the first save left `audience` at
+   `customers`. Not reproduced. Three ways the screen can mislead a save are known (Pause saves the
+   whole form; some refusals are never shown; the "saved" message appears off-screen) and are fixed
+   in the screen's rework. Until then, after saving that screen confirm it on the server:
+   ```bash
+   php artisan tinker --execute="print_r(DB::table('core_reengagement_settings')->get(['storefront_id','paused','audience'])->toArray());"
+   ```
+
+---
+
 ## Appendix — every command, in order
 
 ```bash

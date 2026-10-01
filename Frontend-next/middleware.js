@@ -37,7 +37,7 @@ export function middleware(request) {
 }
 
 export const config = {
-  // Pages only: not Next's own assets, the API/image proxies, or files with an extension
+  // Pages only: not Next's own assets, the API/image redirects, or files with an extension
   // (robots.txt, sitemap.xml, images, the manifest).
   matcher: ['/((?!_next/|api/|Uploads_Images/|.*\\.[a-zA-Z0-9]+$).*)'],
 }

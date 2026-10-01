@@ -29,7 +29,7 @@ final class ReEngagementMail extends Mailable
         });
 
         return $this
-            ->subject('✨ اخترنا لك من جديد Watchizer — New picks for you')
+            ->subject('✨ New picks for you — Watchizer')                     // English only (2026-10-01)
             ->view('emails.reengagement', ['products' => $this->data['products'], 'unsubscribeUrl' => $url]);
     }
 }
