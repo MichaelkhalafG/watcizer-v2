@@ -266,6 +266,76 @@ Git history holds the text it replaced.
   over a button); it did not recur.
 
 ### 3. Open
+**Batch 3 — 2026-10-01, after the overnight + batch 2 deploy (in the tree, not deployed).**
+- **Deploy corrections — runbook §13 (new): the checklist for every deploy after the cutover.**
+  `core:repoint-commerce-fks` is now a named step (dry run, apply, a second run must say "nothing
+  to do"); it was missing, and its absence was the ratings 500. The dashboard-assets step compares
+  `manifest.json`'s sha256 with the live one, so a stale bundle is caught before anyone reads a screen.
+- **"The audience didn't save the first time" — measured, the write is all-or-nothing.** No partial
+  save is possible: one form post, one transaction. What the screen got wrong (all three go into the
+  rework below): Pause/Resume posts the WHOLE form, so a half-typed edit is saved with it or rejected
+  with it; any refusal other than the picks count is never shown; the success message appears at the
+  top of the page while the screen stays scrolled down, so a save looks like nothing happened.
+- **`reengagement plan` when the week is already planned — now re-plans in place.** Same run row; its
+  sends are rebuilt from the current audience, picks and recipients, a fresh preview goes to the
+  team, the 24-hour hold restarts, and the command says "re-planned from the current settings". A week
+  already SENT is never touched: "already sent this week (on …) — the next one is planned on Monday".
+  Picks are now cleared when the e-mail is SENT, not when it is planned (a re-plan used to lose them).
+  Guard: `ReEngagementTest` (15; three assertions changed deliberately — the status wording, picks kept
+  until sent, the unsubscribe wording).
+- **Campaign e-mail — English only.** Subject, heading, body, product titles (English where the
+  product has one, else the Arabic title as the only fallback), links (no `/ar`), its own English
+  footer, the team preview and the unsubscribe page. The shared bilingual order-mail footer is not
+  used by it and is unchanged (`OrderMailContractTest` pins it). Guard: a test that fails on any
+  Arabic letter in the e-mail, both subjects, the preview or the unsubscribe page.
+- **Sitemaps — FIXED (the storefront served an empty sitemap to browsers and crawlers).**
+  `/sitemap.xml` and `/sitemaps/{index,en,ar}.xml` are now a route handler that fetches core's copy
+  itself. Cause: the proxy passed the crawler's `Accept-Encoding` through and Hostinger's edge answered
+  `200` + `content-encoding: br` + an EMPTY body — curl (no Brotli) never saw it. A core reply that is
+  not a 200 with at least one `<loc>` is now a `503 Retry-After: 300`, never an empty 200. Guard:
+  `SitemapServedWholeTest` (runs the handler against core's real sitemaps). After the deploy: resubmit
+  `https://watchizereg.com/sitemap.xml` in Search Console. `robots.txt`: no change.
+  **Open:** `/api/*` and `/Uploads_Images/*` use the same proxy mechanism and were not checked.
+- **Next.js 15.5.26 → 15.5.27 (A7) + brace-expansion — BUILT.** Next: three advisories (metadata image
+  routes with `dynamicParams`; two SSG/ISR cache-poisoning). The image code is byte-identical to
+  15.5.26 (`image-optimizer`, `image-config`, `get-img-props`, `image-component`). brace-expansion:
+  1.1.21 / 5.0.12 (both lines now patched), dev-only — eslint → minimatch@3, @typescript-eslint →
+  minimatch@10; `pnpm why brace-expansion --prod` is empty; Next's vendored copy runs at build time.
+  pnpm 11 added `minimumReleaseAgeExclude` for the ten next@15.5.27 packages itself (they are younger
+  than the release-age gate). Verified locally: build, hero, product, listing, checkout, and
+  `/_next/image` on a live api.watchizereg.com image → 200.
+- **Console — the live list, one by one (measured read-only on the live site and locally).**
+  | Message | Verdict |
+  |---|---|
+  | `THREE.Clock` deprecated (three r183+) | **FIXED.** Fiber 9.6.1 builds its clock with `new THREE.Clock()` (9.8.1, the latest, still does). A pnpm patch (`patches/@react-three__fiber@9.6.1.patch`) builds the same clock on `THREE.Timer`, same fields and arithmetic. Local: no warning; the hero intro still moves (4 of 6 frames differ). Drop the patch when fiber moves to Timer (v10) |
+  | Meta Pixel currency ×2 per load | **Stoppable, needs your decision.** Not our events — the Purchase event carries `EGP`. It is Meta's "automatic events" plugin, switched on for pixel 1611910119460872 in its signals config: it scrapes the page for a price and sends `cur:""`. Two ways to stop it: `fbq('set','autoConfig',false,id)` before each `init` (one line in `app/analytics.jsx`), or turn off "automatic events" for that pixel in Events Manager. Either way Meta stops guessing button clicks and page prices; our own PageView / ViewContent / AddToCart / Purchase are unchanged. It cannot be stopped from our side any other way — the text is written by Meta's script |
+  | `WebGLRenderer: Context Lost` (many; stack through `error-*.js`) | **Not an error, and not the error boundary.** The `error-*.js` chunk holds the zustand ui store alongside the error page; the frames are store notifications that unmount the hero. Each message is one departure from the home page: fiber disposes the renderer and forces the GPU context closed on purpose, and three logs the loss. The only real fix is a canvas that stays mounted across pages (hidden off home) — it keeps the GPU memory held on every page. PROPOSED, not built |
+  | X4122 shader warning | **Recorded exception.** Written by ANGLE's Direct3D compiler on Windows about three's own shader; not ours, and not reachable from our code |
+  | Violations: message ~683 ms at hydration, rAF 153 ms, load 203 ms, forced reflow 33–39 ms | **Recorded with the numbers.** They are the home page's hydration and the hero's first frames; they shrink with the persistent canvas above, not with a targeted fix |
+  | Violations: click 188/221 ms, setTimeout ×9, message ×9, non-passive listener ×6 | **Not reproduced** on desktop or with touch emulation. A DevTools Performance trace from the device that showed them is needed to find the handler |
+- **Found while testing — FIXED: the product gallery re-requested a failing image forever.** Measured:
+  4 gallery URLs, ~1,310 requests each in 12 s. next/image loads from `srcset`, so swapping `src`
+  alone asked for the same broken URL again; `img.onerror = null` never detached React's handler. Now
+  srcset/sizes are dropped before the swap and the placeholder is final. Local: max 2 requests per URL.
+- **Defects recorded, NOT fixed (the developer's answers):**
+  - **Returns wording** — cart/checkout say "14-day", "30-day" and "free returns". The policy is the
+    product page's: watches return within 4 days, exchange within 14; fashion exchange or return within
+    4 days; unused, original packaging.
+  - **Payment badges** — InstaPay and Vodafone Cash are shown and NOT offered. Offered: cash on
+    delivery, card through Paymob, and the Paymob methods at checkout.
+- **Cookie / consent banner — NOT built (decided).** Cost: about a day — a banner in both languages,
+  the pixels and GA held until consent, the choice remembered, a link from the privacy page. Risk of
+  never doing it: Egyptian law is not the driver today; EU/UK visitors are, and the ad platforms'
+  own terms expect consent for tracking. The practical risk is an ad account review, not a fine.
+- **Egyptian personal-data law — left out of the privacy page; for legal review.** Law 151/2020 and
+  its executive regulations — whether the shop needs a licence/registration and a named data
+  officer. Not a code item.
+- **Compression — the developer is raising it with Hostinger.** Options 2 and 3 above are NOT to be
+  built. The numbers for the ticket are the ones above (home HTML 365 KB Brotli vs 215 KB gzip).
+- **Re-engagement screen rework — PLAN given, waiting for agreement** (picker with search by name,
+  picture and price, drag to reorder; e-mail chips; every control says what it does; the state in
+  plain words at the top).
+
 **Batch 2 — 2026-09-30, the developer's answers to the overnight report (in the tree, not deployed).**
 - **Failure ≠ 404 — BUILT (answers the rate-limit defect below, part 1).** `Frontend-next/src/lib/coreRead.js`:
   core's 404/422 is a real miss; anything else (429, 5xx, 401/403, timeout, no answer) is retried once

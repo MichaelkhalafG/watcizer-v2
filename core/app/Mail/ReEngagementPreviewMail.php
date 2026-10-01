@@ -24,7 +24,7 @@ final class ReEngagementPreviewMail extends Mailable
         });
 
         return $this
-            ->subject('معاينة رسالة الأسبوع '.$this->data['week'].' — Re-engagement preview')
+            ->subject('Preview: this week\'s re-engagement e-mail ('.$this->data['week'].')')   // English only (2026-10-01)
             ->view('emails.reengagement-preview', $this->data + ['manageUrl' => $this->manageUrl]);
     }
 }

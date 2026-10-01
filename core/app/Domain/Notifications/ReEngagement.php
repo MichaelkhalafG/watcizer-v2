@@ -87,9 +87,16 @@ final class ReEngagement
     public function plan(int $storefrontId): array
     {
         $week = now()->format('o-\WW');
-        if (DB::table('core_reengagement_runs')->where('storefront_id', $storefrontId)->where('week', $week)->exists()) {
-            return ['status' => 'already planned', 'run_id' => null, 'recipients' => 0];
+        // This week's run, if one exists. SENT is final. Anything else (waiting its 24 hours, or paused)
+        // is RE-PLANNED IN PLACE from the current settings (developer, 2026-10-01): "already planned" used
+        // to do nothing, so a changed setting silently never took effect until someone deleted the run.
+        $existing = DB::table('core_reengagement_runs')->where('storefront_id', $storefrontId)->where('week', $week)->first(['id', 'status', 'sent_at']);
+        if (is_object($existing) && Row::str(Row::cast($existing), 'status') === 'sent') {
+            $sentAt = Row::nstr(Row::cast($existing), 'sent_at') ?? '';
+
+            return ['status' => "already sent this week (on {$sentAt}) — the next one is planned on Monday", 'run_id' => Row::int(Row::cast($existing), 'id'), 'recipients' => 0];
         }
+        $replanning = is_object($existing) ? Row::int(Row::cast($existing), 'id') : null;
         $settings = self::settings($storefrontId);
         // No preview recipients → no run at all (R7). The preview is the 24-hour safety net; a week
         // nobody would see before it goes out is not planned, whichever the audience.
@@ -107,15 +114,27 @@ final class ReEngagement
             ? $this->absentCustomers($storefrontId)
             : array_map(fn (string $e): array => ['user_id' => null, 'email' => mb_strtolower($e)], $settings['team_emails']);
 
-        return DB::transaction(function () use ($storefrontId, $week, $settings, $pool, $recipients, $manual): array {
-            $runId = (int) DB::table('core_reengagement_runs')->insertGetId([
-                'storefront_id' => $storefrontId, 'week' => $week, 'audience' => $settings['audience'],
+        return DB::transaction(function () use ($storefrontId, $week, $settings, $pool, $recipients, $manual, $replanning): array {
+            $fields = [
+                'audience' => $settings['audience'],
                 'manual_product_ids' => $manual === [] || $settings['paused'] ? null : (string) json_encode($manual),
                 'status' => $settings['paused'] ? 'paused' : 'previewed',
-                'previewed_at' => now(), 'send_after' => now()->addHours(24), 'created_at' => now(), 'updated_at' => now(),
-            ]);
+                'recipients' => 0,
+                // A re-plan restarts the 24 hours: the team must see the NEW preview before it goes out.
+                'previewed_at' => now(), 'send_after' => now()->addHours(24), 'updated_at' => now(),
+            ];
+            if ($replanning !== null) {
+                // Only reached for an unsent run (see above), so nothing in `sends` has been mailed yet:
+                // they are queued at send time.
+                DB::table('core_reengagement_sends')->where('run_id', $replanning)->delete();
+                DB::table('core_reengagement_runs')->where('id', $replanning)->where('status', '!=', 'sent')->update($fields);
+                $runId = $replanning;
+            } else {
+                $runId = (int) DB::table('core_reengagement_runs')->insertGetId(['storefront_id' => $storefrontId, 'week' => $week, 'created_at' => now()] + $fields);
+            }
+            $verb = $replanning !== null ? 're-planned from the current settings' : 'planned';
             if ($settings['paused']) {
-                return ['status' => 'paused', 'run_id' => $runId, 'recipients' => 0];
+                return ['status' => "{$verb} — PAUSED: nothing goes out this week unless it is resumed and planned again", 'run_id' => $runId, 'recipients' => 0];
             }
             $count = 0;
             foreach ($recipients as $r) {
@@ -130,18 +149,16 @@ final class ReEngagement
                 $count++;
             }
             DB::table('core_reengagement_runs')->where('id', $runId)->update(['recipients' => $count, 'updated_at' => now()]);
-            // The picks were for THIS week: used, so cleared — next week is automatic unless someone picks
-            // again (standing picks would reach nobody after one week: never the same products twice).
-            if ($manual !== []) {
-                DB::table('core_reengagement_settings')->where('storefront_id', $storefrontId)->update(['manual_product_ids' => null, 'updated_at' => now()]);
-            }
 
-            // The preview: one e-mail to each team address with the run's numbers and a sample.
+            // The preview: one e-mail to each team address with the run's numbers and a sample. Keyed by
+            // the planning time too, so a RE-plan's new preview is not dropped as a duplicate of the first.
+            $stamp = now()->format('YmdHis');
             foreach ($settings['team_emails'] as $email) {
-                $this->mailer->enqueue(self::KIND.'_preview', mb_strtolower($email), ['run_id' => $runId], "reengagement-preview:{$runId}:".mb_strtolower($email));
+                $this->mailer->enqueue(self::KIND.'_preview', mb_strtolower($email), ['run_id' => $runId], "reengagement-preview:{$runId}:{$stamp}:".mb_strtolower($email));
             }
+            $sendsAt = now()->addHours(24)->format('D j M H:i');
 
-            return ['status' => 'previewed', 'run_id' => $runId, 'recipients' => $count];
+            return ['status' => "{$verb} — preview sent to the team; goes out after {$sendsAt} unless paused", 'run_id' => $runId, 'recipients' => $count];
         });
     }
 
@@ -171,6 +188,12 @@ final class ReEngagement
                 }
             }
             DB::table('core_reengagement_runs')->where('id', $runId)->update(['status' => 'sent', 'sent_at' => now(), 'updated_at' => now()]);
+            // The team's picks were for THIS week's e-mail: now that it is sent, they are cleared, and next
+            // week is automatic unless someone picks again (standing picks would reach nobody after one
+            // week: never the same products twice). Cleared at SEND, not at plan, so a re-plan keeps them.
+            if (Row::nstr($run, 'manual_product_ids') !== null) {
+                DB::table('core_reengagement_settings')->where('storefront_id', Row::int($run, 'storefront_id'))->update(['manual_product_ids' => null, 'updated_at' => now()]);
+            }
             $out[] = ['run_id' => $runId, 'status' => 'sent', 'queued' => $queued];
         }
 
@@ -359,11 +382,13 @@ final class ReEngagement
             $p = Row::cast($p);
             $en = $titles[$id]['en'] ?? '';
             $slug = LegacySlug::make((string) $en);
+            // English only (developer, 2026-10-01): the English title wherever one exists, the Arabic
+            // only for a product that has none; the link is the English product page.
             $out[] = [
-                'name' => (string) (($titles[$id]['ar'] ?? null) ?: $en),
+                'name' => (string) ($en ?: ($titles[$id]['ar'] ?? '')),
                 'price' => CompatCart::catalogPrice(Row::str($p, 'selling_price'), Row::nstr($p, 'sale_price')),
                 'image' => isset($covers[$id]) ? ImageUrl::src($covers[$id]) : null,
-                'url' => $host.'/ar/product/'.($slug !== '' ? $slug : (string) $id),
+                'url' => $host.'/product/'.($slug !== '' ? $slug : (string) $id),
             ];
         }
 
