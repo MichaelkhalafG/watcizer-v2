@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Manage;
 
+use App\Compat\CompatCart;
 use App\Domain\Catalog\ProductSearch;
 use App\Models\Storefront\Storefront;
 use App\Storefront\ImageUrl;
@@ -49,12 +50,18 @@ final class ProductPickerController
         foreach ($query->get() as $raw) {
             $row = Row::cast($raw);
             $cover = Row::nstr($row, 'cover');
+            // The price THIS storefront charges, by the one rule checkout uses (sale only when
+            // 0 < sale < selling); `was` is the crossed-out price when there is a real sale.
+            $selling = (float) Row::money($row, 'effective_price');
+            $price = CompatCart::catalogPrice(Row::money($row, 'effective_price'), Row::nmoney($row, 'effective_sale_price'));
             $hits[Row::int($row, 'id')] = [
                 'id' => Row::int($row, 'id'),
                 'title' => Row::nstr($row, 'title_ar') ?? Row::nstr($row, 'title_en') ?? '#'.Row::int($row, 'id'),
                 'title_en' => Row::nstr($row, 'title_en'),
                 'code' => Row::nstr($row, 'wa_code'),
                 'cover' => $cover === null ? null : ImageUrl::src($cover),
+                'price' => $price,
+                'was' => $price < $selling ? $selling : null,
                 'in_stock' => Row::int($row, 'stock_express') + Row::int($row, 'stock_market') > 0,
                 'visible' => Row::bool($row, 'is_visible'),
             ];
@@ -79,7 +86,7 @@ final class ProductPickerController
             })
             ->whereNull('p.deleted_at')
             ->where('p.is_active', 1)
-            ->select(['p.id', 'p.wa_code', 'p.stock_express', 'p.stock_market', 'sp.is_visible', 't.title as title_ar', 'te.title as title_en'])
+            ->select(['p.id', 'p.wa_code', 'p.stock_express', 'p.stock_market', 'sp.is_visible', 'sp.effective_price', 'sp.effective_sale_price', 't.title as title_ar', 'te.title as title_en'])
             ->selectRaw('(SELECT ci.path FROM catalog_product_images ci WHERE ci.product_id = p.id ORDER BY ci.is_cover DESC, ci.sort, ci.id LIMIT 1) AS cover');
     }
 }

@@ -12,7 +12,10 @@ use App\Mail\ReEngagementMail;
 use App\Mail\ReEngagementPreviewMail;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Database\Query\JoinClause;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\ViewErrorBag;
+use Inertia\Testing\AssertableInertia;
 use Tests\Support\Shopper;
 use Tests\Support\Staff;
 use Tests\Support\T;
@@ -306,8 +309,10 @@ it('sends nothing on picks that leave fewer than 3 eligible, and keeps the picks
 it('saves 3–6 picks placed on the storefront from the dashboard, and refuses 1–2 or another shop\'s product', function () {
     $ids = steadyProducts(4);
     $foreign = T::int(DB::table('catalog_products as p')->whereNotExists(fn (Builder $q) => $q->from('storefront_product as sp')->whereColumn('sp.product_id', 'p.id')->where('sp.storefront_id', 1))->min('p.id'));
+    // Changed deliberately (rework 2026-10-01): the form no longer carries `paused`, and the team's
+    // addresses arrive as a list (one per chip), not a typed block.
     $put = fn (array $picks) => actingAs(Staff::admin())->put('/manage/storefronts/1/reengagement',
-        ['paused' => false, 'audience' => 'team', 'team_emails' => 'team.one@example.test', 'manual_product_ids' => $picks]);
+        ['audience' => 'team', 'team_emails' => ['team.one@example.test'], 'manual_product_ids' => $picks]);
 
     $put([$ids[0], $ids[1]])->assertSessionHasErrors('manual_product_ids');
     $put([$ids[0], $ids[1], $foreign])->assertSessionHasErrors('manual_product_ids.2');
@@ -321,6 +326,14 @@ it('serves the picker: chosen ids in their order, only this storefront\'s produc
     $ids = steadyProducts(3);
     $rows = actingAs(Staff::admin())->getJson('/manage/storefronts/1/reengagement/products?ids='.implode(',', [$ids[2], $ids[0], $ids[1]]))->assertOk()->json('data');
     expect(array_column(T::arr($rows), 'id'))->toBe([$ids[2], $ids[0], $ids[1]]);
+
+    // Each row carries the price THIS storefront charges, by checkout's rule: the sale price only when
+    // 0 < sale < selling, with the selling price as `was`.
+    DB::table('storefront_product')->where('storefront_id', 1)->where('product_id', $ids[2])->update(['effective_price' => 1000, 'effective_sale_price' => 800]);
+    DB::table('storefront_product')->where('storefront_id', 1)->where('product_id', $ids[0])->update(['effective_price' => 1000, 'effective_sale_price' => 1200]);
+    $priced = actingAs(Staff::admin())->getJson('/manage/storefronts/1/reengagement/products?ids='.$ids[2].','.$ids[0])->assertOk()->json('data');
+    expect([T::arr(T::arr($priced)[0])['price'], T::arr(T::arr($priced)[0])['was']])->toEqual([800, 1000])
+        ->and([T::arr(T::arr($priced)[1])['price'], T::arr(T::arr($priced)[1])['was']])->toEqual([1000, null]);
 
     $code = T::str(DB::table('catalog_products')->where('id', $ids[0])->value('wa_code'));
     $found = actingAs(Staff::admin())->getJson('/manage/storefronts/1/reengagement/products?q='.urlencode($code))->assertOk()->json('data');
@@ -356,4 +369,106 @@ it('writes the campaign e-mail, its subject, the team preview and the unsubscrib
         ->and(preg_match($arabic, (string) $page))->toBe(0, 'the unsubscribe page has Arabic in it')
         ->and(str_contains($html, 'English title '.$ids[0]))->toBeTrue()
         ->and(str_contains($html, '/ar/product/'))->toBeFalse();
+});
+
+/* ── The screen's rework (developer-approved 2026-10-01) ─────────────────────────────────────────── */
+
+it('pauses and resumes alone — the rest of the settings are never touched by it', function () {
+    DB::table('core_reengagement_settings')->where('storefront_id', 1)->update(['audience' => 'customers', 'manual_product_ids' => '[1,2,3]']);
+    $before = (array) DB::table('core_reengagement_settings')->where('storefront_id', 1)->first(['audience', 'team_emails', 'manual_product_ids']);
+
+    // Even a request that carries other fields changes only the pause.
+    actingAs(Staff::admin())->post('/manage/storefronts/1/reengagement/pause', ['paused' => true, 'audience' => 'team', 'team_emails' => []])
+        ->assertSessionHasNoErrors()->assertSessionHas('status');
+    expect(T::int(DB::table('core_reengagement_settings')->where('storefront_id', 1)->value('paused')))->toBe(1)
+        ->and((array) DB::table('core_reengagement_settings')->where('storefront_id', 1)->first(['audience', 'team_emails', 'manual_product_ids']))->toBe($before);
+
+    actingAs(Staff::admin())->post('/manage/storefronts/1/reengagement/pause', ['paused' => false])->assertSessionHasNoErrors();
+    expect(T::int(DB::table('core_reengagement_settings')->where('storefront_id', 1)->value('paused')))->toBe(0);
+
+    // And saving the settings never changes the pause.
+    DB::table('core_reengagement_settings')->where('storefront_id', 1)->update(['paused' => true]);
+    actingAs(Staff::admin())->put('/manage/storefronts/1/reengagement', ['audience' => 'team', 'team_emails' => ['a@example.test'], 'manual_product_ids' => []])
+        ->assertSessionHasNoErrors();
+    expect(T::int(DB::table('core_reengagement_settings')->where('storefront_id', 1)->value('paused')))->toBe(1);
+
+    actingAs(Staff::dataEntry())->post('/manage/storefronts/1/reengagement/pause', ['paused' => false])->assertForbidden();
+});
+
+it('takes the team\'s addresses as a list: each one checked, named when refused, one of each kept', function () {
+    $put = fn (array $emails) => actingAs(Staff::admin())->put('/manage/storefronts/1/reengagement', ['audience' => 'team', 'team_emails' => $emails, 'manual_product_ids' => []]);
+
+    $put(['ok@example.test', 'not-an-address'])->assertSessionHasErrors('team_emails.1');
+    $bag = session('errors');
+    expect($bag)->toBeInstanceOf(ViewErrorBag::class);
+    if ($bag instanceof ViewErrorBag) {
+        expect($bag->first('team_emails.1'))->toContain('not-an-address');   // names the address it refused
+    }
+    expect(T::str(DB::table('core_reengagement_settings')->where('storefront_id', 1)->value('team_emails')))->toBe("team.one@example.test\nteam.two@example.test");
+
+    $put(['B@Example.test', 'b@example.test', 'c@example.test'])->assertSessionHasNoErrors();
+    expect(T::str(DB::table('core_reengagement_settings')->where('storefront_id', 1)->value('team_emails')))->toBe("b@example.test\nc@example.test")
+        ->and(ReEngagement::settings(1)['team_emails'])->toBe(['b@example.test', 'c@example.test']);
+
+    $put(array_map(fn (int $i): string => "t{$i}@example.test", range(1, 21)))->assertSessionHasErrors('team_emails');
+});
+
+it('re-plans this week from the screen with a fresh preview — and refuses a sent week or one with no team', function () {
+    steadyProducts(6);
+    $engine = app(ReEngagement::class);
+    $first = $engine->plan(1);
+    travel(1)->minutes();                                                    // a re-plan's preview is keyed by its planning time
+
+    actingAs(Staff::admin())->post('/manage/storefronts/1/reengagement/replan')->assertSessionHasNoErrors()->assertSessionHas('status');
+    expect(DB::table('core_reengagement_runs')->where('storefront_id', 1)->count())->toBe(1)
+        ->and(T::int(DB::table('core_reengagement_runs')->where('storefront_id', 1)->value('id')))->toBe($first['run_id'])
+        ->and(DB::table('integration_outbox')->where('channel', BulkMailer::CHANNEL)->where('event', ReEngagement::KIND.'_preview')->count())->toBe(4);   // 2 + 2
+
+    DB::table('core_reengagement_runs')->where('id', $first['run_id'])->update(['status' => 'sent', 'sent_at' => now()]);
+    actingAs(Staff::admin())->post('/manage/storefronts/1/reengagement/replan')->assertSessionHas('error');
+    expect(DB::table('integration_outbox')->where('channel', BulkMailer::CHANNEL)->where('event', ReEngagement::KIND.'_preview')->count())->toBe(4);
+
+    DB::table('core_reengagement_runs')->delete();
+    DB::table('core_reengagement_settings')->where('storefront_id', 1)->update(['team_emails' => null]);
+    actingAs(Staff::admin())->post('/manage/storefronts/1/reengagement/replan')->assertSessionHas('error');
+    expect(DB::table('core_reengagement_runs')->count())->toBe(0);
+
+    actingAs(Staff::dataEntry())->post('/manage/storefronts/1/reengagement/replan')->assertForbidden();
+});
+
+it('estimates the audience in one query, counting exactly whom planning would reach', function () {
+    $away = customerAway(40);
+    customerAway(5);                                                          // recent: not counted
+    $gone = customerAway(60);
+    ReEngagement::unsubscribe(1, $gone['email']);                            // unsubscribed: not counted
+    $legacy = Shopper::register();                                           // never seen by core; legacy login 90 days ago
+    $legacyId = T::int($legacy->getAttribute('id'));
+    UserWriteGuard::fixture(fn () => DB::table('users')->where('id', $legacyId)->update(['last_login_at' => now()->subDays(90), 'created_at' => now()->subDays(400)]));
+    $lastWeek = customerAway(50);                                            // in last week's run: not counted
+    $runId = DB::table('core_reengagement_runs')->insertGetId(['storefront_id' => 1, 'week' => now()->subWeek()->format('o-\\WW'), 'audience' => 'customers',
+        'status' => 'sent', 'recipients' => 1, 'created_at' => now(), 'updated_at' => now()]);
+    DB::table('core_reengagement_sends')->insert(['run_id' => $runId, 'email' => $lastWeek['email'], 'product_ids' => '[]', 'created_at' => now()]);
+
+    $engine = app(ReEngagement::class);
+    $planned = array_column(T::arr((fn () => $this->absentCustomers(1))->call($engine)), 'email');
+
+    expect($planned)->toContain($away['email'])
+        ->and($planned)->toContain(mb_strtolower(T::str($legacy->getAttribute('email'))))
+        ->and($planned)->not->toContain($gone['email'])
+        ->and($planned)->not->toContain($lastWeek['email'])
+        ->and(ReEngagement::audienceEstimate(1))->toBe(count($planned));
+});
+
+it('gives the screen its state: this week, the next planning time, the audience estimate, and the addresses as a list', function () {
+    actingAs(Staff::admin())->get('/manage/storefronts/1/reengagement')->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page->component('Manage/ReEngagement/Index')
+            ->where('state.week', now()->format('o-\\WW'))
+            ->where('state.next_plan_at', ReEngagement::nextPlanAt()->toDateTimeString())
+            ->has('state.customers_estimate')
+            ->where('settings.team_emails', ['team.one@example.test', 'team.two@example.test']));
+
+    $monday = now()->startOfWeek(Carbon::MONDAY)->setTime(10, 0);
+    expect(ReEngagement::nextPlanAt()->isMonday())->toBeTrue()
+        ->and(ReEngagement::nextPlanAt()->greaterThan(now()))->toBeTrue()
+        ->and(ReEngagement::nextPlanAt()->equalTo(now()->lt($monday) ? $monday : $monday->copy()->addWeek()))->toBeTrue();
 });

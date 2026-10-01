@@ -106,6 +106,9 @@ Route::prefix('manage')->name('manage.')->group(function (): void {
                 // The weekly re-engagement e-mail: pause switch, audience, team addresses (2026-10-01).
                 Route::get('storefronts/{storefront}/reengagement', [ReEngagementController::class, 'index'])->name('reengagement.index');
                 Route::put('storefronts/{storefront}/reengagement', [ReEngagementController::class, 'update'])->name('reengagement.update');
+                // Pause/resume alone, and re-planning this week from the saved settings (rework, 2026-10-01).
+                Route::post('storefronts/{storefront}/reengagement/pause', [ReEngagementController::class, 'pause'])->name('reengagement.pause');
+                Route::post('storefronts/{storefront}/reengagement/replan', [ReEngagementController::class, 'replan'])->name('reengagement.replan');
                 // The products the team may pick for the next e-mail (R4) — the shared picker search.
                 Route::get('storefronts/{storefront}/reengagement/products', [ProductPickerController::class, 'search'])->name('reengagement.products');
             });

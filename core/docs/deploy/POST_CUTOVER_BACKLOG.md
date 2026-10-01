@@ -344,7 +344,18 @@ Git history holds the text it replaced.
   officer. Not a code item.
 - **Compression — the developer is raising it with Hostinger.** Options 2 and 3 above are NOT to be
   built. The numbers for the ticket are the ones above (home HTML 365 KB Brotli vs 215 KB gzip).
-- **Re-engagement screen rework — APPROVED 2026-10-01 as planned, being built** (picker with search by name,
+- **Re-engagement screen rework — BUILT 2026-10-01 (approved as planned; in the tree, not deployed).** The state in
+  plain words at the top ("Running (team only). The next e-mail is prepared Monday 5 October 10:00…"), a three-line
+  explanation, Pause/Resume as its own confirmed action that never saves the form, the audience as two choices that say
+  whom they reach (with today's customer estimate), team addresses as checked chips, the picker with picture, name,
+  code and price (sale shown against the crossed-out price), drag to reorder, and four different messages for "type
+  more", searching, no match and a failed search (session ended / no connection / server error, with retry). Errors
+  beside their fields plus a summary; the result beside the button pressed; past weeks as sentences. Added (not in the
+  plan, said so in the report): **"Prepare / Re-plan this week now"** — a save never touches a week already prepared,
+  which is the likeliest reading of "the audience didn't save the first time". Found and fixed: Carbon's
+  `startOfWeek()` follows the locale and is SATURDAY under `ar`. Tests: `ReEngagementTest` 20 (one changed
+  deliberately: the form no longer carries `paused`, addresses are a list); browser pass on scratch 29/29.
+  **Deploy:** core tar + dashboard assets (no migration). (picker with search by name,
   picture and price, drag to reorder; e-mail chips; every control says what it does; the state in
   plain words at the top).
 
