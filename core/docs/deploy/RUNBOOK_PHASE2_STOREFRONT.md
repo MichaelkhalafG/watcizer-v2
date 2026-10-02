@@ -1896,10 +1896,66 @@ idempotent and says "nothing to do" when there is nothing to do.
 7. **The re-engagement screen's audience** — *reported 2026-09-30:* the first save left `audience` at
    `customers`. Not reproduced. Three ways the screen can mislead a save are known (Pause saves the
    whole form; some refusals are never shown; the "saved" message appears off-screen) and are fixed
-   in the screen's rework. Until then, after saving that screen confirm it on the server:
+   in the screen's rework (`1a516a5`, deployed with §13.1). Until that is live, after saving that
+   screen confirm it on the server:
    ```bash
    php artisan tinker --execute="print_r(DB::table('core_reengagement_settings')->get(['storefront_id','paused','audience'])->toArray());"
    ```
+
+### 13.1 The deploy of 2026-10-02 — four batches at once (written overnight 2026-10-02)
+
+**Carried:** `main` is still unbuilt at `6da75c9`. On top of it:
+- `1a516a5` — the re-engagement screen rework;
+- `bb61298` — dompurify 3.4.16;
+- the overnight commits: trust pages and the phone menu; the Markdown blog editor; the custom home rail; the backlog note.
+
+Every step below is §13's checklist plus what this batch adds.
+
+1. **Merge and push** `wave-4d` → `main`. This push IS the storefront build (Hostinger builds `main`).
+2. **Dashboard assets.** Run `npm run build` in `core/` from the final tree; `core/package.json` gained `react-markdown 10.1.0`, already installed on the workstation. Upload `public/build/`, then compare the `manifest.json` sha256 with the live one (§13 step 1).
+3. **Core tar.** §2, as usual. New PHP since the batch-3 tar:
+   - the re-engagement controller and domain;
+   - `CompatLocaleSitemap`, `CompatBlogs`, `CompatHome`;
+   - `BlogWriter`, `BlogController`, `HomeRails`, `HomeRailController`;
+   - `routes/web.php` (two new dashboard routes: `reengagement/pause`, `reengagement/replan`);
+   - `lang/en/manage.php`;
+   - two migrations.
+4. **Migrations.** Run `php artisan migrate --pretend`, then `php artisan migrate --force`. Expect exactly two, both additive, both guarded:
+   - `2026_10_17_000000_blog_body_format` — `core_blogs.body_format`, default `text`. Every existing article stays `text` and looks exactly as before.
+   - `2026_10_18_000000_home_rails_custom` — `storefront_home_rails.product_ids`, nullable.
+5. **Foreign keys.** Run `php artisan core:repoint-commerce-fks --dry-run`; it must say nothing to do. `product_ids` is JSON with no key, so the command's `TARGET` is unchanged.
+6. **Caches:** `php artisan config:cache && php artisan route:cache`.
+7. **`.htaccess`:** no new line. Nothing new is called on the API host — the trust pages are storefront pages, and the blog and home reads are the existing `catalog/blog(s)` and `catalog/home`.
+8. **The "Last updated" date** on the privacy policy and terms is `TRUST_UPDATED = '2026-10-02'` in `Frontend-next/src/content/trustPages.js`. If the deploy is not on 2 October, change it before step 1.
+
+**Checks after the storefront build** — hard-reload first (memory: a check right after a build is unreliable until then):
+
+- **Pass-through (from `1640502`):**
+  - `https://watchizereg.com/api/catalog/meta` → 308 to `api.watchizereg.com` (401 there without a key is expected);
+  - an `/Uploads_Images/…` URL → 308, and the image shows.
+- **Sitemaps:**
+  - `/sitemap.xml` and `/sitemaps/en.xml` / `ar.xml` list URLs in a browser, the four trust pages included in each;
+  - resubmit `https://watchizereg.com/sitemap.xml` in Search Console.
+- **Trust pages:**
+  - `/about-us`, `/contact-us`, `/privacy-policy`, `/terms-and-conditions` and their `/ar/…` versions answer 200 with their text;
+  - the footer's Support column has the four links;
+  - on a phone, the menu has them at the bottom.
+- **Blog:**
+  - Dashboard → Articles → open an existing article. It shows the "written before the Markdown editor" notice, and "Preview as on the shop" renders it. Don't save it unless you mean to convert it.
+  - On the shop, an existing article looks exactly as before.
+- **Home rails:**
+  - Dashboard → Home rails → New rail → "Picked by hand" shows the picker with prices. Cancel unless you want one.
+  - The home page is unchanged (no custom rail exists until the team adds one).
+- **Re-engagement screen:**
+  - the status line at the top reads in plain words;
+  - Pause asks first (cancel it);
+  - the picker search shows prices.
+- **dompurify:** a product page's description renders.
+- **axios:** browse home → product → listing; no console errors.
+
+**Rollback:**
+- Previous core tar plus the previous `public/build`, and revert the merge on `main`.
+- The two new columns can stay: both are additive with safe defaults, and the previous code never reads them.
 
 ---
 

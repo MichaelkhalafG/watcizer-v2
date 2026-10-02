@@ -83,6 +83,66 @@ storefront rebuild) — then build the four trust pages from the approved text."
 - the Egyptian data-protection law, for legal review;
 - compression: the developer is taking it to Hostinger.
 
+## ▶ OVERNIGHT 2026-10-02 — built in the working tree, NOT committed, NOT deployed
+
+Checkpoints are saved outside the repo after every finished piece. Each one holds the files plus a `git diff HEAD` patch. Two copies:
+- `D:/coding/watchizer website/checkpoints/<date_time-label>/`
+- the job folder `tmp/overnight/`
+
+| Piece | State | Checkpoint |
+|---|---|---|
+| Trust pages (EN + AR, sitemap, footer) | BUILT, verified: 16/16 browser checks; 84/84 approved lines verbatim | `2026-10-02_0413-b5-trust-pages` |
+| Trust links in the phone menu; "Last updated" kept at 2 October 2026 (= deploy day) | BUILT | `2026-10-02_0424-b6-trust-followups-and-renderer` |
+| Blog editor, option A (Markdown, react-markdown 10.1.0) | BUILT, verified (below) | `2026-10-02_0453-b7-blog-editor` |
+| Custom home rail (`custom` kind, picker) | BUILT, verified (below) | `2026-10-02_0503-b8-custom-rail` |
+
+**Blog editor — what it is:**
+- **Renderer:** the same rules in two files — `Frontend-next/src/lib/markdown.js` for the shop, `core/resources/js/lib/markdown.ts` for the dashboard preview.
+- **Safe by construction:**
+  - raw HTML shows as text;
+  - only the allowed elements exist;
+  - links keep https, http, mailto, tel and `/` site paths only;
+  - images show only when they are our own uploads (`/Uploads_Images/…`).
+- **Migration M2d** (`2026_10_17_000000_blog_body_format`) adds `core_blogs.body_format`. Every existing article stays `text` and looks exactly as before. Any save from the editor writes `markdown`, and the editor warns before an old article is converted.
+- **The editor itself:** a toolbar where every button says what it inserts; a link row that refuses unsafe or empty addresses; image upload, with the picture placed on its own line; and "Preview as on the shop".
+- **On the shop:** internal links in an article keep the page's language (D7).
+- **Tests:** `BlogMarkdownSafeTest` (22 attacks through both renderers; byte-identical output), `CatalogBlogsTest` (+2, and one assertion changed deliberately: the payload gains `format`).
+- **Browser pass on scratch `wz_scratch_b5`:** 16/16.
+- **Found and fixed during that pass:**
+  - an image inserted right after a link split the link — images now go on their own line;
+  - a bare `https://` inserted a link to nowhere — now refused;
+  - an internal link on an Arabic article pointed to the English page — now localised.
+
+**Custom home rail — what it is:**
+- **Migration M2e** (`2026_10_18_000000_home_rails_custom`) adds `storefront_home_rails.product_ids` (a JSON list, no foreign key, like `target_id`).
+- **Kind `custom`:**
+  - picked with the improved ProductPicker (picture, name, code, price, drag to reorder);
+  - both titles required;
+  - the card count is the number of products picked;
+  - the picks are dropped if the rail is switched to another kind.
+- **`catalog/home`** serves the picks in the team's order, skipping any product the storefront no longer shows.
+- **On the home page,** the rail uses its own titles and has no "View all" button; every other rail keeps its button.
+- **The screen** says why Save is off: no picks, or a missing title.
+- **Tests:** `CatalogHomeTest` +2, `HomeRailScreenTest` +1.
+- **Browser pass on scratch:** 11/11. Built on the dashboard; dragging reordered the picks; core and the home page (EN and AR) show the picks in that order. The phone menu was checked too: 7/7.
+
+**Verified as a whole (05:20):**
+- full core suite 1913 passed / 38 skipped;
+- storefront lint 0 errors (37 warnings, unchanged);
+- tsc clean; PHPStan and Pint clean on every changed file.
+- **Not run:** the compat harness (`compat:diff`). It compares core with the legacy host, which has been off since C3 (410 on every path). Tonight's reads (`catalog/blog(s)`, `catalog/home`, the locale sitemaps) are core-only and have no legacy twin; their own tests cover them.
+
+**Scratch teardown:**
+- `wz_scratch_b5` dropped and its admin password file deleted;
+- the 9 test image files removed from local `Banner_home` (8 = baseline);
+- dev DB unchanged apart from M2d and M2e (applied, as migrations are).
+
+**Not picked up from the backlog (item 3), on purpose:** tomorrow's deploy already carries four batches plus an unbuilt `main`. Anything more would add risk to the one deploy without fixing anything urgent. The shopper-visible defects (returns wording, payment badges) are deferred by decision.
+
+**Recorded, not done:**
+- **Local MySQL:** the `mysql.db` privilege table crashed (2026-10-02 03:39). It was repaired with `aria_chk -r` and lost its 3 stock XAMPP rows; the original files are backed up in the job folder. `global_priv`, `columns_priv` and `procs_priv` are still flagged corrupt (F-11). Left alone (developer: "leave it"). Root works; project data is intact.
+- **Blog images share the cover's upload preset** (`banner`, folder `Banner_home`), which scales down and never crops. A dedicated `blog` preset and folder would keep them apart. Not done; no decision needed for launch.
+
 ## ▶ HISTORY — session record, end of 2026-09-28
 
 **The next session starts with:** *"Report the results of the 2026-09-28 deploy checks (core half,
