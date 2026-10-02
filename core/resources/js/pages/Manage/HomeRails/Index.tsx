@@ -1,6 +1,7 @@
-import { router } from '@inertiajs/react';
+import { router, usePage } from '@inertiajs/react';
 import { useState } from 'react';
 
+import ProductPicker from '@/components/manage/ProductPicker';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input, Select } from '@/components/ui/input';
@@ -17,12 +18,17 @@ import { useT } from '@/lib/i18n';
  * Order is edited with up/down buttons, and every move sends the WHOLE order: the server refuses a
  * list that does not name every rail once, so two tabs cannot silently interleave their moves.
  * A rail with nothing to show (a grade with no products) is simply not rendered on the home page.
+ *
+ * `custom` (M2e, 2026-10-02): products picked by hand with the shared ProductPicker — search by name
+ * or code with picture and price, drag to reorder. It has no target to be named after, so both
+ * titles are required; it shows exactly the products picked, in that order.
  */
 
 interface Rail {
     id: number;
     kind: string;
     target_id: number | null;
+    product_ids: number[];
     target_name: string | null;
     title_en: string | null;
     title_ar: string | null;
@@ -50,13 +56,14 @@ interface Draft {
     id: number | null;
     kind: string;
     target_id: string;
+    product_ids: number[];
     title_en: string;
     title_ar: string;
     card_count: string;
     is_active: boolean;
 }
 
-const EMPTY: Draft = { id: null, kind: 'grade', target_id: '', title_en: '', title_ar: '', card_count: '8', is_active: true };
+const EMPTY: Draft = { id: null, kind: 'grade', target_id: '', product_ids: [], title_en: '', title_ar: '', card_count: '8', is_active: true };
 
 /** The kinds, named for the operator. A function because `useT()` only runs inside the component. */
 function kindLabels(t: ReturnType<typeof useT>): Record<string, string> {
@@ -67,11 +74,13 @@ function kindLabels(t: ReturnType<typeof useT>): Record<string, string> {
         grade: t('products.grade', 'الدرجة'),
         brand: t('home_rails.kind_brand', 'ماركة'),
         category_type: t('home_rails.kind_category_type', 'تصنيف رئيسي'),
+        custom: t('home_rails.kind_custom', 'اختيار يدوي'),
     };
 }
 
 export default function HomeRailsIndex({ storefront, storefronts, rails, kinds, targeted, targets, max_cards }: Props) {
     const t = useT();
+    const errors = (usePage().props.errors ?? {}) as Record<string, string>;
     const [draft, setDraft] = useState<Draft | null>(null);
     const KIND = kindLabels(t);
     const base = `/manage/storefronts/${storefront.id}/home-rails`;
@@ -83,6 +92,7 @@ export default function HomeRailsIndex({ storefront, storefronts, rails, kinds, 
         return {
             kind: next.kind,
             target_id: next.target_id,
+            product_ids: next.kind === 'custom' ? next.product_ids : null,
             title_en: next.title_en,
             title_ar: next.title_ar,
             card_count: next.card_count,
@@ -95,6 +105,7 @@ export default function HomeRailsIndex({ storefront, storefronts, rails, kinds, 
             id: rail.id,
             kind: rail.kind,
             target_id: rail.target_id === null ? '' : String(rail.target_id),
+            product_ids: rail.product_ids,
             title_en: rail.title_en ?? '',
             title_ar: rail.title_ar ?? '',
             card_count: String(rail.card_count),
@@ -108,9 +119,11 @@ export default function HomeRailsIndex({ storefront, storefronts, rails, kinds, 
         const payload = {
             kind: draft.kind,
             target_id: needsTarget(draft.kind) && draft.target_id !== '' ? Number(draft.target_id) : null,
+            product_ids: draft.kind === 'custom' ? draft.product_ids : null,
             title_en: draft.title_en.trim() === '' ? null : draft.title_en,
             title_ar: draft.title_ar.trim() === '' ? null : draft.title_ar,
-            card_count: Number(draft.card_count || 0),
+            // A custom rail shows exactly what was picked (the server counts them too).
+            card_count: draft.kind === 'custom' ? Math.max(1, draft.product_ids.length) : Number(draft.card_count || 0),
             is_active: draft.is_active,
         };
         const done = { preserveScroll: true, onSuccess: () => setDraft(null) };
@@ -131,6 +144,18 @@ export default function HomeRailsIndex({ storefront, storefronts, rails, kinds, 
         router.put(`${base}/${rail.id}`, payloadOf(rail, { is_active: !rail.is_active }), { preserveScroll: true });
 
     const draftTargetMissing = draft !== null && needsTarget(draft.kind) && draft.target_id === '';
+    const isCustom = draft !== null && draft.kind === 'custom';
+    // Why Save is disabled, said next to it (AGENTS §2.27: the rule is in the form, not a surprise after).
+    const blocked =
+        draft === null
+            ? null
+            : draftTargetMissing
+              ? t('home_rails.need_target', 'اختر ما يعرضه الشريط أولًا.')
+              : isCustom && draft.product_ids.length === 0
+                ? t('home_rails.need_picks', 'اختر منتجًا واحدًا على الأقل.')
+                : isCustom && (draft.title_ar.trim() === '' || draft.title_en.trim() === '')
+                  ? t('home_rails.need_titles', 'اكتب العنوانين بالعربية والإنجليزية: الشريط المختار يدويًا ليس له اسم تلقائي.')
+                  : null;
 
     return (
         <ManageLayout
@@ -201,6 +226,31 @@ export default function HomeRailsIndex({ storefront, storefronts, rails, kinds, 
                                         ))}
                                     </Select>
                                 </label>
+                            ) : isCustom ? (
+                                <div className="space-y-2 text-sm sm:col-span-2">
+                                    <span>{t('home_rails.picks', 'المنتجات، بالترتيب الذي تظهر به')}</span>
+                                    <p className="text-xs text-muted-foreground">
+                                        {t(
+                                            'home_rails.custom_hint',
+                                            'يعرض الشريط هذه المنتجات فقط، بهذا الترتيب. المنتج المخفي في المتجر أو المحذوف لاحقًا لا يظهر. حتى :max منتجًا.',
+                                            { max: max_cards },
+                                        )}
+                                    </p>
+                                    <ProductPicker
+                                        id="home-rail-picks"
+                                        searchUrl={`${base}/products`}
+                                        value={draft.product_ids}
+                                        onChange={(ids) => setDraft({ ...draft, product_ids: ids })}
+                                        max={max_cards}
+                                    />
+                                    {Object.entries(errors)
+                                        .filter(([key]) => key === 'product_ids' || key.startsWith('product_ids.'))
+                                        .map(([key, message]) => (
+                                            <p key={key} className="text-sm text-destructive">
+                                                {message}
+                                            </p>
+                                        ))}
+                                </div>
                             ) : (
                                 <p className="self-end text-xs text-muted-foreground">
                                     {draft.kind === 'featured'
@@ -218,9 +268,10 @@ export default function HomeRailsIndex({ storefront, storefronts, rails, kinds, 
                                 <span>{t('home_rails.title_ar', 'العنوان (عربي)')}</span>
                                 <Input
                                     value={draft.title_ar}
-                                    placeholder={t('home_rails.title_placeholder', 'فارغ = الاسم التلقائي')}
+                                    placeholder={isCustom ? t('home_rails.title_required', 'مطلوب') : t('home_rails.title_placeholder', 'فارغ = الاسم التلقائي')}
                                     onChange={(event) => setDraft({ ...draft, title_ar: event.target.value })}
                                 />
+                                {errors.title_ar ? <span className="text-xs text-destructive">{errors.title_ar}</span> : null}
                             </label>
 
                             <label className="space-y-1 text-sm">
@@ -228,22 +279,29 @@ export default function HomeRailsIndex({ storefront, storefronts, rails, kinds, 
                                 <Input
                                     dir="ltr"
                                     value={draft.title_en}
-                                    placeholder={t('home_rails.title_placeholder', 'فارغ = الاسم التلقائي')}
+                                    placeholder={isCustom ? t('home_rails.title_required', 'مطلوب') : t('home_rails.title_placeholder', 'فارغ = الاسم التلقائي')}
                                     onChange={(event) => setDraft({ ...draft, title_en: event.target.value })}
                                 />
+                                {errors.title_en ? <span className="text-xs text-destructive">{errors.title_en}</span> : null}
                             </label>
 
-                            <label className="space-y-1 text-sm">
-                                <span>{t('home_rails.card_count', 'عدد المنتجات')}</span>
-                                <Input
-                                    dir="ltr"
-                                    type="number"
-                                    min={1}
-                                    max={max_cards}
-                                    value={draft.card_count}
-                                    onChange={(event) => setDraft({ ...draft, card_count: event.target.value })}
-                                />
-                            </label>
+                            {isCustom ? (
+                                <p className="self-end text-sm text-muted-foreground">
+                                    {t('home_rails.custom_count', 'يعرض :count منتجات — بالترتيب المختار.', { count: draft.product_ids.length })}
+                                </p>
+                            ) : (
+                                <label className="space-y-1 text-sm">
+                                    <span>{t('home_rails.card_count', 'عدد المنتجات')}</span>
+                                    <Input
+                                        dir="ltr"
+                                        type="number"
+                                        min={1}
+                                        max={max_cards}
+                                        value={draft.card_count}
+                                        onChange={(event) => setDraft({ ...draft, card_count: event.target.value })}
+                                    />
+                                </label>
+                            )}
 
                             <label className="flex items-center gap-2 self-end text-sm">
                                 <input
@@ -256,12 +314,13 @@ export default function HomeRailsIndex({ storefront, storefronts, rails, kinds, 
                         </div>
 
                         <div className="mt-4 flex flex-wrap gap-2">
-                            <Button onClick={submit} disabled={draftTargetMissing}>
+                            <Button onClick={submit} disabled={blocked !== null}>
                                 {t('common.save', 'حفظ')}
                             </Button>
                             <Button variant="outline" onClick={() => setDraft(null)}>
                                 {t('common.cancel', 'إلغاء')}
                             </Button>
+                            {blocked !== null ? <span className="self-center text-sm text-muted-foreground">{blocked}</span> : null}
                             {draft.id !== null ? (
                                 <Button
                                     variant="destructive"

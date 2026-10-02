@@ -5,6 +5,7 @@ import { FormActions } from "@/components/form/FormActions";
 import { TextField } from "@/components/form/TextField";
 import { SwitchField } from "@/components/form/SwitchField";
 import { TranslatedField } from "@/components/form/TranslatedField";
+import { MarkdownField } from "@/components/form/MarkdownField";
 import { useDirtyGuard } from "@/components/form/useDirtyGuard";
 import { ImageField, type StoredImage } from "@/components/form/ImageField";
 import { Alert } from "@/components/ui/alert";
@@ -22,6 +23,7 @@ interface BlogPayload {
     storefront_id: number;
     cover_path: string | null;
     cover_url: string | null;
+    body_format: "text" | "markdown";
     is_published: boolean;
     published_at: string | null;
     title: Pair;
@@ -49,13 +51,21 @@ const EMPTY: Pair = { ar: "", en: "" };
  * The writer generates one from the English title, then the Arabic, through `LegacySlug` — the same
  * slugifier every other public URL here goes through. Requiring it would make somebody invent a URL
  * before they have written the first sentence.
+ *
+ * ── The body is Markdown (2026-10-02, option A) ──────────────────────────────────────────────
+ *
+ * `MarkdownField`: a toolbar, and a preview rendered by the same rules as the shop. An article written
+ * before the editor is 'text' and is shown on the shop exactly as before until somebody saves it here;
+ * the notice above the editor says so, because saving switches it to Markdown.
  */
 export default function BlogForm({
     blog,
     storefronts,
+    assetBase,
 }: {
     blog: BlogPayload | null;
     storefronts: { value: string; label: string }[];
+    assetBase: string;
 }) {
     const t = useT();
     const locale = useLocale();
@@ -123,20 +133,25 @@ export default function BlogForm({
                             errors={errors}
                         />
 
-                        <TranslatedField
+                        {blog?.body_format === "text" ? (
+                            <Alert tone="warning">
+                                {t(
+                                    "blogs.text_to_markdown",
+                                    "هذا المقال كُتب قبل محرر Markdown، ويظهر في المتجر كما كان. عند الحفظ يُنشر بتنسيق Markdown: راجع «معاينة كما في المتجر» قبل الحفظ، فهي ما سيراه العملاء.",
+                                )}
+                            </Alert>
+                        ) : null}
+                        <MarkdownField
                             label={t("blogs.body", "النص")}
                             name="body"
-                            multiline
-                            hint={`${t(
+                            hint={t(
                                 "blogs.body_hint",
                                 "النص الكامل للمقال بالعربية والإنجليزية. المقال بلا نص يمكن حفظه كمسودة، ولا يمكن نشره.",
-                            )} ${t(
-                                "blogs.body_format_hint",
-                                "نص عادي. اترك سطراً فارغاً بين الفقرات. السطر الذي يبدأ بـ «## » يصبح عنواناً فرعياً، والذي يبدأ بـ «- » يصبح بنداً في قائمة.",
-                            )}`}
+                            )}
                             value={form.data.body}
                             onChange={(value) => form.setData("body", value)}
                             errors={errors}
+                            assetBase={assetBase}
                         />
                     </CardContent>
                 </Card>

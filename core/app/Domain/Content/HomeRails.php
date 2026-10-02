@@ -13,7 +13,7 @@ use InvalidArgumentException;
  * dashboard, and writing them for the dashboard. One class so the two sides cannot disagree about
  * what a valid rail is.
  *
- * @phpstan-type Rail array{id: int, kind: string, target_id: ?int, title_en: ?string, title_ar: ?string, position: int, is_active: bool, card_count: int}
+ * @phpstan-type Rail array{id: int, kind: string, target_id: ?int, product_ids: list<int>, title_en: ?string, title_ar: ?string, position: int, is_active: bool, card_count: int}
  */
 final class HomeRails
 {
@@ -29,7 +29,13 @@ final class HomeRails
 
     public const CATEGORY_TYPE = 'category_type';
 
-    public const KINDS = [self::OFFERS, self::FEATURED, self::NEWEST, self::GRADE, self::BRAND, self::CATEGORY_TYPE];
+    /**
+     * Products picked by hand, in order (M2e, 2026-10-02). It has no target to be named after, so
+     * BOTH titles are required; its card count is the number of products picked.
+     */
+    public const CUSTOM = 'custom';
+
+    public const KINDS = [self::OFFERS, self::FEATURED, self::NEWEST, self::GRADE, self::BRAND, self::CATEGORY_TYPE, self::CUSTOM];
 
     /** Kinds that name a target: a grade, a brand, a top-level category. */
     public const TARGETED = [self::GRADE, self::BRAND, self::CATEGORY_TYPE];
@@ -68,7 +74,7 @@ final class HomeRails
     /**
      * Add a rail at the END of the list.
      *
-     * @param  array{kind: string, target_id: ?int, title_en: ?string, title_ar: ?string, is_active: bool, card_count: int}  $data
+     * @param  array{kind: string, target_id: ?int, product_ids?: ?list<int>, title_en: ?string, title_ar: ?string, is_active: bool, card_count: int}  $data
      */
     public static function create(int $storefrontId, array $data): int
     {
@@ -84,7 +90,7 @@ final class HomeRails
         ]);
     }
 
-    /** @param  array{kind: string, target_id: ?int, title_en: ?string, title_ar: ?string, is_active: bool, card_count: int}  $data */
+    /** @param  array{kind: string, target_id: ?int, product_ids?: ?list<int>, title_en: ?string, title_ar: ?string, is_active: bool, card_count: int}  $data */
     public static function update(int $storefrontId, int $id, array $data): void
     {
         self::assertValid($data);
@@ -121,7 +127,7 @@ final class HomeRails
         });
     }
 
-    /** @param  array{kind: string, target_id: ?int, title_en: ?string, title_ar: ?string, is_active: bool, card_count: int}  $data */
+    /** @param  array{kind: string, target_id: ?int, product_ids?: ?list<int>, title_en: ?string, title_ar: ?string, is_active: bool, card_count: int}  $data */
     private static function assertValid(array $data): void
     {
         if (! in_array($data['kind'], self::KINDS, true)) {
@@ -130,27 +136,53 @@ final class HomeRails
         if (in_array($data['kind'], self::TARGETED, true) !== ($data['target_id'] !== null)) {
             throw new InvalidArgumentException('A grade, brand or category rail needs a target; the others take none.');
         }
+        if ($data['kind'] === self::CUSTOM) {
+            $picks = $data['product_ids'] ?? [];
+            if ($picks === [] || count($picks) > self::MAX_CARDS || count(array_unique($picks)) !== count($picks)) {
+                throw new InvalidArgumentException('A custom rail needs 1 to '.self::MAX_CARDS.' different products.');
+            }
+            if (trim($data['title_ar'] ?? '') === '' || trim($data['title_en'] ?? '') === '') {
+                throw new InvalidArgumentException('A custom rail needs a title in both languages.');
+            }
+        }
         if ($data['card_count'] < 1 || $data['card_count'] > self::MAX_CARDS) {
             throw new InvalidArgumentException('Card count out of range.');
         }
     }
 
     /**
-     * @param  array{kind: string, target_id: ?int, title_en: ?string, title_ar: ?string, is_active: bool, card_count: int}  $data
+     * @param  array{kind: string, target_id: ?int, product_ids?: ?list<int>, title_en: ?string, title_ar: ?string, is_active: bool, card_count: int}  $data
      * @return array<string, mixed>
      */
     private static function columns(array $data): array
     {
         $title = fn (?string $t): ?string => $t === null || trim($t) === '' ? null : trim($t);
 
+        $custom = $data['kind'] === self::CUSTOM;
+
         return [
             'kind' => $data['kind'],
             'target_id' => $data['target_id'],
+            // Only a custom rail keeps picks; switching a rail to another kind drops them.
+            'product_ids' => $custom ? (string) json_encode($data['product_ids'] ?? []) : null,
             'title_en' => $title($data['title_en']),
             'title_ar' => $title($data['title_ar']),
             'is_active' => $data['is_active'],
-            'card_count' => $data['card_count'],
+            // A custom rail shows exactly what was picked.
+            'card_count' => $custom ? count($data['product_ids'] ?? []) : $data['card_count'],
         ];
+    }
+
+    /**
+     * A stored JSON list of product ids, in order, positive ints only.
+     *
+     * @return list<int>
+     */
+    private static function ids(?string $json): array
+    {
+        $decoded = json_decode($json ?? '[]', true);
+
+        return array_values(array_filter(is_array($decoded) ? $decoded : [], fn (mixed $id): bool => is_int($id) && $id > 0));
     }
 
     /** @return Rail */
@@ -162,6 +194,7 @@ final class HomeRails
             'id' => Row::int($row, 'id'),
             'kind' => Row::str($row, 'kind'),
             'target_id' => Row::nint($row, 'target_id'),
+            'product_ids' => self::ids(Row::nstr($row, 'product_ids')),
             'title_en' => Row::nstr($row, 'title_en'),
             'title_ar' => Row::nstr($row, 'title_ar'),
             'position' => Row::int($row, 'position'),

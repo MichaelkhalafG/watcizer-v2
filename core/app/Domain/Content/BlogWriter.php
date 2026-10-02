@@ -34,6 +34,11 @@ use Illuminate\Validation\ValidationException;
  *  3. **Publishing requires a body.** A published article with no text is a live page that says
  *     nothing, and it is the one state nobody discovers from inside the dashboard. Saving a DRAFT
  *     with an empty body is fine — that is what a draft is for.
+ *
+ *  4. **Every save is Markdown** (M2d, 2026-10-02, the blog editor — developer's option A). The
+ *     editor writes Markdown and shows its preview before the save, rendered by the same rules the
+ *     shop uses, so `body_format` becomes 'markdown' on any save. An article nobody has saved since
+ *     stays 'text' and keeps looking exactly as it did (the storefront's ArticleBody).
  */
 final class BlogWriter
 {
@@ -109,6 +114,7 @@ final class BlogWriter
                 'slug' => $slug,
                 'storefront_id' => Coerce::int($data['storefront_id'] ?? null, 1),
                 'cover_path' => Coerce::nstr($data['cover_path'] ?? null),
+                'body_format' => 'markdown',
                 'updated_at' => now(),
             ];
 

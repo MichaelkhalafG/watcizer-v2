@@ -28,8 +28,9 @@ use InvalidArgumentException;
  *
  * Until this screen the home page's rails were fixed in the storefront's code: offers, a featured
  * block, then one rail per grade in the grades table's order. Here a rail can be added (a grade, a
- * brand, a top-level category, offers, featured, newest), switched off, retitled, given a card
- * count, moved up or down, or deleted.
+ * brand, a top-level category, offers, featured, newest — or `custom`, products picked by hand with
+ * the shared ProductPicker, M2e 2026-10-02), switched off, retitled, given a card count, moved up or
+ * down, or deleted.
  *
  * ── What it does NOT need to bust ────────────────────────────────────────────────────────────
  *
@@ -51,8 +52,11 @@ final class HomeRailController
         foreach (HomeRails::all($storefront->id) as $rail) {
             $rails[] = $rail + [
                 // What the rail shows, in words, so the list reads without opening a row.
-                'target_name' => $rail['target_id'] === null ? null
-                    : (self::optionLabel($targets[$rail['kind']] ?? [], $rail['target_id']) ?? ManageText::t('home_rails.target_missing', 'غير موجود')),
+                'target_name' => match (true) {
+                    $rail['kind'] === HomeRails::CUSTOM => ManageText::t('home_rails.picked_count', ':count منتجات مختارة', ['count' => count($rail['product_ids'])]),
+                    $rail['target_id'] === null => null,
+                    default => self::optionLabel($targets[$rail['kind']] ?? [], $rail['target_id']) ?? ManageText::t('home_rails.target_missing', 'غير موجود'),
+                },
             ];
         }
 
@@ -135,8 +139,8 @@ final class HomeRailController
     }
 
     /**
-     * @param  callable(array{kind: string, target_id: ?int, title_en: ?string, title_ar: ?string, is_active: bool, card_count: int}): int  $write
-     * @param  array{kind: string, target_id: ?int, title_en: ?string, title_ar: ?string, is_active: bool, card_count: int}  $data
+     * @param  callable(array{kind: string, target_id: ?int, product_ids?: ?list<int>, title_en: ?string, title_ar: ?string, is_active: bool, card_count: int}): int  $write
+     * @param  array{kind: string, target_id: ?int, product_ids?: ?list<int>, title_en: ?string, title_ar: ?string, is_active: bool, card_count: int}  $data
      */
     private static function write(callable $write, array $data): int
     {
@@ -149,7 +153,7 @@ final class HomeRailController
     }
 
     /**
-     * @return array{kind: string, target_id: ?int, title_en: ?string, title_ar: ?string, is_active: bool, card_count: int}
+     * @return array{kind: string, target_id: ?int, product_ids?: ?list<int>, title_en: ?string, title_ar: ?string, is_active: bool, card_count: int}
      */
     private function validated(Request $request, Storefront $storefront): array
     {
@@ -160,6 +164,12 @@ final class HomeRailController
             'title_ar' => ['nullable', 'string', 'max:120'],
             'is_active' => ['required', 'boolean'],
             'card_count' => ['required', 'integer', 'min:1', 'max:'.HomeRails::MAX_CARDS],
+            // A custom rail's picks (M2e): products placed on THIS storefront, in order.
+            'product_ids' => ['nullable', 'array', 'max:'.HomeRails::MAX_CARDS],
+            'product_ids.*' => ['integer', 'distinct', Rule::exists('storefront_product', 'product_id')->where('storefront_id', $storefront->id)],
+        ], [
+            'product_ids.*.exists' => ManageText::t('home_rails.pick_foreign', 'هذا المنتج غير موجود في هذا المتجر.'),
+            'product_ids.max' => ManageText::t('home_rails.picks_max', 'يمكن اختيار :max منتجًا على الأكثر.', ['max' => HomeRails::MAX_CARDS]),
         ]));
         $kind = Coerce::str($data['kind'] ?? null);
         $target = Coerce::nint($data['target_id'] ?? null);
@@ -171,12 +181,31 @@ final class HomeRailController
                 throw ValidationException::withMessages(['target_id' => ManageText::t('home_rails.choose_target', 'اختر ما يعرضه الشريط.')]);
             }
         } else {
-            $target = null;                                   // offers, featured and newest take none
+            $target = null;                                   // offers, featured, newest and custom take none
+        }
+
+        $picks = Coerce::orderedIntList($data['product_ids'] ?? []);
+        if ($kind === HomeRails::CUSTOM) {
+            // Said field by field, before HomeRails' own refusal (which only says "invalid").
+            $missing = [];
+            if ($picks === []) {
+                $missing['product_ids'] = ManageText::t('home_rails.picks_required', 'اختر منتجًا واحدًا على الأقل لهذا الشريط.');
+            }
+            foreach (['title_ar' => ManageText::t('home_rails.title_ar_required', 'اكتب عنوان الشريط بالعربية: الشريط المختار يدويًا ليس له اسم تلقائي.'),
+                'title_en' => ManageText::t('home_rails.title_en_required', 'اكتب عنوان الشريط بالإنجليزية: الشريط المختار يدويًا ليس له اسم تلقائي.')] as $field => $message) {
+                if (trim(Coerce::str($data[$field] ?? null)) === '') {
+                    $missing[$field] = $message;
+                }
+            }
+            if ($missing !== []) {
+                throw ValidationException::withMessages($missing);
+            }
         }
 
         return [
             'kind' => $kind,
             'target_id' => $target,
+            'product_ids' => $kind === HomeRails::CUSTOM ? $picks : null,
             'title_en' => Coerce::nstr($data['title_en'] ?? null),
             'title_ar' => Coerce::nstr($data['title_ar'] ?? null),
             'is_active' => Coerce::bool($data['is_active'] ?? null),

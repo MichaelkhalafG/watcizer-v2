@@ -10,7 +10,9 @@ use App\Domain\Customers\CustomerSeen;
 use App\Storefront\ImageUrl;
 use App\Support\LegacySlug;
 use App\Transform\Row;
+use Illuminate\Database\Query\Builder;
 use Illuminate\Database\Query\JoinClause;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -280,6 +282,42 @@ final class ReEngagement
         $steady = array_flip(PriceWatch::steady($ids, self::STEADY_DAYS));
 
         return array_values(array_filter($ids, fn (int $id): bool => isset($steady[$id])));
+    }
+
+    /**
+     * How many customers a run planned NOW would reach — `absentCustomers()` in one query, for the
+     * screen's status line (it runs three queries per customer, too slow for a page load). Same rules:
+     * an address, last seen (core's stamp or the legacy login, the later; else sign-up) 30+ days ago,
+     * not unsubscribed, not in last week's run. An upper bound: someone with fewer than 3 products
+     * left to show is still counted here and skipped at planning.
+     */
+    public static function audienceEstimate(int $storefrontId): int
+    {
+        $lastWeek = DB::table('core_reengagement_runs')->where('storefront_id', $storefrontId)
+            ->where('week', now()->subWeek()->format('o-\WW'))->value('id');
+        $count = DB::table('users as u')
+            ->leftJoin('core_customer_seen as s', function (JoinClause $j) use ($storefrontId): void {
+                $j->on('s.user_id', '=', 'u.id')->where('s.storefront_id', '=', $storefrontId);
+            })
+            ->where('u.type', 'User')->whereNotNull('u.email')->where('u.email', '!=', '')
+            ->whereRaw('COALESCE(GREATEST(COALESCE(s.last_seen_at, u.last_login_at), COALESCE(u.last_login_at, s.last_seen_at)), u.created_at) <= ?',
+                [now()->subDays(self::ABSENT_DAYS)->toDateTimeString()])
+            ->whereNotExists(fn (Builder $q) => $q->from('core_marketing_optouts as o')->where('o.storefront_id', $storefrontId)->whereRaw('o.email = LOWER(u.email)'))
+            ->when($lastWeek !== null, fn (Builder $q) => $q->whereNotExists(fn (Builder $s) => $s->from('core_reengagement_sends as rs')->where('rs.run_id', $lastWeek)->whereRaw('rs.email = LOWER(u.email)')))
+            ->count();
+
+        return $count;
+    }
+
+    /**
+     * When the next run is planned: Mondays at 10:00 (routes/console.php), in the app's time zone.
+     * Monday is named: Carbon's startOfWeek() follows the locale, and under `ar` it is SATURDAY.
+     */
+    public static function nextPlanAt(): Carbon
+    {
+        $monday = now()->startOfWeek(Carbon::MONDAY)->setTime(10, 0);
+
+        return now()->lt($monday) ? $monday : $monday->addWeek();
     }
 
     /** @return list<array{user_id: int, email: string}> */

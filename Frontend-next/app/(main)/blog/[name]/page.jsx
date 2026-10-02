@@ -3,18 +3,22 @@ import { getServerBlog, inLang } from '@/src/lib/serverBlogs'
 import { requestLang, alternatesFor, localePath, SITE } from '@/src/lib/requestLang'
 import BlogClient from './BlogClient'
 import { safeJsonLd } from '@/src/lib/safeJsonLd'
+import { markdownToPlain } from '@/src/lib/markdown'
 
 // ISR: the article in the initial HTML for SEO, revalidated every 10 minutes (2026-10-01: from
 // core, per storefront, at /blog/{slug}; Arabic at /ar/blog/{slug}).
 export const revalidate = 600
 
-// plain text, collapsed, capped — for descriptions (the body is plain text with "## " / "- " lines)
-const plain = (raw, max = 160) =>
-  (raw || '')
-    .replace(/^(##\s+|-\s+)/gm, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, max)
+// plain text, collapsed, capped — for descriptions. A 'text' body (plain text with "## " / "- "
+// lines) is read exactly as before; a 'markdown' one loses all its marks (links keep their words).
+const plain = (raw, max = 160, format = 'text') =>
+  (format === 'markdown'
+    ? markdownToPlain(raw)
+    : (raw || '')
+        .replace(/^(##\s+|-\s+)/gm, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+  ).slice(0, max)
 
 export async function generateMetadata({ params }) {
   const { name } = await params
@@ -23,7 +27,7 @@ export async function generateMetadata({ params }) {
   if (!blog) notFound()
   const { urlLang } = await requestLang()
   const title = inLang(blog.meta_title, urlLang) || `${inLang(blog.title, urlLang)} | Watchizer`
-  const description = inLang(blog.meta_description, urlLang) || plain(inLang(blog.body, urlLang))
+  const description = inLang(blog.meta_description, urlLang) || plain(inLang(blog.body, urlLang), 160, blog.format)
   const alternates = alternatesFor(`/blog/${blog.slug}`, urlLang)
   return {
     title,
@@ -53,7 +57,7 @@ export default async function BlogPage({ params }) {
     '@context': 'https://schema.org',
     '@type': 'BlogPosting',
     headline: inLang(blog.title, urlLang),
-    description: inLang(blog.meta_description, urlLang) || plain(inLang(blog.body, urlLang), 200),
+    description: inLang(blog.meta_description, urlLang) || plain(inLang(blog.body, urlLang), 200, blog.format),
     inLanguage: urlLang,
     ...(blog.cover ? { image: blog.cover } : {}),
     datePublished: blog.published_at,

@@ -186,7 +186,7 @@ export default function HomeClient({ initialHome = null }) {
     return (
       <section className="wz-home-section" key={rail.id}>
         <div className="wz-container">
-          <ProductSlider text={rail.text} gradeproducts={rail.products} moreid={rail.moreid} href={rail.href} />
+          <ProductSlider text={rail.text} gradeproducts={rail.products} moreid={rail.moreid} href={rail.href} viewAll={rail.kind !== 'custom'} />
         </div>
       </section>
     )
