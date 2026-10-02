@@ -143,3 +143,58 @@
     font-size: 24px;
   }
 }
+
+/* Markdown articles (2026-10-02): the elements the Markdown editor can produce beyond p/h2/ul/li. */
+.wz-article-body h3,
+.wz-article-body h4 {
+  margin: 24px 0 10px;
+  font-size: 18px;
+  line-height: 1.45;
+  font-weight: 600;
+  color: var(--wz-ink, #111);
+}
+.wz-article-body ol {
+  margin: 0 0 18px;
+  padding-inline-start: 22px;
+}
+.wz-article-body a {
+  color: var(--wz-ink, #111);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  overflow-wrap: anywhere;
+}
+.wz-article-body img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 8px auto 22px;
+  border-radius: 10px;
+  background: #f4f2ee;
+}
+.wz-article-body blockquote {
+  margin: 0 0 18px;
+  padding: 2px 16px;
+  border-inline-start: 3px solid rgba(0, 0, 0, 0.15);
+  color: rgba(0, 0, 0, 0.7);
+}
+.wz-article-body hr {
+  margin: 28px 0;
+  border: 0;
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+}
+.wz-article-body code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: #f4f2ee;
+  font-size: 0.92em;
+}
+.wz-article-body pre {
+  overflow-x: auto;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: #f4f2ee;
+}
+.wz-article-body pre code {
+  padding: 0;
+  background: none;
+}

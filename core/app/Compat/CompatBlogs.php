@@ -26,15 +26,16 @@ final class CompatBlogs
     public function list(): array
     {
         $out = [];
-        foreach ($this->published()->orderByDesc('b.published_at')->orderByDesc('b.id')->get(['b.id', 'b.slug', 'b.cover_path', 'b.published_at']) as $raw) {
+        foreach ($this->published()->orderByDesc('b.published_at')->orderByDesc('b.id')->get(['b.id', 'b.slug', 'b.cover_path', 'b.body_format', 'b.published_at']) as $raw) {
             $row = Row::cast($raw);
             $tr = self::translations(Row::int($row, 'id'));
+            $markdown = Row::nstr($row, 'body_format') === 'markdown';
             $out[] = [
                 'slug' => Row::str($row, 'slug'),
                 'cover' => self::cover(Row::nstr($row, 'cover_path')),
                 'published_at' => Row::str($row, 'published_at'),
                 'title' => ['en' => $tr['en']['title'], 'ar' => $tr['ar']['title']],
-                'excerpt' => ['en' => self::excerpt($tr['en']['body']), 'ar' => self::excerpt($tr['ar']['body'])],
+                'excerpt' => ['en' => self::excerpt($tr['en']['body'], $markdown), 'ar' => self::excerpt($tr['ar']['body'], $markdown)],
             ];
         }
 
@@ -42,11 +43,11 @@ final class CompatBlogs
     }
 
     /**
-     * @return array{slug: string, cover: ?string, published_at: string, title: array{en: string, ar: string}, body: array{en: string, ar: string}, meta_title: array{en: string, ar: string}, meta_description: array{en: string, ar: string}}|null
+     * @return array{slug: string, cover: ?string, published_at: string, format: string, title: array{en: string, ar: string}, body: array{en: string, ar: string}, meta_title: array{en: string, ar: string}, meta_description: array{en: string, ar: string}}|null
      */
     public function one(string $slug): ?array
     {
-        $raw = $this->published()->where('b.slug', $slug)->first(['b.id', 'b.slug', 'b.cover_path', 'b.published_at']);
+        $raw = $this->published()->where('b.slug', $slug)->first(['b.id', 'b.slug', 'b.cover_path', 'b.body_format', 'b.published_at']);
         if (! is_object($raw)) {
             return null;
         }
@@ -58,6 +59,9 @@ final class CompatBlogs
             'slug' => Row::str($row, 'slug'),
             'cover' => self::cover(Row::nstr($row, 'cover_path')),
             'published_at' => Row::str($row, 'published_at'),
+            // How to read `body` (M2d): 'text' (plain paragraphs, "## ", "- " — written before the
+            // Markdown editor) or 'markdown'. The storefront renders each its own safe way.
+            'format' => Row::nstr($row, 'body_format') === 'markdown' ? 'markdown' : 'text',
             'title' => $pair('title'),
             'body' => $pair('body'),
             'meta_title' => $pair('meta_title'),
@@ -89,10 +93,30 @@ final class CompatBlogs
         return $out;
     }
 
-    /** The first ~180 characters of the text, headings and list markers dropped, cut at a word. */
-    private static function excerpt(string $body): string
+    /**
+     * A Markdown body as plain words: headings, list and quote markers, emphasis, link addresses (the
+     * words stay) and images dropped. The storefront's `markdownToPlain()` does the same for a meta
+     * description.
+     */
+    public static function plain(string $body): string
     {
-        $text = trim((string) preg_replace('/\s+/u', ' ', (string) preg_replace('/^(?:##\s+|-\s+)/mu', '', $body)));
+        $text = (string) preg_replace('/!\[[^\]]*\]\([^)]*\)/u', ' ', $body);                 // images
+        $text = (string) preg_replace('/\[([^\]]*)\]\([^)]*\)/u', '$1', $text);              // links → their words
+        $text = (string) preg_replace('/^\s{0,3}(?:#{1,6}\s+|>\s?|[-*+]\s+|\d+[.)]\s+)/mu', '', $text);
+        $text = (string) preg_replace('/(\*\*|__|\*|_|`)/u', '', $text);
+
+        return trim((string) preg_replace('/\s+/u', ' ', $text));
+    }
+
+    /**
+     * The first ~180 characters, cut at a word. A 'text' article keeps exactly the excerpt it had
+     * before the Markdown editor (only "## " and "- " dropped); a Markdown one loses all its marks.
+     */
+    private static function excerpt(string $body, bool $markdown = false): string
+    {
+        $text = $markdown
+            ? self::plain($body)
+            : trim((string) preg_replace('/\s+/u', ' ', (string) preg_replace('/^(?:##\s+|-\s+)/mu', '', $body)));
         if (mb_strlen($text) <= self::EXCERPT) {
             return $text;
         }

@@ -67,6 +67,7 @@ final class BlogController
         return Inertia::render('Manage/Blogs/Form', [
             'blog' => null,
             'storefronts' => self::storefrontOptions(),
+            'assetBase' => config()->string('storefront.asset_base'),
         ]);
     }
 
@@ -78,6 +79,9 @@ final class BlogController
         return Inertia::render('Manage/Blogs/Form', [
             'blog' => $row,
             'storefronts' => self::storefrontOptions(),
+            // The preview shows our own uploaded images on this host — the same host the image
+            // upload answers with (ImageUrl::src), so a picture the team just added appears at once.
+            'assetBase' => config()->string('storefront.asset_base'),
         ]);
     }
 
@@ -251,6 +255,8 @@ final class BlogController
             'storefront_id' => Row::int($blog, 'storefront_id'),
             'cover_path' => $cover,
             'cover_url' => $cover === null ? null : ImageUrl::src($cover),
+            // 'text' for an article written before the Markdown editor (M2d), 'markdown' after.
+            'body_format' => Row::nstr($blog, 'body_format') === 'markdown' ? 'markdown' : 'text',
             'is_published' => Row::nstr($blog, 'published_at') !== null,
             'published_at' => Row::nstr($blog, 'published_at'),
             'title' => $titles,
