@@ -1,31 +1,490 @@
-/* The trust pages (2026-10-02) — laid out as an article (blog.css), plus links and the numbered terms. */
-.wz-trust .wz-article-body a {
-  color: var(--wz-ink, #111);
+/* ══════════════════════════════════════════════════════════════════════
+   TRUST PAGES — about, contact, privacy, terms (design pass 2026-10-02)
+   Built from the storefront's own tokens and patterns: the hero's dark band
+   and gold grid (WatchHero.css), the home sections' rhythm and header
+   (home.css), the account page's hairline white cards (Account.css), and the
+   outlined→dark hover of .wz-section-action. Global motion tokens throughout.
+   ══════════════════════════════════════════════════════════════════════ */
+.wz-trust {
+  background: #fafafa;
+}
+
+/* ── Heading band (the hero's vocabulary at page-header size) ─────────── */
+.wz-trust-hero {
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse 70% 80% at 65% 50%, rgba(200, 164, 92, 0.05) 0%, transparent 65%),
+    radial-gradient(ellipse 40% 60% at 20% 50%, rgba(200, 164, 92, 0.03) 0%, transparent 55%),
+    linear-gradient(135deg, #0a0a0a 0%, #111 50%, #0d0d0d 100%);
+  padding: clamp(40px, 7vw, 84px) clamp(16px, 4vw, 48px);
+}
+.wz-trust-hero::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(200, 164, 92, 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(200, 164, 92, 0.025) 1px, transparent 1px);
+  background-size: 48px 48px;
+  pointer-events: none;
+}
+.wz-trust-hero__inner {
+  position: relative;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+.wz-trust-hero__label {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: clamp(14px, 2vh, 22px);
+}
+.wz-trust-hero__rule {
+  display: block;
+  width: 32px;
+  height: 1px;
+  background: var(--wz-gold);
+  flex-shrink: 0;
+}
+.wz-trust-hero__brand {
+  font-size: 11px;
+  letter-spacing: 0.35em;
+  text-transform: uppercase;
+  color: var(--wz-gold);
+}
+.wz-trust-hero__title {
+  margin: 0;
+  font-family: var(--wz-serif);
+  font-size: clamp(2rem, 4.2vw, 3.2rem);
+  font-weight: 300;
+  line-height: 1.1;
+  color: #fff;
+  letter-spacing: -0.01em;
+}
+.wz-trust-hero__updated {
+  margin: clamp(12px, 1.8vh, 18px) 0 0;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+/* ── Sections (the home page's rhythm: white, then off-white) ─────────── */
+.wz-trust-section {
+  padding: clamp(40px, 6vh, 72px) clamp(16px, 4vw, 48px);
+  background: #fff;
+}
+.wz-trust-section--bone {
+  background: #fafafa;
+}
+.wz-trust-container {
+  max-width: 1100px;
+  margin: 0 auto;
+}
+.wz-trust a {
+  transition: color var(--wz-duration) var(--wz-ease), border-color var(--wz-duration) var(--wz-ease);
+}
+
+/* ── Shared icon chip (contact and about cards) ───────────────────────── */
+.wz-contact-card__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--wz-bone);
+  border: 1px solid rgba(200, 164, 92, 0.25);
+  color: var(--wz-gold-dark);
+  font-size: 19px;
+  transition: background-color var(--wz-duration) var(--wz-ease), color var(--wz-duration) var(--wz-ease),
+    border-color var(--wz-duration) var(--wz-ease);
+}
+
+/* ── Contact ──────────────────────────────────────────────────────────── */
+.wz-trust-section-header .wz-section-title {
+  text-transform: none;
+}
+.wz-contact-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  /* Six tracks, the e-mail card two wide: the address fits on one line and no card sits alone. */
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 16px;
+}
+.wz-contact-grid > li:has(.wz-contact-card--mail) {
+  grid-column: span 2;
+}
+.wz-contact-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 22px 20px;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 10px;
+  color: var(--wz-ink);
+  text-decoration: none;
+  transition: border-color var(--wz-duration) var(--wz-ease), transform var(--wz-duration) var(--wz-ease),
+    box-shadow var(--wz-duration) var(--wz-ease);
+}
+.wz-contact-card .wz-contact-card__icon {
+  margin-bottom: 10px;
+}
+.wz-contact-card:hover {
+  border-color: rgba(200, 164, 92, 0.6);
+  transform: translateY(-2px);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.06);
+}
+.wz-contact-card:hover .wz-contact-card__icon {
+  background: var(--wz-charcoal);
+  border-color: var(--wz-charcoal);
+  color: var(--wz-gold);
+}
+.wz-contact-card:focus-visible {
+  outline: 2px solid var(--wz-gold);
+  outline-offset: 2px;
+}
+.wz-contact-card__label {
+  display: block;
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--wz-gold-dark);
+}
+.wz-contact-card__value {
+  font-family: var(--wz-serif);
+  font-size: 17px;
+  line-height: 1.35;
+  color: var(--wz-ink-soft);
+  overflow-wrap: break-word; /* only when a word cannot fit at all; the e-mail breaks at its @ */
+}
+[dir='rtl'] .wz-contact-card__value {
+  font-family: Georgia, 'Times New Roman', serif; /* numbers, addresses and handles are Latin */
+  text-align: right;
+}
+.wz-contact-card__hours {
+  margin: 0;
+  font-size: 12px;
+  color: var(--wz-muted);
+  text-wrap: balance; /* two even lines in a narrow card, not one long and one orphaned word */
+}
+.wz-contact-bottom {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 20px;
+  align-items: stretch;
+}
+.wz-contact-store {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 24px 22px;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 10px;
+}
+.wz-contact-store__address {
+  margin: 6px 0 4px;
+  font-family: var(--wz-serif);
+  font-size: 17px;
+  line-height: 1.5;
+  color: var(--wz-ink-soft);
+}
+.wz-contact-note {
+  margin: 0;
+  align-self: center;
+  padding: 18px 22px;
+  border-inline-start: 2px solid var(--wz-gold);
+  font-size: 15px;
+  line-height: 1.8;
+  color: rgba(0, 0, 0, 0.7);
+}
+.wz-contact-note a {
+  color: var(--wz-ink);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.wz-contact-note a:hover {
+  color: var(--wz-gold-dark);
+}
+
+/* ── About ────────────────────────────────────────────────────────────── */
+.wz-about-intro {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  gap: clamp(28px, 5vw, 64px);
+  align-items: center;
+}
+.wz-about-lead {
+  margin: 0;
+  font-family: var(--wz-serif);
+  font-size: clamp(1.15rem, 2vw, 1.45rem);
+  font-weight: 300;
+  line-height: 1.75;
+  color: var(--wz-ink-soft);
+}
+.wz-about-lead::before {
+  content: '';
+  display: block;
+  width: 40px;
+  height: 1px;
+  margin-bottom: 22px;
+  background: var(--wz-gold);
+}
+.wz-about-mark {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 4px;
+  background:
+    radial-gradient(ellipse 60% 70% at 50% 50%, rgba(200, 164, 92, 0.08) 0%, transparent 70%),
+    linear-gradient(135deg, #0a0a0a 0%, #111 50%, #0d0d0d 100%);
+}
+.wz-about-mark::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(200, 164, 92, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(200, 164, 92, 0.035) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+.wz-about-mark__logo {
+  position: relative;
+  width: 58%;
+  aspect-ratio: 1265 / 851;
+  background: var(--wz-gold);
+  -webkit-mask: url('/logo.svg') center / contain no-repeat;
+  mask: url('/logo.svg') center / contain no-repeat;
+}
+.wz-about-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+.wz-about-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 28px 26px;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 10px;
+}
+.wz-about-card p {
+  margin: 0;
+  font-size: 15.5px;
+  line-height: 1.85;
+  color: rgba(0, 0, 0, 0.72);
+}
+.wz-about-card a {
+  color: var(--wz-ink);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.wz-about-card a:hover {
+  color: var(--wz-gold-dark);
+}
+
+/* ── Privacy and terms ────────────────────────────────────────────────── */
+.wz-legal {
+  display: grid;
+  grid-template-columns: 250px minmax(0, 1fr);
+  gap: clamp(28px, 5vw, 64px);
+  align-items: start;
+}
+.wz-legal-toc {
+  position: sticky;
+  top: 150px;
+  padding: 12px;
+  background: #fafafa;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 10px;
+}
+.wz-legal-toc ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.wz-legal-toc a {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 9px 10px;
+  border-radius: 6px;
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: var(--wz-charcoal);
+  text-decoration: none;
+  transition: background-color var(--wz-duration) var(--wz-ease), color var(--wz-duration) var(--wz-ease);
+}
+.wz-legal-toc a:hover,
+.wz-legal-toc a:focus-visible {
+  background: #fff;
+  color: var(--wz-ink);
+}
+.wz-legal-toc__num {
+  min-width: 18px;
+  font-family: var(--wz-serif);
+  color: var(--wz-gold-dark);
+}
+.wz-legal-body {
+  max-width: 68ch;
+}
+.wz-legal-intro {
+  margin: 0 0 8px;
+  padding-bottom: 26px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.07);
+  font-family: var(--wz-serif);
+  font-size: clamp(1.05rem, 1.6vw, 1.2rem);
+  font-weight: 300;
+  line-height: 1.75;
+  color: var(--wz-ink-soft);
+}
+.wz-legal-section {
+  padding: 30px 0;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.07);
+  scroll-margin-top: 170px;
+}
+.wz-legal-section:last-child {
+  border-bottom: none;
+}
+.wz-legal-section__title {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  margin: 0 0 14px;
+  font-family: var(--wz-serif);
+  font-size: clamp(1.15rem, 2vw, 1.45rem);
+  font-weight: 400;
+  line-height: 1.3;
+  color: var(--wz-ink-soft);
+}
+.wz-legal-section__num {
+  flex-shrink: 0;
+  min-width: 34px;
+  font-size: clamp(1.6rem, 2.6vw, 2rem);
+  font-weight: 300;
+  line-height: 1;
+  color: var(--wz-gold);
+}
+.wz-legal-section__body {
+  padding-inline-start: 50px;
+}
+.wz-legal-section__body p,
+.wz-legal-section__body li {
+  font-size: 15.5px;
+  line-height: 1.85;
+  color: rgba(0, 0, 0, 0.74);
+}
+.wz-legal-section__body p {
+  margin: 0 0 14px;
+}
+.wz-legal-section__body p:last-child {
+  margin-bottom: 0;
+}
+.wz-legal-section__body ul {
+  margin: 0 0 14px;
+  padding-inline-start: 20px;
+}
+.wz-legal-section__body li {
+  margin-bottom: 8px;
+  padding-inline-start: 4px;
+}
+.wz-legal-section__body li::marker {
+  color: var(--wz-gold);
+}
+.wz-legal-section__body strong {
+  font-weight: 600;
+  color: var(--wz-ink);
+}
+.wz-legal-section__body a {
+  color: var(--wz-ink);
   text-decoration: underline;
   text-underline-offset: 3px;
   overflow-wrap: anywhere;
 }
-.wz-trust .wz-article-body a:hover {
-  text-decoration-thickness: 2px;
+.wz-legal-section__body a:hover {
+  color: var(--wz-gold-dark);
 }
-.wz-trust .wz-article-body strong {
-  font-weight: 600;
-  color: var(--wz-ink, #111);
+
+/* ── Arabic: the site's rules — no wide tracking, no uppercase ────────── */
+[dir='rtl'] .wz-trust-hero__brand {
+  letter-spacing: 0.3em;
 }
-.wz-trust__terms {
-  margin: 0 0 18px;
-  padding-inline-start: 26px;
-  list-style: decimal;
+[dir='rtl'] .wz-trust-hero__title,
+[dir='rtl'] .wz-contact-card__label {
+  letter-spacing: 0;
 }
-.wz-trust[dir='rtl'] .wz-trust__terms {
-  list-style: arabic-indic;
+[dir='rtl'] .wz-contact-card__label {
+  font-size: 13px;
 }
-.wz-trust__terms > li {
-  margin-bottom: 10px;
+
+/* ── Tablets and phones ───────────────────────────────────────────────── */
+@media (max-width: 900px) {
+  /* Phone and WhatsApp side by side, the e-mail full width, then Facebook and Instagram. */
+  .wz-contact-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .wz-legal {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .wz-legal-toc {
+    position: static;
+  }
+  .wz-legal-body {
+    max-width: none;
+  }
+  .wz-about-intro {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .wz-about-mark {
+    aspect-ratio: 16 / 9;
+  }
 }
-.wz-trust__terms > li > p {
-  margin-bottom: 8px;
+@media (max-width: 768px) {
+  .wz-trust-section {
+    padding: 28px 16px;
+  }
+  .wz-contact-bottom,
+  .wz-about-cards {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .wz-contact-grid {
+    gap: 12px;
+  }
+  .wz-contact-card {
+    padding: 18px 16px;
+  }
+  .wz-legal-section__body {
+    padding-inline-start: 0;
+  }
 }
-.wz-trust__terms ul {
-  margin-bottom: 10px;
+@media (max-width: 340px) {
+  .wz-contact-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .wz-contact-grid > li:has(.wz-contact-card--mail) {
+    grid-column: auto;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .wz-contact-card,
+  .wz-contact-card__icon,
+  .wz-legal-toc a {
+    transition: none;
+  }
+  .wz-contact-card:hover {
+    transform: none;
+  }
 }
