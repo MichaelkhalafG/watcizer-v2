@@ -2,6 +2,7 @@
 
 use App\Domain\Activity\ActivityLog;
 use App\Domain\Content\HomeRails;
+use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
 use Tests\Support\Props;
 use Tests\Support\Staff;
@@ -129,4 +130,32 @@ it('404s a rail of another storefront, and keeps customers out', function () {
 
     actingAs(Staff::customer());
     get('/manage/storefronts/1/home-rails')->assertStatus(403);
+});
+
+it('builds a custom rail with the picker: picks in order, both titles required, another shop\'s product refused', function () {
+    actingAs(Staff::admin());
+    screenRails();
+    $ids = array_map(fn (mixed $id): int => T::int($id), DB::table('storefront_product')->where('storefront_id', 1)->where('is_visible', 1)->orderBy('product_id')->limit(3)->pluck('product_id')->all());
+    $foreign = T::int(DB::table('catalog_products as p')->whereNotExists(fn (Builder $q) => $q->from('storefront_product as sp')->whereColumn('sp.product_id', 'p.id')->where('sp.storefront_id', 1))->min('p.id'));
+    $send = fn (array $o) => post('/manage/storefronts/1/home-rails', $o + ['kind' => 'custom', 'target_id' => null, 'title_en' => 'Picks', 'title_ar' => 'مختارات', 'is_active' => true, 'card_count' => 1, 'product_ids' => [$ids[2], $ids[0], $ids[1]]]);
+
+    $send(['product_ids' => []])->assertSessionHasErrors('product_ids');
+    $send(['title_ar' => '', 'title_en' => ' '])->assertSessionHasErrors(['title_ar', 'title_en']);
+    $send(['product_ids' => [$ids[0], $foreign]])->assertSessionHasErrors('product_ids.1');
+    expect(DB::table('storefront_home_rails')->where('kind', 'custom')->exists())->toBeFalse();
+
+    $send([])->assertSessionHasNoErrors();
+    $rail = HomeRails::all(1)[2];
+    expect($rail['kind'])->toBe('custom')
+        ->and($rail['product_ids'])->toBe([$ids[2], $ids[0], $ids[1]])
+        ->and($rail['card_count'])->toBe(3);
+
+    // The list names it in words; switching it off keeps the picks; turning it into another kind drops them.
+    $listed = T::rows(Props::of(get('/manage/storefronts/1/home-rails')->assertOk())['rails']);
+    expect(T::str($listed[2]['target_name']))->toContain('3');
+    put("/manage/storefronts/1/home-rails/{$rail['id']}", ['kind' => 'custom', 'target_id' => null, 'product_ids' => $rail['product_ids'], 'title_en' => 'Picks', 'title_ar' => 'مختارات', 'is_active' => false, 'card_count' => 3])->assertSessionHasNoErrors();
+    expect(HomeRails::all(1)[2]['product_ids'])->toBe([$ids[2], $ids[0], $ids[1]]);
+    put("/manage/storefronts/1/home-rails/{$rail['id']}", ['kind' => 'offers', 'target_id' => null, 'product_ids' => [$ids[0]], 'title_en' => null, 'title_ar' => null, 'is_active' => true, 'card_count' => 8])->assertSessionHasNoErrors();
+    expect(HomeRails::all(1)[2]['product_ids'])->toBe([])
+        ->and(DB::table('storefront_home_rails')->where('id', $rail['id'])->value('product_ids'))->toBeNull();
 });

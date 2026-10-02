@@ -262,3 +262,24 @@ it('featured pool: marked products win; else on sale with a picture; else any wi
         ->and(CompatHome::featuredPool($entries, [], [1, 2, 4, 5]))->toBe([1, 2, 4, 5])          // fewer than 3 on sale: any with a picture
         ->and(CompatHome::featuredPool($entries, [99, 5], [1, 2, 3]))->toBe([5]);                // marked and visible only
 });
+
+it('a custom rail shows the team\'s picks in the team\'s order, and only products the storefront shows', function () {
+    $entries = [homeEntry(1), homeEntry(2), homeEntry(3), homeEntry(5)];
+    // 4 is not in the storefront's index (hidden or deleted since it was picked): skipped, no gap.
+    expect(CompatHome::picked([5, 4, 1, 3], $entries))->toBe([5, 1, 3])
+        ->and(CompatHome::picked([], $entries))->toBe([]);
+});
+
+it('serves a custom rail from the table: its picks, in order, under its own titles', function () {
+    $entries = app(CompatServices::class)->listing->entries();
+    $picks = [$entries[4]['id'], $entries[0]['id'], $entries[2]['id']];
+    DB::table('storefront_home_rails')->where('storefront_id', 1)->delete();
+    HomeRails::create(1, ['kind' => 'custom', 'target_id' => null, 'product_ids' => [...$picks, 999999999], 'title_en' => 'Our picks', 'title_ar' => 'اختياراتنا', 'is_active' => true, 'card_count' => 1]);
+
+    $home = homeBuild();
+    expect(count($home['rails']))->toBe(1)
+        ->and($home['rails'][0]['kind'])->toBe('custom')
+        ->and($home['rails'][0]['products'])->toBe($picks)                     // the order picked; the unknown id dropped
+        ->and($home['rails'][0]['title'])->toBe(['en' => 'Our picks', 'ar' => 'اختياراتنا'])
+        ->and(HomeRails::all(1)[0]['card_count'])->toBe(4);                   // the count is the picks, whatever was sent
+});

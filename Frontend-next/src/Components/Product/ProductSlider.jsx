@@ -6,7 +6,9 @@ import { Carousel, CarouselSlide } from '../UI/Carousel'
 import ProductCard from './ProductCard'
 import './ProductSlider.css'
 
-const ProductSlider = ({ gradeproducts = [], text = {}, moreid, href, loading = false }) => {
+// `viewAll = false` hides the "View all" button: a rail of hand-picked products (kind `custom`,
+// 2026-10-02) has no listing behind it to view.
+const ProductSlider = ({ gradeproducts = [], text = {}, moreid, href, loading = false, viewAll = true }) => {
   const router = useRouter()
   const { language } = useUIStore()
 
@@ -59,9 +61,11 @@ const ProductSlider = ({ gradeproducts = [], text = {}, moreid, href, loading = 
           {description && <span className="wz-section-label">{description}</span>}
           <h2 className="wz-section-title">{title}</h2>
         </div>
-        <button className="wz-section-action" onClick={handleViewAll}>
-          {language === 'ar' ? 'عرض الكل ←' : 'View All →'}
-        </button>
+        {viewAll ? (
+          <button className="wz-section-action" onClick={handleViewAll}>
+            {language === 'ar' ? 'عرض الكل ←' : 'View All →'}
+          </button>
+        ) : null}
       </div>
 
       {/* Slider (Embla) */}

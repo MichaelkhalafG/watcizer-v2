@@ -50,7 +50,9 @@ final class CompatHome
         $rails = [];
         $all = [];
         foreach (HomeRails::active($this->storefrontId) as $rail) {
-            $ids = $this->cardsFor($rail['kind'], $rail['target_id'], $rail['card_count'], $entries);
+            $ids = $rail['kind'] === HomeRails::CUSTOM
+                ? self::picked($rail['product_ids'], $entries)
+                : $this->cardsFor($rail['kind'], $rail['target_id'], $rail['card_count'], $entries);
             if ($ids === []) {
                 continue;
             }
@@ -69,6 +71,25 @@ final class CompatHome
         }
 
         return ['rails' => $rails, ...$this->listing->cards(array_keys($all))];
+    }
+
+    /**
+     * A custom rail's cards (M2e): the team's picks, in the team's order, keeping only products this
+     * storefront shows (the listing index holds exactly those). A pick that was hidden or deleted
+     * since is skipped — never an error, and never a gap.
+     *
+     * @param  list<int>  $picks
+     * @param  list<Entry>  $entries
+     * @return list<int>
+     */
+    public static function picked(array $picks, array $entries): array
+    {
+        $shown = [];
+        foreach ($entries as $e) {
+            $shown[$e['id']] = true;
+        }
+
+        return array_values(array_filter($picks, fn (int $id): bool => isset($shown[$id])));
     }
 
     /**
