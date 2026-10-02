@@ -35,6 +35,13 @@ function Footer() {
     { label: t('Sign In', 'تسجيل الدخول'), to: '/login' },
   ]
 
+  const trustLinks = [
+    { label: t('About us', 'من نحن'), to: '/about-us' },
+    { label: t('Contact us', 'تواصل معنا'), to: '/contact-us' },
+    { label: t('Privacy policy', 'سياسة الخصوصية'), to: '/privacy-policy' },
+    { label: t('Terms and conditions', 'الشروط والأحكام'), to: '/terms-and-conditions' },
+  ]
+
   return (
     <footer className="wz-foot" dir={isRTL ? 'rtl' : 'ltr'}>
       <div className="wz-foot__accent" />
@@ -115,6 +122,14 @@ function Footer() {
                 {t('Latest Offers', 'أحدث العروض')}
               </Link>
             </li>
+            {/* The trust pages (2026-10-02). */}
+            {trustLinks.map((link) => (
+              <li key={link.to}>
+                <Link className="wz-foot__link" href={link.to}>
+                  {link.label}
+                </Link>
+              </li>
+            ))}
           </ul>
         </div>
       </div>

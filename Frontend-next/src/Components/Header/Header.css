@@ -1376,6 +1376,11 @@ body {
   cursor: pointer;
   transition: background 0.15s ease;
 }
+/* The trust-page entries are links, not buttons (2026-10-02): same look. */
+a.wz-drawer-link {
+  text-decoration: none;
+  box-sizing: border-box;
+}
 .wz-drawer-link:hover {
   background: rgba(0, 0, 0, 0.03);
 }

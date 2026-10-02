@@ -1,0 +1,31 @@
+/* The trust pages (2026-10-02) — laid out as an article (blog.css), plus links and the numbered terms. */
+.wz-trust .wz-article-body a {
+  color: var(--wz-ink, #111);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  overflow-wrap: anywhere;
+}
+.wz-trust .wz-article-body a:hover {
+  text-decoration-thickness: 2px;
+}
+.wz-trust .wz-article-body strong {
+  font-weight: 600;
+  color: var(--wz-ink, #111);
+}
+.wz-trust__terms {
+  margin: 0 0 18px;
+  padding-inline-start: 26px;
+  list-style: decimal;
+}
+.wz-trust[dir='rtl'] .wz-trust__terms {
+  list-style: arabic-indic;
+}
+.wz-trust__terms > li {
+  margin-bottom: 10px;
+}
+.wz-trust__terms > li > p {
+  margin-bottom: 8px;
+}
+.wz-trust__terms ul {
+  margin-bottom: 10px;
+}

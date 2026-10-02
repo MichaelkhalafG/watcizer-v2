@@ -618,6 +618,20 @@ function Header() {
               </button>
             </>
           )}
+
+          {/* The trust pages (2026-10-02). Phones have no footer, so this is where a shopper on a
+              phone finds "Contact us". Real links, so they are in the page's HTML as well. */}
+          <div className="wz-drawer-sep" />
+          {[
+            ['/about-us', 'من نحن', 'About us'],
+            ['/contact-us', 'تواصل معنا', 'Contact us'],
+            ['/privacy-policy', 'سياسة الخصوصية', 'Privacy policy'],
+            ['/terms-and-conditions', 'الشروط والأحكام', 'Terms and conditions'],
+          ].map(([href, ar, en]) => (
+            <Link key={href} href={href} className="wz-drawer-link" onClick={closeDrawer}>
+              {isRTL ? ar : en}
+            </Link>
+          ))}
         </nav>
 
         <div className="wz-drawer-foot">

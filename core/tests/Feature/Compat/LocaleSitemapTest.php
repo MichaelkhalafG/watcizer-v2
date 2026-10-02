@@ -1,5 +1,6 @@
 <?php
 
+use App\Compat\CompatLocaleSitemap;
 use App\Compat\CompatServices;
 use App\Domain\Content\BlogWriter;
 use App\Support\LegacySlug;
@@ -61,8 +62,13 @@ it('lists every page once per language — English bare, Arabic under /ar — ea
 
         $products = array_values(array_filter($locs, fn (string $l): bool => str_contains($l, '/product/')));
         expect(count($products))->toBe(count($slugs));                   // twins share one URL
-        foreach (['/products', '/offers', '/blogs', '/about-us', '/contact-us', '/privacy-policy', '/terms-and-conditions'] as $dead) {
+        foreach (['/products', '/offers', '/blogs'] as $dead) {
             expect($locs)->not->toContain(($locale === 'ar' ? 'https://watchizereg.com/ar' : 'https://watchizereg.com').$dead);
+        }
+        // Changed deliberately (2026-10-02): the four trust pages were 404s and asserted ABSENT; the
+        // storefront has them now, so they are asserted PRESENT, in this language.
+        foreach (CompatLocaleSitemap::TRUST_PAGES as $page) {
+            expect($locs)->toContain(($locale === 'ar' ? 'https://watchizereg.com/ar' : 'https://watchizereg.com').$page);
         }
     }
 });
@@ -112,4 +118,16 @@ it('sets no cookie and opens no session on any sitemap route (B8)', function () 
         $response = get($path);
         expect($response->headers->getCookies())->toBe([], "{$path} set a cookie");
     }
+});
+
+it('lists only trust pages the storefront actually has', function () {
+    // Each path the sitemap names is a route folder with a page in the storefront, so a page removed
+    // there cannot linger here as a 404 Google keeps crawling.
+    $missing = [];
+    foreach (CompatLocaleSitemap::TRUST_PAGES as $path) {
+        if (! is_file(base_path('../Frontend-next/app/(main)'.$path.'/page.jsx'))) {
+            $missing[] = $path;
+        }
+    }
+    expect($missing)->toBe([]);
 });
