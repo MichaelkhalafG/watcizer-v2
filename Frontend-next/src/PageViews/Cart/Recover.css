@@ -1,0 +1,144 @@
+/* /cart/recover (2026-10-05) — the site's card treatment (Account.css) and button (home.css). */
+.wz-recover {
+  min-height: 60vh;
+  padding: clamp(32px, 6vh, 64px) 16px;
+  background: #fafafa;
+}
+.wz-recover__card {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: clamp(22px, 4vw, 36px);
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 12px;
+}
+.wz-recover__label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--wz-gold-dark);
+}
+.wz-recover h1 {
+  margin: 0 0 10px;
+  font-family: var(--wz-serif);
+  font-size: clamp(1.4rem, 3vw, 1.9rem);
+  font-weight: 300;
+  color: var(--wz-ink-soft);
+}
+.wz-recover__muted {
+  margin: 0 0 18px;
+  font-size: 14px;
+  line-height: 1.7;
+  color: rgba(0, 0, 0, 0.6);
+}
+.wz-recover__lines {
+  list-style: none;
+  margin: 0 0 22px;
+  padding: 0;
+  border-top: 1px solid rgba(0, 0, 0, 0.07);
+}
+.wz-recover__lines li {
+  padding: 14px 0;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.07);
+}
+.wz-recover__lines li.is-off .wz-recover__name,
+.wz-recover__lines li.is-off .wz-recover__price {
+  color: rgba(0, 0, 0, 0.4);
+  text-decoration: line-through;
+}
+.wz-recover__line {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+.wz-recover__name {
+  flex: 1;
+  font-size: 15px;
+  color: var(--wz-ink);
+}
+.wz-recover__qty {
+  font-size: 13px;
+  color: rgba(0, 0, 0, 0.55);
+}
+.wz-recover__price {
+  min-width: 96px;
+  text-align: end;
+  font-size: 15px;
+  color: var(--wz-ink);
+  white-space: nowrap;
+}
+.wz-recover__note {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: var(--wz-gold-dark);
+}
+.wz-recover__note.is-bad {
+  color: var(--wz-danger);
+}
+.wz-recover__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 48px;
+  padding: 12px 24px;
+  background: var(--wz-ink);
+  color: #fff;
+  border: 1px solid var(--wz-ink);
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background-color var(--wz-duration) var(--wz-ease), color var(--wz-duration) var(--wz-ease);
+}
+.wz-recover__btn:hover {
+  background: #fff;
+  color: var(--wz-ink);
+}
+.wz-recover__btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.wz-recover__btn--ghost {
+  background: #fff;
+  color: var(--wz-ink);
+}
+.wz-recover__btn--ghost:hover {
+  background: var(--wz-ink);
+  color: #fff;
+}
+[dir='rtl'] .wz-recover__btn {
+  letter-spacing: 0;
+  font-size: 14px;
+}
+.wz-recover__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.wz-recover__actions .wz-recover__btn {
+  flex: 1 1 200px;
+}
+.wz-recover__small {
+  margin: 12px 0 0;
+  font-size: 12px;
+  text-align: center;
+  color: rgba(0, 0, 0, 0.5);
+}
+.wz-recover__problems {
+  margin: 0 0 12px;
+  padding: 14px 16px;
+  border-radius: 8px;
+  background: #fff6f6;
+  border: 1px solid rgba(220, 38, 38, 0.25);
+}
+.wz-recover__problems p {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: var(--wz-danger);
+}
