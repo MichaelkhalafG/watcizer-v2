@@ -116,6 +116,12 @@ class AppServiceProvider extends ServiceProvider
 
         // "E-mail me when it's back" (2026-10-01): unauthenticated and it stores an address — a
         // shopper taps it once or twice; a script listing addresses does not get far.
+        // The recovery link's payload (2026-10-05): a person opens it a few times; a script trying
+        // tokens is stopped long before 128 bits matter.
+        RateLimiter::for('cart-recover', fn (Request $request) => [
+            Limit::perMinute(10)->by($request->ip() ?? 'unknown')->response(self::tooMany()),
+            Limit::perHour(60)->by($request->ip() ?? 'unknown')->response(self::tooMany()),
+        ]);
         RateLimiter::for('stock-alert', fn (Request $request) => [
             Limit::perMinute(5)->by($request->ip() ?? 'unknown')->response(self::tooMany()),
             Limit::perHour(30)->by($request->ip() ?? 'unknown')->response(self::tooMany()),

@@ -133,6 +133,16 @@ it('every BULK mail template links only what its mailable hands it', function ()
     expect($undeclared)->toBe([]);
 });
 
+/**
+ * The links an ORDER template may print BEYOND the builder's keys, per template — each handed over
+ * by that template's own mailable (2026-10-05, the expired-card-order mails). Named here so a new
+ * one is a decision, and pinned to its source by the test after the next.
+ */
+const ORDER_MAIL_OWN_LINKS = [
+    'payment-expired.blade.php' => ['recoveryUrl'],
+    'payment-expired-admin.blade.php' => ['telUrl', 'waUrl'],
+];
+
 it('every ORDER mail template links only variables the order builder declares', function () {
     /*
      * A template can only print what its builder hands it, so the builder's declared key list is
@@ -155,14 +165,52 @@ it('every ORDER mail template links only variables the order builder declares', 
             (string) file_get_contents($file),
             $matches,
         );
+        $allowed = [...$declared, ...(ORDER_MAIL_OWN_LINKS[basename($file)] ?? [])];
         foreach ($matches[1] as $variable) {
-            if (! in_array($variable, $declared, true)) {
+            if (! in_array($variable, $allowed, true)) {
                 $undeclared[] = basename($file).' links with an undeclared $'.$variable;
             }
         }
     }
 
     expect($undeclared)->toBe([]);
+});
+
+it('the expired-order mails build their own links from the order, never from the serving host', function () {
+    /*
+     * The recovery link goes to the ORDER's storefront domain (OrderRecovery::url reads
+     * `storefronts.domain`); the operator's call and WhatsApp buttons are built from the order's
+     * phone. Neither may take a host from the request — the 🟠-5 defect again — so OrderRecovery
+     * is scanned as tokens, like the builder above.
+     */
+    $customer = (string) file_get_contents(app_path('Mail/PaymentExpired.php'));
+    $admin = (string) file_get_contents(app_path('Mail/PaymentExpiredAdmin.php'));
+
+    expect($customer)->toContain("'recoveryUrl' => OrderRecovery::url(")
+        ->and($admin)->toContain("'telUrl' => \$digits === '' ? null : 'tel:+'.")
+        ->and($admin)->toContain("'waUrl' => \$digits === '' ? null : 'https://wa.me/'.");
+
+    $calls = [];
+    $tokens = token_get_all((string) file_get_contents(app_path('Domain/Orders/OrderRecovery.php')));
+    foreach ($tokens as $index => $token) {
+        if (is_array($token) && $token[0] === T_STRING && in_array(strtolower($token[1]), ['route', 'url', 'action', 'secure_url', 'request'], true)) {
+            // The token before it, past whitespace — `public static function url(` declares, not calls.
+            $back = $index - 1;
+            while (is_array($tokens[$back] ?? null) && $tokens[$back][0] === T_WHITESPACE) {
+                $back--;
+            }
+            $before = $tokens[$back] ?? null;
+            $isMember = is_array($before) && in_array($before[0], [T_OBJECT_OPERATOR, T_DOUBLE_COLON, T_FUNCTION], true);
+            if (! $isMember) {
+                $calls[] = $token[1].'() at line '.$token[2];
+            }
+        }
+        if (is_array($token) && $token[0] === T_CONSTANT_ENCAPSED_STRING && str_contains($token[1], 'app.url')) {
+            $calls[] = 'app.url at line '.$token[2];
+        }
+    }
+
+    expect($calls)->toBe([]);
 });
 
 it('the two CUSTOMER mails hang their link on the storefront, or on an allow-listed API path', function () {

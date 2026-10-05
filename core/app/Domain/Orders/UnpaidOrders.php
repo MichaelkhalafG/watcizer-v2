@@ -7,6 +7,7 @@ namespace App\Domain\Orders;
 use App\Domain\Activity\ActivityLog;
 use App\Domain\Inventory\Actor;
 use App\Domain\Inventory\InventoryService;
+use App\Domain\Notifications\OrderMailer;
 use App\Domain\Payment\CallbackPolicy;
 use App\Transform\Row;
 use Illuminate\Database\Query\Builder;
@@ -43,8 +44,14 @@ use Illuminate\Support\Facades\DB;
  * only once its unit has been measured (PaymobProvider::intentionExpiration()), and until then the
  * finding is the whole net.
  *
- * No customer e-mail: a card order's confirmation is only sent when the money arrives, so the
- * shopper was never told about this order in the first place.
+ * ── The e-mail (2026-10-05, developer: "one-click recovery") ───────────────────────────────────
+ *
+ * An EXPIRY e-mails the customer a link that brings the order back (`OrderRecovery`) and sends the
+ * admins an immediate copy with the phone number, so someone can call the same hour — unless the
+ * shopper already came back and ordered (`OrderRecovery::shouldRemind`). A SUPERSEDE sends nothing:
+ * the shopper is placing the next order right now. Queued in the cancel's own transaction (an
+ * expiry that rolls back owes no e-mail), sent after it commits. It used to send nothing at all,
+ * on the grounds that the card order's confirmation had never gone out either.
  */
 final class UnpaidOrders
 {
@@ -52,7 +59,7 @@ final class UnpaidOrders
 
     public const SUPERSEDED = 'payment_superseded';
 
-    public function __construct(private readonly InventoryService $inventory) {}
+    public function __construct(private readonly InventoryService $inventory, private readonly OrderMailer $mailer) {}
 
     /**
      * The unpaid card orders created before `$olderThanMinutes` ago, oldest first.
@@ -101,7 +108,8 @@ final class UnpaidOrders
      */
     public function cancel(int $orderId, string $why): bool
     {
-        return DB::transaction(function () use ($orderId, $why): bool {
+        $mailIds = [];
+        $done = DB::transaction(function () use ($orderId, $why, &$mailIds): bool {
             // The claim: only a still-pending card order moves. A callback that marked it paid, a
             // dashboard cancel or a parallel run all leave zero rows here, and this call stops.
             $claimed = DB::table('orders')
@@ -126,8 +134,17 @@ final class UnpaidOrders
                 $storefrontId,
             );
 
+            if ($why === self::EXPIRED && OrderRecovery::shouldRemind($orderId)) {
+                $mailIds = $this->mailer->paymentExpired($orderId);
+            }
+
             return true;
         });
+        if ($done) {
+            $this->mailer->flush($mailIds);
+        }
+
+        return $done;
     }
 
     /** Pending card orders core reserved stock for, with no successful payment on record. */
