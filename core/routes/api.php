@@ -3,6 +3,7 @@
 use App\Domain\Customers\CustomerMail;
 use App\Http\Controllers\Compat\AccountCompatController;
 use App\Http\Controllers\Compat\CartCompatController;
+use App\Http\Controllers\Compat\CartRecoveryController;
 use App\Http\Controllers\Compat\CatalogCompatController;
 use App\Http\Controllers\Compat\CheckoutCompatController;
 use App\Http\Controllers\Compat\GoneController;
@@ -99,6 +100,10 @@ Route::middleware('api.code')->group(function (): void {
     // "E-mail me when it's back" (2026-10-01): a signed-in customer with one tap (bearer token), a
     // guest with an address. Not cached (a write), throttled per IP. On the API host's allow-list.
     Route::post('stock-alerts', [StockAlertController::class, 'subscribe'])->middleware('throttle:stock-alert');
+
+    // Bring back a card order that expired unpaid (2026-10-05): the signed link's payload. Writes
+    // nothing, never cached, throttled per IP. On the API host's allow-list (cart/recover).
+    Route::post('cart/recover', CartRecoveryController::class)->middleware('throttle:cart-recover');
 
     // ── cart, checkout and account (wave 3) ───────────────────────────────
     // Never HTTP-cached: the legacy app puts every guest.cart / auth:api endpoint in its own

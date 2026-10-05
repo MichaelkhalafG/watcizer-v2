@@ -1008,7 +1008,7 @@ what §4.3 does and why it is a mandatory step rather than a suggestion.
     RewriteCond %{REQUEST_URI} !^/api/v2/
     RewriteCond %{REQUEST_URI} !^/api/(catalog/(meta|nav|listing|cards|related|product|home|blogs|blog)|all_product|all_product_image|all_product_rating|show_shipping_city)$
     RewriteCond %{REQUEST_URI} !^/api/products(/|$)
-    RewriteCond %{REQUEST_URI} !^/api/(add_to_cart|remove_from_cart|me/cart|cart/validate|cart/merge|add_order|add_address)$
+    RewriteCond %{REQUEST_URI} !^/api/(add_to_cart|remove_from_cart|me/cart|cart/validate|cart/merge|cart/recover|add_order|add_address)$
     RewriteCond %{REQUEST_URI} !^/api/(delete_cart|me/addresses)(/|$)
     RewriteCond %{REQUEST_URI} !^/api/me/(orders|addresses|avatar)$
     RewriteCond %{REQUEST_URI} !^/api/(login|register|logout|updateProfile|updatePassword)$

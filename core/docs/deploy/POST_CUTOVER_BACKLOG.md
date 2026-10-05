@@ -9,6 +9,69 @@ cannot get past tonight; every item is a known, named state. Pick batches from i
 
 ---
 
+## ▶ 2026-10-05 — expired card orders: recovery e-mail (version B) — built, NOT committed, NOT deployed
+
+**Why.** Order 000024 (guest, Paymob, 4,150 EGP) expired unpaid with "Messages (0)": by design a
+card order mailed nothing, ever — not at placement, not when `orders:expire-unpaid` cancelled it.
+`OrderMailer::placed()`'s docblock said otherwise; corrected.
+
+**Built (developer's decisions 1–3).** On `payment_expired` (never `payment_superseded`) the customer
+gets a bilingual "your order wasn't completed" mail with a 7-day link, and every `ORDER_ADMIN_EMAILS`
+address an immediate copy with Call / WhatsApp. `/cart/recover?t=…` shows the lines at today's price
+and stock and says what changed (sold out, fewer left, new price, slower delivery) before anything is
+added; Continue fills the cart through the ordinary add route and opens checkout with the typed
+details filled in (sessionStorage, read once). Core: `OrderRecovery`, `CartRecoveryController`
+(`POST api/cart/recover`, throttle `cart-recover` 10/min + 60/h per IP), two mailables + templates.
+
+**Guards (tests, not comments).** `OrderRecoveryTest` (10): never mails a shopper who ordered again
+(same e-mail / phone / account), nothing on a superseded order, admin copy without an e-mail, token
+tamper + expiry, the exact keys a link exposes, `no-store`, refusals (still pending, other
+storefront, expired). `OrderMailLinksTest` CHANGED DELIBERATELY: the three new links are named per
+template, and a new test pins where they are built (no request host in `OrderRecovery`; mutation-checked).
+
+**What a link exposes — ACCEPTED RISK (developer, 2026-10-05)** (also in `OrderRecovery`'s docblock):
+order number; each line's product id, name, quantity, colours, quoted vs today's price, stock; the
+name, e-mail, phone, address line and governorate typed on that order. Nothing else — no account, no
+session, no sign-in, no payment data, no other order. 128-bit HMAC, 7 days, that storefront only, only
+while the order is a cancelled card order. The acceptance covers EXACTLY that list: a change that adds
+a field goes back to the developer first (the exposure test fails on it by design — never widen it).
+
+**Measured before deciding (2026-10-05, journeys J1–J6 through the real endpoint):** attempts under
+an hour apart already collapse to ONE e-mail (the next order supersedes the last, or a later order is
+seen) — three in 22 seconds included, from one browser or a script. Attempts over an hour apart each
+mailed (J3, J4), and a link still rebuilt the cart after the shopper had paid (J5b). So:
+- **One recovery e-mail per shopper per 7 days** (account / guest token / e-mail / phone), the admin
+  copy following it; the week slides from the last e-mail sent, so a new visit three weeks later IS
+  e-mailed. Tests: J3, J4 (+ by phone), J6 (browser + script), three weeks later, day 6 vs day 8.
+- **A link is refused (`reordered`, 409) once the same shopper's later order went through** (not
+  cancelled, not a card order still at Paymob); the page says the order went through and points to
+  customer service on WhatsApp.
+- **WITHDRAWN — do not revive:** the developer's "e-mail only from the SECOND abandoned attempt". It
+  duplicated the guards for bursts and would have sent NOTHING to order 000024, a single attempt.
+
+**ACCEPTED RISK, not an open item (developer, 2026-10-05):** COD orders mail an unverified address
+immediately, bounded by the `add-order` throttle (10/min, 60/hr per IP). Accepted as how the shop
+works; checkout verification is not to be proposed again unless something actually goes wrong.
+
+**Deliberate exception (developer, 2026-10-05):** the recovery page says "Now ships as Market: 4–7
+business days" although the shopper is otherwise not shown the stock type — the item changed after
+they ordered it and they are entitled to know before they pay again. Do not remove it to reconcile
+the two rules.
+
+**Wording (developer, 2026-10-05):** the button is «استرجع طلبي» and the page heading «استرجع طلبك» —
+«استعد» reads as «اسْتَعِدّ» ("get ready") without the shadda. Same class fixed in the e-mail body:
+«أعدنا المنتجات» (could read «أعَدّنا», "we prepared") → «أرجعنا المنتجات».
+
+**Deploy.** Core tar + runbook §4.1.1's allow-list line now carries `cart/recover` (the `.htaccess`
+on the API host must be updated with it, or the page shows "could not load"). No migration.
+Storefront: push → rebuild. **Measured locally (final, with the ceiling and the refusal):** core
+suite 1,937 passed / 38 skipped (OrderRecoveryTest 23, mutation-checked: ceiling off, ceiling
+permanent, refusal off each fail it); storefront build OK, lint 0 errors (7 warnings, all
+pre-existing); browser passes on scratch `wz_scratch_b6` (recovery + prefilled checkout) and
+`wz_scratch_b7` (the `reordered` page, desktop + phone, EN + AR), both dropped.
+
+---
+
 ## ▶ SESSION RECORD — end of 2026-10-01 (read this first)
 
 **The next session starts with:** *"Confirm what is live — storefront rebuild of `main` at `6da75c9`, then merge

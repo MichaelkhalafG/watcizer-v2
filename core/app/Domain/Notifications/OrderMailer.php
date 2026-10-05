@@ -8,6 +8,8 @@ use App\Domain\Orders\OrderCustomer;
 use App\Mail\AdminOrderNotification;
 use App\Mail\OrderConfirmation;
 use App\Mail\OrderStatusUpdate;
+use App\Mail\PaymentExpired;
+use App\Mail\PaymentExpiredAdmin;
 use App\Support\Coerce;
 use App\Transform\Row;
 use Illuminate\Database\QueryException;
@@ -70,6 +72,14 @@ final class OrderMailer
 
     public const KIND_STATUS = 'status_update';
 
+    /** A card order nobody paid for was cancelled (2026-10-05): the customer's recovery e-mail. */
+    public const EVENT_EXPIRED = 'order.payment_expired';
+
+    public const KIND_EXPIRED = 'payment_expired';
+
+    /** …and the admins' copy, sent the same minute so someone can call while it is still fresh. */
+    public const KIND_EXPIRED_ADMIN = 'payment_expired_admin';
+
     /** Statuses a row can hold. `sending` is a claim, not a resting state. */
     public const STATUS_PENDING = 'pending';
 
@@ -106,12 +116,14 @@ final class OrderMailer
     /**
      * An order was placed: the customer's confirmation and one notification per admin.
      *
-     * `$notifyCustomer` reproduces the legacy rule exactly — `sendOrderEmails()` only builds the
-     * customer's confirmation `if ($paymentMethod === 'cash')`, so a card order tells the admins
-     * at checkout and tells the CUSTOMER only once the callback says the money arrived. A
-     * WhatsApp order tells the admins and never the customer, because the order is not yet a
-     * sale. Those are the legacy semantics and they are deliberately preserved: see the trigger
-     * table in `docs/wave4c/ORDER_EMAILS_2026-09-13.md`.
+     * Who calls it, and when (corrected 2026-10-05 — this said "a card order tells the admins at
+     * checkout", which the code never did):
+     *   - CASH: at checkout, customer and admins (`$notifyCustomer = true`).
+     *   - WHATSAPP: at checkout, the admins only — the order is not yet a sale.
+     *   - CARD (Paymob): NOTHING at checkout, for anybody. Customer and admins are both told by the
+     *     payment callback, once the money has arrived. A card order nobody pays for is cancelled
+     *     by `orders:expire-unpaid`, which sends `paymentExpired()` instead.
+     * The trigger table is `docs/wave4c/ORDER_EMAILS_2026-09-13.md`.
      *
      * @return list<int> the outbox ids enqueued by THIS call (a duplicate enqueues nothing)
      */
@@ -131,6 +143,38 @@ final class OrderMailer
                 event: self::EVENT_PLACED,
                 dedupe: self::adminKey($orderId, $recipient),
                 kind: self::KIND_ADMIN,
+                orderId: $orderId,
+                recipient: $recipient,
+                extra: [],
+            );
+            if ($id !== null) {
+                $ids[] = $id;
+            }
+        }
+
+        return $ids;
+    }
+
+    /**
+     * A card order was cancelled because nobody paid (`UnpaidOrders`, expiry only): the customer's
+     * recovery e-mail — what happened, the items released, a link that brings the order back — and
+     * the admins' copy with her phone number, so someone can call the same hour. Once per order (the
+     * dedupe keys). The caller decides WHETHER (`OrderRecovery::shouldRemind`); this only enqueues.
+     *
+     * @return list<int>
+     */
+    public function paymentExpired(int $orderId): array
+    {
+        $ids = [];
+        $id = $this->enqueueCustomer(self::EVENT_EXPIRED, self::KIND_EXPIRED, $orderId, 'payment_expired', null);
+        if ($id !== null) {
+            $ids[] = $id;
+        }
+        foreach ($this->adminRecipients($orderId) as $recipient) {
+            $id = $this->enqueue(
+                event: self::EVENT_EXPIRED,
+                dedupe: self::adminKey($orderId, 'expired:'.$recipient),
+                kind: self::KIND_EXPIRED_ADMIN,
                 orderId: $orderId,
                 recipient: $recipient,
                 extra: [],
@@ -360,6 +404,8 @@ final class OrderMailer
             self::KIND_CUSTOMER => 'تأكيد الطلب (للعميل)',
             self::KIND_ADMIN => 'إشعار طلب جديد (للإدارة)',
             self::KIND_STATUS => 'تحديث حالة الطلب (للعميل)',
+            self::KIND_EXPIRED => 'لم يكتمل الدفع — رابط استعادة الطلب (للعميل)',
+            self::KIND_EXPIRED_ADMIN => 'طلب بطاقة لم يُدفع — للمتابعة (للإدارة)',
             default => $kind,
         };
     }
@@ -595,6 +641,8 @@ final class OrderMailer
             self::KIND_CUSTOMER => new OrderConfirmation($data),
             self::KIND_ADMIN => new AdminOrderNotification($data),
             self::KIND_STATUS => new OrderStatusUpdate($data),
+            self::KIND_EXPIRED => new PaymentExpired($data),
+            self::KIND_EXPIRED_ADMIN => new PaymentExpiredAdmin($data),
             default => null,
         };
     }

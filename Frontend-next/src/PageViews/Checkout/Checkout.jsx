@@ -304,6 +304,42 @@ function Checkout() {
     [shippingPrices, isRTL, setShippingid, setShipping, setShippingName],
   )
 
+  // ── Details brought back by a recovery link (/cart/recover, 2026-10-05) ──────
+  // The page hands over what the shopper typed on the order that expired unpaid — name, e-mail,
+  // phone, address line, governorate — in this tab's sessionStorage, read ONCE and removed. Only
+  // empty fields are filled: anything already typed or known from the account wins.
+  const [prefillCity, setPrefillCity] = useState(null)
+  useEffect(() => {
+    let prefill = null
+    try {
+      prefill = JSON.parse(sessionStorage.getItem('wz_checkout_prefill') || 'null')
+      sessionStorage.removeItem('wz_checkout_prefill')
+    } catch {
+      prefill = null
+    }
+    if (!prefill || typeof prefill !== 'object') return
+    const [first = '', ...rest] = String(prefill.name || '').trim().split(/\s+/)
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- sessionStorage is only readable after mount
+    setFirstName((v) => v || first)
+    setLastName((v) => v || rest.join(' '))
+    setEmail((v) => v || String(prefill.email || ''))
+    setPhone((v) => v || String(prefill.phone || ''))
+    setStreet((v) => v || String(prefill.address_line || ''))
+    if (prefill.shipping_city_id) setPrefillCity(String(prefill.shipping_city_id))
+  }, [])
+  // The governorate needs the price list, which may arrive after mount.
+  useEffect(() => {
+    if (!prefillCity || !shippingPrices.length) return
+    const city = shippingPrices.find((c) => String(c.id) === prefillCity)
+    if (city && !shippingid) {
+      setShippingid(prefillCity)
+      setShipping(String(city.Price))
+      setShippingName(isRTL ? city.GovernorateAr : city.GovernorateEn)
+    }
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot hand-over
+    setPrefillCity(null)
+  }, [prefillCity, shippingPrices, shippingid, isRTL, setShippingid, setShipping, setShippingName])
+
   // ── Active shipping city (saved address city OR selected governorate) ─────
   const activeCity = useMemo(() => {
     if (!useInline && selectedAddressId) {
