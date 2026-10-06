@@ -65,11 +65,12 @@ it('reproduces the storefront listing — totals, page order and every facet cou
     DB::table('catalog_products')->whereIn('id', [$blank[0], $blank[count($blank) - 1]])->update(['sale_price' => null]);
     app(StorefrontCache::class)->flush(1);
 
-    $all = withHeaders(['Api-Code' => LISTING_API_KEY])->getJson('/api/all_product')->assertOk()->json();
+    // The reference catalogue, row-built in-process (all_product / all_product_image were retired, L8).
+    $all = catalogueReferenceRows();
     $meta = listingGet('/api/catalog/meta');
     $ratings = withHeaders(['Api-Code' => LISTING_API_KEY])->getJson('/api/all_product_rating')->assertOk()->json();
-    $images = withHeaders(['Api-Code' => LISTING_API_KEY])->getJson('/api/all_product_image')->assertOk()->json();
     $rows = array_map(fn (mixed $r): array => T::arr($r), T::arr($all));
+    $images = catalogueReferenceImages(array_values(array_map(fn (array $r): int => T::int($r['id']), $rows)));
     expect(count($rows))->toBeGreaterThan(50);
 
     // Scenario values taken from the data, so every filter bites on something real.
@@ -266,7 +267,7 @@ it('reproduces the storefront listing — totals, page order and every facet cou
 })->skip(fn () => listingNode() === '', 'node is not installed here');
 
 it('returns raw rows, ratings and images for cards by id, in the order asked', function () {
-    $all = array_map(fn (mixed $r): array => T::arr($r), T::arr(withHeaders(['Api-Code' => LISTING_API_KEY])->getJson('/api/all_product')->assertOk()->json()));
+    $all = array_map(fn (mixed $r): array => T::arr($r), catalogueReferenceRows());
     $ids = [T::int($all[5]['id']), T::int($all[0]['id']), 999999999, T::int($all[2]['id'])];
     $r = listingGet('/api/catalog/cards?ids='.implode(',', $ids));
 

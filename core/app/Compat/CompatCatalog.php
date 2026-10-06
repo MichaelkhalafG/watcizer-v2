@@ -25,30 +25,133 @@ final class CompatCatalog
         private readonly int $storefrontId,
     ) {}
 
-    /** @return list<array<string, mixed>> */
-    public function allProduct(string $appLocale): array
+    /**
+     * The LEAN per-product facts the listing index (`CompatListing::buildIndex`) and the header nav
+     * (`buildNav`) are built from — read straight from SQL, never from the full legacy `all_product`
+     * rows (L8, 2026-10-06). Building the whole catalogue as `all_product` rows cost 55 MB held /
+     * 136 MB peak on Brand Fashion's 7,579 products and took the warm-up over PHP's 128 MB (§3.2);
+     * this reads ~15 MB. Each lean row carries scalars under the SAME keys the row-built index read,
+     * and the relations pre-reduced to what the index/nav actually use — gender names (both locales)
+     * and colour ids — so both builders reproduce their pre-L8 output byte-for-byte on Watchizer's
+     * catalogue (CatalogL8ParityTest), which is the whole point of reading leanly.
+     *
+     * @return list<array{id: int, brand_id: int, category_type_id: ?int, sub_type_id: ?int, grade_id: ?int, band_material_id: int|string|null, watch_movement_id: int|string|null, case_shape_id: int|string|null, dial_display_type_id: int|string|null, genders: list<array{en: ?string, ar: ?string}>, dialColors: list<int>, bandColors: list<int>, percentage_discount: string, selling_price: ?string, sale_price_after_discount: ?string, search_keywords: ?string, stock: int, market_stock: int, created_at: ?string, translations: list<array{locale: string, product_title: ?string, short_description: ?string}>}>
+     */
+    public function leanCatalog(string $appLocale): array
     {
-        $ttl = config()->integer('compat.ttl.all_product');
+        $rows = $this->products->leanRows();
+        $ids = [];
+        foreach ($rows as $row) {
+            $ids[] = Row::int($row, 'id');
+        }
+        $titles = $this->products->titles($ids);
+        $pivots = $this->products->pivots($ids);
+        $placements = $this->products->placements($ids, $this->categories);
 
-        /** @var list<array<string, mixed>> */
-        return $this->cache->remember($this->storefrontId, 'compat_all_product', $appLocale, $ttl, fn () => $this->buildAllProduct($appLocale));
+        $out = [];
+        foreach ($rows as $row) {
+            $id = Row::int($row, 'id');
+            $place = $placements[$id] ?? ['type' => null, 'sub' => null];
+            $piv = $pivots[$id] ?? ['features' => [], 'genders' => [], 'dial' => [], 'band' => []];
+
+            // Genders as {en, ar} names, in pivot order, ONLY where the lookup master exists — exactly
+            // the set and order `relationRows('genders', …)` produced, so `relationNames` (index) and
+            // the nav loop see the same names they saw off the full rows.
+            $genders = [];
+            foreach ($piv['genders'] as $gid) {
+                if ($this->names->master('genders', $gid) !== null) {
+                    $genders[] = ['en' => $this->names->name('genders', $gid, 'en'), 'ar' => $this->names->name('genders', $gid, 'ar')];
+                }
+            }
+
+            $out[] = [
+                'id' => $id,
+                'brand_id' => Row::int($row, 'brand_id'),
+                'category_type_id' => $place['type'] === null ? null : CompatCategories::legacyIdOf($place['type']),
+                'sub_type_id' => $place['sub'] === null ? null : CompatCategories::legacyIdOf($place['sub']),
+                'grade_id' => Row::nint($row, 'grade_id'),
+                'band_material_id' => CompatProducts::watch($row, 'band_material_id'),
+                'watch_movement_id' => CompatProducts::watch($row, 'watch_movement_id'),
+                'case_shape_id' => CompatProducts::watch($row, 'case_shape_id'),
+                'dial_display_type_id' => CompatProducts::watch($row, 'dial_display_type_id'),
+                'genders' => $genders,
+                'dialColors' => $this->masteredColorIds($piv['dial']),
+                'bandColors' => $this->masteredColorIds($piv['band']),
+                'percentage_discount' => CompatProducts::percentageDiscount($row),
+                'selling_price' => Row::nstr($row, 'selling_price'),
+                'sale_price_after_discount' => Row::nstr($row, 'sale_price'),
+                'search_keywords' => Row::nstr($row, 'search_keywords'),
+                'stock' => Row::int($row, 'stock_express'),
+                'market_stock' => Row::int($row, 'stock_market'),
+                'created_at' => LegacyJson::ts(Row::nstr($row, 'created_at')),
+                'translations' => self::leanTranslations($titles[$id] ?? []),
+            ];
+        }
+
+        return $out;
     }
 
     /**
-     * Rebuild and store the whole catalogue now, and return it (the warm-up; see `CompatListing::warm`).
+     * Colour ids in the given order, kept ONLY where the colour master exists — what
+     * `relationRows('colors', …)` + `relationIds` produced off the full rows (a colour with no master
+     * was skipped there, so it is skipped here).
+     *
+     * @param  list<int>  $colorIds
+     * @return list<int>
+     */
+    private function masteredColorIds(array $colorIds): array
+    {
+        $out = [];
+        foreach ($colorIds as $cid) {
+            if ($this->names->master('colors', $cid) !== null) {
+                $out[] = $cid;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * The index reads only `product_title` and `short_description` off each translation row, in ar-then-en
+     * order (the legacy order). Build exactly those two keys, dropping the other translated columns a
+     * card/index never touches.
+     *
+     * @param  array<string, array{title: ?string, short_description: ?string}>  $byLocale
+     * @return list<array{locale: string, product_title: ?string, short_description: ?string}>
+     */
+    private static function leanTranslations(array $byLocale): array
+    {
+        $rows = [];
+        foreach (['ar', 'en'] as $locale) {
+            $t = $byLocale[$locale] ?? null;
+            if ($t === null) {
+                continue;
+            }
+            $rows[] = ['locale' => $locale, 'product_title' => $t['title'], 'short_description' => $t['short_description']];
+        }
+
+        return $rows;
+    }
+
+    /**
+     * The whole catalogue in the legacy `all_product` row shape, built UNCACHED — the pre-L8 input to
+     * the index and nav builders. Kept ONLY as the reference `CatalogL8ParityTest` compares the lean
+     * builders against on Watchizer's 698 products; it is on NO request path, because building the
+     * whole catalogue at once is exactly the out-of-memory risk L8 removed. Never call it for a large
+     * storefront.
      *
      * @return list<array<string, mixed>>
      */
-    public function refreshAllProduct(string $appLocale): array
+    public function wholeForParity(string $appLocale): array
     {
-        return $this->cache->refresh($this->storefrontId, 'compat_all_product', $appLocale, config()->integer('compat.ttl.all_product'), fn () => $this->buildAllProduct($appLocale));
+        return $this->buildAllProduct($appLocale);
     }
 
     /**
      * The `all_product` rows of just these products, read LIVE — no cache. A listing page needs 24
      * rows; reading them out of the cached whole catalogue cost 40–67 ms warm and ~400 ms cold on
      * the live host (2026-09-28), while these few indexed queries cost a few ms and are never stale.
-     * Same builder as `allProduct`, so a row is identical either way (CatalogCardsLiveTest).
+     * Same `buildAllProduct` builder either way, so a row is identical (CatalogCardsLiveTest).
      *
      * @param  list<int>  $ids
      * @return list<array<string, mixed>>
@@ -154,14 +257,56 @@ final class CompatCatalog
         return $this->cache->remember($this->storefrontId, 'compat_nav', '', $ttl, fn () => $this->buildNav());
     }
 
-    /** @return array{brand_ids: list<int>, sub_types_by_category: array<string, list<int>>, brands_by_category: array<string, list<int>>, genders: list<array{en: string, ar: string}>} */
+    /**
+     * The nav facts, built from the LEAN catalogue (L8, 2026-10-06) — no longer from the full
+     * `all_product` rows. `buildNavFromRows()` is the pre-L8 builder, kept as the parity reference;
+     * this produces the identical result from `leanCatalog()`.
+     *
+     * @return array{brand_ids: list<int>, sub_types_by_category: array<string, list<int>>, brands_by_category: array<string, list<int>>, genders: list<array{en: string, ar: string}>}
+     */
     private function buildNav(): array
     {
         $brands = [];
         $subTypes = [];
         $brandsByCategory = [];
         $genders = [];
-        foreach ($this->allProduct(config()->string('compat.pinned_locale')) as $row) {
+        foreach ($this->leanCatalog(config()->string('compat.pinned_locale')) as $row) {
+            $brand = $row['brand_id'];
+            $type = $row['category_type_id'];
+            $sub = $row['sub_type_id'];
+            $brands[$brand] = true;
+            if ($type !== null && $sub !== null) {
+                $subTypes[$type][$sub] = true;
+            }
+            if ($type !== null) {
+                $brandsByCategory[$type][$brand] = true;
+            }
+            foreach ($row['genders'] as $gender) {
+                $en = $gender['en'] ?? '';
+                if ($en !== '' && ! isset($genders[$en])) {
+                    $ar = $gender['ar'] ?? '';
+                    $genders[$en] = ['en' => $en, 'ar' => $ar !== '' ? $ar : $en];
+                }
+            }
+        }
+
+        return $this->navFacts($brands, $subTypes, $brandsByCategory, $genders);
+    }
+
+    /**
+     * The pre-L8 nav builder, reading the full legacy `all_product` rows — kept ONLY as the reference
+     * `CatalogL8ParityTest` holds `buildNav()`/`leanCatalog()` to. Not on any request path.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return array{brand_ids: list<int>, sub_types_by_category: array<string, list<int>>, brands_by_category: array<string, list<int>>, genders: list<array{en: string, ar: string}>}
+     */
+    public function buildNavFromRows(array $rows): array
+    {
+        $brands = [];
+        $subTypes = [];
+        $brandsByCategory = [];
+        $genders = [];
+        foreach ($rows as $row) {
             $brand = is_int($row['brand_id'] ?? null) ? $row['brand_id'] : null;
             $type = is_int($row['category_type_id'] ?? null) ? $row['category_type_id'] : null;
             $sub = is_int($row['sub_type_id'] ?? null) ? $row['sub_type_id'] : null;
@@ -187,6 +332,21 @@ final class CompatCatalog
             }
         }
 
+        return $this->navFacts($brands, $subTypes, $brandsByCategory, $genders);
+    }
+
+    /**
+     * The shared tail of both nav builders: ids sorted, category maps keyed and sorted, genders in
+     * `GENDER_ORDER`.
+     *
+     * @param  array<int, true>  $brands
+     * @param  array<int, array<int, true>>  $subTypes
+     * @param  array<int, array<int, true>>  $brandsByCategory
+     * @param  array<string, array{en: string, ar: string}>  $genders
+     * @return array{brand_ids: list<int>, sub_types_by_category: array<string, list<int>>, brands_by_category: array<string, list<int>>, genders: list<array{en: string, ar: string}>}
+     */
+    private function navFacts(array $brands, array $subTypes, array $brandsByCategory, array $genders): array
+    {
         $ids = static function (array $set): array {
             $out = array_map('intval', array_keys($set));
             sort($out);
@@ -272,21 +432,11 @@ final class CompatCatalog
     }
 
     /**
-     * `ProductImage::all()` — the gallery rows (legacy `product_images` = clean rows with is_cover = 0).
-     * Clean `sort` is legacy sort + 1 (step 10); the legacy `is_cover` flag was dropped (X-01) → false.
-     *
-     * @return list<array<string, mixed>>
-     */
-    public function allProductImage(): array
-    {
-        $ttl = config()->integer('compat.ttl.all_product_image');
-
-        /** @var list<array<string, mixed>> */
-        return $this->cache->remember($this->storefrontId, 'compat_all_product_image', '', $ttl, fn (): array => $this->buildProductImages(null));
-    }
-
-    /**
-     * The gallery rows of just these products, read live (see `productRows`).
+     * The gallery rows of just these products, read live (see `productRows`). The whole-catalogue
+     * `GET /api/all_product_image` endpoint was RETIRED with `all_product` (L8 / E5, 2026-10-06): no
+     * storefront or dashboard called it, and an unbounded gallery read of 7,579 products is the same
+     * class of liability. Core reads galleries per page through here (`CompatListing::cards`); the
+     * legacy `is_cover = 0` + `sort - 1` rule still lives in `buildProductImages`.
      *
      * @param  list<int>  $ids
      * @return list<array<string, mixed>>

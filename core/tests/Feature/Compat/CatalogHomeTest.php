@@ -61,8 +61,8 @@ it('seeds today\'s home page: offers (12), featured (5), then every grade in id 
 });
 
 it('picks each rail\'s cards with the browser\'s rule over all_product: offers and grades, in catalogue order; empty grades left out', function () {
-    $all = T::arr(app(CompatServices::class)->catalog->allProduct('en'));
-    // The browser did not use all_product's order: `transformProductData` re-sorts it — no Market
+    $all = catalogueReferenceRows();
+    // The browser did not use the catalogue's order: `transformProductData` re-sorts it — no Market
     // stock last, then newest first (a stable sort, like PHP 8's usort).
     usort($all, function (mixed $a, mixed $b): int {
         $a = T::arr($a);

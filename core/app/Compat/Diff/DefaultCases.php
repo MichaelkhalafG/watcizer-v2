@@ -48,10 +48,8 @@ final class DefaultCases
             new DiffCase('meta:fr', 'api/catalog/meta', 'json', $fr),
             new DiffCase('meta:no-accept', 'api/catalog/meta', 'json', [], true, 'compat', null),
             new DiffCase('meta:any-accept', 'api/catalog/meta', 'json', [], true, 'compat', $any),
-            new DiffCase('all_product', 'api/all_product'),
-            new DiffCase('all_product:ar', 'api/all_product', 'json', $ar),
-            new DiffCase('all_product:no-accept', 'api/all_product', 'json', [], true, 'compat', null),
-            new DiffCase('all_product_image', 'api/all_product_image'),
+            // all_product + all_product_image were RETIRED (L8 / E5, 2026-10-06): they are in the
+            // `gone` 410 list below now, not byte-compared. all_product_rating is still served.
             new DiffCase('all_product_rating', 'api/all_product_rating'),
             new DiffCase('show_shipping_city', 'api/show_shipping_city'),
             new DiffCase('show_shipping_city:ar', 'api/show_shipping_city', 'json', $ar),
@@ -74,9 +72,9 @@ final class DefaultCases
         }
         $cases[] = new DiffCase('product:by-name:404', 'api/products/by-name/'.rawurlencode('does not exist at all'));
         $cases[] = new DiffCase('product:by-name:404:unrouted', 'api/products/by-name/'.rawurlencode('does not exist ¯\_(ツ)_/¯'));
-        $cases[] = new DiffCase('unauthenticated:all_product', 'api/all_product', 'status', [], false);
+        $cases[] = new DiffCase('unauthenticated:catalog-nav', 'api/catalog/nav', 'status', [], false);
         $cases[] = new DiffCase('unauthenticated:meta', 'api/catalog/meta', 'status', [], false);
-        foreach (['all_brand', 'all_sub_type', 'products?per_page=2', 'categories/main', 'new_colors'] as $gone) {
+        foreach (['all_product', 'all_product_image', 'all_brand', 'all_sub_type', 'products?per_page=2', 'categories/main', 'new_colors'] as $gone) {
             $cases[] = new DiffCase("gone:{$gone}", 'api/'.$gone, 'status', [], ! str_starts_with($gone, 'categories'), 'gone');
         }
         // CORS (review 🔴-1): the storefront origin must be allowed, a foreign one must not — on a moved, a proxied and a preflighted path.
@@ -87,8 +85,8 @@ final class DefaultCases
         $cases[] = new DiffCase('meta:cors:foreign-origin', 'api/catalog/meta', 'json', $evil, true, 'cors');
         $cases[] = new DiffCase('proxy:all_offer:cors:storefront-origin', 'api/all_offer', 'json', $sf, true, 'cors');
         $cases[] = new DiffCase('proxy:all_offer:cors:foreign-origin', 'api/all_offer', 'json', $evil, true, 'cors');
-        $cases[] = new DiffCase('cors:preflight:storefront-origin', 'api/all_product', 'status', $sf + $preflight, false, 'cors', null, 'OPTIONS');
-        $cases[] = new DiffCase('cors:preflight:foreign-origin', 'api/all_product', 'status', $evil + $preflight, false, 'cors', null, 'OPTIONS');
+        $cases[] = new DiffCase('cors:preflight:storefront-origin', 'api/catalog/nav', 'status', $sf + $preflight, false, 'cors', null, 'OPTIONS');
+        $cases[] = new DiffCase('cors:preflight:foreign-origin', 'api/catalog/nav', 'status', $evil + $preflight, false, 'cors', null, 'OPTIONS');
         $cases[] = new DiffCase('cors:preflight:proxied:storefront-origin', 'api/add_to_cart', 'status', $sf + ['Access-Control-Request-Method' => 'POST', 'Access-Control-Request-Headers' => 'api-code,content-type'], false, 'cors', null, 'OPTIONS');
         // Proxy: allowed rows pass through; anything else is refused here (review 🟡-8).
         $cases[] = new DiffCase('proxy:all_wishlist', 'api/all_wishlist', 'json', [], true, 'proxy');

@@ -30,14 +30,16 @@ final class StorefrontCache
         'sitemap' => ['StorefrontProductChanged', 'CategoryTreeChanged', 'PlacementChanged', 'ProductUpdated'],
         'compat_names' => ['LookupChanged', 'CategoryTreeChanged'],
         'compat_meta' => ['CategoryTreeChanged', 'LookupChanged', 'BannerChanged', 'PlacementChanged', 'StorefrontProductChanged'],
-        'compat_all_product' => ['ProductUpdated', 'StockChanged', 'StorefrontProductChanged', 'PlacementChanged', 'LookupChanged'],
-        'compat_all_product_image' => ['ProductUpdated'],
+        // `compat_all_product` and `compat_all_product_image` were RETIRED by L8 (2026-10-06): nothing
+        // builds or caches the whole catalogue any more (the index and nav are built leanly, a listing
+        // page reads its per-product `compat_card` entries), so they are gone from this map — which
+        // makes the whole-catalogue cache structurally unwritable (key() refuses an unlisted family).
         // One product's card row + gallery (2026-09-28): a listing page reads 24 of these instead of
-        // the whole catalogue. The union of compat_all_product's and compat_all_product_image's events.
+        // the whole catalogue. The events that stale a product's card.
         'compat_card' => ['ProductUpdated', 'StockChanged', 'StorefrontProductChanged', 'PlacementChanged', 'LookupChanged'],
-        // Derived from compat_all_product (the header menu's facts, C-1 stage 2): the same events.
+        // The header menu's facts (C-1 stage 2), built leanly from the catalogue since L8: the same events.
         'compat_nav' => ['ProductUpdated', 'StockChanged', 'StorefrontProductChanged', 'PlacementChanged', 'LookupChanged'],
-        // The listing index (C-1 stage 3): derived from compat_all_product and the brand names in compat_meta.
+        // The listing index (C-1 stage 3), built leanly since L8, plus the brand names in compat_meta.
         'compat_listing' => ['ProductUpdated', 'StockChanged', 'StorefrontProductChanged', 'PlacementChanged', 'LookupChanged'],
     ];
 

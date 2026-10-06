@@ -115,6 +115,11 @@ final class CompatEditProbeCommand extends Command
         $this->subject = $subject;
 
         $detail = "api/products/{$productId}";
+        // NOTE (L8, 2026-10-06): `all_product` was RETIRED on the compat side (it answers 410). It was
+        // the only catalogue-listing path BOTH the legacy host and compat served, so the hide-product
+        // scenario below no longer has a both-sides surface to diff. This manual probe is untested and
+        // off the request path; before it is run again, scenario 3 needs a shared endpoint (or to be
+        // dropped). Left pointing here so the break is loud, not silent.
         $list = 'api/all_product';
 
         $this->line('');

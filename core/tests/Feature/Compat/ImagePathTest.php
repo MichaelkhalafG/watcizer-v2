@@ -41,8 +41,8 @@ function imgCompat(string $path): TestResponse
 function twoLegacyCoverProducts(): array
 {
     $listed = [];
-    foreach ((array) imgCompat('all_product')->assertOk()->json() as $row) {
-        if (is_array($row) && isset($row['id'])) {
+    foreach (catalogueReferenceRows() as $row) {
+        if (isset($row['id'])) {
             $listed[] = T::int($row['id']);
         }
     }
@@ -82,8 +82,8 @@ it('sends a cover stored in Product_image/ with its folder on the listing, the p
 
     // the listing: what the storefront's cards read
     $images = [];
-    foreach ((array) imgCompat('all_product')->assertOk()->json() as $row) {
-        if (is_array($row) && isset($row['id'])) {
+    foreach (catalogueReferenceRows() as $row) {
+        if (isset($row['id'])) {
             $images[T::int($row['id'])] = $row['image'] ?? null;
         }
     }

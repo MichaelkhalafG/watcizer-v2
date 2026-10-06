@@ -26,10 +26,12 @@ beforeEach(function () {
 
 it('marks every browser-read API response private, never public or s-maxage', function () {
     $productId = T::int(DB::table('storefront_product')->where('storefront_id', 1)->where('is_visible', 1)->min('product_id'));
+    // `all_product` / `all_product_image` dropped off this list when they were retired (L8, 2026-10-06):
+    // they answer 410, not a 200 browser-read response. `all_product_rating` stays — the product page reads it.
     $paths = [
-        'catalog/meta', 'show_shipping_city', 'all_product', 'catalog/nav', 'catalog/listing',
+        'catalog/meta', 'show_shipping_city', 'catalog/nav', 'catalog/listing',
         'catalog/cards?ids='.$productId, 'catalog/related?product='.$productId, 'catalog/related?cart='.$productId, 'catalog/product?slug='.$productId, 'catalog/home', 'catalog/blogs',
-        'all_product_image', 'all_product_rating', 'products/'.$productId,
+        'all_product_rating', 'products/'.$productId,
     ];
     $failures = [];
     foreach ($paths as $path) {

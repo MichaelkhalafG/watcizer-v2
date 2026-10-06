@@ -68,8 +68,10 @@ Route::middleware('api.code')->group(function (): void {
         Route::get('show_shipping_city', [CatalogCompatController::class, 'shippingCities']);
     });
     Route::middleware('cache.headers:private;max_age=600;etag')->group(function (): void {
-        Route::get('all_product', [CatalogCompatController::class, 'allProduct']);
-        // Storefront-only (C-1 stage 2): the header menu's catalogue facts, derived from all_product.
+        // `all_product` was RETIRED (L8 / E5, 2026-10-06): no storefront or dashboard called it, and a
+        // whole-catalogue build is an out-of-memory risk on 7,579 products. It now answers 410 via the
+        // `gone` list below, as `all_product_image` does (also uncalled).
+        // Storefront-only (C-1 stage 2): the header menu's catalogue facts, built leanly from the catalogue.
         Route::get('catalog/nav', [CatalogCompatController::class, 'nav']);
         // Storefront-only (C-1 stage 3): the listing with its facet counts, and product cards by id.
         Route::get('catalog/listing', [CatalogCompatController::class, 'listing']);
@@ -83,7 +85,6 @@ Route::middleware('api.code')->group(function (): void {
         // Articles, per storefront (2026-10-01): the published list, and one by slug.
         Route::get('catalog/blogs', [CatalogCompatController::class, 'blogs']);
         Route::get('catalog/blog', [CatalogCompatController::class, 'blog']);
-        Route::get('all_product_image', [CatalogCompatController::class, 'allProductImage']);
         Route::get('products/by-name/{name}', [CatalogCompatController::class, 'showByName']);
         // Registered but never called by the storefront (§3.3 last row) — retired before the id route.
         Route::get('products/{product}/variants', GoneController::class);

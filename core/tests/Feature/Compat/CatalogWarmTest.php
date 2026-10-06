@@ -57,7 +57,9 @@ function cardsCase(): array
 {
     $compat = warmCompat();
     $locale = config()->string('compat.pinned_locale');
-    $all = $compat->catalog->allProduct($locale);
+    // The row-built reference catalogue (all_product / all_product_image were retired, L8): cards() must
+    // still return exactly what the old whole-catalogue pick did, built from the same rows and gallery.
+    $all = $compat->catalog->wholeForParity($locale);
     $visible = array_map(fn (array $r): int => T::int($r['id']), $all);
 
     // Products that carry each thing a card needs: gallery images, ratings, and plain ones.
@@ -80,7 +82,7 @@ function cardsCase(): array
     $expected = [
         'products' => array_values(array_filter(array_map(fn (int $id) => $byId[$id] ?? null, $ids))),
         'ratings' => array_values(array_filter($compat->catalog->allProductRating(), fn (array $r) => isset($byId[T::int($r['product_id'])]))),
-        'images' => array_values(array_filter($compat->catalog->allProductImage(), fn (array $r) => isset($byId[T::int($r['product_id'])]))),
+        'images' => array_values(array_filter($compat->catalog->productImages($visible), fn (array $r) => isset($byId[T::int($r['product_id'])]))),
     ];
     expect(count($expected['products']))->toBe(count($ids) - 1)->and($expected['images'])->not->toBeEmpty();
 
@@ -142,16 +144,21 @@ it('never reads card entries stored under the version before a write', function 
     expect($cache->many(1, 'compat_card', ['en:1']))->toBe([]);
 });
 
-it('reads no catalogue-wide cache for a page of cards', function () {
+it('has no whole-catalogue cache family to write at all (L8)', function () {
+    // L8 (2026-10-06) retired the whole-catalogue caches: nothing builds or caches all_product /
+    // all_product_image any more (the index and nav are built leanly, a page reads its 24 card
+    // files). They are GONE from the invalidation map, so the family name is not even writable —
+    // `key()` refuses an unlisted family — which is the structural guarantee that no request can
+    // cache the whole catalogue of a large storefront. The per-product and derived families remain.
+    expect(StorefrontCache::INVALIDATION_MAP)->not->toHaveKey('compat_all_product')
+        ->and(StorefrontCache::INVALIDATION_MAP)->not->toHaveKey('compat_all_product_image')
+        ->and(StorefrontCache::INVALIDATION_MAP)->toHaveKeys(['compat_card', 'compat_nav', 'compat_listing']);
+
+    // And a page of cards still serves without the retired family existing.
     $compat = warmCompat();
-    $ids = [T::int($compat->catalog->allProduct(config()->string('compat.pinned_locale'))[0]['id'])];
-    app(StorefrontCache::class)->flush(1);
-
-    $compat->listing->cards($ids);
-
-    $cache = app(StorefrontCache::class);
-    expect(Cache::has($cache->key(1, 'compat_all_product', config()->string('compat.pinned_locale'))))->toBeFalse()
-        ->and(Cache::has($cache->key(1, 'compat_all_product_image')))->toBeFalse();
+    $first = $compat->listing->entries()[0]['id'] ?? null;
+    expect($first)->toBeInt();
+    $compat->listing->cards([T::int($first)]);
 });
 
 it('leaves the index built after catalog:warm, so the next query does not build it', function () {
