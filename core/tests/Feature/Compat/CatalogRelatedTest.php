@@ -150,11 +150,14 @@ it('keeps the old score, fed the price the shopper pays, on every candidate both
     file_put_contents($dir.'/lib/env.js', relatedStorefrontFile('src/lib/env.js'));
     file_put_contents($dir.'/reference.js', (string) file_get_contents(base_path('tests/Fixtures/related-reference.js')));
     file_put_contents($dir.'/package.json', '{"type":"module"}');
+    // all_product / all_product_image were retired (L8); the node reference reads the same rows built
+    // in-process. all_product_rating is still served.
+    $all = catalogueReferenceRows();
     file_put_contents($dir.'/data.json', json_encode([
-        'all' => relatedGet('/api/all_product'),
+        'all' => $all,
         'tables' => T::arr(relatedGet('/api/catalog/meta'))['tables'],
         'ratings' => relatedGet('/api/all_product_rating'),
-        'images' => relatedGet('/api/all_product_image'),
+        'images' => catalogueReferenceImages(array_map(fn (array $r): int => T::int($r['id']), $all)),
         'bases' => $bases, 'paid' => $paid,
     ], JSON_UNESCAPED_UNICODE));
     file_put_contents($dir.'/run.js', <<<'JS'

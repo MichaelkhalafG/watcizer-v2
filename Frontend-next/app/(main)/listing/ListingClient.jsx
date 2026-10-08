@@ -203,6 +203,7 @@ export default function ListingClient({ seedParams = null }) {
       movements: m(tables?.movementTypes, 'movement_type_name'),
       shapes: m(tables?.shapes, 'shape_name'),
       displayTypes: m(tables?.displayTypes, 'display_type_name'),
+      grades: m(tables?.grades, 'grade_name'),
     }
   }, [tables, language])
 
@@ -294,6 +295,8 @@ export default function ListingClient({ seedParams = null }) {
     if ((filters.categories || []).length === 1) return nameMap.categories[filters.categories[0]]
     if ((filters.subTypes || []).length === 1) return nameMap.subTypes[filters.subTypes[0]]
     if ((filters.brands || []).length === 1) return nameMap.brands[filters.brands[0]]
+    // /grade/{g} printed "All Products" (found 2026-10-08): the grade had no branch here.
+    if ((filters.grades || []).length === 1 && nameMap.grades[filters.grades[0]]) return nameMap.grades[filters.grades[0]]
     return isRTL ? 'كل المنتجات' : 'All Products'
   }, [filters, nameMap, isRTL])
 

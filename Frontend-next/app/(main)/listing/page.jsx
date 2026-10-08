@@ -3,7 +3,7 @@ import { listingRequest } from '@/src/lib/listingRequest'
 import { getServerTables, getServerListing } from '@/src/lib/serverCatalog'
 import { requestLang } from '@/src/lib/requestLang'
 import { parseListingParams } from '@/src/utils/listingParams'
-import { objectToSearchParams, listingMetadata, listingSummary, listingBreadcrumbLd } from '@/src/lib/listingSeo'
+import { objectToSearchParams, listingMetadata, listingSummary, listingBreadcrumbLd, listingQuery } from '@/src/lib/listingSeo'
 import ListingClient from './ListingClient'
 import { safeJsonLd } from '@/src/lib/safeJsonLd'
 
@@ -33,13 +33,14 @@ async function loadContext(searchParams) {
   } catch {
     // core unreachable → the client fetches and shows the inline error/retry.
   }
-  return { tables, filters, q, sort, page, qs, listing }
+  return { tables, filters, q, sort, page, qs, listing, query: listingQuery(usp.toString()) }
 }
 
 export async function generateMetadata({ searchParams }) {
-  const { tables, filters, listing } = await loadContext(searchParams)
+  const { tables, filters, listing, query } = await loadContext(searchParams)
   const { urlLang } = await requestLang()
-  return listingMetadata({ tables, ...listingSummary(listing, tables), filters, pathname: '/listing', lang: urlLang })
+  // `query` decides indexability: any listing-relevant parameter makes the page noindex, follow.
+  return listingMetadata({ tables, ...listingSummary(listing, tables), filters, pathname: '/listing', query, lang: urlLang })
 }
 
 export default async function ListingPage({ searchParams }) {

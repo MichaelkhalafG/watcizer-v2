@@ -100,6 +100,18 @@ it('sends every storefront call to a core route, not the legacy proxy', function
     expect($proxied)->toBe([]);
 });
 
+it('keeps the retired all_product paths on the allow-list so the host serves core 410, not a host 404', function () {
+    // all_product + all_product_image were retired to 410 (L8 / E5, 2026-10-06), NOT removed from the
+    // API host. The .htaccess allow-list filters BEFORE Laravel, so a path missing here 404s at the
+    // host and core's 410 is never served — the decision is 410, so both must stay allowed. This guards
+    // the two lines against being trimmed again (they look uncalled to the storefront-call scan above).
+    $patterns = allowListPatterns();
+    foreach (['/api/all_product', '/api/all_product_image', '/api/all_product_rating'] as $path) {
+        $hit = array_filter($patterns, fn (string $p): bool => preg_match($p, $path) === 1);
+        expect($hit)->not->toBe([], "{$path} must stay on the API-host allow-list (runbook §4.1.1): the host would otherwise 404 it and core's response (410, or 200 for all_product_rating) would never be served");
+    }
+});
+
 it('would catch a call the allow-list does not name', function () {
     $patterns = allowListPatterns();
     $hit = array_filter($patterns, fn (string $p): bool => preg_match($p, '/api/catalog/not-a-route') === 1);

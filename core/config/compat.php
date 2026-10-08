@@ -23,8 +23,11 @@ return [
     'server_key' => (string) env('STOREFRONT_SERVER_KEY', ''),
     'server_rate_per_minute' => (int) env('STOREFRONT_SERVER_RATE', 1200),
 
-    // Base of the image URLs the legacy resources emit (legacy `services.asset_base`).
-    'asset_base' => (string) env('COMPAT_ASSET_BASE', 'https://dash.watchizereg.com'),
+    // Base of the image URLs the legacy resources emit (legacy `services.asset_base`). The DEFAULT is
+    // the API host (2026-10-08): the legacy host answers 410 since 2026-09-29, so a host whose .env
+    // lost this variable would have pointed every product-page image at a dead host, silently.
+    // AssetHostDefaultsTest holds it.
+    'asset_base' => (string) env('COMPAT_ASSET_BASE', 'https://api.watchizereg.com'),
 
     // Legacy application origin for the proxied paths (auth, offers, blogs, wishlist, cart …).
     'legacy_base' => (string) env('COMPAT_LEGACY_BASE', 'https://dash.watchizereg.com'),
@@ -59,7 +62,12 @@ return [
     'default_locale' => 'en',
 
     // Legacy paths the storefront never calls; the study (§3.3) retires them with 410.
+    // `all_product` / `all_product_image` joined this list on 2026-10-06 (L8 / E5): proven uncalled by
+    // the storefront, the dashboard and the rest of the repo, and a whole-catalogue build on Brand
+    // Fashion's 7,579 products is an out-of-memory liability any anonymous request could trigger.
+    // `all_product_rating` is NOT here — the product page calls it.
     'gone' => [
+        'all_product', 'all_product_image',
         'products', 'all_category',
         'all_brand', 'all_grade', 'all_sub_type', 'all_category_type', 'all_color', 'all_closure_type',
         'all_display_type', 'all_size_type', 'all_shape', 'all_material', 'all_feature', 'all_movement_type',
@@ -140,16 +148,19 @@ return [
 
     /*
      * The storefronts whose listing is warmed — the ones shoppers actually reach through this API.
-     * NOT every active storefront: measured 2026-09-28, Brand Fashion's build takes ~41 s and
-     * 206 MB (over PHP's 128 MB), so warming it every 5 minutes would crash the cron. Comma list.
+     * Comma list. Brand Fashion (2) is left OUT of the default on purpose: L8 (2026-10-06) brought
+     * its cold build under PHP's 128 MB (it was ~41 s / 206 MB on 2026-09-28, before the lean index
+     * and chunked cards), but it is only warmed once its API host is live — set
+     * `COMPAT_WARM_STOREFRONTS=1,2` on the host AFTER the L8 deploy and the 128 MB host check (W8).
      */
     'warm_storefronts' => array_values(array_filter(array_map('intval', explode(',', (string) env('COMPAT_WARM_STOREFRONTS', '1'))))),
 
     // Application-cache TTLs (seconds) — the legacy app used 3600 / 600 for the same payloads.
+    // `all_product` is kept as the TTL label for the catalogue-derived caches (card, listing, nav);
+    // the endpoint of that name is retired (see `gone`), the 600 s cache life is not.
     'ttl' => [
         'meta' => 3600,
         'all_product' => 600,
-        'all_product_image' => 600,
         'names' => 3600,
     ],
 ];

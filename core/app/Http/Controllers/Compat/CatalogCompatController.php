@@ -14,10 +14,12 @@ use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
  * The legacy read endpoints the Watchizer storefront calls today (CLEAN_CORE_STUDY §3.3 "move"
  * rows), answered from the clean tables with the legacy JSON, byte for byte.
  *
- * Appended translated attributes: `all_product` is pinned to `compat.pinned_locale` (EN) — the
- * legacy host caches its `->toArray()` and is locale-blind (D-13); `catalog/meta` and
- * `show_shipping_city` follow the negotiated request locale — the legacy host caches Eloquent
- * models there and serialises them per request (flag F-18). Verified live 2026-09-08.
+ * `all_product` and `all_product_image` were RETIRED here on 2026-10-06 (L8 / E5) — nothing called
+ * them and a whole-catalogue build is an out-of-memory risk at 7,579 products; they answer 410 via
+ * the `gone` list. The catalogue is now reached through `catalog/listing`, `catalog/cards` and
+ * `catalog/product`, which build the same legacy rows for a page at a time, pinned to
+ * `compat.pinned_locale` (EN). `catalog/meta` and `show_shipping_city` follow the negotiated request
+ * locale — the legacy host cached Eloquent models there and serialised them per request (F-18).
  */
 class CatalogCompatController extends Controller
 {
@@ -26,11 +28,6 @@ class CatalogCompatController extends Controller
     public function meta(): JsonResponse
     {
         return response()->json($this->compat->meta->build(app()->getLocale()));
-    }
-
-    public function allProduct(): JsonResponse
-    {
-        return response()->json($this->compat->catalog->allProduct($this->locale()));
     }
 
     /** The header menu's catalogue facts (C-1 stage 2) — storefront-only, no legacy counterpart. */
@@ -200,11 +197,6 @@ class CatalogCompatController extends Controller
         return response()->json($this->compat->listing->cards($result), 200, [], JSON_UNESCAPED_UNICODE);
     }
 
-    public function allProductImage(): JsonResponse
-    {
-        return response()->json($this->compat->catalog->allProductImage());
-    }
-
     public function allProductRating(): JsonResponse
     {
         return response()->json($this->compat->catalog->allProductRating());
@@ -250,10 +242,5 @@ class CatalogCompatController extends Controller
         }
 
         return (int) $n;
-    }
-
-    private function locale(): string
-    {
-        return config()->string('compat.pinned_locale');
     }
 }

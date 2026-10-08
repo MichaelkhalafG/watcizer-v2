@@ -70,6 +70,67 @@ final class CompatProducts
             ->selectRaw('(SELECT ci.path FROM catalog_product_images ci WHERE ci.product_id = p.id AND ci.is_cover = 1 ORDER BY ci.sort, ci.id LIMIT 1) AS cover_path');
     }
 
+    /**
+     * The LEAN product rows the listing index and the header nav are built from (L8, 2026-10-06):
+     * only the id columns, prices, stock, keywords, created_at and the FOUR watch-attribute ids the
+     * filters read — NOT the 22-column watch block, the descriptions or the cover-image sub-select of
+     * `query()`. Visible, active, not soft-deleted, ordered by id (the pre-L8 `all_product` order the
+     * index then re-sorts). The four watch ids are aliased `ws_*` so `self::watch()` reads them
+     * exactly as it does off a full `all_product` row, which is what keeps the lean index byte-equal
+     * to the row-built one (CatalogL8ParityTest).
+     *
+     * Measured on Brand Fashion's 7,579 products: ~15 MB held, where the full rows are 55 MB (3.3).
+     *
+     * @return list<stdClass>
+     */
+    public function leanRows(): array
+    {
+        $sf = $this->storefrontId;
+
+        return array_values(DB::table('catalog_products as p')
+            ->join('storefront_product as sp', function (JoinClause $j) use ($sf): void {
+                $j->on('sp.product_id', '=', 'p.id')->where('sp.storefront_id', '=', $sf)->where('sp.is_visible', '=', 1);
+            })
+            ->leftJoin('catalog_product_watch_specs as ws', 'ws.product_id', '=', 'p.id')
+            ->where('p.is_active', 1)
+            ->whereNull('p.deleted_at')
+            ->orderBy('p.id')
+            ->get([
+                'p.id', 'p.brand_id', 'p.grade_id', 'p.selling_price', 'p.sale_price',
+                'p.stock_express', 'p.stock_market', 'p.search_keywords', 'p.created_at',
+                'ws.band_material_id AS ws_band_material_id', 'ws.movement_type_id AS ws_watch_movement_id',
+                'ws.case_shape_id AS ws_case_shape_id', 'ws.dial_display_type_id AS ws_dial_display_type_id',
+            ])->all());
+    }
+
+    /**
+     * Just the two translated fields the index reads — title and short description — per locale, so a
+     * lean index build never loads the model_name / country / stone / long_description columns. Same
+     * selection rule as `translations()` (ordered by product_id, locale; last row of a locale wins),
+     * so the folded search text and the slug are identical to the row-built index.
+     *
+     * @param  list<int>  $ids
+     * @return array<int, array<string, array{title: ?string, short_description: ?string}>>
+     */
+    public function titles(array $ids): array
+    {
+        if ($ids === []) {
+            return [];
+        }
+        $out = [];
+        foreach (DB::table('catalog_product_translations')
+            ->select(['product_id', 'locale', 'title', 'short_description'])
+            ->whereIn('product_id', $ids)->whereIn('locale', ['en', 'ar'])
+            ->orderBy('product_id')->orderBy('locale')->get() as $row) {
+            $out[Row::int($row, 'product_id')][Row::str($row, 'locale')] = [
+                'title' => Row::nstr($row, 'title'),
+                'short_description' => Row::nstr($row, 'short_description'),
+            ];
+        }
+
+        return $out;
+    }
+
     /** The legacy watch column value (raw PDO type: int / decimal string / null) of a row. */
     public static function watch(stdClass $row, string $legacyColumn): int|string|null
     {

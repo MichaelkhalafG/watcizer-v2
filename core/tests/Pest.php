@@ -12,6 +12,10 @@
 | guard and withoutVite() live in Tests\TestCase::setUp().
 */
 
+use App\Compat\CompatServices;
+use App\Compat\CompatStorefront;
+use App\Domain\Inventory\InventoryService;
+use App\Storefront\StorefrontCache;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Tests\Support\LegacyShadow;
 use Tests\Support\Scratch;
@@ -58,3 +62,38 @@ pest()->afterEach(function (): void {
     LegacyShadow::closeAll();
     Scratch::cleanAll();
 })->in('Feature');
+
+/**
+ * The whole catalogue in the legacy `all_product` row shape, built IN-PROCESS — the reference
+ * several catalog tests compared against the `/api/all_product` endpoint before L8 retired it
+ * (2026-10-06). It is the pre-L8 builder `CompatCatalog::wholeForParity`, so a feature built
+ * leanly (listing, nav, home, related, search) is still checked against the row-built catalogue,
+ * just without an HTTP endpoint that can crash core out of memory on a large storefront.
+ *
+ * @return list<array<string, mixed>>
+ */
+function catalogueReferenceRows(int $storefrontId = 1): array
+{
+    return catalogueServices($storefrontId)->catalog->wholeForParity(config()->string('compat.pinned_locale'));
+}
+
+/**
+ * The gallery rows of the given products in the legacy `all_product_image` shape, in-process — the
+ * reference for the endpoint retired with `all_product`. Pass every visible id for the whole set.
+ *
+ * @param  list<int>  $ids
+ * @return list<array<string, mixed>>
+ */
+function catalogueReferenceImages(array $ids, int $storefrontId = 1): array
+{
+    return catalogueServices($storefrontId)->catalog->productImages($ids);
+}
+
+function catalogueServices(int $storefrontId = 1): CompatServices
+{
+    return new CompatServices(
+        app(StorefrontCache::class),
+        app(InventoryService::class),
+        CompatStorefront::pinned($storefrontId),
+    );
+}

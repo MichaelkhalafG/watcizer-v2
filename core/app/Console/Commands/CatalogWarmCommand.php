@@ -30,6 +30,8 @@ final class CatalogWarmCommand extends Command
         foreach ($warmer->warm($ids) as $id => $ms) {
             $this->line(sprintf('storefront %d: listing index rebuilt in %d ms', $id, (int) round($ms)));
         }
+        // Peak memory of the run — so the cron's warm can be watched against PHP's memory_limit (L8).
+        $this->line(sprintf('peak memory: %.1f MB', memory_get_peak_usage() / 1048576));
 
         return self::SUCCESS;
     }

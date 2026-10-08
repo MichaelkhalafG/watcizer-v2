@@ -32,6 +32,7 @@ import { useNav } from '../../../Hooks/queries/useNav'
 import { useUIStore } from '../../../Store/uiStore'
 import { getImageUrl } from '../../../utils/imageUrl'
 import { buildListingParams } from '../../../utils/listingParams'
+import { brandSlug, categorySlug, subTypeSlug } from '../../../utils/slugs'
 import { subTypesByName } from '../../../utils/subTypeGroups'
 
 // Map a sub-type name (English key) to a React Icon. Falls back to a generic
@@ -274,11 +275,17 @@ function Nav() {
     setOpenKey(null)
     setOpenBrand(null)
   }
-  const catHref = (ct) => hrefFor({ categories: [ct.id] })
-  const catSubHref = (ct, st) => hrefFor({ categories: [ct.id], subTypes: [st.id] })
+  // Category, sub-type and brand entries link the CLEAN routes (2026-10-08): those are the pages that
+  // are indexable. Linking the /listing?… form taught Google ~124 filter URLs (doubled in Arabic) it
+  // was then told not to index. Each clean route resolves by the same slug function used here, and
+  // shows the same products as the filter URL it replaced (browser pass, all entries, EN + AR).
+  // Gender, gender × brand and Offers stay query links: they have no clean route, and they carry
+  // `noindex, follow` (listingSeo.js) — the developer's decision, no nofollow, no buttons.
+  const catHref = (ct) => `/category/${categorySlug(ct)}`
+  const catSubHref = (_ct, st) => `/subtypes/${subTypeSlug(st)}`
   const genderHref = (g) => hrefFor({ genders: [g.en] })
   const genderBrandHref = (g, b) => hrefFor({ genders: [g.en], brands: [b.id] })
-  const brandHref = (b) => hrefFor({ brands: [b.id] })
+  const brandHref = (b) => `/brand/${brandSlug(b)}`
   const brandGenderHref = (b, g) => hrefFor({ brands: [b.id], genders: [g.en] })
   const offersHref = () => hrefFor({ offers: true })
 

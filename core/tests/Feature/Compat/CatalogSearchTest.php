@@ -116,7 +116,7 @@ it('never adds near misses to a search that already matches', function () {
     // Which products contain which word is read from the raw rows — independent of the search
     // under test, so a search that wrongly returned Parker products for "marker" cannot hide them.
     $parkerOnly = [];
-    foreach (T::arr(withHeaders(['Api-Code' => SEARCH_API_KEY])->getJson('/api/all_product')->json()) as $p) {
+    foreach (catalogueReferenceRows() as $p) {
         $p = T::arr($p);
         $text = mb_strtolower(json_encode([$p['translations'] ?? null, $p['search_keywords'] ?? null], JSON_UNESCAPED_UNICODE) ?: '');
         if (str_contains($text, 'parker') && ! str_contains($text, 'marker')) {
@@ -132,7 +132,7 @@ it('never adds near misses to a search that already matches', function () {
     // And "rolex": exactly the products whose text or brand contains it.
     $exact = searchIds('q=rolex');
     $byText = [];
-    foreach (T::arr(withHeaders(['Api-Code' => SEARCH_API_KEY])->getJson('/api/all_product')->json()) as $p) {
+    foreach (catalogueReferenceRows() as $p) {
         $p = T::arr($p);
         $text = mb_strtolower(json_encode([$p['translations'] ?? null, $p['search_keywords'] ?? null], JSON_UNESCAPED_UNICODE) ?: '');
         if (str_contains($text, 'rolex')) {

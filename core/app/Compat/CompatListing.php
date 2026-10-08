@@ -51,6 +51,9 @@ final class CompatListing
     /** The listing index's shape version — its cache-key suffix (see `index()`). */
     public const INDEX_SHAPE = 's4';
 
+    /** How many products' full rows the warm-up holds at once when writing card entries (L8). */
+    private const WARM_CHUNK = 500;
+
     /** `ListingClient`'s PRICE_MAX: a max at or above it means "no upper bound". */
     public const PRICE_MAX = 99999999;
 
@@ -589,18 +592,83 @@ final class CompatListing
         // The version is read before anything is built (see StorefrontCache::refresh): a write that
         // lands meanwhile leaves these entries under the old version, which nothing reads.
         $version = $this->cache->version($this->storefrontId);
-        $rows = $this->catalog->refreshAllProduct($locale);
-        $this->cache->refresh($this->storefrontId, 'compat_listing', self::INDEX_SHAPE, $ttl, fn (): array => $this->buildIndex());
+        $index = $this->cache->refresh($this->storefrontId, 'compat_listing', self::INDEX_SHAPE, $ttl, fn (): array => $this->buildIndex());
 
-        $store = [];
-        foreach (self::cardEntries($rows, $this->catalog->productImages(array_values(array_filter(array_map(fn (array $r): mixed => $r['id'] ?? null, $rows), 'is_int')))) as $id => $entry) {
-            $store["{$locale}:{$id}"] = $entry;
+        // Card entries built a CHUNK of products at a time (L8, 2026-10-06). Reading every product's
+        // full `all_product` row at once is the memory the warm-up could not afford on Brand Fashion
+        // (§3.2: 55 MB held, 136 MB peak, over PHP's 128 MB); a chunk of 500 holds a fraction of that
+        // and is freed before the next. The whole-catalogue `compat_all_product` cache is no longer
+        // written at all — nothing on the request path reads it (the index and nav are built leanly,
+        // and a listing page reads its 24 card files). The ids come from the index just built, in its
+        // order; `productRows()` reads each chunk live through the same builder `cards()` uses.
+        //
+        // The built index itself is sizeable for a large catalogue (7,579 entries carry search text
+        // and vocabulary), and it is NOT needed while the cards are written — only its ids are. So it
+        // is dropped here, before the loop, or its ~tens of MB sit alongside each chunk and the
+        // serialize buffer and push Brand Fashion's warm-up back over 128 MB (measured 2026-10-06).
+        $ids = array_map(fn (array $entry): int => $entry['id'], $index['entries']);
+        unset($index);
+        foreach (array_chunk($ids, self::WARM_CHUNK) as $chunk) {
+            $store = [];
+            foreach (self::cardEntries($this->catalog->productRows($locale, $chunk), $this->catalog->productImages($chunk)) as $id => $entry) {
+                $store["{$locale}:{$id}"] = $entry;
+            }
+            $this->cache->putMany($this->storefrontId, 'compat_card', $store, $ttl, $version);
         }
-        $this->cache->putMany($this->storefrontId, 'compat_card', $store, $ttl, $version);
     }
 
-    /** @return Index */
+    /**
+     * The index, built from the LEAN catalogue (L8, 2026-10-06): `CompatCatalog::leanCatalog()` reads
+     * only the fields an entry uses, never the full `all_product` rows (§3). Its gender entries carry
+     * both names (nav needs ar); the index needs only the English name, so reduce them here to the
+     * `list<string>` `buildIndexFrom()` expects. `buildIndexFromRows()` is the pre-L8 builder, kept as
+     * the parity reference; this must reproduce it exactly (CatalogL8ParityTest).
+     *
+     * @return Index
+     */
     private function buildIndex(): array
+    {
+        $rows = [];
+        foreach ($this->catalog->leanCatalog(config()->string('compat.pinned_locale')) as $row) {
+            $row['genders'] = self::enNames($row['genders']);
+            $rows[] = $row;
+        }
+
+        return $this->buildIndexFrom($rows);
+    }
+
+    /**
+     * The pre-L8 index builder, reading the full legacy `all_product` rows — kept ONLY as the
+     * reference `CatalogL8ParityTest` holds `buildIndex()` to. The relations are reduced to the index
+     * shape (English gender names; colour ids) exactly as the index always did, then handed to the
+     * shared builder. Not on any request path.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return Index
+     */
+    public function buildIndexFromRows(array $rows): array
+    {
+        $norm = [];
+        foreach ($rows as $row) {
+            $row['genders'] = self::relationNames($row['gender'] ?? null, 'gender_name');
+            $row['dialColors'] = self::relationIds($row['dial_color'] ?? null);
+            $row['bandColors'] = self::relationIds($row['band_color'] ?? null);
+            $norm[] = $row;
+        }
+
+        return $this->buildIndexFrom($norm);
+    }
+
+    /**
+     * The one index algorithm, over rows already reduced to the index's own shape: `genders` a
+     * `list<string>` (English names), `dialColors`/`bandColors` `list<int>`, and the scalar columns
+     * under their `all_product` names. Both `buildIndex()` (lean) and `buildIndexFromRows()` (the
+     * reference) feed it, which is what makes the lean index provably identical.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return Index
+     */
+    private function buildIndexFrom(array $rows): array
     {
         $brandNames = [];
         $meta = $this->meta->build(config()->string('compat.pinned_locale'));
@@ -627,7 +695,7 @@ final class CompatListing
         }
 
         $entries = [];
-        foreach ($this->catalog->allProduct(config()->string('compat.pinned_locale')) as $row) {
+        foreach ($rows as $row) {
             if (! is_int($row['id'] ?? null)) {
                 continue;
             }
@@ -665,9 +733,9 @@ final class CompatListing
                     'movements' => self::nint($row['watch_movement_id'] ?? null),
                     'shapes' => self::nint($row['case_shape_id'] ?? null),
                     'displayTypes' => self::nint($row['dial_display_type_id'] ?? null),
-                    'genders' => self::relationNames($row['gender'] ?? null, 'gender_name'),
-                    'dialColors' => self::relationIds($row['dial_color'] ?? null),
-                    'bandColors' => self::relationIds($row['band_color'] ?? null),
+                    'genders' => is_array($row['genders'] ?? null) ? array_values(array_filter($row['genders'], 'is_string')) : [],
+                    'dialColors' => is_array($row['dialColors'] ?? null) ? array_values(array_filter($row['dialColors'], 'is_int')) : [],
+                    'bandColors' => is_array($row['bandColors'] ?? null) ? array_values(array_filter($row['bandColors'], 'is_int')) : [],
                     // JS `Number(x) > 0`: null and '' are 0; a non-numeric string is NaN, never > 0.
                     'pct' => is_numeric($row['percentage_discount'] ?? null) ? (float) $row['percentage_discount'] : 0.0,
                     // What the shopper pays — the card's and the checkout's rule, not a blank read as 0.
@@ -723,6 +791,27 @@ final class CompatListing
             $seen[$locale] = true;
             $v = $t[$field] ?? null;
             $out[$locale] = is_string($v) && $v !== '' ? $v : null;
+        }
+
+        return $out;
+    }
+
+    /**
+     * The English gender names present on a lean row, in order — the index's `genders` shape.
+     * Matches `relationNames(..., 'gender_name')`: a non-null, non-empty English name per gender
+     * (`CompatCatalog::leanCatalog` already drops genders whose lookup master is missing).
+     *
+     * @param  list<array{en: ?string, ar: ?string}>  $genders
+     * @return list<string>
+     */
+    private static function enNames(array $genders): array
+    {
+        $out = [];
+        foreach ($genders as $g) {
+            $en = $g['en'] ?? null;
+            if (is_string($en) && $en !== '') {
+                $out[] = $en;
+            }
         }
 
         return $out;

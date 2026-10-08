@@ -11,8 +11,9 @@ use function Pest\Laravel\withHeaders;
  *
  * The menu used to derive them in the browser from the whole catalogue: which brands have
  * products, which sub-types and brands each category type has, which genders exist. The contract
- * is that "has products" means exactly what `all_product` lists, so the test derives the facts
- * from the `all_product` response independently and compares.
+ * is that "has products" means exactly what the full catalogue lists, so the test derives the facts
+ * independently from the row-built reference catalogue (`catalogueReferenceRows`, the pre-L8 builder)
+ * and compares them with the nav the endpoint builds leanly (L8, 2026-10-06).
  */
 
 const NAV_API_KEY = 'catalog-nav-test-key';
@@ -24,12 +25,12 @@ beforeEach(function () {
 /** @return array<string, mixed> */
 function navFromAllProduct(): array
 {
-    $rows = withHeaders(['Api-Code' => NAV_API_KEY])->getJson('/api/all_product')->assertOk()->json();
+    $rows = catalogueReferenceRows();
     $brands = [];
     $subs = [];
     $byCat = [];
     $genders = [];
-    foreach (is_array($rows) ? $rows : [] as $p) {
+    foreach ($rows as $p) {
         $p = T::arr($p);
         $b = $p['brand_id'] ?? null;
         $c = $p['category_type_id'] ?? null;

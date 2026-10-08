@@ -10,9 +10,9 @@ use Illuminate\Support\Facades\DB;
  * `StockChanged` → the storefront caches that embed a stock number go stale.
  *
  * `StorefrontCache::INVALIDATION_MAP` names StockChanged as an invalidating event for the
- * `count`, `product` and `compat_all_product` families. `product` is forgotten by key; the other
- * two are version-keyed, and the file store has no tags, so the only way to retire them is the
- * storefront version bump — which is one `Cache::increment`, not a scan.
+ * `count`, `product`, `compat_card`, `compat_nav` and `compat_listing` families. `product` is
+ * forgotten by key; the rest are version-keyed, and the file store has no tags, so the only way to
+ * retire them is the storefront version bump — which is one `Cache::increment`, not a scan.
  *
  * This is the first listener wired to a real writer: before wave 3 the study noted "no writer
  * exists yet, so no flush is wired to an event".

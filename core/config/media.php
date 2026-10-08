@@ -37,7 +37,8 @@ return [
      */
     'ca_bundle' => env('MEDIA_CA_BUNDLE'),
 
-    'url_base' => env('MEDIA_URL_BASE', env('STOREFRONT_ASSET_BASE', 'https://dash.watchizereg.com').'/Uploads_Images'),
+    // Default: the API host, never the legacy one (410 since 2026-09-29) — AssetHostDefaultsTest.
+    'url_base' => env('MEDIA_URL_BASE', env('STOREFRONT_ASSET_BASE', 'https://api.watchizereg.com').'/Uploads_Images'),
 
     /*
     | One entry per kind of image the dashboard can upload. `master` is the file both

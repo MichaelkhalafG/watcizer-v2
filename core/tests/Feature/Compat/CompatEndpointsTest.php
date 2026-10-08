@@ -71,13 +71,13 @@ function translation(mixed $rows, string $locale): array
 }
 
 it('rejects a missing or wrong Api-Code with the legacy body', function () {
-    getJson('/api/all_product')->assertStatus(401)->assertExactJson(['error' => 'Unauthorized']);
+    getJson('/api/catalog/nav')->assertStatus(401)->assertExactJson(['error' => 'Unauthorized']);
     withHeaders(['Api-Code' => 'wrong'])->getJson('/api/catalog/meta')->assertStatus(401);
     config(['compat.api_key' => '']);
     withHeaders(['Api-Code' => ''])->getJson('/api/catalog/meta')->assertStatus(401);   // an empty key never opens the door
 });
 
-it('serves catalog/meta in the legacy shape; meta follows Accept-Language like legacy, all_product is pinned to EN (D-13 / F-18)', function () {
+it('serves catalog/meta in the legacy shape; meta follows Accept-Language like legacy, catalogue rows are pinned to EN (D-13 / F-18)', function () {
     $en = compat('catalog/meta')->assertOk()->assertHeader('Cache-Control', 'max-age=1800, private');
     $en->assertJsonStructure(['tables' => ['categoryTypes', 'brands', 'grades', 'subTypes', 'colors', 'materials', 'shapes', 'sizeTypes', 'displayTypes', 'closureTypes', 'movementTypes'], 'brands', 'categories', 'sub_types', 'genders', 'grades', 'dial_colors', 'band_colors', 'features', 'banners', 'shipping_cities']);
     $brand = arr($en->json('tables.brands.0'));
@@ -88,8 +88,11 @@ it('serves catalog/meta in the legacy shape; meta follows Accept-Language like l
     $ar = compat('catalog/meta', ['Accept-Language' => 'ar-EG,ar;q=0.9,en;q=0.8'])->assertOk();
     expect($ar->json('tables.brands.0.brand_name'))->toBe(translation($brand['translations'], 'ar')['brand_name']);
     expect(compat('catalog/meta', ['Accept-Language' => 'fr'])->json('tables.brands.0.brand_name'))->toBe($brand['brand_name']);
-    // all_product: the legacy cache holds arrays → locale-blind; compat pins EN (D-13).
-    expect(compat('all_product', ['Accept-Language' => 'ar'])->json('0.product_title'))->toBe(compat('all_product')->json('0.product_title'));
+    // The catalogue rows (served per page via catalog/cards since all_product was retired, L8) pin the
+    // appended translated attributes to EN (D-13): an Arabic request gets the same product_title.
+    $cardId = T::int(DB::table('storefront_product')->where('storefront_id', 1)->where('is_visible', 1)->min('product_id'));
+    expect(compat('catalog/cards?ids='.$cardId, ['Accept-Language' => 'ar'])->json('products.0.product_title'))
+        ->toBe(compat('catalog/cards?ids='.$cardId)->json('products.0.product_title'));
 
     /*
      * Only visible sub types (study §3.3): every listed id has at least one visible product.
@@ -115,14 +118,17 @@ it('serves catalog/meta in the legacy shape; meta follows Accept-Language like l
     }
 });
 
-it('serves all_product with the 42 legacy columns (purchase_price hidden), the 6 appended attributes and the 5 relations, ordered by id', function () {
-    $rows = arr(compat('all_product')->assertOk()->assertHeader('Cache-Control', 'max-age=600, private')->json());
+it('builds the catalogue rows with the 42 legacy columns (purchase_price hidden), the 6 appended attributes and the 5 relations, ordered by id', function () {
+    // `all_product` was retired (L8, 2026-10-06); the ROW SHAPE it served is still built by
+    // CompatCatalog for catalog/cards + catalog/product, so it is proved here on the row builder
+    // the compat layer kept (`catalogueReferenceRows` → `wholeForParity`).
+    $rows = catalogueReferenceRows();
     expect(count($rows))->toBe(DB::table('storefront_product')->where('storefront_id', 1)->where('is_visible', 1)->count());
-    $ids = array_map(fn (mixed $r) => arr($r)['id'], array_values($rows));
+    $ids = array_map(fn (array $r): mixed => $r['id'], $rows);
     $sorted = $ids;
     sort($sorted);
     expect($ids)->toBe($sorted);
-    $first = arr(array_values($rows)[0] ?? null);
+    $first = arr($rows[0] ?? null);
     $keys = array_keys($first);
     expect($keys)->toHaveCount(53)
         ->and(array_slice($keys, 0, 5))->toBe(['id', 'category_type_id', 'brand_id', 'grade_id', 'sub_type_id'])
@@ -135,8 +141,13 @@ it('serves all_product with the 42 legacy columns (purchase_price hidden), the 6
     }
 });
 
-it('serves the gallery rows, ratings and shipping cities', function () {
-    $image = arr(compat('all_product_image')->assertOk()->json('0'));
+it('builds the gallery rows; ratings and shipping cities are still served', function () {
+    // The gallery ROW SHAPE outlives the retired all_product_image endpoint (L8) — core reads it
+    // per page via productImages(); proved here on the reference builder for every visible product.
+    $visible = array_map(fn (array $r): int => T::int($r['id']), catalogueReferenceRows());
+    $images = catalogueReferenceImages($visible);
+    expect($images)->not->toBeEmpty();
+    $image = arr($images[0] ?? null);
     expect(array_keys($image))->toBe(['id', 'product_id', 'image', 'is_cover', 'sort', 'alt_ar', 'alt_en', 'created_at', 'updated_at'])
         ->and($image['is_cover'])->toBeFalse();
     compat('all_product_rating')->assertOk();
@@ -198,9 +209,9 @@ it('enforces the curated CORS origin list on every /api path, moved and proxied 
     $proxied = withHeaders(['Api-Code' => API_KEY, 'Origin' => $evil])->getJson('/api/all_offer')->assertOk();
     expect($proxied->headers->get('Access-Control-Allow-Origin'))->toBeNull();
 
-    $preflight = call('OPTIONS', '/api/all_product', [], [], [], ['HTTP_ORIGIN' => $evil, 'HTTP_ACCESS_CONTROL_REQUEST_METHOD' => 'GET', 'HTTP_ACCESS_CONTROL_REQUEST_HEADERS' => 'api-code']);
+    $preflight = call('OPTIONS', '/api/catalog/nav', [], [], [], ['HTTP_ORIGIN' => $evil, 'HTTP_ACCESS_CONTROL_REQUEST_METHOD' => 'GET', 'HTTP_ACCESS_CONTROL_REQUEST_HEADERS' => 'api-code']);
     expect($preflight->headers->get('Access-Control-Allow-Origin'))->toBeNull();
-    $preflightOk = call('OPTIONS', '/api/all_product', [], [], [], ['HTTP_ORIGIN' => $storefront, 'HTTP_ACCESS_CONTROL_REQUEST_METHOD' => 'GET', 'HTTP_ACCESS_CONTROL_REQUEST_HEADERS' => 'api-code']);
+    $preflightOk = call('OPTIONS', '/api/catalog/nav', [], [], [], ['HTTP_ORIGIN' => $storefront, 'HTTP_ACCESS_CONTROL_REQUEST_METHOD' => 'GET', 'HTTP_ACCESS_CONTROL_REQUEST_HEADERS' => 'api-code']);
     expect($preflightOk->headers->get('Access-Control-Allow-Origin'))->toBe($storefront);
     expect(config('cors.allowed_origins'))->not->toContain('*');
 });
@@ -216,9 +227,11 @@ it('throttles /api at the legacy rate of 60 per minute', function () {
 });
 
 it('retires the never-called legacy paths with 410', function () {
-    foreach (['all_brand', 'all_sub_type', 'products', 'new_colors', 'products/1/variants'] as $path) {
+    // all_product + all_product_image joined the retired set on 2026-10-06 (L8 / E5); all_product_rating did NOT.
+    foreach (['all_product', 'all_product_image', 'all_brand', 'all_sub_type', 'products', 'new_colors', 'products/1/variants'] as $path) {
         compat($path)->assertStatus(410);
     }
+    compat('all_product_rating')->assertOk();
     get('/api/categories/main')->assertStatus(410);
 });
 
