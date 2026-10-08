@@ -5,7 +5,7 @@ import { useRouter } from '@/src/Hooks/useLocaleRouter'
 import { useTables } from '../../Hooks/queries/useTables'
 import { useUIStore } from '../../Store/uiStore'
 import { getImageUrl } from '../../utils/imageUrl'
-import { buildListingParams } from '../../utils/listingParams'
+import { subTypeSlug } from '../../utils/slugs'
 import { Carousel, CarouselSlide } from '../UI/Carousel'
 import './CategoryTiles.css'
 
@@ -42,10 +42,10 @@ const CategoryTiles = () => {
     return (language === 'ar' ? tr('ar') || tr('en') : tr('en') || tr('ar')) || ''
   }
 
-  // Readable slug URL the Listing page reads back (keeps the filter working).
+  // The sub-type's clean route (2026-10-08) — the same filter (sub type alone) as the
+  // /listing?subType= URL it replaced, on the page that is indexable.
   const handleClick = (sub) => {
-    const qs = buildListingParams({ subTypes: [sub.id] }, {}, tables).toString()
-    router.push(qs ? `/listing?${qs}` : '/listing')
+    router.push(`/subtypes/${subTypeSlug(sub)}`)
   }
 
   return (

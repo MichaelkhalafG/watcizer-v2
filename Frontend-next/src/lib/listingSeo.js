@@ -16,6 +16,29 @@ import { localePath } from '../utils/localePath'
 export const SEO_DOMAIN = 'https://watchizereg.com'
 const PRICE_MAX = 99999999
 
+// ── Indexing rules (2026-10-08, developer's decision) ────────────────────────────────────────────
+// Indexable, and only while they have products: /listing (bare), /category/{c}, /brand/{b},
+// /subtypes/{s} and /grade/{g} — every grade, one rule, no exception list. Everything else — any
+// filtered /listing?…, the two-segment /[suptype]/[brand] — is `noindex, follow` with a SELF
+// canonical, never a canonical to another page (Google reads noindex + cross-page canonical as
+// conflicting, and the noindex can carry over to the target).
+
+// The query keys that change what /listing shows (parseListingParams). Anything else — fbclid,
+// utm_*, gclid — is tracking, and a /listing URL carrying only those is still the bare listing.
+const LISTING_KEYS = new Set([
+  'brand', 'subType', 'category', 'gender', 'dialColor', 'bandColor', 'material', 'movement',
+  'shape', 'displayType', 'grade', 'offers', 'minPrice', 'maxPrice', 'q', 'sort', 'page',
+])
+
+// The listing-relevant part of a query string, in its original order ('' when there is none).
+export function listingQuery(search) {
+  const kept = new URLSearchParams()
+  for (const [k, v] of new URLSearchParams(search || '')) if (LISTING_KEYS.has(k)) kept.append(k, v)
+  return kept.toString()
+}
+
+const NOINDEX_FOLLOW = { index: false, follow: true }
+
 // english table name (→ flat column → any) for a lookup item
 const nameEn = (item, key) =>
   item?.translations?.find((t) => t.locale === 'en')?.[key] ?? item?.[key] ?? ''
@@ -139,12 +162,50 @@ export function listingCrumb(tables = {}, filters = {}, lang = 'en') {
 export function listingSummary(listing, tables = {}) {
   const row = listing?.products?.[0]
   const [first] = row ? transformProductData([row], tables, listing.ratings || [], listing.images || [], 'en') : []
-  return { total: Number(listing?.total) || 0, image: first?.image || null }
+  // `answered`: core actually returned this listing. A failed call also yields total 0, and an empty
+  // listing is `noindex` — so without this flag an outage would de-index every listing in the shop.
+  const answered = listing != null && Number.isFinite(Number(listing.total))
+  return { total: Number(listing?.total) || 0, image: first?.image || null, answered }
+}
+
+// The page's own clean path, from the RESOLVED entity's slug — so /brand/Rolex and /brand/rol (both
+// resolve to Rolex) share one canonical, /brand/rolex. `kind` is the route's first segment.
+function cleanPath(kind, tables, filters, pathname) {
+  const one = (arr) => ((arr || []).length === 1 ? arr[0] : null)
+  const find = (list, id) => (id == null ? null : (list || []).find((i) => i.id === id) || null)
+  if (kind === 'brand') {
+    const b = find(tables.brands, one(filters.brands))
+    if (b) return `/brand/${brandSlug(b)}`
+  } else if (kind === 'category') {
+    const c = find(tables.categoryTypes, one(filters.categories))
+    if (c) return `/category/${categorySlug(c)}`
+  } else if (kind === 'subtypes') {
+    const s = find(tables.subTypes, one(filters.subTypes))
+    if (s) return `/subtypes/${subTypeSlug(s)}`
+  } else if (kind === 'grade') {
+    const g = find(tables.grades, one(filters.grades))
+    if (g) return `/grade/${toSlug(nameEn(g, 'grade_name'))}`
+  }
+  return pathname
+}
+
+// Robots + canonical path for a listing page (the rules above). `query` is listingQuery() of /listing's
+// search string ('' on the facet routes, which ignore their query string).
+function indexing({ pathname, query, tables, filters, total, answered }) {
+  const kind = pathname.split('/')[1] || ''
+  if (kind === 'listing') {
+    return query ? { robots: NOINDEX_FOLLOW, path: `/listing?${query}` } : { robots: undefined, path: '/listing' }
+  }
+  const path = cleanPath(kind, tables, filters, pathname)
+  if (!['brand', 'category', 'subtypes', 'grade'].includes(kind)) return { robots: NOINDEX_FOLLOW, path } // /[suptype]/[brand]
+  // Empty → noindex ONLY when core answered. If core failed, nothing is added (the layout's index).
+  if (answered && total === 0) return { robots: NOINDEX_FOLLOW, path }
+  return { robots: undefined, path }
 }
 
 // Next `metadata` object mirroring old Listing's <Helmet> (title / description /
 // canonical + OG / Twitter). `pathname` is the clean self-canonical path.
-export function listingMetadata({ tables = {}, total = 0, image = null, filters = {}, pathname = '/listing', lang = 'en' }) {
+export function listingMetadata({ tables = {}, total = 0, image = null, answered = false, filters = {}, pathname = '/listing', query = '', lang = 'en' }) {
   const ar = lang === 'ar'
   const crumb = listingCrumb(tables, filters, lang)
   const resultCount = total
@@ -186,12 +247,16 @@ export function listingMetadata({ tables = {}, total = 0, image = null, filters 
   const description = ar
     ? `تصفّح ${resultCount} من ${crumb} في Watchizer — ساعات وإكسسوارات فاخرة بتصاميم راقية وأسعار لا تُقاوم في مصر.`
     : `Browse ${resultCount} ${crumb} at Watchizer — luxury watches and accessories with premium designs and unbeatable prices in Egypt.`
-  // Self-canonical in the URL's language, with hreflang to the other (S-AR stage 1).
-  const canonical = `${SEO_DOMAIN}${localePath(pathname, lang)}`
+  // Self-canonical in the URL's language, with hreflang to the other (S-AR stage 1) — built from the
+  // page's clean path (resolved slug), and noindex where the indexing rules say so.
+  const { robots, path } = indexing({ pathname, query, tables, filters, total, answered })
+  const [pathOnly, search] = path.split('?')
+  const withQuery = (p) => (search ? `${p}?${search}` : p)
+  const canonical = `${SEO_DOMAIN}${withQuery(localePath(pathOnly, lang))}`
   const languages = {
-    en: `${SEO_DOMAIN}${pathname}`,
-    ar: `${SEO_DOMAIN}${localePath(pathname, 'ar')}`,
-    'x-default': `${SEO_DOMAIN}${pathname}`,
+    en: `${SEO_DOMAIN}${withQuery(pathOnly)}`,
+    ar: `${SEO_DOMAIN}${withQuery(localePath(pathOnly, 'ar'))}`,
+    'x-default': `${SEO_DOMAIN}${withQuery(pathOnly)}`,
   }
 
   // Social preview image: this listing's first card (an absolute URL from the transform's
@@ -202,6 +267,7 @@ export function listingMetadata({ tables = {}, total = 0, image = null, filters 
   return {
     title,
     description,
+    ...(robots ? { robots } : {}),
     alternates: { canonical, languages },
     openGraph: {
       type: 'website',
