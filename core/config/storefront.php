@@ -7,8 +7,9 @@
 */
 
 return [
-    // Base of the media URLs (Uploads_Images lives on the legacy host during the transition, §1).
-    'asset_base' => (string) env('STOREFRONT_ASSET_BASE', 'https://dash.watchizereg.com'),
+    // Base of the media URLs. Uploads_Images is served by the API host since storefront Phase 2
+    // (2026-09-22); the legacy host answers 410, so it is never the default (AssetHostDefaultsTest).
+    'asset_base' => (string) env('STOREFRONT_ASSET_BASE', 'https://api.watchizereg.com'),
 
     'listing' => [
         'per_page' => 24,

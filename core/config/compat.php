@@ -23,8 +23,11 @@ return [
     'server_key' => (string) env('STOREFRONT_SERVER_KEY', ''),
     'server_rate_per_minute' => (int) env('STOREFRONT_SERVER_RATE', 1200),
 
-    // Base of the image URLs the legacy resources emit (legacy `services.asset_base`).
-    'asset_base' => (string) env('COMPAT_ASSET_BASE', 'https://dash.watchizereg.com'),
+    // Base of the image URLs the legacy resources emit (legacy `services.asset_base`). The DEFAULT is
+    // the API host (2026-10-08): the legacy host answers 410 since 2026-09-29, so a host whose .env
+    // lost this variable would have pointed every product-page image at a dead host, silently.
+    // AssetHostDefaultsTest holds it.
+    'asset_base' => (string) env('COMPAT_ASSET_BASE', 'https://api.watchizereg.com'),
 
     // Legacy application origin for the proxied paths (auth, offers, blogs, wishlist, cart …).
     'legacy_base' => (string) env('COMPAT_LEGACY_BASE', 'https://dash.watchizereg.com'),
