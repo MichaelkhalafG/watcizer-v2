@@ -34,10 +34,21 @@ export const movementSlug = (m) => toSlug(nameOf(m, 'movement_type_name')) || St
 export const shapeSlug = (s) => toSlug(nameOf(s, 'shape_name')) || String(s?.id ?? '')
 export const displayTypeSlug = (d) => toSlug(nameOf(d, 'display_type_name')) || String(d?.id ?? '')
 
+const safeDecode = (s) => {
+  try {
+    return decodeURIComponent(s)
+  } catch {
+    return s // malformed %-escape → the raw segment
+  }
+}
+
 // Resolve a slug back to its table item. Exact slug match first, then partial.
+// The segment is SLUGIFIED before comparing (2026-10-09), so a raw name from an old link —
+// /brand/Audemars Piguet, /brand/Audemars%20Piguet — resolves like /brand/audemars-piguet (and
+// canonicals to it). A segment toSlug empties (Arabic, symbols) is compared lower-cased, as before.
 export const fromSlug = (slug, items, slugFn) => {
   if (!slug || !items?.length) return null
-  const lower = slug.toLowerCase()
+  const lower = toSlug(safeDecode(slug)) || slug.toLowerCase()
   const exact = items.find((i) => slugFn(i) === lower)
   if (exact) return exact
   return (

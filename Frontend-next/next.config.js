@@ -69,6 +69,23 @@ const nextConfig = {
       { source: '/order-list', destination: '/account?tab=orders', permanent: true },
       { source: '/wish-list', destination: '/account', permanent: true }, // the wishlist is gone (batch 1)
       { source: '/Search', destination: '/listing', permanent: true },
+      // The 404 map (2026-10-09, Search Console export): old URLs whose page exists under another
+      // name, or whose real product is gone. Everything else in the map is handled by the routes (a raw
+      // brand name resolves; a raw product title falls through to its brand) or stays a 404.
+      // Written ENCODED: Next matches the request's encoded pathname, so a literal space never matches
+      // (measured on a local build 2026-10-09). The trailing "." is part of the URL Google holds.
+      { source: '/grade/New%20Products.', destination: '/grade/new-arrival', permanent: true },
+      {
+        source: '/product/rolex-datejust-36-two-tone-white-dial-watch-for-women',
+        destination: '/product/rolex-datejust-36mm-white-dial-two-tone-watch-for-women', // product 594, renamed
+        permanent: true,
+      },
+      // Three Rolex products that were real but are gone, under CLEAN slugs — so the raw-title fallback
+      // in the product route does not catch them, by design (widening it would 308 seeder URLs that
+      // never existed). Bounded entries to the brand instead (developer 2026-10-09).
+      { source: '/product/rolex-yacht-master-ii-44-white-dial-watch-for-men', destination: '/brand/rolex', permanent: true },
+      { source: '/product/rolex-cosmograph-daytona-40-gold-white-dial-watch-for-men', destination: '/brand/rolex', permanent: true },
+      { source: '/product/rolex-sky-dweller-42-black-dial-watch-for-men', destination: '/brand/rolex', permanent: true },
     ]
   },
   images: {
