@@ -232,10 +232,13 @@ final class StorefrontCache
     }
 
     /**
+     * The keys of several entries of one family under one version (read once) — public for the
+     * expired-file prune, which must name the live generation exactly as the writers do.
+     *
      * @param  list<string>  $suffixes
      * @return array<string, string> suffix => key
      */
-    private function keysFor(int $storefrontId, string $what, array $suffixes, ?int $version = null): array
+    public function keysFor(int $storefrontId, string $what, array $suffixes, ?int $version = null): array
     {
         $this->key($storefrontId, $what); // refuses a family that is not in INVALIDATION_MAP
         $v = $version ?? $this->version($storefrontId);
@@ -248,6 +251,12 @@ final class StorefrontCache
     }
 
     private function versionKey(int $storefrontId): string
+    {
+        return self::versionKeyFor($storefrontId);
+    }
+
+    /** The version counter's key — public so the expired-file prune names it from here, not a copy. */
+    public static function versionKeyFor(int $storefrontId): string
     {
         return "sf:{$storefrontId}:version";
     }
