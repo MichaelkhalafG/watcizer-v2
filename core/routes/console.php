@@ -113,3 +113,16 @@ Schedule::command('meta:drain')->everyMinute()->withoutOverlapping();
 | (`compat.warm_on_write`); this tick covers everything else. Same `schedule:run` entry.
 */
 Schedule::command('catalog:warm')->everyFiveMinutes()->withoutOverlapping();
+
+/*
+| Expired cache files (2026-10-09, backlog C-GROW). Every version bump strands a whole storefront
+| generation on disk, and Laravel's FileStore deletes an expired file only when its key is read —
+| which an old generation's never is. This deletes files whose own expiry stamp is over an hour past
+| (never a live-generation file; ExpiredCachePrune). Nightly at 03:25 while only Watchizer is warmed;
+| HOURLY as soon as COMPAT_WARM_STOREFRONTS lists a second storefront, because a bump then writes
+| ~8,740 files instead of ~978 (measured 2026-10-09) — the cadence follows the setting, so switching
+| Brand Fashion's warm on cannot forget it. It CONTAINS the growth; the fix is narrower invalidation
+| (backlog C-NARROW).
+*/
+$cachePrune = Schedule::command('cache:prune-expired --force')->withoutOverlapping();
+count(config('compat.warm_storefronts', [])) > 1 ? $cachePrune->hourlyAt(25) : $cachePrune->dailyAt('03:25');
