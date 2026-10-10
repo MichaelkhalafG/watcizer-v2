@@ -65,6 +65,17 @@ return [
             'replace_placeholders' => true,
         ],
 
+        // One summary line per run of the scheduled housekeeping (`cache:prune-expired`, `feeds:meta`),
+        // 2026-10-10. Its OWN level, deliberately not LOG_LEVEL: production runs LOG_LEVEL=warning, which
+        // would drop these `info` lines, and the cron line sends the scheduler's output to /dev/null —
+        // so without this a scheduled job leaves no trace at all. A few lines a day.
+        'scheduled' => [
+            'driver' => 'single',
+            'path' => storage_path('logs/scheduled.log'),
+            'level' => 'info',
+            'replace_placeholders' => true,
+        ],
+
         'daily' => [
             'driver' => 'daily',
             'path' => storage_path('logs/laravel.log'),

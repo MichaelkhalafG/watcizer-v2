@@ -112,6 +112,19 @@ it('keeps the retired all_product paths on the allow-list so the host serves cor
     }
 });
 
+it('lets Meta fetch the catalogue feed through the api host, and only the feed shape', function () {
+    // The Meta feed (2026-10-10) is fetched by Meta's servers, not called by the storefront, so the
+    // storefront scan above cannot see it. Without this line Apache 404s the feed in production while
+    // every local test passes — the one way this feed fails silently.
+    $patterns = allowListPatterns();
+    $allowed = fn (string $path): bool => array_filter($patterns, fn (string $p): bool => preg_match($p, $path) === 1) !== [];
+
+    expect($allowed('/feeds/meta/watchizer/'.str_repeat('a1B2', 10).'.csv'))->toBeTrue()
+        ->and($allowed('/feeds/meta/watchizer/short.csv'))->toBeFalse()
+        ->and($allowed('/feeds/meta/watchizer/'.str_repeat('a', 40).'.csv/extra'))->toBeFalse()
+        ->and($allowed('/feeds/google/watchizer/'.str_repeat('a', 40).'.csv'))->toBeFalse();
+});
+
 it('would catch a call the allow-list does not name', function () {
     $patterns = allowListPatterns();
     $hit = array_filter($patterns, fn (string $p): bool => preg_match($p, '/api/catalog/not-a-route') === 1);

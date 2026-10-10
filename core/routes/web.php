@@ -4,6 +4,7 @@ use App\Domain\Access\Role;
 use App\Http\Controllers\Compat\SitemapCompatController;
 use App\Http\Controllers\Compat\StockAlertController;
 use App\Http\Controllers\Compat\UnsubscribeController;
+use App\Http\Controllers\Feeds\MetaFeedController;
 use App\Http\Controllers\Manage\ActivityController;
 use App\Http\Controllers\Manage\Auth\LoginController;
 use App\Http\Controllers\Manage\BannerController;
@@ -544,6 +545,12 @@ Route::get('/{locale}/sitemap.xml', [SitemapCompatController::class, 'show'])->w
 // The API host's .htaccess needs `/sitemaps/(index|en|ar).xml` on its allow-list (runbook §4.1.1).
 Route::get('/sitemaps/index.xml', [SitemapCompatController::class, 'localeIndex'])->withoutMiddleware($sitemapBare);
 Route::get('/sitemaps/{locale}.xml', [SitemapCompatController::class, 'localeUrlset'])->where('locale', '[a-z]{2}')->withoutMiddleware($sitemapBare);
+
+// The Meta catalogue feed per storefront (2026-10-10): the file `feeds:meta` wrote, served — never
+// built on a request. Cookieless like the sitemaps; the token in the path is the only credential.
+// On the API host's allow-list (runbook §4.1.1), or Apache 404s it while every local test passes.
+Route::get('/feeds/meta/{storefront}/{token}.csv', [MetaFeedController::class, 'show'])
+    ->where(['storefront' => '[a-z0-9-]+', 'token' => '[A-Za-z0-9]{40}'])->withoutMiddleware($sitemapBare);
 
 // The stock-alert e-mail's "stop" link (2026-10-01), on the API host (allow-list, runbook §4.1.1).
 // Cookieless like the sitemaps, and no CSRF token: the token in the path IS the authority, and a

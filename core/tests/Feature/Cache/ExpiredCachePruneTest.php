@@ -7,6 +7,10 @@ use Illuminate\Cache\FileStore;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Testing\PendingCommand;
+use Tests\Support\T;
+
+use function Pest\Laravel\artisan;
 
 /*
  * ── cache:prune-expired (2026-10-09, backlog C-GROW) ─────────────────────────────────────────────
@@ -46,12 +50,17 @@ afterEach(function () {
 /** A product that is visible on storefront 1 — its card is part of the live generation. */
 function liveProductId(): int
 {
-    $id = DB::table('storefront_product')->where('storefront_id', 1)->where('is_visible', 1)->orderBy('product_id')->value('product_id');
-    if (! is_numeric($id)) {
-        test()->markTestSkipped('no visible product on storefront 1 in this database');
+    return T::int(DB::table('storefront_product')->where('storefront_id', 1)->where('is_visible', 1)->orderBy('product_id')->value('product_id'));
+}
+
+function pruneRun(string $command): PendingCommand
+{
+    $pending = artisan($command);
+    if (! $pending instanceof PendingCommand) {
+        throw new RuntimeException('artisan() did not return a PendingCommand');
     }
 
-    return (int) $id;
+    return $pending;
 }
 
 it('deletes only files expired more than the grace ago, and only with delete', function () {
@@ -126,16 +135,56 @@ it('reads the stamp exactly as FileStore writes it', function () {
 it('is read-only without --force, and says so', function () {
     $lab = pruneLab();
     $old = ($lab['write'])('sf:1:compat_card:en:999999:v1', time() - 7200);
-    $this->artisan('cache:prune-expired')
+    pruneRun('cache:prune-expired')
         ->expectsOutputToContain('would delete 1 files')
         ->expectsOutputToContain('READ-ONLY')
-        ->assertSuccessful();
+        ->assertSuccessful()
+        ->run();
     expect(is_file($old))->toBeTrue();
-    $this->artisan('cache:prune-expired --force')
+    pruneRun('cache:prune-expired --force')
         ->expectsOutputToContain('deleted 1 files')
         ->expectsOutputToContain('OK — no live-generation file was removed.')
-        ->assertSuccessful();
+        ->assertSuccessful()
+        ->run();
     expect(is_file($old))->toBeFalse();
+});
+
+it('still loads the schedule, nightly, when compat.warm_storefronts is missing', function () {
+    // routes/console.php runs on EVERY artisan boot — schedule:run every minute, catalog:warm, config:cache
+    // mid-deploy. A throw there stops all of them, so the cadence read must degrade, never throw
+    // (2026-10-10: a typed accessor without its default would have done exactly that).
+    config()->set('compat', array_diff_key(T::arr(config('compat')), ['warm_storefronts' => true]));
+    expect(config()->has('compat.warm_storefronts'))->toBeFalse();
+
+    require base_path('routes/console.php');
+
+    $expressions = [];
+    foreach (app(Schedule::class)->events() as $event) {
+        if (str_contains((string) $event->command, 'cache:prune-expired')) {
+            $expressions[] = $event->expression;
+        }
+    }
+    expect(end($expressions))->toBe('25 3 * * *');
+});
+
+it('leaves one log line per run: examined, deleted, bytes, protected and the grace', function () {
+    $lab = pruneLab();
+    $log = $lab['dir'].'-scheduled.log';
+    config()->set('logging.channels.scheduled.path', $log);
+    $now = time();
+    ($lab['write'])('sf:1:compat_card:en:999999:v1', $now - 7200);   // one dead file
+    $cache = app(StorefrontCache::class);
+    ($lab['write'])($cache->key(1, 'compat_listing', CompatListing::INDEX_SHAPE), $now - 7200);   // one live file, expired
+
+    pruneRun('cache:prune-expired')->assertSuccessful()->run();
+    pruneRun('cache:prune-expired --force')->assertSuccessful()->run();
+    $lines = array_values(array_filter(explode('
+', (string) file_get_contents($log)), fn (string $l): bool => str_contains($l, 'cache:prune-expired')));
+    @unlink($log);
+
+    expect($lines)->toHaveCount(2)
+        ->and($lines[0])->toContain('.INFO: cache:prune-expired read-only examined=2 would_delete=1 bytes=')
+        ->and($lines[1] ?? '')->toMatch('/cache:prune-expired force examined=2 deleted=1 bytes=\d+ protected=1 grace=3600s failed=0 ok=yes(\s|$)/');
 });
 
 it('runs nightly at 03:25 while only Watchizer is warmed, hourly once a second storefront is', function () {

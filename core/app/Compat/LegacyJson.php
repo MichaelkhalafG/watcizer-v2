@@ -100,9 +100,10 @@ final class LegacyJson
 
     /**
      * ProductResource::$imgUrl — a bare filename gets the folder, a value with a folder segment
-     * is used under Uploads_Images as-is, an absolute URL passes through.
+     * is used under Uploads_Images as-is, an absolute URL passes through. `$base` is the host to put
+     * it on — `compat.asset_base` when null; the product feed passes its storefront's image host.
      */
-    public static function imageUrl(?string $file, string $folder = 'Product'): ?string
+    public static function imageUrl(?string $file, string $folder = 'Product', ?string $base = null): ?string
     {
         if ($file === null || $file === '') {
             return null;
@@ -110,7 +111,7 @@ final class LegacyJson
         if (preg_match('#^https?://#i', $file) === 1) {
             return $file;
         }
-        $base = rtrim(config()->string('compat.asset_base'), '/');
+        $base = rtrim($base ?? config()->string('compat.asset_base'), '/');
         $file = ltrim($file, '/');
         if (str_contains($file, '/')) {
             return $base.'/Uploads_Images/'.$file;

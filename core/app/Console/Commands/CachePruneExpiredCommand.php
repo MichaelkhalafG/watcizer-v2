@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Support\Cache\ExpiredCachePrune;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Log;
 
 /**
  * DELETES the file cache's EXPIRED files with `--force`; without it, a read-only report. The storefront
@@ -30,6 +31,12 @@ final class CachePruneExpiredCommand extends Command
         $delete = (bool) $this->option('force');
         $grace = is_numeric($this->option('grace')) ? (int) $this->option('grace') : 3600;
         $r = $prune->run($delete, $grace);
+        // The trace a scheduled run leaves (config/logging.php `scheduled`): one line, every run.
+        Log::channel('scheduled')->info(sprintf(
+            'cache:prune-expired %s examined=%d %s=%d bytes=%d protected=%d grace=%ds failed=%d ok=%s',
+            $delete ? 'force' : 'read-only', $r['scanned'], $delete ? 'deleted' : 'would_delete', $delete ? $r['deleted'] : $r['expired'],
+            $r['expired_bytes'], $r['keep']['live'], $r['grace'], $r['failed'], $r['ok'] ? 'yes' : 'NO',
+        ));
 
         $this->line(sprintf('cache prune — %s — %s UTC', $delete ? 'DELETE' : 'READ-ONLY', gmdate('Y-m-d H:i:s')));
         $this->line('directory '.$r['directory']);

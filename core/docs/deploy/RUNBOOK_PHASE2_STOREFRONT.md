@@ -1021,6 +1021,7 @@ what §4.3 does and why it is a mandatory step rather than a suggestion.
     RewriteCond %{REQUEST_URI} !^/api/add_product_rating$
     RewriteCond %{REQUEST_URI} !^/stock-alerts/stop/[A-Za-z0-9]{40}$
     RewriteCond %{REQUEST_URI} !^/unsubscribe/[0-9]+/[a-f0-9]{40}$
+    RewriteCond %{REQUEST_URI} !^/feeds/meta/[a-z0-9-]+/[A-Za-z0-9]{40}\.csv$
     RewriteCond %{REQUEST_URI} !^/(sitemap\.xml|robots\.txt|favicon\.ico)$
     RewriteRule ^ - [R=404,L]
 
@@ -1721,33 +1722,27 @@ The cheaper option — appending an order marker to `payment_return_url` and hav
 verify it — was considered and is worse on all three counts above, and still requires the same core
 change. It is not the recommendation.
 
-### 11.2 The two Meta pixels
-
-Recorded so nobody reads it as a bug. `NEXT_PUBLIC_META_PIXEL_ID` is a **comma-separated list** and
-carries two ids:
+### 11.2 The Meta pixels — ONE since 2026-10-10
 
 ```
-NEXT_PUBLIC_META_PIXEL_ID=1611910119460872,1614877760150035
+NEXT_PUBLIC_META_PIXEL_ID=1614877760150035
 ```
 
-`1611910119460872` is the incumbent — it ran on the Vite storefront and holds the campaign history;
-`1614877760150035` is the new one. Both are initialised; both receive every event. Dropping either
-later is one line in `.env.production`.
+`1614877760150035` is the pixel the media buyer works on and the only one CAPI reports to.
+**`1611910119460872`, the incumbent from the Vite storefront, was removed on 2026-10-10** (owner
+decision: no campaigns or audiences ran on it). The variable is still a **comma-separated list**, so
+a pixel can be added back by appending it with a comma and rebuilding the storefront —
+`NEXT_PUBLIC_*` is baked in at build time.
 
-**There is still exactly one event per action.** `fbq('track', ...)` delivers to every initialised
-pixel — that is fbevents.js's own behaviour — so nothing in the codebase loops over the ids, the
-init guard is a single flag, and the persisted `Purchase` dedupe is keyed on the order number and
-knows nothing about how many pixels are listening.
+**There is exactly one event per action, however many pixels are listed.** `fbq('track', ...)`
+delivers to every initialised pixel — fbevents.js's own behaviour — so nothing loops over the ids,
+the init guard is a single flag, and the persisted `Purchase` dedupe is keyed on the order number. In
+the Pixel Helper, two rows carrying DIFFERENT ids are two pixels; two rows carrying the SAME id would
+be a real double-fire.
 
-**In the Pixel Helper each event therefore appears once per pixel, with DIFFERENT ids.** Two rows
-carrying the same id would be a real double-fire; two rows carrying different ids are two pixels.
-
-One asymmetry, measured 2026-09-22 and not caused by this code: after a **link or button click**,
-the incumbent pixel records **one more** event than the new one. That is Meta's own automatic
-click-event detection, which is switched on in `1611910119460872`'s Events Manager settings and off
-in the new pixel's. A route change with no click increments both by exactly one. Turning automatic
-event logging on or off for both pixels in Events Manager is the way to make them match — it is a
-Meta-side setting, not a code change.
+History: with both pixels loaded (2026-09-22 → 2026-10-10), the incumbent recorded one more event per
+link or button click — Meta's automatic click-event detection, switched on in its Events Manager
+settings only. It left with the pixel.
 
 ---
 
@@ -1871,6 +1866,12 @@ Written after the overnight batch's deploy, where three things had to be fixed l
 **every** core deploy, in this order, whether or not the batch looks like it needs them — each is
 idempotent and says "nothing to do" when there is nothing to do.
 
+0. **Static analysis and tests, on the workstation, before the tar** — `composer phpstan`, then (separately, never
+   alongside a build) the full suite. `composer phpstan` is the ONLY way to run PHPStan here: it analyses
+   exactly the paths in `phpstan.neon` (app, bootstrap/app.php, config, database, routes, tests) and
+   refuses extra arguments, because a path argument replaces that list — on 2026-10-09 a run given
+   three file paths reported clean while `routes/console.php` and two test files carried level-10
+   errors that then shipped. It must print `[OK] No errors`.
 1. **Dashboard assets** — `npm run build` on the workstation and upload `public/build/` with the PHP
    (§2.1: it is gitignored, so it is never in a commit). Then prove the live dashboard runs the bundle
    you built — the two lines must be identical:

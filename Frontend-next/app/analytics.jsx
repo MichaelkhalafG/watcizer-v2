@@ -2,7 +2,7 @@
 import Script from 'next/script'
 import { useEffect } from 'react'
 import { usePathname } from 'next/navigation'
-import { META_PIXEL_IDS } from '@/src/lib/env'
+import { META_PIXEL_IDS, GA4_MEASUREMENT_ID } from '@/src/lib/env'
 
 /*
  * ── Meta (Facebook) + TikTok pixels ────────────────────────────────────────────────────────────
@@ -22,10 +22,11 @@ import { META_PIXEL_IDS } from '@/src/lib/env'
  *     a build and a deploy to change or switch off. The ids come from NEXT_PUBLIC_META_PIXEL_ID,
  *     and an empty list renders nothing at all — no script, no beacon, no events.
  *
- * ── TWO PIXELS, ONE EVENT EACH TIME ──────────────────────────────────────────────
+ * ── ONE OR MORE PIXELS, ONE EVENT EACH TIME ──────────────────────────────────────
  *
- * NEXT_PUBLIC_META_PIXEL_ID is a comma-separated LIST, so the incumbent pixel and the new one can
- * run side by side and either can be dropped by editing one env line.
+ * NEXT_PUBLIC_META_PIXEL_ID is a comma-separated LIST, so two pixels can run side by side and either
+ * can be dropped by editing one env line. Today it carries ONE (2026-10-10: the incumbent
+ * 1611910119460872 was removed; .env.production says how to put it back).
  *
  * Every id is initialised; NOTHING ELSE in the codebase changes. `fbq('track', ...)` already
  * delivers to every initialised pixel — that is how fbevents.js works, and `trackSingle` is what
@@ -49,6 +50,21 @@ import { META_PIXEL_IDS } from '@/src/lib/env'
  * Keyed on PATHNAME, not on the query string: `/listing?brand=x` is the same page with a different
  * filter, and counting each filter tick as a page view inflates every landing-page report. What
  * happens *within* a page is carried by the e-commerce events in src/scripts/pixels.js.
+ */
+
+/*
+ * ── Google Analytics 4 (2026-10-10): PAGEVIEWS ONLY ────────────────────────────────────────────
+ *
+ * The page views are GA4's OWN, not ours, and that is measured, not assumed. Watchizer's property
+ * has Enhanced measurement → "Page changes based on browser history events" ON (gtag.js loads it
+ * from Google): it sends a page_view on every client-side URL change. A first build that ALSO sent
+ * page_view from the route effect below recorded 12 page views for 6 navigations (2026-10-10) — so
+ * this code sends none: `config` counts the landing page, GA4 counts every route change. One per URL
+ * change, query string included (a /listing filter change counts — GA4's standard behaviour).
+ *
+ * If that stream setting is ever switched OFF, route changes stop being counted: re-measure, and
+ * then add a page_view in PageViewOnRoute. A GTM container would replace the two <Script>s below
+ * and nothing else — no component calls gtag.
  */
 
 // Module scope, not a ref: this survives StrictMode's double-mount in development and a Fast
@@ -99,6 +115,18 @@ export default function Analytics() {
               />
             ))}
           </noscript>
+        </>
+      ) : null}
+
+      {GA4_MEASUREMENT_ID ? (
+        <>
+          {/* afterInteractive, as Next documents for analytics: after hydration, so it costs the
+              page nothing before it is usable, yet early enough that a visitor who leaves quickly is
+              still counted (lazyOnload waits for the load event and loses those). */}
+          <Script id="ga4-gtag" src={`https://www.googletagmanager.com/gtag/js?id=${GA4_MEASUREMENT_ID}`} strategy="afterInteractive" />
+          <Script id="ga4-init" strategy="afterInteractive">
+            {`window.dataLayer=window.dataLayer||[];window.gtag=function(){dataLayer.push(arguments)};if(!window.__wzGa4Init){window.__wzGa4Init=1;gtag('js',new Date());gtag('config',${JSON.stringify(GA4_MEASUREMENT_ID)});}`}
+          </Script>
         </>
       ) : null}
 

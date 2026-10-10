@@ -26,3 +26,11 @@ export const META_PIXEL_IDS = [
       .filter(Boolean),
   ),
 ]
+
+// Google Analytics 4 measurement id, ONE per storefront build (2026-10-10). Read here and nowhere
+// else: components never read process.env. Anything that is not a `G-…` id — unset, blank, a typo —
+// is treated as no id, and then NOTHING Google is rendered (app/analytics.jsx): no script tag, no
+// dataLayer, no request. Watchizer's .env.production carries G-9N3N4BW58B; Brand Fashion's build
+// leaves it empty until the client creates a property.
+const GA4_RAW = (process.env.NEXT_PUBLIC_GA4_MEASUREMENT_ID || '').trim()
+export const GA4_MEASUREMENT_ID = /^G-[A-Z0-9]{4,}$/.test(GA4_RAW) ? GA4_RAW : ''
