@@ -22,10 +22,11 @@ import { META_PIXEL_IDS } from '@/src/lib/env'
  *     a build and a deploy to change or switch off. The ids come from NEXT_PUBLIC_META_PIXEL_ID,
  *     and an empty list renders nothing at all — no script, no beacon, no events.
  *
- * ── TWO PIXELS, ONE EVENT EACH TIME ──────────────────────────────────────────────
+ * ── ONE OR MORE PIXELS, ONE EVENT EACH TIME ──────────────────────────────────────
  *
- * NEXT_PUBLIC_META_PIXEL_ID is a comma-separated LIST, so the incumbent pixel and the new one can
- * run side by side and either can be dropped by editing one env line.
+ * NEXT_PUBLIC_META_PIXEL_ID is a comma-separated LIST, so two pixels can run side by side and either
+ * can be dropped by editing one env line. Today it carries ONE (2026-10-10: the incumbent
+ * 1611910119460872 was removed; .env.production says how to put it back).
  *
  * Every id is initialised; NOTHING ELSE in the codebase changes. `fbq('track', ...)` already
  * delivers to every initialised pixel — that is how fbevents.js works, and `trackSingle` is what
