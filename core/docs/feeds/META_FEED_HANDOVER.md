@@ -54,43 +54,40 @@ and `custom_label_0`.
 
 Language: English. An Arabic version can follow as a language feed on the same ids — ask.
 
-## For the media buyer — the two pixels and one Events Manager rule (2026-10-10)
+## For the media buyer — pixels and one Events Manager rule (written 2026-10-10)
 
-**Both pixels run on every Watchizer page, in both languages** (measured on the live product page,
-English and Arabic: `fbq.getState()` lists both). Each pixel receives each event once — two pixels,
-two separate counts, not one event counted twice into the same pixel:
+**One pixel from the next storefront deploy: `1614877760150035`** — the pixel the media buyer works
+on, and the only one the server-side Purchase (Conversions API) reports to. The old pixel
+`1611910119460872` is being removed from the site (owner decision 2026-10-10: no campaigns, no
+audiences in use on it; the media buyer is on a new account and works only on …035). Until that
+deploy both pixels load on every page; each receives each event once.
 
-| Pixel | What it is (from the site's own configuration) |
-|---|---|
-| `1611910119460872` | the **old** pixel — it ran on the previous storefront and holds the campaign history. Automatic click-event detection is ON for it (it records one extra event per click) |
-| `1614877760150035` | the **new** pixel — the one the client administers, and the only one the server-side Purchase (Conversions API) reports to |
+**Codeless rules in YOUR Events Manager are inflating your numbers — stated 2026-10-10.**
+Pixel `1614877760150035` carries button-click rules set up in Events Manager's event setup tool (not by
+the website; read from the pixel's public configuration on 2026-10-10):
 
-**Delete the codeless Purchase rule on `1614877760150035`.** In Events Manager, on the new pixel, in its
-event setup tool (Meta renames these menus; it is where button-click / "codeless" events live) there is a **Purchase** rule for `https://watchizereg.com/cart`
-that reads its value from the cart page's total (`.wz-cart-total`) and sets the currency to EGP. A
-Purchase on the cart page has no order behind it: every time it fires it records a sale that did not
-happen, inflates the conversion count and ROAS, and double-counts against the real Purchase the site
-sends when a cash-on-delivery order is placed (and the server-side one for card orders). Delete the
-rule; the site already sends every real Purchase. (Found in the pixel's public configuration; whether
-it has already fired is visible in the pixel's event history for Purchase on /cart.)
+| Rule | Fires when a visitor clicks something whose text contains | Effect |
+|---|---|---|
+| **Purchase** | `checkout` — the English cart page's **CHECKOUT** button | records a sale on every cart → checkout click, valued at the cart total (a second rule reads `.wz-cart-total` on `/cart`, currency EGP) |
+| AddToCart | `add to cart`, `pre order` | a second AddToCart on top of the one the website sends once the cart has accepted the item |
+| InitiateCheckout | `view cart` | an InitiateCheckout before anyone reaches checkout |
+| ViewContent | the name of one product | a stray ViewContent |
 
-**Before the old pixel `1611910119460872` is removed from the site — what stops when it goes.** Removing
-it from the site stops NEW data reaching it; its history stays in Events Manager. What depends on that
-new data:
+**The Purchase rule is the costly one.** A click on CHECKOUT is not an order — the shopper has not even
+seen the checkout form. What it costs you:
 
-- **Website custom audiences built on it** (visitors, viewers of products, add-to-cart, purchasers)
-  stop growing and empty out as members pass their retention window (up to 180 days).
-- **Lookalike audiences seeded from those audiences** stop refreshing.
-- **Retargeting** campaigns and ad sets using those audiences shrink with them.
-- **Campaigns optimising for a conversion on this pixel** lose their signal the day it goes — switch
-  each one to the new pixel's event first.
-- **Custom conversions and any automatic-event setup defined on it** stop recording.
-- **The catalogue**: if the pixel-built catalogue is fed by this pixel, it stops updating — moot once
-  the product feed is connected (above), which does not depend on either pixel.
+- **inflated conversion counts** — Purchases that are only clicks towards checkout;
+- **inflated ROAS** — revenue that was never taken;
+- **double-counting against the real Purchases** the website already sends: the browser Purchase
+  when a cash-on-delivery order is placed, and the server-side (Conversions API) Purchase for card
+  orders.
 
-Safe order: rebuild the audiences on the new pixel (it has been receiving the same events since
-at least 2026-09-22), move every campaign's optimisation and audiences to it, let the new audiences fill, and
-only then ask for the old pixel to be taken off the site — one line, reversible.
+The website sends every real event; these rules add only false or duplicate ones. They are yours to
+delete in Events Manager; we have not changed them and will not. Whether the Purchase rule has
+already fired shows in the pixel's Purchase history (events from `/cart`).
+
+*(Superseded 2026-10-10, kept for the record: a list of what removing the old pixel would stop —
+audiences, lookalikes, retargeting, campaign signal. Not applicable: nothing runs on `…872`.)*
 
 ## For the developer — operating it
 
