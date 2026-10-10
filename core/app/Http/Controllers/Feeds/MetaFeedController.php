@@ -39,9 +39,12 @@ final class MetaFeedController extends Controller
             'Cache-Control' => 'no-cache',
             'X-Robots-Tag' => 'noindex',
         ];
-        $match = $request->headers->get('If-None-Match');
-        if ($match !== null && in_array($headers['ETag'], array_map('trim', explode(',', $match)), true)) {
-            return response('', 304, $headers);
+        // HTTP's own rules, not a string compare (2026-10-10): If-None-Match compared WEAKLY (a W/ form
+        // matches — Hostinger's CDN weakens ETags it re-encodes), a list or `*`, and If-Modified-Since
+        // when there is no If-None-Match. The hand-written exact compare answered 200 to both.
+        $notModified = new Response('', 200, $headers);
+        if ($notModified->isNotModified($request)) {
+            return $notModified;
         }
 
         return new BinaryFileResponse($path, 200, $headers + ['Content-Type' => 'text/csv; charset=UTF-8']);

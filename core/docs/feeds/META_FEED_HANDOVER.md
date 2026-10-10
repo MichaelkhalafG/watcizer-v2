@@ -33,18 +33,18 @@ product id — those few events will not match a feed item.
 | `custom_label_1` | top category — `Watches`, `Fashion`, `Electronics` |
 | `custom_label_2` | `express` = in stock in the shop, ships now · `market` = in stock through the supplier, may take longer · empty = out of stock |
 
-**What the catalogue is, in numbers** (production data of 2026-10-08, 975 products):
+**What the catalogue is, in numbers** (production, the feed's first run on 2026-10-10, 996 products):
 
 | Stock | Products | Share |
 |---|---|---|
-| `express` — in stock in the shop, ships now | 66 | 6.8 % |
-| `market` — in stock through the supplier only | 809 | 83.0 % |
-| out of stock (listed as `out of stock`, never hidden) | 100 | 10.3 % |
+| `express` — in stock in the shop, ships now | 66 | 6.6 % |
+| `market` — in stock through the supplier only | 829 | 83.2 % |
+| out of stock (listed as `out of stock`, never hidden) | 101 | 10.1 % |
 
 About 1 product in 15 ships immediately. `custom_label_2` carries this per product, so an
 **express-only ad set** is a product set filtered on `custom_label_2 = express`.
 
-**287 products (29.4 %) sit at a top-level category only** (271 Watches, 13 Electronics, 3 Fashion):
+**287 products sit at a top-level category only** (271 Watches, 13 Electronics, 3 Fashion — 29.4 % of the 975 in the 2026-10-08 data; recount on the live feed with `product_type` without ` > `):
 their `product_type` is one level deep (`Watches`), so a set built on a sub-category
 (`Watches > Chronograph`) will not reach them. Their placement is the shop team's to complete.
 
@@ -53,6 +53,44 @@ it is. One brand is stored in lower case (`naviforce`, 52 products) and appears 
 and `custom_label_0`.
 
 Language: English. An Arabic version can follow as a language feed on the same ids — ask.
+
+## For the media buyer — the two pixels and one Events Manager rule (2026-10-10)
+
+**Both pixels run on every Watchizer page, in both languages** (measured on the live product page,
+English and Arabic: `fbq.getState()` lists both). Each pixel receives each event once — two pixels,
+two separate counts, not one event counted twice into the same pixel:
+
+| Pixel | What it is (from the site's own configuration) |
+|---|---|
+| `1611910119460872` | the **old** pixel — it ran on the previous storefront and holds the campaign history. Automatic click-event detection is ON for it (it records one extra event per click) |
+| `1614877760150035` | the **new** pixel — the one the client administers, and the only one the server-side Purchase (Conversions API) reports to |
+
+**Delete the codeless Purchase rule on `1614877760150035`.** In Events Manager, on the new pixel, in its
+event setup tool (Meta renames these menus; it is where button-click / "codeless" events live) there is a **Purchase** rule for `https://watchizereg.com/cart`
+that reads its value from the cart page's total (`.wz-cart-total`) and sets the currency to EGP. A
+Purchase on the cart page has no order behind it: every time it fires it records a sale that did not
+happen, inflates the conversion count and ROAS, and double-counts against the real Purchase the site
+sends when a cash-on-delivery order is placed (and the server-side one for card orders). Delete the
+rule; the site already sends every real Purchase. (Found in the pixel's public configuration; whether
+it has already fired is visible in the pixel's event history for Purchase on /cart.)
+
+**Before the old pixel `1611910119460872` is removed from the site — what stops when it goes.** Removing
+it from the site stops NEW data reaching it; its history stays in Events Manager. What depends on that
+new data:
+
+- **Website custom audiences built on it** (visitors, viewers of products, add-to-cart, purchasers)
+  stop growing and empty out as members pass their retention window (up to 180 days).
+- **Lookalike audiences seeded from those audiences** stop refreshing.
+- **Retargeting** campaigns and ad sets using those audiences shrink with them.
+- **Campaigns optimising for a conversion on this pixel** lose their signal the day it goes — switch
+  each one to the new pixel's event first.
+- **Custom conversions and any automatic-event setup defined on it** stop recording.
+- **The catalogue**: if the pixel-built catalogue is fed by this pixel, it stops updating — moot once
+  the product feed is connected (above), which does not depend on either pixel.
+
+Safe order: rebuild the audiences on the new pixel (it has been receiving the same events since
+at least 2026-09-22), move every campaign's optimisation and audiences to it, let the new audiences fill, and
+only then ask for the old pixel to be taken off the site — one line, reversible.
 
 ## For the developer — operating it
 
@@ -70,7 +108,7 @@ Language: English. An Arabic version can follow as a language feed on the same i
   storefront in `storage/logs/scheduled.log` (its own channel — production's `LOG_LEVEL=warning`
   would drop an `info` line in `laravel.log`):
   `grep 'feeds:meta storefront=watchizer' storage/logs/scheduled.log | tail -3` →
-  `… INFO: feeds:meta storefront=watchizer products=975 bytes=890629 file=unchanged ms=… over_limit=0`.
+  `… INFO: feeds:meta storefront=watchizer products=996 bytes=912828 file=unchanged ms=… over_limit=0` (the first production run, 2026-10-10).
   `file=unchanged` hour after hour is the ETag staying stable; `file=replaced` means the catalogue
   changed. With a token set, no line in the last hour = the schedule is not running
   (`php artisan schedule:list | grep feeds`). With NO token the run is off and writes nothing; a token

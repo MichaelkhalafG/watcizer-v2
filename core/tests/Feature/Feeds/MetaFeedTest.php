@@ -284,6 +284,23 @@ it('serves the file with an ETag, and 304 when Meta already has it', function ()
     withHeaders(['If-None-Match' => $etag])->get('/feeds/meta/watchizer/'.FEED_TOKEN.'.csv')->assertStatus(304);
 });
 
+it('answers 304 by HTTP rules: a weak ETag, a list, If-Modified-Since — and 200 when the file changed', function () {
+    // What this proves and what it cannot (2026-10-10): the controller's answer to the request PHP
+    // receives. It cannot see what reaches PHP on production — Hostinger's CDN sits in front and
+    // rewrites validators — so the live probe in the deploy note is the check for that.
+    feedProduct();
+    $path = app(MetaFeed::class)->generate('watchizer')['path'];
+    $url = '/feeds/meta/watchizer/'.FEED_TOKEN.'.csv';
+    $etag = '"'.sha1_file($path).'"';
+    $modified = gmdate('D, d M Y H:i:s', (int) filemtime($path)).' GMT';
+
+    withHeaders(['If-None-Match' => 'W/'.$etag])->get($url)->assertStatus(304)->assertHeader('ETag', $etag);
+    withHeaders(['If-None-Match' => '"something-else", '.$etag])->get($url)->assertStatus(304);
+    withHeaders(['If-Modified-Since' => $modified])->get($url)->assertStatus(304);
+    withHeaders(['If-None-Match' => '"something-else"'])->get($url)->assertOk();
+    withHeaders(['If-Modified-Since' => gmdate('D, d M Y H:i:s', (int) filemtime($path) - 3600).' GMT'])->get($url)->assertOk();
+});
+
 it('answers one plain 404 for a wrong token, an unconfigured storefront and a missing file — never a fallback', function () {
     feedProduct();
     app(MetaFeed::class)->generate('watchizer');                       // Watchizer's file exists
