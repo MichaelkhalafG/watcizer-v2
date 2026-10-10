@@ -1,5 +1,7 @@
 <?php
 
+use Tests\Support\T;
+
 /*
  * ── The image host must not depend on remembering a variable (2026-10-08) ──────────────────────
  *
@@ -69,8 +71,8 @@ it('still honours an explicit value, so a local or staging host is unaffected', 
     putenv('STOREFRONT_ASSET_BASE=http://127.0.0.1:8000');
     $_ENV['STOREFRONT_ASSET_BASE'] = $_SERVER['STOREFRONT_ASSET_BASE'] = 'http://127.0.0.1:8000';
     try {
-        $config = require config_path('storefront.php');
-        expect($config['asset_base'])->toBe('http://127.0.0.1:8000');
+        $config = T::arr(require config_path('storefront.php'));
+        expect($config['asset_base'] ?? null)->toBe('http://127.0.0.1:8000');
     } finally {
         unset($_ENV['STOREFRONT_ASSET_BASE'], $_SERVER['STOREFRONT_ASSET_BASE']);
         putenv('STOREFRONT_ASSET_BASE');

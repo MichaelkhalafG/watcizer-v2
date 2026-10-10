@@ -2,12 +2,28 @@ includes:
     - vendor/larastan/larastan/extension.neon
 
 parameters:
+    # Everything we write PHP in. `config/` and `bootstrap/app.php` joined on 2026-10-10: a run given
+    # file paths REPLACES this list (that is how a narrowed check reported clean), and a config file
+    # (config/feeds.php) was outside it entirely. Run `composer phpstan` — it refuses extra arguments
+    # (`@no_additional_args`), so this list is always the scope.
     paths:
         - app
+        - bootstrap/app.php
+        - config
         - database
         - routes
         - tests
     level: 10
+    # ONE known finding in a Laravel skeleton file, recorded here instead of editing the file
+    # (developer, 2026-10-10): `env('APP_URL')` can be a bool, so PHPStan rejects it in `rtrim()`. It has
+    # no runtime effect for any real APP_URL (identical result for every string; only APP_URL=true
+    # differs), and nothing reads the `public` disk. Scoped to that file, that identifier, ONE match —
+    # a second finding there fails the run instead of hiding behind this entry.
+    ignoreErrors:
+        -
+            identifier: argument.type
+            path: config/filesystems.php
+            count: 1
     # The memory limit lives in CONFIG now, via the bootstrap file: PHPStan has no parameter for it,
     # and every run in this repo's notes carried `--memory-limit=1G` by hand — so a run WITHOUT the
     # flag died at the default and looked like a broken codebase rather than a broken command.
