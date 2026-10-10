@@ -125,4 +125,12 @@ Schedule::command('catalog:warm')->everyFiveMinutes()->withoutOverlapping();
 | (backlog C-NARROW).
 */
 $cachePrune = Schedule::command('cache:prune-expired --force')->withoutOverlapping();
-count(config('compat.warm_storefronts', [])) > 1 ? $cachePrune->hourlyAt(25) : $cachePrune->dailyAt('03:25');
+count(config()->array('compat.warm_storefronts', [])) > 1 ? $cachePrune->hourlyAt(25) : $cachePrune->dailyAt('03:25');
+
+/*
+| The Meta catalogue feeds (2026-10-10, config/feeds.php). Hourly at :40 — clear of the prune at :25 —
+| each configured storefront's file is rewritten from the warm's listing index and chunked product
+| reads, and replaced only when its content changed. The URL serves that file and never builds it, so
+| a missed tick leaves the previous hour's feed in place. Meta's own scheduled fetch can be hourly.
+*/
+Schedule::command('feeds:meta')->hourlyAt(40)->withoutOverlapping();

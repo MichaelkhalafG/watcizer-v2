@@ -1021,6 +1021,7 @@ what §4.3 does and why it is a mandatory step rather than a suggestion.
     RewriteCond %{REQUEST_URI} !^/api/add_product_rating$
     RewriteCond %{REQUEST_URI} !^/stock-alerts/stop/[A-Za-z0-9]{40}$
     RewriteCond %{REQUEST_URI} !^/unsubscribe/[0-9]+/[a-f0-9]{40}$
+    RewriteCond %{REQUEST_URI} !^/feeds/meta/[a-z0-9-]+/[A-Za-z0-9]{40}\.csv$
     RewriteCond %{REQUEST_URI} !^/(sitemap\.xml|robots\.txt|favicon\.ico)$
     RewriteRule ^ - [R=404,L]
 
@@ -1871,6 +1872,12 @@ Written after the overnight batch's deploy, where three things had to be fixed l
 **every** core deploy, in this order, whether or not the batch looks like it needs them — each is
 idempotent and says "nothing to do" when there is nothing to do.
 
+0. **Static analysis and tests, on the workstation, before the tar** — `composer phpstan`, then (separately, never
+   alongside a build) the full suite. `composer phpstan` is the ONLY way to run PHPStan here: it analyses
+   exactly the paths in `phpstan.neon` (app, bootstrap/app.php, config, database, routes, tests) and
+   refuses extra arguments, because a path argument replaces that list — on 2026-10-09 a run given
+   three file paths reported clean while `routes/console.php` and two test files carried level-10
+   errors that then shipped. It must print `[OK] No errors`.
 1. **Dashboard assets** — `npm run build` on the workstation and upload `public/build/` with the PHP
    (§2.1: it is gitignored, so it is never in a commit). Then prove the live dashboard runs the bundle
    you built — the two lines must be identical:
