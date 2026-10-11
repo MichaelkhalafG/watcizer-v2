@@ -25,6 +25,13 @@ if (process.env.NODE_ENV === 'production') {
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // sharp into the STANDALONE output, whole (2026-10-11, backlog PERF-IMG). With pnpm's hoisted layout
+  // (pnpm-workspace.yaml) `node_modules/sharp` is a real directory and gets traced — but on Linux its
+  // libvips is a SEPARATE package (@img/sharp-libvips-linux-x64) that nothing `require`s: the native
+  // addon finds it through the dynamic linker, so the tracer cannot see it. This copies sharp and every
+  // installed @img package regardless (on the Linux build host: the linux-x64 addon and its libvips).
+  // No effect on `next dev`/`next start`; only on what a standalone build carries.
+  outputFileTracingIncludes: { '/**': ['./node_modules/sharp/**/*', './node_modules/@img/**/*'] },
   reactStrictMode: true,
   // @react-three/fiber@8 + drei are transpiled WITH the app so they compile
   // against the same React module resolution Next uses. (Do NOT alias react/
