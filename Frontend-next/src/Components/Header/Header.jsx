@@ -435,7 +435,9 @@ function Header() {
       >
         <div className="wz-drawer-head">
           <Link href="/" onClick={closeDrawer} className="wz-drawer-logo" aria-label="Watchizer">
-            <img src={logo} alt="Watchizer" width="150" height="46" loading="lazy" />
+            {/* Same props as the header logo above → the same optimised URL, so the drawer reuses the
+                bytes the header already fetched (it requested the 141,944 B original, 2026-10-11). */}
+            <Image src={logo} alt="Watchizer" width={150} height={46} quality={90} />
           </Link>
           <button
             type="button"

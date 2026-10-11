@@ -1,5 +1,6 @@
 'use client'
 import { memo } from 'react'
+import Image from 'next/image'
 import './Footer.css'
 import Link from '@/src/Components/LocaleLink'
 import { useRouter } from '@/src/Hooks/useLocaleRouter'
@@ -50,7 +51,11 @@ function Footer() {
         {/* Column 1 — Brand */}
         <div className="wz-foot__col wz-foot__brand">
           <Link href="/" className="wz-foot__logo-link" aria-label="Watchizer">
-            <img src={logo} alt="Watchizer" className="wz-foot__logo" width="130" height="38" />
+            {/* next/image (2026-10-11): the raw <img> downloaded the 141,944 B original on every page,
+                eagerly — on phones too, where the whole footer is display:none. quality 90 and a
+                width that resolves to the header logo's srcset widths (256/320) reuse its bytes;
+                lazy by default, so a hidden or unscrolled footer fetches nothing. */}
+            <Image src={logo} alt="Watchizer" className="wz-foot__logo" width={130} height={38} quality={90} />
           </Link>
           <p className="wz-foot__tagline">
             {t(
