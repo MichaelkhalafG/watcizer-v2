@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, useCallback } from 'react'
+import { Component, useState, useEffect, useCallback } from 'react'
 import dynamic from 'next/dynamic'
 import { useRouter } from '@/src/Hooks/useLocaleRouter'
 import { useUIStore } from '../../Store/uiStore'
@@ -11,6 +11,25 @@ import './WatchHero.css'
 // Genuine WebGL failures (e.g. no-WebGL devices) are handled INSIDE WatchCanvas
 // (hasWebGL() gate + ModelErrorBoundary → poster fallback).
 const WatchCanvas = dynamic(() => import('./WatchCanvas'), { ssr: false, loading: () => null })
+
+// The 3D chunk itself failing to load (ChunkLoadError — a flaky connection, a blocker, or a stale
+// chunk after a deploy) throws from the lazy component, OUTSIDE WatchCanvas, so its own
+// ModelErrorBoundary never sees it: the error reached app/(main)/error.jsx and the WHOLE home page
+// became "This page is temporarily unavailable" (reproduced 2026-10-11 on a local build: aborted,
+// 404 and empty-200 chunk responses alike). This boundary lives in the home page's own chunk, so
+// any failure in the 3D subtree ends at the poster instead.
+class HeroCanvasBoundary extends Component {
+  state = { failed: false }
+  static getDerivedStateFromError() {
+    return { failed: true }
+  }
+  // Defining this (even empty) stops React from re-throwing the caught error.
+  componentDidCatch() {}
+  render() {
+    if (this.state.failed) return null
+    return this.props.children
+  }
+}
 
 const WatchHero = () => {
   const router = useRouter()
@@ -99,7 +118,11 @@ const WatchHero = () => {
           fetchPriority="high"
           decoding="async"
         />
-        {mount3D && <WatchCanvas onReady={handleReady} />}
+        {mount3D && (
+          <HeroCanvasBoundary>
+            <WatchCanvas onReady={handleReady} />
+          </HeroCanvasBoundary>
+        )}
       </div>
 
       {/* Corner brackets */}
