@@ -1,9 +1,10 @@
 'use client'
 import { useUIStore } from '@/src/Store/uiStore'
 import { localePath } from '@/src/utils/localePath'
+import { retryAfterError } from '@/src/utils/chunkError'
 
 // In the page's language, like app/(main)/error.jsx (2026-09-30); the home link keeps it too (D7).
-export default function GlobalError({ reset }) {
+export default function GlobalError({ error, reset }) {
   const language = useUIStore((s) => s.language)
   const ar = language === 'ar'
   return (
@@ -14,7 +15,7 @@ export default function GlobalError({ reset }) {
           {ar ? 'نعتذر، حدث خطأ غير متوقع. حاول مرة أخرى.' : "We're sorry — an unexpected error occurred. Please try again."}
         </p>
         <div className="wz-error-actions">
-          <button onClick={() => reset()} className="wz-error-retry">{ar ? 'حاول مرة أخرى' : 'Try Again'}</button>
+          <button onClick={() => retryAfterError(error, reset)} className="wz-error-retry">{ar ? 'حاول مرة أخرى' : 'Try Again'}</button>
           {/* Hard navigation (not next/link) is intentional in an error boundary: a
               full page load fully resets the crashed React tree. */}
           <a href={localePath('/', language)} className="wz-error-home">{ar ? 'العودة للرئيسية' : 'Back to Home'}</a>
