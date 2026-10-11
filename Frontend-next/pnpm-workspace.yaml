@@ -1,3 +1,13 @@
+# FLAT node_modules (2026-10-11). Hostinger builds a STANDALONE server, and standalone output only
+# creates top-level links for packages Next traces as static dependencies. Next 15.5 loads `sharp` with
+# a runtime `require('sharp')` inside the image optimiser, so under pnpm's default isolated layout the
+# packages were copied into .pnpm/ with NO resolvable `node_modules/sharp` — every /_next/image answered
+# with the untouched original ("Cannot find module 'sharp'" on the host, backlog PERF-IMG). Hoisted
+# installs real directories, so `node_modules/sharp` exists in the standalone output. The lockfile does
+# not change. Measured on a scratch copy: standalone `require('sharp')` OK, /logo.webp 141,944 B → 5,856 B
+# AVIF at w=256. To undo: delete this line (and the include in next.config.js) and rebuild.
+nodeLinker: hoisted
+
 allowBuilds:
   sharp: true
   unrs-resolver: true
