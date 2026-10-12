@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Payment;
 
+use App\Compat\CompatCheckout;
 use App\Domain\Analytics\MetaConversions;
 use App\Domain\Inventory\Actor;
 use App\Domain\Inventory\InventoryService;
@@ -83,7 +84,7 @@ final class PaymentCallbackController
         // a 403-vs-404 difference on another shop's code confirmed that shop exists. The host goes
         // to the log only, so the operator can tell the two apart and nobody else can.
         if ($storefrontRow === null || ! StorefrontHost::serves($request, (int) $storefrontRow->id)) {
-            return $this->fail(404, 'unknown storefront', ['storefront' => $storefront, 'provider' => $provider, 'host' => $request->getHost()]);
+            return $this->fail($request, 404, 'unknown storefront', ['storefront' => $storefront, 'provider' => $provider, 'host' => $request->getHost()]);
         }
 
         return $this->process($request, (int) $storefrontRow->id, $provider);
@@ -161,19 +162,19 @@ final class PaymentCallbackController
                 ->where('storefront_id', $storefrontId)->where('provider', $provider)->first();
 
             if ($contract === null || ! (bool) $contract->getAttribute('is_enabled')) {
-                return $this->fail(404, 'no enabled contract for this storefront and provider', $context);
+                return $this->fail($request, 404, 'no enabled contract for this storefront and provider', $context);
             }
 
             $implementation = $this->registry->for($contract);
             if ($implementation === null) {
-                return $this->fail(404, 'no implementation registered for this provider', $context);
+                return $this->fail($request, 404, 'no implementation registered for this provider', $context);
             }
 
             $credentials = ProviderCredentials::fromArray(Coerce::arr($contract->getAttribute('credentials')));
             if ($credentials->isEmpty() && $implementation->credentialFields() !== []) {
                 // A contract that needs credentials and has none cannot verify anything, and
                 // "verify with an empty secret" is how a forged callback gets accepted.
-                return $this->fail(404, 'contract holds no credentials', $context);
+                return $this->fail($request, 404, 'contract holds no credentials', $context);
             }
 
             // ── 2. verify the signature with THIS contract's secret ─────────────────────────
@@ -181,13 +182,13 @@ final class PaymentCallbackController
             $payload = $request->all();
             $verdict = $implementation->verifyCallback($payload, $credentials);
             if (! $verdict->signatureValid) {
-                return $this->fail(403, 'signature did not verify against this contract', $context);
+                return $this->fail($request, 403, 'signature did not verify against this contract', $context);
             }
 
             // ── 3. ownership ────────────────────────────────────────────────────────────────
             $order = $this->resolveOrder($verdict);
             if ($order === null) {
-                return $this->fail(404, 'the merchant reference names no order', $context + [
+                return $this->fail($request, 404, 'the merchant reference names no order', $context + [
                     'reference' => $verdict->orderReference,
                     'transaction' => $verdict->providerTransactionId,
                 ]);
@@ -205,7 +206,7 @@ final class PaymentCallbackController
                 || ($orderStorefront === null && $storefrontId === Storefront::WATCHIZER_ID);
 
             if (! $belongs) {
-                return $this->fail(403, 'order belongs to another storefront', $context + [
+                return $this->fail($request, 403, 'order belongs to another storefront', $context + [
                     'order_id' => $orderId,
                     'order_storefront_id' => $orderStorefront,
                     'transaction' => $verdict->providerTransactionId,
@@ -540,11 +541,46 @@ final class PaymentCallbackController
      * A refusal: one log line with the ids that make it diagnosable, and a body that says nothing
      * a prober could use.
      *
+     * ── Two lines, two channels (2026-10-12) ─────────────────────────────────────────────────
+     *
+     * This line is a `warning`, and production runs `LOG_LEVEL=error`: from 2026-09-28 the default
+     * channel dropped every refusal this method wrote, so the eighteen days in which EVERY real
+     * callback was refused at the signature (the stored `hmac_secret` was not the one Paymob signed
+     * with) left no record anywhere — "nobody tried to pay" and "somebody paid and we refused them"
+     * looked identical: a pending order cancelled an hour later. A warning on the default channel
+     * is a trace that vanishes whenever someone tightens the level, so the same line also goes to
+     * the `payments` channel, whose level is fixed in `config/logging.php` and never read from
+     * `LOG_LEVEL` (the `scheduled` channel's precedent). The default-channel line stays for whoever
+     * tails the main log at a level that shows it.
+     *
+     * ── What the line carries, and what it never carries ─────────────────────────────────────
+     *
+     * Which check refused, the storefront, the provider, the HTTP method (POST is the provider's
+     * server, GET is the shopper's browser), and the integration id and merchant order id — read
+     * from the payload AS SENT, through the helper the verifier uses. At this point the signature
+     * has not been checked, or has failed, so they are labelled `claimed_` and are trusted only as
+     * far as a log line needs to be: enough to find the attempt in the provider's portal. Never the
+     * `hmac`, never a secret, never the payload, never an amount.
+     *
      * @param  array<string, mixed>  $context
      */
-    private function fail(int $status, string $why, array $context): JsonResponse
+    private function fail(Request $request, int $status, string $why, array $context): JsonResponse
     {
-        Log::warning('payment callback refused: '.$why, $context);
+        /** @var array<string, mixed> $payload */
+        $payload = $request->all();
+        $integration = CompatCheckout::paymobField($payload, 'integration_id');
+        $reference = CompatCheckout::paymobField($payload, 'merchant_order_id');
+
+        $line = $context + [
+            'check' => $why,
+            'status' => $status,
+            'http_method' => $request->getMethod(),
+            'claimed_integration_id' => $integration === '' ? null : $integration,
+            'claimed_merchant_order_id' => $reference === '' ? null : $reference,
+        ];
+
+        Log::warning('payment callback refused: '.$why, $line);
+        Log::channel('payments')->warning('payment callback refused: '.$why, $line);
 
         return response()->json(['message' => $status === 404 ? 'Not found' : 'Forbidden'], $status);
     }
