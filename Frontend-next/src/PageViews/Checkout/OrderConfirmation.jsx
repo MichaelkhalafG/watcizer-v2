@@ -8,6 +8,7 @@ import { useUIStore } from '../../Store/uiStore'
 import { useAuthStore } from '../../Store/authStore'
 import { useToastStore } from '../../Store/toastStore'
 import { useOrderConfirmStore } from '../../Store/orderConfirmStore'
+import useCart from '../../Hooks/useCart'
 import http from '../../Context/api'
 import './Checkout.css'
 
@@ -303,8 +304,36 @@ function OrderConfirmation() {
  * the order is not confirmed, and — because a callback can be refused after a card was charged —
  * what to do if money left their account. `pending` never says "failed" and never suggests paying
  * again.
+ *
+ * ── The CLIENT cart, by outcome (2026-10-12, seen on the live site) ─────────────────────────────
+ *
+ * The cart lives in this tab's sessionStorage and nothing loads it from the server; the cash path
+ * clears it in Checkout (`cleanupAfterOrder`), the card path leaves for Paymob first, so the tab
+ * came back from a paid order still showing the items. The server cart is destroyed at order
+ * placement in every outcome, so what the client should show is decided per outcome, not once:
+ *
+ *   paid     cleared, guest token dropped — the items are bought; a kept cart is the one way the
+ *            same thing gets ordered twice by accident.
+ *   pending  cleared too, for a MONEY reason: a second order from the kept cart supersedes and
+ *            cancels the pending one, and if the provider then settles the first, that is money
+ *            taken on a cancelled order (the terminal-order finding). If it ends declined, the
+ *            decline e-mail's recovery link brings the order back.
+ *   failed   KEPT, and the page says so: the lines are exactly what they tried to buy, the stock is
+ *            back, and the Cart page's reconcile() rebuilds the server cart from them — the stale
+ *            client cart IS the retry path. The recovery e-mail covers the shopper who closed the tab.
  */
 function CardLanding({ status, orderNumber, t, isRTL, router }) {
+  const { clearCart } = useCart()
+  useEffect(() => {
+    if (status === 'failed') return
+    clearCart()
+    try {
+      localStorage.removeItem('wz_guest_token')
+    } catch {
+      // storage unavailable: nothing to drop
+    }
+  }, [status, clearCart])
+
   const copy = {
     paid: {
       icon: 'M24 41 L36 53 L57 30',
@@ -329,8 +358,8 @@ function CardLanding({ status, orderNumber, t, isRTL, router }) {
       title: t('Payment not completed', 'لم تكتمل عملية الدفع'),
       sub: t('Your order has not been confirmed', 'لم يتم تأكيد طلبك'),
       body: t(
-        'Your payment did not go through, so the order was not confirmed. If your card was charged, contact us with your order number and we will sort it out.',
-        'لم تكتمل عملية الدفع، لذلك لم يتم تأكيد الطلب. إذا تم خصم المبلغ من بطاقتك، فتواصل معنا مع ذكر رقم الطلب وسنتولى الأمر.',
+        'Your payment did not go through, so the order was not confirmed. Your items are still in your cart if you would like to try again. If your card was charged, contact us with your order number and we will sort it out.',
+        'لم تكتمل عملية الدفع، لذلك لم يتم تأكيد الطلب. منتجاتك ما زالت في سلتك إن أردت المحاولة مرة أخرى. إذا تم خصم المبلغ من بطاقتك، فتواصل معنا مع ذكر رقم الطلب وسنتولى الأمر.',
       ),
     },
   }[status]
