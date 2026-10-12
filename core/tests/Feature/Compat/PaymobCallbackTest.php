@@ -167,6 +167,14 @@ it('tolerates a one-cent rounding difference', function () {
 });
 
 it('ignores a replayed transaction id (idempotent), leaving the first outcome alone', function () {
+    /*
+     * The two `Already processed` JSON answers below are what a BROWSER gets from this wave-3
+     * handler on a replay, and the parity record used to say that case was rare. It is the normal
+     * case — the processed POST wins the race, so the shopper's GET arrives on the replay branch
+     * (measured 2026-10-12) — and the scoped handler now redirects it to the confirmation page.
+     * This handler keeps the legacy answer only because it was left untouched (dead on production,
+     * where the contract is live). "The legacy app did it too" explains it; it does not justify it.
+     */
     $f = callbackOrder(2, '250.00');
     $query = signedCallback(['merchant_order_id' => $f['order'], 'amount_cents' => '25000', 'success' => 'false']);
 

@@ -143,11 +143,16 @@ it('the two DELIVERIES of one payment collapse to one attempt', function () {
     $browser = get('/api/callback_payment?'.http_build_query($redirect));
 
     /*
-     * A REPLAY answers `Already processed` as JSON with 200, on both methods and on both handlers —
-     * unchanged, and deliberately not routed through `PaymentCallbackController::done()`. It is an
-     * answer to the PROVIDER ("stop retrying, this is on record"), and a browser arriving on a
-     * replay has always seen that body. The method-aware answer is for the TERMINAL branches, which
-     * is where a POST was getting a 302 nobody follows.
+     * This WAVE-3 handler still answers a browser's replay with `Already processed` as JSON — but
+     * not for the reason first written here, which was that a browser arriving on a replay is rare.
+     * That premise was false: the processed POST wins the race almost every time, so the browser's
+     * GET normally arrives on the replay branch, and on the live path a shopper who had just paid
+     * was shown this body on a blank page (measured 2026-10-12). The SCOPED handler now sends every
+     * non-POST exit to the storefront's confirmation page (CallbackLandingTest). This handler keeps
+     * the old answer because the developer chose to leave the wave-3 fall-through untouched: it
+     * serves the alias only while Watchizer's contract is not live, and on production it is live,
+     * so the path is dead there. The legacy app answered the same way; that explains the behaviour
+     * and does not justify it.
      */
     expect($browser->status())->toBe(200)
         ->and($browser->json('message'))->toBe('Already processed')

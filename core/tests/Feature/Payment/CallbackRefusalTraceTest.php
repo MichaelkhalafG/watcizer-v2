@@ -31,6 +31,11 @@ use function Pest\Laravel\postJson;
  * it loads the config with a tightened LOG_LEVEL and proves the channel does not move.
  */
 
+beforeEach(fn () => config(['compat.payment_return_url' => 'https://watchizereg.test/']));
+
+/** A browser's refusal is a redirect to the storefront's failed landing (Landing); the trace is the same. */
+const REFUSED_LANDING = 'https://watchizereg.test/order-confirmation?status=failed';
+
 /** Point the `payments` channel at a scratch file so the line can be read back; returns its directory. */
 function tracedPaymentsLog(): string
 {
@@ -123,7 +128,9 @@ it('traces a signature refusal with the check, storefront, provider and the clai
 
     $payload = PaymentFixture::callback($number, 10000, secret: 'some-other-secret', integrationId: '4988969');
 
-    get('/api/pay/watchizer/paymob/callback?'.http_build_query($payload))->assertForbidden();
+    // A GET is the shopper's browser: it is sent to the failed landing. The LINE still records the
+    // refusal's own status, 403 — what the check decided, not how the browser was answered.
+    get('/api/pay/watchizer/paymob/callback?'.http_build_query($payload))->assertRedirect(REFUSED_LANDING);
 
     $lines = paymentsLogLines($dir);
     expect($lines)->toContain('payment callback refused: signature did not verify against this contract')
@@ -166,17 +173,18 @@ it('traces every other refusal by the check that refused it', function () {
     $foreignNumber = PaymentFixture::orderNumber($foreign);
 
     // Check 1: unknown storefront — the code is what identifies the attempt, there is no id yet.
+    // The one refusal that stays a plain 404 for a browser too: there is no shop to send it to.
     get('/api/pay/nosuchshop/paymob/callback?id=1&integration_id=777')->assertNotFound();
     // Check 1: a provider the storefront holds no contract for.
-    get('/api/pay/watchizer/fawry/callback?id=1')->assertNotFound();
+    get('/api/pay/watchizer/fawry/callback?id=1')->assertRedirect(REFUSED_LANDING);
     // Check 3: a perfectly signed callback for storefront 1, naming storefront 2's order.
     get('/api/pay/watchizer/paymob/callback?'.http_build_query(
         PaymentFixture::callback($foreignNumber, 10000, secret: 'shared-test-secret')
-    ))->assertForbidden();
+    ))->assertRedirect(REFUSED_LANDING);
     // Ownership: a reference that names no order at all.
     get('/api/pay/watchizer/paymob/callback?'.http_build_query(
         PaymentFixture::callback('WZ-NO-SUCH-ORDER', 10000, secret: 'shared-test-secret')
-    ))->assertNotFound();
+    ))->assertRedirect(REFUSED_LANDING);
 
     $lines = paymentsLogLines($dir);
     expect($lines)->toContain('refused: unknown storefront')

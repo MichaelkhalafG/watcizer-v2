@@ -11,6 +11,7 @@ use App\Domain\Inventory\InventoryService;
 use App\Domain\Notifications\OrderMailer;
 use App\Domain\Payment\CallbackPolicy;
 use App\Domain\Payment\CallbackVerdict;
+use App\Domain\Payment\Landing;
 use App\Domain\Payment\PaymobProvider;
 use App\Domain\Payment\ProviderCredentials;
 use App\Domain\Payment\ProviderRegistry;
@@ -162,19 +163,19 @@ final class PaymentCallbackController
                 ->where('storefront_id', $storefrontId)->where('provider', $provider)->first();
 
             if ($contract === null || ! (bool) $contract->getAttribute('is_enabled')) {
-                return $this->fail($request, 404, 'no enabled contract for this storefront and provider', $context);
+                return $this->fail($request, 404, 'no enabled contract for this storefront and provider', $context, landing: $storefrontId);
             }
 
             $implementation = $this->registry->for($contract);
             if ($implementation === null) {
-                return $this->fail($request, 404, 'no implementation registered for this provider', $context);
+                return $this->fail($request, 404, 'no implementation registered for this provider', $context, landing: $storefrontId);
             }
 
             $credentials = ProviderCredentials::fromArray(Coerce::arr($contract->getAttribute('credentials')));
             if ($credentials->isEmpty() && $implementation->credentialFields() !== []) {
                 // A contract that needs credentials and has none cannot verify anything, and
                 // "verify with an empty secret" is how a forged callback gets accepted.
-                return $this->fail($request, 404, 'contract holds no credentials', $context);
+                return $this->fail($request, 404, 'contract holds no credentials', $context, landing: $storefrontId);
             }
 
             // ── 2. verify the signature with THIS contract's secret ─────────────────────────
@@ -182,7 +183,7 @@ final class PaymentCallbackController
             $payload = $request->all();
             $verdict = $implementation->verifyCallback($payload, $credentials);
             if (! $verdict->signatureValid) {
-                return $this->fail($request, 403, 'signature did not verify against this contract', $context);
+                return $this->fail($request, 403, 'signature did not verify against this contract', $context, landing: $storefrontId);
             }
 
             // ── 3. ownership ────────────────────────────────────────────────────────────────
@@ -191,9 +192,10 @@ final class PaymentCallbackController
                 return $this->fail($request, 404, 'the merchant reference names no order', $context + [
                     'reference' => $verdict->orderReference,
                     'transaction' => $verdict->providerTransactionId,
-                ]);
+                ], landing: $storefrontId);
             }
             $orderId = Row::int($order, 'id');
+            $orderNumber = Row::str($order, 'order_number');
             $orderStorefront = Row::nint($order, 'storefront_id');
 
             /*
@@ -210,17 +212,28 @@ final class PaymentCallbackController
                     'order_id' => $orderId,
                     'order_storefront_id' => $orderStorefront,
                     'transaction' => $verdict->providerTransactionId,
-                ]);
+                ], landing: $storefrontId);
             }
             if ($orderStorefront === null) {
                 Log::info('payment callback: order carries no storefront_id; accepted as the primary storefront.', $context + ['order_id' => $orderId]);
             }
 
-            // Idempotency, before the work: one row per (provider, transaction id).
+            /*
+             * Idempotency, before the work: one row per (provider, transaction id).
+             *
+             * This is the branch the shopper's browser NORMALLY lands on (see Landing): the
+             * processed POST has already settled the order by the time the GET arrives. The
+             * provider still gets `Already processed` -- "stop retrying, this is on record" -- and
+             * the browser is sent to the storefront with what the record SAYS, not a fresh verdict.
+             */
             $transactionId = $verdict->providerTransactionId;
-            if ($transactionId !== null && DB::table('payment_statuses')
-                ->where('provider', $provider)->where('pay_transaction_id', $transactionId)->exists()) {
-                return response()->json(['message' => 'Already processed'], 200);
+            $recorded = $transactionId === null ? null : DB::table('payment_statuses')
+                ->where('provider', $provider)->where('pay_transaction_id', $transactionId)
+                ->first(['success', 'outcome']);
+            if ($recorded !== null) {
+                return self::land($request, $storefrontId, Landing::ofRecorded(
+                    Row::nstr($recorded, 'success'), Row::nstr($recorded, 'outcome'),
+                ), $orderNumber, 'Already processed');
             }
 
             // ── 4. amount ───────────────────────────────────────────────────────────────────
@@ -385,8 +398,9 @@ final class PaymentCallbackController
 
                 // 200, not 500: the provider must not retry into the same contention, and the money
                 // is now on record with a finding against it. A 500 here is how a provider's retry
-                // storm turns one deadlock into ten.
-                return response()->json(['message' => 'Recorded for reconciliation'], 200);
+                // storm turns one deadlock into ten. The shopper is told the payment is being
+                // confirmed, which is the truth of a finding.
+                return self::land($request, $storefrontId, Landing::PENDING, $orderNumber, 'Recorded for reconciliation');
             }
 
             /*
@@ -410,17 +424,18 @@ final class PaymentCallbackController
                     'reported_minor' => $verdict->amountMinor,
                     'transaction' => $verdict->providerTransactionId,
                 ]);
-
-                return self::done($request, false);
             }
 
-            return self::done($request, $verdict->isSuccess);
+            // What the POLICY decided, not what the provider claimed: a success on an amount that
+            // disagrees, or on an order already in a terminal state, is a finding -- `pending` to
+            // the shopper -- never `paid`.
+            return self::land($request, $storefrontId, Landing::of($decision, $outcome), $orderNumber);
         } catch (Throwable $e) {
             // The message may quote the payload; the payload may quote the contract. Log the class
             // and the place, never the exception's own text next to payment context.
             Log::error('payment callback failed: '.$e::class.' at '.basename($e->getFile()).':'.$e->getLine(), $context);
 
-            return self::done($request, false);
+            return self::land($request, $storefrontId, Landing::FAILED, null, 'failed');
         }
     }
 
@@ -451,7 +466,7 @@ final class PaymentCallbackController
 
             if (is_numeric($bySigned)) {
                 $row = DB::table('orders')->where('id', (int) $bySigned)
-                    ->first(['id', 'storefront_id', 'total_price_for_order', 'status', 'payment_method']);
+                    ->first(['id', 'order_number', 'storefront_id', 'total_price_for_order', 'status', 'payment_method']);
                 if ($row !== null) {
                     return Row::cast($row);
                 }
@@ -471,7 +486,7 @@ final class PaymentCallbackController
         ]);
 
         $row = DB::table('orders')->where('order_number', $reference)
-            ->first(['id', 'storefront_id', 'total_price_for_order', 'status', 'payment_method']);
+            ->first(['id', 'order_number', 'storefront_id', 'total_price_for_order', 'status', 'payment_method']);
         if ($row !== null) {
             return Row::cast($row);
         }
@@ -481,7 +496,7 @@ final class PaymentCallbackController
         }
 
         $byId = DB::table('orders')->where('id', Coerce::int($reference))
-            ->first(['id', 'storefront_id', 'total_price_for_order', 'status', 'payment_method']);
+            ->first(['id', 'order_number', 'storefront_id', 'total_price_for_order', 'status', 'payment_method']);
 
         return $byId === null ? null : Row::cast($byId);
     }
@@ -562,9 +577,21 @@ final class PaymentCallbackController
      * far as a log line needs to be: enough to find the attempt in the provider's portal. Never the
      * `hmac`, never a secret, never the payload, never an amount.
      *
+     * ── What the CALLER gets (Landing, 2026-10-12) ───────────────────────────────────────────
+     *
+     * The provider's server (a POST) gets the JSON refusal and its status. A shopper's browser (a
+     * GET) is sent to the storefront's failed landing instead: a code fragment on a blank page told
+     * a customer nothing. `$landing` is the storefront the callback was SCOPED to -- passed, never
+     * derived from the request's host, so the landing cannot resolve through the default-storefront
+     * fallback. It is null for exactly one refusal, the unknown storefront in `handle()`, which
+     * stays a plain 404 for everyone: redirecting it would have to pick a shop from the host, and
+     * `StorefrontUrls::storefrontOf()` falls back to Watchizer when the host matches nothing -- the
+     * very fallback W6/W7 removes. Nobody legitimately lands on a storefront code that does not
+     * exist, so there is nobody to redirect.
+     *
      * @param  array<string, mixed>  $context
      */
-    private function fail(Request $request, int $status, string $why, array $context): JsonResponse
+    private function fail(Request $request, int $status, string $why, array $context, ?int $landing = null): JsonResponse|RedirectResponse
     {
         /** @var array<string, mixed> $payload */
         $payload = $request->all();
@@ -581,6 +608,12 @@ final class PaymentCallbackController
 
         Log::warning('payment callback refused: '.$why, $line);
         Log::channel('payments')->warning('payment callback refused: '.$why, $line);
+
+        if ($landing !== null && ! $request->isMethod('POST')) {
+            // No order number: before ownership is proven the reference is a claim, and after a
+            // failed ownership check it is another shop's order.
+            return redirect(StorefrontUrls::paymentLanding($landing, Landing::FAILED, null));
+        }
 
         return response()->json(['message' => $status === 404 ? 'Not found' : 'Forbidden'], $status);
     }
@@ -615,21 +648,31 @@ final class PaymentCallbackController
      * what a POST means, so this is one method rather than a second copy of the same three lines
      * (AGENTS §3: share the CODE, not the description).
      *
-     * ── What does NOT come through here, in either handler ──────────────────────────────────
+     * ── Now the WAVE-3 handler's answer only (Landing, 2026-10-12) ───────────────────────────
      *
-     * "Already processed" and "Recorded for reconciliation" are a plain JSON 200 on BOTH handlers,
-     * whatever the method. They are answers to the PROVIDER — "stop retrying, this is on record" —
-     * and a browser arriving on a replay is a rare case that has always seen that body. Routing
-     * them through here would have changed what a GET sees, which the compat harness compares byte
-     * for byte, for no gain: a 200 already tells the provider everything it needs.
+     * The premise this method was written on -- "a browser arriving on a replay is a rare case" --
+     * was false: the processed POST wins the race to the server almost every time, so the browser
+     * normally arrives on the idempotency branch, and it was being shown `Already processed` as
+     * raw JSON on a blank page (measured on the first successful live payment, 2026-10-12). The
+     * scoped handler (`process()`) therefore sends EVERY non-POST exit through {@see self::land()}:
+     * refusals, the replay, the deadlock record and the terminal branches all redirect a browser
+     * to the storefront's `/order-confirmation` with the order number and a status, and answer the
+     * provider with the JSON it always got.
      *
-     * `$message` is therefore unused today. It stays because the next caller with its own sentence
-     * should reach for it rather than for a second copy of the method rule.
+     * This method keeps the OLD landing -- the storefront root, `?payment_error=1` on failure, no
+     * order number -- because its only remaining caller is the wave-3 alias fall-through in
+     * {@see CheckoutCompatController::callbackPayment()}, which the developer chose to leave
+     * untouched (2026-10-12): it serves the alias only while Watchizer's Paymob contract is not
+     * live, and on production the contract is live, so the path is dead there. Its own early exits
+     * (`Invalid signature`, `Already processed`) still answer a browser with JSON for the same
+     * reason. The legacy app did the same; that is why the behaviour exists, not a justification.
+     *
+     * `$message` is the POST body's sentence; `null` gives the legacy `ok`/`failed`.
      */
     public static function done(Request $request, bool $ok, ?string $message = null): JsonResponse|RedirectResponse
     {
         if ($request->isMethod('POST')) {
-            return response()->json(['message' => $message ?? ($ok ? 'ok' : 'failed')], 200);
+            return self::providerAnswer($message ?? ($ok ? 'ok' : 'failed'));
         }
 
         // The shop the shopper paid ON (L5, 2026-09-26): the return GET arrives on that shop's
@@ -638,5 +681,29 @@ final class PaymentCallbackController
         $base = StorefrontUrls::paymentReturn(StorefrontUrls::storefrontOf($request));
 
         return redirect($ok ? $base : $base.'?payment_error=1');
+    }
+
+    /**
+     * The scoped handler's answer: the provider's server gets JSON 200 and stops retrying; the
+     * shopper's browser is sent to the storefront's landing with the order number and the status
+     * {@see Landing} decided. The storefront is the one the callback was SCOPED to, never derived
+     * from the request's host (no fallback to the default shop).
+     *
+     * @param  string  $status  one of the {@see Landing} constants
+     * @param  string|null  $message  the POST body's sentence; null gives `ok` for a paid landing and `failed` otherwise
+     */
+    public static function land(Request $request, int $storefrontId, string $status, ?string $orderNumber, ?string $message = null): JsonResponse|RedirectResponse
+    {
+        if ($request->isMethod('POST')) {
+            return self::providerAnswer($message ?? ($status === Landing::PAID ? 'ok' : 'failed'));
+        }
+
+        return redirect(StorefrontUrls::paymentLanding($storefrontId, $status, $orderNumber));
+    }
+
+    /** A 200 with one sentence: all a provider's server needs in order to stop retrying. */
+    private static function providerAnswer(string $message): JsonResponse
+    {
+        return response()->json(['message' => $message], 200);
     }
 }
