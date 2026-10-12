@@ -511,7 +511,11 @@ function Checkout() {
         // this line used to say the callback cleared it).
         //
         // The shopper comes back to /order-confirmation?order=…&status=paid|failed|pending,
-        // sent there by the payment callback (OrderConfirmation.jsx).
+        // sent there by the payment callback (OrderConfirmation.jsx). The CLIENT cart (this
+        // tab's sessionStorage) is deliberately NOT cleared here, unlike the cash path below:
+        // the landing clears it by outcome — paid and pending yes, failed no, because on a
+        // failure the kept cart is how the shopper retries (the Cart page rebuilds the server
+        // cart from it). See CardLanding in OrderConfirmation.jsx (2026-10-12).
         //
         // NO Purchase event here, deliberately. The shopper has been sent to a payment page,
         // not paid: firing Purchase at this line would count every abandoned and every declined
