@@ -114,11 +114,11 @@ const nextConfig = {
        *
        * `next/image` REFUSES any hostname not on this list, so without this entry every optimised
        * image 400s while the raw <img> tags keep working — a half-broken catalogue that reads as a
-       * CDN fault. `dash.watchizereg.com` stays until the rollback window has closed: reverting
-       * `.env.production` alone must be enough to put the storefront back.
+       * CDN fault. `dash.watchizereg.com` was kept here while the rollback window was open; the
+       * legacy host was switched off on 2026-09-29, deleted, and no longer resolves, so the entry
+       * went with it (2026-10-12, C3-delete code half).
        */
       { protocol: 'https', hostname: 'api.watchizereg.com' },
-      { protocol: 'https', hostname: 'dash.watchizereg.com' },
       ...(process.env.NODE_ENV === 'production'
         ? []
         : [
