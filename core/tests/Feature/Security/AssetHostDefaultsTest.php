@@ -53,6 +53,25 @@ function assetConfigUnder(string $file, array $absent): array
 
 const ASSET_HOST_VARIABLES = ['COMPAT_ASSET_BASE', 'STOREFRONT_ASSET_BASE', 'MEDIA_URL_BASE'];
 
+/*
+ * ── And the legacy host itself is out of every default (C3-delete code half, 2026-10-12) ────────
+ *
+ * The legacy app was switched off on 2026-09-29, deleted, and `dash.watchizereg.com` no longer
+ * resolves. Two defaults still named it: `compat.legacy_base` (the proxy's target — a host whose
+ * .env lost the variable would have proxied every legacy path to nothing and waited the timeout)
+ * and the CORS origin list. Both are read here with the variables absent, like the image hosts.
+ */
+
+it('defaults the legacy proxy base to EMPTY, and keeps the dead host out of the CORS origins', function () {
+    expect(assetConfigUnder('compat.php', ['COMPAT_LEGACY_BASE'])['legacy_base'])->toBe('');
+
+    $origins = assetConfigUnder('cors.php', ['FRONTEND_URL', 'CORS_EXTRA_ORIGINS'])['allowed_origins'];
+    expect($origins)->toBeArray();
+    foreach (is_array($origins) ? $origins : [] as $origin) {
+        expect(is_string($origin) && str_contains($origin, 'dash.watchizereg.com'))->toBeFalse('cors.php allowed_origins = '.var_export($origin, true));
+    }
+});
+
 it('defaults every image host to the API host when the .env does not set it', function () {
     expect(assetConfigUnder('compat.php', ASSET_HOST_VARIABLES)['asset_base'])->toBe('https://api.watchizereg.com')
         ->and(assetConfigUnder('storefront.php', ASSET_HOST_VARIABLES)['asset_base'])->toBe('https://api.watchizereg.com')

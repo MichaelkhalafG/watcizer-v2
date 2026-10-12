@@ -30,7 +30,12 @@ return [
     'asset_base' => (string) env('COMPAT_ASSET_BASE', 'https://api.watchizereg.com'),
 
     // Legacy application origin for the proxied paths (auth, offers, blogs, wishlist, cart …).
-    'legacy_base' => (string) env('COMPAT_LEGACY_BASE', 'https://dash.watchizereg.com'),
+    // The DEFAULT is EMPTY since 2026-10-12 (C3-delete code half): the legacy app was switched off
+    // on 2026-09-29, deleted, and its host no longer resolves, so a default naming it would have
+    // sent every proxied call to nothing and waited `proxy_timeout` seconds to say so. With no base
+    // the proxy answers 410 at once (`ProxyController`). Set it only for the local compat-diff
+    // harness, which boots the repo copy of the old app. AssetHostDefaultsTest holds the default.
+    'legacy_base' => (string) env('COMPAT_LEGACY_BASE', ''),
     'proxy_timeout' => 30,
 
     // The storefront the compat layer serves. Always Watchizer.

@@ -235,6 +235,16 @@ it('retires the never-called legacy paths with 410', function () {
     get('/api/categories/main')->assertStatus(410);
 });
 
+it('answers 410 at once, forwarding nothing, when there is no legacy base to proxy to', function () {
+    // The production state since 2026-10-12: the legacy app is gone and `compat.legacy_base` is
+    // empty by default. A proxied path must not attempt a connection to nowhere.
+    config(['compat.legacy_base' => '']);
+    Http::fake();
+
+    compat('all_offer')->assertStatus(410)->assertJsonPath('message', fn (string $m) => str_starts_with($m, 'Gone:'));
+    Http::assertNothingSent();
+});
+
 it('proxies every other /api path to the legacy host with the client address forwarded', function () {
     Http::fake(['legacy.test/*' => Http::response('[{"id":1}]', 200, ['Content-Type' => 'application/json', 'ETag' => '"abc"', 'X-Powered-By' => 'PHP'])]);
 
