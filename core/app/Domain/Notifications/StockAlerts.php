@@ -109,7 +109,7 @@ final class StockAlerts
      * What the e-mail needs, checked at SEND time. Null when there is nothing to send: the alert is
      * gone, or the product is out of stock again — then the shopper goes back to waiting.
      *
-     * @return array{email: string, locale: string, token: string, product: array{name: string, price: float, image: ?string, url: string}}|null
+     * @return array{email: string, locale: string, token: string, storefront_id: int, product: array{name: string, price: float, image: ?string, url: string}}|null
      */
     public function mailData(int $alertId): ?array
     {
@@ -131,6 +131,8 @@ final class StockAlerts
             'email' => Row::str($alert, 'email'),
             'locale' => Row::str($alert, 'locale'),
             'token' => Row::str($alert, 'token'),
+            // The "stop" link is built on THIS storefront's API host (W6, 2026-10-12), never a global one.
+            'storefront_id' => Row::int($alert, 'storefront_id'),
             'product' => $product,
         ];
     }

@@ -76,11 +76,16 @@ return [
         'tenant' => env('MICROSOFT_TENANT_ID', 'common'),
     ],
 
+    /*
+    | Paymob, the GLOBAL account — retired (A2, developer 2026-10-12). Payment credentials live per
+    | storefront in `storefront_payment_providers`; the wave-3 intention builder that read
+    | `secret_key`/`public_key`/`payment_methods` from here is deleted, so there is nothing left for
+    | a storefront without a contract to fall through to. Only `hmac_secret` remains, for the
+    | wave-3 callback handler the legacy alias falls through to while Watchizer's contract is not
+    | live (never, on production) — it refuses with an empty secret.
+    */
     'paymob' => [
-        'secret_key' => env('PAYMOB_SECRET_KEY'),
-        'public_key' => env('PAYMOB_PUBLIC_KEY'),
         'hmac_secret' => env('PAYMOB_HMAC_SECRET'),
-        'payment_methods' => array_values(array_filter(array_map('intval', explode(',', (string) env('PAYMOB_PAYMENT_METHODS', '4988969,4627487,3961568'))))),
     ],
 
     /*

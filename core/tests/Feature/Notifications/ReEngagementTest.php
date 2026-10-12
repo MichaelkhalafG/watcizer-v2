@@ -208,7 +208,7 @@ it('carries a working unsubscribe — a button, the one-click header — honoure
     $engine = app(ReEngagement::class);
     $plan = $engine->plan(1);
     $send = T::row(DB::table('core_reengagement_sends')->where('run_id', $plan['run_id'])->orderBy('id')->first());
-    $url = BulkMailer::unsubscribeUrl(T::int($send->id));
+    $url = BulkMailer::unsubscribeUrl(T::int($send->id), 1);
     $path = (string) parse_url($url, PHP_URL_PATH);
 
     $data = $engine->mailData(T::int($send->id));
@@ -353,13 +353,13 @@ it('writes the campaign e-mail, its subject, the team preview and the unsubscrib
     $sendId = T::int(DB::table('core_reengagement_sends')->where('run_id', $plan['run_id'])->value('id'));
     $data = $engine->mailData($sendId);
     expect($data)->not->toBeNull();
-    $mail = new ReEngagementMail($data ?? ['email' => '', 'storefront_id' => 1, 'products' => []], BulkMailer::unsubscribeUrl($sendId));
+    $mail = new ReEngagementMail($data ?? ['email' => '', 'storefront_id' => 1, 'products' => []], BulkMailer::unsubscribeUrl($sendId, 1));
     $html = $mail->render();
     $previewData = $engine->previewData(T::int($plan['run_id']));
     expect($previewData)->not->toBeNull();
     $preview = new ReEngagementPreviewMail($previewData ?? ['week' => '', 'audience' => 'team', 'recipients' => 0, 'send_after' => '', 'sample' => null], 'https://example.test/manage');
     $previewHtml = $preview->render();
-    $page = get((string) parse_url(BulkMailer::unsubscribeUrl($sendId), PHP_URL_PATH))->assertOk()->getContent();
+    $page = get((string) parse_url(BulkMailer::unsubscribeUrl($sendId, 1), PHP_URL_PATH))->assertOk()->getContent();
 
     $arabic = '/\p{Arabic}/u';
     expect(preg_match($arabic, $html))->toBe(0, 'the e-mail has Arabic in it')

@@ -2,6 +2,8 @@
 
 namespace App\Compat;
 
+use App\Storefront\StorefrontHasNoHost;
+use App\Storefront\StorefrontUrls;
 use App\Support\LegacySlug;
 use App\Transform\Row;
 use Illuminate\Support\Facades\DB;
@@ -18,12 +20,27 @@ final class CompatSitemap
         private readonly CompatNames $names,
         private readonly CompatCategories $categories,
         private readonly CompatProducts $products,
+        private readonly int $storefrontId,
     ) {}
+
+    /**
+     * Where this storefront's `<image:loc>` URLs point: its OWN API host (W7, 2026-10-12; it was one
+     * global host for both shops). A storefront with no host lists its pages WITHOUT images rather
+     * than naming another shop's.
+     */
+    public static function imageHost(int $storefrontId): ?string
+    {
+        try {
+            return StorefrontUrls::apiHost($storefrontId);
+        } catch (StorefrontHasNoHost) {
+            return null;
+        }
+    }
 
     public function xml(): string
     {
         $domain = config()->string('compat.sitemap_domain');
-        $imageHost = config()->string('compat.sitemap_image_host');
+        $imageHost = self::imageHost($this->storefrontId);
         $urls = [];
 
         foreach ([
@@ -53,7 +70,7 @@ final class CompatSitemap
             // `Product/` to a bare filename, which handed Google a 404 for every cover uploaded
             // after the cutover, on every crawl.
             $file = LegacyJson::legacyImage(Row::nstr($row, 'cover_path'), 'Product');
-            if ($file !== null && $file !== '') {
+            if ($imageHost !== null && $file !== null && $file !== '') {
                 $imgUrl = $imageHost.'/Uploads_Images/'.(str_contains($file, '/') ? $file : 'Product/'.$file);
                 $imageXml = '
         <image:image>

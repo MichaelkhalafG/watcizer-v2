@@ -20,7 +20,11 @@ use Tests\Support\T;
  *
  * So the rule under test is one sentence: **initiation and verification are live together, or
  * neither is.** `PaymentInitiator` asks the same question `PaymentCallbackController::aliasIsLive()`
- * asks, and answers null when it is not yet true so the caller keeps the proven wave-3 path.
+ * asks, and answers null when it is not yet true. What the caller does with that null CHANGED on
+ * 2026-10-12 (A2): it used to keep the proven wave-3 path — the global `PAYMOB_*` account — and now
+ * refuses the order, because that builder is deleted and `CheckoutMethods::refusal()` already
+ * refuses a card order on a storefront with no live online contract before anything is written.
+ * The three "does not take over" cases below still hold: null is the answer; a fallback is not.
  */
 
 beforeEach(function () {
@@ -42,8 +46,8 @@ function apiHost(): HttpRequest
 }
 
 it('does not take over while there is no contract at all', function () {
-    // The state of production right now: the payments tables are empty, and the checkout must keep
-    // using the wave-3 path rather than failing.
+    // No contract: null — and since 2026-10-12 the caller refuses the order on that null rather
+    // than falling back to a global account (NoFallbackTest). This file pins the null itself.
     $result = app(PaymentInitiator::class)->initiate(apiHost(), 1, 'ar', 'card', 1, 'WZ-1', 100.0, []);
 
     expect($result)->toBeNull();
@@ -124,7 +128,7 @@ it('REFUSES to start a payment from a host no provider could call back to', func
         1, 'ar', 'card', 1, 'WZ-1', 100.0, [],
     );
 
-    // A FAILURE, not a null: null means "not cut over, use the wave-3 path", which would send the
+    // A FAILURE, not a null: null means "no live contract" (and, since 2026-10-12, a refusal), which would send the
     // customer to Paymob through the very path this refusal exists to prevent.
     expect($result)->toBeInstanceOf(InitiationResult::class)
         ->and($result?->ok)->toBeFalse();

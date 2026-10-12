@@ -6,6 +6,7 @@ use App\Domain\Payment\Landing;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 /**
  * The addresses that belong to ONE storefront — where its shoppers land, and which host its images
@@ -17,17 +18,23 @@ use Illuminate\Support\Facades\DB;
  * Watchizer's image host. That is a broken second shop, so the values are now per storefront.
  *
  * Resolution, per value:
- *   1. `storefronts.settings.urls.{frontend|payment_return|asset_base}` when set — an explicit
- *      override, for a shop whose hosts do not follow the pattern below;
+ *   1. `storefronts.settings.urls.{frontend|payment_return|asset_base|api_host}` when set — an
+ *      explicit override, for a shop whose hosts do not follow the pattern below. No dashboard field
+ *      writes these yet: they are set by SQL when a storefront is created (backlog SF-URL-SETTINGS);
  *   2. for the DEFAULT storefront (`compat.storefront_id`, Watchizer), the `.env` values exactly as
  *      they were — `FRONTEND_URL`, `COMPAT_PAYMENT_RETURN_URL`, `STOREFRONT_ASSET_BASE` — so this
- *      change moves nothing for the live shop;
+ *      change moves nothing for the live shop (`api_host` has no env key: Watchizer's derives);
  *   3. otherwise derived from `storefronts.domain`: `https://{domain}`, `https://{domain}/` and
- *      `https://api.{domain}`, which is how the second shop is being set up.
+ *      `https://api.{domain}`, which is how the second shop is being set up;
+ *   4. a storefront with NEITHER a setting nor a domain gets {@see StorefrontHasNoHost}, never
+ *      another shop's value (A2 no-fallback rule, developer 2026-10-12). Until then it answered
+ *      Watchizer's URL as "the only non-broken answer left".
  *
- * The storefront of a REQUEST is its host's (StorefrontHost), falling back to the default one — the
- * same answer compat gives, so a payment return, a reset link and a sign-in landing can never
- * disagree with the shop that served the request.
+ * The storefront of a REQUEST is its host's (StorefrontHost). A host that names no storefront is
+ * refused with 404 in production — the same rule and the same local/testing exception as
+ * `StorefrontHost::serves()`, so the pin exists for the suite, `artisan serve` and the harness only
+ * (2026-10-12; it used to fall back to the default shop, so a payment return, a reset link or a
+ * sign-in landing on an unmatched host would have been Watchizer's).
  */
 final class StorefrontUrls
 {
@@ -39,7 +46,7 @@ final class StorefrontUrls
         $row = self::row($storefrontId);
 
         return rtrim(self::setting($row, 'frontend')
-            ?? ($storefrontId === self::defaultId() ? config()->string('customers.storefront_url') : self::derived($row, '')), '/');
+            ?? ($storefrontId === self::defaultId() ? config()->string('customers.storefront_url') : self::derived($row, '', $storefrontId)), '/');
     }
 
     /** Where a shopper lands after paying by card (the provider's return GET). */
@@ -77,19 +84,45 @@ final class StorefrontUrls
         return rtrim(self::paymentReturn($storefrontId), '/').'/order-confirmation?'.http_build_query($query);
     }
 
+    /**
+     * This storefront's own API host, no trailing slash — what its e-mails' "stop" and
+     * "unsubscribe" links point at and what its sitemap names images on (A2: W6/W7, 2026-10-12).
+     * `settings.urls.api_host`, else `https://api.{domain}`; no env key and no default shop: a
+     * storefront with neither throws {@see StorefrontHasNoHost}. Watchizer's derives to
+     * `https://api.watchizereg.com`, which is what the retired `STOCK_ALERTS_PUBLIC_URL` and
+     * `COMPAT_SITEMAP_IMAGE_HOST` keys held.
+     */
+    public static function apiHost(int $storefrontId): string
+    {
+        $row = self::row($storefrontId);
+
+        return rtrim(self::setting($row, 'api_host') ?? self::derived($row, 'api.', $storefrontId), '/');
+    }
+
     /** The host this storefront's v2 payloads name images on, no trailing slash. */
     public static function assetBase(int $storefrontId): string
     {
         $row = self::row($storefrontId);
 
         return rtrim(self::setting($row, 'asset_base')
-            ?? ($storefrontId === self::defaultId() ? config()->string('storefront.asset_base') : self::derived($row, 'api.')), '/');
+            ?? ($storefrontId === self::defaultId() ? config()->string('storefront.asset_base') : self::derived($row, 'api.', $storefrontId)), '/');
     }
 
-    /** The storefront a request belongs to: its host's, else the default one. */
+    /**
+     * The storefront a request belongs to: its host's. A host that names no storefront is a 404 in
+     * production; in local and testing it is the default one, as in `StorefrontHost::serves()`.
+     */
     public static function storefrontOf(Request $request): int
     {
-        return StorefrontHost::storefrontIdFor($request->getHost()) ?? self::defaultId();
+        $id = StorefrontHost::storefrontIdFor($request->getHost());
+        if ($id !== null) {
+            return $id;
+        }
+        if (app()->environment('local', 'testing')) {
+            return self::defaultId();
+        }
+
+        throw new NotFoundHttpException('Not Found');
     }
 
     private static function defaultId(): int
@@ -98,13 +131,18 @@ final class StorefrontUrls
     }
 
     /** @param array{domain: string, settings: array<string, mixed>}|null $row */
-    private static function derived(?array $row, string $prefix): string
+    private static function derived(?array $row, string $prefix, int $storefrontId = 0): string
     {
         $domain = $row['domain'] ?? '';
 
-        // A storefront with no domain cannot be addressed; the default one's value is the only
-        // non-broken answer left, and it is what every caller used before this existed.
-        return $domain === '' ? config()->string('customers.storefront_url') : 'https://'.$prefix.$domain;
+        // A storefront with no domain cannot be addressed. This used to answer the default shop's
+        // URL as "the only non-broken answer left" — which is a Brand Fashion link pointing at
+        // Watchizer. Nothing resolves to another shop (A2, 2026-10-12): the caller decides.
+        if ($domain === '') {
+            throw StorefrontHasNoHost::for($storefrontId);
+        }
+
+        return 'https://'.$prefix.$domain;
     }
 
     /** @param array{domain: string, settings: array<string, mixed>}|null $row */

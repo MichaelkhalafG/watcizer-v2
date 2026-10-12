@@ -4,6 +4,7 @@ namespace App\Compat;
 
 use App\Storefront\StorefrontHost;
 use Illuminate\Http\Request;
+use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 /**
  * Which storefront is this compat request for? (review 🔴-4)
@@ -40,11 +41,16 @@ use Illuminate\Http\Request;
  * it (`dash.watchizereg.com` → Watchizer, `api.brandfashionegy.com` → Brand Fashion). The longest
  * domain wins, so a storefront on a sub-domain of another's domain is still read correctly.
  *
- * **The prerequisite this carries:** the two storefronts must answer on DISTINCT hosts. While both
- * are served from one API host there is nothing in the request to tell them apart, the resolver
- * falls through to the configured pin, and the identity is a guess with a sensible default. That is
- * today's situation and today it is correct, because only Watchizer is live. `unresolved()` reports
- * it so the condition is visible rather than assumed.
+ * **The prerequisite this carries:** the two storefronts must answer on DISTINCT hosts. A host that
+ * names no storefront is REFUSED with 404 in production (A2 no-fallback rule, developer
+ * 2026-10-12) — the same rule and the same local/testing exception as `StorefrontHost::serves()`,
+ * so the configured pin exists for the suite, `artisan serve` and the compat harness (which calls
+ * `127.0.0.1`) only. It used to fall through to the pin everywhere, which was a guess with a
+ * sensible default while only Watchizer was live and a silent misattribution — orders, methods,
+ * the payment contract, all Watchizer's — the moment a second shop's host was routed here without
+ * its row matching (backlog BF-HOST-STEP-D). In production an unknown host does not reach PHP at
+ * all (the CDN and the Apache default arm refuse it), so this is the second lock. `unresolved()`
+ * still reports a pinned request where the pin applies.
  */
 final class CompatStorefront
 {
@@ -77,18 +83,18 @@ final class CompatStorefront
 
         $match = StorefrontHost::storefrontIdFor($this->request->getHost());
         $this->matched = $match !== null;
+        if ($match === null && ! app()->environment('local', 'testing')) {
+            throw new NotFoundHttpException('Not Found');
+        }
         $this->resolved = $match ?? config()->integer('compat.storefront_id');
 
         return $this->resolved;
     }
 
     /**
-     * True when the host named no storefront and the configured pin was used instead.
-     *
-     * Not an error today: the harness calls `127.0.0.1`, a health check calls whatever the load
-     * balancer uses, and both are meant to answer as the default storefront. It matters when a
-     * SECOND storefront goes live, because from that moment an unattributed request is an order,
-     * a promotion and a stock movement recorded against the wrong shop.
+     * True when the host named no storefront and the configured pin was used instead — which, since
+     * 2026-10-12, can only happen in local and testing: in production such a request is a 404 before
+     * this is ever asked. The harness calls `127.0.0.1` and is meant to answer as the default shop.
      */
     public function unresolved(): bool
     {

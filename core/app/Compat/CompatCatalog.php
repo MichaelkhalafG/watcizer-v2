@@ -173,8 +173,12 @@ final class CompatCatalog
         }
         $rows = $query->get();
         $ids = [];
+        $families = [];
         foreach ($rows as $row) {
             $ids[] = Row::int($row, 'id');
+            // Already on the selected row (`p.family`); carried onto the per-id rows below (cards)
+            // without a second query — the warm budget test holds the per-product reads to one.
+            $families[Row::int($row, 'id')] = Row::nstr($row, 'family');
         }
         $translations = $this->products->translations($ids);
         $pivots = $this->products->pivots($ids);
@@ -225,6 +229,13 @@ final class CompatCatalog
             $r['dial_color'] = $this->relationRows('colors', $piv['dial'], $id, 'color_id', $appLocale);
             $r['band_color'] = $this->relationRows('colors', $piv['band'], $id, 'color_id', $appLocale);
             $r['translations'] = self::productTranslationRows($id, $tr);
+            if ($only !== null) {
+                // The CARD row only (spec §19-W1, A2 2026-10-12): the product's family (watch, bag,
+                // wallet, …), which the Brand Fashion storefront tints cards by. The whole-catalogue
+                // row (`$only === null`, parity and feeds) keeps the legacy shape untouched.
+                $family = $families[$id] ?? null;
+                $r['family'] = $family === '' ? null : $family;
+            }
             $out[] = $r;
         }
 

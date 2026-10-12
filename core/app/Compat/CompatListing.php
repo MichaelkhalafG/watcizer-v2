@@ -54,6 +54,13 @@ final class CompatListing
     /** How many products' full rows the warm-up holds at once when writing card entries (L8). */
     private const WARM_CHUNK = 500;
 
+    /**
+     * The SHAPE of a `compat_card` entry, in its cache key (spec §19-W1, A2, 2026-10-12). Bump it
+     * whenever the row gains or loses a field, or a warm cache keeps serving the old shape until its
+     * TTL. `f1`: `family` added to the row.
+     */
+    public const CARD_SHAPE = 'f1';
+
     /** `ListingClient`'s PRICE_MAX: a max at or above it means "no upper bound". */
     public const PRICE_MAX = 99999999;
 
@@ -156,7 +163,7 @@ final class CompatListing
             return ['products' => [], 'ratings' => [], 'images' => []];
         }
         $locale = config()->string('compat.pinned_locale');
-        $suffix = fn (int $id): string => "{$locale}:{$id}";
+        $suffix = fn (int $id): string => self::CARD_SHAPE.":{$locale}:{$id}";
         $cached = $this->cache->many($this->storefrontId, 'compat_card', array_map($suffix, $ids));
 
         /** @var array<int, array{row: array<string, mixed>, images: list<array<string, mixed>>}> $entries */
@@ -201,7 +208,10 @@ final class CompatListing
     }
 
     /**
-     * Rows and gallery images grouped into one `compat_card` entry per product.
+     * Rows and gallery images grouped into one `compat_card` entry per product. The row carries the
+     * product's `family` (watch, bag, wallet, …) since 2026-10-12 — `CompatCatalog::productRows()`
+     * puts it on the per-id row (spec §19-W1: the Brand Fashion storefront tints cards by family;
+     * Watchizer's ignores the key), which is why the cache key carries CARD_SHAPE.
      *
      * @param  list<array<string, mixed>>  $rows
      * @param  list<array<string, mixed>>  $images
@@ -611,7 +621,7 @@ final class CompatListing
         foreach (array_chunk($ids, self::WARM_CHUNK) as $chunk) {
             $store = [];
             foreach (self::cardEntries($this->catalog->productRows($locale, $chunk), $this->catalog->productImages($chunk)) as $id => $entry) {
-                $store["{$locale}:{$id}"] = $entry;
+                $store[self::CARD_SHAPE.":{$locale}:{$id}"] = $entry;
             }
             $this->cache->putMany($this->storefrontId, 'compat_card', $store, $ttl, $version);
         }

@@ -7,6 +7,8 @@ namespace App\Domain\Notifications;
 use App\Mail\ReEngagementMail;
 use App\Mail\ReEngagementPreviewMail;
 use App\Mail\StockAlertMail;
+use App\Storefront\StorefrontHasNoHost;
+use App\Storefront\StorefrontUrls;
 use App\Transform\Row;
 use Illuminate\Database\QueryException;
 use Illuminate\Mail\Mailable;
@@ -102,7 +104,21 @@ final class BulkMailer
         $kind = is_string($payload['kind'] ?? null) ? $payload['kind'] : '';
         $recipient = is_string($payload['recipient'] ?? null) ? $payload['recipient'] : '';
 
-        $mailable = $recipient === '' ? null : $this->mailable($kind, $payload);
+        try {
+            $mailable = $recipient === '' ? null : $this->mailable($kind, $payload);
+        } catch (StorefrontHasNoHost $e) {
+            /*
+             * No fallback (A2, developer 2026-10-12): the storefront this row belongs to has neither
+             * `settings.urls.api_host` nor a domain, so there is no host to put in its link. The row
+             * is PARKED with that reason — never sent carrying another shop's host.
+             */
+            DB::table('integration_outbox')->where('id', $id)->update([
+                'status' => OrderMailer::STATUS_PARKED, 'processed_at' => now(),
+                'last_error' => 'parked: '.$e->getMessage(),
+            ]);
+
+            return 'skipped';
+        }
         if ($mailable === null) {
             DB::table('integration_outbox')->where('id', $id)->update([
                 'status' => OrderMailer::STATUS_SKIPPED, 'processed_at' => now(),
@@ -134,11 +150,12 @@ final class BulkMailer
 
     /**
      * The re-engagement e-mail's unsubscribe link: the send's id and an HMAC of it (APP_KEY), so the
-     * link names no address and works on whichever host serves it.
+     * link names no address — on the STOREFRONT'S OWN API host (W6, 2026-10-12; it was one global
+     * host for both shops). Throws {@see StorefrontHasNoHost} when the storefront has none.
      */
-    public static function unsubscribeUrl(int $sendId): string
+    public static function unsubscribeUrl(int $sendId, int $storefrontId): string
     {
-        return config()->string('notifications.stock_alerts.public_url').'/unsubscribe/'.$sendId.'/'.self::unsubscribeSignature($sendId);
+        return StorefrontUrls::apiHost($storefrontId).'/unsubscribe/'.$sendId.'/'.self::unsubscribeSignature($sendId);
     }
 
     public static function unsubscribeSignature(int $sendId): string
@@ -152,13 +169,13 @@ final class BulkMailer
         if ($kind === StockAlerts::KIND) {
             $data = app(StockAlerts::class)->mailData(is_int($payload['alert_id'] ?? null) ? $payload['alert_id'] : 0);
 
-            return $data === null ? null : new StockAlertMail($data);
+            return $data === null ? null : new StockAlertMail($data, StorefrontUrls::apiHost($data['storefront_id']).'/stock-alerts/stop/'.$data['token']);
         }
         if ($kind === ReEngagement::KIND) {
             $sendId = is_int($payload['send_id'] ?? null) ? $payload['send_id'] : 0;
             $data = app(ReEngagement::class)->mailData($sendId);
 
-            return $data === null ? null : new ReEngagementMail($data, self::unsubscribeUrl($sendId));
+            return $data === null ? null : new ReEngagementMail($data, self::unsubscribeUrl($sendId, $data['storefront_id']));
         }
         if ($kind === ReEngagement::KIND.'_preview') {
             $runId = is_int($payload['run_id'] ?? null) ? $payload['run_id'] : 0;

@@ -4,6 +4,7 @@ use App\Compat\CompatServices;
 use App\Compat\CompatStorefront;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 use Tests\Support\T;
 
 /*
@@ -70,11 +71,26 @@ it('does NOT match a bare suffix — the impersonation case', function () {
         ->and(storefrontForHost($brandFashion.'.evil.example'))->toBe(config()->integer('compat.storefront_id'));
 });
 
-it('falls back to the configured pin for a host that names no storefront', function () {
-    // The harness calls 127.0.0.1 and health checks call whatever the load balancer uses. Both must
-    // keep answering as the default storefront rather than failing.
+it('keeps the configured pin for a host that names no storefront — in local and testing ONLY', function () {
+    /*
+     * The premise this test was written on — "health checks call whatever the load balancer uses,
+     * both must keep answering as the default storefront" — is withdrawn (A2, developer 2026-10-12).
+     * In production an unknown host never reaches PHP (the CDN and the Apache default arm refuse
+     * it), so the only request that could arrive unmatched is one somebody routed here deliberately
+     * whose storefront row does not match — and answering that as Watchizer is the silent
+     * misattribution BF-HOST-STEP-D describes. The pin now exists for the suite, `artisan serve` and
+     * the compat harness (which calls 127.0.0.1): the same exception `StorefrontHost::serves()` makes.
+     */
     expect(storefrontForHost('127.0.0.1'))->toBe(config()->integer('compat.storefront_id'))
         ->and(storefrontForHost('localhost'))->toBe(config()->integer('compat.storefront_id'));
+});
+
+it('REFUSES a host that names no storefront in production: 404, never the default shop', function () {
+    app()['env'] = 'production';
+
+    expect(fn () => storefrontForHost('127.0.0.1'))->toThrow(NotFoundHttpException::class)
+        ->and(fn () => storefrontForHost('bf.michaelkhalaf.com'))->toThrow(NotFoundHttpException::class)   // the step-D host before its row matches
+        ->and(storefrontForHost(T::str(DB::table('storefronts')->where('id', 2)->value('domain'))))->toBe(2);
 });
 
 it('REPORTS a request it could not attribute, instead of quietly defaulting', function () {

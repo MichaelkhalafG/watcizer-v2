@@ -1,8 +1,6 @@
 <?php
 
-use App\Compat\CompatCart;
 use App\Compat\CompatCheckout;
-use App\Domain\Inventory\InventoryService;
 use App\Domain\Payment\PaymentInitiator;
 use App\Models\Storefront\StorefrontPaymentProvider;
 use Illuminate\Http\Client\ConnectionException;
@@ -319,48 +317,10 @@ it('sends a buyer ONLY the public key, and writes no key, token or Authorization
         ->and(str_contains($log, 'cs_leak_probe'))->toBeFalse();
 });
 
-it('shows what the WAVE-3 fallback (no contract yet — production today) sends a buyer and the log when Paymob fails', function () {
-    DB::table('storefront_payment_providers')->where('storefront_id', 1)->delete();
-    config([
-        'services.paymob.secret_key' => LEAK_SECRET_A,
-        'services.paymob.public_key' => LEAK_PUBLIC_A,
-        'services.paymob.payment_methods' => [4001],
-    ]);
-
-    $logFile = storage_path('framework/testing/leak-evidence/08-log.log');
-    @unlink($logFile);
-    config(['logging.channels.leak3' => ['driver' => 'single', 'path' => $logFile, 'level' => 'debug']]);
-    Log::setDefaultDriver('leak3');
-
-    $script = [
-        // Refused, and the body quotes the token back: the worst case a provider can do.
-        fn () => Http::response(['detail' => 'Invalid token: Token '.LEAK_SECRET_A], 401),
-        fn () => throw new ConnectionException('cURL error 28: timed out'),
-    ];
-    Http::fake(['*/intention/' => function () use (&$script) {
-        $next = array_shift($script);
-
-        return $next === null ? Http::response([], 500) : $next();
-    }]);
-
-    $checkout = new CompatCheckout(new CompatCart(1), app(InventoryService::class), 1);
-    $refused = $checkout->createPaymobIntention(100.0, ['first_name' => 'A'], 94);
-
-    // What `add_order` does with a thrown exception, with argument capture ON as the worst case.
-    $previous = ini_set('zend.exception_ignore_args', '0');
-    try {
-        $checkout->createPaymobIntention(100.0, ['first_name' => 'A'], 95);
-    } catch (Throwable $e) {
-        Log::error($e);
-    } finally {
-        ini_set('zend.exception_ignore_args', $previous === false ? '1' : $previous);
-    }
-
-    $toBuyer = json_encode(['paymob_error' => $refused['error'] ?? null], JSON_UNESCAPED_SLASHES) ?: '';
-    $log = is_file($logFile) ? (string) file_get_contents($logFile) : '';
-    leakEvidence('08-wave3-fallback.txt', "TO BUYER (add_order's paymob_error): {$toBuyer}\n\nLOG (".strlen($log)." bytes):\n{$log}");
-
-    expect($log)->not->toBe('')
-        ->and(leakedFragments($log, leakSecrets()))->toBe([])
-        ->and(leakedFragments($toBuyer, leakSecrets()))->toBe([]);
-});
+/*
+ * There used to be a last case here: "what the WAVE-3 fallback (no contract yet) sends a buyer and
+ * the log when Paymob fails" — the global-key intention builder `CompatCheckout::createPaymobIntention()`
+ * refused with a body quoting the token back, and the case proved the token never reached the buyer or
+ * the log. The builder was DELETED on 2026-10-12 (A2, developer): a storefront with no live contract is
+ * refused before any write (NoFallbackTest), so there is no fallback left to leak through.
+ */

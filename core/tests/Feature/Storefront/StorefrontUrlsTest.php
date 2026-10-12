@@ -4,11 +4,13 @@ use App\Http\Controllers\Payment\PaymentCallbackController;
 use App\Mail\CustomerPasswordReset;
 use App\Storefront\ImageUrl;
 use App\Storefront\StorefrontCache;
+use App\Storefront\StorefrontHasNoHost;
 use App\Storefront\StorefrontUrls;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
+use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 use Tests\Support\Shopper;
 use Tests\Support\T;
 
@@ -140,4 +142,41 @@ it('adds the extra storefront origins to CORS, and nothing when the list is empt
     expect($with)->toContain('https://brandfashionegy.com', 'https://www.brandfashionegy.com')
         ->and($without)->not->toContain('')
         ->and(array_values(array_diff($with, $without)))->toBe(['https://brandfashionegy.com', 'https://www.brandfashionegy.com']);
+});
+
+/*
+ * ── A2 (developer, 2026-10-12): the storefront's own API host, and no fallback anywhere ────────
+ */
+
+it('derives each shop\'s API host from its domain, and takes settings.urls.api_host over it', function () {
+    $fashion = shopId('brandfashion');
+
+    expect(StorefrontUrls::apiHost(shopId('watchizer')))->toBe('https://api.watchizereg.com')   // what the retired env keys held
+        ->and(StorefrontUrls::apiHost($fashion))->toBe('https://api.brandfashionegy.com');
+
+    DB::table('storefronts')->where('id', $fashion)->update(['settings' => json_encode(['urls' => ['api_host' => 'https://api.shop.example/']])]);
+    app(StorefrontCache::class)->forgetStorefront($fashion, 'brandfashion');
+
+    expect(StorefrontUrls::apiHost($fashion))->toBe('https://api.shop.example');   // trailing slash dropped
+});
+
+it('gives a storefront with neither api_host nor domain NO host — never the default shop\'s', function () {
+    $fashion = shopId('brandfashion');
+    DB::table('storefronts')->where('id', $fashion)->update(['domain' => null, 'settings' => null]);
+    app(StorefrontCache::class)->forgetStorefront($fashion, 'brandfashion');
+
+    foreach (['apiHost', 'frontend', 'paymentReturn', 'assetBase'] as $method) {
+        expect(fn () => StorefrontUrls::$method($fashion))->toThrow(StorefrontHasNoHost::class, (string) $fashion);
+    }
+    expect(StorefrontUrls::frontend(shopId('watchizer')))->toBe('https://watchizereg.test');   // Watchizer's env value, untouched
+});
+
+it('refuses a request host that names no storefront in production, and pins it in testing', function () {
+    $unmatched = Request::create('https://bf.michaelkhalaf.com/api/pay/brandfashion/paymob/callback');
+
+    expect(StorefrontUrls::storefrontOf($unmatched))->toBe(shopId('watchizer'));   // testing: the suite's pin
+
+    app()['env'] = 'production';
+    expect(fn () => StorefrontUrls::storefrontOf($unmatched))->toThrow(NotFoundHttpException::class)
+        ->and(StorefrontUrls::storefrontOf(Request::create('https://api.brandfashionegy.com/x')))->toBe(shopId('brandfashion'));
 });

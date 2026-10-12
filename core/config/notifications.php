@@ -140,9 +140,10 @@ return [
     | after subscribing (developer's decisions, 2026-09-29).
     */
     'stock_alerts' => [
-        // Where the e-mail's "stop these e-mails" link points: the storefront's API host, which
-        // serves /stock-alerts/stop/{token} (on the .htaccess allow-list, runbook §4.1.1).
-        'public_url' => rtrim((string) env('STOCK_ALERTS_PUBLIC_URL', 'https://api.watchizereg.com'), '/'),
+        // The e-mail's "stop these e-mails" link points at the alert's OWN storefront's API host
+        // (`StorefrontUrls::apiHost()`, W6, 2026-10-12), which serves /stock-alerts/stop/{token}
+        // (on the .htaccess allow-list, runbook §4.1.1). `STOCK_ALERTS_PUBLIC_URL` is retired:
+        // one global host was Watchizer's for both shops.
         'per_unit' => 5,
         'keep_notified_days' => 30,
         'keep_waiting_days' => 180,
