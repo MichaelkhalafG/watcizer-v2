@@ -837,6 +837,12 @@ taking payments.** After the flip it is not, and two things follow from it at on
 Neither is visible from outside. The shopper pays, the browser comes back, and the order sits
 `pending` with the money taken.
 
+> **2026-10-12.** The legacy app is gone (410 from 2026-09-29, deleted, host not resolving), and
+> production's `PAYMOB_*` keys are empty (verified 2026-10-11). So the fall-through described above
+> is no longer "correct while legacy takes payments" — it can only fail: initiation throws and the
+> order is cancelled (PAYMENT_MAP F1), and a callback reaching the wave-3 handler is refused at the
+> signature (U2). A2 removes both (backlog PAY-GENERIC). Until then the sentence above is history.
+
 ### 3A.2 The step
 
 Credentials are **write-only in the dashboard and encrypted at rest** (`encrypted:array` under
@@ -855,8 +861,17 @@ refuses `/manage` there):
    `public_key` and `hmac_secret` from the legacy `.env` (`PAYMOB_*`). The fields show PRESENCE only
    afterwards — no value and no part of one, not even a last-4 (`PaymobCredentialLeakTest`,
    2026-09-24; this line used to promise a last-4 the screen never had).
-2. Leave the contract **enabled**. Disabling it is the rollback — it puts the alias straight back
-   on the wave-3 path with no deploy.
+2. Leave the contract **enabled**. ~~Disabling it is the rollback — it puts the alias straight back
+   on the wave-3 path with no deploy.~~ **Corrected 2026-10-12: disabling the contract is NOT a
+   rollback, and there is no no-deploy rollback that keeps cards working.** With `PAYMOB_*` empty on
+   production (verified 2026-10-11), a disabled contract makes every card initiation throw — the
+   order is created and cancelled, the shopper gets the 422 — and every callback that does arrive is
+   refused at the signature. **The off switch that exists is: disable the card METHOD rows under the
+   contract and keep the contract enabled.** The method list goes empty, a posted method id is
+   refused before any write (`CheckoutMethods.php:110`), and a card order without an id is refused
+   because the Paymob contract is live (`:82-91`); re-enabling the rows brings cards back. Not yet
+   exercised on production — the exercise (quiet moment; empty list; 422 with the orders count
+   unchanged; rows back) is on the backlog (PAY-OFF-SWITCH).
 3. Confirm the **card** method under it carries its `integration_id` (done 2026-09-22 — this is the
    row §0 already lists, and it is NOT a credential).
 
@@ -1221,6 +1236,17 @@ flat GET and the signature, which must not move and do not.
 
 So the portal stays as it is, and becomes dead configuration once the legacy app is switched off.
 
+> **Observed, not inferred (developer, 2026-10-12).** The first successful live card payment ran at
+> 00:23 on integration **4988969**, whose portal callback fields still read
+> `https://dash.watchizereg.com/api/callback_payment` at that moment — a host that no longer
+> resolves. The callback arrived at `api.watchizereg.com` regardless: **the per-intention URL wins
+> over whatever the portal holds**, exactly as the first row of the table says. Afterwards the
+> developer corrected five of the six live integrations' portal callbacks (card, wallet,
+> instalments, Apple Pay, kiosk) to the scoped route as hygiene; valU was left alone because its value
+> was a live Paymob endpoint rather than the dead host, for a reason not yet known. **The dead
+> portal values were never the cause of anything.** The cause of the eighteen-day card outage was the
+> stored `hmac_secret` not matching the one Paymob signs with (backlog PAY-OUTAGE).
+
 ### 4A.4 A card payment started on the LEGACY host and completed after the flip
 
 This is a real sequence, not a hypothetical: a shopper reaches Paymob at 22:58, the storefront is
@@ -1547,7 +1573,13 @@ that must work.
 
 ## 9. Rollback
 
-Nothing here is irreversible while the legacy host is up. Rollback is **one file**.
+> **There is no rollback target any more (2026-10-12).** The legacy site was deleted with C3-delete
+> (earliest date 2026-10-06) and `dash.watchizereg.com` no longer resolves, from the server or from
+> outside. §9.1–9.3 are kept as the record of what the rollback was while the window was open. A
+> problem on the new system is fixed forward.
+
+Nothing here was irreversible while the legacy host was up. Rollback was **one file** — see the
+note under §9.1 for why even that stopped being true on the night.
 
 ### 9.1 Put the storefront back — EDIT THREE LINES AND PUSH
 
@@ -1613,6 +1645,8 @@ grep -E 'API_BASE|LARAVEL_ORIGIN|ASSET_BASE' Frontend-next/.env.production
 ```
 
 ### 9.1A The rollback target is NOT patched — decided, with the risk stated
+
+> **Closed 2026-10-12:** the target no longer exists (see §9). Kept as the record of the decision.
 
 Rolling back puts the storefront back on the legacy app at `dash.watchizereg.com`, and that app is
 running its **current** code. The security audit (2026-09-23) found two defects in it; both are

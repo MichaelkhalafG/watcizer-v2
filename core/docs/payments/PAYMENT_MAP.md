@@ -74,16 +74,16 @@ Paths are relative to the repo root. `CCC` = `core/app/Http/Controllers/Compat/C
 | 21 | Callback URL = `contract.settings.callback_base` or the request's own scheme+host, https only, no IP/.local/.test; else initiation refused | `PaymentInitiator.php:114`; `D/P/CallbackDestination.php:96-101`, `:113-137` | read |
 | 22 | Amount in minor units, rounded once | `PaymentInitiator.php:141` | read |
 | 23 | `PaymobProvider::initiate`: needs `secret_key`, `public_key`, an integration id; POSTs the intention (30 s timeout) with `special_reference` = **order number**, both callback URLs, `expiration` only if configured | `D/P/PaymobProvider.php:87-187` (`:110`, `:140`, `:157-160`, `:164`) | read |
-| 24 | Success → unified-checkout URL; failure → status-only reason. **The provider's reference (`id`) is returned and then dropped** — nothing stores it | `PaymobProvider.php:178-186`; `CCC:842-860` uses only `checkoutUrl` / `failureReason` | read |
+| 24 | Success → unified-checkout URL; failure → status-only reason. **The provider's reference (`id`) is returned and then dropped** — nothing stores it. *Decided 2026-10-12 (not built): store Paymob's ORDER id at initiation, not the intention id — see §14* | `PaymobProvider.php:178-186`; `CCC:842-860` uses only `checkoutUrl` / `failureReason` | read |
 | 25 | Refused by provider → cancel + release, 422 `Payment session failed` + `paymob_error` | `CCC:851-861`, `cancelAndRelease` `CCC:891-895` | read |
 | 26 | Browser: `window.location.href = redirect_url` | `Checkout.jsx:513-514` | read |
 | 27 | Shopper pays on Paymob | external | — |
 | 28 | Paymob calls back twice: POST (`notification_url`, server-to-server, nested `obj.*`) and GET (`redirection_url`, browser, flattened) — same URL | `CallbackDestination.php:58,76`; route `core/routes/api.php:270-283` | read |
 | 29 | Callback checks 1–4 + idempotency + decision (detail in §7) | `PCC:154-242` | read |
-| 30 | One transaction: insert `payment_statuses` attempt; finding if any; **PAY** → `status='processing'`, `paid_via_provider`, `paid_via_method`, queue customer+admin mail, queue Meta Purchase; **CANCEL** → `status='cancelled'`, release stock | `PCC:292-343` (`:294`, `:316-337`, `:338-342`) | read |
+| 30 | One transaction: insert `payment_statuses` attempt; finding if any; **PAY** → `status='processing'`, `paid_via_provider`, `paid_via_method`, queue customer+admin mail, queue Meta Purchase; **CANCEL** → `status='cancelled'`, release stock, **queue the recovery e-mail with `reason=declined` (2026-10-12, same gate and dedupe as the expiry)** | `PCC:292-343` (`:294`, `:316-337`, `:338-342`); the decline mail in the cancel branch | read |
 | 31 | After commit: send mail, send Meta (failures retried by crons) | `PCC:401-403` | read |
-| 32 | Answer: POST → JSON 200; GET → redirect to the storefront's payment-return URL, `?payment_error=1` when not paid | `PCC:593-605`; `core/app/Storefront/StorefrontUrls.php:45-51` | read |
-| 33 | Storefront root: **nothing reads `payment_error`** — a failed payment lands on the home page with no message | only a comment mentions it: `Frontend-next/src/scripts/pixels.js:23`; no other match in `src/` or `app/` | read (grep) |
+| 32 | Answer: POST → JSON 200 (`ok` / `failed` / `Already processed` / `Recorded for reconciliation`); GET → **redirect to `<return base>/order-confirmation?order=<number>&status=paid\|failed\|pending`** on the storefront the callback was SCOPED to, the status from the policy's verdict (`Landing::of`), the replay from the recorded attempt (`Landing::ofRecorded`). Every non-POST exit, refusals included (no number on a refusal); the unknown-storefront 404 is the one exit that stays JSON for a browser (no host fallback). *(2026-10-12, `a0dda59`; before: the site root, `?payment_error=1` when not paid, and raw JSON on the replay and every refusal)* | `PaymentCallbackController::land()`; `Landing.php`; `StorefrontUrls::paymentLanding()` | read |
+| 33 | Storefront: `/order-confirmation` reads `order` and `status` from the query when its store is empty and renders one of three states in both languages — a confirmation MESSAGE, not a receipt (fetches nothing, verifies nothing, fires no Purchase). *(2026-10-12, `932a2d1`; before: nothing read `payment_error`, a failed payment landed on the home page with no message)* | `Frontend-next/src/PageViews/Checkout/OrderConfirmation.jsx` (`CardLanding`); `app/(main)/order-confirmation/page.jsx` | read |
 
 ---
 
@@ -173,7 +173,7 @@ Paths are relative to the repo root. `CCC` = `core/app/Http/Controllers/Compat/C
 | 2 | HMAC-SHA512 over Paymob's 20 fields with THIS contract's `hmac_secret` (`PaymobProvider.php:197-221`) | 403 | nothing |
 | 3 | Order: by the SIGNED `order` field via a previous attempt's `pay_order_id`, else the unsigned reference as `order_number`, else as id (`PCC:434`) | 404 "names no order" | nothing |
 | 4 | Ownership: order's storefront = route's, or NULL and route = 1 (`PCC:196-213`) | 403 | nothing |
-| 5 | Idempotency: (provider, `pay_transaction_id`) already recorded (`PCC:219-223`); the UNIQUE index backs it under a race | 200 "Already processed" | nothing |
+| 5 | Idempotency: (provider, `pay_transaction_id`) already recorded (`PCC:219-223`); the UNIQUE index backs it under a race | POST: 200 "Already processed"; GET: the landing, with what the RECORD says (2026-10-12) | nothing |
 | 6 | Amount: provider minor units == `round(order total × 100)` exactly (`PCC:225-227`) | attempt recorded `success=false`, finding `amount_mismatch`, order untouched (`CallbackPolicy.php:138-140`) | attempt + finding |
 | 7 | Outcome from Paymob flags: pending > refunded > voided > success/failed (`CallbackPolicy.php:110-127`) | — | — |
 | 8 | Decision table (`CallbackPolicy.php:134-172`) | see below | attempt always |
@@ -199,12 +199,13 @@ Paths are relative to the repo root. `CCC` = `core/app/Http/Controllers/Compat/C
 | Timeout where Paymob DID create the intention | same as above; the shopper never got the URL, so cannot pay it | `cancelled` | — | inferred |
 | No live contract (or a shop without one) posting card | Watchizer: method not offered; posted with id → 422 "not available, nothing charged" before any write (`CheckoutMethods.php:110`). Without id (F3) → order created then 422 "Payment could not be initiated" (`CCC:885`) | with id: none; without id: `cancelled` | immediate | read |
 | Shopper abandons Paymob's page | lands nowhere (stays on Paymob) | `pending` | `orders:expire-unpaid` after 60 min → `cancelled`, stock back, recovery e-mail to customer + admin copy unless they re-ordered (`UnpaidOrders.php:109-147`) | read |
-| Shopper pays, closes the tab, processed callback lost | nothing | `pending` → **cancelled by expiry after 60 min although paid**; recovery e-mail sent; **no finding** unless a callback arrives later. `resolveStatus()` exists but no code calls it (`PaymobProvider.php:270`; `D/P/PaymentProvider.php:73-75` "not called by any wave-4C path") | nobody — a paid, cancelled order with no record | inferred from read |
-| Declined card | redirected to the shop root with `?payment_error=1`, which nothing reads (§2 hop 33) | `cancelled`, stock released | callback | read |
+| Shopper pays, closes the tab, processed callback lost | nothing | `pending` → **cancelled by expiry after 60 min although paid**; recovery e-mail sent; **no finding** unless a callback arrives later. `resolveStatus()` exists but no code calls it (`PaymobProvider.php:270`; `D/P/PaymentProvider.php:73-75` "not called by any wave-4C path") | nobody — a paid, cancelled order with no record. *Decided 2026-10-12, not built (§14): record the provider's order id at initiation, reconcile by ORDER inquiry before expiry with a per-run cap, settle automatically on Paid* | inferred from read |
+| Declined card | `/order-confirmation?order=…&status=failed` — "payment not completed, the order is not confirmed; if your card was charged, contact us" — and the recovery e-mail with `reason=declined` (customer + admin copy), unless the weekly gate or a later order silences it (2026-10-12; before: the shop root with an unread `?payment_error=1`, no e-mail) | `cancelled`, stock released | callback | read |
 | Two tabs, both submitted | second `add_order` supersedes (cancels) the first tab's unpaid order (`CCC:218`); paying in the first tab afterwards → TERMINAL finding, money taken | first `cancelled`, second `pending` | human, via the finding | inferred |
 | Double-click submit | client guard `submitting.current` (`Checkout.jsx:461-462`); server throttle `add-order` | one order (client) | — | read |
-| Amount mismatch | redirected with `payment_error=1` | untouched (`pending`, stock reserved) — then **expiry cancels it** after 60 min unless a success attempt exists (`UnpaidOrders.php:162-166` excludes only successful attempts) | finding `amount_mismatch` + expiry | inferred |
-| Callback for another shop's order | 403, nothing written | untouched | — | read |
+| Amount mismatch | `/order-confirmation?order=…&status=pending` — "being confirmed", because the policy's finding means a human looks (2026-10-12; before: `payment_error=1`) | untouched (`pending`, stock reserved) — then **expiry cancels it** after 60 min unless a success attempt exists (`UnpaidOrders.php:162-166` excludes only successful attempts) | finding `amount_mismatch` + expiry | inferred |
+| Callback for another shop's order | POST: 403, nothing written; GET: redirect to the refusing storefront's `status=failed` landing with no order number (2026-10-12) | untouched | — | read |
+| Refused callback, any check (bad signature, no contract, unknown order, foreign order) | as above; **and one line in `storage/logs/payments-YYYY-MM-DD.log`** naming the check, storefront, provider, HTTP method and the claimed integration id and merchant order id — a channel whose level is never read from `LOG_LEVEL` (2026-10-12, `41e5a58`; before: a `warning` on the default channel that production's `LOG_LEVEL=error` dropped) | untouched | the operator, from the log | read |
 
 ---
 
@@ -239,6 +240,14 @@ Paths are relative to the repo root. `CCC` = `core/app/Http/Controllers/Compat/C
 | `CLEAN_CORE_STUDY.md` §3.9.1 (`:2059-2060`) | `APP_KEY` rotation "needs a re-encrypt command written before it is ever attempted" | `APP_PREVIOUS_KEYS` is wired (`core/config/app.php:102-104`), which lets old ciphertext still decrypt after a rotation — no re-encrypt needed to keep working | read (framework behaviour inferred, not run) |
 | `core/.env.example:151-152` | "Unset means the card branch answers the legacy 'payment could not be initiated' 422" | true for a shop with no live contract; but the file still lists the three keys as things to set | read |
 
+**Status 2026-10-12 — corrected in the documentation pass, by file:** runbook `:858-859` (§3A.2 step 2 rewritten:
+no no-deploy rollback; the off switch is the method rows) and `:823` (§3A.1 note); `core/routes/api.php:289-292`
+(comment); `AGENTS.md:39` (credentials; the wave-3 state retired); study §3.9.4 (marked NOT BUILT, with the
+order-id decision), §3.9.6 (as built), §3.9.1 (`APP_PREVIOUS_KEYS`); `manage.php:1820` (card line rewritten —
+core charges the stored discounted total, so the amounts agree and the customer is charged less than the
+figure shown, like COD); `Checkout.jsx:507` (corrected in `932a2d1`: the cart is destroyed at order placement);
+backlog PAY-GENERIC (the clause); `.env.example` (the three `PAYMOB_*` keys and the pixel default removed).
+
 ---
 
 ## 11. My earlier statements today — confirmed or corrected
@@ -252,7 +261,7 @@ Paths are relative to the repo root. `CCC` = `core/app/Http/Controllers/Compat/C
 | "The schema already has the provider dimension; the winner is enabled + lowest sort" | Confirmed (`MethodList.php:46-66,202-215`). |
 | "The HMAC secret is a credential field of the contract, entered on the dashboard" | Confirmed (`PaymobProvider.php:77`, `PaymentSettingsController.php:473-499`). |
 | "The allow-list line covers every provider's callback" | Confirmed for the path shape (`core/routes/api.php:283`; runbook `:1016`). |
-| "The rollback works only if (a) keys set and (b) portal URL points at core" | (a) is false → **the rollback is dead today**, independent of (b). |
+| "The rollback works only if (a) keys set and (b) portal URL points at core" | (a) is false → **the rollback is dead today**, independent of (b). And (b) never mattered for core's own intentions: **observed 2026-10-12** — the test payment on integration 4988969 reached the api host while the portal still named the dead `dash` host (runbook §4A.3). |
 | "The NULL-counts-as-Watchizer rule on orders may cover an impossible case" | **Refuted** by the measurement: 9 orders. |
 | "Remove the `META_CAPI_PIXEL_ID` default; empty = send nothing" | **Unsafe as stated** — production relies on the default (§0). Set the key first, verify, then remove the default. |
 | Not said before, found now | F5 (unmatched host → Watchizer), §2 hop 33 (`payment_error` unread), §8 paid-then-expired with no finding, §2 hop 24 (provider reference discarded). |
@@ -302,8 +311,24 @@ the developer before W3 is built, not a code finding.
   that exists today is **disable the card METHOD rows, keep the contract enabled**: the list goes empty
   (`CheckoutMethods.php:125-160`), a posted id is refused before any write (`:110`), a no-id card order is
   refused because the Paymob contract is live (`:82-91`). Disabling the CONTRACT instead creates and cancels an
-  order per attempt (F1/F2). Inferred from read, not run.
+  order per attempt (F1/F2). Inferred from read, not run — **the exercise is on the backlog (PAY-OFF-SWITCH); the
+  runbook's §3A.2 step 2 was rewritten to this on 2026-10-12.**
 - **Storefront fallback option:** F3's only good path is Watchizer's; on any shop without a contract it produces
   a cancelled order and a 422 per click.
 - **C10:** unchanged by this map; the harness inserter (backlog C10-SHAPE) still stands.
 - **The nine orders:** F7 and F8 both act on them; they are the only reason the NULL rule exists.
+
+---
+
+## 14. After this map — 2026-10-12 (developer's measurements; built, awaiting one deploy)
+
+| What | Fact | Tag |
+|---|---|---|
+| **The outage** | Card payments never completed on the new storefront from the 2026-09-23 flip: `payment_statuses` had **zero rows, ever**; 17 card orders, all cancelled. A live payment proved why: Paymob approved it, delivered the callback to the scoped route, **core answered 403** — the stored `hmac_secret` was not the one Paymob signs with (recomputed over the 20 fields: a different digest). Fixed by the developer 2026-10-12 12:48; verified on order `000027`: `processing`, `provider=paymob`, `method=card`, attempts 1, findings 0 — hop 30 exactly. | verified (developer) |
+| **Why unnoticed** | `fail()` always wrote a `warning`; production has run `LOG_LEVEL=error` since 2026-09-28. A level filter plus two missing fields — not an absent trace. The 2026-09-26/27/28 log grep returned 0, which is a NULL result (only the 26th's file exists, last written before that day's orders). | verified (developer) + read |
+| **Portal vs intention** | The test payment on integration 4988969 reached `api.watchizereg.com` while the portal still said `dash.watchizereg.com`: the per-intention URL wins — §4A.3's first row, now observed. Portal values corrected as hygiene (five of six; valU left). | verified (developer) |
+| **Built: trace** (`41e5a58`) | `payments` daily log channel, level a literal, refusal line with check / storefront / provider / method / claimed ids; test pins independence from `LOG_LEVEL`. | verified (tests) |
+| **Built: landing** (`a0dda59`, `932a2d1`) | Every non-POST exit → `/order-confirmation?order=…&status=paid\|failed\|pending`, status from the policy; the storefront renders three states in both languages. Option A: a message, not a receipt. Unknown storefront stays 404. | verified (tests, lint) |
+| **Built: decline e-mail** (`a1d6b97`) | The cancel branch sends the recovery e-mail with `reason=declined`; admin copy says declined. Queue-time decision, accepted and pinned. | verified (tests) |
+| **Decided, not built** | Store Paymob's ORDER id at initiation (not the intention id — `resolveStatus()` and `initiate()` are different identifier spaces); reconcile by order inquiry before expiry, per-run cap; settle automatically on Paid via a shared settlement service; failed bookkeeping insert → log and continue. C10 → `NOT NULL DEFAULT 1` with a test on the one production inserter. Mail: option A (database mailbox rows, Watchizer's too, recipients per storefront), 800/200 per mailbox, alert at ~200. | decisions (developer) |
+| **Open** | Provider-pending outcome lands `status=pending` with no finding (backlog PAY-PENDING-NOFINDING). Browser Purchase on the card landing is its own decision (PAY-PURCHASE-BROWSER). The off switch is not yet exercised (PAY-OFF-SWITCH). | — |
