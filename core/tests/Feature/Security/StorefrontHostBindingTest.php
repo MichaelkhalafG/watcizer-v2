@@ -8,6 +8,7 @@ use Tests\Support\PaymentFixture;
 use Tests\Support\T;
 
 use function Pest\Laravel\get;
+use function Pest\Laravel\postJson;
 
 /*
  * ── A storefront's API host serves that storefront and no other (brand separation, 2026-09-26) ──
@@ -58,8 +59,13 @@ it('answers another shop\'s payment callback exactly like an unknown shop', func
     expect(answer($crossed))->toBe([404, '{"message":"Not found"}'])
         ->and(answer($crossed))->toBe(answer($unknown))
         // …while its OWN host still reaches the signature check (refused: the probe is unsigned).
-        ->and(get('https://api.watchizereg.com/api/pay/watchizer/paymob/callback?hmac=probe')->getStatusCode())->toBe(403)
-        ->and(get('https://api.brandfashionegy.com/api/pay/brandfashion/paymob/callback?hmac=probe')->getStatusCode())->toBe(403);
+        // Since 2026-10-12 a BROWSER's refusal is a redirect to that shop's failed landing (Landing),
+        // so the GET answers 302 and the provider's POST keeps the 403. The crossed and unknown
+        // cases above stay a plain 404 for both, which is the property this file exists for.
+        ->and(get('https://api.watchizereg.com/api/pay/watchizer/paymob/callback?hmac=probe')->getStatusCode())->toBe(302)
+        ->and(get('https://api.brandfashionegy.com/api/pay/brandfashion/paymob/callback?hmac=probe')->getStatusCode())->toBe(302)
+        ->and(postJson('https://api.watchizereg.com/api/pay/watchizer/paymob/callback?hmac=probe')->getStatusCode())->toBe(403)
+        ->and(postJson('https://api.brandfashionegy.com/api/pay/brandfashion/paymob/callback?hmac=probe')->getStatusCode())->toBe(403);
 });
 
 it('refuses a host that belongs to no storefront outside local and testing', function () {
