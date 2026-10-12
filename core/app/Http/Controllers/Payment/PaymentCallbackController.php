@@ -9,6 +9,7 @@ use App\Domain\Analytics\MetaConversions;
 use App\Domain\Inventory\Actor;
 use App\Domain\Inventory\InventoryService;
 use App\Domain\Notifications\OrderMailer;
+use App\Domain\Orders\OrderRecovery;
 use App\Domain\Payment\CallbackPolicy;
 use App\Domain\Payment\CallbackVerdict;
 use App\Domain\Payment\Landing;
@@ -354,6 +355,27 @@ final class PaymentCallbackController
                         // The ONE door for stock, even here (D-21): a failed payment returns the
                         // units it reserved, through the service, ledgered, exactly once.
                         $this->inventory->releaseOrder($orderId, 'payment_failed', Actor::system(), $storefrontId);
+
+                        /*
+                         * The decline e-mail (developer, 2026-10-12): the SAME recovery e-mail an
+                         * expiry sends (`UnpaidOrders::cancel`), with the reason set so the admins'
+                         * copy says "declined" rather than "didn't pay". Until now a shopper who
+                         * abandoned checkout was e-mailed an hour later and a shopper who tried and
+                         * was declined was told nothing — the one who got further was told less.
+                         * Same gate as the expiry (one per shopper per week, never after they
+                         * ordered again), same dedupe (once per order, whichever reason comes
+                         * first), flushed after this transaction commits like the paid branch.
+                         *
+                         * Decided HERE, when the callback lands, and sent seconds later: nothing
+                         * re-checks the shopper at send time. So a shopper declined at 10:00 who
+                         * retries and pays at 10:02 still gets this e-mail beside their
+                         * confirmation; the recovery link is then refused as `reordered`. Accepted
+                         * (developer, 2026-10-12) rather than holding the row — DeclineRecoveryTest
+                         * pins the behaviour so nobody re-derives it.
+                         */
+                        if (OrderRecovery::shouldRemind($orderId)) {
+                            $mailIds = $this->mailer->paymentExpired($orderId, OrderMailer::REASON_DECLINED);
+                        }
                     }
                 });
             } catch (Throwable $e) {
@@ -404,14 +426,12 @@ final class PaymentCallbackController
             }
 
             /*
-             * Committed, so the payment is real -- now the e-mail. A relay failure here changes
-             * nothing about the payment or the order: the row stays pending and `mail:drain`
-             * retries it on the next minute's tick.
-             *
-             * Deliberately NOT sent on the ACT_CANCEL branch above: a failed payment cancels the
-             * order and returns its stock, and the legacy app sends no e-mail for that either.
-             * Whether a customer should be told their card was declined is a product decision,
-             * flagged rather than invented here.
+             * Committed, so the outcome is real -- now the e-mail: the order confirmation on the
+             * paid branch, the recovery e-mail on the cancel branch (2026-10-12; until then the
+             * cancel branch sent nothing, on the grounds that the legacy app did not either — an
+             * explanation, not a justification). A relay failure here changes nothing about the
+             * payment or the order: the row stays pending and `mail:drain` retries it on the next
+             * minute's tick.
              */
             $this->mailer->flush($mailIds);
             // Never fails the callback: a send Meta did not accept stays pending for `meta:drain`.

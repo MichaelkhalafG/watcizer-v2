@@ -6,8 +6,10 @@
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
     <title>Unpaid card order — Watchizer</title>
 </head>
-{{-- The admins' immediate copy of a card order that expired unpaid (2026-10-05): someone can call
-     the customer the same hour. Same layout and blocks as the new-order notification. --}}
+{{-- The admins' immediate copy of a card order cancelled unpaid (2026-10-05): someone can call the
+     customer the same hour. Same layout and blocks as the new-order notification. `$declined` (2026-10-12)
+     switches the title and the first sentence: "didn't pay" and "the card was declined" are different
+     calls to make, and the old copy told the caller the wrong story for a decline. --}}
 <body style="margin:0;padding:0;background:#f5f5f5;-webkit-text-size-adjust:100%;">
 <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:#f5f5f5;padding:28px 14px;font-family:'Segoe UI',Tahoma,Arial,sans-serif;">
 <tr><td align="center">
@@ -17,14 +19,22 @@
 
     <tr><td style="padding:28px 32px 8px;text-align:center;">
         <span style="display:inline-block;background:#C8A45C;color:#111;font-size:10px;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;padding:5px 14px;border-radius:20px;">Payment not completed</span>
-        <h1 style="margin:14px 0 0;font-size:22px;font-weight:600;color:#111;">⏱ A card order expired unpaid</h1>
+        <h1 style="margin:14px 0 0;font-size:22px;font-weight:600;color:#111;">@if($declined)💳 A card payment was declined @else⏱ A card order expired unpaid @endif</h1>
         <p style="margin:6px 0 0;font-size:13px;color:rgba(0,0,0,0.5);">#{{ $orderNumber }} &middot; placed {{ $createdAt }}</p>
         <p style="margin:12px 0 0;font-size:13px;color:#333;line-height:1.7;">
+            @if($declined)
+            The customer tried to pay and the card was declined. The order was cancelled and its stock returned.<br>
+            @else
             The customer reached the payment page and didn't pay. The order was cancelled and its stock returned.<br>
+            @endif
             They have been e-mailed a link that brings the order back (valid 7 days). A call now is the best chance to recover it.
         </p>
         <p dir="rtl" style="margin:10px 0 0;font-size:13px;color:#333;line-height:1.8;">
+            @if($declined)
+            حاول العميل الدفع ورُفضت البطاقة. أُلغي الطلب وعاد المخزون.<br>
+            @else
             وصل العميل إلى صفحة الدفع ولم يُكمل الدفع. أُلغي الطلب وعاد المخزون.<br>
+            @endif
             أُرسل إلى العميل رابط يعيد الطلب (صالح ٧ أيام). الاتصال الآن هو أفضل فرصة لاستعادته.
         </p>
     </td></tr>

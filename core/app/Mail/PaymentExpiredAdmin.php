@@ -7,9 +7,12 @@ namespace App\Mail;
 use Illuminate\Mail\Mailable;
 
 /**
- * The admins' copy of a card order that expired unpaid (2026-10-05, developer: "an immediate copy,
- * not a daily digest — a call the same hour is the strongest recovery we have"). Who the customer is, how to
- * reach them (tap-to-call and WhatsApp), what they ordered, and that they were e-mailed a recovery link.
+ * The admins' copy of a card order that was cancelled unpaid (2026-10-05, developer: "an immediate
+ * copy, not a daily digest — a call the same hour is the strongest recovery we have"). Who the
+ * customer is, how to reach them (tap-to-call and WhatsApp), what they ordered, and that they were
+ * e-mailed a recovery link. Since 2026-10-12 it also says WHY — `reason` in the data: the shopper
+ * never paid (`expired`) or tried and the card was declined (`declined`) — because the person
+ * making the call must not act on the wrong picture.
  */
 final class PaymentExpiredAdmin extends Mailable
 {
@@ -26,9 +29,12 @@ final class PaymentExpiredAdmin extends Mailable
         // Egyptian mobile → international for wa.me (01xxxxxxxxx → 201xxxxxxxxx).
         $international = str_starts_with($digits, '0') ? '2'.$digits : $digits;
 
+        $declined = ($this->data['reason'] ?? null) === 'declined';
+
         return $this
-            ->subject('⏱ لم يكتمل الدفع #'.$number.' — '.$name.' — '.number_format($total).' EGP')
+            ->subject(($declined ? '💳 رُفضت البطاقة #' : '⏱ لم يكتمل الدفع #').$number.' — '.$name.' — '.number_format($total).' EGP')
             ->view('emails.payment-expired-admin', $this->data + [
+                'declined' => $declined,
                 'telUrl' => $digits === '' ? null : 'tel:+'.$international,
                 'waUrl' => $digits === '' ? null : 'https://wa.me/'.$international,
             ]);
