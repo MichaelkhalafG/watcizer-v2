@@ -504,7 +504,14 @@ function Checkout() {
     try {
       const { data } = await http.post('/add_order', body)
       if (data?.success) {
-        // Online payment → hand off to Paymob (cart cleared by the callback).
+        // Online payment → hand off to Paymob. The cart is already gone: core destroys it inside
+        // the order transaction when `add_order` is accepted (CheckoutCompatController, before
+        // this response is even sent), so by the time the shopper reaches Paymob the cart is
+        // empty whatever happens next. The callback never touches the cart (corrected 2026-10-12;
+        // this line used to say the callback cleared it).
+        //
+        // The shopper comes back to /order-confirmation?order=…&status=paid|failed|pending,
+        // sent there by the payment callback (OrderConfirmation.jsx).
         //
         // NO Purchase event here, deliberately. The shopper has been sent to a payment page,
         // not paid: firing Purchase at this line would count every abandoned and every declined

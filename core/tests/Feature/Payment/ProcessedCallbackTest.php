@@ -110,13 +110,20 @@ it('refuses a nested payload signed with another secret, and writes nothing', fu
     expect(processedState($orderId))->toBe($before);
 });
 
-it('is idempotent across the two deliveries of ONE payment', function () {
+it('is idempotent across the two deliveries of ONE payment, and the second one lands the shopper', function () {
     /*
      * The real sequence: Paymob POSTs the processed callback, and the shopper's browser arrives on
      * the GET a moment later. Both carry the same transaction id, so the second must not release
      * stock or record a second attempt — the UNIQUE (provider, pay_transaction_id) index doing the
      * job it was installed for, now that a second delivery actually reaches the controller.
+     *
+     * The GET used to be asserted as `Already processed` JSON, on the premise that a browser on a
+     * replay is rare. The first successful live payment (2026-10-12) showed the opposite: the POST
+     * wins the race almost every time, so this IS the shopper's normal arrival — and they were shown
+     * raw JSON on a blank page. The browser is now sent to the confirmation page with what the
+     * record says; the provider's POST keeps its JSON.
      */
+    config(['compat.payment_return_url' => 'https://watchizereg.test/']);
     PaymentFixture::paymob();
     $orderId = PaymentFixture::order(total: 100.0);
     $reference = PaymentFixture::orderNumber($orderId);
@@ -126,8 +133,7 @@ it('is idempotent across the two deliveries of ONE payment', function () {
 
     $redirect = PaymentFixture::callback($reference, 10000, transactionId: 555001);
     get('/api/pay/watchizer/paymob/callback?'.http_build_query($redirect))
-        ->assertOk()
-        ->assertJsonPath('message', 'Already processed');
+        ->assertRedirect('https://watchizereg.test/order-confirmation?order='.$reference.'&status=paid');
 
     expect(processedState($orderId))->toBe(['status' => 'processing', 'attempts' => 1]);
 });

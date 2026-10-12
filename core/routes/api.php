@@ -286,10 +286,15 @@ Route::match(['get', 'post'], 'pay/{storefront}/{provider}/callback', [PaymentCa
     ->name('pay.callback');
 
 /*
- * Watchizer's EXISTING Paymob URL. It resolves (storefront 1, paymob) and runs the same four
- * checks — but only once that contract holds credentials. Until the runbook's `.env`-to-table
- * step is performed it falls through to the wave-3 handler, so today's live callback behaves
- * exactly as it does today. See PaymentCallbackController::alias().
+ * Watchizer's ORIGINAL Paymob URL, kept because it lives in Paymob's merchant portal. It resolves
+ * (storefront 1, paymob) and runs the same four checks as the scoped route — the contract has held
+ * its credentials since switch night (runbook §3A, 2026-09-24), so this is what every call here
+ * gets. The fall-through to the wave-3 handler inside `alias()` runs only if that contract is
+ * disabled or emptied, and with production's `PAYMOB_*` keys empty it can only refuse: it is a dead
+ * branch A2 removes (backlog PAY-GENERIC). Whether anything still calls this URL depends on the
+ * portal, which the developer repointed at the scoped route on 2026-10-12; core's own intentions
+ * carry the scoped URL and never consult it. See PaymentCallbackController::alias().
+ * (Corrected 2026-10-12; this comment described the pre-switch state as "today".)
  */
 Route::match(['get', 'post'], 'callback_payment', [PaymentCallbackController::class, 'alias'])->name('pay.callback.alias');
 

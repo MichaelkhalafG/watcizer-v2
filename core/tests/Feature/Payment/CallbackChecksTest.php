@@ -1,6 +1,8 @@
 <?php
 
+use App\Domain\Payment\Landing;
 use App\Models\Storefront\Storefront;
+use App\Storefront\StorefrontUrls;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Tests\Support\PaymentFixture;
@@ -20,7 +22,20 @@ use function Pest\Laravel\get;
  * The payloads are signed the way Paymob signs them (twenty fields, sha512, documented order) by
  * `PaymentFixture`, which keeps its own copy of the field list so these tests cannot pass by
  * agreeing with the implementation's bug.
+ *
+ * Every request here is a GET — the shopper's BROWSER returning — so a refusal is a redirect to the
+ * storefront's failed landing (Landing, 2026-10-12), not a 403: the status that matters is still
+ * asserted, as "the database did not move". The provider's POST gets the JSON refusal; that arm is
+ * CallbackLandingTest's.
  */
+
+beforeEach(fn () => config(['compat.payment_return_url' => 'https://watchizereg.test/']));
+
+/** Where a Watchizer shopper's browser is sent: the confirmation page, with what it is told. */
+function landing(string $status, ?string $orderNumber = null): string
+{
+    return 'https://watchizereg.test/order-confirmation?'.($orderNumber === null ? '' : 'order='.$orderNumber.'&').'status='.$status;
+}
 
 /**
  * Everything a callback could change, as one comparable snapshot.
@@ -45,11 +60,13 @@ it('CHECK 1 — 404s a storefront it does not know, and a provider the storefron
     $orderId = PaymentFixture::order();
     $before = paymentState($orderId);
 
-    // Unknown storefront code.
+    // Unknown storefront code: a plain 404 even for a browser — there is no shop to send it to
+    // without resolving the host through the default-storefront fallback (W6/W7 removes it).
     get('/api/pay/nosuchshop/paymob/callback?id=1')->assertNotFound();
 
-    // Known storefront, but no contract for that provider.
-    get('/api/pay/watchizer/fawry/callback?id=1')->assertNotFound();
+    // Known storefront, but no contract for that provider: refused, and the browser is sent to
+    // THAT storefront's failed landing.
+    get('/api/pay/watchizer/fawry/callback?id=1')->assertRedirect(landing(Landing::FAILED));
 
     expect(paymentState($orderId))->toBe($before);
 });
@@ -59,12 +76,12 @@ it('CHECK 1 — 404s a DISABLED contract and one holding no credentials', functi
     $before = paymentState($orderId);
 
     PaymentFixture::paymob(enabled: false);
-    get('/api/pay/watchizer/paymob/callback?id=1')->assertNotFound();
+    get('/api/pay/watchizer/paymob/callback?id=1')->assertRedirect(landing(Landing::FAILED));
 
     // Enabled but credential-less: verifying with an empty secret is how a forged callback is
     // accepted, so the contract is treated as unusable rather than as "verify anyway".
     PaymentFixture::paymobWithoutCredentials();
-    get('/api/pay/watchizer/paymob/callback?id=1')->assertNotFound();
+    get('/api/pay/watchizer/paymob/callback?id=1')->assertRedirect(landing(Landing::FAILED));
 
     expect(paymentState($orderId))->toBe($before);
 });
@@ -77,7 +94,7 @@ it('CHECK 2 — 403s a payload whose signature does not verify against THIS cont
     // Signed with a different secret: the shape is perfect, the signature is not this contract's.
     $payload = PaymentFixture::callback(PaymentFixture::orderNumber($orderId), 10000, secret: 'some-other-secret');
 
-    get('/api/pay/watchizer/paymob/callback?'.http_build_query($payload))->assertForbidden();
+    get('/api/pay/watchizer/paymob/callback?'.http_build_query($payload))->assertRedirect(landing(Landing::FAILED));
 
     expect(paymentState($orderId))->toBe($before, 'a bad signature must write nothing at all');
 });
@@ -94,11 +111,13 @@ it('CHECK 2 — two storefronts with two Paymob accounts cannot validate each ot
     $orderId = PaymentFixture::order(total: 50.0, storefrontId: Storefront::BRAND_FASHION_ID);
     $payload = PaymentFixture::callback(PaymentFixture::orderNumber($orderId), 5000, secret: 'secret-of-storefront-two');
 
-    // Presented to storefront 1's route, it does not verify.
-    get('/api/pay/watchizer/paymob/callback?'.http_build_query($payload))->assertForbidden();
+    // Presented to storefront 1's route, it does not verify — and the browser is sent to
+    // storefront 1's failed landing, the shop whose route it arrived on.
+    get('/api/pay/watchizer/paymob/callback?'.http_build_query($payload))->assertRedirect(landing(Landing::FAILED));
 
-    // Presented to its own, it does.
-    get('/api/pay/brandfashion/paymob/callback?'.http_build_query($payload))->assertRedirect();
+    // Presented to its own, it does — and the landing is its own shop's.
+    get('/api/pay/brandfashion/paymob/callback?'.http_build_query($payload))
+        ->assertRedirect(StorefrontUrls::paymentLanding(Storefront::BRAND_FASHION_ID, Landing::PAID, PaymentFixture::orderNumber($orderId)));
 
     expect(T::str(DB::table('orders')->where('id', $orderId)->value('status')))->toBe('processing');
 });
@@ -116,10 +135,11 @@ it('CHECK 3 — 403s an order that belongs to another storefront, even with a va
     $foreignOrder = PaymentFixture::order(total: 100.0, storefrontId: Storefront::BRAND_FASHION_ID);
     $before = paymentState($foreignOrder);
 
-    // A perfectly signed callback for storefront 1's contract, naming storefront 2's order.
+    // A perfectly signed callback for storefront 1's contract, naming storefront 2's order. The
+    // landing carries NO order number: it is another shop's order.
     $payload = PaymentFixture::callback(PaymentFixture::orderNumber($foreignOrder), 10000, secret: 'shared-test-secret');
 
-    get('/api/pay/watchizer/paymob/callback?'.http_build_query($payload))->assertForbidden();
+    get('/api/pay/watchizer/paymob/callback?'.http_build_query($payload))->assertRedirect(landing(Landing::FAILED));
 
     expect(paymentState($foreignOrder))->toBe($before, 'the foreign order must be untouched');
 });
@@ -128,10 +148,12 @@ it('CHECK 4 — records the attempt but leaves the ORDER untouched when the amou
     PaymentFixture::paymob(hmacSecret: 'amount-secret');
     $orderId = PaymentFixture::order(total: 100.0);
 
-    // The provider reports 1.00 for a 100.00 order.
+    // The provider reports 1.00 for a 100.00 order. A finding, so the shopper is told the payment
+    // is being CONFIRMED — not that it failed, and never that it succeeded.
     $payload = PaymentFixture::callback(PaymentFixture::orderNumber($orderId), 100, secret: 'amount-secret');
 
-    get('/api/pay/watchizer/paymob/callback?'.http_build_query($payload))->assertRedirect();
+    get('/api/pay/watchizer/paymob/callback?'.http_build_query($payload))
+        ->assertRedirect(landing(Landing::PENDING, PaymentFixture::orderNumber($orderId)));
 
     $order = T::row(DB::table('orders')->where('id', $orderId)->first(['status', 'paid_via_provider']));
     $attempt = T::row(DB::table('payment_statuses')->where('order_id', $orderId)->first(['success', 'amount_cents', 'provider']));
@@ -156,7 +178,8 @@ it('marks an order PAID once, recording who took the money', function () {
         PaymentFixture::orderNumber($orderId), 25000, secret: 'ok-secret', integrationId: '4001'
     );
 
-    get('/api/pay/watchizer/paymob/callback?'.http_build_query($payload))->assertRedirect();
+    get('/api/pay/watchizer/paymob/callback?'.http_build_query($payload))
+        ->assertRedirect(landing(Landing::PAID, PaymentFixture::orderNumber($orderId)));
 
     $order = T::row(DB::table('orders')->where('id', $orderId)
         ->first(['status', 'paid_via_provider', 'paid_via_method']));
@@ -172,16 +195,24 @@ it('marks an order PAID once, recording who took the money', function () {
         ->and(T::str($attempt->method))->toBe('card');
 });
 
-it('is IDEMPOTENT: a replayed callback records one attempt and answers 200', function () {
+it('is IDEMPOTENT: a replayed callback records one attempt, and sends the browser to the PAID landing', function () {
+    /*
+     * This assertion used to be `assertOk()` — the replay answered `Already processed` as JSON to
+     * every caller, on the written premise that a browser arriving on a replay is rare. It is not:
+     * the processed POST wins the race to the server almost every time, so the browser normally
+     * arrives on exactly this branch, and a shopper who had just paid was shown a code fragment on
+     * a blank page (measured on the first successful live payment, 2026-10-12). A GET replay now
+     * lands where a first delivery would have, with what the RECORD says; the provider's POST still
+     * gets its JSON (CallbackLandingTest).
+     */
     PaymentFixture::paymob(hmacSecret: 'replay-secret');
     $orderId = PaymentFixture::order(total: 75.0);
-    $payload = PaymentFixture::callback(
-        PaymentFixture::orderNumber($orderId), 7500, secret: 'replay-secret', transactionId: 4242
-    );
+    $number = PaymentFixture::orderNumber($orderId);
+    $payload = PaymentFixture::callback($number, 7500, secret: 'replay-secret', transactionId: 4242);
     $query = http_build_query($payload);
 
-    get('/api/pay/watchizer/paymob/callback?'.$query)->assertRedirect();
-    get('/api/pay/watchizer/paymob/callback?'.$query)->assertOk();   // "already processed"
+    get('/api/pay/watchizer/paymob/callback?'.$query)->assertRedirect(landing(Landing::PAID, $number));
+    get('/api/pay/watchizer/paymob/callback?'.$query)->assertRedirect(landing(Landing::PAID, $number));   // the replay
 
     expect(T::int(DB::table('payment_statuses')->where('order_id', $orderId)->count()))->toBe(1);
 });
@@ -219,22 +250,22 @@ it('runs the SAME checks through the legacy Watchizer alias', function () {
     PaymentFixture::paymob(storefrontId: 1, hmacSecret: 'alias-secret');
     $orderId = PaymentFixture::order(total: 30.0);
 
-    // A bad signature is refused there too.
+    // A bad signature is refused there too — and, the alias being Watchizer's, lands on Watchizer's page.
     get('/api/callback_payment?'.http_build_query(
         PaymentFixture::callback(PaymentFixture::orderNumber($orderId), 3000, secret: 'wrong')
-    ))->assertForbidden();
+    ))->assertRedirect(landing(Landing::FAILED));
 
     // And a foreign order is refused there too.
     PaymentFixture::paymob(storefrontId: Storefront::BRAND_FASHION_ID, hmacSecret: 'alias-secret');
     $foreign = PaymentFixture::order(total: 30.0, storefrontId: Storefront::BRAND_FASHION_ID);
     get('/api/callback_payment?'.http_build_query(
         PaymentFixture::callback(PaymentFixture::orderNumber($foreign), 3000, secret: 'alias-secret')
-    ))->assertForbidden();
+    ))->assertRedirect(landing(Landing::FAILED));
 
     // A valid one for storefront 1 goes through.
     get('/api/callback_payment?'.http_build_query(
         PaymentFixture::callback(PaymentFixture::orderNumber($orderId), 3000, secret: 'alias-secret')
-    ))->assertRedirect();
+    ))->assertRedirect(landing(Landing::PAID, PaymentFixture::orderNumber($orderId)));
 
     expect(T::str(DB::table('orders')->where('id', $orderId)->value('status')))->toBe('processing');
 });
@@ -252,11 +283,13 @@ it('accepts a legacy order with NO storefront_id as the primary storefront, and 
     $legacyOrder = PaymentFixture::order(total: 20.0, storefrontId: null);
     $payload = PaymentFixture::callback(PaymentFixture::orderNumber($legacyOrder), 2000, secret: 'null-secret');
 
-    // Refused on the secondary storefront…
-    get('/api/pay/brandfashion/paymob/callback?'.http_build_query($payload))->assertForbidden();
+    // Refused on the secondary storefront, whose own failed landing the browser is sent to…
+    get('/api/pay/brandfashion/paymob/callback?'.http_build_query($payload))
+        ->assertRedirect(StorefrontUrls::paymentLanding(Storefront::BRAND_FASHION_ID, Landing::FAILED, null));
     expect(T::str(DB::table('orders')->where('id', $legacyOrder)->value('status')))->toBe('pending');
 
     // …accepted on the primary.
-    get('/api/pay/watchizer/paymob/callback?'.http_build_query($payload))->assertRedirect();
+    get('/api/pay/watchizer/paymob/callback?'.http_build_query($payload))
+        ->assertRedirect(landing(Landing::PAID, PaymentFixture::orderNumber($legacyOrder)));
     expect(T::str(DB::table('orders')->where('id', $legacyOrder)->value('status')))->toBe('processing');
 });

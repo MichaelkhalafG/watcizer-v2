@@ -6,6 +6,7 @@ use Tests\Support\PaymentFixture;
 use Tests\Support\T;
 
 use function Pest\Laravel\get;
+use function Pest\Laravel\postJson;
 
 /*
  * `GET /api/callback_payment` — Watchizer's LIVE Paymob URL, and the most dangerous single line in
@@ -135,9 +136,13 @@ it('leaves the SCOPED route unconditional, because a new storefront has nothing 
     $orderId = PaymentFixture::order(total: 100.0);
     $payload = PaymentFixture::callback(PaymentFixture::orderNumber($orderId), 10000, secret: 'anything');
 
-    // No contract, no fall-through: the scoped URL is 4C's own and answers 404, saying nothing
-    // about whether the storefront or the provider is the part that does not exist.
-    get('/api/pay/watchizer/paymob/callback?'.http_build_query($payload))->assertNotFound();
+    // No contract, no fall-through: the scoped URL is 4C's own. The provider's POST gets a 404 that
+    // says nothing about whether the storefront or the provider is the part that does not exist;
+    // the shopper's GET is sent to the storefront's failed landing (Landing, 2026-10-12) — the
+    // storefront IS known here, only its contract is missing. Neither writes anything.
+    postJson('/api/pay/watchizer/paymob/callback?hmac='.T::str($payload['hmac']), $payload)->assertNotFound();
+    get('/api/pay/watchizer/paymob/callback?'.http_build_query($payload))
+        ->assertRedirect(rtrim(config()->string('compat.payment_return_url'), '/').'/order-confirmation?status=failed');
 
     expect(T::str(DB::table('orders')->where('id', $orderId)->value('status')))->toBe('pending')
         ->and(T::int(DB::table('payment_statuses')->where('order_id', $orderId)->count()))->toBe(0);

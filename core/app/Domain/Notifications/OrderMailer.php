@@ -80,6 +80,18 @@ final class OrderMailer
     /** …and the admins' copy, sent the same minute so someone can call while it is still fresh. */
     public const KIND_EXPIRED_ADMIN = 'payment_expired_admin';
 
+    /**
+     * WHY the card order was cancelled, carried on the two rows above (2026-10-12). `expired`: nobody
+     * paid within the hour. `declined`: the shopper tried, and the provider refused the card. The
+     * customer's copy is true either way ("the payment wasn't finished"); the admins' copy says
+     * which, because "didn't pay" and "was declined" call for different phone calls — and before
+     * this a declined shopper was told NOTHING, while one who merely abandoned checkout was e-mailed
+     * an hour later: the one who got further was told less.
+     */
+    public const REASON_EXPIRED = 'expired';
+
+    public const REASON_DECLINED = 'declined';
+
     /** Statuses a row can hold. `sending` is a claim, not a resting state. */
     public const STATUS_PENDING = 'pending';
 
@@ -156,17 +168,20 @@ final class OrderMailer
     }
 
     /**
-     * A card order was cancelled because nobody paid (`UnpaidOrders`, expiry only): the customer's
-     * recovery e-mail — what happened, the items released, a link that brings the order back — and
-     * the admins' copy with her phone number, so someone can call the same hour. Once per order (the
-     * dedupe keys). The caller decides WHETHER (`OrderRecovery::shouldRemind`); this only enqueues.
+     * A card order was cancelled unpaid — nobody paid within the hour (`UnpaidOrders`, expiry) or
+     * the card was declined (`PaymentCallbackController`, the cancel branch, 2026-10-12): the
+     * customer's recovery e-mail — what happened, the items released, a link that brings the order
+     * back — and the admins' copy with her phone number, so someone can call the same hour. Once
+     * per order (the dedupe keys), whichever reason comes first. The caller decides WHETHER
+     * (`OrderRecovery::shouldRemind`); this only enqueues.
      *
+     * @param  string  $reason  {@see self::REASON_EXPIRED} or {@see self::REASON_DECLINED}
      * @return list<int>
      */
-    public function paymentExpired(int $orderId): array
+    public function paymentExpired(int $orderId, string $reason = self::REASON_EXPIRED): array
     {
         $ids = [];
-        $id = $this->enqueueCustomer(self::EVENT_EXPIRED, self::KIND_EXPIRED, $orderId, 'payment_expired', null);
+        $id = $this->enqueueCustomer(self::EVENT_EXPIRED, self::KIND_EXPIRED, $orderId, 'payment_expired', ['reason' => $reason]);
         if ($id !== null) {
             $ids[] = $id;
         }
@@ -177,7 +192,7 @@ final class OrderMailer
                 kind: self::KIND_EXPIRED_ADMIN,
                 orderId: $orderId,
                 recipient: $recipient,
-                extra: [],
+                extra: ['reason' => $reason],
             );
             if ($id !== null) {
                 $ids[] = $id;
@@ -318,6 +333,11 @@ final class OrderMailer
             $this->park($id, "order {$orderId} no longer exists");
 
             return false;
+        }
+        // What the enqueuer knew and the order does not record — today only WHY a card order was
+        // cancelled (`reason` on the expiry/decline pair). Added beside the order's data, never over it.
+        if (is_string($payload['reason'] ?? null)) {
+            $data['reason'] = $payload['reason'];
         }
 
         $mailable = self::mailable($kind, $data);

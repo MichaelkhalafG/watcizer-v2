@@ -6,8 +6,10 @@
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
     <title>Your order wasn't completed — Watchizer</title>
 </head>
-{{-- A card order nobody paid for, cancelled by orders:expire-unpaid (2026-10-05). The text is the
-     developer-approved draft: what happened, the items released, a link that brings it back. --}}
+{{-- A card order cancelled unpaid — by orders:expire-unpaid (2026-10-05) or by a declined card at the
+     payment callback (2026-10-12, `$reason` = 'declined'). The text is the developer-approved draft: what
+     happened, the items released, a link that brings it back. It was already true for a decline; only the
+     "because" clause names the reason. --}}
 <body style="margin:0;padding:0;background:#f5f5f5;-webkit-text-size-adjust:100%;">
 <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:#f5f5f5;padding:28px 14px;font-family:'Segoe UI',Tahoma,Arial,sans-serif;">
 <tr><td align="center">
@@ -22,7 +24,11 @@
         <h1 style="margin:12px 0 0;font-size:22px;font-weight:600;color:#111;">Your order wasn't completed</h1>
         <p style="margin:16px 0 0;font-size:15px;color:#111;">Hello {{ $customerName }},</p>
         <p style="margin:10px 0 0;font-size:14px;color:rgba(0,0,0,0.7);line-height:1.75;">
+            @if(($reason ?? 'expired') === 'declined')
+            Your order #{{ $orderNumber }} was cancelled because the card payment was declined. We've released the items, so they're available in the shop again.
+            @else
             Your order #{{ $orderNumber }} was cancelled because the payment wasn't finished. We've released the items, so they're available in the shop again.
+            @endif
         </p>
         <p style="margin:10px 0 0;font-size:14px;color:rgba(0,0,0,0.7);line-height:1.75;">
             If you'd still like them, the button below brings your order back: your items go back in your cart at today's prices, and your details are already filled in at checkout.
@@ -44,7 +50,11 @@
         <h2 style="margin:0;font-size:20px;font-weight:600;color:#111;">طلبك لم يكتمل</h2>
         <p style="margin:14px 0 0;font-size:15px;color:#111;">مرحباً {{ $customerName }}،</p>
         <p style="margin:10px 0 0;font-size:14px;color:rgba(0,0,0,0.7);line-height:1.9;">
+            @if(($reason ?? 'expired') === 'declined')
+            تم إلغاء طلبك رقم #{{ $orderNumber }} لأن عملية الدفع بالبطاقة رُفضت. أرجعنا المنتجات إلى المتجر، فأصبحت متاحة من جديد.
+            @else
             تم إلغاء طلبك رقم #{{ $orderNumber }} لأن الدفع لم يكتمل. أرجعنا المنتجات إلى المتجر، فأصبحت متاحة من جديد.
+            @endif
         </p>
         <p style="margin:10px 0 0;font-size:14px;color:rgba(0,0,0,0.7);line-height:1.9;">
             إن كنت لا تزال ترغب فيها، يعيد الزر أدناه طلبك: تعود المنتجات إلى سلتك بأسعار اليوم، وتجد بياناتك مكتوبة في صفحة إتمام الطلب.

@@ -602,6 +602,21 @@
   stroke-dashoffset: 60;
   animation: wz-oc-draw 0.4s 0.5s ease forwards;
 }
+/* The card landing (2026-10-12): same drawn circle, a different mark per status. The X and the
+   clock hand are longer strokes than the check, so their dash is sized to finish drawing. */
+.wz-oc-check--failed circle,
+.wz-oc-check--failed path {
+  stroke: #9b2c2c;
+}
+.wz-oc-check--pending circle,
+.wz-oc-check--pending path {
+  stroke: #8a6d1d;
+}
+.wz-oc-check--failed path,
+.wz-oc-check--pending path {
+  stroke-dasharray: 90;
+  stroke-dashoffset: 90;
+}
 @keyframes wz-oc-circle {
   to {
     stroke-dashoffset: 0;

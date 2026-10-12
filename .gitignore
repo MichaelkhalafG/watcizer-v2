@@ -72,3 +72,10 @@ desktop.ini
 .idea/
 .vscode/
 .fleet/
+
+graphify-out/
+.graphifyignore
+
+# deploy archives
+*.tar.gz
+exclude.txt

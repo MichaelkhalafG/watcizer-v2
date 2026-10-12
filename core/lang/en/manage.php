@@ -1817,7 +1817,7 @@ return [
         'last_modified' => 'Last modified',
         'locales' => 'Languages',
         'money_rewards_warning_body' => 'The reward types that reduce the amount — percentage discount, fixed discount, free shipping — will not work until this storefront’s frontend moves to v2. The current frontend computes the total itself and knows nothing about the promotion, so it sends the full figure.',
-        'money_rewards_warning_card' => 'On card (Paymob): the frontend asks the provider for the full amount, then the amount check on the provider’s callback compares it with the discounted order total, they disagree, and the order is recorded as a failed attempt — neither paid nor cancelled, needing a human. Every discounted card order would end up in the reconciliation list.',
+        'money_rewards_warning_card' => 'On card (Paymob): core sends the provider the stored, discounted total, so the amount check on the callback agrees and nothing lands in the reconciliation list — but the customer is charged less than the figure the frontend showed them, the same mismatch as cash on delivery.',
         'money_rewards_warning_cod' => 'On cash on delivery: the customer sees one number and is charged a smaller one.',
         'money_rewards_warning_safe' => 'Leave this off until then. Rules that give free gifts run on every shop in any case.',
         'money_rewards_warning_title' => 'Do not turn this on before this storefront’s frontend moves to v2',

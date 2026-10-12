@@ -35,6 +35,16 @@ class ProxyController extends Controller
         }
 
         $base = rtrim(config()->string('compat.legacy_base'), '/');
+        if ($base === '') {
+            // No legacy application to proxy to (retired 2026-09-29, deleted; the default base is
+            // empty since 2026-10-12). 410 at once, like GoneController, rather than a connection
+            // attempt to nowhere that takes `proxy_timeout` seconds to fail.
+            return new Response(
+                (string) json_encode(['message' => 'Gone: the legacy application is retired; nothing is proxied any more (C3-delete, 2026-10-12).']),
+                410,
+                ['Content-Type' => 'application/json'],
+            );
+        }
         $url = $base.'/api/'.$path;
         $query = $request->getQueryString();
         if ($query !== null && $query !== '') {

@@ -76,6 +76,21 @@ return [
             'replace_placeholders' => true,
         ],
 
+        // Every payment-callback REFUSAL (`PaymentCallbackController::fail()`), 2026-10-12. Same rule as
+        // `scheduled`, for a harder reason: the refusal line is a `warning`, production runs
+        // LOG_LEVEL=error, and from 2026-09-28 the default channel dropped every one of them — so the
+        // eighteen days in which every real callback was refused at the signature left no record. A
+        // trace that one configuration change silently removes is worse than none, because everyone
+        // believes it is there. Level fixed here, never env(); `daily` so a report can be read by its
+        // date and rotation bounds the size without anyone trimming it. A few lines per refusal.
+        'payments' => [
+            'driver' => 'daily',
+            'path' => storage_path('logs/payments.log'),
+            'level' => 'info',
+            'days' => 30,
+            'replace_placeholders' => true,
+        ],
+
         'daily' => [
             'driver' => 'daily',
             'path' => storage_path('logs/laravel.log'),

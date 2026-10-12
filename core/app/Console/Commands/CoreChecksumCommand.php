@@ -41,6 +41,10 @@ final class CoreChecksumCommand extends Command
      * compare the FROZEN set instead. `--set=legacy` still digests all 65 and is still what the
      * transform asserts before and after its own run.
      *
+     * "Legacy" names the tables' origin, not a live application: the legacy app was retired on
+     * 2026-09-29 and deleted from the server. These sets are core's data now; the harness that
+     * moves the commerce set boots the repo copy of the old app locally (2026-10-12).
+     *
      * @var list<string>
      */
     public const SHARED_COMMERCE_TABLES = [

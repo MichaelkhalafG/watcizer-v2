@@ -2,6 +2,7 @@
 
 namespace App\Storefront;
 
+use App\Domain\Payment\Landing;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -48,6 +49,32 @@ final class StorefrontUrls
 
         return self::setting($row, 'payment_return')
             ?? ($storefrontId === self::defaultId() ? config()->string('compat.payment_return_url') : self::frontend($storefrontId).'/');
+    }
+
+    /**
+     * The page a shopper's browser is sent to after the payment callback, and what it is told
+     * ({@see Landing}):
+     * `<return base>/order-confirmation?order=<number>&status=<paid|failed|pending>`.
+     *
+     * The base is {@see self::paymentReturn()} -- the same per-storefront value as before, so the
+     * `.env` key and the settings override move nothing; the page path and the query are appended
+     * to it. The storefront's cash path already renders `/order-confirmation`, so this reconnects a
+     * page rather than inventing one. The order number is omitted when the callback could not
+     * prove which order it was about (a refusal), and nothing a shopper could not already know
+     * goes in the URL: no amount, no e-mail, no transaction id -- and never the signed payload.
+     *
+     * The page renders what this query says. It is a confirmation MESSAGE, not a receipt and not
+     * proof of payment (option A, developer decision 2026-10-12): support reads the order, never
+     * the page.
+     */
+    public static function paymentLanding(int $storefrontId, string $status, ?string $orderNumber): string
+    {
+        $query = ['status' => $status];
+        if ($orderNumber !== null && trim($orderNumber) !== '') {
+            $query = ['order' => trim($orderNumber)] + $query;
+        }
+
+        return rtrim(self::paymentReturn($storefrontId), '/').'/order-confirmation?'.http_build_query($query);
     }
 
     /** The host this storefront's v2 payloads name images on, no trailing slash. */

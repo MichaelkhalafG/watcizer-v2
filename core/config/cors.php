@@ -19,7 +19,8 @@ return [
     'allowed_origins' => array_values(array_filter([
         (string) env('FRONTEND_URL', 'https://watchizereg.com'),
         'https://www.watchizereg.com',
-        'https://dash.watchizereg.com',
+        // `dash.watchizereg.com` was here while the legacy app was a possible caller; it was
+        // switched off 2026-09-29, deleted, and no longer resolves (C3-delete code half, 2026-10-12).
         env('APP_ENV') === 'local' ? 'http://localhost:3000' : null,
         env('APP_ENV') === 'local' ? 'http://localhost:5173' : null,
         /*
