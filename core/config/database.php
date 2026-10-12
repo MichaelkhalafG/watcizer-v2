@@ -153,9 +153,11 @@ return [
     |
     */
 
-    // The database is shared with the legacy Laravel 10 app, whose own
-    // `migrations` table must stay untouched. The core app records its
-    // migrations in a separate repository table.
+    // The database was shared with the legacy Laravel 10 app (retired 2026-09-29,
+    // deleted with C3-delete), whose `migrations` table is left exactly as it
+    // was: it is history, and the local compat-diff harness still boots the repo
+    // copy of that app against it. The core app records its own migrations in a
+    // separate repository table, and that split stays.
     'migrations' => [
         'table' => 'core_migrations',
         'update_date_on_publish' => true,
