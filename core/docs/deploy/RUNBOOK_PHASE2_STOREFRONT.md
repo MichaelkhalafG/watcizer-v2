@@ -419,6 +419,11 @@ block at all** — so `cp -a` deletes the blanket 404 that has been shutting `/a
 eleganceeg deployment (review 🟠 minor; §2.9 used to claim `/api` stayed closed throughout, and it
 did not):
 
+> **Run this pair ONCE — here or in the Appendix, never both (developer, 2026-10-12 deploy).** The
+> Appendix repeats it so the commands read in order. Taking the backup a second time, after `cp -a`,
+> copies the ARCHIVE's plain `.htaccess` over the real backup, and the restore then puts the wrong
+> file on the API host.
+
 ```bash
 LIVE=~/domains/eleganceeg.com/core
 cp "$LIVE"/public/.htaccess ~/htaccess.before-phase2.bak
@@ -466,8 +471,12 @@ cd ~/domains/eleganceeg.com/core
 chmod -R 775 storage bootstrap/cache
 rm -f public/hot public/fonts-manifest.dev.json
 ls public/build/manifest.json            # must exist
-ls -l public/storage                     # the storage symlink must still be there
 ```
+
+There is **no `public/storage` symlink on this install and there never was**: `storage/app/public`
+is an empty directory from 2026-09-19 and every image lives in `public/Uploads_Images`. The
+`ls -l public/storage` check that used to stand here was inherited from a generic runbook and
+alarmed on every deploy (removed 2026-10-12, developer).
 
 `public/hot` is the one that fails invisibly: if it exists, every dashboard page tries to load its
 JavaScript from your workstation and the site appears completely broken.
@@ -2007,6 +2016,9 @@ composer install                     # put the dev tools back locally
 mkdir -p ~/deploy-staging && cd ~/deploy-staging && rm -rf core && tar -xzf ~/core-phase1.tar.gz
 ls core/app/Domain/Customers/CustomerSocial.php && ls core/vendor/laravel/socialite/composer.json
 find . -print | grep -F '\'   # must print NOTHING; any output at all = mangled archive, STOP
+# §2.4's pair, repeated here so the Appendix reads in order. ONCE: if you ran §2.4, skip these
+# three lines — a second backup taken after cp -a saves the ARCHIVE's .htaccess and the restore
+# then puts the wrong file live (developer, 2026-10-12).
 cp ~/domains/eleganceeg.com/core/public/.htaccess ~/htaccess.before-phase2.bak   # §2.4 — BEFORE
 cp -a ~/deploy-staging/core/. ~/domains/eleganceeg.com/core/
 cp ~/htaccess.before-phase2.bak ~/domains/eleganceeg.com/core/public/.htaccess   # §2.4 — AFTER
