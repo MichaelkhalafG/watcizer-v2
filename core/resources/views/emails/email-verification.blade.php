@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-    <title>تأكيد بريدك الإلكتروني — Watchizer</title>
+    <title>تأكيد بريدك الإلكتروني — {{ $brandName }}</title>
 </head>
 <body style="margin:0;padding:0;background:#f4f4f4;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f4;padding:24px 0;">
@@ -17,7 +17,7 @@
                     <td style="padding:32px;font-family:'Segoe UI',Tahoma,Arial,sans-serif;color:#111111;">
                         <p dir="rtl" style="margin:0 0 12px;font-size:18px;font-weight:700;">أهلاً بك يا {{ $name }}</p>
                         <p dir="rtl" style="margin:0 0 20px;font-size:15px;line-height:1.8;color:#444444;">
-                            تم إنشاء حسابك على Watchizer. اضغط على الزر أدناه لتأكيد بريدك الإلكتروني.
+                            تم إنشاء حسابك على {{ $brandName }}. اضغط على الزر أدناه لتأكيد بريدك الإلكتروني.
                         </p>
 
                         <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto 20px;">

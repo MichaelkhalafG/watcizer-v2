@@ -6,6 +6,7 @@ use App\Domain\Notifications\BulkMailer;
 use App\Domain\Notifications\MailBudget;
 use App\Domain\Notifications\StockAlerts;
 use App\Mail\StockAlertMail;
+use App\Storefront\StorefrontIdentity;
 use Illuminate\Database\Query\JoinClause;
 use Illuminate\Mail\Message;
 use Illuminate\Support\Facades\DB;
@@ -155,7 +156,7 @@ it('drops the e-mail and puts the shopper back in line when the product sold out
 it('renders the alert e-mail in the shopper\'s language with the product and a stop link, marked bulk', function () {
     $mail = new StockAlertMail(['email' => 'x@example.test', 'locale' => 'ar', 'token' => str_repeat('a', 40),
         'product' => ['name' => 'ساعة تجربة', 'price' => 1234.0, 'image' => null, 'url' => 'https://watchizereg.com/ar/product/test']],
-        'https://api.watchizereg.com/stock-alerts/stop/'.str_repeat('a', 40));
+        'https://api.watchizereg.com/stock-alerts/stop/'.str_repeat('a', 40), StorefrontIdentity::for(1));
     $html = $mail->render();
     expect($html)->toContain('ساعة تجربة', '1,234 EGP', 'https://watchizereg.com/ar/product/test', '/stock-alerts/stop/'.str_repeat('a', 40), 'dir="rtl"');
 });

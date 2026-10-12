@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-    <title>Your order wasn't completed — Watchizer</title>
+    <title>Your order wasn't completed — {{ $brandName }}</title>
 </head>
 {{-- A card order cancelled unpaid — by orders:expire-unpaid (2026-10-05) or by a declined card at the
      payment callback (2026-10-12, `$reason` = 'declined'). The text is the developer-approved draft: what

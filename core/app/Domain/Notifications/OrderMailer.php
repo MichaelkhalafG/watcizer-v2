@@ -10,6 +10,8 @@ use App\Mail\OrderConfirmation;
 use App\Mail\OrderStatusUpdate;
 use App\Mail\PaymentExpired;
 use App\Mail\PaymentExpiredAdmin;
+use App\Storefront\StorefrontHasNoHost;
+use App\Storefront\StorefrontHasNoIdentity;
 use App\Support\Coerce;
 use App\Transform\Row;
 use Illuminate\Database\QueryException;
@@ -326,7 +328,15 @@ final class OrderMailer
             return false;
         }
 
-        $data = OrderEmailData::for($orderId);
+        try {
+            $data = OrderEmailData::for($orderId);
+        } catch (StorefrontHasNoIdentity|StorefrontHasNoHost $e) {
+            // No fallback (W2, 2026-10-13): the order's storefront has no identity, or no host for
+            // its links. Parked with that reason — never sent as another shop.
+            $this->park($id, 'parked: '.$e->getMessage());
+
+            return false;
+        }
         if ($data === null) {
             // The order was deleted between the enqueue and the send. Parked, not retried: there
             // is nothing left to tell anybody about.
@@ -363,6 +373,11 @@ final class OrderMailer
             Log::info("order mail sent [{$kind}] order {$number} → ".self::maskEmail($recipient));
 
             return true;
+        } catch (StorefrontHasNoIdentity|StorefrontHasNoHost $e) {
+            // A link built at render time found no host (the recovery link, W2/A2): parked, not retried.
+            $this->park($id, 'parked: '.$e->getMessage());
+
+            return false;
         } catch (Throwable $e) {
             $this->recordFailure($id, $kind, $number, $recipient, $e);
 

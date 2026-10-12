@@ -10,6 +10,7 @@ use App\Domain\Notifications\MailBudget;
 use App\Domain\Notifications\ReEngagement;
 use App\Mail\ReEngagementMail;
 use App\Mail\ReEngagementPreviewMail;
+use App\Storefront\StorefrontIdentity;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Database\Query\JoinClause;
 use Illuminate\Support\Carbon;
@@ -213,7 +214,7 @@ it('carries a working unsubscribe — a button, the one-click header — honoure
 
     $data = $engine->mailData(T::int($send->id));
     expect($data)->not->toBeNull();
-    $mail = new ReEngagementMail($data ?? ['email' => '', 'storefront_id' => 1, 'products' => []], $url);
+    $mail = new ReEngagementMail($data ?? ['email' => '', 'storefront_id' => 1, 'products' => []], $url, StorefrontIdentity::for(1));
     expect($mail->render())->toContain($url);
 
     get($path)->assertOk()->assertSee('<form method="POST"', false);
@@ -353,11 +354,11 @@ it('writes the campaign e-mail, its subject, the team preview and the unsubscrib
     $sendId = T::int(DB::table('core_reengagement_sends')->where('run_id', $plan['run_id'])->value('id'));
     $data = $engine->mailData($sendId);
     expect($data)->not->toBeNull();
-    $mail = new ReEngagementMail($data ?? ['email' => '', 'storefront_id' => 1, 'products' => []], BulkMailer::unsubscribeUrl($sendId, 1));
+    $mail = new ReEngagementMail($data ?? ['email' => '', 'storefront_id' => 1, 'products' => []], BulkMailer::unsubscribeUrl($sendId, 1), StorefrontIdentity::for(1));
     $html = $mail->render();
     $previewData = $engine->previewData(T::int($plan['run_id']));
     expect($previewData)->not->toBeNull();
-    $preview = new ReEngagementPreviewMail($previewData ?? ['week' => '', 'audience' => 'team', 'recipients' => 0, 'send_after' => '', 'sample' => null], 'https://example.test/manage');
+    $preview = new ReEngagementPreviewMail($previewData ?? ['week' => '', 'audience' => 'team', 'recipients' => 0, 'send_after' => '', 'sample' => null], 'https://example.test/manage', StorefrontIdentity::for(1));
     $previewHtml = $preview->render();
     $page = get((string) parse_url(BulkMailer::unsubscribeUrl($sendId, 1), PHP_URL_PATH))->assertOk()->getContent();
 

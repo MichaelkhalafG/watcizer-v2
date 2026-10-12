@@ -259,7 +259,7 @@ it('logs a failed send by REFERENCE, never with the link', function () {
         $captured[] = ['message' => $logged->message, 'context' => $logged->context];
     });
 
-    expect(app(CustomerMail::class)->sendEmailVerification($user))->toBeFalse();
+    expect(app(CustomerMail::class)->sendEmailVerification($user, 1))->toBeFalse();
 
     $json = (string) json_encode($captured);
     expect($captured)->not->toBe([])

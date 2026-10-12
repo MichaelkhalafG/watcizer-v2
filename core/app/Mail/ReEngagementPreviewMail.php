@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Mail;
 
 use App\Domain\Notifications\MailBudget;
+use App\Storefront\StorefrontIdentity;
 use Illuminate\Mail\Mailable;
 use Symfony\Component\Mime\Email;
 
@@ -15,7 +16,7 @@ use Symfony\Component\Mime\Email;
 final class ReEngagementPreviewMail extends Mailable
 {
     /** @param  array{week: string, audience: string, recipients: int, send_after: string, sample: array<string, mixed>|null}  $data */
-    public function __construct(private readonly array $data, private readonly string $manageUrl) {}
+    public function __construct(private readonly array $data, private readonly string $manageUrl, private readonly StorefrontIdentity $identity) {}
 
     public function build(): self
     {
@@ -25,6 +26,6 @@ final class ReEngagementPreviewMail extends Mailable
 
         return $this
             ->subject('Preview: this week\'s re-engagement e-mail ('.$this->data['week'].')')   // English only (2026-10-01)
-            ->view('emails.reengagement-preview', $this->data + ['manageUrl' => $this->manageUrl]);
+            ->view('emails.reengagement-preview', $this->data + ['manageUrl' => $this->manageUrl] + $this->identity->viewData());
     }
 }

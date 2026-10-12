@@ -32,15 +32,11 @@ return [
     )),
 
     /*
-    | The footer's WhatsApp support number and copyright line — the two pieces of branding the
-    | ported templates read from config rather than from the order. Both default to the legacy
-    | values, so an unset environment renders exactly what the legacy app renders.
+    | The footer's WhatsApp number and copyright line used to live here, defaulting to Watchizer's
+    | — one shop's branding on every shop's mail. Since W2 (2026-10-13) both come from the
+    | storefront row (`settings.identity`, StorefrontIdentity); `WATCHIZER_WHATSAPP_SUPPORT` and
+    | `ORDER_MAIL_COPYRIGHT` are retired.
     */
-    'whatsapp_support' => (string) env('WATCHIZER_WHATSAPP_SUPPORT', '201551096234'),
-
-    'brand' => [
-        'copyright' => (string) env('ORDER_MAIL_COPYRIGHT', '© 2024 Watchizer. All rights reserved.'),
-    ],
 
     /*
     | Delivery policy (§2.12: queues run `sync` plus a one-minute cron; no workers on shared

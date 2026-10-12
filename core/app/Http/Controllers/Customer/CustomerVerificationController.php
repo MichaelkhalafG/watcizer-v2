@@ -9,6 +9,7 @@ use App\Domain\Customers\CustomerMail;
 use App\Http\Controllers\Controller;
 use App\Http\Middleware\CompatAuth;
 use App\Models\User;
+use App\Storefront\StorefrontUrls;
 use App\Support\Coerce;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -92,7 +93,7 @@ final class CustomerVerificationController extends Controller
 
         RateLimiter::hit($key, Coerce::int(config('customers.resend_verification.decay_seconds'), 60));
 
-        $this->mail->sendEmailVerification($user);
+        $this->mail->sendEmailVerification($user, StorefrontUrls::storefrontOf($request));
 
         // Reported as sent even when the transport refused, for the same reason `forgot` does: the
         // customer has no action to take either way, and `CustomerMail` has logged the failure.

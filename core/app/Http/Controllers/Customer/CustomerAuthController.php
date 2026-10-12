@@ -13,6 +13,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Middleware\CompatAuth;
 use App\Http\Middleware\CompatGuestCart;
 use App\Models\User;
+use App\Storefront\StorefrontUrls;
 use App\Support\Coerce;
 use App\Support\LegacyJwt;
 use Illuminate\Http\JsonResponse;
@@ -142,7 +143,7 @@ final class CustomerAuthController extends Controller
          * into a 500 — the customer is about to be signed in, nothing gates on verification, and
          * another link is one button away. `CustomerMail` swallows and logs by reference.
          */
-        $this->mail->sendEmailVerification($user);
+        $this->mail->sendEmailVerification($user, StorefrontUrls::storefrontOf($request));
 
         return response()->json($this->signIn($request, $user));
     }

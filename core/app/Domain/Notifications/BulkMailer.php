@@ -8,6 +8,8 @@ use App\Mail\ReEngagementMail;
 use App\Mail\ReEngagementPreviewMail;
 use App\Mail\StockAlertMail;
 use App\Storefront\StorefrontHasNoHost;
+use App\Storefront\StorefrontHasNoIdentity;
+use App\Storefront\StorefrontIdentity;
 use App\Storefront\StorefrontUrls;
 use App\Transform\Row;
 use Illuminate\Database\QueryException;
@@ -106,11 +108,11 @@ final class BulkMailer
 
         try {
             $mailable = $recipient === '' ? null : $this->mailable($kind, $payload);
-        } catch (StorefrontHasNoHost $e) {
+        } catch (StorefrontHasNoHost|StorefrontHasNoIdentity $e) {
             /*
-             * No fallback (A2, developer 2026-10-12): the storefront this row belongs to has neither
-             * `settings.urls.api_host` nor a domain, so there is no host to put in its link. The row
-             * is PARKED with that reason — never sent carrying another shop's host.
+             * No fallback (A2, developer 2026-10-12; identity W2, 2026-10-13): the storefront this
+             * row belongs to has no host for its link, or no identity for its chrome. The row is
+             * PARKED with that reason — never sent carrying another shop's host or wordmark.
              */
             DB::table('integration_outbox')->where('id', $id)->update([
                 'status' => OrderMailer::STATUS_PARKED, 'processed_at' => now(),
@@ -169,20 +171,22 @@ final class BulkMailer
         if ($kind === StockAlerts::KIND) {
             $data = app(StockAlerts::class)->mailData(is_int($payload['alert_id'] ?? null) ? $payload['alert_id'] : 0);
 
-            return $data === null ? null : new StockAlertMail($data, StorefrontUrls::apiHost($data['storefront_id']).'/stock-alerts/stop/'.$data['token']);
+            return $data === null ? null : new StockAlertMail($data, StorefrontUrls::apiHost($data['storefront_id']).'/stock-alerts/stop/'.$data['token'], StorefrontIdentity::for($data['storefront_id']));
         }
         if ($kind === ReEngagement::KIND) {
             $sendId = is_int($payload['send_id'] ?? null) ? $payload['send_id'] : 0;
             $data = app(ReEngagement::class)->mailData($sendId);
 
-            return $data === null ? null : new ReEngagementMail($data, self::unsubscribeUrl($sendId, $data['storefront_id']));
+            return $data === null ? null : new ReEngagementMail($data, self::unsubscribeUrl($sendId, $data['storefront_id']), StorefrontIdentity::for($data['storefront_id']));
         }
         if ($kind === ReEngagement::KIND.'_preview') {
             $runId = is_int($payload['run_id'] ?? null) ? $payload['run_id'] : 0;
             $data = app(ReEngagement::class)->previewData($runId);
             $storefront = DB::table('core_reengagement_runs')->where('id', $runId)->value('storefront_id');
 
-            return $data === null ? null : new ReEngagementPreviewMail($data, config()->string('notifications.manage_url').'/manage/storefronts/'.(is_numeric($storefront) ? (int) $storefront : 1).'/reengagement');
+            $storefrontId = is_numeric($storefront) ? (int) $storefront : 0;
+
+            return $data === null ? null : new ReEngagementPreviewMail($data, config()->string('notifications.manage_url').'/manage/storefronts/'.$storefrontId.'/reengagement', StorefrontIdentity::for($storefrontId));
         }
 
         return null;

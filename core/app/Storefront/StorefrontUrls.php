@@ -130,7 +130,24 @@ final class StorefrontUrls
         return config()->integer('compat.storefront_id');
     }
 
-    /** @param array{domain: string, settings: array<string, mixed>}|null $row */
+    /** The storefront's name — `storefronts.name`, the brand name every e-mail prints (W2). Null when there is no row. */
+    public static function nameOf(int $storefrontId): ?string
+    {
+        return self::row($storefrontId)['name'] ?? null;
+    }
+
+    /**
+     * The storefront's settings as stored (`storefronts.settings`, decoded), for readers that
+     * are not URLs — today {@see StorefrontIdentity}. Cached with the row.
+     *
+     * @return array<string, mixed>
+     */
+    public static function settingsOf(int $storefrontId): array
+    {
+        return self::row($storefrontId)['settings'] ?? [];
+    }
+
+    /** @param array{name: string, domain: string, settings: array<string, mixed>}|null $row */
     private static function derived(?array $row, string $prefix, int $storefrontId = 0): string
     {
         $domain = $row['domain'] ?? '';
@@ -145,7 +162,7 @@ final class StorefrontUrls
         return 'https://'.$prefix.$domain;
     }
 
-    /** @param array{domain: string, settings: array<string, mixed>}|null $row */
+    /** @param array{name: string, domain: string, settings: array<string, mixed>}|null $row */
     private static function setting(?array $row, string $key): ?string
     {
         $urls = $row['settings']['urls'] ?? null;
@@ -154,7 +171,7 @@ final class StorefrontUrls
         return is_string($value) && trim($value) !== '' ? trim($value) : null;
     }
 
-    /** @return array{domain: string, settings: array<string, mixed>}|null */
+    /** @return array{name: string, domain: string, settings: array<string, mixed>}|null */
     private static function row(int $storefrontId): ?array
     {
         return self::rows()[$storefrontId] ?? null;
@@ -164,18 +181,18 @@ final class StorefrontUrls
      * Every storefront's domain and settings, cached for as long as the storefront row itself
      * (`storefront.ttl.storefront`) and forgotten with it by StorefrontCache::forgetStorefront().
      *
-     * @return array<int, array{domain: string, settings: array<string, mixed>}>
+     * @return array<int, array{name: string, domain: string, settings: array<string, mixed>}>
      */
     private static function rows(): array
     {
         $cached = Cache::get(self::CACHE_KEY);
         if (is_array($cached)) {
-            /** @var array<int, array{domain: string, settings: array<string, mixed>}> $cached */
+            /** @var array<int, array{name: string, domain: string, settings: array<string, mixed>}> $cached */
             return $cached;
         }
 
         $out = [];
-        foreach (DB::table('storefronts')->get(['id', 'domain', 'settings']) as $raw) {
+        foreach (DB::table('storefronts')->get(['id', 'name', 'domain', 'settings']) as $raw) {
             if (! is_numeric($raw->id ?? null)) {
                 continue;
             }
@@ -185,6 +202,7 @@ final class StorefrontUrls
                 $settings[(string) $key] = $value;
             }
             $out[(int) $raw->id] = [
+                'name' => is_string($raw->name ?? null) ? trim($raw->name) : '',
                 'domain' => is_string($raw->domain ?? null) ? strtolower(trim($raw->domain)) : '',
                 'settings' => $settings,
             ];

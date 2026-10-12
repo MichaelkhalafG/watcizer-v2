@@ -27,6 +27,12 @@ use Illuminate\Mail\Mailable;
 final class OrderConfirmation extends Mailable
 {
     /** @param  array<string, mixed>  $data */
+    private static function brand(array $data): string
+    {
+        return is_scalar($data['brandName'] ?? null) ? (string) $data['brandName'] : '';
+    }
+
+    /** @param  array<string, mixed>  $data */
     public function __construct(private readonly array $data) {}
 
     public function build(): self
@@ -35,7 +41,7 @@ final class OrderConfirmation extends Mailable
 
         // The legacy subject, byte for byte.
         return $this
-            ->subject('✅ تم استلام طلبك — Watchizer | Order #'.$number.' Confirmed')
+            ->subject('✅ تم استلام طلبك — '.self::brand($this->data).' | Order #'.$number.' Confirmed')
             ->view('emails.order-confirmation', $this->data);
     }
 }

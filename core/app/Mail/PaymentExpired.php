@@ -24,7 +24,7 @@ final class PaymentExpired extends Mailable
         $orderId = is_int($this->data['orderId'] ?? null) ? $this->data['orderId'] : 0;
 
         return $this
-            ->subject('طلبك #'.$number.' لم يكتمل | Your Watchizer order #'.$number.' wasn\'t completed')
+            ->subject('طلبك #'.$number.' لم يكتمل | Your '.(is_scalar($this->data['brandName'] ?? null) ? (string) $this->data['brandName'] : '').' order #'.$number.' wasn\'t completed')
             ->view('emails.payment-expired', $this->data + [
                 'recoveryUrl' => OrderRecovery::url($orderId),
                 'recoveryDays' => OrderRecovery::DAYS,

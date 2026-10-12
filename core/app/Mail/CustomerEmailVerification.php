@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Mail;
 
+use App\Storefront\StorefrontIdentity;
 use Illuminate\Mail\Mailable;
 
 /**
@@ -22,15 +23,16 @@ final class CustomerEmailVerification extends Mailable
     public function __construct(
         private readonly string $url,
         private readonly string $name,
+        private readonly StorefrontIdentity $identity,   // the shop the account was made on (W2)
     ) {}
 
     public function build(): self
     {
         return $this
-            ->subject('تأكيد بريدك الإلكتروني | Verify your Watchizer email')
+            ->subject('تأكيد بريدك الإلكتروني | Verify your '.$this->identity->brandName.' email')
             ->view('emails.email-verification', [
                 'url' => $this->url,
                 'name' => $this->name,
-            ]);
+            ] + $this->identity->viewData());
     }
 }

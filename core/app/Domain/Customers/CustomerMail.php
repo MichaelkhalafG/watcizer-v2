@@ -7,6 +7,8 @@ namespace App\Domain\Customers;
 use App\Mail\CustomerEmailVerification;
 use App\Mail\CustomerPasswordReset;
 use App\Models\User;
+use App\Storefront\StorefrontIdentity;
+use App\Storefront\StorefrontUrls;
 use App\Support\Coerce;
 use Illuminate\Mail\Mailable;
 use Illuminate\Support\Facades\Log;
@@ -60,18 +62,20 @@ final class CustomerMail
      * `forgotPassword` deliberately does not, because telling the caller would reveal whether the
      * address is registered.
      */
-    public function sendPasswordReset(User $user, string $token, string $frontend): bool
+    public function sendPasswordReset(User $user, string $token, int $storefrontId): bool
     {
-        // `$frontend` is the site the link opens on — the storefront the reset was asked for on,
-        // passed in by the caller (StorefrontUrls, L5) rather than read from ambient state here.
-        $url = rtrim($frontend, '/')
+        // The storefront the reset was asked for on, passed in by the caller (StorefrontUrls, L5)
+        // rather than read from ambient state here: it decides the site the link opens on AND the
+        // identity the mail carries (W2, 2026-10-13). Both throw for a storefront with no host or
+        // no identity, and the caller's failure policy applies — nothing is sent as another shop.
+        $url = StorefrontUrls::frontend($storefrontId)
             .'/reset-password?token='.urlencode($token)
             .'&email='.urlencode(Coerce::str($user->getAttribute('email')));
 
         return $this->send(
             $user,
             self::KIND_RESET,
-            new CustomerPasswordReset($url, self::greetingName($user), Coerce::int(config('auth.passwords.users.expire'), 60)),
+            new CustomerPasswordReset($url, self::greetingName($user), Coerce::int(config('auth.passwords.users.expire'), 60), StorefrontIdentity::for($storefrontId)),
         );
     }
 
@@ -84,7 +88,7 @@ final class CustomerMail
      * `APP_KEY` — so a link the legacy host mailed can never be verified here, which is correct
      * rather than a compatibility problem (only one of the two is any given customer's shop).
      */
-    public function sendEmailVerification(User $user): bool
+    public function sendEmailVerification(User $user, int $storefrontId): bool
     {
         $email = Coerce::str($user->getAttribute('email'));
 
@@ -93,7 +97,9 @@ final class CustomerMail
             'hash' => sha1($email),
         ]);
 
-        return $this->send($user, self::KIND_VERIFY, new CustomerEmailVerification($url, self::greetingName($user)));
+        // The shop the account was made on (W2): accounts carry no storefront yet (L2), so the
+        // caller passes the one it is serving — the host says which, the row says who.
+        return $this->send($user, self::KIND_VERIFY, new CustomerEmailVerification($url, self::greetingName($user), StorefrontIdentity::for($storefrontId)));
     }
 
     /**

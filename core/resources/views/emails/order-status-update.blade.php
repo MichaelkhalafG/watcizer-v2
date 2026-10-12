@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-    <title>Order Update — Watchizer</title>
+    <title>Order Update — {{ $brandName }}</title>
 </head>
 @php
     $accent = [
@@ -21,7 +21,7 @@
         'processing' => 'Good news — your order is now being prepared for delivery.',
         'shipped'    => 'Your order is on its way to you.',
         'delivered'  => 'Your order has been delivered. We hope you love it!',
-        'completed'  => 'Your order is complete. Thank you for shopping with Watchizer!',
+        'completed'  => 'Your order is complete. Thank you for shopping with '.$brandName.'!',
         'cancelled'  => 'Your order has been cancelled. If this is a mistake, please contact us.',
     ][$status] ?? 'Your order status has been updated.';
 
@@ -30,7 +30,7 @@
         'processing' => 'خبر سعيد — جاري تجهيز طلبك للتوصيل.',
         'shipped'    => 'طلبك في الطريق إليك.',
         'delivered'  => 'تم توصيل طلبك. نتمنى أن ينال إعجابك!',
-        'completed'  => 'تم اكتمال طلبك. شكراً لتسوقك من Watchizer!',
+        'completed'  => 'تم اكتمال طلبك. شكراً لتسوقك من '.$brandName.'!',
         'cancelled'  => 'تم إلغاء طلبك. إذا كان هذا عن طريق الخطأ، يرجى التواصل معنا.',
     ][$status] ?? 'تم تحديث حالة طلبك.';
 @endphp

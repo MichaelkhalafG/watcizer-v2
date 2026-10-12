@@ -19,10 +19,13 @@ use App\Storefront\StorefrontCache;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Tests\Support\LegacyShadow;
 use Tests\Support\Scratch;
+use Tests\Support\StorefrontIdentityFixture;
 use Tests\TestCase;
 
 pest()->extend(TestCase::class)
     ->use(DatabaseTransactions::class)
+    // W2 (2026-10-13): both storefronts identified inside each test's transaction — see the fixture.
+    ->beforeEach(fn () => StorefrontIdentityFixture::ensure())
     ->in('Feature');
 
 pest()->extend(TestCase::class)->in('Unit');

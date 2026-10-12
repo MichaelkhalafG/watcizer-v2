@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Mail;
 
 use App\Domain\Customers\CustomerMail;
+use App\Storefront\StorefrontIdentity;
 use Illuminate\Mail\Mailable;
 
 /**
@@ -30,16 +31,17 @@ final class CustomerPasswordReset extends Mailable
         private readonly string $url,
         private readonly string $name,
         private readonly int $expiresMinutes,
+        private readonly StorefrontIdentity $identity,   // the shop the reset was asked for on (W2)
     ) {}
 
     public function build(): self
     {
         return $this
-            ->subject('إعادة تعيين كلمة المرور | Watchizer Password Reset')
+            ->subject('إعادة تعيين كلمة المرور | '.$this->identity->brandName.' Password Reset')
             ->view('emails.password-reset', [
                 'url' => $this->url,
                 'name' => $this->name,
                 'expiresMinutes' => $this->expiresMinutes,
-            ]);
+            ] + $this->identity->viewData());
     }
 }
