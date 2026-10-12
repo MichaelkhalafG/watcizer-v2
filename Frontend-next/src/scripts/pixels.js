@@ -18,19 +18,19 @@
 //
 // ── THE CARD-PAYMENT GAP, STATED PLAINLY ─────────────────────────────────
 //
-// A card order never reaches the confirmation page: Checkout hands the shopper to
-// Paymob with window.location.href, and the payment callback returns them to the
-// site ROOT — with `?payment_error=1` on failure and no marker at all on success.
-// The browser is therefore never told which order was paid, and there is
-// deliberately NO Purchase event on the card path: firing one at the Paymob
-// hand-off would count every abandoned and every declined payment as a sale, and
-// one such event poisons every campaign report built on it.
+// Checkout hands a card shopper to Paymob with window.location.href, and the
+// payment callback now returns them to /order-confirmation?order=…&status=…
+// (2026-10-12; before that it was the site root with an unread `?payment_error=1`).
+// So the browser IS told which order and what happened — but there is still
+// deliberately NO browser Purchase event on the card path. The server already
+// sends that Purchase from the payment callback through Meta's Conversions API,
+// the only place that knows the payment cleared; a browser event as well would
+// need an event id matching the server's, or every card sale is counted twice,
+// and a double-counted purchase poisons every campaign report built on it.
 //
-// Closing it properly means the server saying so — either Meta's Conversions API
-// called from the payment callback, which is the only place that knows the payment
-// cleared, or a success marker on the return URL that the storefront verifies.
-// Both are a separate piece of work; until one lands, card sales are UNDER-counted
-// here, never over-counted.
+// Adding the browser half is a separate decision (developer, 2026-10-12) — do not
+// fold it into a page change. Until then, browser-side card sales are UNDER-counted
+// here, never over-counted; the server-side count is the one that is right.
 //
 // Event-name note: ViewContent and AddToCart are identical on both platforms.
 // For a completed order, Meta's event is `Purchase`; TikTok's canonical purchase
