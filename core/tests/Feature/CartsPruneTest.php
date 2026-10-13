@@ -18,6 +18,7 @@ function pruneCart(?int $userId, int $cartIdleDays, ?int $lineIdleDays): int
 {
     $at = fn (int $days): string => now()->subDays($days)->toDateTimeString();
     $id = (int) DB::table('carts')->insertGetId([
+        'storefront_id' => 1,                                  // C10: explicit, as every fixture insert is
         'user_id' => $userId,
         'guest_token' => $userId === null ? (string) Str::uuid() : null,
         'created_at' => $at($cartIdleDays + 1),

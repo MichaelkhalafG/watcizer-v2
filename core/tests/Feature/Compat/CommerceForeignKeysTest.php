@@ -50,7 +50,7 @@ it('points order lines at catalog_products with RESTRICT, and cart lines and rat
 
 it('takes a product that exists only in the new catalogue into a cart line and an order line', function () {
     $product = catalogOnlyProduct();
-    $cart = DB::table('carts')->insertGetId(['guest_token' => (string) Str::uuid(), 'created_at' => now(), 'updated_at' => now()]);
+    $cart = DB::table('carts')->insertGetId(['guest_token' => (string) Str::uuid(), 'storefront_id' => 1, 'created_at' => now(), 'updated_at' => now()]);
 
     DB::table('cart_items')->insert(['cart_id' => $cart, 'product_id' => $product, 'quantity' => 1, 'piece_price' => '100.00', 'total_price' => '100.00', 'type_stock' => 'Market']);
     DB::table('order_items')->insert(['order_id' => T::int(DB::table('orders')->min('id')), 'product_id' => $product, 'quantity' => 1, 'piece_price' => '100.00', 'total_price' => '100.00', 'type_stock' => 'Market']);
@@ -61,7 +61,7 @@ it('takes a product that exists only in the new catalogue into a cart line and a
 
 it('refuses a product that exists nowhere, in a cart line and in an order line', function () {
     $ghost = T::int(DB::table('catalog_products')->max('id')) + 1_000_000;
-    $cart = DB::table('carts')->insertGetId(['guest_token' => (string) Str::uuid(), 'created_at' => now(), 'updated_at' => now()]);
+    $cart = DB::table('carts')->insertGetId(['guest_token' => (string) Str::uuid(), 'storefront_id' => 1, 'created_at' => now(), 'updated_at' => now()]);
 
     expect(fn () => DB::table('cart_items')->insert(['cart_id' => $cart, 'product_id' => $ghost, 'quantity' => 1, 'piece_price' => '1.00', 'total_price' => '1.00', 'type_stock' => 'Market']))
         ->toThrow(QueryException::class)
@@ -70,7 +70,7 @@ it('refuses a product that exists nowhere, in a cart line and in an order line',
 });
 
 it('refuses to repoint while a line points at a product the new catalogue does not have', function () {
-    $cart = DB::table('carts')->insertGetId(['guest_token' => (string) Str::uuid(), 'created_at' => now(), 'updated_at' => now()]);
+    $cart = DB::table('carts')->insertGetId(['guest_token' => (string) Str::uuid(), 'storefront_id' => 1, 'created_at' => now(), 'updated_at' => now()]);
     DB::statement('SET FOREIGN_KEY_CHECKS=0');
     DB::table('cart_items')->insert(['cart_id' => $cart, 'product_id' => 999_999_999, 'quantity' => 1, 'piece_price' => '1.00', 'total_price' => '1.00', 'type_stock' => 'Market']);
     DB::statement('SET FOREIGN_KEY_CHECKS=1');
