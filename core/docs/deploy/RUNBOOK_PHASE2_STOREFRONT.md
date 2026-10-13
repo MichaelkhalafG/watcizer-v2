@@ -1039,6 +1039,9 @@ what §4.3 does and why it is a mandatory step rather than a suggestion.
     RewriteCond %{REQUEST_URI} !^/api/auth/
     RewriteCond %{REQUEST_URI} !^/api/(callback_payment|pay/)
     RewriteCond %{REQUEST_URI} !^/Uploads_Images/
+    # the mail wordmark PNGs (W2, 2026-10-13): every e-mail embeds <img> from the storefront's
+    # own asset host, which is this host — exactly the two file shapes, nothing else under /assets/
+    RewriteCond %{REQUEST_URI} !^/assets/brand/[a-z0-9-]+-mail-wordmark(@2x)?\.png$
     RewriteCond %{REQUEST_URI} !^/[a-z]{2}/sitemap\.xml$
     RewriteCond %{REQUEST_URI} !^/sitemaps/(index|en|ar)\.xml$
     RewriteCond %{REQUEST_URI} !^/api/stock-alerts$
