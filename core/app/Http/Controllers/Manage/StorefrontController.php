@@ -3,9 +3,14 @@
 namespace App\Http\Controllers\Manage;
 
 use App\Domain\Activity\ActivityLog;
+use App\Domain\Notifications\StorefrontMailer;
 use App\Domain\Promotions\PromotionRules;
 use App\Models\Storefront\Storefront;
+use App\Models\Storefront\StorefrontMailbox;
 use App\Storefront\StorefrontCache;
+use App\Storefront\StorefrontHasNoHost;
+use App\Storefront\StorefrontSettingsForm;
+use App\Storefront\StorefrontUrls;
 use App\Support\Coerce;
 use App\Support\ManageText;
 use App\Support\Table\TableQuery;
@@ -119,6 +124,19 @@ final class StorefrontController
                 'currency' => $storefront->currency,
                 'is_active' => $storefront->is_active,
                 'money_rewards' => PromotionRules::moneyRewardsEnabled($storefront->id),
+                /*
+                 * ── The three sections that were SQL-only until 2026-10-13 (§4.1; backlog
+                 *    SF-SETTINGS-SCREEN reverses SF-URL-SETTINGS) ──────────────────────────────
+                 *
+                 * `urls` — the four overrides; blank means "derived from the domain", and the
+                 * derived value is shown beside each so the operator sees what the shop will use.
+                 * `identity` — the five values every e-mail reads (W2). `mailbox` — the shop's
+                 * SMTP row (W3/W4): the password is NEVER sent to the page, only `password_set`.
+                 */
+                'urls' => self::urlsOf($storefront),
+                'derived_urls' => self::derivedUrls($storefront->id),
+                'identity' => self::identityOf($storefront),
+                'mailbox' => self::mailboxOf($storefront->id),
             ],
             /*
              * `value` is the stored locale code and never moves. Only `label` is read by a person,
@@ -143,7 +161,7 @@ final class StorefrontController
             'currency' => ['required', 'string', 'size:3'],
             'is_active' => ['required', 'boolean'],
             'money_rewards' => ['required', 'boolean'],
-        ]);
+        ] + StorefrontSettingsForm::rules());
 
         $locales = self::stringList($request->input('locales'));
         $defaultLocale = $request->string('default_locale')->toString();
@@ -157,7 +175,27 @@ final class StorefrontController
         // `code` is NOT editable: it is the storefront's identity in every URL, cache key and
         // compat payload (`/api/v2/{storefront}/…`), and the transform's deterministic-id guard
         // refuses a code/id disagreement. Renaming one is a migration, not a form field.
-        $domain = $request->string('domain')->toString();
+        $domain = strtolower(trim($request->string('domain')->toString()));
+
+        /*
+         * ── UP FRONT: what the readers would refuse at send time, refused here (§4.1) ──────────
+         *
+         * The sections arrive whole or not at all (`sometimes`): a caller that sends none of them
+         * — the pre-2026-10-13 form, the tests that drive it — changes none of them.
+         */
+        $urls = $request->has('urls') ? Coerce::arr($request->input('urls')) : null;
+        $identity = $request->has('identity') ? Coerce::arr($request->input('identity')) : null;
+        $mailbox = $request->has('mailbox') ? Coerce::arr($request->input('mailbox')) : null;
+        $problems = StorefrontSettingsForm::problems((int) $storefront->id, $domain, $urls, $identity, self::settingsOf($storefront))
+            + ($mailbox === null ? [] : StorefrontSettingsForm::mailboxProblems($mailbox));
+        if ($problems !== []) {
+            $messages = [];
+            foreach ($problems as $field => $kind) {
+                $messages[$field] = self::problemText($kind);
+            }
+
+            return back()->withErrors($messages)->withInput();
+        }
 
         // Read BEFORE the fill: the model is about to hold the new values, and this is the only
         // moment the old currency, the old domain and the old money switch still exist anywhere.
@@ -175,9 +213,20 @@ final class StorefrontController
              * general per-storefront bag and this screen owns exactly one key in it; writing the
              * whole object would silently drop anything another feature has put there.
              */
-            'settings' => self::withMoneyRewards($storefront->settings, $request->boolean('money_rewards')),
+            'settings' => StorefrontSettingsForm::merge(
+                self::withMoneyRewards($storefront->settings, $request->boolean('money_rewards')),
+                $urls,
+                $identity,
+            ),
         ]);
         $storefront->save();
+
+        if ($mailbox !== null) {
+            $row = StorefrontMailbox::query()->firstOrNew(['storefront_id' => $storefront->id]);
+            StorefrontSettingsForm::applyMailbox($row, $mailbox);
+            $row->save();
+            StorefrontMailer::forget((int) $storefront->id);
+        }
 
         /*
          * ── The shop has to SEE the save (C-BUG-1, 2026-09-17) ──────────────────────────────
@@ -218,8 +267,122 @@ final class StorefrontController
             ->with('status', ManageText::t('storefronts.saved', 'تم حفظ إعدادات متجر :name.', ['name' => $storefront->name]));
     }
 
+    /** @return array<string, mixed> */
+    private static function settingsOf(Storefront $storefront): array
+    {
+        $raw = $storefront->settings;
+        $out = [];
+        foreach (is_array($raw) ? $raw : [] as $key => $value) {
+            $out[(string) $key] = $value;
+        }
+
+        return $out;
+    }
+
+    /** @return array<string, string> the four overrides as stored, blank when not set */
+    private static function urlsOf(Storefront $storefront): array
+    {
+        $urls = Coerce::arr(self::settingsOf($storefront)['urls'] ?? []);
+        $out = [];
+        foreach (StorefrontSettingsForm::URL_KEYS as $key) {
+            $out[$key] = Coerce::str($urls[$key] ?? '');
+        }
+
+        return $out;
+    }
+
     /**
-     * What a storefront is, for the log — the seven values this form can actually change.
+     * What the shop USES for each URL today — the override, or the value derived from the domain —
+     * shown beside the blank field so "leave it empty" is an informed choice. A storefront with no
+     * host shows the refusal's words instead of a URL.
+     *
+     * @return array<string, string>
+     */
+    private static function derivedUrls(int $storefrontId): array
+    {
+        $out = [];
+        foreach ([
+            'frontend' => fn (): string => StorefrontUrls::frontend($storefrontId),
+            'payment_return' => fn (): string => StorefrontUrls::paymentReturn($storefrontId),
+            'api_host' => fn (): string => StorefrontUrls::apiHost($storefrontId),
+            'asset_base' => fn (): string => StorefrontUrls::assetBase($storefrontId),
+        ] as $key => $read) {
+            try {
+                $out[$key] = $read();
+            } catch (StorefrontHasNoHost) {
+                $out[$key] = ManageText::t('storefronts.derived_no_host', 'لا مضيف: لا نطاق ولا قيمة هنا');
+            }
+        }
+
+        return $out;
+    }
+
+    /** @return array<string, string|bool> the five identity values as stored, plus whether each wordmark file exists */
+    private static function identityOf(Storefront $storefront): array
+    {
+        $identity = Coerce::arr(self::settingsOf($storefront)['identity'] ?? []);
+        $out = [];
+        foreach (StorefrontSettingsForm::IDENTITY_KEYS as $key) {
+            $out[$key] = Coerce::str($identity[$key] ?? '');
+        }
+        $out['mail_wordmark_exists'] = $out['mail_wordmark'] !== '' && is_file(public_path(ltrim(Coerce::str($out['mail_wordmark']), '/')));
+        $out['mail_wordmark_1x_exists'] = $out['mail_wordmark_1x'] !== '' && is_file(public_path(ltrim(Coerce::str($out['mail_wordmark_1x']), '/')));
+
+        return $out;
+    }
+
+    /**
+     * The mailbox row for the page — every column but the password, plus `password_set` and the
+     * fields a REAL send would still need (`missing`, empty when usable).
+     *
+     * @return array<string, mixed>
+     */
+    private static function mailboxOf(int $storefrontId): array
+    {
+        $row = StorefrontMailbox::query()->where('storefront_id', $storefrontId)->first();
+        if ($row === null) {
+            return [
+                'exists' => false, 'is_enabled' => true, 'host' => '', 'port' => 587, 'encryption' => 'tls', 'username' => '',
+                'from_address' => '', 'from_name' => '', 'daily_cap' => 800, 'transactional_reserve' => 200,
+                'order_recipients' => '', 'password_set' => false, 'missing' => ['host', 'username', 'password', 'from_address', 'from_name'],
+            ];
+        }
+
+        return [
+            'exists' => true,
+            'is_enabled' => $row->isEnabled(),
+            'host' => $row->host(),
+            'port' => $row->port(),
+            'encryption' => $row->encryption(),
+            'username' => $row->username(),
+            'from_address' => $row->fromAddress(),
+            'from_name' => $row->fromName(),
+            'daily_cap' => $row->dailyCap(),
+            'transactional_reserve' => $row->transactionalReserve(),
+            'order_recipients' => implode("\n", $row->orderRecipients()),
+            'password_set' => $row->credentialsSet(),              // a boolean — the only thing a page may say about it
+            'missing' => $row->missing(needsTransport: true),
+        ];
+    }
+
+    /** The up-front refusal, in the operator's language. */
+    private static function problemText(string $kind): string
+    {
+        return match ($kind) {
+            'no_host' => ManageText::t('storefronts.problem_no_host', 'بدون نطاق يجب تعبئة هذا الرابط، وإلا فلن يكون للمتجر مضيف (لا رجوع إلى متجر آخر).'),
+            'url_host_only' => ManageText::t('storefronts.problem_url_host_only', 'رابط https:// بالمضيف فقط، بلا مسار ولا شرطة مائلة في النهاية.'),
+            'url_https' => ManageText::t('storefronts.problem_url_https', 'رابط https:// صالح بلا شرطة مائلة في النهاية.'),
+            'domain_shape' => ManageText::t('storefronts.problem_domain_shape', 'نطاق فقط، بأحرف صغيرة، بلا بروتوكول ولا مسار.'),
+            'wordmark_missing' => ManageText::t('storefronts.problem_wordmark_missing', 'ملف PNG بهذا المسار غير موجود تحت public/.'),
+            'whatsapp_digits' => ManageText::t('storefronts.problem_whatsapp_digits', 'أرقام دولية فقط، من 10 إلى 15 رقمًا، بلا + ولا مسافات (مثل 201551096234).'),
+            'reserve_below_cap' => ManageText::t('storefronts.problem_reserve_below_cap', 'المحجوز للرسائل الأساسية يجب أن يكون أقل من الحد اليومي.'),
+            'recipient_email' => ManageText::t('storefronts.problem_recipient_email', 'كل عنوان في القائمة يجب أن يكون بريدًا صالحًا.'),
+            default => ManageText::t('storefronts.problem_required', 'هذه القيمة مطلوبة: بدونها لا تُرسَل رسائل هذا المتجر.'),
+        };
+    }
+
+    /**
+     * What a storefront is, for the log — the values this form can actually change.
      *
      * ── Why this screen is logged at all (2026-10-05) ───────────────────────────
      *
@@ -270,7 +433,44 @@ final class StorefrontController
             'currency' => Row::str($row, 'currency'),
             'is_active' => Row::bool($row, 'is_active'),
             'money_rewards' => PromotionRules::moneyRewardsEnabled($id),
+            // §4.1 (2026-10-13): the three sections the screen gained. Flat `section.key` names, so
+            // "who changed the WhatsApp number" has an answer; the mailbox password is `password`,
+            // which ActivityLog::REDACTED_FIELDS replaces with a marker on both sides.
+            ...self::settingsLogFields($id),
         ];
+    }
+
+    /** @return array<string, mixed> */
+    private static function settingsLogFields(int $id): array
+    {
+        $storefront = Storefront::query()->find($id);
+        $out = [];
+        if ($storefront instanceof Storefront) {
+            foreach (self::urlsOf($storefront) as $key => $value) {
+                $out['urls.'.$key] = $value;
+            }
+            foreach (StorefrontSettingsForm::IDENTITY_KEYS as $key) {
+                $out['identity.'.$key] = self::identityOf($storefront)[$key];
+            }
+        }
+        $mailbox = StorefrontMailbox::query()->where('storefront_id', $id)->first();
+        if ($mailbox !== null) {
+            $out['mailbox.is_enabled'] = $mailbox->isEnabled();
+            $out['mailbox.host'] = $mailbox->host();
+            $out['mailbox.port'] = $mailbox->port();
+            $out['mailbox.encryption'] = $mailbox->encryption();
+            $out['mailbox.username'] = $mailbox->username();
+            $out['mailbox.from_address'] = $mailbox->fromAddress();
+            $out['mailbox.from_name'] = $mailbox->fromName();
+            $out['mailbox.daily_cap'] = $mailbox->dailyCap();
+            $out['mailbox.transactional_reserve'] = $mailbox->transactionalReserve();
+            $out['mailbox.order_recipients'] = implode(', ', $mailbox->orderRecipients());
+            // The VALUE never enters the log (REDACTED_FIELDS matches `password`); the stored
+            // ciphertext differs on every write, so "changed" means a password was typed.
+            $out['password'] = $mailbox->credentialsSet() ? hash('sha256', $mailbox->password()) : '';
+        }
+
+        return $out;
     }
 
     /**
