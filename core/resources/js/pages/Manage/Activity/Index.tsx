@@ -58,6 +58,8 @@ interface Props {
         users: { value: string; label: string }[];
         actions: { value: string; label: string }[];
         subject_types: { value: string; label: string }[];
+        /** §4.2: the shops, for "what happened on this shop". */
+        storefronts: { value: string; label: string }[];
     };
     coverage: string;
     pre_handover_note: string;
@@ -211,7 +213,7 @@ export default function ActivityIndex({ table, filters, coverage, pre_handover_n
                 table={table}
                 columns={columns}
                 rowId={(row) => row.id}
-                searchPlaceholder={t('activity.search_placeholder', 'اسم السجل أو المستخدم…')}
+                searchPlaceholder={t('activity.search_placeholder', 'بداية اسم السجل أو المستخدم، أو رقم السجل…')}
                 filters={(setFilter, current) => (
                     <>
                         {(
@@ -219,6 +221,7 @@ export default function ActivityIndex({ table, filters, coverage, pre_handover_n
                                 ['user_id', t('activity.all_users', 'كل المستخدمين'), filters.users],
                                 ['action', t('activity.all_actions', 'كل الإجراءات'), filters.actions],
                                 ['subject_type', t('activity.all_types', 'كل الأنواع'), filters.subject_types],
+                                ['storefront_id', t('activity.all_storefronts', 'كل المتاجر'), filters.storefronts],
                             ] as const
                         ).map(([key, empty, options]) => (
                             <Select
