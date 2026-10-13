@@ -4,6 +4,7 @@ use App\Storefront\StorefrontCache;
 use App\Storefront\StorefrontHasNoIdentity;
 use App\Storefront\StorefrontIdentity;
 use Illuminate\Support\Facades\DB;
+use Tests\Support\Shops;
 use Tests\Support\StorefrontIdentityFixture;
 use Tests\Support\T;
 
@@ -18,7 +19,7 @@ use Tests\Support\T;
 
 beforeEach(function () {
     config(['storefront.asset_base' => 'https://api.watchizereg.test']);   // Watchizer's env value, as in StorefrontUrlsTest
-    expect(DB::table('storefronts')->where('code', 'brandfashion')->value('domain'))->toBe('brandfashionegy.com');
+    expect(Shops::domain('brandfashion'))->not->toBe('watchizereg.com');   // whichever host the row holds today
 });
 
 function shop(string $code): int
@@ -38,7 +39,7 @@ it('reads each shop\'s identity from its own row, and puts the wordmark on its o
         ->and($w->whatsappSupportUrl())->toStartWith('https://wa.me/201551096234?text=');
 
     expect($f->brandName)->toBe('Brand Fashion')
-        ->and($f->wordmarkUrl())->toBe('https://api.brandfashionegy.com/assets/brand/brandfashion-mail-wordmark@2x.png')
+        ->and($f->wordmarkUrl())->toBe(Shops::api('brandfashion').'/assets/brand/brandfashion-mail-wordmark@2x.png')
         // Two numbers, two roles (BF handover D22): the customer-service one differs, the developer's does not.
         ->and($f->whatsappSupport)->toBe('201283888490')
         ->and($f->whatsappDeveloper)->toBe($w->whatsappDeveloper)

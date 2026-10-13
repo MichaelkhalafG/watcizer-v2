@@ -89,7 +89,7 @@ it('REFUSES a host that names no storefront in production: 404, never the defaul
     app()['env'] = 'production';
 
     expect(fn () => storefrontForHost('127.0.0.1'))->toThrow(NotFoundHttpException::class)
-        ->and(fn () => storefrontForHost('bf.michaelkhalaf.com'))->toThrow(NotFoundHttpException::class)   // the step-D host before its row matches
+        ->and(fn () => storefrontForHost('unmatched-host.example'))->toThrow(NotFoundHttpException::class)   // a host no row names
         ->and(storefrontForHost(T::str(DB::table('storefronts')->where('id', 2)->value('domain'))))->toBe(2);
 });
 

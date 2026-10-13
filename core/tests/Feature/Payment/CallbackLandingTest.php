@@ -9,6 +9,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Tests\Support\PaymentFixture;
+use Tests\Support\Shops;
 use Tests\Support\T;
 
 use function Pest\Laravel\get;
@@ -64,7 +65,7 @@ it('builds the landing on the storefront\'s return base, number first, nothing e
         ->and(StorefrontUrls::paymentLanding(1, Landing::PENDING, '  '))->toBe(landedAt('pending'))
         // The other shop's landing is the other shop's: derived from its own domain.
         ->and(StorefrontUrls::paymentLanding(Storefront::BRAND_FASHION_ID, Landing::PAID, '000001'))
-        ->toBe('https://brandfashionegy.com/order-confirmation?order=000001&status=paid');
+        ->toBe(Shops::site('brandfashion').'/order-confirmation?order=000001&status=paid');
 });
 
 it('lands on the storefront the callback was SCOPED to, not the one the request\'s host resolves to', function () {
@@ -76,7 +77,7 @@ it('lands on the storefront the callback was SCOPED to, not the one the request\
 
     expect($response)->toBeInstanceOf(RedirectResponse::class)
         ->and($response instanceof RedirectResponse ? $response->getTargetUrl() : null)
-        ->toBe('https://brandfashionegy.com/order-confirmation?order=000001&status=paid');
+        ->toBe(Shops::site('brandfashion').'/order-confirmation?order=000001&status=paid');
 });
 
 it('answers the PROVIDER with JSON on every exit: refusal, success, decline, replay', function () {
