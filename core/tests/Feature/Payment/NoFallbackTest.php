@@ -2,6 +2,10 @@
 
 use App\Compat\CompatCart;
 use App\Compat\CompatCheckout;
+use App\Domain\Inventory\InventoryService;
+use App\Domain\Inventory\StockTarget;
+use App\Domain\Notifications\BulkMailer;
+use App\Domain\Notifications\StockAlerts;
 use App\Domain\Payment\CheckoutMethods;
 use App\Storefront\StorefrontCache;
 use App\Storefront\StorefrontHasNoHost;
@@ -11,6 +15,7 @@ use Illuminate\Database\Query\JoinClause;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 use Tests\Support\T;
@@ -96,19 +101,57 @@ it('LEAK 1 — refuses a card order on a storefront with no live online contract
 it('LEAK 2 — answers a host that names no storefront with 404 in production, on both doors', function () {
     app()['env'] = 'production';
 
-    // The compat door: the step-D host before its row matches it.
-    withHeaders(['Api-Code' => NF_API_KEY])->getJson('https://bf.michaelkhalaf.com/api/catalog/meta')->assertNotFound();
+    // The compat door: a host no storefront row names (the step-D host would match once its row says so).
+    withHeaders(['Api-Code' => NF_API_KEY])->getJson('https://unmatched-host.example/api/catalog/meta')->assertNotFound();
     // …and the one that does match still answers.
     withHeaders(['Api-Code' => NF_API_KEY])->getJson('https://api.watchizereg.com/api/catalog/meta')->assertOk();
 
     // The URL door: where a payment return, a reset link or a sign-in landing would be built.
-    expect(fn () => StorefrontUrls::storefrontOf(Request::create('https://bf.michaelkhalaf.com/api/pay/brandfashion/paymob/callback')))
+    expect(fn () => StorefrontUrls::storefrontOf(Request::create('https://unmatched-host.example/api/pay/brandfashion/paymob/callback')))
         ->toThrow(NotFoundHttpException::class);
 });
 
 it('LEAK 3 — sends a purchase to NO pixel when the storefront has none', function () {
     // see the file note: proven only after the production key is set and verified (W5)
 })->skip('W5: META_CAPI_PIXEL_ID still defaults to Watchizer\'s pixel in config/services.php; the default leaves the code after the developer sets the key on production and verifies the Conversions API still fires — not before');
+
+it('LEAK 2c — the PRODUCT link in a stock-alert or campaign mail is the storefront\'s own site, or the row is parked', function () {
+    /*
+     * A2 batch 1 (W6) moved the stop/unsubscribe links to the storefront's own host and left the
+     * product link's `'https://'.($domain ?: 'watchizereg.com')` in both bulk mail builders — found
+     * on 2026-10-13 while building W3. Closed the same way: the builder throws, the drain parks.
+     */
+    $fashion = T::int(DB::table('storefronts')->where('code', 'brandfashion')->value('id'));
+    $product = T::int(DB::table('catalog_products as p')->join('storefront_product as sp', function (JoinClause $j) use ($fashion): void {
+        $j->on('sp.product_id', '=', 'p.id')->where('sp.storefront_id', '=', $fashion)->where('sp.is_visible', '=', 1);
+    })->whereNull('p.deleted_at')->where('p.is_active', 1)->orderBy('p.id')->value('p.id'));
+    app(InventoryService::class)->set(StockTarget::product($product), 'express', 0, 'adjustment');
+    app(InventoryService::class)->set(StockTarget::product($product), 'market', 0, 'adjustment');
+    DB::table('core_stock_alerts')->where('product_id', $product)->delete();
+    $alerts = app(StockAlerts::class);
+    $alerts->subscribe($fashion, $product, 'leak2c@example.test', null, 'en');
+    $alerts->restocked($product, 1);
+    app(InventoryService::class)->set(StockTarget::product($product), 'express', 1, 'adjustment');
+    $alertId = T::int(DB::table('core_stock_alerts')->where('product_id', $product)->where('storefront_id', $fashion)->value('id'));
+
+    // With a domain: the alert's product link is on Brand Fashion's site.
+    $data = $alerts->mailData($alertId);
+    expect($data)->not->toBeNull()
+        ->and($data['product']['url'] ?? '')->toStartWith(StorefrontUrls::frontend($fashion).'/product/')
+        ->and($data['product']['url'] ?? '')->not->toContain('watchizereg');
+
+    // Without one: the builder throws, and the drain parks the row with the reason — nothing sent.
+    DB::table('storefronts')->where('id', $fashion)->update(['domain' => null, 'settings' => DB::raw("JSON_REMOVE(settings, '$.urls')")]);
+    app(StorefrontCache::class)->forgetStorefront($fashion, 'brandfashion');
+    expect(fn () => $alerts->mailData($alertId))->toThrow(StorefrontHasNoHost::class);
+    Mail::fake();
+    app(BulkMailer::class)->drain(50);
+    Mail::assertNothingSent();
+    $row = DB::table('integration_outbox')->where('channel', 'mail_bulk')->where('aggregate_id', $alertId)->first(['status', 'last_error']);
+    expect($row)->not->toBeNull()
+        ->and(T::str($row->status ?? ''))->toBe('parked')
+        ->and(T::str($row->last_error ?? ''))->toContain('has no host');
+});
 
 it('LEAK 2b — a storefront with neither api_host nor domain gets NO host, never Watchizer\'s', function () {
     $fashion = T::int(DB::table('storefronts')->where('code', 'brandfashion')->value('id'));

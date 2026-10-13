@@ -8,6 +8,7 @@ use App\Compat\CompatCart;
 use App\Domain\Catalog\PriceWatch;
 use App\Domain\Customers\CustomerSeen;
 use App\Storefront\ImageUrl;
+use App\Storefront\StorefrontUrls;
 use App\Support\LegacySlug;
 use App\Transform\Row;
 use Illuminate\Database\Query\Builder;
@@ -398,8 +399,10 @@ final class ReEngagement
      */
     private static function cards(int $storefrontId, array $ids): array
     {
-        $domain = DB::table('storefronts')->where('id', $storefrontId)->value('domain');
-        $host = 'https://'.(is_string($domain) ? $domain : 'watchizereg.com');
+        // The product links on the campaign's OWN storefront's site (A2 follow-up, 2026-10-13: this
+        // fell back to watchizereg.com for a storefront with no domain). Throws StorefrontHasNoHost
+        // for a hostless storefront; BulkMailer parks the row with the reason.
+        $host = StorefrontUrls::frontend($storefrontId);
         $rows = DB::table('catalog_products')->whereIn('id', $ids)->get(['id', 'selling_price', 'sale_price'])->keyBy('id');
         $titles = [];
         foreach (DB::table('catalog_product_translations')->whereIn('product_id', $ids)->get(['product_id', 'locale', 'title']) as $t) {
