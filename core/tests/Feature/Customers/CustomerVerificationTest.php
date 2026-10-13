@@ -65,6 +65,7 @@ it('registers successfully even when the mail transport REFUSES', function () {
      * `CustomerMail`. A relay that is down must not turn a successful registration into a 500: the
      * account exists, the customer is about to be signed in, and nothing gates on verification.
      */
+    Mail::shouldReceive('mailer')->andReturnSelf();
     Mail::shouldReceive('to')->andThrow(new RuntimeException('smtp: connection refused'));
 
     withHeaders(['Api-Code' => VERIFY_API_KEY])->postJson('/api/register', [
@@ -252,6 +253,7 @@ it('logs a failed send by REFERENCE, never with the link', function () {
     $email = Shopper::email();
     $user = Shopper::register(['email' => $email]);
 
+    Mail::shouldReceive('mailer')->andReturnSelf();
     Mail::shouldReceive('to')->andThrow(new RuntimeException('smtp: connection refused'));
 
     $captured = [];

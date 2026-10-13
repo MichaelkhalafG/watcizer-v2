@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domain\Customers;
 
+use App\Domain\Notifications\StorefrontMailer;
 use App\Mail\CustomerEmailVerification;
 use App\Mail\CustomerPasswordReset;
 use App\Models\User;
@@ -12,7 +13,6 @@ use App\Storefront\StorefrontUrls;
 use App\Support\Coerce;
 use Illuminate\Mail\Mailable;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\URL;
 use Throwable;
 
@@ -33,7 +33,7 @@ use Throwable;
  * token, not the mailable. This is the same rule AGENTS §3 states for helper scripts, one layer in.
  *
  * **3. There is ONE sender.** Both e-mails carry a credential in a URL, and the discipline above
- * only holds if it is written once. A second `Mail::to(...)->send(new CustomerPasswordReset(...))`
+ * only holds if it is written once. A second `send(new CustomerPasswordReset(...))`
  * anywhere else is a second place that can log the wrong thing, and `AccountMailTest` greps for it.
  *
  * ── What this class deliberately does NOT use ───────────────────────────────────────────────
@@ -76,6 +76,7 @@ final class CustomerMail
             $user,
             self::KIND_RESET,
             new CustomerPasswordReset($url, self::greetingName($user), Coerce::int(config('auth.passwords.users.expire'), 60), StorefrontIdentity::for($storefrontId)),
+            $storefrontId,
         );
     }
 
@@ -99,15 +100,17 @@ final class CustomerMail
 
         // The shop the account was made on (W2): accounts carry no storefront yet (L2), so the
         // caller passes the one it is serving — the host says which, the row says who.
-        return $this->send($user, self::KIND_VERIFY, new CustomerEmailVerification($url, self::greetingName($user), StorefrontIdentity::for($storefrontId)));
+        return $this->send($user, self::KIND_VERIFY, new CustomerEmailVerification($url, self::greetingName($user), StorefrontIdentity::for($storefrontId)), $storefrontId);
     }
 
     /**
-     * The one send, with the one failure policy.
+     * The one send, with the one failure policy — from the storefront's OWN mailbox (W3,
+     * 2026-10-13). A storefront with no usable mailbox is a failure like a refused relay: logged by
+     * reference, the action succeeds, nothing is sent as another shop.
      *
      * @param  Mailable  $mailable
      */
-    private function send(User $user, string $kind, $mailable): bool
+    private function send(User $user, string $kind, $mailable, int $storefrontId): bool
     {
         $email = Coerce::str($user->getAttribute('email'));
         if ($email === '') {
@@ -115,7 +118,7 @@ final class CustomerMail
         }
 
         try {
-            Mail::to($email)->send($mailable);
+            StorefrontMailer::send($storefrontId, $email, $mailable);
 
             return true;
         } catch (Throwable $e) {

@@ -6,6 +6,7 @@ use App\Transform\Row;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Testing\TestResponse;
+use Tests\Support\StorefrontMailboxFixture;
 use Tests\Support\T;
 
 use function Pest\Laravel\withHeaders;
@@ -103,7 +104,7 @@ function callback(array $query): TestResponse
 
 it('accepts a correctly signed success callback and marks the order processing', function () {
     // Set explicitly, so the expected message count below is this test's own and not `.env`'s.
-    config(['notifications.admin_emails' => ['ops@watchizer.test']]);
+    StorefrontMailboxFixture::recipients(1, ['ops@watchizer.test']);
 
     $f = callbackOrder(2, '250.00');
 

@@ -15,6 +15,7 @@ use Symfony\Component\Console\Command\Command as Cmd;
 use Tests\Support\PaymentFixture;
 use Tests\Support\Props;
 use Tests\Support\Staff;
+use Tests\Support\StorefrontMailboxFixture;
 use Tests\Support\T;
 
 use function Pest\Laravel\actingAs;
@@ -39,12 +40,12 @@ use function Pest\Laravel\get;
 
 beforeEach(function () {
     config([
-        'notifications.admin_emails' => ['ops@watchizer.test'],
         'notifications.send.inline' => true,
         // See OrderMailTriggersTest: the suite wraps every test in a transaction.
         'notifications.send.inside_transaction' => true,
         'notifications.send.max_attempts' => 3,
     ]);
+    StorefrontMailboxFixture::recipients(1, ['ops@watchizer.test']);
 });
 
 /** Point the default mailer at a port nothing listens on. */

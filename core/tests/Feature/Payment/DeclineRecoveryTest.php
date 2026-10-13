@@ -9,6 +9,7 @@ use Illuminate\Mail\Mailable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Tests\Support\PaymentFixture;
+use Tests\Support\StorefrontMailboxFixture;
 use Tests\Support\T;
 
 use function Pest\Laravel\get;
@@ -38,11 +39,11 @@ beforeEach(function () {
         'compat.api_key' => DR_API_KEY,
         'compat.payment_return_url' => 'https://watchizereg.test/',
         'compat.unpaid.expire_after_minutes' => 60,
-        'notifications.admin_emails' => ['ops@example.test'],
         'notifications.send.inline' => true,
         'notifications.send.inside_transaction' => true,       // the suite never commits; see config
         'notifications.send.park' => false,
     ]);
+    StorefrontMailboxFixture::recipients(1, ['ops@example.test']);
     DB::table('storefront_payment_providers')->delete();
     PaymentFixture::method(PaymentFixture::paymob(hmacSecret: DR_SECRET), 'card', '4001');
     Mail::fake();

@@ -16,6 +16,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Testing\PendingCommand;
 use Symfony\Component\Console\Command\Command;
 use Tests\Support\PaymentFixture;
+use Tests\Support\StorefrontMailboxFixture;
 use Tests\Support\T;
 
 use function Pest\Laravel\artisan;
@@ -36,10 +37,10 @@ use function Pest\Laravel\artisan;
 
 beforeEach(function () {
     config([
-        'notifications.admin_emails' => ['ops@watchizer.test'],
         'notifications.send.inline' => true,
         'notifications.send.inside_transaction' => true,
     ]);
+    StorefrontMailboxFixture::recipients(1, ['ops@watchizer.test']);
 });
 
 /**
@@ -199,7 +200,7 @@ it('hands the templates every key they can read', function () {
     // Added deliberately 2026-09-26 (OrderTotals): the promotion gets its own line, free shipping
     // reads as free, and every figure shares one decimals setting so the column adds up. And
     // 2026-10-13 (W2): the storefront's wordmark image.
-    $added = ['promotion', 'promotionName', 'freeShipping', 'moneyDecimals', 'wordmarkUrl'];
+    $added = ['promotion', 'promotionName', 'freeShipping', 'moneyDecimals', 'wordmarkUrl', 'storefrontId'];
     expect(OrderEmailData::keys())->toEqualCanonicalizing([...$legacyKeys, ...$added]);
 });
 
@@ -332,7 +333,7 @@ it('renders each status’s own copy, in both languages', function () {
 // ── the empty-recipient cases, recorded and not dropped ──────────────────────────────────────
 
 it('records a visible failure when no admin recipient is configured', function () {
-    config(['notifications.admin_emails' => []]);
+    StorefrontMailboxFixture::recipients(1, []);                 // the storefront's mailbox row, no team address on it
     $orderId = contractOrder('pending');
 
     app(OrderMailer::class)->placedNow($orderId, notifyCustomer: false);
@@ -341,7 +342,7 @@ it('records a visible failure when no admin recipient is configured', function (
      * The legacy `foreach (config('watchizer.admin_emails', []) as $email)` over an empty array
      * is a silent no-op: nobody in the shop hears about the order and nothing says so. That is
      * the exact silence prerequisite (a) exists to close, so core writes a FAILED row naming the
-     * missing environment variable.
+     * missing setting (the storefront's mailbox row since W3; `ORDER_ADMIN_EMAILS` before it).
      */
     $rows = OrderMailer::forOrder($orderId);
     expect($rows)->toHaveCount(1)
@@ -351,11 +352,11 @@ it('records a visible failure when no admin recipient is configured', function (
          * CONFIG, not `unknown`. 🟠-2 stopped `last_error` leaving the server, and the naive reading
          * of that would have classified this row — which we composed ourselves, from no transport at
          * all — as "failed for an unrecognised reason, needs a developer". It needs an administrator
-         * and one environment variable, and the label has to say so or the finding made the screen
-         * worse than it was.
+         * and one screen, and the label has to say so or the finding made the screen worse than
+         * it was.
          */
         ->and($rows[0]['error_kind'])->toBe(MailFailure::CONFIG)
-        ->and($rows[0]['error_label'])->toContain('ORDER_ADMIN_EMAILS');
+        ->and($rows[0]['error_label'])->toMatch('/mailbox|صندوق بريد/');
 
     // …and `mail:drain --report` is non-zero while it stands, so a cron or a deploy check sees it.
     contractDrain('mail:drain', ['--report' => true, '--order' => $orderId])->assertExitCode(Command::FAILURE);

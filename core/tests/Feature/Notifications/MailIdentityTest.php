@@ -12,7 +12,9 @@ use App\Storefront\StorefrontIdentity;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Tests\Support\PaymentFixture;
+use Tests\Support\Shops;
 use Tests\Support\StorefrontIdentityFixture;
+use Tests\Support\StorefrontMailboxFixture;
 use Tests\Support\T;
 
 /*
@@ -27,13 +29,14 @@ use Tests\Support\T;
 
 beforeEach(function () {
     config([
-        'notifications.admin_emails' => ['ops@example.test'],
         'notifications.send.inline' => true,
         'notifications.send.inside_transaction' => true,
         'notifications.send.park' => false,
         'storefront.asset_base' => 'https://api.watchizereg.test',
         'customers.storefront_url' => 'https://watchizereg.test',
     ]);
+    StorefrontMailboxFixture::recipients(1, ['ops@example.test']);
+    StorefrontMailboxFixture::recipients(Shops::id('brandfashion'), ['ops@example.test']);
     Mail::fake();
 });
 
@@ -65,7 +68,7 @@ it('renders a Brand Fashion order mail with NOTHING of Watchizer in it, and vice
     [$fashion, $watchizer] = str_contains($rendered[0], 'brandfashion-mail-wordmark') ? [$rendered[0], $rendered[1]] : [$rendered[1], $rendered[0]];
 
     expect(substr_count($fashion, 'Watchizer'))->toBe(0)
-        ->and($fashion)->toContain('https://api.brandfashionegy.com/assets/brand/brandfashion-mail-wordmark@2x.png', 'wa.me/201283888490', 'Brand Fashion', 'https://brandfashionegy.com/order-list')
+        ->and($fashion)->toContain(Shops::api('brandfashion').'/assets/brand/brandfashion-mail-wordmark@2x.png', 'wa.me/201283888490', 'Brand Fashion', Shops::site('brandfashion').'/order-list')
         ->and($fashion)->not->toContain('watchizereg', '201551096234')
         ->and($watchizer)->toContain('https://api.watchizereg.test/assets/brand/watchizer-mail-wordmark@2x.png', 'wa.me/201551096234', 'https://watchizereg.test/order-list')
         ->and($watchizer)->not->toContain('brandfashion', '201283888490');
@@ -95,7 +98,7 @@ it('builds the recovery link on the order\'s OWN site, and parks when that store
     DB::table('orders')->where('id', $orderId)->update(['payment_method' => 'paymob', 'status' => 'cancelled']);
 
     $html = (new PaymentExpired(OrderEmailData::for($orderId) ?? []))->render();
-    expect($html)->toContain('https://brandfashionegy.com/cart/recover?t=')
+    expect($html)->toContain(Shops::site('brandfashion').'/cart/recover?t=')
         ->and($html)->not->toContain('watchizereg');
 
     // Now the storefront has no domain: the recovery link cannot be built, and the mail is parked
@@ -142,7 +145,7 @@ it('parks a BULK mail of a storefront with no identity, with the reason', functi
 
 it('gives the password-reset mail the identity of the shop it was asked for on', function () {
     $identity = StorefrontIdentity::for(2);
-    $html = (new CustomerPasswordReset('https://brandfashionegy.com/reset-password?token=t&email=e', 'Sara', 60, $identity))->render();
+    $html = (new CustomerPasswordReset(Shops::site('brandfashion').'/reset-password?token=t&email=e', 'Sara', 60, $identity))->render();
 
     expect($html)->toContain('brandfashion-mail-wordmark@2x.png', 'wa.me/201283888490', 'reset your Brand Fashion password')
         ->and(substr_count($html, 'Watchizer'))->toBe(0);

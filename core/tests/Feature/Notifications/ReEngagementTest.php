@@ -19,6 +19,7 @@ use Illuminate\Support\ViewErrorBag;
 use Inertia\Testing\AssertableInertia;
 use Tests\Support\Shopper;
 use Tests\Support\Staff;
+use Tests\Support\StorefrontMailboxFixture;
 use Tests\Support\T;
 
 use function Pest\Laravel\actingAs;
@@ -36,10 +37,12 @@ use function Pest\Laravel\withHeaders;
  */
 
 beforeEach(function () {
-    // The order-notification addresses are shared by every shop, so they must never receive a
-    // storefront's campaign preview (R7, developer 2026-09-30): set to OTHER addresses here, which
-    // no assertion below expects. The preview list is the storefront's own, typed on its screen.
-    config(['notifications.admin_emails' => ['shared.orders@example.test'], 'notifications.bulk.daily_cap' => 1000]);
+    // The order-notification addresses must never receive a storefront's campaign preview (R7,
+    // developer 2026-09-30): set to OTHER addresses here, which no assertion below expects. The
+    // preview list is the storefront's own, typed on its screen. (Since W3 the order addresses are
+    // per storefront on its mailbox row; the rule is unchanged.)
+    StorefrontMailboxFixture::recipients(1, ['shared.orders@example.test']);
+    StorefrontMailboxFixture::budget(1, 1000, 200);
     foreach (['core_reengagement_sends', 'core_reengagement_runs', 'core_reengagement_settings', 'core_marketing_optouts', 'core_customer_seen', 'core_mail_daily'] as $t) {
         DB::table($t)->delete();
     }
@@ -234,7 +237,7 @@ it('sends through the bulk budget, counted as bulk', function () {
     $engine->send();
     $result = app(BulkMailer::class)->drain(50);
     expect($result['sent'])->toBe(4)                                         // 2 previews + 2 run e-mails
-        ->and(MailBudget::sentToday(MailBudget::BULK))->toBe(4);
+        ->and(MailBudget::sentToday(1, MailBudget::BULK))->toBe(4);
 });
 
 it('plans nothing, and mails no one, when the storefront has no preview addresses — never the shared order-notification list', function () {

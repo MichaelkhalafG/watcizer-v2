@@ -21,6 +21,7 @@ use Illuminate\Testing\PendingCommand;
 use Symfony\Component\Console\Command\Command;
 use Tests\Support\PaymentFixture;
 use Tests\Support\Staff;
+use Tests\Support\StorefrontMailboxFixture;
 use Tests\Support\T;
 
 use function Pest\Laravel\actingAs;
@@ -59,7 +60,6 @@ beforeEach(function () {
         'compat.payment_return_url' => 'https://watchizereg.test/',
         // The wave-3 alias verifies against THIS key, not a contract's (that is the 4C route).
         'services.paymob.hmac_secret' => MAIL_HMAC,
-        'notifications.admin_emails' => ['ops@watchizer.test', 'boss@watchizer.test'],
         'notifications.send.inline' => true,
         /*
          * `tests/Pest.php` wraps every feature test in a transaction that is never committed, and
@@ -69,6 +69,7 @@ beforeEach(function () {
          */
         'notifications.send.inside_transaction' => true,
     ]);
+    StorefrontMailboxFixture::recipients(1, ['ops@watchizer.test', 'boss@watchizer.test']);
 });
 
 /**

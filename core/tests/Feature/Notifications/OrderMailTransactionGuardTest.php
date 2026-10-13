@@ -7,6 +7,7 @@ use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Tests\Support\PaymentFixture;
+use Tests\Support\StorefrontMailboxFixture;
 use Tests\Support\T;
 
 /*
@@ -33,10 +34,10 @@ use Tests\Support\T;
 
 beforeEach(function () {
     config([
-        'notifications.admin_emails' => ['ops@watchizer.test'],
         'notifications.send.inline' => true,
         // NOT set: `notifications.send.inside_transaction` stays at its shipped default (false).
     ]);
+    StorefrontMailboxFixture::recipients(1, ['ops@watchizer.test']);
 });
 
 /** @return array{order: int, product: int} */

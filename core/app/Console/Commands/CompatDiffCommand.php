@@ -8,6 +8,7 @@ use App\Compat\Diff\DiffCase;
 use App\Compat\Diff\DiffReport;
 use App\Compat\Diff\DiffRunner;
 use App\Compat\Diff\Probe;
+use App\Models\Storefront\StorefrontMailbox;
 use App\Support\WriteTarget;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -253,13 +254,18 @@ class CompatDiffCommand extends Command
             return false;
         }
 
-        $admins = count(config()->array('notifications.admin_emails'));
+        $admins = 0;
+        if (Schema::hasTable('storefront_mailboxes')) {
+            foreach (StorefrontMailbox::query()->get() as $mailbox) {
+                $admins += count($mailbox->orderRecipients());
+            }
+        }
 
         $this->error('REFUSING to run: this harness places REAL orders, and a real order sends REAL e-mail.');
         $this->line('');
         $this->line("  mail.default            = {$mailer}   (a live transport)");
         $this->line('  notifications.send.inline = true');
-        $this->line("  ORDER_ADMIN_EMAILS      = {$admins} address(es) that would each be mailed about a test order");
+        $this->line("  storefront_mailboxes    = {$admins} order recipient(s) across the storefronts, each mailed about a test order");
         $this->line('');
         $this->line('  Set ONE of these for the run and try again:');
         $this->line('    MAIL_MAILER=log            (nothing leaves the machine; what the harness launcher exports)');

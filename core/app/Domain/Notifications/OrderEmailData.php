@@ -142,6 +142,9 @@ final class OrderEmailData
             ...$identity->viewData(),
             'trackUrl' => self::trackUrl($storefrontId),
             'dashboardUrl' => self::dashboardUrlFor(Row::int($order, 'id')),
+            // W3 (2026-10-13): which storefront's MAILBOX the message leaves from. Not a template
+            // key; the mailer reads it. Every mailable receives it and none renders it.
+            'storefrontId' => $storefrontId,
         ];
     }
 
@@ -162,6 +165,8 @@ final class OrderEmailData
             'brandName', 'copyright', 'whatsappUrl', 'trackUrl', 'dashboardUrl',
             // W2 (2026-10-13): the storefront's wordmark image, on its own asset host.
             'wordmarkUrl',
+            // W3 (2026-10-13): the storefront whose mailbox sends it (read by OrderMailer, not a view).
+            'storefrontId',
         ];
     }
 

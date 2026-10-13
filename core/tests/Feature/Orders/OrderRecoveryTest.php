@@ -16,6 +16,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 use Tests\Support\PaymentFixture;
+use Tests\Support\StorefrontMailboxFixture;
 use Tests\Support\T;
 
 use function Pest\Laravel\travel;
@@ -37,11 +38,11 @@ beforeEach(function () {
     config([
         'compat.api_key' => OR_API_KEY,
         'compat.unpaid.expire_after_minutes' => 60,
-        'notifications.admin_emails' => ['ops@example.test'],
         'notifications.send.inline' => true,
         'notifications.send.inside_transaction' => true,       // the suite never commits; see config
         'notifications.send.park' => false,
     ]);
+    StorefrontMailboxFixture::recipients(1, ['ops@example.test']);
     DB::table('storefront_payment_providers')->delete();
     PaymentFixture::method(PaymentFixture::paymob(), 'card', '4001');
     Http::preventStrayRequests();

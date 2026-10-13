@@ -76,6 +76,9 @@ final class MailFailure
      */
     public static function classify(Throwable $e): string
     {
+        if ($e instanceof StorefrontHasNoMailbox) {
+            return self::CONFIG;                              // ours, composed from no transport: an administrator's job
+        }
         $message = mb_strtolower($e->getMessage());
 
         foreach (['authenticate', 'authentication', 'auth failed', '535', '534'] as $needle) {
@@ -163,11 +166,11 @@ final class MailFailure
             self::CONNECT => ManageText::t('orders.mail_fail_connect', 'تعذّر الوصول إلى خادم البريد — مشكلة شبكة أو خادم، وليست في هذا الطلب.'),
             self::REFUSED => ManageText::t('orders.mail_fail_refused', 'خادم البريد رفض الرسالة — غالبًا عنوان المستلم.'),
             /*
-             * NAMES the environment variable, on purpose. It is a variable NAME, never a value, and it
-             * is the whole difference between a message an administrator can act on and one that sends
-             * them to a developer (AGENTS §3 forbids writing a credential's VALUE, not its key).
+             * NAMES the screen, on purpose: the storefront's mail settings (W3, 2026-10-13 — it used to
+             * name the `ORDER_ADMIN_EMAILS` variable). A name, never a value: the whole difference
+             * between a message an administrator can act on and one that sends them to a developer.
              */
-            self::CONFIG => ManageText::t('orders.mail_fail_config', 'لم يُضبَط مستلمو إشعارات الإدارة (ORDER_ADMIN_EMAILS) — إعداد ناقص في الخادم، فلم يَعلم أحد بالطلب.'),
+            self::CONFIG => ManageText::t('orders.mail_fail_config', 'إعدادات بريد المتجر ناقصة — لا صندوق بريد، أو لا مستلمين لإشعارات الإدارة (إعدادات المتجر ← البريد) — فلم يَعلم أحد بالطلب.'),
             self::NO_ADDRESS => ManageText::t('orders.mail_fail_no_address', 'الطلب لا يحمل عنوان بريد للعميل، فلم تُرسَل رسالة — ليست عطلًا.'),
             default => ManageText::t('orders.mail_fail_unknown', 'فشل الإرسال لسبب غير معروف — يحتاج مراجعة من المطوّر.'),
         };
