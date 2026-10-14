@@ -34,3 +34,12 @@ export const META_PIXEL_IDS = [
 // leaves it empty until the client creates a property.
 const GA4_RAW = (process.env.NEXT_PUBLIC_GA4_MEASUREMENT_ID || '').trim()
 export const GA4_MEASUREMENT_ID = /^G-[A-Z0-9]{4,}$/.test(GA4_RAW) ? GA4_RAW : ''
+
+// TikTok pixel id, ONE per storefront build (2026-10-14). Same rule as GA4: read here and nowhere
+// else, and anything that is not a pixel id — unset, blank, a typo — is NO id, and then nothing
+// TikTok is rendered (app/analytics.jsx): no script, no `ttq`, no page event. There is deliberately
+// NO fallback to a literal: the id used to be pasted into the markup, which is how the copied
+// Brand Fashion app would have fired into Watchizer's pixel. Watchizer's .env.production carries
+// its id; a build without the key gets no pixel, silently — see the deploy gate in the backlog.
+const TIKTOK_RAW = (process.env.NEXT_PUBLIC_TIKTOK_PIXEL_ID || '').trim()
+export const TIKTOK_PIXEL_ID = /^[A-Z0-9]{8,}$/i.test(TIKTOK_RAW) ? TIKTOK_RAW : ''
