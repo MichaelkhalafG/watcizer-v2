@@ -1,0 +1,204 @@
+diff --git a/dist/events-583399dd.cjs.prod.js b/dist/events-583399dd.cjs.prod.js
+index f3834fa28aa8504b48da031e326acb332a722965..6dc2a427812e89a068ddc3cb3fe198a261eaf034 100644
+--- a/dist/events-583399dd.cjs.prod.js
++++ b/dist/events-583399dd.cjs.prod.js	
+@@ -2,6 +2,54 @@
+ 
+ var React = require('react');
+ var THREE = require('three');
++
++// ── Watchizer patch (2026-10-01): THREE.Clock is deprecated since three r183 and warns on every
++// construction ("THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.").
++// Fiber 9.x (up to 9.8.1) still builds its store clock by constructing a THREE Clock. This builds it on
++// THREE.Timer instead, with the SAME interface and the same arithmetic as Clock — autoStart,
++// running, startTime, oldTime, elapsedTime, start(), stop(), getDelta(), getElapsedTime() — so
++// fiber and every `state.clock` reader behave exactly as before. Drop this patch when fiber moves
++// to THREE.Timer itself (fiber v10).
++function createTimerClock(T) {
++  const timer = new T.Timer();
++  return {
++    autoStart: true,
++    running: false,
++    startTime: 0,
++    oldTime: 0,
++    elapsedTime: 0,
++    start() {
++      this.startTime = performance.now();
++      this.oldTime = this.startTime;
++      this.elapsedTime = 0;
++      this.running = true;
++      timer.reset();
++    },
++    stop() {
++      this.getElapsedTime();
++      this.running = false;
++      this.autoStart = false;
++    },
++    getElapsedTime() {
++      this.getDelta();
++      return this.elapsedTime;
++    },
++    getDelta() {
++      let diff = 0;
++      if (this.autoStart && !this.running) {
++        this.start();
++        return 0;
++      }
++      if (this.running) {
++        timer.update();
++        diff = timer.getDelta();
++        this.oldTime = performance.now();
++        this.elapsedTime += diff;
++      }
++      return diff;
++    }
++  };
++}
+ var traditional = require('zustand/traditional');
+ var suspendReact = require('suspend-react');
+ var Tb = require('scheduler');
+@@ -1038,7 +1086,7 @@ const createStore = (invalidate, advance) => {
+       linear: false,
+       flat: false,
+       controls: null,
+-      clock: new THREE__namespace.Clock(),
++      clock: createTimerClock(THREE__namespace),
+       pointer,
+       mouse: pointer,
+       frameloop: 'always',
+diff --git a/dist/events-b389eeca.esm.js b/dist/events-b389eeca.esm.js
+index 76f308c96cb09a20e854133e48ec9ef7682edecc..7782e50712e2a806eda17d9faf93dceddb5c75d0 100644
+--- a/dist/events-b389eeca.esm.js
++++ b/dist/events-b389eeca.esm.js	
+@@ -1,6 +1,54 @@
+ import * as React from 'react';
+ import React__default from 'react';
+ import * as THREE from 'three';
++
++// ── Watchizer patch (2026-10-01): THREE.Clock is deprecated since three r183 and warns on every
++// construction ("THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.").
++// Fiber 9.x (up to 9.8.1) still builds its store clock by constructing a THREE Clock. This builds it on
++// THREE.Timer instead, with the SAME interface and the same arithmetic as Clock — autoStart,
++// running, startTime, oldTime, elapsedTime, start(), stop(), getDelta(), getElapsedTime() — so
++// fiber and every `state.clock` reader behave exactly as before. Drop this patch when fiber moves
++// to THREE.Timer itself (fiber v10).
++function createTimerClock(T) {
++  const timer = new T.Timer();
++  return {
++    autoStart: true,
++    running: false,
++    startTime: 0,
++    oldTime: 0,
++    elapsedTime: 0,
++    start() {
++      this.startTime = performance.now();
++      this.oldTime = this.startTime;
++      this.elapsedTime = 0;
++      this.running = true;
++      timer.reset();
++    },
++    stop() {
++      this.getElapsedTime();
++      this.running = false;
++      this.autoStart = false;
++    },
++    getElapsedTime() {
++      this.getDelta();
++      return this.elapsedTime;
++    },
++    getDelta() {
++      let diff = 0;
++      if (this.autoStart && !this.running) {
++        this.start();
++        return 0;
++      }
++      if (this.running) {
++        timer.update();
++        diff = timer.getDelta();
++        this.oldTime = performance.now();
++        this.elapsedTime += diff;
++      }
++      return diff;
++    }
++  };
++}
+ import { createWithEqualityFn } from 'zustand/traditional';
+ import { suspend, preload, clear } from 'suspend-react';
+ import Tb, { unstable_scheduleCallback, unstable_IdlePriority } from 'scheduler';
+@@ -1013,7 +1061,7 @@ const createStore = (invalidate, advance) => {
+       linear: false,
+       flat: false,
+       controls: null,
+-      clock: new THREE.Clock(),
++      clock: createTimerClock(THREE),
+       pointer,
+       mouse: pointer,
+       frameloop: 'always',
+diff --git a/dist/events-f19bcc32.cjs.dev.js b/dist/events-f19bcc32.cjs.dev.js
+index 07d45d4c0bd7d57301d338040e8aa71c88fce7c5..472e9ded1f41f678d2f6cdb5155f3a8ed80e17ea 100644
+--- a/dist/events-f19bcc32.cjs.dev.js
++++ b/dist/events-f19bcc32.cjs.dev.js	
+@@ -2,6 +2,54 @@
+ 
+ var React = require('react');
+ var THREE = require('three');
++
++// ── Watchizer patch (2026-10-01): THREE.Clock is deprecated since three r183 and warns on every
++// construction ("THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.").
++// Fiber 9.x (up to 9.8.1) still builds its store clock by constructing a THREE Clock. This builds it on
++// THREE.Timer instead, with the SAME interface and the same arithmetic as Clock — autoStart,
++// running, startTime, oldTime, elapsedTime, start(), stop(), getDelta(), getElapsedTime() — so
++// fiber and every `state.clock` reader behave exactly as before. Drop this patch when fiber moves
++// to THREE.Timer itself (fiber v10).
++function createTimerClock(T) {
++  const timer = new T.Timer();
++  return {
++    autoStart: true,
++    running: false,
++    startTime: 0,
++    oldTime: 0,
++    elapsedTime: 0,
++    start() {
++      this.startTime = performance.now();
++      this.oldTime = this.startTime;
++      this.elapsedTime = 0;
++      this.running = true;
++      timer.reset();
++    },
++    stop() {
++      this.getElapsedTime();
++      this.running = false;
++      this.autoStart = false;
++    },
++    getElapsedTime() {
++      this.getDelta();
++      return this.elapsedTime;
++    },
++    getDelta() {
++      let diff = 0;
++      if (this.autoStart && !this.running) {
++        this.start();
++        return 0;
++      }
++      if (this.running) {
++        timer.update();
++        diff = timer.getDelta();
++        this.oldTime = performance.now();
++        this.elapsedTime += diff;
++      }
++      return diff;
++    }
++  };
++}
+ var traditional = require('zustand/traditional');
+ var suspendReact = require('suspend-react');
+ var Tb = require('scheduler');
+@@ -1038,7 +1086,7 @@ const createStore = (invalidate, advance) => {
+       linear: false,
+       flat: false,
+       controls: null,
+-      clock: new THREE__namespace.Clock(),
++      clock: createTimerClock(THREE__namespace),
+       pointer,
+       mouse: pointer,
+       frameloop: 'always',

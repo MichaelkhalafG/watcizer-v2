@@ -1,0 +1,447 @@
+* {
+  margin: 0px;
+  padding: 0px;
+}
+
+/* ── Global Typography ──────────────────────────────────────────────────
+   English → Georgia EVERYWHERE. Arabic (dir=rtl) → El Messiri EVERYWHERE.
+   Serif headings resolve through --wz-serif, which flips to El Messiri under
+   [dir='rtl'] so no per-component edits are needed. No sans-serif web font. */
+:root {
+  --wz-serif: var(--font-alexandria), 'Segoe UI', Arial, sans-serif; /* BF spec §5: Alexandria, Latin + Arabic */
+
+  /* ── Design tokens ─────────────────────────────────────────────────────
+     Centralized palette / spacing / type scale. Each value is IDENTICAL to
+     the hardcoded literal it replaces (hex is case-insensitive, so e.g.
+     var(--wz-gold) === #C8A45C === #c8a45c). Definitions only — consumers
+     opt in by referencing the var; nothing here changes rendering. */
+
+  /* Palette */
+  /* Brand Fashion palette (BRAND_FASHION_UI_SPEC §4, applied 2026-10-14). Token NAMES are
+     Watchizer's so no consumer moves; VALUES are the spec's. Black does the work (§3): the
+     accent on a light ground is ink, on an ink ground it is white; the brass gold is a GROUND
+     only, with ink text on it, never text and never a border (§4.2). */
+  --wz-ink: #111111;          /* ink */
+  --wz-ink-soft: #1a1a1a;     /* no spec value — Watchizer's, listed as a gap */
+  --wz-charcoal: #262626;     /* no spec value — Watchizer's, listed as a gap */
+  --wz-gold: #111111;         /* the accent on light grounds = ink (§3 "black does the work") */
+  --wz-gold-dark: #111111;    /* same */
+  --wz-on-ink: #ffffff;       /* the accent on ink grounds: header strip, footer, hero, featured */
+  --wz-brand: #F0B429;        /* brass gold — ground only, ink text on it (10.13:1) */
+  --wz-ink-2: #555555;        /* secondary text (7.46:1) */
+  --wz-ink-3: #666666;        /* meta, old price, placeholders — the floor (5.74:1) */
+  --wz-edge: #767676;         /* every border a user must see (4.54:1) */
+  --wz-tile: #F4F4F4;         /* behind a photo on a tinted ground; skeletons */
+  --wz-sale: #D0182E;
+  --wz-new: #6B3FD6;
+  --wz-ok: #15713C;
+  --wz-alert: #9A5B00;
+  --wz-danger: #B3261E;       /* spec `error` */
+  --wz-success: #15713C;      /* spec `ok` */
+  --wz-bone: #F4F4F4;         /* was a warm off-white; spec has `tile` */
+  --wz-line: rgba(0, 0, 0, 0.08);   /* hairline, decorative only */
+  --wz-line-strong: #767676;        /* borders a user must see = `edge` */
+  --wz-muted: #666666;              /* was 45% black (3.3:1) — below the spec's floor; now ink-3 */
+
+  /* Spacing */
+  --wz-sp-2: 2px;
+  --wz-sp-4: 4px;
+  --wz-sp-8: 8px;
+  --wz-sp-12: 12px;
+  --wz-sp-16: 16px;
+  --wz-sp-24: 24px;
+  --wz-sp-32: 32px;
+  --wz-sp-48: 48px;
+  --wz-sp-64: 64px;
+
+  /* Type scale */
+  --wz-fs-xs: 10px;
+  --wz-fs-sm: 12px;
+  --wz-fs-base: 14px;
+  --wz-fs-md: 16px;
+  --wz-fs-lg: 18px;    /* spec h2: 18 · 800 */
+  --wz-fs-xl: 24px;
+  --wz-fs-2xl: 32px;
+  --wz-fs-3xl: 40px;
+}
+[dir='rtl'] {
+  --wz-serif: var(--font-alexandria), 'Segoe UI', Arial, sans-serif;
+}
+
+/* One family, both scripts (spec §5). No dark mode: color-scheme light so Android's forced-dark
+   cannot invert the pages (§3). */
+html {
+  color-scheme: light;
+}
+body {
+  font-family: var(--wz-serif);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Both directions: the same family on body + all form controls */
+[dir='ltr'] body,
+[dir='ltr'] input,
+[dir='ltr'] select,
+[dir='ltr'] textarea,
+[dir='ltr'] button,
+[dir='rtl'] body,
+[dir='rtl'] input,
+[dir='rtl'] select,
+[dir='rtl'] textarea,
+[dir='rtl'] button {
+  font-family: var(--wz-serif);
+}
+
+/* Form elements inherit the font from the body */
+input,
+select,
+textarea,
+button {
+  font-family: inherit;
+}
+
+/* All headings: uppercase + wider tracking */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* Arabic headings: no letter-spacing in Arabic, ever (spec §5) */
+[dir='rtl'] h1,
+[dir='rtl'] h2,
+[dir='rtl'] h3,
+[dir='rtl'] h4,
+[dir='rtl'] h5,
+[dir='rtl'] h6 {
+  font-family: var(--wz-serif);
+  letter-spacing: 0;
+}
+
+/* Product names stay mixed-case — uppercase is too aggressive on names */
+.wz-pd-name,
+.wz-pd-ms-name,
+.wz-pc__title {
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+/* Contain stray horizontal overflow WITHOUT breaking position:sticky.
+   overflow-x: clip (unlike hidden) does NOT create a scroll container, so the
+   sticky header keeps working. Applied to #root only — never html/body, whose
+   overflow:hidden is what broke the sticky bar. Each overflowing component
+   (e.g. .wz-hero) also clips itself at the source. */
+#root {
+  overflow-x: clip;
+  /* 100% (not 100vw): 100vw includes the vertical scrollbar's width and would
+     itself trigger a 1px horizontal overflow. */
+  max-width: 100%;
+}
+
+/* Sticky header wrapper (replaces Bootstrap's rounded-bottom-4 + sticky-top). */
+.wz-header-wrapper {
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+  border-radius: 0 0 16px 16px;
+}
+
+/* ── Skip link (a11y) — off-screen until focused, then slides into view ── */
+.wz-skip-link {
+  position: fixed;
+  inset-inline-start: 8px;
+  top: -60px;
+  z-index: 3000;
+  padding: 10px 18px;
+  background: var(--wz-ink-soft);
+  color: #fff;
+  font-size: 14px;
+  text-decoration: none;
+  border-radius: 6px;
+  transition: top 0.16s ease;
+}
+.wz-skip-link:focus {
+  top: 8px;
+  outline: 2px solid var(--wz-gold);
+  outline-offset: 2px;
+}
+/* Programmatic focus on the main region (skip-link target + route change) — no
+   outline box around the whole page; the scroll/navigation is the visible cue. */
+#main-content:focus {
+  outline: none;
+}
+
+/* ── Global motion tokens ───────────────────────────────────────────────
+   One consistent easing/duration vocabulary for every transition on the
+   site. Prefer transform/opacity (composite-only, 60fps) in all consumers. */
+:root {
+  --wz-ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --wz-ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --wz-ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --wz-ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --wz-duration-fast: 0.15s;
+  --wz-duration: 0.25s;
+  --wz-duration-slow: 0.35s;
+}
+
+/* Respect users who ask the OS to minimize motion — near-instant everywhere. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ── Responsive show/hide (replaces JS width branching) ── */
+.mobile-only {
+  display: block !important;
+}
+.desktop-only {
+  display: none !important;
+}
+@media (min-width: 768px) {
+  .mobile-only {
+    display: none !important;
+  }
+  .desktop-only {
+    display: block !important;
+  }
+}
+/* Legacy utility class — maps to the site font (Georgia). */
+.lato-regular {
+  font-family: var(--wz-serif);
+  font-weight: 400;
+  font-style: normal;
+}
+.bg-most-used {
+  background-color: var(--wz-charcoal);
+}
+.bg-most-used-40 {
+  background-color: #26262670;
+}
+.bg-for-love {
+  background-color: #f2385a !important;
+}
+.color-most-used {
+  color: var(--wz-charcoal) !important;
+}
+.bg-2 {
+  background-color: #26262657;
+}
+/* Legacy utility class — maps to the site font (Georgia). */
+.dosis-regular {
+  font-family: var(--wz-serif);
+  font-weight: 500;
+  font-style: normal;
+}
+
+/* Header is now fully responsive on its own (desktop rows + mobile bar/drawer),
+   so it must be visible at every width. The old rule hid it below 768px back
+   when mobile relied on the removed PhoneNavBar. */
+.header {
+  display: block;
+  position: relative;
+  box-shadow: #262626 0px 0px 3px;
+}
+
+.loader-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  flex-direction: column;
+}
+
+.spinner {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+.loader-text {
+  margin-top: 10px;
+  font-size: 18px;
+  color: #333;
+}
+
+/* ── Skeleton loading (global, progressive) ─────────────────────────────
+   Each section renders its own skeleton while its data is still fetching,
+   so the page is visible immediately (no full-page blocking loader). Uses a
+   subtle shimmer that matches the Listing page skeleton for consistency. */
+@keyframes wzSkel {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: 0 0;
+  }
+}
+
+.wz-skel-img,
+.wz-skel-line,
+.wz-skel-pill,
+.wz-skel-brand-item,
+.wz-skel-chip-circle,
+.wz-skel-chip-line {
+  background: linear-gradient(90deg, #ececec 25%, #f5f5f5 37%, #ececec 63%);
+  background-size: 400% 100%;
+  animation: wzSkel 1.4s ease infinite;
+}
+
+/* Card primitive (kept identical to the Listing skeleton so the class means
+   the same thing everywhere it's used). */
+.wz-skel-card {
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 12px;
+  padding: 0 0 14px;
+  overflow: hidden;
+}
+.wz-skel-card .wz-skel-img {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+}
+.wz-skel-card .wz-skel-line {
+  height: 12px;
+  margin: 10px 14px 0;
+  border-radius: 4px;
+}
+.wz-skel-card .wz-skel-brand {
+  width: 40%;
+  height: 8px;
+}
+.wz-skel-card .wz-skel-name {
+  width: 80%;
+}
+.wz-skel-card .wz-skel-price {
+  width: 50%;
+  height: 16px;
+}
+
+/* Slider skeleton — reuses .wz-slider-item sizing so it matches the real
+   slider exactly (no layout shift when content swaps in). */
+.wz-slider-skeleton {
+  display: flex;
+  gap: 14px;
+  overflow: hidden;
+  padding: 4px 0;
+}
+.wz-skel-title {
+  width: 180px;
+  max-width: 55%;
+  height: 20px;
+  border-radius: 4px;
+}
+
+/* Category chips skeleton — mirrors .wz-cat-chip (64px circle + label). */
+.wz-cats-skeleton {
+  gap: 16px;
+}
+.wz-skel-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: 80px;
+  flex-shrink: 0;
+}
+.wz-skel-chip-circle {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+}
+.wz-skel-chip-line {
+  width: 60px;
+  height: 10px;
+  border-radius: 4px;
+}
+
+/* Brand strip skeleton — mirrors the inline brand strip row. */
+.wz-brand-strip-skeleton {
+  display: flex;
+  gap: 32px;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 22px 16px;
+}
+.wz-skel-brand-item {
+  width: 90px;
+  height: 32px;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+
+/* Featured banner skeleton — matches the banner's block footprint. */
+.wz-featured-skeleton .wz-skel-img {
+  width: 100%;
+  aspect-ratio: auto;
+  height: clamp(220px, 30vw, 320px);
+  border-radius: 16px;
+}
+
+@media (max-width: 640px) {
+  .wz-skel-chip {
+    width: 68px;
+  }
+  .wz-skel-chip-circle {
+    width: 56px;
+    height: 56px;
+  }
+}
+
+/* Pulse used by route-level loading.jsx skeletons. */
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+/* Form controls: border-box so width:100% + padding stays inside the container.
+   The global reset above only zeroes margin/padding (no box-sizing), which left
+   padded inputs overflowing their columns on Checkout/Account. Scoped to form
+   controls — deliberately NOT forcing width:100% here (that would stretch
+   checkboxes, radios, the header search pill and quantity steppers). */
+input,
+select,
+textarea {
+  box-sizing: border-box;
+  max-width: 100%;
+}
+
+/* ── Error Boundary (FIX I1) ────────────────────── */
+.wz-error { display: flex; justify-content: center; align-items: center; min-height: 60vh; padding: 32px 16px; text-align: center; }
+.wz-error-inner { max-width: 480px; }
+.wz-error-title { font-size: 24px; font-weight: 700; color: #1a1a1a; margin-bottom: 12px; font-family: var(--wz-serif); text-transform: uppercase; letter-spacing: 0.06em; }
+.wz-error-text { font-size: 15px; color: rgba(0,0,0,0.55); margin-bottom: 24px; line-height: 1.6; }
+.wz-error-actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+.wz-error-retry { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; color: #fff; background: #1a1a1a; border: none; padding: 12px 32px; border-radius: 4px; cursor: pointer; transition: background 0.2s ease; }
+.wz-error-retry:hover { background: var(--wz-gold); }
+.wz-error-home, .wz-error-browse { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; color: #1a1a1a; text-decoration: none; padding: 12px 32px; border: 1px solid rgba(0,0,0,0.12); border-radius: 4px; transition: border-color 0.2s ease, color 0.2s ease; }
+.wz-error-home:hover, .wz-error-browse:hover { border-color: var(--wz-gold); color: var(--wz-gold); }
+.wz-error--auth { background: #0a0a0a; }
+.wz-error--auth .wz-error-title { color: #fff; }
+.wz-error--auth .wz-error-text { color: rgba(255,255,255,0.55); }
+.wz-error--auth .wz-error-retry { background: var(--wz-gold); color: #fff; }
+.wz-error--auth .wz-error-retry:hover { background: #b08d3e; }
