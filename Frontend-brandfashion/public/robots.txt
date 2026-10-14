@@ -31,4 +31,4 @@ Disallow: /Search
 # Allow filtered listings (important for SEO)
 # /listing?brand=rolex, /listing?category=fashion, /listing?offers=true
 
-Sitemap: https://watchizereg.com/sitemap.xml
+Sitemap: https://michaelkhalaf.com/sitemap.xml

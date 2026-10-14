@@ -6,10 +6,10 @@
 # remove its line from this list in the same commit and add a dated line to the DIVERGED
 # section at the end, with the reason. Never edit a listed file on one side only.
 #
-# Generated 2026-10-14 from the files that were byte-identical after the identity sweep
-# (137 of 184). A2-RULE: the two apps are copies, not a shared package.
+# Regenerated 2026-10-14 (afternoon) from the files measured byte-identical after the identity
+# sweep, the TikTok env change (made on both sides) and the approved twin splits.
+# A2-RULE: the two apps are copies, not a shared package.
 
-README.md
 app/(auth)/auth/callback/page.jsx
 app/(auth)/error.jsx
 app/(auth)/forgot-password/page.jsx
@@ -61,7 +61,6 @@ public/Watchizer_Gold.glb
 public/logo.png
 public/logo.webp
 public/placeholder.png
-public/robots.txt
 public/studio_small_03_512.hdr
 src/Components/Auth/SocialButtons.jsx
 src/Components/Auth/SocialIcons.jsx
@@ -108,6 +107,7 @@ src/Hooks/useCart.jsx
 src/Hooks/useLocaleRouter.js
 src/Hooks/useShippingPrices.js
 src/Hooks/useSwitchLanguage.js
+src/PageViews/Account/Account.jsx
 src/PageViews/Auth/AuthCallback.jsx
 src/PageViews/Auth/ForgotPassword.jsx
 src/PageViews/Auth/Login/Login.jsx
@@ -149,4 +149,8 @@ src/utils/transformProduct.js
 
 # DIVERGED — files that were twins and were split on purpose (date, file, reason):
 
-# 2026-10-14 src/PageViews/Account/Account.jsx — Track Order WhatsApp goes to Brand Fashion's customer service (developer decision, Job 2.2).
+# 2026-10-14 src/PageViews/Account/Account.jsx — Track Order WhatsApp to customer service (first in Brand Fashion; Watchizer followed the same day, so it is a twin again).
+
+# 2026-10-14 README.md — Brand Fashion's own title and provenance line (developer decision 2).
+
+# 2026-10-14 public/robots.txt — Sitemap on michaelkhalaf.com (developer decision 2).

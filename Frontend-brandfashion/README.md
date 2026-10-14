@@ -1,6 +1,6 @@
-# Watchizer Storefront (Next.js)
+# Brand Fashion Storefront (Next.js)
 
-Next.js 15 (App Router) migration of the Watchizer luxury-watch storefront. Built with React 18 and MUI, it features a React Three Fiber 3D watch hero, TanStack Query for server-state and Zustand for client-state, and leans on server-side rendering (SSR) and incremental static regeneration (ISR) for the catalog, product, and listing pages. It talks to a Laravel backend for its API and self-hosted assets.
+Brand Fashion's storefront, a copy of Frontend-next (Watchizer's Next.js 15 App Router app; A2-RULE: copied, not shared — see TWINS.txt). Built with React 18 and MUI, it features a React Three Fiber 3D watch hero, TanStack Query for server-state and Zustand for client-state, and leans on server-side rendering (SSR) and incremental static regeneration (ISR) for the catalog, product, and listing pages. It talks to a Laravel backend for its API and self-hosted assets.
 
 ## Requirements
 
