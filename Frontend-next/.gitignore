@@ -35,9 +35,8 @@ dev.log
 # env files (can opt-in for committing if needed)
 .env*
 <<<<<<< HEAD
-# ...except the production env: it holds only the public CDN/site hosts (no secrets)
+# .env.production WAS committed until 2026-10-14 and held no secrets. It is ignored now because two env sources (this file and the panel) had an unmeasured precedence between them, and Brand Fashion is panel-only: one source, both apps.
 # and MUST reach the deploy server so image URLs resolve to the HTTPS CDN (I-2).
-!.env.production
 =======
 # but keep the committable example templates
 !.env*.example
