@@ -6,7 +6,7 @@
 # remove its line from this list in the same commit and add a dated line to the DIVERGED
 # section at the end, with the reason. Never edit a listed file on one side only.
 #
-# Regenerated 2026-10-14 (afternoon) from the files measured byte-identical after the identity
+# Regenerated 2026-10-14 (evening) from the files measured byte-identical after the identity
 # sweep, the TikTok env change (made on both sides) and the approved twin splits.
 # A2-RULE: the two apps are copies, not a shared package.
 
@@ -58,7 +58,6 @@ patches/@react-three__fiber@9.6.1.patch
 pnpm-lock.yaml
 pnpm-workspace.yaml
 public/Watchizer_Gold.glb
-public/logo.png
 public/logo.webp
 public/placeholder.png
 public/studio_small_03_512.hdr
@@ -154,3 +153,4 @@ src/utils/transformProduct.js
 # 2026-10-14 README.md — Brand Fashion's own title and provenance line (developer decision 2).
 
 # 2026-10-14 public/robots.txt — Sitemap on michaelkhalaf.com (developer decision 2).
+# 2026-10-14 public/logo.png — DELETED from Brand Fashion (Watchizer's lockup, 0 references; developer decision). logo.webp stays until the hero goes.
