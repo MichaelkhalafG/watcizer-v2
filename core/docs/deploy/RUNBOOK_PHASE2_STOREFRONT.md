@@ -1619,35 +1619,39 @@ that must work.
 Nothing here was irreversible while the legacy host was up. Rollback was **one file** — see the
 note under §9.1 for why even that stopped being true on the night.
 
-### 9.1 Put the storefront back — EDIT THREE LINES AND PUSH
+### 9.1 Put the storefront back — SET THREE PANEL VALUES AND REBUILD
 
-> **⚠ Since the night (2026-09-24) the file below is NOT what the build reads for these names.**
-> The Hostinger Node app's **build environment variables** define `NEXT_PUBLIC_API_BASE`,
-> `NEXT_PUBLIC_ASSET_BASE`, `LARAVEL_ORIGIN`, `NEXT_PUBLIC_PUBLIC_API_KEY` and
-> `NEXT_PUBLIC_PAYMOB_ENABLED`, and a real environment variable ALWAYS beats a `.env*` file in
-> `next build`. The cutover's `.env.production` edit was silently overridden by stale panel values —
-> the merge looked done and the storefront stayed on legacy. **A rollback done by editing this file
-> alone therefore changes nothing.**
+> **Rewritten 2026-10-14. There is no committed env file any more.** `Frontend-next/.env.production`
+> was untracked on 2026-10-14 (its `!.env.production` exception in `Frontend-next/.gitignore` is gone)
+> and `Frontend-brandfashion/` never had one. **The Hostinger Node app's environment-variables panel
+> is the ONLY source of build-time values for BOTH apps.** Six keys for Brand Fashion
+> (`NEXT_PUBLIC_API_BASE`, `NEXT_PUBLIC_ASSET_BASE`, `NEXT_PUBLIC_PAYMOB_ENABLED`, `LARAVEL_ORIGIN`,
+> `NEXT_PUBLIC_STOREFRONT_CODE`, `NEXT_PUBLIC_PUBLIC_API_KEY`); Watchizer's nine, GA4's among them.
 >
-> **Rollback is now: set those names in the panel back to the legacy hosts, then rebuild** (the
-> panel's redeploy, or an empty commit pushed to `main`). Change `.env.production` too, so the two
-> stay identical — but the panel is the one that counts. Verify with §7's bundle check, never by eye.
-> Still read from the FILE, because the panel does not define them: `NEXT_PUBLIC_META_PIXEL_ID`,
-> `NEXT_PUBLIC_IMAGE_CDN_BASE`. The cleaner end state, after the season: delete the panel's
-> variables so the tracked file is the single source again, and this box can go.
+> **How the precedence was measured, both directions.** (1) Panel over file, found on the night of
+> 2026-09-24: the cutover's `.env.production` edit shipped, the build ignored it, and the storefront
+> stayed on the legacy host while looking cut over — proven by §7's bundle check (the API base
+> compiled into the JS chunks) and by `/api/v2/…` answering 404 (legacy had no v2). (2) The panel
+> reaches the build on its own, measured 2026-10-14: the TikTok pixel id existed ONLY in the panel
+> (the code has no fallback since `f73e38f`, the file was gone), and after the 13:25 deploy
+> `window.ttq` is an object on the live site and the tag carries the id. The earlier version of this
+> box said "a real environment variable ALWAYS beats a `.env*` file in `next build`" — that is
+> Next's documented order and it is what (1) showed; (2) is the proof that nothing else is needed.
 
-```bash
-cd "D:/coding/watchizer website/new watchizer/Frontend-next"
-# edit .env.production: the three hosts back to the legacy application
-#   NEXT_PUBLIC_API_BASE=https://dash.watchizereg.com/api
-#   LARAVEL_ORIGIN=https://dash.watchizereg.com
-#   NEXT_PUBLIC_ASSET_BASE=https://dash.watchizereg.com
-git add .env.production
-git commit -m "rollback: storefront back on the legacy host"
-git push origin main
-```
+**Rollback is now exactly this, for either app:**
 
-Then wait for the Hostinger build. **Time to recover: one build.**
+1. hPanel → the Node app → environment variables: set `NEXT_PUBLIC_API_BASE`, `LARAVEL_ORIGIN` and
+   `NEXT_PUBLIC_ASSET_BASE` back to the hosts you are rolling back to (for Watchizer's 2026-09-24
+   cutover these were `https://dash.watchizereg.com/api`, `https://dash.watchizereg.com`,
+   `https://dash.watchizereg.com`; that host is OFF since 2026-09-29, so today a rollback target is
+   whatever core host you are putting back, never dash);
+2. rebuild — the panel's redeploy, or an empty commit pushed to `main`;
+3. prove it with §7 step 0's bundle check, never by eye: the API base compiled into the chunks, then
+   one `/api/v2/…` call through the storefront.
+
+There is **no file to edit and nothing to commit**: a push changes code, the panel changes values.
+`.env.production.example` in `Frontend-next/` documents the names and holds no value that matters.
+**Time to recover: one build.**
 
 #### Not `git revert` — review 🟠-6
 
@@ -1661,26 +1665,10 @@ containing several unrelated things:
 | the Meta Pixel (`NEXT_PUBLIC_META_PIXEL_ID`, `app/analytics.jsx`, the four e-commerce events) | **removed.** Analytics would go dark during the one incident you most want measured |
 | the cart, checkout and product-page changes the pixel work touched | removed, silently, because they travelled with it |
 
-A revert of a mixed commit undoes everything in it, not the part that is failing. **Rollback is the
-three hosts in one file** — which is what the sentence two paragraphs up has always said, and what
-the header of `.env.production` itself says (*"ROLLBACK IS THIS FILE"*). The prose and the command
-now agree.
-
-**If you would rather not hand-type the hosts**, revert the one file rather than the commit:
-
-```bash
-git checkout <commit before the cutover> -- Frontend-next/.env.production
-git commit -m "rollback: storefront back on the legacy host"
-git push origin main
-```
-
-That takes the file back verbatim with no typing and leaves everything else in place. Confirm what
-you are about to ship before pushing:
-
-```bash
-git diff --stat HEAD~1          # must be ONE file: Frontend-next/.env.production
-grep -E 'API_BASE|LARAVEL_ORIGIN|ASSET_BASE' Frontend-next/.env.production
-```
+A revert of a mixed commit undoes everything in it, not the part that is failing. Rollback is the
+three host values in the panel — the code stays as deployed. (Until 2026-10-14 this section said
+"the three hosts in one file" and gave a `git checkout … -- Frontend-next/.env.production` recipe;
+that file no longer exists in the tree, and editing it never changed what the build read.)
 
 ### 9.1A The rollback target is NOT patched — decided, with the risk stated
 
