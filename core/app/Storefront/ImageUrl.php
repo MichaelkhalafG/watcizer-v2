@@ -19,6 +19,22 @@ final class ImageUrl
     }
 
     /**
+     * The same URL, for a STOREFRONT named by id rather than by the request (2026-10-14): the
+     * dashboard listing storefront 2's banners, a compat payload. The default storefront keeps
+     * exactly {@see self::src()} — the request's host when one is set, else the .env value — so
+     * nothing moves for the live shop; any other storefront gets its own
+     * {@see StorefrontUrls::assetBase()}. Before this, every such URL named Watchizer's host.
+     */
+    public static function srcFor(int $storefrontId, string $path): string
+    {
+        if ($storefrontId === config()->integer('compat.storefront_id')) {
+            return self::src($path);
+        }
+
+        return StorefrontUrls::assetBase($storefrontId).'/Uploads_Images/'.ltrim($path, '/');
+    }
+
+    /**
      * @param  array<mixed>|null  $renditions
      * @return array{src: string, srcset: list<array{src: string, width: int, format: string}>, width: int|null, height: int|null, alt: string|null}
      */

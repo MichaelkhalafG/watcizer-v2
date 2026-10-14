@@ -124,8 +124,8 @@ export default function BannersIndex({ storefront, storefronts, table, categorie
             // Reconstructed from what the list already carries: enough for the preview, and the
             // upload endpoint replaces it wholesale the moment a new file is chosen.
             image: {
-                file: row.image_path,
-                folder: '',
+                file: row.image_path.includes('/') ? row.image_path.slice(row.image_path.lastIndexOf('/') + 1) : row.image_path,
+                folder: row.image_path.includes('/') ? row.image_path.slice(0, row.image_path.lastIndexOf('/')) : '',
                 url: row.image_url,
                 width: 0,
                 height: 0,
@@ -255,7 +255,15 @@ export default function BannersIndex({ storefront, storefronts, table, categorie
                                     label={t('banners.image', 'صورة البانر')}
                                     type={media_type}
                                     value={draft.image}
-                                    onChange={(image) => setDraft({ ...draft, image, image_path: image?.file ?? '' })}
+                                    onChange={(image) =>
+                                        setDraft({
+                                            ...draft,
+                                            image,
+                                            // `<folder>/<file>`, as every other image column stores it (ImageGallery, Blogs,
+                                            // Lookups); the bare file alone built a URL without the folder — a 404.
+                                            image_path: image === null ? '' : `${image.folder}/${image.file}`,
+                                        })
+                                    }
                                 />
                             </div>
 

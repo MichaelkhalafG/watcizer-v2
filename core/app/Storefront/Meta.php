@@ -2,6 +2,7 @@
 
 namespace App\Storefront;
 
+use App\Domain\Content\BannerImage;
 use App\Transform\Row;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
@@ -84,7 +85,7 @@ final class Meta
             $out[] = [
                 'id' => Row::int($r, 'id'),
                 'placement' => Row::str($r, 'placement'),
-                'image' => ImageUrl::object(Row::str($r, 'image_path'), null, null, null, null),
+                'image' => ImageUrl::object(BannerImage::path(Row::str($r, 'image_path')), null, null, null, null),
                 'type_show' => Row::nstr($r, 'type_show'),
                 'link_url' => Row::nstr($r, 'link_url'),
                 'product_id' => Row::nint($r, 'product_id'),
