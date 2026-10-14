@@ -7,6 +7,9 @@ namespace App\Domain\Notifications;
 use App\Domain\Orders\OrderCustomer;
 use App\Domain\Orders\OrderTotals;
 use App\Storefront\ImageUrl;
+use App\Storefront\StorefrontHasNoIdentity;
+use App\Storefront\StorefrontIdentity;
+use App\Storefront\StorefrontUrls;
 use App\Transform\Row;
 use Illuminate\Database\Query\JoinClause;
 use Illuminate\Support\Facades\DB;
@@ -73,6 +76,11 @@ final class OrderEmailData
         if (! is_object($raw)) {
             return null;
         }
+        $storefrontId = Row::nint(Row::cast($raw), 'storefront_id');
+        if ($storefrontId === null) {
+            throw StorefrontHasNoIdentity::for(0, 'the order carries no storefront_id (backlog: the nine NULL-storefront orders; `orders:backfill-storefront`)');
+        }
+        $identity = StorefrontIdentity::for($storefrontId);
         $order = Row::cast($raw);
 
         $customer = OrderCustomer::of($orderId);
@@ -125,12 +133,18 @@ final class OrderEmailData
             'paymentAr' => self::paymentLabel($paymentMethod, 'ar'),
             'paymentStatus' => self::paymentStatusLabel($orderId, $paymentMethod),
 
-            // Branding + links, all from CORE's own config and CORE's own tables.
-            'brandName' => Row::nstr($order, 'storefront_name') ?? 'Watchizer',
-            'copyright' => config()->string('notifications.brand.copyright'),
-            'whatsappUrl' => self::whatsappSupportUrl(),
-            'trackUrl' => self::trackUrl(Row::nstr($order, 'storefront_domain')),
+            // Branding + links, all from the ORDER'S OWN STOREFRONT row (W2, 2026-10-13): the name,
+            // the wordmark, the WhatsApp number and the copyright line, through StorefrontIdentity;
+            // the order-list link on that storefront's site. No fallback: an order with no
+            // storefront, or a storefront with no identity, throws and the mailer PARKS the row.
+            // This used to read "Watchizer" when the row had no name, Watchizer's config for the
+            // number and the copyright, and `watchizereg.com` when the order had no domain.
+            ...$identity->viewData(),
+            'trackUrl' => self::trackUrl($storefrontId),
             'dashboardUrl' => self::dashboardUrlFor(Row::int($order, 'id')),
+            // W3 (2026-10-13): which storefront's MAILBOX the message leaves from. Not a template
+            // key; the mailer reads it. Every mailable receives it and none renders it.
+            'storefrontId' => $storefrontId,
         ];
     }
 
@@ -149,6 +163,10 @@ final class OrderEmailData
             'items', 'subtotal', 'discount', 'promotion', 'promotionName', 'freeShipping', 'shippingCost', 'total', 'moneyDecimals', 'note',
             'paymentEn', 'paymentAr', 'paymentStatus',
             'brandName', 'copyright', 'whatsappUrl', 'trackUrl', 'dashboardUrl',
+            // W2 (2026-10-13): the storefront's wordmark image, on its own asset host.
+            'wordmarkUrl',
+            // W3 (2026-10-13): the storefront whose mailbox sends it (read by OrderMailer, not a view).
+            'storefrontId',
         ];
     }
 
@@ -417,23 +435,18 @@ final class OrderEmailData
         return $paid ? 'Paid' : 'Pending';
     }
 
-    private static function whatsappSupportUrl(): string
-    {
-        $number = config()->string('notifications.whatsapp_support');
-        $text = rawurlencode('للاستعلام عن طلبك تواصل معنا على واتساب');
-
-        return "https://wa.me/{$number}?text={$text}";
-    }
-
     /** The dashboard path an order opens at. Pinned beside the host it hangs on. */
     public const MANAGE_ORDER_PATH = '/manage/orders/';
 
-    /** The order's OWN storefront, falling back to the primary one's domain. */
-    private static function trackUrl(?string $domain): string
+    /**
+     * The "track your order" link, on the order's OWN storefront's site — `StorefrontUrls::frontend()`,
+     * which throws for a storefront with no host (A2, 2026-10-13). This used to fall back to
+     * `watchizereg.com` for an order whose storefront had no domain: a Brand Fashion link to
+     * Watchizer, which batch 1's "no fallback anywhere" did not yet cover.
+     */
+    private static function trackUrl(int $storefrontId): string
     {
-        $domain = $domain === null || $domain === '' ? 'watchizereg.com' : $domain;
-
-        return 'https://'.$domain.'/order-list';
+        return StorefrontUrls::frontend($storefrontId).'/order-list';
     }
 
     /**

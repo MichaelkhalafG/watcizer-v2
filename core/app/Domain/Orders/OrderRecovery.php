@@ -6,6 +6,8 @@ namespace App\Domain\Orders;
 
 use App\Compat\CompatCart;
 use App\Domain\Notifications\OrderMailer;
+use App\Storefront\StorefrontHasNoHost;
+use App\Storefront\StorefrontUrls;
 use App\Transform\Row;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Carbon;
@@ -77,14 +79,20 @@ final class OrderRecovery
 
     public const GONE = 'gone';
 
-    /** The link for an order, valid DAYS days from now. */
+    /**
+     * The link for an order, valid DAYS days from now — on the order's OWN storefront's site
+     * (`StorefrontUrls::frontend()`, which throws for a storefront with no host; the mailer parks
+     * the row). This used to fall back to `watchizereg.com` (PAYMENT_MAP F8): closed 2026-10-13
+     * with the last host fallback, so batch 1's "no fallback anywhere" is true.
+     */
     public static function url(int $orderId): string
     {
-        $domain = DB::table('orders as o')->leftJoin('storefronts as s', 's.id', '=', 'o.storefront_id')
-            ->where('o.id', $orderId)->value('s.domain');
-        $domain = is_string($domain) && $domain !== '' ? $domain : 'watchizereg.com';
+        $storefrontId = DB::table('orders')->where('id', $orderId)->value('storefront_id');
+        if (! is_numeric($storefrontId)) {
+            throw StorefrontHasNoHost::for(0);
+        }
 
-        return 'https://'.$domain.'/cart/recover?t='.self::token($orderId);
+        return StorefrontUrls::frontend((int) $storefrontId).'/cart/recover?t='.self::token($orderId);
     }
 
     public static function token(int $orderId, ?Carbon $now = null): string

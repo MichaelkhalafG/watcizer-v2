@@ -10,13 +10,14 @@ use App\Mail\OrderConfirmation;
 use App\Mail\OrderStatusUpdate;
 use App\Mail\PaymentExpired;
 use App\Mail\PaymentExpiredAdmin;
+use App\Storefront\StorefrontHasNoHost;
+use App\Storefront\StorefrontHasNoIdentity;
 use App\Support\Coerce;
 use App\Transform\Row;
 use Illuminate\Database\QueryException;
 use Illuminate\Mail\Mailable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Mail;
 use Throwable;
 
 /**
@@ -326,7 +327,15 @@ final class OrderMailer
             return false;
         }
 
-        $data = OrderEmailData::for($orderId);
+        try {
+            $data = OrderEmailData::for($orderId);
+        } catch (StorefrontHasNoIdentity|StorefrontHasNoHost $e) {
+            // No fallback (W2, 2026-10-13): the order's storefront has no identity, or no host for
+            // its links. Parked with that reason — never sent as another shop.
+            $this->park($id, 'parked: '.$e->getMessage());
+
+            return false;
+        }
         if ($data === null) {
             // The order was deleted between the enqueue and the send. Parked, not retried: there
             // is nothing left to tell anybody about.
@@ -350,7 +359,11 @@ final class OrderMailer
         $number = is_scalar($data['orderNumber'] ?? null) ? (string) $data['orderNumber'] : '';
 
         try {
-            Mail::to($recipient)->send($mailable);
+            // From the ORDER'S OWN storefront's mailbox (W3, 2026-10-13); a storefront with no usable
+            // mailbox throws StorefrontHasNoMailbox, which the Throwable arm below RETRIES on the
+            // normal ladder and parks after max_attempts, classified `config` — the row is the
+            // obligation, and a mailbox is minutes to fix. Never another shop's mailbox.
+            StorefrontMailer::send(Coerce::int($data['storefrontId'] ?? 0), $recipient, $mailable);
 
             DB::table('integration_outbox')->where('id', $id)->update([
                 'status' => self::STATUS_SENT,
@@ -363,6 +376,11 @@ final class OrderMailer
             Log::info("order mail sent [{$kind}] order {$number} → ".self::maskEmail($recipient));
 
             return true;
+        } catch (StorefrontHasNoIdentity|StorefrontHasNoHost $e) {
+            // A link built at render time found no host (the recovery link, W2/A2): parked, not retried.
+            $this->park($id, 'parked: '.$e->getMessage());
+
+            return false;
         } catch (Throwable $e) {
             $this->recordFailure($id, $kind, $number, $recipient, $e);
 
@@ -540,21 +558,29 @@ final class OrderMailer
     }
 
     /**
-     * Who is told about a new order.
+     * Who is told about a new order: the `order_recipients` on the ORDER'S OWN storefront's mailbox
+     * row (C12/W3, 2026-10-13 — per storefront, several, never the other shop's; `ORDER_ADMIN_EMAILS`
+     * is retired).
      *
-     * An empty list is recorded against the order as a FAILED row, once, rather than passed over.
-     * `ORDER_ADMIN_EMAILS` unset is a configuration mistake whose only symptom would otherwise be
-     * that nobody in the shop hears about orders any more — precisely the silence prerequisite (a)
-     * is about. It is deliberately not left `pending`: retrying forever would hide the mistake
-     * behind a queue, and an admin notification about an order placed last week is not worth
-     * sending once somebody notices.
+     * An empty list — no mailbox row, or a row with no recipients — is recorded against the order
+     * as a FAILED row, once, rather than passed over. It is a configuration mistake whose only
+     * symptom would otherwise be that nobody in the shop hears about orders any more — precisely
+     * the silence prerequisite (a) is about. It is deliberately not left `pending`: retrying
+     * forever would hide the mistake behind a queue, and an admin notification about an order
+     * placed last week is not worth sending once somebody notices.
      *
      * @return list<string>
      */
     private function adminRecipients(int $orderId): array
     {
-        /** @var list<string> $configured */
-        $configured = config()->array('notifications.admin_emails');
+        $storefrontId = Coerce::int(DB::table('orders')->where('id', $orderId)->value('storefront_id'));
+        try {
+            $configured = StorefrontMailer::mailbox($storefrontId)->orderRecipients();
+            $why = "storefront {$storefrontId}'s mailbox has no order recipients";
+        } catch (StorefrontHasNoMailbox $e) {
+            $configured = [];
+            $why = $e->getMessage();
+        }
 
         if ($configured === []) {
             $this->enqueue(
@@ -565,10 +591,10 @@ final class OrderMailer
                 recipient: null,
                 extra: [],
                 status: self::STATUS_FAILED,
-                error: MailFailure::ours(MailFailure::CONFIG, 'ORDER_ADMIN_EMAILS is empty: no admin notification recipients are configured'),
+                error: MailFailure::ours(MailFailure::CONFIG, $why.': no admin notification recipients are configured'),
             );
 
-            Log::error("order mail: no admin recipients configured (ORDER_ADMIN_EMAILS); order {$orderId} notified nobody in the shop.");
+            Log::error("order mail: no admin recipients ({$why}); order {$orderId} notified nobody in the shop.");
 
             return [];
         }

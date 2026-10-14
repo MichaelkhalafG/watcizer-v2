@@ -7,12 +7,16 @@ use App\Domain\Orders\OrderFulfilment;
 use App\Mail\AdminOrderNotification;
 use App\Mail\OrderConfirmation;
 use App\Mail\OrderStatusUpdate;
+use App\Storefront\StorefrontCache;
+use App\Storefront\StorefrontIdentity;
+use App\Storefront\StorefrontUrls;
 use App\Transform\Row;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Testing\PendingCommand;
 use Symfony\Component\Console\Command\Command;
 use Tests\Support\PaymentFixture;
+use Tests\Support\StorefrontMailboxFixture;
 use Tests\Support\T;
 
 use function Pest\Laravel\artisan;
@@ -33,10 +37,10 @@ use function Pest\Laravel\artisan;
 
 beforeEach(function () {
     config([
-        'notifications.admin_emails' => ['ops@watchizer.test'],
         'notifications.send.inline' => true,
         'notifications.send.inside_transaction' => true,
     ]);
+    StorefrontMailboxFixture::recipients(1, ['ops@watchizer.test']);
 });
 
 /**
@@ -100,70 +104,42 @@ it('carries the three templates and the three partials the legacy app renders', 
     }
 });
 
-it('ports them byte for byte, except the one config key core does not have', function () {
-    $legacy = base_path('../backend/resources/views/emails');
-    $core = resource_path('views/emails');
-
-    // Asserted, not skipped: `backend/` is part of this repository, so an absent directory would
-    // mean the comparison silently stopped happening -- which is how a ported template drifts.
-    expect(is_dir($legacy))->toBeTrue('the legacy templates must be present to compare against');
-
-    foreach ([
-        'order-status-update.blade.php',
-        'partials/header.blade.php',
-    ] as $file) {
-        // Identical. The copy is not to be "improved": it is live customer-facing wording in two
-        // languages, and the brief for this port said so explicitly.
-        expect(md5_file($core.'/'.$file))->toBe(md5_file($legacy.'/'.$file), "{$file} has drifted from the legacy original");
-    }
-
+it('renders ONE template for both shops, differing only in what the storefront row says (W2)', function () {
     /*
-     * The THREE files that carry money differ from legacy on purpose (2026-09-26, OrderTotals).
-     * Legacy printed "Subtotal 999 · Discount −501 · Shipping 100 · Total 1,099" — a column no
-     * customer could add up — so matching it byte for byte stopped being the goal for those lines.
-     *
-     * The exemption is narrow and TESTED, not a premise: every legacy line that no longer appears
-     * in core must be a MONEY line (a formatted figure, the totals labels, the row include that now
-     * passes the decimals). A changed greeting, a changed footer, any other wording that drifts
-     * still fails here exactly as before. The new figures themselves are proven by
-     * OrderTotalsTest, which renders the e-mail and asserts the column adds up.
+     * This replaces "ports them byte for byte" (2026-10-13). That test pinned the templates to the
+     * LEGACY app's files and allowed only money lines to differ — and the legacy chrome was one
+     * shop's: the WATCHIZER text wordmark, Watchizer's WhatsApp number and copyright from config,
+     * "Watchizer" in every title. "The legacy app did it too" explains why they were there; it is
+     * not a reason to keep them (AGENTS §3 harness note). The templates are now the SAME for both
+     * shops and read their identity from the storefront row (StorefrontIdentity): one behaviour,
+     * two presentations — which is the assertion below, measured on the rendered HTML.
      */
-    foreach ([
-        'order-confirmation.blade.php',
-        'admin-order-notification.blade.php',
-        'partials/product-row.blade.php',
-    ] as $file) {
-        $coreLines = array_map('trim', file($core.'/'.$file, FILE_IGNORE_NEW_LINES) ?: []);
-        $legacyLines = array_map('trim', file($legacy.'/'.$file, FILE_IGNORE_NEW_LINES) ?: []);
-        $gone = array_values(array_diff($legacyLines, $coreLines));
+    $watchizer = contractOrder();
+    $fashion = contractOrder();
+    DB::table('orders')->where('id', $fashion)->update(['storefront_id' => 2]);
+    app(StorefrontCache::class)->forgetStorefront(2, 'brandfashion');
 
-        $notMoney = array_values(array_filter(
-            $gone,
-            // …or one of the two colour-dot lines in the product row, which since 2026-09-27 draw one
-            // dot per colour of a two-tone finish. Tested, not assumed: see "draws one dot per
-            // colour" below.
-            fn (string $line): bool => preg_match('/number_format|\$egp\(|Subtotal|Discount|emails\.partials\.product-row/', $line) !== 1
-                && ! ($file === 'partials/product-row.blade.php'
-                    && (str_starts_with($line, "@if(\$item['color_dial'])Dial <span") || str_starts_with($line, "@if(\$item['color_band'])Band <span"))),
-        ));
-        expect($gone)->not->toBe([], "{$file} was expected to carry the OrderTotals block")
-            ->and($notMoney)->toBe([], "{$file} changed a line that is not about money");
-    }
+    $w = (new OrderConfirmation(OrderEmailData::for($watchizer) ?? []))->render();
+    $f = (new OrderConfirmation(OrderEmailData::for($fashion) ?? []))->render();
+    $wi = StorefrontIdentity::for(1);
+    $fi = StorefrontIdentity::for(2);
 
-    /*
-     * `partials/footer.blade.php` differs in exactly ONE line: the copyright fallback reads
-     * `config('notifications.brand.copyright')` because core has no `config/watchizer.php`. The
-     * difference is asserted to be that and nothing else, by diffing the two files line by line.
-     */
-    $coreLines = file($core.'/partials/footer.blade.php', FILE_IGNORE_NEW_LINES) ?: [];
-    $legacyLines = file($legacy.'/partials/footer.blade.php', FILE_IGNORE_NEW_LINES) ?: [];
+    // Each mail carries ITS shop's identity and nothing of the other's.
+    expect($w)->toContain($wi->wordmarkUrl(), 'wa.me/'.$wi->whatsappSupport, $wi->copyright, '— '.$wi->brandName.'</title>')
+        ->and($w)->not->toContain($fi->wordmarkUrl(), 'wa.me/'.$fi->whatsappSupport, $fi->copyright, 'Brand Fashion')
+        ->and($f)->toContain($fi->wordmarkUrl(), 'wa.me/'.$fi->whatsappSupport, $fi->copyright, '— '.$fi->brandName.'</title>')
+        ->and($f)->not->toContain($wi->wordmarkUrl(), 'wa.me/'.$wi->whatsappSupport, $wi->copyright, 'Watchizer')
+        ->and($w)->not->toContain('WATCH<span')    // the text wordmark is gone, not hidden
+        ->and($f)->not->toContain('WATCH<span');
 
-    $onlyInCore = array_values(array_diff($coreLines, $legacyLines));
-    $onlyInLegacy = array_values(array_diff($legacyLines, $coreLines));
-
-    expect($onlyInLegacy)->toBe(["@php(\$copyright = \$copyright ?? config('watchizer.brand.copyright'))"])
-        // The replacement line, plus the comment explaining it. Nothing else may appear here.
-        ->and($onlyInCore[0])->toBe("@php(\$copyright = \$copyright ?? config('notifications.brand.copyright'))");
+    // …and with the identity tokens swapped out, the two renders are the SAME document: the order
+    // numbers differ, nothing else does.
+    $normalise = fn (string $html, StorefrontIdentity $i, int $orderId): string => str_replace(
+        [$i->wordmarkUrl(), $i->whatsappSupport, $i->copyright, $i->brandName, StorefrontUrls::frontend($i->storefrontId), T::str(DB::table('orders')->where('id', $orderId)->value('order_number')), (string) $orderId],
+        ['{wordmark}', '{whatsapp}', '{copyright}', '{brand}', '{site}', '{number}', '{id}'],
+        $html,
+    );
+    expect($normalise($f, $fi, $fashion))->toBe($normalise($w, $wi, $watchizer));
 });
 
 it('loads NO asset from the legacy application for its branding', function () {
@@ -187,16 +163,16 @@ it('loads NO asset from the legacy application for its branding', function () {
         $body = (string) file_get_contents($file);
 
         /*
-         * The header and footer render the WATCHIZER wordmark as TEXT, deliberately (the legacy
-         * partial's own comment: the dark logo was invisible on the black bar and Gmail strips the
-         * CSS filter that would recolour it). So there is no branding <img> to host anywhere —
-         * which is what makes "served from core, not the legacy host" true by construction rather
-         * than by configuration.
+         * Since W2 (2026-10-13) the header and footer DO carry a branding <img>: the storefront's
+         * own wordmark, on the storefront's own asset host, as `{{ $wordmarkUrl }}` — never a host
+         * written into a template. So the hazard is now two-fold: no legacy host, and no literal
+         * host at all in any `src`.
          */
         expect($body)->not->toContain('dash.watchizereg')
             ->and($body)->not->toContain('watchizer.brand.logo')
             // Core has no `config/watchizer.php` at all; a reference to it would render empty.
-            ->and($body)->not->toContain("config('watchizer.");
+            ->and($body)->not->toContain("config('watchizer.")
+            ->and(preg_match('/src="https?:\/\//', $body))->toBe(0, basename($file).' names a host in an image src');
     }
 });
 
@@ -222,8 +198,9 @@ it('hands the templates every key they can read', function () {
         'brandName', 'copyright', 'whatsappUrl', 'trackUrl', 'dashboardUrl',
     ];
     // Added deliberately 2026-09-26 (OrderTotals): the promotion gets its own line, free shipping
-    // reads as free, and every figure shares one decimals setting so the column adds up.
-    $added = ['promotion', 'promotionName', 'freeShipping', 'moneyDecimals'];
+    // reads as free, and every figure shares one decimals setting so the column adds up. And
+    // 2026-10-13 (W2): the storefront's wordmark image.
+    $added = ['promotion', 'promotionName', 'freeShipping', 'moneyDecimals', 'wordmarkUrl', 'storefrontId'];
     expect(OrderEmailData::keys())->toEqualCanonicalizing([...$legacyKeys, ...$added]);
 });
 
@@ -272,9 +249,9 @@ it('renders the customer confirmation with the order’s own numbers', function 
         ->toContain('Cash on Delivery')
         // The note the shopper typed.
         ->toContain('اتصل قبل التوصيل')
-        // The footer's support link and the wordmark, both from the ported partials.
+        // The footer's support link and the wordmark — the storefront's own image since W2 (2026-10-13).
         ->toContain('wa.me/')
-        ->toContain('WATCH');
+        ->toContain('watchizer-mail-wordmark@2x.png');
 
     // The tracking link points at the ORDER'S storefront, from core's own table.
     expect($html)->toContain('https://watchizereg.com/order-list');
@@ -356,7 +333,7 @@ it('renders each status’s own copy, in both languages', function () {
 // ── the empty-recipient cases, recorded and not dropped ──────────────────────────────────────
 
 it('records a visible failure when no admin recipient is configured', function () {
-    config(['notifications.admin_emails' => []]);
+    StorefrontMailboxFixture::recipients(1, []);                 // the storefront's mailbox row, no team address on it
     $orderId = contractOrder('pending');
 
     app(OrderMailer::class)->placedNow($orderId, notifyCustomer: false);
@@ -365,7 +342,7 @@ it('records a visible failure when no admin recipient is configured', function (
      * The legacy `foreach (config('watchizer.admin_emails', []) as $email)` over an empty array
      * is a silent no-op: nobody in the shop hears about the order and nothing says so. That is
      * the exact silence prerequisite (a) exists to close, so core writes a FAILED row naming the
-     * missing environment variable.
+     * missing setting (the storefront's mailbox row since W3; `ORDER_ADMIN_EMAILS` before it).
      */
     $rows = OrderMailer::forOrder($orderId);
     expect($rows)->toHaveCount(1)
@@ -375,11 +352,11 @@ it('records a visible failure when no admin recipient is configured', function (
          * CONFIG, not `unknown`. 🟠-2 stopped `last_error` leaving the server, and the naive reading
          * of that would have classified this row — which we composed ourselves, from no transport at
          * all — as "failed for an unrecognised reason, needs a developer". It needs an administrator
-         * and one environment variable, and the label has to say so or the finding made the screen
-         * worse than it was.
+         * and one screen, and the label has to say so or the finding made the screen worse than
+         * it was.
          */
         ->and($rows[0]['error_kind'])->toBe(MailFailure::CONFIG)
-        ->and($rows[0]['error_label'])->toContain('ORDER_ADMIN_EMAILS');
+        ->and($rows[0]['error_label'])->toMatch('/mailbox|صندوق بريد/');
 
     // …and `mail:drain --report` is non-zero while it stands, so a cron or a deploy check sees it.
     contractDrain('mail:drain', ['--report' => true, '--order' => $orderId])->assertExitCode(Command::FAILURE);

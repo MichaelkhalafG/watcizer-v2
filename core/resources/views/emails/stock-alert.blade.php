@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-    <title>{{ $ar ? 'عاد متوفراً' : 'Back in stock' }} — Watchizer</title>
+    <title>{{ $ar ? 'عاد متوفراً' : 'Back in stock' }} — {{ $brandName }}</title>
 </head>
 {{-- "It's back in stock" (2026-10-01): the shopper's own language first, the other beneath it the
      way the order e-mails pair them; the product, its price, one button, and a way to stop. --}}

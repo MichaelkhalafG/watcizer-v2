@@ -41,15 +41,11 @@ return [
     // The storefront the compat layer serves. Always Watchizer.
     'storefront_id' => 1,
 
-    // Legacy SitemapController constants (hard-coded there, mirrored here).
+    // Legacy SitemapController constant (hard-coded there, mirrored here). Still Watchizer's for
+    // the whole sitemap: a sitemap PER storefront is the Brand Fashion app build's item (backlog
+    // SITEMAP-PER-STOREFRONT, 2026-10-12). The image host beside it moved to the storefront row
+    // (`StorefrontUrls::apiHost()`, W7); `COMPAT_SITEMAP_IMAGE_HOST` is retired.
     'sitemap_domain' => 'https://watchizereg.com',
-    /*
-     * Where the sitemap's <image:loc> URLs point. It mirrored the legacy constant — the legacy host,
-     * `dash.watchizereg.com` — so switching the legacy site off would have left every image URL Google
-     * reads dead (found 2026-09-28, planning C3). The API host serves the same Uploads_Images tree
-     * and its allow-list lets crawlers fetch it. A deliberate break from legacy byte-parity.
-     */
-    'sitemap_image_host' => (string) env('COMPAT_SITEMAP_IMAGE_HOST', 'https://api.watchizereg.com'),
 
     /*
     | Locale of the appended translated attributes (`brand_name`, `product_title`, …) on the

@@ -329,19 +329,33 @@ manager extracts those literally: you get files actually named
 `app\Domain\Customers\CustomerAccounts.php`, the autoloader finds nothing, and every page is a 500
 whose cause is invisible in the log.
 
-Build it as a tar, which has no such ambiguity:
+Build it as a tar, which has no such ambiguity. **The archive is DATED and built with ABSOLUTE paths**
+— both rules written after they cost a deploy (2026-10-13, see below):
 
-```bash
-cd "D:/coding/watchizer website/new watchizer"
-tar -czf core-phase1.tar.gz \
-  --exclude='core/.env' --exclude='core/node_modules' --exclude='core/tests' \
-  --exclude='core/docs' --exclude='core/.git' \
-  --exclude='core/storage' \
-  --exclude='core/public/Uploads_Images' --exclude='core/public/dumps' \
-  --exclude='core/public/hot' \
-  --exclude='core/phpunit.xml' --exclude='core/phpstan.neon' \
-  core/
+```powershell
+# Windows, PowerShell or Git Bash — ABSOLUTE paths and -C, never relative (2026-10-13).
+# exclude.txt holds the eleven entries, one per line, no blank line, no BOM, LF endings:
+#   core/.env  core/node_modules  core/tests  core/docs  core/.git  core/storage
+#   core/public/Uploads_Images  core/public/dumps  core/public/hot  core/phpunit.xml  core/phpstan.neon
+tar -czf C:\temp\core-20261013.tar.gz -X C:\temp\exclude.txt -C 'D:\coding\watchizer website\new watchizer' core
+# then the size, before anything else reads it: a full tree is tens of MB; 29 bytes is the failure below
+ls -l C:\temp\core-20261013.tar.gz
 ```
+
+**Why the name carries the date (2026-10-13).** `core-phase1.tar.gz` was the fixed name of every
+deploy's archive, so each deploy OVERWROTE the previous deploy's — the only changed-files record of
+what had gone live. The 2026-10-13 deploy nearly overwrote the 2026-10-12 archive (7.1 MB, Oct 12)
+while that archive was still the previous state's evidence. The name is `core-<YYYYMMDD>.tar.gz`
+from now on, on the workstation and on the server, and the matching pre-deploy snapshot is
+`core-before-<YYYYMMDD>.tar.gz` (§2.4). Yesterday's archive is left where it is.
+
+**Why absolute paths and `-C` (2026-10-13 — the SECOND deploy this cost).** `tar.exe` resolves a
+relative path against the PROCESS working directory, which PowerShell does not keep in step with its
+own location: proven by `[IO.File]::ReadAllBytes('exclude.txt')` reading from `C:\Users\…` while the
+prompt sat in the repository. On 2026-10-12 the relative `--exclude='…' core/` form wrote a
+**29-byte** archive, which was then UPLOADED; on 2026-10-13 `-X exclude.txt core/` failed the same way
+with an exclude file that was provably clean (167 bytes, 0 CR, no BOM, no blank line), and that is
+when the cause was found. The form above, every path absolute, is the one that worked.
 
 #### `core/storage` is excluded ENTIRELY — review 🟠-3
 
@@ -370,7 +384,7 @@ mkdir -p storage/framework/{cache/data,sessions,views} storage/logs storage/app/
 chmod -R 775 storage
 ```
 
-Upload `core-phase1.tar.gz` by SFTP. **Extract over SSH, never with the panel's extractor.**
+Upload `core-<YYYYMMDD>.tar.gz` by SFTP; `sha256sum` it on both sides before extracting. **Extract over SSH, never with the panel's extractor.**
 
 ### 2.4 Extract to a staging directory FIRST, then copy over
 
@@ -380,10 +394,19 @@ mangled archive directly into the live tree.
 
 ```bash
 # on the server
+umask 022                       # its own line, BEFORE the extract — see the paragraph below
 mkdir -p ~/deploy-staging && cd ~/deploy-staging
 rm -rf core
-tar -xzf ~/core-phase1.tar.gz
+tar -xzf ~/core-20261013.tar.gz   # the dated archive (§2.3), never a fixed name
 ```
+
+**`umask 022` is its own line, before the extract (2026-10-13).** Permissions are decided at EXTRACT
+time, not at copy time: `tar` creates each file with the shell's umask, and `cp -a` then carries those
+modes onto production unchanged. On 2026-10-13 the deploy shell had `umask 077` — set earlier to
+protect a credentials file and never reset — and the staging extract produced `-rw-------` on all
+**7,815** files, `public/build/assets` included; `cp -a` would have put a dashboard Apache could not
+read live. Caught before the copy. The check, after every extract: `find core -type f ! -perm -o=r | wc -l`
+must print `0`. The line costs nothing when the umask is already right; the paragraph exists because the failure is silent.
 
 **Prove the extraction is sane before it touches anything live.** Four checks, and the last one is
 the archive-mangling check:
@@ -418,6 +441,11 @@ contains `core/public/.htaccess` — the plain Laravel one from this repository,
 block at all** — so `cp -a` deletes the blanket 404 that has been shutting `/api` since the
 eleganceeg deployment (review 🟠 minor; §2.9 used to claim `/api` stayed closed throughout, and it
 did not):
+
+> **Run this pair ONCE — here or in the Appendix, never both (developer, 2026-10-12 deploy).** The
+> Appendix repeats it so the commands read in order. Taking the backup a second time, after `cp -a`,
+> copies the ARCHIVE's plain `.htaccess` over the real backup, and the restore then puts the wrong
+> file on the API host.
 
 ```bash
 LIVE=~/domains/eleganceeg.com/core
@@ -466,8 +494,12 @@ cd ~/domains/eleganceeg.com/core
 chmod -R 775 storage bootstrap/cache
 rm -f public/hot public/fonts-manifest.dev.json
 ls public/build/manifest.json            # must exist
-ls -l public/storage                     # the storage symlink must still be there
 ```
+
+There is **no `public/storage` symlink on this install and there never was**: `storage/app/public`
+is an empty directory from 2026-09-19 and every image lives in `public/Uploads_Images`. The
+`ls -l public/storage` check that used to stand here was inherited from a generic runbook and
+alarmed on every deploy (removed 2026-10-12, developer).
 
 `public/hot` is the one that fails invisibly: if it exists, every dashboard page tries to load its
 JavaScript from your workstation and the site appears completely broken.
@@ -1017,9 +1049,12 @@ what §4.3 does and why it is a mandatory step rather than a suggestion.
     # match blocks NOTHING, which is the safe direction: a typo costs a gap, not an
     # outage. Verify all four host cases in §4.3 before moving on.
 
-    # ── the API host: an allow-list of the storefront's own surface ────────────
+    # ── the API hosts: ONE allow-list for every storefront's own surface ─────────
+    # Two hosts, one list (2026-10-14, Brand Fashion's api.michaelkhalaf.com): the body below is
+    # shared, so it cannot drift between hosts. A new storefront's API host is one more alternation
+    # here AND in the default arm — never a second copy of the body.
     RewriteCond %{REQUEST_URI} !^/index\.php
-    RewriteCond %{HTTP_HOST} ^api\.watchizereg\.com$ [NC]
+    RewriteCond %{HTTP_HOST} ^api\.(watchizereg|michaelkhalaf)\.com$ [NC]
     RewriteCond %{REQUEST_URI} !^/api/v2/
     RewriteCond %{REQUEST_URI} !^/api/(catalog/(meta|nav|listing|cards|related|product|home|blogs|blog)|all_product|all_product_image|all_product_rating|show_shipping_city)$
     RewriteCond %{REQUEST_URI} !^/api/products(/|$)
@@ -1030,6 +1065,9 @@ what §4.3 does and why it is a mandatory step rather than a suggestion.
     RewriteCond %{REQUEST_URI} !^/api/auth/
     RewriteCond %{REQUEST_URI} !^/api/(callback_payment|pay/)
     RewriteCond %{REQUEST_URI} !^/Uploads_Images/
+    # the mail wordmark PNGs (W2, 2026-10-13): every e-mail embeds <img> from the storefront's
+    # own asset host, which is this host — exactly the two file shapes, nothing else under /assets/
+    RewriteCond %{REQUEST_URI} !^/assets/brand/[a-z0-9-]+-mail-wordmark(@2x)?\.png$
     RewriteCond %{REQUEST_URI} !^/[a-z]{2}/sitemap\.xml$
     RewriteCond %{REQUEST_URI} !^/sitemaps/(index|en|ar)\.xml$
     RewriteCond %{REQUEST_URI} !^/api/stock-alerts$
@@ -1058,7 +1096,7 @@ what §4.3 does and why it is a mandatory step rather than a suggestion.
     # KNOWN CONSEQUENCE: a request to the server by IP or over the loopback can no
     # longer reach /api. `compat:diff` against 127.0.0.1 ON THE SERVER would 404 —
     # run it with a Host header, or from the workstation (§C).
-    RewriteCond %{HTTP_HOST} !^api\.watchizereg\.com$ [NC]
+    RewriteCond %{HTTP_HOST} !^api\.(watchizereg|michaelkhalaf)\.com$ [NC]
     RewriteCond %{HTTP_HOST} !^(www\.)?eleganceeg\.com$ [NC]
     RewriteRule ^api(/|$) - [R=404,L]
 ```
@@ -1905,7 +1943,10 @@ idempotent and says "nothing to do" when there is nothing to do.
    exactly the paths in `phpstan.neon` (app, bootstrap/app.php, config, database, routes, tests) and
    refuses extra arguments, because a path argument replaces that list — on 2026-10-09 a run given
    three file paths reported clean while `routes/console.php` and two test files carried level-10
-   errors that then shipped. It must print `[OK] No errors`.
+   errors that then shipped. It must print `[OK] No errors`. **The suite is `php artisan test`, never
+   `composer test`** (2026-10-13): composer runs a script under a 300-second process timeout and this
+   suite takes 748–822 s, so `composer test` KILLS it part-way and prints a failure that is not a red
+   suite — nobody reads that output as one. Measured: 2,062 passed / 39 skipped / 0 failed in 760 s.
 1. **Dashboard assets** — `npm run build` on the workstation and upload `public/build/` with the PHP
    (§2.1: it is gitignored, so it is never in a commit). Then prove the live dashboard runs the bundle
    you built — the two lines must be identical:
@@ -1922,7 +1963,18 @@ idempotent and says "nothing to do" when there is nothing to do.
    catalog_products`. Any NEW table with a product key must be added to the command's `TARGET` list
    in the same change that creates it.
 4. **Caches** — `php artisan config:cache && php artisan route:cache` (§3.5).
-5. **`.htaccess`** — diff the server's API-host block against §4.1.1 and add any new line.
+5. **`.htaccess`** — diff the server's API-host block against §4.1.1 and add any new line. **Then the
+   wordmark gate (2026-10-13):** for every shop with a mailbox, the `<img>` every e-mail embeds must
+   answer on the API host —
+   ```bash
+   for s in watchizer brandfashion; do curl -sI "https://api.watchizereg.com/assets/brand/$s-mail-wordmark@2x.png" | grep -i '^HTTP\|^content-type'; done
+   ```
+   four lines, `HTTP/2 200` and `content-type: image/png` twice (Brand Fashion's on its own API host
+   once that serves). A 404 means the block lost the `/assets/brand/` line and every mail renders a
+   broken wordmark while still sending (`StorefrontIdentity` checks the file on disk, not the URL).
+   The line was missing from the block for the whole of W2's build and was found only while writing
+   the deploy sequence; `ApiAllowListTest` pins it now. Measured on the 2026-10-13 deploy: 200,
+   image/png, both shops.
 6. **Re-engagement, if its settings changed in the batch or on the screen** — `php artisan
    reengagement plan`. *Since 2026-10-01* it RE-PLANS this week's run in place when that run has not
    been sent (new recipients and products from the current settings, a fresh preview to the team, the
@@ -2000,13 +2052,21 @@ Every step below is §13's checklist plus what this batch adds.
 # §2 — on the workstation
 npm run build                        # REQUIRED: the customers-screen control changed public/build/
 composer install --no-dev --optimize-autoloader
-tar -czf core-phase1.tar.gz --exclude='core/.env' --exclude='core/node_modules'   --exclude='core/tests' --exclude='core/docs' --exclude='core/.git'   --exclude='core/storage'   --exclude='core/public/Uploads_Images' --exclude='core/public/dumps'   --exclude='core/public/hot' --exclude='core/phpunit.xml' --exclude='core/phpstan.neon' core/
+# §2.3 (2026-10-13): DATED name, ABSOLUTE paths, -C — tar.exe resolves relative paths against the
+# process working directory, not PowerShell's; the relative form wrote a 29-byte archive twice.
+tar -czf C:\temp\core-20261013.tar.gz -X C:\temp\exclude.txt -C 'D:\coding\watchizer website\new watchizer' core
+ls -l C:\temp\core-20261013.tar.gz   # tens of MB, or STOP
 composer install                     # put the dev tools back locally
 
 # §2 — on the server: stage, PROVE, then copy
-mkdir -p ~/deploy-staging && cd ~/deploy-staging && rm -rf core && tar -xzf ~/core-phase1.tar.gz
+umask 022                            # §2.4 (2026-10-13): modes are decided at EXTRACT time; 077 here made 7,815 files -rw-------
+mkdir -p ~/deploy-staging && cd ~/deploy-staging && rm -rf core && tar -xzf ~/core-20261013.tar.gz
+find core -type f ! -perm -o=r | wc -l   # 0, or the umask was wrong — STOP before cp -a
 ls core/app/Domain/Customers/CustomerSocial.php && ls core/vendor/laravel/socialite/composer.json
 find . -print | grep -F '\'   # must print NOTHING; any output at all = mangled archive, STOP
+# §2.4's pair, repeated here so the Appendix reads in order. ONCE: if you ran §2.4, skip these
+# three lines — a second backup taken after cp -a saves the ARCHIVE's .htaccess and the restore
+# then puts the wrong file live (developer, 2026-10-12).
 cp ~/domains/eleganceeg.com/core/public/.htaccess ~/htaccess.before-phase2.bak   # §2.4 — BEFORE
 cp -a ~/deploy-staging/core/. ~/domains/eleganceeg.com/core/
 cp ~/htaccess.before-phase2.bak ~/domains/eleganceeg.com/core/public/.htaccess   # §2.4 — AFTER

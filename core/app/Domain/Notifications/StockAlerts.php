@@ -6,6 +6,7 @@ namespace App\Domain\Notifications;
 
 use App\Compat\CompatCart;
 use App\Storefront\ImageUrl;
+use App\Storefront\StorefrontUrls;
 use App\Support\LegacySlug;
 use App\Transform\Row;
 use Illuminate\Database\Query\JoinClause;
@@ -109,7 +110,7 @@ final class StockAlerts
      * What the e-mail needs, checked at SEND time. Null when there is nothing to send: the alert is
      * gone, or the product is out of stock again — then the shopper goes back to waiting.
      *
-     * @return array{email: string, locale: string, token: string, product: array{name: string, price: float, image: ?string, url: string}}|null
+     * @return array{email: string, locale: string, token: string, storefront_id: int, product: array{name: string, price: float, image: ?string, url: string}}|null
      */
     public function mailData(int $alertId): ?array
     {
@@ -131,6 +132,8 @@ final class StockAlerts
             'email' => Row::str($alert, 'email'),
             'locale' => Row::str($alert, 'locale'),
             'token' => Row::str($alert, 'token'),
+            // The "stop" link is built on THIS storefront's API host (W6, 2026-10-12), never a global one.
+            'storefront_id' => Row::int($alert, 'storefront_id'),
             'product' => $product,
         ];
     }
@@ -204,7 +207,6 @@ final class StockAlerts
         $en = is_string($titles['en'] ?? null) ? $titles['en'] : '';
         $name = is_string($titles[$locale] ?? null) && $titles[$locale] !== '' ? $titles[$locale] : $en;
         $cover = DB::table('catalog_product_images')->where('product_id', $productId)->orderByDesc('is_cover')->orderBy('sort')->value('path');
-        $domain = DB::table('storefronts')->where('id', $storefrontId)->value('domain');
         $slug = LegacySlug::make($en);
         $path = '/product/'.($slug !== '' ? $slug : (string) $productId);
 
@@ -212,7 +214,10 @@ final class StockAlerts
             'name' => $name,
             'price' => CompatCart::catalogPrice(Row::str($p, 'selling_price'), Row::nstr($p, 'sale_price')),
             'image' => is_string($cover) && $cover !== '' ? ImageUrl::src($cover) : null,
-            'url' => 'https://'.(is_string($domain) ? $domain : 'watchizereg.com').($locale === 'ar' ? '/ar' : '').$path,
+            // The product link on the alert's OWN storefront's site (A2 follow-up, 2026-10-13: this
+            // fell back to watchizereg.com for a storefront with no domain — the one link W6 did not
+            // reach). StorefrontUrls::frontend() throws StorefrontHasNoHost; BulkMailer parks the row.
+            'url' => StorefrontUrls::frontend($storefrontId).($locale === 'ar' ? '/ar' : '').$path,
             'in_stock' => Row::int($p, 'stock_express') + Row::int($p, 'stock_market') > 0,
         ];
     }

@@ -111,6 +111,12 @@ final class CoreChecksumCommand extends Command
          */
         'storefront_payment_providers', 'storefront_payment_methods',
         'storefront_payment_method_translations',
+        /*
+         * The storefront's MAILBOX (W3, 2026-10-13): the SMTP contract with the encrypted password,
+         * the envelope, the per-mailbox budget and the order recipients. Dashboard-authored, no
+         * legacy source — the same argument as the payment contract above it.
+         */
+        'storefront_mailboxes',
         // An unresolved money finding must not be erased by a rebuild (review 🔴-1): it is the
         // record that a callback needs a human, and switch night drops and rebuilds everything
         // in CLEAN_TABLES.

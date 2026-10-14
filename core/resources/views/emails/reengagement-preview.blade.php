@@ -2,7 +2,7 @@
 <html lang="en" dir="ltr">
 <head>
     <meta charset="UTF-8">
-    <title>Re-engagement preview — Watchizer</title>
+    <title>Re-engagement preview — {{ $brandName }}</title>
 </head>
 {{-- The team's preview of the weekly e-mail. English only (developer, 2026-10-01), like the e-mail. --}}
 <body style="margin:0;padding:24px;background:#f5f5f5;font-family:'Segoe UI',Tahoma,Arial,sans-serif;color:#111;">

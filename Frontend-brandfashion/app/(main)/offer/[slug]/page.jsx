@@ -1,0 +1,82 @@
+import { notFound, permanentRedirect } from 'next/navigation'
+import { QueryClient, dehydrate, HydrationBoundary } from '@tanstack/react-query'
+import { getServerProductCard, getServerOffers, findOfferInCatalog } from '@/src/lib/serverCatalog'
+import { buildOfferSeo } from '@/src/lib/detailSeo'
+import { requestLang, localePath } from '@/src/lib/requestLang'
+import ProductDetailClient from '@/src/Components/Product/ProductDetailClient'
+import { safeJsonLd } from '@/src/lib/safeJsonLd'
+
+export const revalidate = 300
+
+// Resolve the offer ONCE per request (cached getters shared with generateMetadata).
+// Offers resolve from the offers list (no single-offer endpoint); the linked main
+// product is looked up for the SEO gallery. A failure to READ the offers list propagates (→ the error
+// page, a 5xx), never a 404 (2026-09-30); only an offer missing from a list core did send is not found.
+async function resolveOffer(param) {
+  const offers = await getServerOffers()
+  const offer = findOfferInCatalog(offers, param)
+  if (!offer) return null
+  let offerProduct = null
+  try {
+    // The offer's linked product, by id from core (C-1 stage 4) — not the whole catalogue.
+    offerProduct = (await getServerProductCard(String(offer.main_product_id)))?.product ?? null
+  } catch {
+    // catalog optional for the offer page (only enriches the image gallery)
+  }
+  return { offer, offerProduct }
+}
+
+export async function generateMetadata({ params }) {
+  const { slug } = await params
+  // notFound() HERE (in generateMetadata, before the page streams past its
+  // loading.jsx boundary) is what sets a real 404 status for unknown offers —
+  // calling it only in the page body renders the 404 UI but leaves the streamed
+  // status at 200. Offer resolution is already strict (findOfferInCatalog matches
+  // an exact slug or numeric id — there's no fuzzy by-name fallback like products).
+  const resolved = await resolveOffer(slug)
+  if (!resolved) notFound()
+  return buildOfferSeo(resolved.offer, resolved.offerProduct).metadata
+}
+
+export default async function OfferPage({ params }) {
+  const { slug } = await params
+  const resolved = await resolveOffer(slug)
+  if (!resolved) notFound()
+
+  const { offer, offerProduct } = resolved
+  const { canonicalPath, productLd, breadcrumbLd } = buildOfferSeo(offer, offerProduct)
+
+  // Canonical redirect: non-canonical URL (numeric id, raw name) → /offer/{slug}.
+  if (canonicalPath && canonicalPath !== `/offer/${slug}`) {
+    // Keeps the /ar prefix on an Arabic URL (S-AR stage 1). Offer METADATA stays English for now:
+    // there are no offers (the table is empty), so translating it is left until there are.
+    permanentRedirect(localePath(canonicalPath, (await requestLang()).urlLang))
+  }
+
+  // Seed ONLY offers here (the (main) layout doesn't hydrate offers). The catalog is
+  // already hydrated by the layout, so we don't re-dehydrate it (that duplicated a
+  // ~9 MB copy — C-1). ProductDetailClient resolves the offer's main product from the
+  // layout-hydrated catalog (card fields); when offers are seeded, the offer detail
+  // should fetch that product's full record by id like the product page does.
+  const qc = new QueryClient()
+  try {
+    const offers = await getServerOffers()
+    qc.setQueryData(['offers'], offers)
+  } catch {
+    /* client refetches */
+  }
+
+  return (
+    <HydrationBoundary state={dehydrate(qc)}>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: safeJsonLd(productLd) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: safeJsonLd(breadcrumbLd) }}
+      />
+      <ProductDetailClient param={slug} isOffer={true} />
+    </HydrationBoundary>
+  )
+}

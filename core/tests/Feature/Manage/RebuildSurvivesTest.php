@@ -90,9 +90,12 @@ it('guards every ALTER of a preserved table, not only its creation', function ()
              * `hasColumn` anywhere in the file is enough: the guard may sit around the
              * `Schema::table` call or inside the closure around the individual column, and both
              * make the re-run a no-op. Asserting the SHAPE any tighter would fail a correct
-             * migration for writing its guard differently.
+             * migration for writing its guard differently. An INDEX-only migration (M2h,
+             * 2026-10-13: `core_activity_log` gains five indexes and no column) has no column to
+             * ask about; its guard is the index NAME, read back with `Schema::getIndexes` — the
+             * same no-op on re-run, a different verb, so it is accepted here by that name.
              */
-            if (! str_contains($contents, 'Schema::hasColumn')) {
+            if (! str_contains($contents, 'Schema::hasColumn') && ! str_contains($contents, 'Schema::getIndexes')) {
                 $unguarded[] = basename($file).' → '.$table;
             }
         }

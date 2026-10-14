@@ -90,6 +90,12 @@ it('names EVERY table the dashboard authors, in order, so adding one is a delibe
         'storefronts', 'storefront_banners', 'core_user_roles',
         'storefront_payment_providers', 'storefront_payment_methods',
         'storefront_payment_method_translations',
+        /*
+         * THIRTY-ONE since M2f (W3, 2026-10-13): `storefront_mailboxes` — the SMTP contract with the
+         * encrypted password, the envelope, the per-mailbox budget, the order recipients. Beside the
+         * payment contract, which it argues from.
+         */
+        'storefront_mailboxes',
         'payment_reconciliation_findings',
         'promotion_rules', 'promotion_rule_storefront', 'promotion_rule_conditions',
         'promotion_rule_rewards', 'promotion_rule_skips',

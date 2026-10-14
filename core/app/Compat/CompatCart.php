@@ -30,10 +30,14 @@ final class CompatCart
 
     // ── identity → cart row ──────────────────────────────────────────────────
 
-    /** `Cart::where($identity)->with('cart_item')->first()` — the row or null. */
+    /**
+     * `Cart::where($identity)->with('cart_item')->first()` — the row or null. THIS storefront's row
+     * (C10, 2026-10-13): a customer signed in on both shops has a cart on each, and a line added on
+     * Brand Fashion is not in the Watchizer cart. Before C10 the lookup was by identity alone.
+     */
     public function find(CartIdentity $identity): ?stdClass
     {
-        $row = DB::table('carts')->where($identity->column(), $identity->value())->orderBy('id')->first();
+        $row = DB::table('carts')->where($identity->column(), $identity->value())->where('storefront_id', $this->storefrontId)->orderBy('id')->first();
 
         return $row instanceof stdClass ? $row : null;
     }
@@ -51,6 +55,9 @@ final class CompatCart
         $now = now();
         DB::table('carts')->insert([
             $identity->column() => $identity->value(),
+            // EXPLICIT, never the column's default (C10): the default exists for the legacy harness
+            // alone; `CartStorefrontTest` reads this source and fails if the line goes.
+            'storefront_id' => $this->storefrontId,
             'expires_at' => $identity->isGuest() ? $now->copy()->addDays(7) : null,
             'created_at' => $now,
             'updated_at' => $now,

@@ -9,6 +9,7 @@ use App\Domain\Inventory\Actor;
 use App\Domain\Inventory\InventoryService;
 use App\Domain\Inventory\StockTarget;
 use App\Models\User;
+use App\Transform\Row;
 use Illuminate\Database\Query\JoinClause;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
@@ -479,6 +480,91 @@ it('filters by user, action and date, and each one bites', function () {
 
     // A date range that excludes today excludes everything written today.
     expect($rows('?filters[to]=2000-01-01'))->toBe([]);
+});
+
+// ── §4.2 (2026-10-13): search without a full scan, two more filters, filters that survive paging ──
+
+it('searches by PREFIX on indexed columns and by record number — and the database never scans the table', function () {
+    $actor = Staff::admin();
+    actingAs($actor);
+    DB::table(ActivityLog::TABLE)->insert([
+        ['user_id' => $actor->id, 'user_name' => 'probe', 'subject_type' => 'orders', 'subject_id' => 424242,
+            'subject_label' => 'ZQ-ORDER-ONE', 'action' => 'updated', 'storefront_id' => 1, 'changes' => '[]', 'created_at' => now()],
+        ['user_id' => $actor->id, 'user_name' => 'probe', 'subject_type' => 'orders', 'subject_id' => 424243,
+            'subject_label' => 'ZQ-ORDER-TWO', 'action' => 'updated', 'storefront_id' => 1, 'changes' => '[]', 'created_at' => now()],
+        ['user_id' => $actor->id, 'user_name' => 'probe', 'subject_type' => 'orders', 'subject_id' => 424244,
+            'subject_label' => 'AN-ORDER-ZQ', 'action' => 'updated', 'storefront_id' => 1, 'changes' => '[]', 'created_at' => now()],
+    ]);
+    $labels = fn (string $query): array => array_map(
+        fn (array $row): string => T::str($row['subject_label'] ?? ''),
+        Props::rows(Props::table(get('/manage/activity'.$query))),
+    );
+
+    // Prefix: the two that BEGIN with the term, not the one that merely contains it.
+    expect($labels('?q=ZQ-ORDER'))->toBe(['ZQ-ORDER-TWO', 'ZQ-ORDER-ONE'])
+        // A number is the record's id.
+        ->and($labels('?q=424244'))->toBe(['AN-ORDER-ZQ'])
+        // LIKE metacharacters are literal: "%" finds nothing, not everything.
+        ->and($labels('?q=%25'))->toBe([]);
+
+    // The plan, read from the database: the search is answered from the indexes M2h added — an
+    // index range scan or an index merge — never `ALL` (a full table scan), on the live table.
+    $prefix = 'ZQ-ORDER%';
+    foreach (DB::select('EXPLAIN SELECT a.id FROM '.ActivityLog::TABLE.' AS a WHERE (a.subject_label LIKE ? OR a.user_name LIKE ?) ORDER BY a.created_at DESC LIMIT 25', [$prefix, $prefix]) as $plan) {
+        $row = Row::cast(T::row($plan));
+        if (Row::str($row, 'table') === 'a') {
+            expect(Row::str($row, 'type'))->not->toBe('ALL')
+                ->and(Row::nstr($row, 'key'))->not->toBeNull();
+        }
+    }
+});
+
+it('filters by STOREFRONT and by RECORD NUMBER, each within the grant\'s scope', function () {
+    $actor = Staff::admin();
+    DB::table(ActivityLog::TABLE)->insert([
+        ['user_id' => $actor->id, 'user_name' => 'probe', 'subject_type' => 'orders', 'subject_id' => 515151,
+            'subject_label' => 'SF-ONE-ROW', 'action' => 'updated', 'storefront_id' => 1, 'changes' => '[]', 'created_at' => now()],
+        ['user_id' => $actor->id, 'user_name' => 'probe', 'subject_type' => 'orders', 'subject_id' => 515152,
+            'subject_label' => 'SF-TWO-ROW', 'action' => 'updated', 'storefront_id' => 2, 'changes' => '[]', 'created_at' => now()],
+    ]);
+    $labels = fn (string $query): array => array_map(
+        fn (array $row): string => T::str($row['subject_label'] ?? ''),
+        Props::rows(Props::table(get('/manage/activity'.$query))),
+    );
+
+    actingAs($actor);
+    expect($labels('?filters[storefront_id]=2&filters[subject_type]=orders&q=SF-'))->toBe(['SF-TWO-ROW'])
+        ->and($labels('?filters[subject_id]=515151'))->toBe(['SF-ONE-ROW'])
+        // The filter offers every shop.
+        ->and(array_column(T::arr(T::arr(Props::of(get('/manage/activity'))['filters'])['storefronts']), 'value'))->toContain('1', '2');
+
+    // A storefront-2-scoped admin asking for storefront 1 gets NOTHING: the filter narrows within the scope, never widens it.
+    actingAs(Staff::adminFor(2));
+    expect($labels('?filters[storefront_id]=1&q=SF-'))->toBe([])
+        ->and($labels('?filters[storefront_id]=2&q=SF-'))->toBe(['SF-TWO-ROW']);
+});
+
+it('keeps the filters in the URL across pages: page 2 of a filtered list is still filtered', function () {
+    $actor = Staff::admin();
+    actingAs($actor);
+    $rows = [];
+    foreach (range(1, 30) as $i) {
+        $rows[] = ['user_id' => $actor->id, 'user_name' => 'probe', 'subject_type' => 'orders', 'subject_id' => 600000 + $i,
+            'subject_label' => sprintf('PG-ROW-%02d', $i), 'action' => 'adjusted', 'storefront_id' => 1, 'changes' => '[]', 'created_at' => now()->subSeconds(60 - $i)];
+    }
+    DB::table(ActivityLog::TABLE)->insert($rows);
+
+    // 30 matching rows, 25 a page (the default): page 2 holds the last five — and only them, so the
+    // action filter and the search travelled with the page number (the client builds every page
+    // link from `meta.filters` and `meta.search`, which the server echoes back here).
+    $page2 = Props::table(get('/manage/activity?filters[action]=adjusted&q=PG-ROW&page=2'));
+    $meta = T::arr($page2['meta'] ?? []);
+    expect(T::int($meta['page'] ?? 0))->toBe(2)
+        ->and(T::int($meta['per_page'] ?? 0))->toBe(25)
+        ->and(T::int($meta['total'] ?? 0))->toBe(30)
+        ->and(T::arr($meta['filters'] ?? [])['action'] ?? null)->toBe('adjusted')
+        ->and($meta['search'] ?? null)->toBe('PG-ROW')
+        ->and(count(Props::rows($page2)))->toBe(5);
 });
 
 // ── the storefront scope (🟡-2, 2026-09-17) ──────────────────────────────────────────────────

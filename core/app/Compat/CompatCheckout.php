@@ -11,8 +11,6 @@ use App\Domain\Promotions\PromotionOutcome;
 use App\Support\Val;
 use App\Transform\Row;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Http;
-use RuntimeException;
 use stdClass;
 
 /**
@@ -354,54 +352,6 @@ final class CompatCheckout
         }
 
         return '';
-    }
-
-    /**
-     * Create the Paymob intention and return the unified-checkout URL.
-     *
-     * Paymob keys are developer-handled and never live in this repo, so this path is
-     * STRUCTURALLY complete and locally UNPROVEN: with no keys configured it throws, which is the
-     * same branch the legacy code takes, and the caller answers with the legacy 422. Only the
-     * cash-on-delivery flow is exercised end to end by the harness.
-     *
-     * @param  array<string, mixed>  $billing
-     * @return array{ok: true, redirect_url: string}|array{ok: false, error: string}
-     */
-    public function createPaymobIntention(float $amount, array $billing, int $orderId): array
-    {
-        $authToken = config('services.paymob.secret_key');
-        $publicKey = config('services.paymob.public_key');
-        if (! is_string($authToken) || $authToken === '' || ! is_string($publicKey) || $publicKey === '') {
-            throw new RuntimeException('Paymob credentials not configured');
-        }
-
-        $methods = config('services.paymob.payment_methods');
-        $response = Http::withHeaders([
-            'Authorization' => "Token {$authToken}",
-            'Content-Type' => 'application/json',
-        ])->post('https://accept.paymob.com/v1/intention/', [
-            'amount' => $amount * 100,
-            'currency' => 'EGP',
-            'payment_methods' => is_array($methods) ? array_values($methods) : [],
-            'billing_data' => $billing,
-            // Paymob requires special_reference to be globally unique forever; the numeric order
-            // id stays the prefix so the callback's int coercion still resolves the order.
-            'special_reference' => $orderId.'-'.time(),
-        ]);
-
-        if (! $response->successful()) {
-            /*
-             * The STATUS only, never Paymob's body (2026-09-24). This went to the buyer verbatim as
-             * `paymob_error`, and the credential leak check showed a refusal body quoting the token
-             * back reaching the browser whole. `PaymobProvider` already reports status only; this
-             * wave-3 path is what production runs until a contract is entered, so it gets the same.
-             */
-            return ['ok' => false, 'error' => 'Paymob refused the intention (HTTP '.$response->status().').'];
-        }
-
-        $clientSecret = $response->json('client_secret');
-
-        return ['ok' => true, 'redirect_url' => 'https://accept.paymob.com/unifiedcheckout/?publicKey='.$publicKey.'&clientSecret='.(is_scalar($clientSecret) ? (string) $clientSecret : '')];
     }
 
     /** Row helper re-export so the controller does not need two imports for one call. */

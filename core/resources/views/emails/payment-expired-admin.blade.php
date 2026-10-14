@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-    <title>Unpaid card order — Watchizer</title>
+    <title>Unpaid card order — {{ $brandName }}</title>
 </head>
 {{-- The admins' immediate copy of a card order cancelled unpaid (2026-10-05): someone can call the
      customer the same hour. Same layout and blocks as the new-order notification. `$declined` (2026-10-12)

@@ -204,7 +204,7 @@ it('attaches when a SOCIAL login verifies an address on an existing account', fu
     $orderId = guestOrder($email);
     $user = Shopper::register(['email' => $email]);
 
-    app(CustomerSocial::class)->resolve('google', socialUserFor('g-link-1', $email));
+    app(CustomerSocial::class)->resolve('google', socialUserFor('g-link-1', $email), 1);
 
     expect(T::int(DB::table('orders')->where('id', $orderId)->value('user_id')))->toBe((int) $user->id);
 });
@@ -218,7 +218,7 @@ it('attaches for a BRAND-NEW social account, which is why it is not verified at 
     $email = Shopper::email();
     $orderId = guestOrder($email);
 
-    $outcome = app(CustomerSocial::class)->resolve('google', socialUserFor('g-link-2', $email));
+    $outcome = app(CustomerSocial::class)->resolve('google', socialUserFor('g-link-2', $email), 1);
 
     expect($outcome)->toHaveKey('user');
     $userId = T::int(DB::table('users')->where('email', $email)->value('id'));

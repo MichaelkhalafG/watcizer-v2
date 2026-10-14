@@ -70,13 +70,17 @@ function cardsCase(): array
     $ids = array_values(array_unique([...array_reverse($withImages), 999999999, ...$plain, ...$withRatings]));
     expect($withImages)->not->toBeEmpty()->and($plain)->not->toBeEmpty();
 
-    // The old path, verbatim: filter the cached whole catalogue, images and ratings.
+    // The old path, verbatim: filter the cached whole catalogue, images and ratings — PLUS the one
+    // field a card row carries that the whole-catalogue row never did: `family` (spec §19-W1, A2
+    // 2026-10-12), read from the product itself so the expectation does not borrow the code under test.
     $wanted = array_flip($ids);
+    $families = DB::table('catalog_products')->whereIn('id', $ids)->pluck('family', 'id');
     $byId = [];
     foreach ($all as $row) {
         $id = T::int($row['id']);
         if (isset($wanted[$id])) {
-            $byId[$id] = $row;
+            $family = $families[$id] ?? null;
+            $byId[$id] = $row + ['family' => is_string($family) && $family !== '' ? $family : null];
         }
     }
     $expected = [
@@ -139,9 +143,10 @@ it('never reads card entries stored under the version before a write', function 
     $before = $cache->version(1);
     $cache->flush(1); // a dashboard write landed while a warm-up was building
 
-    $cache->putMany(1, 'compat_card', ['en:1' => ['row' => [], 'images' => []]], 60, $before);
+    $key = CompatListing::CARD_SHAPE.':en:1';
+    $cache->putMany(1, 'compat_card', [$key => ['row' => [], 'images' => []]], 60, $before);
 
-    expect($cache->many(1, 'compat_card', ['en:1']))->toBe([]);
+    expect($cache->many(1, 'compat_card', [$key]))->toBe([]);
 });
 
 it('has no whole-catalogue cache family to write at all (L8)', function () {

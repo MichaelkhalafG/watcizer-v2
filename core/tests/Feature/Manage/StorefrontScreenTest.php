@@ -76,7 +76,7 @@ it('saves a change and flashes a status the shell renders', function () {
 it('refuses a default locale that is not one of the enabled locales', function () {
     actingAs(Staff::admin())->put('/manage/storefronts/1', [
         'name' => 'Watchizer',
-        'domain' => null,
+        'domain' => 'watchizereg.com',    // §4.1 (2026-10-13): a blank domain is refused up front — the shop would have no API host
         'locales' => ['ar'],
         'default_locale' => 'en',
         'currency' => 'EGP',
@@ -108,7 +108,7 @@ it('never lets the form rename the storefront code', function () {
     actingAs(Staff::admin())->put('/manage/storefronts/1', [
         'code' => 'hijacked',
         'name' => 'Watchizer',
-        'domain' => null,
+        'domain' => 'watchizereg.com',    // §4.1 (2026-10-13): a blank domain is refused up front — the shop would have no API host
         'locales' => ['ar', 'en'],
         'default_locale' => 'ar',
         'currency' => 'EGP',
@@ -130,7 +130,7 @@ function storefrontPayload(bool $moneyRewards): array
 {
     return [
         'name' => 'Watchizer',
-        'domain' => null,
+        'domain' => 'watchizereg.com',    // §4.1 (2026-10-13): a blank domain is refused up front — the shop would have no API host
         'locales' => ['ar', 'en'],
         'default_locale' => 'ar',
         'currency' => 'EGP',
@@ -254,7 +254,7 @@ it('records the settings change, and never copies the settings blob into the log
 
     actingAs($admin)->put('/manage/storefronts/1', [
         'name' => 'Watchizer USD',
-        'domain' => null,
+        'domain' => 'watchizereg.com',    // §4.1 (2026-10-13): a blank domain is refused up front — the shop would have no API host
         'locales' => ['ar', 'en'],
         'default_locale' => 'ar',
         'currency' => 'USD',

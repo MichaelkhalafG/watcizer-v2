@@ -5,6 +5,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Testing\TestResponse;
 use Symfony\Component\HttpFoundation\Response;
 use Tests\Support\PaymentFixture;
+use Tests\Support\Shops;
 use Tests\Support\T;
 
 use function Pest\Laravel\get;
@@ -21,9 +22,10 @@ use function Pest\Laravel\postJson;
  */
 
 beforeEach(function () {
-    // The two live rows, stated rather than assumed: the whole test rests on these domains.
+    // Watchizer's domain is the LIVE shop's and stays a known value; the second shop's is whatever
+    // its row says today (step D changes it; Shops reads the row), and it must be active.
     expect(DB::table('storefronts')->where('code', 'watchizer')->value('domain'))->toBe('watchizereg.com')
-        ->and(DB::table('storefronts')->where('code', 'brandfashion')->value('domain'))->toBe('brandfashionegy.com')
+        ->and(Shops::domain('brandfashion'))->not->toBe('watchizereg.com')
         ->and(DB::table('storefronts')->where('code', 'brandfashion')->value('is_active'))->toBeTruthy();
 });
 
@@ -38,14 +40,14 @@ function answer(TestResponse $response): array
 
 it('serves each storefront only on its own API host — v2', function () {
     get('https://api.watchizereg.com/api/v2/watchizer/meta')->assertOk();
-    get('https://api.brandfashionegy.com/api/v2/brandfashion/meta')->assertOk();
+    get(Shops::api('brandfashion').'/api/v2/brandfashion/meta')->assertOk();
 
     $crossed = get('https://api.watchizereg.com/api/v2/brandfashion/meta');
     $unknown = get('https://api.watchizereg.com/api/v2/no-such-shop/meta');
 
     expect($crossed->getStatusCode())->toBe(404)
         ->and(answer($crossed))->toBe(answer($unknown))                       // "not yours" == "does not exist"
-        ->and(get('https://api.brandfashionegy.com/api/v2/watchizer/meta')->getStatusCode())->toBe(404);
+        ->and(get(Shops::api('brandfashion').'/api/v2/watchizer/meta')->getStatusCode())->toBe(404);
 });
 
 it('answers another shop\'s payment callback exactly like an unknown shop', function () {
@@ -63,9 +65,9 @@ it('answers another shop\'s payment callback exactly like an unknown shop', func
         // so the GET answers 302 and the provider's POST keeps the 403. The crossed and unknown
         // cases above stay a plain 404 for both, which is the property this file exists for.
         ->and(get('https://api.watchizereg.com/api/pay/watchizer/paymob/callback?hmac=probe')->getStatusCode())->toBe(302)
-        ->and(get('https://api.brandfashionegy.com/api/pay/brandfashion/paymob/callback?hmac=probe')->getStatusCode())->toBe(302)
+        ->and(get(Shops::api('brandfashion').'/api/pay/brandfashion/paymob/callback?hmac=probe')->getStatusCode())->toBe(302)
         ->and(postJson('https://api.watchizereg.com/api/pay/watchizer/paymob/callback?hmac=probe')->getStatusCode())->toBe(403)
-        ->and(postJson('https://api.brandfashionegy.com/api/pay/brandfashion/paymob/callback?hmac=probe')->getStatusCode())->toBe(403);
+        ->and(postJson(Shops::api('brandfashion').'/api/pay/brandfashion/paymob/callback?hmac=probe')->getStatusCode())->toBe(403);
 });
 
 it('refuses a host that belongs to no storefront outside local and testing', function () {
@@ -81,7 +83,7 @@ it('matches a host exactly or by sub-domain, never by bare suffix', function () 
 
     expect(StorefrontHost::storefrontIdFor('api.watchizereg.com'))->toBe($watchizer)
         ->and(StorefrontHost::storefrontIdFor('WWW.watchizereg.com.'))->toBe($watchizer)
-        ->and(StorefrontHost::storefrontIdFor('api.brandfashionegy.com'))->toBe($fashion)
+        ->and(StorefrontHost::storefrontIdFor('api.'.Shops::domain('brandfashion')))->toBe($fashion)
         ->and(StorefrontHost::storefrontIdFor('notwatchizereg.com'))->toBeNull()
         ->and(StorefrontHost::storefrontIdFor('eleganceeg.com'))->toBeNull()
         ->and(StorefrontHost::storefrontIdFor(''))->toBeNull();

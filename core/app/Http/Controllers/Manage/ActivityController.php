@@ -9,6 +9,8 @@ use App\Support\LocalisedName;
 use App\Support\ManageText;
 use App\Support\Table\TableQuery;
 use App\Transform\Row;
+use Illuminate\Contracts\Database\Query\Builder as BuilderContract;
+use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -29,11 +31,24 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  * working one — and data-entry seeing their colleagues' every edit is a different product with
  * different consequences for how the team feels about the dashboard.
  *
- * ── Three filters, because there are three questions ────────────────────────────────────────
+ * ── Five filters, because there are five questions ──────────────────────────────────────────
  *
- * "What happened lately" (the default, newest first), "what did this person do" (user), and "what
- * happened to this record" (subject). The date range narrows any of them. Each maps to one of the
- * three indexes the table carries, so the screen stays fast as the log grows.
+ * "What happened lately" (the default, newest first), "what did this person do" (user), "what
+ * happened to this record" (type, and since §4.2 the record's id), "what happened on this shop"
+ * (storefront, §4.2) and "which deletions" (action). The date range narrows any of them. Each maps
+ * to an index the table carries (M2h added the two that were missing), so the screen stays fast as
+ * the log grows.
+ *
+ * ── The search box, and why it is a PREFIX match (§4.2, 2026-10-13) ────────────────────────────
+ *
+ * It used to be `LIKE %term%` over `subject_label` and `user_name`, neither indexed: a full scan of
+ * a table that grows with every save. It is now `LIKE term%` over the same two columns, both
+ * indexed (M2h), so the database answers from two index range scans; and a term that is all digits
+ * also matches `subject_id` exactly (indexed), so "000027" or "4471" finds the record by number.
+ * The cost is honest and stated on the box: a search finds names that BEGIN with the term. The
+ * defaults, named: newest first; 25 rows a page; the term trimmed and capped at 100 characters;
+ * the date range inclusive at both ends in the app's timezone; no filter = everything the grant
+ * may see.
  */
 final class ActivityController
 {
@@ -42,7 +57,18 @@ final class ActivityController
         $table = TableQuery::for($request)
             ->sortable(['a.created_at', 'a.user_name', 'a.subject_type', 'a.action'],
                 default: 'a.created_at', direction: 'desc', tiebreaker: 'a.id')
-            ->searchable(['a.subject_label', 'a.user_name'])
+            ->searchUsing(function (EloquentBuilder|Builder $query, string $term): void {
+                // Prefix, on indexed columns — never `%term%` (see the file note). `%`, `_` and `\`
+                // are LIKE metacharacters and are escaped so a search for "50%" finds "50%".
+                $prefix = addcslashes($term, '%_\\').'%';
+                $query->where(function (BuilderContract $inner) use ($prefix, $term): void {
+                    $inner->where('a.subject_label', 'like', $prefix)
+                        ->orWhere('a.user_name', 'like', $prefix);
+                    if (preg_match('/^[0-9]{1,18}$/', $term) === 1) {
+                        $inner->orWhere('a.subject_id', (int) $term);
+                    }
+                });
+            })
             ->filterable([
                 'user_id' => null,
                 'action' => [
@@ -51,10 +77,12 @@ final class ActivityController
                     ActivityLog::REVOKED,
                 ],
                 'subject_type' => self::subjectTypes(),
+                'subject_id' => null,
+                'storefront_id' => null,
                 'from' => null,
                 'to' => null,
             ])
-            ->virtual(['user_id', 'subject_type', 'from', 'to'])
+            ->virtual(['user_id', 'subject_type', 'subject_id', 'storefront_id', 'from', 'to'])
             /*
              * The CSV's column headings, off the SAME keys the screen's own columns use
              * (`Activity/Index.tsx`): a download whose headings disagreed with the table above it
@@ -185,6 +213,7 @@ final class ActivityController
                     fn (string $t): array => ['value' => $t, 'label' => self::typeLabel($t)],
                     self::subjectTypes(),
                 ),
+                'storefronts' => self::storefronts(),
             ],
             /*
              * Said on the screen, because a reader who does not know the boundaries will draw the
@@ -271,6 +300,18 @@ final class ActivityController
         $type = Coerce::nstr($filters['subject_type'] ?? null);
         if ($type !== null && $type !== '') {
             $query->where('a.subject_type', $type);
+        }
+
+        // §4.2: the record's id ("what happened to order 4471") and the shop. A storefront filter
+        // narrows WITHIN the grant's scope (`applyStorefrontScope` ran first); it cannot widen it.
+        $subjectId = Coerce::nint($filters['subject_id'] ?? null);
+        if ($subjectId !== null) {
+            $query->where('a.subject_id', $subjectId);
+        }
+
+        $storefrontId = Coerce::nint($filters['storefront_id'] ?? null);
+        if ($storefrontId !== null) {
+            $query->where('a.storefront_id', $storefrontId);
         }
 
         $from = Coerce::nstr($filters['from'] ?? null);
@@ -367,6 +408,22 @@ final class ActivityController
         }
 
         return $picked;
+    }
+
+    /**
+     * The shops, for the storefront filter — every row, so a disabled shop's history stays reachable.
+     *
+     * @return list<array{value: string, label: string}>
+     */
+    private static function storefronts(): array
+    {
+        $out = [];
+        foreach (DB::table('storefronts')->orderBy('id')->get(['id', 'name']) as $raw) {
+            $row = Row::cast($raw);
+            $out[] = ['value' => (string) Row::int($row, 'id'), 'label' => Row::str($row, 'name')];
+        }
+
+        return $out;
     }
 
     /** @return list<array{value: string, label: string}> */

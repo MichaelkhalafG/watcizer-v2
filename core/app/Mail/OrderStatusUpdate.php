@@ -25,7 +25,7 @@ final class OrderStatusUpdate extends Mailable
 
         // The legacy subject, byte for byte.
         return $this
-            ->subject('📦 تحديث حالة الطلب #'.$number.' — '.$statusAr.' | Watchizer Order Update')
+            ->subject('📦 تحديث حالة الطلب #'.$number.' — '.$statusAr.' | '.(is_scalar($this->data['brandName'] ?? null) ? (string) $this->data['brandName'] : '').' Order Update')
             ->view('emails.order-status-update', $this->data);
     }
 }

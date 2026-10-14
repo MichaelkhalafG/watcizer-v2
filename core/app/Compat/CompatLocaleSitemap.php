@@ -45,6 +45,7 @@ final class CompatLocaleSitemap
         private readonly CompatCategories $categories,
         private readonly CompatProducts $products,
         private readonly CompatBlogs $blogs,
+        private readonly int $storefrontId,
     ) {}
 
     public function index(): string
@@ -75,7 +76,7 @@ final class CompatLocaleSitemap
             $rows[Row::int($row, 'id')] = $row;
         }
         $titles = $this->products->translations(array_map(fn (array $e): int => $e['id'], $entries));
-        $imageHost = config()->string('compat.sitemap_image_host');
+        $imageHost = CompatSitemap::imageHost($this->storefrontId);   // W7: this storefront's own API host, or no images
         $seen = [];
         $used = ['brands' => [], 'categories' => [], 'subTypes' => [], 'grades' => []];
         foreach ($entries as $e) {
@@ -91,7 +92,7 @@ final class CompatLocaleSitemap
             $row = $rows[$e['id']] ?? null;
             $image = '';
             $file = $row === null ? null : LegacyJson::legacyImage(Row::nstr($row, 'cover_path'), 'Product');
-            if ($file !== null && $file !== '') {
+            if ($imageHost !== null && $file !== null && $file !== '') {
                 $title = self::str($titles[$e['id']][$locale]['title'] ?? null) ?? self::str($titles[$e['id']]['en']['title'] ?? null);
                 $image = "\n    <image:image><image:loc>".htmlspecialchars($imageHost.'/Uploads_Images/'.(str_contains($file, '/') ? $file : 'Product/'.$file)).'</image:loc>'
                     .($title !== null ? '<image:title>'.htmlspecialchars($title).'</image:title>' : '').'</image:image>';

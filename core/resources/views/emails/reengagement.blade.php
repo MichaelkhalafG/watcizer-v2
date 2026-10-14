@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-    <title>New picks for you — Watchizer</title>
+    <title>New picks for you — {{ $brandName }}</title>
 </head>
 {{-- The weekly re-engagement e-mail (2026-10-01). ENGLISH ONLY (developer, 2026-10-01): the two
      languages run together read as a mistake, and one version is easier to keep right than two.
@@ -58,12 +58,12 @@
     {{-- English footer (see the note at the top). --}}
     <tr>
         <td style="background:#111111;padding:28px 32px;text-align:center;font-family:'Segoe UI',Tahoma,Arial,sans-serif;">
-            <span style="display:block;margin:0 auto 16px;font-size:18px;font-weight:700;letter-spacing:3px;color:#ffffff;text-transform:uppercase;line-height:1;">WATCH<span style="color:#C8A45C;">IZER</span></span>
-            <a href="https://wa.me/201551096234" style="display:inline-block;text-decoration:none;color:#C8A45C;font-size:14px;font-weight:600;line-height:1.5;">
+            <img src="{{ $wordmarkUrl }}" width="140" height="43" alt="{{ $brandName }}" style="display:block;margin:0 auto 16px;width:140px;height:43px;border:0;outline:none;text-decoration:none;">
+            <a href="{{ $whatsappUrl }}" style="display:inline-block;text-decoration:none;color:#C8A45C;font-size:14px;font-weight:600;line-height:1.5;">
                 <span style="font-size:16px;">&#128241;</span> Questions? Message us on WhatsApp
             </a>
             <div style="height:1px;background:rgba(255,255,255,0.12);margin:18px auto 14px;max-width:220px;font-size:0;line-height:0;">&nbsp;</div>
-            <p style="margin:0;font-size:11px;color:rgba(255,255,255,0.4);">{{ config('notifications.brand.copyright') }}</p>
+            <p style="margin:0;font-size:11px;color:rgba(255,255,255,0.4);">{{ $copyright }}</p>
         </td>
     </tr>
 

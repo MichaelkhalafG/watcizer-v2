@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-    <title>إعادة تعيين كلمة المرور — Watchizer</title>
+    <title>إعادة تعيين كلمة المرور — {{ $brandName }}</title>
 </head>
 <body style="margin:0;padding:0;background:#f4f4f4;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f4;padding:24px 0;">
@@ -43,7 +43,7 @@
                         <div style="height:1px;background:#eeeeee;margin:24px 0;font-size:0;line-height:0;">&nbsp;</div>
 
                         <p dir="ltr" style="margin:0 0 10px;font-size:14px;line-height:1.7;color:#444444;text-align:left;">
-                            Hello {{ $name }} — we received a request to reset your Watchizer password.
+                            Hello {{ $name }} — we received a request to reset your {{ $brandName }} password.
                             Use the button above, or the address below, to choose a new one. The link is
                             valid for {{ $expiresMinutes }} minutes.
                             <strong>If you did not ask for this, ignore this email — nothing has changed.</strong>

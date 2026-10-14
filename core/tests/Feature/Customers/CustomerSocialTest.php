@@ -91,7 +91,7 @@ it('signs into the LINKED account, without looking at the e-mail at all', functi
         'created_at' => now()->toDateTimeString(), 'updated_at' => now()->toDateTimeString(),
     ]);
 
-    $outcome = signedIn(social()->resolve('google', socialAccount('google-abc', 'a-completely-new-address@example.test')));
+    $outcome = signedIn(social()->resolve('google', socialAccount('google-abc', 'a-completely-new-address@example.test'), 1));
 
     expect(T::int($outcome['user']->getKey()))->toBe((int) $user->id)
         ->and($outcome['created'])->toBeFalse();
@@ -108,7 +108,7 @@ it('ATTACHES to an existing account when the provider address is VERIFIED', func
     $email = Shopper::email();
     $existing = Shopper::register(['email' => $email, 'password' => 'their-real-password']);
 
-    $outcome = signedIn(social()->resolve('google', socialAccount('google-xyz', $email, verified: true)));
+    $outcome = signedIn(social()->resolve('google', socialAccount('google-xyz', $email, verified: true), 1));
 
     expect(T::int($outcome['user']->getKey()))->toBe((int) $existing->id)
         ->and($outcome['created'])->toBeFalse()
@@ -125,7 +125,7 @@ it('marks an attached account VERIFIED, because the provider proved the same thi
     $existing = Shopper::register(['email' => $email]);
     expect(DB::table('users')->where('id', $existing->id)->value('email_verified_at'))->toBeNull();
 
-    social()->resolve('google', socialAccount('google-xyz', $email, verified: true));
+    social()->resolve('google', socialAccount('google-xyz', $email, verified: true), 1);
 
     expect(DB::table('users')->where('id', $existing->id)->value('email_verified_at'))->not->toBeNull();
 });
@@ -146,7 +146,7 @@ it('REFUSES to attach an UNVERIFIED provider address to an account somebody alre
     $victim = Shopper::register(['email' => $email, 'password' => 'the-victim-password']);
     $before = T::one(DB::table('users')->where('id', $victim->id));
 
-    $outcome = social()->resolve('google', socialAccount('attacker-1', $email, verified: false));
+    $outcome = social()->resolve('google', socialAccount('attacker-1', $email, verified: false), 1);
 
     expect($outcome)->toBe(['refused' => CustomerSocial::REFUSED_UNVERIFIED])
         ->and(DB::table(CustomerSocial::TABLE)->where('provider_id', 'attacker-1')->exists())->toBeFalse()
@@ -169,7 +169,7 @@ it('treats a provider that reports NOTHING about verification as unverified', fu
     $account->map(['id' => 'silent-1', 'email' => $email, 'name' => 'No Flag']);
     $account->setRaw(['sub' => 'silent-1', 'email' => $email]);   // no `email_verified` key at all
 
-    expect(social()->resolve('google', $account))->toBe(['refused' => CustomerSocial::REFUSED_UNVERIFIED]);
+    expect(social()->resolve('google', $account, 1))->toBe(['refused' => CustomerSocial::REFUSED_UNVERIFIED]);
 });
 
 // ── branches 4 and 5: nobody owns the address ────────────────────────────────────────────────
@@ -177,7 +177,7 @@ it('treats a provider that reports NOTHING about verification as unverified', fu
 it('CREATES a password-less, pre-verified account when the address is free and verified', function () {
     $email = Shopper::email();
 
-    $outcome = signedIn(social()->resolve('google', socialAccount('google-new', $email, 'Rania El Sayed', verified: true)));
+    $outcome = signedIn(social()->resolve('google', socialAccount('google-new', $email, 'Rania El Sayed', verified: true), 1));
 
     $row = T::one(DB::table('users')->where('email', $email));
 
@@ -201,7 +201,7 @@ it('CREATES but does NOT verify, and asks its own question, when the provider di
      */
     $email = Shopper::email();
 
-    $outcome = signedIn(social()->resolve('google', socialAccount('google-new', $email, verified: false)));
+    $outcome = signedIn(social()->resolve('google', socialAccount('google-new', $email, verified: false), 1));
 
     expect($outcome['created'])->toBeTrue()
         ->and(DB::table('users')->where('email', $email)->value('email_verified_at'))->toBeNull();
@@ -214,7 +214,7 @@ it('REFUSES a provider that returns no address, because nothing can be matched o
     $account->map(['id' => 'no-email-1', 'email' => null, 'name' => 'Anonymous']);
     $account->setRaw(['sub' => 'no-email-1']);
 
-    expect(social()->resolve('google', $account))->toBe(['refused' => CustomerSocial::REFUSED_NO_EMAIL]);
+    expect(social()->resolve('google', $account, 1))->toBe(['refused' => CustomerSocial::REFUSED_NO_EMAIL]);
 });
 
 it('falls back to the address local part when the provider sends no name', function () {
@@ -231,8 +231,8 @@ it('falls back to the address local part when the provider sends no name', funct
 it('is idempotent: signing in twice is one identity row, not a duplicate-key 500', function () {
     $email = Shopper::email();
 
-    social()->resolve('google', socialAccount('google-twice', $email));
-    social()->resolve('google', socialAccount('google-twice', $email));
+    social()->resolve('google', socialAccount('google-twice', $email), 1);
+    social()->resolve('google', socialAccount('google-twice', $email), 1);
 
     expect(DB::table(CustomerSocial::TABLE)->where('provider_id', 'google-twice')->count())->toBe(1)
         ->and(DB::table('users')->where('email', $email)->count())->toBe(1);
@@ -242,8 +242,8 @@ it('keeps two providers on ONE account, which is why user_id is not unique', fun
     $email = Shopper::email();
     $user = Shopper::register(['email' => $email]);
 
-    social()->resolve('google', socialAccount('g-1', $email));
-    social()->resolve('microsoft', socialAccount('m-1', $email));
+    social()->resolve('google', socialAccount('g-1', $email), 1);
+    social()->resolve('microsoft', socialAccount('m-1', $email), 1);
 
     expect(DB::table(CustomerSocial::TABLE)->where('user_id', $user->id)->count())->toBe(2);
 });

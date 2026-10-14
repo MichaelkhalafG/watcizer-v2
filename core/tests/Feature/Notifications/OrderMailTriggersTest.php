@@ -21,6 +21,7 @@ use Illuminate\Testing\PendingCommand;
 use Symfony\Component\Console\Command\Command;
 use Tests\Support\PaymentFixture;
 use Tests\Support\Staff;
+use Tests\Support\StorefrontMailboxFixture;
 use Tests\Support\T;
 
 use function Pest\Laravel\actingAs;
@@ -59,7 +60,6 @@ beforeEach(function () {
         'compat.payment_return_url' => 'https://watchizereg.test/',
         // The wave-3 alias verifies against THIS key, not a contract's (that is the 4C route).
         'services.paymob.hmac_secret' => MAIL_HMAC,
-        'notifications.admin_emails' => ['ops@watchizer.test', 'boss@watchizer.test'],
         'notifications.send.inline' => true,
         /*
          * `tests/Pest.php` wraps every feature test in a transaction that is never committed, and
@@ -69,6 +69,7 @@ beforeEach(function () {
          */
         'notifications.send.inside_transaction' => true,
     ]);
+    StorefrontMailboxFixture::recipients(1, ['ops@watchizer.test', 'boss@watchizer.test']);
 });
 
 /**
@@ -226,10 +227,11 @@ it('mails ONLY the admins for a WhatsApp order — the customer has not bought a
 
 it('mails NOBODY when a card order is placed — the money has not arrived', function () {
     Mail::fake();
-    // The paymob branch calls Paymob's intention API. Faked, because a test must not depend on
-    // a payment provider being reachable — and because a real call would carry real keys.
-    Http::fake(['accept.paymob.com/*' => Http::response(['client_secret' => 'cs_test'], 200)]);
-    config(['services.paymob.secret_key' => 'test-secret', 'services.paymob.public_key' => 'test-public']);
+    // The card branch calls the provider's intention API through the storefront's CONTRACT (the
+    // global-key builder this test used to rely on is deleted, A2 2026-10-12). Faked, because a test
+    // must not depend on a payment provider being reachable — and a real call would carry real keys.
+    Http::fake(['*/intention/' => Http::response(['client_secret' => 'cs_test', 'id' => 'intent_mail'], 200)]);
+    PaymentFixture::method(PaymentFixture::paymob(), 'card', '4001');
 
     $mailRowsBefore = T::int(DB::table('integration_outbox')->where('channel', OrderMailer::CHANNEL)->count());
 

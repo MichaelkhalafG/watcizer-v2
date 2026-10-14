@@ -11,6 +11,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
+use Tests\Support\StorefrontMailboxFixture;
 use Tests\Support\T;
 
 use function Pest\Laravel\withHeaders;
@@ -452,7 +453,7 @@ it('records one mail row per RECIPIENT when an order is placed', function () {
      * The recipient list is set here rather than read from `.env`, so the expected count is a
      * property of this test and not of the machine running it.
      */
-    config(['notifications.admin_emails' => ['ops@watchizer.test', 'boss@watchizer.test']]);
+    StorefrontMailboxFixture::recipients(1, ['ops@watchizer.test', 'boss@watchizer.test']);
 
     $token = (string) Str::uuid();
     $product = cartProduct();

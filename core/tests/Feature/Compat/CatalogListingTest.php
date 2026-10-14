@@ -275,8 +275,11 @@ it('returns raw rows, ratings and images for cards by id, in the order asked', f
     foreach ($all as $row) {
         $byId[T::int($row['id'])] = $row;
     }
+    // A card row is the whole-catalogue row plus `family` (spec §19-W1, A2 2026-10-12), read from the
+    // product so the expectation does not borrow the code under test.
+    $family = DB::table('catalog_products')->where('id', $ids[0])->value('family');
     expect(array_map(fn (mixed $p): int => T::int(T::arr($p)['id']), T::arr($r['products'])))->toBe([$ids[0], $ids[1], $ids[3]])
-        ->and(T::arr($r['products'])[0])->toBe($byId[$ids[0]]);
+        ->and(T::arr($r['products'])[0])->toBe($byId[$ids[0]] + ['family' => is_string($family) && $family !== '' ? $family : null]);
 });
 
 it('refuses a bad sort, a huge page size and a missing api code', function () {

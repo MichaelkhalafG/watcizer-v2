@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Mail;
 
 use App\Domain\Notifications\MailBudget;
+use App\Storefront\StorefrontIdentity;
 use Illuminate\Mail\Mailable;
 use Symfony\Component\Mime\Email;
 
@@ -15,8 +16,11 @@ use Symfony\Component\Mime\Email;
  */
 final class StockAlertMail extends Mailable
 {
-    /** @param  array{email: string, locale: string, token: string, product: array{name: string, price: float, image: ?string, url: string}}  $data */
-    public function __construct(private readonly array $data) {}
+    /**
+     * @param  array{email: string, locale: string, token: string, product: array{name: string, price: float, image: ?string, url: string}}  $data
+     * @param  string  $stopUrl  the "stop these e-mails" link, built by the caller on the alert's OWN storefront's API host (W6, 2026-10-12)
+     */
+    public function __construct(private readonly array $data, private readonly string $stopUrl, private readonly StorefrontIdentity $identity) {}
 
     public function build(): self
     {
@@ -30,7 +34,7 @@ final class StockAlertMail extends Mailable
             ->view('emails.stock-alert', [
                 'ar' => $ar,
                 'product' => $this->data['product'],
-                'stopUrl' => config()->string('notifications.stock_alerts.public_url').'/stock-alerts/stop/'.$this->data['token'],
-            ]);
+                'stopUrl' => $this->stopUrl,
+            ] + $this->identity->viewData());
     }
 }

@@ -6,41 +6,31 @@
 |--------------------------------------------------------------------------
 |
 | The legacy app read these from `config/watchizer.php`. Core has no such
-| file, so the three values the ported e-mail templates actually need live
-| here — and nowhere else, so there is one place to look when an operator
-| asks why an address stopped receiving order mail.
+| file, so the delivery POLICY lives here — and nowhere else, so there is
+| one place to look when an operator asks why mail stopped.
 |
-| The recipient LIST is the only one of these that is a secret-adjacent
-| operational value, and it is read from the environment exactly as the
-| legacy app read it: `ORDER_ADMIN_EMAILS`, comma separated.
+| What is NOT here any more, and where it went (one shop's values were every
+| shop's):
+|
+|   • who is told about an order — `ORDER_ADMIN_EMAILS` → the storefront's
+|     mailbox row, `storefront_mailboxes.order_recipients` (C12/W3, 2026-10-13);
+|   • the WhatsApp number and copyright line — `WATCHIZER_WHATSAPP_SUPPORT`,
+|     `ORDER_MAIL_COPYRIGHT` → `storefronts.settings.identity` (W2, 2026-10-13);
+|   • the daily cap and reserve — `MAIL_DAILY_CAP`, `MAIL_TRANSACTIONAL_RESERVE`
+|     → `storefront_mailboxes.daily_cap` / `transactional_reserve`, per mailbox
+|     (W4, 2026-10-13);
+|   • the mailbox itself — `MAIL_HOST/PORT/USERNAME/PASSWORD/ENCRYPTION/FROM_*`
+|     → the same row, the password encrypted (W3). `MAIL_MAILER` stays: `smtp`
+|     sends through the row's transport, `log`/`array` keep mail on the machine.
+|
+| An EMPTY recipient list is still not "nobody wants to know": `OrderMailer`
+| writes a visible `failed` outbox row against the order, because a shop whose
+| admins silently stop being told about orders is the exact failure
+| prerequisite (a) exists to prevent.
 |
 */
 
 return [
-
-    /*
-    | Who is told when an order is placed. Legacy parity: `config('watchizer.admin_emails')`,
-    | `env('ORDER_ADMIN_EMAILS','')` comma-split, empty entries dropped.
-    |
-    | An EMPTY list is not treated as "nobody wants to know". `OrderMailer` writes a visible
-    | `failed` outbox row against the order instead, because a shop whose admins silently stop
-    | being told about orders is the exact failure prerequisite (a) exists to prevent.
-    */
-    'admin_emails' => array_values(array_filter(
-        array_map('trim', explode(',', (string) env('ORDER_ADMIN_EMAILS', ''))),
-        static fn (string $email): bool => $email !== '',
-    )),
-
-    /*
-    | The footer's WhatsApp support number and copyright line — the two pieces of branding the
-    | ported templates read from config rather than from the order. Both default to the legacy
-    | values, so an unset environment renders exactly what the legacy app renders.
-    */
-    'whatsapp_support' => (string) env('WATCHIZER_WHATSAPP_SUPPORT', '201551096234'),
-
-    'brand' => [
-        'copyright' => (string) env('ORDER_MAIL_COPYRIGHT', '© 2024 Watchizer. All rights reserved.'),
-    ],
 
     /*
     | Delivery policy (§2.12: queues run `sync` plus a one-minute cron; no workers on shared
@@ -119,17 +109,14 @@ return [
     'manage_url' => rtrim((string) env('MANAGE_URL', 'https://eleganceeg.com'), '/'),
 
     /*
-    | The mailbox's daily budget (2026-10-01), for BULK mail only: restock alerts and the
-    | re-engagement campaign. `daily_cap` is how many messages the mailbox may send in a day;
-    | `transactional_reserve` of those are kept for order and account mail, which never checks
-    | this budget at all — so a restock batch can use at most `daily_cap - transactional_reserve`
-    | minus whatever already went out today, and an order confirmation is never held back by one.
-    | Conservative defaults for today's plan (100 a day); raise both in .env when the plan grows.
-    | Counted per day in `core_mail_daily`, in the app's timezone.
+    | BULK mail's pacing (2026-10-01): restock alerts and the re-engagement campaign. The daily
+    | cap and the transactional reserve are PER MAILBOX since W4 (2026-10-13), on the storefront's
+    | `storefront_mailboxes` row — Watchizer 800/200 (MAIL-PLAN: Hostinger allows 1,000 per mailbox
+    | per rolling 24 hours; the counter is per calendar day, so the cap sits under the limit with
+    | room). Order and account mail never check the budget at all. What stays here is how many
+    | rows one `bulk-mail:drain` pass attempts and how many times a failed row is retried.
     */
     'bulk' => [
-        'daily_cap' => (int) env('MAIL_DAILY_CAP', 100),
-        'transactional_reserve' => (int) env('MAIL_TRANSACTIONAL_RESERVE', 40),
         'per_run' => (int) env('MAIL_BULK_PER_RUN', 20),
         'max_attempts' => 3,
     ],
@@ -140,9 +127,10 @@ return [
     | after subscribing (developer's decisions, 2026-09-29).
     */
     'stock_alerts' => [
-        // Where the e-mail's "stop these e-mails" link points: the storefront's API host, which
-        // serves /stock-alerts/stop/{token} (on the .htaccess allow-list, runbook §4.1.1).
-        'public_url' => rtrim((string) env('STOCK_ALERTS_PUBLIC_URL', 'https://api.watchizereg.com'), '/'),
+        // The e-mail's "stop these e-mails" link points at the alert's OWN storefront's API host
+        // (`StorefrontUrls::apiHost()`, W6, 2026-10-12), which serves /stock-alerts/stop/{token}
+        // (on the .htaccess allow-list, runbook §4.1.1). `STOCK_ALERTS_PUBLIC_URL` is retired:
+        // one global host was Watchizer's for both shops.
         'per_unit' => 5,
         'keep_notified_days' => 30,
         'keep_waiting_days' => 180,

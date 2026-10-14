@@ -114,7 +114,7 @@ it('the builder calls no route helper and reads no host from app.url', function 
  */
 const BULK_MAIL_LINKS = [
     'stock-alert.blade.php' => ['product', 'stopUrl'],
-    'reengagement.blade.php' => ['p', 'unsubscribeUrl'],
+    'reengagement.blade.php' => ['p', 'unsubscribeUrl', 'whatsappUrl'],   // whatsappUrl: the storefront's own number (W2)
     'reengagement-preview.blade.php' => ['manageUrl', 'p'],
 ];
 
@@ -218,10 +218,12 @@ it('the two CUSTOMER mails hang their link on the storefront, or on an allow-lis
      * `password-reset` and `email-verification` each print one `$url`, built in `CustomerMail`:
      *
      *   • the reset link on the STOREFRONT's own site — the page is the storefront's, not
-     *     core's. Since L5 (2026-09-26) that is the site of the shop the reset was asked for on
-     *     (`StorefrontUrls::frontend()`, passed in by the controller), no longer one global
-     *     `customers.storefront_url` that sent every shop's customers to Watchizer. The behaviour
-     *     itself is proven by StorefrontUrlsTest; this pins where the value comes from;
+     *     core's. Since L5 (2026-09-26) that is the site of the shop the reset was asked for on,
+     *     and since W2 (2026-10-13) the controller passes the STOREFRONT (`storefrontOf($request)`)
+     *     and `CustomerMail` builds both the site (`StorefrontUrls::frontend()`) and the identity
+     *     from it — no longer one global `customers.storefront_url` that sent every shop's
+     *     customers to Watchizer. The behaviour is proven by StorefrontUrlsTest and MailIdentityTest;
+     *     this pins where the value comes from;
      *   • the verification link through `URL::temporarySignedRoute`, which DOES resolve the
      *     request host — and that is correct here, because the route is
      *     `api/auth/verify-email/{id}/{hash}` and §4's allow-list opens `/api/auth/` on the API
@@ -232,9 +234,10 @@ it('the two CUSTOMER mails hang their link on the storefront, or on an allow-lis
 
     $controller = (string) file_get_contents(app_path('Http/Controllers/Customer/CustomerPasswordController.php'));
 
-    expect($source)->toContain('public function sendPasswordReset(User $user, string $token, string $frontend)')
+    expect($source)->toContain('public function sendPasswordReset(User $user, string $token, int $storefrontId)')
+        ->and($source)->toContain('StorefrontUrls::frontend($storefrontId)')
         ->and($source)->not->toContain("config()->string('customers.storefront_url')")
-        ->and($controller)->toContain('StorefrontUrls::frontend(StorefrontUrls::storefrontOf($request))')
+        ->and($controller)->toContain('$storefrontId = StorefrontUrls::storefrontOf($request);')
         ->and($source)->toContain('temporarySignedRoute');
 
     // And the signed route really is under the prefix the allow-list opens.

@@ -2,8 +2,10 @@
 
 use App\Http\Controllers\Compat\GoneController;
 use App\Http\Controllers\Compat\ProxyController;
+use App\Storefront\StorefrontIdentity;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+use Tests\Support\Shops;
 use Tests\Support\T;
 
 /*
@@ -123,6 +125,30 @@ it('lets Meta fetch the catalogue feed through the api host, and only the feed s
         ->and($allowed('/feeds/meta/watchizer/short.csv'))->toBeFalse()
         ->and($allowed('/feeds/meta/watchizer/'.str_repeat('a', 40).'.csv/extra'))->toBeFalse()
         ->and($allowed('/feeds/google/watchizer/'.str_repeat('a', 40).'.csv'))->toBeFalse();
+});
+
+it('lets every mail embed its wordmark from the api host, both shops, and only that file shape', function () {
+    // Found 2026-10-13 while writing the deploy sequence: every e-mail embeds
+    // `<img src="https://api.<shop>/assets/brand/<shop>-mail-wordmark@2x.png">` (W2) and the API
+    // host 404s any path the block does not name, real files included. Nothing requested
+    // /assets/ before W2, so no line existed; the storefront scan cannot see an <img> in a mail.
+    // The URL is built by the SAME code that builds it in production, from the identity rows.
+    $patterns = allowListPatterns();
+    $allowed = fn (string $path): bool => array_filter($patterns, fn (string $p): bool => preg_match($p, $path) === 1) !== [];
+    $pathOf = fn (string $url): string => (string) parse_url($url, PHP_URL_PATH);
+
+    foreach ([Shops::id('watchizer'), Shops::id('brandfashion')] as $storefrontId) {
+        $identity = StorefrontIdentity::for($storefrontId);
+        expect($allowed($pathOf($identity->wordmarkUrl())))->toBeTrue("storefront {$storefrontId}: the @2x wordmark the mail embeds would 404 on the api host")
+            ->and($allowed('/'.$identity->wordmark1xPath))->toBeTrue("storefront {$storefrontId}: the 1x wordmark would 404 on the api host");
+    }
+
+    // Only that shape: the line is not a door to everything under /assets/.
+    expect($allowed('/assets/brand/watchizer-mail-wordmark@2x.png'))->toBeTrue()
+        ->and($allowed('/assets/brand/other.png'))->toBeFalse()
+        ->and($allowed('/assets/brand/watchizer-mail-wordmark@2x.png/extra'))->toBeFalse()
+        ->and($allowed('/assets/brand/watchizer-mail-wordmark@2x.svg'))->toBeFalse()
+        ->and($allowed('/assets/watchizer-mail-wordmark@2x.png'))->toBeFalse();
 });
 
 it('would catch a call the allow-list does not name', function () {

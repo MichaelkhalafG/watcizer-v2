@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Mail;
 
 use App\Domain\Notifications\MailBudget;
+use App\Storefront\StorefrontIdentity;
 use Illuminate\Mail\Mailable;
 use Symfony\Component\Mime\Email;
 
@@ -16,7 +17,7 @@ use Symfony\Component\Mime\Email;
 final class ReEngagementMail extends Mailable
 {
     /** @param  array{email: string, storefront_id: int, products: list<array{name: string, price: float, image: ?string, url: string}>}  $data */
-    public function __construct(private readonly array $data, private readonly string $unsubscribeUrl) {}
+    public function __construct(private readonly array $data, private readonly string $unsubscribeUrl, private readonly StorefrontIdentity $identity) {}
 
     public function build(): self
     {
@@ -29,7 +30,7 @@ final class ReEngagementMail extends Mailable
         });
 
         return $this
-            ->subject('✨ New picks for you — Watchizer')                     // English only (2026-10-01)
-            ->view('emails.reengagement', ['products' => $this->data['products'], 'unsubscribeUrl' => $url]);
+            ->subject('✨ New picks for you — '.$this->identity->brandName)     // English only (2026-10-01)
+            ->view('emails.reengagement', ['products' => $this->data['products'], 'unsubscribeUrl' => $url] + $this->identity->viewData());
     }
 }

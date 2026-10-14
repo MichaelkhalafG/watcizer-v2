@@ -10,6 +10,7 @@ use App\Domain\Notifications\MailBudget;
 use App\Domain\Notifications\ReEngagement;
 use App\Mail\ReEngagementMail;
 use App\Mail\ReEngagementPreviewMail;
+use App\Storefront\StorefrontIdentity;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Database\Query\JoinClause;
 use Illuminate\Support\Carbon;
@@ -18,6 +19,7 @@ use Illuminate\Support\ViewErrorBag;
 use Inertia\Testing\AssertableInertia;
 use Tests\Support\Shopper;
 use Tests\Support\Staff;
+use Tests\Support\StorefrontMailboxFixture;
 use Tests\Support\T;
 
 use function Pest\Laravel\actingAs;
@@ -35,10 +37,12 @@ use function Pest\Laravel\withHeaders;
  */
 
 beforeEach(function () {
-    // The order-notification addresses are shared by every shop, so they must never receive a
-    // storefront's campaign preview (R7, developer 2026-09-30): set to OTHER addresses here, which
-    // no assertion below expects. The preview list is the storefront's own, typed on its screen.
-    config(['notifications.admin_emails' => ['shared.orders@example.test'], 'notifications.bulk.daily_cap' => 1000]);
+    // The order-notification addresses must never receive a storefront's campaign preview (R7,
+    // developer 2026-09-30): set to OTHER addresses here, which no assertion below expects. The
+    // preview list is the storefront's own, typed on its screen. (Since W3 the order addresses are
+    // per storefront on its mailbox row; the rule is unchanged.)
+    StorefrontMailboxFixture::recipients(1, ['shared.orders@example.test']);
+    StorefrontMailboxFixture::budget(1, 1000, 200);
     foreach (['core_reengagement_sends', 'core_reengagement_runs', 'core_reengagement_settings', 'core_marketing_optouts', 'core_customer_seen', 'core_mail_daily'] as $t) {
         DB::table($t)->delete();
     }
@@ -208,12 +212,12 @@ it('carries a working unsubscribe — a button, the one-click header — honoure
     $engine = app(ReEngagement::class);
     $plan = $engine->plan(1);
     $send = T::row(DB::table('core_reengagement_sends')->where('run_id', $plan['run_id'])->orderBy('id')->first());
-    $url = BulkMailer::unsubscribeUrl(T::int($send->id));
+    $url = BulkMailer::unsubscribeUrl(T::int($send->id), 1);
     $path = (string) parse_url($url, PHP_URL_PATH);
 
     $data = $engine->mailData(T::int($send->id));
     expect($data)->not->toBeNull();
-    $mail = new ReEngagementMail($data ?? ['email' => '', 'storefront_id' => 1, 'products' => []], $url);
+    $mail = new ReEngagementMail($data ?? ['email' => '', 'storefront_id' => 1, 'products' => []], $url, StorefrontIdentity::for(1));
     expect($mail->render())->toContain($url);
 
     get($path)->assertOk()->assertSee('<form method="POST"', false);
@@ -233,7 +237,7 @@ it('sends through the bulk budget, counted as bulk', function () {
     $engine->send();
     $result = app(BulkMailer::class)->drain(50);
     expect($result['sent'])->toBe(4)                                         // 2 previews + 2 run e-mails
-        ->and(MailBudget::sentToday(MailBudget::BULK))->toBe(4);
+        ->and(MailBudget::sentToday(1, MailBudget::BULK))->toBe(4);
 });
 
 it('plans nothing, and mails no one, when the storefront has no preview addresses — never the shared order-notification list', function () {
@@ -353,13 +357,13 @@ it('writes the campaign e-mail, its subject, the team preview and the unsubscrib
     $sendId = T::int(DB::table('core_reengagement_sends')->where('run_id', $plan['run_id'])->value('id'));
     $data = $engine->mailData($sendId);
     expect($data)->not->toBeNull();
-    $mail = new ReEngagementMail($data ?? ['email' => '', 'storefront_id' => 1, 'products' => []], BulkMailer::unsubscribeUrl($sendId));
+    $mail = new ReEngagementMail($data ?? ['email' => '', 'storefront_id' => 1, 'products' => []], BulkMailer::unsubscribeUrl($sendId, 1), StorefrontIdentity::for(1));
     $html = $mail->render();
     $previewData = $engine->previewData(T::int($plan['run_id']));
     expect($previewData)->not->toBeNull();
-    $preview = new ReEngagementPreviewMail($previewData ?? ['week' => '', 'audience' => 'team', 'recipients' => 0, 'send_after' => '', 'sample' => null], 'https://example.test/manage');
+    $preview = new ReEngagementPreviewMail($previewData ?? ['week' => '', 'audience' => 'team', 'recipients' => 0, 'send_after' => '', 'sample' => null], 'https://example.test/manage', StorefrontIdentity::for(1));
     $previewHtml = $preview->render();
-    $page = get((string) parse_url(BulkMailer::unsubscribeUrl($sendId), PHP_URL_PATH))->assertOk()->getContent();
+    $page = get((string) parse_url(BulkMailer::unsubscribeUrl($sendId, 1), PHP_URL_PATH))->assertOk()->getContent();
 
     $arabic = '/\p{Arabic}/u';
     expect(preg_match($arabic, $html))->toBe(0, 'the e-mail has Arabic in it')

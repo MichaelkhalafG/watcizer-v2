@@ -5,14 +5,21 @@ use App\Domain\Inventory\StockTarget;
 use App\Domain\Notifications\BulkMailer;
 use App\Domain\Notifications\MailBudget;
 use App\Domain\Notifications\StockAlerts;
+use App\Domain\Notifications\StorefrontMailer;
 use App\Mail\StockAlertMail;
+use App\Storefront\StorefrontIdentity;
 use Illuminate\Database\Query\JoinClause;
 use Illuminate\Mail\Message;
+use Illuminate\Mail\Transport\ArrayTransport;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Testing\TestResponse;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\Mailer\SentMessage;
+use Symfony\Component\Mime\Email;
 use Tests\Support\Shopper;
+use Tests\Support\Shops;
+use Tests\Support\StorefrontMailboxFixture;
 use Tests\Support\T;
 
 use function Pest\Laravel\get;
@@ -29,7 +36,8 @@ use function Pest\Laravel\withHeaders;
 const ALERT_KEY = 'stock-alert-test-key';
 
 beforeEach(function () {
-    config(['compat.api_key' => ALERT_KEY, 'notifications.bulk.daily_cap' => 100, 'notifications.bulk.transactional_reserve' => 40]);
+    config(['compat.api_key' => ALERT_KEY]);
+    StorefrontMailboxFixture::budget(1, 100, 40);
     DB::table('core_mail_daily')->delete();
 });
 
@@ -116,7 +124,7 @@ it('tells 5 waiting shoppers per unit restocked, oldest first, when stock comes 
 });
 
 it('sends bulk mail only within the budget, and never counts against transactional mail', function () {
-    config(['notifications.bulk.daily_cap' => 10, 'notifications.bulk.transactional_reserve' => 4]);
+    StorefrontMailboxFixture::budget(1, 10, 4);
     $product = alertProduct(0);
     $alerts = app(StockAlerts::class);
     foreach (range(1, 5) as $i) {
@@ -127,17 +135,57 @@ it('sends bulk mail only within the budget, and never counts against transaction
 
     // Four transactional messages already went out today: 10 − 4 reserve − 4 sent = 2 bulk left.
     foreach (range(1, 4) as $i) {
-        MailBudget::record(MailBudget::TRANSACTIONAL);
+        MailBudget::record(MailBudget::TRANSACTIONAL, 1);
     }
     $result = app(BulkMailer::class)->drain(50);
-    expect($result['sent'])->toBe(2)->and($result['budget_left'])->toBe(0)
-        ->and(MailBudget::sentToday(MailBudget::BULK))->toBe(2);    // counted from MessageSent, as bulk
+    expect($result['sent'])->toBe(2)->and($result['budget_left'])->toBe([1 => 0])
+        ->and(MailBudget::sentToday(1, MailBudget::BULK))->toBe(2);    // counted from MessageSent, as bulk, against storefront 1
 
     // Transactional mail (anything without the bulk header) still goes out with the bulk budget at
-    // zero: nothing on that path asks the budget. Counted as transactional.
+    // zero: nothing on that path asks the budget. Counted as transactional — under storefront 0
+    // here, because a bare Mail::raw carries no storefront header.
     Mail::raw('Order #T-1 confirmed', fn (Message $m) => $m->to('order@example.test')->subject('Order'));
-    expect(MailBudget::sentToday(MailBudget::TRANSACTIONAL))->toBe(5)
-        ->and(MailBudget::bulkRemaining())->toBe(0);
+    expect(MailBudget::sentToday(0, MailBudget::TRANSACTIONAL))->toBe(1)
+        ->and(MailBudget::sentToday(1, MailBudget::TRANSACTIONAL))->toBe(4)
+        ->and(MailBudget::bulkRemaining(1))->toBe(0);
+});
+
+it('keeps the budget PER MAILBOX: one shop using up its allowance does not stop the other shop sending', function () {
+    /*
+     * W4 (developer, 2026-10-13): "Watchizer exhausting its budget must not stop Brand Fashion
+     * sending, and the reverse." Two shops, two mailboxes, one drain: Watchizer's allowance is
+     * gone, Brand Fashion's alert still leaves — from Brand Fashion's mailbox, counted against it.
+     */
+    $fashion = Shops::id('brandfashion');
+    StorefrontMailboxFixture::budget(1, 10, 4);
+    StorefrontMailboxFixture::budget($fashion, 10, 4);
+    $product = alertProduct(0);
+    DB::table('storefront_product')->updateOrInsert(['storefront_id' => $fashion, 'product_id' => $product], ['is_visible' => 1, 'effective_price' => 100, 'effective_sale_price' => null, 'sort_order' => 0, 'slug' => 'budget-test-'.$product]);
+    $alerts = app(StockAlerts::class);
+    $alerts->subscribe(1, $product, 'w@example.test', null, 'en');
+    $alerts->subscribe($fashion, $product, 'f@example.test', null, 'en');
+    $alerts->restocked($product, 1);                         // one row per shop
+    app(InventoryService::class)->set(StockTarget::product($product), 'express', 1, 'adjustment');
+
+    foreach (range(1, 6) as $i) {
+        MailBudget::record(MailBudget::TRANSACTIONAL, 1);      // Watchizer: 10 − 4 − 6 = 0 left
+    }
+    $result = app(BulkMailer::class)->drain(50);
+    expect($result['sent'])->toBe(1)
+        ->and($result['budget_left'])->toBe([1 => 0, $fashion => 5])
+        ->and(MailBudget::sentToday($fashion, MailBudget::BULK))->toBe(1)
+        ->and(MailBudget::sentToday(1, MailBudget::BULK))->toBe(0)
+        ->and(DB::table('integration_outbox')->where('channel', BulkMailer::CHANNEL)->where('status', 'pending')->count())->toBe(1);   // Watchizer's waits for tomorrow
+    // …and it left as Brand Fashion: the suite's `array` transport keeps what was sent.
+    $transport = Mail::mailer('array')->getSymfonyTransport();
+    $sent = $transport instanceof ArrayTransport ? $transport->messages() : collect();
+    $lastSent = $sent->last();
+    $last = $lastSent instanceof SentMessage ? $lastSent->getOriginalMessage() : null;
+    expect($sent)->toHaveCount(1)
+        ->and($last)->toBeInstanceOf(Email::class)
+        ->and($last instanceof Email ? $last->getTo()[0]->getAddress() : null)->toBe('f@example.test')
+        ->and($last instanceof Email ? $last->getFrom()[0]->getAddress() : null)->toBe('no-reply@brandfashion.test')
+        ->and($last instanceof Email ? $last->getHeaders()->get(StorefrontMailer::STOREFRONT_HEADER)?->getBodyAsString() : null)->toBe((string) $fashion);
 });
 
 it('drops the e-mail and puts the shopper back in line when the product sold out again before sending', function () {
@@ -154,7 +202,8 @@ it('drops the e-mail and puts the shopper back in line when the product sold out
 
 it('renders the alert e-mail in the shopper\'s language with the product and a stop link, marked bulk', function () {
     $mail = new StockAlertMail(['email' => 'x@example.test', 'locale' => 'ar', 'token' => str_repeat('a', 40),
-        'product' => ['name' => 'ساعة تجربة', 'price' => 1234.0, 'image' => null, 'url' => 'https://watchizereg.com/ar/product/test']]);
+        'product' => ['name' => 'ساعة تجربة', 'price' => 1234.0, 'image' => null, 'url' => 'https://watchizereg.com/ar/product/test']],
+        'https://api.watchizereg.com/stock-alerts/stop/'.str_repeat('a', 40), StorefrontIdentity::for(1));
     $html = $mail->render();
     expect($html)->toContain('ساعة تجربة', '1,234 EGP', 'https://watchizereg.com/ar/product/test', '/stock-alerts/stop/'.str_repeat('a', 40), 'dir="rtl"');
 });

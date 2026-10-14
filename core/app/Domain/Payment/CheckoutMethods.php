@@ -79,8 +79,14 @@ final class CheckoutMethods
         $rows = $this->rows($storefrontId);
 
         if ($postedId === null || trim($postedId) === '') {
-            if (! in_array($legacy, ['card', 'paymob'], true) || ! $this->paymobLive($storefrontId)) {
-                return null;                    // cash, WhatsApp, or not cut over: exactly as before
+            if (! in_array($legacy, ['card', 'paymob'], true)) {
+                return null;                    // cash or WhatsApp: exactly as before
+            }
+            if (! $this->onlineLive($storefrontId)) {
+                // No live ONLINE contract on this storefront: refused BEFORE any write (A2,
+                // 2026-10-12). This used to return null and let the order through to the wave-3
+                // global account; that builder is deleted and nothing is left to fall through to.
+                return self::unavailable();
             }
             foreach ($rows as $row) {
                 if ($row['method'] === 'card' && ! $row['offline']) {
@@ -110,13 +116,22 @@ final class CheckoutMethods
         return self::unavailable();             // unknown, disabled, unusable or another shop's row
     }
 
-    /** Whether this storefront's Paymob contract is live: enabled and holding complete credentials. */
-    public function paymobLive(int $storefrontId): bool
+    /**
+     * Whether this storefront has ANY live ONLINE contract — enabled, implemented, credentials
+     * complete — whatever the provider (A2, 2026-10-12; this asked for Paymob by name). Without one
+     * a card order is refused before it is written: no global account exists to fall through to.
+     */
+    public function onlineLive(int $storefrontId): bool
     {
-        $id = Coerce::nint(DB::table('storefront_payment_providers')
-            ->where('storefront_id', $storefrontId)->where('provider', PaymobProvider::KEY)->value('id'));
+        $ids = DB::table('storefront_payment_providers')->where('storefront_id', $storefrontId)
+            ->whereNotIn('provider', [OfflineProvider::COD, OfflineProvider::WHATSAPP])->pluck('id')->all();
+        foreach ($ids as $id) {
+            if (is_numeric($id) && $this->contractLive((int) $id)) {
+                return true;
+            }
+        }
 
-        return $id !== null && $this->contractLive($id);
+        return false;
     }
 
     /**

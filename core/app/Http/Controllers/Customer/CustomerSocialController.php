@@ -161,7 +161,7 @@ final class CustomerSocialController extends Controller
             return $this->back($request, 'social_failed', null, $nonce);
         }
 
-        $outcome = $this->social->resolve($provider, $account);
+        $outcome = $this->social->resolve($provider, $account, StorefrontUrls::storefrontOf($request));
 
         if (array_key_exists('refused', $outcome)) {
             return $this->back($request, Coerce::str($outcome['refused']), null, $nonce);

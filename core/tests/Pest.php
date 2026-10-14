@@ -19,10 +19,18 @@ use App\Storefront\StorefrontCache;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Tests\Support\LegacyShadow;
 use Tests\Support\Scratch;
+use Tests\Support\StorefrontIdentityFixture;
+use Tests\Support\StorefrontMailboxFixture;
 use Tests\TestCase;
 
 pest()->extend(TestCase::class)
     ->use(DatabaseTransactions::class)
+    // W2 (2026-10-13): both storefronts identified inside each test's transaction — see the fixture.
+    // W3 (2026-10-13): and both hold a mailbox, the same way.
+    ->beforeEach(function (): void {
+        StorefrontIdentityFixture::ensure();
+        StorefrontMailboxFixture::ensure();
+    })
     ->in('Feature');
 
 pest()->extend(TestCase::class)->in('Unit');

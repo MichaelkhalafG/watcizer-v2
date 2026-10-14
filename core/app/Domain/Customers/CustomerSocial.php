@@ -114,7 +114,7 @@ final class CustomerSocial
      *
      * @return array{user: User, created: bool}|array{refused: string}
      */
-    public function resolve(string $provider, SocialUser $account): array
+    public function resolve(string $provider, SocialUser $account, int $storefrontId): array
     {
         $providerId = Coerce::nstr($account->getId());
         $email = Coerce::nstr($account->getEmail());
@@ -177,7 +177,7 @@ final class CustomerSocial
              * and nothing in this application gates on verification anyway. What core will not do
              * is take the provider's word for it and stamp the column.
              */
-            $this->mail->sendEmailVerification($user);
+            $this->mail->sendEmailVerification($user, $storefrontId);
         }
 
         return ['user' => $user, 'created' => true];

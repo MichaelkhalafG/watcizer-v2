@@ -470,7 +470,8 @@ class CheckoutCompatController extends Controller
 
             /*
              * The merchant reference the wave-3 intention sent is `<order id>-<timestamp>`
-             * (`CompatCheckout::createPaymobIntention()`), so the integer prefix IS the order id
+             * (the wave-3 intention builder, deleted 2026-10-12 — a callback for an intention it
+             * created can still arrive here), so the integer prefix IS the order id
              * and the coercion below is deliberate rather than lax. Unchanged — only WHERE the
              * value is read from has moved.
              */
@@ -860,21 +861,20 @@ class CheckoutCompatController extends Controller
                 ], 422);
             }
 
-            $result = $this->compat->checkout->createPaymobIntention($amount, $billing, $orderId);
-
-            if ($result['ok']) {
-                return response()->json(['success' => true, 'order_number' => $orderNumber, 'redirect_url' => $result['redirect_url']], 200);
-            }
-
-            // Session refused → give the reserved stock back and CANCEL the order (never delete:
-            // order_items and payment_statuses reference it with ON DELETE RESTRICT).
+            /*
+             * No live contract for this storefront and method (A2, developer 2026-10-12). There is
+             * no other path: the wave-3 builder that read the global `PAYMOB_*` keys is DELETED, so
+             * a shop without a contract can never be sent to another shop's account.
+             * `CheckoutMethods::refusal()` refuses such an order before it is written; this is the
+             * guard behind it, for a contract that went dark between that check and this one. Cancel
+             * and release, never delete: order_items and payment_statuses reference the order.
+             */
             $this->cancelAndRelease($orderId);
 
             return response()->json([
                 'success' => false,
-                'message' => 'Payment session failed',
+                'message' => 'Payment could not be initiated. Please try again or choose Cash on Delivery.',
                 'order_number' => $orderNumber,
-                'paymob_error' => $result['error'],
             ], 422);
         } catch (Throwable $e) {
             Log::error($e);
