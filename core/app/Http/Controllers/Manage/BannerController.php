@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Manage;
 
+use App\Domain\Content\BannerImage;
 use App\Domain\Activity\ActivityLog;
 use App\Domain\Content\Banners;
 use App\Domain\Content\BannerState;
@@ -101,7 +102,8 @@ final class BannerController
             return [
                 'id' => $id,
                 'image_path' => $image,
-                'image_url' => ImageUrl::src($image),
+                // The banner's OWN storefront's host, folder put back for rows written bare (BannerImage).
+                'image_url' => ImageUrl::srcFor($storefront->id, BannerImage::path($image)),
                 'sort_order' => Row::int($row, 'sort_order'),
                 'is_active' => Row::bool($row, 'is_active'),
                 'starts_at' => Row::nstr($row, 'starts_at'),
@@ -255,7 +257,12 @@ final class BannerController
      */
     private static function labelOf(array $fields): ?string
     {
-        return Coerce::nstr($fields['image_path'] ?? null);
+        // The FILE name, never the folder: the stored value carries `Banner_home/` since 2026-10-14
+        // (BannerImage), and the log's label — the export column too — stays the file that identifies
+        // the banner, so a row written before and after the folder fix reads the same.
+        $path = Coerce::nstr($fields['image_path'] ?? null);
+
+        return $path === null ? null : basename($path);
     }
 
     /**

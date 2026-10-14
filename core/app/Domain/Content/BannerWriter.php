@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domain\Content;
 
+use App\Domain\Content\BannerImage;
 use App\Storefront\StorefrontCache;
 use App\Support\Coerce;
 use App\Support\ManageText;
@@ -120,7 +121,7 @@ final class BannerWriter
             'storefront_id' => $storefrontId,
             // Home only, by decision — never taken from the payload.
             'placement' => self::PLACEMENTS[0],
-            'image_path' => $image,
+            'image_path' => BannerImage::path($image),
             'link_url' => $url === '' ? null : $url,
             'product_id' => $productId,
             'storefront_category_id' => $categoryId,
