@@ -111,7 +111,7 @@ export function buildProductSeo(product, { ratings = [], tables = null, lang = '
   const metaTitle = meta?.title?.[lang] || ''
   const ogTitle =
     metaTitle.length >= META_TITLE_MIN
-      ? /watchizer/i.test(metaTitle)
+      ? /brand fashion/i.test(metaTitle)
         ? metaTitle
         : `${metaTitle} | Brand Fashion`
       : `${name}${brand ? ` – ${brand}` : ''} | Brand Fashion`

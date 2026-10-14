@@ -72,23 +72,6 @@ const storeJsonLd = {
   image: 'https://michaelkhalaf.com/og-image.jpg',
   description:
     'Discover a premium collection of luxury watches and fashion accessories at Brand Fashion. Shop exclusive timepieces with elegant designs and unbeatable prices in Egypt.',
-  address: {
-    '@type': 'PostalAddress',
-    streetAddress: 'اركديا مول . كورنيش النيل . امتداد ماسبيرو',
-    addressLocality: 'Cairo',
-    addressRegion: 'Cairo Governorate',
-    addressCountry: 'EG',
-  },
-  geo: { '@type': 'GeoCoordinates', latitude: 30.0444, longitude: 31.2357 },
-  openingHoursSpecification: [
-    {
-      '@type': 'OpeningHoursSpecification',
-      dayOfWeek: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
-      opens: '10:00',
-      closes: '22:00',
-    },
-  ],
-  sameAs: ['https://www.facebook.com/watchizer', 'https://www.instagram.com/watchizer'],
   contactPoint: {
     '@type': 'ContactPoint',
     telephone: '+201283888490',

@@ -21,7 +21,7 @@ export const metadata = {
   metadataBase: new URL('https://michaelkhalaf.com'),
   title: 'Brand Fashion',
   description:
-    'اكتشف أفخم الساعات والإكسسوارات في Watchizer. تسوق الآن أرقى الساعات الفاخرة بتصاميم أنيقة وجودة عالمية بأسعار تنافسية.',
+    'اكتشف أفخم الساعات والإكسسوارات في Brand Fashion. تسوق الآن أرقى الساعات الفاخرة بتصاميم أنيقة وجودة عالمية بأسعار تنافسية.',
   keywords:
     "luxury watches, men's watches, women's watches, branded watches, best watch store Egypt, online watch shop, Rolex, Omega, TAG Heuer, Swiss watches, ساعات فاخرة, ساعات رجالي, ساعات نسائية, متجر ساعات في مصر",
   authors: [{ name: 'Brand Fashion' }],
@@ -34,7 +34,7 @@ export const metadata = {
   // at /logo.png — the full LANDSCAPE lockup, which Google rejects/letterboxes as
   // a favicon — while app/favicon.ico was still the create-next-app default, so
   // Google showed the Next.js mark. The file-convention assets are the square
-  // Watchizer "W" monogram generated from public/logo.png.
+  // Brand Fashion "BF" monogram, copied from new branding/design/brand-fashion-logo/ (spec §22.4).
   // The link-preview image (2026-09-27): a 1200×630 JPG. It was logo.svg, and Facebook,
   // WhatsApp, X and LinkedIn refuse SVG, so a shared link showed no picture at all. Replace
   // public/og-image.jpg with new artwork under the same name and nothing here changes.
@@ -42,7 +42,7 @@ export const metadata = {
     type: 'website',
     title: 'Brand Fashion',
     description:
-      'اكتشف مجموعة رائعة من الساعات الفاخرة والإكسسوارات العصرية في Watchizer. جودة استثنائية، تصاميم راقية، وعروض لا تُقاوم.',
+      'اكتشف مجموعة رائعة من الساعات الفاخرة والإكسسوارات العصرية في Brand Fashion. جودة استثنائية، تصاميم راقية، وعروض لا تُقاوم.',
     images: [
       {
         url: 'https://michaelkhalaf.com/og-image.jpg',
@@ -59,7 +59,7 @@ export const metadata = {
     card: 'summary_large_image',
     title: 'Brand Fashion',
     description:
-      'تسوق أحدث موديلات الساعات الفاخرة والإكسسوارات الراقية بأفضل الأسعار فقط على Watchizer.',
+      'تسوق أحدث موديلات الساعات الفاخرة والإكسسوارات الراقية بأفضل الأسعار فقط على Brand Fashion.',
     images: ['https://michaelkhalaf.com/og-image.jpg'],
   },
 }

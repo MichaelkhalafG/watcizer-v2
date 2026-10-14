@@ -22,7 +22,6 @@ import { useNav } from '../../Hooks/queries/useNav'
 import { buildListingParams } from '../../utils/listingParams'
 import { subTypesByName } from '../../utils/subTypeGroups'
 import { getImageUrl } from '../../utils/imageUrl'
-import { FaFacebookF, FaInstagram } from 'react-icons/fa'
 
 function Header() {
   // Cart-derived counters (were MyProvider state) are derived here from the cart
@@ -175,7 +174,7 @@ function Header() {
     window.location.reload()
   }
 
-  // Scrolling announcement strip — trust signals, brands, Watchizer info.
+  // Scrolling announcement strip — trust signals, brands, shop info.
   const englishItems = [
     'Authentic Luxury Watches — Certified & Guaranteed',
     '500+ Premium Timepieces In Stock',
@@ -225,24 +224,6 @@ function Header() {
                 </span>
               ))}
             </div>
-          </div>
-          <div className="wz-strip-social">
-            <a
-              href="https://www.facebook.com/profile.php?id=100076267296916"
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label="Facebook"
-            >
-              <FaFacebookF style={{ height: '13px', width: '13px' }} />
-            </a>
-            <a
-              href="https://www.instagram.com/watchizer_eg/"
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label="Instagram"
-            >
-              <FaInstagram style={{ height: '14px', width: '14px' }} />
-            </a>
           </div>
         </div>
       </div>

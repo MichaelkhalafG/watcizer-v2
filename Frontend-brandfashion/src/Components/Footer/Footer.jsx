@@ -4,7 +4,7 @@ import Image from 'next/image'
 import './Footer.css'
 import Link from '@/src/Components/LocaleLink'
 import { useRouter } from '@/src/Hooks/useLocaleRouter'
-import { FaFacebook, FaInstagram, FaWhatsapp } from 'react-icons/fa'
+import { FaWhatsapp } from 'react-icons/fa'
 import { useUIStore } from '../../Store/uiStore'
 import LanguageDropdown from '../LanguageDropdown/LanguageDropdowen'
 
@@ -63,26 +63,6 @@ function Footer() {
               'وجهتك الأولى للساعات الفاخرة الأصلية في مصر',
             )}
           </p>
-          <div className="wz-foot__social">
-            <a
-              href="https://www.facebook.com/profile.php?id=100076267296916"
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label="Facebook"
-              className="wz-foot__social-btn"
-            >
-              <FaFacebook />
-            </a>
-            <a
-              href="https://www.instagram.com/watchizer_eg/"
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label="Instagram"
-              className="wz-foot__social-btn"
-            >
-              <FaInstagram />
-            </a>
-          </div>
         </div>
 
         {/* Column 2 — Shop */}
