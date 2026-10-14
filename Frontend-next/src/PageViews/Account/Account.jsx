@@ -41,7 +41,7 @@ import './Account.css'
 
 // Store WhatsApp support line (same number used in the order-confirmation
 // email) — used for the "Track Order" action since there is no tracking page.
-const SUPPORT_WHATSAPP = '201274550956'
+const SUPPORT_WHATSAPP = '201283888490'
 
 // No 'wishlist' tab (batch 1, 2026-09-26): the wishlist was deleted in Phase 0 (G6) and its
 // endpoints with it. An old `?tab=wishlist` link lands on the default tab.
