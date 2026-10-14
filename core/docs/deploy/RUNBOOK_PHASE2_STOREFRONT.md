@@ -1049,9 +1049,12 @@ what §4.3 does and why it is a mandatory step rather than a suggestion.
     # match blocks NOTHING, which is the safe direction: a typo costs a gap, not an
     # outage. Verify all four host cases in §4.3 before moving on.
 
-    # ── the API host: an allow-list of the storefront's own surface ────────────
+    # ── the API hosts: ONE allow-list for every storefront's own surface ─────────
+    # Two hosts, one list (2026-10-14, Brand Fashion's api.michaelkhalaf.com): the body below is
+    # shared, so it cannot drift between hosts. A new storefront's API host is one more alternation
+    # here AND in the default arm — never a second copy of the body.
     RewriteCond %{REQUEST_URI} !^/index\.php
-    RewriteCond %{HTTP_HOST} ^api\.watchizereg\.com$ [NC]
+    RewriteCond %{HTTP_HOST} ^api\.(watchizereg|michaelkhalaf)\.com$ [NC]
     RewriteCond %{REQUEST_URI} !^/api/v2/
     RewriteCond %{REQUEST_URI} !^/api/(catalog/(meta|nav|listing|cards|related|product|home|blogs|blog)|all_product|all_product_image|all_product_rating|show_shipping_city)$
     RewriteCond %{REQUEST_URI} !^/api/products(/|$)
@@ -1093,7 +1096,7 @@ what §4.3 does and why it is a mandatory step rather than a suggestion.
     # KNOWN CONSEQUENCE: a request to the server by IP or over the loopback can no
     # longer reach /api. `compat:diff` against 127.0.0.1 ON THE SERVER would 404 —
     # run it with a Host header, or from the workstation (§C).
-    RewriteCond %{HTTP_HOST} !^api\.watchizereg\.com$ [NC]
+    RewriteCond %{HTTP_HOST} !^api\.(watchizereg|michaelkhalaf)\.com$ [NC]
     RewriteCond %{HTTP_HOST} !^(www\.)?eleganceeg\.com$ [NC]
     RewriteRule ^api(/|$) - [R=404,L]
 ```
