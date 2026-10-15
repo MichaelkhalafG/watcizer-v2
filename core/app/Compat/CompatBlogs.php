@@ -32,7 +32,7 @@ final class CompatBlogs
             $markdown = Row::nstr($row, 'body_format') === 'markdown';
             $out[] = [
                 'slug' => Row::str($row, 'slug'),
-                'cover' => self::cover(Row::nstr($row, 'cover_path')),
+                'cover' => $this->cover(Row::nstr($row, 'cover_path')),
                 'published_at' => Row::str($row, 'published_at'),
                 'title' => ['en' => $tr['en']['title'], 'ar' => $tr['ar']['title']],
                 'excerpt' => ['en' => self::excerpt($tr['en']['body'], $markdown), 'ar' => self::excerpt($tr['ar']['body'], $markdown)],
@@ -57,7 +57,7 @@ final class CompatBlogs
 
         return [
             'slug' => Row::str($row, 'slug'),
-            'cover' => self::cover(Row::nstr($row, 'cover_path')),
+            'cover' => $this->cover(Row::nstr($row, 'cover_path')),
             'published_at' => Row::str($row, 'published_at'),
             // How to read `body` (M2d): 'text' (plain paragraphs, "## ", "- " — written before the
             // Markdown editor) or 'markdown'. The storefront renders each its own safe way.
@@ -126,8 +126,9 @@ final class CompatBlogs
         return rtrim($space !== false && $space > 80 ? mb_substr($cut, 0, $space) : $cut, ' ,.،').'…'; // i18n-exempt: punctuation data, never rendered on its own — the Arabic comma is one of the characters trimmed off a cut excerpt (proven by CatalogBlogsTest "cuts a long excerpt at a word")
     }
 
-    private static function cover(?string $path): ?string
+    /** The cover on THIS storefront's image host (COMPAT-ASSET-HOST, 2026-10-14); the default shop's expression is unchanged. */
+    private function cover(?string $path): ?string
     {
-        return $path === null || $path === '' ? null : ImageUrl::src($path);
+        return $path === null || $path === '' ? null : ImageUrl::srcFor($this->storefrontId, $path);
     }
 }
