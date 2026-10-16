@@ -1,0 +1,31 @@
+/* The card dev page (B3) — layout only; the card's own styles live in BfProductCard.css. */
+.cd { background: var(--wz-page); color: var(--wz-ink); font-family: var(--wz-serif); font-size: var(--wz-fs-base); line-height: 1.5; max-width: 1200px; margin: 0 auto; padding: var(--wz-sp-24) var(--wz-sp-16) var(--wz-sp-48); }
+.cd h1 { font-size: var(--wz-fs-xl); font-weight: 800; letter-spacing: 0; text-transform: none; margin-bottom: var(--wz-sp-8); }
+.cd h2 { font-size: var(--wz-fs-lg); font-weight: 800; letter-spacing: 0; text-transform: none; margin: var(--wz-sp-48) 0 var(--wz-sp-12); padding-top: var(--wz-sp-12); border-top: 1px solid var(--wz-line); }
+/* the page's own sub-headings only — never the card's <h3> title (found 2026-10-16: this rule had
+   re-sized the card title to 16px and clipped its second line) */
+.cd h3:not(.bf-card__title) { font-size: var(--wz-fs-md); font-weight: 600; letter-spacing: 0; text-transform: none; margin: var(--wz-sp-24) 0 var(--wz-sp-8); }
+.cd p { max-width: 80ch; margin-bottom: var(--wz-sp-8); }
+.cd code { font-size: var(--wz-fs-sm); background: var(--wz-tile); padding: 1px 4px; border-radius: var(--wz-r-swatch); }
+.cd .meta { color: var(--wz-ink-3); font-size: var(--wz-fs-sm); }
+.cd .gate { border: 1px solid var(--wz-edge); border-radius: var(--wz-r-section); padding: var(--wz-sp-12) var(--wz-sp-16); margin: var(--wz-sp-16) 0; }
+.cd table { border-collapse: collapse; width: 100%; font-size: var(--wz-fs-sm); }
+.cd th, .cd td { text-align: start; padding: 6px 8px; border-bottom: 1px solid var(--wz-line); vertical-align: middle; }
+.cd th { color: var(--wz-ink-2); font-weight: 600; }
+.cd td.num { font-variant-numeric: tabular-nums; text-align: end; }
+.cd .pass { color: var(--wz-ok); font-weight: 600; }
+.cd .fail { color: var(--wz-danger); font-weight: 600; }
+.cd .info { color: var(--wz-ink-3); font-weight: 600; }
+.cd .swatch { display: inline-block; width: 22px; height: 22px; border-radius: var(--wz-r-swatch); border: 1px solid var(--wz-edge); vertical-align: middle; margin-inline-end: 6px; }
+.cd .pillx { display: inline-block; font: 600 var(--wz-fs-xs) / 1 var(--wz-serif); padding: 5px 8px; border-radius: var(--wz-r-pill); color: var(--wz-on-ink); }
+
+/* grids: desktop 4 across (listing), 6 in a rail; phone 2 across, 8px gap (§8.2) */
+.cd .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+@media (min-width: 600px) { .cd .grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; } }
+@media (min-width: 1024px) { .cd .grid { grid-template-columns: repeat(var(--cols, 4), minmax(0, 1fr)); gap: 12px; } }
+.cd .shelf { display: grid; grid-template-columns: repeat(auto-fill, minmax(228px, 1fr)); gap: 12px; }
+.cd .cap { font-size: var(--wz-fs-xs); color: var(--wz-ink-2); margin-top: 6px; }
+.cd .tinted { padding: var(--wz-sp-16); border-radius: var(--wz-r-section); }
+.cd .phone { width: 390px; max-width: 100%; padding: 16px; border: 1px solid var(--wz-edge); border-radius: var(--wz-r-section); }
+.cd .phone .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.cd .notice { border: 1px solid var(--wz-alert); color: var(--wz-alert); border-radius: var(--wz-r-input); padding: var(--wz-sp-8) var(--wz-sp-12); font-size: var(--wz-fs-sm); }

@@ -1,0 +1,80 @@
+/* The Brand Fashion product card — spec v2.6 §8, every number from §8.2, every colour a token. */
+
+.bf-card {
+  --bf-pad: 10px;          /* body padding (8 compact) */
+  --bf-title: var(--wz-fs-sm);   /* 12 (11 compact) */
+  --bf-title-h: 34px;      /* 2 lines × 1.4 — fixed so the grid never jogs (31 compact) */
+  --bf-btn: 40px;          /* 36 compact */
+  --bf-inset: 10%;         /* photo inner padding (8% compact) */
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  background: var(--wz-page);
+  color: var(--wz-ink);
+  border: 1px solid var(--wz-line);
+  border-radius: var(--wz-r-card);
+  overflow: hidden;
+  font-family: var(--wz-serif);
+  transition: border-color var(--wz-duration-fast) var(--wz-ease), box-shadow var(--wz-duration-fast) var(--wz-ease);
+}
+.bf-card--compact { --bf-pad: 8px; --bf-title: 11px; --bf-title-h: 31px; --bf-btn: 36px; --bf-inset: 8%; }
+@media (hover: hover) and (pointer: fine) {
+  .bf-card:hover { border-color: rgba(0, 0, 0, 0.2); box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08); }
+}
+
+/* the whole card is one link, one Tab stop */
+.bf-card__link { display: block; color: inherit; text-decoration: none; border-radius: var(--wz-r-card) var(--wz-r-card) 0 0; }
+.bf-card__link:focus-visible { outline: 2px solid var(--wz-focus-ring); outline-offset: 2px; }
+
+/* photo on the aisle tint, 1:1, inset; the photo multiplies into the tint (§8.3) */
+.bf-card__tile { position: relative; aspect-ratio: 1 / 1; padding: var(--bf-inset); display: flex; align-items: center; justify-content: center; }
+.bf-card__img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.bf-card__img.is-photo { mix-blend-mode: multiply; }
+.bf-card__img.is-placeholder { opacity: 0.6; }
+
+/* one badge, inset 8 from top and inline-start, 10/600, 5×8 padding, pill */
+.bf-card__badge {
+  position: absolute; top: 8px; inset-inline-start: 8px;
+  font-size: var(--wz-fs-xs); font-weight: 600; line-height: 1; padding: 5px 8px;
+  border-radius: var(--wz-r-pill); color: var(--wz-on-ink); letter-spacing: 0;
+}
+.bf-card__badge--sold-out { background: var(--wz-ink-3); }
+.bf-card__badge--new { background: var(--wz-new); }
+.bf-card:lang(en) .bf-card__badge { letter-spacing: 0.04em; text-transform: uppercase; }
+
+.bf-card__body { padding: var(--bf-pad) var(--bf-pad) 0; }
+.bf-card__brand { font-size: var(--wz-fs-xs); font-weight: 600; color: var(--wz-ink-3); text-transform: uppercase; letter-spacing: 0.04em; line-height: 1.2; min-height: 12px; }
+.bf-card:lang(ar) .bf-card__brand { letter-spacing: 0; text-transform: none; }
+.bf-card__title {
+  margin: 4px 0 0; font-size: var(--bf-title); line-height: 1.4; font-weight: 400; height: var(--bf-title-h);
+  overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  letter-spacing: 0; text-transform: none; color: var(--wz-ink);
+}
+
+/* §8.2 the swatch row: 14px tall + 6 below, ALWAYS reserved; describes, selects nothing */
+.bf-card__swatches { height: 14px; margin: 0 0 6px; display: flex; align-items: center; gap: 4px; pointer-events: none; }
+.bf-card__dot { width: 10px; height: 10px; border-radius: var(--wz-r-swatch); border: 1px solid var(--wz-edge); display: inline-block; }
+.bf-card__more { font-size: var(--wz-fs-xs); font-weight: 600; color: var(--wz-ink-3); line-height: 1; }
+
+/* price 14/600 ink · old 11 struck ink-3 · percent 11/600 sale — one row, it must hold EGP 214,380 */
+.bf-card__price { display: flex; align-items: baseline; gap: 6px; flex-wrap: nowrap; white-space: nowrap; font-variant-numeric: tabular-nums; min-width: 0; }
+.bf-card__now { font-size: var(--wz-fs-base); font-weight: 600; color: var(--wz-ink); }
+.bf-card__was { font-size: 11px; font-weight: 400; color: var(--wz-ink-3); }
+.bf-card__pct { font-size: 11px; font-weight: 600; color: var(--wz-sale); }
+.bf-card__rating { font-size: var(--wz-fs-xs); color: var(--wz-ink-2); margin-top: 4px; }
+
+/* the button: 40 tall, pill, 12/600; secondary "Notify me" when sold out (§8.3, not dimmed) */
+.bf-card__cta { padding: 8px var(--bf-pad) var(--bf-pad); }
+.bf-card__btn, .bf-card__stepper {
+  height: var(--bf-btn); width: 100%; border-radius: var(--wz-r-pill); font: 600 var(--wz-fs-sm) / 1 var(--wz-serif);
+  display: inline-flex; align-items: center; justify-content: center; gap: 12px;
+}
+.bf-card__btn { background: var(--wz-ink); color: var(--wz-on-ink); border: 1px solid var(--wz-ink); cursor: pointer; }
+.bf-card__btn--secondary { background: var(--wz-page); color: var(--wz-ink); border-color: var(--wz-edge); }
+.bf-card__btn:focus-visible, .bf-card__step:focus-visible { outline: 2px solid var(--wz-focus-ring); outline-offset: 2px; }
+.bf-card__stepper { border: 1px solid var(--wz-edge); background: var(--wz-page); }
+.bf-card__step { width: 36px; height: 36px; border: 0; background: transparent; color: var(--wz-ink); font: 600 var(--wz-fs-md) / 1 var(--wz-serif); border-radius: var(--wz-r-pill); cursor: pointer; }
+.bf-card__qty { min-width: 2ch; text-align: center; font-weight: 600; }
+
+/* out of stock is NOT dimmed: full-opacity photo, ink-3 pill, secondary button (§8.3) */
+.bf-card.is-sold-out .bf-card__img { opacity: 1; }
