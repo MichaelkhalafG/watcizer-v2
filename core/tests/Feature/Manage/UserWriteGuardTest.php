@@ -58,9 +58,19 @@ it('REFUSES a write with NO TRANSACTION OPEN, which is the case a listener canno
      * review measured it: the row really changed, and the exception arrived afterwards to describe
      * it. *A guard that fires after the row changed is an alarm, not a door.*
      *
-     * So this case unwinds the suite's transaction on purpose, which is the one thing the rest of
-     * the suite must never do — and puts it back in a `finally`, because a failure here must not
-     * leave the following assertions running against a live database.
+     * ── How the no-transaction state is reached (changed 2026-10-16, FIXTURE-LEAK) ──────────
+     *
+     * Until 2026-10-16 this case COMMITTED the suite's wrapping transaction and reopened it in a
+     * `finally`. That commit also committed everything `tests/Pest.php`'s `beforeEach` had written
+     * in the same transaction — the storefront identity and mailbox fixtures — which is how a
+     * fixture mailbox row reached the development database (reproduced on a scratch copy: one run
+     * of this file alone, 0 → 2 fixture rows, both storefronts' identity changed). Now the write is
+     * attempted on the `mysql` connection instead: the same database, a SEPARATE PDO session that
+     * `Tests\TestCase::$connectionsToTransact` ([null, 'legacy']) never wraps, so its transaction
+     * level is 0 for real and nothing is ever committed by the suite. The guard is armed on every
+     * connection as it is established (`AppServiceProvider`, `ConnectionEstablished`), so the door
+     * is the same door. The level assertion below is the premise made loud: if someone adds `mysql`
+     * to the transacted list, this test fails here rather than quietly proving less.
      *
      * ── Why an EXISTING row and not a fresh one ─────────────────────────────────────────────
      *
@@ -76,29 +86,25 @@ it('REFUSES a write with NO TRANSACTION OPEN, which is the case a listener canno
 
     $id = T::int($subject->id);
     $before = T::str($subject->first_name);
-    $level = DB::transactionLevel();
+
+    // The untransacted session. Not the default connection: the suite's own transaction stays open
+    // and untouched, and NOTHING here is ever committed.
+    $bare = DB::connection('mysql');
+    expect(DB::getDefaultConnection())->not->toBe('mysql')
+        ->and($bare->transactionLevel())->toBe(0);
 
     try {
-        while (DB::transactionLevel() > 0) {
-            DB::commit();
-        }
-
-        expect(DB::transactionLevel())->toBe(0);
-
-        expect(fn () => DB::table('users')->where('id', $id)->update(['first_name' => 'NeverLands']))
+        expect(fn () => $bare->table('users')->where('id', $id)->update(['first_name' => 'NeverLands']))
             ->toThrow(RuntimeException::class);
 
-        // THE assertion. With the listener alone this read 'NeverLands'.
-        expect(T::str(DB::table('users')->where('id', $id)->value('first_name')))->toBe($before);
+        // THE assertion, read on the same bare session. With the listener alone this read 'NeverLands'.
+        expect(T::str($bare->table('users')->where('id', $id)->value('first_name')))->toBe($before);
     } finally {
-        // Restore whatever did land, through the declared door, before anything else runs.
-        if (T::str(DB::table('users')->where('id', $id)->value('first_name')) !== $before) {
-            UserWrites::open('dashboard.password', fn () => DB::table('users')->where('id', $id)
+        // Restore whatever did land, through the declared door, ON THE SAME bare session: a write
+        // that landed there is committed, so only a committed restore undoes it.
+        if (T::str($bare->table('users')->where('id', $id)->value('first_name')) !== $before) {
+            UserWrites::open('dashboard.password', fn () => $bare->table('users')->where('id', $id)
                 ->update(['first_name' => $before]));
-        }
-
-        for ($i = 0; $i < $level; $i++) {
-            DB::beginTransaction();
         }
     }
 });
