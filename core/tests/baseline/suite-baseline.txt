@@ -15,17 +15,27 @@
 # across the run means a test wrote outside its transaction (exit 3, FIXTURE-LEAK).
 #
 # BLIND SPOT, stated: a real regression inside one of these tests cannot be seen, because the test is
-# already red. Size: 59 baselined of 2110 tests in the suite (2.8%).
+# already red. Size: 59 baselined of 2110 tests in the suite (2.8%) — plus 2 entries that apply only
+# while the demo is on (below).
 # The frozen test database (TEST-LIVE-ROWS, deferred, costed) is what removes the blind spot.
 #
 # Written from the run of 2026-10-16: 59 failed, 39 skipped, 2012 passed (306192 assertions); the checksum guard reported 0 tables changed.
-# Format: <Class > test name, as Pest prints it after FAILED> | <cause>
+#
+# TWO STATES (2026-10-16): DemoVariantsSeeder may be applied to the dev database (205 `DEMO-` variant
+# rows on 33 products visible on both shops, for the B3/B5 build). Two tests then fail BY DESIGN. Their
+# lines below carry the tag `[demo-on]` at the start of the cause. suite-baseline.sh detects the state
+# (DEMO rows present or not) and prints it as line 0: with the demo ON the tagged lines count as known
+# (61 expected); with the demo OFF they are excluded (59 expected) and MUST pass — a failure then trips
+# the gate. One file, two declared states. Remove the demo with `php artisan db:seed --class=DemoVariantsRemoveSeeder`.
+# Measured with the demo on, 2026-10-16: 61 failed, 39 skipped, 2010 passed (306081 assertions) — the 59 plus these two.
+# Format: <Class > test name, as Pest prints it after FAILED> | [demo-on]? <cause>
 
 Tests\Feature\Adversarial\PreventionProbeTest > it REFUSES a slug that slugifies to nothing, instead of s… | production's rows: the English dashboard language of the picked staff account (one), a count inflated by production rows (one)
 Tests\Feature\Adversarial\PreventionProbeTest > it tells the operator WHY a destroy was refused, and chan… | production's rows: the English dashboard language of the picked staff account (one), a count inflated by production rows (one)
 Tests\Feature\Compat\AccountCompatTest > it returns only the caller's addresses | OURS: the test still expects `guest_token` on an address row; compat deliberately omits it (security audit Finding 2, D-26, 'the difference is sanctioned') — a stale expectation, not a defect
 Tests\Feature\Compat\CatalogHomeTest > it featured: the products marked featured, else the browser's pool… | production's rows: the home rails' shape (grade rail 10 products where the dev set had 1)
 Tests\Feature\Compat\CatalogHomeTest > it seeds today's home page: offers (12), featured (5), then every… | production's rows: the home rails' shape (grade rail 10 products where the dev set had 1)
+Tests\Feature\Compat\CompatVariantInvariantTest > it holds the invariant for every LEGACY product on stor… | [demo-on] DEMO variants: 27 of the 33 demo products sit on storefront 1 without import_ref, so the compat invariant (no storefront-1 product sells through variants) is broken on purpose — the refusal it guards is the design (VARIANT-MATRIX-RULE); passes with the demo off
 Tests\Feature\Compat\ProductRatingTest > it refuses a rating without a sign-in | production's rows: a rating row exists where the dev set had none
 Tests\Feature\Manage\ActivityLogTest > it attributes an UNATTRIBUTED row to the system, never to a person | production's rows: an activity-log count inflated by production rows (one); the 'System' label in English for the picked staff account (one)
 Tests\Feature\Manage\ActivityLogTest > it records a role GRANT once, and not again when it is already hel… | production's rows: an activity-log count inflated by production rows (one); the 'System' label in English for the picked staff account (one)
@@ -34,6 +44,7 @@ Tests\Feature\Manage\CategoryTreeTest > it shows a stale delete and a stale move
 Tests\Feature\Manage\DashboardSweepTest > it opens every dashboard screen as an ADMIN, in both languages | production's rows: the sweep picks the first order with a guest_phone, a legacy row that ALSO has a user_id, so the g: key names no guest (Customers::identify requires user_id IS NULL) and the page answers 404 by design — the picker should filter whereNull(user_id); not a defect
 Tests\Feature\Manage\FullReplaceGuardTest > it tells the caller what to do instead, in Arabic for the scr… | production's rows: the staff accounts the fixture picks by position carry dashboard language `en` in core_user_preferences (SetDashboardLocale), the test expects Arabic
 Tests\Feature\Manage\HomeRailScreenTest > it reorders with the whole list, logs each moved rail, and refu… | production's rows: 36 home rails where the fixture expects its 2
+Tests\Feature\Manage\LookupScreenTest > it counts usage, and REFUSES to delete a row anything references | [demo-on] DEMO variants: the screen counts colour 1's 68 demo variant rows (647 uses) where the test counts catalog_product_color alone (579) — the screen is right and the test's count omits variant references; passes with the demo off
 Tests\Feature\Manage\LookupScreenTest > it records who added, renamed and deleted a list row — with the l… | production's rows: the staff accounts the fixture picks by position carry dashboard language `en` in core_user_preferences (SetDashboardLocale), the test expects Arabic
 Tests\Feature\Manage\MailFailureSecrecyTest > it keeps last_error out of the order screen props entirely | production's rows: the staff accounts the fixture picks by position carry dashboard language `en` in core_user_preferences (SetDashboardLocale), the test expects Arabic
 Tests\Feature\Manage\MultiStorefrontTest > it SYNC ON (pre-switch): the dashboard REFUSES tree edits on s… | production's rows: the staff accounts the fixture picks by position carry dashboard language `en` in core_user_preferences (SetDashboardLocale), the test expects Arabic
