@@ -58,19 +58,34 @@ export default async function CardPage() {
   }
 
   // ── 1. post-blend pairs ─────────────────────────────────────────────────────────────────────────
+  // The badge is OUTSIDE the blend (only the <img> multiplies) and since R20 carries a 1px `page` ring:
+  // its inner boundary is fill-vs-ring — a flat pair, the same on every surface — and the ring's own
+  // boundary against the blended surround is what reads where the fill alone did not.
+  const ringSoldOut = contrast(tok('page'), tok('ink-3'))
+  const ringNew = contrast(tok('page'), tok('new'))
   const blend = []
   for (const t of TINTS) {
     for (const bg of PHOTO_BACKGROUNDS) {
       const surface = multiply(bg.hex, tok(t))
+      const ringVsSurface = contrast(tok('page'), surface)
+      const soldOut = contrast(tok('ink-3'), surface)
+      const isNew = contrast(tok('new'), surface)
       blend.push({
         tint: t, bg: bg.k, bgHex: bg.hex, surface, lstar: lightness(surface),
-        soldOut: contrast(tok('ink-3'), surface), isNew: contrast(tok('new'), surface),
+        soldOut, isNew, ringVsSurface,
+        // what a shopper can see of the badge's edge: its fill against the surround, or its ring against it
+        perceivableSoldOut: Math.max(soldOut, ringVsSurface), perceivableNew: Math.max(isNew, ringVsSurface),
         ink: contrast(tok('ink'), surface), ink3: contrast(tok('ink-3'), surface),
-        tile: contrast(tok('tile'), surface),
       })
     }
   }
   const boundaryFails = blend.filter((b) => b.soldOut < REQUIREMENT.ui || b.isNew < REQUIREMENT.ui)
+  const perceivableFails = blend.filter((b) => b.perceivableSoldOut < REQUIREMENT.ui || b.perceivableNew < REQUIREMENT.ui)
+  const innerConstant = new Set(blend.map(() => `${r2(ringSoldOut)}/${r2(ringNew)}`)).size === 1
+  // the control for the blend: a mid-grey square (a data-URI image, no network) multiplied over each tint,
+  // beside the flat grey and the computed blend — the tile must match the computed swatch, not the flat one
+  const GREY = '#808080'
+  const greySvg = `data:image/svg+xml;utf8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400"><rect width="400" height="400" fill="${GREY}"/></svg>`)}`
 
   // ── 2–5. real data ──────────────────────────────────────────────────────────────────────────────
   const [details, newest, electronics, cheapest, dearest] = await Promise.all([
@@ -103,8 +118,12 @@ export default async function CardPage() {
         <strong>The catalogue&apos;s extremes today</strong> (dev API, sort price_asc / price_desc): {low ? `EGP ${low.price.amount.toLocaleString('en-EG')} (${txt(low.title)})` : '—'} to{' '}
         {high ? `EGP ${high.price.amount.toLocaleString('en-EG')} (${txt(high.title)})` : '—'} — §5 and §20 still print 110 and 214,380, the extremes of the 7,759-product catalogue of 2026-10-07;
         both the spec&apos;s stress values and today&apos;s real ends are rendered below.
-        <br /><strong>Post-blend result:</strong> {blend.length} tint × photo-background surfaces measured; badge boundaries under 3:1: <strong>{boundaryFails.length}</strong>
-        {boundaryFails.length ? ` (${boundaryFails.map((b) => `${b.tint} over ${b.bg}: sold-out ${r2(b.soldOut)}, new ${r2(b.isNew)}`).join('; ')})` : ''}.
+        <br /><strong>Post-blend result:</strong> {blend.length} tint × photo-background surfaces measured; badge FILL against the blended surround under 3:1: <strong>{boundaryFails.length}</strong>
+        {boundaryFails.length ? ` (${boundaryFails.map((b) => `${b.tint} over ${b.bg}: sold-out ${r2(b.soldOut)}, new ${r2(b.isNew)}`).join('; ')})` : ''}.{' '}
+        <strong>With the 1px page ring (R20):</strong> the badge&apos;s inner boundary is {innerConstant ? 'a CONSTANT' : 'NOT constant'} across all {blend.length} surfaces —
+        sold-out <strong>{r2(ringSoldOut)}</strong>, new <strong>{r2(ringNew)}</strong> (the tokens page&apos;s flat pairs page-on-ink-3 and page-on-new) — and the badge&apos;s
+        perceivable edge (fill or ring against the surround, whichever is stronger) is under 3:1 on <strong>{perceivableFails.length}</strong> surface{perceivableFails.length === 1 ? '' : 's'};
+        worst case {r2(Math.min(...blend.map((b) => Math.min(b.perceivableSoldOut, b.perceivableNew))))}.
       </div>
       {apiDown ? <div className="notice">The dev API did not answer ({newest.error ?? cheapest.error}); start <code>php artisan serve</code> in core/ or set <code>TOKENS_API_BASE</code>.</div> : null}
 
@@ -116,22 +135,39 @@ export default async function CardPage() {
         Measured here: the pill FILL against the blended surface — a graphic boundary, WCAG 1.4.11, {REQUIREMENT.ui}:1 — and, for reference, ink and ink-3 text on the surface, which the card never does.
       </p>
       <table>
-        <thead><tr><th>tint</th><th>photo background</th><th>blended surface</th><th className="num">L*</th><th className="num">sold-out pill fill (ink-3) vs surface</th><th className="num">new pill fill vs surface</th><th className="num">ink text</th><th className="num">ink-3 text</th></tr></thead>
+        <thead><tr><th>tint</th><th>photo background</th><th>blended surface</th><th className="num">L*</th><th className="num">sold-out fill vs surround</th><th className="num">new fill vs surround</th><th className="num">ring (page) vs surround</th><th className="num">inner: fill vs ring</th><th className="num">perceivable edge (worst of the two pills)</th></tr></thead>
         <tbody>
-          {blend.map((b) => (
-            <tr key={`${b.tint}/${b.bg}`}>
-              <td><code>{b.tint}</code></td>
-              <td><span className="swatch" style={{ background: b.bgHex }} />{b.bg} <small>{b.bgHex}</small></td>
-              <td><span className="swatch" style={{ background: b.surface }} /><code>{b.surface}</code> <span className="pillx" style={{ background: tok('ink-3'), marginInlineStart: 8, outline: `6px solid ${b.surface}` }}>Sold out</span></td>
-              <td className="num">{r2(b.lstar)}</td>
-              <td className={`num ${b.soldOut >= REQUIREMENT.ui ? 'pass' : 'fail'}`}>{r2(b.soldOut)} {b.soldOut >= REQUIREMENT.ui ? 'pass' : 'FAIL'}</td>
-              <td className={`num ${b.isNew >= REQUIREMENT.ui ? 'pass' : 'fail'}`}>{r2(b.isNew)} {b.isNew >= REQUIREMENT.ui ? 'pass' : 'FAIL'}</td>
-              <td className={`num ${b.ink >= REQUIREMENT.text ? 'pass' : 'fail'}`}>{r2(b.ink)}</td>
-              <td className={`num ${b.ink3 >= REQUIREMENT.text ? 'pass' : 'fail'}`}>{r2(b.ink3)}</td>
-            </tr>
-          ))}
+          {blend.map((b) => {
+            const perceivable = Math.min(b.perceivableSoldOut, b.perceivableNew)
+            return (
+              <tr key={`${b.tint}/${b.bg}`}>
+                <td><code>{b.tint}</code></td>
+                <td><span className="swatch" style={{ background: b.bgHex }} />{b.bg} <small>{b.bgHex}</small></td>
+                <td><span className="swatch" style={{ background: b.surface }} /><code>{b.surface}</code> <span className="pillx" style={{ background: tok('ink-3'), marginInlineStart: 8, outline: `6px solid ${b.surface}`, boxShadow: `0 0 0 1px ${tok('page')}` }}>Sold out</span></td>
+                <td className="num">{r2(b.lstar)}</td>
+                <td className={`num ${b.soldOut >= REQUIREMENT.ui ? 'pass' : 'fail'}`}>{r2(b.soldOut)}</td>
+                <td className={`num ${b.isNew >= REQUIREMENT.ui ? 'pass' : 'fail'}`}>{r2(b.isNew)}</td>
+                <td className="num">{r2(b.ringVsSurface)}</td>
+                <td className="num">{r2(ringSoldOut)} / {r2(ringNew)}</td>
+                <td className={`num ${perceivable >= REQUIREMENT.ui ? 'pass' : 'fail'}`}>{r2(perceivable)} {perceivable >= REQUIREMENT.ui ? 'pass' : 'FAIL'}</td>
+              </tr>
+            )
+          })}
         </tbody>
       </table>
+      <h3>The control: the card still multiplies — a mid-grey square over each tint, beside the flat grey and the computed blend</h3>
+      <p className="meta">The image is a data-URI {GREY} square (no network). If the tile reads as the right-hand swatch (the computed multiply) and not as the middle one (flat grey), the photo layer still blends; the badge sits on it unblended, with its ring.</p>
+      <div className="grid" style={{ '--cols': 4 }}>
+        {TINTS.map((t) => (
+          <div key={t}>
+            <BfProductCard product={{ id: `ctl-${t}`, slug: 'control', family: t === 'tint-watch' ? 'watch' : t === 'tint-fashion' ? 'fashion' : t === 'tint-tech' ? 'electronics' : 'bag', title: { en: `control — ${t}` }, brand: { name: { en: 'control' } }, image: { src: greySvg }, price: { amount: 1000, sale_amount: 800, has_sale: true, discount_pct: 20, currency: 'EGP' }, stock: { in_stock: false }, colors: [] }} lang="en" />
+            <div className="cap">
+              <span className="swatch" style={{ background: GREY }} /> flat {GREY} ·{' '}
+              <span className="swatch" style={{ background: multiply(GREY, tok(t)) }} /> computed multiply {multiply(GREY, tok(t))}
+            </div>
+          </div>
+        ))}
+      </div>
 
       <h2>2. The four real shapes from the demo data</h2>
       <div className="grid" style={{ '--cols': 4 }}>
@@ -159,8 +195,18 @@ export default async function CardPage() {
             {high ? <div><BfProductCard product={high} lang="en" density="compact" /><div className="cap">compact density (rails)</div></div> : null}
             {high ? <div><BfProductCard product={high} lang="ar" density="compact" /><div className="cap">compact, Arabic</div></div> : null}
           </div>
-          <h3>Phone width (390): 2 across, 8px gap, the price row at the stress values</h3>
+          <h3>Phone width (390): 2 across, 8px gap, the price block at the stress values</h3>
           <div className="phone"><div className="grid"><BfProductCard product={stressHigh} lang="en" /><BfProductCard product={stressHigh} lang="ar" /></div></div>
+          <h3>The breaking point: the same 169px card at ever larger prices (R19), en and ar — measured by scrollWidth in the browser</h3>
+          <p className="meta">Each ladder card is <code>data-ladder</code>-tagged; the browser measurement reads whether either price line overflows its card.</p>
+          <div className="phone"><div className="grid">
+            {[99999, 999999, 9999999, 99999999, 999999999].flatMap((amount) => ['en', 'ar'].map((lang) => (
+              <div key={`${amount}-${lang}`} data-ladder={amount} data-lang={lang}>
+                <BfProductCard product={withPrice(high ?? shelf[0], amount, Math.round(amount * 0.8))} lang={lang} />
+                <div className="cap">{amount.toLocaleString('en-EG')} · {lang}</div>
+              </div>
+            )))}
+          </div></div>
         </>
       ) : null}
 

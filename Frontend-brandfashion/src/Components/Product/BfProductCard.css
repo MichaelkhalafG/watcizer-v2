@@ -32,11 +32,18 @@
 .bf-card__img.is-photo { mix-blend-mode: multiply; }
 .bf-card__img.is-placeholder { opacity: 0.6; }
 
-/* one badge, inset 8 from top and inline-start, 10/600, 5×8 padding, pill */
+/* one badge, inset 8 from top and inline-start, 10/600, 5×8 padding, pill.
+   OUTSIDE THE BLEND (R20, 2026-10-16): only the <img> carries mix-blend-mode, and the badge is a
+   later sibling painted above it, so its fill was never multiplied — but its BOUNDARY was against
+   whatever the photo had become (1.29–1.47 over a mid-grey sweep). The 1px `page` ring gives the
+   pill a constant neighbour: fill-vs-ring is the flat pair the tokens page measured (5.74 / 6.35)
+   on every surface, and the ring itself is what reads against a dark blend. `isolation` keeps the
+   badge out of any blend group a future rule might create around it. */
 .bf-card__badge {
-  position: absolute; top: 8px; inset-inline-start: 8px;
+  position: absolute; top: 8px; inset-inline-start: 8px; isolation: isolate;
   font-size: var(--wz-fs-xs); font-weight: 600; line-height: 1; padding: 5px 8px;
   border-radius: var(--wz-r-pill); color: var(--wz-on-ink); letter-spacing: 0;
+  box-shadow: 0 0 0 1px var(--wz-page);
 }
 .bf-card__badge--sold-out { background: var(--wz-ink-3); }
 .bf-card__badge--new { background: var(--wz-new); }
@@ -56,9 +63,14 @@
 .bf-card__dot { width: 10px; height: 10px; border-radius: var(--wz-r-swatch); border: 1px solid var(--wz-edge); display: inline-block; }
 .bf-card__more { font-size: var(--wz-fs-xs); font-weight: 600; color: var(--wz-ink-3); line-height: 1; }
 
-/* price 14/600 ink · old 11 struck ink-3 · percent 11/600 sale — one row, it must hold EGP 214,380 */
-.bf-card__price { display: flex; align-items: baseline; gap: 6px; flex-wrap: nowrap; white-space: nowrap; font-variant-numeric: tabular-nums; min-width: 0; }
-.bf-card__now { font-size: var(--wz-fs-base); font-weight: 600; color: var(--wz-ink); }
+/* price 14/600 ink · old 11 struck ink-3 · percent 11/600 sale — TWO LINES, 32px fixed (R19, 2026-10-16):
+   the current price on its own line, the struck price and the percent on the line below. One row could
+   not hold the spec's six-figure stress value on a 169px phone card (213px needed); stacking holds it with
+   the full amount — no abbreviation, §5 writes money as `EGP 3,900` — and the block is the same height on
+   every card, sale or not, so the grid never jogs. */
+.bf-card__price { display: grid; grid-template-rows: 17px 13px; row-gap: 2px; height: 32px; align-items: baseline; font-variant-numeric: tabular-nums; min-width: 0; white-space: nowrap; }
+.bf-card__now { font-size: var(--wz-fs-base); font-weight: 600; color: var(--wz-ink); line-height: 17px; }
+.bf-card__old { display: flex; gap: 6px; align-items: baseline; line-height: 13px; min-height: 13px; }
 .bf-card__was { font-size: 11px; font-weight: 400; color: var(--wz-ink-3); }
 .bf-card__pct { font-size: 11px; font-weight: 600; color: var(--wz-sale); }
 .bf-card__rating { font-size: var(--wz-fs-xs); color: var(--wz-ink-2); margin-top: 4px; }

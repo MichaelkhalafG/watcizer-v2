@@ -98,8 +98,10 @@ export default function BfProductCard({
           </div>
           <div className="bf-card__price">
             <span className="bf-card__now">{now}</span>
-            {was ? <s className="bf-card__was">{was}</s> : null}
-            {pct != null ? <span className="bf-card__pct">−{pct}%</span> : null}
+            <span className="bf-card__old">
+              {was ? <s className="bf-card__was">{was}</s> : null}
+              {pct != null ? <span className="bf-card__pct">−{pct}%</span> : null}
+            </span>
           </div>
           {showStars ? <div className="bf-card__rating">★ {Number(rating.avg).toFixed(1)} ({rating.count})</div> : null}
         </div>
