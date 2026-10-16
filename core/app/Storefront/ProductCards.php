@@ -15,9 +15,16 @@ use stdClass;
  * per id set, brand/grade/category names come from the cached lookups and tree.
  *
  * The card is the listing unit: it carries what a card renders (title, price, cover, brand,
- * grade, primary category, stock, rating, position flags). Filter facets (genders, colours,
- * filter ids) are NOT on the card — v2 filters server-side, so the client never needs them per
- * row; they live on the detail (`attributes`, `specs`). This keeps §5.3's listing budget honest.
+ * grade, primary category, stock, rating, position flags — and, since 2026-10-16, the product's
+ * attribute COLOURS). Filter facets (genders, filter ids) are NOT on the card — v2 filters
+ * server-side, so the client never needs them per row; they live on the detail (`attributes`,
+ * `specs`). This keeps §5.3's listing budget honest.
+ *
+ * Colours are the one facet that moved onto the card, deliberately: BRAND_FASHION_UI_SPEC v2.5
+ * §8.2 puts a DESCRIPTIVE swatch row on every card (dial then band, as `catalog_product_color`
+ * positions them; 92.3% of visible products carry one), and a card cannot render what the row
+ * does not carry. One batch query per page (`colors()`), hex and names from the cached lookups —
+ * the listing budget in QueryBudgetTest grew by exactly that one query.
  */
 final class ProductCards
 {
@@ -81,10 +88,11 @@ final class ProductCards
         $translations = $this->translations($ids, ['title', 'short_description']);
         $covers = $this->covers($ids);
         $primary = $this->primaryPlacements($ids);
+        $colors = $this->colors($ids);
 
         $out = [];
         foreach ($rows as $row) {
-            $out[] = $this->card($row, $translations, $covers, $primary);
+            $out[] = $this->card($row, $translations, $covers, $primary, $colors);
         }
 
         return $out;
@@ -94,9 +102,10 @@ final class ProductCards
      * @param  array<int, array<string, array<string, string>>>  $translations  product id => field => locale => value
      * @param  array<int, array<string, mixed>>  $covers
      * @param  array<int, int>  $primary  product id => node id
+     * @param  array<int, list<array<string, mixed>>>  $colors  product id => attribute colours, dial then band then main
      * @return array<string, mixed>
      */
-    public function card(stdClass $row, array $translations, array $covers, array $primary): array
+    public function card(stdClass $row, array $translations, array $covers, array $primary, array $colors = []): array
     {
         $id = Row::int($row, 'product_id');
         $tr = $translations[$id] ?? [];
@@ -114,6 +123,7 @@ final class ProductCards
             'grade' => $this->lookups->ref('grades', Row::nint($row, 'grade_id')),
             'primary_category' => $primaryNode === null ? null : CategoryTree::ref($primaryNode),
             'image' => $covers[$id] ?? null,
+            'colors' => $colors[$id] ?? [],
             'price' => StorefrontPricing::resolve(Row::money($row, 'effective_price'), Row::nmoney($row, 'effective_sale_price'), $this->currency()),
             'stock' => ['express' => Row::int($row, 'stock_express'), 'market' => Row::int($row, 'stock_market'), 'in_stock' => Row::bool($row, 'in_stock')],
             'rating' => ['avg' => Row::nfloat($row, 'rating_avg'), 'count' => Row::int($row, 'rating_count')],
@@ -188,6 +198,51 @@ final class ProductCards
                 continue;
             }
             $out[$pid] = self::image($r);
+        }
+
+        return $out;
+    }
+
+    /**
+     * product id => the product's ATTRIBUTE colours for the card's swatch row (spec §8.2): dial first,
+     * then band, then main, each in its own position order; the same colour is listed once. These
+     * describe the product — they are `catalog_product_color` rows, never variant rows — and the
+     * hex and names come from the cached colours lookup, so this is one query per page of cards.
+     *
+     * @param  list<int>  $ids
+     * @return array<int, list<array<string, mixed>>>
+     */
+    public function colors(array $ids): array
+    {
+        $out = [];
+        if ($ids === []) {
+            return $out;
+        }
+        $order = ['dial' => 0, 'band' => 1, 'main' => 2];
+        $rows = DB::table('catalog_product_color')
+            ->select(['product_id', 'color_id', 'role', 'position'])
+            ->whereIn('product_id', $ids)
+            ->orderBy('product_id')->orderBy('position')->orderBy('color_id')
+            ->get();
+        /** @var array<int, list<array{role: string, position: int, color_id: int}>> $grouped */
+        $grouped = [];
+        foreach ($rows as $r) {
+            $grouped[Row::int($r, 'product_id')][] = ['role' => Row::str($r, 'role'), 'position' => Row::int($r, 'position'), 'color_id' => Row::int($r, 'color_id')];
+        }
+        foreach ($grouped as $pid => $links) {
+            usort($links, fn (array $a, array $b): int => [$order[$a['role']] ?? 9, $a['position'], $a['color_id']] <=> [$order[$b['role']] ?? 9, $b['position'], $b['color_id']]);
+            $seen = [];
+            foreach ($links as $link) {
+                if (isset($seen[$link['color_id']])) {
+                    continue;
+                }
+                $ref = $this->lookups->ref('colors', $link['color_id']);
+                if ($ref === null) {
+                    continue;
+                }
+                $seen[$link['color_id']] = true;
+                $out[$pid][] = $ref + ['role' => $link['role']];
+            }
         }
 
         return $out;

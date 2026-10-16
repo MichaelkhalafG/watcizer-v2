@@ -91,6 +91,21 @@ final class ProductDetail
         }
 
         $pivots = $this->pivots($productId);
+        $dial = $this->colourRefs($pivots['dial']);
+        $band = $this->colourRefs($pivots['band']);
+        $main = $this->colourRefs($pivots['main']);
+        // The card's `colors` (spec §8.2, dial → band → main, each once) from the pivots this detail
+        // already loaded — the same list a listing row carries, with no extra query.
+        $cardColours = [];
+        foreach (['dial' => $dial, 'band' => $band, 'main' => $main] as $role => $refs) {
+            foreach ($refs as $ref) {
+                $cid = Val::int($ref, 'id');
+                if (! isset($cardColours[$cid])) {
+                    $cardColours[$cid] = $ref + ['role' => $role];
+                }
+            }
+        }
+        $card['colors'] = array_values($cardColours);
         $categories = [];
         foreach (DB::table('storefront_category_product')->select(['storefront_category_id', 'is_primary'])->where('storefront_id', $this->ctx->id())->where('product_id', $productId)->orderByDesc('is_primary')->orderBy('storefront_category_id')->get() as $pl) {
             $node = $this->tree->node(Row::int($pl, 'storefront_category_id'));
@@ -120,11 +135,7 @@ final class ProductDetail
             'attributes' => [
                 'features' => array_values(array_filter(array_map(fn (int $i) => $this->lookups->ref('features', $i), $pivots['features']))),
                 'genders' => array_values(array_filter(array_map(fn (int $i) => $this->lookups->ref('genders', $i), $pivots['genders']))),
-                'colors' => [
-                    'dial' => array_values(array_filter(array_map(fn (int $i) => $this->lookups->ref('colors', $i), $pivots['dial']))),
-                    'band' => array_values(array_filter(array_map(fn (int $i) => $this->lookups->ref('colors', $i), $pivots['band']))),
-                    'main' => array_values(array_filter(array_map(fn (int $i) => $this->lookups->ref('colors', $i), $pivots['main']))),
-                ],
+                'colors' => ['dial' => $dial, 'band' => $band, 'main' => $main],
             ],
             'categories' => $categories,
             'breadcrumb' => $breadcrumb,
@@ -220,6 +231,17 @@ final class ProductDetail
         }
 
         return $out;
+    }
+
+    /**
+     * Colour refs for a list of colour ids, unknown ids dropped.
+     *
+     * @param  list<int>  $ids
+     * @return list<array<string, mixed>>
+     */
+    private function colourRefs(array $ids): array
+    {
+        return array_values(array_filter(array_map(fn (int $i): ?array => $this->lookups->ref('colors', $i), $ids)));
     }
 
     /** @return array{features: list<int>, genders: list<int>, dial: list<int>, band: list<int>, main: list<int>} */
