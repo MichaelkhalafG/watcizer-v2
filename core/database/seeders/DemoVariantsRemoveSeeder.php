@@ -12,6 +12,9 @@ final class DemoVariantsRemoveSeeder extends Seeder
 {
     public function run(): void
     {
+        // The same door, checked here too: this seeder must refuse on its own, not only because the
+        // one it calls would.
+        DemoVariantsSeeder::refuseUnlessLocal();
         $this->call(DemoVariantsSeeder::class, false, ['mode' => 'remove']);
     }
 }

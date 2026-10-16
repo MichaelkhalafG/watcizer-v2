@@ -16,7 +16,8 @@ use RuntimeException;
 
 /**
  * DEMO variants on REAL products — the ground for the Brand Fashion product card (B3) and the
- * variant picker (B5). LOCAL ONLY; refuses to run when `APP_ENV=production`.
+ * variant picker (B5). LOCAL ONLY: it refuses to run unless `APP_ENV=local` (an allow-list of one
+ * value, not a deny-list of production — see {@see self::refuseUnlessLocal()}).
  *
  * Why it exists (2026-10-16): the catalogue carries 24 fashion products with 110 size-only
  * variant rows, none of them visible on either shop, no colour on any row, no price delta. A
@@ -119,7 +120,7 @@ final class DemoVariantsSeeder extends Seeder
 
     public function run(InventoryService $inventory, ProductWriter $products, string $mode = 'seed'): void
     {
-        self::refuseOnProduction();
+        self::refuseUnlessLocal();
         $this->remove($inventory, $products);
         if ($mode === 'remove') {
             return;
@@ -127,10 +128,19 @@ final class DemoVariantsSeeder extends Seeder
         $this->seed($inventory, $products);
     }
 
-    public static function refuseOnProduction(): void
+    /**
+     * The environment guard: LOCAL only, not "anything but production". A seeder that writes 205
+     * variant rows is one `artisan` command away from a database nobody meant it to touch, so the
+     * door is an allow-list of one value, and the refusal names the value it saw.
+     */
+    public static function refuseUnlessLocal(): void
     {
-        if (app()->environment('production') === true) {
-            throw new RuntimeException('DemoVariantsSeeder is demo data for a local database; it refuses to run with APP_ENV=production.');
+        $env = app()->environment();
+        if ($env !== 'local') {
+            throw new RuntimeException(
+                "DemoVariantsSeeder refused: it is demo data for a LOCAL database and runs only with APP_ENV=local; "
+                ."this application's APP_ENV is '{$env}'. Nothing was written."
+            );
         }
     }
 
@@ -175,7 +185,7 @@ final class DemoVariantsSeeder extends Seeder
      */
     public function remove(InventoryService $inventory, ProductWriter $products): void
     {
-        self::refuseOnProduction();
+        self::refuseUnlessLocal();
         $variants = DB::table('catalog_product_variants')
             ->where('sku', 'like', self::SKU_PREFIX.'%')
             ->orderBy('id')
