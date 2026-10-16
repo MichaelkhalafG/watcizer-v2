@@ -8,7 +8,13 @@ use function Pest\Laravel\getJson;
 
 /*
  * §5.3 query budget per endpoint, asserted with the query log on the default connection:
- * listing ≤ 6, PDP ≤ 13, meta ≤ 20, sitemap chunk ≤ 3.
+ * listing ≤ 6, PDP ≤ 14, meta ≤ 20, sitemap chunk ≤ 3.
+ *
+ * 2026-10-16, two deliberate moves of one query each, both measured here: the cold PDP went
+ * 13 → 14 because the per-version lookup cache now loads a twelfth table, `sizes` (V2-SIZE-NULL —
+ * it was the one lookup table the registry lacked, and every variant answered `size: null`); the
+ * listing gained the card's attribute colours (spec §8.2's swatch row) as one batch query per page
+ * — 5 → 6 warm, inside the existing budget. Neither grows with the number of rows.
  *
  * The PDP budget was 12 until wave 3.5, which added ONE query: the product's active variants.
  * It is one flat SELECT on an indexed `product_id`, it runs once per cold render (the warm PDP
@@ -56,7 +62,7 @@ it('stays within the per-endpoint query budgets once the storefront caches are w
         ->and($warm['listing'])->toBeLessThanOrEqual(6)
         ->and($warm['listing_category'])->toBeLessThanOrEqual(6)
         ->and($warm['listing_search'])->toBeLessThanOrEqual(6)
-        ->and($warm['pdp_cold'])->toBeLessThanOrEqual(13)
+        ->and($warm['pdp_cold'])->toBeLessThanOrEqual(14)
         ->and($warm['pdp_warm'])->toBeLessThanOrEqual(3)
         ->and($warm['sitemap_products'])->toBeLessThanOrEqual(3)
         ->and($warm['sitemap_categories'])->toBeLessThanOrEqual(3);

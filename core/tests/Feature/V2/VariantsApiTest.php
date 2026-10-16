@@ -157,3 +157,32 @@ it('never recommends a variant product that has nothing buyable left', function 
 
     expect(array_column($related, 'id'))->not->toContain($productId);
 });
+
+it('resolves a variant\'s SIZE to a named ref with its type and order, not null', function () {
+    // V2-SIZE-NULL (2026-10-16): `Lookups::TABLES` had no `sizes` entry, so every variant row answered
+    // `size: null` while the label said "44mm". The storefront's size picker reads THIS field — a
+    // size derived from the label is a second source of truth that breaks the day a label is edited.
+    $slug = H::visibleSlug();
+    $productId = productIdForSlug($slug);
+    $f = VariantFixture::converted(2, 3, $productId);
+    $sizeIds = DB::table('catalog_sizes')->where('type', 'watch')->orderBy('sort')->limit(2)->pluck('id')->all();
+    expect($sizeIds)->toHaveCount(2, 'the catalogue carries watch sizes; the fixture needs two');
+    $first = T::int($sizeIds[0]);
+    $second = T::int($sizeIds[1]);
+    $secondSort = T::int(DB::table('catalog_sizes')->where('id', $second)->value('sort'));
+    $expected = T::str(DB::table('catalog_size_translations')->where('size_id', $second)->where('locale', 'en')->value('name'));
+    StockWriteGuard::allow(fn () => DB::table('catalog_product_variants')->where('id', $f['variants'][0])->update(['size_id' => $first]));
+    StockWriteGuard::allow(fn () => DB::table('catalog_product_variants')->where('id', $f['variants'][1])->update(['size_id' => $second]));
+    H::flush();
+
+    $variants = H::rows(H::arr(getJson(H::base('products/'.$slug))->assertOk()->json('product'))['variants']);
+    $size = H::arr($variants[1]['size']);
+
+    expect($size['id'])->toBe($second)
+        ->and(H::arr($size['name'])['en'])->toBe($expected)
+        ->and($size['type'])->toBe('watch')
+        ->and($size['sort'])->toBe($secondSort)
+        ->and(H::arr($variants[0]['size'])['id'])->toBe($first)
+        // a colour-less fixture row keeps `color: null` — null means "none", never "unresolved"
+        ->and($variants[0]['color'])->toBeNull();
+});
