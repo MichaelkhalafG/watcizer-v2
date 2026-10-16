@@ -213,6 +213,21 @@ it('refuses uploads of REAL hostile bytes on disk and writes nothing into the me
     };
 
     $dir = sys_get_temp_dir().'/adv-up-'.bin2hex(random_bytes(4));
+    /*
+     * The fixture below is a PHP web shell dressed as an image. On the developer's machine Defender
+     * quarantines it the moment it lands (2026-10-16, event 1116/1117), which is right — and which is
+     * why the suite writes it into ITS OWN temp directory (phpunit.xml: TMP/TEMP →
+     * storage/framework/testing/tmp) and never into the user's %TEMP%. This assertion is the proof
+     * that the redirection is in force; it is the one place the suite checks where its scratch
+     * files go. Windows only: sys_get_temp_dir() reads TMP there and nowhere else.
+     */
+    if (DIRECTORY_SEPARATOR === '\\') {
+        $owned = realpath(base_path('storage/framework/testing/tmp'));
+        expect($owned)->not->toBeFalse('storage/framework/testing/tmp does not exist — the suite\'s temp directory is missing')
+            ->and(str_starts_with(strtolower(str_replace('/', '\\', $dir)), strtolower((string) $owned)))
+            ->toBeTrue("the upload fixture would land in {$dir}, outside the suite's own temp directory {$owned}");
+    }
+    fwrite(STDERR, "\nadversarial upload fixture directory: {$dir}\n");
     mkdir($dir, 0777, true);
 
     $files = [

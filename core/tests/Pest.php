@@ -23,6 +23,17 @@ use Tests\Support\StorefrontIdentityFixture;
 use Tests\Support\StorefrontMailboxFixture;
 use Tests\TestCase;
 
+/*
+ * The suite's own temporary directory (2026-10-16, DEFENDER-TEST-FIXTURE). phpunit.xml points TMP
+ * and TEMP at storage/framework/testing/tmp so that no test writes scratch files — the adversarial
+ * upload fixture among them — into the user's %TEMP%. storage/framework/testing is gitignored, so
+ * the directory is created here, before any test asks sys_get_temp_dir() for it.
+ */
+$suiteTmp = __DIR__.'/../storage/framework/testing/tmp';
+if (! is_dir($suiteTmp)) {
+    mkdir($suiteTmp, 0777, true);
+}
+
 pest()->extend(TestCase::class)
     ->use(DatabaseTransactions::class)
     // W2 (2026-10-13): both storefronts identified inside each test's transaction — see the fixture.
