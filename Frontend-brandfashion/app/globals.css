@@ -63,6 +63,23 @@
   --wz-fs-xl: 24px;
   --wz-fs-2xl: 32px;
   --wz-fs-3xl: 40px;
+
+  /* ── Spec tokens the sheet lacked, added for B2 (BRAND_FASHION_UI_SPEC v2.5 §4, §6, §7; 2026-10-16).
+     Values are the spec's; the tokens page (app/(dev)/tokens) reads THIS file and measures them. */
+  --wz-page: #FFFFFF;             /* §4.1 `page` — the page ground; every "on white" ratio is on this */
+  --wz-tint-watch: #E6F6EE;       /* §4.3 aisle tint, ground only — watch */
+  --wz-tint-fashion: #FFEFE4;     /* §4.3 — fashion */
+  --wz-tint-leather: #F3EEE4;     /* §4.3 — bag · wallet · perfume, and the DEFAULT for anything else */
+  --wz-tint-tech: #E8F0FF;        /* §4.3 — electronics */
+  --wz-disabled-fg: #777777;      /* §7.1 disabled button label (exempt: inactive control, WCAG 1.4.3) */
+  --wz-disabled-bg: #E5E5E5;      /* §7.1 disabled button fill */
+  --wz-focus-ring: #111111;       /* §7.2 the one ring, 2px, offset 2; white on ink surfaces */
+  --wz-focus-ring-on-ink: #FFFFFF;
+  --wz-r-swatch: 2px;             /* §6 radius: swatch */
+  --wz-r-input: 8px;              /* §6 radius: input / button */
+  --wz-r-card: 10px;              /* §6 radius: card */
+  --wz-r-section: 12px;           /* §6 radius: banner / section */
+  --wz-r-pill: 20px;              /* §6 radius: pill */
 }
 [dir='rtl'] {
   --wz-serif: var(--font-alexandria), 'Segoe UI', Arial, sans-serif;
