@@ -1,33 +1,34 @@
-# core suite — the KNOWN-RED baseline. REBUILT 2026-10-16 against a fresh production export; the
-# 60-entry baseline of 2026-10-15 is RETIRED and this file replaces it (two numbers must not circulate).
+# core suite — the KNOWN-RED baseline. REBUILT 2026-10-17 on the engine that serves customers: 11.8.9-MariaDB.
+# The 59-entry baseline of 2026-10-16 was measured on MariaDB 10.4.32 — the wrong engine — and is RETIRED;
+# this file replaces it (two numbers must not circulate). Entries that moved between engines are listed below
+# in the header, so the move is visible when Watchizer's production figure is compared.
 #
-# Measured against: D:\eleganceeg-20261016.sql — 33,359,147 bytes,
-#   sha256 7e35897c4b95b76077719279dd2d601fbbeba93b0b89ebadb861f08cd8c96dad
-#   (phpMyAdmin 5.2.2 export of production, 2026-10-16 02:13 PM server time; 142 tables), imported over
-#   the dropped dev database on 2026-10-16, then the three recorded local adjustments: paymob 8963
-#   credentials NULL (14/10), the mailbox row re-encrypted under the LOCAL key with a dummy password (15/10),
-#   the three bf_bak_20261013_* tables dropped (15/10). Pending migrations: none.
+# Measured against: engine 11.8.9-MariaDB on 127.0.0.1:3307 (the MariaDB1189 service), global sql_mode
+#   `NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION`, time_zone `+00:00` — production's values (measured by the developer 2026-10-17),
+#   lower_case_table_names 1 (production 0 — unmatched on Windows, engine parity not full parity).
+#   Data: the pre-move dump D:\dumps\u591083448_watchizer-20261017-premove.sql — 29,929,123 bytes,
+#   sha256 92a27bc3e26b6b3f3fcf1a866db2cff5b29bbbb01c8a18685b2b1ee9007ea57d — which is the production export
+#   of 2026-10-16 (sha256 7e35897c4b95b76077719279dd2d601fbbeba93b0b89ebadb861f08cd8c96dad) plus the recorded
+#   local adjustments (paymob 8963 credentials NULL; the mailbox row re-encrypted under the LOCAL key with a
+#   dummy; the three bf_bak_20261013_* tables dropped) and DemoVariantsSeeder's 205 rows. Pending migrations: none.
 #
 # The local database is a production copy; every test below fails on production's rows or on a local
 # adjustment, never on the code (each line says which, in one phrase). tests/baseline/suite-baseline.sh
 # runs the suite and compares the failing set against this file BY NAME: a failure not listed here trips
-# the gate (exit 1); an entry that passes again must be removed (exit 2); a table whose checksum moved
-# across the run means a test wrote outside its transaction (exit 3, FIXTURE-LEAK).
+# the gate (exit 1); an entry that passes again must be removed (exit 2); a table whose content checksum
+# moved across the run means a test wrote outside its transaction (exit 3, FIXTURE-LEAK).
+#
+# TWO STATES: DemoVariantsSeeder may be applied (205 `DEMO-` variant rows on 33 products). Two tests then
+# fail BY DESIGN; their lines carry the tag `[demo-on]` and count only while the demo is on (line 0 of the
+# gate prints the state). Remove the demo with `php artisan db:seed --class=DemoVariantsRemoveSeeder`.
 #
 # BLIND SPOT, stated: a real regression inside one of these tests cannot be seen, because the test is
-# already red. Size: 59 baselined of 2110 tests in the suite (2.8%) — plus 2 entries that apply only
-# while the demo is on (below).
+# already red. Size: 61 baselined of 2117 tests in the suite (2.9%), demo-only entries included.
 # The frozen test database (TEST-LIVE-ROWS, deferred, costed) is what removes the blind spot.
 #
-# Written from the run of 2026-10-16: 59 failed, 39 skipped, 2012 passed (306192 assertions); the checksum guard reported 0 tables changed.
-#
-# TWO STATES (2026-10-16): DemoVariantsSeeder may be applied to the dev database (205 `DEMO-` variant
-# rows on 33 products visible on both shops, for the B3/B5 build). Two tests then fail BY DESIGN. Their
-# lines below carry the tag `[demo-on]` at the start of the cause. suite-baseline.sh detects the state
-# (DEMO rows present or not) and prints it as line 0: with the demo ON the tagged lines count as known
-# (61 expected); with the demo OFF they are excluded (59 expected) and MUST pass — a failure then trips
-# the gate. One file, two declared states. Remove the demo with `php artisan db:seed --class=DemoVariantsRemoveSeeder`.
-# Measured with the demo on, 2026-10-16: 61 failed, 39 skipped, 2010 passed (306081 assertions) — the 59 plus these two.
+# Written from the stage-3 run of 2026-10-17: 61 failed, 39 skipped, 2017 passed (306429 assertions). Stage 1 (engine) and stage 2 (sql_mode) gave the same 61; nothing moved between engines, between sql_modes, or between clocks — the two numbers did not diverge.
+# Moved between engines — RETIRED (passed on 11.8.9, failed on 10.4.32): 0
+# Moved between engines — NEW (failed on 11.8.9, passed on 10.4.32): 0
 # Format: <Class > test name, as Pest prints it after FAILED> | [demo-on]? <cause>
 
 Tests\Feature\Adversarial\PreventionProbeTest > it REFUSES a slug that slugifies to nothing, instead of s… | production's rows: the English dashboard language of the picked staff account (one), a count inflated by production rows (one)

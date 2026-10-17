@@ -41,9 +41,20 @@
 set -u
 cd "$(dirname "$0")/../.." || exit 3
 BASELINE="tests/baseline/suite-baseline.txt"
+# The client, host and port follow the app's .env (2026-10-17: the dev database moves to MariaDB 11.8.9 on
+# 127.0.0.1:3307 — production's engine — while XAMPP's 10.4 keeps 3306 for the other projects). MYSQL_BIN
+# overrides the client; by default the 11.8.9 client is used when it is installed, else XAMPP's.
+envval() { grep -E "^$1=" .env | head -1 | cut -d= -f2- | tr -d '"\r'; }
+DBNAME="${DB_DATABASE:-$(envval DB_DATABASE)}"
+DBHOST="${DB_HOST:-$(envval DB_HOST)}"; DBHOST="${DBHOST:-127.0.0.1}"
+DBPORT="${DB_PORT:-$(envval DB_PORT)}"; DBPORT="${DBPORT:-3306}"
+if [ -z "${MYSQL_BIN:-}" ]; then
+  for c in "/c/Program Files/MariaDB 11.8/bin/mariadb.exe" /c/mariadb-11.8.9/bin/mariadb.exe /c/xampp/mysql/bin/mysql.exe; do
+    [ -x "$c" ] && { MYSQL_BIN="$c"; break; }
+  done
+fi
 MYSQL="${MYSQL_BIN:-/c/xampp/mysql/bin/mysql.exe}"
-DBNAME="${DB_DATABASE:-$(grep -E '^DB_DATABASE=' .env | cut -d= -f2- | tr -d '"\r')}"
-sql() { "$MYSQL" -u root --protocol=tcp -h 127.0.0.1 -N -e "$1" 2>/dev/null | tr -d '\r'; }   # the Windows client ends each line with CR
+sql() { "$MYSQL" -u root --protocol=tcp -h "$DBHOST" -P "$DBPORT" -N -e "$1" 2>/dev/null | tr -d '\r'; }   # the Windows client ends each line with CR
 
 checksum_all() { # $1 = out file, $2 = database (default: the app's). One line per table: name, rows, content sum.
   local out="$1" db="${2:-$DBNAME}" t cols
@@ -69,8 +80,12 @@ if [ "${1:-}" = "--log" ]; then LOG="${2:-}"; [ -f "$LOG" ] || { echo "no such l
 demo_rows=$(sql "SELECT COUNT(*) FROM \`$DBNAME\`.catalog_product_variants WHERE sku LIKE 'DEMO-%'")
 demo_rows="${demo_rows:-0}"
 if [ "$demo_rows" -gt 0 ] 2>/dev/null; then STATE="demo-on"; else STATE="demo-off"; fi
-pid=$(tasklist 2>/dev/null | awk '/^mysqld.exe/ {print $2; exit}')
-echo "0. state: demo variants ${STATE#demo-} (${demo_rows} DEMO rows) — mysqld pid ${pid:-?} — database $DBNAME"
+# the server process is the one LISTENING on the port — two servers run on this machine since 2026-10-17
+# (XAMPP's 10.4 on 3306, the 11.8.9 service on 3307), and both binaries are called mysqld.exe
+pid=$(netstat -ano 2>/dev/null | awk -v p=":${DBPORT} " 'index($0, p) && /LISTENING/ {print $NF; exit}')
+pname=$([ -n "$pid" ] && tasklist /FI "PID eq $pid" 2>/dev/null | awk -v p="$pid" '$2 == p {print $1}')
+engine=$(sql "SELECT VERSION()")
+echo "0. state: demo variants ${STATE#demo-} (${demo_rows} DEMO rows) — ${pname:-server} pid ${pid:-?} on $DBHOST:$DBPORT — ${engine:-engine ?} — database $DBNAME"
 
 NOT_MEASURED="not measured (--log mode: no run, no checksum pair)"
 changed="$NOT_MEASURED"
