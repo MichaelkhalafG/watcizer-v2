@@ -216,6 +216,14 @@ assumed to be needed; the new server's log is what decides.
   mysql.db` on this instance: OK before and after the V2-READ-HALF test runs (04:0x–04:3x). **The experiment's
   first reading is clean** (no Defender exclusion on the datadir; one service restart; one full suite run under
   pid 1404 — see RUN_20261017.md).
+- **The second stop/start, read (Michael's; stop 11:54:17 after the laptop slept, start 16:13:27 — pid 21268).** All four
+  signatures again: `Normal shutdown` (initiated by root@127.0.0.1) → `Dumping buffer pool(s)` → `Shutdown completed; log
+  sequence number 437049901` → **(4) `Shutdown complete`**; then `Starting … as process 21268`, **(1)** no crash-recovery line
+  (`End of log at LSN=437049901` — the stop's number), **(2)** `Buffer pool(s) load completed at 261017 16:13:29`, **(3)** no
+  `Aria engine: starting recovery`; `ready for connections`. Application log since 16:13: the two expected grant warnings,
+  nothing else. Between the two starts pid 1404 carried a full night of suite runs and build steps (RUN_20261017.md rows
+  18–36) with no Aria line and no Errcode. **Read as evidence, not a conclusion** (MYSQLD-HYPOTHESES, 2026-10-17 16:29): two
+  clean cycles and a night of load on an UNEXCLUDED datadir point at H3; the datadir stays unexcluded and the watch continues.
 - **The `%%%%%%` junk bytes — attribution CORRECTED.** They were put down to XAMPP's batch scripts. They
   appeared in THIS server's log too, at the seam between pid 20812's last line (`Shutdown complete`) and pid
   1404's first (`Starting MariaDB … as process 1404`), on a service restart with no batch file anywhere near
