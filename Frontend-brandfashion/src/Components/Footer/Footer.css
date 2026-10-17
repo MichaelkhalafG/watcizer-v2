@@ -1,252 +1,40 @@
-/* ══════════════════════════════════════════════
-   FOOTER — dark luxury
-   ══════════════════════════════════════════════ */
+/* The Brand Fashion footer (spec v2.10 §10.8, §3, §4, §5, §7.2) — the identity pass of 2026-10-17.
+   An ink ground, white text at the §5 scale: column titles 14/600, links 14/400 at 72% white (≈ 10:1 on
+   ink), the bottom row 12. No caps, no tracking (§5). Desktop only — the wrapper below hides it under 768 as
+   before (phones have the drawer and the bottom nav). */
 
-/* Desktop-only, by CSS so it is in the server HTML (2026-09-30) — same 768 px breakpoint the
-   useMediaQuery gate used ('(min-width:768px)'), see app/(main)/desktop-footer.jsx. */
 @media (max-width: 767.98px) {
-  .wz-desktop-footer {
-    display: none;
-  }
+  .wz-desktop-footer { display: none; }
 }
 
-.wz-foot {
-  --foot-gold: var(--wz-on-ink); /* the footer is an ink ground: the accent is white */
-  position: relative;
-  background: #0a0a0a;
-  color: #fff;
-  padding-top: 1px; /* room for the accent line */
-}
+.bf-foot { background: var(--wz-ink); color: var(--wz-on-ink); margin-block-start: 48px; }
+.bf-foot a { color: inherit; text-decoration: none; }
+.bf-foot :focus-visible { outline: 2px solid var(--wz-focus-ring-on-ink); outline-offset: 2px; box-shadow: 0 0 0 2px var(--wz-ink); }
 
-/* Gold gradient hairline at the very top (30% opacity) */
-.wz-foot__accent {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 1px;
-  opacity: 0.3;
-  background: linear-gradient(90deg, transparent, var(--foot-gold), transparent);
-}
+.bf-foot__inner { max-width: 1200px; margin-inline: auto; padding: 40px 20px 32px; display: grid; grid-template-columns: 1.2fr repeat(4, 1fr); gap: 32px 24px; }
+.bf-foot__brand { display: flex; flex-direction: column; gap: 16px; align-items: flex-start; }
+.bf-foot__logo { display: inline-flex; border-radius: var(--wz-r-input); }
+.bf-foot__logo img { width: 96px; height: auto; display: block; }
+.bf-foot__social { display: flex; gap: 8px; }
+.bf-foot__social-btn { width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--wz-r-input); border: 1px solid rgba(255, 255, 255, 0.24); color: var(--wz-on-ink); }
+.bf-foot__social-btn:hover { background: var(--wz-on-ink); color: var(--wz-ink); border-color: var(--wz-on-ink); }
+.bf-foot__social-btn svg { width: 20px; height: 20px; }
 
-/* ── Main grid ─────────────────────────────────── */
-.wz-foot__main {
-  max-width: 1240px;
-  margin: 0 auto;
-  padding: 64px 28px 44px;
-  display: grid;
-  grid-template-columns: 1.7fr 1fr 1fr 1fr;
-  gap: 48px;
-}
+.bf-foot__col { min-width: 0; }
+.bf-foot__title { font-size: 14px; font-weight: 600; margin: 0 0 12px; text-transform: none; letter-spacing: 0; color: var(--wz-on-ink); }
+.bf-foot__links { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.bf-foot__link { display: inline-flex; align-items: center; min-height: 28px; font-size: 14px; color: rgba(255, 255, 255, 0.72); border-radius: 4px; }
+.bf-foot__link:hover { color: var(--wz-on-ink); text-decoration: underline; text-underline-offset: 3px; }
 
-.wz-foot__col {
-  display: flex;
-  flex-direction: column;
-}
+.bf-foot__bottom { border-block-start: 1px solid rgba(255, 255, 255, 0.14); }
+.bf-foot__bottom > * { max-width: 1200px; margin-inline: auto; padding-inline: 20px; }
+.bf-foot__copy { margin: 0; padding-block: 16px 0; font-size: 12px; color: rgba(255, 255, 255, 0.72); }
+.bf-foot__credit { margin: 0; padding-block: 8px 20px; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 12px; color: rgba(255, 255, 255, 0.72); }
+.bf-foot__credit-sep { color: rgba(255, 255, 255, 0.4); }
+.bf-foot__credit-name { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; color: var(--wz-on-ink); }
+.bf-foot__credit-name svg { width: 14px; height: 14px; }
 
-/* ── Brand column ──────────────────────────────── */
-.wz-foot__logo-link {
-  display: inline-block;
-  width: fit-content;
-}
-
-.wz-foot__logo {
-  height: 38px;
-  width: auto;
-  object-fit: contain;
-  /* invert the dark header logo to white on the dark footer */
-  filter: brightness(0) invert(1);
-}
-
-.wz-foot__tagline {
-  margin: 18px 0 22px;
-  max-width: 22ch;
-  font-size: 12px;
-  line-height: 1.7;
-  color: rgba(255, 255, 255, 0.5);
-}
-
-.wz-foot__social {
-  display: flex;
-  gap: 12px;
-}
-
-.wz-foot__social-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  color: rgba(255, 255, 255, 0.6);
-  font-size: 15px;
-  transition: background 0.25s ease, color 0.25s ease, border-color 0.25s ease,
-    transform 0.25s ease;
-}
-
-.wz-foot__social-btn:hover {
-  color: #fff;
-  border-color: rgba(255, 255, 255, 0.55);
-  transform: translateY(-2px);
-}
-
-/* ── Section titles ────────────────────────────── */
-.wz-foot__title {
-  margin: 0 0 20px;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
-  color: #fff;
-}
-
-/* ── Link lists ────────────────────────────────── */
-.wz-foot__links {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.wz-foot__link {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0;
-  background: none;
-  border: none;
-  font: inherit;
-  text-align: start;
-  text-decoration: none;
-  cursor: pointer;
-  font-size: 13.5px;
-  color: rgba(255, 255, 255, 0.55);
-  transition: color var(--wz-duration) var(--wz-ease),
-    transform var(--wz-duration) var(--wz-ease);
-}
-
-.wz-foot__link:hover {
-  color: var(--foot-gold);
-  transform: translateX(4px);
-}
-[dir='rtl'] .wz-foot__link:hover {
-  transform: translateX(-4px);
-}
-
-.wz-foot__wa-icon {
-  color: #25d366;
-  font-size: 16px;
-  flex-shrink: 0;
-}
-
-/* ── Bottom bar ────────────────────────────────── */
-.wz-foot__bottombar {
-  max-width: 1240px;
-  margin: 0 auto;
-  padding: 22px 28px 30px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.wz-foot__bottom-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
-}
-
-.wz-foot__copy {
-  margin: 0;
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.4);
-}
-
-.wz-foot__bottom-right {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-
-/* Developer credit — subtle bilingual row, separated by a hairline */
-.wz-foot__credit {
-  margin: 16px 0 0;
-  padding-top: 16px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  text-align: center;
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.45);
-}
-
-.wz-foot__credit-sep {
-  color: rgba(255, 255, 255, 0.25);
-}
-
-.wz-foot__credit-name {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: rgba(255, 255, 255, 0.55);
-  font-weight: 600;
-  text-decoration: none;
-  transition: color 0.2s ease;
-}
-
-.wz-foot__credit-name:hover {
-  color: var(--foot-gold);
-}
-
-/* WhatsApp glyph — small, inherits the link's text colour */
-.wz-foot__credit-wa {
-  width: 14px;
-  height: 14px;
-  flex-shrink: 0;
-}
-
-/* The shared language toggle, on the dark footer → white */
-.wz-foot .wz-lang-toggle {
-  color: #fff;
-  height: 34px;
-}
-
-.wz-foot .wz-lang-toggle:hover {
-  background: var(--foot-gold);
-  border-color: var(--foot-gold);
-  color: #0a0a0a;
-}
-
-/* ── Responsive ────────────────────────────────── */
-@media (max-width: 900px) {
-  .wz-foot__main {
-    grid-template-columns: 1fr 1fr;
-    gap: 36px 40px;
-    padding: 48px 24px 36px;
-  }
-  /* Brand spans the full width on its own row on tablet */
-  .wz-foot__brand {
-    grid-column: 1 / -1;
-  }
-}
-
-@media (max-width: 600px) {
-  .wz-foot__main {
-    grid-template-columns: 1fr;
-    gap: 32px;
-    padding: 40px 20px 28px;
-  }
-  .wz-foot__brand {
-    grid-column: auto;
-  }
-  .wz-foot__bottom-row {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 14px;
-  }
+@media (max-width: 1023.98px) {
+  .bf-foot__inner { grid-template-columns: repeat(2, 1fr); }
+  .bf-foot__brand { grid-column: 1 / -1; }
 }

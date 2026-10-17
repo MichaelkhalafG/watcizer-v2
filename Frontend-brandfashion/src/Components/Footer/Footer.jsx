@@ -3,159 +3,136 @@ import { memo } from 'react'
 import Image from 'next/image'
 import './Footer.css'
 import Link from '@/src/Components/LocaleLink'
-import { useRouter } from '@/src/Hooks/useLocaleRouter'
-import { FaWhatsapp } from 'react-icons/fa'
+import { FaWhatsapp, FaInstagram, FaFacebook } from 'react-icons/fa'
 import { useUIStore } from '../../Store/uiStore'
-import LanguageDropdown from '../LanguageDropdown/LanguageDropdowen'
+import { useTables } from '../../Hooks/queries/useTables'
+import { useNav } from '../../Hooks/queries/useNav'
+import { brandSlug, categorySlug } from '../../utils/slugs'
+import { TRUST_PAGES } from '../../content/trustPages'
 
-const logo = '/wordmark.svg'
+/*
+ * The Brand Fashion footer — spec v2.10 §10.8 ("categories, brands, main pages, social. No newsletter field"),
+ * §3 ("black does the work: footer"), §7.2 (white focus ring on ink). Reskinned per §17.2 on 2026-10-17 (the
+ * identity pass): same place in the layout (desktop only — phones have the drawer and the bottom nav, see
+ * app/(main)/desktop-footer.jsx), new columns and new styling.
+ *
+ * Every link is data or an existing route: the categories are the menu's category types (the same source and
+ * the same slug function as the header's Nav, so the two never disagree), the brands are the ones with
+ * products (`catalog/nav` brand_ids), the pages are the trust pages and the blog, the social links are the
+ * contact page's own cards (src/content/trustPages.js — ONE place to change when the client's handles land;
+ * today those cards still carry Watchizer's, a B8 item). No tagline: the copied one described a watch shop.
+ */
 
-const WHATSAPP_URL = 'https://wa.me/201274550956'
+const STR = {
+  en: { categories: 'Categories', brands: 'Brands', pages: 'Pages', account: 'Account', all: 'All products', offers: 'Offers', newest: 'New this week', blog: 'Blog', profile: 'My account', orders: 'My orders', cart: 'Cart', signIn: 'Sign in', follow: 'Follow us', rights: 'All rights reserved' },
+  ar: { categories: 'الفئات', brands: 'العلامات التجارية', pages: 'الصفحات', account: 'الحساب', all: 'كل المنتجات', offers: 'العروض', newest: 'جديد هذا الأسبوع', blog: 'المدونة', profile: 'حسابي', orders: 'طلباتي', cart: 'السلة', signIn: 'تسجيل الدخول', follow: 'تابعنا', rights: 'جميع الحقوق محفوظة' },
+}
+const SOCIAL_ICON = { whatsapp: FaWhatsapp, instagram: FaInstagram, facebook: FaFacebook }
 
 function Footer() {
   const { language } = useUIStore()
-  const router = useRouter()
-  const isRTL = language === 'ar'
-  const t = (en, ar) => (isRTL ? ar : en)
+  const lang = language === 'ar' ? 'ar' : 'en'
+  const isRTL = lang === 'ar'
+  const t = STR[lang]
   const year = new Date().getFullYear()
+  const { data: tables = {} } = useTables()
+  const { data: nav } = useNav()
 
-  // Shop column → real listing routes only.
-  const shopLinks = [
-    { label: t('Watches', 'ساعات'), onClick: () => router.push('/category/Watches') },
-    { label: t('Fashion', 'أزياء'), onClick: () => router.push('/category/Fashion') },
-    { label: t('Offers', 'العروض'), onClick: () => router.push('/offers') },
-    { label: t('New Arrivals', 'وصل حديثاً'), onClick: () => router.push('/listing?sort=newest') },
-    { label: t('All Products', 'كل المنتجات'), onClick: () => router.push('/listing') },
-  ]
+  const label = (item, key) =>
+    item?.translations?.find((x) => x.locale === language)?.[key] ??
+    item?.translations?.find((x) => x.locale === 'en')?.[key] ??
+    item?.[key] ??
+    ''
+  const categories = (tables?.categoryTypes || []).slice(0, 8)
+  const brandIds = new Set(nav?.brand_ids || [])
+  const brands = (tables?.brands || []).filter((b) => brandIds.has(b.id)).slice(0, 8)
+  const social = (TRUST_PAGES.contact?.[lang]?.cards || []).filter((c) => SOCIAL_ICON[c.icon])
 
-  // Account column → real user/auth routes only.
-  const accountLinks = [
-    { label: t('Profile', 'الملف الشخصي'), to: '/account?tab=profile' },
-    { label: t('My Orders', 'طلباتي'), to: '/account?tab=orders' },
-    { label: t('Cart', 'سلة المشتريات'), to: '/cart' },
-    { label: t('Sign In', 'تسجيل الدخول'), to: '/login' },
-  ]
-
-  const trustLinks = [
-    { label: t('About us', 'من نحن'), to: '/about-us' },
-    { label: t('Contact us', 'تواصل معنا'), to: '/contact-us' },
-    { label: t('Privacy policy', 'سياسة الخصوصية'), to: '/privacy-policy' },
-    { label: t('Terms and conditions', 'الشروط والأحكام'), to: '/terms-and-conditions' },
-  ]
+  const pages = [
+    ['/about-us', TRUST_PAGES.about?.[lang]?.title],
+    ['/contact-us', TRUST_PAGES.contact?.[lang]?.title],
+    ['/blogs', t.blog],
+    ['/privacy-policy', TRUST_PAGES.privacy?.[lang]?.title],
+    ['/terms-and-conditions', TRUST_PAGES.terms?.[lang]?.title],
+  ].filter(([, text]) => text)
 
   return (
-    <footer className="wz-foot" dir={isRTL ? 'rtl' : 'ltr'}>
-      <div className="wz-foot__accent" />
-
-      <div className="wz-foot__main">
-        {/* Column 1 — Brand */}
-        <div className="wz-foot__col wz-foot__brand">
-          <Link href="/" className="wz-foot__logo-link" aria-label="Brand Fashion">
-            {/* next/image (2026-10-11): the raw <img> downloaded the 141,944 B original on every page,
-                eagerly — on phones too, where the whole footer is display:none. quality 90 and a
-                width that resolves to the header logo's srcset widths (256/320) reuse its bytes;
-                lazy by default, so a hidden or unscrolled footer fetches nothing. */}
-            <Image src={logo} alt="Brand Fashion" className="wz-foot__logo" width={130} height={38} quality={90} />
+    <footer className="bf-foot" dir={isRTL ? 'rtl' : 'ltr'} lang={lang}>
+      <div className="bf-foot__inner">
+        <div className="bf-foot__brand">
+          <Link href="/" className="bf-foot__logo" aria-label="Brand Fashion">
+            <Image src="/logo-lockup-white.svg" alt="Brand Fashion" width={96} height={70} />
           </Link>
-          <p className="wz-foot__tagline">
-            {t(
-              "Egypt's premier destination for authentic luxury timepieces",
-              'وجهتك الأولى للساعات الفاخرة الأصلية في مصر',
-            )}
-          </p>
+          {social.length ? (
+            <div className="bf-foot__social" aria-label={t.follow}>
+              {social.map((c) => {
+                const Icon = SOCIAL_ICON[c.icon]
+                return (
+                  <a key={c.icon} className="bf-foot__social-btn" href={c.href} target="_blank" rel="noopener noreferrer" aria-label={c.label}>
+                    <Icon aria-hidden="true" />
+                  </a>
+                )
+              })}
+            </div>
+          ) : null}
         </div>
 
-        {/* Column 2 — Shop */}
-        <div className="wz-foot__col">
-          <h3 className="wz-foot__title">{t('Shop', 'تسوق')}</h3>
-          <ul className="wz-foot__links">
-            {shopLinks.map((link) => (
-              <li key={link.label}>
-                <button type="button" className="wz-foot__link" onClick={link.onClick}>
-                  {link.label}
-                </button>
+        <nav className="bf-foot__col" aria-label={t.categories}>
+          <h2 className="bf-foot__title">{t.categories}</h2>
+          <ul className="bf-foot__links">
+            {categories.map((ct) => (
+              <li key={ct.id}>
+                <Link className="bf-foot__link" href={`/category/${categorySlug(ct)}`}>{label(ct, 'category_type_name')}</Link>
               </li>
             ))}
+            <li><Link className="bf-foot__link" href="/listing?sort=newest">{t.newest}</Link></li>
+            <li><Link className="bf-foot__link" href="/offers">{t.offers}</Link></li>
+            <li><Link className="bf-foot__link" href="/listing">{t.all}</Link></li>
           </ul>
-        </div>
+        </nav>
 
-        {/* Column 3 — Account */}
-        <div className="wz-foot__col">
-          <h3 className="wz-foot__title">{t('Account', 'الحساب')}</h3>
-          <ul className="wz-foot__links">
-            {accountLinks.map((link) => (
-              <li key={link.to}>
-                <Link className="wz-foot__link" href={link.to}>
-                  {link.label}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </div>
+        {brands.length ? (
+          <nav className="bf-foot__col" aria-label={t.brands}>
+            <h2 className="bf-foot__title">{t.brands}</h2>
+            <ul className="bf-foot__links">
+              {brands.map((b) => (
+                <li key={b.id}>
+                  <Link className="bf-foot__link" href={`/brand/${brandSlug(b)}`} lang="en">{label(b, 'brand_name')}</Link>
+                </li>
+              ))}
+            </ul>
+          </nav>
+        ) : null}
 
-        {/* Column 4 — Support */}
-        <div className="wz-foot__col">
-          <h3 className="wz-foot__title">{t('Support', 'الدعم')}</h3>
-          <ul className="wz-foot__links">
-            <li>
-              <Link className="wz-foot__link" href="/blogs">
-                {t('Blog', 'المدونة')}
-              </Link>
-            </li>
-            <li>
-              <Link className="wz-foot__link" href="/offers">
-                {t('Latest Offers', 'أحدث العروض')}
-              </Link>
-            </li>
-            {/* The trust pages (2026-10-02). */}
-            {trustLinks.map((link) => (
-              <li key={link.to}>
-                <Link className="wz-foot__link" href={link.to}>
-                  {link.label}
-                </Link>
-              </li>
+        <nav className="bf-foot__col" aria-label={t.pages}>
+          <h2 className="bf-foot__title">{t.pages}</h2>
+          <ul className="bf-foot__links">
+            {pages.map(([href, text]) => (
+              <li key={href}><Link className="bf-foot__link" href={href}>{text}</Link></li>
             ))}
           </ul>
-        </div>
+        </nav>
+
+        <nav className="bf-foot__col" aria-label={t.account}>
+          <h2 className="bf-foot__title">{t.account}</h2>
+          <ul className="bf-foot__links">
+            <li><Link className="bf-foot__link" href="/account?tab=profile">{t.profile}</Link></li>
+            <li><Link className="bf-foot__link" href="/account?tab=orders">{t.orders}</Link></li>
+            <li><Link className="bf-foot__link" href="/cart">{t.cart}</Link></li>
+            <li><Link className="bf-foot__link" href="/login">{t.signIn}</Link></li>
+          </ul>
+        </nav>
       </div>
 
-      {/* Bottom bar */}
-      <div className="wz-foot__bottombar">
-        <div className="wz-foot__bottom-row">
-          <p className="wz-foot__copy">
-            {t(
-              `© ${year} Brand Fashion · All rights reserved`,
-              `© ${year} Brand Fashion · جميع الحقوق محفوظة`,
-            )}
-          </p>
-          <div className="wz-foot__bottom-right">
-            <LanguageDropdown />
-          </div>
-        </div>
-
-        {/* Developer credit — bilingual, always shown in both languages */}
-        <p className="wz-foot__credit" dir="ltr">
+      <div className="bf-foot__bottom">
+        <p className="bf-foot__copy">© {year} Brand Fashion · {t.rights}</p>
+        {/* Developer credit — bilingual, always shown in both languages (deliberate; the developer's own number) */}
+        <p className="bf-foot__credit" dir="ltr">
           <span dir="rtl">تطوير و تصميم مايكل خلف</span>
-          <span className="wz-foot__credit-sep" aria-hidden="true">|</span>
-          <a
-            className="wz-foot__credit-name"
-            href={WHATSAPP_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="Developed & Designed by Michael Khalaf — WhatsApp"
-          >
+          <span className="bf-foot__credit-sep" aria-hidden="true">|</span>
+          <a className="bf-foot__credit-name" href="https://wa.me/201274550956" target="_blank" rel="noopener noreferrer" aria-label="Developed & Designed by Michael Khalaf — WhatsApp">
             <span>Developed &amp; Designed by Michael Khalaf</span>
-            <svg
-              className="wz-foot__credit-wa"
-              xmlns="http://www.w3.org/2000/svg"
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="currentColor"
-              aria-hidden="true"
-            >
-              <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
-            </svg>
+            <FaWhatsapp aria-hidden="true" />
           </a>
         </p>
       </div>

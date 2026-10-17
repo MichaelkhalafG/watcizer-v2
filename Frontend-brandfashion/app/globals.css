@@ -165,7 +165,7 @@ h6 {
   position: sticky;
   top: 0;
   z-index: 1000;
-  border-radius: 0 0 16px 16px;
+  /* no rounded bottom: the Brand Fashion header is one flat ink bar (identity pass, 2026-10-17) */
 }
 
 /* ── Skip link (a11y) — off-screen until focused, then slides into view ── */
