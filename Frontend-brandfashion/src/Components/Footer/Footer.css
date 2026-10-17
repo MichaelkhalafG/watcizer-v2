@@ -11,7 +11,7 @@
 .bf-foot a { color: inherit; text-decoration: none; }
 .bf-foot :focus-visible { outline: 2px solid var(--wz-focus-ring-on-ink); outline-offset: 2px; box-shadow: 0 0 0 2px var(--wz-ink); }
 
-.bf-foot__inner { max-width: 1200px; margin-inline: auto; padding: 40px 20px 32px; display: grid; grid-template-columns: 1.2fr repeat(4, 1fr); gap: 32px 24px; }
+.bf-foot__inner { max-width: var(--bf-container); margin-inline: auto; padding: 40px var(--bf-gutter) 32px; display: grid; grid-template-columns: 1.2fr repeat(4, 1fr); gap: 32px 24px; }
 .bf-foot__brand { display: flex; flex-direction: column; gap: 16px; align-items: flex-start; }
 .bf-foot__logo { display: inline-flex; border-radius: var(--wz-r-input); }
 .bf-foot__logo img { width: 96px; height: auto; display: block; }
@@ -21,13 +21,13 @@
 .bf-foot__social-btn svg { width: 20px; height: 20px; }
 
 .bf-foot__col { min-width: 0; }
-.bf-foot__title { font-size: 14px; font-weight: 600; margin: 0 0 12px; text-transform: none; letter-spacing: 0; color: var(--wz-on-ink); }
+.bf-foot__title { font-size: var(--bf-body); font-weight: 700; margin: 0 0 12px; text-transform: none; letter-spacing: 0; color: var(--wz-on-ink); }
 .bf-foot__links { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
-.bf-foot__link { display: inline-flex; align-items: center; min-height: 28px; font-size: 14px; color: rgba(255, 255, 255, 0.72); border-radius: 4px; }
+.bf-foot__link { display: inline-flex; align-items: center; min-height: 28px; font-size: var(--bf-body); color: rgba(255, 255, 255, 0.72); border-radius: 4px; }
 .bf-foot__link:hover { color: var(--wz-on-ink); text-decoration: underline; text-underline-offset: 3px; }
 
 .bf-foot__bottom { border-block-start: 1px solid rgba(255, 255, 255, 0.14); }
-.bf-foot__bottom > * { max-width: 1200px; margin-inline: auto; padding-inline: 20px; }
+.bf-foot__bottom > * { max-width: var(--bf-container); margin-inline: auto; padding-inline: var(--bf-gutter); }
 .bf-foot__copy { margin: 0; padding-block: 16px 0; font-size: 12px; color: rgba(255, 255, 255, 0.72); }
 .bf-foot__credit { margin: 0; padding-block: 8px 20px; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 12px; color: rgba(255, 255, 255, 0.72); }
 .bf-foot__credit-sep { color: rgba(255, 255, 255, 0.4); }

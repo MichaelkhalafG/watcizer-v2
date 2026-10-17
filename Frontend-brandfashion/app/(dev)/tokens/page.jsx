@@ -312,7 +312,7 @@ export default async function TokensPage() {
       })()}
 
       {/* (e) type, space, states */}
-      <h2>(e) §5 type scale — Alexandria, rendered, en and ar</h2>
+      <h2>(e) §5 type scale — Watchizer’s face (Georgia en / El Messiri ar), rendered, en and ar</h2>
       <p className="tk-meta">Sizes read from the sheet&apos;s <code>--wz-fs-*</code>; weight from §5. Arabic gets +0.15 line-height at every step (§5), no letter-spacing. Digits stay Western in both.</p>
       {TYPE_STEPS.map((s) => {
         const size = sheet.byName[s.token]

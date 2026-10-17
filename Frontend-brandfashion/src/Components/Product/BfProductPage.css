@@ -1,49 +1,62 @@
-/* B5 — the Brand Fashion product page (spec v2.9 §10.3, §11.4, §11.5, §17.5, §12). Tokens from app/globals.css. */
+/* B5 — the Brand Fashion product page (spec v2.11 §10.3, §11.4, §11.5, §17.5, §12), re-cut 2026-10-18 on Watchizer's face.
+   Tokens from app/globals.css; the shared container and gutter. */
 
 .bf-pdp { background: var(--wz-page); color: var(--wz-ink); padding-block: 12px 96px; }
 @media (min-width: 1024px) { .bf-pdp { padding-block-end: 48px; } }
-.bf-pdp__inner { max-width: 1200px; margin-inline: auto; padding-inline: 16px; }
-@media (min-width: 600px) { .bf-pdp__inner { padding-inline: 20px; } }
-.bf-pdp__crumb { display: flex; gap: 6px; font-size: 12px; color: var(--wz-ink-2); margin-block-end: 12px; flex-wrap: wrap; }
+.bf-pdp__inner { max-width: var(--bf-container); margin-inline: auto; padding-inline: var(--bf-gutter); }
+.bf-pdp__crumb { display: flex; gap: 6px; font-size: var(--bf-small); color: var(--wz-ink-2); margin-block-end: 12px; flex-wrap: wrap; }
 .bf-pdp__crumb a { color: inherit; text-decoration: none; }
+.bf-pdp__crumb a:hover { text-decoration: underline; text-underline-offset: 3px; }
 
-/* desktop 7/5: gallery 680 · buy box 460 sticky at 80 (§10.3) */
+/* desktop: gallery (thumbs beside it) · buy box 460 sticky under the 104px header (§10.3) */
 .bf-pdp__top { display: grid; grid-template-columns: 1fr; gap: 16px; align-items: start; }
-@media (min-width: 1024px) { .bf-pdp__top { grid-template-columns: minmax(0, 680px) minmax(0, 460px); gap: 20px; justify-content: space-between; } }
+@media (min-width: 1024px) { .bf-pdp__top { grid-template-columns: minmax(0, 1fr) minmax(360px, 440px); gap: 32px; } }
 .bf-pdp__buy { position: static; }
-@media (min-width: 1024px) { .bf-pdp__buy { position: sticky; top: 80px; } }
+@media (min-width: 1024px) { .bf-pdp__buy { position: sticky; top: 120px; } }
 
-/* gallery: main 1:1 on the tile; phone swipe with dots; thumbs 72px under the main image (both directions, §12) */
-.bf-gal__main { position: relative; border-radius: var(--wz-r-section); overflow: hidden; background: var(--wz-tile); }
-.bf-gal__track { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; aspect-ratio: 1 / 1; }
+/* gallery (bug 7 of the review: a small photo floating in a large empty box) — the main image sits on the FAMILY TINT,
+   multiplied in like the card's, at 100% of a 1:1 frame capped at 600 px; on desktop the 64px thumbs stand at the
+   inline-start side and the frame fills the rest; phone keeps the swipe track with dots */
+.bf-gal { display: grid; grid-template-columns: 1fr; gap: 8px; }
+@media (min-width: 1024px) { .bf-gal { grid-template-columns: 64px minmax(0, 1fr); align-items: start; } .bf-gal__main { grid-column: 2; grid-row: 1; } .bf-gal__thumbs { grid-column: 1; grid-row: 1; } }
+.bf-gal__main { position: relative; border-radius: 8px; overflow: hidden; background: var(--bf-pdp-tint, var(--wz-tile)); max-height: 600px; }
+.bf-gal__track { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; aspect-ratio: 1 / 1; max-height: 600px; }
 .bf-gal__track::-webkit-scrollbar { display: none; }
-.bf-gal__slide { flex: 0 0 100%; scroll-snap-align: start; display: flex; align-items: center; justify-content: center; padding: 6%; }
-.bf-gal__slide img { width: 100%; height: 100%; object-fit: contain; }
+.bf-gal__slide { flex: 0 0 100%; scroll-snap-align: start; display: flex; align-items: center; justify-content: center; padding: 0; }
+.bf-gal__slide img { width: 100%; height: 100%; object-fit: contain; mix-blend-mode: multiply; }
 .bf-gal__badge { position: absolute; top: 12px; inset-inline-start: 12px; font-size: 10px; font-weight: 600; padding: 5px 8px; border-radius: var(--wz-r-pill); background: var(--wz-ink-3); color: #fff; box-shadow: 0 0 0 1px var(--wz-page); }
 .bf-gal__dots { display: flex; justify-content: center; gap: 6px; padding-block: 8px; }
 .bf-gal__dot { width: 6px; height: 6px; border-radius: 50%; background: var(--wz-edge); border: 0; padding: 0; }
 .bf-gal__dot[aria-current='true'] { background: var(--wz-ink); }
 @media (min-width: 1024px) { .bf-gal__dots { display: none; } }
-.bf-gal__thumbs { display: none; gap: 8px; margin-block-start: 8px; overflow-x: auto; }
+.bf-gal__thumbs { display: none; gap: 8px; flex-direction: column; }
 @media (min-width: 1024px) { .bf-gal__thumbs { display: flex; } }
-.bf-gal__thumb { width: 72px; height: 72px; flex: none; border-radius: var(--wz-r-input); border: 1px solid var(--wz-line); background: var(--wz-tile); padding: 4px; cursor: pointer; }
+.bf-gal__thumb { width: 64px; height: 64px; flex: none; border-radius: 6px; border: 1px solid var(--wz-line); background: var(--wz-page); padding: 3px; cursor: pointer; transition: border-color 150ms ease-out; }
+.bf-gal__thumb:hover { border-color: var(--wz-edge); }
 .bf-gal__thumb[aria-current='true'] { border: 2px solid var(--wz-ink); }
+.bf-gal__thumb:focus-visible { outline: 2px solid var(--wz-focus-ring); outline-offset: 2px; }
 .bf-gal__thumb img { width: 100%; height: 100%; object-fit: contain; }
 
-/* buy box: brand (10 caps ink-3) → h1 24 → price row → stock pill → picker → CTA → promises → attributes → description → ratings */
-.bf-buy__brand { font-size: 10px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--wz-ink-3); }
-:lang(ar) .bf-buy__brand { letter-spacing: 0; }
-.bf-buy__title { font-size: 24px; line-height: 1.25; font-weight: 800; margin: 4px 0 12px; text-transform: none; }
-.bf-buy__price { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
-.bf-buy__now { font-size: 24px; font-weight: 800; }
-.bf-buy__was { font-size: 14px; color: var(--wz-ink-3); text-decoration: line-through; }
-.bf-buy__pct { font-size: 11px; font-weight: 600; color: #fff; background: var(--wz-sale); border-radius: var(--wz-r-pill); padding: 3px 8px; }
+/* buy box: brand (caption caps ink-3) → h1 → price row → stock pill + the two buckets → picker → CTA → promises → attributes → description → ratings */
+.bf-buy__brand { font-size: var(--bf-caption); font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--wz-ink-3); }
+:lang(ar) .bf-buy__brand { letter-spacing: 0; text-transform: none; font-size: 11px; }
+.bf-buy__title { font-size: var(--bf-h1); line-height: var(--bf-h1-lh); font-weight: 700; margin: 4px 0 10px; text-transform: none; letter-spacing: 0; text-wrap: pretty; }
+.bf-buy__price { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; font-variant-numeric: tabular-nums; }
+.bf-buy__now { font-size: var(--bf-h1); font-weight: 700; }
+.bf-buy__was { font-size: var(--bf-body); color: var(--wz-ink-3); text-decoration: line-through; }
+.bf-buy__pct { font-size: 11px; font-weight: 700; color: #fff; background: var(--wz-sale); border-radius: var(--wz-r-pill); padding: 3px 8px; }
 .bf-buy__vat { font-size: 11px; color: var(--wz-ink-3); margin-block: 2px 12px; }
-.bf-pill { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding-inline: 10px; border-radius: var(--wz-r-pill); font-size: 12px; font-weight: 600; border: 1px solid transparent; }
+.bf-pill { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding-inline: 10px; border-radius: var(--wz-r-pill); font-size: var(--bf-small); font-weight: 700; border: 1px solid transparent; }
 .bf-pill--ok { border-color: var(--wz-ok); color: var(--wz-ok); }
 .bf-pill--alert { border-color: var(--wz-alert); color: var(--wz-alert); }
 .bf-pill--out { background: var(--wz-ink-3); color: #fff; }
-.bf-buy__stock { margin-block-end: 12px; }
+.bf-buy__stock { margin-block-end: 12px; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+/* the two buckets (Watchizer's words and tones): a dot and a count each, so a shopper knows how much and which kind */
+.bf-buy__buckets { display: flex; gap: 14px; flex-wrap: wrap; font-size: var(--bf-small); color: var(--wz-ink-2); }
+.bf-bucket { display: inline-flex; align-items: center; gap: 6px; }
+.bf-bucket::before { content: ''; width: 7px; height: 7px; border-radius: 50%; flex: none; }
+.bf-bucket--express::before { background: var(--wz-ok); }
+.bf-bucket--market::before { background: var(--wz-alert); }
 
 /* the variant picker (§17.5 matrix rule): colour swatches 24 radius 2 (role=radio) · sizes 44×44 radius 8 gap 8 */
 .bf-pick { margin-block-end: 12px; }
@@ -66,33 +79,38 @@
 .bf-pick__size.is-absent { display: none; }
 .bf-pick__hint { font-size: 12px; color: var(--wz-ink-2); margin-block-start: 6px; }
 
-/* CTA: primary 48 full width; secondary outline; disabled per §7.1 */
-.bf-buy__cta { margin-block: 12px; }
-.bf-cta { width: 100%; height: 48px; border-radius: var(--wz-r-pill); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; border: 1px solid var(--wz-ink); background: var(--wz-ink); color: var(--wz-on-ink); }
+/* CTA: primary 48 full width; secondary outline; disabled per §7.1; the notify-me form (the twin StockAlertForm) in its place when sold out */
+.bf-buy__cta { margin-block: 12px; scroll-margin-top: 120px; }
+.bf-cta { width: 100%; height: 48px; border-radius: var(--wz-r-pill); font: inherit; font-size: var(--bf-body); font-weight: 700; cursor: pointer; border: 1px solid var(--wz-ink); background: var(--wz-ink); color: var(--wz-on-ink); display: inline-flex; align-items: center; justify-content: center; text-decoration: none; transition: background-color 150ms ease-out; }
+.bf-cta:hover:not(:disabled) { background: var(--wz-ink-soft); }
 .bf-cta--secondary { background: var(--wz-page); color: var(--wz-ink); }
+.bf-cta--secondary:hover:not(:disabled) { background: var(--wz-tile); }
 .bf-cta:disabled { background: var(--wz-disabled-bg); color: var(--wz-disabled-fg); border-color: var(--wz-disabled-bg); cursor: not-allowed; }
-.bf-buy__promises { display: grid; gap: 6px; font-size: 12px; color: var(--wz-ink-2); padding: 12px 0; border-block: 1px solid var(--wz-line); margin-block-end: 12px; }
+.bf-cta:focus-visible { outline: 2px solid var(--wz-focus-ring); outline-offset: 2px; }
+.bf-buy__promises { display: grid; gap: 6px; font-size: var(--bf-small); color: var(--wz-ink-2); padding: 12px 0; border-block: 1px solid var(--wz-line); margin-block-end: 12px; }
 
-/* attributes block (§11.4): two columns desktop, one phone; label ink-2 12, value ink 14, hairline rows */
+/* attributes block (§11.4): two columns desktop, one phone; label ink-2, value ink, hairline rows */
 .bf-attrs { margin-block: 16px; }
-.bf-attrs__title, .bf-desc__title, .bf-ratings__title { font-size: 18px; font-weight: 800; margin: 0 0 8px; }
+.bf-attrs__title, .bf-desc__title, .bf-ratings__title { font-size: var(--bf-h2); line-height: var(--bf-h2-lh); font-weight: 700; margin: 0 0 8px; text-transform: none; letter-spacing: 0; }
 .bf-attrs__grid { display: grid; grid-template-columns: 1fr; column-gap: 24px; }
 @media (min-width: 1024px) { .bf-attrs__grid { grid-template-columns: 1fr 1fr; } }
-.bf-attrs__row { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-block-end: 1px solid var(--wz-line); font-size: 14px; }
-.bf-attrs__row dt { color: var(--wz-ink-2); font-size: 12px; margin: 0; }
+.bf-attrs__row { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-block-end: 1px solid var(--wz-line); font-size: var(--bf-body); }
+.bf-attrs__row dt { color: var(--wz-ink-2); font-size: var(--bf-small); margin: 0; }
 .bf-attrs__row dd { margin: 0; text-align: end; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
 .bf-attrs__dot { width: 12px; height: 12px; border-radius: var(--wz-r-swatch); box-shadow: inset 0 0 0 1px var(--wz-edge); display: inline-block; }
-.bf-desc { font-size: 14px; line-height: 1.6; color: var(--wz-ink); margin-block: 16px; white-space: pre-line; }
-.bf-ratings { margin-block: 16px; font-size: 14px; }
+.bf-desc { font-size: var(--bf-body); line-height: var(--bf-body-lh); color: var(--wz-ink); margin-block: 16px; white-space: pre-line; max-width: 70ch; }
+.bf-ratings { margin-block: 16px; font-size: var(--bf-body); }
 
 /* the sticky bottom bar on phone: 64 tall, price at inline-start, button at inline-end (§12) */
 .bf-pdp__bar { position: fixed; inset-inline: 0; inset-block-end: 0; height: 64px; background: var(--wz-page); border-block-start: 1px solid var(--wz-line); display: flex; align-items: center; gap: 12px; padding-inline: 16px; z-index: 40; padding-block-end: env(safe-area-inset-bottom); }
-.bf-pdp__bar .bf-buy__now { font-size: 18px; }
+.bf-pdp__bar .bf-buy__now { font-size: 18px; font-weight: 700; }
 .bf-pdp__bar .bf-cta { width: auto; flex: 1; height: 44px; }
 @media (min-width: 1024px) { .bf-pdp__bar { display: none; } }
 
 /* the two rails under (§10.3): 4 phone / 6 desktop handled by .bf-rail; spacing */
 .bf-pdp__rails { margin-block-start: 24px; display: grid; gap: 8px; }
 
-/* the copied app's global heading rule upper-cases h1–h3; the spec's type scale (§5) has no caps outside the 10px brand line */
-.bf-listing h1, .bf-listing h2, .bf-listing h3, .bf-rail h2, .bf-pdp h1, .bf-pdp h2, .bf-home h2, .bf-empty h2, .bf-sheet b { text-transform: none; }
+/* the copied app's global heading rule upper-cases h1–h3; the spec's type scale (§5) has no caps outside the brand line */
+.bf-pdp h1, .bf-pdp h2 { text-transform: none; letter-spacing: 0; }
+/* the twin StockAlertForm inside the buy box: Brand Fashion's tokens on its own classes are left to its sheet; its container only */
+.bf-buy__cta .wz-stock-alert { margin: 0; }

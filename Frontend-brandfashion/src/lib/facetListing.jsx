@@ -13,6 +13,8 @@ import {
 } from './listingSeo'
 import ListingClient from '@/app/(main)/listing/ListingClient'
 import { safeJsonLd } from './safeJsonLd'
+// Brand Fashion (2026-10-18, the visual reset, Part 1b): Watchizer's listing components, Brand Fashion's skin.
+import '@/src/styles/bf-listing-skin.css'
 
 // Shared server logic for the facet alias routes (/brand/[brand],
 // /category/[category], /subtypes/[subtype], /grade/[grade], /[suptype]/[brand]).

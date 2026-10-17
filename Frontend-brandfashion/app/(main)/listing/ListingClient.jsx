@@ -319,6 +319,17 @@ export default function ListingClient({ seedParams = null }) {
         {/* Page heading (SEO H1) — reflects the active category/brand/subtype context */}
         <h1 className="wz-listing-h1">{crumb}</h1>
 
+        {/* Brand Fashion (DIVERGED 2026-10-18 — the ONE line this storefront adds to Watchizer's listing; F9, Michael,
+            2026-10-17): when the served stock split says nothing in this result is in stock, say so under the title in
+            ordinary retail words. The grid stays a normal grid of cards. Nothing else in this file differs. */}
+        {resultCount > 0 && listingData?.facets?.in_stock && Number(listingData.facets.in_stock.in) === 0 ? (
+          <p className="wz-listing-note" role="status">
+            {isRTL
+              ? 'كل منتجات هذا القسم نفدت حاليًا. اضغط «نبّهني» على أي منتج لنخبرك عند توفره.'
+              : 'Everything in this section is out of stock right now. “Notify me” on any product tells you when it is back.'}
+          </p>
+        ) : null}
+
         {/* Smart suggestions */}
         <SmartSuggestions facets={facets} />
 

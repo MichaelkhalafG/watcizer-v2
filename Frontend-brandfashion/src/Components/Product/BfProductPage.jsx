@@ -1,13 +1,16 @@
 'use client'
 import { useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { useUIStore } from '@/src/Store/uiStore'
 import { useToastStore } from '@/src/Store/toastStore'
 import useCart from '@/src/Hooks/useCart'
 import { refusedAddMessage } from '@/src/Store/cartStore'
 import { txt, money } from '@/src/lib/cardData'
+import { aisleTint } from '@/src/lib/aisleTint'
 import { PLACEHOLDER_IMG } from '@/src/utils/imageUrl'
 import { localizeHref } from '@/src/utils/localePath'
 import BfRail from '@/src/Components/Listing/BfRail'
+import StockAlertForm from './StockAlertForm'
 import './BfProductPage.css'
 
 /*
@@ -29,6 +32,12 @@ import './BfProductPage.css'
  *  • no price-changed notice (§19-8), no authenticity line (§19-2), no size guide link, no empty stars (§11.3).
  *  • adding a chosen VARIANT to the cart is B7's gate: today's cart (compat) refuses a product with variants
  *    and the refusal is shown as it is — recorded, not papered over.
+ *
+ * 2026-10-18 (the visual reset): the gallery sits on the family tint with the photo at full size (bug 7: a small
+ * photo floating in a large empty box); the stock is LEGIBLE — Watchizer's two buckets with their counts ("Express ·
+ * 3 in stock", "Market · 12 available", its exact words and tones) under the pill; a sold-out product shows the twin
+ * StockAlertForm (Watchizer's notify-me, e-mail only) instead of a button that only toasted; `?color=&size=` from
+ * the card's picker preselect the row; the type is the --bf-* scale.
  */
 
 const STR = {
@@ -59,14 +68,18 @@ export default function BfProductPage({ detail, related }) {
   const isRTL = lang === 'ar'
   const p = detail.product
   const variants = useMemo(() => (Array.isArray(p.variants) ? p.variants : []), [p.variants])
+  // the card's picker hands its choice over as ?color=&size= (spec §8.6); a value no row carries is ignored
+  const sp = useSearchParams()
+  const preColor = Number(sp.get('color')) || null
+  const preSize = Number(sp.get('size')) || null
 
   // ── the matrix: which rows exist, which colours / sizes they carry
   const colours = useMemo(() => uniq(variants.map((v) => v.color).filter(Boolean)), [variants])
   const sizes = useMemo(() => uniq(variants.map((v) => v.size).filter(Boolean)).sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0)), [variants])
   const hasColour = colours.length > 0
   const hasSize = sizes.length > 0
-  const [colorId, setColorId] = useState(null)
-  const [sizeId, setSizeId] = useState(null)
+  const [colorId, setColorId] = useState(() => (preColor != null && variants.some((v) => v.color?.id === preColor) ? preColor : null))
+  const [sizeId, setSizeId] = useState(() => (preSize != null && variants.some((v) => v.size?.id === preSize) ? preSize : null))
   const rowsFor = (c, s) => variants.filter((v) => (c == null || v.color?.id === c) && (s == null || v.size?.id === s))
   const chosen = variants.length ? (rowsFor(hasColour ? colorId : null, hasSize ? sizeId : null).length === 1 && (!hasColour || colorId != null) && (!hasSize || sizeId != null) ? rowsFor(hasColour ? colorId : null, hasSize ? sizeId : null)[0] : null) : null
   // a colour is "dead" when every row of it is out of stock; a size is absent for the chosen colour when no row exists
@@ -86,7 +99,9 @@ export default function BfProductPage({ detail, related }) {
   const now = money(hasSale ? price.sale_amount : price.amount, lang, price.currency)
   const was = hasSale ? money(price.amount, lang, price.currency) : null
   const pct = hasSale ? price.discount_pct ?? Math.round((1 - price.sale_amount / price.amount) * 100) : null
-  const units = Number(stock.express || 0) + Number(stock.market || 0)
+  const expressUnits = Number(stock.express || 0)
+  const marketUnits = Number(stock.market || 0)
+  const units = expressUnits + marketUnits
   const inStock = Boolean(stock.in_stock)
   const low = inStock && units > 0 && units <= LOW_STOCK
 
@@ -162,7 +177,7 @@ export default function BfProductPage({ detail, related }) {
   const crumbs = Array.isArray(p.breadcrumb) ? p.breadcrumb : []
 
   return (
-    <div className="bf-pdp" dir={isRTL ? 'rtl' : 'ltr'} lang={lang}>
+    <div className="bf-pdp" dir={isRTL ? 'rtl' : 'ltr'} lang={lang} style={{ '--bf-pdp-tint': `var(--wz-${aisleTint(p.family)})` }}>
       <div className="bf-pdp__inner">
         <nav className="bf-pdp__crumb" aria-label="Breadcrumb">
           <a href={localizeHref('/', lang)}>{t.home}</a>
@@ -222,6 +237,13 @@ export default function BfProductPage({ detail, related }) {
                   <span className="bf-pill bf-pill--out">{t.soldOut}</span>
                 )
               ) : null}
+              {/* how much, and which kind — Watchizer's two buckets, its words (ProductDetailClient.jsx:889–893) */}
+              {(!variants.length || chosen) && inStock ? (
+                <div className="bf-buy__buckets">
+                  {expressUnits > 0 ? <span className="bf-bucket bf-bucket--express">{isRTL ? `إكسبريس · ${expressUnits} متاح` : `Express · ${expressUnits} in stock`}</span> : null}
+                  {marketUnits > 0 ? <span className="bf-bucket bf-bucket--market">{isRTL ? `ماركت · ${marketUnits} متاح` : `Market · ${marketUnits} available`}</span> : null}
+                </div>
+              ) : null}
             </div>
 
             {hasColour ? (
@@ -262,10 +284,15 @@ export default function BfProductPage({ detail, related }) {
               </div>
             ) : null}
 
-            <div className="bf-buy__cta">
-              <button type="button" className={`bf-cta ${!inStock && !needs ? 'bf-cta--secondary' : ''}`} disabled={Boolean(needs) || busy} onClick={onAdd}>
-                {needs ? needs : inStock ? t.add : t.notify}
-              </button>
+            <div className="bf-buy__cta" id="notify">
+              {!inStock && !needs ? (
+                // sold out: Watchizer's notify-me form (e-mail only, §18), not a button that only toasted
+                <StockAlertForm productId={p.id} isRTL={isRTL} />
+              ) : (
+                <button type="button" className="bf-cta" disabled={Boolean(needs) || busy} onClick={onAdd}>
+                  {needs ? needs : t.add}
+                </button>
+              )}
             </div>
 
             <ul className="bf-buy__promises">
@@ -312,9 +339,13 @@ export default function BfProductPage({ detail, related }) {
 
       <div className="bf-pdp__bar" aria-hidden={false}>
         <span className="bf-buy__now">{now}</span>
-        <button type="button" className={`bf-cta ${!inStock && !needs ? 'bf-cta--secondary' : ''}`} disabled={Boolean(needs) || busy} onClick={onAdd}>
-          {needs ? needs : inStock ? t.add : t.notify}
-        </button>
+        {!inStock && !needs ? (
+          <a className="bf-cta bf-cta--secondary" href="#notify">{t.notify}</a>
+        ) : (
+          <button type="button" className="bf-cta" disabled={Boolean(needs) || busy} onClick={onAdd}>
+            {needs ? needs : t.add}
+          </button>
+        )}
       </div>
     </div>
   )

@@ -45,6 +45,9 @@
 .wz-search { position: relative; display: flex; align-items: center; height: 40px; background: var(--wz-page); border-radius: var(--wz-r-pill); border: 1px solid transparent; color: var(--wz-ink); }
 .wz-search:focus-within { border-color: var(--wz-page); box-shadow: 0 0 0 2px var(--wz-ink), 0 0 0 4px var(--wz-page); }
 .wz-search-input { flex: 1; min-width: 0; height: 100%; border: 0; background: none; padding-inline: 16px 8px; font: inherit; font-size: 14px; color: var(--wz-ink); outline: none; }
+/* bug 1 of the 2026-10-17 review: `.wz-header :focus-visible` drew its 2px ring on the RECTANGULAR input inside the
+   rounded pill; the pill's own focus-within ring (above) is the one that follows the shape */
+.wz-search-input:focus-visible, .wz-search-btn:focus-visible { outline: none; box-shadow: none; }
 .wz-search-input::placeholder { color: var(--wz-ink-3); }
 .wz-search-input::-webkit-search-cancel-button { -webkit-appearance: none; }
 .wz-search-btn { width: 40px; height: 40px; display: inline-flex; align-items: center; justify-content: center; border: 0; background: none; color: var(--wz-ink); cursor: pointer; border-radius: var(--wz-r-pill); }
@@ -199,16 +202,18 @@
   .wz-logo img { height: 36px; }
   .wz-search-box { display: block; }
   .wz-row2 { display: block; margin-inline: -20px; padding-inline: 20px; }
-  .nav-inner { max-width: 1200px; margin-inline: auto; }
+  .nav-inner { max-width: var(--bf-container); margin-inline: auto; }
   .wz-act-lang { display: flex; }
   .wz-act-name { display: inline; }
   .wz-search-icon, .wz-act-bag, .wz-act-auth__link, .wz-act-identity { height: 36px; min-width: 36px; }
   .wz-act-bag__num { top: -2px; }
 }
-/* the desktop row is centred to the 1200 container like every page (§6) */
-@media (min-width: 1240px) {
-  .wz-header { padding-inline: calc((100% - 1200px) / 2); }
-  .wz-row2 { margin-inline: 0; padding-inline: 0; }
+/* the desktop row is centred to the SAME container as every page (§6, --bf-container) with the same gutter: the logo's
+   edge and the first card's edge are one line, and the ink bar bleeds behind it like noon's and Amazon's (the
+   2026-10-17 review: the bar was full-bleed to a 1,200 box) */
+@media (min-width: 1024px) {
+  .wz-header { padding-inline: max(var(--bf-gutter), calc((100% - var(--bf-container)) / 2)); }
+  .wz-row2 { margin-inline: calc(-1 * max(var(--bf-gutter), calc((100% - var(--bf-container)) / 2))); padding-inline: max(var(--bf-gutter), calc((100% - var(--bf-container)) / 2)); }
 }
 
 @media (prefers-reduced-motion: reduce) {

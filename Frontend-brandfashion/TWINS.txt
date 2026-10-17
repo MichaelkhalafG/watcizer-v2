@@ -7,7 +7,8 @@
 # section at the end, with the reason. Never edit a listed file on one side only.
 #
 # Regenerated 2026-10-14 (evening) from the files measured byte-identical after the identity
-# sweep, the TikTok env change (made on both sides) and the approved twin splits.
+# sweep, the TikTok env change (made on both sides) and the approved twin splits. 2026-10-18: the category and brand
+# pages re-twinned, ListingClient.jsx and ProductCard.jsx split (the visual reset, Part 1b) — see the DIVERGED section.
 # A2-RULE: the two apps are copies, not a shared package.
 
 app/(auth)/auth/callback/page.jsx
@@ -32,7 +33,6 @@ app/(main)/error.jsx
 app/(main)/grade/[grade]/page.jsx
 app/(main)/layout.jsx
 app/(main)/listing/Listing.css
-app/(main)/listing/ListingClient.jsx
 app/(main)/listing/loading.jsx
 app/(main)/offer/[slug]/page.jsx
 app/(main)/order-confirmation/page.jsx
@@ -77,7 +77,6 @@ src/Components/Merchandising/CategoryTiles.jsx
 src/Components/Merchandising/TrustSignals.css
 src/Components/Merchandising/TrustSignals.jsx
 src/Components/Product/OfferSlider.jsx
-src/Components/Product/ProductCard.jsx
 src/Components/Product/ProductDetailClient.jsx
 src/Components/Product/ProductSlider.css
 src/Components/Product/ProductSlider.jsx
@@ -158,8 +157,10 @@ DIVERGED 2026-10-17 src/lib/listingRequest.js — re-exports the v2 adapter unde
 DIVERGED 2026-10-17 src/Hooks/queries/useListing.js — passes the tables to the v2 request builder and waits for them when a category is set (V2-READ-HALF).
 DIVERGED 2026-10-17 app/(main)/listing/page.jsx — passes the tables to the v2 request builder (V2-READ-HALF).
 DIVERGED 2026-10-17 src/lib/facetListing.jsx — passes the tables to the v2 request builder (V2-READ-HALF).
-# B4 (2026-10-17): Brand Fashion's listing pages are the spec's (v2.9 §10.2) on v2 — BfListing + src/lib/bfListing.js (not twins);
-# Watchizer keeps its own listing. These two re-twin only if Watchizer adopts the same pages.
-DIVERGED 2026-10-17 app/(main)/category/[category]/page.jsx — B4: the v2 category page (BfListing), v2 slugs, §10.2 indexing rules (V2-READ-HALF / B4).
-DIVERGED 2026-10-17 app/(main)/brand/[brand]/page.jsx — B4: the v2 brand page (BfListing), v2 brand slugs, 404 only for an unknown brand (V2-READ-HALF / B4).
+# B4 (2026-10-17) built the listing pages as BfListing (not twins) on v2; REVERSED 2026-10-18 (the visual reset, Part 1b —
+# Michael: "the skin changes, the behaviour does not"): the listing is Watchizer's ListingClient + SideBar + SmartSuggestions +
+# BackToTop again (twins, their behaviour inherited), on the v2 adapter, restyled by src/styles/bf-listing-skin.css. The
+# category and brand pages are byte-identical twins again (above). Two twins diverge for it, each by a named delta:
+DIVERGED 2026-10-18 app/(main)/listing/ListingClient.jsx — ONE additive block under the h1: the all-sold-out line (F9, Michael 2026-10-17) read from the served stock split; every other line is Watchizer's (diff = 11 added lines, 0 changed).
+DIVERGED 2026-10-18 src/Components/Product/ProductCard.jsx — the ADAPTER: Watchizer's listing hands it the legacy row, it draws BfProductCard (§17.3 rewritten card) with Watchizer's card behaviour line for line (the same addItem payload, the same refusal toast, the same URL).
 DIVERGED 2026-10-17 app/(main)/product/[slug]/page.jsx — B5: the v2 product page (BfProductPage) on products/{slug} + /related; v2 meta and JSON-LD (V2-READ-HALF / B5).

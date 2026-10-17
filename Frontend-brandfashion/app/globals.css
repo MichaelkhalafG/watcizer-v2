@@ -4,11 +4,11 @@
 }
 
 /* ── Global Typography ──────────────────────────────────────────────────
-   English → Georgia EVERYWHERE. Arabic (dir=rtl) → El Messiri EVERYWHERE.
-   Serif headings resolve through --wz-serif, which flips to El Messiri under
-   [dir='rtl'] so no per-component edits are needed. No sans-serif web font. */
+   Watchizer's face (spec v2.11 §5, Michael's decision 2026-10-17): English → Georgia EVERYWHERE,
+   Arabic (dir=rtl) → El Messiri EVERYWHERE. Every family resolves through --wz-serif, which flips to
+   El Messiri under [dir='rtl'] so no per-component edits are needed. No sans-serif web font. */
 :root {
-  --wz-serif: var(--font-alexandria), 'Segoe UI', Arial, sans-serif; /* BF spec §5: Alexandria, Latin + Arabic */
+  --wz-serif: Georgia, 'Times New Roman', serif;
 
   /* ── Design tokens ─────────────────────────────────────────────────────
      Centralized palette / spacing / type scale. Each value is IDENTICAL to
@@ -80,9 +80,32 @@
   --wz-r-card: 10px;              /* §6 radius: card */
   --wz-r-section: 12px;           /* §6 radius: banner / section */
   --wz-r-pill: 20px;              /* §6 radius: pill */
+
+  /* ── The type scale on Georgia / El Messiri (spec v2.11 §5, re-cut 2026-10-17 after the face swap —
+     Michael: "the type is too big"). Steps: size / line-height; weights 700 for headings (Georgia has no
+     800), 400 for text. Arabic gets +0.15 line-height under :lang(ar) (§5). ── */
+  --bf-display: 28px;  --bf-display-lh: 1.15;   /* hero line (22 on phone) */
+  --bf-h1: 22px;       --bf-h1-lh: 1.2;         /* page titles, the product name */
+  --bf-h2: 17px;       --bf-h2-lh: 1.25;        /* rail titles, section headings */
+  --bf-h3: 13px;       --bf-h3-lh: 1.35;        /* card titles (12 on phone) */
+  --bf-price: 15px;                             /* card price */
+  --bf-body: 13px;     --bf-body-lh: 1.5;       /* running text, rows */
+  --bf-small: 12px;                             /* meta, counts, chips */
+  --bf-caption: 10px;                           /* the brand line (caps, Latin only), pills */
+  --bf-btn: 12px;                               /* buttons */
+
+  /* ── The page container (spec v2.11 §6): 1600 max (noon sits at the viewport less 64; 1,200 left the ink bar bleeding past
+     a narrow box — the 2026-10-17 review), gutters 16 phone / 20 tablet / 24 desktop. ONE value for
+     the header's inner row, the home, the listing, the product page and the footer, so every edge aligns. ── */
+  --bf-container: 1600px;
+  --bf-gutter: 16px;
 }
+@media (min-width: 600px) { :root { --bf-gutter: 20px; } }
+@media (min-width: 1024px) { :root { --bf-gutter: 24px; --bf-h3: 13px; } }
+@media (max-width: 599px) { :root { --bf-h3: 12px; --bf-display: 22px; } }
+:lang(ar) { --bf-display-lh: 1.3; --bf-h1-lh: 1.35; --bf-h2-lh: 1.4; --bf-h3-lh: 1.5; --bf-body-lh: 1.65; }
 [dir='rtl'] {
-  --wz-serif: var(--font-alexandria), 'Segoe UI', Arial, sans-serif;
+  --wz-serif: var(--font-el-messiri), Georgia, 'Times New Roman', serif;
 }
 
 /* One family, both scripts (spec §5). No dark mode: color-scheme light so Android's forced-dark
