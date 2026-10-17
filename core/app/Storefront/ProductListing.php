@@ -16,11 +16,26 @@ use Illuminate\Support\Facades\DB;
  *
  * Filters (v1 study §3.8.3): category (slug path, subtree), brand (slug list), gender/color/
  * material/grade (id lists), price_min/max (effective price), in_stock, q (search, §5.1 L6),
- * sort (position|newest|price_asc|price_desc|rating|featured), page, per_page ≤ 96.
+ * sort (position|newest|price_asc|price_desc|rating|featured|available), page, per_page ≤ 96.
+ *
+ * 2026-10-17, the v2 READ half for Brand Fashion's listing (V2-MOVE-SCOPE, option C; B4-LISTING-REQUIREMENT):
+ *  - `facets=1` adds `facets` to the response — per-RESULT option counts for brand, gender, colour,
+ *    material and grade, each computed with every filter applied EXCEPT its own (compat's rule, "as if
+ *    that section were cleared", so a shopper can switch within a section), plus `in_stock` counts and
+ *    the `price` bounds of the result. Seven aggregate queries cold, cached per (storefront, filter set)
+ *    under the same hash and TTL as the bounded count; opt-in, so a caller that does not ask pays nothing.
+ *  - `sort=available` is spec §19-5's "available first": in-stock products first, then today's position
+ *    order, with `sp.product_id` as the total tie-breaker so two pages of the same sort never overlap or
+ *    skip while the data stands still (a stock change between two page loads moves exactly that product —
+ *    the proof and its limit are in RUN_20261017.md). Not the default: Watchizer's v2 consumers see no
+ *    change; Brand Fashion asks for it by name.
  */
 final class ProductListing
 {
-    public const SORTS = ['position', 'newest', 'price_asc', 'price_desc', 'rating', 'featured'];
+    public const SORTS = ['position', 'newest', 'price_asc', 'price_desc', 'rating', 'featured', 'available'];
+
+    /** The facet sections `facets=1` counts, in the order the sidebar shows them (spec §10.2). */
+    public const FACETS = ['brand', 'gender', 'color', 'material', 'grade'];
 
     /**
      * Driving table + index per sort for the index-ordered page (review 🟠-5): storefront-wide
@@ -68,7 +83,7 @@ final class ProductListing
         $filters = [
             'category' => $node === null ? null : Val::str($node, 'path'),
             'brand' => self::strList($input['brand'] ?? null),
-            'gender' => self::intList($input['gender'] ?? null),
+            'gender' => $this->genderIds($input['gender'] ?? null),
             'color' => self::intList($input['color'] ?? null),
             'material' => self::intList($input['material'] ?? null),
             'grade' => self::intList($input['grade'] ?? null),
@@ -79,7 +94,7 @@ final class ProductListing
         ];
 
         $indexed = self::indexed($node);
-        $query = $this->cards->base($indexed ? self::PLANS[$sort] : null);
+        $query = $this->cards->base($indexed ? (self::PLANS[$sort] ?? null) : null);
         $this->applyFilters($query, $filters, $node, $indexed);
         $hash = sha1(json_encode([$filters, $this->ctx->locale], JSON_THROW_ON_ERROR));
         $cap = config()->integer('storefront.listing.count_cap');
@@ -88,6 +103,11 @@ final class ProductListing
 
             return DB::query()->fromSub($inner, 'bounded')->count();
         });
+        $facets = null;
+        if (self::bool($input['facets'] ?? null) === true) {
+            /** @var array<string, mixed> $facets */
+            $facets = $this->cache->remember($this->ctx->id(), 'facets', $hash, config()->integer('storefront.ttl.count'), fn (): array => $this->facets($filters, $node, $indexed));
+        }
 
         $this->applySort($query, $sort);
         $rows = $query->select(ProductCards::columns())->forPage($page, $perPage)->get()->all();
@@ -107,6 +127,7 @@ final class ProductListing
 
         return [
             'data' => $data,
+        ] + ($facets === null ? [] : ['facets' => $facets]) + [
             'meta' => [
                 'page' => $page,
                 'per_page' => $perPage,
@@ -140,45 +161,54 @@ final class ProductListing
      * @param  array<string, mixed>  $f
      * @param  array<string, mixed>|null  $node
      */
-    private function applyFilters(Builder $query, array $f, ?array $node, bool $indexed): void
+    /**
+     * `$except` names ONE filter to leave out — how a facet section counts "as if it were cleared"
+     * (brand | gender | color | material | grade | price | in_stock). Category and the search always apply.
+     *
+     * @param  array<string, mixed>  $f
+     * @param  array<string, mixed>|null  $node
+     */
+    private function applyFilters(Builder $query, array $f, ?array $node, bool $indexed, ?string $except = null): void
     {
         if ($node !== null) {
             $this->cards->placedIn($query, $this->tree->subtreeIds(Val::int($node, 'id')), $indexed);
         }
         /** @var list<string> $brands */
         $brands = $f['brand'];
-        if ($brands !== []) {
-            $ids = array_values(array_filter(array_map(fn (string $s) => $this->lookups->brandIdBySlug($s), $brands), fn (?int $i) => $i !== null));
+        if ($except !== 'brand' && $brands !== []) {
+            // A brand token is its slug (`rolex`) or its numeric id (`12`) — 2026-10-17, for the Brand Fashion listing
+            // adapter, whose filter state is ids; an id the lookup does not know matches nothing, like an unknown slug.
+            $ids = array_values(array_filter(array_map(fn (string $s) => ctype_digit($s) ? ($this->lookups->ref('brands', (int) $s) === null ? null : (int) $s) : $this->lookups->brandIdBySlug($s), $brands), fn (?int $i) => $i !== null));
             $query->whereIn('p.brand_id', $ids === [] ? [-1] : $ids);
         }
         /** @var list<int> $genders */
         $genders = $f['gender'];
-        if ($genders !== []) {
+        if ($except !== 'gender' && $genders !== []) {
             $query->whereIn('sp.product_id', fn (Builder $s) => $s->select('product_id')->from('catalog_product_gender')->whereIn('gender_id', $genders));
         }
         /** @var list<int> $colors */
         $colors = $f['color'];
-        if ($colors !== []) {
+        if ($except !== 'color' && $colors !== []) {
             $query->whereIn('sp.product_id', fn (Builder $s) => $s->select('product_id')->from('catalog_product_color')->whereIn('color_id', $colors));
         }
         /** @var list<int> $materials */
         $materials = $f['material'];
-        if ($materials !== []) {
+        if ($except !== 'material' && $materials !== []) {
             $query->whereIn('sp.product_id', fn (Builder $s) => $s->select('product_id')->from('catalog_product_watch_specs')
                 ->where(fn (Builder $w) => $w->whereIn('band_material_id', $materials)->orWhereIn('case_material_id', $materials)));
         }
         /** @var list<int> $grades */
         $grades = $f['grade'];
-        if ($grades !== []) {
+        if ($except !== 'grade' && $grades !== []) {
             $query->whereIn('p.grade_id', $grades);
         }
-        if ($f['price_min'] !== null) {
+        if ($except !== 'price' && $f['price_min'] !== null) {
             $query->where('sp.effective_price', '>=', $f['price_min']);
         }
-        if ($f['price_max'] !== null) {
+        if ($except !== 'price' && $f['price_max'] !== null) {
             $query->where('sp.effective_price', '<=', $f['price_max']);
         }
-        if ($f['in_stock'] === true) {
+        if ($except !== 'in_stock' && $f['in_stock'] === true) {
             $query->where('p.in_stock', 1);
         }
         $q = $f['q'];
@@ -235,8 +265,110 @@ final class ProductListing
             'price_desc' => $query->orderByDesc('sp.effective_price')->orderByDesc('sp.id'),
             'rating' => $query->orderByDesc('p.rating_avg')->orderByDesc('p.id'),
             'featured' => $query->orderByDesc('sp.is_featured')->orderBy('sp.sort_order')->orderBy('sp.id'),
+            // §19-5 "available first": in stock, then today's order, then the one total tie-breaker.
+            'available' => $query->orderByDesc('p.in_stock')->orderBy('sp.sort_order')->orderBy('sp.product_id'),
             default => $query->orderByDesc('p.created_at')->orderByDesc('p.id'),
         };
+    }
+
+    /**
+     * The facet block for `facets=1`: per-result option counts, each section with every filter applied
+     * except its own, the `in_stock` split, and the price bounds of the result (without the price filter).
+     * Seven aggregate queries; the caller caches the block under the filter hash.
+     *
+     * @param  array<string, mixed>  $f
+     * @param  array<string, mixed>|null  $node
+     * @return array<string, mixed>
+     */
+    private function facets(array $f, ?array $node, bool $indexed): array
+    {
+        $base = function (string $except) use ($f, $node, $indexed): Builder {
+            $q = $this->cards->base(null);
+            $this->applyFilters($q, $f, $node, $indexed, $except);
+
+            return $q;
+        };
+        // the grouped column is passed as a column name (wrapped by the grammar), never as raw SQL
+        $counted = fn (Builder $q, string $column): Builder => $q->selectRaw('COUNT(DISTINCT sp.product_id) as c')->addSelect($column.' as k')->groupBy($column);
+
+        $out = [];
+        $out['brand'] = $this->facetRefs('brands', $counted($base('brand'), 'p.brand_id')->get());
+        $out['gender'] = $this->facetRefs('genders', $counted($base('gender')->join('catalog_product_gender as pg', 'pg.product_id', '=', 'sp.product_id'), 'pg.gender_id')->get());
+        $out['color'] = $this->facetRefs('colors', $counted($base('color')->join('catalog_product_color as pc', 'pc.product_id', '=', 'sp.product_id'), 'pc.color_id')->get());
+        // material: a product counts once per material whether it is its band's or its case's
+        $band = $base('material')->join('catalog_product_watch_specs as ws', 'ws.product_id', '=', 'sp.product_id')->whereNotNull('ws.band_material_id')->selectRaw('sp.product_id as pid, ws.band_material_id as k');
+        $case = $base('material')->join('catalog_product_watch_specs as ws', 'ws.product_id', '=', 'sp.product_id')->whereNotNull('ws.case_material_id')->selectRaw('sp.product_id as pid, ws.case_material_id as k');
+        $out['material'] = $this->facetRefs('materials', DB::query()->fromSub($band->unionAll($case), 'm')->selectRaw('k, COUNT(DISTINCT pid) as c')->groupBy('k')->get());
+        $out['grade'] = $this->facetRefs('grades', $counted($base('grade')->whereNotNull('p.grade_id'), 'p.grade_id')->get());
+
+        $stock = $base('in_stock')->selectRaw('COALESCE(SUM(p.in_stock = 1), 0) as yes, COALESCE(SUM(p.in_stock = 0), 0) as no')->first();
+        $out['in_stock'] = ['in' => $stock === null ? 0 : Row::int($stock, 'yes'), 'out' => $stock === null ? 0 : Row::int($stock, 'no')];
+        $price = $base('price')->selectRaw('MIN(sp.effective_price) as lo, MAX(sp.effective_price) as hi')->first();
+        $lo = $price === null ? null : Row::nmoney($price, 'lo');
+        $hi = $price === null ? null : Row::nmoney($price, 'hi');
+        $out['price'] = ['min' => $lo === null ? null : (float) $lo, 'max' => $hi === null ? null : (float) $hi];
+
+        return $out;
+    }
+
+    /**
+     * Grouped (k, c) rows → lookup refs with a `count`, highest count first then id; a key the lookup
+     * does not know is dropped. Only values with a match are present — spec §10.2's render rule.
+     *
+     * @param  iterable<mixed>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private function facetRefs(string $table, iterable $rows): array
+    {
+        $out = [];
+        foreach ($rows as $r) {
+            if (! $r instanceof \stdClass) {
+                continue;
+            }
+            $id = Row::nint($r, 'k');
+            $count = Row::int($r, 'c');
+            if ($id === null || $count < 1) {
+                continue;
+            }
+            $ref = $this->lookups->ref($table, $id);
+            if ($ref !== null) {
+                $out[] = $ref + ['count' => $count];
+            }
+        }
+        usort($out, fn (array $a, array $b): int => [$b['count'], $a['id']] <=> [$a['count'], $b['id']]);
+
+        return $out;
+    }
+
+    /**
+     * `gender=1,2` or `gender=men,women` (2026-10-17): a token is a lookup id or the English name of a gender,
+     * case-insensitive — the storefronts' URLs and filter state carry the English name (`?gender=Men`),
+     * and the v2 lookups are where the names live. An unknown token resolves to nothing.
+     *
+     * @return list<int>
+     */
+    private function genderIds(mixed $v): array
+    {
+        $out = [];
+        $tokens = self::strList($v);
+        foreach ($tokens as $token) {
+            if (ctype_digit($token)) {
+                $out[] = (int) $token;
+
+                continue;
+            }
+            foreach ($this->lookups->list('genders') as $row) {
+                $name = is_array($row['name'] ?? null) ? ($row['name']['en'] ?? null) : null;
+                if (is_string($name) && strcasecmp($name, $token) === 0) {
+                    $out[] = Val::int($row, 'id');
+
+                    break;
+                }
+            }
+        }
+
+        // asked for a gender nobody has → nothing matches (as an unknown brand slug does), never "no filter"
+        return $tokens !== [] && $out === [] ? [-1] : array_values(array_unique($out));
     }
 
     private static function intIn(mixed $v, int $min, int $max, int $default): int
@@ -335,7 +467,7 @@ final class ProductListing
         $sort = self::str($input['sort'] ?? null);
         $sort = in_array($sort, self::SORTS, true) ? $sort : ($node !== null ? 'position' : 'newest');
         $indexed = self::indexed($node) || ($input['force_indexed'] ?? false) === true;
-        $query = $this->cards->base($indexed ? self::PLANS[$sort] : null);
+        $query = $this->cards->base($indexed ? (self::PLANS[$sort] ?? null) : null);
         $this->applyFilters($query, $filters, $node, $indexed);
         $this->applySort($query, $sort);
         $offset = self::intIn($input['offset'] ?? null, 0, 1000000, 0);

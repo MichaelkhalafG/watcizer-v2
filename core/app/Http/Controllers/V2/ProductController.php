@@ -18,14 +18,15 @@ class ProductController extends Controller
     {
         $input = $request->validate([
             'category' => 'nullable|string|max:500',
-            'brand' => 'nullable|string|max:500',
-            'gender' => 'nullable|string|max:100',
+            'brand' => 'nullable|string|max:500',    // slugs and/or numeric ids, comma-separated (ids since 2026-10-17)
+            'gender' => 'nullable|string|max:100',   // ids and/or English names, comma-separated (names since 2026-10-17)
             'color' => 'nullable|string|max:200',
             'material' => 'nullable|string|max:200',
             'grade' => 'nullable|string|max:200',
             'price_min' => 'nullable|numeric|min:0',
             'price_max' => 'nullable|numeric|min:0',
             'in_stock' => 'nullable|in:0,1,true,false',
+            'facets' => 'nullable|in:0,1,true,false',   // 2026-10-17: per-result facet counts + price bounds, opt-in (ProductListing::facets)
             'q' => 'nullable|string|max:120',
             'sort' => 'nullable|in:'.implode(',', ProductListing::SORTS),
             'page' => 'nullable|integer|min:1',
