@@ -29,6 +29,9 @@ final class StorefrontCache
         // 2026-10-17: the per-result facet counts and price bounds of a listing (ProductListing::facets), cached under the
         // same filter hash as `count` — so they are forgotten by exactly the events that forget the count.
         'facets' => ['PlacementChanged', 'StorefrontProductChanged', 'ProductUpdated', 'StockChanged', 'LookupChanged'],
+        // 2026-10-17: the v2 home (StorefrontHome): rails with v2 cards, deals, category entries, the banner — the
+        // events of a listing index plus the banner's; the rails screen flushes the storefront on every write.
+        'home' => ['PlacementChanged', 'StorefrontProductChanged', 'ProductUpdated', 'StockChanged', 'LookupChanged', 'CategoryTreeChanged', 'BannerChanged'],
         'product' => ['ProductUpdated', 'StockChanged', 'StorefrontProductChanged'],
         'sitemap' => ['StorefrontProductChanged', 'CategoryTreeChanged', 'PlacementChanged', 'ProductUpdated'],
         'compat_names' => ['LookupChanged', 'CategoryTreeChanged'],

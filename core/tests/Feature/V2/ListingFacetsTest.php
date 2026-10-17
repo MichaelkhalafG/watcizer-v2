@@ -141,7 +141,7 @@ it('serves the facet block only when asked, with the five sections, the stock sp
         ->and(facetPage('facets=0&per_page=1'))->not->toHaveKey('facets');
 
     $f = facetsOf('');
-    expect(array_keys($f))->toBe(['brand', 'gender', 'color', 'material', 'grade', 'in_stock', 'price']);
+    expect(array_keys($f))->toBe(['category', 'brand', 'gender', 'color', 'material', 'grade', 'in_stock', 'price']);
     foreach (['brand', 'gender', 'color', 'material', 'grade'] as $section) {
         $rows = facetRows($f, $section);
         expect($rows)->not->toBeEmpty("section {$section} is empty on the whole catalogue");
@@ -154,6 +154,17 @@ it('serves the facet block only when asked, with the five sections, the stock sp
     }
     expect(facetRows($f, 'brand')[0])->toHaveKey('slug')
         ->and(facetRows($f, 'color')[0])->toHaveKey('hex');
+    // category: every served node is a visible menu node whose count is the total of its own page, in tree order
+    $cats = facetRows($f, 'category');
+    expect($cats)->not->toBeEmpty();
+    $paths = array_map(fn (array $c) => T::str($c['path']), $cats);
+    $sorted = $paths;
+    sort($sorted, SORT_STRING);
+    expect($paths)->toBe($sorted, 'category nodes come in tree (path) order');
+    foreach (array_slice($cats, 0, 3) as $c) {
+        expect($c)->toHaveKeys(['id', 'slug', 'path', 'depth', 'name', 'count'])
+            ->and(T::int($c['count']))->toBe(facetTotal('category='.T::str($c['path'])), 'category '.T::str($c['path']));
+    }
 
     $stock = H::arr($f['in_stock']);
     $price = H::arr($f['price']);
@@ -222,14 +233,14 @@ it('accepts a brand by numeric id and a gender by English name — the adapter\'
         ->and(facetTotal('gender=nobody'))->toBe(0);
 });
 
-it('costs SEVEN queries once per filter hash and is a cache hit after, inside the listing\'s warm budget', function () {
+it('costs EIGHT queries once per filter hash and is a cache hit after, inside the listing\'s warm budget', function () {
     getJson(H::base('products?per_page=24'))->assertOk();   // per-version caches + this hash's count
     $warmPlain = facetQueryCount(fn () => getJson(H::base('products?per_page=24'))->assertOk());
     $coldFacets = facetQueryCount(fn () => getJson(H::base('products?per_page=24&facets=1'))->assertOk());
     $warmFacets = facetQueryCount(fn () => getJson(H::base('products?per_page=24&facets=1'))->assertOk());
     fwrite(STDERR, "\nfacets budget — plain warm {$warmPlain}, facets cold {$coldFacets}, facets warm {$warmFacets}\n");
 
-    expect($coldFacets - $warmPlain)->toBe(7, 'the facet block is seven aggregate queries, not one per value')
+    expect($coldFacets - $warmPlain)->toBe(8, 'the facet block is eight aggregate queries (category added 2026-10-17), not one per value')
         ->and($warmFacets)->toBe($warmPlain)->toBeLessThanOrEqual(6, 'a cached block adds nothing to the §5.3 listing budget');
 });
 

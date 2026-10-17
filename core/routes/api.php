@@ -17,7 +17,9 @@ use App\Http\Controllers\Customer\CustomerSocialController;
 use App\Http\Controllers\Customer\CustomerVerificationController;
 use App\Http\Controllers\Payment\PaymentCallbackController;
 use App\Http\Controllers\V2\CategoryController;
+use App\Http\Controllers\V2\HomeController;
 use App\Http\Controllers\V2\MetaController;
+use App\Http\Controllers\V2\RelatedController;
 use App\Http\Controllers\V2\PaymentMethodController;
 use App\Http\Controllers\V2\ProductController;
 use App\Http\Controllers\V2\SitemapController;
@@ -39,6 +41,9 @@ Route::prefix('v2/{storefront}')->middleware(['storefront', 'http.cache'])->wher
     Route::get('categories/{path}', [CategoryController::class, 'show'])->where('path', '[a-z0-9\-]+(?:/[a-z0-9\-]+)*');
     Route::get('products', [ProductController::class, 'index']);
     Route::get('products/{slug}', [ProductController::class, 'show'])->where('slug', '[^/]+');
+    // V2-READ-HALF step 1 (2026-10-17): the PDP's two rails and the home page, on v2 shapes (compat's rules, unedited).
+    Route::get('products/{slug}/related', [RelatedController::class, 'show'])->where('slug', '[^/]+');
+    Route::get('home', [HomeController::class, 'show']);
     Route::get('sitemap.xml', [SitemapController::class, 'index']);
     Route::get('sitemaps/{locale}/{file}.xml', [SitemapController::class, 'chunk'])->where(['locale' => '[a-z]{2}', 'file' => '[a-z0-9\-]+']);
 });

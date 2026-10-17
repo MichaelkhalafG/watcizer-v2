@@ -35,7 +35,7 @@ final class ProductListing
     public const SORTS = ['position', 'newest', 'price_asc', 'price_desc', 'rating', 'featured', 'available'];
 
     /** The facet sections `facets=1` counts, in the order the sidebar shows them (spec §10.2). */
-    public const FACETS = ['brand', 'gender', 'color', 'material', 'grade'];
+    public const FACETS = ['category', 'brand', 'gender', 'color', 'material', 'grade'];
 
     /**
      * Driving table + index per sort for the index-ordered page (review 🟠-5): storefront-wide
@@ -94,7 +94,16 @@ final class ProductListing
         ];
 
         $indexed = self::indexed($node);
-        $query = $this->cards->base($indexed ? (self::PLANS[$sort] ?? null) : null);
+        /*
+         * V2-SEARCH-SCALE (2026-10-17, measured on MariaDB 11.8.9 at 8,039 products): under a search the
+         * index-ordered plan is the cost, not the FULLTEXT. With FORCE INDEX on the sort index the optimizer
+         * still drives from the fulltext hits and reaches `p` by `ref` over that index (key_len 1 = is_active
+         * only, ~8,100 rows per hit): `q=watch` (5,016 hits) took 3,371 ms, its count 2,922 ms. Without the
+         * hint `p` is reached by PRIMARY eq_ref and the same page is 94 ms (count 88 ms); a selective term
+         * goes 147 → 56 ms. A search result is at most the hits, so the filesort the hint avoided is cheap.
+         */
+        $searching = is_string($filters['q']) && trim($filters['q']) !== '';
+        $query = $this->cards->base($indexed && ! $searching ? (self::PLANS[$sort] ?? null) : null);
         $this->applyFilters($query, $filters, $node, $indexed);
         $hash = sha1(json_encode([$filters, $this->ctx->locale], JSON_THROW_ON_ERROR));
         $cap = config()->integer('storefront.listing.count_cap');
@@ -274,7 +283,7 @@ final class ProductListing
     /**
      * The facet block for `facets=1`: per-result option counts, each section with every filter applied
      * except its own, the `in_stock` split, and the price bounds of the result (without the price filter).
-     * Seven aggregate queries; the caller caches the block under the filter hash.
+     * Eight aggregate queries (category added 2026-10-17); the caller caches the block under the filter hash.
      *
      * @param  array<string, mixed>  $f
      * @param  array<string, mixed>|null  $node
@@ -292,6 +301,10 @@ final class ProductListing
         $counted = fn (Builder $q, string $column): Builder => $q->selectRaw('COUNT(DISTINCT sp.product_id) as c')->addSelect($column.' as k')->groupBy($column);
 
         $out = [];
+        // category (2026-10-17, B4's sidebar tree): the result's products per visible menu node, with the
+        // CATEGORY filter cleared like any other section — so a category page's siblings keep their counts
+        // and a node with no match is not served. Every placement counts (a product in two nodes counts in both).
+        $out['category'] = $this->categoryFacet($counted($base('category')->join('storefront_category_product as fcp', 'fcp.product_id', '=', 'sp.product_id'), 'fcp.storefront_category_id')->get());
         $out['brand'] = $this->facetRefs('brands', $counted($base('brand'), 'p.brand_id')->get());
         $out['gender'] = $this->facetRefs('genders', $counted($base('gender')->join('catalog_product_gender as pg', 'pg.product_id', '=', 'sp.product_id'), 'pg.gender_id')->get());
         $out['color'] = $this->facetRefs('colors', $counted($base('color')->join('catalog_product_color as pc', 'pc.product_id', '=', 'sp.product_id'), 'pc.color_id')->get());
@@ -307,6 +320,36 @@ final class ProductListing
         $lo = $price === null ? null : Row::nmoney($price, 'lo');
         $hi = $price === null ? null : Row::nmoney($price, 'hi');
         $out['price'] = ['min' => $lo === null ? null : (float) $lo, 'max' => $hi === null ? null : (float) $hi];
+
+        return $out;
+    }
+
+    /**
+     * Grouped (node id, c) rows → visible menu nodes as refs (id, slug, path, depth, name) with a `count`, in
+     * tree order (path), so a sidebar can draw the tree from the list. A node the menu does not show is dropped.
+     *
+     * @param  iterable<mixed>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private function categoryFacet(iterable $rows): array
+    {
+        $counts = [];
+        foreach ($rows as $r) {
+            if ($r instanceof \stdClass) {
+                $id = Row::nint($r, 'k');
+                if ($id !== null) {
+                    $counts[$id] = Row::int($r, 'c');
+                }
+            }
+        }
+        $out = [];
+        foreach ($this->tree->data()['nodes'] as $node) {
+            $count = $counts[Val::int($node, 'id')] ?? 0;
+            if ($count > 0) {
+                $out[] = CategoryTree::ref($node) + ['count' => $count];
+            }
+        }
+        usort($out, fn (array $a, array $b): int => strcmp(Val::str($a, 'path'), Val::str($b, 'path')));
 
         return $out;
     }
@@ -467,7 +510,7 @@ final class ProductListing
         $sort = self::str($input['sort'] ?? null);
         $sort = in_array($sort, self::SORTS, true) ? $sort : ($node !== null ? 'position' : 'newest');
         $indexed = self::indexed($node) || ($input['force_indexed'] ?? false) === true;
-        $query = $this->cards->base($indexed ? (self::PLANS[$sort] ?? null) : null);
+        $query = $this->cards->base($indexed ? (self::PLANS[$sort] ?? null) : null);   // pageSql carries no search (q is null above), so the plan stands
         $this->applyFilters($query, $filters, $node, $indexed);
         $this->applySort($query, $sort);
         $offset = self::intIn($input['offset'] ?? null, 0, 1000000, 0);
