@@ -1,70 +1,50 @@
 import { QueryClient, dehydrate, HydrationBoundary } from '@tanstack/react-query'
-import { listingRequest } from '@/src/lib/listingRequest'
-import { getServerTables, getServerListing } from '@/src/lib/serverCatalog'
+import { getServerListing } from '@/src/lib/serverCatalog'
 import { requestLang } from '@/src/lib/requestLang'
-import { parseListingParams } from '@/src/utils/listingParams'
-import { objectToSearchParams, listingMetadata, listingSummary, listingBreadcrumbLd, listingQuery } from '@/src/lib/listingSeo'
-import ListingClient from './ListingClient'
-import { safeJsonLd } from '@/src/lib/safeJsonLd'
+import { readListingState, toParams, toV2Query } from '@/src/lib/bfListing'
+import { bfListingMetadata, listingQueryOf, listingTitle } from '@/src/lib/bfListingSeo'
+import BfListing from '@/src/Components/Listing/BfListing'
 
-// ISR knob (harmless — the page reads searchParams so it renders dynamically):
-// keeps parity with the other routes' 5-min revalidate.
+// B4 — Brand Fashion's /listing (spec v2.9 §10.2), on the v2 listing (DIVERGED from Frontend-next 2026-10-17,
+// V2-READ-HALF / B4). The URL is the state (src/lib/bfListing.js); this page prefetches the same query key the
+// client builds, so the first render carries the first page and its facet block. A query listing is a
+// shopper's tool: `noindex, follow`, self canonical (bfListingSeo.js).
 export const revalidate = 300
 
-// Resolve the request context ONCE (the getters are React-cached, so generateMetadata + the page
-// share ONE upstream fetch each). searchParams is the URL source of truth → filters are parsed from
-// it (resolving slugs via `tables`). The listing itself is core's first page for that request — the
-// page's prefetch and the metadata's count and preview image (C-1 stage 4 slice D: no catalogue).
-async function loadContext(searchParams) {
-  const sp = await searchParams
-  const usp = objectToSearchParams(sp)
-  let tables = {}
-  try {
-    tables = (await getServerTables()) || {}
-  } catch {
-    // tables unreachable server-side → the client fetches; metadata degrades to the defaults.
-  }
-  const { filters, q, sort, page } = parseListingParams(usp, tables)
-  // The server renders in English (the shop's language is applied on the client), hence lang 'en'.
-  // Brand Fashion (DIVERGED 2026-10-17, V2-READ-HALF): the v2 request builder takes the tables for the category slug.
-  const qs = listingRequest({ filters, q, sort, page, lang: 'en' }, tables)
+async function load(searchParams) {
+  const usp = toParams(await searchParams)
+  const state = readListingState(usp)
+  const qs = toV2Query(state, 'en')
   let listing = null
   try {
     listing = await getServerListing(qs)
   } catch {
-    // core unreachable → the client fetches and shows the inline error/retry.
+    // core unreachable → the client fetches and shows the inline error/retry
   }
-  return { tables, filters, q, sort, page, qs, listing, query: listingQuery(usp.toString()) }
+  return { usp, state, qs, listing }
 }
 
 export async function generateMetadata({ searchParams }) {
-  const { tables, filters, listing, query } = await loadContext(searchParams)
+  const { usp, state, listing } = await load(searchParams)
   const { urlLang } = await requestLang()
-  // `query` decides indexability: any listing-relevant parameter makes the page noindex, follow.
-  return listingMetadata({ tables, ...listingSummary(listing, tables), filters, pathname: '/listing', query, lang: urlLang })
+  return bfListingMetadata({
+    title: listingTitle({ q: state.q, lang: urlLang }),
+    total: listing?.total ?? 0,
+    answered: listing != null,
+    image: listing?.v2?.data?.[0]?.image?.src ?? null,
+    pathname: '/listing',
+    query: listingQueryOf(usp.toString()),
+    lang: urlLang,
+  })
 }
 
 export default async function ListingPage({ searchParams }) {
-  const { tables, filters, qs, listing } = await loadContext(searchParams)
-  const { urlLang } = await requestLang()
-  const breadcrumbLd = listingBreadcrumbLd({ tables, filters, pathname: '/listing', lang: urlLang })
-
-  // The first page and its facet counts, from core (C-1 stage 3) — with the SAME request builder
-  // ListingClient uses, so its first render hits this data.
+  const { qs, listing } = await load(searchParams)
   const qc = new QueryClient()
   if (listing) qc.setQueryData(['listing', qs], listing)
-
   return (
     <HydrationBoundary state={dehydrate(qc)}>
-      {/* BreadcrumbList structured data — in the initial HTML for scrapers. */}
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: safeJsonLd(breadcrumbLd) }}
-      />
-      {/* No <Suspense> here (2026-09-30). The page is dynamic, so useSearchParams() needs none; the
-          boundary only made React send the finished grid as a separate block swapped in LATER — a
-          page with an empty grid first, and on desktop the footer jumping down (CLS 0.50, measured). */}
-      <ListingClient />
+      <BfListing route={{}} />
     </HydrationBoundary>
   )
 }

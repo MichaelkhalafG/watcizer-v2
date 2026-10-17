@@ -1,6 +1,6 @@
-import HomeClient from './HomeClient'
+import BfHome from '@/src/Components/Home/BfHome'
 import { safeJsonLd } from '@/src/lib/safeJsonLd'
-import { getServerHome } from '@/src/lib/serverCatalog'
+import { getServerV2Home, getServerV2Meta } from '@/src/lib/serverV2'
 import { requestLang, alternatesFor, localePath, SITE } from '@/src/lib/requestLang'
 
 // ISR: render on the server (with the rails' cards in the HTML for SEO), cache, and
@@ -83,15 +83,28 @@ const storeJsonLd = {
 
 // The rails and their cards come from core's `catalog/home` (C-1 stage 4 slice C) — not the whole
 // catalogue. null on failure: the client shows its retry instead of rails.
+// B6 (2026-10-17, DIVERGED from Frontend-next — V2-READ-HALF / B6): the home is spec v2.9 §10.1 on v2 `home` and
+// `meta` (BfHome). Either read failing leaves that part empty on the server render; the page is never a 404.
 export default async function HomePage() {
-  const home = await getServerHome()
+  let home = null
+  let meta = null
+  try {
+    home = await getServerV2Home()
+  } catch {
+    // core unreachable → no rails on the server render
+  }
+  try {
+    meta = await getServerV2Meta()
+  } catch {
+    // no brand strip
+  }
   return (
     <>
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: safeJsonLd(storeJsonLd) }}
       />
-      <HomeClient initialHome={home} />
+      <BfHome home={home} meta={meta} />
     </>
   )
 }

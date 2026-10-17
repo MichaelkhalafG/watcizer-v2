@@ -1,0 +1,98 @@
+/* B6 — the Brand Fashion home (spec v2.9 §10.1, §11.2, §9, §3's density rule). Tokens from app/globals.css.
+   Every direct child of .bf-home is a BAND for the density instrument (src/lib/density.js): bands that carry
+   no card are kept under 0.35 vh and never adjacent — the opening band groups the promo line, the hero and
+   the category chips (§10.1 items 2–4) into ONE band so that clause holds. */
+
+.bf-home { background: var(--wz-page); color: var(--wz-ink); padding-block-end: calc(56px + env(safe-area-inset-bottom) + 24px); }
+@media (min-width: 1024px) { .bf-home { padding-block-end: 48px; } }
+.bf-home > * { max-width: 1200px; margin-inline: auto; padding-inline: 16px; }
+@media (min-width: 600px) { .bf-home > * { padding-inline: 20px; } }
+
+/* ── band 1: promo line 32 + hero + category chips ─────────────────────────────────────────── */
+.bf-open { padding-block: 0 8px; }
+.bf-promo-line { height: 32px; display: flex; align-items: center; justify-content: center; gap: 12px; background: var(--wz-tint-leather); font-size: 12px; white-space: nowrap; overflow: hidden; border-radius: 0 0 var(--wz-r-input) var(--wz-r-input); margin-inline: -16px; padding-inline: 16px; }
+@media (min-width: 600px) { .bf-promo-line { margin-inline: -20px; padding-inline: 20px; } }
+.bf-promo-line span { overflow: hidden; text-overflow: ellipsis; }
+.bf-promo-line button { flex: none; background: none; border: 0; font: inherit; font-size: 14px; cursor: pointer; width: 32px; height: 32px; }
+
+/* the hero frame: radius 12, inset 16 (§10.1 item 3) */
+.bf-hero { margin-block-start: 8px; border-radius: var(--wz-r-section); overflow: hidden; }
+/* the banner's height is bounded so the opening band (promo line + hero + chips) stays under 0.35 vh at every width
+   (§3): 160 phone · 170 tablet · 190 desktop — measured 2026-10-17 at 811 px tall viewports */
+.bf-hero--banner img { display: block; width: 100%; height: auto; max-height: 160px; object-fit: cover; }
+@media (min-width: 600px) { .bf-hero--banner img { max-height: 170px; } }
+@media (min-width: 1024px) { .bf-hero--banner img { max-height: 190px; } }
+/* the system hero (§11.2): ink panel · display/32 line · brand-gold CTA pill · 3-up / 6-up strip of real photos */
+.bf-hero--system { background: var(--wz-ink); color: var(--wz-on-ink); display: grid; grid-template-columns: 1fr; gap: 8px; padding: 12px 16px; }
+@media (min-width: 1024px) { .bf-hero--system { grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); align-items: center; padding: 20px 24px; } }
+/* under 1024 the system hero stacks, so the line is 20/1.2 and the photo strip 56 tall — the opening band (promo line
+   + hero + chips) must stay under 0.35 vh at 390 (§3); display/32 is the desktop size (§5) */
+.bf-hero__line { font-size: 20px; line-height: 1.2; font-weight: 800; margin: 0 0 8px; }
+@media (min-width: 1024px) { .bf-hero__line { font-size: 32px; line-height: 40px; } }
+.bf-hero__cta { display: inline-flex; align-items: center; height: 36px; padding-inline: 16px; border-radius: var(--wz-r-pill); background: var(--wz-brand); color: var(--wz-ink); font-size: 12px; font-weight: 600; text-decoration: none; }
+.bf-hero__strip { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+@media (min-width: 1024px) { .bf-hero__strip { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
+.bf-hero__photo { height: 56px; border-radius: var(--wz-r-input); background: var(--wz-tile); display: block; overflow: hidden; }
+@media (min-width: 1024px) { .bf-hero__photo { height: auto; aspect-ratio: 1 / 1; } }
+.bf-hero__photo img { width: 100%; height: 100%; object-fit: contain; padding: 8%; }
+
+/* category chips: horizontal scroll, tinted, 36 tall (§10.1 item 4) */
+.bf-chips-row { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding-block: 8px 0; }
+.bf-chips-row::-webkit-scrollbar { display: none; }
+.bf-cat-chip { flex: none; height: 36px; display: inline-flex; align-items: center; gap: 6px; padding-inline: 14px; border-radius: var(--wz-r-pill); color: var(--wz-ink); font-size: 12px; font-weight: 600; text-decoration: none; }
+.bf-cat-chip small { font-weight: 400; color: var(--wz-ink-2); }
+
+/* ── the deals band (§10.1 item 6): an ink header card carrying the brand-gold CTA, then 2×2 phone / 6 desktop ── */
+.bf-deals { padding-block: 8px; }
+.bf-deals__grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+@media (min-width: 1024px) { .bf-deals__grid { grid-template-columns: 1.2fr repeat(6, minmax(0, 1fr)); gap: 12px; } }
+.bf-deals__head { grid-column: 1 / -1; background: var(--wz-ink); color: var(--wz-on-ink); border-radius: var(--wz-r-card); padding: 14px 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 64px; }
+@media (min-width: 1024px) { .bf-deals__head { grid-column: 1; flex-direction: column; align-items: flex-start; justify-content: center; } }
+.bf-deals__title { font-size: 18px; font-weight: 800; margin: 0; }
+.bf-deals__sub { font-size: 12px; opacity: 0.85; }
+
+/* ── category squares (§10.1 item 5): 3 phone / 5 desktop, real photos on the family tint, live counts ── */
+.bf-squares { padding-block: 8px; }
+.bf-squares__row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+@media (min-width: 600px) { .bf-squares__row { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; } }
+/* the square: 112 phone / 228 desktop in §10.1 — capped so the band between two card bands keeps a card every 0.8 vh */
+.bf-square__tile { max-height: 112px; }
+@media (min-width: 600px) { .bf-square__tile { max-height: 150px; } }
+@media (min-width: 1024px) { .bf-square__tile { max-height: 180px; } }
+.bf-square { display: block; text-decoration: none; color: var(--wz-ink); }
+.bf-square__tile { aspect-ratio: 1 / 1; border-radius: var(--wz-r-section); overflow: hidden; display: flex; align-items: center; justify-content: center; }
+.bf-square__tile img { width: 100%; height: 100%; object-fit: contain; mix-blend-mode: multiply; padding: 10%; }
+.bf-square__name { font-size: 14px; font-weight: 600; margin-block-start: 6px; display: flex; justify-content: space-between; gap: 6px; }
+.bf-square__name small { color: var(--wz-ink-2); font-weight: 400; font-size: 12px; }
+
+/* ── rails (§10.1 item 7) use .bf-rail; spacing between bands ── */
+.bf-home .bf-rail { margin-block-start: 8px; }
+
+/* ── promo block (§10.1 item 8, §9): brand-gold ground, ink text, one per screen ── */
+.bf-promo-block { padding-block: 8px; }
+.bf-promo-block__card { background: var(--wz-brand); color: var(--wz-ink); border-radius: var(--wz-r-section); padding: 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 72px; }
+.bf-promo-block__text { font-size: 16px; font-weight: 800; margin: 0; }
+.bf-promo-block__cta { height: 36px; display: inline-flex; align-items: center; padding-inline: 16px; border-radius: var(--wz-r-pill); background: var(--wz-ink); color: var(--wz-on-ink); font-size: 12px; font-weight: 600; text-decoration: none; flex: none; }
+
+/* ── brand strip (§10.1 item 9): 3 visible phone / 6 desktop, white cards 44/56, logos contain ── */
+.bf-brands { padding-block: 8px; }
+.bf-brands__row { display: grid; grid-auto-flow: column; grid-auto-columns: calc((100% - 16px) / 3); gap: 8px; overflow-x: auto; scrollbar-width: none; }
+.bf-brands__row::-webkit-scrollbar { display: none; }
+@media (min-width: 1024px) { .bf-brands__row { grid-auto-columns: calc((100% - 60px) / 6); gap: 12px; } }
+.bf-brand { height: 44px; border: 1px solid var(--wz-line); border-radius: var(--wz-r-card); background: var(--wz-page); display: flex; align-items: center; justify-content: center; padding: 6px 12px; text-decoration: none; color: var(--wz-ink); font-size: 12px; font-weight: 600; }
+@media (min-width: 1024px) { .bf-brand { height: 56px; } }
+.bf-brand img { max-height: 100%; max-width: 100%; object-fit: contain; }
+
+/* ── bottom nav (§10.1 item 11): phone only, 56 + safe area, four items ── */
+.bf-bottom-nav { position: fixed; inset-inline: 0; inset-block-end: 0; height: calc(56px + env(safe-area-inset-bottom)); padding-block-end: env(safe-area-inset-bottom); background: var(--wz-page); border-block-start: 1px solid var(--wz-line); display: grid; grid-template-columns: repeat(4, 1fr); z-index: 40; }
+@media (min-width: 1024px) { .bf-bottom-nav { display: none; } }
+.bf-bottom-nav a { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 10px; font-weight: 600; color: var(--wz-ink-2); text-decoration: none; }
+.bf-bottom-nav a[aria-current='page'] { color: var(--wz-ink); }
+.bf-bottom-nav svg { width: 22px; height: 22px; }
+
+/* the deals band shows 4 cards on phone (2×2) and 6 on desktop; the hero strip 3 photos on phone, 6 on desktop */
+.bf-deals__desktop-only { display: none; }
+@media (min-width: 1024px) { .bf-deals__desktop-only { display: block; } .bf-hero__strip { --bf-hero-extra: block; } }
+
+/* the copied app's global heading rule upper-cases h1–h3; the spec's type scale (§5) has no caps outside the 10px brand line */
+.bf-listing h1, .bf-listing h2, .bf-listing h3, .bf-rail h2, .bf-pdp h1, .bf-pdp h2, .bf-home h2, .bf-empty h2, .bf-sheet b { text-transform: none; }

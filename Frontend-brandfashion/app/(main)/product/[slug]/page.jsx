@@ -1,154 +1,85 @@
-import { notFound, permanentRedirect } from 'next/navigation'
-import { getServerProductCard, fetchProductByName, localizedProduct, getServerTables, getServerNav } from '@/src/lib/serverCatalog'
-import { requestLang, localePath } from '@/src/lib/requestLang'
-import { buildProductSeo } from '@/src/lib/detailSeo'
-import { toSlug, brandSlug } from '@/src/utils/slugs'
-import ProductDetailClient from '@/src/Components/Product/ProductDetailClient'
+import { notFound } from 'next/navigation'
+import { getServerV2Product, getServerV2Related } from '@/src/lib/serverV2'
+import { requestLang, localePath, SITE } from '@/src/lib/requestLang'
+import { txt } from '@/src/lib/cardData'
+import BfProductPage from '@/src/Components/Product/BfProductPage'
 import { safeJsonLd } from '@/src/lib/safeJsonLd'
 
-// ISR: server-render the PDP (with product data + JSON-LD in the HTML for SEO),
-// cache, revalidate every 5 min — matching the products query staleTime.
+// B5 — Brand Fashion's product page (spec v2.9 §10.3), on v2 `products/{slug}` + `products/{slug}/related`
+// (DIVERGED from Frontend-next 2026-10-17, V2-READ-HALF / B5). `[slug]` is v2's product slug — the one every
+// Brand Fashion card links to. A slug core does not know is a 404 (this shop is not indexed yet; the legacy
+// raw-title redirect of the copied page is not carried — recorded). Metadata comes from v2's own `meta`
+// (the team's words win), the Product and BreadcrumbList JSON-LD from the same payload.
 export const revalidate = 300
 
-// Resolve the product ONCE per request. The getters are React-cached, so generateMetadata + the page
-// body share ONE upstream fetch. Core's slug/id lookup first, then the by-name endpoint for legacy
-// raw-title URLs.
-//
-// null (→ 404) ONLY when core answered "no such product" to BOTH lookups (2026-09-30). When core could
-// not answer (a 429 from its rate limit, a 5xx, a timeout) the CoreUnavailableError propagates to the
-// error boundary: a 5xx, so Google comes back later instead of dropping a real product from its index.
-async function resolveProduct(param) {
-  let failure = null
-  try {
-    // ONE product from core (`catalog/product`, the same slug rule) — C-1 stage 4. The page used to
-    // load the whole catalogue here and search it.
-    const card = await getServerProductCard(param)
-    if (card) return { product: card.product, ratings: card.ratings, tables: card.tables, payload: card.payload }
-  } catch (err) {
-    // core could not answer the slug lookup: the by-name endpoint may still find it, but its "no"
-    // can no longer prove the product does not exist
-    failure = err
-  }
-  let byName
-  try {
-    byName = await fetchProductByName(param)
-  } catch (err) {
-    throw failure || err
-  }
-  if (!byName) {
-    if (failure) throw failure
-    return null
-  }
-  // Strict match: the by-name endpoint can return a FUZZY/near match for an
-  // unknown slug (a soft-200 of the wrong product). Only accept it when the
-  // requested param genuinely identifies THIS product — its numeric id, or a slug
-  // that normalizes to the product's own slug (so legit legacy raw-title URLs
-  // still resolve, then canonical-redirect). Otherwise treat it as not-found.
-  let decoded = param
-  try {
-    decoded = decodeURIComponent(param)
-  } catch {
-    // malformed %-escape → compare the raw param
-  }
-  const requested = toSlug(decoded)
-  const identifies =
-    (/^\d+$/.test(param) && Number(param) === Number(byName.id)) ||
-    requested === toSlug(byName.name || '') ||
-    requested === toSlug(byName.product_title || '') ||
-    requested === toSlug(byName.name_en || '')
-  if (!identifies) return null
-  return { product: byName, ratings: [], tables: null, payload: null }
-}
-
-// An unresolved RAW TITLE (2026-10-09, 404 map): an old link to a product title that no longer exists —
-// "/product/Michael Kors Women's Silver Stainless Steel Watch MK5626" — goes to its brand's page (308)
-// instead of a 404, when the title STARTS with a brand that has products on this storefront (the
-// longest such brand wins). Only a raw title: spaces, capitals, apostrophes or non-ASCII. A clean slug
-// that resolves to nothing stays a 404 — the seeder's invented URLs (/product/longines-conquest) were
-// never real pages and must not become redirects. No brand prefix → 404, as before.
-async function notFoundOrBrand(param, urlLang) {
-  let decoded = param
-  try {
-    decoded = decodeURIComponent(param)
-  } catch {
-    // malformed %-escape → the raw param
-  }
-  if (/[\s'’A-Z]|[^\x00-\x7F]/.test(decoded)) {
-    const slug = toSlug(decoded)
-    const [tables, nav] = await Promise.all([getServerTables(), getServerNav()])
-    const live = new Set(nav?.brand_ids || [])
-    let best = ''
-    for (const b of tables?.brands || []) {
-      if (!live.has(b.id)) continue
-      const bs = brandSlug(b)
-      if (bs && bs.length > best.length && (slug === bs || slug.startsWith(`${bs}-`))) best = bs
-    }
-    if (best) permanentRedirect(localePath(`/brand/${best}`, urlLang))
-  }
-  notFound()
+async function load(params) {
+  const { slug } = await params
+  const detail = await getServerV2Product(slug)   // null = core said no such product; a core failure throws (5xx, never a 404)
+  if (!detail) return { slug, detail: null, related: null }
+  const related = await getServerV2Related(slug)
+  return { slug, detail, related }
 }
 
 export async function generateMetadata({ params }) {
-  const { slug } = await params
-  const resolved = await resolveProduct(slug)
-  // notFound() HERE (in generateMetadata, before the page streams) is what sets a
-  // real 404 status. The route has a loading.jsx boundary, so once the page body
-  // starts streaming the status is locked at 200 — calling notFound() only in the
-  // page renders the 404 UI but keeps the 200. Metadata runs first, so this 404s.
-  // In the URL's language (S-AR stage 1): /ar/product/… gets the Arabic title, description and
-  // JSON-LD, self-canonical, with hreflang to the English page.
+  const { slug, detail } = await load(params)
+  if (!detail) return {}
   const { urlLang } = await requestLang()
-  if (!resolved) await notFoundOrBrand(slug, urlLang)
-  return buildProductSeo(resolved.product, {
-    ratings: resolved.ratings,
-    tables: resolved.tables,
-    lang: urlLang,
-    localized: localizedProduct(resolved, urlLang),
-    meta: resolved.payload?.meta,
-  }).metadata
+  const p = detail.product
+  const title = txt(p.meta?.title, urlLang) || txt(p.title, urlLang)
+  const description = txt(p.meta?.description, urlLang) || txt(p.short_description, urlLang) || ''
+  const path = `/product/${slug}`
+  const images = (p.images || []).map((i) => i.src).filter(Boolean)
+  return {
+    title: `${title} | ${urlLang === 'ar' ? 'براند فاشون' : 'Brand Fashion'}`,
+    description,
+    alternates: {
+      canonical: `${SITE}${localePath(path, urlLang)}`,
+      languages: { en: `${SITE}${path}`, ar: `${SITE}${localePath(path, 'ar')}`, 'x-default': `${SITE}${path}` },
+    },
+    openGraph: { title, description, type: 'website', url: `${SITE}${localePath(path, urlLang)}`, images: images.slice(0, 1).map((url) => ({ url })) },
+  }
 }
 
 export default async function ProductPage({ params }) {
-  const { slug } = await params
-  const resolved = await resolveProduct(slug)
+  const { slug, detail, related } = await load(params)
+  if (!detail) notFound()
   const { urlLang } = await requestLang()
-  if (!resolved) await notFoundOrBrand(slug, urlLang)
-
-  const { product, ratings, tables, payload } = resolved
-  const { canonicalPath, productLd, breadcrumbLd } = buildProductSeo(product, {
-    ratings,
-    tables,
-    lang: urlLang,
-    localized: localizedProduct(resolved, urlLang),
-    meta: payload?.meta,
-  })
-
-  // Canonical redirect (replaces ProductDetail's client-side <Navigate>): any
-  // non-canonical URL — numeric id, legacy raw title — 308s to /product/{slug},
-  // keeping the /ar prefix on an Arabic URL.
-  if (canonicalPath && canonicalPath !== `/product/${slug}`) {
-    permanentRedirect(localePath(canonicalPath, urlLang))
+  const p = detail.product
+  const path = `/product/${slug}`
+  const price = p.price || {}
+  const inStock = Boolean(p.stock?.in_stock)
+  const productLd = {
+    '@context': 'https://schema.org/',
+    '@type': 'Product',
+    name: txt(p.title, urlLang),
+    image: (p.images || []).map((i) => i.src).filter(Boolean),
+    description: txt(p.meta?.description, urlLang) || txt(p.short_description, urlLang) || undefined,
+    sku: p.model_number || undefined,
+    brand: p.brand?.name ? { '@type': 'Brand', name: txt(p.brand.name, 'en') } : undefined,
+    offers: {
+      '@type': 'Offer',
+      url: `${SITE}${localePath(path, urlLang)}`,
+      priceCurrency: price.currency || 'EGP',
+      price: String(price.has_sale && price.sale_amount ? price.sale_amount : price.amount ?? ''),
+      availability: inStock ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock',
+      itemCondition: 'https://schema.org/NewCondition',
+    },
   }
-
-  // The (main) layout already hydrates the (light) catalog for every page, so this
-  // page does NOT re-dehydrate it (that duplicated a ~9 MB copy — C-1). ProductDetailClient
-  // resolves the slug from the layout-hydrated catalog, then fetches the FULL record by
-  // id for specs/gallery. JSON-LD/metadata above use the server-side full catalog, so
-  // SEO is unaffected.
+  const crumbs = Array.isArray(p.breadcrumb) ? p.breadcrumb : []
+  const breadcrumbLd = {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      { '@type': 'ListItem', position: 1, name: urlLang === 'ar' ? 'الرئيسية' : 'Home', item: SITE },
+      ...crumbs.map((c, i) => ({ '@type': 'ListItem', position: i + 2, name: txt(c.name, urlLang), item: `${SITE}/category/${c.path}` })),
+      { '@type': 'ListItem', position: crumbs.length + 2, name: txt(p.title, urlLang), item: `${SITE}${path}` },
+    ],
+  }
   return (
     <>
-      {/* Product + BreadcrumbList structured data — in the initial HTML so
-          scrapers see it without executing JS (the core SEO deliverable). */}
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: safeJsonLd(productLd) }}
-      />
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: safeJsonLd(breadcrumbLd) }}
-      />
-      {/* No catalogue here since C-1 stage 4: the page carries its ONE product (core's card). */}
-      <ProductDetailClient param={slug} isOffer={false} productPayload={payload} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: safeJsonLd(productLd) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: safeJsonLd(breadcrumbLd) }} />
+      <BfProductPage detail={detail} related={related} />
     </>
   )
 }
