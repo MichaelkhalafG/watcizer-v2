@@ -28,6 +28,9 @@ use Illuminate\Support\Facades\DB;
  *  - `categories`: the depth-1 menu nodes with their live count and ONE real product photo (the newest
  *    in-stock product placed under each) — spec §9 "Category entry".
  *  - `banner`: the active home banner, if the dashboard has one (spec §11.2: with a banner / without).
+ *  - `brands` (2026-10-17, spec v2.11 §10.1 item 9): the brands that have at least one visible product on
+ *    THIS storefront, with that count and the logo — the brand strip used to draw `meta.brands` (every
+ *    active brand, 80 of them) and showed twelve logos with nothing behind them.
  *
  * Cached under the `home` family with the events that stale a listing index plus the rails screen's own
  * flush (the dashboard flushes the storefront on every rail write).
@@ -43,6 +46,7 @@ final class StorefrontHome
         private readonly StorefrontCache $cache,
         private readonly ProductCards $cards,
         private readonly CategoryTree $tree,
+        private readonly Lookups $lookups,
     ) {}
 
     /** @return array<string, mixed> */
@@ -95,6 +99,7 @@ final class StorefrontHome
             'deals' => $this->deals(),
             'categories' => $this->categories(),
             'banner' => $this->banner(),
+            'brands' => $this->brands(),
         ];
     }
 
@@ -142,16 +147,51 @@ final class StorefrontHome
             if (Val::int($node, 'depth') !== 1 || Val::int($node, 'product_count') < 1) {
                 continue;
             }
-            $row = $this->cards->placedIn($this->cards->base()->where('p.in_stock', 1), $this->tree->subtreeIds(Val::int($node, 'id')))
+            // The newest IN-STOCK product's photo; when the whole family is sold out (electronics, 72 of 72
+            // on 2026-10-17) the newest product's photo — an entry with a count and no picture was an empty
+            // tile on the home (bug 3 of the 2026-10-17 review).
+            $subtree = $this->tree->subtreeIds(Val::int($node, 'id'));
+            $row = $this->cards->placedIn($this->cards->base()->where('p.in_stock', 1), $subtree)
                 ->select(ProductCards::columns())
                 ->orderByDesc('p.created_at')->orderByDesc('p.id')
                 ->limit(1)->get()->all();
+            if ($row === []) {
+                $row = $this->cards->placedIn($this->cards->base(), $subtree)
+                    ->select(ProductCards::columns())
+                    ->orderByDesc('p.created_at')->orderByDesc('p.id')
+                    ->limit(1)->get()->all();
+            }
             $card = $this->cards->build($row)[0] ?? null;
             $out[] = CategoryTree::ref($node) + [
                 'count' => Val::int($node, 'product_count'),
                 'image' => $card === null ? null : ($card['image'] ?? null),
                 'family' => $card === null ? null : ($card['family'] ?? null),
             ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * The brands with at least one visible product here, most products first: `{id, slug, name, logo, count}`.
+     * One grouped query over the listing base; names and logos from the cached lookups.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function brands(): array
+    {
+        $rows = $this->cards->base()
+            ->selectRaw('p.brand_id, COUNT(*) AS n')
+            ->groupBy('p.brand_id')
+            ->orderByDesc('n')->orderBy('p.brand_id')
+            ->get();
+        $out = [];
+        foreach ($rows as $r) {
+            $brand = $this->lookups->get('brands', Row::int($r, 'brand_id'));
+            if ($brand === null || ($brand['is_active'] ?? true) !== true) {
+                continue;
+            }
+            $out[] = ['id' => $brand['id'], 'slug' => $brand['slug'], 'name' => $brand['name'], 'logo' => $brand['logo'] ?? null, 'count' => Row::int($r, 'n')];
         }
 
         return $out;

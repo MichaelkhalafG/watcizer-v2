@@ -19,7 +19,7 @@ it('paginates the storefront catalog server-side with sane defaults and a hard c
         ->and($res->json('links.next'))->toContain('page=2');
 
     $card = H::arr($res->json('data.0'));
-    expect($card)->toHaveKeys(['id', 'slug', 'family', 'title', 'short_description', 'brand', 'grade', 'primary_category', 'image', 'price', 'stock', 'rating', 'is_featured', 'sort_order', 'created_at'])
+    expect($card)->toHaveKeys(['id', 'slug', 'family', 'title', 'short_description', 'brand', 'grade', 'primary_category', 'image', 'hover_image', 'colors', 'variants', 'price', 'stock', 'rating', 'is_featured', 'sort_order', 'created_at'])
         ->and(H::arr($card['price']))->toHaveKeys(['amount', 'sale_amount', 'currency', 'discount_pct', 'has_sale'])
         ->and($card)->not->toHaveKeys(['purchase_price', 'wa_code', 'hs_code', 'sku', 'created_by', 'updated_by', 'low_stock_threshold']);
 

@@ -25,6 +25,14 @@ use stdClass;
  * positions them; 92.3% of visible products carry one), and a card cannot render what the row
  * does not carry. One batch query per page (`colors()`), hex and names from the cached lookups —
  * the listing budget in QueryBudgetTest grew by exactly that one query.
+ *
+ * Two more card fields since 2026-10-17 (the Brand Fashion card, spec v2.11 §8): `hover_image`, the
+ * product's SECOND photo for the card's hover swap — read by the same images query as the cover
+ * (one query, two rows per product, no budget change) — and `variants`, the product's active
+ * variant rows reduced to what a card's picker needs (id, colour ref, size ref, in stock): one
+ * batch query per page over `catalog_product_variants`, the SEVENTH listing query (QueryBudgetTest
+ * carries the reason). These are SELECTABLE options (`catalog_product_variants`), kept apart by name
+ * from the DESCRIPTIVE `colors` above — the two were once drawn alike and read as one thing.
  */
 final class ProductCards
 {
@@ -86,13 +94,14 @@ final class ProductCards
         $rows = is_array($rows) ? $rows : iterator_to_array($rows, false);
         $ids = array_values(array_map(fn (stdClass $r) => Row::int($r, 'product_id'), $rows));
         $translations = $this->translations($ids, ['title', 'short_description']);
-        $covers = $this->covers($ids);
+        $images = $this->images($ids);
         $primary = $this->primaryPlacements($ids);
         $colors = $this->colors($ids);
+        $variants = $this->variants($ids);
 
         $out = [];
         foreach ($rows as $row) {
-            $out[] = $this->card($row, $translations, $covers, $primary, $colors);
+            $out[] = $this->card($row, $translations, $images, $primary, $colors, $variants);
         }
 
         return $out;
@@ -100,12 +109,13 @@ final class ProductCards
 
     /**
      * @param  array<int, array<string, array<string, string>>>  $translations  product id => field => locale => value
-     * @param  array<int, array<string, mixed>>  $covers
+     * @param  array<int, array{cover: ?array<string, mixed>, hover: ?array<string, mixed>}>  $images  product id => cover and second photo
      * @param  array<int, int>  $primary  product id => node id
      * @param  array<int, list<array<string, mixed>>>  $colors  product id => attribute colours, dial then band then main
+     * @param  array<int, list<array<string, mixed>>>  $variants  product id => active variant rows for a picker
      * @return array<string, mixed>
      */
-    public function card(stdClass $row, array $translations, array $covers, array $primary, array $colors = []): array
+    public function card(stdClass $row, array $translations, array $images, array $primary, array $colors = [], array $variants = []): array
     {
         $id = Row::int($row, 'product_id');
         $tr = $translations[$id] ?? [];
@@ -122,8 +132,10 @@ final class ProductCards
             'brand' => $this->lookups->ref('brands', Row::int($row, 'brand_id')),
             'grade' => $this->lookups->ref('grades', Row::nint($row, 'grade_id')),
             'primary_category' => $primaryNode === null ? null : CategoryTree::ref($primaryNode),
-            'image' => $covers[$id] ?? null,
+            'image' => $images[$id]['cover'] ?? null,
+            'hover_image' => $images[$id]['hover'] ?? null,
             'colors' => $colors[$id] ?? [],
+            'variants' => $variants[$id] ?? [],
             'price' => StorefrontPricing::resolve(Row::money($row, 'effective_price'), Row::nmoney($row, 'effective_sale_price'), $this->currency()),
             'stock' => ['express' => Row::int($row, 'stock_express'), 'market' => Row::int($row, 'stock_market'), 'in_stock' => Row::bool($row, 'in_stock')],
             'rating' => ['avg' => Row::nfloat($row, 'rating_avg'), 'count' => Row::int($row, 'rating_count')],
@@ -175,12 +187,14 @@ final class ProductCards
     }
 
     /**
-     * product id => cover image object (lowest sort cover row).
+     * product id => the cover (lowest-sort cover row, else the first image) and the SECOND image
+     * (the next row in cover-first, sort, id order) — one query for both, so the card's hover swap
+     * costs no budget. A product with one image has `hover` null.
      *
      * @param  list<int>  $ids
-     * @return array<int, array<string, mixed>>
+     * @return array<int, array{cover: ?array<string, mixed>, hover: ?array<string, mixed>}>
      */
-    public function covers(array $ids): array
+    public function images(array $ids): array
     {
         $out = [];
         if ($ids === []) {
@@ -189,15 +203,68 @@ final class ProductCards
         $rows = DB::table('catalog_product_images')
             ->select(['product_id', 'path', 'width', 'height', 'alt_en', 'alt_ar', 'renditions'])
             ->whereIn('product_id', $ids)
-            ->where('is_cover', 1)
-            ->orderBy('product_id')->orderBy('sort')->orderBy('id')
+            ->orderBy('product_id')->orderByDesc('is_cover')->orderBy('sort')->orderBy('id')
             ->get();
         foreach ($rows as $r) {
             $pid = Row::int($r, 'product_id');
-            if (isset($out[$pid])) {
-                continue;
+            if (! isset($out[$pid])) {
+                $out[$pid] = ['cover' => self::image($r), 'hover' => null];
+            } elseif ($out[$pid]['hover'] === null) {
+                $out[$pid]['hover'] = self::image($r);
             }
-            $out[$pid] = self::image($r);
+        }
+
+        return $out;
+    }
+
+    /**
+     * product id => cover image object (the detail reads this one; the card reads {@see images()}).
+     *
+     * @param  list<int>  $ids
+     * @return array<int, array<string, mixed>>
+     */
+    public function covers(array $ids): array
+    {
+        $out = [];
+        foreach ($this->images($ids) as $pid => $pair) {
+            if ($pair['cover'] !== null) {
+                $out[$pid] = $pair['cover'];
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * product id => the product's ACTIVE variant rows, as a card's picker needs them: the row id,
+     * its colour ref (hex, names) and size ref (names, type, sort), and whether that row has stock.
+     * One query per page over `cpv_product_active_idx`; an empty list means "no picker" (spec §11.5).
+     * These SELECT; the attribute colours of {@see colors()} DESCRIBE — never conflate the two.
+     *
+     * @param  list<int>  $ids
+     * @return array<int, list<array<string, mixed>>>
+     */
+    public function variants(array $ids): array
+    {
+        $out = [];
+        if ($ids === []) {
+            return $out;
+        }
+        $rows = DB::table('catalog_product_variants')
+            ->select(['id', 'product_id', 'color_id', 'size_id', 'stock_express', 'stock_market'])
+            ->whereIn('product_id', $ids)
+            ->where('is_active', 1)
+            ->orderBy('product_id')->orderBy('sort')->orderBy('id')
+            ->get();
+        foreach ($rows as $r) {
+            $colorId = Row::nint($r, 'color_id');
+            $sizeId = Row::nint($r, 'size_id');
+            $out[Row::int($r, 'product_id')][] = [
+                'id' => Row::int($r, 'id'),
+                'color' => $colorId === null ? null : $this->lookups->ref('colors', $colorId),
+                'size' => $sizeId === null ? null : $this->lookups->ref('sizes', $sizeId),
+                'in_stock' => Row::int($r, 'stock_express') > 0 || Row::int($r, 'stock_market') > 0,
+            ];
         }
 
         return $out;

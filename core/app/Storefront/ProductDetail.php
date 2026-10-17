@@ -81,9 +81,9 @@ final class ProductDetail
         $productId = Row::int($row, 'product_id');
         $translations = $this->cards->translations([$productId], ['title', 'short_description', 'long_description', 'model_name', 'country', 'stone', 'meta_title', 'meta_description']);
         $tr = $translations[$productId] ?? [];
-        $covers = $this->cards->covers([$productId]);
+        $images2 = $this->cards->images([$productId]);
         $primary = $this->cards->primaryPlacements([$productId]);
-        $card = $this->cards->card($row, $translations, $covers, $primary);
+        $card = $this->cards->card($row, $translations, $images2, $primary);
 
         $images = [];
         foreach (DB::table('catalog_product_images')->select(['id', 'path', 'is_cover', 'sort', 'width', 'height', 'alt_en', 'alt_ar', 'renditions'])->where('product_id', $productId)->orderByDesc('is_cover')->orderBy('sort')->orderBy('id')->get() as $img) {
@@ -120,7 +120,9 @@ final class ProductDetail
         $specsJson = Row::nstr($row, 'specs');
         $family = json_decode($specsJson ?? 'null', true);
 
-        $product = $card + [
+        // array_replace, not `+`: the card now carries a picker-sized `variants` list (ProductCards::variants),
+        // and the detail's FULL rows (price, label, both stock buckets) must win that key.
+        $product = array_replace($card, [
             'long_description' => $tr['long_description'] ?? [],
             'model_name' => $tr['model_name'] ?? [],
             'country' => $tr['country'] ?? [],
@@ -141,7 +143,7 @@ final class ProductDetail
             'breadcrumb' => $breadcrumb,
             'variants' => $this->variants($productId, $card),
             'meta' => ['title' => $tr['meta_title'] ?? [], 'description' => $tr['meta_description'] ?? []],
-        ];
+        ]);
 
         $related = $this->related($productId, $primary, Row::int($row, 'brand_id'));
         $ids = [$productId];
