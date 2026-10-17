@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import publicHttp from '../../Context/publicApi'
-import { listingRequest, listingQueryFn } from '../../lib/listingRequest'
+import { listingRequest, listingQueryFn, listingNeedsTables } from '../../lib/listingRequest'
 import { useTables } from './useTables'
 import { transformProductData } from '../../utils/transformProduct'
 
@@ -12,14 +12,18 @@ import { transformProductData } from '../../utils/transformProduct'
 // ONE builder turns the filter state into the request, and the request string IS the query key
 // (src/lib/listingRequest.js — pure, so the server pages prefetch with it too).
 
+// Brand Fashion (DIVERGED 2026-10-17, V2-READ-HALF): the v2 request turns a category id into its slug
+// through the tables, so a filter state with a category waits for them instead of asking for everything.
 export const useListing = (args, options = {}) => {
-  const qs = listingRequest(args)
+  const { data: tables } = useTables()
+  const qs = listingRequest(args, tables)
   return useQuery({
     queryKey: ['listing', qs],
     queryFn: listingQueryFn(qs),
     // Keep showing the previous page's cards while the next filter state loads — no skeleton flash.
     placeholderData: keepPreviousData,
     staleTime: 60 * 1000,
+    enabled: !listingNeedsTables(args?.filters) || !!tables,
     ...options,
   })
 }

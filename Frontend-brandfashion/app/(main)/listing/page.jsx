@@ -26,7 +26,8 @@ async function loadContext(searchParams) {
   }
   const { filters, q, sort, page } = parseListingParams(usp, tables)
   // The server renders in English (the shop's language is applied on the client), hence lang 'en'.
-  const qs = listingRequest({ filters, q, sort, page, lang: 'en' })
+  // Brand Fashion (DIVERGED 2026-10-17, V2-READ-HALF): the v2 request builder takes the tables for the category slug.
+  const qs = listingRequest({ filters, q, sort, page, lang: 'en' }, tables)
   let listing = null
   try {
     listing = await getServerListing(qs)

@@ -36,7 +36,6 @@ app/(main)/layout.jsx
 app/(main)/listing/Listing.css
 app/(main)/listing/ListingClient.jsx
 app/(main)/listing/loading.jsx
-app/(main)/listing/page.jsx
 app/(main)/offer/[slug]/page.jsx
 app/(main)/order-confirmation/page.jsx
 app/(main)/privacy-policy/page.jsx
@@ -95,7 +94,6 @@ src/Components/UI/ImageZoom.jsx
 src/Context/api.jsx
 src/Context/loader.css
 src/Context/publicApi.js
-src/Hooks/queries/useListing.js
 src/Hooks/queries/useNav.js
 src/Hooks/queries/useOffers.js
 src/Hooks/queries/usePaymentMethods.js
@@ -126,8 +124,6 @@ src/Store/uiStore.js
 src/content/trustMetadata.js
 src/lib/coreRead.js
 src/lib/env.js
-src/lib/facetListing.jsx
-src/lib/listingRequest.js
 src/lib/markdown.js
 src/lib/safeJsonLd.js
 src/lib/serverBlogs.js
@@ -146,11 +142,22 @@ src/utils/slugs.js
 src/utils/subTypeGroups.js
 src/utils/transformProduct.js
 
-# DIVERGED — files that were twins and were split on purpose (date, file, reason):
+# DIVERGED — files that were twins and were split on purpose. A line in the form
+#   DIVERGED <YYYY-MM-DD> <path> — <reason>
+# is CHECKED by StorefrontTwinsTest: the file must exist on both sides and actually differ (identical again
+# = re-twin it: move it back up), and the line must carry its date and reason. A file deleted on one side
+# stays a comment. The list below shrinks back when Watchizer follows a change Brand Fashion piloted.
 
 # 2026-10-14 src/PageViews/Account/Account.jsx — Track Order WhatsApp to customer service (first in Brand Fashion; Watchizer followed the same day, so it is a twin again).
 
-# 2026-10-14 README.md — Brand Fashion's own title and provenance line (developer decision 2).
+DIVERGED 2026-10-14 README.md — Brand Fashion's own title and provenance line (developer decision 2).
 
-# 2026-10-14 public/robots.txt — Sitemap on michaelkhalaf.com (developer decision 2).
+DIVERGED 2026-10-14 public/robots.txt — Sitemap on michaelkhalaf.com (developer decision 2).
 # 2026-10-14 public/logo.png — DELETED from Brand Fashion (Watchizer's lockup, 0 references; developer decision). logo.webp stays until the hero goes.
+# V2-READ-HALF (2026-10-17, Michael's decision: both storefronts move to v2, Brand Fashion first through the twin
+# apps, no runtime flag): Brand Fashion's listing reads /api/v2/brandfashion/products (src/lib/v2Listing.js, not a
+# twin) while Watchizer's still reads compat catalog/listing. These four re-twin together when Watchizer's listing moves.
+DIVERGED 2026-10-17 src/lib/listingRequest.js — re-exports the v2 adapter under the names every import site uses (V2-READ-HALF).
+DIVERGED 2026-10-17 src/Hooks/queries/useListing.js — passes the tables to the v2 request builder and waits for them when a category is set (V2-READ-HALF).
+DIVERGED 2026-10-17 app/(main)/listing/page.jsx — passes the tables to the v2 request builder (V2-READ-HALF).
+DIVERGED 2026-10-17 src/lib/facetListing.jsx — passes the tables to the v2 request builder (V2-READ-HALF).

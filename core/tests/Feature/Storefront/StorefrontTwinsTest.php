@@ -13,6 +13,11 @@ use PHPUnit\Framework\Assert;
  * gate, so a drifted twin stops the next deploy instead of waiting a month for someone to re-read the
  * manifest. To split a twin on purpose: remove its line from the manifest in the same commit and record
  * it under DIVERGED there, with the date and the reason.
+ *
+ * DIVERGED lines are checked too (2026-10-17, V2-READ-HALF — the first split made on purpose for a feature,
+ * not for identity): `DIVERGED <YYYY-MM-DD> <path> — <reason>` must name a file that exists on both sides
+ * and actually differs — a split that healed is re-twinned, not left on record — with its date and reason.
+ * So the divergence list is a measured number that shrinks back to zero when Watchizer follows.
  */
 
 const TWINS_MANIFEST = 'Frontend-brandfashion/TWINS.txt';
@@ -25,13 +30,34 @@ function twinPaths(): array
     $paths = [];
     foreach (preg_split('/\R/', (string) file_get_contents($file)) ?: [] as $line) {
         $line = trim($line);
-        if ($line === '' || str_starts_with($line, '#')) {
+        if ($line === '' || str_starts_with($line, '#') || str_starts_with($line, 'DIVERGED ')) {
             continue;
         }
         $paths[] = $line;
     }
 
     return $paths;
+}
+
+/** @return list<array{date: string, path: string, reason: string, line: string}> the manifest's DIVERGED entries */
+function divergedEntries(): array
+{
+    $file = dirname(base_path()).DIRECTORY_SEPARATOR.TWINS_MANIFEST;
+    $out = [];
+    foreach (preg_split('/\R/', (string) file_get_contents($file)) ?: [] as $line) {
+        $line = trim($line);
+        if (! str_starts_with($line, 'DIVERGED ')) {
+            continue;
+        }
+        if (preg_match('/^DIVERGED (\d{4}-\d{2}-\d{2}) (\S+) — (.+)$/u', $line, $m) !== 1) {
+            $out[] = ['date' => '', 'path' => '', 'reason' => '', 'line' => $line];
+
+            continue;
+        }
+        $out[] = ['date' => $m[1], 'path' => $m[2], 'reason' => trim($m[3]), 'line' => $line];
+    }
+
+    return $out;
 }
 
 it('lists a sane manifest: relative paths, no duplicates, nothing outside the app', function () {
@@ -67,4 +93,38 @@ it('keeps every listed twin byte-identical between Frontend-next and Frontend-br
     }
 
     Assert::assertSame([], $failures, count($failures)." twin problem(s):\n".implode("\n", $failures));
+});
+
+it('keeps every DIVERGED entry honest: dated, reasoned, present on both sides, and actually different', function () {
+    $root = dirname(base_path()).DIRECTORY_SEPARATOR;
+    $entries = divergedEntries();
+    $twins = twinPaths();
+    $failures = [];
+    foreach ($entries as $e) {
+        if ($e['path'] === '') {
+            $failures[] = 'malformed (want `DIVERGED <YYYY-MM-DD> <path> — <reason>`): '.$e['line'];
+
+            continue;
+        }
+        if (in_array($e['path'], $twins, true)) {
+            $failures[] = "listed as a twin AND as diverged: {$e['path']}";
+        }
+        $a = $root.'Frontend-next'.DIRECTORY_SEPARATOR.$e['path'];
+        $b = $root.'Frontend-brandfashion'.DIRECTORY_SEPARATOR.$e['path'];
+        if (! is_file($a) || ! is_file($b)) {
+            $failures[] = "DIVERGED {$e['path']} must exist on both sides (a file deleted on one side is a comment, not a DIVERGED line)";
+
+            continue;
+        }
+        if (hash_file('sha256', $a) === hash_file('sha256', $b)) {
+            $failures[] = "DIVERGED {$e['path']} is byte-identical again — re-twin it: move it back to the list";
+        }
+        if (strlen($e['reason']) < 12) {
+            $failures[] = "DIVERGED {$e['path']}: the reason is too short to be one";
+        }
+    }
+    fwrite(STDERR, "\ntwins diverged on purpose: ".count($entries)."\n");
+
+    Assert::assertSame([], $failures, count($failures).' DIVERGED problem(s):'."\n".implode("\n", $failures));
+    expect(count($entries))->toBeGreaterThan(0, 'the DIVERGED section is empty — the 2026-10-14 splits should be on it');
 });

@@ -39,29 +39,33 @@ function allowListPatterns(): array
 /** @return array<string, array{method: string, path: string, files: list<string>}> keyed "METHOD path" */
 function storefrontCalls(): array
 {
-    $root = dirname(base_path()).DIRECTORY_SEPARATOR.'Frontend-next';
     $calls = [];
-    foreach (['src', 'app'] as $dir) {
-        $it = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root.DIRECTORY_SEPARATOR.$dir, FilesystemIterator::SKIP_DOTS));
-        foreach ($it as $file) {
-            if (! $file instanceof SplFileInfo || ! preg_match('/\.(jsx?|mjs)$/', $file->getFilename())) {
-                continue;
-            }
-            $src = (string) file_get_contents($file->getPathname());
-            // `http.get('x')`, and the chained form `http\n  .post('x', …)`, on the storefront's clients.
-            preg_match_all('/\b(?:http|serverHttp|publicHttp|client)\s*\.(get|post|put|patch|delete)\(\s*[`\'"]([^`\'"]+)/', $src, $m, PREG_SET_ORDER);
-            foreach ($m as [, $method, $raw]) {
-                // A template placeholder stands for one path segment, given a value its route accepts.
-                $path = '/api/'.ltrim((string) preg_replace_callback('/\$\{([^}]*)\}/', fn (array $p): string => match (true) {
-                    str_contains($p[1], 'STOREFRONT_CODE') => 'watchizer',
-                    str_contains($p[1], 'provider') => 'google',
-                    default => '1',
-                }, $raw), '/');
-                // Apache's REQUEST_URI carries no query string, and routes match the path alone.
-                $path = (string) preg_replace('/\?.*$/', '', $path);
-                $key = strtoupper($method).' '.$path;
-                $calls[$key] ??= ['method' => strtoupper($method), 'path' => $path, 'files' => []];
-                $calls[$key]['files'][] = $file->getFilename();
+    // Both storefront apps (2026-10-17): Brand Fashion's listing is the first call that exists on one side
+    // only (v2, V2-READ-HALF), so a scan of Frontend-next alone would no longer see every storefront call.
+    foreach (['Frontend-next' => 'watchizer', 'Frontend-brandfashion' => 'brandfashion'] as $app => $code) {
+        $root = dirname(base_path()).DIRECTORY_SEPARATOR.$app;
+        foreach (['src', 'app'] as $dir) {
+            $it = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root.DIRECTORY_SEPARATOR.$dir, FilesystemIterator::SKIP_DOTS));
+            foreach ($it as $file) {
+                if (! $file instanceof SplFileInfo || ! preg_match('/\.(jsx?|mjs)$/', $file->getFilename())) {
+                    continue;
+                }
+                $src = (string) file_get_contents($file->getPathname());
+                // `http.get('x')`, and the chained form `http\n  .post('x', …)`, on the storefront's clients.
+                preg_match_all('/\b(?:http|serverHttp|publicHttp|client)\s*\.(get|post|put|patch|delete)\(\s*[`\'"]([^`\'"]+)/', $src, $m, PREG_SET_ORDER);
+                foreach ($m as [, $method, $raw]) {
+                    // A template placeholder stands for one path segment, given a value its route accepts.
+                    $path = '/api/'.ltrim((string) preg_replace_callback('/\$\{([^}]*)\}/', fn (array $p): string => match (true) {
+                        str_contains($p[1], 'STOREFRONT_CODE') => $code,
+                        str_contains($p[1], 'provider') => 'google',
+                        default => '1',
+                    }, $raw), '/');
+                    // Apache's REQUEST_URI carries no query string, and routes match the path alone.
+                    $path = (string) preg_replace('/\?.*$/', '', $path);
+                    $key = strtoupper($method).' '.$path;
+                    $calls[$key] ??= ['method' => strtoupper($method), 'path' => $path, 'files' => []];
+                    $calls[$key]['files'][] = $app.'/'.$file->getFilename();
+                }
             }
         }
     }
