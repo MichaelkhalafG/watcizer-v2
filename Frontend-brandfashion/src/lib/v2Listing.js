@@ -15,13 +15,18 @@ import { categorySlug, subTypeSlug } from '../utils/slugs'
 //
 // What v2 expresses differently from compat — decided here, recorded in the backlog (B4-LISTING-REQUIREMENT):
 //  • category: ONE path. The first selected sub-type (else the first category) is sent, as its slug
-//    (storefront slugs equal toSlug(English legacy name) — 30 of 30 measured); a bare depth-2 slug resolves.
+//    (a storefront slug is USUALLY toSlug(English legacy name); where it is not — Chargers & Cables is `chargers`,
+//    Earphones & Headphones is `audio`, measured 2026-10-18 — the tables carry the node's `v2_slug`, useTables.js);
+//    a bare depth-2 slug resolves.
 //    §10.2's Category section is a tree, so a single path is the design, not a loss.
 //  • colour: v2 counts and filters a colour in ANY role (dial, band, main). Dial and band selections are
 //    merged into `color`; the counts are shown under the legacy "Dial colour" section and the "Band colour"
 //    section hides (no counts). B4 draws the spec's single Colour section.
+//  • SALE (`sale=1`, the listing's `sale` key) → v2's `on_sale=1`, a valid discount only. Not "Offers": those are
+//    the dashboard's offers, a page of their own (/offers) — round 5, 2026-10-18, separated by name. The legacy
+//    `offers` flag is no listing filter on Brand Fashion and is not sent. v2 serves no sale COUNT yet (B4).
 //  • not served by v2, so those legacy sections hide and their selections are dropped from the request:
-//    sub-type/category counts, offers (sale), movement, shape, display type.
+//    sub-type/category counts, movement, shape, display type.
 //  • sort `default` is v2's `available` (§19-5: in stock first, then today's order, then product id).
 
 const PRICE_MAX = 99999999
@@ -38,12 +43,12 @@ function categoryPath(filters, tables) {
   const subId = filters.subTypes?.[0]
   if (subId != null) {
     const item = (tables?.subTypes || []).find((i) => i.id === subId)
-    return item ? subTypeSlug(item) : null
+    return item ? item.v2_slug || subTypeSlug(item) : null
   }
   const catId = filters.categories?.[0]
   if (catId != null) {
     const item = (tables?.categoryTypes || []).find((i) => i.id === catId)
-    return item ? categorySlug(item) : null
+    return item ? item.v2_slug || categorySlug(item) : null
   }
   return null
 }
@@ -62,6 +67,7 @@ export function v2ListingRequest({ filters = {}, q = '', sort = 'default', page 
   list('color', [...(filters.dialColors || []), ...(filters.bandColors || [])])
   list('material', filters.materials)
   list('grade', filters.grades)
+  if (filters.sale) p.set('on_sale', '1')
   const [min, max] = filters.price || [0, PRICE_MAX]
   if (Number(min) > 0) p.set('price_min', String(min))
   if (Number(max) < PRICE_MAX) p.set('price_max', String(max))

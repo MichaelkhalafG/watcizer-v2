@@ -62,8 +62,6 @@ src/Components/Auth/SocialIcons.jsx
 src/Components/BackToTop/BackToTop.jsx
 src/Components/Blog/ArticleBody.jsx
 src/Components/Cart/CartModal.jsx
-src/Components/Header/Nav/Nav.jsx
-src/Components/Header/SearchBox/SearchBox.jsx
 src/Components/Hero/WatchCanvas.jsx
 src/Components/Hero/WatchHero.jsx
 src/Components/Home/FeaturedBanner.jsx
@@ -95,7 +93,6 @@ src/Hooks/queries/useOffers.js
 src/Hooks/queries/usePaymentMethods.js
 src/Hooks/queries/useProductDetail.js
 src/Hooks/queries/useShipping.js
-src/Hooks/queries/useTables.js
 src/Hooks/useCart.jsx
 src/Hooks/useLocaleRouter.js
 src/Hooks/useShippingPrices.js
@@ -131,7 +128,6 @@ src/utils/chunkError.js
 src/utils/finish.js
 src/utils/hasWebGL.js
 src/utils/imageUrl.js
-src/utils/listingParams.js
 src/utils/localePath.js
 src/utils/productUrl.js
 src/utils/slugs.js
@@ -161,6 +157,10 @@ DIVERGED 2026-10-17 src/lib/facetListing.jsx — passes the tables to the v2 req
 # Michael: "the skin changes, the behaviour does not"): the listing is Watchizer's ListingClient + SideBar + SmartSuggestions +
 # BackToTop again (twins, their behaviour inherited), on the v2 adapter, restyled by src/styles/bf-listing-skin.css. The
 # category and brand pages are byte-identical twins again (above). Two twins diverge for it, each by a named delta:
-DIVERGED 2026-10-18 app/(main)/listing/ListingClient.jsx — ONE additive block under the h1: the all-sold-out line (F9, Michael 2026-10-17) read from the served stock split; every other line is Watchizer's (diff = 11 added lines, 0 changed).
+DIVERGED 2026-10-18 app/(main)/listing/ListingClient.jsx — two Brand Fashion blocks: the all-sold-out line under the h1 (F9, Michael 2026-10-17) read from the served stock split, and the Sale chip in place of the On Offer chip (round 5: Sale is a product's own discount, Offers are a page); every other line is Watchizer's.
 DIVERGED 2026-10-18 src/Components/Product/ProductCard.jsx — the ADAPTER: Watchizer's listing hands it the legacy row, it draws BfProductCard (§17.3 rewritten card) with Watchizer's card behaviour line for line (the same addItem payload, the same refusal toast, the same URL).
 DIVERGED 2026-10-17 app/(main)/product/[slug]/page.jsx — B5: the v2 product page (BfProductPage) on products/{slug} + /related; v2 meta and JSON-LD (V2-READ-HALF / B5).
+DIVERGED 2026-10-18 src/Components/Header/Nav/Nav.jsx — every header panel on Watchizer's menu, the Brands anatomy (a group header with its category icon; rows of a 36 px media box + the name): Shop, the category panels and the gender panels re-marked up on Brand Fashion only — the same links, the same open/close and flip, no flyouts added (Michael, round 4). Watchizer keeps its own panels.
+DIVERGED 2026-10-18 src/Hooks/queries/useTables.js — Brand Fashion's tables also read storefront 2's v2 category tree and tag a category type / sub-type with `v2_slug` where the node's slug is not the slug of its English name (Chargers & Cables → chargers, Earphones & Headphones → audio): the v2 listing request sends it, so those two menu entries no longer open empty pages (round 4, Part 6.2). Watchizer reads compat by id and keeps the plain query.
+DIVERGED 2026-10-18 src/Components/Header/SearchBox/SearchBox.jsx — the dropdown prints a price as Brand Fashion's card does, spec §5: `EGP 3,900` / `3,900 ج.م`, Western digits in both (G2 of 2026-10-17; round 4, Part 6.5). Its source was already v2 (useListing → v2Listing). Watchizer keeps `3,900 EGP` and its ar-EG digits.
+DIVERGED 2026-10-18 src/utils/listingParams.js — Sale has its own listing key on Brand Fashion (`sale=1`, a product's own discount, core's on_sale) and `offers` is no listing filter: Offers are the dashboard's offers, a page of their own (round 5, Michael). Watchizer keeps `offers=true` as its discount filter until it moves to v2.

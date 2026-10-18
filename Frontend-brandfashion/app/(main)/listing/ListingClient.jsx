@@ -248,9 +248,10 @@ export default function ListingClient({ seedParams = null }) {
     ;(filters.displayTypes || []).forEach((id) =>
       push(nameMap.displayTypes[id], () => removeArr('displayTypes', id)),
     )
-    if (filters.offers)
-      push(isRTL ? 'عروض' : 'On Offer', () =>
-        setFilters((prev) => ({ ...prev, offers: false })),
+    // Brand Fashion (round 5, 2026-10-18): the SALE chip — a product's own discount (`sale=1`). Offers are a page.
+    if (filters.sale)
+      push(isRTL ? 'تخفيضات' : 'Sale', () =>
+        setFilters((prev) => ({ ...prev, sale: false })),
       )
     const [pmin, pmax] = filters.price || [0, PRICE_MAX]
     if (pmin > 0 || pmax < PRICE_MAX) {
@@ -271,6 +272,7 @@ export default function ListingClient({ seedParams = null }) {
       subTypes: [],
       genders: [],
       offers: false,
+      sale: false,
       price: [0, PRICE_MAX],
       dialColors: [],
       bandColors: [],

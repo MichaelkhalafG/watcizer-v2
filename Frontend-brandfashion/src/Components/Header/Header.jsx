@@ -344,7 +344,7 @@ function Header() {
             </div>
           )}
 
-          <button type="button" className="wz-drawer-link" onClick={() => go({ offers: true })}>
+          <button type="button" className="wz-drawer-link" onClick={() => goTo('/offers')}>
             {t.offers}
           </button>
 

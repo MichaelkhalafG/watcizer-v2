@@ -70,7 +70,8 @@ const nextConfig = {
       // to the one that serves it.
       { source: '/api/:path*', destination: process.env.LARAVEL_ORIGIN + '/api/:path*', permanent: true },
       { source: '/Uploads_Images/:path*', destination: process.env.LARAVEL_ORIGIN + '/Uploads_Images/:path*', permanent: true },
-      { source: '/offers', destination: '/listing?offers=true', permanent: true },
+      // `/offers` is a PAGE on Brand Fashion now — the dashboard's offers (round 5, 2026-10-18); the copied app
+      // redirected it to the discount listing, which is "Sale", a different concept.
       { source: '/listingsearch', destination: '/listing', permanent: true },
       { source: '/edit-profile', destination: '/account?tab=profile', permanent: true },
       { source: '/order-list', destination: '/account?tab=orders', permanent: true },

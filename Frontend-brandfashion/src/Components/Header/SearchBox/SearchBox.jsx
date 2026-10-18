@@ -6,6 +6,7 @@ import { useUIStore } from '../../../Store/uiStore'
 import { useRouter } from '@/src/Hooks/useLocaleRouter'
 import { getImageUrl, handleImgError, PLACEHOLDER_IMG } from '../../../utils/imageUrl'
 import { productUrl } from '../../../utils/productUrl'
+import { money } from '../../../lib/cardData'
 
 const MAX_RESULTS = 6
 // One letter matches nearly the whole catalogue: the dropdown starts answering at two (2026-09-28).
@@ -67,8 +68,10 @@ function SearchBox() {
     router.push(productUrl(product))
   }
 
-  const fmt = (v) => Math.round(Number(v) || 0).toLocaleString(isRTL ? 'ar-EG' : 'en-US')
-  const currency = isRTL ? 'ج.م' : 'EGP'
+  // Brand Fashion (DIVERGED 2026-10-18, round 4 Part 6.5 — G2): a price as the card prints it, spec §5 — `EGP 3,900` in
+  // English, `3,900 ج.م` in Arabic, Western digits in both (`money`, src/lib/cardData.js). The twin printed `3,900 EGP`
+  // and, through the ar-EG locale, Eastern digits in Arabic.
+  const price = (v) => money(Math.round(Number(v) || 0), isRTL ? 'ar' : 'en')
 
   return (
     <div className="wz-search" ref={wrapperRef}>
@@ -117,15 +120,15 @@ function SearchBox() {
                         {hasDiscount ? (
                           <>
                             <span className="wz-search-price-sale">
-                              {fmt(product.sale_price_after_discount)} {currency}
+                              {price(product.sale_price_after_discount)}
                             </span>
                             <span className="wz-search-price-old">
-                              {fmt(product.selling_price)} {currency}
+                              {price(product.selling_price)}
                             </span>
                           </>
                         ) : (
                           <span className="wz-search-price-sale">
-                            {fmt(product.selling_price)} {currency}
+                            {price(product.selling_price)}
                           </span>
                         )}
                       </span>

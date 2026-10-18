@@ -132,7 +132,8 @@ function ContactPage({ t }) {
             <div>
               <span className="wz-contact-card__label">{t.store.label}</span>
               <p className="wz-contact-store__address">{t.store.address}</p>
-              <p className="wz-contact-card__hours">{t.hours}</p>
+              {/* no hours line when the shop's hours are not known (Brand Fashion, round 5) */}
+              {t.hours ? <p className="wz-contact-card__hours">{t.hours}</p> : null}
             </div>
           </div>
           <p className="wz-contact-note">{inline(t.note)}</p>

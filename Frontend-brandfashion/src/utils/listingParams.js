@@ -50,7 +50,9 @@ export function buildListingParams(filters = {}, extra = {}, tables = null) {
   appendSlugged('shape', filters.shapes, tables?.shapes, shapeSlug)
   appendSlugged('displayType', filters.displayTypes, tables?.displayTypes, displayTypeSlug)
   ;(filters.grades || []).forEach((g) => p.append('grade', g)) // grade id (numeric)
-  if (filters.offers) p.set('offers', 'true')
+  // Brand Fashion (DIVERGED 2026-10-18, round 5): SALE has its own key — a product's own discount, core's
+  // `on_sale`. `offers` is not a listing filter here: Offers are the dashboard's offers, a page (/offers).
+  if (filters.sale) p.set('sale', '1')
 
   const price = filters.price || [0, PRICE_MAX]
   if (Number(price[0]) > 0) p.set('minPrice', price[0])
@@ -88,7 +90,8 @@ export function parseListingParams(searchParams, tables = null) {
       shapes: resolveIds('shape', tables?.shapes, shapeSlug),
       displayTypes: resolveIds('displayType', tables?.displayTypes, displayTypeSlug),
       grades: searchParams.getAll('grade').map(Number).filter((n) => !Number.isNaN(n)),
-      offers: searchParams.get('offers') === 'true',
+      offers: false, // Brand Fashion: never a listing filter (see buildListingParams)
+      sale: ['1', 'true'].includes(searchParams.get('sale') || ''),
       price: [
         Number(searchParams.get('minPrice') || 0),
         Number(searchParams.get('maxPrice') || PRICE_MAX),

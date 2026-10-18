@@ -279,7 +279,7 @@ function Nav() {
   // are indexable. Linking the /listing?… form taught Google ~124 filter URLs (doubled in Arabic) it
   // was then told not to index. Each clean route resolves by the same slug function used here, and
   // shows the same products as the filter URL it replaced (browser pass, all entries, EN + AR).
-  // Gender, gender × brand and Offers stay query links: they have no clean route, and they carry
+  // Gender and gender × brand stay query links: they have no clean route, and they carry
   // `noindex, follow` (listingSeo.js) — the developer's decision, no nofollow, no buttons.
   const catHref = (ct) => `/category/${categorySlug(ct)}`
   const catSubHref = (_ct, st) => `/subtypes/${subTypeSlug(st)}`
@@ -287,7 +287,9 @@ function Nav() {
   const genderBrandHref = (g, b) => hrefFor({ genders: [g.en], brands: [b.id] })
   const brandHref = (b) => `/brand/${brandSlug(b)}`
   const brandGenderHref = (b, g) => hrefFor({ brands: [b.id], genders: [g.en] })
-  const offersHref = () => hrefFor({ offers: true })
+  // Offers is a page (round 5, 2026-10-18): the dashboard's offers for this storefront — not the discount
+  // listing, which is "Sale" (`/listing?sale=1`).
+  const offersHref = () => '/offers'
 
   const linkClass = (path) => `nav-link-item${pathname === path ? ' active' : ''}`
 
@@ -327,6 +329,26 @@ function Nav() {
     </>
   )
 
+  // Watchizer's menu row for a category or a sub-type (Brand Fashion, round 4, 2026-10-18): the SAME anatomy as the
+  // brand rows — a 36 px media box (the item's icon where a brand has its logo) + the name — so every header panel is
+  // one menu: a group header with its icon, then these rows.
+  const iconCell = (icon, text) => (
+    <>
+      <span className="wz-brand-logo-box wz-icon-box" aria-hidden="true">
+        {icon}
+      </span>
+      <span className="wz-brand-text">{text}</span>
+    </>
+  )
+  const groupHeader = (cat) => (
+    <>
+      <span className="nav-brand-group-icon">
+        {getCategoryIcon(enName(cat, 'category_type_name') || label(cat, 'category_type_name'), 13)}
+      </span>
+      <span>{label(cat, 'category_type_name')}</span>
+    </>
+  )
+
   // "Rolex for Men" with the gender part dimmed and kept inline.
   const forGenderNode = (brandName, g) => (
     <>
@@ -363,69 +385,31 @@ function Nav() {
               />
             </button>
             {openKey === 'shop' && categoryTypes.length > 0 && (
+              // Watchizer's menu (the Brands anatomy): a group per category type — its header still the link to the
+              // category — then the sub-types as media-box rows; "See all (N)" past eight, as before
               <div
                 ref={dropRef}
-                className="wz-shop-dropdown wz-dropdown-scrollable"
+                className="nav-dropdown nav-dropdown-brands wz-dropdown-scrollable"
                 onMouseEnter={() => openMenu('shop')}
               >
-                {categoryTypes.map((ct, idx) => {
+                {categoryTypes.map((ct) => {
                   const subs = subTypesFor(ct)
                   return (
                     <div key={`shop-${ct.id}`}>
-                      <Link
-                        href={catHref(ct)}
-                        className="wz-shop-cat-header"
-                        onClick={closeMenus}
-                      >
-                        <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <span
-                            style={{ color: '#262626', opacity: 0.7, display: 'flex', alignItems: 'center' }}
-                          >
-                            {getCategoryIcon(
-                              enName(ct, 'category_type_name') || label(ct, 'category_type_name'),
-                              16,
-                            )}
-                          </span>
-                          <span>{label(ct, 'category_type_name')}</span>
-                        </span>
-                        <span className="wz-shop-cat-arrow">{isRTL ? '‹' : '›'}</span>
+                      <Link href={catHref(ct)} className="nav-brand-group-header nav-brand-group-link" onClick={closeMenus}>
+                        {groupHeader(ct)}
+                        <span className="nav-row-caret">{isRTL ? '‹' : '›'}</span>
                       </Link>
-                      {subs.length > 0 && <div className="wz-shop-cat-divider" />}
                       {subs.slice(0, 8).map((st) => (
-                        <Link
-                          key={`shop-st-${st.id}`}
-                          href={catSubHref(ct, st)}
-                          className="wz-shop-sub-item"
-                          onClick={closeMenus}
-                        >
-                          <span
-                            style={{
-                              width: 22,
-                              height: 22,
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              flexShrink: 0,
-                              marginInlineEnd: 10,
-                              color: '#262626',
-                              opacity: 0.5,
-                            }}
-                          >
-                            {getSubTypeIcon(enName(st, 'sub_type_name') || label(st, 'sub_type_name'), 14)}
-                          </span>
-                          <span>{label(st, 'sub_type_name')}</span>
+                        <Link key={`shop-st-${st.id}`} href={catSubHref(ct, st)} className="wz-brand-item" onClick={closeMenus}>
+                          {iconCell(getSubTypeIcon(enName(st, 'sub_type_name') || label(st, 'sub_type_name'), 18), label(st, 'sub_type_name'))}
                         </Link>
                       ))}
                       {subs.length > 8 && (
-                        <Link
-                          href={catHref(ct)}
-                          className="wz-shop-sub-item wz-shop-see-all"
-                          onClick={closeMenus}
-                        >
-                          {isRTL ? `عرض الكل (${subs.length})` : `See all (${subs.length})`}
+                        <Link href={catHref(ct)} className="wz-brand-item nav-see-all" onClick={closeMenus}>
+                          <span className="wz-brand-text">{isRTL ? `عرض الكل (${subs.length})` : `See all (${subs.length})`}</span>
                         </Link>
                       )}
-                      {idx < categoryTypes.length - 1 && <div className="wz-shop-section-sep" />}
                     </div>
                   )
                 })}
@@ -448,21 +432,20 @@ function Nav() {
                   {subs.length > 0 && <MdOutlineKeyboardArrowDown style={{ fontSize: '15px' }} />}
                 </Link>
                 {subs.length > 0 && openKey === `ct-${ct.id}` && (
+                  // Watchizer's menu (the Brands anatomy): the category's header, then its sub-types as media-box rows
                   <div
                     ref={dropRef}
-                    className="nav-dropdown"
+                    className="nav-dropdown nav-dropdown-brands wz-dropdown-scrollable"
                     onMouseEnter={() => openMenu(`ct-${ct.id}`)}
                   >
-                    {subs.map((st) => (
-                      <Link
-                        key={`st-${st.id}`}
-                        href={catSubHref(ct, st)}
-                        className="nav-dropdown-item"
-                        onClick={closeMenus}
-                      >
-                        {label(st, 'sub_type_name')}
-                      </Link>
-                    ))}
+                    <div>
+                      <div className="nav-brand-group-header">{groupHeader(ct)}</div>
+                      {subs.map((st) => (
+                        <Link key={`st-${st.id}`} href={catSubHref(ct, st)} className="wz-brand-item" onClick={closeMenus}>
+                          {iconCell(getSubTypeIcon(enName(st, 'sub_type_name') || label(st, 'sub_type_name'), 18), label(st, 'sub_type_name'))}
+                        </Link>
+                      ))}
+                    </div>
                   </div>
                 )}
               </li>
@@ -482,20 +465,27 @@ function Nav() {
                 {brands.length > 0 && <MdOutlineKeyboardArrowDown style={{ fontSize: '15px' }} />}
               </Link>
               {brands.length > 0 && openKey === `g-${g.en}` && (
+                // Watchizer's menu (the Brands anatomy): the gender's brands grouped by category type like Brands —
+                // the same links ("Rolex for Men"); a flat list if the grouping is not served
                 <div
                   ref={dropRef}
-                  className="nav-dropdown wz-dropdown-scrollable"
+                  className="nav-dropdown nav-dropdown-brands wz-dropdown-scrollable"
                   onMouseEnter={() => openMenu(`g-${g.en}`)}
                 >
-                  {brands.map((b) => (
-                    <Link
-                      key={`gb-${b.id}`}
-                      href={genderBrandHref(g, b)}
-                      className="wz-brand-item"
-                      onClick={closeMenus}
-                    >
-                      {brandCell(b, forGenderNode(label(b, 'brand_name'), g))}
-                    </Link>
+                  {(brandsByCategory.length ? brandsByCategory : [{ category: null, brands }]).map(({ category, brands: catBrands }) => (
+                    <div key={`g-${g.en}-${category ? category.id : 'all'}`}>
+                      {category ? <div className="nav-brand-group-header">{groupHeader(category)}</div> : null}
+                      {catBrands.map((b) => (
+                        <Link
+                          key={`gb-${category ? category.id : 'all'}-${b.id}`}
+                          href={genderBrandHref(g, b)}
+                          className="wz-brand-item"
+                          onClick={closeMenus}
+                        >
+                          {brandCell(b, forGenderNode(label(b, 'brand_name'), g))}
+                        </Link>
+                      ))}
+                    </div>
                   ))}
                 </div>
               )}
@@ -588,7 +578,7 @@ function Nav() {
             )}
           </li>
 
-          {/* 5 — OFFERS (discounted products only) */}
+          {/* 5 — OFFERS (the dashboard's offers, the /offers page) */}
           <li className="nav-item">
             <Link href={offersHref()} className="nav-link-item" onClick={closeMenus}>
               <RiPercentLine size={14} style={{ color: '#ea2b0f' }} />
