@@ -3,10 +3,14 @@
 use App\Compat\CartIdentity;
 use App\Compat\CompatCart;
 use App\Transform\Row;
+use Illuminate\Database\Query\Builder;
+use Illuminate\Database\Query\JoinClause;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Tests\Support\Shops;
 use Tests\Support\T;
+
+use function Pest\Laravel\postJson;
 
 /*
  * ── C10: a cart per storefront (developer: option (c), 2026-10-12; built 2026-10-13) ────────────
@@ -14,8 +18,13 @@ use Tests\Support\T;
  * `carts.storefront_id NOT NULL DEFAULT 1`. The default exists for ONE reason — the local harness
  * boots the legacy app, which inserts carts without the column — and its cost is that a production
  * insert which forgets the storefront becomes Watchizer silently. That cost is CLOSED here, not
- * accepted: the one production inserter is read as source and must set the column explicitly, and
+ * accepted: every production inserter is read as source and must set the column explicitly, and
  * the behaviour is driven — one customer, two shops, two carts.
+ *
+ * Round 6 (2026-10-18, Michael): there are TWO creators now — compat's cart and v2's (B7 S1) — allowed on the
+ * condition that every cart either one creates carries its storefront; the test asserts the tagging, not the
+ * number. Whether compat's cart retires once v2's write half is complete is a direction, not a decision
+ * (POST_CUTOVER_BACKLOG.md, CARTS-TWO-CREATORS).
  */
 
 it('has the column as decided: NOT NULL, DEFAULT 1, indexed with the user', function () {
@@ -32,29 +41,99 @@ it('has the column as decided: NOT NULL, DEFAULT 1, indexed with the user', func
     expect(Schema::hasColumn('cart_items', 'storefront_id'))->toBeFalse();
 });
 
-it('the ONE production inserter sets storefront_id explicitly, so the default never fires in production', function () {
+it('tags EVERY cart that either creator makes with its storefront: read as source, then driven on both shops', function () {
     /*
-     * Read as SOURCE, on purpose: the default makes a forgotten column invisible at runtime (the
-     * row simply becomes Watchizer's), so a behaviour test could pass with the explicit value
-     * removed. This one cannot. Every `DB::table('carts')->insert` in app/ is listed and each must
-     * name the column.
+     * Decided by Michael, round 6 (2026-10-18): two cart creators are allowed — compat's (`CompatCart`) and v2's
+     * (`StorefrontCart`, B7 S1) — on ONE condition, asserted here: every cart either of them creates carries its
+     * storefront. The test asserts the TAGGING, not the number of creators.
+     *
+     * Read as SOURCE first, because `carts.storefront_id` defaults to 1: an insert that forgot the column would
+     * silently become Watchizer's, and a runtime check on Watchizer could not tell. So every way app/ can create a
+     * cart row is found — the query builder's whole insert family, raw SQL, a model on `carts` — and each must be a
+     * literal column list that NAMES `storefront_id` with a value taken from its storefront (a variable or a call:
+     * never a literal, never null). A creation form this test cannot read is a FAILURE, not a pass.
      */
-    $inserters = [];
-    $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator(base_path('app')));
+    $creating = ['insert', 'insertGetId', 'insertOrIgnore', 'upsert', 'updateOrInsert', 'insertUsing'];
+    $sites = [];
+    $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator(app_path()));
     /** @var SplFileInfo $file */
     foreach ($iterator as $file) {
         if ($file->getExtension() !== 'php') {
             continue;
         }
         $source = (string) file_get_contents($file->getPathname());
-        if (preg_match_all("/DB::table\\('carts'\\)->insert(?:GetId)?\\(\\s*\\[(.*?)\\]\\s*\\)/s", $source, $matches) > 0) {
-            foreach ($matches[1] as $i => $columns) {
-                $inserters[str_replace(base_path().DIRECTORY_SEPARATOR, '', $file->getPathname()).'#'.($i + 1)] = str_contains($columns, "'storefront_id' => \$this->storefrontId");
+        $where = str_replace(DIRECTORY_SEPARATOR, '/', str_replace(base_path().DIRECTORY_SEPARATOR, '', $file->getPathname()));
+        if (preg_match_all("/DB::table\(\s*'carts'\s*\)\s*->\s*(\w+)\s*\(/", $source, $m, PREG_OFFSET_CAPTURE) > 0) {
+            $n = 0;
+            foreach ($m[1] as [$method, $offset]) {
+                if (! in_array($method, $creating, true)) {
+                    continue;   // a read, an update of an existing row, a delete: none of them creates a cart
+                }
+                $key = $where.'#'.(++$n).' '.$method;
+                if (! in_array($method, ['insert', 'insertGetId', 'insertOrIgnore'], true)) {
+                    $sites[$key] = "unverifiable: {$method} — creates a cart in a form this test cannot read";
+
+                    continue;
+                }
+                // The argument must be a literal array; walk to its matching bracket.
+                $open = strpos($source, '(', $offset + strlen($method));
+                $rest = ltrim(substr($source, $open === false ? 0 : $open + 1));
+                if (! str_starts_with($rest, '[')) {
+                    $sites[$key] = 'unverifiable: the columns are not a literal array';
+
+                    continue;
+                }
+                $depth = 0;
+                $columns = '';
+                foreach (str_split($rest) as $char) {
+                    $columns .= $char;
+                    $depth += $char === '[' ? 1 : ($char === ']' ? -1 : 0);
+                    if ($depth === 0) {
+                        break;
+                    }
+                }
+                if (preg_match("/'storefront_id'\s*=>\s*([^,\n]+)/", $columns, $value) !== 1) {
+                    $sites[$key] = 'UNTAGGED: no storefront_id — the default would make it Watchizer\'s';
+
+                    continue;
+                }
+                $value = trim($value[1]);
+                $sites[$key] = str_starts_with($value, '$') ? 'tagged' : "UNTAGGED: storefront_id is the literal {$value}";
             }
+        }
+        if (preg_match('/insert\s+(?:ignore\s+)?into\s+`?carts`?\b/i', $source) === 1) {
+            $sites[$where.' raw SQL'] = 'unverifiable: a raw INSERT INTO carts';
+        }
+        if (preg_match('/protected\s+\$table\s*=\s*\'carts\'/', $source) === 1) {
+            $sites[$where.' model'] = 'unverifiable: an Eloquent model on carts';
         }
     }
 
-    expect($inserters)->toBe([str_replace('/', DIRECTORY_SEPARATOR, 'app/Compat/CompatCart.php').'#1' => true]);
+    // The scanner must find the two creators it is meant to watch — a scanner that finds nothing proves nothing.
+    expect(array_keys($sites))->toContain('app/Compat/CompatCart.php#1 insert', 'app/Storefront/StorefrontCart.php#1 insertGetId');
+    $untagged = array_filter($sites, fn (string $verdict): bool => $verdict !== 'tagged');
+    expect($untagged)->toBe([]);
+
+    // Driven: each creator, on each shop, writes the shop it was made for — Brand Fashion's 2 can only come from the
+    // explicit value, never from the default.
+    $fashion = Shops::id('brandfashion');
+    $plain = function (int $storefrontId): int {
+        return T::int(DB::table('catalog_products as p')
+            ->join('storefront_product as sp', fn (JoinClause $j) => $j->on('sp.product_id', '=', 'p.id')->where('sp.storefront_id', '=', $storefrontId)->where('sp.is_visible', '=', 1))
+            ->where('p.is_active', 1)->whereNull('p.deleted_at')->where('p.stock_express', '>=', 1)
+            ->whereNotExists(fn (Builder $q) => $q->selectRaw('1')->from('catalog_product_variants as v')->whereColumn('v.product_id', 'p.id')->where('v.is_active', 1))
+            ->orderBy('p.id')->value('p.id'));
+    };
+    $made = [];
+    foreach ([1 => 'watchizer', $fashion => 'brandfashion'] as $id => $code) {
+        $compat = (new CompatCart($id))->resolve(CartIdentity::guest((string) Str::uuid()));
+        $made["compat {$code}"] = [$id, Row::int(Row::cast($compat), 'storefront_id')];
+
+        $token = T::str(postJson("/api/v2/{$code}/cart/items", ['product_id' => $plain($id), 'quantity' => 1])->assertOk()->headers->get('X-Guest-Token'));
+        $made["v2 {$code}"] = [$id, T::int(DB::table('carts')->where('guest_token', $token)->value('storefront_id'))];
+    }
+    $wrong = array_filter($made, fn (array $pair): bool => $pair[0] !== $pair[1]);
+    expect($wrong)->toBe([])->and($made)->toHaveCount(4);
 });
 
 it('gives one signed-in customer a SEPARATE cart on each shop, and a line added on one is not in the other', function () {

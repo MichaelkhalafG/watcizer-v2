@@ -16,9 +16,12 @@ use App\Http\Controllers\Customer\CustomerProfileController;
 use App\Http\Controllers\Customer\CustomerSocialController;
 use App\Http\Controllers\Customer\CustomerVerificationController;
 use App\Http\Controllers\Payment\PaymentCallbackController;
+use App\Http\Controllers\V2\CartController;
 use App\Http\Controllers\V2\CategoryController;
 use App\Http\Controllers\V2\HomeController;
 use App\Http\Controllers\V2\MetaController;
+use App\Http\Controllers\V2\OfferController;
+use App\Http\Controllers\V2\OrderController;
 use App\Http\Controllers\V2\RelatedController;
 use App\Http\Controllers\V2\PaymentMethodController;
 use App\Http\Controllers\V2\ProductController;
@@ -52,6 +55,18 @@ Route::prefix('v2/{storefront}')->middleware(['storefront', 'http.cache'])->wher
 // stale would keep a switched-off method on the checkout for that long (PaymentMethodController).
 Route::prefix('v2/{storefront}')->middleware('storefront')->where(['storefront' => '[a-z0-9_-]+'])->group(function (): void {
     Route::get('payment-methods', [PaymentMethodController::class, 'index']);
+    // The OFFERS the storefront is running — the dashboard's promotions (round 5, 2026-10-18); not under
+    // http.cache for the same reason: an offer switched off must leave the page at once (OfferController).
+    Route::get('offers', [OfferController::class, 'index']);
+    // B7 S1 (round 5, 2026-10-18): the v2 CART of the storefront in the path — variant-aware, beside compat's cart and
+    // never through it. Never cached (CartController): one shopper's cart is never served to another.
+    Route::get('cart', [CartController::class, 'show']);
+    Route::post('cart/items', [CartController::class, 'store']);
+    Route::patch('cart/items/{item}', [CartController::class, 'update'])->whereNumber('item');
+    Route::delete('cart/items/{item}', [CartController::class, 'destroy'])->whereNumber('item');
+    // B7 S2 (round 6): the v2 CHECKOUT — the order from the shopper's v2 cart on the path's storefront, which it
+    // always writes. Its own limiter (`v2-order`), never compat's `add-order`.
+    Route::post('orders', [OrderController::class, 'store'])->middleware('throttle:v2-order');
 });
 
 // ── 2. compat (legacy paths, legacy shapes) ───────────────────────────────
