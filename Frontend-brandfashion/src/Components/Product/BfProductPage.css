@@ -1,12 +1,12 @@
 /* B5 — the Brand Fashion product page (spec v2.11 §10.3, §11.4, §11.5, §17.5, §12), re-cut 2026-10-18 on Watchizer's face.
    Tokens from app/globals.css; the shared container and gutter. */
 
-.bf-pdp { background: var(--wz-page); color: var(--wz-ink); padding-block: 12px 96px; }
-@media (min-width: 1024px) { .bf-pdp { padding-block-end: 48px; } }
+.bf-pdp { background: var(--wz-page); color: var(--wz-ink); padding-block: 12px 48px; }
+.bf-pdp__end { height: 1px; }
 .bf-pdp__inner { max-width: var(--bf-container); margin-inline: auto; padding-inline: var(--bf-gutter); }
 .bf-pdp__crumb { display: flex; gap: 6px; font-size: var(--bf-small); color: var(--wz-ink-2); margin-block-end: 12px; flex-wrap: wrap; }
 .bf-pdp__crumb a { color: inherit; text-decoration: none; }
-.bf-pdp__crumb a:hover { text-decoration: underline; text-underline-offset: 3px; }
+@media (hover: hover) { .bf-pdp__crumb a:hover { text-decoration: underline; text-underline-offset: 3px; } }
 
 /* desktop: gallery (thumbs beside it) · buy box 460 sticky under the 104px header (§10.3) */
 .bf-pdp__top { display: grid; grid-template-columns: 1fr; gap: 16px; align-items: start; }
@@ -25,14 +25,16 @@
 .bf-gal__slide { flex: 0 0 100%; scroll-snap-align: start; display: flex; align-items: center; justify-content: center; padding: 0; }
 .bf-gal__slide img { width: 100%; height: 100%; object-fit: contain; mix-blend-mode: multiply; }
 .bf-gal__badge { position: absolute; top: 12px; inset-inline-start: 12px; font-size: 10px; font-weight: 600; padding: 5px 8px; border-radius: var(--wz-r-pill); background: var(--wz-ink-3); color: #fff; box-shadow: 0 0 0 1px var(--wz-page); }
-.bf-gal__dots { display: flex; justify-content: center; gap: 6px; padding-block: 8px; }
-.bf-gal__dot { width: 6px; height: 6px; border-radius: 50%; background: var(--wz-edge); border: 0; padding: 0; }
-.bf-gal__dot[aria-current='true'] { background: var(--wz-ink); }
+.bf-gal__dots { display: flex; justify-content: center; gap: 0; padding-block: 2px; }
+/* a 24 × 24 box around a 6 px dot: the dot is the indicator, the box the hit area (it was 6 × 6, 2026-10-18 night run) */
+.bf-gal__dot { width: 24px; height: 24px; border-radius: 50%; background: none; border: 0; padding: 0; position: relative; }
+.bf-gal__dot::after { content: ''; position: absolute; width: 6px; height: 6px; border-radius: 50%; background: var(--wz-edge); left: 9px; top: 9px; }
+.bf-gal__dot[aria-current='true']::after { background: var(--wz-ink); }
 @media (min-width: 1024px) { .bf-gal__dots { display: none; } }
 .bf-gal__thumbs { display: none; gap: 8px; flex-direction: column; }
 @media (min-width: 1024px) { .bf-gal__thumbs { display: flex; } }
 .bf-gal__thumb { width: 64px; height: 64px; flex: none; border-radius: 6px; border: 1px solid var(--wz-line); background: var(--wz-page); padding: 3px; cursor: pointer; transition: border-color 150ms ease-out; }
-.bf-gal__thumb:hover { border-color: var(--wz-edge); }
+@media (hover: hover) { .bf-gal__thumb:hover { border-color: var(--wz-edge); } }
 .bf-gal__thumb[aria-current='true'] { border: 2px solid var(--wz-ink); }
 .bf-gal__thumb:focus-visible { outline: 2px solid var(--wz-focus-ring); outline-offset: 2px; }
 .bf-gal__thumb img { width: 100%; height: 100%; object-fit: contain; }
@@ -44,7 +46,7 @@
 .bf-buy__price { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; font-variant-numeric: tabular-nums; }
 .bf-buy__now { font-size: var(--bf-h1); font-weight: 700; }
 .bf-buy__was { font-size: var(--bf-body); color: var(--wz-ink-3); text-decoration: line-through; }
-.bf-buy__pct { font-size: 11px; font-weight: 700; color: #fff; background: var(--wz-sale); border-radius: var(--wz-r-pill); padding: 3px 8px; }
+.bf-buy__pct { font-size: 11px; font-weight: 700; color: #fff; background: var(--wz-sale); border-radius: var(--wz-r-pill); padding: 3px 8px; direction: ltr; unicode-bidi: isolate; } /* "−21%" in both directions (AR-DISCOUNT-BIDI) */
 .bf-buy__vat { font-size: 11px; color: var(--wz-ink-3); margin-block: 2px 12px; }
 .bf-pill { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding-inline: 10px; border-radius: var(--wz-r-pill); font-size: var(--bf-small); font-weight: 700; border: 1px solid transparent; }
 .bf-pill--ok { border-color: var(--wz-ok); color: var(--wz-ok); }
@@ -58,33 +60,35 @@
 .bf-bucket--express::before { background: var(--wz-ok); }
 .bf-bucket--market::before { background: var(--wz-alert); }
 
-/* the variant picker (§17.5 matrix rule): colour swatches 24 radius 2 (role=radio) · sizes 44×44 radius 8 gap 8 */
-.bf-pick { margin-block-end: 12px; }
-.bf-pick__label { font-size: 12px; color: var(--wz-ink-2); margin-block-end: 6px; display: flex; gap: 6px; }
-.bf-pick__label b { color: var(--wz-ink); font-weight: 600; }
-.bf-pick__colours { display: flex; gap: 10px; flex-wrap: wrap; }
-.bf-pick__swatch { width: 24px; height: 24px; border-radius: var(--wz-r-swatch); border: 0; padding: 0; cursor: pointer; box-shadow: inset 0 0 0 1px var(--wz-edge); position: relative; }
-.bf-pick__swatch[aria-checked='true'] { box-shadow: 0 0 0 2px var(--wz-ink); }
-.bf-pick__swatch.is-dead::after { content: ''; position: absolute; inset: 0; background: linear-gradient(to top right, transparent calc(50% - 1px), var(--wz-ink-3), transparent calc(50% + 1px)); }
-.bf-pick__swatch .bf-swatch__hit { position: absolute; inset: -10px; }
-.bf-pick__sizes { display: flex; gap: 8px; flex-wrap: wrap; }
-.bf-pick__size {
+/* the variant picker (§17.5 matrix rule): colour swatches 24 radius 2 (role=radio) · sizes 44×44 radius 8 gap 8.
+   Its OWN namespace, bf-opt: the card's picker is bf-pick (BfProductCard.css) and both stylesheets load on this page
+   (its rails draw cards) — sharing class names put the card's overlay rules on this picker (round 4, 2026-10-18). */
+.bf-opt { margin-block-end: 12px; }
+.bf-opt__label { font-size: 12px; color: var(--wz-ink-2); margin-block-end: 6px; display: flex; gap: 6px; }
+.bf-opt__label b { color: var(--wz-ink); font-weight: 600; }
+.bf-opt__colours { display: flex; gap: 10px; flex-wrap: wrap; }
+.bf-opt__swatch { width: 24px; height: 24px; border-radius: var(--wz-r-swatch); border: 0; padding: 0; cursor: pointer; box-shadow: inset 0 0 0 1px var(--wz-edge); position: relative; }
+.bf-opt__swatch[aria-checked='true'] { box-shadow: 0 0 0 2px var(--wz-ink); }
+.bf-opt__swatch.is-dead::after { content: ''; position: absolute; inset: 0; background: linear-gradient(to top right, transparent calc(50% - 1px), var(--wz-ink-3), transparent calc(50% + 1px)); }
+.bf-opt__swatch .bf-swatch__hit { position: absolute; inset: -10px; }
+.bf-opt__sizes { display: flex; gap: 8px; flex-wrap: wrap; }
+.bf-opt__size {
   min-width: 44px; height: 44px; padding-inline: 8px; border-radius: var(--wz-r-input); border: 1px solid var(--wz-edge); background: var(--wz-page); color: var(--wz-ink);
   font: inherit; font-size: 14px; cursor: pointer; position: relative; display: inline-flex; align-items: center; justify-content: center;
 }
-.bf-pick__size:hover { border-color: var(--wz-ink); }
-.bf-pick__size[aria-checked='true'] { border: 2px solid var(--wz-ink); font-weight: 600; }
-.bf-pick__size.is-out { color: var(--wz-ink-3); }
-.bf-pick__size.is-out::after { content: ''; position: absolute; inset: 6px; background: linear-gradient(to top right, transparent calc(50% - 0.5px), var(--wz-ink-3), transparent calc(50% + 0.5px)); pointer-events: none; }
-.bf-pick__size.is-absent { display: none; }
-.bf-pick__hint { font-size: 12px; color: var(--wz-ink-2); margin-block-start: 6px; }
+@media (hover: hover) { .bf-opt__size:hover { border-color: var(--wz-ink); } }
+.bf-opt__size[aria-checked='true'] { border: 2px solid var(--wz-ink); font-weight: 600; }
+.bf-opt__size.is-out { color: var(--wz-ink-3); }
+.bf-opt__size.is-out::after { content: ''; position: absolute; inset: 6px; background: linear-gradient(to top right, transparent calc(50% - 0.5px), var(--wz-ink-3), transparent calc(50% + 0.5px)); pointer-events: none; }
+.bf-opt__size.is-absent { display: none; }
+.bf-opt__hint { font-size: 12px; color: var(--wz-ink-2); margin-block-start: 6px; }
 
 /* CTA: primary 48 full width; secondary outline; disabled per §7.1; the notify-me form (the twin StockAlertForm) in its place when sold out */
 .bf-buy__cta { margin-block: 12px; scroll-margin-top: 120px; }
 .bf-cta { width: 100%; height: 48px; border-radius: var(--wz-r-pill); font: inherit; font-size: var(--bf-body); font-weight: 700; cursor: pointer; border: 1px solid var(--wz-ink); background: var(--wz-ink); color: var(--wz-on-ink); display: inline-flex; align-items: center; justify-content: center; text-decoration: none; transition: background-color 150ms ease-out; }
-.bf-cta:hover:not(:disabled) { background: var(--wz-ink-soft); }
+@media (hover: hover) { .bf-cta:hover:not(:disabled) { background: var(--wz-ink-soft); } }
 .bf-cta--secondary { background: var(--wz-page); color: var(--wz-ink); }
-.bf-cta--secondary:hover:not(:disabled) { background: var(--wz-tile); }
+@media (hover: hover) { .bf-cta--secondary:hover:not(:disabled) { background: var(--wz-tile); } }
 .bf-cta:disabled { background: var(--wz-disabled-bg); color: var(--wz-disabled-fg); border-color: var(--wz-disabled-bg); cursor: not-allowed; }
 .bf-cta:focus-visible { outline: 2px solid var(--wz-focus-ring); outline-offset: 2px; }
 .bf-buy__promises { display: grid; gap: 6px; font-size: var(--bf-small); color: var(--wz-ink-2); padding: 12px 0; border-block: 1px solid var(--wz-line); margin-block-end: 12px; }
@@ -101,14 +105,27 @@
 .bf-desc { font-size: var(--bf-body); line-height: var(--bf-body-lh); color: var(--wz-ink); margin-block: 16px; white-space: pre-line; max-width: 70ch; }
 .bf-ratings { margin-block: 16px; font-size: var(--bf-body); }
 
+/* phone: the h1 and the price one step down (a 4-line 22 px title was a third of the viewport, 2026-10-18 night run) */
+@media (max-width: 599px) {
+  .bf-buy__title { font-size: 19px; }
+  .bf-buy__now { font-size: 20px; }
+}
+
 /* the sticky bottom bar on phone: 64 tall, price at inline-start, button at inline-end (§12) */
 .bf-pdp__bar { position: fixed; inset-inline: 0; inset-block-end: 0; height: 64px; background: var(--wz-page); border-block-start: 1px solid var(--wz-line); display: flex; align-items: center; gap: 12px; padding-inline: 16px; z-index: 40; padding-block-end: env(safe-area-inset-bottom); }
 .bf-pdp__bar .bf-buy__now { font-size: 18px; font-weight: 700; }
 .bf-pdp__bar .bf-cta { width: auto; flex: 1; height: 44px; }
+/* shown only while the page's own button is out of sight (`is-on`, set by an IntersectionObserver): it slides up from
+   the bottom edge; hidden it is `visibility: hidden` — not painted, not focusable, not announced */
+.bf-pdp__bar { transform: translateY(100%); visibility: hidden; transition: transform 200ms ease-out, visibility 0s linear 200ms; }
+.bf-pdp__bar.is-on { transform: none; visibility: visible; transition: transform 200ms ease-out, visibility 0s; }
+@media (prefers-reduced-motion: reduce) { .bf-pdp__bar, .bf-pdp__bar.is-on { transition: none; } }
 @media (min-width: 1024px) { .bf-pdp__bar { display: none; } }
 
 /* the two rails under (§10.3): 4 phone / 6 desktop handled by .bf-rail; spacing */
-.bf-pdp__rails { margin-block-start: 24px; display: grid; gap: 8px; }
+/* `minmax(0, 1fr)`, not the implicit `auto` column: an auto column sized itself to the rails' scrolling content —
+   1,339 px wide in a 390 px phone, rail cards 640 × 829, the page scrolling sideways (round 4, 2026-10-18) */
+.bf-pdp__rails { margin-block-start: 24px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
 
 /* the copied app's global heading rule upper-cases h1–h3; the spec's type scale (§5) has no caps outside the brand line */
 .bf-pdp h1, .bf-pdp h2 { text-transform: none; letter-spacing: 0; }

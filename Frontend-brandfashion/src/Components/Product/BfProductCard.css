@@ -6,7 +6,9 @@
   --bf-pad: 10px;              /* body padding (8 compact) */
   --bf-title-h: calc(var(--bf-h3) * var(--bf-h3-lh) * 2);   /* 2 lines, fixed so the grid never jogs */
   --bf-btn-h: 34px;            /* 32 compact */
-  --bf-inset: 8%;              /* photo inner padding (§13) */
+  --bf-inset: 8%;              /* photo inner padding, sides (§13) */
+  --bf-inset-top: var(--bf-inset);
+  --bf-inset-bottom: var(--bf-inset);   /* phone: 4% / 16% — the photo stands clear of the picker tray (Option A) */
   position: relative;
   display: flex;
   flex-direction: column;
@@ -14,7 +16,8 @@
   color: var(--wz-ink);
   border: 1px solid var(--wz-line);
   border-radius: 8px;
-  overflow: hidden;
+  /* the TILE clips its photo to the card's top corners; the card itself stays visible so the swatch tooltip can rise
+     above it (it was clipped by the card's own overflow: hidden — found 2026-10-18 night run) */
   font-family: var(--wz-serif);
   transition: border-color 150ms ease-out, box-shadow 150ms ease-out;
 }
@@ -24,17 +27,31 @@
 }
 
 /* the whole card is one link, one Tab stop */
-.bf-card__link { display: block; color: inherit; text-decoration: none; border-radius: 8px 8px 0 0; }
+.bf-card__link { flex: 1 0 auto; display: flex; flex-direction: column; color: inherit; text-decoration: none; border-radius: 8px 8px 0 0; }
 .bf-card__link:focus-visible { outline: 2px solid var(--wz-focus-ring); outline-offset: -2px; }
 
 /* photo on the aisle tint, 1:1, inset; the photo multiplies into the tint (§8.3); the second photo fades in on hover */
-.bf-card__tile { position: relative; aspect-ratio: 1 / 1; padding: var(--bf-inset); display: flex; align-items: center; justify-content: center; }
+.bf-card__tile { position: relative; box-sizing: border-box; aspect-ratio: 1 / 1; padding: var(--bf-inset-top) var(--bf-inset) var(--bf-inset-bottom); display: flex; align-items: center; justify-content: center; border-radius: 7px 7px 0 0; overflow: hidden; }
 .bf-card__img { width: 100%; height: 100%; object-fit: contain; display: block; }
 .bf-card__img.is-photo { mix-blend-mode: multiply; }
 .bf-card__img.is-placeholder { opacity: 0.6; }
-.bf-card__img--hover { position: absolute; inset: var(--bf-inset); width: auto; height: auto; opacity: 0; transition: opacity 150ms ease-out; }
+/* THE SECOND PHOTO — T1, Michael's pick (round 4, 2026-10-18): a 180 ms ease-out crossfade, hover-only. The photo sits in
+   its own wrapper (.bf-card__ph2) that carries the TILE'S TINT as its ground and `isolation: isolate`: the photo's
+   multiply resolves against that tint inside the wrapper — against the tile, never against the first photo — and the
+   wrapper is opaque, so the overlap is a dissolve (α·B + (1−α)·A), not a double exposure (A·B), and at the end only the
+   second photo shows. (`isolation` on the <img> alone would not do it: a transparent isolated group makes multiply
+   resolve against nothing and the photo's white would paint white.) The wrapper repeats the tile's padding, so the
+   second photo lands exactly on the first one's box (the night's HOVER-CARD-OVERFLOW stays fixed). Leaving fades back. */
+.bf-card__ph2 {
+  position: absolute; inset: 0; box-sizing: border-box; padding: var(--bf-inset-top) var(--bf-inset) var(--bf-inset-bottom);
+  display: flex; align-items: center; justify-content: center; isolation: isolate; pointer-events: none;
+  opacity: 0; visibility: hidden; transition: opacity 180ms ease-out, visibility 0s linear 180ms;
+}
 @media (hover: hover) and (pointer: fine) {
-  .bf-card:hover .bf-card__img--hover { opacity: 1; }
+  .bf-card:hover .bf-card__ph2 { opacity: 1; visibility: visible; transition: opacity 180ms ease-out, visibility 0s; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bf-card__ph2, .bf-card:hover .bf-card__ph2 { transition: none; }
 }
 
 /* one badge, inset 8 from top and inline-start, caption/600, 5×8 padding, pill, outside the blend with a page ring (R24) */
@@ -48,7 +65,16 @@
 .bf-card__badge--new { background: var(--wz-new); }
 .bf-card:lang(en) .bf-card__badge { letter-spacing: 0.04em; text-transform: uppercase; }
 
-.bf-card__body { padding: var(--bf-pad) var(--bf-pad) 0; }
+.bf-card__body { flex: 1 0 auto; display: flex; flex-direction: column; padding: var(--bf-pad) var(--bf-pad) 0; }
+/* a card with a picker has no descriptive colour line, and the empty row was still 16 px + its margin (CARD-DEAD-SPACE, 2026-10-18 night run) */
+.bf-card__colours:empty { display: none; }
+/* …and a card with NO colour information at all, stretched to its row, puts the height that line would have taken
+   ABOVE ITS PRICE, so its price and its button sit on the row's lines (round 4 Part 6.3, 2026-10-18 — the 22 px went
+   above the button: price → button 38 vs 16 on the home's Coach rail). The link and the body grow to carry it (the
+   button's own `margin-top: auto` then has nothing left to take); every other card is laid out as before, and a card
+   that is not stretched (the dev page) stays 22 px short. Only this case: a margin on every price would misalign a
+   row where some cards carry the rating line, which sits BELOW the price. */
+.bf-card__colours:empty + .bf-card__price { margin-top: auto; }
 .bf-card__brand { font-size: var(--bf-caption); font-weight: 700; color: var(--wz-ink-3); text-transform: uppercase; letter-spacing: 0.06em; line-height: 1.2; min-height: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bf-card:lang(ar) .bf-card__brand { letter-spacing: 0; text-transform: none; font-size: 11px; }
 .bf-card__title {
@@ -66,7 +92,10 @@
 .bf-card__now { font-size: var(--bf-price); font-weight: 700; color: var(--wz-ink); line-height: 18px; }
 .bf-card__old { display: flex; gap: 6px; align-items: baseline; line-height: 14px; min-height: 14px; }
 .bf-card__was { font-size: 11px; font-weight: 400; color: var(--wz-ink-3); }
-.bf-card__pct { font-size: 11px; font-weight: 700; color: var(--wz-sale); }
+/* the percent is an LTR run ("−21%") in both directions: in an RTL paragraph the bidi algorithm moved the sign to the
+   other side ("21%−") — AR-DISCOUNT-BIDI, 2026-10-18 night run. The price itself is left to the paragraph: "3,090 ج.م"
+   already reads number-then-currency in Arabic (§5). */
+.bf-card__pct { font-size: 11px; font-weight: 700; color: var(--wz-sale); direction: ltr; unicode-bidi: isolate; }
 
 /* the stock kind (Watchizer's Express / Market, its tones), 10px with a dot; reserved so cards align */
 .bf-card__kind { height: 14px; margin-top: 2px; font-size: var(--bf-caption); line-height: 14px; color: var(--wz-ink-2); display: flex; align-items: center; gap: 5px; }
@@ -75,14 +104,35 @@
 .bf-card__kind--market::before { background: var(--wz-alert); }
 .bf-card__rating { font-size: var(--bf-caption); color: var(--wz-ink-2); margin-top: 4px; }
 
-/* ── the picker (§8.6): swatches 16 radius 2 with a page gap + ink ring when chosen, a slash when dead, a tooltip;
-      the size row under it shows the previewed colour's sizes, struck when out ── */
-.bf-pick { padding: 6px var(--bf-pad) 0; display: grid; gap: 6px; }
-.bf-pick__colours { display: flex; gap: 8px; align-items: center; min-height: 20px; }
+/* ── the picker (§8.6), OVER THE PHOTO — Option A, 2026-10-18 afternoon, approved by Michael with the desktop included.
+      The block is laid over the tile and takes no room in the card's flow, so a card with a picker is exactly as tall as
+      one without, and a stretched row has nothing left over between a price and its button (the slack was the picker's
+      own height, 57.6 px at 1440 and 90.2 px at 390). The swatches sit in ONE tab at the photo's bottom-start corner
+      (round 4); the sizes rise above them, inside it, when the card is ENGAGED — hover or keyboard focus on a hover device, a swatch tap
+      on touch — and sit there at rest when the product has sizes but no colours. The chosen (or previewed) colour's name
+      is the card's colour line, in the body, where a plain card names its colours. ── */
+.bf-pick {
+  position: absolute; top: 0; inset-inline: 0; aspect-ratio: 1 / 1;            /* the tile's box, to the pixel */
+  display: flex; flex-direction: column; justify-content: flex-end; align-items: flex-start;
+  pointer-events: none;                                                          /* the photo stays the card's link */
+}
+/* THE TAB (round 4 design pass, 2026-10-18). One object, not two rows of white stickers: the card's own white body
+   rising into the photo at its bottom-start corner — flush with the tile's bottom and start edges, the card's 8 px radius
+   on its one free corner, no border, no shadow. Rules: frontend-design "visual structure is information" (the controls
+   belong to the card, so they are made of the card) and "spend boldness in one place" (one shape, nothing else added).
+   It brings its own white ground, so the swatches and the sizes read the same on a black belt and on white socks. */
+.bf-pick__tab {
+  pointer-events: auto; display: flex; flex-direction: column-reverse; gap: 2px; max-width: 100%; box-sizing: border-box;
+  padding: 6px 8px 7px; background: var(--wz-page); border-start-end-radius: 8px;
+}
+.bf-pick__row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.bf-pick__colours { display: flex; gap: 6px; align-items: center; }
 .bf-pick__dot {
   position: relative; width: 16px; height: 16px; border-radius: var(--wz-r-swatch); border: 0; padding: 0; cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent;
   box-shadow: inset 0 0 0 1px var(--wz-edge); transition: box-shadow 150ms ease-out;
 }
+/* the chosen ring (§8.6): on the tab's white the 2 px page gap disappears into the ground, and the ink ring reads as a
+   fine frame around the swatch */
 .bf-pick__dot[aria-checked='true'] { box-shadow: 0 0 0 2px var(--wz-page), 0 0 0 3px var(--wz-ink); }
 .bf-pick__dot.is-preview:not([aria-checked='true']) { box-shadow: 0 0 0 2px var(--wz-page), 0 0 0 3px var(--wz-edge); }
 .bf-pick__dot:focus-visible { outline: 2px solid var(--wz-focus-ring); outline-offset: 3px; }
@@ -91,33 +141,52 @@
   background: linear-gradient(to top right, transparent calc(50% - 1px), var(--wz-page) calc(50% - 1px), var(--wz-page) calc(50% + 1px), transparent calc(50% + 1px));
   filter: drop-shadow(0 0 0.5px var(--wz-ink));
 }
-/* the tooltip: the colour's name over the swatch on hover and focus (the native title has a delay and no keyboard) */
-.bf-pick__dot::before {
-  content: attr(data-name); position: absolute; bottom: calc(100% + 6px); inset-inline-start: 50%; transform: translateX(-50%);
-  background: var(--wz-ink); color: var(--wz-on-ink); font-size: 11px; line-height: 1; padding: 5px 7px; border-radius: 4px; white-space: nowrap;
-  opacity: 0; pointer-events: none; transition: opacity 150ms ease-out; z-index: 2;
+/* many colours: five swatches here, three on a phone, then "+N" to the product page — web-design-guidelines "anticipate
+   short, average and very long inputs": the row never wraps into a second line of weight (the cap must match
+   DOTS_DESKTOP / DOTS_PHONE in BfProductCard.jsx) */
+.bf-pick__dot:nth-child(n + 6) { display: none; }
+/* "+3" is an LTR run in both directions (in an RTL row it rendered "3+", like the discount did — AR-DISCOUNT-BIDI) */
+.bf-pick__more { font-size: 12px; line-height: 16px; color: var(--wz-ink-2); text-decoration: none; font-variant-numeric: tabular-nums; white-space: nowrap; direction: ltr; unicode-bidi: isolate; }
+.bf-pick__more--phone { display: none; }
+@media (hover: hover) { .bf-pick__more:hover { color: var(--wz-ink); text-decoration: underline; text-underline-offset: 3px; } }
+.bf-pick__more:focus-visible { outline: 2px solid var(--wz-focus-ring); outline-offset: 2px; border-radius: 2px; }
+/* no floating tooltip: the colour's name is the card's colour line, updated live on hover and focus; aria-label carries it */
+/* THE SIZES AS TYPE, not as boxes — the bordered white chips read as default form controls. Rules: frontend-design
+   "typography carries the personality" (the card's serif, a touch of tracking) and web-design-guidelines
+   "tabular-nums for comparisons" (36mm / 40mm / 44mm line up). Start-aligned with the swatches. The box around each size
+   is still its hit area and keeps its measured size (≥ 28 × 22 here, 40 × 44 on a phone) — only the border and fill go. */
+.bf-pick__sizes { display: none; flex-wrap: wrap; column-gap: 2px; }
+.bf-pick--sizes-only .bf-pick__sizes, .bf-card.is-engaged .bf-pick__sizes { display: flex; }
+@media (hover: hover) and (pointer: fine) {
+  .bf-card:hover .bf-pick__sizes, .bf-card:focus-within .bf-pick__sizes { display: flex; }
 }
-[dir='rtl'] .bf-pick__dot::before { transform: translateX(50%); }
-.bf-pick__dot:hover::before, .bf-pick__dot:focus-visible::before { opacity: 1; }
-.bf-pick__sizes { display: flex; flex-wrap: wrap; gap: 4px; min-height: 22px; }
 .bf-pick__size {
-  display: inline-flex; align-items: center; justify-content: center; min-width: 28px; height: 22px; padding-inline: 6px;
-  border: 1px solid var(--wz-line-strong); border-radius: 4px; font-size: 11px; color: var(--wz-ink); text-decoration: none; font-variant-numeric: tabular-nums;
+  display: inline-flex; align-items: center; justify-content: flex-start; min-width: 28px; height: 22px; padding-inline: 0 8px; box-sizing: border-box;
+  font-size: 12px; letter-spacing: 0.02em; color: var(--wz-ink); text-decoration: none; font-variant-numeric: tabular-nums; border-radius: 2px;
 }
-.bf-pick__size:hover { border-color: var(--wz-ink); }
+/* hover and focus MORE prominent than rest (web-design-guidelines "interactive states increase contrast"): an ink
+   underline under the size; the focus ring stays the one ring (§7.2) */
+@media (hover: hover) {
+  .bf-pick__size:hover { text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 4px; }
+  .bf-pick__size.is-out:hover { text-decoration-line: line-through underline; }
+}
 .bf-pick__size:focus-visible { outline: 2px solid var(--wz-focus-ring); outline-offset: 1px; }
-.bf-pick__size.is-out { color: var(--wz-ink-3); border-style: dashed; text-decoration: line-through; }
+/* sold out: struck, in ink-3 (#666 on the tab's white, 5.74:1) — readable, and plainly not available */
+.bf-pick__size.is-out { color: var(--wz-ink-3); text-decoration: line-through; text-decoration-thickness: 1px; }
 
 /* the button: pill, btn/700; secondary (outline) for "Notify me" and "Choose options" */
 .bf-card__cta { padding: 8px var(--bf-pad) var(--bf-pad); margin-top: auto; }
+/* block-level flex, not inline-flex: as an inline box the <a> ("Choose options", "Notify me") sat on a line box whose
+   strut made the CTA 1.8 px taller than the <button> ("Add to cart") — a card with a picker ended 1.8 px lower than a
+   plain card beside it (measured 367.6 vs 365.8 at 1440, 2026-10-18 afternoon) */
 .bf-card__btn, .bf-card__stepper {
   height: var(--bf-btn-h); width: 100%; border-radius: var(--wz-r-pill); font: 700 var(--bf-btn) / 1 var(--wz-serif);
-  display: inline-flex; align-items: center; justify-content: center; gap: 12px; text-decoration: none;
+  display: flex; align-items: center; justify-content: center; gap: 12px; text-decoration: none; box-sizing: border-box;
 }
 .bf-card__btn { background: var(--wz-ink); color: var(--wz-on-ink); border: 1px solid var(--wz-ink); cursor: pointer; transition: background-color 150ms ease-out, color 150ms ease-out; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
-.bf-card__btn:hover { background: var(--wz-ink-soft); }
+@media (hover: hover) { .bf-card__btn:hover { background: var(--wz-ink-soft); } }
 .bf-card__btn--secondary { background: var(--wz-page); color: var(--wz-ink); border-color: var(--wz-edge); }
-.bf-card__btn--secondary:hover { background: var(--wz-tile); border-color: var(--wz-ink); }
+@media (hover: hover) { .bf-card__btn--secondary:hover { background: var(--wz-tile); border-color: var(--wz-ink); } }
 .bf-card__btn:focus-visible, .bf-card__step:focus-visible { outline: 2px solid var(--wz-focus-ring); outline-offset: 2px; }
 .bf-card__stepper { border: 1px solid var(--wz-edge); background: var(--wz-page); }
 .bf-card__step { width: 32px; height: 30px; border: 0; background: transparent; color: var(--wz-ink); font: 700 var(--wz-fs-md) / 1 var(--wz-serif); border-radius: var(--wz-r-pill); cursor: pointer; }
@@ -126,6 +195,36 @@
 /* out of stock is NOT dimmed: full-opacity photo, ink-3 pill, secondary button (§8.3) */
 .bf-card.is-sold-out .bf-card__img { opacity: 1; }
 
+/* ── PHONE AND TABLET: the picker and the buttons at §6's 44 px hit size (2026-10-18 night run, Part A; over the photo
+   since Option A; the tab and the sizes as type since round 4): swatches 22 radius 2 with the ink ring when chosen, sizes
+   32 tall; hit areas extended to 34 × 40 / 40 × 44 by invisible pseudo-elements, not by larger boxes. ── */
+@media (max-width: 1023px) {
+  /* the photo stands clear of the tray: padding 4% top / 16% bottom instead of 8% all round, on EVERY card so the photos
+     in a row stay one size and one height (−5% photo). Measured on 328 catalogue photos at a 390 rail card: product under
+     the tray at rest, median 18.3% → 1.1%, 90th percentile 25.7% → 7.2% (2026-10-18 afternoon) */
+  .bf-card { --bf-inset-top: 4%; --bf-inset-bottom: 16%; }
+  /* the tab: 22 px swatches at a 12 px gap, 34 px tall (3 swatches: 102 px wide — it fits the narrowest tile, a rail
+     card at 360, 138 px) */
+  .bf-pick__tab { padding: 6px; gap: 0; }
+  .bf-pick__colours { gap: 12px; }
+  .bf-pick__dot { width: 22px; height: 22px; }
+  .bf-pick__dot:nth-child(n + 4) { display: none; }                               /* three on a phone, then "+N" */
+  .bf-pick__more--desktop { display: none; }
+  .bf-pick__more--phone { display: inline; position: relative; font-size: 13px; }
+  .bf-pick__more--phone::after { content: ''; position: absolute; inset: -12px -10px; }  /* "+5" is ~15 wide: 35 × 40 hit */
+  /* an invisible hit area the size of the dot pitch (the slash keeps ::after) */
+  .bf-pick__dot::before { content: ''; position: absolute; inset: -9px -6px; }   /* 34 × 40 hit */
+  .bf-pick__dot[aria-checked='true'] { box-shadow: 0 0 0 2px var(--wz-page), 0 0 0 4px var(--wz-ink); }
+  .bf-pick__dot.is-preview:not([aria-checked='true']) { box-shadow: 0 0 0 2px var(--wz-page), 0 0 0 4px var(--wz-edge); }
+  /* three sizes must fit the narrowest tab — a rail card on a 360 phone: "36mm" at 13 px is ~34 px of text + 6 → 40;
+     3 × 40 + 2 × 4 = 128 inside 138 */
+  .bf-pick__sizes { column-gap: 4px; }
+  .bf-pick__size { position: relative; min-width: 36px; height: 32px; padding-inline: 0 6px; font-size: 13px; }
+  .bf-pick__size::after { content: ''; position: absolute; inset: -6px -2px; }           /* 40 × 44 hit — unchanged */
+  .bf-card { --bf-btn-h: 44px; }
+  .bf-card__step { height: 40px; width: 40px; }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .bf-card, .bf-card__img--hover, .bf-pick__dot, .bf-pick__dot::before, .bf-card__btn { transition: none; }
+  .bf-card, .bf-pick__dot, .bf-card__btn { transition: none; }
 }

@@ -1,5 +1,5 @@
 'use client'
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { useUIStore } from '@/src/Store/uiStore'
 import { useToastStore } from '@/src/Store/toastStore'
@@ -70,6 +70,39 @@ export default function BfProductPage({ detail, related }) {
   const variants = useMemo(() => (Array.isArray(p.variants) ? p.variants : []), [p.variants])
   // the card's picker hands its choice over as ?color=&size= (spec §8.6); a value no row carries is ignored
   const sp = useSearchParams()
+  // the sticky bar (phone and tablet) repeats the price and the button ONLY once the page's own button has been
+  // scrolled past (above the screen), and leaves before the end of the product — it never doubles the button on
+  // screen, never covers the picker before the button is reached, and never sits on the footer (it showed at all
+  // times and covered the content; Michael, 2026-10-18 round 4)
+  const ctaRef = useRef(null)
+  const endRef = useRef(null)
+  const [barOn, setBarOn] = useState(false)
+  useEffect(() => {
+    const cta = ctaRef.current
+    const end = endRef.current
+    if (!cta || !end) return undefined
+    // a passive scroll check, once per frame — not an IntersectionObserver: that only fires when visibility FLIPS, so
+    // a jump or a fast fling from below the button to above it (never on screen in between) left the bar off
+    // (measured 2026-10-18 round 4). The header is sticky and 56 tall on phone: a button under it counts as past.
+    let raf = 0
+    const check = () => {
+      raf = 0
+      const past = cta.getBoundingClientRect().bottom <= 56
+      const endSeen = end.getBoundingClientRect().top < window.innerHeight
+      setBarOn(past && !endSeen)
+    }
+    const onScroll = () => {
+      if (!raf) raf = window.requestAnimationFrame(check)
+    }
+    check()
+    window.addEventListener('scroll', onScroll, { passive: true })
+    window.addEventListener('resize', onScroll)
+    return () => {
+      window.removeEventListener('scroll', onScroll)
+      window.removeEventListener('resize', onScroll)
+      if (raf) window.cancelAnimationFrame(raf)
+    }
+  }, [])
   const preColor = Number(sp.get('color')) || null
   const preSize = Number(sp.get('size')) || null
 
@@ -247,16 +280,16 @@ export default function BfProductPage({ detail, related }) {
             </div>
 
             {hasColour ? (
-              <div className="bf-pick">
-                <div className="bf-pick__label">
+              <div className="bf-opt">
+                <div className="bf-opt__label">
                   {t.colour}{colorId != null ? <b>{txt(colours.find((c) => c.id === colorId)?.name, lang)}</b> : null}
                 </div>
-                <div className="bf-pick__colours" role="radiogroup" aria-label={t.colour}>
+                <div className="bf-opt__colours" role="radiogroup" aria-label={t.colour}>
                   {colours.map((c) => {
                     const st = colourState(c)
                     if (st.absent) return null
                     return (
-                      <button key={c.id} type="button" role="radio" aria-checked={colorId === c.id} className={`bf-pick__swatch ${st.dead ? 'is-dead' : ''}`} style={{ background: c.hex }} aria-label={`${txt(c.name, lang)}${st.dead ? ` — ${t.soldOut}` : ''}`} title={txt(c.name, lang)} onClick={() => setColorId(colorId === c.id ? null : c.id)}>
+                      <button key={c.id} type="button" role="radio" aria-checked={colorId === c.id} className={`bf-opt__swatch ${st.dead ? 'is-dead' : ''}`} style={{ background: c.hex }} aria-label={`${txt(c.name, lang)}${st.dead ? ` — ${t.soldOut}` : ''}`} title={txt(c.name, lang)} onClick={() => setColorId(colorId === c.id ? null : c.id)}>
                         <span className="bf-swatch__hit" aria-hidden="true" />
                       </button>
                     )
@@ -266,25 +299,27 @@ export default function BfProductPage({ detail, related }) {
             ) : null}
 
             {hasSize ? (
-              <div className="bf-pick">
-                <div className="bf-pick__label">
-                  {t.size}{sizeId != null ? <b>{txt(sizes.find((s) => s.id === sizeId)?.name, lang)}</b> : null}
+              <div className="bf-opt">
+                <div className="bf-opt__label">
+                  {t.size}{sizeId != null ? <b>{txt(sizes.find((s) => s.id === sizeId)?.name, 'en')}</b> : null}
                 </div>
-                <div className="bf-pick__sizes" role="radiogroup" aria-label={t.size}>
+                <div className="bf-opt__sizes" role="radiogroup" aria-label={t.size}>
                   {sizes.map((s) => {
                     const st = sizeState(s)
+                    // a size is a code, not a word: the English label in both languages (AR-SIZE-TRANSLITERATED, 2026-10-18)
+                    const sname = txt(s.name, 'en')
                     return (
-                      <button key={s.id} type="button" role="radio" aria-checked={sizeId === s.id} className={`bf-pick__size ${st.out ? 'is-out' : ''} ${st.absent ? 'is-absent' : ''}`} aria-label={`${txt(s.name, lang)}${st.out ? ` — ${t.soldOut}` : ''}`} onClick={() => setSizeId(sizeId === s.id ? null : s.id)}>
-                        {txt(s.name, lang)}
+                      <button key={s.id} type="button" role="radio" aria-checked={sizeId === s.id} className={`bf-opt__size ${st.out ? 'is-out' : ''} ${st.absent ? 'is-absent' : ''}`} aria-label={`${sname}${st.out ? ` — ${t.soldOut}` : ''}`} onClick={() => setSizeId(sizeId === s.id ? null : s.id)}>
+                        {sname}
                       </button>
                     )
                   })}
                 </div>
-                {chosen && !chosen.stock?.in_stock ? <div className="bf-pick__hint">{t.notifySize}</div> : null}
+                {chosen && !chosen.stock?.in_stock ? <div className="bf-opt__hint">{t.notifySize}</div> : null}
               </div>
             ) : null}
 
-            <div className="bf-buy__cta" id="notify">
+            <div className="bf-buy__cta" id="notify" ref={ctaRef}>
               {!inStock && !needs ? (
                 // sold out: Watchizer's notify-me form (e-mail only, §18), not a button that only toasted
                 <StockAlertForm productId={p.id} isRTL={isRTL} />
@@ -335,9 +370,11 @@ export default function BfProductPage({ detail, related }) {
           <BfRail title={t.goesWith} cards={addons} lang={lang} seeAllHref={addons[0]?.primary_category?.path ? `/category/${addons[0].primary_category.path}` : '/listing'} />
           <BfRail title={t.similar} cards={similar} lang={lang} seeAllHref={p.primary_category?.path ? `/category/${p.primary_category.path}` : '/listing'} />
         </div>
+        {/* the end of the product: once it is on screen the sticky bar leaves (it never covers the footer) */}
+        <div className="bf-pdp__end" ref={endRef} aria-hidden="true" />
       </div>
 
-      <div className="bf-pdp__bar" aria-hidden={false}>
+      <div className={`bf-pdp__bar ${barOn ? 'is-on' : ''}`} aria-hidden={!barOn}>
         <span className="bf-buy__now">{now}</span>
         {!inStock && !needs ? (
           <a className="bf-cta bf-cta--secondary" href="#notify">{t.notify}</a>

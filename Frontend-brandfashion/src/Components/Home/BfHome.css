@@ -34,7 +34,7 @@
 
 /* the one warm accent (§3): brass gold ground, ink text — the hero's and the deals header's CTA */
 .bf-cta-gold { display: inline-flex; align-items: center; height: 36px; padding-inline: 16px; border-radius: var(--wz-r-pill); background: var(--wz-brand); color: var(--wz-ink); font-size: var(--bf-btn); font-weight: 700; text-decoration: none; white-space: nowrap; transition: filter 150ms ease-out; }
-.bf-cta-gold:hover { filter: brightness(0.95); }
+@media (hover: hover) { .bf-cta-gold:hover { filter: brightness(0.95); } }
 .bf-cta-gold:focus-visible { outline: 2px solid var(--wz-focus-ring); outline-offset: 2px; }
 
 /* the category row: a photo tile per family with its count, then that family's sub-types as chips; one scrolling row
@@ -52,10 +52,18 @@
 .bf-cat__name { font-size: var(--bf-body); font-weight: 700; }
 .bf-cat__count { font-size: var(--bf-caption); color: var(--wz-ink-2); }
 .bf-chip { touch-action: manipulation; -webkit-tap-highlight-color: transparent; display: inline-flex; align-items: center; gap: 5px; height: 32px; padding-inline: 11px; border-radius: var(--wz-r-pill); border: 1px solid var(--wz-line-strong); color: var(--wz-ink); font-size: var(--bf-small); text-decoration: none; white-space: nowrap; flex: none; transition: background-color 150ms ease-out, border-color 150ms ease-out; }
-.bf-chip:hover { background: var(--wz-tile); border-color: var(--wz-ink); }
+@media (hover: hover) { .bf-chip:hover { background: var(--wz-tile); border-color: var(--wz-ink); } }
 .bf-chip__count { color: var(--wz-ink-2); font-size: 11px; }
 .bf-chip:focus-visible, .bf-cat:focus-visible { outline: 2px solid var(--wz-focus-ring); outline-offset: 2px; }
 .bf-cats__arrows { display: none; }
+/* phone and tablet: the row scrolls under a fade at its end (the cut chip was the only cue), chips 36 tall with a 44 hit */
+@media (max-width: 1023px) {
+  .bf-cats::after { content: ''; position: absolute; top: 0; bottom: 0; inset-inline-end: 0; width: 40px; pointer-events: none; background: linear-gradient(to var(--bf-fade-to, right), rgba(255, 255, 255, 0), var(--wz-page)); }
+  [dir='rtl'] .bf-cats::after { --bf-fade-to: left; }
+  .bf-cats__row { padding-inline-end: 32px; }
+  .bf-chip { position: relative; height: 36px; }
+  .bf-chip::after { content: ''; position: absolute; inset: -4px 0; }
+}
 @media (hover: hover) and (min-width: 1024px) {
   .bf-cats { padding-inline-end: 80px; }
   .bf-cats__arrows { display: flex; gap: 6px; position: absolute; inset-inline-end: var(--bf-gutter); top: 50%; transform: translateY(-50%); }
@@ -83,11 +91,19 @@
 @media (min-width: 600px) { .bf-brands__row { grid-auto-columns: calc((100% - 12px * 3.5) / 4.5); gap: 12px; } }
 @media (min-width: 1024px) { .bf-brands__row { grid-auto-columns: calc((100% - 60px) / 6); } }
 .bf-brand { height: 64px; border: 1px solid var(--wz-line); border-radius: 8px; background: var(--wz-page); display: grid; grid-template-columns: 56px 1fr; align-items: center; column-gap: 10px; padding-inline: 10px; text-decoration: none; color: var(--wz-ink); transition: border-color 150ms ease-out; }
-.bf-brand:hover { border-color: var(--wz-ink); }
+@media (hover: hover) { .bf-brand:hover { border-color: var(--wz-ink); } }
 .bf-brand:focus-visible { outline: 2px solid var(--wz-focus-ring); outline-offset: 2px; }
 .bf-brand img { grid-row: 1 / 3; max-width: 56px; max-height: 40px; object-fit: contain; justify-self: center; }
 .bf-brand__name { font-size: var(--bf-small); font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; align-self: end; }
 .bf-brand__count { font-size: 11px; color: var(--wz-ink-2); align-self: start; }
+/* phone and tablet: the name was ellipsised in a 45 px cell ("Tommy Hi…") — the card stacks logo over name, 3 per view */
+@media (max-width: 1023px) {
+  .bf-brands__row { grid-auto-columns: calc((100% - 16px - 20px) / 3); }
+  .bf-brand { height: auto; grid-template-columns: 1fr; grid-template-rows: 36px auto auto; row-gap: 2px; justify-items: center; padding: 10px 8px 8px; text-align: center; }
+  .bf-brand img { grid-row: 1; max-height: 32px; max-width: 72px; }
+  .bf-brand__name { align-self: auto; max-width: 100%; white-space: normal; line-height: 1.15; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  .bf-brand__count { align-self: auto; }
+}
 
 /* ── bottom nav (§10.1 item 11): phone only, 56 + safe area, four items ── */
 .bf-bottom-nav { position: fixed; inset-inline: 0; inset-block-end: 0; height: calc(56px + env(safe-area-inset-bottom)); padding-block-end: env(safe-area-inset-bottom); background: var(--wz-page); border-block-start: 1px solid var(--wz-line); display: grid; grid-template-columns: repeat(4, 1fr); z-index: 40; max-width: none; margin: 0; padding-inline: 0; }

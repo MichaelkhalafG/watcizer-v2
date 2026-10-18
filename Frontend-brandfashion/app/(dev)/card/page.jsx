@@ -29,6 +29,9 @@ const DEMO = [
 // §5 / §20 stress prices — the spec's figures, from the 7,759-product catalogue of 2026-10-07.
 const SPEC_PRICE_LOW = 110
 const SPEC_PRICE_HIGH = 214380
+// §6 the long input: eight colours (one of them dark, one pale) and six sizes
+const MANY_COLOURS = [['Black', 'أسود', '#111111'], ['Ivory', 'عاجي', '#F2EEE3'], ['Navy', 'كحلي', '#1F2F4F'], ['Olive', 'زيتي', '#6B6B3A'], ['Tan', 'جملي', '#B0814F'], ['Burgundy', 'نبيتي', '#6E1E2C'], ['Grey', 'رمادي', '#9A9A9A'], ['Sky', 'سماوي', '#8DB8D8']]
+const MANY_SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL']
 // photo backgrounds the multiply guard in §8.3 names: white studio, the tile, grey and beige sweeps
 const PHOTO_BACKGROUNDS = [
   { k: 'white studio', hex: '#FFFFFF' },
@@ -103,6 +106,19 @@ export default async function CardPage() {
   const withPrice = (p, amount, sale) => p && { ...p, price: { ...p.price, amount, sale_amount: sale, has_sale: sale != null, discount_pct: sale != null ? Math.round((1 - sale / amount) * 100) : null } }
   const stressLow = withPrice(low ?? shelf[0], SPEC_PRICE_LOW, 89)
   const stressHigh = withPrice(high ?? shelf[0], SPEC_PRICE_HIGH, 171504)
+  // §6 the LONG input (round 4, 2026-10-18): no product carries more than 3 colours or 3 sizes today, so the widest case
+  // is built here, in code, from a real demo row — 8 colours × 6 sizes, Navy out in every size, XL out in every colour.
+  // Nothing is written to the database.
+  const manyBase = details[0]?.product
+  const many = manyBase ? (() => {
+    const tpl = (manyBase.variants ?? [])[0] ?? {}
+    const variants = []
+    MANY_COLOURS.forEach(([en, ar, hex], ci) => MANY_SIZES.forEach((sz, si) => {
+      const inStock = !(ci === 2 || si === 4)
+      variants.push({ ...tpl, id: 990000 + ci * 10 + si, sku: `SYNTH-${ci}-${si}`, color: { id: 9900 + ci, hex, name: { en, ar } }, size: { id: 9950 + si, type: 'apparel', sort: si, name: { en: sz, ar: sz } }, in_stock: inStock, stock: { express: inStock ? 2 : 0, market: 0, in_stock: inStock } })
+    }))
+    return { ...manyBase, id: 'many-colours', variants }
+  })() : null
   const soldOutReal = elec[0] ?? shelf.find((p) => !p.stock?.in_stock) ?? null
   const inStockReal = shelf.find((p) => p.stock?.in_stock) ?? null
   const noPhoto = inStockReal && { ...inStockReal, image: null }
@@ -227,6 +243,13 @@ export default async function CardPage() {
       <div className="shelf">{shelf.map((p) => <BfProductCard key={p.id} product={p} lang="en" />)}</div>
       <h3>Electronics, page 1 as `position` orders it: {elec.length} cards, {elec.filter((p) => !p.stock?.in_stock).length} sold out</h3>
       <div className="shelf">{elec.map((p) => <BfProductCard key={p.id} product={p} lang="en" />)}</div>
+
+      <h2>6. The long input: eight colours and six sizes (synthetic, from a real row, in code)</h2>
+      <p className="meta">No product carries more than three colours or three sizes today; this card is the widest case, built in this page from {manyBase ? txt(manyBase.title) : 'the first demo row'} — Navy out in every size, XL out in every colour. Nothing is written to the database.</p>
+      <div className="grid" style={{ '--cols': 4 }}>
+        {many ? <div><BfProductCard product={many} lang="en" /><div className="cap">8 colours: five swatches, then +3 (three and +5 on a phone)</div></div> : null}
+        {many ? <div><BfProductCard product={many} lang="ar" /><div className="cap">the same, Arabic</div></div> : null}
+      </div>
     </main>
   )
 }

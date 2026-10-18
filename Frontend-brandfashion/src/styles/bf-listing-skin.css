@@ -12,7 +12,7 @@ html .wz-listing-inner { max-width: var(--bf-container); padding: 0 var(--bf-gut
 /* breadcrumb + h1 (h1 token, 700, no caps — the copied global heading rule upper-cases h1) */
 html .wz-bc { padding: 12px 0 2px; gap: 6px; font-size: var(--bf-small); color: var(--wz-ink-2); }
 html .wz-bc-link { font-size: var(--bf-small); color: var(--wz-ink-2); letter-spacing: 0; }
-html .wz-bc-link:hover { color: var(--wz-ink); text-decoration: underline; text-underline-offset: 3px; }
+@media (hover: hover) { html .wz-bc-link:hover { color: var(--wz-ink); text-decoration: underline; text-underline-offset: 3px; } }
 html .wz-bc-sep { color: var(--wz-ink-3); }
 html .wz-bc-current { color: var(--wz-ink); font-weight: 400; }
 html .wz-listing-h1 { font-family: var(--wz-serif); font-size: var(--bf-h1); line-height: var(--bf-h1-lh); font-weight: 700; letter-spacing: 0; text-transform: none; color: var(--wz-ink); margin: 2px 0 6px; }
@@ -25,7 +25,7 @@ html .wz-listing-note { font-size: var(--bf-body); line-height: var(--bf-body-lh
 html .wz-sg { padding: 8px 0 10px; gap: 10px; border-bottom: 1px solid var(--wz-line); }
 html .wz-sg-label { font-size: var(--bf-small); letter-spacing: 0; text-transform: none; color: var(--wz-ink-2); font-weight: 400; }
 html .wz-sg-chip { height: 32px; padding: 0 11px; border: 1px solid var(--wz-line-strong); border-radius: var(--wz-r-pill); background: var(--wz-page); color: var(--wz-ink); font-size: var(--bf-small); font-weight: 400; letter-spacing: 0; text-transform: none; gap: 6px; transition: background-color 150ms ease-out, border-color 150ms ease-out; }
-html .wz-sg-chip:hover { background: var(--wz-tile); border-color: var(--wz-ink); }
+@media (hover: hover) { html .wz-sg-chip:hover { background: var(--wz-tile); border-color: var(--wz-ink); } }
 html .wz-sg-chip.is-active { background: var(--wz-ink); color: var(--wz-on-ink); border-color: var(--wz-ink); }
 html .wz-sg-chip-count { font-size: 11px; color: var(--wz-ink-2); background: none; padding: 0; }
 html .wz-sg-chip.is-active .wz-sg-chip-count { color: rgba(255, 255, 255, 0.72); }
@@ -57,10 +57,12 @@ html .wz-tags { gap: 8px; margin-top: 10px; }
 html .wz-tag { height: 32px; padding: 0 10px 0 12px; border: 0; border-radius: var(--wz-r-pill); background: var(--wz-ink); color: var(--wz-on-ink); font-size: var(--bf-small); font-weight: 700; gap: 6px; }
 html [dir='rtl'] .wz-tag { padding: 0 12px 0 10px; }
 html .wz-tag svg { color: rgba(255, 255, 255, 0.8); font-size: 14px; }
-html .wz-tag:hover { background: var(--wz-ink-soft); border-color: transparent; }
+@media (hover: hover) { html .wz-tag:hover { background: var(--wz-ink-soft); border-color: transparent; } }
 html .wz-tags-clear { font-size: var(--bf-small); font-weight: 700; color: var(--wz-ink); text-decoration: underline; text-underline-offset: 3px; }
 
 /* the grid: 2 phone · 3 tablet · 4 desktop · 5 wide (§6 at the 1,440 container); gaps 8 / 12 */
+/* cards stretch to the row (the default; the night's `align-items: start` was reversed on 2026-10-18 morning — level
+   cards over ragged bottoms; the slack a plain card shows beside a picker card is to be solved by removing what is empty) */
 html .wz-listing-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
 @media (min-width: 600px) { html .wz-listing-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; } }
 @media (min-width: 1024px) { html .wz-listing-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
@@ -71,7 +73,7 @@ html .wz-fade > * { animation-duration: 150ms; animation-timing-function: ease-o
 /* pagination: 36px pills, the current one ink (§10.2) */
 html .wz-pager { gap: 6px; margin-top: 24px; }
 html .wz-pager-num, html .wz-pager-btn { min-width: 36px; height: 36px; padding: 0 10px; border: 1px solid var(--wz-edge); border-radius: var(--wz-r-pill); background: var(--wz-page); color: var(--wz-ink); font-size: var(--bf-small); font-weight: 700; }
-html .wz-pager-num:hover:not(.is-active), html .wz-pager-btn:hover:not(:disabled) { border-color: var(--wz-ink); background: var(--wz-tile); }
+@media (hover: hover) { html .wz-pager-num:hover:not(.is-active), html .wz-pager-btn:hover:not(:disabled) { border-color: var(--wz-ink); background: var(--wz-tile); } }
 html .wz-pager-num.is-active { background: var(--wz-ink); border-color: var(--wz-ink); color: var(--wz-on-ink); }
 html .wz-pager-btn:disabled { color: var(--wz-disabled-fg); background: var(--wz-disabled-bg); border-color: var(--wz-disabled-bg); opacity: 1; }
 html .wz-pager-dots { color: var(--wz-ink-3); }
@@ -83,7 +85,7 @@ html .wz-empty-icon { font-size: 32px; color: var(--wz-ink-3); margin-bottom: 12
 html .wz-empty-title { font-size: var(--bf-h2); font-weight: 700; color: var(--wz-ink); text-transform: none; letter-spacing: 0; }
 html .wz-empty-sub { font-size: var(--bf-body); color: var(--wz-ink-2); }
 html .wz-empty-btn { height: 40px; padding: 0 18px; border: 1px solid var(--wz-ink); border-radius: var(--wz-r-pill); background: var(--wz-ink); color: var(--wz-on-ink); font-size: var(--bf-btn); font-weight: 700; letter-spacing: 0; text-transform: none; }
-html .wz-empty-btn:hover { background: var(--wz-ink-soft); }
+@media (hover: hover) { html .wz-empty-btn:hover { background: var(--wz-ink-soft); } }
 
 /* loading skeleton: tile grey, NO shimmer (§14), the card's own radius */
 html .wz-skel-card { border: 1px solid var(--wz-line); border-radius: 8px; }
@@ -103,7 +105,7 @@ html .wz-fs-body { padding: 0 14px 10px; }
 html .wz-fs-search { height: 32px; border: 1px solid var(--wz-edge); border-radius: var(--wz-r-input); padding: 0 10px; font-size: var(--bf-small); color: var(--wz-ink); font-family: inherit; }
 html .wz-fs-search:focus { border-color: var(--wz-ink); }
 html .wz-fs-item label { padding: 0 2px; min-height: 32px; border-radius: 4px; gap: 8px; }
-html .wz-fs-item label:hover { background: var(--wz-tile); }
+@media (hover: hover) { html .wz-fs-item label:hover { background: var(--wz-tile); } }
 html .wz-fs-item input[type='checkbox'] { width: 16px; height: 16px; accent-color: var(--wz-ink); }
 html .wz-fs-item-name { font-size: var(--bf-body); color: var(--wz-ink); }
 html .wz-fs-item-count { font-size: var(--bf-small); color: var(--wz-ink-2); }
@@ -135,4 +137,14 @@ html .wz-fdrawer-apply { height: 48px; border-radius: var(--wz-r-pill); backgrou
 
 @media (prefers-reduced-motion: reduce) {
   html .wz-sg-chip, html .wz-tag { transition: none; }
+}
+
+/* touch: the twin's own hover rules (Listing.css, SideBar.css) are not hover-guarded, so a tap would leave them painted
+   (sticky hover, B5 of the 2026-10-18 night run); on a device without hover the skin re-states the resting values */
+@media (hover: none) {
+  html .wz-bc-link:hover { color: var(--wz-ink-2); }
+  html .wz-tag:hover { background: var(--wz-ink); border-color: transparent; }
+  html .wz-pager-num:hover:not(.is-active), html .wz-pager-btn:hover:not(:disabled) { border-color: var(--wz-edge); }
+  html .wz-empty-btn:hover { background: var(--wz-ink); }
+  html .wz-fs-item label:hover { background: transparent; }
 }

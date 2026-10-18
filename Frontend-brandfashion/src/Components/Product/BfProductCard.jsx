@@ -1,5 +1,6 @@
 'use client'
 import { useMemo, useRef, useState } from 'react'
+import Link from '@/src/Components/LocaleLink'
 import { PLACEHOLDER_IMG } from '@/src/utils/imageUrl'
 import { aisleTint } from '@/src/lib/aisleTint'
 import { txt, money, cardColours, cardVariants, isNewProduct } from '@/src/lib/cardData'
@@ -16,12 +17,22 @@ import './BfProductCard.css'
  *
  * What is on it, in order (§8.1): photo on the aisle tint (the second photo on hover, desktop) → at most one
  * badge (sold out › new — "new" is Watchizer's 30-day rule unless the caller decides) → brand → 2-line title →
- * the descriptive colours AS TEXT ("Black, Gold" — they describe, so they never look like a choice) → price +
- * struck old price + red −% → the stock KIND (Express / Market, Watchizer's words) → the picker, only on a
- * product with variant rows (§8.6: colour swatches with a ring on the chosen one, a slash on a colour that is
- * out in every size, a tooltip with the name; hover a colour and the size row shows THAT colour's sizes, a
- * sold-out size struck; on touch the first in-stock colour is chosen on arrival and a tap chooses another) →
- * the button. No rating until 10 (§8.3). No wishlist, no stock count, no delivery promise (§8.4).
+ * the descriptive colours AS TEXT ("Black, Gold" — they describe, so they never look like a choice; on a card
+ * with a picker this line names the chosen or previewed colour instead) → price + struck old price + red −% →
+ * the stock KIND (Express / Market, Watchizer's words) → the button. No rating until 10 (§8.3). No wishlist, no
+ * stock count, no delivery promise (§8.4).
+ *
+ * The picker (§8.6), only on a product with variant rows, is laid OVER THE PHOTO's bottom edge (Option A,
+ * 2026-10-18 afternoon) and takes no room in the card, so every card in a row is the same height: colour
+ * swatches in ONE tab — the card's white body rising into the photo's corner (round 4) — a ring on the chosen one, a slash on a colour out in every size; the size row rises
+ * above them when the card is engaged — hover or focus on a hover device, a swatch tap on touch (`engaged`) —
+ * and shows THAT colour's sizes, a sold-out size struck; a product with sizes and no colours shows its sizes at
+ * rest. On touch the first in-stock colour is chosen on arrival and a tap chooses another.
+ *
+ * Every link on the card is the twin LocaleLink (next/link): a client-side navigation, so coming BACK from a
+ * product restores the listing's scroll position — Watchizer's card's behaviour (2026-10-18 night run: a plain
+ * <a> had lost it, measured 1,500 → 0). Size labels render in ENGLISH in both languages (a size is a code, not a
+ * word — "S", "36mm"; the lookup's Arabic rows are transliterations); colour names stay translated.
  *
  * Tab stops: the card link, the swatch group (one stop, arrows move inside it), each size (a link to the
  * product page with that choice), the button. A product with variants cannot be added from the card today
@@ -40,6 +51,12 @@ const STR = {
     qty: 'الكمية', minus: 'أنقص واحدًا', plus: 'أضف واحدًا', express: 'إكسبريس', market: 'ماركت', outSize: 'نفد، نبّهني', deadColour: 'نفد', more: (n) => `+${n}`,
   },
 }
+
+// many colours: the card shows this many swatches, then "+N" to the product page (the CSS cap must match:
+// `.bf-pick__dot:nth-child(n + 6)` and, on a phone, `(n + 4)`)
+const DOTS_DESKTOP = 5
+const DOTS_PHONE = 3
+const MORE_COLOURS = { en: (n) => `${n} more colours`, ar: (n) => `ألوان أخرى: ${n}` }
 
 const uniq = (refs) => {
   const seen = new Set()
@@ -64,6 +81,8 @@ export default function BfProductCard({
   const sizeRefs = useMemo(() => uniq(variants.map((v) => v.size)).sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0)), [variants])
   const [chosen, setChosen] = useState(() => (colourRefs.find((c) => variants.some((v) => v.color?.id === c.id && v.in_stock)) ?? colourRefs[0])?.id ?? null)
   const [preview, setPreview] = useState(null)
+  // touch has no hover: a swatch tap "engages" the card and the size row rises over the photo (desktop: hover/focus, CSS)
+  const [engaged, setEngaged] = useState(false)
   const groupRef = useRef(null)
   if (!product) return null
   const t = STR[lang] ?? STR.en
@@ -108,16 +127,19 @@ export default function BfProductCard({
     const q = p.toString()
     return q ? `${link}${link.includes('?') ? '&' : '?'}${q}` : link
   }
+  // arrows move through the VISIBLE swatches (the cap hides the rest; a hidden button cannot take focus)
   const onGroupKey = (e) => {
-    if (!colourRefs.length) return
-    const i = Math.max(0, colourRefs.findIndex((c) => c.id === chosen))
+    const radios = [...(groupRef.current?.querySelectorAll('[role=radio]') ?? [])].filter((el) => el.offsetParent !== null)
+    if (!radios.length) return
+    const i = Math.max(0, radios.findIndex((el) => el.getAttribute('aria-checked') === 'true'))
     let next = null
-    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') next = (i + 1) % colourRefs.length
-    if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') next = (i - 1 + colourRefs.length) % colourRefs.length
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') next = (i + 1) % radios.length
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') next = (i - 1 + radios.length) % radios.length
     if (next == null) return
     e.preventDefault()
-    setChosen(colourRefs[next].id)
-    groupRef.current?.querySelectorAll('[role=radio]')[next]?.focus()
+    const ref = colourRefs[Number(radios[next].dataset.i)]
+    if (ref) setChosen(ref.id)
+    radios[next].focus()
   }
 
   // §7.4: brand, title, price, "was" old price, state — one sentence, the pills inside it
@@ -134,14 +156,17 @@ export default function BfProductCard({
   }
 
   return (
-    <article className={`bf-card ${density === 'compact' ? 'bf-card--compact' : ''} ${soldOut ? 'is-sold-out' : ''} ${hasPicker ? 'has-picker' : ''}`} dir={dir} lang={lang} data-family={product.family}>
-      <a className="bf-card__link" href={link} aria-label={name}>
+    <article className={`bf-card ${density === 'compact' ? 'bf-card--compact' : ''} ${soldOut ? 'is-sold-out' : ''} ${hasPicker ? 'has-picker' : ''} ${engaged ? 'is-engaged' : ''}`} dir={dir} lang={lang} data-family={product.family}>
+      <Link className="bf-card__link" href={link} aria-label={name}>
         <div className="bf-card__tile" style={{ background: tintVar }} aria-hidden="true">
           {/* eslint-disable-next-line @next/next/no-img-element -- absolute asset-host URL, fallback is an inline SVG */}
           <img className={`bf-card__img ${isPhoto ? 'is-photo' : 'is-placeholder'}`} src={src} alt="" loading="lazy" decoding="async" onError={() => setBroken(true)} />
           {hoverSrc ? (
-            // eslint-disable-next-line @next/next/no-img-element -- the second photo, shown on hover (desktop)
-            <img className="bf-card__img bf-card__img--hover is-photo" src={hoverSrc} alt="" loading="lazy" decoding="async" />
+            // the second photo, crossfaded in on hover (desktop) inside its own wrapper on the tile's tint (T1, round 4)
+            <span className="bf-card__ph2" style={{ background: tintVar }}>
+              {/* eslint-disable-next-line @next/next/no-img-element -- the second photo, absolute asset-host URL */}
+              <img className="bf-card__img bf-card__img--hover is-photo" src={hoverSrc} alt="" loading="lazy" decoding="async" />
+            </span>
           ) : null}
           {badge ? <span className={`bf-card__badge bf-card__badge--${badge}`}>{badge === 'sold-out' ? t.soldOut : t.isNew}</span> : null}
         </div>
@@ -149,7 +174,9 @@ export default function BfProductCard({
           <div className="bf-card__brand">{brand}</div>
           <h3 className="bf-card__title">{title}</h3>
           <div className="bf-card__colours">
-            {shownNames.length ? (
+            {hasPicker && colourRefs.length ? (
+              txt(colourRefs.find((c) => c.id === (preview ?? chosen))?.name, lang)
+            ) : shownNames.length ? (
               <>
                 {shownNames.join(lang === 'ar' ? '، ' : ', ')}
                 {colourNames.length > 3 ? <span className="bf-card__more"> {t.more(colourNames.length - 3)}</span> : null}
@@ -166,13 +193,15 @@ export default function BfProductCard({
           <div className={`bf-card__kind ${kind ? `bf-card__kind--${kind}` : ''}`}>{kind ? t[kind] : ''}</div>
           {showStars ? <div className="bf-card__rating">★ {Number(rating.avg).toFixed(1)} ({rating.count})</div> : null}
         </div>
-      </a>
+      </Link>
 
       {hasPicker ? (
-        <div className="bf-pick" aria-label={t.options}>
+        <div className={`bf-pick ${colourRefs.length ? '' : 'bf-pick--sizes-only'}`} aria-label={t.options}>
+          <div className="bf-pick__tab">
           {colourRefs.length ? (
+            <div className="bf-pick__row">
             <div className="bf-pick__colours" role="radiogroup" aria-label={t.colour} ref={groupRef} onKeyDown={onGroupKey} onMouseLeave={() => setPreview(null)}>
-              {colourRefs.map((c) => {
+              {colourRefs.map((c, idx) => {
                 const dead = colourDead(c.id)
                 const on = chosen === c.id
                 const cname = txt(c.name, lang)
@@ -185,38 +214,54 @@ export default function BfProductCard({
                     tabIndex={on ? 0 : -1}
                     className={`bf-pick__dot ${dead ? 'is-dead' : ''} ${preview === c.id ? 'is-preview' : ''}`}
                     style={{ background: c.hex }}
+                    data-i={idx}
                     data-name={dead ? `${cname} — ${t.deadColour}` : cname}
                     aria-label={dead ? `${cname}, ${t.deadColour}` : cname}
                     onMouseEnter={() => setPreview(c.id)}
                     onFocus={() => setPreview(c.id)}
                     onBlur={() => setPreview(null)}
-                    onClick={() => setChosen(c.id)}
+                    onClick={() => {
+                      setChosen(c.id)
+                      setEngaged(true)
+                    }}
                   />
                 )
               })}
+            </div>
+            {colourRefs.length > DOTS_DESKTOP ? (
+              <Link className="bf-pick__more bf-pick__more--desktop" href={link} aria-label={(MORE_COLOURS[lang] ?? MORE_COLOURS.en)(colourRefs.length - DOTS_DESKTOP)}>
+                +{colourRefs.length - DOTS_DESKTOP}
+              </Link>
+            ) : null}
+            {colourRefs.length > DOTS_PHONE ? (
+              <Link className="bf-pick__more bf-pick__more--phone" href={link} aria-label={(MORE_COLOURS[lang] ?? MORE_COLOURS.en)(colourRefs.length - DOTS_PHONE)}>
+                +{colourRefs.length - DOTS_PHONE}
+              </Link>
+            ) : null}
             </div>
           ) : null}
           {sizesShown.length ? (
             <div className="bf-pick__sizes" aria-label={t.size} aria-live="polite">
               {sizesShown.map((s) => {
                 const out = sizeOut(s.id)
-                const sname = txt(s.name, lang)
+                const sname = txt(s.name, 'en')
                 return (
-                  <a key={s.id} className={`bf-pick__size ${out ? 'is-out' : ''}`} href={withChoice(s.id)} aria-label={out ? `${sname}, ${t.outSize}` : sname}>
+                  <Link key={s.id} className={`bf-pick__size ${out ? 'is-out' : ''}`} href={withChoice(s.id)} aria-label={out ? `${sname}, ${t.outSize}` : sname}>
                     {sname}
-                  </a>
+                  </Link>
                 )
               })}
             </div>
           ) : null}
+          </div>
         </div>
       ) : null}
 
       <div className="bf-card__cta">
         {hasPicker ? (
-          <a className="bf-card__btn bf-card__btn--secondary" href={withChoice(null)}>{t.options}</a>
+          <Link className="bf-card__btn bf-card__btn--secondary" href={withChoice(null)}>{t.options}</Link>
         ) : soldOut ? (
-          <a className="bf-card__btn bf-card__btn--secondary" href={`${link}#notify`}>{t.notify}</a>
+          <Link className="bf-card__btn bf-card__btn--secondary" href={`${link}#notify`}>{t.notify}</Link>
         ) : qty > 0 ? (
           <div className="bf-card__stepper" role="group" aria-label={t.qty}>
             <button type="button" className="bf-card__step" aria-label={t.minus} onClick={() => setQty((q) => Math.max(0, q - 1))}>−</button>
