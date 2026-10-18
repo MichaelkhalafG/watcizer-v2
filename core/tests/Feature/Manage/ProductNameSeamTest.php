@@ -125,7 +125,7 @@ it('lets no screen pick a NAME language for the reader either', function () {
          * `//` is not even a comment. Learned from the `i18n-exempt` markers, which strip only
          * their own line and needed three passes to place correctly.
          */
-        $lines = preg_split('/\R/', $source) ?: [];
+        $lines = preg_split('/\r\n|\r|\n/', $source) ?: [];
         $skipNext = false;
         foreach ($lines as $index => $line) {
             $marked = str_contains($line, NAME_SEAM_MARKER);

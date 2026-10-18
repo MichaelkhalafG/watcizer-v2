@@ -22,13 +22,31 @@ use PHPUnit\Framework\Assert;
 
 const TWINS_MANIFEST = 'Frontend-brandfashion/TWINS.txt';
 
+/**
+ * The manifest's lines, split on line breaks as CHARACTERS (`/u`). Without the flag `\R` also matches the
+ * byte 0x85, which sits inside Arabic letters (م is D9 85): on 2026-10-18 a DIVERGED reason quoting `3,900 ج.م`
+ * was cut in two, and the gate read half a reason and a phantom twin path. A manifest that is not valid UTF-8
+ * fails here, loudly, instead of reading as empty.
+ *
+ * @return list<string>
+ */
+function manifestLines(string $text): array
+{
+    $lines = preg_split('/\R/u', $text);
+    if ($lines === false) {
+        Assert::fail(TWINS_MANIFEST.' is not valid UTF-8 - it cannot be read line by line');
+    }
+
+    return $lines;
+}
+
 /** @return list<string> the manifest's paths, comment and blank lines dropped */
 function twinPaths(): array
 {
     $file = dirname(base_path()).DIRECTORY_SEPARATOR.TWINS_MANIFEST;
     Assert::assertFileExists($file, TWINS_MANIFEST.' is missing');
     $paths = [];
-    foreach (preg_split('/\R/', (string) file_get_contents($file)) ?: [] as $line) {
+    foreach (manifestLines((string) file_get_contents($file)) as $line) {
         $line = trim($line);
         if ($line === '' || str_starts_with($line, '#') || str_starts_with($line, 'DIVERGED ')) {
             continue;
@@ -44,7 +62,7 @@ function divergedEntries(): array
 {
     $file = dirname(base_path()).DIRECTORY_SEPARATOR.TWINS_MANIFEST;
     $out = [];
-    foreach (preg_split('/\R/', (string) file_get_contents($file)) ?: [] as $line) {
+    foreach (manifestLines((string) file_get_contents($file)) as $line) {
         $line = trim($line);
         if (! str_starts_with($line, 'DIVERGED ')) {
             continue;
@@ -69,6 +87,16 @@ it('lists a sane manifest: relative paths, no duplicates, nothing outside the ap
         expect(str_starts_with($p, '/') || str_contains($p, chr(92)) || str_contains($p, '..') || preg_match('/^[A-Za-z]:/', $p) === 1)
             ->toBeFalse("not a relative path inside the app: {$p}");
     }
+});
+
+it('splits the manifest on line breaks only, never inside an Arabic letter', function () {
+    // The shape of the 2026-10-18 line: the price in Arabic carries the byte 0x85 (م is D9 85).
+    $text = "DIVERGED 2026-10-18 a/b.jsx — prints `3,900 ج.م`, Western digits in both\r\nsrc/next.js\nsrc/last.js";
+    expect(manifestLines($text))->toBe([
+        'DIVERGED 2026-10-18 a/b.jsx — prints `3,900 ج.م`, Western digits in both',
+        'src/next.js',
+        'src/last.js',
+    ]);
 });
 
 it('keeps every listed twin byte-identical between Frontend-next and Frontend-brandfashion', function () {

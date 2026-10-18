@@ -201,7 +201,7 @@ function secretsIn(string $path, string $contents): array
      * NAMES them — `Api-Code: 3d6a…` in a curl example, `hmac secret 9c1e…` in a note. So a hex run
      * of 32+ is flagged when the same line names a credential and does not say it is a digest.
      */
-    foreach (preg_split('/\R/', $contents) ?: [] as $line) {
+    foreach (preg_split('/\r\n|\r|\n/', $contents) ?: [] as $line) {
         if (preg_match('/secret|token|password|api[-_ ]?(key|code)|hmac|bearer/i', $line) !== 1) {
             continue;
         }
