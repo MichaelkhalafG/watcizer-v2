@@ -1,5 +1,10 @@
 <?php
 
+use App\Models\Storefront\Storefront;
+use App\Storefront\CacheTags;
+use App\Storefront\ProductListing;
+use App\Storefront\StorefrontContext;
+use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
 use Tests\Feature\V2\ApiTestHelpers as H;
 
@@ -57,6 +62,37 @@ it('sorts by price and filters by brand slug and in-stock', function () {
     foreach (H::rows($res->json('data')) as $card) {
         expect(H::arr($card['brand'])['slug'])->toBe($brand)->and(H::arr($card['stock'])['in_stock'])->toBeTrue();
     }
+});
+
+it('filters to a valid sale only with on_sale and refuses a malformed flag', function () {
+    // 2026-10-18: the SALE filter — a product's own discount, not "Offers" (the promotions, OffersTest). A valid
+    // sale is 0 < sale < selling (StorefrontPricing).
+    // Read-only: the predicate is proven on the page query's SQL; the dev catalogue has every visible product on a
+    // valid sale, so the count check alone could not tell the filter from no filter.
+    // Outside a request the container has no storefront context; built here the way ResolveStorefront does.
+    app()->instance(StorefrontContext::class, new StorefrontContext(Storefront::query()->findOrFail(1), 'en', new CacheTags));
+    $on = app(ProductListing::class)->pageSql(['on_sale' => '1']);
+    $off = app(ProductListing::class)->pageSql([]);
+    expect($on)->not->toBeNull()->and($off)->not->toBeNull();
+    expect(H::str($on['sql'] ?? ''))->toContain('`sp`.`effective_sale_price` > ?', '`sp`.`effective_sale_price` < `sp`.`effective_price`');
+    expect(H::str($off['sql'] ?? ''))->not->toContain('`sp`.`effective_sale_price` > ?');
+
+    $valid = DB::table('storefront_product as sp')->join('catalog_products as p', 'p.id', '=', 'sp.product_id')
+        ->where('sp.storefront_id', 1)->where('sp.is_visible', 1)
+        ->where(fn (Builder $q) => $q->whereNull('sp.published_at')->orWhere('sp.published_at', '<=', now()))
+        ->where('p.is_active', 1)->whereNull('p.deleted_at')
+        ->where('sp.effective_sale_price', '>', 0)->whereColumn('sp.effective_sale_price', '<', 'sp.effective_price')->count();
+    $res = getJson(H::base('products?on_sale=1&per_page=96'))->assertOk();
+    $wrong = [];
+    foreach (H::rows($res->json('data')) as $card) {
+        if (H::arr($card['price'])['has_sale'] !== true) {
+            $wrong[] = $card['id'];
+        }
+    }
+    expect($res->json('meta.total'))->toBe($valid)->and($wrong)->toBe([]);
+
+    getJson(H::base('products?on_sale=0&per_page=1'))->assertOk()->assertJsonPath('meta.total', getJson(H::base('products?per_page=1'))->json('meta.total'));
+    getJson(H::base('products?on_sale=yes'))->assertStatus(422);
 });
 
 it('searches the request locale with FULLTEXT and falls back to LIKE below three characters', function () {

@@ -15,7 +15,7 @@ use Illuminate\Support\Facades\DB;
  * COUNT(*) is cached per (storefront, filter-set) for 10 minutes.
  *
  * Filters (v1 study §3.8.3): category (slug path, subtree), brand (slug list), gender/color/
- * material/grade (id lists), price_min/max (effective price), in_stock, q (search, §5.1 L6),
+ * material/grade (id lists), price_min/max (effective price), in_stock, on_sale, q (search, §5.1 L6),
  * sort (position|newest|price_asc|price_desc|rating|featured|available), page, per_page ≤ 96.
  *
  * 2026-10-17, the v2 READ half for Brand Fashion's listing (V2-MOVE-SCOPE, option C; B4-LISTING-REQUIREMENT):
@@ -90,6 +90,7 @@ final class ProductListing
             'price_min' => self::numeric($input['price_min'] ?? null),
             'price_max' => self::numeric($input['price_max'] ?? null),
             'in_stock' => self::bool($input['in_stock'] ?? null),
+            'on_sale' => self::bool($input['on_sale'] ?? null),
             'q' => self::str($input['q'] ?? null),
         ];
 
@@ -219,6 +220,13 @@ final class ProductListing
         }
         if ($except !== 'in_stock' && $f['in_stock'] === true) {
             $query->where('p.in_stock', 1);
+        }
+        // `on_sale` (2026-10-18) — the SALE concept, a product's own discount; not "Offers", which are the dashboard's
+        // promotions (StorefrontOffers, `/api/v2/{storefront}/offers`; round 5 separated the two by name). A VALID
+        // sale only, 0 < sale < selling — the rule `StorefrontPricing::resolve` prints as `has_sale` and the checkout
+        // prices by, so a product listed here always shows a was-price. No facet count yet (B4's Sale section).
+        if (($f['on_sale'] ?? null) === true) {
+            $query->where('sp.effective_sale_price', '>', 0)->whereColumn('sp.effective_sale_price', '<', 'sp.effective_price');
         }
         $q = $f['q'];
         if (is_string($q) && trim($q) !== '') {
@@ -506,7 +514,7 @@ final class ProductListing
         if ($category !== null && $node === null) {
             return null;
         }
-        $filters = ['category' => null, 'brand' => self::strList($input['brand'] ?? null), 'gender' => [], 'color' => [], 'material' => [], 'grade' => [], 'price_min' => null, 'price_max' => null, 'in_stock' => self::bool($input['in_stock'] ?? null), 'q' => null];
+        $filters = ['category' => null, 'brand' => self::strList($input['brand'] ?? null), 'gender' => [], 'color' => [], 'material' => [], 'grade' => [], 'price_min' => null, 'price_max' => null, 'in_stock' => self::bool($input['in_stock'] ?? null), 'on_sale' => self::bool($input['on_sale'] ?? null), 'q' => null];
         $sort = self::str($input['sort'] ?? null);
         $sort = in_array($sort, self::SORTS, true) ? $sort : ($node !== null ? 'position' : 'newest');
         $indexed = self::indexed($node) || ($input['force_indexed'] ?? false) === true;
