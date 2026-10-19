@@ -31,6 +31,12 @@ day, write each gate's actual answer next to it.
 | 8 | Smoke tests — Watchizer, then Brand Fashion | the live sites | Watchizer: order + Google; Brand Fashion: a real COD order end to end | — (a check) |
 | 9 | Pre-launch list on the real domain | the live site | every row's check reads as written | — |
 
+> **✅ PHASES 0–8 SIGNED OFF — 2026-10-19**, executed by Michael with the owner; Brand Fashion is deployed and took a
+> real cash-on-delivery order end to end (phase 8). The run, phase by phase, with what was verified and by whom:
+> `RUN_20261019_DAY.md` → **THE DEPLOY**. **Phase 9 is NOT done** — it belongs to the real domain. Two errors in this
+> runbook were found during the run and are corrected below (§2.3 / §3.3's `.htaccess` counts, and §1.2's gate); what
+> is still open is in `POST_CUTOVER_BACKLOG.md`, starting with `BF-GOOGLE-PUBLISH`.
+
 **What cannot be undone:** a real order once placed (its number is used from the ONE sequence both shops share, its
 stock moved, its e-mails sent), any e-mail once sent, and the old mail password once rotated (on purpose). Nothing in
 the CODE path is one-way: there is no migration in this deploy.
@@ -95,6 +101,15 @@ bash tests/baseline/suite-baseline.sh               # NEW 0, stale 0, CHANGED 0 
 ```
 
 **STOP** unless phpstan is clean and the gate prints no NEW failure, no stale entry, no changed table.
+
+> **The gate pins its own terminal width since 2026-10-19 — and on this deploy it tripped before it did.** It reported
+> **40 new failures and the same 40 as newly passing**, on a tree that was green: Pest cuts each `FAILED` name to the
+> terminal width, the baseline file stores the cut form, so the comparison was the operator's console width in
+> disguise (120 here, 187 on Michael's). `suite-baseline.sh` line 99 now runs the suite as `COLUMNS=120 php artisan
+> test …`, which overrides the console, and the gate is green at 80, 187 and 400. **If it ever trips on 40 again,
+> read `GATE-WIDTH-20261019` before believing it** — and if the same two sections ever list the same tests, that is
+> the signature, because a test cannot be both new and fixed. The real fix is `GATE-JUNIT-NAMES`, required before this
+> gate runs on another machine or in CI.
 
 **1.3 The dashboard bundle does NOT change — prove it, do not rebuild it.** `resources/js` is untouched since
 2026-10-14; the bundle on disk is the one live since 2026-10-15:
@@ -177,7 +192,10 @@ ls -l ~/core-before-*.tar.gz && sha256sum ~/core-before-$(date +%Y%m%d).tar.gz
 du -sh core/public core/vendor core/storage core/storage/logs
 ```
 
-**2.3 The `.htaccess` baseline** — the content gate's three counts, BEFORE (expect 2 / 1 / 1; 64 lines on 2026-10-15):
+**2.3 The `.htaccess` baseline** — the content gate's three counts, BEFORE (expect **2 / 1 / 3**; 64 lines on
+2026-10-15). **Corrected 2026-10-19:** this said `2 / 1 / 1`, which was my misreading of the live file — `R=404,L`
+occurs **three** times in it, not once. Nothing changed on the server: the live file was diffed against
+`~/htaccess.before-20261015.bak` on the day and came back **IDENTICAL**.
 
 ```bash
 F=~/domains/eleganceeg.com/core/public/.htaccess
@@ -256,7 +274,7 @@ for h in api.watchizereg.com api.michaelkhalaf.com; do
   curl -s -o /dev/null -w "$h /api/catalog/meta  %{http_code}\n" "https://$h/api/catalog/meta"   # 401
   curl -s -o /dev/null -w "$h /manage            %{http_code}\n" "https://$h/manage"             # 404
 done
-F="$LIVE"/public/.htaccess; grep -c 'api\\.(watchizereg|michaelkhalaf)' "$F"; grep -c 'assets/brand/' "$F"; grep -c 'R=404,L' "$F"   # 2 1 1
+F="$LIVE"/public/.htaccess; grep -c 'api\\.(watchizereg|michaelkhalaf)' "$F"; grep -c 'assets/brand/' "$F"; grep -c 'R=404,L' "$F"   # 2 1 3 (corrected 2026-10-19; it read 2 1 1, a misreading — the live file is unchanged)
 ```
 
 **STOP — and restore the backup at once — on a 404 for `/api/catalog/meta`**: the allow-list is gone.
