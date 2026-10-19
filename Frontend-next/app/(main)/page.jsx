@@ -2,6 +2,8 @@ import HomeClient from './HomeClient'
 import { safeJsonLd } from '@/src/lib/safeJsonLd'
 import { getServerHome } from '@/src/lib/serverCatalog'
 import { requestLang, alternatesFor, localePath, SITE } from '@/src/lib/requestLang'
+// the shop's real accounts, from the one place the contact page reads them (2026-10-19)
+import { FACEBOOK, INSTAGRAM } from '@/src/content/trustPages'
 
 // ISR: render on the server (with the rails' cards in the HTML for SEO), cache, and
 // revalidate every 5 min — also how soon a change on the dashboard's Home rails screen shows.
@@ -107,7 +109,10 @@ const storeJsonLd = {
       closes: '22:00',
     },
   ],
-  sameAs: ['https://www.facebook.com/watchizer', 'https://www.instagram.com/watchizer'],
+  // The accounts the site actually links (2026-10-19, the developer). This used to name a different pair — a bare
+  // `/watchizer` vanity name on each network — which matched neither the header, the footer nor the contact page.
+  // Imported, never retyped, so the markup and the site stay the same two accounts.
+  sameAs: [FACEBOOK, INSTAGRAM],
   contactPoint: {
     '@type': 'ContactPoint',
     telephone: '+201551096234',

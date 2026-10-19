@@ -24,9 +24,12 @@ const TEL = 'tel:+201551096234'
 const WHATSAPP = 'https://wa.me/201551096234'
 const EMAIL = 'watchizer303@gmail.com'
 const MAILTO = `mailto:${EMAIL}`
-// The header/footer links (developer, 2026-10-01: those, not the structured-data ones).
-const FACEBOOK = 'https://www.facebook.com/profile.php?id=100076267296916'
-const INSTAGRAM = 'https://www.instagram.com/watchizer_eg/'
+// The shop's accounts. 2026-10-01 kept these apart from the home page's `sameAs`, which carried a different pair — a
+// bare `/watchizer` vanity name on each network, matching neither of these; 2026-10-19 (the developer): these
+// are the real accounts, and `app/(main)/page.jsx` now imports them rather than typing them a second time, so the
+// structured data cannot drift from the site again. The header and the footer still carry their own copies.
+export const FACEBOOK = 'https://www.facebook.com/profile.php?id=100076267296916'
+export const INSTAGRAM = 'https://www.instagram.com/watchizer_eg/'
 
 export const TRUST_PAGES = {
   about: {
