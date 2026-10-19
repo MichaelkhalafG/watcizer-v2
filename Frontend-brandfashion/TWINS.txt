@@ -53,7 +53,6 @@ public/Watchizer_Gold.glb
 public/logo.webp
 public/placeholder.png
 public/studio_small_03_512.hdr
-src/Components/Auth/SocialButtons.jsx
 src/Components/Auth/SocialIcons.jsx
 src/Components/BackToTop/BackToTop.jsx
 src/Components/Blog/ArticleBody.jsx
@@ -94,8 +93,6 @@ src/Hooks/useShippingPrices.js
 src/Hooks/useSwitchLanguage.js
 src/PageViews/Auth/AuthCallback.jsx
 src/PageViews/Auth/ForgotPassword.jsx
-src/PageViews/Auth/Login/Login.jsx
-src/PageViews/Auth/Register/Register.jsx
 src/PageViews/Auth/ResetPassword.jsx
 src/PageViews/Cart/Recover.css
 src/PageViews/Cart/Recover.jsx
@@ -166,3 +163,9 @@ DIVERGED 2026-10-19 app/toast.jsx — B8 (spec §10.8): a failure toast stays 6 
 DIVERGED 2026-10-19 app/(main)/error.jsx — B8 (spec §10.8 "500"): an error dot above the title and "Contact us on WhatsApp" (Brand Fashion's support number) in place of Browse Collection; Try again and Back to Home are Watchizer's.
 DIVERGED 2026-10-19 app/(main)/blogs/BlogsClient.jsx — B8 (spec §10.8): a neutral heading and lead ("Guides & articles" — the shop sells more than watches, and Watchizer's watch articles will be shared here, decision C-7); an article with no cover gets the leather-tint card with its title set large; the empty list links to the newest products.
 DIVERGED 2026-10-19 src/lib/env.js — Brand Fashion's v2 storefront code falls back to 'brandfashion', not 'watchizer': this app writes carts and orders to v2 since tonight, and a build without NEXT_PUBLIC_STOREFRONT_CODE would have booked its orders to storefront 1 (audit c2). Every other line is Watchizer's.
+# L3 (2026-10-19, day — Michael: Google sign-in per storefront, shipped with this deploy): Brand Fashion signs in on its OWN Google
+# project; until that project's credentials are in core's .env, core's v2 auth/providers lists nothing for storefront 2 and the
+# login and register pages must not offer a button that fails. Watchizer always lists Google and keeps its twins' behaviour.
+DIVERGED 2026-10-19 src/Components/Auth/SocialButtons.jsx — draws the "or" divider and the Google button only while core's v2 auth/providers lists Google for this storefront (L3); Watchizer always draws the button. The divider moved in from the login and register pages so a page without Google shows no orphan "or".
+DIVERGED 2026-10-19 src/PageViews/Auth/Login/Login.jsx — the "or" divider removed (SocialButtons draws it with the button, only while Google sign-in runs on this storefront — L3); every other line is Watchizer's.
+DIVERGED 2026-10-19 src/PageViews/Auth/Register/Register.jsx — the "or" divider removed, as in Login.jsx (L3); every other line is Watchizer's.

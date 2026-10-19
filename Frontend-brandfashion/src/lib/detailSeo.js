@@ -75,20 +75,25 @@ export function buildProductSeo(product, { ratings = [], tables = null, lang = '
 
   // Price-led meta description (reused for OG/Twitter via toMetadata). Null-guarded:
   // when no valid price is present we fall back to the short-description blurb.
+  //
+  // 2026-10-19 (the developer's instruction): it said "Free delivery across Egypt" / «توصيل مجاني لجميع أنحاء مصر»
+  // in EVERY product's and offer's search snippet, and delivery is not free — the terms put the fee on the
+  // governorate and the cart charges it. Replaced by what the terms and the About page actually say: 27
+  // governorates. The authenticity half of the sentence STAYS — the shop does guarantee it (the terms now say so).
   const egp = (n) => Math.round(n).toLocaleString('en-US')
   const priceDesc =
     price > 0
       ? ar
         ? `اشترِ ${name}${brand ? ` من ${brand}` : ''}. ${
             hasSale ? `الآن ${egp(priceNow)} ج.م بدلاً من ${egp(price)} ج.م` : `${egp(price)} ج.م`
-          }. فخامة أصلية، معتمدة ومضمونة. توصيل مجاني لجميع أنحاء مصر.`
+          }. فخامة أصلية، معتمدة ومضمونة. نوصّل إلى ٢٧ محافظة.`
         : `Buy ${name}${brand ? ` by ${brand}` : ''}. ${
             hasSale
               ? `Now EGP ${Math.round(priceNow).toLocaleString()} (was EGP ${Math.round(
                   price,
                 ).toLocaleString()})`
               : `EGP ${Math.round(price).toLocaleString()}`
-          }. Authentic luxury, certified & guaranteed. Free delivery across Egypt.`
+          }. Authentic luxury, certified & guaranteed. We deliver to 27 governorates.`
       : null
   const metaDesc = meta?.description?.[lang] ? stripDesc(meta.description[lang]) : ''
   const seoDesc =

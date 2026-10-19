@@ -198,6 +198,7 @@
   color: var(--wz-ink-soft);
 }
 .wz-contact-note {
+  grid-column: 1 / -1; /* under the branch cards, across both (2026-10-19: two branches) */
   margin: 0;
   align-self: center;
   padding: 18px 22px;

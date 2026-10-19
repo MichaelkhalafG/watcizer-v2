@@ -14,7 +14,7 @@
 
 // The date shown as "Last updated" on the privacy policy and the terms. Set it to the day the
 // pages are first published (deploy day), and again whenever their text changes.
-export const TRUST_UPDATED = '2026-10-18'
+export const TRUST_UPDATED = '2026-10-19'
 
 const PHONE = '01283888490'
 const TEL = 'tel:+201283888490'
@@ -47,6 +47,7 @@ export const TRUST_PAGES = {
 
   // The client's confirmed details (C-4): phone and WhatsApp 01283888490, Info@brandfashionegy.com, Arcadia
   // Mall, Instagram brand_fashion_eg. No Facebook (Michael, round 5). No opening hours: not confirmed.
+  // 2026-10-19 (Michael): the same two branches as Watchizer — Arcadia Mall and Heliopolis, 90 El-Thawra Street.
   contact: {
     path: '/contact-us',
     en: {
@@ -61,7 +62,10 @@ export const TRUST_PAGES = {
         { icon: 'mail', label: 'Email', value: EMAIL, href: MAILTO, ltr: true },
         { icon: 'instagram', label: 'Instagram', value: '@brand_fashion_eg', href: INSTAGRAM, ltr: true },
       ],
-      store: { label: 'Store', address: 'Arcadia Mall, Corniche El Nil, Maspero extension, next to the Fairmont, 2nd floor, Cairo.' },
+      stores: [
+        { label: 'Arcadia Mall branch', address: 'Arcadia Mall, Corniche El Nil, Maspero extension, next to the Fairmont, 2nd floor, Cairo.' },
+        { label: 'Heliopolis branch', address: '90 El-Thawra Street, Heliopolis.' },
+      ],
       note: "If your question is about an order, have your order number ready. You'll find it in your confirmation email and under [*My Orders*](/account?tab=orders).",
     },
     ar: {
@@ -76,7 +80,10 @@ export const TRUST_PAGES = {
         { icon: 'mail', label: 'البريد الإلكتروني', value: EMAIL, href: MAILTO, ltr: true },
         { icon: 'instagram', label: 'إنستجرام', value: '@brand_fashion_eg', href: INSTAGRAM, ltr: true },
       ],
-      store: { label: 'المتجر', address: 'أركاديا مول، كورنيش النيل، امتداد ماسبيرو، بجوار فندق فيرمونت، الدور الثاني، القاهرة.' },
+      stores: [
+        { label: 'فرع أركاديا مول', address: 'أركاديا مول، كورنيش النيل، امتداد ماسبيرو، بجوار فندق فيرمونت، الدور الثاني، القاهرة.' },
+        { label: 'فرع مصر الجديدة', address: '٩٠ شارع الثورة، مصر الجديدة.' },
+      ],
       note: 'إن كان سؤالك عن طلب، جهّز رقم الطلب. تجده في رسالة التأكيد وفي [«طلباتي»](/account?tab=orders).',
     },
   },
@@ -96,7 +103,8 @@ export const TRUST_PAGES = {
           blocks: [
             {
               ul: [
-                '**Your account.** We keep your name, email, phone number and password; the password is stored encrypted. We use them to sign you in and show your orders. You can also sign in with Google.',
+                // the Google sentence only while this storefront runs Google sign-in (L3, 2026-10-19 — TrustPage)
+                { text: '**Your account.** We keep your name, email, phone number and password; the password is stored encrypted. We use them to sign you in and show your orders.', withGoogle: ' You can also sign in with Google.' },
                 '**Your orders.** We keep your delivery address, phone number and the items you buy. We use them to deliver and to handle exchanges and returns. We keep order records for as long as we need them for that and for our accounts.',
                 "**“Email me when it’s back”.** We keep the address you leave and use it only for that product. The email has a link to stop it. We delete the request 30 days after we email you, or after 180 days if the product doesn't come back.",
                 "**Emails about new products.** If you have an account and haven't visited for a while, we may email you a few new products, at most once a week. Every email has an unsubscribe link, and unsubscribing is permanent.",
@@ -132,7 +140,7 @@ export const TRUST_PAGES = {
           blocks: [
             {
               ul: [
-                '**حسابك.** نحفظ اسمك وبريدك الإلكتروني ورقم هاتفك وكلمة المرور، وكلمة المرور محفوظة مشفّرة. نستخدمها لتسجيل دخولك وعرض طلباتك. يمكنك أيضاً تسجيل الدخول بحساب جوجل.',
+                { text: '**حسابك.** نحفظ اسمك وبريدك الإلكتروني ورقم هاتفك وكلمة المرور، وكلمة المرور محفوظة مشفّرة. نستخدمها لتسجيل دخولك وعرض طلباتك.', withGoogle: ' يمكنك أيضاً تسجيل الدخول بحساب جوجل.' },
                 '**طلباتك.** نحفظ عنوان التوصيل ورقم الهاتف والمنتجات التي تشتريها. نستخدمها للتوصيل وللاستبدال والإرجاع. نحتفظ بسجلات الطلبات طالما احتجنا إليها لذلك ولحساباتنا.',
                 '**«أبلغني عند التوفر».** نحفظ البريد الذي تتركه ونستخدمه لهذا المنتج فقط. في الرسالة رابط لإيقافها. نحذف الطلب بعد ٣٠ يوماً من مراسلتك، أو بعد ١٨٠ يوماً إن لم يعد المنتج متوفراً.',
                 '**رسائل المنتجات الجديدة.** إن كان لديك حساب ولم تزر الموقع منذ فترة، قد نرسل إليك بعض المنتجات الجديدة، مرة في الأسبوع على الأكثر. في كل رسالة رابط لإلغاء الاشتراك، والإلغاء نهائي.',
@@ -169,7 +177,7 @@ export const TRUST_PAGES = {
     en: {
       title: 'Terms and conditions',
       metaTitle: 'Terms and conditions | Brand Fashion',
-      description: 'Prices, orders, payment, delivery, exchanges and returns, and warranty at Brand Fashion.',
+      description: 'Prices, orders, payment, delivery, exchanges and returns, authenticity and warranty at Brand Fashion.',
       intro: 'These terms apply to every order placed on this site. "We" and "Brand Fashion" mean the shop; "you" means the customer.',
       sections: [
         { title: 'Prices', blocks: [{ p: 'Prices are in Egyptian pounds. A price can change until you place your order; the price shown at checkout is the price you pay.' }] },
@@ -190,6 +198,19 @@ export const TRUST_PAGES = {
             { p: `The item must be unused and in its original packaging. To start an exchange or return, message customer service on [WhatsApp](${WHATSAPP}) with your order number, and we'll arrange it with you.` },
           ],
         },
+        /*
+         * Authenticity (2026-10-19, the developer: "YES, the shop does guarantee the authenticity of what it sells").
+         * The shop has always CLAIMED it — "100% authentic" at the cart and the checkout, "Authenticity Guarantee" on
+         * the product page, "certified & guaranteed" in every search snippet — while the policy pages said nothing,
+         * which is how the claim read as unbacked. The wording is the claim itself and no more: the guarantee, then
+         * the way to raise it, in the voice the exchanges section already uses. No remedy is invented here.
+         */
+        {
+          title: 'Authenticity',
+          blocks: [
+            { p: `Every product we sell is authentic. If you have any doubt about an item you received, message customer service on [WhatsApp](${WHATSAPP}) with your order number.` },
+          ],
+        },
         { title: 'Warranty', blocks: [{ p: 'When a product page states a warranty, it applies as stated there. Contact customer service to use it.' }] },
         { title: 'Your account', blocks: [{ p: 'Keep your password to yourself. You are responsible for orders placed from your account.' }] },
         { title: 'Changes', blocks: [{ p: 'We may update these terms. The version published when you place an order applies to that order.' }] },
@@ -199,7 +220,7 @@ export const TRUST_PAGES = {
     ar: {
       title: 'الشروط والأحكام',
       metaTitle: 'الشروط والأحكام | براند فاشون',
-      description: 'الأسعار والطلبات والدفع والتوصيل والاستبدال والإرجاع والضمان في براند فاشون.',
+      description: 'الأسعار والطلبات والدفع والتوصيل والاستبدال والإرجاع والأصالة والضمان في براند فاشون.',
       intro: 'تنطبق هذه الشروط على كل طلب يتم عبر هذا الموقع. «نحن» و«براند فاشون» تعني المتجر، و«أنت» تعني العميل.',
       sections: [
         { title: 'الأسعار', blocks: [{ p: 'الأسعار بالجنيه المصري. قد يتغير السعر حتى تتم طلبك؛ السعر المعروض عند إتمام الطلب هو ما تدفعه.' }] },
@@ -218,6 +239,12 @@ export const TRUST_PAGES = {
           blocks: [
             { ul: ['**الساعات:** الإرجاع خلال ٤ أيام من الاستلام، أو الاستبدال خلال ١٤ يوماً.', '**منتجات الأزياء:** الاستبدال أو الإرجاع خلال ٤ أيام من الاستلام.'] },
             { p: `يجب أن يكون المنتج غير مستخدم وفي عبوته الأصلية. لبدء الاستبدال أو الإرجاع، راسل خدمة العملاء على [واتساب](${WHATSAPP}) برقم طلبك، وسنرتب الأمر معك.` },
+          ],
+        },
+        {
+          title: 'الأصالة',
+          blocks: [
+            { p: `كل منتج نبيعه أصلي. إن كان لديك أي شك في منتج استلمته، راسل خدمة العملاء على [واتساب](${WHATSAPP}) برقم طلبك.` },
           ],
         },
         { title: 'الضمان', blocks: [{ p: 'عندما تذكر صفحة المنتج ضماناً، فهو يسري كما هو مذكور فيها. تواصل مع خدمة العملاء للاستفادة منه.' }] },

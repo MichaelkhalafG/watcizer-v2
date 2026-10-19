@@ -4,6 +4,7 @@ import { FaFacebook, FaInstagram, FaWhatsapp } from 'react-icons/fa'
 import Link from '@/src/Components/LocaleLink'
 import { useUIStore } from '@/src/Store/uiStore'
 import { TRUST_PAGES, TRUST_UPDATED } from '@/src/content/trustPages'
+import { useGoogleSignIn } from '@/src/Hooks/queries/useSocialProviders'
 // The home sections' label-over-title header (.wz-section-header / .wz-section-title), reused as is.
 import '@/src/Components/Home/home.css'
 import './trust.css'
@@ -125,17 +126,19 @@ function ContactPage({ t }) {
       </section>
       <section className="wz-trust-section wz-trust-section--bone">
         <div className="wz-trust-container wz-contact-bottom">
-          <div className="wz-contact-store">
-            <span className="wz-contact-card__icon" aria-hidden="true">
-              <FiMapPin />
-            </span>
-            <div>
-              <span className="wz-contact-card__label">{t.store.label}</span>
-              <p className="wz-contact-store__address">{t.store.address}</p>
-              {/* no hours line when the shop's hours are not known (Brand Fashion, round 5) */}
-              {t.hours ? <p className="wz-contact-card__hours">{t.hours}</p> : null}
+          {/* one card per branch (2026-10-19: Arkadia Mall and Heliopolis), no hours line while the shop's hours are not known (round 5) */}
+          {t.stores.map((store) => (
+            <div className="wz-contact-store" key={store.label}>
+              <span className="wz-contact-card__icon" aria-hidden="true">
+                <FiMapPin />
+              </span>
+              <div>
+                <span className="wz-contact-card__label">{store.label}</span>
+                <p className="wz-contact-store__address">{store.address}</p>
+                {store.hours && t.hours ? <p className="wz-contact-card__hours">{t.hours}</p> : null}
+              </div>
             </div>
-          </div>
+          ))}
           <p className="wz-contact-note">{inline(t.note)}</p>
         </div>
       </section>
@@ -210,11 +213,24 @@ function LegalPage({ t, ar }) {
   )
 }
 
+// A list item may be `{ text, withGoogle }` (2026-10-19, L3): the second part is printed only while this storefront
+// runs Google sign-in (v2 `auth/providers`), so the privacy page never claims a sign-in the shop does not offer.
+const withSignIn = (t, google) => ({
+  ...t,
+  sections: t.sections.map((s) => ({
+    ...s,
+    blocks: s.blocks.map((b) =>
+      b.ul ? { ...b, ul: b.ul.map((it) => (typeof it === 'string' ? it : it.text + (google ? it.withGoogle : ''))) } : b,
+    ),
+  })),
+})
+
 export default function TrustPage({ page }) {
   const { language } = useUIStore()
   const ar = language === 'ar'
   const def = TRUST_PAGES[page]
-  const t = def[ar ? 'ar' : 'en']
+  const google = useGoogleSignIn({ enabled: page === 'privacy' })
+  const t = page === 'privacy' ? withSignIn(def[ar ? 'ar' : 'en'], google) : def[ar ? 'ar' : 'en']
   const date = new Date(`${TRUST_UPDATED}T00:00:00Z`).toLocaleDateString(ar ? 'ar-EG' : 'en-GB', {
     day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC',
   })

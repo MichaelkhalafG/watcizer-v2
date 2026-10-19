@@ -3,6 +3,7 @@ import { useCallback, useState } from 'react'
 import { useUIStore } from '../../Store/uiStore'
 import http from '../../Context/api'
 import { issueNonce } from '../../lib/socialNonce'
+import { useGoogleSignIn } from '../../Hooks/queries/useSocialProviders'
 import { GoogleIcon, MicrosoftIcon } from './SocialIcons'
 
 // "Continue with Google / Microsoft". Asks the backend for the OAuth URL, then
@@ -13,10 +14,16 @@ import { GoogleIcon, MicrosoftIcon } from './SocialIcons'
 // with no OAuth `state` at all, which let an attacker's authorisation code sign a
 // victim's browser into the attacker's account — see src/lib/socialNonce.js for
 // the full argument. Core will not start a flow without one.
+//
+// Brand Fashion (DIVERGED 2026-10-19, L3): the "or" divider and the Google button are drawn only while core lists
+// Google for this storefront (v2 `auth/providers`) — Brand Fashion signs in on its OWN Google project, and until that
+// project's credentials are in core's .env the login and register pages offer e-mail and password alone, not a
+// button that answers "Could not start social sign-in". The divider moved in from Login / Register for that reason.
 export default function SocialButtons({ onError }) {
   const { language } = useUIStore()
   const isRTL = language === 'ar'
   const [busy, setBusy] = useState('')
+  const google = useGoogleSignIn()
 
   const go = useCallback(
     async (provider) => {
@@ -43,29 +50,36 @@ export default function SocialButtons({ onError }) {
     [busy, isRTL, onError],
   )
 
+  if (!google) return null
+
   return (
-    <div className="wz-auth-social">
-      <button
-        type="button"
-        className="wz-auth-social-btn"
-        onClick={() => go('google')}
-        disabled={!!busy}
-      >
-        <GoogleIcon />
-        <span>{isRTL ? 'المتابعة مع جوجل' : 'Continue with Google'}</span>
-      </button>
-      {/* Microsoft login hidden on the frontend for now — backend (go('microsoft')
-          + MicrosoftIcon) is kept intact and ready to re-enable later.
-      <button
-        type="button"
-        className="wz-auth-social-btn"
-        onClick={() => go('microsoft')}
-        disabled={!!busy}
-      >
-        <MicrosoftIcon />
-        <span>{isRTL ? 'المتابعة مع مايكروسوفت' : 'Continue with Microsoft'}</span>
-      </button>
-      */}
-    </div>
+    <>
+      <div className="wz-auth-divider">
+        <span>{isRTL ? 'أو' : 'or'}</span>
+      </div>
+      <div className="wz-auth-social">
+        <button
+          type="button"
+          className="wz-auth-social-btn"
+          onClick={() => go('google')}
+          disabled={!!busy}
+        >
+          <GoogleIcon />
+          <span>{isRTL ? 'المتابعة مع جوجل' : 'Continue with Google'}</span>
+        </button>
+        {/* Microsoft login hidden on the frontend for now — backend (go('microsoft')
+            + MicrosoftIcon) is kept intact and ready to re-enable later.
+        <button
+          type="button"
+          className="wz-auth-social-btn"
+          onClick={() => go('microsoft')}
+          disabled={!!busy}
+        >
+          <MicrosoftIcon />
+          <span>{isRTL ? 'المتابعة مع مايكروسوفت' : 'Continue with Microsoft'}</span>
+        </button>
+        */}
+      </div>
+    </>
   )
 }
