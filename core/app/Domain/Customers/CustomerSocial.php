@@ -6,10 +6,13 @@ namespace App\Domain\Customers;
 
 use App\Domain\Access\UserWrites;
 use App\Models\User;
+use App\Storefront\StorefrontHasNoHost;
+use App\Storefront\StorefrontUrls;
 use App\Support\Coerce;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Laravel\Socialite\Contracts\User as SocialUser;
+use Laravel\Socialite\Two\GoogleProvider;
 
 /**
  * "Sign in with Google" — who the person is, and which shop account that makes them.
@@ -75,6 +78,14 @@ final class CustomerSocial
      */
     public const PROVIDERS = ['google', 'microsoft'];
 
+    /**
+     * The providers a storefront can run on ITS OWN credentials (L3, 2026-10-19), and the Socialite class each is
+     * built with. Google only: Microsoft has no driver in Socialite and its button is hidden on both shops.
+     *
+     * @var array<string, class-string<GoogleProvider>>
+     */
+    public const OWN_DRIVERS = ['google' => GoogleProvider::class];
+
     /** What `resolve()` reports when it refuses. Also the `?error=` code the storefront receives. */
     public const REFUSED_UNVERIFIED = 'email_unverified';
 
@@ -93,10 +104,25 @@ final class CustomerSocial
      * Without it the customer leaves the shop, authenticates at Google, comes back, and only then
      * discovers the shop cannot finish — having handed a third party their consent for nothing.
      * Refusing at the door costs them one click and no trust.
+     *
+     * **Per storefront (L3, 2026-10-19).** A storefront with its OWN credentials ({@see self::ownCredentials()}) is
+     * configured by them. Without them the DEFAULT storefront (Watchizer) is configured by the global
+     * `services.{provider}` exactly as before, and every OTHER storefront is not configured at all — never another
+     * shop's project (the A2 no-fallback rule): a Brand Fashion shopper sent through Watchizer's project comes back
+     * to Watchizer's callback and lands on Watchizer, which is what production did until this change. `null` = the
+     * global check alone, as before.
      */
-    public static function configured(string $provider): bool
+    public static function configured(string $provider, ?int $storefrontId = null): bool
     {
         if (! self::supports($provider)) {
+            return false;
+        }
+
+        if ($storefrontId !== null && self::ownCredentials($provider, $storefrontId) !== null) {
+            return true;
+        }
+
+        if ($storefrontId !== null && $storefrontId !== config()->integer('compat.storefront_id')) {
             return false;
         }
 
@@ -107,6 +133,58 @@ final class CustomerSocial
         }
 
         return true;
+    }
+
+    /**
+     * A storefront's OWN credentials for a provider (L3, 2026-10-19), in the shape Socialite's `buildProvider()`
+     * takes — or null when it has none, and then {@see self::configured()} decides.
+     *
+     * From `services.social_storefronts.{storefront code}.{provider}`, and only when BOTH the id and the secret are
+     * set: half a pair is none, so a typo in one key shows no button rather than a flow Google refuses. The
+     * redirect URI is never configured: it is {@see self::callbackUrl()}, the storefront's own.
+     *
+     * @return array{client_id: string, client_secret: string, redirect: string}|null
+     */
+    public static function ownCredentials(string $provider, int $storefrontId): ?array
+    {
+        if (! array_key_exists($provider, self::OWN_DRIVERS)) {
+            return null;
+        }
+
+        $code = Coerce::nstr(DB::table('storefronts')->where('id', $storefrontId)->value('code'));
+        if ($code === null) {
+            return null;
+        }
+
+        $clientId = Coerce::nstr(config("services.social_storefronts.{$code}.{$provider}.client_id"));
+        $secret = Coerce::nstr(config("services.social_storefronts.{$code}.{$provider}.client_secret"));
+        if ($clientId === null || $secret === null) {
+            return null;
+        }
+
+        try {
+            $redirect = self::callbackUrl($provider, $storefrontId);
+        } catch (StorefrontHasNoHost) {
+            // No host = no callback this shop can be reached on: not configured, never another shop's.
+            return null;
+        }
+
+        return ['client_id' => $clientId, 'client_secret' => $secret, 'redirect' => $redirect];
+    }
+
+    /**
+     * The callback a storefront's OWN project must list, byte for byte: its API host
+     * ({@see StorefrontUrls::apiHost()} — `settings.urls.api_host`, else `https://api.{domain}`, no trailing
+     * slash) followed by the callback route's own path. Brand Fashion's, with `michaelkhalaf.com` as its
+     * domain: `https://api.michaelkhalaf.com/api/auth/google/callback`.
+     *
+     * Built rather than read whole, unlike the global `GOOGLE_REDIRECT_URI` (whose comment explains why that one
+     * is read whole): both halves come from the code, the host has its slash trimmed and the path starts with
+     * one, so there is no hand-typed seam for a doubled slash to creep into — and a test pins the result.
+     */
+    public static function callbackUrl(string $provider, int $storefrontId): string
+    {
+        return StorefrontUrls::apiHost($storefrontId).route('customer.social.callback', ['provider' => $provider], false);
     }
 
     /**

@@ -109,6 +109,21 @@ final class StorefrontUrls
     }
 
     /**
+     * The host the COMPAT payloads name images on — `catalog/meta`'s brand logos, sub-type and
+     * banner images, `products/{id}`'s cover, gallery and brand logo (COMPAT-ASSET-HOST, 2026-10-14).
+     * For the DEFAULT storefront it is `compat.asset_base` exactly as it always was, so the live
+     * shop's payloads do not move a byte; every other storefront gets its own {@see self::assetBase()},
+     * which is what its v2 routes already name. Before this every shop's compat payload was built on
+     * the one global: Brand Fashion's `catalog/meta` named Watchizer's host 81 times.
+     */
+    public static function compatAssetBase(int $storefrontId): string
+    {
+        return $storefrontId === self::defaultId()
+            ? rtrim(config()->string('compat.asset_base'), '/')
+            : self::assetBase($storefrontId);
+    }
+
+    /**
      * The storefront a request belongs to: its host's. A host that names no storefront is a 404 in
      * production; in local and testing it is the default one, as in `StorefrontHost::serves()`.
      */

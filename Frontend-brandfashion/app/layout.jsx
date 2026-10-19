@@ -1,17 +1,19 @@
 import './globals.css'
 import { requestLang } from '@/src/lib/requestLang'
-import { Alexandria } from 'next/font/google'
+import { El_Messiri } from 'next/font/google'
 import Providers from './providers'
 import Analytics from './analytics'
 import Toast from './toast'
 import ScrollToTop from '@/src/Components/ScrollToTop/ScrollToTop'
+import OfflineBanner from '@/src/Components/Offline/OfflineBanner'
 
-// Alexandria (spec §5): one family for Latin AND Arabic, weights 400 / 600 / 800, no italic.
-// Self-hosted by next/font, exposed as --font-alexandria; globals.css puts it on everything.
-const alexandria = Alexandria({
+// Watchizer's face (spec v2.11 §5, Michael's decision of 2026-10-17): English on system Georgia, Arabic on
+// El Messiri — the same pair Frontend-next loads, so the two shops share one voice. El Messiri is self-hosted
+// by next/font and exposed as --font-el-messiri; globals.css puts it on everything under [dir='rtl'].
+const elMessiri = El_Messiri({
   subsets: ['arabic', 'latin'],
-  weight: ['400', '600', '800'],
-  variable: '--font-alexandria',
+  weight: ['400', '500', '600', '700'],
+  variable: '--font-el-messiri',
   display: 'swap',
 })
 
@@ -81,7 +83,7 @@ export default async function RootLayout({ children }) {
   const { lang } = await requestLang()
   const dir = lang === 'ar' ? 'rtl' : 'ltr'
   return (
-    <html lang={lang} dir={dir} className={alexandria.variable}>
+    <html lang={lang} dir={dir} className={elMessiri.variable}>
       <body>
         <Providers language={lang}>
           {children}
@@ -89,6 +91,7 @@ export default async function RootLayout({ children }) {
               The cart drawer moved into the (main) layout so it sits below the
               catalog HydrationBoundary. */}
           <Toast />
+          <OfflineBanner />
           <ScrollToTop />
         </Providers>
         <Analytics />

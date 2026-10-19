@@ -3,6 +3,7 @@
 namespace App\Compat;
 
 use App\Storefront\StorefrontCache;
+use App\Storefront\StorefrontUrls;
 use App\Transform\Row;
 use Illuminate\Support\Facades\DB;
 
@@ -203,7 +204,7 @@ final class CompatMeta
 
         // A value that already carries a folder keeps it (LegacyJson::legacyImage): the dashboard
         // writes category images to `Category_type/`, not legacy's `Sub_type/`.
-        return rtrim(config()->string('compat.asset_base'), '/').'/Uploads_Images/'.(str_contains($file, '/') ? $file : $folder.'/'.$file);
+        return StorefrontUrls::compatAssetBase($this->storefrontId).'/Uploads_Images/'.(str_contains($file, '/') ? $file : $folder.'/'.$file);
     }
 
     private static function nstr(mixed $v): ?string

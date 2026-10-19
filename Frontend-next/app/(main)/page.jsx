@@ -2,6 +2,8 @@ import HomeClient from './HomeClient'
 import { safeJsonLd } from '@/src/lib/safeJsonLd'
 import { getServerHome } from '@/src/lib/serverCatalog'
 import { requestLang, alternatesFor, localePath, SITE } from '@/src/lib/requestLang'
+// the shop's real accounts, from the one place the contact page reads them (2026-10-19)
+import { FACEBOOK, INSTAGRAM } from '@/src/content/trustPages'
 
 // ISR: render on the server (with the rails' cards in the HTML for SEO), cache, and
 // revalidate every 5 min — also how soon a change on the dashboard's Home rails screen shows.
@@ -61,6 +63,25 @@ export async function generateMetadata() {
   }
 }
 
+// The two branches, worded as the CONTACT PAGE reads them (2026-10-19, the developer's instruction: this markup
+// named one address and there are two). English, because this one object is emitted on both the English and the
+// Arabic home and every other field of it is English — the street used to be Arabic ("اركديا مول . كورنيش النيل .
+// امتداد ماسبيرو", a spelling and a punctuation the contact page does not use) on an otherwise English node.
+const ARKADIA = {
+  '@type': 'PostalAddress',
+  streetAddress: 'Arkadia Mall, Corniche El Nil, Maspero extension',
+  addressLocality: 'Cairo',
+  addressRegion: 'Cairo Governorate',
+  addressCountry: 'EG',
+}
+// Only what the contact page states: no region, and no opening hours — the Heliopolis branch's are not known.
+const HELIOPOLIS = {
+  '@type': 'PostalAddress',
+  streetAddress: '90 El-Thawra Street',
+  addressLocality: 'Heliopolis',
+  addressCountry: 'EG',
+}
+
 // Organization/Store schema — emitted here (was App.jsx global) so it is in the
 // homepage's initial HTML.
 const storeJsonLd = {
@@ -72,13 +93,13 @@ const storeJsonLd = {
   image: 'https://watchizereg.com/og-image.jpg',
   description:
     'Discover a premium collection of luxury watches and fashion accessories at Watchizer. Shop exclusive timepieces with elegant designs and unbeatable prices in Egypt.',
-  address: {
-    '@type': 'PostalAddress',
-    streetAddress: 'اركديا مول . كورنيش النيل . امتداد ماسبيرو',
-    addressLocality: 'Cairo',
-    addressRegion: 'Cairo Governorate',
-    addressCountry: 'EG',
-  },
+  // `address` stays the Arkadia branch: it is the one this `geo` and these opening hours belong to, and a
+  // LocalBusiness's primary address is what Google reads. `location` names both branches.
+  address: ARKADIA,
+  location: [
+    { '@type': 'Place', name: 'Arkadia Mall branch', address: ARKADIA },
+    { '@type': 'Place', name: 'Heliopolis branch', address: HELIOPOLIS },
+  ],
   geo: { '@type': 'GeoCoordinates', latitude: 30.0444, longitude: 31.2357 },
   openingHoursSpecification: [
     {
@@ -88,7 +109,10 @@ const storeJsonLd = {
       closes: '22:00',
     },
   ],
-  sameAs: ['https://www.facebook.com/watchizer', 'https://www.instagram.com/watchizer'],
+  // The accounts the site actually links (2026-10-19, the developer). This used to name a different pair — a bare
+  // `/watchizer` vanity name on each network — which matched neither the header, the footer nor the contact page.
+  // Imported, never retyped, so the markup and the site stay the same two accounts.
+  sameAs: [FACEBOOK, INSTAGRAM],
   contactPoint: {
     '@type': 'ContactPoint',
     telephone: '+201551096234',

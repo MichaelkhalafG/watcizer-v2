@@ -43,7 +43,7 @@ it('serves a per-locale sitemap index and chunks with alternates and covers', fu
     get(H::base('sitemaps/ar/nope.xml'))->assertNotFound();
 });
 
-it('sets public cache headers, a strong ETag, cache tags and answers 304 on If-None-Match', function () {
+it('sets the configured (private) cache headers, a strong ETag, cache tags and answers 304 on If-None-Match', function () {
     $res = getJson(H::base('meta'))->assertOk();
     $res->assertHeader('Cache-Control', config()->string('storefront.http_cache.control'));
     $etag = $res->headers->get('ETag');

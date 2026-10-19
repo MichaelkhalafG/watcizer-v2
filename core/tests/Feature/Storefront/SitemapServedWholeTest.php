@@ -103,7 +103,7 @@ it('answers every sitemap byte-for-byte as core does, however core encodes it, a
     rmdir($dir);
 
     // The handler logs each refusal; the verdicts are the last line.
-    $lines = preg_split('/\R/', $raw) ?: [];
+    $lines = preg_split('/\r\n|\r|\n/', $raw) ?: [];
     $r = json_decode((string) end($lines), true);
     expect($r)->toBeArray("node said: {$raw}");
     $whole = [200, 'application/xml; charset=UTF-8', null, 'same bytes'];

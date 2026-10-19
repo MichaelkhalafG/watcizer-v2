@@ -86,7 +86,7 @@ function mdRender(): array
     $raw = trim((string) shell_exec('node --no-warnings '.escapeshellarg($dir.DIRECTORY_SEPARATOR.'run.mjs').' 2>&1'));
     array_map('unlink', glob($dir.DIRECTORY_SEPARATOR.'*') ?: []);
     rmdir($dir);
-    $lines = preg_split('/\R/', $raw) ?: [];
+    $lines = preg_split('/\r\n|\r|\n/', $raw) ?: [];
     $r = json_decode((string) end($lines), true);
     expect($r)->toBeArray("node said: {$raw}");
     $out = ['shop' => [], 'dashboard' => []];

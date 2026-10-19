@@ -10,19 +10,26 @@
 // the policies as numbered sections (a section's title is the bold lead of its paragraph in the
 // approved text). Inline text supports **bold**, *italic* and [label](href), rendered as React
 // elements by TrustPage, never as HTML. Every href here is one of the constants below.
+//
+// 2026-10-19 (the developer's change): the contact page lists TWO branches — Arkadia Mall and the new Heliopolis
+// branch, 90 El-Thawra Street (٩٠ شارع الثورة، مصر الجديدة), in the developer's words ("Street" in English, never a transliteration of شارع). The opening hours stay on the
+// Arkadia branch only: the Heliopolis branch's hours have not been given.
 
 // The date shown as "Last updated" on the privacy policy and the terms. Set it to the day the
 // pages are first published (deploy day), and again whenever their text changes.
-export const TRUST_UPDATED = '2026-10-02'
+export const TRUST_UPDATED = '2026-10-19'
 
 const PHONE = '01551096234'
 const TEL = 'tel:+201551096234'
 const WHATSAPP = 'https://wa.me/201551096234'
 const EMAIL = 'watchizer303@gmail.com'
 const MAILTO = `mailto:${EMAIL}`
-// The header/footer links (developer, 2026-10-01: those, not the structured-data ones).
-const FACEBOOK = 'https://www.facebook.com/profile.php?id=100076267296916'
-const INSTAGRAM = 'https://www.instagram.com/watchizer_eg/'
+// The shop's accounts. 2026-10-01 kept these apart from the home page's `sameAs`, which carried a different pair — a
+// bare `/watchizer` vanity name on each network, matching neither of these; 2026-10-19 (the developer): these
+// are the real accounts, and `app/(main)/page.jsx` now imports them rather than typing them a second time, so the
+// structured data cannot drift from the site again. The header and the footer still carry their own copies.
+export const FACEBOOK = 'https://www.facebook.com/profile.php?id=100076267296916'
+export const INSTAGRAM = 'https://www.instagram.com/watchizer_eg/'
 
 export const TRUST_PAGES = {
   about: {
@@ -64,7 +71,10 @@ export const TRUST_PAGES = {
         { icon: 'facebook', label: 'Facebook', value: 'Watchizer', href: FACEBOOK, ltr: true },
         { icon: 'instagram', label: 'Instagram', value: '@watchizer_eg', href: INSTAGRAM, ltr: true },
       ],
-      store: { label: 'Store', address: 'Arkadia Mall, Corniche El Nil, Maspero extension, Cairo.' },
+      stores: [
+        { label: 'Arkadia Mall branch', address: 'Arkadia Mall, Corniche El Nil, Maspero extension, Cairo.', hours: true },
+        { label: 'Heliopolis branch', address: '90 El-Thawra Street, Heliopolis.' },
+      ],
       note: "If your question is about an order, have your order number ready. You'll find it in your confirmation email and under [*My Orders*](/account?tab=orders).",
     },
     ar: {
@@ -80,7 +90,10 @@ export const TRUST_PAGES = {
         { icon: 'facebook', label: 'فيسبوك', value: 'Watchizer', href: FACEBOOK, ltr: true },
         { icon: 'instagram', label: 'إنستجرام', value: '@watchizer_eg', href: INSTAGRAM, ltr: true },
       ],
-      store: { label: 'المتجر', address: 'أركاديا مول، كورنيش النيل، امتداد ماسبيرو، القاهرة.' },
+      stores: [
+        { label: 'فرع أركاديا مول', address: 'أركاديا مول، كورنيش النيل، امتداد ماسبيرو، القاهرة.', hours: true },
+        { label: 'فرع مصر الجديدة', address: '٩٠ شارع الثورة، مصر الجديدة.' },
+      ],
       note: 'إن كان سؤالك عن طلب، جهّز رقم الطلب. تجده في رسالة التأكيد وفي [«طلباتي»](/account?tab=orders).',
     },
   },
@@ -172,7 +185,7 @@ export const TRUST_PAGES = {
     en: {
       title: 'Terms and conditions',
       metaTitle: 'Terms and conditions | Watchizer',
-      description: 'Prices, orders, payment, delivery, exchanges and returns, and warranty at Watchizer.',
+      description: 'Prices, orders, payment, delivery, exchanges and returns, authenticity and warranty at Watchizer.',
       intro: 'These terms apply to every order placed on watchizereg.com. "We" and "Watchizer" mean the shop; "you" means the customer.',
       sections: [
         { title: 'Prices', blocks: [{ p: 'Prices are in Egyptian pounds. A price can change until you place your order; the price shown at checkout is the price you pay.' }] },
@@ -200,6 +213,19 @@ export const TRUST_PAGES = {
             { p: `The item must be unused and in its original packaging. To start an exchange or return, message customer service on [WhatsApp](${WHATSAPP}) with your order number, and we'll arrange it with you.` },
           ],
         },
+        /*
+         * Authenticity (2026-10-19, the developer: "YES, the shop does guarantee the authenticity of what it sells").
+         * The shop has always CLAIMED it — "100% authentic" at the cart and the checkout, "Authenticity Guarantee" on
+         * the product page, "certified & guaranteed" in every search snippet — while the policy pages said nothing,
+         * which is how the claim read as unbacked. The wording is the claim itself and no more: the guarantee, then
+         * the way to raise it, in the voice the exchanges section already uses. No remedy is invented here.
+         */
+        {
+          title: 'Authenticity',
+          blocks: [
+            { p: `Every product we sell is authentic. If you have any doubt about an item you received, message customer service on [WhatsApp](${WHATSAPP}) with your order number.` },
+          ],
+        },
         { title: 'Warranty', blocks: [{ p: 'When a product page states a warranty, it applies as stated there. Contact customer service to use it.' }] },
         { title: 'Your account', blocks: [{ p: 'Keep your password to yourself. You are responsible for orders placed from your account.' }] },
         { title: 'Changes', blocks: [{ p: 'We may update these terms. The version published when you place an order applies to that order.' }] },
@@ -209,7 +235,7 @@ export const TRUST_PAGES = {
     ar: {
       title: 'الشروط والأحكام',
       metaTitle: 'الشروط والأحكام | Watchizer',
-      description: 'الأسعار والطلبات والدفع والتوصيل والاستبدال والإرجاع والضمان في واتشايزر.',
+      description: 'الأسعار والطلبات والدفع والتوصيل والاستبدال والإرجاع والأصالة والضمان في واتشايزر.',
       intro: 'تنطبق هذه الشروط على كل طلب يتم عبر watchizereg.com. «نحن» و«واتشايزر» تعني المتجر، و«أنت» تعني العميل.',
       sections: [
         { title: 'الأسعار', blocks: [{ p: 'الأسعار بالجنيه المصري. قد يتغير السعر حتى تتم طلبك؛ السعر المعروض عند إتمام الطلب هو ما تدفعه.' }] },
@@ -235,6 +261,12 @@ export const TRUST_PAGES = {
           blocks: [
             { ul: ['**الساعات:** الإرجاع خلال ٤ أيام من الاستلام، أو الاستبدال خلال ١٤ يوماً.', '**منتجات الأزياء:** الاستبدال أو الإرجاع خلال ٤ أيام من الاستلام.'] },
             { p: `يجب أن يكون المنتج غير مستخدم وفي عبوته الأصلية. لبدء الاستبدال أو الإرجاع، راسل خدمة العملاء على [واتساب](${WHATSAPP}) برقم طلبك، وسنرتب الأمر معك.` },
+          ],
+        },
+        {
+          title: 'الأصالة',
+          blocks: [
+            { p: `كل منتج نبيعه أصلي. إن كان لديك أي شك في منتج استلمته، راسل خدمة العملاء على [واتساب](${WHATSAPP}) برقم طلبك.` },
           ],
         },
         { title: 'الضمان', blocks: [{ p: 'عندما تذكر صفحة المنتج ضماناً، فهو يسري كما هو مذكور فيها. تواصل مع خدمة العملاء للاستفادة منه.' }] },

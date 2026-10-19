@@ -1,9 +1,10 @@
 import { useMemo } from 'react'
 import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import publicHttp from '../../Context/publicApi'
-import { listingRequest, listingQueryFn } from '../../lib/listingRequest'
+import { listingRequest, listingQueryFn, listingNeedsTables } from '../../lib/listingRequest'
 import { useTables } from './useTables'
 import { transformProductData } from '../../utils/transformProduct'
+import { categorySlug, subTypeSlug } from '../../utils/slugs'
 
 // The listing on the server (C-1 stage 3, 2026-09-27) — core's `catalog/listing`: one page of
 // products plus every facet count, for the storefront's own filter state. The browser used to
@@ -12,14 +13,45 @@ import { transformProductData } from '../../utils/transformProduct'
 // ONE builder turns the filter state into the request, and the request string IS the query key
 // (src/lib/listingRequest.js — pure, so the server pages prefetch with it too).
 
+// Brand Fashion (DIVERGED 2026-10-17, V2-READ-HALF): the v2 request turns a category id into its slug
+// through the tables, so a filter state with a category waits for them instead of asking for everything.
+//
+// 2026-10-18 (the visual reset, Part 1b): the v2 page's `facets.category` block — the result's products per
+// visible menu node, in tree order — is read into the legacy `categories` (depth 1) and `subTypes` (depth 2)
+// count maps that SideBar and SmartSuggestions look up by legacy id, matched by slug (the storefront tree's slugs
+// equal toSlug(legacy English name) for every node that came from a legacy category or sub type; a node with no
+// legacy twin stays out, as the menu leaves it out). With a category set, only that root's own children are
+// mapped: the v2 block clears the category filter as a whole, so it also counts the other families' sub-types.
+// Done in `select`, so the server-prefetched page and the client's refetch read the same way.
+function withLegacyCategoryFacets(data, tables) {
+  const rows = data?.v2?.facets?.category
+  if (!Array.isArray(rows) || !tables) return data
+  const rootPath = data?.v2?.meta?.category?.path?.split('/')[0] || null
+  const categories = {}
+  const subTypes = {}
+  for (const n of rows) {
+    if (n.depth === 1) {
+      const ct = (tables.categoryTypes || []).find((c) => categorySlug(c) === n.slug)
+      if (ct) categories[String(ct.id)] = n.count
+    } else if (n.depth === 2 && (!rootPath || n.path.startsWith(`${rootPath}/`))) {
+      const st = (tables.subTypes || []).find((s) => subTypeSlug(s) === n.slug)
+      if (st) subTypes[String(st.id)] = n.count
+    }
+  }
+  return { ...data, facets: { ...(data.facets || {}), categories, subTypes } }
+}
+
 export const useListing = (args, options = {}) => {
-  const qs = listingRequest(args)
+  const { data: tables } = useTables()
+  const qs = listingRequest(args, tables)
   return useQuery({
     queryKey: ['listing', qs],
     queryFn: listingQueryFn(qs),
     // Keep showing the previous page's cards while the next filter state loads — no skeleton flash.
     placeholderData: keepPreviousData,
     staleTime: 60 * 1000,
+    enabled: !listingNeedsTables(args?.filters) || !!tables,
+    select: (data) => withLegacyCategoryFacets(data, tables),
     ...options,
   })
 }

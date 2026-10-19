@@ -16,8 +16,15 @@ use App\Http\Controllers\Customer\CustomerProfileController;
 use App\Http\Controllers\Customer\CustomerSocialController;
 use App\Http\Controllers\Customer\CustomerVerificationController;
 use App\Http\Controllers\Payment\PaymentCallbackController;
+use App\Http\Controllers\V2\AccountController;
+use App\Http\Controllers\V2\AuthController;
+use App\Http\Controllers\V2\CartController;
 use App\Http\Controllers\V2\CategoryController;
+use App\Http\Controllers\V2\HomeController;
 use App\Http\Controllers\V2\MetaController;
+use App\Http\Controllers\V2\OfferController;
+use App\Http\Controllers\V2\OrderController;
+use App\Http\Controllers\V2\RelatedController;
 use App\Http\Controllers\V2\PaymentMethodController;
 use App\Http\Controllers\V2\ProductController;
 use App\Http\Controllers\V2\SitemapController;
@@ -39,6 +46,9 @@ Route::prefix('v2/{storefront}')->middleware(['storefront', 'http.cache'])->wher
     Route::get('categories/{path}', [CategoryController::class, 'show'])->where('path', '[a-z0-9\-]+(?:/[a-z0-9\-]+)*');
     Route::get('products', [ProductController::class, 'index']);
     Route::get('products/{slug}', [ProductController::class, 'show'])->where('slug', '[^/]+');
+    // V2-READ-HALF step 1 (2026-10-17): the PDP's two rails and the home page, on v2 shapes (compat's rules, unedited).
+    Route::get('products/{slug}/related', [RelatedController::class, 'show'])->where('slug', '[^/]+');
+    Route::get('home', [HomeController::class, 'show']);
     Route::get('sitemap.xml', [SitemapController::class, 'index']);
     Route::get('sitemaps/{locale}/{file}.xml', [SitemapController::class, 'chunk'])->where(['locale' => '[a-z]{2}', 'file' => '[a-z0-9\-]+']);
 });
@@ -47,6 +57,25 @@ Route::prefix('v2/{storefront}')->middleware(['storefront', 'http.cache'])->wher
 // stale would keep a switched-off method on the checkout for that long (PaymentMethodController).
 Route::prefix('v2/{storefront}')->middleware('storefront')->where(['storefront' => '[a-z0-9_-]+'])->group(function (): void {
     Route::get('payment-methods', [PaymentMethodController::class, 'index']);
+    // The OFFERS the storefront is running — the dashboard's promotions (round 5, 2026-10-18); not under
+    // http.cache for the same reason: an offer switched off must leave the page at once (OfferController).
+    Route::get('offers', [OfferController::class, 'index']);
+    // B7 S1 (round 5, 2026-10-18): the v2 CART of the storefront in the path — variant-aware, beside compat's cart and
+    // never through it. Never cached (CartController): one shopper's cart is never served to another.
+    Route::get('cart', [CartController::class, 'show']);
+    Route::post('cart/items', [CartController::class, 'store']);
+    Route::patch('cart/items/{item}', [CartController::class, 'update'])->whereNumber('item');
+    Route::delete('cart/items/{item}', [CartController::class, 'destroy'])->whereNumber('item');
+    // B7 S2 (round 6): the v2 CHECKOUT — the order from the shopper's v2 cart on the path's storefront, which it
+    // always writes. Its own limiter (`v2-order`), never compat's `add-order`.
+    Route::post('orders', [OrderController::class, 'store'])->middleware('throttle:v2-order');
+    // The night run (2026-10-19, audit a1): the signed-in customer's orders on THIS storefront — compat's me/orders
+    // lists every shop's (users are shared). Private, never cached (AccountController).
+    Route::get('me/orders', [AccountController::class, 'orders']);
+    // L3 (2026-10-19): the social sign-in providers this storefront can actually run — a shop whose own Google
+    // project is not configured draws no Google button (AuthController). Not under http.cache: credentials set on
+    // the server show within a minute.
+    Route::get('auth/providers', [AuthController::class, 'providers']);
 });
 
 // ── 2. compat (legacy paths, legacy shapes) ───────────────────────────────

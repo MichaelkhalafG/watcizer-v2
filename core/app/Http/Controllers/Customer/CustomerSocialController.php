@@ -62,6 +62,17 @@ use Throwable;
  * renders one generic message for all of them today — see {@see CustomerSocial} for what the
  * customer actually experiences, particularly in the refused-unverified branch, and why saying more
  * would be the account-enumeration answer `login` and `forgot-password` both withhold.
+ *
+ * ── Each storefront on its own Google project (backlog L3, developer decision 2026-10-19) ──────
+ *
+ * The storefront is the REQUEST HOST's ({@see StorefrontUrls::storefrontOf()}) on both legs: the shop's own API
+ * host starts the flow, and its own callback — registered in its own project — finishes it, so the two always
+ * agree. A storefront with its own credentials is built with them and its own redirect URI
+ * ({@see CustomerSocial::ownCredentials()}); the DEFAULT storefront without them (Watchizer, today) goes
+ * through `Socialite::driver()` on the global `services.google`, the call this controller always made — its
+ * Google URL is character-identical to the one before this change (measured, RUN_20261019_DAY.md). Any other
+ * storefront without its own is refused at the door like an unconfigured provider, never sent through another
+ * shop's project.
  */
 final class CustomerSocialController extends Controller
 {
@@ -94,8 +105,9 @@ final class CustomerSocialController extends Controller
          * Google, come back, and only then discover the shop cannot finish — having given a third
          * party their consent for nothing. Refusing here costs one click and no trust.
          */
-        if (! CustomerSocial::configured($provider)) {
-            Log::warning('social sign-in requested for an unconfigured provider', ['provider' => $provider]);
+        $storefrontId = StorefrontUrls::storefrontOf($request);
+        if (! CustomerSocial::configured($provider, $storefrontId)) {
+            Log::warning('social sign-in requested for an unconfigured provider', ['provider' => $provider, 'storefront' => $storefrontId]);
 
             return response()->json(['error' => 'Could not start social login.'], 500);
         }
@@ -109,7 +121,7 @@ final class CustomerSocialController extends Controller
              * how a state parameter reaches the provider on a flow that has no session to keep one
              * in. Google echoes it back verbatim on the callback.
              */
-            $url = $this->driver($provider)
+            $url = $this->driver($provider, $storefrontId)
                 ->with(['state' => SocialNonce::state($nonce)])
                 ->redirect()
                 ->getTargetUrl();
@@ -148,8 +160,11 @@ final class CustomerSocialController extends Controller
             return $this->back($request, 'invalid_state');
         }
 
+        // The shop whose callback this is — the same host-derived storefront the flow started on (L3).
+        $storefrontId = StorefrontUrls::storefrontOf($request);
+
         try {
-            $account = $this->driver($provider)->user();
+            $account = $this->driver($provider, $storefrontId)->user();
         } catch (Throwable $e) {
             /*
              * A `code` that was replayed, expired, or never issued lands here, and so does a real
@@ -161,7 +176,7 @@ final class CustomerSocialController extends Controller
             return $this->back($request, 'social_failed', null, $nonce);
         }
 
-        $outcome = $this->social->resolve($provider, $account, StorefrontUrls::storefrontOf($request));
+        $outcome = $this->social->resolve($provider, $account, $storefrontId);
 
         if (array_key_exists('refused', $outcome)) {
             return $this->back($request, Coerce::str($outcome['refused']), null, $nonce);
@@ -178,10 +193,22 @@ final class CustomerSocialController extends Controller
      * keeps one real property checkable: if a future driver is not an OAuth2 one, the flow cannot
      * silently fall back to a SESSION-backed state check, which would break an SPA on another
      * origin in a way that only shows up as an intermittent `InvalidStateException`.
+     *
+     * Per storefront (L3, 2026-10-19): the storefront's OWN credentials when it has them, built fresh with its own
+     * redirect URI; otherwise the DEFAULT storefront's global driver, exactly as before. A non-default storefront
+     * with neither is a programming error here ({@see CustomerSocial::configured()} refuses it first) and throws
+     * rather than borrow another shop's project — both callers turn that into their generic failure.
      */
-    private function driver(string $provider): AbstractProvider
+    private function driver(string $provider, int $storefrontId): AbstractProvider
     {
-        $driver = Socialite::driver($provider);
+        $own = CustomerSocial::ownCredentials($provider, $storefrontId);
+        if ($own === null && $storefrontId !== config()->integer('compat.storefront_id')) {
+            throw new RuntimeException("Storefront {$storefrontId} has no [{$provider}] credentials of its own.");
+        }
+
+        $driver = $own === null
+            ? Socialite::driver($provider)
+            : Socialite::buildProvider(CustomerSocial::OWN_DRIVERS[$provider], $own);
 
         if (! $driver instanceof AbstractProvider) {
             throw new RuntimeException("The [{$provider}] Socialite driver is not an OAuth2 provider, so it cannot run stateless.");

@@ -7,7 +7,8 @@
 # section at the end, with the reason. Never edit a listed file on one side only.
 #
 # Regenerated 2026-10-14 (evening) from the files measured byte-identical after the identity
-# sweep, the TikTok env change (made on both sides) and the approved twin splits.
+# sweep, the TikTok env change (made on both sides) and the approved twin splits. 2026-10-18: the category and brand
+# pages re-twinned, ListingClient.jsx and ProductCard.jsx split (the visual reset, Part 1b) — see the DIVERGED section.
 # A2-RULE: the two apps are copies, not a shared package.
 
 app/(auth)/auth/callback/page.jsx
@@ -25,32 +26,23 @@ app/(main)/[suptype]/[brand]/page.jsx
 app/(main)/about-us/page.jsx
 app/(main)/app-state-bridge.jsx
 app/(main)/blog/[name]/BlogClient.jsx
-app/(main)/blogs/BlogsClient.jsx
-app/(main)/brand/[brand]/page.jsx
-app/(main)/category/[category]/page.jsx
 app/(main)/contact-us/page.jsx
 app/(main)/desktop-footer.jsx
-app/(main)/error.jsx
 app/(main)/grade/[grade]/page.jsx
 app/(main)/layout.jsx
 app/(main)/listing/Listing.css
-app/(main)/listing/ListingClient.jsx
 app/(main)/listing/loading.jsx
-app/(main)/listing/page.jsx
 app/(main)/offer/[slug]/page.jsx
 app/(main)/order-confirmation/page.jsx
 app/(main)/privacy-policy/page.jsx
-app/(main)/product/[slug]/page.jsx
 app/(main)/products/[id]/page.jsx
 app/(main)/skip-link.jsx
 app/(main)/subtypes/[subtype]/page.jsx
 app/(main)/terms-and-conditions/page.jsx
 app/analytics.jsx
-app/cart-modal-host.jsx
 app/error.jsx
 app/providers.jsx
 app/sitemaps/[file]/route.js
-app/toast.jsx
 eslint.config.mjs
 jsconfig.json
 middleware.js
@@ -61,13 +53,10 @@ public/Watchizer_Gold.glb
 public/logo.webp
 public/placeholder.png
 public/studio_small_03_512.hdr
-src/Components/Auth/SocialButtons.jsx
 src/Components/Auth/SocialIcons.jsx
 src/Components/BackToTop/BackToTop.jsx
 src/Components/Blog/ArticleBody.jsx
 src/Components/Cart/CartModal.jsx
-src/Components/Header/Nav/Nav.jsx
-src/Components/Header/SearchBox/SearchBox.jsx
 src/Components/Hero/WatchCanvas.jsx
 src/Components/Hero/WatchHero.jsx
 src/Components/Home/FeaturedBanner.jsx
@@ -81,53 +70,40 @@ src/Components/Merchandising/CategoryTiles.jsx
 src/Components/Merchandising/TrustSignals.css
 src/Components/Merchandising/TrustSignals.jsx
 src/Components/Product/OfferSlider.jsx
-src/Components/Product/ProductCard.jsx
 src/Components/Product/ProductDetailClient.jsx
 src/Components/Product/ProductSlider.css
 src/Components/Product/ProductSlider.jsx
 src/Components/Product/StockAlertForm.jsx
 src/Components/ScrollToTop/ScrollToTop.jsx
 src/Components/SideBar/SideBar.css
-src/Components/SideBar/SideBar.jsx
 src/Components/UI/Carousel.css
 src/Components/UI/Carousel.jsx
 src/Components/UI/ImageZoom.jsx
 src/Context/api.jsx
 src/Context/loader.css
 src/Context/publicApi.js
-src/Hooks/queries/useListing.js
 src/Hooks/queries/useNav.js
 src/Hooks/queries/useOffers.js
 src/Hooks/queries/usePaymentMethods.js
 src/Hooks/queries/useProductDetail.js
 src/Hooks/queries/useShipping.js
-src/Hooks/queries/useTables.js
 src/Hooks/useCart.jsx
 src/Hooks/useLocaleRouter.js
 src/Hooks/useShippingPrices.js
 src/Hooks/useSwitchLanguage.js
-src/PageViews/Account/Account.jsx
 src/PageViews/Auth/AuthCallback.jsx
 src/PageViews/Auth/ForgotPassword.jsx
-src/PageViews/Auth/Login/Login.jsx
-src/PageViews/Auth/Register/Register.jsx
 src/PageViews/Auth/ResetPassword.jsx
-src/PageViews/Cart/Cart.jsx
 src/PageViews/Cart/Recover.css
 src/PageViews/Cart/Recover.jsx
-src/PageViews/Checkout/Checkout.jsx
 src/PageViews/Checkout/OrderConfirmation.jsx
 src/Store/authStore.js
-src/Store/cartStore.js
 src/Store/orderConfirmStore.js
 src/Store/shippingStore.js
 src/Store/toastStore.js
 src/Store/uiStore.js
 src/content/trustMetadata.js
 src/lib/coreRead.js
-src/lib/env.js
-src/lib/facetListing.jsx
-src/lib/listingRequest.js
 src/lib/markdown.js
 src/lib/safeJsonLd.js
 src/lib/serverBlogs.js
@@ -139,18 +115,57 @@ src/utils/chunkError.js
 src/utils/finish.js
 src/utils/hasWebGL.js
 src/utils/imageUrl.js
-src/utils/listingParams.js
 src/utils/localePath.js
 src/utils/productUrl.js
 src/utils/slugs.js
 src/utils/subTypeGroups.js
 src/utils/transformProduct.js
 
-# DIVERGED — files that were twins and were split on purpose (date, file, reason):
+# DIVERGED — files that were twins and were split on purpose. A line in the form
+#   DIVERGED <YYYY-MM-DD> <path> — <reason>
+# is CHECKED by StorefrontTwinsTest: the file must exist on both sides and actually differ (identical again
+# = re-twin it: move it back up), and the line must carry its date and reason. A file deleted on one side
+# stays a comment. The list below shrinks back when Watchizer follows a change Brand Fashion piloted.
 
 # 2026-10-14 src/PageViews/Account/Account.jsx — Track Order WhatsApp to customer service (first in Brand Fashion; Watchizer followed the same day, so it is a twin again).
 
-# 2026-10-14 README.md — Brand Fashion's own title and provenance line (developer decision 2).
+DIVERGED 2026-10-14 README.md — Brand Fashion's own title and provenance line (developer decision 2).
 
-# 2026-10-14 public/robots.txt — Sitemap on michaelkhalaf.com (developer decision 2).
+DIVERGED 2026-10-14 public/robots.txt — Sitemap on michaelkhalaf.com (developer decision 2).
 # 2026-10-14 public/logo.png — DELETED from Brand Fashion (Watchizer's lockup, 0 references; developer decision). logo.webp stays until the hero goes.
+# V2-READ-HALF (2026-10-17, Michael's decision: both storefronts move to v2, Brand Fashion first through the twin
+# apps, no runtime flag): Brand Fashion's listing reads /api/v2/brandfashion/products (src/lib/v2Listing.js, not a
+# twin) while Watchizer's still reads compat catalog/listing. These four re-twin together when Watchizer's listing moves.
+DIVERGED 2026-10-17 src/lib/listingRequest.js — re-exports the v2 adapter under the names every import site uses (V2-READ-HALF).
+DIVERGED 2026-10-17 src/Hooks/queries/useListing.js — passes the tables to the v2 request builder and waits for them when a category is set (V2-READ-HALF).
+DIVERGED 2026-10-17 app/(main)/listing/page.jsx — passes the tables to the v2 request builder (V2-READ-HALF).
+DIVERGED 2026-10-17 src/lib/facetListing.jsx — passes the tables to the v2 request builder (V2-READ-HALF).
+# B4 (2026-10-17) built the listing pages as BfListing (not twins) on v2; REVERSED 2026-10-18 (the visual reset, Part 1b —
+# Michael: "the skin changes, the behaviour does not"): the listing is Watchizer's ListingClient + SideBar + SmartSuggestions +
+# BackToTop again (twins, their behaviour inherited), on the v2 adapter, restyled by src/styles/bf-listing-skin.css. The
+# category and brand pages are byte-identical twins again (above). Two twins diverge for it, each by a named delta:
+DIVERGED 2026-10-18 app/(main)/listing/ListingClient.jsx — two Brand Fashion blocks: the all-sold-out line under the h1 (F9, Michael 2026-10-17) read from the served stock split, and the Sale chip in place of the On Offer chip (round 5: Sale is a product's own discount, Offers are a page); every other line is Watchizer's.
+DIVERGED 2026-10-18 src/Components/Product/ProductCard.jsx — the ADAPTER: Watchizer's listing hands it the legacy row, it draws BfProductCard (§17.3 rewritten card) with Watchizer's card behaviour line for line (the same addItem payload, the same refusal toast, the same URL).
+DIVERGED 2026-10-17 app/(main)/product/[slug]/page.jsx — B5: the v2 product page (BfProductPage) on products/{slug} + /related; v2 meta and JSON-LD (V2-READ-HALF / B5).
+DIVERGED 2026-10-18 src/Components/Header/Nav/Nav.jsx — every header panel on Watchizer's menu, the Brands anatomy (a group header with its category icon; rows of a 36 px media box + the name): Shop, the category panels and the gender panels re-marked up on Brand Fashion only — the same links, the same open/close and flip, no flyouts added (Michael, round 4). Watchizer keeps its own panels.
+DIVERGED 2026-10-18 src/Hooks/queries/useTables.js — Brand Fashion's tables also read storefront 2's v2 category tree and tag a category type / sub-type with `v2_slug` where the node's slug is not the slug of its English name (Chargers & Cables → chargers, Earphones & Headphones → audio): the v2 listing request sends it, so those two menu entries no longer open empty pages (round 4, Part 6.2). Watchizer reads compat by id and keeps the plain query.
+DIVERGED 2026-10-18 src/Components/Header/SearchBox/SearchBox.jsx — the dropdown prints a price as Brand Fashion's card does, spec §5: `EGP 3,900` / `3,900 ج.م`, Western digits in both (G2 of 2026-10-17; round 4, Part 6.5). Its source was already v2 (useListing → v2Listing). Watchizer keeps `3,900 EGP` and its ar-EG digits.
+DIVERGED 2026-10-18 src/utils/listingParams.js — Sale has its own listing key on Brand Fashion (`sale=1`, a product's own discount, core's on_sale) and `offers` is no listing filter: Offers are the dashboard's offers, a page of their own (round 5, Michael). Watchizer keeps `offers=true` as its discount filter until it moves to v2.
+# B7 (2026-10-19, the night run): Brand Fashion's cart and checkout move to core's v2 routes — every cart tagged with storefront 2, every order
+# built from that cart by /api/v2/brandfashion/orders. Watchizer's twins stay on compat (its live order path, untouched). Three files diverge:
+DIVERGED 2026-10-19 src/Store/cartStore.js — the cart store on v2 (GET cart, POST cart/items as an absolute set, DELETE cart/items/{id}); Watchizer's interface name for name (the header count, the drawer, the recovery page, the login merge and the confirmation page are unchanged twins); a line is a product OR a product's variant; the login merge adds quantities as compat's does, through the v2 routes.
+DIVERGED 2026-10-19 src/PageViews/Cart/Cart.jsx — the cart page draws core's v2 answer (each line's card, current price, stock and problem) instead of compat cards + reconcile + cart/validate; Watchizer's behaviour kept (300 ms stepper, remove + undo, the governorate here, the checkout gate that names why); Brand Fashion's §10.4 additions: the variant on the line, a sold-out line with a Remove action, Price updated on the line, the delivery row always showing an amount, one rail on the leather tint, a rail on the empty cart, the phone's sticky bar.
+DIVERGED 2026-10-19 src/PageViews/Checkout/Checkout.jsx — the order goes to v2 orders (built from the v2 cart, the client total checked) instead of compat add_order; the payment rows are exactly core's v2 list (no cash row of the page's own, no Pay Online fallback), each posting its id; core's refusal codes said in both languages; the total inside the button; on a phone the summary collapsible at the top. Contact, saved addresses, the recovery prefill, the phone rule, notes, InitiateCheckout and the confirmation hand-over are Watchizer's.
+DIVERGED 2026-10-19 app/cart-modal-host.jsx — the drawer opens on the store's confirmed-new-line signal, not on a rising line count: the first client render's count rises from the server render's 0 to the tab's cached lines, which opened the drawer by itself on every page load with a non-empty cart (measured on Brand Fashion; Watchizer's twin has the same rule — unverified there, recorded for Michael).
+DIVERGED 2026-10-19 src/PageViews/Account/Account.jsx — the orders tab reads core's v2 me/orders (this storefront's orders only; untagged orders are the default storefront's) instead of compat's me/orders, which lists the customer's orders on every shop because users are shared (audit a1). Every other line is Watchizer's.
+DIVERGED 2026-10-19 src/Components/SideBar/SideBar.jsx — Brand Fashion's Sale section (Michael's Part 2 of the night run): Any / 20 / 30 / 40 % off or more as one choice (v2 min_discount, rounded as the card prints it) and In stock only, the landing of the deals band's "See all" (30 %+, in stock); Clear all clears them, and the in-stock key counts as a filter. Watchizer's sidebar keeps round 5's state (its Sale count, accepted by Michael) and is not touched tonight.
+DIVERGED 2026-10-19 app/toast.jsx — B8 (spec §10.8): a failure toast stays 6 s, the others 3 s as on Watchizer. (The spec's retry action needs the toast store to carry one — not built, recorded.)
+DIVERGED 2026-10-19 app/(main)/error.jsx — B8 (spec §10.8 "500"): an error dot above the title and "Contact us on WhatsApp" (Brand Fashion's support number) in place of Browse Collection; Try again and Back to Home are Watchizer's.
+DIVERGED 2026-10-19 app/(main)/blogs/BlogsClient.jsx — B8 (spec §10.8): a neutral heading and lead ("Guides & articles" — the shop sells more than watches, and Watchizer's watch articles will be shared here, decision C-7); an article with no cover gets the leather-tint card with its title set large; the empty list links to the newest products.
+DIVERGED 2026-10-19 src/lib/env.js — Brand Fashion's v2 storefront code falls back to 'brandfashion', not 'watchizer': this app writes carts and orders to v2 since tonight, and a build without NEXT_PUBLIC_STOREFRONT_CODE would have booked its orders to storefront 1 (audit c2). Every other line is Watchizer's.
+# L3 (2026-10-19, day — Michael: Google sign-in per storefront, shipped with this deploy): Brand Fashion signs in on its OWN Google
+# project; until that project's credentials are in core's .env, core's v2 auth/providers lists nothing for storefront 2 and the
+# login and register pages must not offer a button that fails. Watchizer always lists Google and keeps its twins' behaviour.
+DIVERGED 2026-10-19 src/Components/Auth/SocialButtons.jsx — draws the "or" divider and the Google button only while core's v2 auth/providers lists Google for this storefront (L3); Watchizer always draws the button. The divider moved in from the login and register pages so a page without Google shows no orphan "or".
+DIVERGED 2026-10-19 src/PageViews/Auth/Login/Login.jsx — the "or" divider removed (SocialButtons draws it with the button, only while Google sign-in runs on this storefront — L3); every other line is Watchizer's.
+DIVERGED 2026-10-19 src/PageViews/Auth/Register/Register.jsx — the "or" divider removed, as in Login.jsx (L3); every other line is Watchizer's.

@@ -26,6 +26,11 @@ final class Lookups
         'units' => ['catalog_units', 'catalog_unit_translations', 'unit_id'],
         'genders' => ['catalog_genders', 'catalog_gender_translations', 'gender_id'],
         'features' => ['catalog_features', 'catalog_feature_translations', 'feature_id'],
+        // Added 2026-10-16 (V2-SIZE-NULL): the schema has 12 lookup tables with translations and this
+        // list had 11 — `sizes` was the one missing, so every v2 variant answered `size: null` while
+        // `ProductDetail::variants()` asked for it by name. The ref carries `type` (watch / clothing /
+        // shoes / general) and `sort` so a picker can group and order sizes without a second call.
+        'sizes' => ['catalog_sizes', 'catalog_size_translations', 'size_id'],
     ];
 
     /** @var array<string, array<int, array<string, mixed>>>|null */
@@ -60,6 +65,7 @@ final class Lookups
                 'grades' => ['id', 'image_path'],
                 'colors' => ['id', 'hex'],
                 'units' => ['id', 'code'],
+                'sizes' => ['id', 'type', 'sort'],
                 default => ['id'],
             };
             $select = array_map(fn (string $c) => "m.{$c}", $columns);
@@ -94,6 +100,9 @@ final class Lookups
                         $r['hex'] = Row::nstr($row, 'hex');
                     } elseif ($key === 'units') {
                         $r['code'] = Row::str($row, 'code');
+                    } elseif ($key === 'sizes') {
+                        $r['type'] = Row::str($row, 'type');
+                        $r['sort'] = Row::int($row, 'sort');
                     }
                     $r['name'] = [];
                     $rows[$id] = $r;
@@ -153,6 +162,12 @@ final class Lookups
         }
         if (isset($row['hex'])) {
             $ref['hex'] = $row['hex'];
+        }
+        if (isset($row['type'])) {
+            // sizes: `type` (watch / clothing / shoes / general) and `sort` ride on the ref so a picker
+            // can group and order without a second request (V2-SIZE-NULL, 2026-10-16).
+            $ref['type'] = $row['type'];
+            $ref['sort'] = $row['sort'] ?? 0;
         }
         $ref['name'] = $row['name'];
 

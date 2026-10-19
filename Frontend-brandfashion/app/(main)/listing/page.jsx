@@ -6,10 +6,15 @@ import { parseListingParams } from '@/src/utils/listingParams'
 import { objectToSearchParams, listingMetadata, listingSummary, listingBreadcrumbLd, listingQuery } from '@/src/lib/listingSeo'
 import ListingClient from './ListingClient'
 import { safeJsonLd } from '@/src/lib/safeJsonLd'
+import '@/src/styles/bf-listing-skin.css'
 
 // ISR knob (harmless — the page reads searchParams so it renders dynamically):
 // keeps parity with the other routes' 5-min revalidate.
 export const revalidate = 300
+
+// Brand Fashion (DIVERGED 2026-10-17, V2-READ-HALF; back on Watchizer's ListingClient 2026-10-18 — Part 1b of the visual
+// reset: the listing's behaviour is Watchizer's, the look is the skin sheet imported above). The one line that differs
+// from Frontend-next's page is the `tables` argument to the v2 request builder.
 
 // Resolve the request context ONCE (the getters are React-cached, so generateMetadata + the page
 // share ONE upstream fetch each). searchParams is the URL source of truth → filters are parsed from
@@ -26,7 +31,8 @@ async function loadContext(searchParams) {
   }
   const { filters, q, sort, page } = parseListingParams(usp, tables)
   // The server renders in English (the shop's language is applied on the client), hence lang 'en'.
-  const qs = listingRequest({ filters, q, sort, page, lang: 'en' })
+  // Brand Fashion (DIVERGED 2026-10-17, V2-READ-HALF): the v2 request builder takes the tables for the category slug.
+  const qs = listingRequest({ filters, q, sort, page, lang: 'en' }, tables)
   let listing = null
   try {
     listing = await getServerListing(qs)

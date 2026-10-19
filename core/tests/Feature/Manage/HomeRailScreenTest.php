@@ -142,7 +142,8 @@ it('builds a custom rail with the picker: picks in order, both titles required, 
     $send(['product_ids' => []])->assertSessionHasErrors('product_ids');
     $send(['title_ar' => '', 'title_en' => ' '])->assertSessionHasErrors(['title_ar', 'title_en']);
     $send(['product_ids' => [$ids[0], $foreign]])->assertSessionHasErrors('product_ids.1');
-    expect(DB::table('storefront_home_rails')->where('kind', 'custom')->exists())->toBeFalse();
+    // scoped to THIS storefront (2026-10-17): another shop may legitimately hold a custom rail (Brand Fashion's local §11.6 set does)
+    expect(DB::table('storefront_home_rails')->where('storefront_id', 1)->where('kind', 'custom')->exists())->toBeFalse();
 
     $send([])->assertSessionHasNoErrors();
     $rail = HomeRails::all(1)[2];

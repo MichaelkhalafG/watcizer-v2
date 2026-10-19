@@ -1,62 +1,22 @@
-import Link from '@/src/Components/LocaleLink'
+import { requestLang } from '@/src/lib/requestLang'
+import { getServerV2Home } from '@/src/lib/serverV2'
+import NotFoundView from '@/src/Components/NotFound/NotFoundView'
 
-// Global 404 (App Router). notFound() from any route — e.g. an unknown product/
-// offer slug — renders this with a real 404 status so scrapers/search engines
-// treat missing items correctly (no soft-200).
+// B8 (spec §10.8 "404", 2026-10-19): "This page has moved or never existed", a search field, the category chips on
+// their aisle tints and a rail — in the request's language. It used to be English only, with two buttons.
 export const metadata = {
   title: 'Page not found | Brand Fashion',
   robots: 'noindex, follow',
 }
 
-export default function NotFound() {
-  return (
-    <div
-      style={{
-        minHeight: '60vh',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        textAlign: 'center',
-        gap: '1rem',
-        padding: '4rem 1.5rem',
-      }}
-    >
-      <p style={{ fontSize: '3.5rem', fontWeight: 700, margin: 0, letterSpacing: '0.02em', color: 'var(--wz-gold)', fontFamily: 'var(--wz-serif), serif' }}>404</p>
-      <h1 style={{ fontSize: '1.4rem', fontWeight: 600, margin: 0 }}>
-        We couldn&apos;t find that page
-      </h1>
-      <p style={{ maxWidth: 440, color: '#666', margin: 0 }}>
-        The item you&apos;re looking for doesn&apos;t exist or may have been moved.
-      </p>
-      <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem', flexWrap: 'wrap', justifyContent: 'center' }}>
-        <Link
-          href="/listing"
-          style={{
-            padding: '0.7rem 1.4rem',
-            background: '#111',
-            color: '#fff',
-            borderRadius: 6,
-            textDecoration: 'none',
-            fontWeight: 600,
-          }}
-        >
-          Browse all products
-        </Link>
-        <Link
-          href="/"
-          style={{
-            padding: '0.7rem 1.4rem',
-            border: '1px solid #ccc',
-            borderRadius: 6,
-            textDecoration: 'none',
-            fontWeight: 600,
-            color: '#111',
-          }}
-        >
-          Go home
-        </Link>
-      </div>
-    </div>
-  )
+export default async function NotFound() {
+  const { lang } = await requestLang()
+  let home = null
+  try {
+    home = await getServerV2Home()
+  } catch {
+    home = null // a 404 never fails for want of a rail
+  }
+  const categories = (home?.categories || []).filter((c) => c.count > 0).slice(0, 3)
+  return <NotFoundView lang={lang} categories={categories} deals={home?.deals || []} />
 }

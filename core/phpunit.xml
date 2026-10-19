@@ -40,5 +40,18 @@
         <env name="SESSION_DRIVER" value="array"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>
+        <!--
+            The suite's temporary files (2026-10-16, DEFENDER-TEST-FIXTURE): every test that writes a
+            scratch file reaches it through sys_get_temp_dir(), which on Windows is whatever TMP names.
+            Left alone that is the USER's %TEMP%, where the adversarial upload fixture — a PHP web-shell
+            signature disguised as an image, written to prove the uploader refuses it — gets quarantined
+            by Defender mid-run, and where no narrow exclusion is possible. So the suite owns its own
+            directory: storage/framework/testing/tmp (gitignored, created with the repo). The path is
+            relative to the directory the suite runs from (core/); PHP resolves it to an absolute path.
+            On Linux/macOS the variable is ignored by sys_get_temp_dir() and the test asserting the
+            location skips itself.
+        -->
+        <env name="TMP" value="storage/framework/testing/tmp" force="true"/>
+        <env name="TEMP" value="storage/framework/testing/tmp" force="true"/>
     </php>
 </phpunit>

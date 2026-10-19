@@ -1,0 +1,17 @@
+/* §10.8 "404" — the search, the four chips on their aisle tints, a rail */
+.bf-404 { background: var(--wz-page); padding-block: 56px 32px; }
+.bf-404__inner { max-width: 680px; margin: 0 auto; padding: 0 16px; text-align: center; }
+.bf-404__title { margin: 0; font-size: var(--bf-h1); line-height: 1.2; }
+.bf-404__lead { margin: 12px 0 0; color: var(--wz-ink-2); }
+.bf-404__search { display: flex; gap: 8px; margin: 24px auto 0; max-width: 520px; }
+.bf-404__label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.bf-404__input { flex: 1; min-width: 0; height: 48px; padding: 0 16px; border: 1px solid var(--wz-line-strong); border-radius: var(--wz-r-pill); font: inherit; background: var(--wz-page); color: var(--wz-ink); }
+.bf-404__input:focus-visible { outline: 2px solid var(--wz-focus-ring); outline-offset: 2px; }
+.bf-404__go { height: 48px; padding: 0 24px; border: 1px solid var(--wz-ink); border-radius: var(--wz-r-pill); background: var(--wz-ink); color: var(--wz-on-ink); font: inherit; font-weight: 700; cursor: pointer; }
+@media (hover: hover) { .bf-404__go:hover { background: var(--wz-ink-soft); } }
+.bf-404__go:focus-visible { outline: 2px solid var(--wz-focus-ring); outline-offset: 2px; }
+.bf-404__chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin: 24px 0 0; padding: 0; list-style: none; }
+.bf-404__chip { display: inline-flex; align-items: center; min-height: 44px; padding: 0 20px; border-radius: var(--wz-r-pill); color: var(--wz-ink); font-weight: 700; text-decoration: none; }
+@media (hover: hover) { .bf-404__chip:hover { text-decoration: underline; text-underline-offset: 3px; } }
+.bf-404__chip:focus-visible { outline: 2px solid var(--wz-focus-ring); outline-offset: 2px; }
+.bf-404__rail { max-width: 1212px; margin: 40px auto 0; padding-inline: 16px; }

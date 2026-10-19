@@ -125,16 +125,19 @@ function ContactPage({ t }) {
       </section>
       <section className="wz-trust-section wz-trust-section--bone">
         <div className="wz-trust-container wz-contact-bottom">
-          <div className="wz-contact-store">
-            <span className="wz-contact-card__icon" aria-hidden="true">
-              <FiMapPin />
-            </span>
-            <div>
-              <span className="wz-contact-card__label">{t.store.label}</span>
-              <p className="wz-contact-store__address">{t.store.address}</p>
-              <p className="wz-contact-card__hours">{t.hours}</p>
+          {/* one card per branch (2026-10-19: Arkadia Mall and Heliopolis), the hours only where they are known */}
+          {t.stores.map((store) => (
+            <div className="wz-contact-store" key={store.label}>
+              <span className="wz-contact-card__icon" aria-hidden="true">
+                <FiMapPin />
+              </span>
+              <div>
+                <span className="wz-contact-card__label">{store.label}</span>
+                <p className="wz-contact-store__address">{store.address}</p>
+                {store.hours && t.hours ? <p className="wz-contact-card__hours">{t.hours}</p> : null}
+              </div>
             </div>
-          </div>
+          ))}
           <p className="wz-contact-note">{inline(t.note)}</p>
         </div>
       </section>

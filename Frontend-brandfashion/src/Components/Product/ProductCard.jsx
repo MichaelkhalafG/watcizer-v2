@@ -1,257 +1,59 @@
 'use client'
-import { memo, useState } from 'react'
-import Image from 'next/image'
-import Link from '@/src/Components/LocaleLink'
+import { memo } from 'react'
 import { useUIStore } from '../../Store/uiStore'
-import { getImageUrl, PLACEHOLDER_IMG } from '../../utils/imageUrl'
-import { productUrl } from '../../utils/productUrl'
+import { useToastStore } from '../../Store/toastStore'
 import useCart from '../../Hooks/useCart'
 import { refusedAddMessage } from '../../Store/cartStore'
-import { useToastStore } from '../../Store/toastStore'
-import './ProductCard.css'
+import { localizeHref } from '../../utils/localePath'
+import { productUrl } from '../../utils/productUrl'
+import { fromLegacyCard } from '../../lib/cardData'
+import BfProductCard from './BfProductCard'
 
-const NEW_WINDOW_MS = 30 * 24 * 60 * 60 * 1000
-
-const ProductCard = ({ product, showBrand = true, showRating = true }) => {
+/*
+ * Brand Fashion — DIVERGED from Frontend-next on 2026-10-18 (the visual reset, Part 1b). Watchizer's listing
+ * components (ListingClient, SideBar, SmartSuggestions, the sliders) are the twins and render `<ProductCard>`;
+ * here that name is an ADAPTER: the legacy row Watchizer's pipeline hands it becomes the v2 card shape and is
+ * drawn by BfProductCard (spec §17.3: the card is rewritten; §8). The BEHAVIOUR is Watchizer's card's, line for
+ * line: the same `addItem` payload (product_id, quantity 1, the effective piece price, Express when express stock
+ * exists else Market, the English name for analytics), the same refusal toast, the same product URL. Only the look
+ * and the card's own additions (hover photo, descriptive colours as text, the picker) are Brand Fashion's.
+ */
+const ProductCard = ({ product, showRating = true }) => {
   const { language } = useUIStore()
   const { addItem } = useCart()
   const showToast = useToastStore((s) => s.showToast)
-  const [added, setAdded] = useState(false)
-  const [pending, setPending] = useState(false)
-  const isRTL = language === 'ar'
-
   if (!product) return null
+  const lang = language === 'ar' ? 'ar' : 'en'
+  const card = fromLegacyCard(product, lang)
+  const href = localizeHref(card.slug ? `/product/${card.slug}` : productUrl(product), lang)
 
-  /* ── Localized name ── */
-  const name = (() => {
-    const t =
-      product.translations?.find((x) => x.locale === language) ||
-      product.translations?.find((x) => x.locale === 'en')
-    if (t?.product_title) return t.product_title
-    return isRTL
-      ? product.product_title_ar || product.name_ar || product.product_title || product.name_en || ''
-      : product.product_title || product.name_en || product.product_title_ar || product.name_ar || ''
-  })()
-
-  // The same name, but always English — for analytics only. ViewContent on the PDP
-  // reports the English title too, and a report where one product appears under two
-  // names depending on which language the shopper happened to be browsing in is a
-  // report nobody can read.
-  const analyticsName = (() => {
-    const t = product.translations?.find((x) => x.locale === 'en')
-    if (t?.product_title) return t.product_title
-    return product.product_title || product.name_en || name
-  })()
-
-  /* ── Brand ── */
-  const brand = (() => {
-    const t =
-      product.brand?.translations?.find((x) => x.locale === language) ||
-      product.brand?.translations?.find((x) => x.locale === 'en')
-    if (t?.brand_name) return t.brand_name
-    return typeof product.brand === 'string'
-      ? product.brand
-      : product.brand?.brand_name || product.brand?.name_en || product.brand_name || ''
-  })()
-
-  /* ── Prices ── */
-  const price = Number(product.selling_price || 0)
-  const salePrice = Number(product.sale_price_after_discount || 0)
-  const hasSale = salePrice > 0 && salePrice < price
-  const discount = hasSale ? Math.round((1 - salePrice / price) * 100) : 0
-  const currency = isRTL ? 'ج.م' : 'EGP'
-  const fmt = (v) => Math.round(Number(v) || 0).toLocaleString(isRTL ? 'ar-EG' : 'en-US')
-
-  /* ── Stock ── */
-  const expressStock = Number(product.stock || 0)
-  const marketStock = Number(product.market_stock || 0)
-  const inStock = expressStock > 0 || marketStock > 0
-  const isExpress = expressStock > 0
-
-  /* ── Flags ── */
-  // Date.now() is impure but harmless here (drives only the "New" badge); the
-  // value doesn't need to be stable across renders. Hoisted onto its own line so
-  // the scoped disable targets the impure call directly.
-  // eslint-disable-next-line react-hooks/purity
-  const nowMs = Date.now()
-  const isNew = product.created_at
-    ? nowMs - new Date(product.created_at).getTime() < NEW_WINDOW_MS
-    : false
-
-  /* ── Rating ── */
-  const rating = Number(product.average_rating || product.ratings_avg || product.rating || 0)
-  const reviews = Number(product.ratings_count || product.reviews_count || 0)
-
-  /* ── Image — next/image (auto AVIF/WebP + per-device srcset). Falls back to the
-     inline gray SVG placeholder when the product has no image. ── */
-  const imgSrc = getImageUrl(product.image, 'Product') || PLACEHOLDER_IMG
-
-  /* ── Stock status descriptor ── */
-  const stock = isExpress
-    ? {
-        tone: 'express',
-        label: isRTL ? `إكسبريس · ${expressStock} متاح` : `Express · ${expressStock} in stock`,
-      }
-    : marketStock > 0
-      ? {
-          tone: 'market',
-          label: isRTL ? `ماركت · ${marketStock} متاح` : `Market · ${marketStock} available`,
-        }
-      : { tone: 'out', label: isRTL ? 'غير متوفر' : 'Out of stock' }
-
-  /* ── Handlers ── */
-  const handleAdd = async (e) => {
-    e.preventDefault()
-    e.stopPropagation()
-    if (!inStock || added || pending) return
-    setPending(true)
-    let result
-    try {
-      result = await addItem({
-        product_id: product.id,
-        quantity: 1,
-        piece_price: hasSale ? salePrice : price,
-        type_stock: isExpress ? 'Express' : 'Market',
-        name: analyticsName, // analytics only — see the note beside analyticsName
-      })
-    } finally {
-      setPending(false)
-    }
-    // A refused add was rolled back by the cart store (2026-09-28); do not show "added" — and say
-    // why (2026-09-29): it used to return silently, so the button looked like it did nothing.
+  const onAdd = async () => {
+    const price = Number(product.selling_price || 0)
+    const salePrice = Number(product.sale_price_after_discount || 0)
+    const hasSale = salePrice > 0 && salePrice < price
+    const isExpress = Number(product.stock || 0) > 0
+    // The English title for analytics only — as Watchizer's card: one product, one name in every report.
+    const en = product.translations?.find((x) => x.locale === 'en')
+    const analyticsName = en?.product_title || product.product_title || product.name_en || product.name || ''
+    const result = await addItem({
+      product_id: product.id,
+      quantity: 1,
+      piece_price: hasSale ? salePrice : price,
+      type_stock: isExpress ? 'Express' : 'Market',
+      name: analyticsName,
+    })
+    // A refused add was rolled back by the cart store; say why (Watchizer's rule of 2026-09-29).
     if (result && result.ok === false) {
-      showToast(refusedAddMessage(result, isRTL), 'error')
-      return
+      showToast(refusedAddMessage(result, lang === 'ar'), 'error')
+      return false
     }
-    setAdded(true)
-    setTimeout(() => setAdded(false), 1400)
+    return true
   }
 
-  return (
-    <article
-      className={`wz-pc ${!inStock ? 'wz-pc--out' : ''}`}
-      dir={isRTL ? 'rtl' : 'ltr'}
-    >
-      {/* Stretched-overlay anchor — makes the whole card a real crawlable,
-          keyboard-focusable link WITHOUT nesting the inner <button> inside an
-          <a> (invalid HTML). The interactive controls below sit at a higher
-          stacking level so they receive clicks instead of the anchor. */}
-      <Link
-        href={productUrl(product)}
-        aria-label={name}
-        className="wz-pc__link"
-        style={{ position: 'absolute', inset: 0, zIndex: 1 }}
-      />
-
-      {/* ── Media ── */}
-      <div className="wz-pc__media">
-        <Image
-          src={imgSrc}
-          alt={name}
-          fill
-          sizes="(max-width: 400px) 50vw, (max-width: 768px) 33vw, (max-width: 1200px) 25vw, 300px"
-          quality={80}
-          className="wz-pc__img"
-          style={{ objectFit: 'contain' }}
-        />
-
-        {/* Badges — independent small pills, can coexist */}
-        {isNew && <span className="wz-pc__badge wz-pc__badge--new">{isRTL ? 'جديد' : 'New'}</span>}
-        {hasSale && (
-          <span className="wz-pc__badge wz-pc__badge--sale">−{discount}%</span>
-        )}
-
-        {/* Sold out — frosted center overlay */}
-        {!inStock && (
-          <div className="wz-pc__soldout">
-            <span>{isRTL ? 'نفذ المخزون' : 'Sold Out'}</span>
-          </div>
-        )}
-      </div>
-
-      {/* ── Body ── */}
-      <div className="wz-pc__body">
-        {showBrand && brand && <p className="wz-pc__brand">{brand}</p>}
-
-        <h3 className="wz-pc__title" title={name}>
-          {name}
-        </h3>
-
-        {showRating && rating > 0 && (
-          <div className="wz-pc__rating" aria-label={`${rating.toFixed(1)} / 5`}>
-            <span className="wz-pc__stars" style={{ '--rating': Math.max(0, Math.min(5, rating)) }}>
-              ★★★★★
-            </span>
-            {reviews > 0 && <span className="wz-pc__reviews">({reviews})</span>}
-          </div>
-        )}
-
-        {/* Price block — always two rows tall (placeholder when no sale) so the
-            block below stays aligned across cards */}
-        <div className="wz-pc__prices">
-          <div className="wz-pc__price-main">
-            {hasSale ? (
-              <span className="wz-pc__price wz-pc__price--sale">
-                {fmt(salePrice)} {currency}
-              </span>
-            ) : (
-              <span className="wz-pc__price">
-                {fmt(price)} {currency}
-              </span>
-            )}
-          </div>
-          <div className="wz-pc__price-orig-row">
-            {hasSale ? (
-              <span className="wz-pc__price--orig">
-                {fmt(price)} {currency}
-              </span>
-            ) : (
-              <span className="wz-pc__price-ph">&nbsp;</span>
-            )}
-          </div>
-        </div>
-
-        {/* Bottom block — stock + button, always pinned to the card bottom */}
-        <div className="wz-pc__bottom">
-          <div className={`wz-pc__stock wz-pc__stock--${stock.tone}`}>
-            <span className="wz-pc__dot" />
-            <span className="wz-pc__stock-text">{stock.label}</span>
-          </div>
-
-          <button
-            type="button"
-            className={`wz-pc__add ${added ? 'is-added' : ''}`}
-            onClick={handleAdd}
-            disabled={!inStock || pending}
-            aria-busy={pending}
-            aria-label={isRTL ? 'أضف إلى السلة' : 'Add to cart'}
-            style={{ position: 'relative', zIndex: 2 }}
-          >
-            {!inStock
-              ? isRTL
-                ? 'غير متوفر'
-                : 'Unavailable'
-              : pending
-                ? isRTL
-                  ? 'جارٍ الإضافة…'
-                  : 'Adding…'
-                : added
-                  ? isRTL
-                    ? '✓ تمت الإضافة'
-                    : '✓ Added'
-                  : isRTL
-                    ? 'أضف إلى السلة'
-                    : 'Add to Cart'}
-          </button>
-        </div>
-      </div>
-    </article>
-  )
+  return <BfProductCard product={card} lang={lang} showRating={showRating} href={href} onAdd={onAdd} />
 }
 
-// Custom comparison: skip re-render when the parent re-renders but this card's
-// meaningful data is unchanged. product_title/brand are included so a language
-// switch (which swaps the localized product object) still re-renders correctly.
+// Watchizer's own comparison: skip a re-render when the card's meaningful data is unchanged.
 const areEqual = (prev, next) => {
   const a = prev.product
   const b = next.product
@@ -263,7 +65,6 @@ const areEqual = (prev, next) => {
     a?.sale_price_after_discount === b?.sale_price_after_discount &&
     a?.stock === b?.stock &&
     a?.market_stock === b?.market_stock &&
-    prev.showBrand === next.showBrand &&
     prev.showRating === next.showRating
   )
 }

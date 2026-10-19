@@ -1,0 +1,153 @@
+/* The Brand Fashion SKIN for Watchizer's listing components (spec v2.11 §10.2, §17.2; Part 1b of the 2026-10-17
+   brief: "the skin changes, the behaviour does not"). ListingClient.jsx, SideBar.jsx, SmartSuggestions.jsx and
+   BackToTop.jsx are the twins, unedited; Listing.css, SideBar.css and SmartSuggestions.css are theirs too. This
+   sheet is loaded by the (diverged) listing pages AFTER them and restyles every class they render — selectors are
+   prefixed with `html` so they win on specificity, not on load order. Every number from the --bf-* scale and the
+   tokens in app/globals.css. Nothing here changes what opens, closes, scrolls or keeps its place. */
+
+/* ── the page: white ground, the shared container and gutter ── */
+html .wz-listing { background: var(--wz-page); padding: 0 0 48px; min-height: 60vh; }
+html .wz-listing-inner { max-width: var(--bf-container); padding: 0 var(--bf-gutter); }
+
+/* breadcrumb + h1 (h1 token, 700, no caps — the copied global heading rule upper-cases h1) */
+html .wz-bc { padding: 12px 0 2px; gap: 6px; font-size: var(--bf-small); color: var(--wz-ink-2); }
+html .wz-bc-link { font-size: var(--bf-small); color: var(--wz-ink-2); letter-spacing: 0; }
+@media (hover: hover) { html .wz-bc-link:hover { color: var(--wz-ink); text-decoration: underline; text-underline-offset: 3px; } }
+html .wz-bc-sep { color: var(--wz-ink-3); }
+html .wz-bc-current { color: var(--wz-ink); font-weight: 400; }
+html .wz-listing-h1 { font-family: var(--wz-serif); font-size: var(--bf-h1); line-height: var(--bf-h1-lh); font-weight: 700; letter-spacing: 0; text-transform: none; color: var(--wz-ink); margin: 2px 0 6px; }
+[dir='rtl'] html .wz-listing-h1, html [dir='rtl'] .wz-listing-h1 { letter-spacing: 0; }
+
+/* the F9 line under the title (the one line a Brand Fashion listing adds, ListingClient.jsx DIVERGED) */
+html .wz-listing-note { font-size: var(--bf-body); line-height: var(--bf-body-lh); color: var(--wz-ink-2); margin: 0 0 8px; max-width: 60ch; }
+
+/* the chip bar (SmartSuggestions): hairline pills, ink when active, no caps label */
+html .wz-sg { padding: 8px 0 10px; gap: 10px; border-bottom: 1px solid var(--wz-line); }
+html .wz-sg-label { font-size: var(--bf-small); letter-spacing: 0; text-transform: none; color: var(--wz-ink-2); font-weight: 400; }
+html .wz-sg-chip { height: 32px; padding: 0 11px; border: 1px solid var(--wz-line-strong); border-radius: var(--wz-r-pill); background: var(--wz-page); color: var(--wz-ink); font-size: var(--bf-small); font-weight: 400; letter-spacing: 0; text-transform: none; gap: 6px; transition: background-color 150ms ease-out, border-color 150ms ease-out; }
+@media (hover: hover) { html .wz-sg-chip:hover { background: var(--wz-tile); border-color: var(--wz-ink); } }
+html .wz-sg-chip.is-active { background: var(--wz-ink); color: var(--wz-on-ink); border-color: var(--wz-ink); }
+html .wz-sg-chip-count { font-size: 11px; color: var(--wz-ink-2); background: none; padding: 0; }
+html .wz-sg-chip.is-active .wz-sg-chip-count { color: rgba(255, 255, 255, 0.72); }
+html .wz-sg-divider { background: var(--wz-line); }
+html .wz-sg-carousel .wz-carousel-viewport::after { background: linear-gradient(to var(--bf-fade-dir, right), rgba(255, 255, 255, 0), var(--wz-page)); }
+[dir='rtl'] .wz-sg-carousel .wz-carousel-viewport::after { --bf-fade-dir: left; }
+
+/* body: sidebar 240 + grid on desktop; the aside sticks under the 104px desktop header. Scoped to ≥ 1024 so the twin's
+   own tablet (220px) and phone (one column, aside hidden, the drawer) rules keep winning below it. */
+html .wz-listing-body { margin-top: 12px; }
+@media (min-width: 1024px) {
+  html .wz-listing-body { grid-template-columns: 240px 1fr; gap: 24px; }
+  html .wz-listing-aside { top: 120px; }
+}
+
+/* toolbar: one quiet row — filters (phone), count, sort — hairline under, no box */
+html .wz-toolbar { padding: 6px 0 10px; background: none; border: 0; border-bottom: 1px solid var(--wz-line); border-radius: 0; gap: 12px; }
+html .wz-toolbar-count { font-size: var(--bf-small); color: var(--wz-ink-2); font-weight: 400; }
+html .wz-toolbar-sort-label { font-size: var(--bf-small); font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--wz-ink-2); }
+html .wz-select select { height: 36px; padding: 0 32px 0 14px; border: 1px solid var(--wz-edge); border-radius: var(--wz-r-pill); background: var(--wz-page); color: var(--wz-ink); font-size: var(--bf-small); font-weight: 700; font-family: inherit; }
+html [dir='rtl'] .wz-select select { padding: 0 14px 0 32px; }
+html .wz-select select:focus-visible { border-color: var(--wz-ink); outline: 2px solid var(--wz-focus-ring); outline-offset: 2px; }
+html .wz-select-icon { color: var(--wz-ink); font-size: 14px; }
+html .wz-toolbar-filter { height: 36px; padding: 0 14px; border: 1px solid var(--wz-edge); border-radius: var(--wz-r-pill); background: var(--wz-page); color: var(--wz-ink); font-size: var(--bf-small); font-weight: 700; }
+html .wz-toolbar-badge { background: var(--wz-ink); color: var(--wz-on-ink); font-size: 10px; }
+
+/* active filter tags: ink pills with ×; "Clear all" an ink underline */
+html .wz-tags { gap: 8px; margin-top: 10px; }
+html .wz-tag { height: 32px; padding: 0 10px 0 12px; border: 0; border-radius: var(--wz-r-pill); background: var(--wz-ink); color: var(--wz-on-ink); font-size: var(--bf-small); font-weight: 700; gap: 6px; }
+html [dir='rtl'] .wz-tag { padding: 0 12px 0 10px; }
+html .wz-tag svg { color: rgba(255, 255, 255, 0.8); font-size: 14px; }
+@media (hover: hover) { html .wz-tag:hover { background: var(--wz-ink-soft); border-color: transparent; } }
+html .wz-tags-clear { font-size: var(--bf-small); font-weight: 700; color: var(--wz-ink); text-decoration: underline; text-underline-offset: 3px; }
+
+/* the grid: 2 phone · 3 tablet · 4 desktop · 5 wide (§6 at the 1,440 container); gaps 8 / 12 */
+/* cards stretch to the row (the default; the night's `align-items: start` was reversed on 2026-10-18 morning — level
+   cards over ragged bottoms; the slack a plain card shows beside a picker card is to be solved by removing what is empty) */
+html .wz-listing-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
+@media (min-width: 600px) { html .wz-listing-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; } }
+@media (min-width: 1024px) { html .wz-listing-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (min-width: 1400px) { html .wz-listing-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); } }
+/* the twin's card-in animation is kept (Watchizer's behaviour); §14 asks for 150 ms, ease-out */
+html .wz-fade > * { animation-duration: 150ms; animation-timing-function: ease-out; }
+
+/* pagination: 36px pills, the current one ink (§10.2) */
+html .wz-pager { gap: 6px; margin-top: 24px; }
+html .wz-pager-num, html .wz-pager-btn { min-width: 36px; height: 36px; padding: 0 10px; border: 1px solid var(--wz-edge); border-radius: var(--wz-r-pill); background: var(--wz-page); color: var(--wz-ink); font-size: var(--bf-small); font-weight: 700; }
+@media (hover: hover) { html .wz-pager-num:hover:not(.is-active), html .wz-pager-btn:hover:not(:disabled) { border-color: var(--wz-ink); background: var(--wz-tile); } }
+html .wz-pager-num.is-active { background: var(--wz-ink); border-color: var(--wz-ink); color: var(--wz-on-ink); }
+html .wz-pager-btn:disabled { color: var(--wz-disabled-fg); background: var(--wz-disabled-bg); border-color: var(--wz-disabled-bg); opacity: 1; }
+html .wz-pager-dots { color: var(--wz-ink-3); }
+html .wz-pager-num:focus-visible, html .wz-pager-btn:focus-visible { outline: 2px solid var(--wz-focus-ring); outline-offset: 2px; }
+
+/* empty and failed states */
+html .wz-empty { padding: 40px 16px; min-height: 30vh; border: 1px solid var(--wz-line); border-radius: 8px; }
+html .wz-empty-icon { font-size: 32px; color: var(--wz-ink-3); margin-bottom: 12px; }
+html .wz-empty-title { font-size: var(--bf-h2); font-weight: 700; color: var(--wz-ink); text-transform: none; letter-spacing: 0; }
+html .wz-empty-sub { font-size: var(--bf-body); color: var(--wz-ink-2); }
+html .wz-empty-btn { height: 40px; padding: 0 18px; border: 1px solid var(--wz-ink); border-radius: var(--wz-r-pill); background: var(--wz-ink); color: var(--wz-on-ink); font-size: var(--bf-btn); font-weight: 700; letter-spacing: 0; text-transform: none; }
+@media (hover: hover) { html .wz-empty-btn:hover { background: var(--wz-ink-soft); } }
+
+/* loading skeleton: tile grey, NO shimmer (§14), the card's own radius */
+html .wz-skel-card { border: 1px solid var(--wz-line); border-radius: 8px; }
+html .wz-skel-img, html .wz-skel-line, html .wz-skel-crumb, html .wz-skel-title, html .wz-skel-chips, html .wz-skel-toolbar { background: var(--wz-tile); animation: none; }
+
+/* ── the sidebar (SideBar.jsx, the twin): a white card, hairline sections, no caps, rows 32 ── */
+html .wz-sidebar { border: 1px solid var(--wz-line); border-radius: 8px; max-height: calc(100vh - 136px); scrollbar-color: var(--wz-line-strong) transparent; }
+html .wz-sidebar-active { padding: 10px 14px; border-bottom: 1px solid var(--wz-line); min-height: 44px; }
+html .wz-sidebar-active-label { font-size: 13px; font-weight: 700; letter-spacing: 0; text-transform: none; color: var(--wz-ink); }
+html .wz-sidebar-clear-all { font-size: var(--bf-small); color: var(--wz-ink-2); letter-spacing: 0; text-decoration: underline; text-underline-offset: 3px; }
+html .wz-fs { border-bottom: 1px solid var(--wz-line); }
+html .wz-fs-title { padding: 10px 14px; min-height: 40px; }
+html .wz-fs-title-text { font-size: 13px; font-weight: 700; letter-spacing: 0; text-transform: none; color: var(--wz-ink); }
+html .wz-fs-toggle { font-size: 16px; color: var(--wz-ink-2); font-weight: 400; }
+html .wz-fs-clear { font-size: 11px; color: var(--wz-ink-2); border: 0; padding: 0; letter-spacing: 0; text-decoration: underline; text-underline-offset: 3px; border-radius: 0; }
+html .wz-fs-body { padding: 0 14px 10px; }
+html .wz-fs-search { height: 32px; border: 1px solid var(--wz-edge); border-radius: var(--wz-r-input); padding: 0 10px; font-size: var(--bf-small); color: var(--wz-ink); font-family: inherit; }
+html .wz-fs-search:focus { border-color: var(--wz-ink); }
+html .wz-fs-item label { padding: 0 2px; min-height: 32px; border-radius: 4px; gap: 8px; }
+@media (hover: hover) { html .wz-fs-item label:hover { background: var(--wz-tile); } }
+html .wz-fs-item input[type='checkbox'] { width: 16px; height: 16px; accent-color: var(--wz-ink); }
+html .wz-fs-item-name { font-size: var(--bf-body); color: var(--wz-ink); }
+html .wz-fs-item-count { font-size: var(--bf-small); color: var(--wz-ink-2); }
+html .wz-fs-show-more { font-size: var(--bf-small); color: var(--wz-ink); opacity: 1; letter-spacing: 0; text-decoration: underline; text-underline-offset: 3px; padding: 6px 0; }
+html .wz-price-wrap { margin: 10px 0 4px; }
+html .wz-price-track { background: var(--wz-line-strong); }
+html .wz-price-fill { background: var(--wz-ink); }
+html .wz-price-input::-webkit-slider-thumb { border-color: var(--wz-ink); box-shadow: none; }
+html .wz-price-input::-moz-range-thumb { border-color: var(--wz-ink); }
+html .wz-price-vals { font-size: var(--bf-small); color: var(--wz-ink-2); }
+
+/* ── the phone filter drawer (Watchizer's side drawer, its open/close, its scroll): white, hairlines, ink apply ── */
+html .wz-fdrawer { background: var(--wz-page); }
+html .wz-fdrawer-head { padding: 12px 16px; border-bottom: 1px solid var(--wz-line); min-height: 56px; }
+html .wz-fdrawer-title { font-size: 16px; font-weight: 700; letter-spacing: 0; text-transform: none; color: var(--wz-ink); }
+html .wz-fdrawer-clear { font-size: var(--bf-small); color: var(--wz-ink-2); text-decoration: underline; text-underline-offset: 3px; }
+html .wz-fdrawer-close { width: 44px; height: 44px; background: none; color: var(--wz-ink); border-radius: var(--wz-r-input); }
+html .wz-fdrawer-foot { padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); border-top: 1px solid var(--wz-line); }
+html .wz-fdrawer-apply { height: 48px; border-radius: var(--wz-r-pill); background: var(--wz-ink); color: var(--wz-on-ink); font-size: var(--bf-btn); font-weight: 700; letter-spacing: 0; text-transform: none; }
+
+@media (max-width: 768px) {
+  html .wz-listing-inner { padding: 0 var(--bf-gutter); }
+  html .wz-bc { padding: 10px 0 0; font-size: 11px; color: var(--wz-ink-2); }
+  html .wz-toolbar { padding: 8px 0; gap: 8px; }
+  html .wz-toolbar-filter { height: 36px; border-radius: var(--wz-r-pill); font-size: var(--bf-small); }
+  html .wz-select select { height: 36px; border-radius: var(--wz-r-pill); font-size: var(--bf-small); }
+  html .wz-toolbar-count { padding-top: 6px; font-size: 11px; color: var(--wz-ink-2); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html .wz-sg-chip, html .wz-tag { transition: none; }
+}
+
+/* touch: the twin's own hover rules (Listing.css, SideBar.css) are not hover-guarded, so a tap would leave them painted
+   (sticky hover, B5 of the 2026-10-18 night run); on a device without hover the skin re-states the resting values */
+@media (hover: none) {
+  html .wz-bc-link:hover { color: var(--wz-ink-2); }
+  html .wz-tag:hover { background: var(--wz-ink); border-color: transparent; }
+  html .wz-pager-num:hover:not(.is-active), html .wz-pager-btn:hover:not(:disabled) { border-color: var(--wz-edge); }
+  html .wz-empty-btn:hover { background: var(--wz-ink); }
+  html .wz-fs-item label:hover { background: transparent; }
+}
+/* the walk (2026-10-19, WCAG 2.5.8 target size): the breadcrumb's links and the chips' "Clear all" were 14–19 px tall on
+   a phone — the same words, a 24 px target */
+.wz-bc-link, .wz-tags-clear { display: inline-flex; align-items: center; min-height: 24px; }

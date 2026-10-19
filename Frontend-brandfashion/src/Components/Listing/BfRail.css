@@ -1,0 +1,41 @@
+/* The product rail (spec v2.11 §9): one 32px header row — title h2 + live count, "See all" pill, the two arrows on
+   desktop — over a snapping track: 2.3 cards per view on phone (the peek says "there is more"), 3.3 on tablet,
+   6 on desktop with the arrows. Tokens from app/globals.css. */
+
+.bf-rail { padding: 12px 0 8px; border-radius: 8px; }
+.bf-rail.is-tinted { padding-inline: 12px; }
+.bf-rail__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; height: 32px; margin-block-end: 10px; }
+.bf-rail__title { font-size: var(--bf-h2); line-height: var(--bf-h2-lh); font-weight: 700; margin: 0; display: flex; align-items: baseline; gap: 8px; min-width: 0; text-transform: none; letter-spacing: 0; }
+.bf-rail__count { font-size: var(--bf-small); font-weight: 400; color: var(--wz-ink-2); white-space: nowrap; }
+.bf-rail__tools { display: flex; align-items: center; gap: 6px; flex: none; }
+.bf-rail__all { height: 32px; padding-inline: 12px; border-radius: var(--wz-r-pill); border: 1px solid var(--wz-ink); background: var(--wz-page); color: var(--wz-ink); font-size: var(--bf-small); font-weight: 700; display: inline-flex; align-items: center; text-decoration: none; transition: background-color 150ms ease-out, color 150ms ease-out; }
+@media (hover: hover) { .bf-rail__all:hover { background: var(--wz-ink); color: var(--wz-on-ink); } }
+.bf-rail__arrow { touch-action: manipulation; display: none; width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--wz-edge); background: var(--wz-page); color: var(--wz-ink); cursor: pointer; align-items: center; justify-content: center; padding: 0; transition: background-color 150ms ease-out, border-color 150ms ease-out; }
+@media (hover: hover) { .bf-rail__arrow:hover:not(:disabled) { border-color: var(--wz-ink); background: var(--wz-tile); } }
+.bf-rail__arrow:disabled { color: var(--wz-disabled-fg); border-color: var(--wz-line); cursor: default; }
+.bf-rail__all:focus-visible, .bf-rail__arrow:focus-visible { outline: 2px solid var(--wz-focus-ring); outline-offset: 2px; }
+@media (hover: hover) and (min-width: 1024px) { .bf-rail__arrow { display: inline-flex; } }
+
+/* phone: TWO full cards and a 20 px sliver of the third (the sliver says "more"; a 70 %-cut card read as a cut card —
+   2026-10-18 night run); tablet: three and a sliver; desktop: six with the arrows. Items stretch to the row (the
+   default): Michael reversed the night's `align-items: start` on 2026-10-18 morning — level cards over ragged
+   bottoms; the empty band a plain card shows beside a picker card is to be solved by removing what is empty. */
+.bf-rail__track { display: grid; grid-auto-flow: column; grid-auto-columns: calc((100% - 36px) / 2); gap: 8px; overflow-x: auto; scroll-snap-type: x mandatory; padding-block-end: 4px; scrollbar-width: none; overscroll-behavior-x: contain; }
+.bf-rail__track::-webkit-scrollbar { display: none; }
+.bf-rail__track > * { scroll-snap-align: start; }
+@media (min-width: 600px) { .bf-rail__track { grid-auto-columns: calc((100% - 56px) / 3); gap: 12px; } }
+@media (min-width: 1024px) { .bf-rail__track { grid-auto-columns: calc((100% - 60px) / 6); } }
+@media (max-width: 1023px) {
+  .bf-rail__all { position: relative; height: 36px; }
+  .bf-rail__all::after { content: ''; position: absolute; inset: -4px 0; }                 /* 44 tall hit */
+}
+.bf-rail__browse {
+  border: 1px dashed var(--wz-edge); border-radius: 8px; display: flex; align-items: center; justify-content: center; text-align: center; padding: 16px;
+  font-size: var(--bf-body); font-weight: 700; color: var(--wz-ink); text-decoration: none; min-height: 220px; background: transparent;
+}
+@media (hover: hover) { .bf-rail__browse:hover { border-color: var(--wz-ink); background: var(--wz-page); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .bf-rail__track { scroll-behavior: auto; }
+  .bf-rail__all, .bf-rail__arrow { transition: none; }
+}

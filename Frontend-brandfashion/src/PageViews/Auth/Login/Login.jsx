@@ -181,10 +181,8 @@ function Login() {
         </button>
       </form>
 
-      <div className="wz-auth-divider">
-        <span>{t('or', 'أو')}</span>
-      </div>
-
+      {/* Brand Fashion (DIVERGED 2026-10-19, L3): the "or" divider is drawn by SocialButtons, with the Google button,
+          only while this storefront runs Google sign-in */}
       <SocialButtons onError={setBanner} />
 
       <p className="wz-auth-foot">

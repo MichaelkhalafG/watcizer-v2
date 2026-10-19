@@ -1,0 +1,94 @@
+# core suite — the KNOWN-RED baseline. REBUILT 2026-10-17 on the engine that serves customers: 11.8.9-MariaDB.
+# The 59-entry baseline of 2026-10-16 was measured on MariaDB 10.4.32 — the wrong engine — and is RETIRED;
+# this file replaces it (two numbers must not circulate). Entries that moved between engines are listed below
+# in the header, so the move is visible when Watchizer's production figure is compared.
+#
+# Measured against: engine 11.8.9-MariaDB on 127.0.0.1:3307 (the MariaDB1189 service), global sql_mode
+#   `NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION`, time_zone `+00:00` — production's values (measured by the developer 2026-10-17),
+#   lower_case_table_names 1 (production 0 — unmatched on Windows, engine parity not full parity).
+#   Data: the pre-move dump D:\dumps\u591083448_watchizer-20261017-premove.sql — 29,929,123 bytes,
+#   sha256 92a27bc3e26b6b3f3fcf1a866db2cff5b29bbbb01c8a18685b2b1ee9007ea57d — which is the production export
+#   of 2026-10-16 (sha256 7e35897c4b95b76077719279dd2d601fbbeba93b0b89ebadb861f08cd8c96dad) plus the recorded
+#   local adjustments (paymob 8963 credentials NULL; the mailbox row re-encrypted under the LOCAL key with a
+#   dummy; the three bf_bak_20261013_* tables dropped) and DemoVariantsSeeder's 205 rows. Pending migrations: none.
+#
+# The local database is a production copy; every test below fails on production's rows or on a local
+# adjustment, never on the code (each line says which, in one phrase). tests/baseline/suite-baseline.sh
+# runs the suite and compares the failing set against this file BY NAME: a failure not listed here trips
+# the gate (exit 1); an entry that passes again must be removed (exit 2); a table whose content checksum
+# moved across the run means a test wrote outside its transaction (exit 3, FIXTURE-LEAK).
+#
+# TWO STATES: DemoVariantsSeeder may be applied (205 `DEMO-` variant rows on 33 products). Two tests then
+# fail BY DESIGN; their lines carry the tag `[demo-on]` and count only while the demo is on (line 0 of the
+# gate prints the state). Remove the demo with `php artisan db:seed --class=DemoVariantsRemoveSeeder`.
+#
+# BLIND SPOT, stated: a real regression inside one of these tests cannot be seen, because the test is
+# already red. Size: 61 baselined of 2117 tests in the suite (2.9%), demo-only entries included.
+# The frozen test database (TEST-LIVE-ROWS, deferred, costed) is what removes the blind spot.
+#
+# Written from the stage-3 run of 2026-10-17: 61 failed, 39 skipped, 2017 passed (306429 assertions). Stage 1 (engine) and stage 2 (sql_mode) gave the same 61; nothing moved between engines, between sql_modes, or between clocks — the two numbers did not diverge.
+# Moved between engines — RETIRED (passed on 11.8.9, failed on 10.4.32): 0
+# Moved between engines — NEW (failed on 11.8.9, passed on 10.4.32): 0
+# Format: <Class > test name, as Pest prints it after FAILED> | [demo-on]? <cause>
+
+Tests\Feature\Adversarial\PreventionProbeTest > it REFUSES a slug that slugifies to nothing, instead of s… | production's rows: the English dashboard language of the picked staff account (one), a count inflated by production rows (one)
+Tests\Feature\Adversarial\PreventionProbeTest > it tells the operator WHY a destroy was refused, and chan… | production's rows: the English dashboard language of the picked staff account (one), a count inflated by production rows (one)
+Tests\Feature\Compat\AccountCompatTest > it returns only the caller's addresses | OURS: the test still expects `guest_token` on an address row; compat deliberately omits it (security audit Finding 2, D-26, 'the difference is sanctioned') — a stale expectation, not a defect
+Tests\Feature\Compat\CatalogHomeTest > it featured: the products marked featured, else the browser's pool… | production's rows: the home rails' shape (grade rail 10 products where the dev set had 1)
+Tests\Feature\Compat\CatalogHomeTest > it seeds today's home page: offers (12), featured (5), then every… | production's rows: the home rails' shape (grade rail 10 products where the dev set had 1)
+Tests\Feature\Compat\CompatVariantInvariantTest > it holds the invariant for every LEGACY product on stor… | [demo-on] DEMO variants: 27 of the 33 demo products sit on storefront 1 without import_ref, so the compat invariant (no storefront-1 product sells through variants) is broken on purpose — the refusal it guards is the design (VARIANT-MATRIX-RULE); passes with the demo off
+Tests\Feature\Compat\ProductRatingTest > it refuses a rating without a sign-in | production's rows: a rating row exists where the dev set had none
+Tests\Feature\Manage\ActivityLogTest > it attributes an UNATTRIBUTED row to the system, never to a person | production's rows: an activity-log count inflated by production rows (one); the 'System' label in English for the picked staff account (one)
+Tests\Feature\Manage\ActivityLogTest > it records a role GRANT once, and not again when it is already hel… | production's rows: an activity-log count inflated by production rows (one); the 'System' label in English for the picked staff account (one)
+Tests\Feature\Manage\BulkStaleIdTest > it TELLS the operator that ids were skipped, so 23-of-25 is not re… | production's rows: the staff accounts the fixture picks by position carry dashboard language `en` in core_user_preferences (SetDashboardLocale), the test expects Arabic
+Tests\Feature\Manage\CategoryTreeTest > it shows a stale delete and a stale move in Arabic, not in Englis… | production's rows: the staff accounts the fixture picks by position carry dashboard language `en` in core_user_preferences (SetDashboardLocale), the test expects Arabic
+Tests\Feature\Manage\DashboardSweepTest > it opens every dashboard screen as an ADMIN, in both languages | production's rows: the sweep picks the first order with a guest_phone, a legacy row that ALSO has a user_id, so the g: key names no guest (Customers::identify requires user_id IS NULL) and the page answers 404 by design — the picker should filter whereNull(user_id); not a defect
+Tests\Feature\Manage\FullReplaceGuardTest > it tells the caller what to do instead, in Arabic for the scr… | production's rows: the staff accounts the fixture picks by position carry dashboard language `en` in core_user_preferences (SetDashboardLocale), the test expects Arabic
+Tests\Feature\Manage\HomeRailScreenTest > it reorders with the whole list, logs each moved rail, and refu… | production's rows: 36 home rails where the fixture expects its 2
+Tests\Feature\Manage\LookupScreenTest > it counts usage, and REFUSES to delete a row anything references | [demo-on] DEMO variants: the screen counts colour 1's 68 demo variant rows (647 uses) where the test counts catalog_product_color alone (579) — the screen is right and the test's count omits variant references; passes with the demo off
+Tests\Feature\Manage\LookupScreenTest > it records who added, renamed and deleted a list row — with the l… | production's rows: the staff accounts the fixture picks by position carry dashboard language `en` in core_user_preferences (SetDashboardLocale), the test expects Arabic
+Tests\Feature\Manage\MailFailureSecrecyTest > it keeps last_error out of the order screen props entirely | production's rows: the staff accounts the fixture picks by position carry dashboard language `en` in core_user_preferences (SetDashboardLocale), the test expects Arabic
+Tests\Feature\Manage\MultiStorefrontTest > it SYNC ON (pre-switch): the dashboard REFUSES tree edits on s… | production's rows: the staff accounts the fixture picks by position carry dashboard language `en` in core_user_preferences (SetDashboardLocale), the test expects Arabic
+Tests\Feature\Manage\PaymentSecrecyTest > it drops the credential from the model’s own array form | production's rows: the paymob contract for storefront 1 (row 8963) already exists, the test creates one and the screen refuses a second
+Tests\Feature\Manage\PaymentSecrecyTest > it keeps a blank field meaning “leave it alone”, which is what… | production's rows: the paymob contract for storefront 1 (row 8963) already exists, the test creates one and the screen refuses a second
+Tests\Feature\Manage\PaymentSecrecyTest > it never renders a credential back to the screen, anywhere in t… | production's rows: the paymob contract for storefront 1 (row 8963) already exists, the test creates one and the screen refuses a second
+Tests\Feature\Manage\PaymentSecrecyTest > it never writes a credential into the activity log, on create o… | production's rows: the paymob contract for storefront 1 (row 8963) already exists, the test creates one and the screen refuses a second
+Tests\Feature\Manage\PaymentSecrecyTest > it stores the credential encrypted, so the column itself is not… | production's rows: the paymob contract for storefront 1 (row 8963) already exists, the test creates one and the screen refuses a second
+Tests\Feature\Manage\PlacementScreenTest > it REPORTS what a bulk show skipped instead of silently droppi… | production's rows: the staff accounts the fixture picks by position carry dashboard language `en` in core_user_preferences (SetDashboardLocale), the test expects Arabic
+Tests\Feature\Manage\PreSwitchTest > it REFUSES a new category, and writes nothing | production's rows: the staff accounts the fixture picks by position carry dashboard language `en` in core_user_preferences (SetDashboardLocale), the test expects Arabic
+Tests\Feature\Manage\PreSwitchTest > it REFUSES a new variant, even on a dashboard-created product | production's rows: the staff accounts the fixture picks by position carry dashboard language `en` in core_user_preferences (SetDashboardLocale), the test expects Arabic
+Tests\Feature\Manage\PreSwitchTest > it still lets the team place, hide, feature and sort — but NOT re-sl… | production's rows: the staff accounts the fixture picks by position carry dashboard language `en` in core_user_preferences (SetDashboardLocale), the test expects Arabic
+Tests\Feature\Manage\PreventionTest > it DEMOTES on the product form but REFUSES on the placement screen… | production's rows: the staff accounts the fixture picks by position carry dashboard language `en` in core_user_preferences (SetDashboardLocale), the test expects Arabic
+Tests\Feature\Manage\PreventionTest > it REFUSES a duplicate slug inside one storefront, by name, instead… | production's rows: the staff accounts the fixture picks by position carry dashboard language `en` in core_user_preferences (SetDashboardLocale), the test expects Arabic
+Tests\Feature\Manage\PreventionTest > it REFUSES a variant that names neither a colour nor a size | production's rows: the staff accounts the fixture picks by position carry dashboard language `en` in core_user_preferences (SetDashboardLocale), the test expects Arabic
+Tests\Feature\Manage\ShellTest > it renders the dashboard inside an Arabic RTL shell | production's rows: the staff accounts the fixture picks by position carry dashboard language `en` in core_user_preferences (SetDashboardLocale), the test expects Arabic
+Tests\Feature\Manage\StockAdjustVariantTest > it tells the operator what to DO, and never shows them the… | production's rows: the staff accounts the fixture picks by position carry dashboard language `en` in core_user_preferences (SetDashboardLocale), the test expects Arabic
+Tests\Feature\Manage\StockBulkTest > it is catalogue-wide by default, and the storefront filter is opt-in | production's rows: 1,026 placements counted where the dev set had 1,025 of its own
+Tests\Feature\Manage\TableExportTest > it exports the dashboard GRANTS and never the customer account sea… | production's rows: the export carries production's products, the test compares the dev set's
+Tests\Feature\Manage\TableExportTest > it puts the row count in the FILENAME, so nobody has to open the f… | production's rows: the export carries production's products, the test compares the dev set's
+Tests\Feature\Manage\TableExportTest > it starts with a UTF-8 BOM, or Excel renders Arabic as mojibake | production's rows: the export carries production's products, the test compares the dev set's
+Tests\Feature\Manage\UserRoleScreenTest > it refuses a GRANT to an e-mail that has no account, and points… | production's rows: the staff accounts the fixture picks by position carry dashboard language `en` in core_user_preferences (SetDashboardLocale), the test expects Arabic
+Tests\Feature\Manage\UserRoleScreenTest > it refuses to let an administrator revoke their OWN admin grant | production's rows: the staff accounts the fixture picks by position carry dashboard language `en` in core_user_preferences (SetDashboardLocale), the test expects Arabic
+Tests\Feature\Manage\VariantPanelTest > it REFUSES to delete a variant an order line references, and says… | production's rows: the staff accounts the fixture picks by position carry dashboard language `en` in core_user_preferences (SetDashboardLocale), the test expects Arabic
+Tests\Feature\Manage\VariantPanelTest > it REFUSES to delete a variant that has ledger movements, because… | production's rows: the staff accounts the fixture picks by position carry dashboard language `en` in core_user_preferences (SetDashboardLocale), the test expects Arabic
+Tests\Feature\Manage\VariantPanelTest > it REFUSES to delete a variant that still holds units, for a diff… | production's rows: the staff accounts the fixture picks by position carry dashboard language `en` in core_user_preferences (SetDashboardLocale), the test expects Arabic
+Tests\Feature\Manage\VariantPanelTest > it states the refusal ON the product form instead of showing a bu… | production's rows: the staff accounts the fixture picks by position carry dashboard language `en` in core_user_preferences (SetDashboardLocale), the test expects Arabic
+Tests\Feature\Manage\WalkthroughFixesTest > it says النظام for a movement nobody signed, rather than inve… | production's rows: the staff accounts the fixture picks by position carry dashboard language `en` in core_user_preferences (SetDashboardLocale), the test expects Arabic
+Tests\Feature\Notifications\ReEngagementTest > it plans a team-only run by default, previews it, and send… | production's rows: outbox and re-engagement rows inflate every count
+Tests\Feature\Notifications\ReEngagementTest > it re-plans an unsent week in place from the changed setti… | production's rows: outbox and re-engagement rows inflate every count
+Tests\Feature\Notifications\ReEngagementTest > it re-plans this week from the screen with a fresh preview… | production's rows: outbox and re-engagement rows inflate every count
+Tests\Feature\Notifications\ReEngagementTest > it skips the week when paused — at planning or at sending | production's rows: outbox and re-engagement rows inflate every count
+Tests\Feature\Notifications\StorefrontMailerTest > it a BULK row of a storefront with no mailbox WAITS —… | production's rows: Watchizer's real mailbox (5 recipients, its own From address) wins over the fixture, which inserts only when no row exists
+Tests\Feature\Notifications\StorefrontMailerTest > it counts a real send against the storefront named on… | production's rows: Watchizer's real mailbox (5 recipients, its own From address) wins over the fixture, which inserts only when no row exists
+Tests\Feature\Notifications\StorefrontMailerTest > it sends each shop's order mail FROM its own mailbox,… | production's rows: Watchizer's real mailbox (5 recipients, its own From address) wins over the fixture, which inserts only when no row exists
+Tests\Feature\Payment\AliasFallThroughTest > it refuses a nested payload signed with the wrong secret, an… | production's rows: payment-attempt rows inflate the count
+Tests\Feature\Payment\AliasFallThroughTest > it the two DELIVERIES of one payment collapse to one attempt | production's rows: payment-attempt rows inflate the count
+Tests\Feature\Payment\MethodListTest > it hides a method whose PROVIDER is disabled, credentials intact | production's rows: 8 payment-method rows list beside the fixture's
+Tests\Feature\Payment\MethodListTest > it never leaks another storefront’s methods | production's rows: 8 payment-method rows list beside the fixture's
+Tests\Feature\Payment\MethodListTest > it shows one entry per method key, and the LOWEST sort wins | production's rows: 8 payment-method rows list beside the fixture's
+Tests\Feature\Promotions\PromotionScreenTest > it carries the no-stacking sentence on both screens, from… | production's rows: the staff accounts the fixture picks by position carry dashboard language `en` in core_user_preferences (SetDashboardLocale), the test expects Arabic
+Tests\Feature\Promotions\PromotionScreenTest > it refuses a gift that is not sellable where the rule runs… | production's rows: the staff accounts the fixture picks by position carry dashboard language `en` in core_user_preferences (SetDashboardLocale), the test expects Arabic
+Tests\Feature\Transform\AuditProofTest > it A-20 (blocking) fires on an order_items row pointing at a mis… | production's rows: the legacy tables carry audit findings where the dev set had 0
+Tests\Feature\Transform\AuditProofTest > it baseline: the real data shows the known zero counts (A-06, A-… | production's rows: the legacy tables carry audit findings where the dev set had 0
+Tests\Feature\Transform\LedgerGuardTest > it still allows --audit, which writes nothing | production's rows: inventory_movements make --audit exit 1
+Tests\Feature\Transform\RunLockTest > it releases the lock after a run so the next run can start | production's rows: the ledger makes --audit exit 1

@@ -198,6 +198,7 @@
   color: var(--wz-ink-soft);
 }
 .wz-contact-note {
+  grid-column: 1 / -1; /* under the branch cards, across both (2026-10-19: two branches) */
   margin: 0;
   align-self: center;
   padding: 18px 22px;
@@ -487,4 +488,26 @@
   .wz-contact-card:hover {
     transform: none;
   }
+}
+
+/* ── Brand Fashion (2026-10-19, the walk / B8 §10.8) ─────────────────────────────────────────────────────────
+   Four contact cards — no Facebook (Michael, round 5) — so FIVE tracks with the e-mail two wide: Watchizer's six
+   left a hole and squeezed "@brand_fashion_eg" out of its card. The WhatsApp card is the page's primary action
+   (§10.8: the channel Egyptian shoppers use). On a phone: phone and WhatsApp side by side, then the e-mail and
+   Instagram each full width — no card alone in half a row, no handle cut. */
+.wz-contact-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.wz-contact-card--instagram .wz-contact-card__value { overflow-wrap: anywhere; }
+.wz-contact-card--whatsapp { background: var(--wz-ink); border-color: var(--wz-ink); color: var(--wz-on-ink); }
+.wz-contact-card--whatsapp .wz-contact-card__label,
+.wz-contact-card--whatsapp .wz-contact-card__value { color: var(--wz-on-ink); }
+.wz-contact-card--whatsapp .wz-contact-card__icon { background: var(--wz-charcoal); border-color: var(--wz-charcoal); color: var(--wz-on-ink); }
+.wz-contact-card--whatsapp:hover { border-color: var(--wz-ink); }
+.wz-contact-card:focus-visible { outline-color: var(--wz-focus-ring); }
+@media (max-width: 900px) {
+  .wz-contact-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .wz-contact-grid > li:has(.wz-contact-card--instagram) { grid-column: span 2; }
+}
+@media (max-width: 340px) {
+  .wz-contact-grid { grid-template-columns: minmax(0, 1fr); }
+  .wz-contact-grid > li:has(.wz-contact-card--instagram) { grid-column: auto; }
 }

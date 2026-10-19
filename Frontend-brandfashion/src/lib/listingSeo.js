@@ -27,8 +27,11 @@ const PRICE_MAX = 99999999
 // utm_*, gclid — is tracking, and a /listing URL carrying only those is still the bare listing.
 const LISTING_KEYS = new Set([
   'brand', 'subType', 'category', 'gender', 'dialColor', 'bandColor', 'material', 'movement',
-  'shape', 'displayType', 'grade', 'offers', 'minPrice', 'maxPrice', 'q', 'sort', 'page',
+  'shape', 'displayType', 'grade', 'sale', 'discount', 'inStock', 'minPrice', 'maxPrice', 'q', 'sort', 'page',
 ])
+// Brand Fashion (round 5, 2026-10-18; this file is Brand Fashion's own, not a twin): `sale` (a product's own discount) is a listing key and `offers` is
+// not — Offers are the dashboard's offers, a page of their own (/offers). A `?sale=1` listing is noindex like any
+// other filtered listing.
 
 // The listing-relevant part of a query string, in its original order ('' when there is none).
 export function listingQuery(search) {

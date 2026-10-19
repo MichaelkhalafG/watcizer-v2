@@ -209,9 +209,12 @@ it('writes nothing without --force, and nothing on a dry run', function () {
     expect(DB::table('orders')->whereNull('storefront_id')->count())->toBe($before);
 });
 
-it('leaves the column NULLABLE and the callback NULL branch alone, because the v2 checkout is not built', function () {
-    // Explicitly deferred on 2026-09-13, and asserted so that "we tidied it up" cannot happen by
-    // accident before the second writer exists.
+it('leaves the column NULLABLE and the callback NULL branch alone, and knows every v2 write route by name', function () {
+    // Deferred on 2026-09-13, and DECIDED by Michael on 2026-10-18 (round 6) once the v2 checkout existed: the
+    // column stays NULLABLE and the callback keeps its branch for an order without one — making it NOT NULL needs a
+    // backfill of live rows, its own job after Brand Fashion ships (POST_CUTOVER_BACKLOG.md, ORDERS-STOREFRONT-NOT-NULL).
+    // What changed instead: the v2 path ALWAYS writes the column (tests/Feature/V2/CheckoutTest.php proves it on both
+    // shops, and that an order without a storefront cannot be written).
     $column = Row::cast(T::row(DB::select("SHOW COLUMNS FROM `orders` LIKE 'storefront_id'")[0] ?? null));
     expect(Row::str($column, 'Null'))->toBe('YES');
 
@@ -219,7 +222,12 @@ it('leaves the column NULLABLE and the callback NULL branch alone, because the v
     expect(is_string($source))->toBeTrue();
     expect(T::str($source))->toContain('carries no storefront_id');
 
-    // And v2 still has no write route — the condition under which the branch may go.
+    // Every v2 write route, by name. Still a tripwire: a NEW one must first prove it writes the path's storefront
+    // (as CartStorefrontTest does for carts and CheckoutTest for orders), and only then be added here.
     $writes = Routes::writeUris('api/v2');
-    expect($writes)->toBe([], 'a v2 write route now exists: revisit the NULL branch and NOT NULL');
+    expect($writes)->toBe([
+        'api/v2/{storefront}/cart/items',
+        'api/v2/{storefront}/cart/items/{item}',
+        'api/v2/{storefront}/orders',
+    ], 'a NEW v2 write route: prove it writes the storefront of its path, then name it here');
 });

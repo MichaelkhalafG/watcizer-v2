@@ -14,24 +14,33 @@ import {
   FiSmartphone,
   FiUser,
 } from 'react-icons/fi'
-import { useCards, useCardsOf } from '../../Hooks/queries/useListing'
-import { useOffers } from '../../Hooks/queries/useOffers'
 import { usePaymentMethods } from '../../Hooks/queries/usePaymentMethods'
 import { useUIStore } from '../../Store/uiStore'
 import { useAuthStore } from '../../Store/authStore'
 import { useShippingStore } from '../../Store/shippingStore'
 import { useShippingPrices } from '../../Hooks/useShippingPrices'
 import http from '../../Context/api'
-import useCart, { getGuestToken } from '../../Hooks/useCart'
-import { getImageUrl, handleImgError, PLACEHOLDER_IMG } from '../../utils/imageUrl'
-import TrustSignals from '../../Components/Merchandising/TrustSignals'
-import { PAYMOB_ENABLED } from '../../lib/env'
+import useCart from '../../Hooks/useCart'
+import { cartStore } from '../../Store/cartStore'
+import { txt, money } from '../../lib/cardData'
+import { STOREFRONT_CODE } from '../../lib/env'
 import { trackInitiateCheckout } from '../../scripts/pixels'
 import { useOrderConfirmStore } from '../../Store/orderConfirmStore'
 import './Checkout.css'
 
-// Paymob availability comes from lib/env (NEXT_PUBLIC_PAYMOB_ENABLED), the Next
-// replacement for Vite's import.meta.env.VITE_PAYMOB_ENABLED.
+/*
+ * Brand Fashion's checkout (DIVERGED 2026-10-19, B7) — Watchizer's page and flow, on core's v2 routes:
+ *  • the order is POSTed to /api/v2/{code}/orders, which builds it from the v2 cart (re-checked, re-priced),
+ *    tags it with this storefront and refuses a total that is not the server's — never compat's add_order;
+ *  • the lines' names, photos and list prices come from the cart's own v2 answer (no compat cards by id);
+ *  • the payment rows are EXACTLY core's v2 list for this storefront (spec §10.5) — no cash row of the page's
+ *    own and no "Pay Online" fallback while the list loads or fails; each row posts its own id, which core checks;
+ *  • core's refusal CODES are said in the shopper's language, and a refused cart sends them back to the cart;
+ *  • Brand Fashion's skin: prices as the card prints them (§5), the total inside the button, and on a phone
+ *    the summary collapsible at the top with the item count and the total.
+ * Everything else — contact, saved addresses, the recovery prefill, the governorate, the phone rule, the
+ * notes, InitiateCheckout once, the confirmation hand-over — is Watchizer's, line for line.
+ */
 
 const isValidEgPhone = (v) => /^01\d{9}$/.test(String(v || '').trim())
 
@@ -39,7 +48,7 @@ const isValidEgPhone = (v) => /^01\d{9}$/.test(String(v || '').trim())
 // The list comes from core (usePaymentMethods). Cash is always offered and is not driven by it;
 // offline keys are skipped if a row for them exists. The icon and the one-line note are the
 // storefront's, by method KEY — the label is the merchant's, from the dashboard.
-const OFFLINE_KEYS = ['cod', 'whatsapp']
+const KIND = { cod: 'cash', whatsapp: 'whatsapp' }   // what core's `payment_method` calls an offline row; anything else is 'card'
 const METHOD_ICON = {
   card: FiCreditCard,
   bank_installment: FiCalendar,
@@ -49,12 +58,22 @@ const METHOD_ICON = {
   apple_pay: FiSmartphone,
 }
 const METHOD_NOTE = {
+  cod: ['Pay when you receive your order', 'ادفع عند استلام طلبك'],
+  whatsapp: ['We confirm the order and the payment with you on WhatsApp', 'نؤكد معك الطلب والدفع على واتساب'],
   card: ['Visa / Mastercard / Meeza', 'فيزا / ماستركارد / ميزة'],
   wallet: ['Vodafone Cash, Orange, Etisalat and other mobile wallets', 'فودافون كاش وأورانج واتصالات وباقي المحافظ'],
   bank_installment: ['Split the amount on your bank credit card', 'قسّط المبلغ على بطاقة البنك الائتمانية'],
   cagg: ['Pay in instalments through a finance provider', 'قسّط المبلغ عبر إحدى شركات التمويل'],
   valu: ['Pay in instalments with valU', 'قسّط المبلغ مع valU'],
   apple_pay: ['Pay with Face ID or Touch ID', 'ادفع ببصمة الوجه أو الإصبع'],
+}
+const FIELD_TEXT = {
+  guest_email: ['Enter a valid email address', 'أدخل بريداً إلكترونياً صحيحاً'],
+  guest_name: ['Enter your name', 'أدخل اسمك'],
+  phone: ['Enter an Egyptian mobile number (01xxxxxxxxx)', 'أدخل رقم موبايل مصري (01xxxxxxxxx)'],
+  address_line: ['Enter your street address', 'أدخل عنوانك بالتفصيل'],
+  shipping_city_id: ['Choose your governorate', 'اختر المحافظة'],
+  address_id: ['Choose one of your addresses', 'اختر أحد عناوينك'],
 }
 const egp = (n) => Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 })
 
@@ -71,8 +90,6 @@ const limitReason = (m, total, t) => {
 //    not on every keystroke in the form) ────────────────────────────────────
 const OrderSummary = memo(function OrderSummary({
   items,
-  products,
-  offers,
   language,
   shippingCost,
   shippingName,
@@ -85,20 +102,12 @@ const OrderSummary = memo(function OrderSummary({
   isRTL,
 }) {
   const t = (en, ar) => (isRTL ? ar : en)
-  const currency = isRTL ? 'ج.م' : 'EGP'
-  const fmt = (v) => Math.round(Number(v) || 0).toLocaleString(isRTL ? 'ar-EG' : 'en-US')
-
-  const resolve = (item) => {
-    if (item.product_id) {
-      const p = (products || []).find((x) => x.id === item.product_id)
-      return { name: p?.name || p?.product_title || '—', image: getImageUrl(p?.image) || PLACEHOLDER_IMG }
-    }
-    const o = (offers || []).find((x) => String(x.id) === String(item.offer_id))
-    return {
-      name: o ? (isRTL ? o.offer_name_ar : o.offer_name_en) : '—',
-      image: getImageUrl(o?.image) || PLACEHOLDER_IMG,
-    }
-  }
+  const fmt = (v) => money(Math.round(Number(v) || 0), isRTL ? 'ar' : 'en')
+  const resolve = (item) => ({
+    name: txt(item.product?.title, language === 'ar' ? 'ar' : 'en') || '—',
+    image: item.product?.image?.src || null,
+    label: item.variant?.label || '',
+  })
 
   return (
     <aside className="wz-checkout-summary">
@@ -109,15 +118,20 @@ const OrderSummary = memo(function OrderSummary({
           const d = resolve(item)
           return (
             <div className="wz-checkout-item" key={`${item.product_id || 'o'}-${item.offer_id || ''}-${item.id}`}>
-              <img className="wz-checkout-item-img" src={d.image} alt={d.name} width="48" height="48" loading="lazy" onError={handleImgError} />
+              {d.image ? (
+                // eslint-disable-next-line @next/next/no-img-element -- absolute asset-host URL
+                <img className="wz-checkout-item-img" src={d.image} alt="" width="48" height="48" loading="lazy" />
+              ) : (
+                <span className="wz-checkout-item-img" aria-hidden="true" />
+              )}
               <div className="wz-checkout-item-info">
                 <p className="wz-checkout-item-name">{d.name}</p>
                 <span className="wz-checkout-item-meta">
-                  {item.quantity} × {fmt(item.piece_price)} {currency}
+                  {d.label ? `${d.label} · ` : ''}{item.quantity} × {fmt(item.piece_price)}
                 </span>
               </div>
               <span className="wz-checkout-item-price">
-                {fmt(Number(item.piece_price) * item.quantity)} {currency}
+                {fmt(Number(item.piece_price) * item.quantity)}
               </span>
             </div>
           )
@@ -126,7 +140,7 @@ const OrderSummary = memo(function OrderSummary({
 
       <div className="wz-checkout-line">
         <span>{t('Subtotal', 'المجموع الفرعي')}</span>
-        <span className="v">{fmt(subtotal)} {currency}</span>
+        <span className="v">{fmt(subtotal)}</span>
       </div>
 
       <div className="wz-checkout-line">
@@ -135,14 +149,14 @@ const OrderSummary = memo(function OrderSummary({
           {shippingName ? ` · ${shippingName}` : ''}
         </span>
         <span className="v">
-          {shippingCost > 0 ? `${fmt(shippingCost)} ${currency}` : '—'}
+          {shippingCost > 0 ? fmt(shippingCost) : t('Choose a governorate', 'اختر المحافظة')}
         </span>
       </div>
 
       {savings > 0 && (
         <div className="wz-checkout-line is-save">
           <span>{t('You save', 'وفّرت')}</span>
-          <span className="v">−{fmt(savings)} {currency}</span>
+          <span className="v">−{fmt(savings)}</span>
         </div>
       )}
 
@@ -151,7 +165,6 @@ const OrderSummary = memo(function OrderSummary({
       <div className="wz-checkout-total">
         <span className="wz-checkout-total-label">{t('Total', 'الإجمالي')}</span>
         <span className="wz-checkout-total-val">
-          <small>{currency}</small>
           {fmt(total)}
         </span>
       </div>
@@ -165,16 +178,19 @@ const OrderSummary = memo(function OrderSummary({
         {processing ? (
           <>
             <span className="wz-checkout-spinner" />
-            {t('PROCESSING…', 'جاري المعالجة…')}
+            {t('Placing your order…', 'جارٍ إتمام طلبك…')}
           </>
         ) : (
-          t('PLACE ORDER', 'إتمام الطلب')
+          <>
+            <span>{t('Place order', 'إتمام الطلب')}</span>
+            <span className="bf-co-place-total">{fmt(total)}</span>
+          </>
         )}
       </button>
 
       <ul className="wz-checkout-trust">
         <li><FiLock size={14} /> {t('Secure checkout', 'دفع آمن')}</li>
-        <li><FiRefreshCw size={14} /> {t('30-day returns', 'إرجاع 30 يوم')}</li>
+        <li><FiRefreshCw size={14} /> {t('Returns within 4 days of delivery', 'الإرجاع خلال 4 أيام من الاستلام')}</li>
         <li><FiShield size={14} /> {t('100% authentic', 'أصلي 100%')}</li>
         <li><FiPhone size={14} /> {t('WhatsApp support', 'دعم واتساب')}</li>
       </ul>
@@ -190,14 +206,14 @@ function Checkout() {
   const setShippingid = useShippingStore((s) => s.setShippingid)
   const setShipping = useShippingStore((s) => s.setShipping)
   const setShippingName = useShippingStore((s) => s.setShippingName)
-  const { data: offers = [] } = useOffers()
   const { language } = useUIStore()
   const isRTL = language === 'ar'
-  const t = (en, ar) => (isRTL ? ar : en)
+  // stable, because the method rows' memo (and the effect that picks the first row) depend on it
+  const t = useCallback((en, ar) => (isRTL ? ar : en), [isRTL])
   const router = useRouter()
   const setOrderData = useOrderConfirmStore((s) => s.setOrderData)
 
-  const { userId, user, logout } = useAuthStore()
+  const { user, logout } = useAuthStore()
   // sessionStorage isn't available during SSR, so read it after mount. Server +
   // first client render both see `false` (no hydration mismatch); the real value
   // lands post-mount and re-runs the address fetch below.
@@ -210,13 +226,9 @@ function Checkout() {
   const isGuest = !isLoggedIn
 
   const { cart, clearCart } = useCart()
-  const items = cart?.cart_item || []
-  // Only this order's products, by id (C-1 stage 4) — the page used to embed the whole catalogue.
-  // Every use below already tolerates a line whose card has not arrived yet (it falls back to the
-  // line's own saved price and a placeholder name), exactly as it did for a product the catalogue
-  // no longer showed.
-  const { data: cardsPayload } = useCards(items.map((i) => i.product_id))
-  const products = useCardsOf(cardsPayload, language)
+  const items = useMemo(() => cart?.cart_item || [], [cart])
+  const lang = isRTL ? 'ar' : 'en'
+  const fmt = useCallback((v) => money(Math.round(Number(v) || 0), lang), [lang])
 
   // ── Form state ───────────────────────────────────────────────────────────
   const [email, setEmail] = useState(user?.email || '')
@@ -234,11 +246,12 @@ function Checkout() {
   const [street, setStreet] = useState('')
   const [apartment, setApartment] = useState('')
   const [phone, setPhone] = useState('')
-  const [paymentMethod, setPaymentMethod] = useState('cash')
-  // The chosen row of core's list, posted as `payment_method_id`. null = cash, or the fallback
-  // card option when the list could not be loaded (core then routes "card" to its card row).
+  // The chosen row of core's v2 list (posted as `payment_method_id`) and what core calls its kind
+  // (`payment_method`: cash for cod, whatsapp, card for every online row). Nothing is chosen until the
+  // list has arrived; then the first usable row is.
+  const [paymentMethod, setPaymentMethod] = useState(null)
   const [methodId, setMethodId] = useState(null)
-  const { data: onlineList, isError: onlineListFailed, refetch: refetchMethods } = usePaymentMethods()
+  const { data: onlineList, isError: onlineListFailed, isLoading: methodsLoading, refetch: refetchMethods } = usePaymentMethods()
   // Apple Pay is offered only where it can work: Safari on an Apple device with a card in the
   // wallet. Read after mount — `window` does not exist on the server render.
   const [canApplePay, setCanApplePay] = useState(false)
@@ -260,6 +273,8 @@ function Checkout() {
 
   const [errors, setErrors] = useState({})
   const [banner, setBanner] = useState('')
+  // A refused CART (a line gone or short, an empty cart): the banner also links back to the cart.
+  const [bannerToCart, setBannerToCart] = useState(false)
   const [processing, setProcessing] = useState(false)
   const submitting = useRef(false)
 
@@ -357,17 +372,14 @@ function Checkout() {
   const savings = useMemo(() => {
     let s = 0
     for (const it of items) {
-      const entity = it.product_id
-        ? (products || []).find((p) => p.id === it.product_id)
-        : (offers || []).find((o) => String(o.id) === String(it.offer_id))
-      if (entity) {
-        const orig = Number(entity.selling_price) || 0
-        const sale = Number(entity.sale_price_after_discount) || 0
-        if (sale > 0 && sale < orig) s += (orig - sale) * it.quantity
-      }
+      const p = it.product || {}
+      const v = it.variant_id ? (p.variants || []).find((x) => x.id === it.variant_id) : null
+      const list = Number((v?.price || p.price || {}).amount) || 0
+      const unit = Number(it.piece_price) || 0
+      if (list > unit + 0.01) s += (list - unit) * it.quantity
     }
     return s
-  }, [items, products, offers])
+  }, [items])
 
   /*
    * ── Analytics: InitiateCheckout ─────────────────────────────────────────
@@ -405,18 +417,25 @@ function Checkout() {
   const shippingName = activeCity ? (isRTL ? activeCity.GovernorateAr : activeCity.GovernorateEn) : ''
   const total = subtotal + shippingCost
 
-  const onlineMethods = useMemo(
+  const offered = useMemo(
     () =>
       (onlineList || [])
-        .filter((m) => !OFFLINE_KEYS.includes(m.method))
         .filter((m) => m.method !== 'apple_pay' || canApplePay)
-        .map((m) => ({ ...m, reason: limitReason(m, total, t) })),
+        .map((m) => ({ ...m, kind: KIND[m.method] || 'card', reason: limitReason(m, total, t) })),
     [onlineList, canApplePay, total, t],
   )
+  // The first usable row is chosen once the list arrives (and again if the chosen one disappears).
+  useEffect(() => {
+    if (methodId != null && offered.some((m) => m.id === methodId)) return
+    const first = offered.find((m) => !m.reason)
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- the list is only known after it loads
+    setMethodId(first ? first.id : null)
+    setPaymentMethod(first ? first.kind : null)
+  }, [offered, methodId])
   // A chosen method the order has since outgrown (or that disappeared): nothing counts as
   // selected, so the shopper picks again instead of meeting a refusal after pressing the button.
-  const chosenOnline = methodId == null ? null : onlineMethods.find((m) => m.id === methodId)
-  const choiceLost = methodId != null && (!chosenOnline || Boolean(chosenOnline.reason))
+  const chosenOnline = methodId == null ? null : offered.find((m) => m.id === methodId)
+  const choiceLost = methodId == null || !chosenOnline || Boolean(chosenOnline.reason)
 
   // ── Validation gate ──────────────────────────────────────────────────────
   const canSubmit = useMemo(() => {
@@ -464,31 +483,20 @@ function Checkout() {
     setBanner('')
     setErrors({})
 
-    const orderItems = items.map((i) => ({
-      product_id: i.product_id ?? null,
-      offer_id: i.offer_id ?? null,
-      quantity: i.quantity,
-      piece_price: i.piece_price,
-      total_price: i.total_price ?? Number(i.piece_price) * i.quantity,
-      type_stock: i.type_stock ?? 'Market',
-      color_band: i.color_band ?? null,
-      color_dial: i.color_dial ?? null,
-    }))
-
+    setBannerToCart(false)
+    // v2 builds the order from the v2 CART (no lines in the body); the client's total is checked against
+    // the server's, and the chosen row's id is checked (this shop's, switched on, inside its limits)
+    // before anything is written.
     const body = {
-      payment_method: paymentMethod, // 'cash' | 'card' (backend maps card→paymob)
-      // Which online method: core checks it (this shop's, switched on, inside its limits) before
-      // any order is written. Absent for cash, and for the fallback card option.
-      ...(methodId != null ? { payment_method_id: methodId } : {}),
+      payment_method: paymentMethod,
+      payment_method_id: methodId,
       note: notes,
-      total_price_for_order: total,
-      items: orderItems,
+      total,
     }
-    if (isLoggedIn) body.user_id = userId
 
     if (useInline) {
       body.address_line = street.trim() + (apartment.trim() ? `, ${apartment.trim()}` : '')
-      body.shipping_city_id = shippingid
+      body.shipping_city_id = Number(shippingid)
       body.phone = phone.trim()
     } else {
       body.address_id = selectedAddressId
@@ -498,12 +506,12 @@ function Checkout() {
       body.guest_name = `${firstName.trim()} ${lastName.trim()}`.trim()
       body.guest_email = email.trim()
       body.guest_phone = phone.trim()
-      body.guest_token = getGuestToken()
     }
 
     try {
-      const { data } = await http.post('/add_order', body)
-      if (data?.success) {
+      const res = await http.post(`v2/${STOREFRONT_CODE}/orders`, body, { headers: { Accept: 'application/json' } })
+      const data = res.status === 201 ? res.data?.data : null
+      if (data?.order_number) {
         // Online payment → hand off to Paymob. The cart is already gone: core destroys it inside
         // the order transaction when `add_order` is accepted (CheckoutCompatController, before
         // this response is even sent), so by the time the shopper reaches Paymob the cart is
@@ -527,22 +535,13 @@ function Checkout() {
         }
         // Cash → confirm locally.
         const snapshot = items.map((i) => {
-          const entity = i.product_id
-            ? (products || []).find((p) => p.id === i.product_id)
-            : (offers || []).find((o) => String(o.id) === String(i.offer_id))
-          const name = i.product_id
-            ? entity?.name || entity?.product_title || '—'
-            : entity
-              ? isRTL
-                ? entity.offer_name_ar
-                : entity.offer_name_en
-              : '—'
+          const name = txt(i.product?.title, lang) || '—'
           return {
             name,
             qty: i.quantity,
             lineTotal: Number(i.piece_price) * i.quantity,
             // Carried for the Purchase pixel event on the confirmation page.
-            id: i.product_id ?? i.offer_id ?? null,
+            id: i.product_id ?? null,
             price: Number(i.piece_price),
           }
         })
@@ -567,19 +566,47 @@ function Checkout() {
         router.push('/order-confirmation')
         return
       }
-      setBanner(data?.message || t('Failed to place order. Please try again.', 'فشل إتمام الطلب. حاول مرة أخرى.'))
+      setBanner(t('Failed to place order. Please try again.', 'فشل إتمام الطلب. حاول مرة أخرى.'))
     } catch (err) {
       const status = err.response?.status
-      if (status === 422 && err.response.data?.errors) {
-        setErrors(err.response.data.errors)
+      const b = err.response?.data || {}
+      if (status === 422 && b.error === 'invalid') {
+        // core names the fields it refused; each gets its own sentence under the field
+        const map = {}
+        for (const f of b.fields || []) {
+          const k = f === 'guest_phone' ? 'phone' : f
+          map[k] = [FIELD_TEXT[k] ? t(FIELD_TEXT[k][0], FIELD_TEXT[k][1]) : t('Check this field', 'راجع هذا الحقل')]
+        }
+        setErrors(map)
         setBanner(t('Please check the highlighted fields.', 'يرجى مراجعة الحقول المظللة.'))
-      } else if (status === 422 && err.response.data?.messages) {
-        // A payment-method refusal: nothing was written. Both languages come back because the
-        // request's Accept-Language is the browser's, not the language this page is shown in.
-        setBanner(err.response.data.messages[isRTL ? 'ar' : 'en'] || err.response.data.message)
+      } else if (status === 422 && b.error === 'payment_method_unavailable') {
+        // A payment-method refusal: nothing was written. Both languages come back from core.
+        setBanner(b.messages?.[lang] || t('That payment method is not available for this order.', 'طريقة الدفع هذه غير متاحة لهذا الطلب.'))
         refetchMethods()
-      } else if (status === 422 && err.response.data?.message) {
-        setBanner(err.response.data.message)
+      } else if (status === 422 && b.error === 'total_mismatch') {
+        // a price or a fee moved since the page drew it: the cart is re-read, the new total is shown
+        await cartStore.fetchCart()
+        setBanner(
+          isRTL
+            ? `تغيّر الإجمالي إلى ${fmt(b.server_total)}. راجع طلبك ثم أتممه مرة أخرى.`
+            : `The total changed to ${fmt(b.server_total)}. Check your order, then place it again.`,
+        )
+      } else if (status === 422 && ['cart_empty', 'line_unavailable', 'insufficient_stock'].includes(b.error)) {
+        await cartStore.fetchCart()
+        setBannerToCart(true)
+        setBanner(
+          b.error === 'cart_empty'
+            ? t('Your cart is empty — it may have been ordered from another tab.', 'سلتك فارغة — ربما طُلبت من نافذة أخرى.')
+            : t('An item in your cart is no longer available in that quantity.', 'أحد منتجات سلتك لم يعد متوفراً بهذه الكمية.'),
+        )
+      } else if (status === 429) {
+        setBanner(t('Too many attempts. Please wait a minute, then try again.', 'محاولات كثيرة. انتظر دقيقة ثم حاول مرة أخرى.'))
+      } else if (b.error === 'server_error' && b.ref) {
+        setBanner(
+          isRTL
+            ? `حدث خطأ من جهتنا ولم يُسجَّل الطلب. حاول مرة أخرى، أو راسلنا بالرقم ${String(b.ref).slice(0, 8)}.`
+            : `Something went wrong on our side and no order was placed. Try again, or contact us with reference ${String(b.ref).slice(0, 8)}.`,
+        )
       } else {
         setBanner(t('Something went wrong. Please try again.', 'حدث خطأ ما. حاول مرة أخرى.'))
       }
@@ -588,9 +615,9 @@ function Checkout() {
       setProcessing(false)
     }
   }, [
-    canSubmit, items, paymentMethod, methodId, refetchMethods, notes, total, isLoggedIn, userId, useInline, street,
+    canSubmit, items, paymentMethod, methodId, refetchMethods, notes, total, useInline, street,
     apartment, shippingid, phone, selectedAddressId, isGuest, firstName, lastName, email,
-    products, offers, isRTL, cleanupAfterOrder, router, setOrderData, shippingName, shippingCost, user, t,
+    isRTL, lang, fmt, cleanupAfterOrder, router, setOrderData, shippingName, shippingCost, user, t,
     subtotal,
   ])
 
@@ -622,12 +649,40 @@ function Checkout() {
         <h1 className="wz-checkout-title">{t('Checkout', 'إتمام الطلب')}</h1>
         <p className="wz-checkout-sub">{t('Complete your order below', 'أكمل طلبك بالأسفل')}</p>
 
-        <TrustSignals variant="checkout" isRTL={isRTL} />
-
         <div className="wz-checkout-grid">
           {/* ─── LEFT: form ─────────────────────────────────────────────── */}
           <div className="wz-checkout-form">
-            {banner && <div className="wz-checkout-banner">{banner}</div>}
+            {banner && (
+              <div className="wz-checkout-banner" role="alert">
+                {banner}
+                {bannerToCart && (
+                  <>
+                    {' '}
+                    <Link href="/cart" className="bf-co-banner-link">{t('Review your cart', 'راجع سلتك')}</Link>
+                  </>
+                )}
+              </div>
+            )}
+            {/* the phone's summary, collapsible at the top (§10.5): the item count and the total */}
+            <details className="bf-co-mini">
+              <summary>
+                <span>
+                  {t('Order summary', 'ملخص الطلب')} ({items.reduce((n, i) => n + i.quantity, 0)})
+                </span>
+                <strong>{fmt(total)}</strong>
+              </summary>
+              <ul className="bf-co-mini-list">
+                {items.map((i) => (
+                  <li key={i.id}>
+                    <span>
+                      {txt(i.product?.title, lang) || '—'}
+                      {i.variant?.label ? ` · ${i.variant.label}` : ''} × {i.quantity}
+                    </span>
+                    <span>{fmt(Number(i.piece_price) * i.quantity)}</span>
+                  </li>
+                ))}
+              </ul>
+            </details>
 
             {/* SECTION 1 — CONTACT */}
             <section className="wz-checkout-section">
@@ -821,104 +876,61 @@ function Checkout() {
                 <span className="wz-checkout-secnum">03</span>
               </div>
 
-              <div className="wz-checkout-pay">
-                <label className={`wz-checkout-payopt${paymentMethod === 'cash' ? ' is-active' : ''}`}>
-                  <input
-                    type="radio"
-                    name="payment"
-                    value="cash"
-                    style={{ display: 'none' }}
-                    checked={paymentMethod === 'cash'}
-                    onChange={() => {
-                      setPaymentMethod('cash')
-                      setMethodId(null)
-                    }}
-                  />
-                  <span className="wz-checkout-dot" />
-                  <div className="wz-checkout-payopt-main">
-                    <div className="wz-checkout-payopt-title">{t('Cash on Delivery', 'الدفع عند الاستلام')}</div>
-                    <div className="wz-checkout-payopt-note">
-                      {t('Pay when you receive your order', 'ادفع عند استلام طلبك')}
+              <div className="wz-checkout-pay" role="radiogroup" aria-label={t('Payment', 'طريقة الدفع')}>
+                {methodsLoading ? (
+                  <div className="wz-checkout-payopt is-loading" aria-busy="true">
+                    <div className="wz-checkout-payopt-main">
+                      <div className="wz-checkout-payopt-note">{t('Loading payment methods…', 'جارٍ تحميل طرق الدفع…')}</div>
                     </div>
                   </div>
-                </label>
-
-                {/* Core's list once it has loaded. While it loads, if it fails, or with online payment
-                    switched off for the build, the one "Pay Online" option as before — posted as
-                    plain "card", which core routes to its card row. */}
-                {PAYMOB_ENABLED && onlineList && !onlineListFailed ? (
-                  onlineMethods.map((m) => {
-                    const Icon = METHOD_ICON[m.method] || FiCreditCard
+                ) : onlineListFailed || offered.length === 0 ? (
+                  <div className="wz-checkout-payfail" role="alert">
+                    <p>
+                      {onlineListFailed
+                        ? t("We couldn't load the payment methods.", 'تعذّر تحميل طرق الدفع.')
+                        : t('No payment method is available right now.', 'لا توجد طريقة دفع متاحة الآن.')}
+                    </p>
+                    <button type="button" className="wz-checkout-link" onClick={() => refetchMethods()}>
+                      {t('Try again', 'حاول مرة أخرى')}
+                    </button>
+                  </div>
+                ) : (
+                  offered.map((m) => {
+                    const Icon = METHOD_ICON[m.method] || null
                     const note = METHOD_NOTE[m.method]
-                    const active = paymentMethod === 'card' && methodId === m.id
+                    const active = methodId === m.id
                     return (
-                      <label
-                        key={m.id}
-                        className={`wz-checkout-payopt${active ? ' is-active' : ''}${m.reason ? ' is-disabled' : ''}`}
-                      >
+                      <label key={m.id} className={`wz-checkout-payopt${active ? ' is-active' : ''}${m.reason ? ' is-disabled' : ''}`}>
                         <input
                           type="radio"
                           name="payment"
                           value={`method-${m.id}`}
-                          style={{ display: 'none' }}
+                          className="bf-co-radio"
                           disabled={Boolean(m.reason)}
                           checked={active}
                           onChange={() => {
                             if (m.reason) return
-                            setPaymentMethod('card')
+                            setPaymentMethod(m.kind)
                             setMethodId(m.id)
                           }}
                         />
-                        <span className="wz-checkout-dot" />
+                        <span className="wz-checkout-dot" aria-hidden="true" />
                         <div className="wz-checkout-payopt-main">
                           <div className="wz-checkout-payopt-title">
-                            {isRTL ? m.label?.ar : m.label?.en || m.label?.ar}
-                            <span className="wz-checkout-cards">
-                              <Icon />
-                            </span>
+                            {(isRTL ? m.label?.ar : m.label?.en) || m.label?.ar || m.label?.en}
+                            {Icon ? (
+                              <span className="wz-checkout-cards" aria-hidden="true">
+                                <Icon />
+                              </span>
+                            ) : null}
                           </div>
                           <div className="wz-checkout-payopt-note">
-                            {m.reason ||
-                              (note ? t(note[0], note[1]) : t('Secure online payment', 'دفع إلكتروني آمن'))}
+                            {m.reason || (note ? t(note[0], note[1]) : t('Secure online payment', 'دفع إلكتروني آمن'))}
                           </div>
                         </div>
                       </label>
                     )
                   })
-                ) : (
-  <label
-                    className={`wz-checkout-payopt${paymentMethod === 'card' ? ' is-active' : ''}${
-                      PAYMOB_ENABLED ? '' : ' is-disabled'
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="payment"
-                      value="card"
-                      style={{ display: 'none' }}
-                      disabled={!PAYMOB_ENABLED}
-                      checked={paymentMethod === 'card'}
-                      onChange={() => {
-                      if (!PAYMOB_ENABLED) return
-                      setPaymentMethod('card')
-                      setMethodId(null)
-                    }}
-                    />
-                    <span className="wz-checkout-dot" />
-                    <div className="wz-checkout-payopt-main">
-                      <div className="wz-checkout-payopt-title">
-                        {t('Pay Online', 'دفع إلكتروني')}
-                        {PAYMOB_ENABLED ? (
-                          <span className="wz-checkout-cards"><FiCreditCard /></span>
-                        ) : (
-                          <span className="wz-checkout-soon">{t('Coming soon', 'قريباً')}</span>
-                        )}
-                      </div>
-                      <div className="wz-checkout-payopt-note">
-                        {t('Secure payment via Paymob · Visa / Mastercard', 'دفع آمن عبر Paymob · فيزا / ماستركارد')}
-                      </div>
-                    </div>
-                  </label>
                 )}
               </div>
             </section>
@@ -942,8 +954,6 @@ function Checkout() {
           {/* ─── RIGHT: summary ─────────────────────────────────────────── */}
           <OrderSummary
             items={items}
-            products={products}
-            offers={offers}
             language={language}
             isRTL={isRTL}
             subtotal={subtotal}

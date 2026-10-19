@@ -24,7 +24,8 @@ export default function AuthShell({ title, subtitle, children }) {
           </Link>
           <span className="wz-auth-brand-rule" />
           <p className="wz-auth-brand-tagline">
-            {isRTL ? 'بوابتك إلى عالم الساعات الفاخرة' : 'Your gateway to luxury timepieces'}
+            {/* Brand Fashion's own line (2026-10-19): it sold watches only ("luxury timepieces") on a shop of watches, fashion and accessories */}
+            {isRTL ? 'ساعات وأزياء وإكسسوارات، توصيل لكل محافظات مصر' : 'Watches, fashion and accessories, delivered across Egypt'}
           </p>
         </div>
       </aside>

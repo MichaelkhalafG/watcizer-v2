@@ -47,11 +47,12 @@ use Tests\Support\T;
  * @var array<string, array{file: string, what: string, action: string}>
  */
 const KNOWN = [
-    '3d6ad3734718' => [
-        'file' => 'Frontend-next/.env.production',
-        'what' => 'the LIVE public API key (NEXT_PUBLIC_PUBLIC_API_KEY), tracked and committed 3+ times',
-        'action' => 'rotate on the production host, then untrack the file and .gitignore it',
-    ],
+    /*
+     * `3d6ad3734718` — `Frontend-next/.env.production` (the live public API key, tracked and committed
+     * 3+ times) — CLEARED 2026-10-14: the file was untracked and ignored (`f9d190d`), and the staleness
+     * check below asked for this entry to go. The key itself is NEXT_PUBLIC_, shipped in the bundle by
+     * design; no rotation was needed.
+     */
     /*
      * `1e463e2c7198` — a SECOND 64-character key, quoted into `audit/watchizer-audit.md`, was
      * REDACTED from the working tree on 2026-09-15 and is therefore no longer on this list: the
@@ -200,7 +201,7 @@ function secretsIn(string $path, string $contents): array
      * NAMES them — `Api-Code: 3d6a…` in a curl example, `hmac secret 9c1e…` in a note. So a hex run
      * of 32+ is flagged when the same line names a credential and does not say it is a digest.
      */
-    foreach (preg_split('/\R/', $contents) ?: [] as $line) {
+    foreach (preg_split('/\r\n|\r|\n/', $contents) ?: [] as $line) {
         if (preg_match('/secret|token|password|api[-_ ]?(key|code)|hmac|bearer/i', $line) !== 1) {
             continue;
         }

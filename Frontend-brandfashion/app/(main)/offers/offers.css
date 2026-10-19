@@ -1,0 +1,14 @@
+/* Brand Fashion's offers page (round 5, 2026-10-18) — the listing's container and type, every value a token. */
+.bf-offers { max-width: var(--bf-container); margin: 0 auto; padding: 24px var(--bf-gutter) 56px; color: var(--wz-ink); }
+.bf-offers__h1 { margin: 0 0 20px; font-size: 28px; line-height: 1.2; font-weight: 400; }
+.bf-offers__empty { padding: 32px 0; border-block-start: 1px solid var(--wz-line); }
+.bf-offers__empty p { margin: 0 0 16px; font-size: 16px; color: var(--wz-ink-2); }
+.bf-offers__browse { display: inline-flex; align-items: center; min-height: 44px; padding-inline: 20px; border: 1px solid var(--wz-ink); border-radius: var(--wz-r-pill); color: var(--wz-ink); text-decoration: none; font-weight: 700; font-size: 14px; }
+.bf-offers__browse:focus-visible { outline: 2px solid var(--wz-focus-ring); outline-offset: 2px; }
+@media (hover: hover) { .bf-offers__browse:hover { background: var(--wz-ink); color: var(--wz-page); } }
+.bf-offers__list { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.bf-offers__item { padding: 16px; border: 1px solid var(--wz-line); border-radius: 8px; background: var(--wz-page); }
+.bf-offers__name { margin: 0 0 8px; font-size: 18px; font-weight: 700; }
+.bf-offers__line { margin: 0 0 4px; font-size: 14px; color: var(--wz-ink); }
+.bf-offers__k { color: var(--wz-ink-3); }
+.bf-offers__until { margin: 8px 0 0; font-size: 12px; color: var(--wz-ink-2); }

@@ -2,6 +2,7 @@
 
 namespace App\Compat;
 
+use App\Storefront\StorefrontUrls;
 use App\Support\Val;
 use App\Transform\Row;
 use Illuminate\Database\Query\Builder;
@@ -21,6 +22,12 @@ final class CompatProductDetail
         private readonly CompatProducts $products,
         private readonly int $storefrontId,
     ) {}
+
+    /** The host this storefront's images are named on: the compat global for the default shop, its own for any other. */
+    private function assetBase(): string
+    {
+        return StorefrontUrls::compatAssetBase($this->storefrontId);
+    }
 
     /** @return array{product: array<string, mixed>, related: list<array<string, mixed>>}|null */
     public function byId(int $id): ?array
@@ -73,10 +80,10 @@ final class CompatProductDetail
 
         $images = [];
         if ($coverFile !== null) {
-            $images[] = LegacyJson::imageUrl($coverFile);
+            $images[] = LegacyJson::imageUrl($coverFile, 'Product', $this->assetBase());
         }
         foreach ($this->galleryFiles($id) as $file) {
-            $images[] = LegacyJson::imageUrl($file, 'Product_image');
+            $images[] = LegacyJson::imageUrl($file, 'Product_image', $this->assetBase());
         }
 
         $w = fn (string $col): int|string|null => CompatProducts::watch($row, $col);
@@ -101,7 +108,7 @@ final class CompatProductDetail
                 'id' => $brandId,
                 'name_en' => $this->names->name('brands', $brandId, 'en'),
                 'name_ar' => $this->names->name('brands', $brandId, 'ar'),
-                'logo_url' => LegacyJson::imageUrl(Val::nstr($this->names->master('brands', $brandId) ?? [], 'image'), 'Brand'),
+                'logo_url' => LegacyJson::imageUrl(Val::nstr($this->names->master('brands', $brandId) ?? [], 'image'), 'Brand', $this->assetBase()),
             ],
             'main_category' => null,
             'sub_type' => $place['sub'] === null ? null : ['id' => $subLegacyId, 'name_en' => $nodeName($place['sub'], 'en'), 'name_ar' => $nodeName($place['sub'], 'ar')],
@@ -123,7 +130,7 @@ final class CompatProductDetail
             'short_description_ar' => $ar['short_description'] ?? null,
             'long_description' => $en['long_description'] ?? null,
             'long_description_ar' => $ar['long_description'] ?? null,
-            'image' => LegacyJson::imageUrl($coverFile),
+            'image' => LegacyJson::imageUrl($coverFile, 'Product', $this->assetBase()),
             'stock' => $stock,
             'market_stock' => $market,
             'brand_name' => $this->names->name('brands', $brandId, 'en'),
@@ -320,7 +327,7 @@ final class CompatProductDetail
         $sale = Row::nstr($row, 'sale_price');
         $stock = Row::int($row, 'stock_express');
         $market = Row::int($row, 'stock_market');
-        $image = LegacyJson::imageUrl(LegacyJson::legacyImage(Row::nstr($row, 'cover_path'), 'Product'));
+        $image = LegacyJson::imageUrl(LegacyJson::legacyImage(Row::nstr($row, 'cover_path'), 'Product'), 'Product', $this->assetBase());
         $genderNames = fn (string $locale): array => array_values(array_filter(array_map(fn (int $i) => $this->names->name('genders', $i, $locale), $genderIds), fn (?string $n) => $n !== null && $n !== ''));
         $avg = $stats === null ? null : $stats['avg'];
 

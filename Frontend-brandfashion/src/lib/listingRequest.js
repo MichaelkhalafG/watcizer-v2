@@ -1,49 +1,7 @@
-import publicHttp from '../Context/publicApi'
-
-// The listing request (C-1 stage 3, 2026-09-27) — pure, so the SERVER pages can import it too.
-// ONE builder turns the filter state into the request, and the request string IS the query key.
-// The server page prefetches with the same builder, so the first render hits the prefetched data
-// instead of fetching again.
-
-const PRICE_MAX = 99999999
-
-// `lang` is accepted and ignored (callers may still pass it).
-export function listingRequest({ filters = {}, q = '', sort = 'default', page = 1, perPage = 24, lang }) {
-  const p = new URLSearchParams()
-  const list = (key, values) => {
-    if (values?.length) p.set(key, values.join(','))
-  }
-  list('brands', filters.brands)
-  list('categories', filters.categories)
-  list('subTypes', filters.subTypes)
-  list('genders', filters.genders)
-  list('dialColors', filters.dialColors)
-  list('bandColors', filters.bandColors)
-  list('materials', filters.materials)
-  list('movements', filters.movements)
-  list('shapes', filters.shapes)
-  list('displayTypes', filters.displayTypes)
-  list('grades', filters.grades)
-  if (filters.offers) p.set('offers', '1')
-  const [min, max] = filters.price || [0, PRICE_MAX]
-  if (Number(min) > 0) p.set('minPrice', String(min))
-  if (Number(max) < PRICE_MAX) p.set('maxPrice', String(max))
-  const term = (q || '').trim()
-  // The search reads both languages (2026-09-27), so the shop language is not part of the request:
-  // switching language never refetches the listing.
-  if (term) p.set('q', term)
-  if (sort && sort !== 'default') p.set('sort', sort)
-  if (Number(page) > 1) p.set('page', String(page))
-  if (perPage !== 24) p.set('per_page', String(perPage))
-  return p.toString()
-}
-
-export const listingQueryFn =
-  // The browser default is the header-less client (no CORS preflight); the server passes serverFetch.
-  (qs, client = publicHttp) =>
-  async () => {
-    // One template literal (not a ternary): the allow-list test reads storefront calls from source.
-    const { data } = await client.get(`catalog/listing?${qs}`)
-    return data
-  }
-
+// Brand Fashion's listing request — DIVERGED from Frontend-next on 2026-10-17 (V2-READ-HALF, Michael's
+// decision: both storefronts move to v2, Brand Fashion pilots). This storefront reads core's v2 listing,
+// `/api/v2/brandfashion/products`, through src/lib/v2Listing.js; Watchizer still reads compat
+// `catalog/listing`. The two names below keep every import site unchanged (useListing, serverCatalog,
+// the listing pages): the request string is still the query key, and the payload is normalised to the
+// shape those consumers read. Re-twin this file (TWINS.txt) when Watchizer's listing follows.
+export { v2ListingRequest as listingRequest, v2ListingQueryFn as listingQueryFn, listingNeedsTables } from './v2Listing'

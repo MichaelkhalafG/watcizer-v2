@@ -256,17 +256,30 @@ not resolve. Doing them in the other order produces 404s that look like an `.hta
 
 ### 2.1 Build on the workstation
 
+**Step 1 — strip the development tooling from `vendor/` BEFORE the tar. MANDATORY, with a STOP.**
+
 ```bash
 cd "D:/coding/watchizer website/new watchizer/core"
 composer install --no-dev --optimize-autoloader
 ```
 
+> **Why this is a step and not an optimisation (measured on the 2026-10-15 deploy, by the developer).**
+> The tar built straight off the working tree was **46,800,061 bytes — 6.3× the 7,455,757 of the
+> 2026-10-13 deploy.** The deploy was stopped and the archive measured: `vendor/` held 12,480 files,
+> among them `vendor/phpstan/phpstan/phpstan.phar` (27.29 MB), `vendor/laravel/pint/builds/pint`
+> (21.46 MB) and the turbo-ext `.so` files — **39 MB of development tooling, about to ship to
+> production.** After the command above the rebuilt archive was **7,456,690 bytes — 933 bytes from
+> 13/10's**, which is the real size of this application. **STOP if the archive is not in the 7–9 MB
+> band (§2.3's size gate): anything over 15 MB means the dev tooling is still in it.**
+
 **This one is not optional for Phase 1.** Piece 5 added `laravel/socialite` to `composer.json`, so
 `vendor/` has genuinely changed — uploading only `app/` and `config/` gives you a 500 on
 `Socialite::driver()` with a class-not-found nobody will connect to the deploy.
 
-> Afterwards run plain `composer install` again on the workstation, or your test suite will not run:
-> the command above strips Pest, PHPStan, Pint and Faker.
+> **Step after the deploy — put the tooling back on the workstation:** plain `composer install`.
+> The command above strips Pest, PHPStan, Pint and Faker; without this step the next
+> `composer phpstan` fails with a missing binary and reads like a broken gate, and `php artisan test`
+> has no Pest to run.
 
 **`npm run build` — REQUIRED, as of 2026-09-22.**
 
@@ -338,7 +351,9 @@ Build it as a tar, which has no such ambiguity. **The archive is DATED and built
 #   core/.env  core/node_modules  core/tests  core/docs  core/.git  core/storage
 #   core/public/Uploads_Images  core/public/dumps  core/public/hot  core/phpunit.xml  core/phpstan.neon
 tar -czf C:\temp\core-20261013.tar.gz -X C:\temp\exclude.txt -C 'D:\coding\watchizer website\new watchizer' core
-# then the size, before anything else reads it: a full tree is tens of MB; 29 bytes is the failure below
+# then the SIZE GATE, before anything else reads it (2026-10-15): expected 7–9 MB (13/10: 7,455,757 B;
+# 15/10 after --no-dev: 7,456,690 B). Over 15 MB = development tooling is in vendor/ — STOP, run §2.1
+# step 1. 29 bytes is the failure below.
 ls -l C:\temp\core-20261013.tar.gz
 ```
 
@@ -436,16 +451,37 @@ Three things about that one line, each of them a mistake already made here:
 **If `find` prints anything, the archive is mangled.** Rebuild it as a tar and start this step
 again. **Do not continue.**
 
+**The pre-deploy snapshot of the live tree — take it before anything is copied (added 2026-10-15).**
+
+```bash
+cd ~/domains/eleganceeg.com
+tar -czf ~/core-before-$(date +%Y%m%d).tar.gz core
+ls -l ~/core-before-*.tar.gz && sha256sum ~/core-before-$(date +%Y%m%d).tar.gz
+du -sh core/public core/vendor core/storage core/storage/logs      # the breakdown, every time
+```
+
+> **Expected: over 1 GB.** Measured by the developer on 2026-10-15: `core-before-20261015.tar.gz`
+> **1,520,345,734 bytes**, sha256 `4d74c6aaa74e…`; breakdown `public` 2.3G, `vendor` 195M, `storage`
+> 406M, `storage/logs` 4.2M. **The 2026-10-13 snapshot is 74.5 MB.** Those cannot both be the same
+> tree: 13/10's is almost certainly NOT a full tree and **must not be treated as a rollback point**
+> (§9). Log the figure and the breakdown on every deploy so the next one is comparable — and take the
+> breakdown, not just the total: `storage/logs` at 4.2 MB is the measurement that rules out an error
+> flood, which a 1.5 GB total alone would hide.
+
 **Take a copy of the live `.htaccess` first, and put it back immediately after.** The archive
 contains `core/public/.htaccess` — the plain Laravel one from this repository, with **no `/api`
 block at all** — so `cp -a` deletes the blanket 404 that has been shutting `/api` since the
 eleganceeg deployment (review 🟠 minor; §2.9 used to claim `/api` stayed closed throughout, and it
 did not):
 
-> **Run this pair ONCE — here or in the Appendix, never both (developer, 2026-10-12 deploy).** The
-> Appendix repeats it so the commands read in order. Taking the backup a second time, after `cp -a`,
-> copies the ARCHIVE's plain `.htaccess` over the real backup, and the restore then puts the wrong
-> file on the API host.
+> ## ⚠ THE BACKUP IS TAKEN ONCE, BEFORE `cp -a`, AND RESTORED ONCE, AFTER. NEVER TWICE.
+>
+> **Run this pair ONCE — here or in the Appendix, never both (developer, 2026-10-12 deploy; written
+> as a box 2026-10-15).** The Appendix repeats it so the commands read in order. **If you take the
+> backup a second time after the copy, you are backing up the ARCHIVE's 25-line stock Laravel
+> `.htaccess`, and restoring it puts that stock file on the API host — while the diff still prints
+> RESTORED and you still believe you restored something. The failure is silent and it looks like
+> success.** Both API hosts stop serving `/api` the moment the stock file is live.
 
 ```bash
 LIVE=~/domains/eleganceeg.com/core
@@ -457,14 +493,46 @@ cp -a ~/deploy-staging/core/. "$LIVE"/
 # is what keeps /api shut on BOTH hosts until you are ready to open it deliberately.
 cp ~/htaccess.before-phase2.bak "$LIVE"/public/.htaccess
 
-# and prove it, before moving on
-curl -s -o /dev/null -w 'eleganceeg /api  %{http_code}\n' https://eleganceeg.com/api/catalog/meta
-curl -s -o /dev/null -w 'api host   /api  %{http_code}\n' https://api.watchizereg.com/api/catalog/meta
-# BOTH must be 404. A 401 means the block is gone and the application is answering.
+# and prove it, before moving on — the FOUR-HOST check (2026-10-15)
+for h in api.watchizereg.com api.michaelkhalaf.com; do
+  curl -s -o /dev/null -w "$h /api/catalog/meta  %{http_code}\n" "https://$h/api/catalog/meta"   # 401
+  curl -s -o /dev/null -w "$h /manage            %{http_code}\n" "https://$h/manage"             # 404
+done
 ```
 
-A 401 on either line is the state this step exists to prevent: the application reachable on a host
-whose `.htaccess` no longer refuses it, before §3's secrets and before §4's allow-list.
+**Expected, all four, as measured by the developer on the 2026-10-15 deploy:**
+
+| Host | Path | Expect | Why, from the live `public/.htaccess` (line numbers as read on the server, 2026-10-15) |
+|---|---|---|---|
+| api.watchizereg.com | `/api/catalog/meta` | **401** | line 16 `RewriteCond %{HTTP_HOST} ^api\.(watchizereg\|michaelkhalaf)\.com$` — one condition covers both API hosts; line 18's exception list includes `api/catalog/(meta\|nav\|listing\|…)`, so the request passes the rewrite, reaches Laravel, and Laravel answers 401 because the path is behind the key |
+| api.michaelkhalaf.com | `/api/catalog/meta` | **401** | the same two lines, the same reason |
+| api.watchizereg.com | `/manage` | **404** | line 36 `RewriteRule ^ - [R=404,L]` — the catch-all; `/manage` is in no exception list. There is no `/manage`-specific rule and there does not need to be one |
+| api.michaelkhalaf.com | `/manage` | **404** | the same catch-all |
+
+**A 404 on `/api/catalog/meta` is now the FAILURE: it means the allow-list is GONE** — the restore did
+not happen, or restored the archive's stock file (the box above). Put the backup back and re-run.
+
+> **Superseded 2026-10-15 — kept so the cutover-era text is recognised, not re-applied:** this step
+> used to say *"BOTH must be 404. A 401 means the block is gone and the application is answering."*
+> That was true before §4 opened the allow-list (the blanket `^api(/|$) -> 404` era, 2026-09-23). Since
+> §4, 401 is the healthy answer and 404 is the hole.
+
+**Then the `.htaccess` CONTENT gate — not a line count (2026-10-15).** The developer's deploy plan said
+the live file is "roughly 90+ lines"; measured on the server that day it is **64 lines, and the one
+inside the archive is 25**. A wrong number on a gate is worse than no gate — it stopped a deploy that
+was fine, for two minutes. Count the three things that actually matter instead, each of which fails
+silently in its own way:
+
+```bash
+F=~/domains/eleganceeg.com/core/public/.htaccess
+grep -c 'api\\.(watchizereg|michaelkhalaf)' "$F"   # the two API hosts in one condition — expect 2 (the opener and the negated default arm)
+grep -c 'assets/brand/' "$F"                       # the mail wordmark line — expect 1
+grep -c 'R=404,L' "$F"                             # the catch-all — expect 1
+wc -l "$F"                                         # 64 on 2026-10-15; the ARCHIVE's is 25 — informational, dated, never load-bearing
+```
+
+**What the 39-line gap IS: the allow-list.** `cp -a` replaces the live file with the archive's plain
+Laravel one, and both API hosts stop serving. That is what the backup exists for.
 
 The window in which the dashboard can 500 is now the length of that one `cp`, not the length of an
 upload. Do it in a quiet minute and tell the team not to be mid-save.
@@ -501,8 +569,15 @@ is an empty directory from 2026-09-19 and every image lives in `public/Uploads_I
 `ls -l public/storage` check that used to stand here was inherited from a generic runbook and
 alarmed on every deploy (removed 2026-10-12, developer).
 
-`public/hot` is the one that fails invisibly: if it exists, every dashboard page tries to load its
-JavaScript from your workstation and the site appears completely broken.
+`public/hot` is the one that fails invisibly: if it survives the copy, every dashboard page loads its
+JavaScript from the WORKSTATION's Vite dev server — the site looks dead, **and nothing is written to
+any log**, because every PHP request succeeded. `rm -f` is safe when the file is absent, so the step is
+unconditional: run it every deploy, never "if it is there".
+
+> **Measured 2026-10-15 (developer):** §2.5 clean; `public/build/manifest.json` **27,606 bytes at
+> 11:09 UTC on both the staging tree and the live tree**, and the dashboard bundle gate (§13 step 1)
+> matched — sha256 `699aab9e75db6a4eace7fc2b7478f2b81c06f9c8e78aeaaf0ba27…` identical from disk and
+> over HTTPS, so there is no cache layer between the two.
 
 ### 2.6 Migrate — exactly four, and nothing else
 
@@ -1926,15 +2001,32 @@ Written after the overnight batch's deploy, where three things had to be fixed l
 **every** core deploy, in this order, whether or not the batch looks like it needs them — each is
 idempotent and says "nothing to do" when there is nothing to do.
 
-0. **Static analysis and tests, on the workstation, before the tar** — `composer phpstan`, then (separately, never
-   alongside a build) the full suite. `composer phpstan` is the ONLY way to run PHPStan here: it analyses
-   exactly the paths in `phpstan.neon` (app, bootstrap/app.php, config, database, routes, tests) and
-   refuses extra arguments, because a path argument replaces that list — on 2026-10-09 a run given
-   three file paths reported clean while `routes/console.php` and two test files carried level-10
-   errors that then shipped. It must print `[OK] No errors`. **The suite is `php artisan test`, never
-   `composer test`** (2026-10-13): composer runs a script under a 300-second process timeout and this
-   suite takes 748–822 s, so `composer test` KILLS it part-way and prints a failure that is not a red
-   suite — nobody reads that output as one. Measured: 2,062 passed / 39 skipped / 0 failed in 760 s.
+0. **Static analysis and the suite GATE, on the workstation, before the tar** (rewritten 2026-10-15).
+   `composer phpstan` first; it is the ONLY way to run PHPStan here: it analyses exactly the paths in
+   `phpstan.neon` (app, bootstrap/app.php, config, database, routes, tests) and refuses extra arguments,
+   because a path argument replaces that list — on 2026-10-09 a run given three file paths reported
+   clean while `routes/console.php` and two test files carried level-10 errors that then shipped. It
+   must print `[OK] No errors`. Then, separately, never alongside a build, **the suite through its
+   baseline gate:**
+   ```bash
+   cd core && bash tests/baseline/suite-baseline.sh
+   ```
+   **The gate is NO NEW TRIPS and NO STALE SHRINKS — not a zero.** The script runs `php artisan test`
+   and compares the failing set BY NAME against `core/tests/baseline/suite-baseline.txt`, printing three
+   lines: failures in the baseline (known), failures NOT in the baseline (**the gate trips, exit 1 — a
+   regression, stop**), baseline entries that now pass (**exit 2 — the baseline is stale; delete those
+   lines in the same commit**). **A green suite is NOT the current expectation and has not been since
+   the production mirror landed:** the local database is a production copy and the suite was written
+   against the small development set, so **60 of 2,110 tests fail deterministically on production's
+   rows against count assertions** (measured three times with the same set on 2026-10-15, phpstan
+   clean). Each of the 60 is named with its cause in the baseline file, whose header states the blind
+   spot — 2.8 %, a regression inside a baselined test cannot be seen. The fix that removes the blind
+   spot is TEST-LIVE-ROWS, **DEFERRED** by the developer on 2026-10-15 with its costing: a frozen
+   dedicated test database, ~8 hours plus 1 to 2 days, clears 48 of the 60. The old expectation here —
+   "2,062 passed / 0 failed" — was the development set's and is retired. **Run the suite as `php artisan
+   test` (the script does), never `composer test`** (2026-10-13): composer runs scripts under a
+   300-second process timeout and this suite takes about 550 s, so `composer test` KILLS it part-way
+   and prints a failure that is not a red suite — it sends you hunting a failure that does not exist.
 1. **Dashboard assets** — `npm run build` on the workstation and upload `public/build/` with the PHP
    (§2.1: it is gitignored, so it is never in a commit). Then prove the live dashboard runs the bundle
    you built — the two lines must be identical:
@@ -2029,7 +2121,9 @@ Every step below is §13's checklist plus what this batch adds.
 - **axios:** browse home → product → listing; no console errors.
 
 **Rollback:**
-- Previous core tar plus the previous `public/build`, and revert the merge on `main`.
+- Previous core tar plus the previous `public/build`, and revert the merge on `main`. **The "previous
+  core tar" must be a FULL-TREE snapshot (over 1 GB, §2.4): the 2026-10-13 one is 74.5 MB and is NOT a
+  rollback point (developer, 2026-10-15); the first usable one is `core-before-20261015.tar.gz`.**
 - The two new columns can stay: both are additive with safe defaults, and the previous code never reads them.
 
 ---
@@ -2043,7 +2137,7 @@ composer install --no-dev --optimize-autoloader
 # §2.3 (2026-10-13): DATED name, ABSOLUTE paths, -C — tar.exe resolves relative paths against the
 # process working directory, not PowerShell's; the relative form wrote a 29-byte archive twice.
 tar -czf C:\temp\core-20261013.tar.gz -X C:\temp\exclude.txt -C 'D:\coding\watchizer website\new watchizer' core
-ls -l C:\temp\core-20261013.tar.gz   # tens of MB, or STOP
+ls -l C:\temp\core-20261013.tar.gz   # 7–9 MB; over 15 MB = dev tooling in vendor/ (§2.1 step 1), STOP
 composer install                     # put the dev tools back locally
 
 # §2 — on the server: stage, PROVE, then copy
@@ -2061,7 +2155,9 @@ cp ~/htaccess.before-phase2.bak ~/domains/eleganceeg.com/core/public/.htaccess  
 curl -s -o /dev/null -w 'ele /api %{http_code}
 ' https://eleganceeg.com/api/catalog/meta       # 404
 curl -s -o /dev/null -w 'api /api %{http_code}
-' https://api.watchizereg.com/api/catalog/meta  # 404
+' https://api.watchizereg.com/api/catalog/meta  # 401 since §4 opened the allow-list (corrected 2026-10-15): a 404 HERE means the allow-list is GONE
+curl -s -o /dev/null -w 'bf  /api %{http_code}
+' https://api.michaelkhalaf.com/api/catalog/meta # 401, same reason; and /manage must be 404 on both API hosts (§2.4's four-host table)
 cd ~/domains/eleganceeg.com/core
 chmod -R 775 storage bootstrap/cache && rm -f public/hot public/fonts-manifest.dev.json
 php artisan migrate --force          # exactly four: M1t M1u M1v M1w

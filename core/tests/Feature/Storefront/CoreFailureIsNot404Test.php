@@ -60,7 +60,7 @@ it('treats 404 and 422 as a miss, retries a failure once, serves the last good c
     rmdir($dir);
 
     // coreRead logs a warning when it serves a last good copy; the verdicts are the last line.
-    $lines = preg_split('/\R/', $raw) ?: [];
+    $lines = preg_split('/\r\n|\r|\n/', $raw) ?: [];
     $r = json_decode((string) end($lines), true);
     expect($r)->toBeArray("node said: {$raw}");
     expect($r)->toBe([

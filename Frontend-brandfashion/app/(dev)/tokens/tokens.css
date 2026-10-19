@@ -1,0 +1,105 @@
+/* The tokens page (B2) — a development-only gate, see page.jsx. Everything here uses the tokens it
+   measures; a hard-coded colour in this file would be the page lying about itself. */
+
+.tk {
+  background: var(--wz-page);
+  color: var(--wz-ink);
+  font-family: var(--wz-serif);
+  font-size: var(--wz-fs-base);
+  line-height: 1.5;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: var(--wz-sp-24) var(--wz-sp-16) var(--wz-sp-48);
+}
+.tk h1 { font-size: var(--wz-fs-xl); font-weight: 800; letter-spacing: 0; text-transform: none; margin-bottom: var(--wz-sp-8); }
+.tk h2 { font-size: var(--wz-fs-lg); font-weight: 800; letter-spacing: 0; text-transform: none; margin: var(--wz-sp-48) 0 var(--wz-sp-12); padding-top: var(--wz-sp-12); border-top: 1px solid var(--wz-line); }
+.tk h3 { font-size: var(--wz-fs-md); font-weight: 600; letter-spacing: 0; text-transform: none; margin: var(--wz-sp-24) 0 var(--wz-sp-8); }
+.tk p { max-width: 72ch; margin-bottom: var(--wz-sp-8); }
+.tk code { font-size: var(--wz-fs-sm); background: var(--wz-tile); padding: 1px 4px; border-radius: var(--wz-r-swatch); }
+.tk small, .tk .tk-meta { color: var(--wz-ink-3); font-size: var(--wz-fs-sm); }
+.tk .tk-gate { border: 1px solid var(--wz-edge); border-radius: var(--wz-r-section); padding: var(--wz-sp-12) var(--wz-sp-16); margin: var(--wz-sp-16) 0; }
+.tk .tk-gate strong { font-weight: 600; }
+
+/* tables */
+.tk table { border-collapse: collapse; width: 100%; font-size: var(--wz-fs-sm); }
+.tk th, .tk td { text-align: start; padding: 6px 8px; border-bottom: 1px solid var(--wz-line); vertical-align: middle; }
+.tk th { color: var(--wz-ink-2); font-weight: 600; }
+.tk td.num { font-variant-numeric: tabular-nums; text-align: end; }
+.tk .pass { color: var(--wz-ok); font-weight: 600; }
+.tk .fail { color: var(--wz-danger); font-weight: 600; }
+.tk .exempt { color: var(--wz-ink-3); font-weight: 600; }
+.tk .forbid { color: var(--wz-ink-3); text-decoration: line-through; }
+
+/* colour chips: the token on the ground the spec gives it */
+.tk .chip { display: inline-block; width: 28px; height: 28px; border-radius: var(--wz-r-swatch); border: 1px solid var(--wz-edge); vertical-align: middle; margin-inline-end: 8px; }
+.tk .pair { display: inline-flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: var(--wz-r-input); border: 1px solid var(--wz-line); font-size: var(--wz-fs-base); font-weight: 600; min-width: 130px; justify-content: center; }
+.tk .pair.ui { font-weight: 400; }
+.tk .pair .ring { display: inline-block; width: 22px; height: 22px; border-radius: var(--wz-r-swatch); border: 2px solid currentColor; }
+
+/* tints */
+.tk .tints { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: var(--wz-sp-12); }
+.tk .tint { border-radius: var(--wz-r-section); padding: var(--wz-sp-16); border: 1px solid var(--wz-line); min-height: 150px; }
+.tk .tint .tile { background: var(--wz-tile); border-radius: var(--wz-r-card); height: 56px; margin: var(--wz-sp-8) 0; display: flex; align-items: center; justify-content: center; color: var(--wz-ink-3); font-size: var(--wz-fs-sm); }
+
+/* type scale */
+.tk .type-row { display: grid; grid-template-columns: 170px 1fr 1fr; gap: var(--wz-sp-16); align-items: baseline; padding: var(--wz-sp-8) 0; border-bottom: 1px solid var(--wz-line); }
+.tk .type-row [lang='ar'] { direction: rtl; text-align: right; letter-spacing: 0; }
+.tk .type-row .step { font-size: var(--wz-fs-sm); color: var(--wz-ink-2); }
+.tk .type-row .sample { line-height: var(--lh); }
+.tk .type-row .sample[lang='ar'] { line-height: calc(var(--lh) + 0.15); }
+
+/* space + radius */
+.tk .space-row { display: flex; align-items: center; gap: var(--wz-sp-12); padding: 4px 0; font-size: var(--wz-fs-sm); }
+.tk .space-row .bar { height: 12px; background: var(--wz-ink); border-radius: var(--wz-r-swatch); }
+.tk .radii { display: flex; gap: var(--wz-sp-16); flex-wrap: wrap; }
+.tk .radii .r { width: 88px; height: 56px; border: 1px solid var(--wz-edge); display: flex; align-items: center; justify-content: center; font-size: var(--wz-fs-xs); color: var(--wz-ink-2); background: var(--wz-tile); }
+
+/* states — the forced classes stand in for :hover / :focus-visible on a static sheet */
+.tk .states { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--wz-sp-12); }
+.tk .state { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; font-size: var(--wz-fs-xs); color: var(--wz-ink-2); }
+.tk .btn { height: 40px; padding: 0 var(--wz-sp-16); border-radius: var(--wz-r-pill); border: 1px solid transparent; font: 600 var(--wz-fs-sm) / 1 var(--wz-serif); display: inline-flex; align-items: center; gap: 8px; }
+.tk .btn-primary { background: var(--wz-ink); color: var(--wz-on-ink); }
+.tk .btn-primary.is-hover { background: var(--wz-ink-soft); }
+.tk .btn-secondary { background: var(--wz-page); color: var(--wz-ink); border-color: var(--wz-edge); }
+.tk .btn-secondary.is-hover { border-color: var(--wz-ink); }
+.tk .btn.is-disabled, .tk .btn:disabled { background: var(--wz-disabled-bg); color: var(--wz-disabled-fg); border-color: transparent; }
+.tk .is-focus, .tk :focus-visible { outline: 2px solid var(--wz-focus-ring); outline-offset: 2px; }
+.tk .on-ink { background: var(--wz-ink); padding: var(--wz-sp-12); border-radius: var(--wz-r-card); display: inline-flex; gap: 12px; }
+.tk .on-ink .is-focus { outline-color: var(--wz-focus-ring-on-ink); box-shadow: 0 0 0 2px var(--wz-ink); }
+.tk .on-ink .btn-onink { background: var(--wz-on-ink); color: var(--wz-ink); }
+.tk .chipf { height: 36px; padding: 0 12px; border-radius: var(--wz-r-pill); border: 1px solid var(--wz-edge); background: var(--wz-page); color: var(--wz-ink); font: 400 var(--wz-fs-sm) / 1 var(--wz-serif); display: inline-flex; align-items: center; }
+.tk .chipf.is-selected { background: var(--wz-ink); color: var(--wz-on-ink); border-color: var(--wz-ink); }
+.tk .input { height: 44px; width: 150px; padding: 0 12px; border-radius: var(--wz-r-input); border: 1px solid var(--wz-edge); background: var(--wz-page); color: var(--wz-ink); font: 400 var(--wz-fs-base) / 1 var(--wz-serif); }
+.tk .input.is-error { border-color: var(--wz-danger); }
+.tk .err { color: var(--wz-danger); font-size: var(--wz-fs-sm); }
+.tk .pill { font: 600 var(--wz-fs-xs) / 1 var(--wz-serif); padding: 5px 8px; border-radius: var(--wz-r-pill); color: var(--wz-on-ink); }
+
+/* §8.2 the card's swatch row — describes, selects nothing */
+.tk .card { width: 228px; border: 1px solid var(--wz-line); border-radius: var(--wz-r-card); overflow: hidden; background: var(--wz-page); }
+.tk .card .photo { aspect-ratio: 1 / 1; padding: 10%; display: flex; align-items: center; justify-content: center; }
+.tk .card .photo img { width: 100%; height: 100%; object-fit: contain; mix-blend-mode: multiply; }
+.tk .card .body { padding: 10px; }
+.tk .card .brand { font: 600 var(--wz-fs-xs) / 1 var(--wz-serif); text-transform: uppercase; letter-spacing: 0.04em; color: var(--wz-ink-3); }
+.tk .card .title { font-size: var(--wz-fs-sm); line-height: 1.4; height: 34px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; margin: 4px 0 0; }
+.tk .swatch-row { height: 14px; margin: 0 0 6px; display: flex; align-items: center; gap: 4px; }
+.tk .swatch-row .dot { width: 10px; height: 10px; border-radius: var(--wz-r-swatch); border: 1px solid var(--wz-edge); display: inline-block; }
+.tk .swatch-row .more { font: 600 var(--wz-fs-xs) / 1 var(--wz-serif); color: var(--wz-ink-3); }
+.tk .card .price { font: 600 var(--wz-fs-base) / 1.2 var(--wz-serif); display: flex; gap: 6px; align-items: baseline; }
+.tk .card .price s { font-size: 11px; font-weight: 400; color: var(--wz-ink-3); }
+.tk .card .price .pct { font-size: 11px; color: var(--wz-sale); }
+
+/* §17.5 the PDP pickers — colour is a radio group, size is a radio group, the matrix rule decides what is enabled */
+.tk .picker { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.tk .picker .sw { width: 24px; height: 24px; border-radius: var(--wz-r-swatch); border: 1px solid var(--wz-edge); position: relative; }
+.tk .picker .sw.is-checked { outline: 2px solid var(--wz-ink); outline-offset: 2px; }
+.tk .picker .sw.is-dead::after { content: ''; position: absolute; inset: -1px; background: linear-gradient(to top right, transparent 46%, var(--wz-ink) 47%, var(--wz-ink) 53%, transparent 54%); border-radius: inherit; }
+.tk .picker .sz { min-width: 44px; height: 36px; padding: 0 10px; border-radius: var(--wz-r-input); border: 1px solid var(--wz-edge); background: var(--wz-page); font: 400 var(--wz-fs-sm) / 1 var(--wz-serif); display: inline-flex; align-items: center; justify-content: center; color: var(--wz-ink); }
+.tk .picker .sz.is-checked { background: var(--wz-ink); color: var(--wz-on-ink); border-color: var(--wz-ink); }
+.tk .picker .sz.is-out { text-decoration: line-through; color: var(--wz-ink-3); }
+.tk .picker .sz.is-hole { visibility: hidden; }
+.tk .matrix { border-collapse: collapse; font-size: var(--wz-fs-sm); margin-top: var(--wz-sp-8); }
+.tk .matrix th, .tk .matrix td { border: 1px solid var(--wz-line); padding: 4px 8px; text-align: center; }
+.tk .matrix td.dead { color: var(--wz-ink-3); text-decoration: line-through; }
+.tk .matrix td.hole { background: var(--wz-tile); color: var(--wz-ink-3); }
+.tk .matrix td.delta { color: var(--wz-alert); font-weight: 600; }
+.tk .notice { border: 1px solid var(--wz-alert); color: var(--wz-alert); border-radius: var(--wz-r-input); padding: var(--wz-sp-8) var(--wz-sp-12); font-size: var(--wz-fs-sm); }

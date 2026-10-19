@@ -36,7 +36,15 @@ function onBareDatabase(Closure $body): void
     $config = config('database.connections.'.$original);
     $config['database'] = $name;
 
-    DB::statement('CREATE DATABASE `'.$name.'` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');
+    // The scratch database is created and dropped on the `mysql` connection — the same database,
+    // a session the suite's DatabaseTransactions never wraps. CREATE/DROP DATABASE are DDL and
+    // COMMIT the open transaction of the session that runs them: issued on the default connection,
+    // they committed the suite's wrapping transaction and with it the beforeEach fixtures — the
+    // second way a fixture mailbox row reached the development database (FIXTURE-LEAK, measured
+    // 2026-10-16: this file alone changed `storefront_mailboxes`).
+    $bare = DB::connection('mysql');
+    expect($bare->transactionLevel())->toBe(0, 'the mysql connection must stay outside the suite transaction');
+    $bare->statement('CREATE DATABASE `'.$name.'` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');
 
     try {
         config(['database.connections.wz_bare' => $config, 'database.default' => 'wz_bare']);
@@ -52,7 +60,7 @@ function onBareDatabase(Closure $body): void
     } finally {
         config(['database.default' => $original]);
         DB::purge('wz_bare');
-        DB::connection($original)->statement('DROP DATABASE IF EXISTS `'.$name.'`');
+        $bare->statement('DROP DATABASE IF EXISTS `'.$name.'`');
     }
 }
 

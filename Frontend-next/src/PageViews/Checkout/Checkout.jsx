@@ -25,6 +25,7 @@ import http from '../../Context/api'
 import useCart, { getGuestToken } from '../../Hooks/useCart'
 import { getImageUrl, handleImgError, PLACEHOLDER_IMG } from '../../utils/imageUrl'
 import TrustSignals from '../../Components/Merchandising/TrustSignals'
+import { trustSignals } from '../../config/trust.config'
 import { PAYMOB_ENABLED } from '../../lib/env'
 import { trackInitiateCheckout } from '../../scripts/pixels'
 import { useOrderConfirmStore } from '../../Store/orderConfirmStore'
@@ -174,7 +175,8 @@ const OrderSummary = memo(function OrderSummary({
 
       <ul className="wz-checkout-trust">
         <li><FiLock size={14} /> {t('Secure checkout', 'دفع آمن')}</li>
-        <li><FiRefreshCw size={14} /> {t('30-day returns', 'إرجاع 30 يوم')}</li>
+        {/* 2026-10-19: was "30-day returns" — the policy is 4 days (14 to exchange a watch) */}
+        <li><FiRefreshCw size={14} /> {t(trustSignals.returns.label.en, trustSignals.returns.label.ar)}</li>
         <li><FiShield size={14} /> {t('100% authentic', 'أصلي 100%')}</li>
         <li><FiPhone size={14} /> {t('WhatsApp support', 'دعم واتساب')}</li>
       </ul>

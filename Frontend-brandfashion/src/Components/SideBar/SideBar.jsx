@@ -1,11 +1,14 @@
 'use client'
-import { memo, useState, useMemo } from 'react'
+import { memo, useState, useMemo, useId } from 'react'
 import { useTables } from '../../Hooks/queries/useTables'
 import { useUIStore } from '../../Store/uiStore'
 import './SideBar.css'
 
-const PRICE_MAX = 10000000 // slider ceiling (EGP); maps to "no upper cap" in store
+const PRICE_MAX = 10000000 // slider ceiling (EGP) when the listing serves no price bounds; maps to "no upper cap" in store
 const STEP = 1000
+// With the result's bounds served (v2 `facets.price`, 2026-10-18) the slider spans 0 … the result's highest price,
+// rounded up to FINE_STEP, and moves in FINE_STEP: a 0 … 10,000,000 track put a 9,400 EGP shelf in its first 0.1 %.
+const FINE_STEP = 100
 
 // localized name: current language → English fallback
 const trName = (item, key, language) =>
@@ -17,6 +20,7 @@ function FilterSection({ title, items, selectedIds, onToggle, onClear, searchabl
   const [expanded, setExpanded] = useState(true)
   const [showAll, setShowAll] = useState(false)
   const [search, setSearch] = useState('')
+  const isRTL = useUIStore((s) => s.language) === 'ar'
 
   if (!items.length) return null
 
@@ -37,7 +41,7 @@ function FilterSection({ title, items, selectedIds, onToggle, onClear, searchabl
               onClear()
             }}
           >
-            Clear
+            {isRTL ? 'مسح' : 'Clear'}
           </span>
         )}
         <span className="wz-fs-toggle">{expanded ? '−' : '+'}</span>
@@ -48,7 +52,7 @@ function FilterSection({ title, items, selectedIds, onToggle, onClear, searchabl
           {searchable && items.length > 10 && (
             <input
               className="wz-fs-search"
-              placeholder="Search..."
+              placeholder={isRTL ? 'ابحث…' : 'Search...'}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -72,9 +76,86 @@ function FilterSection({ title, items, selectedIds, onToggle, onClear, searchabl
 
           {filtered.length > 8 && (
             <button className="wz-fs-show-more" onClick={() => setShowAll(!showAll)}>
-              {showAll ? 'Show less ↑' : `Show all ${filtered.length} ↓`}
+              {showAll ? (isRTL ? 'عرض أقل ↑' : 'Show less ↑') : isRTL ? `عرض الكل (${filtered.length}) ↓` : `Show all ${filtered.length} ↓`}
             </button>
           )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Brand Fashion's Sale section (DIVERGED 2026-10-19). A product's own discount, never the dashboard's Offers: one
+// choice of minimum (Any is any valid discount), cleared from the section's header like the other sections, and an
+// in-stock box under it — the deals band's "See all" lands here on 30 %+ and in stock. No counts yet: v2 serves
+// no discount facet (recorded).
+const SALE_CHOICES = [0, 20, 30, 40]
+function SaleSection({ filters, setFilters, setCurrentPage, isRTL }) {
+  const [expanded, setExpanded] = useState(true)
+  // one radio group PER sidebar: the desktop sidebar and the phone's filter sheet are both on the page, and two
+  // groups sharing a name are one group to the browser — checking 30 % in one unchecked it in the other
+  const group = `bf-sale-${useId()}`
+  const chosen = filters.sale ? Number(filters.discount) || 0 : null
+  const pick = (d) => {
+    setCurrentPage(1)
+    setFilters((prev) => ({ ...prev, sale: true, discount: d }))
+  }
+  const clear = () => {
+    setCurrentPage(1)
+    setFilters((prev) => ({ ...prev, sale: false, discount: 0 }))
+  }
+  const label = (d) => (d === 0 ? (isRTL ? 'أي خصم' : 'Any discount') : isRTL ? `خصم ${d}% أو أكثر` : `${d}% off or more`)
+  return (
+    <div className="wz-fs">
+      <button className="wz-fs-title" onClick={() => setExpanded(!expanded)} aria-expanded={expanded}>
+        <span className="wz-fs-title-text">{isRTL ? 'تخفيضات' : 'Sale'}</span>
+        {chosen !== null && (
+          <span
+            className="wz-fs-clear"
+            role="button"
+            tabIndex={0}
+            onClick={(e) => {
+              e.stopPropagation()
+              clear()
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                e.stopPropagation()
+                clear()
+              }
+            }}
+          >
+            {isRTL ? 'مسح' : 'Clear'}
+          </span>
+        )}
+        <span className="wz-fs-toggle">{expanded ? '−' : '+'}</span>
+      </button>
+      {expanded && (
+        <div className="wz-fs-body">
+          <ul className="wz-fs-list" role="radiogroup" aria-label={isRTL ? 'الحد الأدنى للخصم' : 'Minimum discount'}>
+            {SALE_CHOICES.map((d) => (
+              <li key={d} className="wz-fs-item">
+                <label>
+                  <input type="radio" name={group} checked={chosen === d} onChange={() => pick(d)} />
+                  <span className="wz-fs-item-name">{label(d)}</span>
+                </label>
+              </li>
+            ))}
+            <li className="wz-fs-item bf-fs-instock">
+              <label>
+                <input
+                  type="checkbox"
+                  checked={Boolean(filters.inStock)}
+                  onChange={() => {
+                    setCurrentPage(1)
+                    setFilters((prev) => ({ ...prev, inStock: !prev.inStock }))
+                  }}
+                />
+                <span className="wz-fs-item-name">{isRTL ? 'المتوفر فقط' : 'In stock only'}</span>
+              </label>
+            </li>
+          </ul>
         </div>
       )}
     </div>
@@ -108,6 +189,10 @@ function SideBar({ facets }) {
       subTypes: [],
       genders: [],
       offers: false,
+      // Brand Fashion: Clear all clears the Sale section too (Watchizer's list predates the Sale key)
+      sale: false,
+      discount: 0,
+      inStock: false,
       price: [0, 99999999],
       dialColors: [],
       bandColors: [],
@@ -206,18 +291,24 @@ function SideBar({ facets }) {
   }, [tables, facets, language, isRTL, genderItems])
 
   // ── Price ──
-  const priceMin = filters.price?.[0] ?? 0
+  // The track's end: the result's highest price when the listing serves it (v2, without the price filter itself, so
+  // the end does not move while the shopper drags), else PRICE_MAX as before. Dragged to the end = no upper cap.
+  const servedMax = Number(facets?.price?.max)
+  const bounded = Number.isFinite(servedMax) && servedMax > 0
+  const step = bounded ? FINE_STEP : STEP
+  const ceiling = bounded ? Math.max(step, Math.ceil(servedMax / step) * step) : PRICE_MAX
+  const priceMin = Math.min(filters.price?.[0] ?? 0, ceiling - step)
   const priceMaxRaw = filters.price?.[1] ?? 99999999
-  const priceMaxView = priceMaxRaw >= 99999999 ? PRICE_MAX : priceMaxRaw
+  const priceMaxView = priceMaxRaw >= 99999999 ? ceiling : Math.min(priceMaxRaw, ceiling)
   const onMinChange = (e) => {
-    const v = Math.min(Number(e.target.value), priceMaxView - STEP)
+    const v = Math.min(Number(e.target.value), priceMaxView - step)
     setCurrentPage(1)
     setFilters((prev) => ({ ...prev, price: [Math.max(0, v), prev.price?.[1] ?? 99999999] }))
   }
   const onMaxChange = (e) => {
-    const v = Math.max(Number(e.target.value), priceMin + STEP)
+    const v = Math.max(Number(e.target.value), priceMin + step)
     setCurrentPage(1)
-    setFilters((prev) => ({ ...prev, price: [prev.price?.[0] ?? 0, v >= PRICE_MAX ? 99999999 : v] }))
+    setFilters((prev) => ({ ...prev, price: [prev.price?.[0] ?? 0, v >= ceiling ? 99999999 : v] }))
   }
 
   const activeCount =
@@ -232,6 +323,8 @@ function SideBar({ facets }) {
     (filters.displayTypes?.length || 0) +
     (filters.genders?.length || 0) +
     (filters.offers ? 1 : 0) +
+    (filters.sale ? 1 : 0) + // Brand Fashion's Sale key (round 5); Watchizer never sets it
+    (filters.inStock ? 1 : 0) + // and its in-stock key (2026-10-19)
     (priceMin > 0 || priceMaxRaw < 99999999 ? 1 : 0)
 
   return (
@@ -260,6 +353,9 @@ function SideBar({ facets }) {
         />
       ))}
 
+      {/* Brand Fashion (2026-10-19, Michael): the Sale section — Any / 20 / 30 / 40 %+ — and in stock only */}
+      <SaleSection filters={filters} setFilters={setFilters} setCurrentPage={setCurrentPage} isRTL={isRTL} />
+
       {/* Price */}
       <div className="wz-fs">
         <div className="wz-fs-title" style={{ cursor: 'default' }}>
@@ -271,26 +367,28 @@ function SideBar({ facets }) {
               <div
                 className="wz-price-fill"
                 style={{
-                  left: `${(priceMin / PRICE_MAX) * 100}%`,
-                  right: `${100 - (priceMaxView / PRICE_MAX) * 100}%`,
+                  left: `${(priceMin / ceiling) * 100}%`,
+                  right: `${100 - (priceMaxView / ceiling) * 100}%`,
                 }}
               />
             </div>
             <input
               type="range"
               className="wz-price-input"
+              aria-label={isRTL ? 'أقل سعر' : 'Minimum price'}
               min={0}
-              max={PRICE_MAX}
-              step={STEP}
+              max={ceiling}
+              step={step}
               value={priceMin}
               onChange={onMinChange}
             />
             <input
               type="range"
               className="wz-price-input"
+              aria-label={isRTL ? 'أعلى سعر' : 'Maximum price'}
               min={0}
-              max={PRICE_MAX}
-              step={STEP}
+              max={ceiling}
+              step={step}
               value={priceMaxView}
               onChange={onMaxChange}
             />
@@ -301,7 +399,7 @@ function SideBar({ facets }) {
             </span>
             <span>
               {priceMaxView.toLocaleString()}
-              {priceMaxRaw >= 99999999 ? '+' : ''} {isRTL ? 'ج.م' : 'EGP'}
+              {priceMaxRaw >= 99999999 && !bounded ? '+' : ''} {isRTL ? 'ج.م' : 'EGP'}
             </span>
           </div>
         </div>

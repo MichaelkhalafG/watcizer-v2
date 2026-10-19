@@ -8,13 +8,13 @@ export const revalidate = 600
 
 const TEXT = {
   en: {
-    title: 'Watch guides & articles | Brand Fashion',
-    description:
-      'Guides for choosing, wearing and caring for a watch — movements, sizes, straps and more — from Brand Fashion.',
+    // neutral (2026-10-19): the shop sells more than watches — the list's heading says the same
+    title: 'Guides & articles | Brand Fashion',
+    description: 'How to choose what you buy, and how to look after it — watches, fashion and accessories — from Brand Fashion.',
   },
   ar: {
-    title: 'مقالات ودليل الساعات | Brand Fashion',
-    description: 'أدلة لاختيار الساعة وارتدائها والعناية بها — الحركة والمقاس والأسوار وأكثر — من Brand Fashion.',
+    title: 'أدلة ومقالات | Brand Fashion',
+    description: 'كيف تختار ما تشتريه وكيف تعتني به — ساعات وأزياء وإكسسوارات — من Brand Fashion.',
   },
 }
 

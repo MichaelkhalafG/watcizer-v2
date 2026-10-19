@@ -81,9 +81,9 @@ final class ProductDetail
         $productId = Row::int($row, 'product_id');
         $translations = $this->cards->translations([$productId], ['title', 'short_description', 'long_description', 'model_name', 'country', 'stone', 'meta_title', 'meta_description']);
         $tr = $translations[$productId] ?? [];
-        $covers = $this->cards->covers([$productId]);
+        $images2 = $this->cards->images([$productId]);
         $primary = $this->cards->primaryPlacements([$productId]);
-        $card = $this->cards->card($row, $translations, $covers, $primary);
+        $card = $this->cards->card($row, $translations, $images2, $primary);
 
         $images = [];
         foreach (DB::table('catalog_product_images')->select(['id', 'path', 'is_cover', 'sort', 'width', 'height', 'alt_en', 'alt_ar', 'renditions'])->where('product_id', $productId)->orderByDesc('is_cover')->orderBy('sort')->orderBy('id')->get() as $img) {
@@ -91,6 +91,21 @@ final class ProductDetail
         }
 
         $pivots = $this->pivots($productId);
+        $dial = $this->colourRefs($pivots['dial']);
+        $band = $this->colourRefs($pivots['band']);
+        $main = $this->colourRefs($pivots['main']);
+        // The card's `colors` (spec §8.2, dial → band → main, each once) from the pivots this detail
+        // already loaded — the same list a listing row carries, with no extra query.
+        $cardColours = [];
+        foreach (['dial' => $dial, 'band' => $band, 'main' => $main] as $role => $refs) {
+            foreach ($refs as $ref) {
+                $cid = Val::int($ref, 'id');
+                if (! isset($cardColours[$cid])) {
+                    $cardColours[$cid] = $ref + ['role' => $role];
+                }
+            }
+        }
+        $card['colors'] = array_values($cardColours);
         $categories = [];
         foreach (DB::table('storefront_category_product')->select(['storefront_category_id', 'is_primary'])->where('storefront_id', $this->ctx->id())->where('product_id', $productId)->orderByDesc('is_primary')->orderBy('storefront_category_id')->get() as $pl) {
             $node = $this->tree->node(Row::int($pl, 'storefront_category_id'));
@@ -105,7 +120,9 @@ final class ProductDetail
         $specsJson = Row::nstr($row, 'specs');
         $family = json_decode($specsJson ?? 'null', true);
 
-        $product = $card + [
+        // array_replace, not `+`: the card now carries a picker-sized `variants` list (ProductCards::variants),
+        // and the detail's FULL rows (price, label, both stock buckets) must win that key.
+        $product = array_replace($card, [
             'long_description' => $tr['long_description'] ?? [],
             'model_name' => $tr['model_name'] ?? [],
             'country' => $tr['country'] ?? [],
@@ -120,17 +137,13 @@ final class ProductDetail
             'attributes' => [
                 'features' => array_values(array_filter(array_map(fn (int $i) => $this->lookups->ref('features', $i), $pivots['features']))),
                 'genders' => array_values(array_filter(array_map(fn (int $i) => $this->lookups->ref('genders', $i), $pivots['genders']))),
-                'colors' => [
-                    'dial' => array_values(array_filter(array_map(fn (int $i) => $this->lookups->ref('colors', $i), $pivots['dial']))),
-                    'band' => array_values(array_filter(array_map(fn (int $i) => $this->lookups->ref('colors', $i), $pivots['band']))),
-                    'main' => array_values(array_filter(array_map(fn (int $i) => $this->lookups->ref('colors', $i), $pivots['main']))),
-                ],
+                'colors' => ['dial' => $dial, 'band' => $band, 'main' => $main],
             ],
             'categories' => $categories,
             'breadcrumb' => $breadcrumb,
             'variants' => $this->variants($productId, $card),
             'meta' => ['title' => $tr['meta_title'] ?? [], 'description' => $tr['meta_description'] ?? []],
-        ];
+        ]);
 
         $related = $this->related($productId, $primary, Row::int($row, 'brand_id'));
         $ids = [$productId];
@@ -220,6 +233,17 @@ final class ProductDetail
         }
 
         return $out;
+    }
+
+    /**
+     * Colour refs for a list of colour ids, unknown ids dropped.
+     *
+     * @param  list<int>  $ids
+     * @return list<array<string, mixed>>
+     */
+    private function colourRefs(array $ids): array
+    {
+        return array_values(array_filter(array_map(fn (int $i): ?array => $this->lookups->ref('colors', $i), $ids)));
     }
 
     /** @return array{features: list<int>, genders: list<int>, dial: list<int>, band: list<int>, main: list<int>} */

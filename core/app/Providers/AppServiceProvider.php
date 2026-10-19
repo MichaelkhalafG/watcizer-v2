@@ -114,6 +114,13 @@ class AppServiceProvider extends ServiceProvider
             Limit::perHour(60)->by($request->ip() ?? 'unknown')->response(self::tooMany()),
         ]);
 
+        // The v2 checkout (B7 S2, 2026-10-18): the same numbers on its OWN limiter — a named limiter's counter is keyed
+        // by its name, so sharing `add-order` would make Brand Fashion's orders spend Watchizer's per-IP allowance.
+        RateLimiter::for('v2-order', fn (Request $request) => [
+            Limit::perMinute(10)->by($request->ip() ?? 'unknown')->response(self::tooMany()),
+            Limit::perHour(60)->by($request->ip() ?? 'unknown')->response(self::tooMany()),
+        ]);
+
         // "E-mail me when it's back" (2026-10-01): unauthenticated and it stores an address — a
         // shopper taps it once or twice; a script listing addresses does not get far.
         // The recovery link's payload (2026-10-05): a person opens it a few times; a script trying

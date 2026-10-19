@@ -13,7 +13,7 @@
 function robotsAllows(string $robots, string $path): bool
 {
     $best = ['len' => -1, 'allow' => true];   // no matching rule = allowed
-    foreach (preg_split('/\R/', $robots) ?: [] as $line) {
+    foreach (preg_split('/\r\n|\r|\n/', $robots) ?: [] as $line) {
         $line = trim((string) preg_replace('/#.*$/', '', $line));
         if (! preg_match('/^(allow|disallow)\s*:\s*(\S*)$/i', $line, $m) || $m[2] === '') {
             continue;
