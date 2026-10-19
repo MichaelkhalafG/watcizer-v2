@@ -23,6 +23,8 @@ import {
 } from './slugs'
 
 const PRICE_MAX = 99999999
+// The Sale section's minimum discounts (2026-10-19); any other value in a URL is no minimum.
+export const DISCOUNTS = [20, 30, 40]
 
 // filters: { brands, subTypes, categories, genders, dialColors, bandColors,
 //            materials, movements, offers, price }
@@ -53,6 +55,10 @@ export function buildListingParams(filters = {}, extra = {}, tables = null) {
   // Brand Fashion (DIVERGED 2026-10-18, round 5): SALE has its own key — a product's own discount, core's
   // `on_sale`. `offers` is not a listing filter here: Offers are the dashboard's offers, a page (/offers).
   if (filters.sale) p.set('sale', '1')
+  // The Sale page's two keys (2026-10-19, Michael): the minimum discount (20 / 30 / 40 %, the sidebar's Sale
+  // section — v2's `min_discount`) and in-stock only (the deals band's "See all": 30 %+ and in stock).
+  if (filters.sale && DISCOUNTS.includes(Number(filters.discount))) p.set('discount', String(filters.discount))
+  if (filters.inStock) p.set('inStock', '1')
 
   const price = filters.price || [0, PRICE_MAX]
   if (Number(price[0]) > 0) p.set('minPrice', price[0])
@@ -77,6 +83,7 @@ export function parseListingParams(searchParams, tables = null) {
       return item ? [item.id] : []
     })
 
+  const discount = DISCOUNTS.includes(Number(searchParams.get('discount'))) ? Number(searchParams.get('discount')) : 0
   return {
     filters: {
       brands: resolveIds('brand', tables?.brands, brandSlug),
@@ -91,7 +98,10 @@ export function parseListingParams(searchParams, tables = null) {
       displayTypes: resolveIds('displayType', tables?.displayTypes, displayTypeSlug),
       grades: searchParams.getAll('grade').map(Number).filter((n) => !Number.isNaN(n)),
       offers: false, // Brand Fashion: never a listing filter (see buildListingParams)
-      sale: ['1', 'true'].includes(searchParams.get('sale') || ''),
+      // a minimum discount is a Sale page whether or not the URL also says sale=1
+      sale: ['1', 'true'].includes(searchParams.get('sale') || '') || discount > 0,
+      discount,
+      inStock: ['1', 'true'].includes(searchParams.get('inStock') || ''),
       price: [
         Number(searchParams.get('minPrice') || 0),
         Number(searchParams.get('maxPrice') || PRICE_MAX),

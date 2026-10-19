@@ -10,6 +10,7 @@ import { buildListingParams, parseListingParams, paramsKey } from '@/src/utils/l
 import ProductCard from '@/src/Components/Product/ProductCard'
 import SideBar from '@/src/Components/SideBar/SideBar'
 import SmartSuggestions from '@/src/Components/Listing/SmartSuggestions'
+import BfEmptyResult from '@/src/Components/Listing/BfEmptyResult'
 import BackToTop from '@/src/Components/BackToTop/BackToTop'
 import './Listing.css'
 
@@ -249,10 +250,15 @@ export default function ListingClient({ seedParams = null }) {
       push(nameMap.displayTypes[id], () => removeArr('displayTypes', id)),
     )
     // Brand Fashion (round 5, 2026-10-18): the SALE chip — a product's own discount (`sale=1`). Offers are a page.
-    if (filters.sale)
-      push(isRTL ? 'تخفيضات' : 'Sale', () =>
-        setFilters((prev) => ({ ...prev, sale: false })),
+    if (filters.sale) {
+      // 2026-10-19: the chip names the minimum when there is one ("Sale 30%+")
+      const d = Number(filters.discount) || 0
+      push(isRTL ? (d ? `تخفيضات ${d}%+` : 'تخفيضات') : d ? `Sale ${d}%+` : 'Sale', () =>
+        setFilters((prev) => ({ ...prev, sale: false, discount: 0 })),
       )
+    }
+    if (filters.inStock)
+      push(isRTL ? 'المتوفر فقط' : 'In stock', () => setFilters((prev) => ({ ...prev, inStock: false })))
     const [pmin, pmax] = filters.price || [0, PRICE_MAX]
     if (pmin > 0 || pmax < PRICE_MAX) {
       const label = `${isRTL ? 'السعر' : 'Price'}: ${pmin.toLocaleString()} - ${
@@ -273,6 +279,8 @@ export default function ListingClient({ seedParams = null }) {
       genders: [],
       offers: false,
       sale: false,
+      discount: 0,
+      inStock: false,
       price: [0, PRICE_MAX],
       dialColors: [],
       bandColors: [],
@@ -299,8 +307,12 @@ export default function ListingClient({ seedParams = null }) {
     if ((filters.brands || []).length === 1) return nameMap.brands[filters.brands[0]]
     // /grade/{g} printed "All Products" (found 2026-10-08): the grade had no branch here.
     if ((filters.grades || []).length === 1 && nameMap.grades[filters.grades[0]]) return nameMap.grades[filters.grades[0]]
+    // Brand Fashion (2026-10-19): the Sale page says so — the header's Sale item and the deals band's "See all" land here
+    if (filters.sale) return isRTL ? 'تخفيضات' : 'Sale'
+    // and a search says what was searched for
+    if ((parsed.q || '').trim()) return isRTL ? `نتائج «${parsed.q.trim()}»` : `Results for “${parsed.q.trim()}”`
     return isRTL ? 'كل المنتجات' : 'All Products'
-  }, [filters, nameMap, isRTL])
+  }, [filters, nameMap, isRTL, parsed.q])
 
   // Nothing yet (first load, no prefetched page): skeletons. A later filter change keeps the previous
   // page on screen until the next one arrives (keepPreviousData), so there is no skeleton flash.
@@ -420,18 +432,14 @@ export default function ListingClient({ seedParams = null }) {
                 </button>
               </div>
             ) : resultCount === 0 ? (
-              <div className="wz-empty">
-                <FiSearch className="wz-empty-icon" />
-                <h3 className="wz-empty-title">
-                  {isRTL ? 'لم يتم العثور على منتجات' : 'No products found'}
-                </h3>
-                <p className="wz-empty-sub">
-                  {isRTL ? 'حاول تعديل الفلاتر' : 'Try adjusting your filters'}
-                </p>
-                <button className="wz-empty-btn" onClick={clearAll}>
-                  {isRTL ? 'مسح كل الفلاتر' : 'Clear all filters'}
-                </button>
-              </div>
+              // Brand Fashion (2026-10-19, B8): the search's words or the one-chip fix, ways in, a rail
+              <BfEmptyResult
+                q={parsed.q}
+                lang={isRTL ? 'ar' : 'en'}
+                lastTag={activeTags.length ? activeTags[activeTags.length - 1] : null}
+                hasFilters={activeTags.length > 0}
+                onClearAll={clearAll}
+              />
             ) : (
               <>
                 <div

@@ -17,7 +17,8 @@ export default function Toast() {
   return (
     <Snackbar
       open={open}
-      autoHideDuration={3000}
+      // Brand Fashion (DIVERGED 2026-10-19, spec §10.8): a failure stays 6 s — long enough to read what went wrong
+      autoHideDuration={type === 'error' ? 6000 : 3000}
       onClose={() => hideToast()}
       anchorOrigin={{
         vertical: isDesktop ? 'bottom' : 'top',

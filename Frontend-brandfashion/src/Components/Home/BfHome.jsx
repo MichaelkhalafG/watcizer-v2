@@ -42,8 +42,8 @@ const STR = {
     prev: 'Scroll back', next: 'Scroll forward',
   },
   ar: {
-    heroLine: 'ساعات وأزياء الموسم، خصومات حتى 60%', heroCta: 'تسوّق العروض',
-    deals: 'العروض', dealsSub: 'خصم 30% أو أكثر، متوفر الآن', seeAll: 'عرض الكل', categories: 'الفئات', brands: 'العلامات التجارية',
+    heroLine: 'ساعات وأزياء الموسم، خصومات حتى 60%', heroCta: 'تسوّق التخفيضات',
+    deals: 'تخفيضات', dealsSub: 'خصم 30% أو أكثر، متوفر الآن', seeAll: 'عرض الكل', categories: 'الفئات', brands: 'العلامات التجارية',
     home: 'الرئيسية', cart: 'السلة', account: 'حسابي', products: (n) => `${n} منتج`, railNames: { newest: 'جديد هذا الأسبوع', offers: 'العروض' },
     prev: 'السابق', next: 'التالي',
   },
@@ -154,7 +154,8 @@ export default function BfHome({ home, meta }) {
           <div className="bf-hero bf-hero--system">
             <div>
               <p className="bf-hero__line">{t.heroLine}</p>
-              <a className="bf-cta-gold" href={L('/listing?in_stock=1')}>{t.heroCta}</a>
+              {/* the deals' own page (2026-10-19): `in_stock=1` is no listing key, so this opened the whole shop */}
+              <a className="bf-cta-gold" href={L('/listing?sale=1&discount=30&inStock=1')}>{t.heroCta}</a>
             </div>
             <div className="bf-hero__strip" aria-hidden="true">
               {deals.slice(0, 6).map((c, i) => (
@@ -208,7 +209,9 @@ export default function BfHome({ home, meta }) {
                 <h2 className="bf-deals__title">{t.deals}</h2>
                 <div className="bf-deals__sub">{t.dealsSub}</div>
               </div>
-              <a className="bf-cta-gold" href={L('/listing?in_stock=1')}>{t.seeAll}</a>
+              {/* the band's own rule on the Sale page (Michael, 2026-10-19): 30 %+ and in stock — it used to open
+                  `/listing?in_stock=1`, a key the listing does not read, so "See all" showed the whole shop */}
+              <a className="bf-cta-gold" href={L('/listing?sale=1&discount=30&inStock=1')}>{t.seeAll}</a>
             </div>
             {deals.slice(0, 6).map((c, i) => (
               <div key={c.id} className={i >= 4 ? 'bf-deals__desktop-only' : undefined}>

@@ -13,6 +13,7 @@ import { useAuthStore } from '../../Store/authStore'
 import useCart from '../../Hooks/useCart'
 import { useTables } from '../../Hooks/queries/useTables'
 import { useNav } from '../../Hooks/queries/useNav'
+import { useHasOffers } from '../../Hooks/queries/useRunningOffers'
 import { buildListingParams } from '../../utils/listingParams'
 import { subTypesByName } from '../../utils/subTypeGroups'
 import { getImageUrl } from '../../utils/imageUrl'
@@ -40,13 +41,13 @@ import { getImageUrl } from '../../utils/imageUrl'
 const STR = {
   en: {
     openMenu: 'Open menu', close: 'Close', search: 'Search', cancel: 'Cancel', searchPh: 'Search products…', account: 'Account', signIn: 'Sign in',
-    cart: (n) => (n === 0 ? 'Cart, empty' : `Cart, ${n} ${n === 1 ? 'item' : 'items'}`), menu: 'Navigation menu', home: 'Home', shop: 'Shop', brands: 'All brands', offers: 'Offers',
+    cart: (n) => (n === 0 ? 'Cart, empty' : `Cart, ${n} ${n === 1 ? 'item' : 'items'}`), menu: 'Navigation menu', home: 'Home', shop: 'Shop', brands: 'All brands', sale: 'Sale', offers: 'Offers',
     myAccount: 'My account', myOrders: 'My orders', logOut: 'Log out', login: 'Sign in', register: 'Create an account',
     pages: [['/about-us', 'About us'], ['/contact-us', 'Contact us'], ['/privacy-policy', 'Privacy policy'], ['/terms-and-conditions', 'Terms and conditions']],
   },
   ar: {
     openMenu: 'فتح القائمة', close: 'إغلاق', search: 'بحث', cancel: 'إلغاء', searchPh: 'ابحث عن منتج…', account: 'حسابي', signIn: 'تسجيل الدخول',
-    cart: (n) => (n === 0 ? 'السلة، فارغة' : `السلة، ${n} ${n === 1 ? 'منتج' : 'منتجات'}`), menu: 'قائمة التنقل', home: 'الرئيسية', shop: 'المتجر', brands: 'العلامات التجارية', offers: 'العروض',
+    cart: (n) => (n === 0 ? 'السلة، فارغة' : `السلة، ${n} ${n === 1 ? 'منتج' : 'منتجات'}`), menu: 'قائمة التنقل', home: 'الرئيسية', shop: 'المتجر', brands: 'العلامات التجارية', sale: 'تخفيضات', offers: 'العروض',
     myAccount: 'حسابي', myOrders: 'طلباتي', logOut: 'تسجيل الخروج', login: 'تسجيل الدخول', register: 'إنشاء حساب',
     pages: [['/about-us', 'من نحن'], ['/contact-us', 'تواصل معنا'], ['/privacy-policy', 'سياسة الخصوصية'], ['/terms-and-conditions', 'الشروط والأحكام']],
   },
@@ -63,6 +64,7 @@ function Header() {
   const { data: tables = {} } = useTables()
   const { data: nav } = useNav()
   const { language } = useUIStore()
+  const hasOffers = useHasOffers()
   // /x ↔ /ar/x (S-AR stage 1): the switch moves to the same page in the other language.
   const setLanguage = useSwitchLanguage()
   const { userId: user_id, user } = useAuthStore()
@@ -344,9 +346,15 @@ function Header() {
             </div>
           )}
 
-          <button type="button" className="wz-drawer-link" onClick={() => goTo('/offers')}>
-            {t.offers}
+          {/* Sale (a product's own discount) always; Offers only while one runs (2026-10-19) */}
+          <button type="button" className="wz-drawer-link" onClick={() => goTo('/listing?sale=1')}>
+            {t.sale}
           </button>
+          {hasOffers ? (
+            <button type="button" className="wz-drawer-link" onClick={() => goTo('/offers')}>
+              {t.offers}
+            </button>
+          ) : null}
 
           <div className="wz-drawer-sep" />
 

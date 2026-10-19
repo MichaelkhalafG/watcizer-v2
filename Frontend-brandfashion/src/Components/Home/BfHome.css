@@ -18,7 +18,10 @@
 .bf-hero--banner { display: block; }
 .bf-hero--banner img { display: block; width: 100%; height: auto; max-height: 160px; object-fit: cover; object-position: center; }
 @media (min-width: 600px) { .bf-hero--banner img { max-height: 220px; } }
-@media (min-width: 1024px) { .bf-hero--banner img { max-height: 380px; } }
+/* 2026-10-19 (the walk; a desktop change, recorded): 380 cut the client's artwork — the dev banner (≈ 3.2 : 1) is 430 tall at
+   1,377 wide and lost its headline's top; 480 shows a banner of that shape whole and still stops a 16 : 9 upload from
+   filling the screen. The phone's 160 (the density rule) and the tablet's 220 are unchanged. */
+@media (min-width: 1024px) { .bf-hero--banner img { max-height: 480px; } }
 /* the system hero (§11.2): ink panel · the season's line · the brand-gold CTA · 3-up / 6-up strip of real photos */
 .bf-hero--system { background: var(--wz-ink); color: var(--wz-on-ink); display: grid; grid-template-columns: 1fr; gap: 8px; padding: 12px 16px; }
 @media (min-width: 1024px) { .bf-hero--system { grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); align-items: center; padding: 24px 28px; } }

@@ -925,3 +925,59 @@
 .wz-cart-block-hint {
   margin: 0;
 }
+
+/* ── Brand Fashion's cart skin (spec §10.4; B7, 2026-10-19) ─────────────────────────────────────────────
+   Watchizer's page and classes above, Brand Fashion's measures here: two columns 760 + 420 with the summary
+   sticky; the line's 80×80 tile, a 36 stepper and a "Remove" text link, a hairline between rows; a sold-out
+   line in ink-3 with a grey pill and a primary "Remove"; "Price updated" in the alert colour; one rail on
+   the leather tint; on a phone the summary's total and Checkout in a 64 sticky bar. */
+.bf-cartpage { background: var(--wz-page); }
+.bf-cartpage .wz-cart-inner { max-width: 1212px; }
+@media (min-width: 900px) {
+  .bf-cartpage .wz-cart-grid { grid-template-columns: minmax(0, 760px) 420px; gap: 32px; justify-content: space-between; }
+}
+.bf-cartpage .wz-cart-item { grid-template-columns: 80px minmax(0, 1fr) auto; gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--wz-line); }
+.bf-cartpage .wz-cart-item-img { width: 80px; height: 80px; padding: 6px; border-radius: var(--wz-r-card); background: var(--wz-tile); }
+.bf-cart-noimg { display: block; width: 100%; height: 100%; }
+.bf-cartpage .wz-cart-item-name { text-align: start; }
+.bf-cart-variant { margin: 2px 0 0; font-size: var(--bf-small); color: var(--wz-ink-2); }
+.bf-cartpage .wz-cart-qty button { width: 36px; height: 36px; font-size: 18px; line-height: 1; }
+.bf-cartpage .wz-cart-qty button:focus-visible,
+.bf-cart-remove:focus-visible,
+.bf-cart-remove-primary:focus-visible,
+.bf-cart-bar-cta:focus-visible { outline: 2px solid var(--wz-focus-ring); outline-offset: 2px; }
+.bf-cart-remove, .bf-cart-remove-primary { align-self: flex-start; }
+.bf-cart-remove { margin-top: 6px; padding: 4px 0; border: 0; background: none; font: inherit; font-size: var(--bf-small); color: var(--wz-ink-2); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+@media (hover: hover) { .bf-cart-remove:hover { color: var(--wz-ink); } }
+.bf-cart-remove-primary { margin-top: 8px; height: 36px; padding: 0 16px; border: 1px solid var(--wz-ink); border-radius: var(--wz-r-pill); background: var(--wz-ink); color: var(--wz-on-ink); font: inherit; font-size: var(--bf-small); font-weight: 700; cursor: pointer; }
+@media (hover: hover) { .bf-cart-remove-primary:hover { background: var(--wz-ink-soft); } }
+/* a sold-out line: not dimmed as a whole (§21 "not dimmed") — its text goes ink-3, the pill says why */
+.bf-cartpage .wz-cart-item.is-unavailable { opacity: 1; }
+.bf-cartpage .wz-cart-item.is-unavailable .wz-cart-item-name,
+.bf-cartpage .wz-cart-item.is-unavailable .wz-cart-item-brand,
+.bf-cartpage .wz-cart-item.is-unavailable .bf-cart-variant { color: var(--wz-ink-3); }
+.bf-cart-pill { display: inline-block; padding: 2px 10px; border-radius: var(--wz-r-pill); background: var(--wz-tile); color: var(--wz-ink-2); font-size: var(--bf-caption); font-weight: 700; }
+.bf-cart-alert { margin: 6px 0 0; font-size: var(--bf-small); font-weight: 700; color: var(--wz-alert); }
+.bf-cart-total-note { margin: 4px 0 0; font-size: var(--bf-caption); color: var(--wz-ink-2); text-align: end; }
+.bf-cartpage .wz-cart-total { font-size: 18px; font-weight: 800; }
+.bf-cartpage .wz-cart-checkout { height: 48px; border-radius: var(--wz-r-pill); background: var(--wz-ink); color: var(--wz-on-ink); }
+.bf-cartpage .wz-cart-checkout:disabled { background: var(--wz-disabled-bg); color: var(--wz-disabled-fg); cursor: not-allowed; }
+.bf-cartpage .wz-cart-continue--inline { display: inline-block; margin-top: 16px; }
+.bf-cart-empty-title { margin: 8px 0 0; font-size: var(--bf-h2); }
+/* the one rail: a full-width band on the leather tint */
+.bf-cart-rail-wrap { background: var(--wz-tint-leather); padding: 32px 0; margin-top: 32px; }
+.bf-cart-rail-wrap .bf-rail { max-width: 1212px; margin: 0 auto; padding-inline: 24px; background: transparent; }
+/* the phone's sticky bar */
+.bf-cart-bar { display: none; }
+@media (max-width: 899px) {
+  .bf-cartpage { padding-bottom: calc(64px + env(safe-area-inset-bottom)); }
+  .bf-cart-bar { position: fixed; inset-inline: 0; inset-block-end: 0; z-index: 40; display: flex; align-items: center; justify-content: space-between; gap: 12px; height: calc(64px + env(safe-area-inset-bottom)); padding: 0 16px env(safe-area-inset-bottom); background: var(--wz-page); border-top: 1px solid var(--wz-line); }
+  .bf-cart-bar-total { display: flex; flex-direction: column; line-height: 1.2; }
+  .bf-cart-bar-total span { font-size: var(--bf-caption); color: var(--wz-ink-2); }
+  .bf-cart-bar-total strong { font-size: 18px; font-weight: 800; color: var(--wz-ink); }
+  .bf-cart-bar-cta { flex: 0 1 220px; height: 44px; border: 1px solid var(--wz-ink); border-radius: var(--wz-r-pill); background: var(--wz-ink); color: var(--wz-on-ink); font: inherit; font-weight: 700; cursor: pointer; }
+  .bf-cart-bar-cta:disabled { background: var(--wz-disabled-bg); color: var(--wz-disabled-fg); border-color: var(--wz-disabled-bg); cursor: not-allowed; }
+  .bf-cartpage .wz-cart-toast { bottom: calc(76px + env(safe-area-inset-bottom)); }
+  .bf-cartpage .wz-cart-inner { padding: 20px 16px; }
+  .bf-cart-rail-wrap .bf-rail { padding-inline: 16px; }
+}

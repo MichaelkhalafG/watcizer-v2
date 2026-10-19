@@ -7,6 +7,7 @@ import { FaWhatsapp, FaInstagram, FaFacebook } from 'react-icons/fa'
 import { useUIStore } from '../../Store/uiStore'
 import { useTables } from '../../Hooks/queries/useTables'
 import { useNav } from '../../Hooks/queries/useNav'
+import { useHasOffers } from '../../Hooks/queries/useRunningOffers'
 import { brandSlug, categorySlug } from '../../utils/slugs'
 import { TRUST_PAGES } from '../../content/trustPages'
 
@@ -24,8 +25,8 @@ import { TRUST_PAGES } from '../../content/trustPages'
  */
 
 const STR = {
-  en: { categories: 'Categories', brands: 'Brands', pages: 'Pages', account: 'Account', all: 'All products', offers: 'Offers', newest: 'New this week', blog: 'Blog', profile: 'My account', orders: 'My orders', cart: 'Cart', signIn: 'Sign in', follow: 'Follow us', rights: 'All rights reserved' },
-  ar: { categories: 'الفئات', brands: 'العلامات التجارية', pages: 'الصفحات', account: 'الحساب', all: 'كل المنتجات', offers: 'العروض', newest: 'جديد هذا الأسبوع', blog: 'المدونة', profile: 'حسابي', orders: 'طلباتي', cart: 'السلة', signIn: 'تسجيل الدخول', follow: 'تابعنا', rights: 'جميع الحقوق محفوظة' },
+  en: { categories: 'Categories', brands: 'Brands', pages: 'Pages', account: 'Account', all: 'All products', sale: 'Sale', offers: 'Offers', newest: 'New this week', blog: 'Blog', profile: 'My account', orders: 'My orders', cart: 'Cart', signIn: 'Sign in', follow: 'Follow us', rights: 'All rights reserved' },
+  ar: { categories: 'الفئات', brands: 'العلامات التجارية', pages: 'الصفحات', account: 'الحساب', all: 'كل المنتجات', sale: 'تخفيضات', offers: 'العروض', newest: 'جديد هذا الأسبوع', blog: 'المدونة', profile: 'حسابي', orders: 'طلباتي', cart: 'السلة', signIn: 'تسجيل الدخول', follow: 'تابعنا', rights: 'جميع الحقوق محفوظة' },
 }
 const SOCIAL_ICON = { whatsapp: FaWhatsapp, instagram: FaInstagram, facebook: FaFacebook }
 
@@ -37,6 +38,7 @@ function Footer() {
   const year = new Date().getFullYear()
   const { data: tables = {} } = useTables()
   const { data: nav } = useNav()
+  const hasOffers = useHasOffers()
 
   const label = (item, key) =>
     item?.translations?.find((x) => x.locale === language)?.[key] ??
@@ -86,7 +88,8 @@ function Footer() {
               </li>
             ))}
             <li><Link className="bf-foot__link" href="/listing?sort=newest">{t.newest}</Link></li>
-            <li><Link className="bf-foot__link" href="/offers">{t.offers}</Link></li>
+            <li><Link className="bf-foot__link" href="/listing?sale=1">{t.sale}</Link></li>
+            {hasOffers ? <li><Link className="bf-foot__link" href="/offers">{t.offers}</Link></li> : null}
             <li><Link className="bf-foot__link" href="/listing">{t.all}</Link></li>
           </ul>
         </nav>

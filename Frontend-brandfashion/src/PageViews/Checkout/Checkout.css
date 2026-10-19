@@ -757,3 +757,35 @@
     flex-direction: column;
   }
 }
+
+/* ── Brand Fashion's checkout skin (spec §10.5; B7, 2026-10-19) ───────────────────────────────────────────
+   Watchizer's page above; here: payment rows 56 tall, the chosen one with a 2px ink border; the radio kept in
+   the tab order (it was display:none, so a keyboard could not choose a method); the place-order button 48 with
+   the total inside it; errors an 11px line under the field; on a phone the summary collapsible at the top
+   (its item list then leaves the bottom summary, which keeps the totals and the button). */
+.bf-co-radio { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.wz-checkout-payopt { position: relative; min-height: 56px; align-items: center; }
+.wz-checkout-payopt.is-active { border: 2px solid var(--wz-ink); box-shadow: none; padding: 15px; }
+.wz-checkout-payopt:has(.bf-co-radio:focus-visible) { outline: 2px solid var(--wz-focus-ring); outline-offset: 2px; }
+.wz-checkout-payopt.is-loading { cursor: default; color: var(--wz-ink-2); }
+.wz-checkout-payfail { padding: 14px 16px; border: 1px solid var(--wz-line); border-radius: 8px; font-size: var(--bf-small); }
+.wz-checkout-payfail p { margin: 0 0 6px; }
+.wz-checkout-link { padding: 0; border: 0; background: none; font: inherit; font-weight: 700; color: var(--wz-ink); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.wz-checkout-place { height: 48px; border-radius: var(--wz-r-pill); text-transform: none; letter-spacing: 0; font-size: var(--bf-body); display: inline-flex; align-items: center; justify-content: center; gap: 12px; }
+.bf-co-place-total { font-weight: 800; }
+.wz-checkout-err { font-size: 11px; }
+.bf-co-banner-link { color: inherit; font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+.bf-co-mini { display: none; }
+@media (max-width: 900px) {
+  .bf-co-mini { display: block; margin: 0 0 16px; border: 1px solid var(--wz-line); border-radius: 8px; background: var(--wz-page); }
+  .bf-co-mini > summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px; padding: 0 16px; cursor: pointer; font-weight: 700; list-style: none; }
+  .bf-co-mini > summary::-webkit-details-marker { display: none; }
+  .bf-co-mini > summary:focus-visible { outline: 2px solid var(--wz-focus-ring); outline-offset: 2px; }
+  .bf-co-mini > summary span::after { content: ''; display: inline-block; width: 7px; height: 7px; margin-inline-start: 10px; border-inline-end: 2px solid currentColor; border-block-end: 2px solid currentColor; transform: translateY(-3px) rotate(45deg); transition: transform 150ms ease-out; }
+  .bf-co-mini[open] > summary span::after { transform: translateY(1px) rotate(-135deg); }
+  .bf-co-mini-list { margin: 0; padding: 0 16px 12px; list-style: none; display: grid; gap: 8px; font-size: var(--bf-small); color: var(--wz-ink-2); }
+  .bf-co-mini-list li { display: flex; justify-content: space-between; gap: 12px; }
+  .bf-co-mini-list li span:last-child { color: var(--wz-ink); white-space: nowrap; }
+  .wz-checkout-summary .wz-checkout-items { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { .bf-co-mini > summary span::after { transition: none; } }

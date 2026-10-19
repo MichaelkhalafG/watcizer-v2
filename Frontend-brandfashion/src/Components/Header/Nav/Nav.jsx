@@ -29,6 +29,7 @@ import { TbShirt, TbShoppingBag, TbCategory, TbBuildingStore } from 'react-icons
 import { RiPercentLine } from 'react-icons/ri'
 import { useTables } from '../../../Hooks/queries/useTables'
 import { useNav } from '../../../Hooks/queries/useNav'
+import { useHasOffers } from '../../../Hooks/queries/useRunningOffers'
 import { useUIStore } from '../../../Store/uiStore'
 import { getImageUrl } from '../../../utils/imageUrl'
 import { buildListingParams } from '../../../utils/listingParams'
@@ -112,6 +113,8 @@ function Nav() {
   const { data: tables = {} } = useTables()
   const { data: nav } = useNav()
   const { language, setCurrentPage } = useUIStore()
+  // Offers only while one runs (Michael, 2026-10-19) — it comes back by itself when the dashboard starts one
+  const hasOffers = useHasOffers()
   const pathname = usePathname()
 
   // Which top-level dropdown is open, and which brand row's nested menu is open.
@@ -578,13 +581,22 @@ function Nav() {
             )}
           </li>
 
-          {/* 5 — OFFERS (the dashboard's offers, the /offers page) */}
+          {/* 5 — SALE (a product's own discount, the listing's Sale page; 2026-10-19) — the % mark is the discount's */}
           <li className="nav-item">
-            <Link href={offersHref()} className="nav-link-item" onClick={closeMenus}>
-              <RiPercentLine size={14} style={{ color: '#ea2b0f' }} />
-              {isRTL ? 'العروض' : 'Offers'}
+            <Link href="/listing?sale=1" className="nav-link-item" onClick={closeMenus}>
+              <RiPercentLine size={14} style={{ color: '#ea2b0f' }} aria-hidden="true" />
+              {isRTL ? 'تخفيضات' : 'Sale'}
             </Link>
           </li>
+
+          {/* 6 — OFFERS (the dashboard's offers, the /offers page) — only while one runs */}
+          {hasOffers ? (
+            <li className="nav-item">
+              <Link href={offersHref()} className="nav-link-item" onClick={closeMenus}>
+                {isRTL ? 'العروض' : 'Offers'}
+              </Link>
+            </li>
+          ) : null}
         </ul>
       </div>
     </nav>

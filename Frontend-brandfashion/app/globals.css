@@ -476,6 +476,7 @@ textarea {
 .wz-error-title { font-size: 24px; font-weight: 700; color: #1a1a1a; margin-bottom: 12px; font-family: var(--wz-serif); text-transform: uppercase; letter-spacing: 0.06em; }
 .wz-error-text { font-size: 15px; color: rgba(0,0,0,0.55); margin-bottom: 24px; line-height: 1.6; }
 .wz-error-actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+.bf-error-dot { display: block; width: 10px; height: 10px; margin: 0 auto 12px; border-radius: 50%; background: var(--wz-danger); }
 .wz-error-retry { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; color: #fff; background: #1a1a1a; border: none; padding: 12px 32px; border-radius: 4px; cursor: pointer; transition: background 0.2s ease; }
 .wz-error-retry:hover { background: var(--wz-gold); }
 .wz-error-home, .wz-error-browse { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; color: #1a1a1a; text-decoration: none; padding: 12px 32px; border: 1px solid rgba(0,0,0,0.12); border-radius: 4px; transition: border-color 0.2s ease, color 0.2s ease; }

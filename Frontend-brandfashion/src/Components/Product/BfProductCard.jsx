@@ -4,6 +4,9 @@ import Link from '@/src/Components/LocaleLink'
 import { PLACEHOLDER_IMG } from '@/src/utils/imageUrl'
 import { aisleTint } from '@/src/lib/aisleTint'
 import { txt, money, cardColours, cardVariants, isNewProduct } from '@/src/lib/cardData'
+import useCart, { getItemKey } from '@/src/Hooks/useCart'
+import { refusedAddMessage } from '@/src/Store/cartStore'
+import { useToastStore } from '@/src/Store/toastStore'
 import './BfProductCard.css'
 
 /*
@@ -74,7 +77,12 @@ export default function BfProductCard({
   href,
   onAdd,
 }) {
-  const [qty, setQty] = useState(0)
+  // The stepper IS the cart line (2026-10-19): it shows the cart's quantity for this product and every tap
+  // writes it. It used to be a local number — after the first add, + and − changed the card and not the cart.
+  const { cart, addItem, updateQuantity } = useCart()
+  const showToast = useToastStore((s) => s.showToast)
+  const line = product ? (cart?.cart_item || []).find((i) => i.product_id === product.id && !i.variant_id) : null
+  const qty = line?.quantity ?? 0
   const [broken, setBroken] = useState(false)
   const variants = useMemo(() => cardVariants(product), [product])
   const colourRefs = useMemo(() => uniq(variants.map((v) => v.color)), [variants])
@@ -148,11 +156,29 @@ export default function BfProductCard({
   const rating = product.rating ?? {}
   const showStars = showRating && Number(rating.count) >= 10
 
+  // A caller's onAdd wins (Watchizer's listing adapter, ProductCard.jsx); without one — the home and the product
+  // page's rails — the card adds itself, on the same rule (the effective price, the refusal said in a toast).
+  // It used to fall back to `true`: the rails' button showed "1" and added nothing.
+  const refused = (r) => {
+    if (r && r.ok === false) {
+      showToast?.(refusedAddMessage(r, lang === 'ar'), 'error')
+      return true
+    }
+    return false
+  }
   const add = async (e) => {
     e.preventDefault()
     if (soldOut || hasPicker) return
-    const ok = onAdd ? await onAdd(product) : true
-    if (ok !== false) setQty(1)
+    if (onAdd) {
+      await onAdd(product)
+      return
+    }
+    const r = await addItem({ product_id: product.id, quantity: 1, piece_price: hasSale ? price.sale_amount : price.amount, name: txt(product.title, 'en') })
+    refused(r)
+  }
+  const step = async (by) => {
+    if (!line) return
+    refused(await updateQuantity(getItemKey(line), qty + by))
   }
 
   return (
@@ -264,9 +290,9 @@ export default function BfProductCard({
           <Link className="bf-card__btn bf-card__btn--secondary" href={`${link}#notify`}>{t.notify}</Link>
         ) : qty > 0 ? (
           <div className="bf-card__stepper" role="group" aria-label={t.qty}>
-            <button type="button" className="bf-card__step" aria-label={t.minus} onClick={() => setQty((q) => Math.max(0, q - 1))}>−</button>
+            <button type="button" className="bf-card__step" aria-label={t.minus} onClick={() => step(-1)}>−</button>
             <span className="bf-card__qty" aria-live="polite">{qty}</span>
-            <button type="button" className="bf-card__step" aria-label={t.plus} onClick={() => setQty((q) => q + 1)}>+</button>
+            <button type="button" className="bf-card__step" aria-label={t.plus} onClick={() => step(1)}>+</button>
           </div>
         ) : (
           <button type="button" className="bf-card__btn" onClick={add}>{t.add}</button>

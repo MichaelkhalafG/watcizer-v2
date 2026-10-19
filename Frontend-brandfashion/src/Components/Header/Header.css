@@ -48,6 +48,9 @@
 /* bug 1 of the 2026-10-17 review: `.wz-header :focus-visible` drew its 2px ring on the RECTANGULAR input inside the
    rounded pill; the pill's own focus-within ring (above) is the one that follows the shape */
 .wz-search-input:focus-visible, .wz-search-btn:focus-visible { outline: none; box-shadow: none; }
+/* the walk (2026-10-19): input and button share the pill's ring, so the BUTTON also fills when it has the focus —
+   otherwise a keyboard user cannot tell which of the two the ring belongs to */
+.wz-search-btn:focus-visible { background: var(--wz-tile); }
 .wz-search-input::placeholder { color: var(--wz-ink-3); }
 .wz-search-input::-webkit-search-cancel-button { -webkit-appearance: none; }
 .wz-search-btn { width: 40px; height: 40px; display: inline-flex; align-items: center; justify-content: center; border: 0; background: none; color: var(--wz-ink); cursor: pointer; border-radius: var(--wz-r-pill); }

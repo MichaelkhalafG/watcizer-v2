@@ -1,0 +1,3 @@
+/* §10.8: a 44 px top banner, never a modal — over the header's top edge while the connection is down */
+.bf-offline { position: fixed; inset-inline: 0; inset-block-start: 0; z-index: 3000; min-height: 44px; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 0 16px; background: var(--wz-ink); color: var(--wz-on-ink); font-size: var(--bf-small); font-weight: 700; text-align: center; }
+.bf-offline__dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--wz-alert); }

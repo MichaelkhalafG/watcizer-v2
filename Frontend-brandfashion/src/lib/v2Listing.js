@@ -68,6 +68,9 @@ export function v2ListingRequest({ filters = {}, q = '', sort = 'default', page 
   list('material', filters.materials)
   list('grade', filters.grades)
   if (filters.sale) p.set('on_sale', '1')
+  // the Sale section's minimum discount (core rounds as the card prints it) and the in-stock key (2026-10-19)
+  if (filters.sale && Number(filters.discount) > 0) p.set('min_discount', String(filters.discount))
+  if (filters.inStock) p.set('in_stock', '1')
   const [min, max] = filters.price || [0, PRICE_MAX]
   if (Number(min) > 0) p.set('price_min', String(min))
   if (Number(max) < PRICE_MAX) p.set('price_max', String(max))

@@ -1,50 +1,69 @@
 'use client'
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 import Link from '@/src/Components/LocaleLink'
 import { useRouter } from '@/src/Hooks/useLocaleRouter'
-import {
-  FiX,
-  FiMinus,
-  FiPlus,
-  FiShoppingBag,
-  FiLock,
-  FiRefreshCw,
-  FiCheck,
-  FiChevronDown,
-} from 'react-icons/fi'
-import { useCards, useCardsOf, useRelated } from '../../Hooks/queries/useListing'
-import http from '../../Context/api'
-import { useOffers } from '../../Hooks/queries/useOffers'
+import { useQuery } from '@tanstack/react-query'
+import { FiShoppingBag, FiLock, FiRefreshCw, FiCheck, FiChevronDown } from 'react-icons/fi'
+import publicHttp from '../../Context/publicApi'
 import { useUIStore } from '../../Store/uiStore'
-import { useAuthStore } from '../../Store/authStore'
 import { useShippingStore } from '../../Store/shippingStore'
 import { useShippingPrices } from '../../Hooks/useShippingPrices'
 import useCart, { getItemKey } from '../../Hooks/useCart'
-import ProductSlider from '../../Components/Product/ProductSlider'
-import { getImageUrl, handleImgError, PLACEHOLDER_IMG } from '../../utils/imageUrl'
-import { productUrl, offerUrl } from '../../utils/productUrl'
+import { cartStore } from '../../Store/cartStore'
+import BfRail from '../../Components/Listing/BfRail'
+import { txt, money } from '../../lib/cardData'
+import { localizeHref } from '../../utils/localePath'
+import { STOREFRONT_CODE } from '../../lib/env'
 import './Cart.css'
-import { finishBackground } from '../../utils/finish'
 
-// ── Cart item ──────────────────────────────────────────────────────────────
-const CartItem = memo(function CartItem({
-  item,
-  d,
-  isRTL,
-  t,
-  fmt,
-  currency,
-  onQty,
-  onRemove,
-  navigate,
-}) {
+/*
+ * Brand Fashion's cart page (DIVERGED 2026-10-19, B7) — on core's v2 cart. Watchizer's twin reads compat:
+ * the cards by id, a reconcile pass that heals a drifted server cart, then cart/validate. Here core's v2
+ * answer already carries every line's product card, its current price, its stock and its problem, so the
+ * page draws that answer and nothing else. The BEHAVIOUR is Watchizer's: the stepper debounced 300 ms,
+ * remove with a 5 s undo, the governorate chosen here, the checkout gate that says WHY it did not proceed,
+ * the same sentences. Brand Fashion's own (spec §10.4): the variant on the line, a sold-out line greyed
+ * with a "Remove" action, "Price updated" on the line, the delivery row always showing an amount, one rail
+ * on the leather tint, a rail on the empty cart, and the phone's sticky bar with the total and Checkout.
+ */
+
+const OUT = new Set(['unavailable', 'variant_unavailable', 'variant_required'])
+
+const lineView = (item, lang) => {
+  const p = item.product || {}
+  const unit = Number(item.piece_price)
+  const variant = item.variant_id ? (p.variants || []).find((v) => v.id === item.variant_id) : null
+  const list = Number((variant?.price || p.price || {}).amount || 0)
+  const label = variant
+    ? [txt(variant.color?.name, lang), txt(variant.size?.name, lang)].filter(Boolean).join(' / ')
+    : item.variant?.label || ''
+  const soldOut = OUT.has(item.problem) || (item.server && item.available <= 0)
+  return {
+    name: txt(p.title, lang),
+    brand: txt(p.brand?.name, lang),
+    image: p.image?.src || null,
+    url: p.slug ? `/product/${p.slug}` : '/listing',
+    label,
+    unit,
+    list,
+    onSale: list > unit + 0.01,
+    soldOut,
+    short: !soldOut && item.problem === 'insufficient_stock',
+    available: item.available,
+    max: item.available > 0 ? Math.min(99, item.available) : 99,
+    priceChanged: !soldOut && item.seen_price != null && Math.abs(Number(item.seen_price) - unit) > 0.01,
+    was: item.seen_price,
+  }
+}
+
+// ── Cart line ─────────────────────────────────────────────────────────────
+const CartItem = memo(function CartItem({ item, d, isRTL, t, fmt, onQty, onRemove, navigate }) {
   const key = getItemKey(item)
   const [qty, setQty] = useState(item.quantity)
-  // Keep local qty in sync when the store quantity changes — intentional.
-  // eslint-disable-next-line react-hooks/set-state-in-effect
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- keep the local number in step with the store
   useEffect(() => setQty(item.quantity), [item.quantity])
 
-  // Debounce the store/network sync; the local number updates instantly.
+  // Debounce the network write; the number on screen moves at once (Watchizer's 300 ms).
   useEffect(() => {
     if (qty === item.quantity) return
     const id = setTimeout(() => onQty(key, qty), 300)
@@ -52,169 +71,134 @@ const CartItem = memo(function CartItem({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [qty])
 
-  const unit = Number(item.piece_price)
-  const orig = d.selling
-  const hasSale = orig > unit + 0.01
-  const max = d.stock > 0 ? d.stock : d.entity ? 0 : 99
-  const unavailable = !!d.entity && d.stock <= 0
-  const lowStock = !!d.entity && d.stock > 0 && d.stock < qty
-  const currentPrice = d.sale > 0 && d.sale < d.selling ? d.sale : d.selling
-  const priceChanged = !!d.entity && currentPrice > 0 && Math.abs(currentPrice - unit) > 0.01
-  const lineTotal = unit * qty
-
   return (
-    <div className={`wz-cart-item${unavailable ? ' is-unavailable' : ''}`}>
-      <button
-        className="wz-cart-item-remove"
-        onClick={() => onRemove(item)}
-        aria-label={t('Remove', 'حذف')}
-        title={t('Remove', 'حذف')}
-      >
-        <FiX />
-      </button>
-
-      <button className="wz-cart-item-img" onClick={() => navigate(d.url)} aria-label={d.name}>
-        <img src={d.image} alt={d.name} width="100" height="100" loading="lazy" onError={handleImgError} />
+    <div className={`wz-cart-item bf-cart-line${d.soldOut ? ' is-unavailable' : ''}`}>
+      <button className="wz-cart-item-img" onClick={() => navigate(d.url)} aria-label={d.name} tabIndex={-1}>
+        {d.image ? (
+          // eslint-disable-next-line @next/next/no-img-element -- absolute asset-host URL
+          <img src={d.image} alt="" width="80" height="80" loading="lazy" />
+        ) : (
+          <span className="bf-cart-noimg" aria-hidden="true" />
+        )}
       </button>
 
       <div className="wz-cart-item-info">
         {d.brand && <p className="wz-cart-item-brand">{d.brand}</p>}
         <button className="wz-cart-item-name" onClick={() => navigate(d.url)}>
-          {d.name}
+          {d.name || t('Product', 'منتج')}
         </button>
-
-        <div className="wz-cart-item-variant">
-          {item.type_stock && (
-            <span className={`wz-cart-stock wz-cart-stock--${unavailable ? 'out' : item.type_stock === 'Express' ? 'express' : 'market'}`}>
-              <span className="wz-cart-stock-dot" />
-              {unavailable
-                ? t('Unavailable', 'غير متوفر')
-                : item.type_stock === 'Express'
-                  ? t('Express', 'إكسبريس')
-                  : t('Market', 'ماركت')}
-            </span>
-          )}
-          {item.color_band && (
-            <span className="wz-cart-swatch" style={{ background: finishBackground(item.color_band) }} title={t('Band', 'السوار')} />
-          )}
-          {item.color_dial && (
-            <span className="wz-cart-swatch" style={{ background: finishBackground(item.color_dial) }} title={t('Dial', 'الميناء')} />
-          )}
-        </div>
+        {d.label && <p className="bf-cart-variant">{d.label}</p>}
 
         <div className="wz-cart-item-price">
-          <span className="wz-cart-unit">
-            {fmt(unit)} {currency}
-          </span>
-          {hasSale && (
-            <span className="wz-cart-unit-orig">
-              {fmt(orig)} {currency}
-            </span>
+          {d.soldOut ? (
+            <span className="bf-cart-pill">{t('Sold out', 'نفد')}</span>
+          ) : (
+            <>
+              <span className="wz-cart-unit">{fmt(d.unit)}</span>
+              {d.onSale && <span className="wz-cart-unit-orig">{fmt(d.list)}</span>}
+            </>
           )}
         </div>
 
-        {lowStock && <p className="wz-cart-warn-text">{isRTL ? `باقي ${d.stock} فقط` : `Only ${d.stock} left`}</p>}
-        {priceChanged && !unavailable && (
-          <p className="wz-cart-warn-text">{t('Price updated', 'تم تحديث السعر')}</p>
+        {d.short && (
+          <p className="wz-cart-warn-text" role="status">
+            {d.available > 0
+              ? isRTL ? `المتاح ${d.available} فقط` : `Only ${d.available} left`
+              : t('Not enough stock for this quantity', 'الكمية المطلوبة غير متوفرة في المخزون')}
+          </p>
         )}
-        {unavailable && <p className="wz-cart-warn-text">{t('This item is unavailable', 'هذا المنتج غير متوفر')}</p>}
-
+        {d.priceChanged && (
+          <p className="bf-cart-alert" role="status">
+            {isRTL ? `تم تحديث السعر: كان ${fmt(d.was)}` : `Price updated: was ${fmt(d.was)}`}
+          </p>
+        )}
+        {d.soldOut ? (
+          <button type="button" className="bf-cart-remove-primary" onClick={() => onRemove(item)}>
+            {t('Remove', 'حذف')}
+          </button>
+        ) : (
+          <button type="button" className="bf-cart-remove" onClick={() => onRemove(item)}>
+            {t('Remove', 'حذف')}
+          </button>
+        )}
       </div>
 
-      <div className="wz-cart-item-side">
-        <div className="wz-cart-qty">
-          <button onClick={() => setQty((q) => Math.max(1, q - 1))} disabled={qty <= 1 || unavailable} aria-label={t('Decrease', 'تقليل')}>
-            <FiMinus />
-          </button>
-          <span>{qty}</span>
-          <button
-            onClick={() => setQty((q) => Math.min(max, q + 1))}
-            disabled={unavailable || qty >= max}
-            aria-label={t('Increase', 'زيادة')}
-          >
-            <FiPlus />
-          </button>
+      {!d.soldOut && (
+        <div className="wz-cart-item-side">
+          <div className="wz-cart-qty" role="group" aria-label={t('Quantity', 'الكمية')}>
+            <button onClick={() => setQty((q) => Math.max(1, q - 1))} disabled={qty <= 1} aria-label={t('Decrease', 'تقليل')}>
+              −
+            </button>
+            <span aria-live="polite">{qty}</span>
+            <button onClick={() => setQty((q) => Math.min(d.max, q + 1))} disabled={qty >= d.max} aria-label={t('Increase', 'زيادة')}>
+              +
+            </button>
+          </div>
+          <div className="wz-cart-line-total">{fmt(d.unit * qty)}</div>
         </div>
-        <div className="wz-cart-line-total">
-          {fmt(lineTotal)} {currency}
-        </div>
-      </div>
+      )}
     </div>
   )
 })
 
-// ── Page ───────────────────────────────────────────────────────────────────
+// The rail under the items: what goes with the last thing added (v2 related → addons, else similar).
+const useCartRail = (slug, exclude) =>
+  useQuery({
+    queryKey: ['bf-cart-rail', slug],
+    queryFn: async () => (await publicHttp.get(`v2/${STOREFRONT_CODE}/products/${encodeURIComponent(slug)}/related`)).data,
+    enabled: Boolean(slug),
+    staleTime: 5 * 60 * 1000,
+    select: (data) => {
+      const pool = (data?.addons?.length ? data.addons : data?.similar) || []
+      return pool.filter((c) => !exclude.has(c.id))
+    },
+  })
+
+// The empty cart's rail (§10.4: a rail, never a blank page): the newest products in stock.
+const useNewIn = (enabled) =>
+  useQuery({
+    queryKey: ['bf-cart-newin'],
+    queryFn: async () => (await publicHttp.get(`v2/${STOREFRONT_CODE}/products?sort=newest&in_stock=1&per_page=12`)).data,
+    enabled,
+    staleTime: 5 * 60 * 1000,
+    select: (data) => data?.data || [],
+  })
+
+// ── Page ──────────────────────────────────────────────────────────────────
 function Cart() {
-  // Server data from TanStack Query; shipping selection from Zustand + the derived
-  // city-price list from the query.
   const shippingPrices = useShippingPrices()
   const shippingid = useShippingStore((s) => s.shippingid)
   const setShippingid = useShippingStore((s) => s.setShippingid)
   const setShipping = useShippingStore((s) => s.setShipping)
   const setShippingName = useShippingStore((s) => s.setShippingName)
-  const { data: offers = [] } = useOffers()
   const { language } = useUIStore()
   const isRTL = language === 'ar'
-  const t = (en, ar) => (isRTL ? ar : en)
+  const lang = isRTL ? 'ar' : 'en'
+  const t = useCallback((en, ar) => (isRTL ? ar : en), [isRTL])
   const router = useRouter()
-  // Keep the `navigate(url)` call-sites (incl. the memoized CartItem prop) intact
-  // by wrapping router.push — stable identity so CartItem's memo isn't broken.
   const navigate = useCallback((to) => router.push(to), [router])
-  const { userId } = useAuthStore()
-  const { cart, updateQuantity, removeItem, undoRemove, validateCart, reconcile, lastRemoved } = useCart()
-  // Only THIS cart's products, by id (C-1 stage 4) — the page used to embed the whole catalogue to
-  // look up its own lines.
-  const { data: cardsPayload, isError: cardsError } = useCards((cart?.cart_item || []).map((i) => i.product_id))
-  const products = useCardsOf(cardsPayload, language)
+  const { cart, updateQuantity, removeItem, undoRemove, validateCart, lastRemoved } = useCart()
 
+  const [checked, setChecked] = useState(false)
   const [processing, setProcessing] = useState(false)
-  const [warnDismissed, setWarnDismissed] = useState(false)
-  // Why the last checkout tap did not proceed — shown right above the button (2026-09-28).
-  // null | { kind: 'invalid', lines: [{ name, reason }] } | { kind: 'error' } | { kind: 'lost' }
+  // Why the last checkout tap did not proceed — shown right above the button (Watchizer, 2026-09-28).
+  // null | { kind: 'invalid', lines: [{ name, reason }] } | { kind: 'error' }
   const [checkoutBlock, setCheckoutBlock] = useState(null)
 
-  const items = cart?.cart_item || []
-  const list = products || []
-  const offerList = offers || []
-  // Waiting only for cards that were actually asked for: a cart of offer lines alone asks for none
-  // (it used to wait on the whole catalogue, which always came).
-  const loading = items.some((i) => i.product_id) && cardsPayload === undefined && !cardsError
-
-  // Validate against live catalog when the cart opens (authoritative gate).
+  const items = useMemo(() => cart?.cart_item || [], [cart])
+  // Core's verdict when the cart opens: every line re-checked and re-priced (the authoritative read).
   useEffect(() => {
-    if (items.length) validateCart()
+    let live = true
+    validateCart().finally(() => live && setChecked(true))
+    return () => {
+      live = false
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+  const loading = !checked && items.some((i) => !i.product)
 
-  const resolve = useCallback(
-    (item) => {
-      if (item.product_id) {
-        const p = list.find((x) => x.id === item.product_id)
-        return {
-          entity: p,
-          name: p?.name || p?.product_title || '',
-          brand: typeof p?.brand === 'string' ? p.brand : p?.brand_name || '',
-          image: getImageUrl(p?.image) || PLACEHOLDER_IMG,
-          url: p ? productUrl(p) : '/listing',
-          stock: item.type_stock === 'Express' ? Number(p?.stock || 0) : Number(p?.market_stock || 0),
-          selling: Number(p?.selling_price || 0),
-          sale: Number(p?.sale_price_after_discount || 0),
-        }
-      }
-      const o = offerList.find((x) => String(x.id) === String(item.offer_id))
-      return {
-        entity: o,
-        name: o ? (isRTL ? o.offer_name_ar : o.offer_name_en) : '',
-        brand: '',
-        image: getImageUrl(o?.image) || PLACEHOLDER_IMG,
-        url: o ? offerUrl(o) : '/offers',
-        stock: Number(o?.stock || 0),
-        selling: Number(o?.selling_price || 0),
-        sale: Number(o?.sale_price_after_discount || 0),
-      }
-    },
-    [list, offerList, isRTL],
-  )
+  const fmt = useCallback((v) => money(Math.round(Number(v) || 0), lang), [lang])
+  const views = useMemo(() => new Map(items.map((i) => [getItemKey(i), lineView(i, lang)])), [items, lang])
 
   const { subtotal, savings, anyUnavailable, itemCount } = useMemo(() => {
     let sub = 0
@@ -222,24 +206,33 @@ function Cart() {
     let bad = false
     let count = 0
     for (const it of items) {
-      const unit = Number(it.piece_price)
-      sub += unit * it.quantity
+      const d = views.get(getItemKey(it))
+      if (d.soldOut) {
+        bad = true
+        continue
+      }
+      sub += d.unit * it.quantity
       count += it.quantity
-      const d = resolve(it)
-      if (d.selling > unit) sav += (d.selling - unit) * it.quantity
-      if (d.entity && d.stock <= 0) bad = true
+      if (d.onSale) sav += (d.list - d.unit) * it.quantity
     }
     return { subtotal: sub, savings: sav, anyUnavailable: bad, itemCount: count }
-  }, [items, resolve])
+  }, [items, views])
 
-  // ── Shipping (always the selected governorate cost — no free shipping) ──
-  const cities = shippingPrices || []
+  // every unit in the cart, sold-out lines included — the header's badge counts the same way
+  const lineUnits = items.reduce((n, i) => n + i.quantity, 0)
+
+  // ── Delivery: the governorate's fee; before one is chosen, the range (the row always shows an amount)
+  const cities = useMemo(() => shippingPrices || [], [shippingPrices])
   const selectedCity = cities.find((c) => String(c.id) === String(shippingid)) || null
   const shippingCost = selectedCity ? Number(selectedCity.Price) : 0
-  const citySelected = !!selectedCity
+  const citySelected = Boolean(selectedCity)
+  const fees = cities.map((c) => Number(c.Price)).filter((n) => Number.isFinite(n))
+  const feeRange = fees.length
+    ? isRTL
+      ? `${Math.min(...fees).toLocaleString('en-EG')}–${Math.max(...fees).toLocaleString('en-EG')} ج.م`
+      : `EGP ${Math.min(...fees).toLocaleString('en-EG')}–${Math.max(...fees).toLocaleString('en-EG')}`
+    : '—'
   const total = subtotal + shippingCost
-  const fmt = useCallback((v) => Math.round(Number(v) || 0).toLocaleString(isRTL ? 'ar-EG' : 'en-US'), [isRTL])
-  const currency = isRTL ? 'ج.م' : 'EGP'
 
   const onCityChange = useCallback(
     (e) => {
@@ -254,51 +247,19 @@ function Cart() {
     [cities, setShippingid, setShipping, setShippingName, isRTL],
   )
 
-  // ── Smart suggestions from the whole cart (lazy-rendered) ──
-  // ADD-ONS chosen on the SERVER (C-1 stage 4, core's CompatRelated — the developer's rule of
-  // 2026-09-29): other kinds of product that go with what is in the cart, never more of the same.
-  // It needed the whole catalogue here. Asked for only once the section scrolls near.
-  const [showSuggest, setShowSuggest] = useState(false)
-  const { data: suggestPayload } = useRelated(
-    { cart: items.map((i) => i.product_id) },
-    { enabled: showSuggest },
-  )
-  const cartSuggestions = useCardsOf(suggestPayload, language)
-  // A CALLBACK ref (C-1 stage 4): the observer is attached whenever the anchor element mounts. It
-  // used to be attached by an effect keyed on the item count, which depends on render timing — once
-  // the cards stopped arriving with the page, a browser check saw the suggestions never requested in
-  // one run of five. Tied to the element itself, it cannot miss it.
-  const suggestObserver = useRef(null)
-  const suggestRef = useCallback((el) => {
-    suggestObserver.current?.disconnect()
-    suggestObserver.current = null
-    if (!el) return
-    const obs = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          setShowSuggest(true)
-          obs.disconnect()
-        }
-      },
-      { rootMargin: '200px' },
-    )
-    obs.observe(el)
-    suggestObserver.current = obs
-  }, [])
-
-  const hasWarnings = useMemo(
-    () =>
-      items.some((it) => {
-        const d = resolve(it)
-        if (!d.entity) return false
-        if (d.stock <= 0 || d.stock < it.quantity) return true
-        const cur = d.sale > 0 && d.sale < d.selling ? d.sale : d.selling
-        return cur > 0 && Math.abs(cur - Number(it.piece_price)) > 0.01
-      }),
-    [items, resolve],
+  // Core's reasons in the shopper's language (Watchizer's sentences).
+  const reasonText = useCallback(
+    (line) => {
+      if (line.problem === 'insufficient_stock')
+        return line.available > 0
+          ? isRTL ? `المتاح ${line.available} فقط` : `Only ${line.available} available`
+          : t('Not enough stock for this quantity', 'الكمية المطلوبة غير متوفرة في المخزون')
+      if (OUT.has(line.problem)) return t('No longer available', 'لم يعد متوفراً')
+      return t("This item couldn't be updated", 'تعذّر تحديث هذا المنتج')
+    },
+    [isRTL, t],
   )
 
-  // Any change to the cart makes the last "why not" stale.
   const onRemove = useCallback(
     (item) => {
       setCheckoutBlock(null)
@@ -307,157 +268,98 @@ function Cart() {
     [removeItem],
   )
 
-  // Core's warning text, in the shopper's language. Core sends English sentences; the known ones
-  // are translated, anything new is shown as sent rather than hidden.
-  const reasonText = useCallback(
-    (message) => {
-      const msg = String(message || '')
-      const price = msg.match(/^Price changed to ([\d.]+)/i)
-      if (price) return isRTL ? `تغيّر السعر إلى ${fmt(price[1])} ${currency}` : `Price changed to ${fmt(price[1])} ${currency}`
-      const only = msg.match(/^Only (\d+) available/i)
-      if (only) return isRTL ? `المتاح ${only[1]} فقط` : `Only ${only[1]} available`
-      if (/no longer available/i.test(msg)) return isRTL ? 'لم يعد متوفراً' : 'No longer available'
-      if (/exceeds available stock/i.test(msg))
-        return isRTL ? 'الكمية المطلوبة غير متوفرة في المخزون' : 'Not enough stock for this quantity'
-      return msg || (isRTL ? 'تعذّر تحديث هذا المنتج' : "This item couldn't be updated")
-    },
-    [isRTL, fmt, currency],
-  )
-
   const onQty = useCallback(
     async (key, q) => {
       setCheckoutBlock(null)
-      // The server's answer wins (fix 2): a refused quantity is rolled back by the store, and the
-      // shopper is told why here instead of seeing a number the server never accepted.
+      // The server's answer wins: a refused quantity is rolled back by the store, and the shopper is told why.
       const r = await updateQuantity(key, q)
-      if (r && r.ok === false) setCheckoutBlock({ kind: 'invalid', lines: [{ name: '', reason: reasonText(r.message) }] })
+      if (r && r.ok === false) {
+        const line = cartStore.getSnapshot().cart_item.find((i) => getItemKey(i) === key)
+        setCheckoutBlock({
+          kind: 'invalid',
+          lines: [{ name: line ? lineView(line, lang).name : '', reason: line ? reasonText({ ...line, problem: r.code }) : '' }],
+        })
+      }
     },
-    [updateQuantity, reasonText],
-  )
-  // A line's CURRENT price — the card's and the checkout's rule (sale only when 0 < sale < list).
-  const priceOf = useCallback(
-    (line) => {
-      const d = resolve(line)
-      if (!d.entity) return null
-      const cur = d.sale > 0 && d.sale < d.selling ? d.sale : d.selling
-      return cur > 0 ? cur : null
-    },
-    [resolve],
+    [updateQuantity, reasonText, lang],
   )
 
-  // The checkout step NEVER fails silently (2026-09-28). It used to scroll to the top and return
-  // when core said the cart was not valid — core's reasons were never shown, the button just went
-  // back to "CHECKOUT", on every tap. Now the reasons are shown next to the button, per line.
+  // The checkout step never fails silently (Watchizer, 2026-09-28): core judges the cart as it stands, and
+  // any line it refuses is named next to the button.
   const goToCheckout = useCallback(async () => {
     if (processing) return
     setProcessing(true)
     setCheckoutBlock(null)
-    const shownLines = items.length
-    // Fix 2 (2026-09-28): first make the SERVER cart match what the shopper sees, at today's
-    // prices, and rebuild this page from the server's answer. An old drift — a line stored at an
-    // old price, a quantity the server never accepted, a stray second row, an expired guest cart —
-    // is healed here instead of blocking checkout.
-    const rec = await reconcile(priceOf)
-    if (rec.failed) {
-      setProcessing(false)
-      setCheckoutBlock({ kind: 'error' })
-      return
-    }
-    // The page had lines and the server now holds none: never a pass (it used to validate an EMPTY
-    // server cart as fine while the order was built from this page).
-    if (shownLines > 0 && rec.serverLines === 0) {
-      setProcessing(false)
-      setCheckoutBlock({ kind: 'lost' })
-      return
-    }
-    if (rec.refused.length) {
-      const lines = rec.refused.map((f) => {
-        const line = items.find((i) => getItemKey(i) === f.key)
-        return { name: line ? resolve(line).name : '', reason: reasonText(f.message) }
-      })
-      setProcessing(false)
-      setCheckoutBlock({ kind: 'invalid', lines })
-      return
-    }
     const res = await validateCart()
+    setProcessing(false)
     if (res?.failed) {
-      setProcessing(false)
       setCheckoutBlock({ kind: 'error' })
-      return
-    }
-    if (shownLines > 0 && res?.totals && Number(res.totals.item_count) === 0) {
-      setProcessing(false)
-      setCheckoutBlock({ kind: 'lost' })
       return
     }
     if (res && res.valid === false) {
-      // Core names its own cart lines (server ids); read them once to say WHICH item it means.
-      let serverLines = []
-      try {
-        const { data } = await http.get('me/cart')
-        serverLines = Array.isArray(data?.cart_item) ? data.cart_item : []
-      } catch {
-        // Without the names the reasons still show.
-      }
-      const lines = (res.warnings || []).map((w) => {
-        const line = serverLines.find((l) => l.id === w.item_id)
-        const name = line ? resolve(line).name : ''
-        return { name, reason: reasonText(w.message) }
-      })
-      setProcessing(false)
-      setWarnDismissed(false)
+      const lines = cartStore
+        .getSnapshot()
+        .cart_item.filter((l) => l.problem)
+        .map((l) => ({ name: lineView(l, lang).name, reason: reasonText(l) }))
       setCheckoutBlock({ kind: 'invalid', lines })
       return
     }
-    setProcessing(false)
+    cartStore.acknowledgePrices()
     navigate('/checkout')
-  }, [processing, validateCart, navigate, resolve, reasonText, reconcile, priceOf, items])
+  }, [processing, validateCart, navigate, reasonText, lang])
+
+  const inCart = useMemo(() => new Set(items.map((i) => i.product_id)), [items])
+  const lastSlug = [...items].reverse().find((i) => i.product?.slug)?.product?.slug || null
+  const { data: railCards = [] } = useCartRail(lastSlug, inCart)
+  const empty = checked && items.length === 0
+  const { data: newIn = [] } = useNewIn(empty)
+
+  const chooseCity = useCallback(() => {
+    const el = document.getElementById('wz-ship-city')
+    if (!el) return
+    el.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    el.focus({ preventScroll: true })
+  }, [])
+  const checkoutDisabled = processing || anyUnavailable || !citySelected || itemCount === 0
+  const checkoutLabel = processing ? t('Processing...', 'جارٍ المعالجة...') : t('Checkout', 'إتمام الشراء')
 
   // ── Empty ──
   if (!loading && items.length === 0) {
     return (
-      <div className="wz-cartpage" dir={isRTL ? 'rtl' : 'ltr'}>
+      <div className="wz-cartpage bf-cartpage" dir={isRTL ? 'rtl' : 'ltr'}>
         <div className="wz-cart-empty">
-          <FiShoppingBag className="wz-cart-empty-icon" />
-          <h2>{t('Your cart is empty', 'سلة التسوق فارغة')}</h2>
-          <p>{t('Discover luxury timepieces', 'اكتشف الساعات الفاخرة')}</p>
+          <FiShoppingBag className="wz-cart-empty-icon" aria-hidden="true" />
+          <h1 className="bf-cart-empty-title">{t('Your cart is empty', 'سلة التسوق فارغة')}</h1>
+          <p>{t('Start with what is new this week.', 'ابدأ بما وصل هذا الأسبوع.')}</p>
           <button className="wz-cart-checkout" onClick={() => navigate('/listing')}>
-            {t('EXPLORE COLLECTION', 'تصفّح المجموعة')}
+            {t('Shop all products', 'تسوّق كل المنتجات')}
           </button>
-          <Link href="/" className="wz-cart-continue">
-            {t('Continue shopping', 'متابعة التسوق')}
-          </Link>
         </div>
+        {newIn.length > 1 && (
+          <div className="bf-cart-rail-wrap">
+            <BfRail title={t('New in', 'وصل حديثاً')} cards={newIn} lang={lang} seeAllHref="/listing" tint="none" className="bf-cart-rail" />
+          </div>
+        )}
       </div>
     )
   }
 
   return (
-    <div className="wz-cartpage" dir={isRTL ? 'rtl' : 'ltr'}>
+    <div className="wz-cartpage bf-cartpage" dir={isRTL ? 'rtl' : 'ltr'}>
       <div className="wz-cart-inner">
-        {/* Warnings banner */}
-        {hasWarnings && !warnDismissed && (
-          <div className="wz-cart-banner">
-            <span>⚠ {t('Some items in your cart need attention', 'بعض المنتجات في سلتك تحتاج انتباهك')}</span>
-            <button onClick={() => setWarnDismissed(true)} aria-label={t('Dismiss', 'إغلاق')}>
-              <FiX />
-            </button>
-          </div>
-        )}
-
         <div className="wz-cart-grid">
           {/* Items */}
           <div className="wz-cart-main">
             <div className="wz-cart-head">
               <h1 className="wz-cart-title">{t('Your Cart', 'سلة التسوق')}</h1>
               <span className="wz-cart-count">
-                ({itemCount} {itemCount === 1 ? t('item', 'منتج') : t('items', 'منتجات')})
+                ({lineUnits} {lineUnits === 1 ? t('item', 'منتج') : t('items', 'منتجات')})
               </span>
             </div>
 
             {loading ? (
-              <div className="wz-cart-skel-list">
-                {Array.from({ length: 2 }).map((_, i) => (
+              <div className="wz-cart-skel-list" aria-busy="true">
+                {Array.from({ length: Math.min(3, items.length || 2) }).map((_, i) => (
                   <div className="wz-cart-skel-item" key={i}>
                     <div className="wz-cart-skel-img" />
                     <div className="wz-cart-skel-lines">
@@ -473,11 +375,10 @@ function Cart() {
                 <CartItem
                   key={getItemKey(item)}
                   item={item}
-                  d={resolve(item)}
+                  d={views.get(getItemKey(item))}
                   isRTL={isRTL}
                   t={t}
                   fmt={fmt}
-                  currency={currency}
                   onQty={onQty}
                   onRemove={onRemove}
                   navigate={navigate}
@@ -486,19 +387,18 @@ function Cart() {
             )}
 
             <Link href="/listing" className="wz-cart-continue wz-cart-continue--inline">
-              ← {t('Continue Shopping', 'متابعة التسوق')}
+              {t('Continue shopping', 'متابعة التسوق')}
             </Link>
           </div>
 
           {/* Summary */}
-          <aside className="wz-cart-summary-wrap">
+          <aside className="wz-cart-summary-wrap" aria-label={t('Order summary', 'ملخص الطلب')}>
             <div className="wz-cart-summary">
-              <h2 className="wz-cart-summary-title">{t('Order Summary', 'ملخص الطلب')}</h2>
+              <h2 className="wz-cart-summary-title">{t('Order summary', 'ملخص الطلب')}</h2>
 
-              {/* Ship-to governorate */}
               <div className="wz-cart-shipto">
                 <label className="wz-cart-shipto-label" htmlFor="wz-ship-city">
-                  {t('Ship to:', 'الشحن إلى:')}
+                  {t('Ship to', 'الشحن إلى')}
                 </label>
                 <div className="wz-cart-select">
                   <select id="wz-ship-city" value={shippingid || ''} onChange={onCityChange}>
@@ -507,35 +407,26 @@ function Cart() {
                     </option>
                     {cities.map((c) => (
                       <option key={c.id} value={c.id}>
-                        {isRTL
-                          ? `${c.GovernorateAr} — ${fmt(c.Price)} ج.م`
-                          : `${c.GovernorateEn} — ${fmt(c.Price)} EGP`}
+                        {isRTL ? `${c.GovernorateAr} — ${fmt(c.Price)}` : `${c.GovernorateEn} — ${fmt(c.Price)}`}
                       </option>
                     ))}
                   </select>
-                  <FiChevronDown className="wz-cart-select-icon" />
+                  <FiChevronDown className="wz-cart-select-icon" aria-hidden="true" />
                 </div>
               </div>
 
               <div className="wz-cart-row">
                 <span>{t('Subtotal', 'المجموع الفرعي')}</span>
-                <span>{fmt(subtotal)} {currency}</span>
+                <span>{fmt(subtotal)}</span>
               </div>
               <div className="wz-cart-row">
-                <span>{t('Shipping', 'الشحن')}</span>
-                {citySelected ? (
-                  <span>{fmt(shippingCost)} {currency}</span>
-                ) : (
-                  <span>—</span>
-                )}
+                <span>{t('Delivery', 'التوصيل')}</span>
+                <span>{citySelected ? fmt(shippingCost) : feeRange}</span>
               </div>
-
               {savings > 0 && (
                 <div className="wz-cart-row wz-cart-savings">
                   <span>{t('You save', 'وفرت')}</span>
-                  <span>
-                    {fmt(savings)} {currency}
-                  </span>
+                  <span>{fmt(savings)}</span>
                 </div>
               )}
 
@@ -543,32 +434,20 @@ function Cart() {
 
               <div className="wz-cart-row wz-cart-total">
                 <span>{t('Total', 'الإجمالي')}</span>
-                <span>{fmt(total)} {currency}</span>
+                <span>{fmt(total)}</span>
               </div>
+              {!citySelected && <p className="bf-cart-total-note">{t('Plus delivery to your governorate', 'يُضاف التوصيل حسب المحافظة')}</p>}
 
               {checkoutBlock && (
                 <div className="wz-cart-block" role="alert">
                   {checkoutBlock.kind === 'error' ? (
                     <p className="wz-cart-block-title">
-                      {t(
-                        "We couldn't check your cart just now. Please try again.",
-                        'تعذّر التحقق من سلتك الآن. حاول مرة أخرى.',
-                      )}
-                    </p>
-                  ) : checkoutBlock.kind === 'lost' ? (
-                    <p className="wz-cart-block-title">
-                      {t(
-                        "We couldn't save your cart just now. Please try again in a moment.",
-                        'تعذّر حفظ سلتك الآن. حاول مرة أخرى بعد قليل.',
-                      )}
+                      {t("We couldn't check your cart just now. Please try again.", 'تعذّر التحقق من سلتك الآن. حاول مرة أخرى.')}
                     </p>
                   ) : (
                     <>
                       <p className="wz-cart-block-title">
-                        {t(
-                          'Your cart changed since you added these items:',
-                          'تغيّرت سلتك منذ أضفت هذه المنتجات:',
-                        )}
+                        {t('Your cart changed since you added these items:', 'تغيّرت سلتك منذ أضفت هذه المنتجات:')}
                       </p>
                       <ul className="wz-cart-block-list">
                         {checkoutBlock.lines.map((l, i) => (
@@ -589,54 +468,51 @@ function Cart() {
                   )}
                 </div>
               )}
-              <button
-                className="wz-cart-checkout"
-                onClick={goToCheckout}
-                disabled={processing || anyUnavailable || !citySelected}
-              >
-                {processing ? (
-                  <>
-                    <span className="wz-cart-spinner" />
-                    {t('Processing...', 'جارٍ المعالجة...')}
-                  </>
-                ) : (
-                  t('CHECKOUT', 'إتمام الشراء')
-                )}
+              {anyUnavailable && (
+                <p className="wz-cart-select-hint">{t('Remove the sold-out items to continue', 'احذف المنتجات النافدة للمتابعة')}</p>
+              )}
+              <button className="wz-cart-checkout" onClick={goToCheckout} disabled={checkoutDisabled}>
+                {processing && <span className="wz-cart-spinner" aria-hidden="true" />}
+                {checkoutLabel}
               </button>
-              {!citySelected && (
-                <p className="wz-cart-select-hint">{t('Please select your city', 'يرجى اختيار مدينتك')}</p>
+              {!citySelected && !anyUnavailable && (
+                <p className="wz-cart-select-hint">{t('Choose your governorate to continue', 'اختر محافظتك للمتابعة')}</p>
               )}
 
               <ul className="wz-cart-trust">
-                <li><FiLock /> {t('Secure checkout', 'دفع آمن')}</li>
-                <li><FiRefreshCw /> {t('Free returns within 30 days', 'إرجاع مجاني خلال 30 يوماً')}</li>
-                <li><FiCheck /> {t('100% authentic guarantee', 'أصالة مضمونة 100%')}</li>
+                <li><FiLock aria-hidden="true" /> {t('Secure checkout', 'دفع آمن')}</li>
+                <li><FiRefreshCw aria-hidden="true" /> {t('Returns within 4 days of delivery', 'الإرجاع خلال 4 أيام من الاستلام')}</li>
+                <li><FiCheck aria-hidden="true" /> {t('100% authentic guarantee', 'أصالة مضمونة 100%')}</li>
               </ul>
             </div>
           </aside>
         </div>
       </div>
 
-      {/* Smart suggestions (lazy, full-width band) */}
-      <div ref={suggestRef} className="wz-cart-suggest-anchor">
-        {showSuggest && cartSuggestions.length > 0 && (
-          <section className="wz-cart-suggest">
-            <div className="wz-cart-suggest-inner">
-              <ProductSlider
-                gradeproducts={cartSuggestions}
-                text={{
-                  title: { en: 'Complete the Look', ar: 'أكمل إطلالتك' },
-                  description: { en: 'Based on your cart', ar: 'بناءً على سلتك' },
-                }}
-              />
-            </div>
-          </section>
-        )}
+      {railCards.length > 1 && (
+        <div className="bf-cart-rail-wrap">
+          <BfRail title={t('Goes with your cart', 'يناسب سلتك')} cards={railCards} lang={lang} tint="none" className="bf-cart-rail" />
+        </div>
+      )}
+
+      {/* The phone's sticky bar (§10.4): the total and Checkout, always in reach */}
+      <div className="bf-cart-bar">
+        <div className="bf-cart-bar-total">
+          <span>{t('Total', 'الإجمالي')}</span>
+          <strong>{fmt(total)}</strong>
+        </div>
+        {/* before a governorate is chosen the bar's button takes the shopper to the choice, not a dead end */}
+        <button
+          className="bf-cart-bar-cta"
+          onClick={citySelected ? goToCheckout : chooseCity}
+          disabled={processing || anyUnavailable || itemCount === 0}
+        >
+          {citySelected ? checkoutLabel : t('Choose governorate', 'اختر المحافظة')}
+        </button>
       </div>
 
-      {/* Undo toast */}
       {lastRemoved && (
-        <div className="wz-cart-toast">
+        <div className="wz-cart-toast" role="status">
           <span>{t('Item removed.', 'تم حذف المنتج.')}</span>
           <button onClick={undoRemove}>{t('Undo', 'تراجع')}</button>
         </div>

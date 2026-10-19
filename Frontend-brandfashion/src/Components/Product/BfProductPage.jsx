@@ -44,7 +44,7 @@ const STR = {
   en: {
     home: 'Home', inStock: 'In stock', onlyLeft: (n) => `Only ${n} left`, soldOut: 'Sold out', add: 'Add to cart', notify: 'Notify me when it’s back',
     notifySize: 'Notify me for this size', chooseBoth: 'Choose a colour and size', chooseColour: 'Choose a colour', chooseSize: 'Choose a size',
-    vat: 'Incl. VAT', colour: 'Colour', size: 'Size', promises: ['Delivery across Egypt — EGP 100–300 by governorate', 'Pay on delivery or by card', 'Returns: the customer pays return shipping'],
+    vat: 'Incl. VAT', colour: 'Colour', size: 'Size', promises: ['Delivery across Egypt — EGP 100–300 by governorate', 'Cash on delivery', 'Returns: the customer pays return shipping'],
     attributes: 'Details', description: 'Description', ratings: 'Ratings', brand: 'Brand', family: 'Type', category: 'Category', gender: 'Gender', colours: 'Colours', features: 'Features',
     goesWith: 'Goes with this', similar: 'Similar', seeAll: 'See all', was: 'was', added: 'Added to cart', notified: 'We’ll let you know when it’s back',
     families: { watch: 'Watch', bag: 'Bag', wallet: 'Wallet', fashion: 'Fashion', electronics: 'Electronics', perfume: 'Perfume' },
@@ -52,7 +52,7 @@ const STR = {
   ar: {
     home: 'الرئيسية', inStock: 'متوفر', onlyLeft: (n) => `باقي ${n} فقط`, soldOut: 'نفد', add: 'أضف إلى السلة', notify: 'نبّهني عند توفره',
     notifySize: 'نبّهني لهذا المقاس', chooseBoth: 'اختر اللون والمقاس', chooseColour: 'اختر اللون', chooseSize: 'اختر المقاس',
-    vat: 'شامل الضريبة', colour: 'اللون', size: 'المقاس', promises: ['التوصيل لجميع المحافظات — من 100 إلى 300 ج.م حسب المحافظة', 'الدفع عند الاستلام أو بالبطاقة', 'الإرجاع: العميل يتحمّل شحن الإرجاع'],
+    vat: 'شامل الضريبة', colour: 'اللون', size: 'المقاس', promises: ['التوصيل لجميع المحافظات — من 100 إلى 300 ج.م حسب المحافظة', 'الدفع عند الاستلام', 'الإرجاع: العميل يتحمّل شحن الإرجاع'],
     attributes: 'التفاصيل', description: 'الوصف', ratings: 'التقييمات', brand: 'العلامة', family: 'الصنف', category: 'الفئة', gender: 'الجنس', colours: 'الألوان', features: 'المميزات',
     goesWith: 'يناسبه', similar: 'مشابه', seeAll: 'عرض الكل', was: 'كان', added: 'أُضيف إلى السلة', notified: 'سنخبرك عند توفره',
     families: { watch: 'ساعة', bag: 'حقيبة', wallet: 'محفظة', fashion: 'أزياء', electronics: 'إلكترونيات', perfume: 'عطر' },

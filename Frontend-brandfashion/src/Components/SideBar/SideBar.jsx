@@ -1,5 +1,5 @@
 'use client'
-import { memo, useState, useMemo } from 'react'
+import { memo, useState, useMemo, useId } from 'react'
 import { useTables } from '../../Hooks/queries/useTables'
 import { useUIStore } from '../../Store/uiStore'
 import './SideBar.css'
@@ -85,6 +85,83 @@ function FilterSection({ title, items, selectedIds, onToggle, onClear, searchabl
   )
 }
 
+// Brand Fashion's Sale section (DIVERGED 2026-10-19). A product's own discount, never the dashboard's Offers: one
+// choice of minimum (Any is any valid discount), cleared from the section's header like the other sections, and an
+// in-stock box under it — the deals band's "See all" lands here on 30 %+ and in stock. No counts yet: v2 serves
+// no discount facet (recorded).
+const SALE_CHOICES = [0, 20, 30, 40]
+function SaleSection({ filters, setFilters, setCurrentPage, isRTL }) {
+  const [expanded, setExpanded] = useState(true)
+  // one radio group PER sidebar: the desktop sidebar and the phone's filter sheet are both on the page, and two
+  // groups sharing a name are one group to the browser — checking 30 % in one unchecked it in the other
+  const group = `bf-sale-${useId()}`
+  const chosen = filters.sale ? Number(filters.discount) || 0 : null
+  const pick = (d) => {
+    setCurrentPage(1)
+    setFilters((prev) => ({ ...prev, sale: true, discount: d }))
+  }
+  const clear = () => {
+    setCurrentPage(1)
+    setFilters((prev) => ({ ...prev, sale: false, discount: 0 }))
+  }
+  const label = (d) => (d === 0 ? (isRTL ? 'أي خصم' : 'Any discount') : isRTL ? `خصم ${d}% أو أكثر` : `${d}% off or more`)
+  return (
+    <div className="wz-fs">
+      <button className="wz-fs-title" onClick={() => setExpanded(!expanded)} aria-expanded={expanded}>
+        <span className="wz-fs-title-text">{isRTL ? 'تخفيضات' : 'Sale'}</span>
+        {chosen !== null && (
+          <span
+            className="wz-fs-clear"
+            role="button"
+            tabIndex={0}
+            onClick={(e) => {
+              e.stopPropagation()
+              clear()
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                e.stopPropagation()
+                clear()
+              }
+            }}
+          >
+            {isRTL ? 'مسح' : 'Clear'}
+          </span>
+        )}
+        <span className="wz-fs-toggle">{expanded ? '−' : '+'}</span>
+      </button>
+      {expanded && (
+        <div className="wz-fs-body">
+          <ul className="wz-fs-list" role="radiogroup" aria-label={isRTL ? 'الحد الأدنى للخصم' : 'Minimum discount'}>
+            {SALE_CHOICES.map((d) => (
+              <li key={d} className="wz-fs-item">
+                <label>
+                  <input type="radio" name={group} checked={chosen === d} onChange={() => pick(d)} />
+                  <span className="wz-fs-item-name">{label(d)}</span>
+                </label>
+              </li>
+            ))}
+            <li className="wz-fs-item bf-fs-instock">
+              <label>
+                <input
+                  type="checkbox"
+                  checked={Boolean(filters.inStock)}
+                  onChange={() => {
+                    setCurrentPage(1)
+                    setFilters((prev) => ({ ...prev, inStock: !prev.inStock }))
+                  }}
+                />
+                <span className="wz-fs-item-name">{isRTL ? 'المتوفر فقط' : 'In stock only'}</span>
+              </label>
+            </li>
+          </ul>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // `facets`: the option counts from core's `catalog/listing` (C-1 stage 3) — for each section, the
 // products matching that option AND every OTHER active filter. The sidebar used to count them
 // itself over the whole catalogue, once per option.
@@ -112,6 +189,10 @@ function SideBar({ facets }) {
       subTypes: [],
       genders: [],
       offers: false,
+      // Brand Fashion: Clear all clears the Sale section too (Watchizer's list predates the Sale key)
+      sale: false,
+      discount: 0,
+      inStock: false,
       price: [0, 99999999],
       dialColors: [],
       bandColors: [],
@@ -243,6 +324,7 @@ function SideBar({ facets }) {
     (filters.genders?.length || 0) +
     (filters.offers ? 1 : 0) +
     (filters.sale ? 1 : 0) + // Brand Fashion's Sale key (round 5); Watchizer never sets it
+    (filters.inStock ? 1 : 0) + // and its in-stock key (2026-10-19)
     (priceMin > 0 || priceMaxRaw < 99999999 ? 1 : 0)
 
   return (
@@ -271,6 +353,9 @@ function SideBar({ facets }) {
         />
       ))}
 
+      {/* Brand Fashion (2026-10-19, Michael): the Sale section — Any / 20 / 30 / 40 %+ — and in stock only */}
+      <SaleSection filters={filters} setFilters={setFilters} setCurrentPage={setCurrentPage} isRTL={isRTL} />
+
       {/* Price */}
       <div className="wz-fs">
         <div className="wz-fs-title" style={{ cursor: 'default' }}>
@@ -290,6 +375,7 @@ function SideBar({ facets }) {
             <input
               type="range"
               className="wz-price-input"
+              aria-label={isRTL ? 'أقل سعر' : 'Minimum price'}
               min={0}
               max={ceiling}
               step={step}
@@ -299,6 +385,7 @@ function SideBar({ facets }) {
             <input
               type="range"
               className="wz-price-input"
+              aria-label={isRTL ? 'أعلى سعر' : 'Maximum price'}
               min={0}
               max={ceiling}
               step={step}

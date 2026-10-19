@@ -148,3 +148,6 @@ html .wz-fdrawer-apply { height: 48px; border-radius: var(--wz-r-pill); backgrou
   html .wz-empty-btn:hover { background: var(--wz-ink); }
   html .wz-fs-item label:hover { background: transparent; }
 }
+/* the walk (2026-10-19, WCAG 2.5.8 target size): the breadcrumb's links and the chips' "Clear all" were 14–19 px tall on
+   a phone — the same words, a 24 px target */
+.wz-bc-link, .wz-tags-clear { display: inline-flex; align-items: center; min-height: 24px; }

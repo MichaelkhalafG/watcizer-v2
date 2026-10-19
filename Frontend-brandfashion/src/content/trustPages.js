@@ -18,7 +18,8 @@ export const TRUST_UPDATED = '2026-10-18'
 
 const PHONE = '01283888490'
 const TEL = 'tel:+201283888490'
-const WHATSAPP = 'https://wa.me/201283888490'
+// exported (2026-10-19) for the 500 page's "Contact us on WhatsApp" — one place for the support number
+export const WHATSAPP = 'https://wa.me/201283888490'
 const EMAIL = 'Info@brandfashionegy.com'
 const MAILTO = `mailto:${EMAIL}`
 const INSTAGRAM = 'https://www.instagram.com/brand_fashion_eg'

@@ -198,3 +198,9 @@
   padding: 0;
   background: none;
 }
+
+/* Brand Fashion (2026-10-19, §10.8): an article with no cover — the leather tint, the title large */
+.bf-blogs__nocover { display: flex; align-items: flex-end; aspect-ratio: 16 / 9; padding: 20px; border-radius: 10px; background: var(--wz-tint-leather); color: var(--wz-ink); font-size: 22px; font-weight: 800; line-height: 1.2; }
+.bf-blogs__empty-link { color: var(--wz-ink); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+/* the title is already set large on the tint: the card's own heading stays for screen readers, not twice on screen */
+.bf-blogs__card--nocover h2 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

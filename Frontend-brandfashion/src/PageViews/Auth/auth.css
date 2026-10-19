@@ -434,3 +434,5 @@
     padding: 28px 20px 40px;
   }
 }
+/* the walk (2026-10-19, WCAG 2.5.8 target size): "Forgot password?" was 19 px tall — a 24 px target */
+.wz-auth-link-muted { display: inline-flex; align-items: center; min-height: 24px; }

@@ -5,6 +5,7 @@ import Providers from './providers'
 import Analytics from './analytics'
 import Toast from './toast'
 import ScrollToTop from '@/src/Components/ScrollToTop/ScrollToTop'
+import OfflineBanner from '@/src/Components/Offline/OfflineBanner'
 
 // Watchizer's face (spec v2.11 §5, Michael's decision of 2026-10-17): English on system Georgia, Arabic on
 // El Messiri — the same pair Frontend-next loads, so the two shops share one voice. El Messiri is self-hosted
@@ -90,6 +91,7 @@ export default async function RootLayout({ children }) {
               The cart drawer moved into the (main) layout so it sits below the
               catalog HydrationBoundary. */}
           <Toast />
+          <OfflineBanner />
           <ScrollToTop />
         </Providers>
         <Analytics />
