@@ -17,6 +17,7 @@ use App\Http\Controllers\Customer\CustomerSocialController;
 use App\Http\Controllers\Customer\CustomerVerificationController;
 use App\Http\Controllers\Payment\PaymentCallbackController;
 use App\Http\Controllers\V2\AccountController;
+use App\Http\Controllers\V2\AuthController;
 use App\Http\Controllers\V2\CartController;
 use App\Http\Controllers\V2\CategoryController;
 use App\Http\Controllers\V2\HomeController;
@@ -71,6 +72,10 @@ Route::prefix('v2/{storefront}')->middleware('storefront')->where(['storefront' 
     // The night run (2026-10-19, audit a1): the signed-in customer's orders on THIS storefront — compat's me/orders
     // lists every shop's (users are shared). Private, never cached (AccountController).
     Route::get('me/orders', [AccountController::class, 'orders']);
+    // L3 (2026-10-19): the social sign-in providers this storefront can actually run — a shop whose own Google
+    // project is not configured draws no Google button (AuthController). Not under http.cache: credentials set on
+    // the server show within a minute.
+    Route::get('auth/providers', [AuthController::class, 'providers']);
 });
 
 // ── 2. compat (legacy paths, legacy shapes) ───────────────────────────────

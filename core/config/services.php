@@ -77,6 +77,35 @@ return [
     ],
 
     /*
+    |--------------------------------------------------------------------------
+    | Social sign-in PER STOREFRONT (backlog L3, developer decision 2026-10-19)
+    |--------------------------------------------------------------------------
+    | A storefront listed here, by `storefronts.code`, signs its shoppers in with ITS OWN Google
+    | project and sends Google ITS OWN callback: its API host + `/api/auth/google/callback`
+    | (`CustomerSocial::callbackUrl()` — Brand Fashion's is
+    | `https://api.michaelkhalaf.com/api/auth/google/callback`), so the customer comes back to the shop
+    | they started on. There is no redirect key: the URI is derived, and it is the value the project's
+    | console must list byte for byte.
+    |
+    | A storefront NOT listed, or listed with the id or the secret empty (half a pair is none):
+    |   - the DEFAULT storefront (`compat.storefront_id`, Watchizer) signs in on `services.google` above,
+    |     through exactly the code path it used before this block existed;
+    |   - any other storefront is NOT CONFIGURED: core refuses to start its flow and v2
+    |     `auth/providers` does not list Google, so its login page shows no Google button. Never another
+    |     shop's project — a Brand Fashion shopper sent through Watchizer's comes back on Watchizer.
+    |
+    | Developer-handled secrets, never committed (AGENTS §3). After setting them: `php artisan config:cache`.
+    */
+    'social_storefronts' => [
+        'brandfashion' => [
+            'google' => [
+                'client_id' => env('BRANDFASHION_GOOGLE_CLIENT_ID'),
+                'client_secret' => env('BRANDFASHION_GOOGLE_CLIENT_SECRET'),
+            ],
+        ],
+    ],
+
+    /*
     | Paymob, the GLOBAL account — retired (A2, developer 2026-10-12). Payment credentials live per
     | storefront in `storefront_payment_providers`; the wave-3 intention builder that read
     | `secret_key`/`public_key`/`payment_methods` from here is deleted, so there is nothing left for

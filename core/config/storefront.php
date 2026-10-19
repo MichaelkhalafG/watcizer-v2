@@ -35,6 +35,12 @@ return [
     ],
 
     'http_cache' => [
-        'control' => 'max-age=60, public, s-maxage=600, stale-while-revalidate=3600',   // Symfony emits directives in this (sorted) order
+        // PRIVATE since 2026-10-19 (the deploy rehearsal — measured on production): Hostinger's CDN keeps ONE copy per
+        // URL and ignores `Vary: Origin`, so a `public, s-maxage=600` answer carried the CORS header of whichever request
+        // filled the copy — NONE when the storefront's own server (no Origin) read it first — and every browser read of
+        // that URL then failed. The 2026-09-29 compat fix (NoSharedCacheTest), applied to v2: the browser keeps its cache
+        // and the ETag (304s still answer); the CDN keeps nothing. Was: 'max-age=60, public, s-maxage=600,
+        // stale-while-revalidate=3600'. Brand Fashion's app is the only one whose browser reads this group.
+        'control' => 'max-age=60, private',   // Symfony emits directives in this (sorted) order
     ],
 ];
