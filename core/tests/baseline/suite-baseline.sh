@@ -96,7 +96,15 @@ if [ -z "$LOG" ]; then
   mysqldb_before=$(check_mysql_db)
   cstart=$(date +%s); checksum_all "$before"; echo "checksum before: $(wc -l < "$before") tables in $(( $(date +%s) - cstart )) s"
   start=$(date +%s)
-  php artisan test 2>&1 | sed -E 's/\x1b\[[0-9;]*m//g' > "$LOG"
+  # COLUMNS=120 PINS THE WIDTH, and the gate's verdict depends on it (2026-10-19). Pest fits each FAILED
+  # line to the terminal and cuts the test's name with an ellipsis, so the names this script compares are
+  # the OPERATOR'S terminal width in disguise: the baseline was written at 120 (names cut to 105-106), and
+  # on a 187-column console 40 of the 61 names come out whole and match nothing — the gate then reads them
+  # as 40 new failures AND the same 40 as newly passing, on a tree that is green. Measured that morning:
+  # at 80 the names are 66 characters, at 120 exactly the baseline's, at 400 whole. The prefix overrides
+  # whatever the console says, so the comparison is the same for every operator and for CI. The real fix
+  # is to stop parsing output meant for people (backlog GATE-JUNIT-NAMES); until then, do not remove this.
+  COLUMNS=120 php artisan test 2>&1 | sed -E 's/\x1b\[[0-9;]*m//g' > "$LOG"
   echo "suite: $(grep -E '^\s*Tests:' "$LOG" | tail -1 | sed -E 's/^\s*//') — $(( $(date +%s) - start )) s — log $LOG"
   cstart=$(date +%s); checksum_all "$after"; echo "checksum after:  $(wc -l < "$after") tables in $(( $(date +%s) - cstart )) s"
   mysqldb_after=$(check_mysql_db)
