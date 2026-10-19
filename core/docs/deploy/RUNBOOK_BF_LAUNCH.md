@@ -536,6 +536,8 @@ build.
 | P10 | Brand Fashion is crawlable (BF-NOINDEX, decision pending since 2026-10-14) | `robots.txt` allows crawling | Decide before launch; `https://michaelkhalaf.com/robots.txt` |
 | P11 | Brand Fashion's own analytics (BF-ANALYTICS-OWN) | None (the correct state until the client's accounts exist) | §8.2 step 1 |
 | P12 | The About pages | Both still say "visit our store at …" (one store) | Michael: name both branches? (copy only) |
+| P13 | **Brand Fashion's payment badges** (BF-CARD-BADGE) | Its offer pages print **Card** and **Vodafone Cash**; Brand Fashion takes **cash on delivery only** until the Paymob contract. **Decided 2026-10-19: leave them**, and re-check here on launch day | Open a Brand Fashion offer page. If cards are still not accepted, remove the two entries from `Frontend-brandfashion/src/config/trust.config.js` `payments` (one line each, one build). If the Paymob contract is live by then, they are already true — check the checkout offers a card row |
+| P14 | Watchizer's social accounts in its structured data | Fixed 2026-10-19: `sameAs` imports the same constants the contact page uses, so the markup and the site are one pair. The header and the footer still carry their own copies of the same two URLs | `https://watchizereg.com/` → the `application/ld+json` block names `facebook.com/profile.php?id=…` and `instagram.com/watchizer_eg`, the same accounts the footer links |
 
 ---
 
