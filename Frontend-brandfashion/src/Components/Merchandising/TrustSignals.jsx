@@ -2,15 +2,24 @@ import PropTypes from 'prop-types'
 import { trustSignals } from '../../config/trust.config'
 import './TrustSignals.css'
 
+// A label is `{ en, ar }` (2026-10-19: every label printed English on Arabic pages); a bare string is
+// printed as it is.
+const inLanguage = (label, isRTL) => (typeof label === 'string' ? label : label[isRTL ? 'ar' : 'en'])
+
+const labelShape = PropTypes.oneOfType([
+  PropTypes.string,
+  PropTypes.shape({ en: PropTypes.string.isRequired, ar: PropTypes.string.isRequired }),
+])
+
 // Single trust item. Renders as a link when an href is provided (e.g. WhatsApp),
 // otherwise as a plain inline label. Pure static render — no API calls.
-function Signal({ icon, label, href }) {
+function Signal({ icon, label, href, isRTL = false }) {
   const content = (
     <span className="wz-trust-item">
       <span className="wz-trust-item-icon" aria-hidden="true">
         {icon}
       </span>
-      <span>{label}</span>
+      <span>{inLanguage(label, isRTL)}</span>
     </span>
   )
 
@@ -26,8 +35,9 @@ function Signal({ icon, label, href }) {
 
 Signal.propTypes = {
   icon: PropTypes.string.isRequired,
-  label: PropTypes.string.isRequired,
+  label: labelShape.isRequired,
   href: PropTypes.string,
+  isRTL: PropTypes.bool,
 }
 
 // PDP returns row: a product-type-aware, bilingual returns policy (same icon/row
@@ -114,8 +124,8 @@ function TrustSignals({ variant = 'pdp', rating = 0, reviewCount = 0, stockLeft 
     return (
       <div className="wz-trust wz-trust--row">
         {live}
-        <Signal {...returns} />
-        <Signal {...secure} />
+        <Signal {...returns} isRTL={isRTL} />
+        <Signal {...secure} isRTL={isRTL} />
       </div>
     )
   }
@@ -124,9 +134,9 @@ function TrustSignals({ variant = 'pdp', rating = 0, reviewCount = 0, stockLeft 
     return (
       <div className="wz-trust wz-trust--row wz-trust--framed">
         {live}
-        <Signal {...returns} />
-        <Signal {...secure} />
-        <Signal {...whatsapp} />
+        <Signal {...returns} isRTL={isRTL} />
+        <Signal {...secure} isRTL={isRTL} />
+        <Signal {...whatsapp} isRTL={isRTL} />
       </div>
     )
   }
@@ -136,13 +146,13 @@ function TrustSignals({ variant = 'pdp', rating = 0, reviewCount = 0, stockLeft 
     <div className="wz-trust wz-trust--framed wz-trust--pdp">
       {live}
       <ReturnsSignal isFashion={isFashion} isRTL={isRTL} />
-      <Signal {...guarantee} />
-      <Signal {...secure} />
-      <Signal {...whatsapp} />
+      <Signal {...guarantee} isRTL={isRTL} />
+      <Signal {...secure} isRTL={isRTL} />
+      <Signal {...whatsapp} isRTL={isRTL} />
       <div className="wz-trust-payments">
         {payments.map((method) => (
-          <span key={method} className="wz-trust-badge">
-            {method}
+          <span key={inLanguage(method, false)} className="wz-trust-badge">
+            {inLanguage(method, isRTL)}
           </span>
         ))}
       </div>

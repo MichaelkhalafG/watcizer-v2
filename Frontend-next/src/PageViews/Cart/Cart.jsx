@@ -21,6 +21,7 @@ import { useShippingStore } from '../../Store/shippingStore'
 import { useShippingPrices } from '../../Hooks/useShippingPrices'
 import useCart, { getItemKey } from '../../Hooks/useCart'
 import ProductSlider from '../../Components/Product/ProductSlider'
+import { trustSignals } from '../../config/trust.config'
 import { getImageUrl, handleImgError, PLACEHOLDER_IMG } from '../../utils/imageUrl'
 import { productUrl, offerUrl } from '../../utils/productUrl'
 import './Cart.css'
@@ -609,7 +610,8 @@ function Cart() {
 
               <ul className="wz-cart-trust">
                 <li><FiLock /> {t('Secure checkout', 'دفع آمن')}</li>
-                <li><FiRefreshCw /> {t('Free returns within 30 days', 'إرجاع مجاني خلال 30 يوماً')}</li>
+                {/* 2026-10-19: was "Free returns within 30 days" — the policy is 4 days (14 to exchange a watch), not free */}
+                <li><FiRefreshCw /> {t(trustSignals.returns.label.en, trustSignals.returns.label.ar)}</li>
                 <li><FiCheck /> {t('100% authentic guarantee', 'أصالة مضمونة 100%')}</li>
               </ul>
             </div>
