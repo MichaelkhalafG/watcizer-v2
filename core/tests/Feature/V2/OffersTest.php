@@ -88,3 +88,20 @@ it('describes a running offer by its name, window, conditions and rewards', func
         ->and(T::rows($row['conditions'])[0]['type'])->toBe(T::str(PromotionFixture::subtotalAtLeast(750)['type']))
         ->and(T::rows($row['rewards'])[0]['type'])->toBe(T::str(PromotionFixture::freeShipping()['type']));
 });
+
+it('answers no offers while none runs, and the new one AT ONCE when it is created — nothing cached, nothing to flush (Michael, 2026-10-19: the Offers entry hides while empty and comes back by itself)', function () {
+    $bf = offersSfId('brandfashion');
+    // every rule switched off for the test (rolled back with it): the storefront runs no offer
+    DB::table('promotion_rules')->update(['is_active' => 0]);
+    $res = getJson('/api/v2/brandfashion/offers')->assertOk();
+    expect($res->json('data'))->toBe([])
+        ->and($res->headers->get('Cache-Control'))->toContain('max-age=0');
+
+    // the dashboard starts one: the very next read lists it — the same URL, no cache in between
+    $id = PromotionFixture::rule([PromotionFixture::subtotalAtLeast(500)], [PromotionFixture::freeShipping()], [$bf], name: 'started just now');
+    expect(offersListedIds('brandfashion'))->toBe([$id]);
+
+    // and it leaves the same way: switched off → gone on the next read
+    DB::table('promotion_rules')->where('id', $id)->update(['is_active' => 0]);
+    expect(offersListedIds('brandfashion'))->toBe([]);
+});

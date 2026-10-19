@@ -91,6 +91,7 @@ final class ProductListing
             'price_max' => self::numeric($input['price_max'] ?? null),
             'in_stock' => self::bool($input['in_stock'] ?? null),
             'on_sale' => self::bool($input['on_sale'] ?? null),
+            'min_discount' => self::minDiscount($input['min_discount'] ?? null),
             'q' => self::str($input['q'] ?? null),
         ];
 
@@ -227,6 +228,15 @@ final class ProductListing
         // prices by, so a product listed here always shows a was-price. No facet count yet (B4's Sale section).
         if (($f['on_sale'] ?? null) === true) {
             $query->where('sp.effective_sale_price', '>', 0)->whereColumn('sp.effective_sale_price', '<', 'sp.effective_price');
+        }
+        // `min_discount` (the night run, 2026-10-19 — Michael: the deals band is 30 %+ and in stock; the Sale page's
+        // sidebar offers Any / 20 / 30 / 40 %+): a VALID sale whose discount, ROUNDED AS THE CARD PRINTS IT
+        // (`StorefrontPricing::discountPct`, half away from zero on both sides), is at least N — so a card showing
+        // −30 % is always in a "30 %+" list, and one showing −29 % never is.
+        $min = $f['min_discount'] ?? null;
+        if (is_int($min)) {
+            $query->where('sp.effective_sale_price', '>', 0)->whereColumn('sp.effective_sale_price', '<', 'sp.effective_price')
+                ->whereRaw('ROUND((sp.effective_price - sp.effective_sale_price) / sp.effective_price * 100) >= ?', [$min]);
         }
         $q = $f['q'];
         if (is_string($q) && trim($q) !== '') {
@@ -435,6 +445,14 @@ final class ProductListing
         return max($min, min($max, $n));
     }
 
+    /** `min_discount`: a whole percentage from 1 to 95 (above 95 is 95); anything else is no filter. */
+    private static function minDiscount(mixed $v): ?int
+    {
+        $n = self::intIn($v, 0, 95, 0);
+
+        return $n >= 1 ? $n : null;
+    }
+
     private static function str(mixed $v): ?string
     {
         return is_string($v) && $v !== '' ? $v : null;
@@ -514,7 +532,7 @@ final class ProductListing
         if ($category !== null && $node === null) {
             return null;
         }
-        $filters = ['category' => null, 'brand' => self::strList($input['brand'] ?? null), 'gender' => [], 'color' => [], 'material' => [], 'grade' => [], 'price_min' => null, 'price_max' => null, 'in_stock' => self::bool($input['in_stock'] ?? null), 'on_sale' => self::bool($input['on_sale'] ?? null), 'q' => null];
+        $filters = ['category' => null, 'brand' => self::strList($input['brand'] ?? null), 'gender' => [], 'color' => [], 'material' => [], 'grade' => [], 'price_min' => null, 'price_max' => null, 'in_stock' => self::bool($input['in_stock'] ?? null), 'on_sale' => self::bool($input['on_sale'] ?? null), 'min_discount' => self::minDiscount($input['min_discount'] ?? null), 'q' => null];
         $sort = self::str($input['sort'] ?? null);
         $sort = in_array($sort, self::SORTS, true) ? $sort : ($node !== null ? 'position' : 'newest');
         $indexed = self::indexed($node) || ($input['force_indexed'] ?? false) === true;

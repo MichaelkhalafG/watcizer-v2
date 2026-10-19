@@ -128,9 +128,11 @@ final class StorefrontHome
     {
         $rows = $this->cards->base()
             ->where('p.in_stock', 1)
-            ->whereNotNull('sp.effective_sale_price')
+            // a VALID sale, its discount ROUNDED AS THE CARD PRINTS IT (2026-10-19): the band and its "See all" — the Sale
+            // page's `min_discount`, the same rounding — then agree on every card; a −30 % card is a 30 % deal
+            ->where('sp.effective_sale_price', '>', 0)
             ->whereColumn('sp.effective_sale_price', '<', 'sp.effective_price')
-            ->whereRaw('(sp.effective_price - sp.effective_sale_price) * 100 >= ? * sp.effective_price', [self::DEALS_MIN_PCT])
+            ->whereRaw('ROUND((sp.effective_price - sp.effective_sale_price) / sp.effective_price * 100) >= ?', [self::DEALS_MIN_PCT])
             ->select(ProductCards::columns())
             ->orderByDesc('p.created_at')->orderByDesc('p.id')
             ->limit(self::DEALS_LIMIT)

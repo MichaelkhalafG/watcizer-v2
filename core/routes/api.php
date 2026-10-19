@@ -16,6 +16,7 @@ use App\Http\Controllers\Customer\CustomerProfileController;
 use App\Http\Controllers\Customer\CustomerSocialController;
 use App\Http\Controllers\Customer\CustomerVerificationController;
 use App\Http\Controllers\Payment\PaymentCallbackController;
+use App\Http\Controllers\V2\AccountController;
 use App\Http\Controllers\V2\CartController;
 use App\Http\Controllers\V2\CategoryController;
 use App\Http\Controllers\V2\HomeController;
@@ -67,6 +68,9 @@ Route::prefix('v2/{storefront}')->middleware('storefront')->where(['storefront' 
     // B7 S2 (round 6): the v2 CHECKOUT — the order from the shopper's v2 cart on the path's storefront, which it
     // always writes. Its own limiter (`v2-order`), never compat's `add-order`.
     Route::post('orders', [OrderController::class, 'store'])->middleware('throttle:v2-order');
+    // The night run (2026-10-19, audit a1): the signed-in customer's orders on THIS storefront — compat's me/orders
+    // lists every shop's (users are shared). Private, never cached (AccountController).
+    Route::get('me/orders', [AccountController::class, 'orders']);
 });
 
 // ── 2. compat (legacy paths, legacy shapes) ───────────────────────────────

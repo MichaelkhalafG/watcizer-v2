@@ -27,6 +27,7 @@ class ProductController extends Controller
             'price_max' => 'nullable|numeric|min:0',
             'in_stock' => 'nullable|in:0,1,true,false',
             'on_sale' => 'nullable|in:0,1,true,false',   // 2026-10-18: a valid sale only (ProductListing::applyFilters)
+            'min_discount' => 'nullable|integer|min:1|max:95',   // 2026-10-19: a valid sale of at least N % (ProductListing::applyFilters)
             'facets' => 'nullable|in:0,1,true,false',   // 2026-10-17: per-result facet counts + price bounds, opt-in (ProductListing::facets)
             'q' => 'nullable|string|max:120',
             'sort' => 'nullable|in:'.implode(',', ProductListing::SORTS),
