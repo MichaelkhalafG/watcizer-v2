@@ -9,6 +9,43 @@ cannot get past tonight; every item is a known, named state. Pick batches from i
 
 ---
 
+## ▶ 2026-10-23 — NOT FOR NOW: a non-watch product's only colour is stored under the `band` role
+
+**A schema wart, not a data-entry mistake.** `catalog_product_color.role` holds exactly two values, `dial` and
+`band`, and there is no plain/`main` role at all. A watch legitimately has both. Everything else has ONE colour,
+entered once in the dashboard — and it lands under `band`, because `band_color_id` is the column the legacy
+product form writes to. Measured on production (2026-10-23), among visible products:
+
+| family | `dial` role | `band` role |
+|---|---|---|
+| watches | 657 products, 18 colours | 658 products, 15 colours |
+| fashion | **none** | 248 of 253 products, 16 colours |
+| electronics | none | none |
+
+Nobody mis-typed anything: the dashboard offered one colour field, that field was the band's, and 248 dresses
+and bags are filed correctly against the only column there was.
+
+**What it costs today.** Nothing a shopper sees — but it is what forces the listing's colour heading to be
+decided from the result set instead of from the data. The sidebar draws "Dial Colour" and "Band Colour" when the
+result contains dial colours and a single section headed "Colour" when it does not, precisely because a band
+colour means "the strap" on a watch and "the colour" on a dress, and the row itself does not say which. That
+rule is correct and measured (RUN_20261022.md, "Colour, corrected"), and it is also a workaround for this.
+
+**What fixing it would be.** A third role — `main` — with a migration that moves every `band` row belonging to a
+product that carries no `dial` row, the dashboard form writing `main` for a non-watch product, and the listing
+serving a third facet that the under-two rule hides wherever it is empty. The sidebar's label rule would then
+become unnecessary rather than wrong: each section would be named by its own role.
+
+**Why not now.** It is a migration over ~250 live rows plus a dashboard form change, to replace a rule that
+already produces the right heading on every page measured. It earns its keep only when a product kind arrives
+that has *several* colours and no dial — a shirt in three colours — because then "the colour" is a variant axis
+and the band role will be carrying two different meanings at once. Revisit when that happens, or when the
+product form is next opened for other reasons; batch it with that work, not on its own.
+
+**Lane:** core (migration + listing) and manage (the form). Not a storefront item.
+
+---
+
 ## ▶ 2026-10-05 — expired card orders: recovery e-mail (version B) — built, NOT committed, NOT deployed
 
 **Why.** Order 000024 (guest, Paymob, 4,150 EGP) expired unpaid with "Messages (0)": by design a
