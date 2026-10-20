@@ -108,10 +108,14 @@ export function v2ListingRequest({ filters = {}, q = '', sort = 'default', page 
   return p.toString()
 }
 
+/**
+ * A v2 card → the legacy row shape `transformProductData` reads. EXPORTED since 2026-10-23, because the
+ * product page needs the same mapping for ONE product (see v2Product.js) and two copies of it would drift.
+ */
 // A v2 card → the legacy row shape transformProductData reads (ids, translations[], flat prices and stock),
 // with every v2 field kept on the row. `stock` becomes the express number the legacy card reads; the v2
 // stock object stays reachable through the payload's `v2.data`.
-function legacyRow(card) {
+export function legacyRow(card) {
   const title = card.title || {}
   const short = card.short_description || {}
   return {

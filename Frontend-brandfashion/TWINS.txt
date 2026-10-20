@@ -125,8 +125,10 @@ src/lib/safeJsonLd.js
 src/lib/serverBlogs.js
 src/lib/serverCatalog.js
 src/lib/serverFetch.js
+src/lib/serverV2.js
 src/lib/socialNonce.js
 src/lib/v2Listing.js
+src/lib/v2Product.js
 src/scripts/pixels.js
 src/utils/chunkError.js
 src/utils/finish.js
@@ -155,6 +157,15 @@ DIVERGED 2026-10-14 public/robots.txt — Sitemap on michaelkhalaf.com (develope
 # twin) while Watchizer's still reads compat catalog/listing. These four re-twin together when Watchizer's listing moves.
 # V2-READ-HALF CLOSED FOR THE LISTING (2026-10-22): Watchizer's listing followed Brand Fashion onto
 # /api/v2/{storefront}/products, so the four files that were split only because the two shops read different APIs are
+# 2026-10-23 (the product page): TWO MORE NEW TWINS. src/lib/serverV2.js was Brand Fashion's alone and is now
+# shared, because Watchizer's product page reads v2 through the same server readers; its header records that
+# Watchizer imports only the two PRODUCT readers and that the meta/home ones are Brand Fashion's, so nobody
+# reads the file as evidence that Watchizer's home page moved (it has not; slice 2 is deliberately out).
+# src/lib/v2Product.js is NEW on both sides: v2's product detail mapped onto the cards shape the shared
+# ProductDetailClient already reads, plus specRowsIn(), which composes the spec table. Brand Fashion does not
+# render ProductDetailClient on its product page (BfProductPage does) but DOES on its offer page, which is why
+# the file is a twin rather than Watchizer's: one file cannot drift from itself.
+#
 # TWINS again and have moved up into the list above: src/lib/listingRequest.js, src/Hooks/queries/useListing.js,
 # src/Hooks/queries/useTables.js and the new shared adapter src/lib/v2Listing.js (which was Brand-Fashion-only).
 # The two listing ENTRY POINTS stay split, but no longer for that reason — see the two lines below.

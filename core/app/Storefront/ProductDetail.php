@@ -292,10 +292,14 @@ final class ProductDetail
                 $rows[] = ['key' => $key, 'label' => self::LABELS[$key], 'value' => $v, 'unit' => $this->lookups->ref('units', Row::nint($ws, $unitColumn))];
             }
         };
+        // A flag is served as a WORD per locale, not as a raw boolean (2026-10-23). It used to be `true`, which
+        // every consumer then had to know to translate: Brand Fashion's page carried a `typeof v === 'boolean'`
+        // branch for it, and Watchizer's printed the literal "true" the moment it read v2 instead of compat.
+        // Same decision as the family-spec labels below - the rendering of a field belongs with the field.
         $flag = function (string $key) use ($ws, &$rows): void {
-            $v = Row::nbool($ws, $key);
-            if ($v !== null) {
-                $rows[] = ['key' => $key, 'label' => self::LABELS[$key], 'value' => $v, 'unit' => null];
+            $word = self::familyFlag(Row::nbool($ws, $key));
+            if ($word !== null) {
+                $rows[] = ['key' => $key, 'label' => self::LABELS[$key], 'value' => $word, 'unit' => null];
             }
         };
         $number('case_size', 'case_size', 'case_size_unit_id');
@@ -321,6 +325,43 @@ final class ProductDetail
     }
 
     /**
+     * The FAMILY specs a non-watch product carries in `catalog_products.specs` - a wallet's dimensions and
+     * card slots, a perfume's volume and scent, a power bank's battery - as labelled rows.
+     *
+     * Each key's label, unit and kind are declared below (2026-10-23). They used to be declared in the
+     * storefront instead, in ProductDetailClient's EXTRA_LABELS map, which meant v2 served
+     * `ucfirst(str_replace('_', ' ', $key))` as the label in BOTH locales and the raw stored value: a wallet
+     * read "Wallet card slots - 8" and "Coin pocket - 1" through v2 where the component printed "Card Slots -
+     * 8" and "Coin Pocket - Yes", and an Arabic page got the English label. Measured on 20 live products
+     * (19 fashion, 1 watch) when Watchizer's product page was moved here.
+     *
+     * A label belongs with its field, not with one component that happens to render it, so the map is here and
+     * every v2 consumer gets the same rows. An UNDECLARED key still falls back to the humanized key, so a new
+     * spec the dashboard starts writing appears immediately rather than disappearing - readable, and a prompt
+     * to add it here.
+     *
+     * @var array<string, array{en: string, ar: string, unit?: string, bool?: true}>
+     */
+    private const FAMILY_SPEC_LABELS = [
+        'width_cm' => ['en' => 'Width', 'ar' => 'العرض', 'unit' => 'cm'],
+        'height_cm' => ['en' => 'Height', 'ar' => 'الارتفاع', 'unit' => 'cm'],
+        'depth_cm' => ['en' => 'Depth', 'ar' => 'العمق', 'unit' => 'cm'],
+        'strap_length_cm' => ['en' => 'Strap Length', 'ar' => 'طول الحزام', 'unit' => 'cm'],
+        'bag_strap_type' => ['en' => 'Strap Type', 'ar' => 'نوع الحزام'],
+        'bag_compartments' => ['en' => 'Compartments', 'ar' => 'الأقسام'],
+        'laptop_compartment' => ['en' => 'Laptop Compartment', 'ar' => 'جيب لابتوب', 'bool' => true],
+        'waterproof' => ['en' => 'Waterproof', 'ar' => 'مقاوم للماء', 'bool' => true],
+        'wallet_card_slots' => ['en' => 'Card Slots', 'ar' => 'جيوب البطاقات'],
+        'rfid_protection' => ['en' => 'RFID Protection', 'ar' => 'حماية RFID', 'bool' => true],
+        'coin_pocket' => ['en' => 'Coin Pocket', 'ar' => 'جيب نقود', 'bool' => true],
+        'perfume_volume' => ['en' => 'Volume', 'ar' => 'الحجم', 'unit' => 'ml'],
+        'perfume_type' => ['en' => 'Type', 'ar' => 'النوع'],
+        'perfume_scent' => ['en' => 'Scent', 'ar' => 'الرائحة'],
+        'elec_battery_capacity' => ['en' => 'Battery', 'ar' => 'البطارية', 'unit' => 'mAh'],
+        'elec_connectivity' => ['en' => 'Connectivity', 'ar' => 'الاتصال'],
+    ];
+
+    /**
      * @param  array<mixed>  $family
      * @return list<array<string, mixed>>
      */
@@ -331,10 +372,47 @@ final class ProductDetail
             if (! is_string($key) || $value === null || $value === '' || is_array($value)) {
                 continue;
             }
-            $label = ucfirst(str_replace('_', ' ', $key));
-            $rows[] = ['key' => $key, 'label' => ['ar' => $label, 'en' => $label], 'value' => $value, 'unit' => null];
+            $declared = self::FAMILY_SPEC_LABELS[$key] ?? null;
+            if ($declared === null) {
+                // not declared above: readable rather than missing, and a prompt to declare it
+                $fallback = ucfirst(str_replace('_', ' ', $key));
+                $rows[] = ['key' => $key, 'label' => ['ar' => $fallback, 'en' => $fallback], 'value' => $value, 'unit' => null];
+
+                continue;
+            }
+            // a flag reads as a word in both languages, never as 1 or 0
+            $out = ($declared['bool'] ?? false)
+                ? self::familyFlag($value)
+                : $value;
+            if ($out === null) {
+                continue;
+            }
+            $rows[] = [
+                'key' => $key,
+                'label' => ['ar' => $declared['ar'], 'en' => $declared['en']],
+                'value' => $out,
+                // the unit is a plain code here, not a `size_types` row: these are declared, not looked up
+                'unit' => isset($declared['unit']) ? ['id' => null, 'code' => $declared['unit'], 'name' => ['en' => $declared['unit'], 'ar' => $declared['unit']]] : null,
+            ];
         }
 
         return $rows;
+    }
+
+    /**
+     * A declared flag as a localized word. Anything that is not recognisably true or false is dropped rather
+     * than printed as a number, which is what "Coin pocket - 1" was.
+     *
+     * @return array{en: string, ar: string}|null
+     */
+    private static function familyFlag(mixed $value): ?array
+    {
+        $yes = $value === true || $value === 1 || $value === '1' || $value === 'true';
+        $no = $value === false || $value === 0 || $value === '0' || $value === 'false';
+        if (! $yes && ! $no) {
+            return null;
+        }
+
+        return $yes ? ['en' => 'Yes', 'ar' => 'نعم'] : ['en' => 'No', 'ar' => 'لا'];
     }
 }

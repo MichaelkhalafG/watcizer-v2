@@ -2,7 +2,8 @@ import { useMemo } from 'react'
 import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import publicHttp from '../../Context/publicApi'
 import { listingRequest, listingQueryFn, listingNeedsTables } from '../../lib/listingRequest'
-import { withLegacyCategoryFacets } from '../../lib/v2Listing'
+import { withLegacyCategoryFacets, legacyRow } from '../../lib/v2Listing'
+import { STOREFRONT_CODE } from '../../lib/env'
 import { useTables } from './useTables'
 import { transformProductData } from '../../utils/transformProduct'
 
@@ -85,6 +86,37 @@ export const useRelated = ({ product, cart, kind = 'similar', exclude } = {}, { 
       return data
     },
     enabled: enabled && q !== '',
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
+/**
+ * The PRODUCT PAGE's two rails from v2 — `v2/{storefront}/products/{slug}/related` (2026-10-23).
+ *
+ * ONE request where compat needed two: compat's `catalog/related` is asked once per `kind`, v2 returns
+ * `addons` and `similar` together. The RULES are the same ones, not a reimplementation — v2's
+ * RelatedController runs `CompatRelated` itself, the developer's scoring of 2026-09-29, pinned to this
+ * storefront. `exclude` (what the cart already holds, so it is never suggested) is honoured there too; it was
+ * the first thing checked before moving, because an unhonoured filter would have put cart items back into the
+ * rails without anything failing.
+ *
+ * The CART's own suggestion rail is NOT this hook. It asks compat for a whole basket (`?cart=ids`) and v2 has
+ * no equivalent, so it stays on `useRelated` below until the cart moves (slice 3) — listed, not invented.
+ *
+ * Returns the two rails already in the cards-payload shape `useCardsOf` reads, so the rail components are
+ * unchanged.
+ */
+export const useV2Related = ({ slug, exclude = [] } = {}, { enabled = true } = {}) => {
+  const ex = [...new Set((exclude || []).filter(Boolean))].sort((a, b) => a - b).join(',')
+  return useQuery({
+    queryKey: ['v2related', slug ?? null, ex],
+    queryFn: async () => {
+      // One template literal (not a ternary): the allow-list test reads storefront calls from source.
+      const { data } = await publicHttp.get(`v2/${STOREFRONT_CODE}/products/${encodeURIComponent(slug)}/related?exclude=${ex}`)
+      const payload = (list) => ({ products: (list || []).map(legacyRow), ratings: [], images: [] })
+      return { addons: payload(data?.addons), similar: payload(data?.similar) }
+    },
+    enabled: enabled && !!slug,
     staleTime: 5 * 60 * 1000,
   })
 }
