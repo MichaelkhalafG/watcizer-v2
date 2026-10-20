@@ -268,6 +268,19 @@ adding it — four files became twins again (`v2Listing.js`, `listingRequest.js`
 The lesson for slices 3–5: "Brand Fashion already runs it" bounds the *frontend* risk, not the scope. Where
 Watchizer's screen has a control Brand Fashion's does not, the v2 endpoint has to grow it first.
 
+**Revised again, 2026-10-23: 21-26 h.** The same lesson caught a second filter the first pass had flattened.
+v2 served ONE colour facet counting a colour in any role, which Brand Fashion has run since 2026-10-17; compat
+serves two, a dial colour and a band colour, and on a watch those are different facts about the same watch. The
+owner's correction was to keep them separate for watches and merge them for everything else. The data decided
+how: `catalog_product_color.role` holds only `dial` and `band` — no plain role exists — and a dress's single
+colour is stored under `band`, so two role-scoped facets make a watch result draw both sections and a fashion
+result draw one, with no notion of product kind anywhere in core. Add ~3-4 h, one more aggregate query in the
+cached facet block, and a fifth test file.
+
+So the pattern is now twice-confirmed and worth stating as a rule for slices 3, 4 and 5: **before moving a
+screen to v2, diff the v2 endpoint's capabilities against what that screen's controls already do on compat.**
+Both overruns were the same mistake — assuming a proven path was a complete one.
+
 ---
 
 ## 7. What I could not answer from the code — and the exact query
