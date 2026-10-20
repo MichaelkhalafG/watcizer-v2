@@ -202,15 +202,9 @@ it('shows the same number on the dashboard home as in the sidebar', function () 
     placeOrder();
     placeOrder();
 
-    $stats = T::arr(Props::of(get('/manage'))['stats'] ?? null);
-
-    $unseen = null;
-    foreach ($stats as $rawStat) {
-        $stat = T::arr($rawStat);
-        if (($stat['key'] ?? null) === 'orders_unseen') {
-            $unseen = $stat['value'] ?? null;
-        }
-    }
+    // `unseen` is a prop of its own since the home page was rebuilt (2026-10-21); it was a tile inside
+    // `stats`, which the rebuild dropped. Same source either way: NewOrders::countFor().
+    $unseen = Props::of(get('/manage'))['unseen'] ?? null;
 
     expect($unseen)->toBe(2)
         ->and(ordersBadge())->toBe(2);
