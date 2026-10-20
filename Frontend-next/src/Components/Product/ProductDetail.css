@@ -282,6 +282,13 @@
   color: var(--wz-ink);
   letter-spacing: -0.01em;
 }
+/* A SALE price is red here exactly as it is on the card (`.wz-pc__price--sale`), so one product
+   does not show its price in two colours two clicks apart. The modifier was already being put on
+   this element by the markup and had no rule at all, which is why the two disagreed. The literal
+   is ProductCard.css's `--pc-red`, which is scoped to `.wz-pc` and cannot be read from here. */
+.wz-pd-price--sale {
+  color: #d4341a;
+}
 .wz-pd-price-orig {
   font-size: 15px;
   font-weight: 500;
@@ -769,6 +776,9 @@ body[style*='overflow:hidden'] .wz-pd-sticky {
   font-weight: 700;
   color: var(--wz-ink);
 }
+.wz-pd-sticky-amount--sale {
+  color: #d4341a;
+}
 .wz-pd-sticky-orig {
   font-size: 11px;
   color: rgba(0, 0, 0, 0.32);
@@ -967,11 +977,16 @@ body[style*='overflow:hidden'] .wz-pd-sticky {
     flex-wrap: wrap;
     margin-top: 2px;
   }
-  .wz-pd-ms-sale,
   .wz-pd-ms-regular {
     font-size: 15px;
     font-weight: 700;
     color: var(--wz-ink);
+  }
+  /* on sale, the same red as the card and the desktop price above */
+  .wz-pd-ms-sale {
+    font-size: 15px;
+    font-weight: 700;
+    color: #d4341a;
   }
   .wz-pd-ms-orig {
     font-size: 12px;

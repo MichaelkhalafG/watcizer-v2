@@ -14,6 +14,10 @@
 # src/Components/Home/BannerHero.jsx + .css, and src/Hooks/useRailScroll.js — the drag hook it needs, moved out
 # of Brand Fashion's BfRail.jsx (which re-exports it under the name its own callers use) because Watchizer has
 # no BfRail to import from. app/(main)/HomeClient.jsx stays a twin and carries the switch in both apps.
+# 2026-10-22 (the design items): app/(main)/(shop)/cart/layout.jsx is NEW and a twin. The cart PAGE is a
+# client component, which cannot export metadata, so the English cart inherited the root layout's Arabic
+# title; a layout is where a client route can be given one. It carries no brand name on purpose, which is
+# exactly what lets it be a twin — see the note in the file.
 # A2-RULE: the two apps are copies, not a shared package.
 
 app/(auth)/auth/callback/page.jsx
@@ -24,6 +28,7 @@ app/(auth)/login/page.jsx
 app/(auth)/register/page.jsx
 app/(auth)/reset-password/page.jsx
 app/(main)/(shop)/account/page.jsx
+app/(main)/(shop)/cart/layout.jsx
 app/(main)/(shop)/cart/page.jsx
 app/(main)/(shop)/checkout/page.jsx
 app/(main)/HomeClient.jsx

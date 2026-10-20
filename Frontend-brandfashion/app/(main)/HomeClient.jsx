@@ -107,8 +107,13 @@ export default function HomeClient({ initialHome = null }) {
           const grade = tables?.grades?.find((g) => g.id === rail.target)
           const name = grade ? nameIn(grade, 'grade_name', language) : ''
           title = { en: name, ar: name }
-          const desc = grade ? nameIn(grade, 'description', language) : ''
-          description = { en: desc, ar: desc }
+          /*
+           * The grade's `description` is NOT passed as the rail's eyebrow any more (item 15a).
+           * It was rendered as a tracked-out line above every heading — "HIGH-QUALITY WATCHES WITH
+           * EXCELLENT CRAFTSMANSHIP", "PREMIUM LUXURY TIMEPIECES FROM ICONIC MAISONS" — eight of
+           * them down one page, saying nearly the same thing. The column is untouched and still
+           * editable on the dashboard; it is simply not this page's subheading.
+           */
           moreid = rail.target
         } else if (rail.kind === 'brand') {
           const brand = tables?.brands?.find((b) => b.id === rail.target)
@@ -184,13 +189,16 @@ export default function HomeClient({ initialHome = null }) {
       </div>
     ) : null
 
-  const renderRail = (rail) => {
+  // `repeat` is every rail after the first: the opening rail keeps the page's full heading weight
+  // and the ones below it step down, which is what gives the column a top-to-bottom taper (item 16).
+  const renderRail = (rail, repeat = false) => {
+    const section = `wz-home-section${repeat ? ' wz-home-section--repeat' : ''}`
     if (rail.kind === 'featured') {
       return <FeaturedBanner key={rail.id} products={rail.products} />
     }
     if (rail.kind === 'offers') {
       return (
-        <section className="wz-home-section" key={rail.id}>
+        <section className={section} key={rail.id}>
           <div className="wz-container">
             <OfferSlider text={{ title: rail.text.title, description: rail.text.title }} products={rail.products} />
           </div>
@@ -198,7 +206,7 @@ export default function HomeClient({ initialHome = null }) {
       )
     }
     return (
-      <section className="wz-home-section" key={rail.id}>
+      <section className={section} key={rail.id}>
         <div className="wz-container">
           <ProductSlider text={rail.text} gradeproducts={rail.products} moreid={rail.moreid} href={rail.href} viewAll={rail.kind !== 'custom'} />
         </div>
@@ -253,7 +261,7 @@ export default function HomeClient({ initialHome = null }) {
 
       {rails.length > 0 && renderRail(rails[0])}
       {brandStrip}
-      {rails.slice(1).map(renderRail)}
+      {rails.slice(1).map((rail) => renderRail(rail, true))}
     </div>
   )
 }

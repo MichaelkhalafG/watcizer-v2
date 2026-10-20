@@ -39,6 +39,25 @@
   background: #fafafa;
 }
 
+/*
+ * THE TAPER (survey item 16). Nine rails of identical height, padding and heading size, one after
+ * another, is what made this page read as a list of blocks rather than a page: nothing said which
+ * band mattered. The FIRST rail after the category strip keeps the full weight; every rail below
+ * it is one step quieter in both heading size and the air above it. Nothing moves horizontally and
+ * no card changes, so this costs no layout risk — it is the same page, read top to bottom.
+ *
+ * Done with item 15a and meaningless without it: the tracked-out sentence over every heading was
+ * half of the flatness, and removing one without the other reads as neither.
+ */
+.wz-home-section--repeat {
+  padding-top: clamp(26px, 3.6vh, 48px);
+  padding-bottom: clamp(30px, 4.4vh, 58px);
+}
+
+.wz-home-section--repeat .wz-section-title {
+  font-size: clamp(1.05rem, 1.9vw, 1.4rem);
+}
+
 .wz-container {
   max-width: 1400px;
   margin: 0 auto;

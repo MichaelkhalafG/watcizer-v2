@@ -63,7 +63,7 @@ const ProductSlider = ({ gradeproducts = [], text = {}, moreid, href, loading = 
         </div>
         {viewAll ? (
           <button className="wz-section-action" onClick={handleViewAll}>
-            {language === 'ar' ? 'عرض الكل ←' : 'View All →'}
+            {language === 'ar' ? 'عرض الكل ←' : 'View all →'}
           </button>
         ) : null}
       </div>

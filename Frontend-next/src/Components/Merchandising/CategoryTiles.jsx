@@ -57,7 +57,7 @@ const CategoryTiles = () => {
           <h2 className="wz-cats-title">{language === 'ar' ? 'الفئة' : 'Category'}</h2>
         </div>
         <button className="wz-section-action" onClick={() => router.push('/listing')}>
-          {language === 'ar' ? 'عرض الكل ←' : 'See All →'}
+          {language === 'ar' ? 'عرض الكل ←' : 'View all →'}
         </button>
       </div>
 

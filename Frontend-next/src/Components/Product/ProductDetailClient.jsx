@@ -890,13 +890,13 @@ function ProductDetailClient({ param, isOffer = false, productPayload = null }) 
       : marketStock > 0
         ? isRTL
           ? `ماركت · ${marketStock} متاح`
-          : `Market · ${marketStock} available`
+          : `Market · ${marketStock} in stock`
         : isRTL
           ? 'غير متوفر'
           : 'Out of stock'
 
-  const lowStock = inStock && maxStock > 0 && maxStock <= 5
-
+  // `lowStock` lived here to drive a second "Only N left" beside the stock dot. TrustSignals is
+  // given `stockLeft` below and decides for itself, so there is one owner of that sentence now.
 
   return (
     <div className="wz-pd" dir={isRTL ? 'rtl' : 'ltr'}>
@@ -1086,14 +1086,12 @@ function ProductDetailClient({ param, isOffer = false, productPayload = null }) 
             </div>
 
             {/* Stock */}
+            {/* The low-stock warning is NOT repeated here. `TrustSignals` prints it once, lower
+                down, beside the returns and payment facts where a shopper is actually deciding;
+                saying it twice on one page reads as pressure rather than information. */}
             <div className={`wz-pd-stock wz-pd-stock--${stockTone}`}>
               <span className="wz-pd-stock-dot" />
               <span className="wz-pd-stock-text">{stockLabel}</span>
-              {lowStock && (
-                <span className="wz-pd-stock-low">
-                  {isRTL ? `باقي ${maxStock} فقط!` : `Only ${maxStock} left!`}
-                </span>
-              )}
             </div>
 
             {/* Colors (products only). Fashion items reuse band_color as their single
@@ -1341,7 +1339,7 @@ function ProductDetailClient({ param, isOffer = false, productPayload = null }) 
       {/* ── Mobile sticky buy bar ── */}
       <div className={`wz-pd-sticky${showSticky ? ' is-visible' : ''}`}>
         <div className="wz-pd-sticky-price">
-          <span className="wz-pd-sticky-amount">
+          <span className={`wz-pd-sticky-amount${hasSale ? ' wz-pd-sticky-amount--sale' : ''}`}>
             {fmt(finalPrice)} {currency}
           </span>
           {hasSale && (
