@@ -10,6 +10,8 @@ import { aisleTint } from '@/src/lib/aisleTint'
 import { localizeHref } from '@/src/utils/localePath'
 import BfProductCard from '@/src/Components/Product/BfProductCard'
 import BfRail, { dominantFamily, useRailScroll } from '@/src/Components/Listing/BfRail'
+import WatchHero from '@/src/Components/Hero/WatchHero'
+import BannerHero from '@/src/Components/Home/BannerHero'
 import './BfHome.css'
 
 /*
@@ -70,7 +72,15 @@ export default function BfHome({ home, meta }) {
   const deals = home?.deals || []
   const rails = (home?.rails || []).filter((r) => r.cards?.length >= 2)
   const categories = (home?.categories || []).filter((c) => c.count > 0)
-  const banner = home?.banner || null
+  // D1 (2026-10-20): EVERY active banner, so the hero can rotate. `banners` is core's list since that day;
+  // `banner` was the one object the payload carried before it, and is read here as a one-banner list so this
+  // page still works against a core that has not been deployed yet — core goes out before the storefronts.
+  const banners = home?.banners?.length ? home.banners : home?.banner ? [home.banner] : []
+  // WHICH HERO THIS SHOP DRAWS (the addendum, 2026-10-20): `home.hero` is the storefront's own setting,
+  // flipped on the dashboard's Banners screen — `banner` (this shop today) or `three_d`. The banner hero
+  // is the TWIN component Watchizer renders for the same setting, not a copy of it. With `banner` set and
+  // no banners, §11.2's system hero still fills the band, as it has since B6.
+  const threeD = home?.hero === 'three_d'
   const brands = (home?.brands || []).filter((b) => b.count > 0 && b.logo?.src)
   const curated = rails.find((r) => r.kind === 'custom' && /our picks|اختياراتنا/i.test(`${r.title?.en || ''} ${r.title?.ar || ''}`)) || null
   const ordinary = rails.filter((r) => r !== curated && r.kind !== 'offers')   // the offers rail is the deals band's ancestor; the deals band replaces it
@@ -145,11 +155,10 @@ export default function BfHome({ home, meta }) {
     <div className="bf-home" dir={dir} lang={lang}>
       {/* band 1: hero + the category row */}
       <section className="bf-open" aria-label={t.home}>
-        {banner?.image?.src ? (
-          <a className="bf-hero bf-hero--banner" href={L(banner.link_url || (banner.category?.path ? `/category/${banner.category.path}` : '/listing'))}>
-            {/* eslint-disable-next-line @next/next/no-img-element -- the dashboard's banner, absolute asset-host URL */}
-            <img src={banner.image.src} alt={txt(banner.category?.name, lang) || ''} fetchPriority="high" />
-          </a>
+        {threeD ? (
+          <WatchHero />
+        ) : banners.length ? (
+          <BannerHero banners={banners} lang={lang} dir={dir} />
         ) : (
           <div className="bf-hero bf-hero--system">
             <div>

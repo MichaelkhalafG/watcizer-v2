@@ -7,6 +7,7 @@ import '@/src/Components/Home/home.css'
 import ProductSlider from '@/src/Components/Product/ProductSlider'
 import OfferSlider from '@/src/Components/Product/OfferSlider'
 import FeaturedBanner from '@/src/Components/Home/FeaturedBanner'
+import BannerHero from '@/src/Components/Home/BannerHero'
 import { useHome, useCardsOf } from '@/src/Hooks/queries/useListing'
 import { useTables } from '@/src/Hooks/queries/useTables'
 import { useUIStore } from '@/src/Store/uiStore'
@@ -76,6 +77,19 @@ export default function HomeClient({ initialHome = null }) {
 
   const loading = !home && isFetching
   const homeError = !home && isError
+
+  /*
+   * WHICH HERO THIS SHOP DRAWS (the developer's addendum, 2026-10-20).
+   *
+   * `home.hero` is the storefront's own setting — `three_d` or `banner` — flipped on the dashboard's
+   * Banners screen, not decided by which app is deployed. ANYTHING ELSE, INCLUDING A MISSING VALUE,
+   * IS THE 3D HERO: Watchizer is live, this page is its home page, and a payload that arrives without
+   * the key (an old cached answer, a core deployed without its migration) must render exactly what it
+   * renders today. A shop set to `banner` with no banners falls back to the 3D hero too — an empty
+   * hero slot is worse than the one that was already there.
+   */
+  const banners = home?.banners?.length ? home.banners : home?.banner ? [home.banner] : []
+  const bannerHero = home?.hero === 'banner' && banners.length > 0
 
   // Each rail with its cards, its title and where "View all" goes. A rail whose target is gone from
   // the tables still shows, under its custom title if it has one.
@@ -194,7 +208,15 @@ export default function HomeClient({ initialHome = null }) {
 
   return (
     <div className="wz-home" dir={isRTL ? 'rtl' : 'ltr'}>
-      <WatchHero />
+      {bannerHero ? (
+        <section className="wz-home-section">
+          <div className="wz-container">
+            <BannerHero banners={banners} lang={language} dir={isRTL ? 'rtl' : 'ltr'} />
+          </div>
+        </section>
+      ) : (
+        <WatchHero />
+      )}
 
       <section className="wz-home-section">
         <div className="wz-container">

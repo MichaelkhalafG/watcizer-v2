@@ -39,3 +39,21 @@
   .bf-rail__track { scroll-behavior: auto; }
   .bf-rail__all, .bf-rail__arrow { transition: none; }
 }
+
+/* ── Mouse drag (D3, 2026-10-20) — one rule for every strip that uses useRailScroll ──────────
+   The hook sets `is-dragging` on the track for the length of one mouse drag. Only a fine pointer
+   gets the grab cursor: on a phone the track already swipes and a cursor means nothing there. */
+@media (hover: hover) and (pointer: fine) {
+  .bf-rail__track, .bf-cats__row, .bf-brands__row { cursor: grab; }
+  .bf-rail__track.is-dragging, .bf-cats__row.is-dragging,
+  .bf-brands__row.is-dragging { cursor: grabbing; }
+}
+/* While a drag is running: no text selection, no smooth-scroll fighting the pointer. */
+.bf-rail__track.is-dragging, .bf-cats__row.is-dragging,
+.bf-brands__row.is-dragging { user-select: none; scroll-behavior: auto; }
+/* Neither a picture NOR A LINK may start the browser's own drag-and-drop inside a draggable track:
+   a press on a card is the beginning of a scroll, and Chrome's native link drag would swallow every
+   pointer event after the first one (measured 2026-10-20 — the track received pointerdown and one
+   pointermove, then nothing). `draggable="false"` on the anchors is belt to this brace. */
+.bf-rail__track img, .bf-cats__row img, .bf-brands__row img,
+.bf-rail__track a, .bf-cats__row a, .bf-brands__row a { -webkit-user-drag: none; user-drag: none; }

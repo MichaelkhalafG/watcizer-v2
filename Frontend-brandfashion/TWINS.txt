@@ -9,6 +9,11 @@
 # Regenerated 2026-10-14 (evening) from the files measured byte-identical after the identity
 # sweep, the TikTok env change (made on both sides) and the approved twin splits. 2026-10-18: the category and brand
 # pages re-twinned, ListingClient.jsx and ProductCard.jsx split (the visual reset, Part 1b) — see the DIVERGED section.
+# 2026-10-20 (the addendum): THREE NEW TWINS for the home hero. `settings.home.hero` decides per storefront
+# whether a home page draws the 3D watch or the dashboard's banners, so both apps need the same banner hero:
+# src/Components/Home/BannerHero.jsx + .css, and src/Hooks/useRailScroll.js — the drag hook it needs, moved out
+# of Brand Fashion's BfRail.jsx (which re-exports it under the name its own callers use) because Watchizer has
+# no BfRail to import from. app/(main)/HomeClient.jsx stays a twin and carries the switch in both apps.
 # A2-RULE: the two apps are copies, not a shared package.
 
 app/(auth)/auth/callback/page.jsx
@@ -59,6 +64,8 @@ src/Components/Blog/ArticleBody.jsx
 src/Components/Cart/CartModal.jsx
 src/Components/Hero/WatchCanvas.jsx
 src/Components/Hero/WatchHero.jsx
+src/Components/Home/BannerHero.css
+src/Components/Home/BannerHero.jsx
 src/Components/Home/FeaturedBanner.jsx
 src/Components/LanguageDropdown/LanguageDropdowen.css
 src/Components/LanguageDropdown/LanguageDropdowen.jsx
@@ -89,6 +96,7 @@ src/Hooks/queries/useProductDetail.js
 src/Hooks/queries/useShipping.js
 src/Hooks/useCart.jsx
 src/Hooks/useLocaleRouter.js
+src/Hooks/useRailScroll.js
 src/Hooks/useShippingPrices.js
 src/Hooks/useSwitchLanguage.js
 src/PageViews/Auth/AuthCallback.jsx
