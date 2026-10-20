@@ -219,6 +219,55 @@ the only forcing function. If no Watchizer product needs variants, slice 4 can w
 running; the API key, the host resolution and the proxy all stay. The gain is not "compat is gone" — it is
 variants, the price-slider bound, and one code path shared with the shop that already runs it.
 
+### Decided 2026-10-22: slice 2 is NOT being done, and that is a choice, not an omission
+
+The wave that followed this document took slices **1, 3, 4 and 5**. Slice 2 — the home page, the menu and the
+lookup tables — was **deliberately left on compat** by the owner's instruction, in these words: "home, menu,
+lookup tables stay on compat".
+
+That is the right call for the reason §6 already gives: v2's `meta` does not carry the legacy lookup shapes
+`useTables` feeds to the sidebar, the nav and `transformProductData`. Moving them is not a change of address, it
+is a change of what three screens read, and it would have ridden along in a wave whose point was the listing,
+the cart and the checkout. Nothing is forcing it: `catalog/home`, `catalog/nav` and `catalog/meta` are
+read-only, they carry no money and no session, and they are the three endpoints a shopper hits least often per
+visit.
+
+Measured after slice 1 shipped, against the scratch core, by the paths the running app actually requested:
+
+| Page | API calls observed |
+|---|---|
+| `/` (English) | `catalog/home` — compat |
+| `/ar` (Arabic) | `catalog/home` — compat |
+| `/listing` | `v2/watchizer/products` — v2 |
+
+**One documented exception.** `useTables` makes a single extra v2 read, `v2/{storefront}/categories`, and
+it is not a move: the tables still come from `catalog/meta`. It exists because a v2 category is addressed by the
+storefront tree's own slug, which is not always the slug of the node's English name — Chargers & Cables is
+`chargers`, Earphones & Headphones is `audio` (measured 2026-10-18) — so each row is tagged `v2_slug` where the
+two differ. It is an enrichment and it degrades: if that read fails, the name's slug is sent, exactly as before.
+
+**What this leaves open.** BF-MENU-V2 in the backlog is still the ticket for slice 2, unchanged. Until it is
+taken, both storefronts' menus and lookup tables are a compat dependency, and compat cannot be switched off —
+which §6 already said about slices 1–5 as a whole.
+
+### Revised 2026-10-22: slice 1 cost more than estimated, for a measured reason
+
+Estimated 10–14 h above, on the premise that "the adapter already exists and is proven" on Brand Fashion. It
+does — but reusing it as-is would have **removed two working filters from a live watch shop**, measured before
+the move: Movement (3 values, 655 products) and Shape (6 values, 594 products) exist in Watchizer's sidebar and
+had no v2 equivalent, and v2's single-path `category` would have turned a multi-select sub-type section into
+pick-one. The owner's instruction was to build parity rather than ship the loss.
+
+So slice 1 grew a core half that the estimate did not contain: three watch-spec facets and filters
+(`movement`, `shape`, `display_type`) counted from `catalog_product_watch_specs`, a comma-separated multi-path
+`category` answering the union, and the tests that pin both. **Revised: 18–22 h**, of which roughly 6–8 h is
+that core work. The frontend half came in near the estimate, and it ended up *removing* divergence rather than
+adding it — four files became twins again (`v2Listing.js`, `listingRequest.js`, `useListing.js`,
+`useTables.js`), taking `TWINS.txt` from 26 recorded divergences to 23.
+
+The lesson for slices 3–5: "Brand Fashion already runs it" bounds the *frontend* risk, not the scope. Where
+Watchizer's screen has a control Brand Fashion's does not, the v2 endpoint has to grow it first.
+
 ---
 
 ## 7. What I could not answer from the code — and the exact query
