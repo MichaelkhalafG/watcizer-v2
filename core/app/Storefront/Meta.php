@@ -3,6 +3,7 @@
 namespace App\Storefront;
 
 use App\Domain\Content\BannerImage;
+use App\Domain\Content\BannerWriter;
 use App\Transform\Row;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
@@ -72,7 +73,7 @@ final class Meta
     {
         $now = now();
         $rows = DB::table('storefront_banners')
-            ->select(['id', 'placement', 'image_path', 'type_show', 'link_url', 'product_id', 'storefront_category_id', 'sort_order', 'starts_at', 'ends_at'])
+            ->select(['id', 'placement', 'image_path', 'device', 'type_show', 'link_url', 'product_id', 'storefront_category_id', 'sort_order', 'starts_at', 'ends_at'])
             ->where('storefront_id', $this->ctx->id())
             ->where('is_active', 1)
             ->where(fn (Builder $q) => $q->whereNull('starts_at')->orWhere('starts_at', '<=', $now))
@@ -86,6 +87,9 @@ final class Meta
                 'id' => Row::int($r, 'id'),
                 'placement' => Row::str($r, 'placement'),
                 'image' => ImageUrl::object(BannerImage::path(Row::str($r, 'image_path')), null, null, null, null),
+                // `device` is this application's (F1, 2026-10-20): both | desktop | mobile. `type_show` is the
+                // LEGACY column (`mob | pc`), unwritten here and NULL on every production row — kept as it was.
+                'device' => BannerWriter::device(Row::nstr($r, 'device')),
                 'type_show' => Row::nstr($r, 'type_show'),
                 'link_url' => Row::nstr($r, 'link_url'),
                 'product_id' => Row::nint($r, 'product_id'),

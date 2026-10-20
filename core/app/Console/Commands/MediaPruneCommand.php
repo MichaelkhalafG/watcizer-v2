@@ -77,7 +77,9 @@ final class MediaPruneCommand extends Command
             'catalog_product_images' => ['path'],
             'catalog_brands' => ['logo_path'],
             'catalog_grades' => ['image_path'],
-            'storefront_banners' => ['image_path'],
+            // `image_original_path` (F1, 2026-10-20) is the upload a banner was cropped FROM, kept so the
+            // tool can reopen it. It is referenced, so it is not an orphan.
+            'storefront_banners' => ['image_path', 'image_original_path'],
             // Found by the DERIVED coverage guard (review 🟠-3), not by reading this list: category
             // images were invisible to the prune, so every one of them was an "orphan".
             'storefront_categories' => ['image_path'],

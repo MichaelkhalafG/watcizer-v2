@@ -221,6 +221,9 @@ Route::prefix('manage')->name('manage.')->group(function (): void {
             EnsureStorefrontScope::with(Role::MANAGE_LEGACY_CONTENT),
         ])->group(function (): void {
             Route::get('storefronts/{storefront}/banners', [BannerController::class, 'index'])->name('banners.index');
+            // Which hero this storefront's home page draws: the 3D watch or these banners (the addendum,
+            // 2026-10-20). Same ability and scope as a banner — it decides what one storefront's home SHOWS.
+            Route::post('storefronts/{storefront}/banners/hero', [BannerController::class, 'hero'])->name('banners.hero');
             Route::post('storefronts/{storefront}/banners', [BannerController::class, 'store'])->name('banners.store');
             Route::put('storefronts/{storefront}/banners/{banner}', [BannerController::class, 'update'])
                 ->where('banner', '[0-9]+')->name('banners.update');

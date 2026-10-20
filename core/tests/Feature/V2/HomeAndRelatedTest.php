@@ -40,7 +40,10 @@ function hrQueries(Closure $request): int
 
 it('serves the home: the storefront\'s rails with v2 cards in order, the deals band, the category entries and the banner', function () {
     $home = H::arr(getJson(H::base('home'))->assertOk()->json());
-    expect(array_keys($home))->toBe(['rails', 'deals', 'categories', 'banner', 'brands']);
+    // `hero` (the addendum, 2026-10-20) is which hero this storefront draws. `banners` (D1) is every active
+    // banner in the dashboard's order; `banner` stays beside it, the first of that list, for the storefront
+    // build still running while core is deployed ahead of it.
+    expect(array_keys($home))->toBe(['hero', 'rails', 'deals', 'categories', 'banners', 'banner', 'brands']);
 
     $active = HomeRails::active(1);
     $rails = H::rows($home['rails']);

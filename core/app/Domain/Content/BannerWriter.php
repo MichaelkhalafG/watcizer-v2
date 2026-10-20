@@ -49,6 +49,24 @@ final class BannerWriter
     /** What a banner can point at. */
     public const TARGETS = ['product', 'category', 'url', 'none'];
 
+    /**
+     * Which device shows a banner (F1, the developer's decision 2026-10-20). ONE column, three values, `both` the
+     * default — one banner is one row, and "the same artwork tuned twice" is two rows.
+     *
+     * The storefront FILTERS ON THE CLIENT, never here: the CDN keeps one copy per URL and ignores `Vary`, so an
+     * endpoint that narrowed by user-agent would serve a desktop visitor a cached phone answer (V2-CDN-PRIVATE,
+     * 2026-10-19). Every active banner goes out with its `device`; the page decides.
+     */
+    public const DEVICES = ['both', 'desktop', 'mobile'];
+
+    /** A stored `device` as one of {@see self::DEVICES} — anything else, and null, read as `both`. */
+    public static function device(?string $stored): string
+    {
+        $value = strtolower(trim((string) $stored));
+
+        return in_array($value, self::DEVICES, true) ? $value : self::DEVICES[0];
+    }
+
     public function __construct(private readonly StorefrontCache $cache) {}
 
     /**
@@ -63,6 +81,11 @@ final class BannerWriter
         $storefrontId = Coerce::int($data['storefront_id'] ?? null);
         $image = trim(Coerce::str($data['image_path'] ?? ''));
         $target = Coerce::str($data['target'] ?? 'none');
+        $device = self::device(Coerce::nstr($data['device'] ?? null));
+        // The upload as it arrived, kept so the banner can be re-cropped without re-uploading. Empty = none kept
+        // (every row written before F1, and any saved without the crop tool): the form falls back to `image_path`.
+        $original = trim(Coerce::str($data['image_original_path'] ?? ''));
+        $crop = self::crop($data['crop'] ?? null);
         $startsAt = self::timestamp($data['starts_at'] ?? null);
         $endsAt = self::timestamp($data['ends_at'] ?? null);
 
@@ -122,6 +145,9 @@ final class BannerWriter
             // Home only, by decision — never taken from the payload.
             'placement' => self::PLACEMENTS[0],
             'image_path' => BannerImage::path($image),
+            'device' => $device,
+            'image_original_path' => $original === '' ? null : BannerImage::path($original),
+            'crop' => $crop === null ? null : json_encode($crop, JSON_UNESCAPED_SLASHES),
             'link_url' => $url === '' ? null : $url,
             'product_id' => $productId,
             'storefront_category_id' => $categoryId,
@@ -164,6 +190,31 @@ final class BannerWriter
         if ($storefrontId !== null) {
             $this->cache->flush($storefrontId);
         }
+    }
+
+    /**
+     * The crop rectangle the tool last used, in the ORIGINAL image's own pixels, so it reopens where the operator
+     * left it. Four finite non-negative numbers or nothing — a half-written rectangle is no rectangle, and this is
+     * decoration for the tool, never something the storefront reads, so it fails quiet rather than refusing a save.
+     *
+     * @return array{x: int, y: int, w: int, h: int}|null
+     */
+    private static function crop(mixed $value): ?array
+    {
+        $raw = is_string($value) ? json_decode($value, true) : $value;
+        if (! is_array($raw)) {
+            return null;
+        }
+        $out = [];
+        foreach (['x', 'y', 'w', 'h'] as $k) {
+            $n = $raw[$k] ?? null;
+            if (! is_numeric($n) || ! is_finite((float) $n) || (float) $n < 0) {
+                return null;
+            }
+            $out[$k] = (int) round((float) $n);
+        }
+
+        return ($out['w'] < 1 || $out['h'] < 1) ? null : $out;
     }
 
     /** `''` and a malformed date both mean "no bound", which is what nullable columns say. */

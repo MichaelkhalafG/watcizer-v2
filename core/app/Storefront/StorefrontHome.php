@@ -5,12 +5,10 @@ namespace App\Storefront;
 use App\Compat\CompatHome;
 use App\Compat\CompatServices;
 use App\Compat\CompatStorefront;
-use App\Domain\Content\BannerImage;
+use App\Domain\Content\HomeBanners;
 use App\Domain\Inventory\InventoryService;
 use App\Support\Val;
 use App\Transform\Row;
-use Illuminate\Database\Query\Builder;
-use Illuminate\Support\Facades\DB;
 
 /**
  * The home page's data on the v2 API (2026-10-17, V2-READ-HALF step 1 — `GET /api/v2/{sf}/home`).
@@ -63,7 +61,9 @@ final class StorefrontHome
     {
         $sf = $this->ctx->id();
         $compat = new CompatServices(app(StorefrontCache::class), app(InventoryService::class), CompatStorefront::pinned($sf));
-        $railsRaw = $compat->home->build()['rails'];
+        // `rails()`, not `build()['rails']`: compat's full build also reads this storefront's settings and
+        // its banners for ITS own payload, and this endpoint builds both itself.
+        $railsRaw = $compat->home->rails();
 
         $ids = [];
         foreach ($railsRaw as $rail) {
@@ -94,11 +94,26 @@ final class StorefrontHome
             ];
         }
 
+        // D1 (2026-10-20): EVERY active in-window banner, in the dashboard's order, each with its `device`
+        // — the hero rotates through them. `banner` stays beside it, the FIRST ELEMENT OF THIS SAME LIST, because
+        // core deploys before the storefronts do (RUNBOOK_BF_LAUNCH §3 then §6) and the build running in that
+        // window reads the singular key. Retire `banner` once both apps are past this release. Read once: asking
+        // twice cost a second banner query and a second tree lookup per row, and the home's cold query budget
+        // (HomeAndRelatedTest) came within one query of its ceiling.
+        $banners = $this->banners();
+
+        $settings = $this->ctx->storefront->getAttribute('settings');
+
         return [
+            // Which hero this storefront's home draws (the addendum, 2026-10-20) — `three_d` or `banner`,
+            // from `settings.home.hero`. The storefront app reads THIS and never its own build: one shared
+            // hero component, one value per shop, flipped from the dashboard. See {@see HomeHero}.
+            'hero' => HomeHero::of(is_array($settings) ? $settings : null),
             'rails' => $rails,
             'deals' => $this->deals(),
             'categories' => $this->categories(),
-            'banner' => $this->banner(),
+            'banners' => $banners,
+            'banner' => $banners[0] ?? null,
             'brands' => $this->brands(),
         ];
     }
@@ -199,29 +214,33 @@ final class StorefrontHome
         return $out;
     }
 
-    /** @return array<string, mixed>|null the active in-window home banner, or null (→ the system hero, §11.2) */
-    private function banner(): ?array
+    /**
+     * EVERY active in-window home banner, in the dashboard's order (D1, 2026-10-20).
+     *
+     * It used to be one row — `->first()` — so the storefront could not rotate what it was never sent: three
+     * banners on the dashboard, one on the page. The hero now cycles this list.
+     *
+     * `device` (F1) rides on each row and the FILTERING IS THE CLIENT'S, never this endpoint's. The CDN in front of
+     * both API hosts keeps ONE COPY PER URL and ignores `Vary`, so a payload narrowed by user-agent here would be
+     * served to the wrong device from a cached copy — the same mechanism that made v2 private on 2026-10-19
+     * (V2-CDN-PRIVATE). Every active banner goes out; the page shows the ones that match its own viewport.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function banners(): array
     {
-        $row = DB::table('storefront_banners')
-            ->where('storefront_id', $this->ctx->id())
-            ->where('placement', 'home')
-            ->where('is_active', 1)
-            ->where(fn (Builder $q) => $q->whereNull('starts_at')->orWhere('starts_at', '<=', now()))
-            ->where(fn (Builder $q) => $q->whereNull('ends_at')->orWhere('ends_at', '>=', now()))
-            ->orderBy('sort_order')->orderBy('id')
-            ->first();
-        if ($row === null) {
-            return null;
+        $out = [];
+        foreach (HomeBanners::list($this->ctx->id()) as $banner) {
+            // `category`, the full tree ref, is v2's own addition: it has been in this payload since the
+            // endpoint was written and the Brand Fashion build in flight still reads it. The hero reads
+            // `href` and `alt` — resolved in HomeBanners, so compat's home answers the same two keys.
+            $categoryId = Val::nint($banner, 'category_id');
+            $node = $categoryId === null ? null : $this->tree->node($categoryId);
+            unset($banner['category_id']);
+            $out[] = $banner + ['category' => $node === null ? null : CategoryTree::ref($node)];
         }
 
-        $node = $this->tree->node(Row::nint($row, 'storefront_category_id') ?? 0);
-
-        return [
-            'id' => Row::int($row, 'id'),
-            'image' => ImageUrl::object(BannerImage::path(Row::str($row, 'image_path')), null, null, null, null),
-            'link_url' => Row::nstr($row, 'link_url'),
-            'product_id' => Row::nint($row, 'product_id'),
-            'category' => $node === null ? null : CategoryTree::ref($node),
-        ];
+        return $out;
     }
+
 }

@@ -44,7 +44,8 @@ final class Banners
             ->where('b.storefront_id', $storefrontId)
             ->where('b.placement', BannerWriter::PLACEMENTS[0])
             ->select([
-                'b.id', 'b.image_path', 'b.link_url', 'b.product_id', 'b.storefront_category_id',
+                'b.id', 'b.image_path', 'b.device', 'b.image_original_path', 'b.crop',
+                'b.link_url', 'b.product_id', 'b.storefront_category_id',
                 'b.sort_order', 'b.is_active', 'b.starts_at', 'b.ends_at',
                 'pt.title as product_title', 'ct.name as category_name',
                 'pte.title as product_title_en', 'cte.name as category_name_en',

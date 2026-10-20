@@ -2,6 +2,7 @@ import { router } from '@inertiajs/react';
 import { useState } from 'react';
 import { Ltr } from '@/components/ui/bidi';
 
+import { ImageCrop, type CropRect } from '@/components/form/ImageCrop';
 import { ImageField, type StoredImage } from '@/components/form/ImageField';
 import { DataTable, type Column } from '@/components/table/DataTable';
 import { Badge } from '@/components/ui/badge';
@@ -28,6 +29,11 @@ import type { TablePayload } from '@/types';
 interface Banner {
     id: number;
     image_path: string;
+    /** both | desktop | mobile — which device shows this banner (F1, 2026-10-20). */
+    device: string;
+    image_original_path: string | null;
+    image_original_url: string | null;
+    crop: CropRect | null;
     image_url: string;
     sort_order: number;
     is_active: boolean;
@@ -54,6 +60,13 @@ interface Props {
     table: TablePayload<Banner>;
     categories: Option[];
     targets: string[];
+    /** both | desktop | mobile (F1, 2026-10-20). */
+    devices: string[];
+    /** Per device: the shape to crop to, and the pixel size to ask the operator for. */
+    crop_ratios: Record<string, { w: number; h: number; recommended: string }>;
+    /** Which hero this storefront's home draws, and the two it can draw (the addendum, 2026-10-20). */
+    hero: string;
+    heroes: string[];
     media_type: string;
 }
 
@@ -85,6 +98,12 @@ interface Draft {
     /** The FILENAME the row stores. `image` below is the full upload result, only while editing. */
     image_path: string;
     image: StoredImage | null;
+    device: string;
+    /** The upload the crop was taken from, kept so it can be re-cropped without re-uploading. */
+    image_original_path: string;
+    crop: CropRect | null;
+    /** While the crop dialog is open: where to read the original from (object URL or same-origin path). */
+    cropping: string | null;
     target: string;
     product_id: string;
     storefront_category_id: string;
@@ -99,6 +118,10 @@ const EMPTY: Draft = {
     id: null,
     image_path: '',
     image: null,
+    device: 'both',
+    image_original_path: '',
+    crop: null,
+    cropping: null,
     target: 'none',
     product_id: '',
     storefront_category_id: '',
@@ -109,9 +132,56 @@ const EMPTY: Draft = {
     ends_at: '',
 };
 
-export default function BannersIndex({ storefront, storefronts, table, categories, targets, media_type }: Props) {
+export default function BannersIndex({ storefront, storefronts, table, categories, targets, devices, crop_ratios, hero, heroes, media_type }: Props) {
     const t = useT();
     const [draft, setDraft] = useState<Draft | null>(null);
+    const [cropBusy, setCropBusy] = useState(false);
+
+    const DEVICE_LABELS: Record<string, string> = {
+        both: t('banners.device_both', 'الكمبيوتر والهاتف'),
+        desktop: t('banners.device_desktop', 'الكمبيوتر فقط'),
+        mobile: t('banners.device_mobile', 'الهاتف فقط'),
+    };
+    /** The shape and the size this device's banner is cropped to — core measured them on the hero. */
+    const shapeFor = (device: string) => crop_ratios[device] ?? crop_ratios.both;
+
+    const HERO_LABELS: Record<string, string> = {
+        three_d: t('banners.hero_three_d', 'الساعة ثلاثية الأبعاد'),
+        banner: t('banners.hero_banner', 'البانرات'),
+    };
+
+    /**
+     * Upload a cropped file and put it on the draft, keeping the ORIGINAL beside it.
+     *
+     * The same endpoint `ImageField` posts to, so one upload path and one set of rules.
+     */
+    const useCropped = async (file: File, rect: CropRect, original: StoredImage | null) => {
+        if (draft === null) return;
+        setCropBusy(true);
+        try {
+            const body = new FormData();
+            body.append('type', media_type);
+            body.append('file', file);
+            const response = await fetch('/manage/media', { method: 'POST', body, headers: { Accept: 'application/json' }, credentials: 'same-origin' });
+            if (!response.ok) return;
+            const stored = (await response.json()) as StoredImage;
+            setDraft((d) =>
+                d === null
+                    ? d
+                    : {
+                          ...d,
+                          image: stored,
+                          image_path: `${stored.folder}/${stored.file}`,
+                          // the first crop records the original; a re-crop keeps the one already stored
+                          image_original_path: original === null ? d.image_original_path : `${original.folder}/${original.file}`,
+                          crop: rect,
+                          cropping: null,
+                      },
+            );
+        } finally {
+            setCropBusy(false);
+        }
+    };
 
     const TARGET_LABELS = targetLabels(t);
 
@@ -133,6 +203,10 @@ export default function BannersIndex({ storefront, storefronts, table, categorie
                 renditions: {},
                 skipped: [],
             },
+            device: row.device,
+            image_original_path: row.image_original_path ?? '',
+            crop: row.crop,
+            cropping: null,
             target: row.target,
             product_id: row.product_id === null ? '' : String(row.product_id),
             storefront_category_id: row.storefront_category_id === null ? '' : String(row.storefront_category_id),
@@ -149,6 +223,9 @@ export default function BannersIndex({ storefront, storefronts, table, categorie
         }
         const payload = {
             image_path: draft.image_path,
+            image_original_path: draft.image_original_path === '' ? null : draft.image_original_path,
+            crop: draft.crop === null ? null : JSON.stringify(draft.crop),
+            device: draft.device,
             target: draft.target,
             product_id: draft.target === 'product' && draft.product_id !== '' ? Number(draft.product_id) : null,
             storefront_category_id:
@@ -182,6 +259,13 @@ export default function BannersIndex({ storefront, storefronts, table, categorie
                     </span>
                 </div>
             ),
+        },
+        {
+            key: 'device',
+            header: t('banners.device', 'الجهاز'),
+            // Which device shows it (F1). On the row because "why is this banner not on my phone"
+            // is otherwise a question you have to open the record to answer.
+            cell: (row) => <Badge variant={row.device === 'both' ? 'neutral' : 'outline'}>{DEVICE_LABELS[row.device] ?? row.device}</Badge>,
         },
         {
             key: 'state',
@@ -241,6 +325,43 @@ export default function BannersIndex({ storefront, storefronts, table, categorie
                     </p>
                 </div>
 
+                {/*
+                  THE HERO SWITCH (the addendum, 2026-10-20). It is on THIS screen because "why are my
+                  banners not showing" is the question it answers. Changing it changes what shoppers see
+                  on this storefront's home page, so the screen says that in plain words and says how
+                  long it takes, rather than leaving the operator to discover both.
+                */}
+                <div className="rounded-lg border bg-card p-4">
+                    <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-sm font-medium">{t('banners.hero', 'شكل أعلى الصفحة الرئيسية')}</span>
+                        <Select
+                            aria-label={t('banners.hero', 'شكل أعلى الصفحة الرئيسية')}
+                            className="w-56"
+                            value={hero}
+                            onChange={(event) =>
+                                router.post(`/manage/storefronts/${storefront.id}/banners/hero`, { hero: event.target.value }, { preserveScroll: true })
+                            }
+                        >
+                            {heroes.map((mode) => (
+                                <option key={mode} value={mode}>
+                                    {HERO_LABELS[mode] ?? mode}
+                                </option>
+                            ))}
+                        </Select>
+                    </div>
+                    <p className="mt-2 text-sm text-muted-foreground">
+                        {t(
+                            'banners.hero_note',
+                            'يحدّد ما يظهر أعلى الصفحة الرئيسية لهذا المتجر: الساعة ثلاثية الأبعاد أو البانرات التي بالأسفل. التغيير يصل للزوار خلال دقائق قليلة.',
+                        )}
+                    </p>
+                    {hero !== 'banner' ? (
+                        <p className="mt-2 text-sm font-medium text-amber-600 dark:text-amber-500">
+                            {t('banners.hero_off', 'البانرات بالأسفل لا تظهر للزوار الآن، لأن هذا المتجر يعرض الساعة ثلاثية الأبعاد.')}
+                        </p>
+                    ) : null}
+                </div>
+
                 {draft !== null ? (
                     <div className="rounded-lg border bg-card p-4">
                         <h2 className="font-medium">
@@ -255,17 +376,78 @@ export default function BannersIndex({ storefront, storefronts, table, categorie
                                     label={t('banners.image', 'صورة البانر')}
                                     type={media_type}
                                     value={draft.image}
-                                    onChange={(image) =>
+                                    onChange={(image) => {
+                                        if (image === null) {
+                                            setDraft({ ...draft, image: null, image_path: '', image_original_path: '', crop: null, cropping: null });
+
+                                            return;
+                                        }
+                                        // A chosen image is cropped before it is stored (F1): the upload that just
+                                        // happened becomes the ORIGINAL, and the crop produces the file the shop serves.
+                                        // It is read back from THIS host, not the storefront's asset host, so the canvas
+                                        // is same-origin and `toBlob` is allowed to hand over the bytes.
                                         setDraft({
                                             ...draft,
                                             image,
-                                            // `<folder>/<file>`, as every other image column stores it (ImageGallery, Blogs,
-                                            // Lookups); the bare file alone built a URL without the folder — a 404.
-                                            image_path: image === null ? '' : `${image.folder}/${image.file}`,
-                                        })
-                                    }
+                                            image_path: `${image.folder}/${image.file}`,
+                                            image_original_path: `${image.folder}/${image.file}`,
+                                            crop: null,
+                                            cropping: `/Uploads_Images/${image.folder}/${image.file}`,
+                                        });
+                                    }}
                                 />
+                                <p className="mt-1 text-xs text-muted-foreground">
+                                    {t('banners.recommended_size', 'المقاس المقترح لـ:device — :size بكسل', {
+                                        device: DEVICE_LABELS[draft.device] ?? draft.device,
+                                        size: shapeFor(draft.device).recommended,
+                                    })}
+                                </p>
+
+                                {draft.cropping === null && draft.image_original_path !== '' ? (
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        className="mt-2"
+                                        onClick={() => setDraft({ ...draft, cropping: `/Uploads_Images/${draft.image_original_path}` })}
+                                    >
+                                        {t('banners.recrop', 'إعادة القصّ من الصورة الأصلية')}
+                                    </Button>
+                                ) : null}
+
+                                {draft.cropping !== null ? (
+                                    <div className="mt-3 rounded-md border border-border p-3">
+                                        <p className="mb-2 text-sm font-medium">
+                                            {t('banners.crop_heading', 'اقصص الصورة لمقاس :device', {
+                                                device: DEVICE_LABELS[draft.device] ?? draft.device,
+                                            })}
+                                        </p>
+                                        <ImageCrop
+                                            src={draft.cropping}
+                                            ratio={{ w: shapeFor(draft.device).w, h: shapeFor(draft.device).h }}
+                                            output={{ w: shapeFor(draft.device).w * 2, h: shapeFor(draft.device).h * 2 }}
+                                            initial={draft.crop}
+                                            busy={cropBusy}
+                                            onCancel={() => setDraft({ ...draft, cropping: null })}
+                                            onDone={(file, rect) => void useCropped(file, rect, draft.crop === null ? draft.image : null)}
+                                        />
+                                    </div>
+                                ) : null}
                             </div>
+
+                            <label className="space-y-1 text-sm">
+                                <span>{t('banners.device', 'الجهاز')}</span>
+                                <Select
+                                    value={draft.device}
+                                    onChange={(event) => setDraft({ ...draft, device: event.target.value })}
+                                >
+                                    {devices.map((device) => (
+                                        <option key={device} value={device}>
+                                            {DEVICE_LABELS[device] ?? device}
+                                        </option>
+                                    ))}
+                                </Select>
+                            </label>
 
                             <label className="space-y-1 text-sm">
                                 <span>{t('banners.opens', 'يفتح')}</span>
@@ -404,6 +586,20 @@ export default function BannersIndex({ storefront, storefronts, table, categorie
                                 <option value="scheduled">{t('banners.state_scheduled', 'مجدول')}</option>
                                 <option value="expired">{t('banners.state_expired', 'انتهى')}</option>
                                 <option value="inactive">{t('common.suspended', 'موقوف')}</option>
+                            </Select>
+
+                            <Select
+                                className="w-full sm:w-48"
+                                aria-label={t('banners.device', 'الجهاز')}
+                                value={current['b.device'] ?? ''}
+                                onChange={(event) => setFilter('b.device', event.target.value || null)}
+                            >
+                                <option value="">{t('banners.device_all', 'كل الأجهزة')}</option>
+                                {devices.map((device) => (
+                                    <option key={device} value={device}>
+                                        {DEVICE_LABELS[device] ?? device}
+                                    </option>
+                                ))}
                             </Select>
 
                             <Select

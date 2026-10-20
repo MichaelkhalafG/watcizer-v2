@@ -4,7 +4,10 @@ declare(strict_types=1);
 
 namespace App\Compat;
 
+use App\Domain\Content\HomeBanners;
 use App\Domain\Content\HomeRails;
+use App\Storefront\HomeHero;
+use App\Storefront\StorefrontUrls;
 use App\Support\Coerce;
 use App\Support\Val;
 use Illuminate\Support\Facades\DB;
@@ -42,13 +45,37 @@ final class CompatHome
     ) {}
 
     /**
-     * @return array{rails: list<array{id: int, kind: string, target: ?int, title: array{en: ?string, ar: ?string}, products: list<int>}>, products: list<array<array-key, mixed>>, ratings: list<array<array-key, mixed>>, images: list<array<array-key, mixed>>}
+     * @return array{hero: string, banners: list<array<string, mixed>>, rails: list<array{id: int, kind: string, target: ?int, title: array{en: ?string, ar: ?string}, products: list<int>}>, products: list<array<array-key, mixed>>, ratings: list<array<array-key, mixed>>, images: list<array<array-key, mixed>>}
      */
     public function build(): array
     {
+        $rails = $this->rails();
+        $all = [];
+        foreach ($rails as $rail) {
+            foreach ($rail['products'] as $id) {
+                $all[$id] = true;
+            }
+        }
+
+        return [
+            'hero' => $this->hero(),
+            'banners' => HomeBanners::list($this->storefrontId, StorefrontUrls::compatAssetBase($this->storefrontId)),
+            'rails' => $rails,
+            ...$this->listing->cards(array_keys($all)),
+        ];
+    }
+
+    /**
+     * The rails with their picks, without the cards — what {@see \App\Storefront\StorefrontHome} asks for
+     * (it builds v2 cards of its own). Kept separate from {@see self::build} so the v2 home does not run
+     * compat's banners query and settings read on every cold build and throw both away.
+     *
+     * @return list<array{id: int, kind: string, target: ?int, title: array{en: ?string, ar: ?string}, products: list<int>}>
+     */
+    public function rails(): array
+    {
         $entries = $this->listing->entries();
         $rails = [];
-        $all = [];
         foreach (HomeRails::active($this->storefrontId) as $rail) {
             $ids = $rail['kind'] === HomeRails::CUSTOM
                 ? self::picked($rail['product_ids'], $entries)
@@ -65,12 +92,33 @@ final class CompatHome
                 'title' => ['en' => $rail['title_en'], 'ar' => $rail['title_ar']],
                 'products' => $ids,
             ];
-            foreach ($ids as $id) {
-                $all[$id] = true;
-            }
         }
 
-        return ['rails' => $rails, ...$this->listing->cards(array_keys($all))];
+        return $rails;
+    }
+
+    /*
+     * THE HERO (the developer's addendum, 2026-10-20) — AN ADDED KEY, nothing changed.
+     *
+     * Watchizer reads this endpoint, not v2, and it is LIVE and taking real orders. Its home page draws the
+     * 3D watch and has never drawn a banner, so `hero` and `banners` are new keys here and every key that was
+     * here is untouched: `rails`, `products`, `ratings` and `images` are byte-for-byte what they were.
+     *
+     * `hero` is `three_d` or `banner`, from this storefront's `settings.home.hero` — `three_d` for Watchizer,
+     * written explicitly by the release's migration, so the page renders exactly what it renders today until
+     * somebody flips the switch on the dashboard. `banners` is the same list, in the same shape, that v2 serves
+     * ({@see HomeBanners}), so ONE hero component can read both endpoints; Watchizer has no banners today, so
+     * the list is empty, and the 3D hero would not read it anyway.
+     *
+     * The storefront row is read here rather than injected because compat resolves its storefront by HOST and
+     * has no {@see \App\Storefront\StorefrontContext} — that is bound on v2 routes only.
+     */
+    private function hero(): string
+    {
+        $settings = DB::table('storefronts')->where('id', $this->storefrontId)->value('settings');
+        $decoded = is_string($settings) ? json_decode($settings, true) : null;
+
+        return HomeHero::of(is_array($decoded) ? $decoded : null);
     }
 
     /**

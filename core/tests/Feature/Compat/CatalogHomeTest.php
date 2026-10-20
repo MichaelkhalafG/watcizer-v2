@@ -24,7 +24,7 @@ beforeEach(function () {
     app(StorefrontCache::class)->flush(1);
 });
 
-/** @return array{rails: list<array{id: int, kind: string, target: ?int, title: array{en: ?string, ar: ?string}, products: list<int>}>, products: list<array<array-key, mixed>>, ratings: list<array<array-key, mixed>>, images: list<array<array-key, mixed>>} */
+/** @return array{hero: string, banners: list<array<string, mixed>>, rails: list<array{id: int, kind: string, target: ?int, title: array{en: ?string, ar: ?string}, products: list<int>}>, products: list<array<array-key, mixed>>, ratings: list<array<array-key, mixed>>, images: list<array<array-key, mixed>>} */
 function homeBuild(): array
 {
     return app(CompatServices::class)->home->build();
@@ -212,9 +212,46 @@ it('refuses a rail that makes no sense, and a reorder that does not name every r
     expect(array_column(HomeRails::all(1), 'kind'))->toBe(['newest', 'offers']);
 });
 
+it('names the COMPAT image host on a banner, which is not the v2 one', function () {
+    // COMPAT-ASSET-HOST (2026-10-14): a compat payload's images are built on `compat.asset_base`, and the live
+    // shop's URLs must not move a byte. The hero's banner list is shared with v2, whose host is a different
+    // config — so the two are set to DIFFERENT values here and the payload is read for the compat one.
+    config(['compat.asset_base' => 'https://compat.example.test', 'storefront.asset_base' => 'https://v2.example.test']);
+    DB::table('storefront_banners')->where('storefront_id', 1)->delete();
+    DB::table('storefront_banners')->insert([
+        'storefront_id' => 1, 'placement' => 'home', 'image_path' => 'Banner_home/compat.webp',
+        'device' => 'both', 'is_active' => 1, 'sort_order' => 0, 'created_at' => now(), 'updated_at' => now(),
+    ]);
+
+    $banners = T::arr(homeBuild()['banners']);
+    expect(T::str(T::arr(T::arr($banners[0] ?? [])['image'] ?? [])['src'] ?? null))
+        ->toBe('https://compat.example.test/Uploads_Images/Banner_home/compat.webp');
+});
+
+it('carries the hero the storefront is set to, and the 3D hero when it is set to nothing', function () {
+    $before = DB::table('storefronts')->where('id', 1)->value('settings');
+
+    try {
+        DB::table('storefronts')->where('id', 1)->update(['settings' => null]);
+        app(StorefrontCache::class)->forgetStorefront(1, 'watchizer');
+        // Watchizer is live on the 3D hero: a row with no settings at all must not switch it to banners.
+        expect(T::str(homeBuild()['hero']))->toBe('three_d');
+
+        DB::table('storefronts')->where('id', 1)->update(['settings' => json_encode(['home' => ['hero' => 'banner']])]);
+        app(StorefrontCache::class)->forgetStorefront(1, 'watchizer');
+        expect(T::str(homeBuild()['hero']))->toBe('banner');
+    } finally {
+        DB::table('storefronts')->where('id', 1)->update(['settings' => $before]);
+        app(StorefrontCache::class)->forgetStorefront(1, 'watchizer');
+    }
+});
+
 it('answers GET catalog/home with the API key, and only with it', function () {
     $body = T::arr(withHeaders(['Api-Code' => HOME_API_KEY])->getJson('/api/catalog/home')->assertOk()->json());
-    expect(array_keys($body))->toBe(['rails', 'products', 'ratings', 'images'])
+    // `hero` and `banners` were added on 2026-10-20 (the addendum): this endpoint is Watchizer's live path and
+    // its home page can now be switched to the banner hero from the dashboard. Every key that was here is
+    // unchanged, and the two new ones come FIRST so a payload diff shows them as added rather than shuffled.
+    expect(array_keys($body))->toBe(['hero', 'banners', 'rails', 'products', 'ratings', 'images'])
         ->and(T::arr($body['rails']))->not->toBeEmpty();
     withHeaders(['Api-Code' => 'not-the-key'])->getJson('/api/catalog/home')->assertStatus(401);
 });
