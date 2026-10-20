@@ -35,7 +35,32 @@ final class ProductListing
     public const SORTS = ['position', 'newest', 'price_asc', 'price_desc', 'rating', 'featured', 'available'];
 
     /** The facet sections `facets=1` counts, in the order the sidebar shows them (spec §10.2). */
-    public const FACETS = ['category', 'brand', 'gender', 'color', 'material', 'grade', 'movement', 'shape', 'display_type'];
+    public const FACETS = ['category', 'brand', 'gender', 'dial_color', 'band_color', 'material', 'grade', 'movement', 'shape', 'display_type'];
+
+    /**
+     * The two COLOUR sections, each a role on `catalog_product_color` (2026-10-23).
+     *
+     * `catalog_product_color.role` holds exactly two values and there is no third: measured on production,
+     * `band` on 945 products and `dial` on 669, and no `main` role exists at all. What that means per family is
+     * the whole reason this is split rather than merged:
+     *
+     *   • a WATCH carries both — 658 of them a band colour and 657 a dial colour — and the two are different
+     *     facts about the same watch. compat has always offered them as two sections and a shopper picks a
+     *     black dial and a brown strap independently.
+     *   • a DRESS carries ONE colour, entered once in the dashboard, and it is stored under `band` because
+     *     that is the column the legacy form wrote to. 248 of 253 fashion products have it; none has a dial.
+     *   • ELECTRONICS carry none at all (0 of 73).
+     *
+     * So the sections follow the RESULT, with no category special-casing anywhere in core: a fashion result
+     * counts no dial colours, that section comes back empty and the sidebar does not draw it; a watch result
+     * counts both. The one thing core cannot decide is what to CALL the band section when it is the only one —
+     * "Band colour" is wrong on a dress — and that is a label, so the sidebar decides it from the same
+     * emptiness, not from a category. See SideBar.jsx.
+     *
+     * Kept separate from WATCH_SPEC_FACETS because the shape is different: a role on a many-to-many pivot,
+     * not a column on a 1:1 table.
+     */
+    public const COLOUR_FACETS = ['dial_color' => 'dial', 'band_color' => 'band'];
 
     /**
      * The three WATCH-SPEC sections (2026-10-22), each a single id column on `catalog_product_watch_specs`:
@@ -130,7 +155,11 @@ final class ProductListing
             'category_ids' => array_map(fn (array $n): int => Val::int($n, 'id'), $nodes),
             'brand' => self::strList($input['brand'] ?? null),
             'gender' => $this->genderIds($input['gender'] ?? null),
+            // `color` is kept as the ANY-ROLE filter it has been since v2's listing shipped, so a caller that
+            // sends it keeps working; the two role-scoped keys below are what the sidebars now send.
             'color' => self::intList($input['color'] ?? null),
+            'dial_color' => self::intList($input['dial_color'] ?? null),
+            'band_color' => self::intList($input['band_color'] ?? null),
             'material' => self::intList($input['material'] ?? null),
             'grade' => self::intList($input['grade'] ?? null),
             'movement' => self::intList($input['movement'] ?? null),
@@ -256,6 +285,16 @@ final class ProductListing
         if ($except !== 'color' && $colors !== []) {
             $query->whereIn('sp.product_id', fn (Builder $s) => $s->select('product_id')->from('catalog_product_color')->whereIn('color_id', $colors));
         }
+        // The two COLOUR sections (see COLOUR_FACETS). Each is scoped to its role, and they AND together, which
+        // is what compat's two sections did: a black dial AND a brown strap is one watch, not two results.
+        foreach (self::COLOUR_FACETS as $name => $role) {
+            /** @var list<int> $ids */
+            $ids = $f[$name];
+            if ($except !== $name && $ids !== []) {
+                $query->whereIn('sp.product_id', fn (Builder $s) => $s->select('product_id')->from('catalog_product_color')
+                    ->where('role', $role)->whereIn('color_id', $ids));
+            }
+        }
         /** @var list<int> $materials */
         $materials = $f['material'];
         if ($except !== 'material' && $materials !== []) {
@@ -365,7 +404,8 @@ final class ProductListing
     /**
      * The facet block for `facets=1`: per-result option counts, each section with every filter applied
      * except its own, the `in_stock` split, and the price bounds of the result (without the price filter).
-     * ELEVEN aggregate queries (category added 2026-10-17; movement, shape and display type 2026-10-22);
+     * TWELVE aggregate queries (category added 2026-10-17; movement, shape and display type 2026-10-22;
+     * colour split into its two roles 2026-10-23);
      * the caller caches the block under the filter hash, so a repeated listing pays for none of them.
      *
      * @param  array<string, mixed>  $f
@@ -390,7 +430,13 @@ final class ProductListing
         $out['category'] = $this->categoryFacet($counted($base('category')->join('storefront_category_product as fcp', 'fcp.product_id', '=', 'sp.product_id'), 'fcp.storefront_category_id')->get());
         $out['brand'] = $this->facetRefs('brands', $counted($base('brand'), 'p.brand_id')->get());
         $out['gender'] = $this->facetRefs('genders', $counted($base('gender')->join('catalog_product_gender as pg', 'pg.product_id', '=', 'sp.product_id'), 'pg.gender_id')->get());
-        $out['color'] = $this->facetRefs('colors', $counted($base('color')->join('catalog_product_color as pc', 'pc.product_id', '=', 'sp.product_id'), 'pc.color_id')->get());
+        // the two colour sections, one grouped count each over the same pivot, scoped by role
+        foreach (self::COLOUR_FACETS as $name => $role) {
+            $out[$name] = $this->facetRefs(
+                'colors',
+                $counted($base($name)->join('catalog_product_color as pc', 'pc.product_id', '=', 'sp.product_id')->where('pc.role', $role), 'pc.color_id')->get(),
+            );
+        }
         // material: a product counts once per material whether it is its band's or its case's
         $band = $base('material')->join('catalog_product_watch_specs as ws', 'ws.product_id', '=', 'sp.product_id')->whereNotNull('ws.band_material_id')->selectRaw('sp.product_id as pid, ws.band_material_id as k');
         $case = $base('material')->join('catalog_product_watch_specs as ws', 'ws.product_id', '=', 'sp.product_id')->whereNotNull('ws.case_material_id')->selectRaw('sp.product_id as pid, ws.case_material_id as k');
@@ -607,7 +653,7 @@ final class ProductListing
         if ($category !== null && $node === null) {
             return null;
         }
-        $filters = ['category' => null, 'category_ids' => $node === null ? [] : [Val::int($node, 'id')], 'brand' => self::strList($input['brand'] ?? null), 'gender' => [], 'color' => [], 'material' => [], 'grade' => [], 'movement' => [], 'shape' => [], 'display_type' => [], 'price_min' => null, 'price_max' => null, 'in_stock' => self::bool($input['in_stock'] ?? null), 'on_sale' => self::bool($input['on_sale'] ?? null), 'min_discount' => self::minDiscount($input['min_discount'] ?? null), 'q' => null];
+        $filters = ['category' => null, 'category_ids' => $node === null ? [] : [Val::int($node, 'id')], 'brand' => self::strList($input['brand'] ?? null), 'gender' => [], 'color' => [], 'dial_color' => [], 'band_color' => [], 'material' => [], 'grade' => [], 'movement' => [], 'shape' => [], 'display_type' => [], 'price_min' => null, 'price_max' => null, 'in_stock' => self::bool($input['in_stock'] ?? null), 'on_sale' => self::bool($input['on_sale'] ?? null), 'min_discount' => self::minDiscount($input['min_discount'] ?? null), 'q' => null];
         $sort = self::str($input['sort'] ?? null);
         $sort = in_array($sort, self::SORTS, true) ? $sort : ($node !== null ? 'position' : 'newest');
         $indexed = self::indexed($node) || ($input['force_indexed'] ?? false) === true;

@@ -183,6 +183,19 @@ function SideBar({ facets }) {
         .filter((x) => x.count > 0)
         .sort((a, b) => b.count - a.count)
 
+    const dialItems = build(tables?.colors, 'dialColors', 'color_name')
+    const bandItems = build(tables?.colors, 'bandColors', 'color_name')
+    // the band section is "Colour" when it is the only colour section in the result - see the note below
+    const colourSections = [
+      { title: isRTL ? 'لون الميناء' : 'Dial Colour', key: 'dialColors', searchable: true, items: dialItems },
+      {
+        title: dialItems.length ? (isRTL ? 'لون السوار' : 'Band Colour') : (isRTL ? 'اللون' : 'Colour'),
+        key: 'bandColors',
+        searchable: true,
+        items: bandItems,
+      },
+    ]
+
     return [
       {
         title: isRTL ? 'العلامة التجارية' : 'Brand',
@@ -201,28 +214,32 @@ function SideBar({ facets }) {
         key: 'genders',
         items: genderItems,
       },
-      {
-        /*
-         * ONE colour section since the listing moved to v2 (2026-10-22).
-         *
-         * v2 counts and filters a colour in ANY role — dial, band or the product's own — so there is one set
-         * of counts, not two, and the second section would always be empty. It is NAMED "Colour" rather than
-         * left reading "Dial colour", because a section headed "Dial colour" that also matches a navy strap
-         * is a label that lies. The state key stays `dialColors` so no bookmarked listing URL changes meaning.
-         */
-        title: isRTL ? 'اللون' : 'Colour',
-        key: 'dialColors',
-        searchable: true,
-        items: build(tables?.colors, 'dialColors', 'color_name'),
-      },
-      {
-        // kept so an existing `bandColors` selection in a bookmarked URL still clears; v2 serves it no
-        // counts, so `build` returns nothing and the section is never drawn
-        title: isRTL ? 'لون السوار' : 'Band Color',
-        key: 'bandColors',
-        searchable: true,
-        items: build(tables?.colors, 'bandColors', 'color_name'),
-      },
+      /*
+       * THE TWO COLOUR SECTIONS, and the one label core cannot decide (2026-10-23).
+       *
+       * `catalog_product_color.role` holds exactly two values, `dial` and `band`, and no third: measured on
+       * production, no `main` role exists. What that means per kind of product is the whole reason there are
+       * two sections here and not one merged one:
+       *
+       *   - a WATCH carries both, and they are different facts about the same watch. A shopper picks a black
+       *     dial and a brown strap independently, which is what compat offered and what this restores.
+       *   - a DRESS or a BAG carries ONE colour, entered once in the dashboard, and it is stored under `band`
+       *     because that is the column the legacy form writes to. It has no dial colour at all.
+       *   - ELECTRONICS carry neither.
+       *
+       * So the sections follow THE RESULT and nothing here knows about categories: on a fashion listing the
+       * dial counts come back empty, `build` returns nothing and the under-two rule does not draw it; on a
+       * watch listing both are counted and both draw. Measured against compat on the same catalogue, value
+       * for value: all products 18 dial / 18 band, watches 18 / 15, fashion 0 / 16, electronics 0 / 0 -
+       * identical to what compat served in every case.
+       *
+       * The ONE thing the counts cannot settle is the NAME of the band section when it is the only colour
+       * section on the page. "Band colour" over a list of dress colours is a label that lies, so when there
+       * are no dial colours in the result the band section is simply "Colour" - decided from the same
+       * emptiness the drawing rule uses, not from a category, and it needs no special case for a family
+       * nobody has added yet.
+       */
+      ...colourSections,
       {
         title: isRTL ? 'الخامة' : 'Material',
         key: 'materials',

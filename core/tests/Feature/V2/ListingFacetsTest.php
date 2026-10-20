@@ -18,7 +18,7 @@ use function Pest\Laravel\withoutMiddleware;
  *    counted "as if its own filter were cleared" (the compat semantics the sidebars already assume),
  *    so a count is exactly the `meta.total` the same filter would produce — which is how it is
  *    asserted here: against the listing itself, never against a second copy of the visibility rule.
- *  - the block costs SEVEN aggregate queries once per filter hash and is then a cache hit, so the
+ *  - the block costs TWELVE aggregate queries once per filter hash and is then a cache hit, so the
  *    listing's warm budget (QueryBudgetTest, ≤ 6) is untouched by it — asserted.
  *  - `sort=available` (§19-5 "available first"): in stock first, then today's order, then product id —
  *    a TOTAL order, so offset paging shows every product exactly once; asserted by paging a whole
@@ -143,10 +143,10 @@ it('serves the facet block only when asked, with the nine sections, the stock sp
     $f = facetsOf('');
     // movement, shape and display_type joined on 2026-10-22, when Watchizer's listing moved here and brought
     // its sidebar's three watch-spec sections with it.
-    expect(array_keys($f))->toBe(['category', 'brand', 'gender', 'color', 'material', 'grade', 'movement', 'shape', 'display_type', 'in_stock', 'price']);
+    expect(array_keys($f))->toBe(['category', 'brand', 'gender', 'dial_color', 'band_color', 'material', 'grade', 'movement', 'shape', 'display_type', 'in_stock', 'price']);
     // display_type is NOT asserted non-empty: production holds one value, and the rule that a section with
     // fewer than two options is not drawn lives in the sidebar, not here.
-    foreach (['brand', 'gender', 'color', 'material', 'grade', 'movement', 'shape'] as $section) {
+    foreach (['brand', 'gender', 'dial_color', 'band_color', 'material', 'grade', 'movement', 'shape'] as $section) {
         $rows = facetRows($f, $section);
         expect($rows)->not->toBeEmpty("section {$section} is empty on the whole catalogue");
         $counts = array_map(fn (array $r) => T::int($r['count']), $rows);
@@ -157,7 +157,8 @@ it('serves the facet block only when asked, with the nine sections, the stock sp
         expect($rows[0])->toHaveKeys(['id', 'name', 'count'])->and(H::arr($rows[0]['name']))->toHaveKey('en');
     }
     expect(facetRows($f, 'brand')[0])->toHaveKey('slug')
-        ->and(facetRows($f, 'color')[0])->toHaveKey('hex');
+        ->and(facetRows($f, 'dial_color')[0])->toHaveKey('hex')
+        ->and(facetRows($f, 'band_color')[0])->toHaveKey('hex');
     // category: every served node is a visible menu node whose count is the total of its own page, in tree order
     $cats = facetRows($f, 'category');
     expect($cats)->not->toBeEmpty();
@@ -194,7 +195,7 @@ it('counts each section as if its own filter were cleared — every count is the
         expect(T::int($row['count']))->toBe(facetTotal("brand={$bSlug}&gender=".T::int($row['id'])), 'gender '.T::int($row['id']));
     }
     // colour, material, grade: both filters stay (neither is their own)
-    foreach (['color', 'material', 'grade'] as $section) {
+    foreach (['dial_color', 'band_color', 'material', 'grade'] as $section) {
         $row = facetRows($f, $section)[0] ?? null;
         if ($row === null) {
             continue;
@@ -237,14 +238,14 @@ it('accepts a brand by numeric id and a gender by English name — the adapter\'
         ->and(facetTotal('gender=nobody'))->toBe(0);
 });
 
-it('costs ELEVEN queries once per filter hash and is a cache hit after, inside the listing\'s warm budget', function () {
+it('costs TWELVE queries once per filter hash and is a cache hit after, inside the listing\'s warm budget', function () {
     getJson(H::base('products?per_page=24'))->assertOk();   // per-version caches + this hash's count
     $warmPlain = facetQueryCount(fn () => getJson(H::base('products?per_page=24'))->assertOk());
     $coldFacets = facetQueryCount(fn () => getJson(H::base('products?per_page=24&facets=1'))->assertOk());
     $warmFacets = facetQueryCount(fn () => getJson(H::base('products?per_page=24&facets=1'))->assertOk());
     fwrite(STDERR, "\nfacets budget — plain warm {$warmPlain}, facets cold {$coldFacets}, facets warm {$warmFacets}\n");
 
-    expect($coldFacets - $warmPlain)->toBe(11, 'the facet block is eleven aggregate queries (category 2026-10-17; movement, shape and display type 2026-10-22), not one per value')
+    expect($coldFacets - $warmPlain)->toBe(12, 'the facet block is twelve aggregate queries (category 2026-10-17; movement, shape and display type 2026-10-22; colour split into its two roles 2026-10-23), not one per value')
         ->and($warmFacets)->toBe($warmPlain)->toBeLessThanOrEqual(6, 'a cached block adds nothing to the §5.3 listing budget');
 });
 

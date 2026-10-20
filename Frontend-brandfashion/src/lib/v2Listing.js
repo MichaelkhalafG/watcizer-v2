@@ -22,9 +22,14 @@ import { categorySlug, subTypeSlug } from '../utils/slugs'
 //    Watchizer. A storefront slug is USUALLY toSlug(English legacy name); where it is not — Chargers & Cables
 //    is `chargers`, Earphones & Headphones is `audio`, measured 2026-10-18 — the tables carry the node's
 //    `v2_slug` (useTables.js). A bare depth-2 slug resolves.
-//  • colour: v2 counts and filters a colour in ANY role (dial, band, main). Dial and band selections are
-//    merged into `color`; the counts come back under the legacy "Dial colour" section and the "Band colour"
-//    section has none, so it draws nothing.
+//  • colour: TWO sections, one per role on `catalog_product_color` — `dial_color` and `band_color` — which is
+//    what compat always served and what a watch shop needs, since a black dial and a brown strap are
+//    different facts about one watch. There is no third role in the data: a product that carries ONE plain
+//    colour (a dress, a bag) has it stored under `band`, because that is the column the dashboard writes, so
+//    a fashion result counts band colours and no dial colours at all. Core therefore needs no idea of
+//    product kind, and neither does this file; the only thing that cannot be decided here is what to CALL a
+//    band section that is alone on the page, and that is a label, decided in SideBar.jsx from the same
+//    emptiness. v2's merged `color` key still filters a colour in any role for anything that sends it.
 //  • SALE → v2's `on_sale=1`, a valid discount only. Both shops' keys are accepted: Brand Fashion calls it
 //    `sale` (round 5 separated it from Offers, which are the dashboard's promotions and a page of their own);
 //    Watchizer has always called the same idea `offers` in its listing URL, and that spelling is kept so no
@@ -73,7 +78,8 @@ export function v2ListingRequest({ filters = {}, q = '', sort = 'default', page 
   }
   list('brand', filters.brands) // ids — v2 takes a brand by slug or by id
   list('gender', filters.genders) // English names — v2 takes a gender by id or by English name
-  list('color', [...(filters.dialColors || []), ...(filters.bandColors || [])])
+  list('dial_color', filters.dialColors)
+  list('band_color', filters.bandColors)
   list('material', filters.materials)
   list('grade', filters.grades)
   list('movement', filters.movements)
@@ -156,8 +162,8 @@ function legacyFacets(facets) {
     genders: Object.fromEntries((facets.gender || []).map((r) => [r.name?.en ?? String(r.id), r.count])),
     grades: byId(facets.grade),
     materials: byId(facets.material),
-    dialColors: byId(facets.color), // a colour in any role (see the header)
-    bandColors: {},
+    dialColors: byId(facets.dial_color),
+    bandColors: byId(facets.band_color),
     movements: byId(facets.movement),
     shapes: byId(facets.shape),
     displayTypes: byId(facets.display_type),
