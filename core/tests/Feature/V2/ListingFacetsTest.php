@@ -136,13 +136,17 @@ function facetWalk(string $query, int $perPage = 96, int $fromPage = 1, ?int $to
     return $out;
 }
 
-it('serves the facet block only when asked, with the five sections, the stock split and the price bounds', function () {
+it('serves the facet block only when asked, with the nine sections, the stock split and the price bounds', function () {
     expect(facetPage('per_page=1'))->not->toHaveKey('facets')
         ->and(facetPage('facets=0&per_page=1'))->not->toHaveKey('facets');
 
     $f = facetsOf('');
-    expect(array_keys($f))->toBe(['category', 'brand', 'gender', 'color', 'material', 'grade', 'in_stock', 'price']);
-    foreach (['brand', 'gender', 'color', 'material', 'grade'] as $section) {
+    // movement, shape and display_type joined on 2026-10-22, when Watchizer's listing moved here and brought
+    // its sidebar's three watch-spec sections with it.
+    expect(array_keys($f))->toBe(['category', 'brand', 'gender', 'color', 'material', 'grade', 'movement', 'shape', 'display_type', 'in_stock', 'price']);
+    // display_type is NOT asserted non-empty: production holds one value, and the rule that a section with
+    // fewer than two options is not drawn lives in the sidebar, not here.
+    foreach (['brand', 'gender', 'color', 'material', 'grade', 'movement', 'shape'] as $section) {
         $rows = facetRows($f, $section);
         expect($rows)->not->toBeEmpty("section {$section} is empty on the whole catalogue");
         $counts = array_map(fn (array $r) => T::int($r['count']), $rows);
@@ -233,14 +237,14 @@ it('accepts a brand by numeric id and a gender by English name — the adapter\'
         ->and(facetTotal('gender=nobody'))->toBe(0);
 });
 
-it('costs EIGHT queries once per filter hash and is a cache hit after, inside the listing\'s warm budget', function () {
+it('costs ELEVEN queries once per filter hash and is a cache hit after, inside the listing\'s warm budget', function () {
     getJson(H::base('products?per_page=24'))->assertOk();   // per-version caches + this hash's count
     $warmPlain = facetQueryCount(fn () => getJson(H::base('products?per_page=24'))->assertOk());
     $coldFacets = facetQueryCount(fn () => getJson(H::base('products?per_page=24&facets=1'))->assertOk());
     $warmFacets = facetQueryCount(fn () => getJson(H::base('products?per_page=24&facets=1'))->assertOk());
     fwrite(STDERR, "\nfacets budget — plain warm {$warmPlain}, facets cold {$coldFacets}, facets warm {$warmFacets}\n");
 
-    expect($coldFacets - $warmPlain)->toBe(8, 'the facet block is eight aggregate queries (category added 2026-10-17), not one per value')
+    expect($coldFacets - $warmPlain)->toBe(11, 'the facet block is eleven aggregate queries (category 2026-10-17; movement, shape and display type 2026-10-22), not one per value')
         ->and($warmFacets)->toBe($warmPlain)->toBeLessThanOrEqual(6, 'a cached block adds nothing to the §5.3 listing budget');
 });
 

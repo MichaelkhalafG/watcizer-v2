@@ -17,12 +17,19 @@ class ProductController extends Controller
     public function index(Request $request, ProductListing $listing): JsonResponse
     {
         $input = $request->validate([
+            // comma-separated since 2026-10-22: several subtrees are a union, which is what a multi-select
+            // sub-type filter means. One path behaves exactly as it always did.
             'category' => 'nullable|string|max:500',
             'brand' => 'nullable|string|max:500',    // slugs and/or numeric ids, comma-separated (ids since 2026-10-17)
             'gender' => 'nullable|string|max:100',   // ids and/or English names, comma-separated (names since 2026-10-17)
             'color' => 'nullable|string|max:200',
             'material' => 'nullable|string|max:200',
             'grade' => 'nullable|string|max:200',
+            // the three watch-spec sections (2026-10-22, ProductListing::WATCH_SPEC_FACETS) — ids,
+            // comma-separated, exactly as `grade` and `material` are
+            'movement' => 'nullable|string|max:200',
+            'shape' => 'nullable|string|max:200',
+            'display_type' => 'nullable|string|max:200',
             'price_min' => 'nullable|numeric|min:0',
             'price_max' => 'nullable|numeric|min:0',
             'in_stock' => 'nullable|in:0,1,true,false',

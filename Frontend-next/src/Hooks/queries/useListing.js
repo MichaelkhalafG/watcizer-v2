@@ -1,25 +1,35 @@
 import { useMemo } from 'react'
 import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import publicHttp from '../../Context/publicApi'
-import { listingRequest, listingQueryFn } from '../../lib/listingRequest'
+import { listingRequest, listingQueryFn, listingNeedsTables } from '../../lib/listingRequest'
+import { withLegacyCategoryFacets } from '../../lib/v2Listing'
 import { useTables } from './useTables'
 import { transformProductData } from '../../utils/transformProduct'
 
-// The listing on the server (C-1 stage 3, 2026-09-27) — core's `catalog/listing`: one page of
-// products plus every facet count, for the storefront's own filter state. The browser used to
-// download the whole catalogue and do this itself on every filter change.
+// The listing on the server (C-1 stage 3, 2026-09-27; on v2 since the move) — one page of products plus
+// every facet count, for the storefront's own filter state. The browser used to download the whole
+// catalogue and do this itself on every filter change.
 //
 // ONE builder turns the filter state into the request, and the request string IS the query key
 // (src/lib/listingRequest.js — pure, so the server pages prefetch with it too).
+//
+// BOTH storefronts read v2 here (Brand Fashion 2026-10-17, Watchizer 2026-10-22), so this file is a twin
+// again. The v2 request turns a category id into its slug through the tables, which is why a filter state
+// with a category WAITS for them rather than asking for everything; and the v2 page's category facet is
+// folded into the legacy count maps the sidebar reads, in `select`, so the server-prefetched page and the
+// client's refetch read the same way. Both rules live in src/lib/v2Listing.js.
 
 export const useListing = (args, options = {}) => {
-  const qs = listingRequest(args)
+  const { data: tables } = useTables()
+  const qs = listingRequest(args, tables)
   return useQuery({
     queryKey: ['listing', qs],
     queryFn: listingQueryFn(qs),
     // Keep showing the previous page's cards while the next filter state loads — no skeleton flash.
     placeholderData: keepPreviousData,
     staleTime: 60 * 1000,
+    enabled: !listingNeedsTables(args?.filters) || !!tables,
+    select: (data) => withLegacyCategoryFacets(data, tables),
     ...options,
   })
 }

@@ -16,12 +16,17 @@ export const tablesQueryFn = (client = http) => async () => {
   return withV2Slugs(data.tables, client === http ? publicHttp : client)
 }
 
-// Brand Fashion (DIVERGED 2026-10-18, round 4 Part 6.2): the listing reads v2, whose category tree is storefront 2's
-// own, and a node's slug is not always the slug of its English name — Chargers & Cables is `chargers`, Earphones &
-// Headphones is `audio` — so the v2 request builder sent a path v2 does not know and those two menu entries opened
-// EMPTY pages. Each category type and sub-type is tagged `v2_slug` (the tree node with the same English name) where
-// the two differ; everything else is untouched, so every other request is the same string as before. The tree is
-// an enrichment: if it cannot be read, the names' slugs are sent, as before. (BF-MENU-V2 replaces this.)
+// BOTH storefronts' listings read v2 (Brand Fashion 2026-10-17, Watchizer 2026-10-22), and a v2 category is
+// addressed by the storefront tree's own slug — which is not always the slug of the node's English name:
+// Chargers & Cables is `chargers`, Earphones & Headphones is `audio` (measured 2026-10-18). Sending the name's
+// slug asked v2 for a path it does not know, and those menu entries opened EMPTY pages. Each category type and
+// sub-type is tagged `v2_slug` (the tree node with the same English name) where the two differ; everything else
+// is untouched, so every other request is the same string as before.
+//
+// THE LOOKUP TABLES THEMSELVES STAY ON COMPAT. `catalog/meta` is still the source: slice 2 of the v2 move — the
+// home page, the menu and these tables — is deliberately NOT in this wave, because v2's meta does not carry the
+// legacy shapes these consumers read. This is one extra v2 READ for a slug mapping, not a move. (BF-MENU-V2
+// replaces it.) The tree is an enrichment: if it cannot be read, the names' slugs are sent, as before.
 async function withV2Slugs(tables, client) {
   if (!tables) return tables
   let tree = []

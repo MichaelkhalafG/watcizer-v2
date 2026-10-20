@@ -12,9 +12,9 @@ import '@/src/styles/bf-listing-skin.css'
 // keeps parity with the other routes' 5-min revalidate.
 export const revalidate = 300
 
-// Brand Fashion (DIVERGED 2026-10-17, V2-READ-HALF; back on Watchizer's ListingClient 2026-10-18 — Part 1b of the visual
-// reset: the listing's behaviour is Watchizer's, the look is the skin sheet imported above). The one line that differs
-// from Frontend-next's page is the `tables` argument to the v2 request builder.
+// Brand Fashion (DIVERGED 2026-10-18, the visual reset Part 1b): the listing's BEHAVIOUR is Watchizer's — this is
+// Watchizer's page and its ListingClient — and the only thing that differs is the skin sheet imported above.
+// (The `tables` argument that used to differ too is common since 2026-10-22, when Watchizer's listing moved to v2.)
 
 // Resolve the request context ONCE (the getters are React-cached, so generateMetadata + the page
 // share ONE upstream fetch each). searchParams is the URL source of truth → filters are parsed from
@@ -31,7 +31,7 @@ async function loadContext(searchParams) {
   }
   const { filters, q, sort, page } = parseListingParams(usp, tables)
   // The server renders in English (the shop's language is applied on the client), hence lang 'en'.
-  // Brand Fashion (DIVERGED 2026-10-17, V2-READ-HALF): the v2 request builder takes the tables for the category slug.
+  // the v2 request builder takes the tables: a category id becomes the slug v2 addresses it by (2026-10-22)
   const qs = listingRequest({ filters, q, sort, page, lang: 'en' }, tables)
   let listing = null
   try {

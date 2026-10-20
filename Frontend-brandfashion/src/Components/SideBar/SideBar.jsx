@@ -22,7 +22,19 @@ function FilterSection({ title, items, selectedIds, onToggle, onClear, searchabl
   const [search, setSearch] = useState('')
   const isRTL = useUIStore((s) => s.language) === 'ar'
 
-  if (!items.length) return null
+  /*
+   * A section is drawn only when it can NARROW something (2026-10-22, Michael's rule).
+   *
+   * One option is not a filter: ticking it returns the same products, so it costs a heading, a
+   * row and a decision for nothing. Two is the first count at which a choice exists. The rule is
+   * general, not an exception for a particular field — a section whose second value appears later
+   * starts being drawn on its own, with no code change.
+   *
+   * On Watchizer today this hides Display Type on the whole-catalogue listing (production carries
+   * exactly one display type). On both shops it also hides any section a narrow result has
+   * collapsed to a single option, which is the larger half of what it is for.
+   */
+  if (items.length < 2) return null
 
   const filtered = items.filter((i) => i.name.toLowerCase().includes(search.toLowerCase()))
   const visible = showAll ? filtered : filtered.slice(0, 8)
@@ -162,7 +174,7 @@ function SaleSection({ filters, setFilters, setCurrentPage, isRTL }) {
   )
 }
 
-// `facets`: the option counts from core's `catalog/listing` (C-1 stage 3) — for each section, the
+// `facets`: the option counts from core's listing (C-1 stage 3; v2 since the move) — for each section, the
 // products matching that option AND every OTHER active filter. The sidebar used to count them
 // itself over the whole catalogue, once per option.
 function SideBar({ facets }) {

@@ -2,8 +2,11 @@ import publicHttp from '../Context/publicApi'
 import { STOREFRONT_CODE } from './env'
 import { categorySlug, subTypeSlug } from '../utils/slugs'
 
-// Brand Fashion's listing on core's v2 API (2026-10-17, V2-READ-HALF — Michael's decision: both storefronts
-// move to v2, Brand Fashion pilots). This file is NOT a twin: Watchizer still reads compat `catalog/listing`.
+// The listing on core's v2 API — `/api/v2/{storefront}/products`.
+//
+// A TWIN since 2026-10-22, when Watchizer's listing followed Brand Fashion here (V2-READ-HALF, Michael's
+// decision of 2026-10-17: both storefronts move to v2, Brand Fashion pilots). One file serves both shops:
+// it maps whatever filter keys a sidebar holds, and a key a shop does not use simply never arrives.
 //
 // Two halves, both pure:
 //  • the REQUEST — the sidebar's filter state (legacy ids and English gender names) → the v2 query string,
@@ -14,19 +17,21 @@ import { categorySlug, subTypeSlug } from '../utils/slugs'
 //    raw v2 page kept under `v2` for what reads v2 directly (BfProductCard, the B4 sidebar).
 //
 // What v2 expresses differently from compat — decided here, recorded in the backlog (B4-LISTING-REQUIREMENT):
-//  • category: ONE path. The first selected sub-type (else the first category) is sent, as its slug
-//    (a storefront slug is USUALLY toSlug(English legacy name); where it is not — Chargers & Cables is `chargers`,
-//    Earphones & Headphones is `audio`, measured 2026-10-18 — the tables carry the node's `v2_slug`, useTables.js);
-//    a bare depth-2 slug resolves.
-//    §10.2's Category section is a tree, so a single path is the design, not a loss.
+//  • category: PATHS, comma-separated. Every selected sub-type (else every selected category) is sent, as its
+//    slug, and core answers their union — which is what a multi-select sub-type section has always meant on
+//    Watchizer. A storefront slug is USUALLY toSlug(English legacy name); where it is not — Chargers & Cables
+//    is `chargers`, Earphones & Headphones is `audio`, measured 2026-10-18 — the tables carry the node's
+//    `v2_slug` (useTables.js). A bare depth-2 slug resolves.
 //  • colour: v2 counts and filters a colour in ANY role (dial, band, main). Dial and band selections are
-//    merged into `color`; the counts are shown under the legacy "Dial colour" section and the "Band colour"
-//    section hides (no counts). B4 draws the spec's single Colour section.
-//  • SALE (`sale=1`, the listing's `sale` key) → v2's `on_sale=1`, a valid discount only. Not "Offers": those are
-//    the dashboard's offers, a page of their own (/offers) — round 5, 2026-10-18, separated by name. The legacy
-//    `offers` flag is no listing filter on Brand Fashion and is not sent. v2 serves no sale COUNT yet (B4).
-//  • not served by v2, so those legacy sections hide and their selections are dropped from the request:
-//    sub-type/category counts, movement, shape, display type.
+//    merged into `color`; the counts come back under the legacy "Dial colour" section and the "Band colour"
+//    section has none, so it draws nothing.
+//  • SALE → v2's `on_sale=1`, a valid discount only. Both shops' keys are accepted: Brand Fashion calls it
+//    `sale` (round 5 separated it from Offers, which are the dashboard's promotions and a page of their own);
+//    Watchizer has always called the same idea `offers` in its listing URL, and that spelling is kept so no
+//    bookmarked Watchizer link changes meaning.
+//  • movement, shape and display type (2026-10-22): sent as id lists, counted by core. They exist because
+//    Watchizer's sidebar has had them since launch and the move must not remove a working filter from a live
+//    shop. Brand Fashion's sidebar holds none of them, so it sends none.
 //  • sort `default` is v2's `available` (§19-5: in stock first, then today's order, then product id).
 
 const PRICE_MAX = 99999999
@@ -38,26 +43,30 @@ export function listingNeedsTables(filters = {}) {
   return (filters?.categories?.length || 0) + (filters?.subTypes?.length || 0) > 0
 }
 
-// The ONE category path v2 takes: the first sub-type, else the first category — by slug, via the tables.
-function categoryPath(filters, tables) {
-  const subId = filters.subTypes?.[0]
-  if (subId != null) {
-    const item = (tables?.subTypes || []).find((i) => i.id === subId)
-    return item ? item.v2_slug || subTypeSlug(item) : null
+/** The v2 path a legacy table row is addressed by: its own `v2_slug` where the two differ, else its name's slug. */
+const pathOf = (item, slugFn) => (item ? item.v2_slug || slugFn(item) : null)
+
+/**
+ * The category paths v2 takes: every selected SUB-TYPE, else every selected category — by slug, via the tables.
+ * Several are a union; one behaves exactly as a single path always has.
+ */
+function categoryPaths(filters, tables) {
+  const subIds = filters.subTypes || []
+  if (subIds.length) {
+    return subIds
+      .map((id) => pathOf((tables?.subTypes || []).find((i) => i.id === id), subTypeSlug))
+      .filter(Boolean)
   }
-  const catId = filters.categories?.[0]
-  if (catId != null) {
-    const item = (tables?.categoryTypes || []).find((i) => i.id === catId)
-    return item ? item.v2_slug || categorySlug(item) : null
-  }
-  return null
+  return (filters.categories || [])
+    .map((id) => pathOf((tables?.categoryTypes || []).find((i) => i.id === id), categorySlug))
+    .filter(Boolean)
 }
 
 /** The filter state → the v2 listing query string (the query key). `lang` matters only for a search. */
 export function v2ListingRequest({ filters = {}, q = '', sort = 'default', page = 1, perPage = PER_PAGE, lang } = {}, tables = null) {
   const p = new URLSearchParams()
-  const category = categoryPath(filters, tables)
-  if (category) p.set('category', category)
+  const categories = categoryPaths(filters, tables)
+  if (categories.length) p.set('category', categories.join(','))
   const list = (key, values) => {
     const v = [...new Set((values || []).filter((x) => x !== '' && x != null))]
     if (v.length) p.set(key, v.join(','))
@@ -67,9 +76,14 @@ export function v2ListingRequest({ filters = {}, q = '', sort = 'default', page 
   list('color', [...(filters.dialColors || []), ...(filters.bandColors || [])])
   list('material', filters.materials)
   list('grade', filters.grades)
-  if (filters.sale) p.set('on_sale', '1')
+  list('movement', filters.movements)
+  list('shape', filters.shapes)
+  list('display_type', filters.displayTypes)
+  // one idea, two spellings: `sale` on Brand Fashion, `offers` on Watchizer (see the header)
+  const onSale = filters.sale || filters.offers
+  if (onSale) p.set('on_sale', '1')
   // the Sale section's minimum discount (core rounds as the card prints it) and the in-stock key (2026-10-19)
-  if (filters.sale && Number(filters.discount) > 0) p.set('min_discount', String(filters.discount))
+  if (onSale && Number(filters.discount) > 0) p.set('min_discount', String(filters.discount))
   if (filters.inStock) p.set('in_stock', '1')
   const [min, max] = filters.price || [0, PRICE_MAX]
   if (Number(min) > 0) p.set('price_min', String(min))
@@ -123,10 +137,20 @@ function legacyRow(card) {
   }
 }
 
-// The v2 facet block → the legacy keys SideBar and SmartSuggestions look counts up by.
+/**
+ * The v2 facet block → the legacy keys SideBar and SmartSuggestions look counts up by.
+ *
+ * The two CATEGORY sections are NOT mapped here. v2 counts a node by its own id and slug, while a sidebar
+ * checkbox carries the LEGACY id — and the table that joins the two is loaded by `useTables`, which this
+ * function has no business waiting for. Threading it in would also put the tables inside the listing's query
+ * key, so a listing cached before they arrived would be a different cache entry from the same listing after.
+ * They are filled instead by `withLegacyCategoryFacets` below, from the raw page under `v2`, in the hook's
+ * `select` — where the tables are already to hand and the rule still lives in exactly one place.
+ */
 function legacyFacets(facets) {
   if (!facets) return undefined
   const byId = (rows) => Object.fromEntries((rows || []).map((r) => [String(r.id), r.count]))
+
   return {
     brands: byId(facets.brand),
     genders: Object.fromEntries((facets.gender || []).map((r) => [r.name?.en ?? String(r.id), r.count])),
@@ -134,14 +158,50 @@ function legacyFacets(facets) {
     materials: byId(facets.material),
     dialColors: byId(facets.color), // a colour in any role (see the header)
     bandColors: {},
+    movements: byId(facets.movement),
+    shapes: byId(facets.shape),
+    displayTypes: byId(facets.display_type),
+    // the two category maps are filled by `withLegacyCategoryFacets` at render, where the tables are
     categories: {},
     subTypes: {},
-    movements: {},
-    shapes: {},
-    displayTypes: {},
     in_stock: facets.in_stock,
     price: facets.price,
   }
+}
+
+/**
+ * The two legacy CATEGORY count maps, folded onto a listing payload.
+ *
+ * v2's `facets.category` is the result's products per visible menu node, in tree order; the sidebar and
+ * SmartSuggestions look a count up by the LEGACY id their checkbox carries. The join is the request's, in
+ * reverse: a table row is addressed by its `v2_slug` where that differs from its English name's slug
+ * (Chargers & Cables is `chargers`, Earphones & Headphones is `audio` — measured 2026-10-18), a depth-1 node
+ * by its path and a depth-2 node by its slug. A node with no legacy twin stays out, as the menu leaves it out.
+ *
+ * WITH A CATEGORY SET, only that root's own children are mapped: v2 clears the category filter when counting
+ * the category section, so it also counts the other families' sub-types, and a Watches page must not offer
+ * Bags as a sub-type with a count.
+ *
+ * Called from `useListing`'s `select`, so the server-prefetched page and the client's refetch read the same
+ * way — and called from ONE place, so the rule does not drift between the two shops.
+ */
+export function withLegacyCategoryFacets(data, tables) {
+  const rows = data?.v2?.facets?.category
+  if (!Array.isArray(rows) || !tables) return data
+  const rootPath = data?.v2?.meta?.category?.path?.split('/')[0] || null
+  const find = (items, slugFn, slug) => (items || []).find((i) => pathOf(i, slugFn) === slug)
+  const categories = {}
+  const subTypes = {}
+  for (const n of rows) {
+    if (n.depth === 1) {
+      const ct = find(tables.categoryTypes, categorySlug, n.path)
+      if (ct) categories[String(ct.id)] = n.count
+    } else if (n.depth === 2 && (!rootPath || n.path.startsWith(`${rootPath}/`))) {
+      const st = find(tables.subTypes, subTypeSlug, n.slug)
+      if (st) subTypes[String(st.id)] = n.count
+    }
+  }
+  return { ...data, facets: { ...(data.facets || {}), categories, subTypes } }
 }
 
 /** A v2 listing page → the payload the listing consumers read, plus the raw page under `v2`. */

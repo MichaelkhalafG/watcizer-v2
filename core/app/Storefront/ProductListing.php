@@ -35,7 +35,37 @@ final class ProductListing
     public const SORTS = ['position', 'newest', 'price_asc', 'price_desc', 'rating', 'featured', 'available'];
 
     /** The facet sections `facets=1` counts, in the order the sidebar shows them (spec §10.2). */
-    public const FACETS = ['category', 'brand', 'gender', 'color', 'material', 'grade'];
+    public const FACETS = ['category', 'brand', 'gender', 'color', 'material', 'grade', 'movement', 'shape', 'display_type'];
+
+    /**
+     * The three WATCH-SPEC sections (2026-10-22), each a single id column on `catalog_product_watch_specs`:
+     * movement type, case shape, dial display type.
+     *
+     * They exist because Watchizer's listing moved here from compat and its sidebar has had all three since
+     * launch — on a watch shop, "automatic or quartz" and "round or square" are filters people use (measured on
+     * production: 652 of 664 watches carry a movement, 572 a shape). Without them the move would have silently
+     * removed two working filters from a live storefront, which is not a migration, it is a regression.
+     *
+     * `display_type` is here for symmetry rather than for its own sake — production holds exactly ONE value, so
+     * the section cannot narrow anything today. That is handled where it belongs, in the sidebar, by a general
+     * rule (a section with fewer than two options is not drawn) rather than by an exception for this column: if
+     * a second display type is ever added, the section appears on its own.
+     *
+     * Brand Fashion gets them too, because the two shops share one catalogue and its listing is already here.
+     * That is correct rather than a leak: a facet counts what the CURRENT RESULT contains, so a fashion or
+     * electronics listing — where no product carries a watch spec at all, measured 0 of 278 and 0 of 72 —
+     * produces no options and draws no section.
+     *
+     * @var array<string, string> facet name => the column on `catalog_product_watch_specs`
+     */
+    public const WATCH_SPEC_FACETS = [
+        'movement' => 'movement_type_id',
+        'shape' => 'case_shape_id',
+        'display_type' => 'dial_display_type_id',
+    ];
+
+    /** The lookup family each watch-spec facet names its options from. @var array<string, string> */
+    private const WATCH_SPEC_LOOKUPS = ['movement' => 'movements', 'shape' => 'shapes', 'display_type' => 'display_types'];
 
     /**
      * Driving table + index per sort for the index-ordered page (review 🟠-5): storefront-wide
@@ -68,25 +98,44 @@ final class ProductListing
     {
         $perPage = self::intIn($input['per_page'] ?? null, 1, config()->integer('storefront.listing.max_per_page'), config()->integer('storefront.listing.per_page'));
         $page = self::intIn($input['page'] ?? null, 1, 100000, 1);
-        $category = self::str($input['category'] ?? null);
-        $node = null;
-        if ($category !== null) {
-            $node = $this->tree->byPath($category);
-            if ($node === null) {
+        /*
+         * CATEGORY — one path, or several (2026-10-22).
+         *
+         * It was one node. Watchizer's sidebar has let a shopper tick SEVERAL sub-types since launch, and the
+         * move off compat would have turned that into pick-one, so a comma list is accepted and the result is
+         * the UNION of the named subtrees. The single-path case is unchanged in every respect — the same node
+         * drives the cache tag, `meta.category`, the default sort and the index decision — so nothing that
+         * reads this endpoint today can tell the difference.
+         *
+         * An unknown path is still a 404 for the whole request rather than a silently narrower list: a filter
+         * the server did not understand must not look like a filter that matched nothing.
+         */
+        $nodes = [];
+        foreach (self::strList($input['category'] ?? null) as $path) {
+            $found = $this->tree->byPath($path);
+            if ($found === null) {
                 return null;
             }
-            $this->ctx->tags->category($this->ctx->id(), Val::int($node, 'id'));
+            $nodes[] = $found;
+            $this->ctx->tags->category($this->ctx->id(), Val::int($found, 'id'));
         }
+        $node = $nodes[0] ?? null;
         $sort = self::str($input['sort'] ?? null);
         $sort = in_array($sort, self::SORTS, true) ? $sort : ($node !== null ? 'position' : 'newest');
 
         $filters = [
             'category' => $node === null ? null : Val::str($node, 'path'),
+            // every selected subtree, for the placement filter; `category` above stays the FIRST one because
+            // that is what `meta.category` and the cache key have always meant
+            'category_ids' => array_map(fn (array $n): int => Val::int($n, 'id'), $nodes),
             'brand' => self::strList($input['brand'] ?? null),
             'gender' => $this->genderIds($input['gender'] ?? null),
             'color' => self::intList($input['color'] ?? null),
             'material' => self::intList($input['material'] ?? null),
             'grade' => self::intList($input['grade'] ?? null),
+            'movement' => self::intList($input['movement'] ?? null),
+            'shape' => self::intList($input['shape'] ?? null),
+            'display_type' => self::intList($input['display_type'] ?? null),
             'price_min' => self::numeric($input['price_min'] ?? null),
             'price_max' => self::numeric($input['price_max'] ?? null),
             'in_stock' => self::bool($input['in_stock'] ?? null),
@@ -106,7 +155,7 @@ final class ProductListing
          */
         $searching = is_string($filters['q']) && trim($filters['q']) !== '';
         $query = $this->cards->base($indexed && ! $searching ? (self::PLANS[$sort] ?? null) : null);
-        $this->applyFilters($query, $filters, $node, $indexed);
+        $this->applyFilters($query, $filters, $indexed);
         $hash = sha1(json_encode([$filters, $this->ctx->locale], JSON_THROW_ON_ERROR));
         $cap = config()->integer('storefront.listing.count_cap');
         $total = $this->cache->remember($this->ctx->id(), 'count', $hash, config()->integer('storefront.ttl.count'), function () use ($query, $cap): int {
@@ -169,20 +218,25 @@ final class ProductListing
     }
 
     /**
-     * @param  array<string, mixed>  $f
-     * @param  array<string, mixed>|null  $node
-     */
-    /**
      * `$except` names ONE filter to leave out — how a facet section counts "as if it were cleared"
-     * (brand | gender | color | material | grade | price | in_stock). Category and the search always apply.
+     * (brand | gender | color | material | grade | movement | shape | display_type | price | in_stock).
+     * The CATEGORY placement and the search always apply.
      *
      * @param  array<string, mixed>  $f
-     * @param  array<string, mixed>|null  $node
      */
-    private function applyFilters(Builder $query, array $f, ?array $node, bool $indexed, ?string $except = null): void
+    private function applyFilters(Builder $query, array $f, bool $indexed, ?string $except = null): void
     {
-        if ($node !== null) {
-            $this->cards->placedIn($query, $this->tree->subtreeIds(Val::int($node, 'id')), $indexed);
+        /** @var list<int> $categoryIds */
+        $categoryIds = $f['category_ids'] ?? [];
+        if ($categoryIds !== []) {
+            // the union of the selected subtrees, de-duplicated: a product placed in two of them is one product
+            $subtree = [];
+            foreach ($categoryIds as $categoryId) {
+                foreach ($this->tree->subtreeIds($categoryId) as $id) {
+                    $subtree[$id] = true;
+                }
+            }
+            $this->cards->placedIn($query, array_keys($subtree), $indexed);
         }
         /** @var list<string> $brands */
         $brands = $f['brand'];
@@ -212,6 +266,16 @@ final class ProductListing
         $grades = $f['grade'];
         if ($except !== 'grade' && $grades !== []) {
             $query->whereIn('p.grade_id', $grades);
+        }
+        // The three watch-spec sections. One column each on a 1:1 table, so this is the `grade` shape with a
+        // sub-select instead of a column — and like every other section, a facet counting itself leaves itself out.
+        foreach (self::WATCH_SPEC_FACETS as $name => $column) {
+            /** @var list<int> $ids */
+            $ids = $f[$name];
+            if ($except !== $name && $ids !== []) {
+                $query->whereIn('sp.product_id', fn (Builder $s) => $s->select('product_id')
+                    ->from('catalog_product_watch_specs')->whereIn($column, $ids));
+            }
         }
         if ($except !== 'price' && $f['price_min'] !== null) {
             $query->where('sp.effective_price', '>=', $f['price_min']);
@@ -301,7 +365,8 @@ final class ProductListing
     /**
      * The facet block for `facets=1`: per-result option counts, each section with every filter applied
      * except its own, the `in_stock` split, and the price bounds of the result (without the price filter).
-     * Eight aggregate queries (category added 2026-10-17); the caller caches the block under the filter hash.
+     * ELEVEN aggregate queries (category added 2026-10-17; movement, shape and display type 2026-10-22);
+     * the caller caches the block under the filter hash, so a repeated listing pays for none of them.
      *
      * @param  array<string, mixed>  $f
      * @param  array<string, mixed>|null  $node
@@ -309,9 +374,9 @@ final class ProductListing
      */
     private function facets(array $f, ?array $node, bool $indexed): array
     {
-        $base = function (string $except) use ($f, $node, $indexed): Builder {
+        $base = function (string $except) use ($f, $indexed): Builder {
             $q = $this->cards->base(null);
-            $this->applyFilters($q, $f, $node, $indexed, $except);
+            $this->applyFilters($q, $f, $indexed, $except);
 
             return $q;
         };
@@ -331,6 +396,16 @@ final class ProductListing
         $case = $base('material')->join('catalog_product_watch_specs as ws', 'ws.product_id', '=', 'sp.product_id')->whereNotNull('ws.case_material_id')->selectRaw('sp.product_id as pid, ws.case_material_id as k');
         $out['material'] = $this->facetRefs('materials', DB::query()->fromSub($band->unionAll($case), 'm')->selectRaw('k, COUNT(DISTINCT pid) as c')->groupBy('k')->get());
         $out['grade'] = $this->facetRefs('grades', $counted($base('grade')->whereNotNull('p.grade_id'), 'p.grade_id')->get());
+        // the three watch-spec sections, one grouped count each over the same 1:1 table
+        foreach (self::WATCH_SPEC_FACETS as $name => $column) {
+            $out[$name] = $this->facetRefs(
+                self::WATCH_SPEC_LOOKUPS[$name],
+                $counted(
+                    $base($name)->join('catalog_product_watch_specs as ws', 'ws.product_id', '=', 'sp.product_id')->whereNotNull('ws.'.$column),
+                    'ws.'.$column,
+                )->get(),
+            );
+        }
 
         $stock = $base('in_stock')->selectRaw('COALESCE(SUM(p.in_stock = 1), 0) as yes, COALESCE(SUM(p.in_stock = 0), 0) as no')->first();
         $out['in_stock'] = ['in' => $stock === null ? 0 : Row::int($stock, 'yes'), 'out' => $stock === null ? 0 : Row::int($stock, 'no')];
@@ -532,12 +607,12 @@ final class ProductListing
         if ($category !== null && $node === null) {
             return null;
         }
-        $filters = ['category' => null, 'brand' => self::strList($input['brand'] ?? null), 'gender' => [], 'color' => [], 'material' => [], 'grade' => [], 'price_min' => null, 'price_max' => null, 'in_stock' => self::bool($input['in_stock'] ?? null), 'on_sale' => self::bool($input['on_sale'] ?? null), 'min_discount' => self::minDiscount($input['min_discount'] ?? null), 'q' => null];
+        $filters = ['category' => null, 'category_ids' => $node === null ? [] : [Val::int($node, 'id')], 'brand' => self::strList($input['brand'] ?? null), 'gender' => [], 'color' => [], 'material' => [], 'grade' => [], 'movement' => [], 'shape' => [], 'display_type' => [], 'price_min' => null, 'price_max' => null, 'in_stock' => self::bool($input['in_stock'] ?? null), 'on_sale' => self::bool($input['on_sale'] ?? null), 'min_discount' => self::minDiscount($input['min_discount'] ?? null), 'q' => null];
         $sort = self::str($input['sort'] ?? null);
         $sort = in_array($sort, self::SORTS, true) ? $sort : ($node !== null ? 'position' : 'newest');
         $indexed = self::indexed($node) || ($input['force_indexed'] ?? false) === true;
         $query = $this->cards->base($indexed ? (self::PLANS[$sort] ?? null) : null);   // pageSql carries no search (q is null above), so the plan stands
-        $this->applyFilters($query, $filters, $node, $indexed);
+        $this->applyFilters($query, $filters, $indexed);
         $this->applySort($query, $sort);
         $offset = self::intIn($input['offset'] ?? null, 0, 1000000, 0);
         $query->select(ProductCards::columns())->offset($offset)->limit(24);
