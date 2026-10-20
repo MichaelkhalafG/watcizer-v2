@@ -270,12 +270,17 @@ function ProductDetailClient({ param, isOffer = false, productPayload = null, v2
   const [variantSizeId, setVariantSizeId] = useState(null)
   // a different product means a different set of rows: never carry a selection across
   useEffect(() => {
-    // Resetting the picker when the URL changes is the point of this effect.
+    // Clearing the picker when the URL changes is the whole purpose of this effect.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setVariantColorId(null)
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setVariantSizeId(null)
   }, [param])
+
+  /** A v2 `{en, ar}` name in the shopper's language — the picker's labels come straight from core. */
+  const getLocalized = useCallback(
+    (name) => (name ? (isRTL ? (name.ar ?? name.en ?? '') : (name.en ?? name.ar ?? '')) : ''),
+    [isRTL],
+  )
 
   const variantColours = useMemo(() => {
     const seen = new Map()
@@ -523,11 +528,22 @@ function ProductDetailClient({ param, isOffer = false, productPayload = null, v2
           })
       } else {
         const key = `product_${product.id}`
-        const existing = cart?.cart_item?.find((i) => getItemKey(i) === key)
+        /*
+         * A CHOSEN VARIANT IS NEVER MERGED INTO AN EXISTING LINE (Addition B, 2026-10-23).
+         *
+         * `getItemKey` keys a cart line by product_id alone, with no variant dimension, so a shopper adding
+         * a second size would have found the first line and incremented it - the wrong size, silently.
+         * Core's cart key already carries `variant_id` ("the same shirt in two sizes is two lines", wave
+         * 3.5); the STOREFRONT's key does not, and widening it is a cart change that belongs with the cart
+         * (slice 3), because compat deletes a line by product and would start missing one. Until then, an
+         * add with a variant simply adds, and the merge path is left to products that have none.
+         */
+        const existing = chosenVariant ? null : cart?.cart_item?.find((i) => getItemKey(i) === key)
         if (existing) result = await updateQuantity(key, existing.quantity + quantity)
         else
           result = await addItem({
             product_id: product.id,
+            ...(chosenVariant ? { variant_id: chosenVariant.id } : {}),
             quantity,
             piece_price: finalPrice,
             type_stock: expressStock > 0 ? 'Express' : 'Market',
@@ -549,6 +565,7 @@ function ProductDetailClient({ param, isOffer = false, productPayload = null, v2
     isAdding,
     inStock,
     isOffer,
+    chosenVariant,
     offer,
     product,
     item, // getName(item) for the AddToCart pixel event
@@ -1247,6 +1264,104 @@ function ProductDetailClient({ param, isOffer = false, productPayload = null, v2
                 colors={bandColors}
                 isRTL={isRTL}
               />
+            )}
+
+            {/*
+              ── THE PICKER (Addition B, 2026-10-23) ──────────────────────────────────────────────
+              Designed for THIS page, not copied from Brand Fashion's (which is circular hex swatches and
+              rounded pills). It borrows the page's own two habits instead: the spec table's label/value
+              pair, and the quantity stepper's hairline 6px control. So each axis reads as a spec row whose
+              value you can change - the label on one side, the current choice on the other - over a row of
+              hairline chips. The chosen chip takes the add button's ink fill, so "selected" and "what the
+              button will act on" are one visual statement rather than two.
+
+              A colour chip carries its swatch AND its name: a watch buyer picks "Navy", and a word is also
+              what a screen reader and a translation can carry, where a bare circle is not. A sold-out value
+              is struck through rather than hidden, because hiding it says the size does not exist.
+            */}
+            {variantRows.length > 0 && (
+              <div className="wz-pd-opts">
+                {hasColourAxis && (
+                  <div className="wz-pd-opt">
+                    <div className="wz-pd-opt-head">
+                      <span className="wz-pd-opt-label">{isRTL ? 'اللون' : 'Colour'}</span>
+                      <span className="wz-pd-opt-value">
+                        {variantColorId == null
+                          ? isRTL
+                            ? 'لم يتم الاختيار'
+                            : 'Not chosen'
+                          : getLocalized(variantColours.find((c) => c.id === variantColorId)?.name)}
+                      </span>
+                    </div>
+                    <div className="wz-pd-opt-row" role="radiogroup" aria-label={isRTL ? 'اللون' : 'Colour'}>
+                      {variantColours.map((c) => {
+                        const sold = !colourOfferable(c.id)
+                        const on = variantColorId === c.id
+                        return (
+                          <button
+                            key={c.id}
+                            type="button"
+                            role="radio"
+                            aria-checked={on}
+                            aria-disabled={sold || undefined}
+                            className={`wz-pd-chip${on ? ' is-on' : ''}${sold ? ' is-sold' : ''}`}
+                            onClick={() => {
+                              if (sold) return
+                              setVariantColorId(on ? null : c.id)
+                            }}
+                          >
+                            <span className="wz-pd-chip-swatch" style={{ background: c.hex || 'transparent' }} />
+                            <span className="wz-pd-chip-text">{getLocalized(c.name)}</span>
+                            {sold && (
+                              <span className="wz-pd-sr">{isRTL ? 'غير متاح' : 'Sold out'}</span>
+                            )}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+                {hasSizeAxis && (
+                  <div className="wz-pd-opt">
+                    <div className="wz-pd-opt-head">
+                      <span className="wz-pd-opt-label">{isRTL ? 'المقاس' : 'Size'}</span>
+                      <span className="wz-pd-opt-value">
+                        {variantSizeId == null
+                          ? isRTL
+                            ? 'لم يتم الاختيار'
+                            : 'Not chosen'
+                          : getLocalized(variantSizes.find((s) => s.id === variantSizeId)?.name)}
+                      </span>
+                    </div>
+                    <div className="wz-pd-opt-row" role="radiogroup" aria-label={isRTL ? 'المقاس' : 'Size'}>
+                      {variantSizes.map((s) => {
+                        const sold = !sizeOfferable(s.id)
+                        const on = variantSizeId === s.id
+                        return (
+                          <button
+                            key={s.id}
+                            type="button"
+                            role="radio"
+                            aria-checked={on}
+                            aria-disabled={sold || undefined}
+                            className={`wz-pd-chip wz-pd-chip--text${on ? ' is-on' : ''}${sold ? ' is-sold' : ''}`}
+                            onClick={() => {
+                              if (sold) return
+                              setVariantSizeId(on ? null : s.id)
+                            }}
+                          >
+                            <span className="wz-pd-chip-text">{getLocalized(s.name)}</span>
+                            {sold && (
+                              <span className="wz-pd-sr">{isRTL ? 'غير متاح' : 'Sold out'}</span>
+                            )}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+                {variantNeeds && <p className="wz-pd-opt-need">{variantNeeds}</p>}
+              </div>
             )}
 
             {/* Quantity + actions */}
