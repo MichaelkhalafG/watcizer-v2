@@ -134,14 +134,40 @@ export default function HomeRailsIndex({ storefront, storefronts, rails, kinds, 
         draft.id === null ? router.post(base, payload, done) : router.put(`${base}/${draft.id}`, payload, done);
     };
 
+    /*
+     * ONE MOVE IN FLIGHT AT A TIME, AND A REFUSAL THAT SAYS SO (2026-10-21).
+     *
+     * Two faults lived here, and both looked identical to the operator — the arrow does nothing:
+     *
+     *  1. The order is built from `rails`, which is this page's props. A second click before the first
+     *     response landed posted the OLD arrangement again and overwrote the move that had just been made.
+     *     Moving a rail two places, which is two clicks, was the ordinary way to hit it.
+     *  2. The server REFUSES a list that no longer matches the storefront's rails — someone else added or
+     *     removed one, or this tab has been open since before a deploy — by failing validation on `order`.
+     *     Nothing on this screen rendered that error and `move` passed no `onError`, so the refusal was
+     *     silent and the screen went on showing the old order because the server never changed it.
+     *
+     * `pending` serialises the clicks; `onError` surfaces the refusal where the operator is looking.
+     */
+    const [pending, setPending] = useState(false);
+    const [orderError, setOrderError] = useState<string | null>(null);
     const move = (index: number, by: -1 | 1) => {
+        if (pending) {
+            return;
+        }
         const order = rails.map((rail) => rail.id);
         const other = index + by;
         if (other < 0 || other >= order.length) {
             return;
         }
         [order[index], order[other]] = [order[other], order[index]];
-        router.post(`${base}/order`, { order }, { preserveScroll: true });
+        setPending(true);
+        setOrderError(null);
+        router.post(`${base}/order`, { order }, {
+            preserveScroll: true,
+            onError: (bag) => setOrderError(bag.order ?? t('home_rails.order_failed', 'تعذّر حفظ الترتيب.')),
+            onFinish: () => setPending(false),
+        });
     };
 
     const toggle = (rail: Rail) =>
@@ -351,7 +377,14 @@ export default function HomeRailsIndex({ storefront, storefronts, rails, kinds, 
                         </p>
                     </div>
                 ) : (
-                    <ol className="divide-y rounded-lg border bg-card">
+                    <>
+                        {/* A refused reorder is said out loud here — it used to be swallowed entirely. */}
+                        {orderError ? (
+                            <p className="mb-3 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+                                {orderError}
+                            </p>
+                        ) : null}
+                        <ol className="divide-y rounded-lg border bg-card">
                         {rails.map((rail, index) => (
                             <li
                                 key={rail.id}
@@ -430,7 +463,8 @@ export default function HomeRailsIndex({ storefront, storefronts, rails, kinds, 
                                 </Button>
                             </li>
                         ))}
-                    </ol>
+                        </ol>
+                    </>
                 )}
             </div>
         </ManageLayout>
