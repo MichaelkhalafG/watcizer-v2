@@ -55,6 +55,18 @@
 }
 
 /* English: Georgia everywhere */
+/* LIGHT-ONLY, declared (2026-10-23). This site has no dark theme - no prefers-color-scheme rule, no
+   data-theme, and until now no color-scheme at all - so a browser forcing dark (Chrome's Auto Dark
+   Theme, Android Chrome's dark theme on undeclared sites) inverted it: measured with Chrome launched
+   --force-dark-mode on the live site, body text flipped from rgb(0,0,0) to rgb(255,255,255) and the
+   light sections (SHOP BY CATEGORY, the rails) went dark. The shop is live; a shopper in that mode could
+   not read it. `only light` here plus <meta name="color-scheme" content="only light"> (layout.jsx,
+   `viewport`) is Chrome's documented opt-out; injected on the live page under force-dark, the site
+   rendered light again. A declaration, not a theme. */
+html {
+  color-scheme: only light;
+}
+
 body {
   font-family: Georgia, 'Times New Roman', serif;
   -webkit-font-smoothing: antialiased;
