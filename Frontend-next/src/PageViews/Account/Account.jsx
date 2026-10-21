@@ -35,6 +35,7 @@ import { useToastStore } from '../../Store/toastStore'
 import { useShippingStore } from '../../Store/shippingStore'
 import { useShippingPrices } from '../../Hooks/useShippingPrices'
 import http from '../../Context/api'
+import { STOREFRONT_CODE } from '../../lib/env'
 import { getImageUrl, handleImgError } from '../../utils/imageUrl'
 import { productUrl } from '../../utils/productUrl'
 import './Account.css'
@@ -537,10 +538,12 @@ function OrdersTab({ t, isRTL }) {
 
   useEffect(() => {
     let alive = true
+    // Brand Fashion (DIVERGED 2026-10-19): THIS storefront's orders — v2 me/orders. Compat's me/orders lists the
+    // customer's orders on every shop (users are shared across storefronts).
     http
-      .get('/me/orders')
+      .get(`/v2/${STOREFRONT_CODE}/me/orders`)
       .then((res) => {
-        if (alive) setOrders(Array.isArray(res.data) ? res.data : [])
+        if (alive) setOrders(Array.isArray(res.data?.data) ? res.data.data : [])
       })
       .catch(() => alive && setOrders([]))
     return () => {
