@@ -193,3 +193,50 @@ a spacing tweak.
 remove most of the "assembled" feel from the pages a shopper actually reads.
 **Then 15a + 16 together**, because that pair is what changes the home page's rhythm.
 **7 and 11 I would show you a screenshot of first**, because they touch every card on the site.
+
+---
+
+## OWNER'S DECISIONS — the survey is closed, 2026-10-23
+
+Every open item now has an answer from the owner. Recorded here with its reason so none of them is reopened.
+
+| item | decision | reason |
+|---|---|---|
+| **8.** marquee under the social icons | **DO** | as proposed: reserve the icons' width on the track and fade both ends |
+| **11.** NEW on every card | **CLOSED — dropped** | the badge stays exactly as it is. A merchandising call, and the owner's |
+| **13.** home cards with no photograph | **CLOSED — not a defect** | the owner checked the live site: the photographs are there. **My finding was wrong — see below** |
+| **14.** a home rail with one product | **DO, and harder than proposed** | hide any rail under **4** products, and stop one being created in the dashboard |
+| **N1.** home page long and accidentally ordered | **CLOSED** | catalogue and merchandising — the client's data-entry team's, not ours |
+| **N2.** listing's default sort shows near-identical belts | **CLOSED** | same reason |
+| **N4.** 3D hero fills the phone's first screen | **CLOSED — deliberate** | not a defect |
+
+### Item 13: what I counted, and why it disagreed with the screen
+
+**I read the wrong field.** `catalog/home` returns a `products[]` array and a separate `images[]` array; I
+counted products with no row in `images[]` and reported them as cards with no photograph. But `images[]` is the
+**product-detail GALLERY** (`transformProduct.js:111` says so in as many words: "Gallery images (the
+product_images table…)"), while a card renders `product.image`, a column on the product row itself —
+`ProductCard.jsx:87`, `getImageUrl(product.image, 'Product') || PLACEHOLDER_IMG`. A product can therefore have
+no gallery row and still have its card photograph, which is what those nineteen were.
+
+**It was not a miscount; the count was right about the wrong thing** — and the conclusion drawn from it
+("rows of blank boxes") was impossible anyway, because that line already falls back to `PLACEHOLDER_IMG`, so a
+card with no image at all renders the placeholder rather than empty space. Re-measured today for completeness:
+65 cards, 219 gallery rows, **1** card with no gallery row — and it carries its own `image`, so **0** cards
+would render without a photograph. The owner was right from the screen and the item is correctly closed.
+
+### Item 14: flag, not refuse — and why
+
+Part (b) asked for a refusal **or** a flag at save time. **Flagged**, for the reason the owner's own
+instruction contains: *product counts move with stock*. A rail with five products today is a rail with three
+next week, with nobody having touched it. So:
+
+* **Refusing at save would promise something the system cannot keep.** It would block the save of a rail that
+  is about to be filled, and it would still let a saved rail fall under the threshold an hour later. It buys
+  one moment of correctness and implies permanent correctness.
+* **A flag tells the truth continuously** — at save, and in the list, every time it is looked at, including
+  for rails that were fine when they were made.
+* And it keeps the guarantee where it belongs: the render rule in (a) is the real guard, because it is
+  evaluated against the products that actually exist at the moment the page is drawn.
+
+So the dashboard **warns and still saves**, and the list shows the count with the ones below four marked.
