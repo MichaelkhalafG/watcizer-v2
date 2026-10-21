@@ -757,3 +757,6 @@
     flex-direction: column;
   }
 }
+
+/* the banner's way back to the cart when core refused a line (slice 4) */
+.wz-checkout-banner-link { color: inherit; font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
