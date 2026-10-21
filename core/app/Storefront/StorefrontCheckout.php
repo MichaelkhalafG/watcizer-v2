@@ -97,6 +97,22 @@ final class StorefrontCheckout
         $paymentMethod = $legacyMethod === 'card' ? 'paymob' : $legacyMethod;
 
         $cart = $this->carts->find($userId, $guestToken);
+        /*
+         * An OFFER in the cart stops the checkout rather than being dropped from it (2026-10-21).
+         *
+         * `lines()` returns product rows only, because v2 has no offer in its cart. Without this check a
+         * MIXED cart would have been checked out with its product lines and WITHOUT the offer, uncharged —
+         * a line lost in silence at the moment money is taken, which is the one place silence is
+         * unaffordable. Nothing can reach it today (production holds no offers at all), and selling offers
+         * on v2 is slice 6's work; until then the honest answer is a refusal the shopper can act on.
+         *
+         * It is tested BEFORE the empty check on purpose: a cart holding nothing but an offer has no v2
+         * lines, so `cart_empty` would otherwise answer a shopper who can plainly see something in it.
+         */
+        $blocked = $cart === null ? 0 : $this->carts->offerLines($cart);
+        if ($blocked > 0) {
+            return ['status' => 422, 'body' => ['error' => 'offer_in_cart', 'lines' => $blocked]];
+        }
         $cartLines = $cart === null ? [] : $this->carts->lines($cart);
         if ($cart === null || $cartLines === []) {
             return ['status' => 422, 'body' => ['error' => 'cart_empty']];
@@ -308,13 +324,28 @@ final class StorefrontCheckout
         $customer = OrderCustomer::of($orderId);
         $parts = explode(' ', $customer->name ?? 'Guest User', 2);
         $address = DB::table('addresses')->where('id', $addressId)->first();
+        /*
+         * The governorate's English name, exactly as compat's `billingData()` sends it (2026-10-21, the
+         * per-method parity check before Watchizer's checkout moved). This sent 'Cairo' for every order — the
+         * ONE argument of the intention that differed between the two paths. Informational to Paymob (not in
+         * the HMAC, not in the routing), but a merchant's transaction record should not say Cairo for Alexandria.
+         */
+        $city = 'Cairo';
+        if ($address !== null) {
+            $name = DB::connection('legacy')->table('shipping_city_translations')
+                ->where('shipping_city_id', Row::int(Row::cast($address), 'shipping_city_id'))
+                ->where('locale', 'en')->value('city_name');
+            if (is_string($name) && $name !== '') {
+                $city = $name;
+            }
+        }
 
         return [
             'first_name' => $parts[0] !== '' ? $parts[0] : 'Guest',
             'last_name' => $parts[1] ?? 'User',
             'street' => $address === null ? 'N/A' : (Row::nstr(Row::cast($address), 'address_line') ?? 'N/A'),
             'phone_number' => $customer->phone ?? '01000000000',
-            'city' => 'Cairo',
+            'city' => $city,
             'country' => 'Egypt',
             'email' => $customer->email ?? 'guest@example.com',
         ];

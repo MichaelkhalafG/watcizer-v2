@@ -96,12 +96,27 @@ Route::middleware('api.code')->group(function (): void {
         Route::get('catalog/meta', [CatalogCompatController::class, 'meta']);
         Route::get('show_shipping_city', [CatalogCompatController::class, 'shippingCities']);
     });
+    /*
+     * HOME and NAV get a SHORT window (2026-10-21), in their OWN group — not nested inside the 600 one,
+     * because nested `cache.headers` groups accumulate and the outer value wins (measured: a nested 60
+     * still served `max-age=600`).
+     *
+     * These are the two compat reads an operator edits from the dashboard and then immediately checks on
+     * the shop — the rails screen, the menu. An HTTP cache window is the one cache no
+     * `StorefrontCache::flush()` can reach: once a response has left with `max-age=600`, every browser and
+     * proxy holding it keeps it for ten minutes and nothing server-side can take it back. That is longer
+     * than the storefront's own 5-minute staleTime and far longer than anyone waits before deciding the
+     * dashboard is broken. 60 s keeps the thundering-herd protection and costs a minute of staleness.
+     */
+    Route::middleware('cache.headers:private;max_age=60;etag')->group(function (): void {
+        Route::get('catalog/home', [CatalogCompatController::class, 'home']);
+        Route::get('catalog/nav', [CatalogCompatController::class, 'nav']);
+    });
     Route::middleware('cache.headers:private;max_age=600;etag')->group(function (): void {
         // `all_product` was RETIRED (L8 / E5, 2026-10-06): no storefront or dashboard called it, and a
         // whole-catalogue build is an out-of-memory risk on 7,579 products. It now answers 410 via the
         // `gone` list below, as `all_product_image` does (also uncalled).
         // Storefront-only (C-1 stage 2): the header menu's catalogue facts, built leanly from the catalogue.
-        Route::get('catalog/nav', [CatalogCompatController::class, 'nav']);
         // Storefront-only (C-1 stage 3): the listing with its facet counts, and product cards by id.
         Route::get('catalog/listing', [CatalogCompatController::class, 'listing']);
         Route::get('catalog/cards', [CatalogCompatController::class, 'cards']);
@@ -110,7 +125,19 @@ Route::middleware('api.code')->group(function (): void {
         // C-1 stage 4: one product for the product page, by URL slug or id.
         Route::get('catalog/product', [CatalogCompatController::class, 'product']);
         // C-1 stage 4, slice C: the home page's rails (dashboard-ordered) with their cards.
-        Route::get('catalog/home', [CatalogCompatController::class, 'home']);
+        /*
+         * HOME and NAV get a SHORT window (2026-10-21). They are the two compat reads an operator edits
+         * from the dashboard and then immediately looks at the shop to check — the rails screen, the menu.
+         *
+         * An HTTP cache window is the one cache no `StorefrontCache::flush()` can reach: once a response
+         * has left with `max-age=600`, every browser and proxy holding it keeps it for ten minutes and
+         * nothing server-side can take it back. Ten minutes is longer than the storefront's own 5-minute
+         * staleTime and far longer than anyone will wait before deciding the dashboard is broken.
+         *
+         * 60 s keeps the thundering-herd protection these endpoints were given it for, and costs at most a
+         * minute of staleness after an edit. The catalogue reads above keep 600: nobody edits a product and
+         * stares at the listing the same second.
+         */
         // Articles, per storefront (2026-10-01): the published list, and one by slug.
         Route::get('catalog/blogs', [CatalogCompatController::class, 'blogs']);
         Route::get('catalog/blog', [CatalogCompatController::class, 'blog']);

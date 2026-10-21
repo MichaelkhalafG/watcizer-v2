@@ -70,6 +70,9 @@ export const viewport = {
   width: 'device-width',
   initialScale: 1,
   themeColor: '#111111',
+  // <meta name="color-scheme" content="only light">: the half of Chrome's Auto-Dark opt-out that lives in
+  // <head> (the other half is html{color-scheme: only light} in globals.css). Light-only, declared; not a theme.
+  colorScheme: 'only light',
 }
 
 export default async function RootLayout({ children }) {

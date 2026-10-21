@@ -14,16 +14,16 @@ import {
   FiSmartphone,
   FiUser,
 } from 'react-icons/fi'
-import { useCards, useCardsOf } from '../../Hooks/queries/useListing'
-import { useOffers } from '../../Hooks/queries/useOffers'
 import { usePaymentMethods } from '../../Hooks/queries/usePaymentMethods'
 import { useUIStore } from '../../Store/uiStore'
 import { useAuthStore } from '../../Store/authStore'
 import { useShippingStore } from '../../Store/shippingStore'
 import { useShippingPrices } from '../../Hooks/useShippingPrices'
 import http from '../../Context/api'
-import useCart, { getGuestToken } from '../../Hooks/useCart'
-import { getImageUrl, handleImgError, PLACEHOLDER_IMG } from '../../utils/imageUrl'
+import useCart from '../../Hooks/useCart'
+import { cartStore } from '../../Store/cartStore'
+import { handleImgError, PLACEHOLDER_IMG } from '../../utils/imageUrl'
+import { STOREFRONT_CODE } from '../../lib/env'
 import TrustSignals from '../../Components/Merchandising/TrustSignals'
 import { trustSignals } from '../../config/trust.config'
 import { PAYMOB_ENABLED } from '../../lib/env'
@@ -59,6 +59,31 @@ const METHOD_NOTE = {
 }
 const egp = (n) => Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 })
 
+/*
+ * ON v2 SINCE SLICE 4 (2026-10-21). The order is POSTed to /api/v2/{code}/orders, which builds it from the
+ * v2 CART — re-checked, re-priced, tagged with this storefront — and refuses a total that is not the
+ * server's. compat's add_order took the LINES FROM THE BODY: the browser decided what was ordered. So the
+ * tab's lines are pushed to the server first (`reconcile`, as the cart page does before it validates) and
+ * the order is asked for with no lines in it. Core's refusal CODES are said in the shopper's language
+ * (Brand Fashion's table), and a refused cart sends the shopper back to the cart, which names the line.
+ *
+ * What did NOT move: the payment list with its own cash row and the "Pay Online" fallback (the same
+ * CheckoutMethods judges a cash row with no id and the card fallback on both APIs), the saved addresses,
+ * the recovery prefill, the phone rule, InitiateCheckout, and the confirmation hand-over. A variant line
+ * reaches the order as a variant line, which compat refused to sell at all (the wave 3.5 invariant).
+ */
+const FIELD_TEXT = {
+  guest_email: ['Enter a valid email address', 'أدخل بريداً إلكترونياً صحيحاً'],
+  guest_name: ['Enter your name', 'أدخل اسمك'],
+  phone: ['Enter an Egyptian mobile number (01xxxxxxxxx)', 'أدخل رقم موبايل مصري (01xxxxxxxxx)'],
+  address_line: ['Enter your street address', 'أدخل عنوانك بالتفصيل'],
+  shipping_city_id: ['Choose your governorate', 'اختر المحافظة'],
+  address_id: ['Choose one of your addresses', 'اختر أحد عناوينك'],
+}
+// a v2 card's title is `{ en, ar }`; the line's own card is what names it now, never a compat card by id
+const titleOf = (title, isRTL) =>
+  (title && typeof title === 'object' ? title[isRTL ? 'ar' : 'en'] || title.en || title.ar : title) || '—'
+
 // Why a method cannot take THIS order, in the shopper's language — or null when it can.
 const limitReason = (m, total, t) => {
   if (m.min_total != null && total < m.min_total)
@@ -72,8 +97,6 @@ const limitReason = (m, total, t) => {
 //    not on every keystroke in the form) ────────────────────────────────────
 const OrderSummary = memo(function OrderSummary({
   items,
-  products,
-  offers,
   language,
   shippingCost,
   shippingName,
@@ -89,17 +112,11 @@ const OrderSummary = memo(function OrderSummary({
   const currency = isRTL ? 'ج.م' : 'EGP'
   const fmt = (v) => Math.round(Number(v) || 0).toLocaleString(isRTL ? 'ar-EG' : 'en-US')
 
-  const resolve = (item) => {
-    if (item.product_id) {
-      const p = (products || []).find((x) => x.id === item.product_id)
-      return { name: p?.name || p?.product_title || '—', image: getImageUrl(p?.image) || PLACEHOLDER_IMG }
-    }
-    const o = (offers || []).find((x) => String(x.id) === String(item.offer_id))
-    return {
-      name: o ? (isRTL ? o.offer_name_ar : o.offer_name_en) : '—',
-      image: getImageUrl(o?.image) || PLACEHOLDER_IMG,
-    }
-  }
+  const resolve = (item) => ({
+    name: titleOf(item.product?.title, isRTL),
+    image: item.product?.image?.src || PLACEHOLDER_IMG,
+    label: item.variant?.label || '',
+  })
 
   return (
     <aside className="wz-checkout-summary">
@@ -114,7 +131,7 @@ const OrderSummary = memo(function OrderSummary({
               <div className="wz-checkout-item-info">
                 <p className="wz-checkout-item-name">{d.name}</p>
                 <span className="wz-checkout-item-meta">
-                  {item.quantity} × {fmt(item.piece_price)} {currency}
+                  {d.label ? `${d.label} · ` : ''}{item.quantity} × {fmt(item.piece_price)} {currency}
                 </span>
               </div>
               <span className="wz-checkout-item-price">
@@ -192,14 +209,13 @@ function Checkout() {
   const setShippingid = useShippingStore((s) => s.setShippingid)
   const setShipping = useShippingStore((s) => s.setShipping)
   const setShippingName = useShippingStore((s) => s.setShippingName)
-  const { data: offers = [] } = useOffers()
   const { language } = useUIStore()
   const isRTL = language === 'ar'
   const t = (en, ar) => (isRTL ? ar : en)
   const router = useRouter()
   const setOrderData = useOrderConfirmStore((s) => s.setOrderData)
 
-  const { userId, user, logout } = useAuthStore()
+  const { user, logout } = useAuthStore()
   // sessionStorage isn't available during SSR, so read it after mount. Server +
   // first client render both see `false` (no hydration mismatch); the real value
   // lands post-mount and re-runs the address fetch below.
@@ -211,14 +227,10 @@ function Checkout() {
   }, [])
   const isGuest = !isLoggedIn
 
-  const { cart, clearCart } = useCart()
+  const { cart, clearCart, reconcile } = useCart()
   const items = cart?.cart_item || []
-  // Only this order's products, by id (C-1 stage 4) — the page used to embed the whole catalogue.
-  // Every use below already tolerates a line whose card has not arrived yet (it falls back to the
-  // line's own saved price and a placeholder name), exactly as it did for a product the catalogue
-  // no longer showed.
-  const { data: cardsPayload } = useCards(items.map((i) => i.product_id))
-  const products = useCardsOf(cardsPayload, language)
+  // Every line carries its own v2 card (`product`) and variant since slice 3 — the page used to ask compat
+  // for the cards by id. A line without one (an optimistic row whose sync has not landed) shows '—'.
 
   // ── Form state ───────────────────────────────────────────────────────────
   const [email, setEmail] = useState(user?.email || '')
@@ -262,6 +274,8 @@ function Checkout() {
 
   const [errors, setErrors] = useState({})
   const [banner, setBanner] = useState('')
+  // A refused CART (a line gone or short, an empty cart): the banner also links back to the cart.
+  const [bannerToCart, setBannerToCart] = useState(false)
   const [processing, setProcessing] = useState(false)
   const submitting = useRef(false)
 
@@ -359,17 +373,15 @@ function Checkout() {
   const savings = useMemo(() => {
     let s = 0
     for (const it of items) {
-      const entity = it.product_id
-        ? (products || []).find((p) => p.id === it.product_id)
-        : (offers || []).find((o) => String(o.id) === String(it.offer_id))
-      if (entity) {
-        const orig = Number(entity.selling_price) || 0
-        const sale = Number(entity.sale_price_after_discount) || 0
-        if (sale > 0 && sale < orig) s += (orig - sale) * it.quantity
-      }
+      // the list price is the line's own card's (its variant's when it has one); the unit is the server's
+      const p = it.product || {}
+      const v = it.variant_id ? (p.variants || []).find((x) => x.id === it.variant_id) : null
+      const list = Number((v?.price || p.price || {}).amount) || 0
+      const unit = Number(it.piece_price) || 0
+      if (list > unit + 0.01) s += (list - unit) * it.quantity
     }
     return s
-  }, [items, products, offers])
+  }, [items])
 
   /*
    * ── Analytics: InitiateCheckout ─────────────────────────────────────────
@@ -466,31 +478,38 @@ function Checkout() {
     setBanner('')
     setErrors({})
 
-    const orderItems = items.map((i) => ({
-      product_id: i.product_id ?? null,
-      offer_id: i.offer_id ?? null,
-      quantity: i.quantity,
-      piece_price: i.piece_price,
-      total_price: i.total_price ?? Number(i.piece_price) * i.quantity,
-      type_stock: i.type_stock ?? 'Market',
-      color_band: i.color_band ?? null,
-      color_dial: i.color_dial ?? null,
-    }))
+    setBannerToCart(false)
+    /*
+     * v2 builds the order from the server CART, so the server must hold what this page shows: the tab's
+     * lines are pushed first (quantities only; the server prices), exactly as the cart page does before it
+     * validates. A line the server refuses is named by the cart page, so the shopper is sent there.
+     */
+    const rec = await reconcile()
+    if (rec.failed || rec.refused.length || (items.length > 0 && rec.serverLines === 0)) {
+      submitting.current = false
+      setProcessing(false)
+      setBannerToCart(true)
+      setBanner(
+        rec.failed
+          ? t("We couldn't check your cart just now. Please try again.", 'تعذّر التحقق من سلتك الآن. حاول مرة أخرى.')
+          : t('An item in your cart is no longer available in that quantity.', 'أحد منتجات سلتك لم يعد متوفراً بهذه الكمية.'),
+      )
+      return
+    }
 
     const body = {
-      payment_method: paymentMethod, // 'cash' | 'card' (backend maps card→paymob)
+      payment_method: paymentMethod, // 'cash' | 'card' (core maps card→paymob)
       // Which online method: core checks it (this shop's, switched on, inside its limits) before
       // any order is written. Absent for cash, and for the fallback card option.
       ...(methodId != null ? { payment_method_id: methodId } : {}),
       note: notes,
-      total_price_for_order: total,
-      items: orderItems,
+      // the client's total, checked against the server's: a price or a fee that moved is a refusal, never a charge
+      total,
     }
-    if (isLoggedIn) body.user_id = userId
 
     if (useInline) {
       body.address_line = street.trim() + (apartment.trim() ? `, ${apartment.trim()}` : '')
-      body.shipping_city_id = shippingid
+      body.shipping_city_id = Number(shippingid)
       body.phone = phone.trim()
     } else {
       body.address_id = selectedAddressId
@@ -500,12 +519,13 @@ function Checkout() {
       body.guest_name = `${firstName.trim()} ${lastName.trim()}`.trim()
       body.guest_email = email.trim()
       body.guest_phone = phone.trim()
-      body.guest_token = getGuestToken()
+      // the guest token travels as the X-Guest-Token header the client already sends, not in the body
     }
 
     try {
-      const { data } = await http.post('/add_order', body)
-      if (data?.success) {
+      const res = await http.post(`v2/${STOREFRONT_CODE}/orders`, body, { headers: { Accept: 'application/json' } })
+      const data = res.status === 201 ? res.data?.data : null
+      if (data?.order_number) {
         // Online payment → hand off to Paymob. The cart is already gone: core destroys it inside
         // the order transaction when `add_order` is accepted (CheckoutCompatController, before
         // this response is even sent), so by the time the shopper reaches Paymob the cart is
@@ -529,16 +549,7 @@ function Checkout() {
         }
         // Cash → confirm locally.
         const snapshot = items.map((i) => {
-          const entity = i.product_id
-            ? (products || []).find((p) => p.id === i.product_id)
-            : (offers || []).find((o) => String(o.id) === String(i.offer_id))
-          const name = i.product_id
-            ? entity?.name || entity?.product_title || '—'
-            : entity
-              ? isRTL
-                ? entity.offer_name_ar
-                : entity.offer_name_en
-              : '—'
+          const name = titleOf(i.product?.title, isRTL)
           return {
             name,
             qty: i.quantity,
@@ -569,19 +580,53 @@ function Checkout() {
         router.push('/order-confirmation')
         return
       }
-      setBanner(data?.message || t('Failed to place order. Please try again.', 'فشل إتمام الطلب. حاول مرة أخرى.'))
+      setBanner(t('Failed to place order. Please try again.', 'فشل إتمام الطلب. حاول مرة أخرى.'))
     } catch (err) {
       const status = err.response?.status
-      if (status === 422 && err.response.data?.errors) {
-        setErrors(err.response.data.errors)
+      const b = err.response?.data || {}
+      if (status === 422 && b.error === 'invalid') {
+        // core names the fields it refused; each gets its own sentence under the field
+        const map = {}
+        for (const f of b.fields || []) {
+          const k = f === 'guest_phone' ? 'phone' : f
+          map[k] = [FIELD_TEXT[k] ? t(FIELD_TEXT[k][0], FIELD_TEXT[k][1]) : t('Check this field', 'راجع هذا الحقل')]
+        }
+        setErrors(map)
         setBanner(t('Please check the highlighted fields.', 'يرجى مراجعة الحقول المظللة.'))
-      } else if (status === 422 && err.response.data?.messages) {
+      } else if (status === 422 && b.messages) {
         // A payment-method refusal: nothing was written. Both languages come back because the
         // request's Accept-Language is the browser's, not the language this page is shown in.
-        setBanner(err.response.data.messages[isRTL ? 'ar' : 'en'] || err.response.data.message)
+        setBanner(b.messages[isRTL ? 'ar' : 'en'] || t('That payment method is not available for this order.', 'طريقة الدفع هذه غير متاحة لهذا الطلب.'))
         refetchMethods()
-      } else if (status === 422 && err.response.data?.message) {
-        setBanner(err.response.data.message)
+      } else if (status === 422 && b.error === 'total_mismatch') {
+        // a price or a fee moved since the page drew it: the cart is re-read, the new total is shown
+        await cartStore.fetchCart()
+        setBanner(
+          isRTL
+            ? `تغيّر الإجمالي إلى ${egp(b.server_total)} ج.م. راجع طلبك ثم أتممه مرة أخرى.`
+            : `The total changed to EGP ${egp(b.server_total)}. Check your order, then place it again.`,
+        )
+      } else if (status === 422 && ['cart_empty', 'line_unavailable', 'insufficient_stock', 'offer_in_cart'].includes(b.error)) {
+        await cartStore.fetchCart()
+        setBannerToCart(true)
+        setBanner(
+          b.error === 'cart_empty'
+            ? t('Your cart is empty — it may have been ordered from another tab.', 'سلتك فارغة — ربما طُلبت من نافذة أخرى.')
+            : b.error === 'offer_in_cart'
+              ? t('This cart holds an offer that cannot be bought here.', 'تحتوي السلة على عرض لا يمكن شراؤه هنا.')
+              : t('An item in your cart is no longer available in that quantity.', 'أحد منتجات سلتك لم يعد متوفراً بهذه الكمية.'),
+        )
+      } else if (status === 422 && b.error === 'payment_not_started') {
+        setBanner(t('The payment could not be started and nothing was charged. Please try again, or choose another method.', 'تعذّر بدء الدفع ولم يُخصم شيء. حاول مرة أخرى أو اختر طريقة أخرى.'))
+        refetchMethods()
+      } else if (status === 429) {
+        setBanner(t('Too many attempts. Please wait a minute, then try again.', 'محاولات كثيرة. انتظر دقيقة ثم حاول مرة أخرى.'))
+      } else if (b.error === 'server_error' && b.ref) {
+        setBanner(
+          isRTL
+            ? `حدث خطأ من جهتنا ولم يُسجَّل الطلب. حاول مرة أخرى، أو راسلنا بالرقم ${String(b.ref).slice(0, 8)}.`
+            : `Something went wrong on our side and no order was placed. Try again, or contact us with reference ${String(b.ref).slice(0, 8)}.`,
+        )
       } else {
         setBanner(t('Something went wrong. Please try again.', 'حدث خطأ ما. حاول مرة أخرى.'))
       }
@@ -590,10 +635,10 @@ function Checkout() {
       setProcessing(false)
     }
   }, [
-    canSubmit, items, paymentMethod, methodId, refetchMethods, notes, total, isLoggedIn, userId, useInline, street,
+    canSubmit, items, paymentMethod, methodId, refetchMethods, notes, total, useInline, street,
     apartment, shippingid, phone, selectedAddressId, isGuest, firstName, lastName, email,
-    products, offers, isRTL, cleanupAfterOrder, router, setOrderData, shippingName, shippingCost, user, t,
-    subtotal,
+    isRTL, cleanupAfterOrder, router, setOrderData, shippingName, shippingCost, user, t,
+    subtotal, reconcile,
   ])
 
   const handleSignOut = useCallback(() => {
@@ -629,7 +674,17 @@ function Checkout() {
         <div className="wz-checkout-grid">
           {/* ─── LEFT: form ─────────────────────────────────────────────── */}
           <div className="wz-checkout-form">
-            {banner && <div className="wz-checkout-banner">{banner}</div>}
+            {banner && (
+              <div className="wz-checkout-banner" role="alert">
+                {banner}
+                {bannerToCart && (
+                  <>
+                    {' '}
+                    <Link href="/cart" className="wz-checkout-banner-link">{t('Review your cart', 'راجع سلتك')}</Link>
+                  </>
+                )}
+              </div>
+            )}
 
             {/* SECTION 1 — CONTACT */}
             <section className="wz-checkout-section">
@@ -944,8 +999,6 @@ function Checkout() {
           {/* ─── RIGHT: summary ─────────────────────────────────────────── */}
           <OrderSummary
             items={items}
-            products={products}
-            offers={offers}
             language={language}
             isRTL={isRTL}
             subtotal={subtotal}

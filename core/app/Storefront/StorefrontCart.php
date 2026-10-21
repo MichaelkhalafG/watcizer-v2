@@ -27,6 +27,9 @@ use stdClass;
  * A line is keyed by (cart, product, variant, bucket); setting a line replaces its quantity, as compat's
  * `add_to_cart` does. Lines are re-checked on every read: a line that can no longer be bought says why
  * (`problem`) and is left out of the subtotal — the checkout (S2) refuses it again whatever this said.
+ *
+ * OFFER rows (compat's, in the same shared table) are not items here and never have been, but they are
+ * COUNTED and reported as `blocked` — see {@see self::offerLines()} for why silence was a money bug.
  */
 final class StorefrontCart
 {
@@ -231,6 +234,14 @@ final class StorefrontCart
             }
         }
 
+        // ONE query for every plain line, not one per line: a cart of ten products paid ten `exists` reads
+        // (CartQueryBudgetTest, 2026-10-21). The same question as `hasVariants()` — any variant row, active or not.
+        $plainIds = array_values(array_unique(array_map(
+            fn (stdClass $r) => Row::int($r, 'product_id'),
+            array_filter($rows, fn (stdClass $r) => Row::nint($r, 'variant_id') === null),
+        )));
+        $withVariants = array_fill_keys($this->inventory->productsWithVariants($plainIds), true);
+
         $items = [];
         $count = 0;
         $subtotal = 0.0;
@@ -246,7 +257,7 @@ final class StorefrontCart
             $unit = null;
             if ($product === null) {
                 $problem = 'unavailable';
-            } elseif ($variantId === null && $this->inventory->hasVariants($productId)) {
+            } elseif ($variantId === null && isset($withVariants[$productId])) {
                 $problem = 'variant_required';
             } elseif ($variantId !== null && ($variant === null || $variant['product_id'] !== $productId)) {
                 $problem = 'variant_unavailable';
@@ -275,7 +286,38 @@ final class StorefrontCart
             ];
         }
 
-        return ['id' => Row::int($cart, 'id'), 'items' => $items, 'totals' => ['count' => $count, 'subtotal' => round($subtotal, 2), 'currency' => $currency]];
+        return [
+            'id' => Row::int($cart, 'id'),
+            'items' => $items,
+            // Offer rows are not items here (v2 cannot price one), but their COUNT is reported so the cart can
+            // say so. Silence would mean a shopper sees a total that does not include something they added.
+            'blocked' => $this->offerLines($cart),
+            'totals' => ['count' => $count, 'subtotal' => round($subtotal, 2), 'currency' => $currency],
+        ];
+    }
+
+    /**
+     * How many lines of this cart are OFFER lines — rows v2 cannot price, sell or check out (2026-10-21).
+     *
+     * ── Why this exists ─────────────────────────────────────────────────────────────────────────
+     *
+     * `cart_items` is shared with compat, and compat sells offers: a row may carry `offer_id` instead of
+     * `product_id`. v2 has no offer in its cart at all — `store()` takes a product, `lines()` and `payload()
+     * both filtered offer rows out with `whereNull('offer_id')`, and `StorefrontCheckout` hard-codes
+     * `'offer_id' => null` on every line it writes.
+     *
+     * Filtering them out READ-SIDE is harmless. Filtering them out of {@see self::lines()} was not: the
+     * checkout reads that method, so a cart holding an offer would have been checked out with the offer
+     * missing from the order and never charged — a line lost silently at the exact moment money is taken.
+     *
+     * Nothing can hit it today: production holds ZERO offers, none in any cart, none in any order ever
+     * (measured 2026-10-21). But the dashboard can create one, and then it would have been a trap. So v2
+     * now SEES these rows and refuses, instead of pretending they are not there. Selling offers on v2 is
+     * slice 6's work and is not invented here.
+     */
+    public function offerLines(stdClass $cart): int
+    {
+        return DB::table('cart_items')->where('cart_id', Row::int($cart, 'id'))->whereNotNull('offer_id')->count();
     }
 
     /**

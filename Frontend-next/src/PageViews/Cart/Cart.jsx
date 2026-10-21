@@ -13,19 +13,55 @@ import {
   FiChevronDown,
 } from 'react-icons/fi'
 import { useCards, useCardsOf, useRelated } from '../../Hooks/queries/useListing'
-import http from '../../Context/api'
 import { useOffers } from '../../Hooks/queries/useOffers'
 import { useUIStore } from '../../Store/uiStore'
 import { useAuthStore } from '../../Store/authStore'
 import { useShippingStore } from '../../Store/shippingStore'
 import { useShippingPrices } from '../../Hooks/useShippingPrices'
 import useCart, { getItemKey } from '../../Hooks/useCart'
+import { cartStore } from '../../Store/cartStore'
 import ProductSlider from '../../Components/Product/ProductSlider'
 import { trustSignals } from '../../config/trust.config'
 import { getImageUrl, handleImgError, PLACEHOLDER_IMG } from '../../utils/imageUrl'
 import { productUrl, offerUrl } from '../../utils/productUrl'
 import './Cart.css'
 import { finishBackground } from '../../utils/finish'
+
+/*
+ * What v2 says about THIS LINE wins over what the product card says about the PRODUCT (slice 3, 2026-10-21).
+ * The card's stock is the product's; the line's `available` is its own bucket's — and for a variant it is
+ * that size's, which the card cannot know. A line the server has not answered for yet (an optimistic row
+ * whose sync is in flight, `server` unset) still reads the card, exactly as the page always did.
+ */
+const OUT = new Set(['unavailable', 'variant_unavailable', 'variant_required'])
+
+const lineState = (item, d, qty) => {
+  const unit = Number(item.piece_price)
+  if (item.server) {
+    const available = Number(item.available ?? 0)
+    const soldOut = OUT.has(item.problem)
+    return {
+      soldOut,
+      needsChoice: item.problem === 'variant_required',
+      short: !soldOut && item.problem === 'insufficient_stock',
+      available,
+      max: soldOut ? 0 : available > 0 ? Math.min(99, available) : 0,
+      priceChanged: !soldOut && item.seen_price != null && Math.abs(Number(item.seen_price) - unit) > 0.01,
+      was: item.seen_price,
+    }
+  }
+  const soldOut = !!d.entity && d.stock <= 0
+  const currentPrice = d.sale > 0 && d.sale < d.selling ? d.sale : d.selling
+  return {
+    soldOut,
+    needsChoice: false,
+    short: !!d.entity && d.stock > 0 && d.stock < qty,
+    available: d.stock,
+    max: d.stock > 0 ? d.stock : d.entity ? 0 : 99,
+    priceChanged: !soldOut && !!d.entity && currentPrice > 0 && Math.abs(currentPrice - unit) > 0.01,
+    was: null,
+  }
+}
 
 // ── Cart item ──────────────────────────────────────────────────────────────
 const CartItem = memo(function CartItem({
@@ -56,11 +92,9 @@ const CartItem = memo(function CartItem({
   const unit = Number(item.piece_price)
   const orig = d.selling
   const hasSale = orig > unit + 0.01
-  const max = d.stock > 0 ? d.stock : d.entity ? 0 : 99
-  const unavailable = !!d.entity && d.stock <= 0
-  const lowStock = !!d.entity && d.stock > 0 && d.stock < qty
-  const currentPrice = d.sale > 0 && d.sale < d.selling ? d.sale : d.selling
-  const priceChanged = !!d.entity && currentPrice > 0 && Math.abs(currentPrice - unit) > 0.01
+  const { soldOut: unavailable, needsChoice, short: lowStock, available, max, priceChanged, was } = lineState(item, d, qty)
+  // the size or colour this line is — two sizes of one shirt are two lines, and this is what tells them apart
+  const label = item.variant?.label || ''
   const lineTotal = unit * qty
 
   return (
@@ -85,6 +119,7 @@ const CartItem = memo(function CartItem({
         </button>
 
         <div className="wz-cart-item-variant">
+          {label && <span className="wz-cart-variant-label">{label}</span>}
           {item.type_stock && (
             <span className={`wz-cart-stock wz-cart-stock--${unavailable ? 'out' : item.type_stock === 'Express' ? 'express' : 'market'}`}>
               <span className="wz-cart-stock-dot" />
@@ -103,22 +138,39 @@ const CartItem = memo(function CartItem({
           )}
         </div>
 
-        <div className="wz-cart-item-price">
-          <span className="wz-cart-unit">
-            {fmt(unit)} {currency}
-          </span>
-          {hasSale && (
-            <span className="wz-cart-unit-orig">
-              {fmt(orig)} {currency}
+        {/* an unavailable line has no price on v2 (the server does not price what it cannot sell): none shown */}
+        {!unavailable && (
+          <div className="wz-cart-item-price">
+            <span className="wz-cart-unit">
+              {fmt(unit)} {currency}
             </span>
-          )}
-        </div>
-
-        {lowStock && <p className="wz-cart-warn-text">{isRTL ? `باقي ${d.stock} فقط` : `Only ${d.stock} left`}</p>}
-        {priceChanged && !unavailable && (
-          <p className="wz-cart-warn-text">{t('Price updated', 'تم تحديث السعر')}</p>
+            {hasSale && (
+              <span className="wz-cart-unit-orig">
+                {fmt(orig)} {currency}
+              </span>
+            )}
+          </div>
         )}
-        {unavailable && <p className="wz-cart-warn-text">{t('This item is unavailable', 'هذا المنتج غير متوفر')}</p>}
+
+        {lowStock && (
+          <p className="wz-cart-warn-text">
+            {available > 0
+              ? isRTL ? `باقي ${available} فقط` : `Only ${available} left`
+              : t('Not enough stock for this quantity', 'الكمية المطلوبة غير متوفرة في المخزون')}
+          </p>
+        )}
+        {priceChanged && !unavailable && (
+          <p className="wz-cart-warn-text">
+            {was != null
+              ? isRTL ? `تم تحديث السعر — كان ${fmt(was)} ${currency}` : `Price updated — was ${fmt(was)} ${currency}`
+              : t('Price updated', 'تم تحديث السعر')}
+          </p>
+        )}
+        {needsChoice ? (
+          <p className="wz-cart-warn-text">{t('Choose a size or colour on the product page', 'اختر المقاس أو اللون من صفحة المنتج')}</p>
+        ) : (
+          unavailable && <p className="wz-cart-warn-text">{t('This item is unavailable', 'هذا المنتج غير متوفر')}</p>
+        )}
 
       </div>
 
@@ -137,7 +189,7 @@ const CartItem = memo(function CartItem({
           </button>
         </div>
         <div className="wz-cart-line-total">
-          {fmt(lineTotal)} {currency}
+          {unavailable ? '—' : `${fmt(lineTotal)} ${currency}`}
         </div>
       </div>
     </div>
@@ -162,7 +214,7 @@ function Cart() {
   // by wrapping router.push — stable identity so CartItem's memo isn't broken.
   const navigate = useCallback((to) => router.push(to), [router])
   const { userId } = useAuthStore()
-  const { cart, updateQuantity, removeItem, undoRemove, validateCart, reconcile, lastRemoved } = useCart()
+  const { cart, updateQuantity, removeItem, undoRemove, validateCart, reconcile, lastRemoved, warnings } = useCart()
   // Only THIS cart's products, by id (C-1 stage 4) — the page used to embed the whole catalogue to
   // look up its own lines.
   const { data: cardsPayload, isError: cardsError } = useCards((cart?.cart_item || []).map((i) => i.product_id))
@@ -181,11 +233,23 @@ function Cart() {
   // (it used to wait on the whole catalogue, which always came).
   const loading = items.some((i) => i.product_id) && cardsPayload === undefined && !cardsError
 
-  // Validate against live catalog when the cart opens (authoritative gate).
+  /*
+   * Validate against the live catalogue when the cart opens.
+   *
+   * It runs on the first render that HAS lines, not on mount: the cart hydrates from the tab's own copy
+   * after mount, so a `[]` effect saw an empty list and never ran — the gate simply did not fire on a page
+   * load. Harmless while compat stored this browser's own prices, because the two could not disagree. On
+   * v2 the server prices the cart itself, so this read is what makes the money on screen the money core
+   * will charge, and it has to happen.
+   *
+   * The ref keeps it to ONE read per visit, which is what the `[]` was for.
+   */
+  const validatedOnce = useRef(false)
   useEffect(() => {
-    if (items.length) validateCart()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+    if (!items.length || validatedOnce.current) return
+    validatedOnce.current = true
+    validateCart()
+  }, [items.length, validateCart])
 
   const resolve = useCallback(
     (item) => {
@@ -224,11 +288,16 @@ function Cart() {
     let count = 0
     for (const it of items) {
       const unit = Number(it.piece_price)
-      sub += unit * it.quantity
       count += it.quantity
       const d = resolve(it)
+      // a line that cannot be bought as it stands is counted in the heading and left out of the money —
+      // which is how the server's own subtotal counts, so the two cannot disagree
+      if (lineState(it, d, it.quantity).soldOut) {
+        bad = true
+        continue
+      }
+      sub += unit * it.quantity
       if (d.selling > unit) sav += (d.selling - unit) * it.quantity
-      if (d.entity && d.stock <= 0) bad = true
     }
     return { subtotal: sub, savings: sav, anyUnavailable: bad, itemCount: count }
   }, [items, resolve])
@@ -290,14 +359,14 @@ function Cart() {
   const hasWarnings = useMemo(
     () =>
       items.some((it) => {
-        const d = resolve(it)
-        if (!d.entity) return false
-        if (d.stock <= 0 || d.stock < it.quantity) return true
-        const cur = d.sale > 0 && d.sale < d.selling ? d.sale : d.selling
-        return cur > 0 && Math.abs(cur - Number(it.piece_price)) > 0.01
+        const s = lineState(it, resolve(it), it.quantity)
+        return s.soldOut || s.short || s.priceChanged
       }),
     [items, resolve],
   )
+  // An offer row v2 cannot price (`blocked` on the cart payload): the checkout refuses while one exists,
+  // so the button says so here rather than on the tap. Production holds no offers; this is the honest case.
+  const blockedOffers = (warnings || []).some((w) => w.reason === 'offer_in_cart')
 
   // Any change to the cart makes the last "why not" stale.
   const onRemove = useCallback(
@@ -310,9 +379,21 @@ function Cart() {
 
   // Core's warning text, in the shopper's language. Core sends English sentences; the known ones
   // are translated, anything new is shown as sent rather than hidden.
+  /*
+   * v2 answers with a CODE per line, not a sentence (slice 3, 2026-10-21): `unavailable`,
+   * `variant_required`, `variant_unavailable`, `insufficient_stock`, and `offer_in_cart` for a row v2
+   * cannot price at all. compat's sentences are kept below because the merge path still speaks them, and
+   * because a sentence that arrives unrecognised should still be shown rather than swallowed.
+   */
   const reasonText = useCallback(
     (message) => {
       const msg = String(message || '')
+      if (msg === 'insufficient_stock') return isRTL ? 'الكمية المطلوبة غير متوفرة في المخزون' : 'Not enough stock for this quantity'
+      if (msg === 'unavailable') return isRTL ? 'لم يعد متوفراً' : 'No longer available'
+      if (msg === 'variant_required') return isRTL ? 'اختر مقاساً أو لوناً' : 'Choose a size or colour'
+      if (msg === 'variant_unavailable' || msg === 'variant_mismatch' || msg === 'variant_not_allowed')
+        return isRTL ? 'هذا الاختيار لم يعد متاحاً' : 'That choice is no longer available'
+      if (msg === 'offer_in_cart') return isRTL ? 'هذا العرض لا يمكن شراؤه هنا — احذفه للمتابعة' : 'This offer cannot be bought here — remove it to continue'
       const price = msg.match(/^Price changed to ([\d.]+)/i)
       if (price) return isRTL ? `تغيّر السعر إلى ${fmt(price[1])} ${currency}` : `Price changed to ${fmt(price[1])} ${currency}`
       const only = msg.match(/^Only (\d+) available/i)
@@ -386,24 +467,31 @@ function Cart() {
       setCheckoutBlock({ kind: 'error' })
       return
     }
-    if (shownLines > 0 && res?.totals && Number(res.totals.item_count) === 0) {
+    // v2's totals call it `count`; compat called it `item_count`. Both read, so a stale answer cannot
+    // look like an empty cart.
+    const serverCount = Number(res?.totals?.count ?? res?.totals?.item_count ?? NaN)
+    if (shownLines > 0 && res?.totals && serverCount === 0) {
       setProcessing(false)
       setCheckoutBlock({ kind: 'lost' })
       return
     }
     if (res && res.valid === false) {
-      // Core names its own cart lines (server ids); read them once to say WHICH item it means.
-      let serverLines = []
-      try {
-        const { data } = await http.get('me/cart')
-        serverLines = Array.isArray(data?.cart_item) ? data.cart_item : []
-      } catch {
-        // Without the names the reasons still show.
-      }
+      /*
+       * No second request to name the lines any more. v2's warnings carry the server line id AND the
+       * product id, and this tab's own items carry both too, so the name is found locally — where compat
+       * needed `me/cart` fetched again purely to turn an id into a name.
+       */
       const lines = (res.warnings || []).map((w) => {
-        const line = serverLines.find((l) => l.id === w.item_id)
-        const name = line ? resolve(line).name : ''
-        return { name, reason: reasonText(w.message) }
+        const line =
+          items.find((i) => Number(i.id) === Number(w.line)) ||
+          items.find((i) => Number(i.product_id) === Number(w.product_id)) ||
+          null
+        const available = Number(line?.available ?? 0)
+        const reason =
+          w.reason === 'insufficient_stock' && available > 0
+            ? isRTL ? `المتاح ${available} فقط` : `Only ${available} available`
+            : reasonText(w.reason ?? w.message)
+        return { name: line ? resolve(line).name : '', reason }
       })
       setProcessing(false)
       setWarnDismissed(false)
@@ -411,8 +499,10 @@ function Cart() {
       return
     }
     setProcessing(false)
+    // the prices on this page are now the prices the shopper has seen: "Price updated" clears
+    cartStore.acknowledgePrices()
     navigate('/checkout')
-  }, [processing, validateCart, navigate, resolve, reasonText, reconcile, priceOf, items])
+  }, [processing, validateCart, navigate, resolve, reasonText, reconcile, priceOf, items, isRTL])
 
   // ── Empty ──
   if (!loading && items.length === 0) {
@@ -593,7 +683,7 @@ function Cart() {
               <button
                 className="wz-cart-checkout"
                 onClick={goToCheckout}
-                disabled={processing || anyUnavailable || !citySelected}
+                disabled={processing || anyUnavailable || blockedOffers || !citySelected}
               >
                 {processing ? (
                   <>
@@ -604,6 +694,12 @@ function Cart() {
                   t('CHECKOUT', 'إتمام الشراء')
                 )}
               </button>
+              {anyUnavailable && (
+                <p className="wz-cart-select-hint">{t('Remove the unavailable items to continue', 'احذف المنتجات غير المتوفرة للمتابعة')}</p>
+              )}
+              {blockedOffers && (
+                <p className="wz-cart-select-hint">{t('This cart holds an offer that cannot be bought here', 'تحتوي السلة على عرض لا يمكن شراؤه هنا')}</p>
+              )}
               {!citySelected && (
                 <p className="wz-cart-select-hint">{t('Please select your city', 'يرجى اختيار مدينتك')}</p>
               )}

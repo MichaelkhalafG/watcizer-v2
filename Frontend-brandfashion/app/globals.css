@@ -108,10 +108,17 @@
   --wz-serif: var(--font-el-messiri), Georgia, 'Times New Roman', serif;
 }
 
-/* One family, both scripts (spec §5). No dark mode: color-scheme light so Android's forced-dark
-   cannot invert the pages (§3). */
+/* One family, both scripts (spec §5). NO DARK MODE - and the keyword is `only` (2026-10-23).
+   `color-scheme: light` (2026-10-14) was meant to stop Android's forced-dark inverting the pages, and it
+   does not: Chrome's Auto Dark Theme (chrome://flags "Auto Dark Mode for Web Contents", and Android
+   Chrome's dark theme on sites that declare no dark scheme) still inverted this whole site - measured
+   with Chrome launched --force-dark-mode: body text flipped from rgb(0,0,0) to rgb(255,255,255), every
+   light surface went dark, product photos dimmed. Chrome's documented opt-out is `only light` here AND
+   <meta name="color-scheme" content="only light"> in <head> (layout.jsx sets it via `viewport`).
+   Injected both on the live page under force-dark and re-shot: the site rendered light again. This is a
+   declaration that the site is light-only, not a dark theme - there is none and none is being built. */
 html {
-  color-scheme: light;
+  color-scheme: only light;
 }
 body {
   font-family: var(--wz-serif);

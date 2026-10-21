@@ -40,6 +40,21 @@
   scroll-snap-align: start;
   display: block;
   height: 100%;
+  /*
+   * A GRID ITEM MAY NOT SHRINK BELOW ITS CONTENT unless told so (2026-10-23). This slide is an item of the
+   * column grid above, and a grid item's default `min-height: auto` beat the `height: 100%` on the line
+   * before: the slide grew to its picture's intrinsic height instead of the track's. Measured on the live
+   * Brand Fashion home: hero 1377x480, track 1377x480, slide 1377x945 - 945 being 1377 x 800/1166, the
+   * second banner's own proportions. The hero's `overflow: hidden` then showed a 480px slice of a 945px
+   * slide, so the first banner - cropped by the owner at exactly the locked 1377/480 - was cut again, by
+   * the dimensions of a different picture.
+   *
+   * `min-height: 0` lets `height: 100%` win, the picture is 480 tall, and `object-fit: cover` on a
+   * 2.870 image in a 2.869 box is a no-op: what the owner cropped is what the shopper sees. `min-width: 0`
+   * for the same reason in the inline axis of a column grid.
+   */
+  min-height: 0;
+  min-width: 0;
 }
 .banner-hero__slide img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: center; }
 .banner-hero__slide picture { display: block; height: 100%; }

@@ -692,6 +692,9 @@ return [
         // storefront draws at (item 14, 2026-10-23). The count is shown for every rail because it moves with
         // stock and visibility without anyone editing the rail.
         'count' => ':count products',
+        // A reorder the server refused — it used to be swallowed and the arrows just looked dead.
+        'order_failed' => 'The order could not be saved.',
+        'order_stale' => 'The rails changed somewhere else. Reload the page, then reorder.',
         'too_few' => ':count products — not shown (minimum :min)',
         'too_few_title' => 'This rail is not shown on the home page: it has fewer than :min products.',
         'saved_too_few' => 'Rail saved, but it will not show on the home page: only :count products, and the minimum is :min.',
