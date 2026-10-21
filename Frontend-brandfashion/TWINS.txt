@@ -53,6 +53,7 @@ app/analytics.jsx
 app/error.jsx
 app/providers.jsx
 app/sitemaps/[file]/route.js
+app/cart-modal-host.jsx
 eslint.config.mjs
 jsconfig.json
 middleware.js
@@ -112,6 +113,7 @@ src/PageViews/Auth/ResetPassword.jsx
 src/PageViews/Cart/Recover.css
 src/PageViews/Cart/Recover.jsx
 src/PageViews/Checkout/OrderConfirmation.jsx
+src/PageViews/Account/Account.jsx
 src/Store/authStore.js
 src/Store/orderConfirmStore.js
 src/Store/shippingStore.js
@@ -186,8 +188,15 @@ DIVERGED 2026-10-18 src/utils/listingParams.js — Sale has its own listing key 
 DIVERGED 2026-10-19 src/Store/cartStore.js — the cart store on v2 (GET cart, POST cart/items as an absolute set, DELETE cart/items/{id}); Watchizer's interface name for name (the header count, the drawer, the recovery page, the login merge and the confirmation page are unchanged twins); a line is a product OR a product's variant; the login merge adds quantities as compat's does, through the v2 routes.
 DIVERGED 2026-10-19 src/PageViews/Cart/Cart.jsx — the cart page draws core's v2 answer (each line's card, current price, stock and problem) instead of compat cards + reconcile + cart/validate; Watchizer's behaviour kept (300 ms stepper, remove + undo, the governorate here, the checkout gate that names why); Brand Fashion's §10.4 additions: the variant on the line, a sold-out line with a Remove action, Price updated on the line, the delivery row always showing an amount, one rail on the leather tint, a rail on the empty cart, the phone's sticky bar.
 DIVERGED 2026-10-19 src/PageViews/Checkout/Checkout.jsx — the order goes to v2 orders (built from the v2 cart, the client total checked) instead of compat add_order; the payment rows are exactly core's v2 list (no cash row of the page's own, no Pay Online fallback), each posting its id; core's refusal codes said in both languages; the total inside the button; on a phone the summary collapsible at the top. Contact, saved addresses, the recovery prefill, the phone rule, notes, InitiateCheckout and the confirmation hand-over are Watchizer's.
-DIVERGED 2026-10-19 app/cart-modal-host.jsx — the drawer opens on the store's confirmed-new-line signal, not on a rising line count: the first client render's count rises from the server render's 0 to the tab's cached lines, which opened the drawer by itself on every page load with a non-empty cart (measured on Brand Fashion; Watchizer's twin has the same rule — unverified there, recorded for Michael).
-DIVERGED 2026-10-19 src/PageViews/Account/Account.jsx — the orders tab reads core's v2 me/orders (this storefront's orders only; untagged orders are the default storefront's) instead of compat's me/orders, which lists the customer's orders on every shop because users are shared (audit a1). Every other line is Watchizer's.
+# slice 3 (2026-10-21): app/cart-modal-host.jsx is a TWIN again — Watchizer took Brand Fashion's rule (the drawer opens on the store's confirmed-new-line signal), after measuring the self-opening drawer on Watchizer too: open at t+4 s on a plain reload with a non-empty cart.
+# slice 3 (2026-10-21): Watchizer's cart moved to v2 as well, through its OWN store and page, so the three DIVERGED lines above stay
+# diverged and the sentence "Watchizer's twins stay on compat" is history. What was taken from Brand Fashion's files into Watchizer's:
+# the per-line server fields (available, problem, product, variant, server), seen_price + acknowledgePrices ("Price updated"), the
+# first-subscribe hydrate, the refusal table by code, the offer refused up front. What stayed Watchizer's: the compat cards (useCards),
+# the push-reconcile at checkout, the colour swatches, the offer branch, the sessionStorage key, the 3-state checkout block. src/lib/v2Cart.js
+# is the twin adapter both apps carry; only Watchizer's store reads it. src/Components/Cart/CartModal.jsx stays a twin (the variant label
+# on a drawer row went into both, identical).
+# slice 5 (2026-10-21): src/PageViews/Account/Account.jsx is a TWIN again — Watchizer's orders tab reads v2 me/orders (THIS storefront's orders) exactly as Brand Fashion's does; the nine-line difference was the whole divergence.
 DIVERGED 2026-10-19 src/Components/SideBar/SideBar.jsx — Brand Fashion's Sale section (Michael's Part 2 of the night run): Any / 20 / 30 / 40 % off or more as one choice (v2 min_discount, rounded as the card prints it) and In stock only, the landing of the deals band's "See all" (30 %+, in stock); Clear all clears them, and the in-stock key counts as a filter. Watchizer's sidebar keeps round 5's state (its Sale count, accepted by Michael) and is not touched tonight.
 DIVERGED 2026-10-19 app/toast.jsx — B8 (spec §10.8): a failure toast stays 6 s, the others 3 s as on Watchizer. (The spec's retry action needs the toast store to carry one — not built, recorded.)
 DIVERGED 2026-10-19 app/(main)/error.jsx — B8 (spec §10.8 "500"): an error dot above the title and "Contact us on WhatsApp" (Brand Fashion's support number) in place of Browse Collection; Try again and Back to Home are Watchizer's.
