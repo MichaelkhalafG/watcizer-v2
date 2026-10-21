@@ -97,6 +97,22 @@ final class StorefrontCheckout
         $paymentMethod = $legacyMethod === 'card' ? 'paymob' : $legacyMethod;
 
         $cart = $this->carts->find($userId, $guestToken);
+        /*
+         * An OFFER in the cart stops the checkout rather than being dropped from it (2026-10-21).
+         *
+         * `lines()` returns product rows only, because v2 has no offer in its cart. Without this check a
+         * MIXED cart would have been checked out with its product lines and WITHOUT the offer, uncharged —
+         * a line lost in silence at the moment money is taken, which is the one place silence is
+         * unaffordable. Nothing can reach it today (production holds no offers at all), and selling offers
+         * on v2 is slice 6's work; until then the honest answer is a refusal the shopper can act on.
+         *
+         * It is tested BEFORE the empty check on purpose: a cart holding nothing but an offer has no v2
+         * lines, so `cart_empty` would otherwise answer a shopper who can plainly see something in it.
+         */
+        $blocked = $cart === null ? 0 : $this->carts->offerLines($cart);
+        if ($blocked > 0) {
+            return ['status' => 422, 'body' => ['error' => 'offer_in_cart', 'lines' => $blocked]];
+        }
         $cartLines = $cart === null ? [] : $this->carts->lines($cart);
         if ($cart === null || $cartLines === []) {
             return ['status' => 422, 'body' => ['error' => 'cart_empty']];
