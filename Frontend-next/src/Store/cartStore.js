@@ -1,4 +1,5 @@
 import http from '../Context/api'
+import { v2CartRead, v2CartSet, v2CartRemove } from '../lib/v2Cart'
 import { trackAddToCart } from '../scripts/pixels'
 
 let listeners = new Set()
@@ -13,10 +14,30 @@ const GUEST_KEY = 'wz_guest_token'
 
 const generateTimestamp = () => new Date().toISOString()
 
-export const getItemKey = (item) =>
-  item.product_id !== null && item.product_id !== undefined
-    ? `product_${item.product_id}`
-    : `offer_${item.offer_id}`
+/*
+ * A LINE'S IDENTITY — product, variant and stock bucket together (slice 3, 2026-10-21).
+ *
+ * It was `product_{id}` alone, which is why two sizes of one shirt could not be two lines: a second add
+ * found the first line and incremented it, silently, with the wrong size. Addition B worked around that by
+ * refusing to merge when a variant was chosen; this removes the need for the workaround.
+ *
+ * THE BUCKET IS DELIBERATELY NOT PART OF THE KEY. Core keys its row by (cart, product, variant, bucket)
+ * and will happily hold the same product twice, once per bucket — measured against the running API. But
+ * that is NOT what this shop does today and not what the other one does either: compat merged by product,
+ * Brand Fashion's v2 store (which has run this since 2026-10-19) keys by product and variant, and BOTH fix
+ * a line's bucket at the first add and keep it on every later one. Putting the bucket in the key would
+ * silently turn one line into two the first time a product's Express stock ran out mid-session — a
+ * behaviour change on a live shop that nobody asked for. The bucket is preserved instead, by `serverKeyOf`.
+ *
+ * It is a COMPOSITE and not the server's line id on purpose: this store is optimistic, so a line exists
+ * locally before the server has given it an id, and an id-based key could not be computed at that moment.
+ * The server's id is carried on the line as `id` and is what DELETE and PATCH address.
+ */
+export const getItemKey = (item) => {
+  if (item.product_id === null || item.product_id === undefined) return `offer_${item.offer_id}`
+
+  return `product_${item.product_id}${item.variant_id ? `_v${item.variant_id}` : ''}`
+}
 
 // Guest token (mirrors api.jsx) — ensure one exists for guest cart operations.
 // SSR guard: no localStorage on the server → no token to mint there.
@@ -93,32 +114,48 @@ export const refusedAddMessage = (result, isRTL) =>
     ? isRTL ? 'لا يوجد مخزون كافٍ لهذه الكمية' : 'Not enough stock for that quantity'
     : isRTL ? 'تعذّرت الإضافة إلى السلة. حاول مرة أخرى.' : "Couldn't add to cart. Please try again."
 
+/*
+ * ON v2 SINCE 2026-10-21 (slice 3). The contract is unchanged — absolute quantity in, a resolved
+ * `{ ok, status, message }` out, never a rejection — so every caller, including the AddToCart pixel that
+ * waits on `ok`, behaves exactly as before.
+ *
+ * What IS different: NO PRICE IS SENT. compat took `piece_price` and `total_price` from this browser and
+ * stored them; v2 prices the line itself on every read, so a stale tab can no longer book an old price.
+ * An OFFER line cannot be synced here at all — v2 has no offer in its cart — and compat's own cart is where
+ * offers still live; production holds none, and the cart screen reports any it finds as `blocked`.
+ */
 const syncLine = (item, quantity) =>
-  http
-    .post('add_to_cart', {
-      product_id: item.product_id ?? null,
-      offer_id: item.offer_id ?? null,
-      quantity,
-      piece_price: parseFloat(item.piece_price),
-      total_price: quantity * parseFloat(item.piece_price),
-      type_stock: item.type_stock ?? 'Market',
-      color_band: item.color_band ?? null,
-      color_dial: item.color_dial ?? null,
-    })
-    .then(() => ({ ok: true, status: 200, message: null }))
-    .catch((err) => {
-      console.warn('Cart sync failed:', err)
-      return {
-        ok: false,
-        status: err?.response?.status ?? 0,
-        message: err?.response?.data?.message ?? null,
-      }
-    })
+  v2CartSet({
+    productId: item.product_id ?? null,
+    variantId: item.variant_id ?? null,
+    bucket: item.type_stock ?? 'Express',
+    quantity,
+  })
 
 // A line's SERVER key: the server keeps one row per (product, offer, colours, stock type). The
 // tab keys a line by product/offer alone, so a repeat add MUST reuse the existing line's colours
 // and stock type — a product card (no colours) adding to a line the product page created (with
 // colours) used to make a SECOND server row for the same product.
+/*
+ * TAKE THE SERVER'S LINE ID ONTO THE LOCAL LINE after a successful sync (slice 3, 2026-10-21).
+ *
+ * The optimistic row is created with `id: Date.now()`, because at that moment the server has not seen it.
+ * On compat that never mattered: removal was by PRODUCT. On v2 a line is deleted and updated BY ITS ID, so
+ * a local line still carrying a timestamp could not be removed from the server at all — the row would have
+ * survived every removal and inflated the next order's total, which is the exact phantom-row bug the
+ * previous comment in `syncRemove` says was fixed once already.
+ *
+ * The server's answer carries the whole cart, so the line is found by the same key and its id adopted.
+ */
+const adoptServerId = (key, cart) => {
+  const row = cart?.cart_item?.find((i) => getItemKey(i) === key)
+  if (!row || !Number.isInteger(Number(row.id))) return
+  updateCart((current) => ({
+    ...current,
+    cart_item: current.cart_item.map((i) => (getItemKey(i) === key ? { ...i, id: row.id } : i)),
+  }))
+}
+
 const serverKeyOf = (item) => ({
   type_stock: item.type_stock ?? 'Market',
   color_band: item.color_band ?? null,
@@ -146,18 +183,25 @@ const restoreLine = (key, previous) => {
   })
 }
 
-// Server delete for a removed line. Mirrors syncLine: fire-and-forget, errors are
-// swallowed. The line is keyed by product_id/offer_id (same as getItemKey), so the
-// backend removes every cart_items row for that product/offer in this cart. This is
-// what keeps the DB cart in sync — before, removal was local-only, leaving phantom
-// rows that inflated the next order's server total ("Order total mismatch").
-const syncRemove = (item) =>
-  http
-    .post('remove_from_cart', {
-      product_id: item.product_id ?? null,
-      offer_id: item.offer_id ?? null,
-    })
-    .catch((err) => console.warn('Cart remove sync failed:', err))
+/*
+ * Server delete for a removed line — fire-and-forget, errors swallowed, as before.
+ *
+ * BY LINE ID since 2026-10-21. compat had no choice but to delete by PRODUCT, which removed every row for
+ * that product in the cart; on v2 a line has its own id and only that line goes. That is what lets two
+ * sizes of one product be two lines that can be removed independently, and it is why the key above could
+ * stay a local composite: the id is carried on the line, and this is the only place that needs it.
+ *
+ * A line the server has never seen (an optimistic row whose sync has not landed, or an old local row from
+ * before this change) has no server id; there is nothing to delete, and the next reconcile settles it.
+ */
+const syncRemove = (item) => {
+  const id = Number(item?.id)
+  if (!Number.isInteger(id) || id <= 0 || id > 1e12) return Promise.resolve()
+
+  return v2CartRemove(id).then((r) => {
+    if (!r.ok) console.warn('Cart remove sync refused:', r.code)
+  })
+}
 
 // Stable references for the SSR render (useSyncExternalStore requires a
 // getServerSnapshot; returning a fresh object each call would loop forever).
@@ -178,6 +222,9 @@ export const cartStore = {
   addItem: ({
     product_id = null,
     offer_id = null,
+    // The chosen variant (Addition B). It is part of the line's identity, not a decoration: two sizes of
+    // one product are two lines, here and on the server.
+    variant_id = null,
     quantity = 1,
     piece_price,
     type_stock = 'Market',
@@ -190,16 +237,16 @@ export const cartStore = {
   }) => {
     let absoluteQty = quantity
     let previous = null
-    let syncAs = { product_id, offer_id, piece_price, type_stock, color_band, color_dial }
+    let syncAs = { product_id, offer_id, variant_id, piece_price, type_stock, color_band, color_dial }
     updateCart((cart) => {
       const now = generateTimestamp()
       const items = [...cart.cart_item]
-      const index = items.findIndex((i) => getItemKey(i) === getItemKey({ product_id, offer_id }))
+      const index = items.findIndex((i) => getItemKey(i) === getItemKey({ product_id, offer_id, variant_id }))
       if (index !== -1) {
         const existing = items[index]
         previous = existing
         // Same server row as the existing line: its colours and stock type, not this call's.
-        syncAs = { product_id, offer_id, piece_price: existing.piece_price, ...serverKeyOf(existing) }
+        syncAs = { product_id, offer_id, variant_id, piece_price: existing.piece_price, ...serverKeyOf(existing) }
         const newQty = existing.quantity + quantity
         absoluteQty = newQty
         items[index] = {
@@ -214,6 +261,7 @@ export const cartStore = {
           cart_id: cart.id,
           product_id,
           offer_id,
+          variant_id,
           quantity,
           piece_price: parseFloat(piece_price).toFixed(2),
           total_price: (quantity * parseFloat(piece_price)).toFixed(2),
@@ -226,11 +274,12 @@ export const cartStore = {
       }
       return { ...cart, cart_item: items }
     })
-    const key = getItemKey({ product_id, offer_id })
+    const key = getItemKey({ product_id, offer_id, variant_id })
     // The server's answer wins: a refused add is rolled back in the tab, and the caller gets
     // { ok: false, message } to tell the shopper why (it used to say "Added to cart!").
     const synced = syncLine(syncAs, absoluteQty).then((result) => {
       if (!result.ok) restoreLine(key, previous)
+      else adoptServerId(key, result.cart)
       return result
     })
     // Return the sync promise so callers can await it for a pending/disabled UI.
@@ -311,12 +360,21 @@ export const cartStore = {
     setExtra({ totals: null, warnings: [] })
   },
 
-  // Validate stock/prices against the live catalog; stores server totals+warnings.
+  /*
+   * Validate stock and prices against the live catalogue; stores the server's totals and warnings.
+   *
+   * THERE IS NO `cart/validate` ON v2, and none is needed (slice 3, 2026-10-21): every read re-checks every
+   * line and says per line what is wrong with it — `problem` is `unavailable`, `variant_required`,
+   * `variant_unavailable` or `insufficient_stock` — and leaves a bad line out of the subtotal. So the
+   * validation IS the read, and `v2Cart`'s adapter turns those per-line problems into the same `warnings`
+   * array this already returned. `blocked` (an offer row v2 cannot price) becomes a warning too, because
+   * the checkout refuses while one exists rather than writing an order without it.
+   */
   validateCart: async () => {
     try {
-      const { data } = await http.post('cart/validate', {})
-      setExtra({ totals: data?.totals ?? null, warnings: data?.warnings ?? [] })
-      return data
+      const cart = await v2CartRead()
+      setExtra({ totals: cart.totals, warnings: cart.warnings })
+      return { valid: cart.warnings.length === 0, warnings: cart.warnings, totals: cart.totals }
     } catch {
       // The check itself could not run (network, server error). `failed` lets the checkout step
       // SAY so and offer a retry (2026-09-28) instead of silently treating it as valid.
@@ -341,46 +399,57 @@ export const cartStore = {
     }
     let server
     try {
-      const { data } = await http.get('me/cart')
-      server = Array.isArray(data?.cart_item) ? data.cart_item : []
+      server = (await v2CartRead()).cart_item
     } catch {
       return { refused, serverLines: 0, failed: true }
     }
-    // Server rows the shopper cannot see (another product, or a second row for the same one
-    // under different colours) are removed, one by one, by id.
-    const wanted = new Map(lines.map((l) => [getItemKey(l), serverKeyOf(l)]))
+    /*
+     * Server rows the shopper cannot see are removed, one by one, by LINE ID.
+     *
+     * Core CAN hold the same product twice, once per bucket, while this tab shows one line for it (see
+     * `getItemKey`). So when two server rows answer to one key, the one kept is the one whose bucket the
+     * shopper's line actually has — not simply the first — and the other is deleted. The old compat code
+     * compared `type_stock`, `color_band` and `color_dial` for the same reason; colours are gone from a v2
+     * line, so the bucket is all that is left to tell them apart.
+     */
+    const wanted = new Map(lines.map((l) => [getItemKey(l), l.type_stock ?? null]))
     const keep = []
     for (const row of server) {
-      const want = wanted.get(getItemKey(row))
-      const sameRow = want && ['type_stock', 'color_band', 'color_dial'].every((k) => (row[k] ?? null) === (want[k] ?? null))
-      if (sameRow && !keep.some((k) => getItemKey(k) === getItemKey(row))) keep.push(row)
-      else {
-        try {
-          await http.delete(`delete_cart/${row.id}`)
-        } catch {
-          // A stray row that will not delete is left; validation still judges it.
-        }
+      const key = getItemKey(row)
+      if (!wanted.has(key)) {
+        await syncRemove(row)
+        continue
+      }
+      const bucket = wanted.get(key)
+      const already = keep.findIndex((k) => getItemKey(k) === key)
+      if (already === -1) {
+        keep.push(row)
+      } else if (bucket !== null && row.type_stock === bucket && keep[already].type_stock !== bucket) {
+        // a better match for the line the shopper has: keep this one instead and drop the other
+        await syncRemove(keep[already])
+        keep[already] = row
+      } else {
+        // a stray row that will not delete is left; the next read still judges it
+        await syncRemove(row)
       }
     }
     writeCart({ ...(currentCart || readCart()), updated_at: generateTimestamp(), cart_item: keep })
     return { refused, serverLines: keep.length, failed: false }
   },
 
-  // Hydrate the local cart from the server (used after login/merge).
+  // Hydrate the local cart from the server (used after login/merge). On v2 since 2026-10-21.
   fetchCart: async () => {
     try {
-      const { data } = await http.get('me/cart')
-      if (data && Array.isArray(data.cart_item)) {
-        writeCart({
-          id: data.id ?? 1,
-          user_id: data.user_id ?? null,
-          created_at: generateTimestamp(),
-          updated_at: generateTimestamp(),
-          cart_item: data.cart_item,
-        })
-      }
-      setExtra({ totals: data?.totals ?? null, warnings: data?.warnings ?? [] })
-      return data
+      const cart = await v2CartRead()
+      writeCart({
+        id: cart.id ?? 1,
+        user_id: cart.user_id ?? null,
+        created_at: generateTimestamp(),
+        updated_at: generateTimestamp(),
+        cart_item: cart.cart_item,
+      })
+      setExtra({ totals: cart.totals, warnings: cart.warnings })
+      return cart
     } catch {
       return null
     }
@@ -391,20 +460,30 @@ export const cartStore = {
     try {
       const guest_token = localStorage.getItem(GUEST_KEY)
       if (!guest_token) return null
-      const { data } = await http.post('cart/merge', { guest_token })
-      const cart = data?.cart
-      if (cart && Array.isArray(cart.cart_item)) {
-        writeCart({
-          id: cart.id ?? 1,
-          user_id: cart.user_id ?? null,
-          created_at: generateTimestamp(),
-          updated_at: generateTimestamp(),
-          cart_item: cart.cart_item,
-        })
-        setExtra({ totals: cart.totals ?? null, warnings: cart.warnings ?? [] })
-      }
+      /*
+       * `cart/merge` STAYS ON COMPAT, deliberately (slice 3, 2026-10-21).
+       *
+       * v2 has no merge endpoint and needs none: the merge folds the guest's rows into the user's inside
+       * the SAME `carts` / `cart_items` tables that v2 reads, so it keeps working whichever API is reading.
+       * Listed, not invented. The same is true of `cart/recover`.
+       *
+       * What DOES change is the hydrate afterwards: compat's merge answers with compat's cart shape, which
+       * carries the client-sent prices this storefront no longer trusts. So the merge is told to do its
+       * work and the cart is then RE-READ from v2, priced by the server — one request more, and the money
+       * on screen is the money core will charge.
+       */
+      await http.post('cart/merge', { guest_token })
       localStorage.removeItem(GUEST_KEY)
-      return data
+      const cart = await v2CartRead()
+      writeCart({
+        id: cart.id ?? 1,
+        user_id: cart.user_id ?? null,
+        created_at: generateTimestamp(),
+        updated_at: generateTimestamp(),
+        cart_item: cart.cart_item,
+      })
+      setExtra({ totals: cart.totals, warnings: cart.warnings })
+      return cart
     } catch {
       return null
     }

@@ -527,18 +527,16 @@ function ProductDetailClient({ param, isOffer = false, productPayload = null, v2
             name: getName(item, 'en'), // analytics only
           })
       } else {
-        const key = `product_${product.id}`
         /*
-         * A CHOSEN VARIANT IS NEVER MERGED INTO AN EXISTING LINE (Addition B, 2026-10-23).
+         * The key now carries the VARIANT (slice 3, 2026-10-21), so this is an ordinary lookup again.
          *
-         * `getItemKey` keys a cart line by product_id alone, with no variant dimension, so a shopper adding
-         * a second size would have found the first line and incremented it - the wrong size, silently.
-         * Core's cart key already carries `variant_id` ("the same shirt in two sizes is two lines", wave
-         * 3.5); the STOREFRONT's key does not, and widening it is a cart change that belongs with the cart
-         * (slice 3), because compat deletes a line by product and would start missing one. Until then, an
-         * add with a variant simply adds, and the merge path is left to products that have none.
+         * Addition B had to refuse to merge whenever a variant was chosen, because the key was the product
+         * alone and a second size would have found the first line and incremented it — the wrong size,
+         * silently. That workaround is gone: two sizes are two keys and two lines, here and on the server,
+         * and re-adding the SAME size correctly finds its line and adds to it.
          */
-        const existing = chosenVariant ? null : cart?.cart_item?.find((i) => getItemKey(i) === key)
+        const key = getItemKey({ product_id: product.id, variant_id: chosenVariant?.id ?? null })
+        const existing = cart?.cart_item?.find((i) => getItemKey(i) === key)
         if (existing) result = await updateQuantity(key, existing.quantity + quantity)
         else
           result = await addItem({
