@@ -688,6 +688,13 @@ return [
 
     // ── the home page's product rails (C-1 stage 4 slice C) ──
     'home_rails' => [
+        // How many products the rail renders today, and the warning when that is below the threshold the
+        // storefront draws at (item 14, 2026-10-23). The count is shown for every rail because it moves with
+        // stock and visibility without anyone editing the rail.
+        'count' => ':count products',
+        'too_few' => ':count products — not shown (minimum :min)',
+        'too_few_title' => 'This rail is not shown on the home page: it has fewer than :min products.',
+        'saved_too_few' => 'Rail saved, but it will not show on the home page: only :count products, and the minimum is :min.',
         // The custom rail (2026-10-02).
         'kind_custom' => 'Picked by hand',
         'picks' => 'The products, in the order they appear',

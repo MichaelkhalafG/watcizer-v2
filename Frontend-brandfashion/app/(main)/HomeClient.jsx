@@ -15,6 +15,10 @@ import CategoryTiles from '@/src/Components/Merchandising/CategoryTiles'
 import { getImageUrl } from '@/src/utils/imageUrl'
 import { buildListingParams } from '@/src/utils/listingParams'
 
+// A home rail is drawn only with at least this many products (item 14, 2026-10-23). Four is one full row of
+// cards at desktop width: below it the band is mostly empty under its own heading. See the rails memo.
+export const MIN_RAIL_PRODUCTS = 4
+
 // The home page's product rails come from core (C-1 stage 4 slice C, `catalog/home`): the rails the
 // dashboard's "Home rails" screen lists, in its order, each with its cards already chosen. The page
 // used to download the whole catalogue and derive offers, featured and one rail per grade here.
@@ -139,7 +143,26 @@ export default function HomeClient({ initialHome = null }) {
           moreid,
         }
       })
-      .filter((rail) => rail.products.length > 0)
+      /*
+       * A rail needs FOUR products to be drawn (item 14, the owner's threshold, 2026-10-23).
+       *
+       * The grid is four cards to a row at desktop width, so a rail below four is a full-width band, with a
+       * heading and its own vertical weight, that cannot fill one row: the live home page had one with a
+       * SINGLE product and about three quarters of the band empty. Two or three is the same defect, smaller,
+       * which is why the line is four rather than two.
+       *
+       * This is the REAL guard, not the dashboard's. A rail's product count moves with stock and visibility
+       * without anyone editing it, so the only count that can be trusted is the one at the moment the page is
+       * drawn — which is this one. The dashboard warns at save (and lists the count) so the mistake is not
+       * made knowingly; it cannot promise the rail stays above the line afterwards.
+       */
+      /*
+       * The minimum applies to rails that render as a ROW OF CARDS. `featured` is exempt because it is not
+       * one: it draws as FeaturedBanner, with its own layout and no heading of the kind this rule is about.
+       * The owner's reason — "a rail that cannot fill one row of cards should not be a full-width band with
+       * a heading" — describes the card rails and not the banner, so the banner keeps its own behaviour.
+       */
+      .filter((rail) => rail.kind === 'featured' || rail.products.length >= MIN_RAIL_PRODUCTS)
   }, [home, cardById, tables, language])
 
   const brands = tables?.brands || []

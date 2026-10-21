@@ -30,6 +30,8 @@ interface Rail {
     target_id: number | null;
     product_ids: number[];
     target_name: string | null;
+    /** How many products this rail renders TODAY — resolved by the storefront's own rule (item 14). */
+    product_count: number;
     title_en: string | null;
     title_ar: string | null;
     position: number;
@@ -50,6 +52,8 @@ interface Props {
     targeted: string[];
     targets: Record<string, Option[]>;
     max_cards: number;
+    /** Below this the storefront does not draw the rail at all. */
+    min_products: number;
 }
 
 interface Draft {
@@ -78,7 +82,7 @@ function kindLabels(t: ReturnType<typeof useT>): Record<string, string> {
     };
 }
 
-export default function HomeRailsIndex({ storefront, storefronts, rails, kinds, targeted, targets, max_cards }: Props) {
+export default function HomeRailsIndex({ storefront, storefronts, rails, kinds, targeted, targets, max_cards, min_products }: Props) {
     const t = useT();
     const errors = (usePage().props.errors ?? {}) as Record<string, string>;
     const [draft, setDraft] = useState<Draft | null>(null);
@@ -380,6 +384,32 @@ export default function HomeRailsIndex({ storefront, storefronts, rails, kinds, 
                                     <div className="flex flex-wrap items-center gap-2">
                                         <span className="font-medium">{KIND[rail.kind] ?? rail.kind}</span>
                                         {rail.target_name !== null ? <span className="truncate">· {rail.target_name}</span> : null}
+                                        {/*
+                                          * The live product count, and a warning when the storefront would not
+                                          * draw this rail at all (item 14, 2026-10-23). It is shown for every
+                                          * rail, not only the short ones, because the number is the point: it
+                                          * moves with stock and visibility without anyone editing the rail, so
+                                          * a rail that was fine last week can be short today. Saving is not
+                                          * blocked — the page's own rule is the guard, and a refusal here would
+                                          * promise something this screen cannot keep.
+                                          */}
+                                        <span
+                                            className={
+                                                rail.product_count < min_products
+                                                    ? 'shrink-0 rounded bg-amber-100 px-1.5 py-0.5 font-medium text-amber-800'
+                                                    : 'shrink-0 text-slate-500'
+                                            }
+                                            title={
+                                                rail.product_count < min_products
+                                                    ? t('home_rails.too_few_title', 'لا يظهر هذا الشريط في الصفحة الرئيسية لأن منتجاته أقل من :min', { min: min_products })
+                                                    : undefined
+                                            }
+                                        >
+                                            ·{' '}
+                                            {rail.product_count < min_products
+                                                ? t('home_rails.too_few', ':count منتج — لا يظهر (الحد :min)', { count: rail.product_count, min: min_products })
+                                                : t('home_rails.count', ':count منتج', { count: rail.product_count })}
+                                        </span>
                                     </div>
                                     <div className="text-xs text-muted-foreground">
                                         {rail.title_ar !== null || rail.title_en !== null
