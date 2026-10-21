@@ -4,7 +4,22 @@ import { useTables } from '../../Hooks/queries/useTables'
 import { useUIStore } from '../../Store/uiStore'
 import './SideBar.css'
 
-const PRICE_MAX = 10000000 // slider ceiling (EGP) when the listing serves no price bounds; maps to "no upper cap" in store
+/*
+ * NO-UPPER-CAP: what the filter state carries when the shopper has not capped the price. A sentinel, not
+ * a price — the listing request omits `price_max` when it sees it.
+ */
+const NO_CAP = 99999999
+/*
+ * The slider's ceiling when the listing serves NO bounds at all.
+ *
+ * v2 serves `facets.price` on every listing, so this is only reached if the facet block is missing
+ * entirely — `facets=0`, or a payload that changed shape. It used to be 10,000,000, which put the whole
+ * catalogue inside the first tenth of a percent of the track and made the control useless. 1,000,000 EGP
+ * is the defensive replacement: far above anything this catalogue has held (the highest price v2 reports
+ * today is 12,500), so it cannot put a real product out of the slider's reach, and small enough that the
+ * track stays usable if the bounds ever go missing.
+ */
+const PRICE_MAX = 1000000
 const STEP = 1000
 // With the result's bounds served (v2 `facets.price`, 2026-10-18) the slider spans 0 … the result's highest price,
 // rounded up to FINE_STEP, and moves in FINE_STEP: a 0 … 10,000,000 track put a 9,400 EGP shelf in its first 0.1 %.
@@ -22,7 +37,19 @@ function FilterSection({ title, items, selectedIds, onToggle, onClear, searchabl
   const [search, setSearch] = useState('')
   const isRTL = useUIStore((s) => s.language) === 'ar'
 
-  if (!items.length) return null
+  /*
+   * A section is drawn only when it can NARROW something (2026-10-22, Michael's rule).
+   *
+   * One option is not a filter: ticking it returns the same products, so it costs a heading, a
+   * row and a decision for nothing. Two is the first count at which a choice exists. The rule is
+   * general, not an exception for a particular field — a section whose second value appears later
+   * starts being drawn on its own, with no code change.
+   *
+   * On Watchizer today this hides Display Type on the whole-catalogue listing (production carries
+   * exactly one display type). On both shops it also hides any section a narrow result has
+   * collapsed to a single option, which is the larger half of what it is for.
+   */
+  if (items.length < 2) return null
 
   const filtered = items.filter((i) => i.name.toLowerCase().includes(search.toLowerCase()))
   const visible = showAll ? filtered : filtered.slice(0, 8)
@@ -85,7 +112,7 @@ function FilterSection({ title, items, selectedIds, onToggle, onClear, searchabl
   )
 }
 
-// `facets`: the option counts from core's `catalog/listing` (C-1 stage 3) — for each section, the
+// `facets`: the option counts from core's listing (C-1 stage 3; v2 since the move) — for each section, the
 // products matching that option AND every OTHER active filter. The sidebar used to count them
 // itself over the whole catalogue, once per option.
 function SideBar({ facets }) {
@@ -112,7 +139,7 @@ function SideBar({ facets }) {
       subTypes: [],
       genders: [],
       offers: false,
-      price: [0, 99999999],
+      price: [0, NO_CAP],
       dialColors: [],
       bandColors: [],
       materials: [],
@@ -156,6 +183,19 @@ function SideBar({ facets }) {
         .filter((x) => x.count > 0)
         .sort((a, b) => b.count - a.count)
 
+    const dialItems = build(tables?.colors, 'dialColors', 'color_name')
+    const bandItems = build(tables?.colors, 'bandColors', 'color_name')
+    // the band section is "Colour" when it is the only colour section in the result - see the note below
+    const colourSections = [
+      { title: isRTL ? 'لون الميناء' : 'Dial Colour', key: 'dialColors', searchable: true, items: dialItems },
+      {
+        title: dialItems.length ? (isRTL ? 'لون السوار' : 'Band Colour') : (isRTL ? 'اللون' : 'Colour'),
+        key: 'bandColors',
+        searchable: true,
+        items: bandItems,
+      },
+    ]
+
     return [
       {
         title: isRTL ? 'العلامة التجارية' : 'Brand',
@@ -174,18 +214,32 @@ function SideBar({ facets }) {
         key: 'genders',
         items: genderItems,
       },
-      {
-        title: isRTL ? 'لون الميناء' : 'Dial Color',
-        key: 'dialColors',
-        searchable: true,
-        items: build(tables?.colors, 'dialColors', 'color_name'),
-      },
-      {
-        title: isRTL ? 'لون السوار' : 'Band Color',
-        key: 'bandColors',
-        searchable: true,
-        items: build(tables?.colors, 'bandColors', 'color_name'),
-      },
+      /*
+       * THE TWO COLOUR SECTIONS, and the one label core cannot decide (2026-10-23).
+       *
+       * `catalog_product_color.role` holds exactly two values, `dial` and `band`, and no third: measured on
+       * production, no `main` role exists. What that means per kind of product is the whole reason there are
+       * two sections here and not one merged one:
+       *
+       *   - a WATCH carries both, and they are different facts about the same watch. A shopper picks a black
+       *     dial and a brown strap independently, which is what compat offered and what this restores.
+       *   - a DRESS or a BAG carries ONE colour, entered once in the dashboard, and it is stored under `band`
+       *     because that is the column the legacy form writes to. It has no dial colour at all.
+       *   - ELECTRONICS carry neither.
+       *
+       * So the sections follow THE RESULT and nothing here knows about categories: on a fashion listing the
+       * dial counts come back empty, `build` returns nothing and the under-two rule does not draw it; on a
+       * watch listing both are counted and both draw. Measured against compat on the same catalogue, value
+       * for value: all products 18 dial / 18 band, watches 18 / 15, fashion 0 / 16, electronics 0 / 0 -
+       * identical to what compat served in every case.
+       *
+       * The ONE thing the counts cannot settle is the NAME of the band section when it is the only colour
+       * section on the page. "Band colour" over a list of dress colours is a label that lies, so when there
+       * are no dial colours in the result the band section is simply "Colour" - decided from the same
+       * emptiness the drawing rule uses, not from a category, and it needs no special case for a family
+       * nobody has added yet.
+       */
+      ...colourSections,
       {
         title: isRTL ? 'الخامة' : 'Material',
         key: 'materials',
@@ -217,17 +271,17 @@ function SideBar({ facets }) {
   const step = bounded ? FINE_STEP : STEP
   const ceiling = bounded ? Math.max(step, Math.ceil(servedMax / step) * step) : PRICE_MAX
   const priceMin = Math.min(filters.price?.[0] ?? 0, ceiling - step)
-  const priceMaxRaw = filters.price?.[1] ?? 99999999
-  const priceMaxView = priceMaxRaw >= 99999999 ? ceiling : Math.min(priceMaxRaw, ceiling)
+  const priceMaxRaw = filters.price?.[1] ?? NO_CAP
+  const priceMaxView = priceMaxRaw >= NO_CAP ? ceiling : Math.min(priceMaxRaw, ceiling)
   const onMinChange = (e) => {
     const v = Math.min(Number(e.target.value), priceMaxView - step)
     setCurrentPage(1)
-    setFilters((prev) => ({ ...prev, price: [Math.max(0, v), prev.price?.[1] ?? 99999999] }))
+    setFilters((prev) => ({ ...prev, price: [Math.max(0, v), prev.price?.[1] ?? NO_CAP] }))
   }
   const onMaxChange = (e) => {
     const v = Math.max(Number(e.target.value), priceMin + step)
     setCurrentPage(1)
-    setFilters((prev) => ({ ...prev, price: [prev.price?.[0] ?? 0, v >= ceiling ? 99999999 : v] }))
+    setFilters((prev) => ({ ...prev, price: [prev.price?.[0] ?? 0, v >= ceiling ? NO_CAP : v] }))
   }
 
   const activeCount =
@@ -243,7 +297,7 @@ function SideBar({ facets }) {
     (filters.genders?.length || 0) +
     (filters.offers ? 1 : 0) +
     (filters.sale ? 1 : 0) + // Brand Fashion's Sale key (round 5); Watchizer never sets it
-    (priceMin > 0 || priceMaxRaw < 99999999 ? 1 : 0)
+    (priceMin > 0 || priceMaxRaw < NO_CAP ? 1 : 0)
 
   return (
     <div className="wz-sidebar" dir={isRTL ? 'rtl' : 'ltr'}>
@@ -312,7 +366,7 @@ function SideBar({ facets }) {
             </span>
             <span>
               {priceMaxView.toLocaleString()}
-              {priceMaxRaw >= 99999999 && !bounded ? '+' : ''} {isRTL ? 'ج.م' : 'EGP'}
+              {priceMaxRaw >= NO_CAP && !bounded ? '+' : ''} {isRTL ? 'ج.م' : 'EGP'}
             </span>
           </div>
         </div>

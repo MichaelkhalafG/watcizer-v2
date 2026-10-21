@@ -70,14 +70,16 @@ const WatchHero = () => {
           {isRTL ? (
             <>
               فنّ <span className="wz-hero-headline-accent">الدقة</span>
-              <br />
+              {/* the <br /> is a VISUAL break and contributes no text: without the space the
+                  accessible name of this h1 reads as one run-on word. */}
+              <br />{' '}
               الخالدة
             </>
           ) : (
             <>
               The Art of
               <span className="wz-hero-headline-accent"> Timeless</span>
-              <br />
+              <br />{' '}
               Precision
             </>
           )}

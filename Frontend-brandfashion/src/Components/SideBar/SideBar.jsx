@@ -22,7 +22,19 @@ function FilterSection({ title, items, selectedIds, onToggle, onClear, searchabl
   const [search, setSearch] = useState('')
   const isRTL = useUIStore((s) => s.language) === 'ar'
 
-  if (!items.length) return null
+  /*
+   * A section is drawn only when it can NARROW something (2026-10-22, Michael's rule).
+   *
+   * One option is not a filter: ticking it returns the same products, so it costs a heading, a
+   * row and a decision for nothing. Two is the first count at which a choice exists. The rule is
+   * general, not an exception for a particular field — a section whose second value appears later
+   * starts being drawn on its own, with no code change.
+   *
+   * On Watchizer today this hides Display Type on the whole-catalogue listing (production carries
+   * exactly one display type). On both shops it also hides any section a narrow result has
+   * collapsed to a single option, which is the larger half of what it is for.
+   */
+  if (items.length < 2) return null
 
   const filtered = items.filter((i) => i.name.toLowerCase().includes(search.toLowerCase()))
   const visible = showAll ? filtered : filtered.slice(0, 8)
@@ -162,7 +174,7 @@ function SaleSection({ filters, setFilters, setCurrentPage, isRTL }) {
   )
 }
 
-// `facets`: the option counts from core's `catalog/listing` (C-1 stage 3) — for each section, the
+// `facets`: the option counts from core's listing (C-1 stage 3; v2 since the move) — for each section, the
 // products matching that option AND every OTHER active filter. The sidebar used to count them
 // itself over the whole catalogue, once per option.
 function SideBar({ facets }) {
@@ -237,6 +249,19 @@ function SideBar({ facets }) {
         .filter((x) => x.count > 0)
         .sort((a, b) => b.count - a.count)
 
+    const dialItems = build(tables?.colors, 'dialColors', 'color_name')
+    const bandItems = build(tables?.colors, 'bandColors', 'color_name')
+    // the band section is "Colour" when it is the only colour section in the result - see the note below
+    const colourSections = [
+      { title: isRTL ? 'لون الميناء' : 'Dial Colour', key: 'dialColors', searchable: true, items: dialItems },
+      {
+        title: dialItems.length ? (isRTL ? 'لون السوار' : 'Band Colour') : (isRTL ? 'اللون' : 'Colour'),
+        key: 'bandColors',
+        searchable: true,
+        items: bandItems,
+      },
+    ]
+
     return [
       {
         title: isRTL ? 'العلامة التجارية' : 'Brand',
@@ -255,18 +280,32 @@ function SideBar({ facets }) {
         key: 'genders',
         items: genderItems,
       },
-      {
-        title: isRTL ? 'لون الميناء' : 'Dial Color',
-        key: 'dialColors',
-        searchable: true,
-        items: build(tables?.colors, 'dialColors', 'color_name'),
-      },
-      {
-        title: isRTL ? 'لون السوار' : 'Band Color',
-        key: 'bandColors',
-        searchable: true,
-        items: build(tables?.colors, 'bandColors', 'color_name'),
-      },
+      /*
+       * THE TWO COLOUR SECTIONS, and the one label core cannot decide (2026-10-23).
+       *
+       * `catalog_product_color.role` holds exactly two values, `dial` and `band`, and no third: measured on
+       * production, no `main` role exists. What that means per kind of product is the whole reason there are
+       * two sections here and not one merged one:
+       *
+       *   - a WATCH carries both, and they are different facts about the same watch. A shopper picks a black
+       *     dial and a brown strap independently, which is what compat offered and what this restores.
+       *   - a DRESS or a BAG carries ONE colour, entered once in the dashboard, and it is stored under `band`
+       *     because that is the column the legacy form writes to. It has no dial colour at all.
+       *   - ELECTRONICS carry neither.
+       *
+       * So the sections follow THE RESULT and nothing here knows about categories: on a fashion listing the
+       * dial counts come back empty, `build` returns nothing and the under-two rule does not draw it; on a
+       * watch listing both are counted and both draw. Measured against compat on the same catalogue, value
+       * for value: all products 18 dial / 18 band, watches 18 / 15, fashion 0 / 16, electronics 0 / 0 -
+       * identical to what compat served in every case.
+       *
+       * The ONE thing the counts cannot settle is the NAME of the band section when it is the only colour
+       * section on the page. "Band colour" over a list of dress colours is a label that lies, so when there
+       * are no dial colours in the result the band section is simply "Colour" - decided from the same
+       * emptiness the drawing rule uses, not from a category, and it needs no special case for a family
+       * nobody has added yet.
+       */
+      ...colourSections,
       {
         title: isRTL ? 'الخامة' : 'Material',
         key: 'materials',

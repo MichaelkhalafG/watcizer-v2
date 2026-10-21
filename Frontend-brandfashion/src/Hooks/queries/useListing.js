@@ -2,44 +2,23 @@ import { useMemo } from 'react'
 import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import publicHttp from '../../Context/publicApi'
 import { listingRequest, listingQueryFn, listingNeedsTables } from '../../lib/listingRequest'
+import { withLegacyCategoryFacets, legacyRow } from '../../lib/v2Listing'
+import { STOREFRONT_CODE } from '../../lib/env'
 import { useTables } from './useTables'
 import { transformProductData } from '../../utils/transformProduct'
-import { categorySlug, subTypeSlug } from '../../utils/slugs'
 
-// The listing on the server (C-1 stage 3, 2026-09-27) — core's `catalog/listing`: one page of
-// products plus every facet count, for the storefront's own filter state. The browser used to
-// download the whole catalogue and do this itself on every filter change.
+// The listing on the server (C-1 stage 3, 2026-09-27; on v2 since the move) — one page of products plus
+// every facet count, for the storefront's own filter state. The browser used to download the whole
+// catalogue and do this itself on every filter change.
 //
 // ONE builder turns the filter state into the request, and the request string IS the query key
 // (src/lib/listingRequest.js — pure, so the server pages prefetch with it too).
-
-// Brand Fashion (DIVERGED 2026-10-17, V2-READ-HALF): the v2 request turns a category id into its slug
-// through the tables, so a filter state with a category waits for them instead of asking for everything.
 //
-// 2026-10-18 (the visual reset, Part 1b): the v2 page's `facets.category` block — the result's products per
-// visible menu node, in tree order — is read into the legacy `categories` (depth 1) and `subTypes` (depth 2)
-// count maps that SideBar and SmartSuggestions look up by legacy id, matched by slug (the storefront tree's slugs
-// equal toSlug(legacy English name) for every node that came from a legacy category or sub type; a node with no
-// legacy twin stays out, as the menu leaves it out). With a category set, only that root's own children are
-// mapped: the v2 block clears the category filter as a whole, so it also counts the other families' sub-types.
-// Done in `select`, so the server-prefetched page and the client's refetch read the same way.
-function withLegacyCategoryFacets(data, tables) {
-  const rows = data?.v2?.facets?.category
-  if (!Array.isArray(rows) || !tables) return data
-  const rootPath = data?.v2?.meta?.category?.path?.split('/')[0] || null
-  const categories = {}
-  const subTypes = {}
-  for (const n of rows) {
-    if (n.depth === 1) {
-      const ct = (tables.categoryTypes || []).find((c) => categorySlug(c) === n.slug)
-      if (ct) categories[String(ct.id)] = n.count
-    } else if (n.depth === 2 && (!rootPath || n.path.startsWith(`${rootPath}/`))) {
-      const st = (tables.subTypes || []).find((s) => subTypeSlug(s) === n.slug)
-      if (st) subTypes[String(st.id)] = n.count
-    }
-  }
-  return { ...data, facets: { ...(data.facets || {}), categories, subTypes } }
-}
+// BOTH storefronts read v2 here (Brand Fashion 2026-10-17, Watchizer 2026-10-22), so this file is a twin
+// again. The v2 request turns a category id into its slug through the tables, which is why a filter state
+// with a category WAITS for them rather than asking for everything; and the v2 page's category facet is
+// folded into the legacy count maps the sidebar reads, in `select`, so the server-prefetched page and the
+// client's refetch read the same way. Both rules live in src/lib/v2Listing.js.
 
 export const useListing = (args, options = {}) => {
   const { data: tables } = useTables()
@@ -107,6 +86,37 @@ export const useRelated = ({ product, cart, kind = 'similar', exclude } = {}, { 
       return data
     },
     enabled: enabled && q !== '',
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
+/**
+ * The PRODUCT PAGE's two rails from v2 — `v2/{storefront}/products/{slug}/related` (2026-10-23).
+ *
+ * ONE request where compat needed two: compat's `catalog/related` is asked once per `kind`, v2 returns
+ * `addons` and `similar` together. The RULES are the same ones, not a reimplementation — v2's
+ * RelatedController runs `CompatRelated` itself, the developer's scoring of 2026-09-29, pinned to this
+ * storefront. `exclude` (what the cart already holds, so it is never suggested) is honoured there too; it was
+ * the first thing checked before moving, because an unhonoured filter would have put cart items back into the
+ * rails without anything failing.
+ *
+ * The CART's own suggestion rail is NOT this hook. It asks compat for a whole basket (`?cart=ids`) and v2 has
+ * no equivalent, so it stays on `useRelated` below until the cart moves (slice 3) — listed, not invented.
+ *
+ * Returns the two rails already in the cards-payload shape `useCardsOf` reads, so the rail components are
+ * unchanged.
+ */
+export const useV2Related = ({ slug, exclude = [] } = {}, { enabled = true } = {}) => {
+  const ex = [...new Set((exclude || []).filter(Boolean))].sort((a, b) => a - b).join(',')
+  return useQuery({
+    queryKey: ['v2related', slug ?? null, ex],
+    queryFn: async () => {
+      // One template literal (not a ternary): the allow-list test reads storefront calls from source.
+      const { data } = await publicHttp.get(`v2/${STOREFRONT_CODE}/products/${encodeURIComponent(slug)}/related?exclude=${ex}`)
+      const payload = (list) => ({ products: (list || []).map(legacyRow), ratings: [], images: [] })
+      return { addons: payload(data?.addons), similar: payload(data?.similar) }
+    },
+    enabled: enabled && !!slug,
     staleTime: 5 * 60 * 1000,
   })
 }

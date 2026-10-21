@@ -4,9 +4,13 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Manage;
 
+use App\Compat\CompatServices;
+use App\Compat\CompatStorefront;
 use App\Domain\Activity\ActivityLog;
 use App\Domain\Content\HomeRails;
+use App\Domain\Inventory\InventoryService;
 use App\Models\Storefront\Storefront;
+use App\Storefront\StorefrontCache;
 use App\Support\Coerce;
 use App\Support\LocalisedName;
 use App\Support\ManageText;
@@ -32,25 +36,94 @@ use InvalidArgumentException;
  * the shared ProductPicker, M2e 2026-10-02), switched off, retitled, given a card count, moved up or
  * down, or deleted.
  *
- * ── What it does NOT need to bust ────────────────────────────────────────────────────────────
+ * ── Every write BUSTS the storefront's cache — it did not, and that was a bug (D2, 2026-10-20) ──
  *
- * `catalog/home` reads this table on every request — the rails are a handful of rows, and the
- * cards come from caches that are already per product — so a save is live in core at once. The
- * storefront's home page is regenerated at most every 5 minutes (Next `revalidate = 300`), and
- * that is the only delay. Flushing the storefront cache would throw away the listing index for
- * nothing, so it is deliberately not done.
+ * This block used to say the opposite, and it was right when it was written: compat's `catalog/home`
+ * reads this table on every request, so a save was live in core at once and flushing would have
+ * thrown away the listing index for nothing. **v2 changed that on 2026-10-17.** `StorefrontHome`
+ * assembles the whole home payload — rails, deals, categories, banner, brands — and caches it under
+ * the storefront's version for `storefront.ttl.count` (600 s). Nothing here bumped that version, so a
+ * reorder reached the database and no further: measured on a scratch copy, the row moved to position
+ * 10 while `GET /api/v2/brandfashion/home` went on serving the old order, twice, outside any browser.
+ * Brand Fashion's home reads v2; Watchizer's still reads compat, which is why compat answered the new
+ * order in the same test.
+ *
+ * So every write flushes, exactly as the banners screen does ({@see \App\Domain\Content\BannerWriter}).
+ * What it costs: the storefront's other cached v2 entries are rebuilt on their next request. What it
+ * buys: the screen's own promise — "a change reaches the shop within 5 minutes" — is true again,
+ * bounded by the storefront's `revalidate = 300` and nothing else.
  *
  * Every write is activity-logged against `storefront_home_rails`. Same scope and ability as the
  * banners screen: it decides what one storefront's home page SHOWS.
  */
 final class HomeRailController
 {
+    /**
+     * The storefront draws a rail only with at least this many products (item 14, the owner's threshold).
+     * It is four because the card grid is four to a row at desktop width. Mirrors MIN_RAIL_PRODUCTS in
+     * HomeClient.jsx, which is the rule that actually decides; this screen only reports against it.
+     */
+    public const MIN_PRODUCTS = 4;
+
+    public function __construct(private readonly StorefrontCache $cache) {}
+
+    /**
+     * How many products each rail would ACTUALLY render right now, keyed by rail id.
+     *
+     * The storefront's own resolver is used ({@see CompatHome::rails()}), not a second copy of the rule, so
+     * this screen cannot disagree with the page. A rail the resolver drops entirely is 0.
+     *
+     * @return array<int, int>
+     */
+    private static function liveCounts(int $storefrontId): array
+    {
+        $compat = new CompatServices(app(StorefrontCache::class), app(InventoryService::class), CompatStorefront::pinned($storefrontId));
+        $out = [];
+        foreach ($compat->home->rails() as $rail) {
+            $out[$rail['id']] = count($rail['products']);
+        }
+
+        return $out;
+    }
+
+    /**
+     * The flash message after a save: `$ok` as given, or a WARNING when the rail that was just saved
+     * would not be drawn (item 14, 2026-10-23).
+     *
+     * It warns and still saves. Refusing would block an operator building a rail they are about to fill, and
+     * it would still not keep the promise — a rail that passes today falls below the line on its own when
+     * stock moves. The storefront's render rule is the guard; this is so the mistake is not made unknowingly.
+     */
+    private static function savedMessage(int $storefrontId, int $railId, string $ok): string
+    {
+        $count = self::liveCounts($storefrontId)[$railId] ?? 0;
+        if ($count >= self::MIN_PRODUCTS) {
+            return $ok;
+        }
+
+        return ManageText::t(
+            'home_rails.saved_too_few',
+            'تم حفظ الشريط، لكنه لن يظهر في الصفحة الرئيسية: :count منتج فقط، والحد الأدنى :min.',
+            ['count' => $count, 'min' => self::MIN_PRODUCTS],
+        );
+    }
+
     public function index(Storefront $storefront): Response
     {
         $targets = self::targetOptions($storefront->id);
+        $counts = self::liveCounts($storefront->id);
         $rails = [];
         foreach (HomeRails::all($storefront->id) as $rail) {
             $rails[] = $rail + [
+                /*
+                 * What this rail renders TODAY, and whether that is enough to be drawn (item 14, 2026-10-23).
+                 *
+                 * The storefront hides a rail under MIN_PRODUCTS because a band that cannot fill one row of
+                 * cards is mostly empty under its own heading. The count moves with stock and visibility
+                 * without anyone editing the rail, so this screen does not PREVENT a short rail — it shows
+                 * the truth every time the list is looked at, and the render rule stays the real guard.
+                 */
+                'product_count' => $counts[$rail['id']] ?? 0,
                 // What the rail shows, in words, so the list reads without opening a row.
                 'target_name' => match (true) {
                     $rail['kind'] === HomeRails::CUSTOM => ManageText::t('home_rails.picked_count', ':count منتجات مختارة', ['count' => count($rail['product_ids'])]),
@@ -68,6 +141,7 @@ final class HomeRailController
             'targeted' => HomeRails::TARGETED,
             'targets' => $targets,
             'max_cards' => HomeRails::MAX_CARDS,
+            'min_products' => self::MIN_PRODUCTS,
         ]);
     }
 
@@ -77,8 +151,9 @@ final class HomeRailController
 
         $after = self::logFields($storefront->id, $id);
         ActivityLog::record('storefront_home_rails', $id, ActivityLog::CREATED, [], $after, label: self::labelOf($after), storefrontId: $storefront->id);
+        $this->cache->flush((int) $storefront->id);
 
-        return back()->with('status', ManageText::t('home_rails.saved', 'تم حفظ الشريط.'));
+        return back()->with('status', self::savedMessage((int) $storefront->id, $id, ManageText::t('home_rails.saved', 'تم حفظ الشريط.')));
     }
 
     public function update(Request $request, Storefront $storefront, int $rail): RedirectResponse
@@ -94,8 +169,9 @@ final class HomeRailController
 
         $after = self::logFields($storefront->id, $rail);
         ActivityLog::record('storefront_home_rails', $rail, ActivityLog::UPDATED, $before, $after, label: self::labelOf($after), storefrontId: $storefront->id);
+        $this->cache->flush((int) $storefront->id);
 
-        return back()->with('status', ManageText::t('home_rails.updated', 'تم تحديث الشريط.'));
+        return back()->with('status', self::savedMessage((int) $storefront->id, $rail, ManageText::t('home_rails.updated', 'تم تحديث الشريط.')));
     }
 
     public function destroy(Storefront $storefront, int $rail): RedirectResponse
@@ -106,6 +182,7 @@ final class HomeRailController
         HomeRails::delete($storefront->id, $rail);
 
         ActivityLog::record('storefront_home_rails', $rail, ActivityLog::DELETED, $before, [], label: self::labelOf($before), storefrontId: $storefront->id);
+        $this->cache->flush((int) $storefront->id);
 
         return back()->with('status', ManageText::t('home_rails.deleted', 'تم حذف الشريط.'));
     }
@@ -134,6 +211,7 @@ final class HomeRailController
                 ActivityLog::record('storefront_home_rails', $id, ActivityLog::UPDATED, $old, $new, label: self::labelOf($new), storefrontId: $storefront->id);
             }
         }
+        $this->cache->flush((int) $storefront->id);
 
         return back()->with('status', ManageText::t('home_rails.reordered', 'تم حفظ الترتيب.'));
     }

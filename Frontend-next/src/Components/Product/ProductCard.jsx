@@ -95,7 +95,7 @@ const ProductCard = ({ product, showBrand = true, showRating = true }) => {
     : marketStock > 0
       ? {
           tone: 'market',
-          label: isRTL ? `ماركت · ${marketStock} متاح` : `Market · ${marketStock} available`,
+          label: isRTL ? `ماركت · ${marketStock} متاح` : `Market · ${marketStock} in stock`,
         }
       : { tone: 'out', label: isRTL ? 'غير متوفر' : 'Out of stock' }
 

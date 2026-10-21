@@ -7,12 +7,17 @@ import '@/src/Components/Home/home.css'
 import ProductSlider from '@/src/Components/Product/ProductSlider'
 import OfferSlider from '@/src/Components/Product/OfferSlider'
 import FeaturedBanner from '@/src/Components/Home/FeaturedBanner'
+import BannerHero from '@/src/Components/Home/BannerHero'
 import { useHome, useCardsOf } from '@/src/Hooks/queries/useListing'
 import { useTables } from '@/src/Hooks/queries/useTables'
 import { useUIStore } from '@/src/Store/uiStore'
 import CategoryTiles from '@/src/Components/Merchandising/CategoryTiles'
 import { getImageUrl } from '@/src/utils/imageUrl'
 import { buildListingParams } from '@/src/utils/listingParams'
+
+// A home rail is drawn only with at least this many products (item 14, 2026-10-23). Four is one full row of
+// cards at desktop width: below it the band is mostly empty under its own heading. See the rails memo.
+export const MIN_RAIL_PRODUCTS = 4
 
 // The home page's product rails come from core (C-1 stage 4 slice C, `catalog/home`): the rails the
 // dashboard's "Home rails" screen lists, in its order, each with its cards already chosen. The page
@@ -77,6 +82,19 @@ export default function HomeClient({ initialHome = null }) {
   const loading = !home && isFetching
   const homeError = !home && isError
 
+  /*
+   * WHICH HERO THIS SHOP DRAWS (the developer's addendum, 2026-10-20).
+   *
+   * `home.hero` is the storefront's own setting — `three_d` or `banner` — flipped on the dashboard's
+   * Banners screen, not decided by which app is deployed. ANYTHING ELSE, INCLUDING A MISSING VALUE,
+   * IS THE 3D HERO: Watchizer is live, this page is its home page, and a payload that arrives without
+   * the key (an old cached answer, a core deployed without its migration) must render exactly what it
+   * renders today. A shop set to `banner` with no banners falls back to the 3D hero too — an empty
+   * hero slot is worse than the one that was already there.
+   */
+  const banners = home?.banners?.length ? home.banners : home?.banner ? [home.banner] : []
+  const bannerHero = home?.hero === 'banner' && banners.length > 0
+
   // Each rail with its cards, its title and where "View all" goes. A rail whose target is gone from
   // the tables still shows, under its custom title if it has one.
   const rails = useMemo(() => {
@@ -93,8 +111,13 @@ export default function HomeClient({ initialHome = null }) {
           const grade = tables?.grades?.find((g) => g.id === rail.target)
           const name = grade ? nameIn(grade, 'grade_name', language) : ''
           title = { en: name, ar: name }
-          const desc = grade ? nameIn(grade, 'description', language) : ''
-          description = { en: desc, ar: desc }
+          /*
+           * The grade's `description` is NOT passed as the rail's eyebrow any more (item 15a).
+           * It was rendered as a tracked-out line above every heading — "HIGH-QUALITY WATCHES WITH
+           * EXCELLENT CRAFTSMANSHIP", "PREMIUM LUXURY TIMEPIECES FROM ICONIC MAISONS" — eight of
+           * them down one page, saying nearly the same thing. The column is untouched and still
+           * editable on the dashboard; it is simply not this page's subheading.
+           */
           moreid = rail.target
         } else if (rail.kind === 'brand') {
           const brand = tables?.brands?.find((b) => b.id === rail.target)
@@ -120,7 +143,26 @@ export default function HomeClient({ initialHome = null }) {
           moreid,
         }
       })
-      .filter((rail) => rail.products.length > 0)
+      /*
+       * A rail needs FOUR products to be drawn (item 14, the owner's threshold, 2026-10-23).
+       *
+       * The grid is four cards to a row at desktop width, so a rail below four is a full-width band, with a
+       * heading and its own vertical weight, that cannot fill one row: the live home page had one with a
+       * SINGLE product and about three quarters of the band empty. Two or three is the same defect, smaller,
+       * which is why the line is four rather than two.
+       *
+       * This is the REAL guard, not the dashboard's. A rail's product count moves with stock and visibility
+       * without anyone editing it, so the only count that can be trusted is the one at the moment the page is
+       * drawn — which is this one. The dashboard warns at save (and lists the count) so the mistake is not
+       * made knowingly; it cannot promise the rail stays above the line afterwards.
+       */
+      /*
+       * The minimum applies to rails that render as a ROW OF CARDS. `featured` is exempt because it is not
+       * one: it draws as FeaturedBanner, with its own layout and no heading of the kind this rule is about.
+       * The owner's reason — "a rail that cannot fill one row of cards should not be a full-width band with
+       * a heading" — describes the card rails and not the banner, so the banner keeps its own behaviour.
+       */
+      .filter((rail) => rail.kind === 'featured' || rail.products.length >= MIN_RAIL_PRODUCTS)
   }, [home, cardById, tables, language])
 
   const brands = tables?.brands || []
@@ -170,13 +212,16 @@ export default function HomeClient({ initialHome = null }) {
       </div>
     ) : null
 
-  const renderRail = (rail) => {
+  // `repeat` is every rail after the first: the opening rail keeps the page's full heading weight
+  // and the ones below it step down, which is what gives the column a top-to-bottom taper (item 16).
+  const renderRail = (rail, repeat = false) => {
+    const section = `wz-home-section${repeat ? ' wz-home-section--repeat' : ''}`
     if (rail.kind === 'featured') {
       return <FeaturedBanner key={rail.id} products={rail.products} />
     }
     if (rail.kind === 'offers') {
       return (
-        <section className="wz-home-section" key={rail.id}>
+        <section className={section} key={rail.id}>
           <div className="wz-container">
             <OfferSlider text={{ title: rail.text.title, description: rail.text.title }} products={rail.products} />
           </div>
@@ -184,7 +229,7 @@ export default function HomeClient({ initialHome = null }) {
       )
     }
     return (
-      <section className="wz-home-section" key={rail.id}>
+      <section className={section} key={rail.id}>
         <div className="wz-container">
           <ProductSlider text={rail.text} gradeproducts={rail.products} moreid={rail.moreid} href={rail.href} viewAll={rail.kind !== 'custom'} />
         </div>
@@ -194,7 +239,15 @@ export default function HomeClient({ initialHome = null }) {
 
   return (
     <div className="wz-home" dir={isRTL ? 'rtl' : 'ltr'}>
-      <WatchHero />
+      {bannerHero ? (
+        <section className="wz-home-section">
+          <div className="wz-container">
+            <BannerHero banners={banners} lang={language} dir={isRTL ? 'rtl' : 'ltr'} />
+          </div>
+        </section>
+      ) : (
+        <WatchHero />
+      )}
 
       <section className="wz-home-section">
         <div className="wz-container">
@@ -231,7 +284,7 @@ export default function HomeClient({ initialHome = null }) {
 
       {rails.length > 0 && renderRail(rails[0])}
       {brandStrip}
-      {rails.slice(1).map(renderRail)}
+      {rails.slice(1).map((rail) => renderRail(rail, true))}
     </div>
   )
 }

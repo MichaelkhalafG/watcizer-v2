@@ -54,7 +54,7 @@ const OfferSlider = ({ products = [], text = {}, loading = false }) => {
           className="wz-section-action wz-action-red"
           onClick={() => router.push('/listing?offers=true')}
         >
-          {language === 'ar' ? 'كل العروض ←' : 'All Offers →'}
+          {language === 'ar' ? 'عرض الكل ←' : 'View all →'}
         </button>
       </div>
 

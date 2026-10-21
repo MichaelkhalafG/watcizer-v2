@@ -1,0 +1,117 @@
+/* ── The home banner hero (D1 + F1 and the addendum, 2026-10-20) ─────────────────────────────
+   ONE stylesheet for BOTH storefronts, beside the one component that uses it, so the hero behaves
+   and measures the same in each shop and a fix lands in both at once.
+
+   THE BOX HAS A FIXED ASPECT RATIO PER DEVICE, so it occupies its space before an image arrives and
+   the page never jumps. The two ratios are the hero box as it actually renders, measured in the
+   browser on 2026-10-20: 1377 × 480 at a 1440-wide viewport and 358 × 160 at 390 — where 160 is the
+   phone cap this file has carried from the start. Because the stylesheet is shared, the RATIO is the
+   same in both shops; what differs is the box's pixel WIDTH, which follows each app's own container.
+   The crop tool in the dashboard is locked to these ratios and names each storefront's own measured
+   pixel size, so what the operator crops is what that shop's shopper sees. */
+.banner-hero--carousel,
+.banner-hero--one {
+  position: relative;
+  display: block;
+  border-radius: 8px;
+  overflow: hidden;
+  aspect-ratio: 358 / 160;
+}
+@media (min-width: 1024px) {
+  .banner-hero--carousel, .banner-hero--one { aspect-ratio: 1377 / 480; }
+}
+/* one banner draws the same picture a slide does */
+.banner-hero--one img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: center; }
+.banner-hero--one picture { display: block; height: 100%; }
+
+.banner-hero__track {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 100%;
+  height: 100%;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  overscroll-behavior-x: contain;
+}
+.banner-hero__track::-webkit-scrollbar { display: none; }
+
+.banner-hero__slide {
+  scroll-snap-align: start;
+  display: block;
+  height: 100%;
+}
+.banner-hero__slide img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: center; }
+.banner-hero__slide picture { display: block; height: 100%; }
+
+/* Which device shows which banner. `display: none` takes the slide out of the scroll flow as well
+   as out of sight, so the arrows, the snap points and the dot count all see only this device's. */
+@media (max-width: 1023px) { .banner-hero__slide--desktop { display: none; } }
+@media (min-width: 1024px) { .banner-hero__slide--mobile { display: none; } }
+
+/* ── the mouse drag's cosmetic half (D3) ─────────────────────────────────────────────────────
+   `useRailScroll` adds `is-dragging` to the track for the length of one mouse drag. These rules are
+   HERE rather than in a rail stylesheet because the hero is shared and only one of the two apps has
+   a rail stylesheet to borrow them from. Only a fine pointer is told it can grab: a touch device
+   scrolls natively and has no cursor to change. */
+@media (hover: hover) and (pointer: fine) {
+  .banner-hero__track { cursor: grab; }
+  .banner-hero__track.is-dragging { cursor: grabbing; }
+}
+.banner-hero__track.is-dragging { user-select: none; scroll-behavior: auto; }
+/* Chrome's own link/image drag would otherwise eat the pointer events the drag needs. */
+.banner-hero__track img, .banner-hero__track a { -webkit-user-drag: none; user-drag: none; }
+
+/* ── controls ───────────────────────────────────────────────────────────────────────────── */
+.banner-hero__arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.86);
+  color: var(--wz-ink);
+  cursor: pointer;
+  transition: background 0.15s ease, opacity 0.15s ease;
+}
+.banner-hero__arrow--prev { inset-inline-start: 8px; }
+.banner-hero__arrow--next { inset-inline-end: 8px; }
+.banner-hero__arrow:disabled { opacity: 0.35; cursor: default; }
+@media (hover: hover) { .banner-hero__arrow:not(:disabled):hover { background: #fff; } }
+.banner-hero__arrow:focus-visible { outline: 2px solid var(--wz-ink); outline-offset: 2px; }
+
+.banner-hero__dots {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 8px;
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+}
+.banner-hero__dot {
+  width: 8px;
+  height: 8px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.55);
+  cursor: pointer;
+  position: relative;
+}
+/* a 44 px target around an 8 px dot, without moving anything */
+.banner-hero__dot::after { content: ''; position: absolute; inset: -18px -8px; }
+.banner-hero__dot.is-on { background: #fff; width: 18px; }
+.banner-hero__dot:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+
+@media (max-width: 599px) {
+  .banner-hero__arrow { width: 32px; height: 32px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .banner-hero__track { scroll-behavior: auto; }
+  .banner-hero__arrow, .banner-hero__dot { transition: none; }
+}

@@ -33,7 +33,8 @@ async function facetContext(facet) {
   // Keyed exactly as ListingClient will key it: from the seed string it parses, not from `filters`.
   const seedParams = buildListingSeed(tables, filters)
   const seed = parseListingParams(new URLSearchParams(seedParams), tables)
-  const qs = listingRequest({ filters: seed.filters, q: seed.q, sort: seed.sort, page: seed.page, lang: 'en' })
+  // the v2 request builder takes the tables: a category id becomes the slug v2 addresses it by (2026-10-22)
+  const qs = listingRequest({ filters: seed.filters, q: seed.q, sort: seed.sort, page: seed.page, lang: 'en' }, tables)
   let listing = null
   try {
     listing = await getServerListing(qs)

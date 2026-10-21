@@ -1,5 +1,8 @@
 import { notFound, permanentRedirect } from 'next/navigation'
 import { getServerProductCard, fetchProductByName, localizedProduct, getServerTables, getServerNav } from '@/src/lib/serverCatalog'
+import { getServerV2Product } from '@/src/lib/serverV2'
+import { fromV2Product } from '@/src/lib/v2Product'
+import { transformProductData } from '@/src/utils/transformProduct'
 import { requestLang, localePath } from '@/src/lib/requestLang'
 import { buildProductSeo } from '@/src/lib/detailSeo'
 import { toSlug, brandSlug } from '@/src/utils/slugs'
@@ -17,8 +20,46 @@ export const revalidate = 300
 // null (→ 404) ONLY when core answered "no such product" to BOTH lookups (2026-09-30). When core could
 // not answer (a 429 from its rate limit, a 5xx, a timeout) the CoreUnavailableError propagates to the
 // error boundary: a 5xx, so Google comes back later instead of dropping a real product from its index.
+/**
+ * The v2 read (2026-10-23): ONE product from `v2/{storefront}/products/{slug}`, adapted to the cards shape
+ * every consumer here already reads. null when v2 does not know the slug — which is NOT the same as "no such
+ * product", and is why the compat ladder below still exists.
+ */
+async function resolveFromV2(param) {
+  const page = await getServerV2Product(param)
+  if (!page) return null
+  const adapted = fromV2Product(page)
+  if (!adapted) return null
+  let tables = {}
+  try {
+    tables = await getServerTables()
+  } catch {
+    // the card still renders from its own row, as on the compat path
+  }
+  const [product] = transformProductData(adapted.payload.products, tables, [], [], 'en')
+  if (!product) return null
+  // `specs` being present is also what tells ProductDetailClient the full record is already here, so the
+  // browser makes no second call for it.
+  return { product, ratings: [], tables, payload: adapted.payload, specs: adapted.specs, related: adapted.related, v2Product: page.product }
+}
+
 async function resolveProduct(param) {
   let failure = null
+  /*
+   * v2 FIRST, compat as the fallback ladder (2026-10-23, slice 1's second half).
+   *
+   * Measured before the move: v2's `products/{slug}` is SLUG-ONLY — a numeric id 404s, and there is no
+   * by-name endpoint at all — while compat resolves both. Watchizer is live and indexed, with numeric-id and
+   * raw-title URLs in Google, so v2 answering "no" cannot be allowed to mean 404. The ladder below is the one
+   * that already existed; v2 is simply a faster, richer rung above it.
+   */
+  try {
+    const fromV2 = await resolveFromV2(param)
+    if (fromV2) return fromV2
+  } catch (err) {
+    // v2 could not answer: compat may still know this product, and only its "no" can prove a 404
+    failure = err
+  }
   try {
     // ONE product from core (`catalog/product`, the same slug rule) — C-1 stage 4. The page used to
     // load the whole catalogue here and search it.
@@ -26,8 +67,8 @@ async function resolveProduct(param) {
     if (card) return { product: card.product, ratings: card.ratings, tables: card.tables, payload: card.payload }
   } catch (err) {
     // core could not answer the slug lookup: the by-name endpoint may still find it, but its "no"
-    // can no longer prove the product does not exist
-    failure = err
+    // can no longer prove the product does not exist. `failure` may already hold v2's.
+    failure = failure || err
   }
   let byName
   try {
@@ -148,7 +189,13 @@ export default async function ProductPage({ params }) {
         dangerouslySetInnerHTML={{ __html: safeJsonLd(breadcrumbLd) }}
       />
       {/* No catalogue here since C-1 stage 4: the page carries its ONE product (core's card). */}
-      <ProductDetailClient param={slug} isOffer={false} productPayload={payload} />
+      <ProductDetailClient
+        param={slug}
+        isOffer={false}
+        productPayload={payload}
+        v2Specs={resolved.specs ?? null}
+        v2Product={resolved.v2Product ?? null}
+      />
     </>
   )
 }

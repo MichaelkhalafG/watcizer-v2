@@ -2,11 +2,14 @@
 
 namespace App\Http\Controllers\Manage;
 
+use App\Domain\Access\Roles;
+use App\Domain\Analytics\DashboardMetrics;
 use App\Domain\Inventory\InventoryService;
 use App\Domain\Orders\NewOrders;
 use App\Models\Storefront\Storefront;
 use App\Models\User;
-use App\Support\ManageText;
+use App\Support\Coerce;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -16,54 +19,183 @@ use Inertia\Response;
 /**
  * GET /manage — the dashboard home.
  *
- * Deliberately thin and honest. Every number below is one real query against the clean tables, and
- * there is nothing here that cannot be defended:
+ * ── What this page is for, and what it refuses to be ────────────────────────────────────────
  *
- *  • **No charts.** The reference template ships ApexCharts; AGENTS §5 forbids adopting its
- *    libraries, and a sparkline of invented history would be worse than no sparkline.
- *  • **No invented KPIs.** "Revenue this month" and "conversion rate" are computable but not from
- *    data this application owns yet (orders are the legacy app's until the switch, and revenue
- *    needs a decision about cancelled and unpaid orders). They arrive with the orders screen in 4C.
- *  • **Low stock means what the column says.** `catalog_products.low_stock_threshold` exists and
- *    is filled per product; the count is products at or below it, not a guess at what "low" means.
+ * It is the screen somebody opens in the morning to decide what to do first. So the test every number
+ * here had to pass is: **what would you DO after reading this?** A number nobody acts on was removed,
+ * however true it was. The page answers five questions, in the order they get asked:
  *
- * The order counts read the SHARED `orders` table, which both applications write until the switch,
- * so "today" is honest for both — a Blade-placed order shows up here too.
+ *   1. Is today normal?            → today against the same weekday, averaged over the last four weeks
+ *   2. How is the month going?     → 30 days of orders and money, as a chart, with the cancellation rate
+ *   3. What is waiting for me?     → open orders by status, and the age of the oldest one
+ *   4. What should I buy more of?  → what sold, and what sold and is now OUT OF STOCK
+ *   5. What is wrong with the shop? → the per-storefront catalogue gaps, which were already here
+ *
+ * ── What was dropped, and why ───────────────────────────────────────────────────────────────
+ *
+ *   • `products` and `active_products` (catalogue-wide totals) — the per-storefront table below answers
+ *     the question those two were standing in for, and answers it per shop, which is the useful form.
+ *   • `orders_total` (all-time) — a lifetime counter nobody acts on.
+ *   • `variants` and `threshold_products` — plumbing counts; "how many variant rows exist" is not a
+ *     decision anybody makes on this screen.
+ *   • the express/market unit sums — a total with no decision attached. Out-of-stock and low-stock, which
+ *     DO have one, are kept.
+ *
+ * `orders_unseen` is kept exactly as it was, from `NewOrders::countFor()`, because the sidebar badge reads
+ * the same source: two numbers that disagreed would be worse than either alone. It follows the operator's
+ * GRANT and not this page's storefront switch, for the same reason — it must agree with the badge.
+ *
+ * ── The two shops ───────────────────────────────────────────────────────────────────────────
+ *
+ * A switch, defaulting to ALL the shops the operator may see. The catalogue is shared, so catalogue numbers
+ * are catalogue-wide whatever the switch says and are labelled that way; the MONEY is not shared, so every
+ * sales figure follows the switch. An operator with a scoped grant never sees another shop's money and is
+ * offered no option that would show it — the switch is built from their own scope, not from the storefront
+ * table. Combined was chosen as the default because the owner runs both shops and asks "how is the business
+ * doing" before "how is Brand Fashion doing"; one click narrows it.
+ *
+ * ── Cost ────────────────────────────────────────────────────────────────────────────────────
+ *
+ * Budget: 20 queries and 250 ms. See {@see DashboardMetrics} for what each query is bounded by and what it
+ * measured at 250,000 orders. Nothing on this page is cached.
  */
 final class HomeController
 {
-    public function __construct(private readonly NewOrders $newOrders) {}
+    public function __construct(
+        private readonly NewOrders $newOrders,
+        private readonly DashboardMetrics $metrics,
+        private readonly Roles $roles,
+    ) {}
 
     public function __invoke(Request $request): Response
     {
+        $user = $request->user();
+        $grant = $user instanceof User ? $this->roles->storefrontScope($user) : [];
+        // ONE read of `storefronts`: the switch's options and the catalogue table below are both built from
+        // it, and the page's query budget is tight enough that a second identical SELECT is worth removing.
+        $shops = Storefront::query()->orderBy('id')->get(['id', 'code', 'name', 'is_active', 'currency']);
+        $options = $this->options($shops, $grant);
+        $selected = $this->selected($request, $options);
+        $scope = $selected === null ? $grant : [$selected];
+        // one aggregation over the window answers both "what sold" and "what sold and has run out"
+        $sold = $this->metrics->sold($scope);
+
         return Inertia::render('Manage/Home', [
-            'stats' => $this->stats($request->user()),
+            'scope' => [
+                'selected' => $selected,
+                'options' => $options,
+                // The currency every money figure on the page is in. Both shops are EGP today; if a future
+                // storefront is not, the page says so rather than adding two currencies into one total.
+                'currency' => $this->currency($options, $selected),
+                'mixed_currency' => $this->mixedCurrency($options, $selected),
+                'window_days' => DashboardMetrics::WINDOW_DAYS,
+            ],
+            'sales' => $this->metrics->sales($scope),
+            'queue' => $this->metrics->queue($scope),
+            'payments' => $this->metrics->payments($scope),
+            'top_products' => $sold['top'],
+            'restock' => $sold['restock'],
+            'unseen' => $this->newOrders->countFor($user),
             'inventory' => $this->inventory(),
-            'storefronts' => $this->storefronts(),
+            'storefronts' => $this->storefronts($shops),
         ]);
     }
 
     /**
-     * The catalogue AS EACH SITE SEES IT — the task-1 finding on this screen.
+     * The shops this operator may look at. An unscoped grant gets every active storefront; a scoped one gets
+     * exactly its own, and nothing else is offered — the switch cannot be used to widen a grant.
      *
-     * The four numbers above are catalogue-wide, and that is correct: the catalogue is SHARED
-     * (AGENTS §2.4), so "how many products are there" has one answer. But it is not the question
-     * the team asks in the morning. They ask "how many are live on Brand Fashion, and what is
-     * stopping the rest", and this screen used to answer neither — it showed one set of totals and
-     * no storefront at all, which is what made a second storefront invisible in the dashboard.
+     * @param  Collection<int, Storefront>  $shops
+     * @param  list<int>|null  $grant
+     * @return list<array{id: int, code: string, name: string, currency: string}>
+     */
+    private function options(Collection $shops, ?array $grant): array
+    {
+        $out = [];
+        foreach ($shops as $storefront) {
+            if ($grant !== null && ! in_array((int) $storefront->id, $grant, true)) {
+                continue;
+            }
+            $out[] = [
+                'id' => (int) $storefront->id,
+                'code' => (string) $storefront->code,
+                'name' => (string) $storefront->name,
+                'currency' => (string) $storefront->currency,
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Which shop the switch is on: null for "all of them". A storefront the operator may not see is read as
+     * null rather than refused — a bookmarked URL from a wider grant should show what this person is allowed
+     * to see, not a 403 on the home page.
      *
-     * Every number is one indexed query per storefront. `not_added` is separated from `hidden` on
-     * purpose: a product with no `storefront_product` row was never offered to that site, while a
-     * hidden one was and someone decided against it. They lead to different actions.
+     * @param  list<array{id: int, code: string, name: string, currency: string}>  $options
+     */
+    private function selected(Request $request, array $options): ?int
+    {
+        $asked = Coerce::nint($request->query('storefront'));
+        if ($asked === null) {
+            return null;
+        }
+        foreach ($options as $option) {
+            if ($option['id'] === $asked) {
+                return $asked;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  list<array{id: int, code: string, name: string, currency: string}>  $options
+     */
+    private function currency(array $options, ?int $selected): string
+    {
+        foreach ($options as $option) {
+            if ($selected !== null && $option['id'] === $selected) {
+                return $option['currency'];
+            }
+        }
+
+        return $options[0]['currency'] ?? 'EGP';
+    }
+
+    /**
+     * True when "all shops" would add up money in more than one currency — in which case the page prints the
+     * totals per shop instead of inventing a converted number.
      *
+     * @param  list<array{id: int, code: string, name: string, currency: string}>  $options
+     */
+    private function mixedCurrency(array $options, ?int $selected): bool
+    {
+        if ($selected !== null || count($options) < 2) {
+            return false;
+        }
+
+        return count(array_unique(array_column($options, 'currency'))) > 1;
+    }
+
+    /**
+     * The catalogue AS EACH SITE SEES IT — unchanged from the first version of this screen.
+     *
+     * The catalogue is SHARED (AGENTS §2.4), so "how many products are there" has one answer and is not the
+     * question the team asks in the morning. They ask "how many are live on Brand Fashion, and what is
+     * stopping the rest". Every number is one indexed query per storefront. `not_added` is separated from
+     * `hidden` on purpose: a product with no `storefront_product` row was never offered to that site, while a
+     * hidden one was and somebody decided against it. They lead to different actions.
+     *
+     * @param  Collection<int, Storefront>  $shops
      * @return list<array{id: int, code: string, name: string, is_active: bool, visible: int, hidden: int, not_added: int, unplaced: int, no_arabic: int}>
      */
-    private function storefronts(): array
+    private function storefronts(Collection $shops): array
     {
         $live = DB::table('catalog_products')->whereNull('deleted_at')->count();
 
         $out = [];
-        foreach (Storefront::query()->orderBy('id')->get(['id', 'code', 'name', 'is_active']) as $storefront) {
+        foreach ($shops as $storefront) {
             $id = (int) $storefront->id;
             $rows = DB::table('storefront_product as sp')
                 ->join('catalog_products as p', 'p.id', '=', 'sp.product_id')
@@ -110,101 +242,19 @@ final class HomeController
     }
 
     /**
-     * The headline numbers.
+     * Stock health — the two numbers that lead to an action, kept from the first version.
      *
-     * @param  User|null  $user  the operator, for the per-person unseen count
-     * @return list<array{key: string, label: string, value: int, hint: string}>
-     */
-    private function stats(?User $user): array
-    {
-        $today = now()->startOfDay();
-
-        /*
-         * `key` is the tile's identity and stays English; `label` and `hint` are the two strings a
-         * person reads, and the home screen renders both straight out of this payload — nothing in
-         * `Home.tsx` can translate them, which is why they come off the seam here.
-         */
-        return [
-            [
-                'key' => 'products',
-                'label' => ManageText::t('products.title', 'المنتجات'),
-                'value' => DB::table('catalog_products')->whereNull('deleted_at')->count(),
-                'hint' => ManageText::t('home.stat_products_hint', 'في الكتالوج النظيف'),
-            ],
-            [
-                'key' => 'active_products',
-                'label' => ManageText::t('home.stat_active_products', 'منتجات مفعّلة'),
-                'value' => DB::table('catalog_products')->whereNull('deleted_at')->where('is_active', 1)->count(),
-                // The exemption that used to sit here read "a column name and its value, not a
-                // sentence". True, and beside the point: it was printed under a KPI tile on the
-                // first screen the shop floor opens every morning (D-18). A column name is not a
-                // sentence and it is not an explanation either.
-                'hint' => ManageText::t('home.stat_active_products_hint', 'معروضة للبيع، غير موقوفة'),
-            ],
-            [
-                'key' => 'orders_today',
-                'label' => ManageText::t('home.stat_orders_today', 'طلبات اليوم'),
-                'value' => DB::table('orders')->where('created_at', '>=', $today)->count(),
-                /*
-                 * This said "from the shared table (includes orders placed in the old dashboard)"
-                 * — which on a standalone database is not merely stale but FALSE: the legacy
-                 * installation is unreachable and writes nothing here, so no order in this count
-                 * can have come from it. A hint that describes a source the number cannot have is
-                 * worse than no hint, because it invites somebody to reconcile against a system
-                 * that is not contributing.
-                 */
-                'hint' => ManageText::t('home.stat_orders_today_hint', 'كل طلب اليوم منذ منتصف الليل بتوقيت المتجر'),
-            ],
-            /*
-             * NEW SINCE YOU LAST LOOKED — the same number as the sidebar badge, from the same
-             * source, deliberately.
-             *
-             * It is here as well as in the sidebar because the two answer the question at different
-             * moments: the badge catches the eye mid-task, and this is what somebody reads when
-             * they open the dashboard to decide what to do first. Two numbers that disagreed would
-             * be worse than either alone, so both come from `NewOrders::countFor()`.
-             *
-             * "Today" above and "new" here are NOT the same figure and the hint says so: an order
-             * from yesterday evening that nobody has opened is new to this operator and not
-             * today's.
-             */
-            [
-                'key' => 'orders_unseen',
-                'label' => ManageText::t('home.stat_orders_unseen', 'جديد منذ آخر زيارة'),
-                'value' => $this->newOrders->countFor($user),
-                'hint' => ManageText::t('home.stat_orders_unseen_hint', 'طلبات وصلت منذ آخر مرة فتحتَ فيها شاشة الطلبات — لك وحدك'),
-            ],
-            [
-                'key' => 'orders_total',
-                'label' => ManageText::t('home.stat_orders_total', 'إجمالي الطلبات'),
-                'value' => DB::table('orders')->count(),
-                'hint' => ManageText::t('home.stat_orders_total_hint', 'كل الطلبات المسجّلة'),
-            ],
-        ];
-    }
-
-    /**
-     * Stock health, at the level each product is authoritative at (wave 3.5): a product with
-     * variants is judged by its aggregate columns, which the service keeps exact.
+     * Catalogue-wide, because stock is: one product, one shelf, however many shops sell it. The page labels
+     * them so, and they do not move when the storefront switch does.
      *
-     * @return array{out_of_stock: int, low_stock: int, variants: int, threshold_products: int, buckets: array{express: int, market: int}}
+     * @return array{out_of_stock: int, low_stock: int}
      */
     private function inventory(): array
     {
-        $live = fn () => DB::table('catalog_products')->whereNull('deleted_at')->where('is_active', 1);
-        $columns = InventoryService::columns();
-
         return [
-            // Both numbers come from InventoryService, which owns the one definition the stock
-            // screen counts off too — see the note on `lowStockProducts()`.
             'out_of_stock' => InventoryService::outOfStockProducts()->count(),
             'low_stock' => InventoryService::lowStockProducts()->count(),
-            'variants' => DB::table('catalog_product_variants')->count(),
-            'threshold_products' => $live()->where('low_stock_threshold', '>', 0)->count(),
-            'buckets' => [
-                'express' => (int) $live()->sum($columns['express']),
-                'market' => (int) $live()->sum($columns['market']),
-            ],
         ];
     }
+
 }

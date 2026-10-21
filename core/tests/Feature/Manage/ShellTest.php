@@ -20,8 +20,13 @@ it('renders the dashboard inside an Arabic RTL shell', function () {
             ->component('Manage/Home')
             ->where('locale', 'ar')
             ->where('dir', 'rtl')
-            // Five since wave 4D: `orders_unseen`, the per-operator badge count.
-            ->has('stats', 5)
+            // The home page was rebuilt on 2026-10-21: `stats` (five KPI tiles) became the blocks below,
+            // each of which answers a question somebody acts on. This asserts the shell renders them, not
+            // what is in them — DashboardHomeTest owns that.
+            ->has('scope')
+            ->has('sales')
+            ->has('queue')
+            ->has('unseen')
             ->has('inventory')
             ->has('nav')
             ->has('auth.user')

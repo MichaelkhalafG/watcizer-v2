@@ -7,7 +7,7 @@ import { FiShare2 } from 'react-icons/fi'
 import ImageZoom from '../UI/ImageZoom'
 import DOMPurify from 'dompurify'
 import { useTables } from '../../Hooks/queries/useTables'
-import { useCards, useCardsOf, useRelated } from '../../Hooks/queries/useListing'
+import { useCards, useCardsOf, useRelated, useV2Related } from '../../Hooks/queries/useListing'
 import { useOffers } from '../../Hooks/queries/useOffers'
 import { useUIStore } from '../../Store/uiStore'
 import { useAuthStore } from '../../Store/authStore'
@@ -17,6 +17,7 @@ import { refusedAddMessage } from '../../Store/cartStore'
 import ProductSlider from './ProductSlider'
 import TrustSignals from '../Merchandising/TrustSignals'
 import BackToTop from '../BackToTop/BackToTop'
+import { specRowsIn } from '../../lib/v2Product'
 import { trackViewContent } from '../../scripts/pixels'
 import { finishBackground } from '../../utils/finish'
 import { getImageUrl, PLACEHOLDER_IMG } from '../../utils/imageUrl'
@@ -112,7 +113,12 @@ function FinishRow({ label, colors, isRTL }) {
 // `productPayload`: this page's ONE product as core's `catalog/product` cards (C-1 stage 4), resolved
 // on the server — the page used to load the whole catalogue and search it. null when core found no
 // product for the URL (the by-name fallback below still runs).
-function ProductDetailClient({ param, isOffer = false, productPayload = null }) {
+//
+// `v2Specs` (2026-10-23): core's own spec rows, `{key, label:{en,ar}, value, unit}`, when the server read the
+// product from v2. Their presence is also what says the server already has the FULL record, so the browser
+// does not fetch it again — v2's detail payload is the superset of what `products/{id}` returned. Absent on
+// the two OFFER routes, which are still on compat and behave exactly as before.
+function ProductDetailClient({ param, isOffer = false, productPayload = null, v2Specs = null, v2Product = null }) {
   const router = useRouter()
 
   // Server data from the shared TanStack Query cache.
@@ -172,6 +178,9 @@ function ProductDetailClient({ param, isOffer = false, productPayload = null }) 
   // this promotes to the full record once it arrives.
   useEffect(() => {
     if (isOffer || !param) return
+    // v2 route: the server handed down the whole record, so there is nothing to ask for. This is the
+    // second of the product page's two upstream reads, and it is simply gone (2026-10-23).
+    if (v2Specs) return
     // The server already asked core for this URL's product; when it found none, the by-name call is
     // the legacy raw-title fallback and runs straight away (it used to wait for the catalogue).
     const byId = contextProduct?.id ?? (/^\d+$/.test(param) ? param : null)
@@ -195,7 +204,7 @@ function ProductDetailClient({ param, isOffer = false, productPayload = null }) 
     return () => {
       alive = false
     }
-  }, [isOffer, param, contextProduct])
+  }, [isOffer, param, contextProduct, v2Specs])
 
   const offer = useMemo(() => {
     if (!isOffer || !param) return null
@@ -239,12 +248,116 @@ function ProductDetailClient({ param, isOffer = false, productPayload = null }) 
   const isLoading = !item && fetchState !== 'notfound' && fetchState !== 'error' && !grace
   const notFound = !item && (fetchState === 'notfound' || fetchState === 'error' || grace)
 
+  /*
+   * ── THE VARIANT PICKER (Addition B, 2026-10-23) ──────────────────────────────────────────────
+   *
+   * v2's product detail carries `variants[]`: one row per sellable combination, each with its own colour,
+   * size, price and stock. A product sells EITHER as itself or through these rows, never both.
+   *
+   * Everything below is inert when there are none, which is the case for 981 of Watchizer's 1,014 visible
+   * products (measured 2026-10-23) - `variantRows` is empty, no picker is drawn, and every derived value
+   * falls through to the product's own. It is also inert on the two OFFER routes, which have no variants to
+   * choose and are still on compat.
+   *
+   * The AXES are derived from the rows rather than declared, so a product with colours only, sizes only, or
+   * both is the same code path and not three.
+   */
+  const variantRows = useMemo(
+    () => (!isOffer && Array.isArray(v2Product?.variants) ? v2Product.variants : []),
+    [isOffer, v2Product],
+  )
+  const [variantColorId, setVariantColorId] = useState(null)
+  const [variantSizeId, setVariantSizeId] = useState(null)
+  // a different product means a different set of rows: never carry a selection across
+  useEffect(() => {
+    // Clearing the picker when the URL changes is the whole purpose of this effect.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setVariantColorId(null)
+    setVariantSizeId(null)
+  }, [param])
+
+  /** A v2 `{en, ar}` name in the shopper's language — the picker's labels come straight from core. */
+  const getLocalized = useCallback(
+    (name) => (name ? (isRTL ? (name.ar ?? name.en ?? '') : (name.en ?? name.ar ?? '')) : ''),
+    [isRTL],
+  )
+
+  const variantColours = useMemo(() => {
+    const seen = new Map()
+    for (const v of variantRows) if (v?.color?.id != null && !seen.has(v.color.id)) seen.set(v.color.id, v.color)
+    return [...seen.values()]
+  }, [variantRows])
+  const variantSizes = useMemo(() => {
+    const seen = new Map()
+    for (const v of variantRows) if (v?.size?.id != null && !seen.has(v.size.id)) seen.set(v.size.id, v.size)
+    // the dashboard's own order (S, M, L - not alphabetical, which would read L, M, S)
+    return [...seen.values()].sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0))
+  }, [variantRows])
+  const hasColourAxis = variantColours.length > 0
+  const hasSizeAxis = variantSizes.length > 0
+
+  /** The rows matching a (colour, size) selection; null on an axis means "any". */
+  const variantsMatching = useCallback(
+    (colourId, sizeId) =>
+      variantRows.filter(
+        (v) =>
+          (colourId == null || v?.color?.id === colourId) && (sizeId == null || v?.size?.id === sizeId),
+      ),
+    [variantRows],
+  )
+
+  /*
+   * A chip is OFFERABLE when some row with that value, consistent with the OTHER axis's current choice, is
+   * in stock. So picking Black greys out the sizes Black has sold out of, rather than greying nothing and
+   * failing at the button. A sold-out value is still drawn - struck through - because hiding it tells the
+   * shopper the size does not exist when it does.
+   */
+  const colourOfferable = useCallback(
+    (colourId) => variantsMatching(colourId, hasSizeAxis ? variantSizeId : null).some((v) => v?.stock?.in_stock),
+    [variantsMatching, hasSizeAxis, variantSizeId],
+  )
+  const sizeOfferable = useCallback(
+    (sizeId) => variantsMatching(hasColourAxis ? variantColorId : null, sizeId).some((v) => v?.stock?.in_stock),
+    [variantsMatching, hasColourAxis, variantColorId],
+  )
+
+  /** The ONE row the shopper has settled on, or null while an axis is still open. */
+  const chosenVariant = useMemo(() => {
+    if (!variantRows.length) return null
+    if (hasColourAxis && variantColorId == null) return null
+    if (hasSizeAxis && variantSizeId == null) return null
+    const rows = variantsMatching(hasColourAxis ? variantColorId : null, hasSizeAxis ? variantSizeId : null)
+    return rows.length === 1 ? rows[0] : null
+  }, [variantRows, hasColourAxis, hasSizeAxis, variantColorId, variantSizeId, variantsMatching])
+
+  /** What the shopper still has to do, in their language - printed under the picker, not in a toast. */
+  const variantNeeds = useMemo(() => {
+    if (!variantRows.length || chosenVariant) return null
+    const both = hasColourAxis && hasSizeAxis
+    if (both && variantColorId == null && variantSizeId == null) return isRTL ? 'اختر اللون والمقاس' : 'Choose a colour and a size'
+    if (hasColourAxis && variantColorId == null) return isRTL ? 'اختر اللون' : 'Choose a colour'
+    if (hasSizeAxis && variantSizeId == null) return isRTL ? 'اختر المقاس' : 'Choose a size'
+    return isRTL ? 'هذا الاختيار غير متاح' : 'That combination is not available'
+  }, [variantRows, chosenVariant, hasColourAxis, hasSizeAxis, variantColorId, variantSizeId, isRTL])
+
   // ── Derived display data ────────────────────────────────────────────────
   const name = getName(item, language)
   const brandLabel = isOffer ? '' : getBrand(product, language)
 
-  const price = Number(item?.selling_price || 0)
-  const salePrice = Number(item?.sale_price_after_discount || 0)
+  /*
+   * The chosen variant's price and stock REPLACE the product's (Addition B). A variant carries its own
+   * amount and its own two stock buckets, so once a combination is settled the page must be quoting that
+   * row and not the product's headline - otherwise the shopper is shown one price and charged another.
+   * Before anything is chosen the product's own figures stand, which is what the card linked to.
+   */
+  const price = Number(chosenVariant ? (chosenVariant.price?.amount ?? 0) : item?.selling_price || 0)
+  const salePrice = Number(
+    chosenVariant
+      ? chosenVariant.price?.has_sale
+        ? (chosenVariant.price?.sale_amount ?? 0)
+        : 0
+      : item?.sale_price_after_discount || 0,
+  )
   const hasSale = salePrice > 0 && salePrice < price
   const finalPrice = hasSale ? salePrice : price
   const discount = hasSale ? Math.round((1 - salePrice / price) * 100) : 0
@@ -254,10 +367,19 @@ function ProductDetailClient({ param, isOffer = false, productPayload = null }) 
   )
   const currency = isRTL ? 'ج.م' : 'EGP'
 
-  const expressStock = Number(product?.stock || 0)
-  const marketStock = Number(product?.market_stock || 0)
+  const expressStock = Number(chosenVariant ? (chosenVariant.stock?.express ?? 0) : product?.stock || 0)
+  const marketStock = Number(chosenVariant ? (chosenVariant.stock?.market ?? 0) : product?.market_stock || 0)
   const offerStock = Number(offer?.stock || 0)
-  const inStock = isOffer ? offerStock > 0 : expressStock > 0 || marketStock > 0
+  /*
+   * A product that sells through variants is only addable once ONE row is settled: the add button stays
+   * disabled while an axis is open, and `variantNeeds` says which. Without this the button would be live
+   * while the page still showed the product's headline stock, and the add would be refused by core.
+   */
+  const inStock = isOffer
+    ? offerStock > 0
+    : variantRows.length && !chosenVariant
+      ? false
+      : expressStock > 0 || marketStock > 0
   const maxStock = isOffer ? offerStock : expressStock > 0 ? expressStock : marketStock
 
   const ratingValue = isOffer
@@ -406,11 +528,22 @@ function ProductDetailClient({ param, isOffer = false, productPayload = null }) 
           })
       } else {
         const key = `product_${product.id}`
-        const existing = cart?.cart_item?.find((i) => getItemKey(i) === key)
+        /*
+         * A CHOSEN VARIANT IS NEVER MERGED INTO AN EXISTING LINE (Addition B, 2026-10-23).
+         *
+         * `getItemKey` keys a cart line by product_id alone, with no variant dimension, so a shopper adding
+         * a second size would have found the first line and incremented it - the wrong size, silently.
+         * Core's cart key already carries `variant_id` ("the same shirt in two sizes is two lines", wave
+         * 3.5); the STOREFRONT's key does not, and widening it is a cart change that belongs with the cart
+         * (slice 3), because compat deletes a line by product and would start missing one. Until then, an
+         * add with a variant simply adds, and the merge path is left to products that have none.
+         */
+        const existing = chosenVariant ? null : cart?.cart_item?.find((i) => getItemKey(i) === key)
         if (existing) result = await updateQuantity(key, existing.quantity + quantity)
         else
           result = await addItem({
             product_id: product.id,
+            ...(chosenVariant ? { variant_id: chosenVariant.id } : {}),
             quantity,
             piece_price: finalPrice,
             type_stock: expressStock > 0 ? 'Express' : 'Market',
@@ -432,6 +565,7 @@ function ProductDetailClient({ param, isOffer = false, productPayload = null }) 
     isAdding,
     inStock,
     isOffer,
+    chosenVariant,
     offer,
     product,
     item, // getName(item) for the AddToCart pixel event
@@ -483,6 +617,14 @@ function ProductDetailClient({ param, isOffer = false, productPayload = null }) 
   }, [specSource])
 
   const specs = useMemo(() => {
+    /*
+     * v2 route (2026-10-23): core built these rows, labelled them in both languages and attached the units,
+     * so there is nothing to assemble here. They are localized at RENDER, not on the server, because the
+     * shopper can switch language without a refetch.
+     *
+     * The compat branch below stays exactly as it was, and is what the two offer routes still run.
+     */
+    if (v2Specs && !isOffer) return specRowsIn(v2Specs, isRTL ? 'ar' : 'en', v2Product)
     const it = specSource
     if (!it) return []
     const rows = []
@@ -607,7 +749,7 @@ function ProductDetailClient({ param, isOffer = false, productPayload = null }) 
     add('Country', 'بلد المنشأ', pick('country'))
     add('Stone', 'الحجر', pick('stone'))
     return rows
-  }, [specSource, isFashion, isRTL])
+  }, [specSource, isFashion, isRTL, v2Specs, v2Product, isOffer])
 
   // ── Description ──
   const description = useMemo(() => {
@@ -696,16 +838,26 @@ function ProductDetailClient({ param, isOffer = false, productPayload = null }) 
   const inCart = (cart?.cart_item || []).map((i) => i.product_id).filter(Boolean)
   // Two rails (developer's decision, 2026-09-29): add-ons first — suggestions that ADD to the order —
   // then alternatives for a shopper still choosing.
+  //
+  // v2 route (2026-10-23): ONE call for both rails instead of one per kind. Same scoring — v2's
+  // RelatedController runs the very same CompatRelated rules — and `exclude` is honoured there, so what is in
+  // the cart is still never suggested. The compat pair below stays for the two OFFER routes, which have no v2
+  // product to ask about; only one of the two paths is ever enabled.
+  const onV2 = !!v2Specs && !isOffer
+  const { data: v2Rails } = useV2Related(
+    { slug: param, exclude: inCart },
+    { enabled: showRelated && onV2 },
+  )
   const { data: addOnsPayload } = useRelated(
     { product: relatedBaseId, kind: 'addons', exclude: inCart },
-    { enabled: showRelated },
+    { enabled: showRelated && !onV2 },
   )
-  const addOns = useCardsOf(addOnsPayload, language)
+  const addOns = useCardsOf(onV2 ? v2Rails?.addons : addOnsPayload, language)
   const { data: relatedPayload } = useRelated(
     { product: relatedBaseId, kind: 'similar', exclude: inCart },
-    { enabled: showRelated },
+    { enabled: showRelated && !onV2 },
   )
-  const related = useCardsOf(relatedPayload, language)
+  const related = useCardsOf(onV2 ? v2Rails?.similar : relatedPayload, language)
   // A CALLBACK ref: the observer is attached whenever the band mounts (the cart's suggestions showed
   // that an effect keyed on something else can miss the element once data stops arriving with the page).
   const relatedObserver = useRef(null)
@@ -890,13 +1042,13 @@ function ProductDetailClient({ param, isOffer = false, productPayload = null }) 
       : marketStock > 0
         ? isRTL
           ? `ماركت · ${marketStock} متاح`
-          : `Market · ${marketStock} available`
+          : `Market · ${marketStock} in stock`
         : isRTL
           ? 'غير متوفر'
           : 'Out of stock'
 
-  const lowStock = inStock && maxStock > 0 && maxStock <= 5
-
+  // `lowStock` lived here to drive a second "Only N left" beside the stock dot. TrustSignals is
+  // given `stockLeft` below and decides for itself, so there is one owner of that sentence now.
 
   return (
     <div className="wz-pd" dir={isRTL ? 'rtl' : 'ltr'}>
@@ -1086,14 +1238,12 @@ function ProductDetailClient({ param, isOffer = false, productPayload = null }) 
             </div>
 
             {/* Stock */}
+            {/* The low-stock warning is NOT repeated here. `TrustSignals` prints it once, lower
+                down, beside the returns and payment facts where a shopper is actually deciding;
+                saying it twice on one page reads as pressure rather than information. */}
             <div className={`wz-pd-stock wz-pd-stock--${stockTone}`}>
               <span className="wz-pd-stock-dot" />
               <span className="wz-pd-stock-text">{stockLabel}</span>
-              {lowStock && (
-                <span className="wz-pd-stock-low">
-                  {isRTL ? `باقي ${maxStock} فقط!` : `Only ${maxStock} left!`}
-                </span>
-              )}
             </div>
 
             {/* Colors (products only). Fashion items reuse band_color as their single
@@ -1114,6 +1264,104 @@ function ProductDetailClient({ param, isOffer = false, productPayload = null }) 
                 colors={bandColors}
                 isRTL={isRTL}
               />
+            )}
+
+            {/*
+              ── THE PICKER (Addition B, 2026-10-23) ──────────────────────────────────────────────
+              Designed for THIS page, not copied from Brand Fashion's (which is circular hex swatches and
+              rounded pills). It borrows the page's own two habits instead: the spec table's label/value
+              pair, and the quantity stepper's hairline 6px control. So each axis reads as a spec row whose
+              value you can change - the label on one side, the current choice on the other - over a row of
+              hairline chips. The chosen chip takes the add button's ink fill, so "selected" and "what the
+              button will act on" are one visual statement rather than two.
+
+              A colour chip carries its swatch AND its name: a watch buyer picks "Navy", and a word is also
+              what a screen reader and a translation can carry, where a bare circle is not. A sold-out value
+              is struck through rather than hidden, because hiding it says the size does not exist.
+            */}
+            {variantRows.length > 0 && (
+              <div className="wz-pd-opts">
+                {hasColourAxis && (
+                  <div className="wz-pd-opt">
+                    <div className="wz-pd-opt-head">
+                      <span className="wz-pd-opt-label">{isRTL ? 'اللون' : 'Colour'}</span>
+                      <span className="wz-pd-opt-value">
+                        {variantColorId == null
+                          ? isRTL
+                            ? 'لم يتم الاختيار'
+                            : 'Not chosen'
+                          : getLocalized(variantColours.find((c) => c.id === variantColorId)?.name)}
+                      </span>
+                    </div>
+                    <div className="wz-pd-opt-row" role="radiogroup" aria-label={isRTL ? 'اللون' : 'Colour'}>
+                      {variantColours.map((c) => {
+                        const sold = !colourOfferable(c.id)
+                        const on = variantColorId === c.id
+                        return (
+                          <button
+                            key={c.id}
+                            type="button"
+                            role="radio"
+                            aria-checked={on}
+                            aria-disabled={sold || undefined}
+                            className={`wz-pd-chip${on ? ' is-on' : ''}${sold ? ' is-sold' : ''}`}
+                            onClick={() => {
+                              if (sold) return
+                              setVariantColorId(on ? null : c.id)
+                            }}
+                          >
+                            <span className="wz-pd-chip-swatch" style={{ background: c.hex || 'transparent' }} />
+                            <span className="wz-pd-chip-text">{getLocalized(c.name)}</span>
+                            {sold && (
+                              <span className="wz-pd-sr">{isRTL ? 'غير متاح' : 'Sold out'}</span>
+                            )}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+                {hasSizeAxis && (
+                  <div className="wz-pd-opt">
+                    <div className="wz-pd-opt-head">
+                      <span className="wz-pd-opt-label">{isRTL ? 'المقاس' : 'Size'}</span>
+                      <span className="wz-pd-opt-value">
+                        {variantSizeId == null
+                          ? isRTL
+                            ? 'لم يتم الاختيار'
+                            : 'Not chosen'
+                          : getLocalized(variantSizes.find((s) => s.id === variantSizeId)?.name)}
+                      </span>
+                    </div>
+                    <div className="wz-pd-opt-row" role="radiogroup" aria-label={isRTL ? 'المقاس' : 'Size'}>
+                      {variantSizes.map((s) => {
+                        const sold = !sizeOfferable(s.id)
+                        const on = variantSizeId === s.id
+                        return (
+                          <button
+                            key={s.id}
+                            type="button"
+                            role="radio"
+                            aria-checked={on}
+                            aria-disabled={sold || undefined}
+                            className={`wz-pd-chip wz-pd-chip--text${on ? ' is-on' : ''}${sold ? ' is-sold' : ''}`}
+                            onClick={() => {
+                              if (sold) return
+                              setVariantSizeId(on ? null : s.id)
+                            }}
+                          >
+                            <span className="wz-pd-chip-text">{getLocalized(s.name)}</span>
+                            {sold && (
+                              <span className="wz-pd-sr">{isRTL ? 'غير متاح' : 'Sold out'}</span>
+                            )}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+                {variantNeeds && <p className="wz-pd-opt-need">{variantNeeds}</p>}
+              </div>
             )}
 
             {/* Quantity + actions */}
@@ -1341,7 +1589,7 @@ function ProductDetailClient({ param, isOffer = false, productPayload = null }) 
       {/* ── Mobile sticky buy bar ── */}
       <div className={`wz-pd-sticky${showSticky ? ' is-visible' : ''}`}>
         <div className="wz-pd-sticky-price">
-          <span className="wz-pd-sticky-amount">
+          <span className={`wz-pd-sticky-amount${hasSale ? ' wz-pd-sticky-amount--sale' : ''}`}>
             {fmt(finalPrice)} {currency}
           </span>
           {hasSale && (

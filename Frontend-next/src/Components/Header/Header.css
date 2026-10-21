@@ -17,6 +17,8 @@
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 .wz-strip-inner {
+  /* the icon cluster's width plus a gutter, reserved on the marquee so the two never meet (item 8) */
+  --wz-strip-social-space: 76px;
   position: relative;
   height: 32px;
   display: flex;
@@ -29,10 +31,22 @@
 .wz-marquee-wrapper {
   overflow: hidden;
   flex: 1;
-  /* leave room for the social icons pinned on the right */
-  padding-inline-end: 60px;
-  mask-image: linear-gradient(90deg, transparent 0%, black 8%, black 92%, transparent 100%);
-  -webkit-mask-image: linear-gradient(90deg, transparent 0%, black 8%, black 92%, transparent 100%);
+  /*
+   * The icons' width is reserved with a MARGIN, not padding (item 8, 2026-10-23).
+   *
+   * It was padding, and padding does not keep overflow out: `overflow: hidden` clips at the PADDING box, so
+   * the track still painted straight through those 60px and right up to the icons. Measured at 1440 before
+   * the change: the icon cluster spans x=1320..1361 and the marquee's visible region also ended at 1361, so
+   * the text ran under the icons for their whole width — at about 39% opacity, because the old fade was a
+   * PERCENTAGE (92%) of a wrapper that reached behind them, and had not finished by the time it got there.
+   * That is the "DELIVERY ACROSS EGYP" overlap in the survey.
+   *
+   * A margin moves the border box, so the clip now ends before the icons begin, and the fade is stated in
+   * PIXELS at both ends so its length does not change with the viewport: 40px of fade, finished.
+   */
+  margin-inline-end: var(--wz-strip-social-space);
+  mask-image: linear-gradient(90deg, transparent 0, black 40px, black calc(100% - 40px), transparent 100%);
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, black 40px, black calc(100% - 40px), transparent 100%);
   /* Informational ticker: not interactive. Ignoring pointer events on the
      fast-moving text avoids hover hit-testing churn (and there's nothing to
      click here). The social icons live in a sibling and stay clickable. */

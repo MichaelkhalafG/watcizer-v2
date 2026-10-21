@@ -9,6 +9,15 @@
 # Regenerated 2026-10-14 (evening) from the files measured byte-identical after the identity
 # sweep, the TikTok env change (made on both sides) and the approved twin splits. 2026-10-18: the category and brand
 # pages re-twinned, ListingClient.jsx and ProductCard.jsx split (the visual reset, Part 1b) — see the DIVERGED section.
+# 2026-10-20 (the addendum): THREE NEW TWINS for the home hero. `settings.home.hero` decides per storefront
+# whether a home page draws the 3D watch or the dashboard's banners, so both apps need the same banner hero:
+# src/Components/Home/BannerHero.jsx + .css, and src/Hooks/useRailScroll.js — the drag hook it needs, moved out
+# of Brand Fashion's BfRail.jsx (which re-exports it under the name its own callers use) because Watchizer has
+# no BfRail to import from. app/(main)/HomeClient.jsx stays a twin and carries the switch in both apps.
+# 2026-10-22 (the design items): app/(main)/(shop)/cart/layout.jsx is NEW and a twin. The cart PAGE is a
+# client component, which cannot export metadata, so the English cart inherited the root layout's Arabic
+# title; a layout is where a client route can be given one. It carries no brand name on purpose, which is
+# exactly what lets it be a twin — see the note in the file.
 # A2-RULE: the two apps are copies, not a shared package.
 
 app/(auth)/auth/callback/page.jsx
@@ -19,6 +28,7 @@ app/(auth)/login/page.jsx
 app/(auth)/register/page.jsx
 app/(auth)/reset-password/page.jsx
 app/(main)/(shop)/account/page.jsx
+app/(main)/(shop)/cart/layout.jsx
 app/(main)/(shop)/cart/page.jsx
 app/(main)/(shop)/checkout/page.jsx
 app/(main)/HomeClient.jsx
@@ -59,6 +69,8 @@ src/Components/Blog/ArticleBody.jsx
 src/Components/Cart/CartModal.jsx
 src/Components/Hero/WatchCanvas.jsx
 src/Components/Hero/WatchHero.jsx
+src/Components/Home/BannerHero.css
+src/Components/Home/BannerHero.jsx
 src/Components/Home/FeaturedBanner.jsx
 src/Components/LanguageDropdown/LanguageDropdowen.css
 src/Components/LanguageDropdown/LanguageDropdowen.jsx
@@ -82,13 +94,16 @@ src/Components/UI/ImageZoom.jsx
 src/Context/api.jsx
 src/Context/loader.css
 src/Context/publicApi.js
+src/Hooks/queries/useListing.js
 src/Hooks/queries/useNav.js
 src/Hooks/queries/useOffers.js
 src/Hooks/queries/usePaymentMethods.js
 src/Hooks/queries/useProductDetail.js
 src/Hooks/queries/useShipping.js
+src/Hooks/queries/useTables.js
 src/Hooks/useCart.jsx
 src/Hooks/useLocaleRouter.js
+src/Hooks/useRailScroll.js
 src/Hooks/useShippingPrices.js
 src/Hooks/useSwitchLanguage.js
 src/PageViews/Auth/AuthCallback.jsx
@@ -104,12 +119,16 @@ src/Store/toastStore.js
 src/Store/uiStore.js
 src/content/trustMetadata.js
 src/lib/coreRead.js
+src/lib/listingRequest.js
 src/lib/markdown.js
 src/lib/safeJsonLd.js
 src/lib/serverBlogs.js
 src/lib/serverCatalog.js
 src/lib/serverFetch.js
+src/lib/serverV2.js
 src/lib/socialNonce.js
+src/lib/v2Listing.js
+src/lib/v2Product.js
 src/scripts/pixels.js
 src/utils/chunkError.js
 src/utils/finish.js
@@ -136,10 +155,22 @@ DIVERGED 2026-10-14 public/robots.txt — Sitemap on michaelkhalaf.com (develope
 # V2-READ-HALF (2026-10-17, Michael's decision: both storefronts move to v2, Brand Fashion first through the twin
 # apps, no runtime flag): Brand Fashion's listing reads /api/v2/brandfashion/products (src/lib/v2Listing.js, not a
 # twin) while Watchizer's still reads compat catalog/listing. These four re-twin together when Watchizer's listing moves.
-DIVERGED 2026-10-17 src/lib/listingRequest.js — re-exports the v2 adapter under the names every import site uses (V2-READ-HALF).
-DIVERGED 2026-10-17 src/Hooks/queries/useListing.js — passes the tables to the v2 request builder and waits for them when a category is set (V2-READ-HALF).
-DIVERGED 2026-10-17 app/(main)/listing/page.jsx — passes the tables to the v2 request builder (V2-READ-HALF).
-DIVERGED 2026-10-17 src/lib/facetListing.jsx — passes the tables to the v2 request builder (V2-READ-HALF).
+# V2-READ-HALF CLOSED FOR THE LISTING (2026-10-22): Watchizer's listing followed Brand Fashion onto
+# /api/v2/{storefront}/products, so the four files that were split only because the two shops read different APIs are
+# 2026-10-23 (the product page): TWO MORE NEW TWINS. src/lib/serverV2.js was Brand Fashion's alone and is now
+# shared, because Watchizer's product page reads v2 through the same server readers; its header records that
+# Watchizer imports only the two PRODUCT readers and that the meta/home ones are Brand Fashion's, so nobody
+# reads the file as evidence that Watchizer's home page moved (it has not; slice 2 is deliberately out).
+# src/lib/v2Product.js is NEW on both sides: v2's product detail mapped onto the cards shape the shared
+# ProductDetailClient already reads, plus specRowsIn(), which composes the spec table. Brand Fashion does not
+# render ProductDetailClient on its product page (BfProductPage does) but DOES on its offer page, which is why
+# the file is a twin rather than Watchizer's: one file cannot drift from itself.
+#
+# TWINS again and have moved up into the list above: src/lib/listingRequest.js, src/Hooks/queries/useListing.js,
+# src/Hooks/queries/useTables.js and the new shared adapter src/lib/v2Listing.js (which was Brand-Fashion-only).
+# The two listing ENTRY POINTS stay split, but no longer for that reason — see the two lines below.
+DIVERGED 2026-10-22 app/(main)/listing/page.jsx — ONE line: Brand Fashion imports its skin sheet (src/styles/bf-listing-skin.css). The page, its ListingClient and the v2 request are Watchizer's, identical on both sides since the listing move.
+DIVERGED 2026-10-22 src/lib/facetListing.jsx — the same one line: Brand Fashion imports its skin sheet. Everything else is identical since the listing move.
 # B4 (2026-10-17) built the listing pages as BfListing (not twins) on v2; REVERSED 2026-10-18 (the visual reset, Part 1b —
 # Michael: "the skin changes, the behaviour does not"): the listing is Watchizer's ListingClient + SideBar + SmartSuggestions +
 # BackToTop again (twins, their behaviour inherited), on the v2 adapter, restyled by src/styles/bf-listing-skin.css. The
@@ -148,9 +179,8 @@ DIVERGED 2026-10-18 app/(main)/listing/ListingClient.jsx — two Brand Fashion b
 DIVERGED 2026-10-18 src/Components/Product/ProductCard.jsx — the ADAPTER: Watchizer's listing hands it the legacy row, it draws BfProductCard (§17.3 rewritten card) with Watchizer's card behaviour line for line (the same addItem payload, the same refusal toast, the same URL).
 DIVERGED 2026-10-17 app/(main)/product/[slug]/page.jsx — B5: the v2 product page (BfProductPage) on products/{slug} + /related; v2 meta and JSON-LD (V2-READ-HALF / B5).
 DIVERGED 2026-10-18 src/Components/Header/Nav/Nav.jsx — every header panel on Watchizer's menu, the Brands anatomy (a group header with its category icon; rows of a 36 px media box + the name): Shop, the category panels and the gender panels re-marked up on Brand Fashion only — the same links, the same open/close and flip, no flyouts added (Michael, round 4). Watchizer keeps its own panels.
-DIVERGED 2026-10-18 src/Hooks/queries/useTables.js — Brand Fashion's tables also read storefront 2's v2 category tree and tag a category type / sub-type with `v2_slug` where the node's slug is not the slug of its English name (Chargers & Cables → chargers, Earphones & Headphones → audio): the v2 listing request sends it, so those two menu entries no longer open empty pages (round 4, Part 6.2). Watchizer reads compat by id and keeps the plain query.
 DIVERGED 2026-10-18 src/Components/Header/SearchBox/SearchBox.jsx — the dropdown prints a price as Brand Fashion's card does, spec §5: `EGP 3,900` / `3,900 ج.م`, Western digits in both (G2 of 2026-10-17; round 4, Part 6.5). Its source was already v2 (useListing → v2Listing). Watchizer keeps `3,900 EGP` and its ar-EG digits.
-DIVERGED 2026-10-18 src/utils/listingParams.js — Sale has its own listing key on Brand Fashion (`sale=1`, a product's own discount, core's on_sale) and `offers` is no listing filter: Offers are the dashboard's offers, a page of their own (round 5, Michael). Watchizer keeps `offers=true` as its discount filter until it moves to v2.
+DIVERGED 2026-10-18 src/utils/listingParams.js — Sale has its own listing key on Brand Fashion (`sale=1`, a product's own discount, core's on_sale) and `offers` is no listing filter: Offers are the dashboard's offers, a page of their own (round 5, Michael). Watchizer keeps spelling the same idea `offers=true`, which the shared v2 adapter accepts alongside `sale` — so a bookmarked Watchizer link keeps its meaning (2026-10-22).
 # B7 (2026-10-19, the night run): Brand Fashion's cart and checkout move to core's v2 routes — every cart tagged with storefront 2, every order
 # built from that cart by /api/v2/brandfashion/orders. Watchizer's twins stay on compat (its live order path, untouched). Three files diverge:
 DIVERGED 2026-10-19 src/Store/cartStore.js — the cart store on v2 (GET cart, POST cart/items as an absolute set, DELETE cart/items/{id}); Watchizer's interface name for name (the header count, the drawer, the recovery page, the login merge and the confirmation page are unchanged twins); a line is a product OR a product's variant; the login merge adds quantities as compat's does, through the v2 routes.

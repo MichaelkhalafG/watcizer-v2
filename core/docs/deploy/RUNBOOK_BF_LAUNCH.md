@@ -31,6 +31,12 @@ day, write each gate's actual answer next to it.
 | 8 | Smoke tests — Watchizer, then Brand Fashion | the live sites | Watchizer: order + Google; Brand Fashion: a real COD order end to end | — (a check) |
 | 9 | Pre-launch list on the real domain | the live site | every row's check reads as written | — |
 
+> **✅ PHASES 0–8 SIGNED OFF — 2026-10-19**, executed by Michael with the owner; Brand Fashion is deployed and took a
+> real cash-on-delivery order end to end (phase 8). The run, phase by phase, with what was verified and by whom:
+> `RUN_20261019_DAY.md` → **THE DEPLOY**. **Phase 9 is NOT done** — it belongs to the real domain. Two errors in this
+> runbook were found during the run and are corrected below (§2.3 / §3.3's `.htaccess` counts, and §1.2's gate); what
+> is still open is in `POST_CUTOVER_BACKLOG.md`, starting with `BF-GOOGLE-PUBLISH`.
+
 **What cannot be undone:** a real order once placed (its number is used from the ONE sequence both shops share, its
 stock moved, its e-mails sent), any e-mail once sent, and the old mail password once rotated (on purpose). Nothing in
 the CODE path is one-way: there is no migration in this deploy.
@@ -96,6 +102,15 @@ bash tests/baseline/suite-baseline.sh               # NEW 0, stale 0, CHANGED 0 
 
 **STOP** unless phpstan is clean and the gate prints no NEW failure, no stale entry, no changed table.
 
+> **The gate pins its own terminal width since 2026-10-19 — and on this deploy it tripped before it did.** It reported
+> **40 new failures and the same 40 as newly passing**, on a tree that was green: Pest cuts each `FAILED` name to the
+> terminal width, the baseline file stores the cut form, so the comparison was the operator's console width in
+> disguise (120 here, 187 on Michael's). `suite-baseline.sh` line 99 now runs the suite as `COLUMNS=120 php artisan
+> test …`, which overrides the console, and the gate is green at 80, 187 and 400. **If it ever trips on 40 again,
+> read `GATE-WIDTH-20261019` before believing it** — and if the same two sections ever list the same tests, that is
+> the signature, because a test cannot be both new and fixed. The real fix is `GATE-JUNIT-NAMES`, required before this
+> gate runs on another machine or in CI.
+
 **1.3 The dashboard bundle does NOT change — prove it, do not rebuild it.** `resources/js` is untouched since
 2026-10-14; the bundle on disk is the one live since 2026-10-15:
 
@@ -112,9 +127,12 @@ curl -s https://eleganceeg.com/build/manifest.json | sha256sum   # the same dige
 Set-Location 'D:\coding\watchizer website\new watchizer\core'
 composer install --no-dev --optimize-autoloader
 $D = Get-Date -Format yyyyMMdd
-# C:\temp\exclude.txt: the eleven lines of §2.3 (core/.env core/node_modules core/tests core/docs core/.git core/storage
-# core/public/Uploads_Images core/public/dumps core/public/hot core/phpunit.xml core/phpstan.neon), LF, no BOM, no blank line
-tar -czf "C:\temp\core-$D.tar.gz" -X C:\temp\exclude.txt -C 'D:\coding\watchizer website\new watchizer' core
+# The exclusion list is a TRACKED FILE since 2026-10-20 — core/docs/deploy/tar-exclude.list, twelve lines, LF, no BOM,
+# no blank line. It used to be typed by hand into C:\temp\exclude.txt, which is how a 29-byte archive was built and
+# uploaded twice (RUNBOOK_PHASE2_STOREFRONT §2.3). Read it from the repository; never retype it. The name is not
+# `exclude.txt` because .gitignore line 81 ignores that name everywhere — deliberately, to keep throwaway deploy
+# artifacts out of the tree — and the one authoritative list should not share a name with the scratch file it replaces.
+tar -czf "C:\temp\core-$D.tar.gz" -X 'D:\coding\watchizer website\new watchizer\core\docs\deploy\tar-exclude.list' -C 'D:\coding\watchizer website\new watchizer' core
 (Get-Item "C:\temp\core-$D.tar.gz").Length          # 7–9 MB. Rehearsal: 7,493,758 bytes, 7,831 files
 (Get-FileHash "C:\temp\core-$D.tar.gz" -Algorithm SHA256).Hash
 composer install                                    # put the dev tools back on the workstation
@@ -177,7 +195,10 @@ ls -l ~/core-before-*.tar.gz && sha256sum ~/core-before-$(date +%Y%m%d).tar.gz
 du -sh core/public core/vendor core/storage core/storage/logs
 ```
 
-**2.3 The `.htaccess` baseline** — the content gate's three counts, BEFORE (expect 2 / 1 / 1; 64 lines on 2026-10-15):
+**2.3 The `.htaccess` baseline** — the content gate's three counts, BEFORE (expect **2 / 1 / 3**; 64 lines on
+2026-10-15). **Corrected 2026-10-19:** this said `2 / 1 / 1`, which was my misreading of the live file — `R=404,L`
+occurs **three** times in it, not once. Nothing changed on the server: the live file was diffed against
+`~/htaccess.before-20261015.bak` on the day and came back **IDENTICAL**.
 
 ```bash
 F=~/domains/eleganceeg.com/core/public/.htaccess
@@ -256,7 +277,7 @@ for h in api.watchizereg.com api.michaelkhalaf.com; do
   curl -s -o /dev/null -w "$h /api/catalog/meta  %{http_code}\n" "https://$h/api/catalog/meta"   # 401
   curl -s -o /dev/null -w "$h /manage            %{http_code}\n" "https://$h/manage"             # 404
 done
-F="$LIVE"/public/.htaccess; grep -c 'api\\.(watchizereg|michaelkhalaf)' "$F"; grep -c 'assets/brand/' "$F"; grep -c 'R=404,L' "$F"   # 2 1 1
+F="$LIVE"/public/.htaccess; grep -c 'api\\.(watchizereg|michaelkhalaf)' "$F"; grep -c 'assets/brand/' "$F"; grep -c 'R=404,L' "$F"   # 2 1 3 (corrected 2026-10-19; it read 2 1 1, a misreading — the live file is unchanged)
 ```
 
 **STOP — and restore the backup at once — on a 404 for `/api/catalog/meta`**: the allow-list is gone.
@@ -266,8 +287,30 @@ F="$LIVE"/public/.htaccess; grep -c 'api\\.(watchizereg|michaelkhalaf)' "$F"; gr
 ```bash
 cd ~/domains/eleganceeg.com/core
 chmod -R 775 storage bootstrap/cache && rm -f public/hot public/fonts-manifest.dev.json
-php artisan migrate --pretend                    # "Nothing to migrate." — anything else: STOP and read it
+php artisan migrate --pretend                    # see the box below: this release HAS migrations
 php artisan core:repoint-commerce-fks --dry-run  # nothing to do
+```
+
+**3.4a MIGRATIONS — A SEPARATE STEP, RUN IT DELIBERATELY (2026-10-20).** Until this release the line above was
+expected to print "Nothing to migrate." **It is not any more.** `--pretend` must list EXACTLY these two and nothing
+else; a third name means an unreviewed migration is on the server, and that is a **STOP**:
+
+```
+2026_10_22_000000_banner_device_and_crop          # +device, +image_original_path, +crop on storefront_banners
+2026_10_22_000100_storefront_home_hero            # settings.home.hero per storefront
+```
+
+Both are **additive and reversible**: the first adds three `hasColumn`-guarded columns and drops exactly those three
+on `down()`; the second inserts ONE key inside each storefront's existing `settings` JSON — reading and writing back
+every other key untouched — and `down()` removes exactly that key. **No data is rewritten and no column is dropped or
+retyped.** The second writes `three_d` for Watchizer and `banner` for Brand Fashion, which is what each shop renders
+today, so **nothing a shopper sees changes when it runs**.
+
+```bash
+php artisan migrate --force                      # run it; expect the two names above, each DONE
+php artisan tinker --execute="foreach (DB::table('storefronts')->orderBy('id')->get(['code','settings']) as \$r) { echo \$r->code.' '.(json_decode(\$r->settings, true)['home']['hero'] ?? 'MISSING').PHP_EOL; }"
+# watchizer three_d
+# brandfashion banner          <- anything else, especially `watchizer banner`, is a STOP: roll back per 3.9
 ```
 
 **3.5 Caches** — `php artisan config:cache && php artisan route:cache && php artisan view:clear`. **STOP** on any error:
@@ -279,7 +322,17 @@ a failed cache command is the one way this deploy takes Watchizer down; restore 
 php artisan route:list --path=api/v2 --json | grep -o '"uri"' | wc -l            # 18 (was 8)
 php artisan route:list --path=api | grep -cE 'Customer[A-Za-z]+Controller@'       # 16 (unchanged)
 php artisan schedule:list | head -20                                              # the same schedule as before
+# bootstrap/cache MUST STILL BE PRODUCTION'S (2026-10-20). `cp -a` copies whatever the archive holds, and until
+# 2026-10-20 `core/bootstrap/cache` was NOT excluded — so a workstation that had run `php artisan config:cache`
+# shipped ITS config.php and routes-v7.php over production's, silently, every value in them wrong. On 2026-10-19
+# that did not happen only because the workstation had neither file to send. Both must predate today's copy, and
+# both are regenerated by §3.5 a moment later:
+ls -l --time-style=long-iso bootstrap/cache/ | grep -E 'config.php|routes-v7.php|packages.php|services.php'
 ```
+
+**STOP if `config.php` or `routes-v7.php` carries today's timestamp from the copy rather than from §3.5's
+`config:cache` / `route:cache`** — a development configuration is live. Restore them with §3.9 and rebuild the archive
+with the tracked exclusion list.
 
 From the workstation (Git Bash, `$K` as in 2.4):
 

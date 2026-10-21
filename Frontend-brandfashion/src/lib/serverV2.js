@@ -3,10 +3,16 @@ import serverHttp from './serverFetch'
 import { coreRead, MISS } from './coreRead'
 import { STOREFRONT_CODE } from './env'
 
-// SERVER-ONLY v2 reads for Brand Fashion's pages (2026-10-17, V2-READ-HALF): the same `coreRead` discipline
-// as serverCatalog.js — a 404/422 is a real miss (MISS), a failure is retried once, then the last good copy,
-// then CoreUnavailableError. React `cache()` dedupes generateMetadata + the page within ONE request; the
-// small shared reads (meta, home) also keep a process-level memo (5-min TTL) like the tables and the nav.
+// SERVER-ONLY v2 reads — a TWIN since 2026-10-23, when Watchizer's product page followed Brand Fashion here
+// (V2-READ-HALF; Brand Fashion piloted it on 2026-10-17). Same `coreRead` discipline as serverCatalog.js: a
+// 404/422 is a real miss (MISS), a failure is retried once, then the last good copy, then
+// CoreUnavailableError. React `cache()` dedupes generateMetadata + the page within ONE request; the small
+// shared reads (meta, home) also keep a process-level memo (5-min TTL) like the tables and the nav.
+//
+// WHICH SHOP USES WHAT. Brand Fashion reads all four. Watchizer imports only the two PRODUCT readers: its
+// home page and its menu are deliberately still on compat (slice 2 is out of this wave), so the presence of
+// `getServerV2Meta` and `getServerV2Home` in this file is not evidence that they moved — they are Brand
+// Fashion's, and they are here rather than in a second file because one file cannot drift from itself.
 
 const TTL = 300_000
 

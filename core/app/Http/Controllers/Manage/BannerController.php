@@ -4,13 +4,15 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Manage;
 
-use App\Domain\Content\BannerImage;
 use App\Domain\Activity\ActivityLog;
+use App\Domain\Content\BannerImage;
 use App\Domain\Content\Banners;
 use App\Domain\Content\BannerState;
 use App\Domain\Content\BannerWriter;
 use App\Models\Storefront\Storefront;
+use App\Storefront\HomeHero;
 use App\Storefront\ImageUrl;
+use App\Storefront\StorefrontCache;
 use App\Support\Coerce;
 use App\Support\ManageText;
 use App\Support\Table\TableQuery;
@@ -23,6 +25,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
+use stdClass;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
@@ -44,15 +47,18 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  */
 final class BannerController
 {
-    public function __construct(private readonly BannerWriter $writer) {}
+    public function __construct(private readonly BannerWriter $writer, private readonly StorefrontCache $cache) {}
 
     public function index(Request $request, Storefront $storefront): Response|StreamedResponse
     {
         $table = TableQuery::for($request)
             ->sortable(['b.sort_order', 'b.starts_at', 'b.ends_at', 'b.id'], default: 'b.sort_order', direction: 'asc')
-            ->filterable(['is_active' => ['0', '1'], 'state' => [
-                BannerState::RUNNING, BannerState::SCHEDULED, BannerState::EXPIRED, BannerState::INACTIVE,
-            ]])
+            ->filterable([
+                'is_active' => ['0', '1'],
+                'state' => [BannerState::RUNNING, BannerState::SCHEDULED, BannerState::EXPIRED, BannerState::INACTIVE],
+                // F1 (2026-10-20): a real column, so the table filters it itself — no `virtual` entry.
+                'b.device' => BannerWriter::DEVICES,
+            ])
             // Both are applied below: `state` is four predicates over two columns and a clock, and
             // `is_active` is written here as `b.is_active`.
             ->virtual(['is_active', 'state'])
@@ -70,6 +76,7 @@ final class BannerController
                 'sort_order' => ManageText::t('common.sort', 'الترتيب'),
                 'is_active' => ManageText::t('common.active', 'مفعّل'),
                 'image_path' => ManageText::t('banners.image_file', 'ملف الصورة'),
+                'device' => ManageText::t('banners.device', 'الجهاز'),
             ], 'banners');
 
         $filters = $table->resolvedFilters();
@@ -102,6 +109,14 @@ final class BannerController
             return [
                 'id' => $id,
                 'image_path' => $image,
+                // F1 (2026-10-20): which device shows this banner, the upload the crop came from, and the
+                // rectangle the tool last used — so it reopens where the operator left it.
+                'device' => BannerWriter::device(Row::nstr($row, 'device')),
+                'image_original_path' => Row::nstr($row, 'image_original_path'),
+                'image_original_url' => ($o = Row::nstr($row, 'image_original_path')) === null
+                    ? null
+                    : ImageUrl::srcFor($storefront->id, BannerImage::path($o)),
+                'crop' => self::crop($row),
                 // The banner's OWN storefront's host, folder put back for rows written bare (BannerImage).
                 'image_url' => ImageUrl::srcFor($storefront->id, BannerImage::path($image)),
                 'sort_order' => Row::int($row, 'sort_order'),
@@ -133,8 +148,99 @@ final class BannerController
             'table' => $table->paginate($query, $map),
             'categories' => self::categoryOptions($storefront->id),
             'targets' => BannerWriter::TARGETS,
+            'devices' => BannerWriter::DEVICES,
+            // Which hero this storefront's home draws, and the two it can draw (the addendum, 2026-10-20).
+            // It lives on THIS screen because "my banners are not showing" is the question it answers, and
+            // because an operator who is editing banners is the operator who wants to turn them on.
+            'hero' => HomeHero::of(is_array($storefront->settings) ? $storefront->settings : null),
+            'heroes' => HomeHero::MODES,
+            'crop_ratios' => self::cropRatios((string) $storefront->code),
             'media_type' => 'banner',
         ]);
+    }
+
+    /**
+     * What to crop to, and what size to ask the operator for — PER STOREFRONT (the addendum, 2026-10-20).
+     *
+     * -- The numbers, and where each one came from ----------------------------------------------
+     *
+     * Measured in a headless browser on 2026-10-20, on each app's own home page with its banner hero on,
+     * reading the hero element's own box:
+     *
+     *                  viewport 1440    viewport 1920    viewport 390    viewport 360
+     *   Watchizer        1329 × 463       1400 × 488       358 × 160       328 × 147
+     *   Brand Fashion    1377 × 480       1600 × 558       358 × 160       328 × 147
+     *
+     * The two shops do NOT have the same box: Watchizer's content column is narrower, so its desktop hero is
+     * 48 px narrower at 1440 and 200 px narrower at 1920. The phone box is the same in both, because the
+     * hero's own phone cap (160 px) decides it rather than the column.
+     *
+     * -- Why the SHAPE is nevertheless one shape ------------------------------------------------
+     *
+     * The hero is one component with one stylesheet in both apps, and that stylesheet fixes the box's ASPECT
+     * RATIO (`aspect-ratio: 1377/480` on desktop, `358/160` on a phone — the measured ratios, 2.869 and
+     * 2.237, hold in every row above). Only the WIDTH follows each app's column. So the rectangle the
+     * operator crops is the same in both shops by construction, and what differs per storefront is the pixel
+     * size worth uploading. That is what this map carries: one shape, two recommended sizes, both measured.
+     *
+     * The recommended size is twice the widest box each shop renders (its 1920 row), so the picture is sharp
+     * on a 2x display at the widest viewport that shop draws; the phone number is twice its 390 box. `both`
+     * is cropped to the desktop shape: it is the larger of the two, and the phone box crops its sides.
+     *
+     * @return array<string, array{w: int, h: int, recommended: string}>
+     */
+    private static function cropRatios(string $code): array
+    {
+        $desktop = ['w' => 1377, 'h' => 480, 'recommended' => $code === 'watchizer' ? '2800 × 976' : '3200 × 1116'];
+
+        return [
+            'both' => $desktop,
+            'desktop' => $desktop,
+            'mobile' => ['w' => 358, 'h' => 160, 'recommended' => '716 × 320'],
+        ];
+    }
+
+    /**
+     * Flip this storefront's home hero between the 3D watch and the banners (the addendum, 2026-10-20).
+     *
+     * One key inside `storefronts.settings`; every other key is read and written back untouched, so the
+     * urls, identity and promotions sections this screen knows nothing about survive the save.
+     *
+     * It calls `forgetStorefront`, NOT `flush`: the hero is read off the storefront ROW, and
+     * `ResolveStorefront` caches that row under its own key with its own TTL. `flush` only bumps the version
+     * the payload families hang off, so the v2 home rebuilt itself and read the OLD settings back out of the
+     * resolved-row cache — the shop saw no change until that TTL ran out. (Measured by this release's own
+     * test; it is the same hole `forgetStorefront` was written for in C-BUG-1, 2026-09-17.)
+     *
+     * Watchizer reads compat, which is not cached in core; its home is a Next.js ISR page and takes up to
+     * its own 5 minutes, or a redeploy, to turn over. That is stated on the screen rather than hidden.
+     */
+    public function hero(Request $request, Storefront $storefront): RedirectResponse
+    {
+        $request->validate(['hero' => ['required', 'string', Rule::in(HomeHero::MODES)]]);
+        $mode = $request->string('hero')->toString();
+
+        $settings = is_array($storefront->settings) ? $storefront->settings : [];
+        $before = HomeHero::of($settings);
+        $home = is_array($settings['home'] ?? null) ? $settings['home'] : [];
+        $home['hero'] = $mode;
+        $settings['home'] = $home;
+        $storefront->settings = $settings;
+        $storefront->save();
+
+        $this->cache->forgetStorefront((int) $storefront->id, (string) $storefront->code);
+
+        ActivityLog::record(
+            'storefronts',
+            (int) $storefront->id,
+            ActivityLog::UPDATED,
+            ['home_hero' => $before],
+            ['home_hero' => $mode],
+            label: $storefront->name,
+            storefrontId: $storefront->id,
+        );
+
+        return back()->with('status', ManageText::t('banners.hero_saved', 'تم تغيير شكل أعلى الصفحة الرئيسية.'));
     }
 
     public function store(Request $request, Storefront $storefront): RedirectResponse
@@ -272,6 +378,10 @@ final class BannerController
     {
         $data = Coerce::arr($request->validate([
             'image_path' => ['required', 'string', 'max:255'],
+            'image_original_path' => ['nullable', 'string', 'max:255'],
+            'crop' => ['nullable', 'string', 'max:255'],
+            // optional on purpose: absent means `both`, the value every pre-F1 row carries
+            'device' => ['nullable', 'string', Rule::in(BannerWriter::DEVICES)],
             'target' => ['required', 'string', Rule::in(BannerWriter::TARGETS)],
             'product_id' => ['nullable', 'integer', 'exists:catalog_products,id'],
             'storefront_category_id' => ['nullable', 'integer', 'exists:storefront_categories,id'],
@@ -287,6 +397,30 @@ final class BannerController
         $data['storefront_id'] = $storefront->id;
 
         return $data;
+    }
+
+    /**
+     * The stored crop rectangle for the screen, or null. Decoration for the tool — a row whose JSON is
+     * unreadable simply reopens uncropped rather than failing the list.
+     *
+     * @return array{x: int, y: int, w: int, h: int}|null
+     */
+    private static function crop(stdClass $row): ?array
+    {
+        $raw = Row::nstr($row, 'crop');
+        $decoded = $raw === null ? null : json_decode($raw, true);
+        if (! is_array($decoded)) {
+            return null;
+        }
+        $out = [];
+        foreach (['x', 'y', 'w', 'h'] as $k) {
+            if (! is_numeric($decoded[$k] ?? null)) {
+                return null;
+            }
+            $out[$k] = (int) $decoded[$k];
+        }
+
+        return $out;
     }
 
     /** 404, never 403: a banner id is guessable and a 403 would confirm the guess (§3.11.14). */

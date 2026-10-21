@@ -8,14 +8,22 @@ namespace App\Storefront;
  */
 final class ImageUrl
 {
-    public static function src(string $path): string
+    /**
+     * @param  string|null  $base  an EXPLICIT host to name, for a caller that knows which one it must use —
+     *                             a compat payload names {@see StorefrontUrls::compatAssetBase()}, which is
+     *                             not the v2 host (COMPAT-ASSET-HOST, 2026-10-14). Null keeps the rule below.
+     */
+    public static function src(string $path, ?string $base = null): string
     {
+        if ($base !== null && $base !== '') {
+            return rtrim($base, '/').'/Uploads_Images/'.ltrim($path, '/');
+        }
         // A v2 request names ITS storefront's image host (ResolveStorefront sets this, and clears it
         // when the request ends); everything else — the dashboard, e-mails — keeps the .env value.
         $request = config('storefront.request_asset_base');
-        $base = rtrim(is_string($request) && $request !== '' ? $request : config()->string('storefront.asset_base'), '/');
+        $host = rtrim(is_string($request) && $request !== '' ? $request : config()->string('storefront.asset_base'), '/');
 
-        return $base.'/Uploads_Images/'.ltrim($path, '/');
+        return $host.'/Uploads_Images/'.ltrim($path, '/');
     }
 
     /**
@@ -36,9 +44,10 @@ final class ImageUrl
 
     /**
      * @param  array<mixed>|null  $renditions
+     * @param  string|null  $base  see {@see self::src()} — an explicit image host for a caller that needs one
      * @return array{src: string, srcset: list<array{src: string, width: int, format: string}>, width: int|null, height: int|null, alt: string|null}
      */
-    public static function object(string $path, ?int $width, ?int $height, ?string $alt, ?array $renditions): array
+    public static function object(string $path, ?int $width, ?int $height, ?string $alt, ?array $renditions, ?string $base = null): array
     {
         $srcset = [];
         if ($renditions !== null) {
@@ -48,12 +57,12 @@ final class ImageUrl
                 }
                 foreach ($sizes as $w => $file) {
                     if (is_string($file) && is_numeric($w)) {
-                        $srcset[] = ['src' => self::src($file), 'width' => (int) $w, 'format' => (string) $format];
+                        $srcset[] = ['src' => self::src($file, $base), 'width' => (int) $w, 'format' => (string) $format];
                     }
                 }
             }
         }
 
-        return ['src' => self::src($path), 'srcset' => $srcset, 'width' => $width, 'height' => $height, 'alt' => $alt];
+        return ['src' => self::src($path, $base), 'srcset' => $srcset, 'width' => $width, 'height' => $height, 'alt' => $alt];
     }
 }

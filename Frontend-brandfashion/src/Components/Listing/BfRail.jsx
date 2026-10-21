@@ -1,6 +1,7 @@
 'use client'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import BfProductCard from '@/src/Components/Product/BfProductCard'
+import { useRailScroll } from '@/src/Hooks/useRailScroll'
 import { aisleTint, FAMILIES } from '@/src/lib/aisleTint'
 import { txt } from '@/src/lib/cardData'
 import { localizeHref } from '@/src/utils/localePath'
@@ -47,46 +48,14 @@ export function useIsDesktop() {
   return desktop
 }
 
-/**
- * A horizontal track with "is there more?" knowledge and page-wise scrolling, direction-aware.
- * Returns the track ref apart from the plain state, so a caller never reads a ref during render.
+/*
+ * `useRailScroll` moved to `src/Hooks/useRailScroll.js` on 2026-10-20 and is RE-EXPORTED here, under
+ * the name every caller in this app already imports. It had to move: the shared banner hero
+ * (`src/Components/Home/BannerHero.jsx`) is a twin that runs in both storefront apps, and Watchizer
+ * has no `BfRail` to import a hook from. The implementation is unchanged — see the hook's own file
+ * for what the drag has to get right.
  */
-export function useRailScroll(dir = 'ltr') {
-  const ref = useRef(null)
-  const [edges, setEdges] = useState({ start: true, end: true })
-  const measure = useCallback(() => {
-    const el = ref.current
-    if (!el) return
-    const max = el.scrollWidth - el.clientWidth
-    const pos = Math.abs(el.scrollLeft)
-    setEdges({ start: pos <= 1, end: pos >= max - 1 })
-  }, [])
-  useEffect(() => {
-    const el = ref.current
-    if (!el) return undefined
-    measure()
-    let raf = 0
-    const onScroll = () => {
-      cancelAnimationFrame(raf)
-      raf = requestAnimationFrame(measure)
-    }
-    el.addEventListener('scroll', onScroll, { passive: true })
-    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null
-    ro?.observe(el)
-    return () => {
-      el.removeEventListener('scroll', onScroll)
-      ro?.disconnect()
-      cancelAnimationFrame(raf)
-    }
-  }, [measure])
-  const page = (sign) => {
-    const el = ref.current
-    if (!el) return
-    const step = el.clientWidth * sign * (dir === 'rtl' ? -1 : 1)
-    el.scrollBy({ left: step, behavior: 'smooth' })
-  }
-  return [ref, { atStart: edges.start, atEnd: edges.end, page }]
-}
+export { useRailScroll }
 
 export default function BfRail({ title, cards = [], seeAllHref = null, lang = 'en', onAdd, tint = 'auto', browseHref = null, className = '', count = null, heading = 'h2' }) {
   const desktop = useIsDesktop()

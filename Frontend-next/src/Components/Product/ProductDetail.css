@@ -282,6 +282,13 @@
   color: var(--wz-ink);
   letter-spacing: -0.01em;
 }
+/* A SALE price is red here exactly as it is on the card (`.wz-pc__price--sale`), so one product
+   does not show its price in two colours two clicks apart. The modifier was already being put on
+   this element by the markup and had no rule at all, which is why the two disagreed. The literal
+   is ProductCard.css's `--pc-red`, which is scoped to `.wz-pc` and cannot be read from here. */
+.wz-pd-price--sale {
+  color: #d4341a;
+}
 .wz-pd-price-orig {
   font-size: 15px;
   font-weight: 500;
@@ -418,6 +425,151 @@
   text-align: center;
   font-weight: 600;
   font-size: 14px;
+}
+
+/* ── THE VARIANT PICKER (Addition B, 2026-10-23) ─────────────────────────────
+   Watchizer's own control, not Brand Fashion's: this page already states facts as a label on one side and
+   a value on the other (the spec table), and already has one hairline 6px control (the quantity stepper).
+   The picker is both of those put together, so an axis reads as a spec row whose value can be changed.
+   The chosen chip takes the ADD BUTTON's ink fill - selection and the button's target are one statement.
+   Every colour is declared explicitly: this site has no dark theme, and nothing here may depend on a
+   browser's default control colours if one is ever added or forced.
+   ───────────────────────────────────────────────────────────────────────────── */
+.wz-pd-opts {
+  margin: 0 0 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.wz-pd-opt-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 9px;
+  padding-bottom: 7px;
+  border-bottom: 1px solid var(--pd-line);
+}
+.wz-pd-opt-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--pd-muted);
+}
+.wz-pd-opt-value {
+  font-family: var(--wz-serif);
+  font-size: 14px;
+  color: var(--pd-ink);
+}
+.wz-pd-opt-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* the chip: the quantity stepper's geometry, one step smaller */
+.wz-pd-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 0 13px;
+  border: 1px solid rgba(0, 0, 0, 0.14);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--pd-ink);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background-color 0.15s, border-color 0.15s, transform 0.08s;
+}
+.wz-pd-chip--text {
+  min-width: 48px;
+  justify-content: center;
+}
+.wz-pd-chip:hover:not(.is-on):not(.is-sold) {
+  background: #f1ede5;
+  border-color: rgba(0, 0, 0, 0.26);
+}
+.wz-pd-chip:active:not(.is-sold) {
+  transform: scale(0.96);
+}
+.wz-pd-chip:focus-visible {
+  outline: 2px solid var(--pd-gold);
+  outline-offset: 2px;
+}
+.wz-pd-chip.is-on {
+  background: var(--pd-ink);
+  border-color: var(--pd-ink);
+  color: #fff;
+}
+
+/* the swatch is a SQUARE with a hairline, so white and silver read on a white chip */
+.wz-pd-chip-swatch {
+  width: 13px;
+  height: 13px;
+  border-radius: 2px;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.22);
+  flex: none;
+}
+.wz-pd-chip.is-on .wz-pd-chip-swatch {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.5);
+}
+.wz-pd-chip-text {
+  white-space: nowrap;
+}
+
+/* sold out: struck through and quiet, still present and still readable by a screen reader - hiding it
+   would tell the shopper the colour does not exist, when it does and is simply gone today */
+.wz-pd-chip.is-sold {
+  cursor: not-allowed;
+  border-color: var(--pd-line);
+  color: rgba(0, 0, 0, 0.34);
+  background: #fff;
+}
+.wz-pd-chip.is-sold .wz-pd-chip-text {
+  text-decoration: line-through;
+}
+.wz-pd-chip.is-sold .wz-pd-chip-swatch {
+  opacity: 0.4;
+}
+/* "Sold out" is said to a screen reader only: on screen the strikethrough already says it, and the word
+   made the row ragged - a colour chip would have carried a name AND a status and been twice as wide as its
+   neighbours. One statement per state. */
+.wz-pd-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* what is still to be chosen - said here, under the control, not in a toast after a failed tap */
+.wz-pd-opt-need {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: #8a6d1f;
+}
+
+@media (max-width: 560px) {
+  .wz-pd-opt-row {
+    gap: 7px;
+  }
+  .wz-pd-chip {
+    min-height: 40px; /* a thumb target, not a mouse target */
+    padding: 0 11px;
+  }
+  .wz-pd-chip--text {
+    min-width: 52px;
+  }
 }
 
 /* The action row holds: [qty] then add + share stacked below.
@@ -769,6 +921,9 @@ body[style*='overflow:hidden'] .wz-pd-sticky {
   font-weight: 700;
   color: var(--wz-ink);
 }
+.wz-pd-sticky-amount--sale {
+  color: #d4341a;
+}
 .wz-pd-sticky-orig {
   font-size: 11px;
   color: rgba(0, 0, 0, 0.32);
@@ -967,11 +1122,16 @@ body[style*='overflow:hidden'] .wz-pd-sticky {
     flex-wrap: wrap;
     margin-top: 2px;
   }
-  .wz-pd-ms-sale,
   .wz-pd-ms-regular {
     font-size: 15px;
     font-weight: 700;
     color: var(--wz-ink);
+  }
+  /* on sale, the same red as the card and the desktop price above */
+  .wz-pd-ms-sale {
+    font-size: 15px;
+    font-weight: 700;
+    color: #d4341a;
   }
   .wz-pd-ms-orig {
     font-size: 12px;
