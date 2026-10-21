@@ -9,6 +9,8 @@
 nodeLinker: hoisted
 
 allowBuilds:
+  # vitest (the adapter tests, 2026-10-21): esbuild fetches its binary in a postinstall
+  esbuild: true
   sharp: true
   unrs-resolver: true
 

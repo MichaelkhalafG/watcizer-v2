@@ -69,6 +69,30 @@ export function specRowsIn(specs, lang, product = null) {
   const add = (label, value) => {
     if (label && value !== '' && value !== null && value !== undefined) out.push({ label, value })
   }
+  /*
+   * THE EIGHT ROWS COMPAT'S TABLE OPENED WITH — Brand, Category, Type, Gender, Grade, Model Name, Model
+   * Number, Features — in compat's order, BEFORE core's specs (2026-10-21, found by diffing the live page's
+   * table against what compat's `products/{id}` drew: core's `specs[]` are the watch and family specs, and
+   * these eight live elsewhere in the same payload — `brand`, `categories`, `primary_category`,
+   * `attributes.genders`, `grade`, `model_name`, `model_number`, `attributes.features`). The live table had
+   * 17 rows where compat drew 25; the eight were lost in the move, not by a decision.
+   *
+   * compat's Category was the category TYPE (Watches) and its Type the sub-type (Chronograph); v2's
+   * depth-1 node and primary node are the same two names.
+   */
+  if (product) {
+    const cats = Array.isArray(product.categories) ? product.categories : []
+    const top = cats.find((c) => c?.depth === 1) || null
+    const primary = product.primary_category || cats.find((c) => c?.is_primary) || null
+    add(isAr ? 'الماركة' : 'Brand', refText(product.brand, l))
+    add(isAr ? 'الفئة' : 'Category', refText(top, l))
+    if (primary && (!top || primary.id !== top.id)) add(isAr ? 'النوع' : 'Type', refText(primary, l))
+    add(isAr ? 'الجنس' : 'Gender', refText(product.attributes?.genders, l))
+    add(isAr ? 'التصنيف' : 'Grade', refText(product.grade, l))
+    add(isAr ? 'اسم الموديل' : 'Model Name', refText(product.model_name, l))
+    add(isAr ? 'رقم الموديل' : 'Model Number', product.model_number || '')
+    add(isAr ? 'المميزات' : 'Features', refText(product.attributes?.features, l))
+  }
   for (const row of specs || []) {
     const label = row?.label?.[l] || row?.label?.en || ''
     const value = specValue(row?.value, l)
@@ -99,13 +123,67 @@ export function fromV2Product(page) {
   if (!p) return null
 
   const row = legacyRow(p)
-  // the gallery reads `images` as strings or `{ image }`; v2 serves objects with a `src`
-  row.images = (p.images || []).map((i) => i?.src).filter(Boolean)
+  /*
+   * WHAT THE PAGE READS OFF THE LEGACY ROW, AND WHERE IT WAS LOST (2026-10-21, a live regression).
+   *
+   * `transformProductData` is what every consumer runs over this payload, and it does NOT keep a row's own
+   * `images`: it rebuilds them from the payload's `images` argument — compat's gallery rows, `{product_id,
+   * image}` — and `getColors` / the translations likewise rebuild colours and texts from the row's compat
+   * fields. The first cut set `row.images` (overwritten to `[]`), left the colour pivots empty and the
+   * translations at title + short text, so the live product page drew ONE picture, no swatches and the
+   * short description where the long one had been. Measured on the live page and against compat's answer
+   * for the same product (8 images, two finishes with hex, a 654-character description): every one of
+   * these is in v2's answer, under its own name, and is mapped here into the shape the transform rebuilds
+   * from.
+   */
+  const txt = (o, locale) => (o && typeof o === 'object' ? o[locale] ?? o.en ?? '' : o ?? '')
+  const refName = (r, locale) => (r && typeof r === 'object' ? txt(r.name, locale) : '')
+  row.translations = ['en', 'ar'].map((locale) => ({
+    locale,
+    product_title: txt(p.title, locale),
+    short_description: txt(p.short_description, locale),
+    long_description: txt(p.long_description, locale),
+    model_name: txt(p.model_name, locale),
+    country: Array.isArray(p.country) ? p.country.map((c) => refName(c, locale)).filter(Boolean).join(', ') : refName(p.country, locale),
+    stone: Array.isArray(p.stone) ? p.stone.map((c) => refName(c, locale)).filter(Boolean).join(', ') : refName(p.stone, locale),
+  }))
+  // a colour ref → compat's pivot row: `getColors` reads id, color_value and the translations' color_name
+  const colourRow = (c) => ({
+    id: c?.id ?? null,
+    color_id: c?.id ?? null,
+    color_value: c?.hex ?? null,
+    name: txt(c?.name, 'en'),
+    name_ar: txt(c?.name, 'ar'),
+    color_name_en: txt(c?.name, 'en'),
+    color_name_ar: txt(c?.name, 'ar'),
+    translations: ['en', 'ar'].map((locale) => ({ locale, color_id: c?.id ?? null, color_name: txt(c?.name, locale) })),
+  })
+  const colours = p.attributes?.colors || {}
+  row.dial_color = (colours.dial || []).map(colourRow)
+  // a non-watch product's one colour is stored under `band` (the schema wart, backlog 2026-10-23), which is
+  // exactly what the page's fashion branch reads as the product's single colour
+  row.band_color = [...(colours.band || []), ...(colours.main || [])].map(colourRow)
+  // a lookup ref → compat's pivot row with translations: `transformProductData` reads `translations[].feature_name`
+  const named = (refs, key) =>
+    (Array.isArray(refs) ? refs : []).map((r) => ({
+      id: r?.id ?? null,
+      [key]: txt(r?.name, 'en'),
+      translations: ['en', 'ar'].map((locale) => ({ locale, [key]: txt(r?.name, locale) })),
+    }))
+  row.feature = named(p.attributes?.features, 'feature_name')
+  row.gender = named(p.attributes?.genders, 'gender_name')
+  // `isFashion` tests the category TYPE's name; compat's was "Fashion", v2's family is the same classification
+  row.category_type_name = p.family ?? null
+  row.average_rate = p.rating?.avg ?? null
+  // the gallery, in the ONE shape the transform rebuilds `images` from: compat's rows, `{ product_id, image }`.
+  // v2 lists the cover first (compat listed the gallery rows and the cover separately); the page dedups by url.
+  const gallery = (p.images || []).filter((i) => i?.src).map((i) => ({ id: i.id ?? null, product_id: p.id, image: i.src, is_cover: !!i.is_cover }))
+  row.images = gallery.map((i) => i.image)
   if (!row.image && row.images.length) row.image = row.images[0]
 
   return {
     // the compat-shaped payload every existing consumer reads
-    payload: { products: [row], ratings: [], images: [], meta: p.meta || null },
+    payload: { products: [row], ratings: [], images: gallery, meta: p.meta || null },
     // and what only v2 carries
     specs: p.specs || [],
     variants: p.variants || [],

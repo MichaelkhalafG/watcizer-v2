@@ -36,7 +36,9 @@ async function resolveFromV2(param) {
   } catch {
     // the card still renders from its own row, as on the compat path
   }
-  const [product] = transformProductData(adapted.payload.products, tables, [], [], 'en')
+  // the payload's gallery rows, as the client's `useCardsOf` passes them too (2026-10-21: `[]` here and an
+  // adapter that set nothing left the server-rendered page, and so the first paint, with one image)
+  const [product] = transformProductData(adapted.payload.products, tables, adapted.payload.ratings, adapted.payload.images, 'en')
   if (!product) return null
   // `specs` being present is also what tells ProductDetailClient the full record is already here, so the
   // browser makes no second call for it.
