@@ -324,13 +324,28 @@ final class StorefrontCheckout
         $customer = OrderCustomer::of($orderId);
         $parts = explode(' ', $customer->name ?? 'Guest User', 2);
         $address = DB::table('addresses')->where('id', $addressId)->first();
+        /*
+         * The governorate's English name, exactly as compat's `billingData()` sends it (2026-10-21, the
+         * per-method parity check before Watchizer's checkout moved). This sent 'Cairo' for every order — the
+         * ONE argument of the intention that differed between the two paths. Informational to Paymob (not in
+         * the HMAC, not in the routing), but a merchant's transaction record should not say Cairo for Alexandria.
+         */
+        $city = 'Cairo';
+        if ($address !== null) {
+            $name = DB::connection('legacy')->table('shipping_city_translations')
+                ->where('shipping_city_id', Row::int(Row::cast($address), 'shipping_city_id'))
+                ->where('locale', 'en')->value('city_name');
+            if (is_string($name) && $name !== '') {
+                $city = $name;
+            }
+        }
 
         return [
             'first_name' => $parts[0] !== '' ? $parts[0] : 'Guest',
             'last_name' => $parts[1] ?? 'User',
             'street' => $address === null ? 'N/A' : (Row::nstr(Row::cast($address), 'address_line') ?? 'N/A'),
             'phone_number' => $customer->phone ?? '01000000000',
-            'city' => 'Cairo',
+            'city' => $city,
             'country' => 'Egypt',
             'email' => $customer->email ?? 'guest@example.com',
         ];
