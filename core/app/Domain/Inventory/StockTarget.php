@@ -2,6 +2,7 @@
 
 namespace App\Domain\Inventory;
 
+use App\Transform\Row;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 
@@ -73,6 +74,27 @@ final class StockTarget
     public static function productHasVariants(int $productId): bool
     {
         return DB::table('catalog_product_variants')->where('product_id', $productId)->exists();
+    }
+
+    /**
+     * The subset of these products that have at least one variant — {@see productHasVariants()} asked once for
+     * many, so a cart read is one query here however many lines it holds (CartQueryBudgetTest, 2026-10-21).
+     *
+     * @param  list<int>  $productIds
+     * @return list<int>
+     */
+    public static function productsWithVariants(array $productIds): array
+    {
+        if ($productIds === []) {
+            return [];
+        }
+
+        $ids = [];
+        foreach (DB::table('catalog_product_variants')->whereIn('product_id', $productIds)->distinct()->get(['product_id']) as $raw) {
+            $ids[] = Row::int(Row::cast($raw), 'product_id');
+        }
+
+        return $ids;
     }
 
     public function describe(): string

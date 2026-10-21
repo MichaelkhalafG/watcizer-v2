@@ -776,6 +776,18 @@ final class InventoryService
     }
 
     /**
+     * Which of these products carry variants — {@see hasVariants()} for a whole cart in one query instead of one
+     * per line (CartQueryBudgetTest, 2026-10-21).
+     *
+     * @param  list<int>  $productIds
+     * @return list<int>
+     */
+    public function productsWithVariants(array $productIds): array
+    {
+        return StockTarget::productsWithVariants($productIds);
+    }
+
+    /**
      * Re-derive `catalog_products.in_stock` for ONE product, at whichever level owns it.
      *
      * Activating or deactivating a variant is a CATALOG edit, not a stock movement — no units

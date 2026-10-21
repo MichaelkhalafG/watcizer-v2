@@ -6,8 +6,10 @@ let listeners = new Set()
 let currentCart = null
 // Extra reactive state (kept separate from the cart snapshot so existing
 // consumers that read `cart` are unaffected). Exposed via getExtraSnapshot.
-let extra = { totals: null, warnings: [], lastRemoved: null }
+let extra = { totals: null, warnings: [], lastRemoved: null, newLineAt: 0 }
 let undoTimer = null
+// the one read of the server's cart at the first subscribe in a browser tab (see `subscribe`)
+let hydrated = false
 
 const CART_KEY = 'user_cart'
 const GUEST_KEY = 'wz_guest_token'
@@ -109,10 +111,25 @@ const setExtra = (patch) => {
 // What the shopper is told when the server refused an add (2026-09-29). ONE sentence for every
 // place that adds to the cart: the product card said nothing at all while the product page said
 // this, and a refused card add looked like a button that did nothing.
-export const refusedAddMessage = (result, isRTL) =>
-  /exceeds available stock/i.test(result?.message || '')
-    ? isRTL ? 'لا يوجد مخزون كافٍ لهذه الكمية' : 'Not enough stock for that quantity'
-    : isRTL ? 'تعذّرت الإضافة إلى السلة. حاول مرة أخرى.' : "Couldn't add to cart. Please try again."
+//
+// BY CODE since slice 3 (2026-10-21), the table Brand Fashion's store already carries: v2 answers a code,
+// and a refused size pick ("choose a size") fell through to "Couldn't add to cart", which is not why it
+// failed. compat's sentence is still matched, because the merge path still speaks it.
+const REFUSALS = {
+  insufficient_stock: ['Not enough stock for that quantity', 'لا يوجد مخزون كافٍ لهذه الكمية'],
+  variant_required: ['Choose a size or colour first', 'اختر المقاس أو اللون أولاً'],
+  variant_not_allowed: ['This item has no options to choose', 'هذا المنتج بلا خيارات'],
+  variant_mismatch: ['That option is no longer available', 'هذا الخيار لم يعد متوفراً'],
+  variant_unavailable: ['That option is no longer available', 'هذا الخيار لم يعد متوفراً'],
+  unavailable: ['This item is no longer available', 'هذا المنتج لم يعد متوفراً'],
+}
+export const refusedAddMessage = (result, isRTL) => {
+  const pair =
+    REFUSALS[result?.code] ||
+    (/exceeds available stock/i.test(result?.message || '') ? REFUSALS.insufficient_stock : null)
+  if (pair) return isRTL ? pair[1] : pair[0]
+  return isRTL ? 'تعذّرت الإضافة إلى السلة. حاول مرة أخرى.' : "Couldn't add to cart. Please try again."
+}
 
 /*
  * ON v2 SINCE 2026-10-21 (slice 3). The contract is unchanged — absolute quantity in, a resolved
@@ -137,7 +154,7 @@ const syncLine = (item, quantity) =>
 // and stock type — a product card (no colours) adding to a line the product page created (with
 // colours) used to make a SECOND server row for the same product.
 /*
- * TAKE THE SERVER'S LINE ID ONTO THE LOCAL LINE after a successful sync (slice 3, 2026-10-21).
+ * TAKE THE SERVER'S LINE — its id AND its money — onto the local line after a sync (slice 3, 2026-10-21).
  *
  * The optimistic row is created with `id: Date.now()`, because at that moment the server has not seen it.
  * On compat that never mattered: removal was by PRODUCT. On v2 a line is deleted and updated BY ITS ID, so
@@ -145,15 +162,62 @@ const syncLine = (item, quantity) =>
  * survived every removal and inflated the next order's total, which is the exact phantom-row bug the
  * previous comment in `syncRemove` says was fixed once already.
  *
- * The server's answer carries the whole cart, so the line is found by the same key and its id adopted.
+ * THE PRICE MATTERS JUST AS MUCH. compat stored whatever price this browser sent, so the tab's copy and
+ * the server's row always agreed. v2 prices the line ITSELF and ignores what the browser claims — so
+ * without this the cart could show the price the product page had while core charged its own. One price on
+ * screen and another at checkout is the oldest cart bug there is; the server's number wins here, at the
+ * moment it is known.
+ *
+ * The server's answer carries the whole cart, so the line is found by the same key and adopted whole.
  */
-const adoptServerId = (key, cart) => {
+/*
+ * What only the server knows about a line, taken whole: its id, its money, its bucket, the stock of that
+ * bucket, its `problem`, its product card and its variant — the fields the cart screen reads to say
+ * "only 2 left", "choose a size" or "unavailable" about THIS line rather than about the product. `server`
+ * marks a line the server has answered for, so the screen can tell it from an optimistic row still in
+ * flight. `seen_price` is this tab's — the price the shopper last saw — and is never taken from the server.
+ */
+const serverFields = (row) => ({
+  ...(Number.isInteger(Number(row.id)) ? { id: row.id } : {}),
+  server: true,
+  piece_price: row.piece_price,
+  type_stock: row.type_stock,
+  available: row.available ?? null,
+  problem: row.problem ?? null,
+  product: row.product ?? null,
+  variant: row.variant ?? null,
+})
+
+const adoptServerLine = (key, cart) => {
   const row = cart?.cart_item?.find((i) => getItemKey(i) === key)
-  if (!row || !Number.isInteger(Number(row.id))) return
-  updateCart((current) => ({
-    ...current,
-    cart_item: current.cart_item.map((i) => (getItemKey(i) === key ? { ...i, id: row.id } : i)),
-  }))
+  if (!row) return
+  updateCart((current) => {
+    // A line the tab no longer holds — the first-load read answered AFTER this add and rebuilt the tab
+    // without it — is put back from the server's answer, which is the truth about it anyway.
+    if (!current.cart_item.some((i) => getItemKey(i) === key)) {
+      return {
+        ...current,
+        cart_item: [...current.cart_item, { ...row, ...serverFields(row), seen_price: Number(row.piece_price) }],
+      }
+    }
+    return {
+      ...current,
+      cart_item: current.cart_item.map((i) =>
+        getItemKey(i) === key ? { ...i, ...serverFields(row), total_price: row.total_price, quantity: row.quantity } : i,
+      ),
+    }
+  })
+}
+
+/*
+ * The price the shopper last SAW for each line survives a rebuild from the server's answer, so the cart
+ * can say "Price updated" when the server's number moved (Brand Fashion's rule, spec §10.4, taken in
+ * slice 3). A line from before this shipped carries no `seen_price`, but its `piece_price` IS what the
+ * shopper saw, so that is used; a line this tab has never shown starts at the server's price.
+ */
+const withSeenPrices = (lines) => {
+  const before = new Map((currentCart || readCart()).cart_item.map((l) => [getItemKey(l), l.seen_price ?? Number(l.piece_price)]))
+  return lines.map((l) => ({ ...l, ...serverFields(l), seen_price: before.get(getItemKey(l)) ?? Number(l.piece_price) }))
 }
 
 const serverKeyOf = (item) => ({
@@ -206,7 +270,7 @@ const syncRemove = (item) => {
 // Stable references for the SSR render (useSyncExternalStore requires a
 // getServerSnapshot; returning a fresh object each call would loop forever).
 const SERVER_EMPTY_CART = createEmptyCart()
-const SERVER_EMPTY_EXTRA = { totals: null, warnings: [], lastRemoved: null }
+const SERVER_EMPTY_EXTRA = { totals: null, warnings: [], lastRemoved: null, newLineAt: 0 }
 
 export const cartStore = {
   getSnapshot: () => currentCart ?? (currentCart = readCart()),
@@ -216,6 +280,18 @@ export const cartStore = {
   getExtraServerSnapshot: () => SERVER_EMPTY_EXTRA,
   subscribe: (callback) => {
     listeners.add(callback)
+    /*
+     * The first subscriber in a browser tab reads core's cart once (Brand Fashion's rule, taken in slice 3,
+     * 2026-10-21). On v2 the server's cart IS the cart and this tab's copy is a cache of it: a cart from
+     * before this shipped, a cart changed in another tab, or one emptied by an order shows as it is, on the
+     * first page, instead of waiting for the cart page's read. compat never had this — the tab copy was the
+     * only cart a new tab knew, and `reconcile` deleted the server's rows it could not see at checkout.
+     * `GET cart` creates nothing for a token it has never seen (`find`, not `resolve`), so this writes no row.
+     */
+    if (!hydrated && typeof window !== 'undefined') {
+      hydrated = true
+      cartStore.fetchCart()
+    }
     return () => listeners.delete(callback)
   },
 
@@ -235,6 +311,12 @@ export const cartStore = {
     // not something a human can check a report against.
     name = undefined,
   }) => {
+    // v2 has no offer lines — legacy offers were deleted (Phase 0, G11) and production holds none — so an
+    // offer is refused before anything moves, as Brand Fashion's store does, rather than shown as added and
+    // then rolled back when the server refuses it.
+    if (product_id === null || product_id === undefined) {
+      return Promise.resolve({ ok: false, status: 0, code: 'unavailable', message: null })
+    }
     let absoluteQty = quantity
     let previous = null
     let syncAs = { product_id, offer_id, variant_id, piece_price, type_stock, color_band, color_dial }
@@ -268,6 +350,8 @@ export const cartStore = {
           type_stock,
           color_band,
           color_dial,
+          // the price the shopper saw at the add; "Price updated" is said when the server's differs
+          seen_price: parseFloat(piece_price),
           created_at: now,
           updated_at: now,
         })
@@ -279,7 +363,15 @@ export const cartStore = {
     // { ok: false, message } to tell the shopper why (it used to say "Added to cart!").
     const synced = syncLine(syncAs, absoluteQty).then((result) => {
       if (!result.ok) restoreLine(key, previous)
-      else adoptServerId(key, result.cart)
+      else adoptServerLine(key, result.cart)
+      /*
+       * THE DRAWER'S SIGNAL (Brand Fashion's rule, taken in slice 3, 2026-10-21): a CONFIRMED add that created a
+       * NEW line. The host used to open on a rising line count, and the count rises on every page load — from
+       * the server render's 0 to the tab's lines, and now from 0 to the server's cart when the first read lands
+       * — so the drawer opened by itself on a reload with a non-empty cart. Measured on Watchizer: open at t+4 s
+       * on a plain reload. A quantity added to an existing line is not a new line and does not open it.
+       */
+      if (result.ok && !previous) setExtra({ newLineAt: Date.now() })
       return result
     })
     // Return the sync promise so callers can await it for a pending/disabled UI.
@@ -317,6 +409,8 @@ export const cartStore = {
     if (!synced) return Promise.resolve({ ok: true, status: 200, message: null })
     const result = syncLine(synced, newQuantity).then((r) => {
       if (!r.ok) restoreLine(identifier, previous)
+      // the server re-prices on every write, so take its line here as the add path does
+      else adoptServerLine(identifier, r.cart)
       return r
     })
     return trackConfirmedAdd(result, {
@@ -352,12 +446,24 @@ export const cartStore = {
       return { ...cart, cart_item: [...cart.cart_item, item] }
     })
     setExtra({ lastRemoved: null })
-    syncLine(item, item.quantity)
+    // the row was deleted on the server, so the line comes back with a NEW id — take it, or the next
+    // removal would address a row that no longer exists
+    syncLine(item, item.quantity).then((r) => {
+      if (r.ok) adoptServerLine(getItemKey(item), r.cart)
+    })
   },
 
   clearCart: () => {
     writeCart(createEmptyCart(currentCart?.user_id))
     setExtra({ totals: null, warnings: [] })
+  },
+
+  // The prices the shopper has now seen (the cart page, on the way to checkout): "Price updated" clears.
+  acknowledgePrices: () => {
+    updateCart((cart) => ({
+      ...cart,
+      cart_item: cart.cart_item.map((l) => ({ ...l, seen_price: Number(l.piece_price) })),
+    }))
   },
 
   /*
@@ -373,11 +479,43 @@ export const cartStore = {
   validateCart: async () => {
     try {
       const cart = await v2CartRead()
+      /*
+       * THE SERVER'S MONEY REPLACES THIS TAB'S, line by line.
+       *
+       * compat stored whatever price the browser sent, so the two could never disagree. v2 prices the cart
+       * itself, so a tab carrying an older copy — a shopper who had a cart before this shipped, or a tab
+       * left open while a sale started — would otherwise show its own number while core holds another.
+       * Measured before this was added: a pre-switch cart displayed 100 EGP a line and 300 EGP a total
+       * while the server held 3,090 and 9,270. The checkout would have refused it rather than overcharged,
+       * but the cart was lying until then.
+       *
+       * The money, the stock, the problem, the card and the variant are taken (`serverFields`). The QUANTITY
+       * is left alone: this tab's number is the shopper's intent, and `reconcile` is what pushes it to the
+       * server at checkout — adopting the server's quantity here would quietly undo an add whose sync had
+       * not landed yet. (So `problem` describes the server's quantity, not this tab's, until the next write.)
+       */
+      const money = new Map(cart.cart_item.map((l) => [getItemKey(l), l]))
+      updateCart((current) => ({
+        ...current,
+        cart_item: current.cart_item.map((i) => {
+          const server = money.get(getItemKey(i))
+          if (!server) return i
+          return {
+            ...i,
+            ...serverFields(server),
+            total_price: (Number(i.quantity) * parseFloat(server.piece_price)).toFixed(2),
+          }
+        }),
+      }))
       setExtra({ totals: cart.totals, warnings: cart.warnings })
       return { valid: cart.warnings.length === 0, warnings: cart.warnings, totals: cart.totals }
-    } catch {
+    } catch (err) {
       // The check itself could not run (network, server error). `failed` lets the checkout step
       // SAY so and offer a retry (2026-09-28) instead of silently treating it as valid.
+      //
+      // It LOGS since 2026-10-21: this block now rewrites the tab's money, so a programming fault in it
+      // would otherwise be swallowed here and look exactly like core being unreachable.
+      console.warn('validateCart failed:', err)
       return { valid: true, warnings: [], failed: true }
     }
   },
@@ -389,6 +527,8 @@ export const cartStore = {
   // `priceOf(line)` gives the line's CURRENT price (the card's rule); lines are sent at it.
   // Resolves to { refused: [{ key, message }], serverLines: number, failed: bool }.
   reconcile: async (priceOf) => {
+    // `priceOf` is still accepted for the page that passes it, and changes nothing on v2: no price is sent,
+    // the server prices every line itself. Kept so the call site reads as it always did.
     const lines = (currentCart || readCart()).cart_item
     const refused = []
     for (const line of lines) {
@@ -433,7 +573,7 @@ export const cartStore = {
         await syncRemove(row)
       }
     }
-    writeCart({ ...(currentCart || readCart()), updated_at: generateTimestamp(), cart_item: keep })
+    writeCart({ ...(currentCart || readCart()), updated_at: generateTimestamp(), cart_item: withSeenPrices(keep) })
     return { refused, serverLines: keep.length, failed: false }
   },
 
@@ -446,7 +586,7 @@ export const cartStore = {
         user_id: cart.user_id ?? null,
         created_at: generateTimestamp(),
         updated_at: generateTimestamp(),
-        cart_item: cart.cart_item,
+        cart_item: withSeenPrices(cart.cart_item),
       })
       setExtra({ totals: cart.totals, warnings: cart.warnings })
       return cart
@@ -480,7 +620,7 @@ export const cartStore = {
         user_id: cart.user_id ?? null,
         created_at: generateTimestamp(),
         updated_at: generateTimestamp(),
-        cart_item: cart.cart_item,
+        cart_item: withSeenPrices(cart.cart_item),
       })
       setExtra({ totals: cart.totals, warnings: cart.warnings })
       return cart

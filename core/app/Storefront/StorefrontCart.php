@@ -234,6 +234,14 @@ final class StorefrontCart
             }
         }
 
+        // ONE query for every plain line, not one per line: a cart of ten products paid ten `exists` reads
+        // (CartQueryBudgetTest, 2026-10-21). The same question as `hasVariants()` — any variant row, active or not.
+        $plainIds = array_values(array_unique(array_map(
+            fn (stdClass $r) => Row::int($r, 'product_id'),
+            array_filter($rows, fn (stdClass $r) => Row::nint($r, 'variant_id') === null),
+        )));
+        $withVariants = array_fill_keys($this->inventory->productsWithVariants($plainIds), true);
+
         $items = [];
         $count = 0;
         $subtotal = 0.0;
@@ -249,7 +257,7 @@ final class StorefrontCart
             $unit = null;
             if ($product === null) {
                 $problem = 'unavailable';
-            } elseif ($variantId === null && $this->inventory->hasVariants($productId)) {
+            } elseif ($variantId === null && isset($withVariants[$productId])) {
                 $problem = 'variant_required';
             } elseif ($variantId !== null && ($variant === null || $variant['product_id'] !== $productId)) {
                 $problem = 'variant_unavailable';

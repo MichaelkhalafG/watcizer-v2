@@ -159,6 +159,8 @@ function CartModal({ open, onClose, cart }) {
                   <img src={d.image} alt={d.name} width="56" height="56" loading="lazy" onError={handleImgError} />
                   <div className="wz-cartmodal-added-info">
                     <p className="wz-cartmodal-item-name">{d.name}</p>
+                    {/* the variant (size, colour) the shopper just chose */}
+                    {justAdded.variant?.label && <span className="wz-cartmodal-row-meta">{justAdded.variant.label} · </span>}
                     <span className="wz-cartmodal-item-price">
                       {fmt(justAdded.piece_price)} {currency}
                     </span>
@@ -180,6 +182,8 @@ function CartModal({ open, onClose, cart }) {
                     <div className="wz-cartmodal-row-info">
                       <p className="wz-cartmodal-row-name">{d.name}</p>
                       <span className="wz-cartmodal-row-meta">
+                        {/* the variant (size, colour) first: two sizes of one product are two rows here too */}
+                        {item.variant?.label ? `${item.variant.label} · ` : ''}
                         {t('Qty', 'الكمية')} {item.quantity} · {fmt(Number(item.piece_price) * item.quantity)} {currency}
                       </span>
                     </div>
