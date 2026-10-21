@@ -8,6 +8,7 @@ import { refusedAddMessage } from '@/src/Store/cartStore'
 import { txt, money } from '@/src/lib/cardData'
 import { aisleTint } from '@/src/lib/aisleTint'
 import { PLACEHOLDER_IMG } from '@/src/utils/imageUrl'
+import useGalleryKeys, { imagePosition } from '@/src/Hooks/useGalleryKeys'
 import { localizeHref } from '@/src/utils/localePath'
 import BfRail from '@/src/Components/Listing/BfRail'
 import StockAlertForm from './StockAlertForm'
@@ -170,16 +171,29 @@ export default function BfProductPage({ detail, related }) {
   const images = (Array.isArray(p.images) && p.images.length ? p.images : p.image ? [p.image] : []).filter((i) => i?.src)
   const [slide, setSlide] = useState(0)
   const trackRef = useRef(null)
+  // A programmatic move (a key, a dot, a thumb) OWNS the slide until the smooth scroll lands on it: the scroll
+  // handler used to set the slide from every intermediate position, so a second key mid-scroll stepped from a
+  // slide the shopper never chose (measured 2026-10-21: nine lefts from the second image landed on the fifth).
+  const slideTarget = useRef(null)
   const goSlide = (i) => {
     setSlide(i)
+    slideTarget.current = i
     const el = trackRef.current
     if (el) el.scrollTo({ left: el.clientWidth * i * (isRTL ? -1 : 1), behavior: 'smooth' })
   }
   const onScroll = () => {
     const el = trackRef.current
     if (!el || !el.clientWidth) return
-    setSlide(Math.round(Math.abs(el.scrollLeft) / el.clientWidth))
+    const at = Math.round(Math.abs(el.scrollLeft) / el.clientWidth)
+    if (slideTarget.current !== null) {
+      if (at !== slideTarget.current) return
+      slideTarget.current = null
+    }
+    setSlide(at)
   }
+  // ← → move between the images (2026-10-21): in the reading direction, wrapping, never from a field, a
+  // select, the pickers (radiogroups) or an open drawer — see useGalleryKeys
+  useGalleryKeys({ count: images.length, index: slide, onChange: goSlide, rtl: isRTL })
 
   // ── attributes (§11.4): specs first, else the pivots, else nothing
   const specs = Array.isArray(p.specs) ? p.specs : []
@@ -224,6 +238,9 @@ export default function BfProductPage({ detail, related }) {
 
         <div className="bf-pdp__top">
           <div className="bf-gal">
+            {images.length > 1 ? (
+              <p className="bf-gal__sr" aria-live="polite" aria-atomic="true">{imagePosition(slide, images.length, isRTL)}</p>
+            ) : null}
             <div className="bf-gal__main">
               <div className="bf-gal__track" ref={trackRef} onScroll={onScroll}>
                 {(images.length ? images : [{ src: PLACEHOLDER_IMG }]).map((img, i) => (

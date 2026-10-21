@@ -111,6 +111,12 @@ bash tests/baseline/suite-baseline.sh               # NEW 0, stale 0, CHANGED 0 
 > the signature, because a test cannot be both new and fixed. The real fix is `GATE-JUNIT-NAMES`, required before this
 > gate runs on another machine or in CI.
 
+> **STALE — corrected 2026-10-21.** The dashboard bundle changed in BOTH waves deployed on 2026-10-21 (`resources/js`
+> is edited whenever a dashboard screen is). The rule is the standing runbook's (`RUNBOOK_PHASE2_STOREFRONT.md` §2.1):
+> `npm run build` on the workstation and ship `public/build/` in the archive; the proof is that the live
+> `manifest.json` digest equals the ARCHIVE's, never that it equals a value written here. `699aab9e…` below was the
+> 2026-10-15 bundle; deploy 2 of 2026-10-21 left `64f727ab…`.
+
 **1.3 The dashboard bundle does NOT change — prove it, do not rebuild it.** `resources/js` is untouched since
 2026-10-14; the bundle on disk is the one live since 2026-10-15:
 
@@ -160,6 +166,10 @@ archive, built before the v2 cache change, digested to the tree of that moment o
 
 ## 2. Pre-flight — read-only, on the server and from the workstation
 
+> **STALE — corrected 2026-10-21.** The digest below is the pre-2026-10-19 tree. Deploy 1 of 2026-10-21 left the live
+> tree digest `7941eadf…`, deploy 2 left `02c575b8…`. Expect the digest of the tree you are deploying FROM, computed
+> the same way on the workstation on the day — never a value written into this file.
+
 **2.1 The live code is the tree we think it is (`333eef0`).** Core deploys from the WORKSTATION tree, not from `main`
 (`main` is older: the 2026-10-15 asset-host fix `4a24d67` is live and not on `main`). So prove it:
 
@@ -190,13 +200,13 @@ and is harmless if nothing routes to it.
 
 ```bash
 cd ~/domains/eleganceeg.com
-tar -czf ~/core-before-$(date +%Y%m%d).tar.gz core
-ls -l ~/core-before-*.tar.gz && sha256sum ~/core-before-$(date +%Y%m%d).tar.gz
+TAG=a   # UNIQUE PER DEPLOY OF THE DAY (a, b, c …): on 2026-10-21 the afternoon deploy's backup would have OVERWRITTEN the morning's; it was taken as core-before-20261021b
+tar -czf ~/core-before-$(date +%Y%m%d)-$TAG.tar.gz core
+ls -l ~/core-before-*.tar.gz && sha256sum ~/core-before-$(date +%Y%m%d)-$TAG.tar.gz
 du -sh core/public core/vendor core/storage core/storage/logs
 ```
 
-**2.3 The `.htaccess` baseline** — the content gate's three counts, BEFORE (expect **2 / 1 / 3**; 64 lines on
-2026-10-15). **Corrected 2026-10-19:** this said `2 / 1 / 1`, which was my misreading of the live file — `R=404,L`
+**2.3 The `.htaccess` baseline** — the content gate's three counts, BEFORE (expect **1 / 1 / 3**, **64 lines** — **corrected 2026-10-21, measured on the day:** `api\.` matches ONE line, line 8, a comment; the live file diffed IDENTICAL to `~/htaccess.before-20261015.bak`; this said 2 / 1 / 3). **Corrected 2026-10-19:** this said `2 / 1 / 1`, which was my misreading of the live file — `R=404,L`
 occurs **three** times in it, not once. Nothing changed on the server: the live file was diffed against
 `~/htaccess.before-20261015.bak` on the day and came back **IDENTICAL**.
 
@@ -224,6 +234,11 @@ fixed nonce while `APP_KEY` and the Google keys are unchanged — so after §3 W
 ---
 
 ## 3. CORE — the one step that touches Watchizer
+
+> **STALE — corrected 2026-10-21.** This table described the 2026-10-19 release only. On 2026-10-21 deploy 1 ran FOUR
+> migrations (`DEPLOY_20261023.md`) and deploy 2 none (`DEPLOY_20261023_B.md`); the dashboard bundle changed in both;
+> compat was touched (`routes/api.php`, the cache groups) and Watchizer's cart, checkout and orders tab moved to v2.
+> What a release changes is in its dated deploy runbook; this table is history.
 
 **3.0 What changes, exactly, and what could break Watchizer.**
 
@@ -277,7 +292,7 @@ for h in api.watchizereg.com api.michaelkhalaf.com; do
   curl -s -o /dev/null -w "$h /api/catalog/meta  %{http_code}\n" "https://$h/api/catalog/meta"   # 401
   curl -s -o /dev/null -w "$h /manage            %{http_code}\n" "https://$h/manage"             # 404
 done
-F="$LIVE"/public/.htaccess; grep -c 'api\\.(watchizereg|michaelkhalaf)' "$F"; grep -c 'assets/brand/' "$F"; grep -c 'R=404,L' "$F"   # 2 1 3 (corrected 2026-10-19; it read 2 1 1, a misreading — the live file is unchanged)
+F="$LIVE"/public/.htaccess; grep -c 'api\\.(watchizereg|michaelkhalaf)' "$F"; grep -c 'assets/brand/' "$F"; grep -c 'R=404,L' "$F"   # 1 1 3, and wc -l 64 (corrected 2026-10-21: api. matches only line 8, a comment; this said 2 1 3 from 2026-10-19; it read 2 1 1, a misreading — the live file is unchanged)
 ```
 
 **STOP — and restore the backup at once — on a 404 for `/api/catalog/meta`**: the allow-list is gone.
@@ -290,6 +305,10 @@ chmod -R 775 storage bootstrap/cache && rm -f public/hot public/fonts-manifest.d
 php artisan migrate --pretend                    # see the box below: this release HAS migrations
 php artisan core:repoint-commerce-fks --dry-run  # nothing to do
 ```
+
+> **STALE — corrected 2026-10-21.** "Exactly these two" was true on 2026-10-19. The rule that survives: on production,
+> `php artisan migrate:status | grep -i pending` is the authority; `--pretend` must list exactly the set the dated
+> deploy runbook names (four on 2026-10-21 deploy 1, none on deploy 2) and any other name is a STOP.
 
 **3.4a MIGRATIONS — A SEPARATE STEP, RUN IT DELIBERATELY (2026-10-20).** Until this release the line above was
 expected to print "Nothing to migrate." **It is not any more.** `--pretend` must list EXACTLY these two and nothing
@@ -372,11 +391,15 @@ stores nothing). Cost: Brand Fashion's catalogue reads reach core every time; co
 `storage/logs` size (rules out an error flood — `du -sh storage/logs`, compare with 2.2), and the last 20 lines of
 `storage/logs/laravel-$(date +%Y-%m-%d).log` (expect nothing new at ERROR).
 
+> **STALE — corrected 2026-10-21.** "No migration to reverse" held on 2026-10-19 only. `php artisan migrate:rollback`
+> is forbidden in this application (`DB::prohibitDestructiveCommands()`), so a release with migrations carries TESTED
+> SQL rollbacks in its dated runbook — `DEPLOY_20261023.md` §5 for the four of 2026-10-21 deploy 1.
+
 **3.9 Way back for §3 alone — code only, no data (there is no migration to reverse):**
 
 ```bash
 cd ~ && rm -rf ~/rollback-staging && mkdir ~/rollback-staging && cd ~/rollback-staging
-tar -xzf ~/core-before-<D>.tar.gz core/app core/bootstrap core/config core/database core/lang core/resources core/routes core/vendor core/artisan core/composer.json core/composer.lock core/public/build
+tar -xzf ~/core-before-<D>-<tag>.tar.gz core/app core/bootstrap core/config core/database core/lang core/resources core/routes core/vendor core/artisan core/composer.json core/composer.lock core/public/build
 cp -a ~/rollback-staging/core/. ~/domains/eleganceeg.com/core/        # .htaccess is NOT in this list — the live one stays
 cd ~/domains/eleganceeg.com/core && php artisan config:cache && php artisan route:cache && php artisan view:clear
 # prove: the code digest of 2.1 again = f225ac87… EXCEPT for the files this deploy ADDED (cp -a never deletes):

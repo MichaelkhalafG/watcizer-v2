@@ -1,0 +1,1231 @@
+{
+ "product": {
+  "id": 440,
+  "slug": "tommy-hilfiger-brown-watch-for-men-1791631",
+  "family": "watch",
+  "title": {
+   "ar": "ساعة تومي هيلفيغر للرجال باللون البني 1791631",
+   "en": "Tommy Hilfiger brown Watch For Men 1791631"
+  },
+  "short_description": {
+   "ar": "تتميز ساعة Tommy Hilfiger الرجالية (طراز 1791631) بتصميم عصري وأنيق يضفي لمسة ذكورية راقية؛ فهي ساعة متعددة الاستخدامات تكمّل الإطلالات اليومية والرسمية على حد سواء.",
+   "en": "Tommy Hilfiger Men’s Watch 1791631 features a sleek, modern design with a sophisticated masculine finish. A versatile timepiece that complements both everyday and formal outfits."
+  },
+  "brand": {
+   "id": 23,
+   "slug": "tommy-hilfiger",
+   "name": {
+    "en": "Tommy Hilfiger",
+    "ar": "تومي هيلفيغر"
+   }
+  },
+  "grade": {
+   "id": 6,
+   "name": {
+    "en": "Fashion & Lifestyle",
+    "ar": "موضة وستايل"
+   }
+  },
+  "primary_category": {
+   "id": 6,
+   "slug": "chronograph",
+   "path": "watches/chronograph",
+   "depth": 2,
+   "name": {
+    "en": "Chronograph",
+    "ar": "كرونوغراف"
+   }
+  },
+  "image": {
+   "src": "https://api.watchizereg.com/Uploads_Images/Product/1788795089_2026-09-07_6a9ed8d1b4a4b.webp",
+   "srcset": [],
+   "width": null,
+   "height": null,
+   "alt": null
+  },
+  "hover_image": {
+   "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1788795089_2026-09-07_6a9ed8d1e9cc4.webp",
+   "srcset": [],
+   "width": null,
+   "height": null,
+   "alt": null
+  },
+  "colors": [
+   {
+    "id": 1,
+    "hex": "#111111",
+    "name": {
+     "en": "Black",
+     "ar": "أسود"
+    },
+    "role": "dial"
+   },
+   {
+    "id": 8,
+    "hex": "#4A2C1A",
+    "name": {
+     "en": "Brown",
+     "ar": "بني"
+    },
+    "role": "band"
+   }
+  ],
+  "variants": [],
+  "price": {
+   "amount": 3900,
+   "sale_amount": 3090,
+   "currency": "EGP",
+   "discount_pct": 21,
+   "has_sale": true
+  },
+  "stock": {
+   "express": 0,
+   "market": 3,
+   "in_stock": true
+  },
+  "rating": {
+   "avg": null,
+   "count": 0
+  },
+  "is_featured": false,
+  "sort_order": 0,
+  "created_at": "2026-09-07T18:31:31.000000Z",
+  "updated_at": "2026-09-07T18:31:31.000000Z",
+  "long_description": {
+   "ar": "أكمل إطلالتك مع ساعة Tommy Hilfiger الرجالية (موديل 1791631)، وهي ساعة أنيقة صُممت خصيصاً للرجل العصري؛ إذ يجمع تصميمها الراقي بين الجاذبية العصرية والطابع الكلاسيكي المميز لإكسسوارات Tommy Hilfiger.\r\n\r\nتُعد هذه الساعة خياراً مثالياً ومريحاً لمختلف المناسبات، بدءاً من الإطلالات اليومية وملابس العمل، ووصولاً إلى حفلات العشاء والمناسبات الخاصة. يضفي مظهرها المصقول لمسة من الرقي والأناقة على معصمك، مع الحفاظ على طابع عملي يلائم تنسيقاتك اليومية المتنوعة.\r\n\r\nسواء كنت تضيف قطعة جديدة إلى مجموعتك الخاصة أو تبحث عن هدية مميزة ومدروسة، فإن ساعة Tommy Hilfiger (موديل 1791631) تُعد خياراً أنيقاً يثري أي خزانة ملابس عصرية.",
+   "en": "Complete your look with the Tommy Hilfiger Men’s Watch 1791631, a stylish timepiece designed for the modern man. Its refined aesthetic combines contemporary appeal with the timeless character of Tommy Hilfiger accessories.\r\n\r\nThe 1791631 is an easy-to-wear accessory for a wide range of occasions, from daily outfits and business wear to dinners and special events. Its polished appearance adds a sophisticated finishing touch to your wrist while remaining versatile enough for everyday styling.\r\n\r\nWhether you're adding a new piece to your collection or choosing a thoughtful gift, the Tommy Hilfiger 1791631 is a stylish choice for any modern wardrobe."
+  },
+  "model_name": {
+   "en": "Tommy Hilfiger Kyle"
+  },
+  "country": [],
+  "stone": [],
+  "model_number": "1791631",
+  "warranty_years": 3,
+  "images": [
+   {
+    "id": 1000440,
+    "is_cover": true,
+    "src": "https://api.watchizereg.com/Uploads_Images/Product/1788795089_2026-09-07_6a9ed8d1b4a4b.webp",
+    "srcset": [],
+    "width": null,
+    "height": null,
+    "alt": null
+   },
+   {
+    "id": 1688,
+    "is_cover": false,
+    "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1788795089_2026-09-07_6a9ed8d1e9cc4.webp",
+    "srcset": [],
+    "width": null,
+    "height": null,
+    "alt": null
+   },
+   {
+    "id": 1689,
+    "is_cover": false,
+    "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1788795090_2026-09-07_6a9ed8d22e7d9.webp",
+    "srcset": [],
+    "width": null,
+    "height": null,
+    "alt": null
+   },
+   {
+    "id": 1690,
+    "is_cover": false,
+    "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1788795090_2026-09-07_6a9ed8d26af2c.webp",
+    "srcset": [],
+    "width": null,
+    "height": null,
+    "alt": null
+   },
+   {
+    "id": 1691,
+    "is_cover": false,
+    "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1788795090_2026-09-07_6a9ed8d2a1d47.webp",
+    "srcset": [],
+    "width": null,
+    "height": null,
+    "alt": null
+   },
+   {
+    "id": 1692,
+    "is_cover": false,
+    "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1788795090_2026-09-07_6a9ed8d2d7bd2.webp",
+    "srcset": [],
+    "width": null,
+    "height": null,
+    "alt": null
+   },
+   {
+    "id": 1693,
+    "is_cover": false,
+    "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1788795091_2026-09-07_6a9ed8d3121b0.webp",
+    "srcset": [],
+    "width": null,
+    "height": null,
+    "alt": null
+   },
+   {
+    "id": 1694,
+    "is_cover": false,
+    "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1788795091_2026-09-07_6a9ed8d35125b.webp",
+    "srcset": [],
+    "width": null,
+    "height": null,
+    "alt": null
+   }
+  ],
+  "specs": [
+   {
+    "key": "case_size",
+    "label": {
+     "ar": "قياس جسم الساعة",
+     "en": "Case size"
+    },
+    "value": 44,
+    "unit": {
+     "id": 32,
+     "code": "mm",
+     "name": {
+      "en": "mm",
+      "ar": "مم"
+     }
+    }
+   },
+   {
+    "key": "case_shape",
+    "label": {
+     "ar": "شكل جسم الساعة",
+     "en": "Case shape"
+    },
+    "value": {
+     "en": "Round",
+     "ar": "دائري"
+    },
+    "unit": null
+   },
+   {
+    "key": "case_material",
+    "label": {
+     "ar": "مادة جسم الساعة",
+     "en": "Case material"
+    },
+    "value": {
+     "en": "Stainless Steel",
+     "ar": "ستانلس ستيل"
+    },
+    "unit": null
+   },
+   {
+    "key": "glass_material",
+    "label": {
+     "ar": "خامة الزجاج",
+     "en": "Glass material"
+    },
+    "value": {
+     "en": "Stainless Steel",
+     "ar": "ستانلس ستيل"
+    },
+    "unit": null
+   },
+   {
+    "key": "case_thickness",
+    "label": {
+     "ar": "سماكة جسم الساعة",
+     "en": "Case thickness"
+    },
+    "value": 10,
+    "unit": {
+     "id": 32,
+     "code": "mm",
+     "name": {
+      "en": "mm",
+      "ar": "مم"
+     }
+    }
+   },
+   {
+    "key": "band_material",
+    "label": {
+     "ar": "خامة السوار",
+     "en": "Band material"
+    },
+    "value": {
+     "en": "Leather",
+     "ar": "جلد"
+    },
+    "unit": null
+   },
+   {
+    "key": "band_closure",
+    "label": {
+     "ar": "قفل السوار",
+     "en": "Band closure"
+    },
+    "value": {
+     "en": "Buckle",
+     "ar": "مشبك"
+    },
+    "unit": null
+   },
+   {
+    "key": "band_width",
+    "label": {
+     "ar": "عرض السوار",
+     "en": "Band width"
+    },
+    "value": 22,
+    "unit": {
+     "id": 32,
+     "code": "mm",
+     "name": {
+      "en": "mm",
+      "ar": "مم"
+     }
+    }
+   },
+   {
+    "key": "dial_display_type",
+    "label": {
+     "ar": "نوع عرض القرص",
+     "en": "Dial display type"
+    },
+    "value": {
+     "en": "Analog",
+     "ar": "تناظري"
+    },
+    "unit": null
+   },
+   {
+    "key": "movement_type",
+    "label": {
+     "ar": "نوع الحركة",
+     "en": "Movement"
+    },
+    "value": {
+     "en": "Quartz",
+     "ar": "كوارتز"
+    },
+    "unit": null
+   },
+   {
+    "key": "water_resistance",
+    "label": {
+     "ar": "مقاومة الماء",
+     "en": "Water resistance"
+    },
+    "value": 50,
+    "unit": {
+     "id": 3,
+     "code": "m",
+     "name": {
+      "en": "M",
+      "ar": "M"
+     }
+    }
+   },
+   {
+    "key": "interchangeable_dial",
+    "label": {
+     "ar": "ميناء قابل للتبديل",
+     "en": "Interchangeable dial"
+    },
+    "value": {
+     "en": "No",
+     "ar": "لا"
+    },
+    "unit": null
+   },
+   {
+    "key": "interchangeable_strap",
+    "label": {
+     "ar": "سوار قابل للتبديل",
+     "en": "Interchangeable strap"
+    },
+    "value": {
+     "en": "Yes",
+     "ar": "نعم"
+    },
+    "unit": null
+   },
+   {
+    "key": "watch_box",
+    "label": {
+     "ar": "علبة الساعة",
+     "en": "Watch box"
+    },
+    "value": {
+     "en": "Yes",
+     "ar": "نعم"
+    },
+    "unit": null
+   }
+  ],
+  "attributes": {
+   "features": [
+    {
+     "id": 1,
+     "name": {
+      "en": "Water Resistant",
+      "ar": "مقاوم للماء"
+     }
+    },
+    {
+     "id": 2,
+     "name": {
+      "en": "Chronograph",
+      "ar": "كرونوغراف"
+     }
+    },
+    {
+     "id": 4,
+     "name": {
+      "en": "Day & Date",
+      "ar": "اليوم والتاريخ"
+     }
+    },
+    {
+     "id": 9,
+     "name": {
+      "en": "Quartz",
+      "ar": "كوارتز"
+     }
+    }
+   ],
+   "genders": [
+    {
+     "id": 1,
+     "name": {
+      "en": "Men",
+      "ar": "رجالي"
+     }
+    }
+   ],
+   "colors": {
+    "dial": [
+     {
+      "id": 1,
+      "hex": "#111111",
+      "name": {
+       "en": "Black",
+       "ar": "أسود"
+      }
+     }
+    ],
+    "band": [
+     {
+      "id": 8,
+      "hex": "#4A2C1A",
+      "name": {
+       "en": "Brown",
+       "ar": "بني"
+      }
+     }
+    ],
+    "main": []
+   }
+  },
+  "categories": [
+   {
+    "id": 6,
+    "slug": "chronograph",
+    "path": "watches/chronograph",
+    "depth": 2,
+    "name": {
+     "en": "Chronograph",
+     "ar": "كرونوغراف"
+    },
+    "is_primary": true
+   },
+   {
+    "id": 1,
+    "slug": "watches",
+    "path": "watches",
+    "depth": 1,
+    "name": {
+     "en": "Watches",
+     "ar": "ساعات"
+    },
+    "is_primary": false
+   }
+  ],
+  "breadcrumb": [
+   {
+    "id": 1,
+    "slug": "watches",
+    "path": "watches",
+    "depth": 1,
+    "name": {
+     "en": "Watches",
+     "ar": "ساعات"
+    }
+   },
+   {
+    "id": 6,
+    "slug": "chronograph",
+    "path": "watches/chronograph",
+    "depth": 2,
+    "name": {
+     "en": "Chronograph",
+     "ar": "كرونوغراف"
+    }
+   }
+  ],
+  "meta": {
+   "title": {
+    "en": "Tommy Hilfiger brown Watch For Men 1791631"
+   },
+   "description": {
+    "en": "Tommy Hilfiger Men’s Watch 1791631 features a sleek, modern design with a sophisticated masculine finish. A versatile timepiece that complements both everyday a"
+   }
+  }
+ },
+ "related": [
+  {
+   "id": 25772,
+   "slug": "hublot-mens-skeleton-watch-silver-case-black-rubber-strap",
+   "family": "watch",
+   "title": {
+    "ar": "ساعة هوبلو رجالي سكيلتون فضي بحزام مطاطي أسود",
+    "en": "Hublot Men's Skeleton Watch – Silver Case, Black Rubber Strap"
+   },
+   "short_description": {
+    "ar": "ساعة رجالي بتصميم سكيلتون فاخر، تتميز بعلبة دائرية فضية ومينا مفتوحة تظهر التروس والتفاصيل الداخلية، مع عقارب ومؤشرات ساعات فضية وحزام مطاطي أسود مخطط وقفل معدني فضي قابل للطي، بالإضافة إلى ظهر شفاف يكشف أجزاء من الميكانيزم.",
+    "en": "A sophisticated men's skeleton-style watch featuring a silver-tone round case, an intricate open-worked dial with visible gears, silver-tone hour markers and hands, a black ribbed rubber strap, a silver-tone folding clasp, and a transparent exhibition-style case back."
+   },
+   "brand": {
+    "id": 9,
+    "slug": "hublot",
+    "name": {
+     "en": "Hublot",
+     "ar": "هوبلو"
+    }
+   },
+   "grade": {
+    "id": 4,
+    "name": {
+     "en": "Classic",
+     "ar": "كلاسيكية"
+    }
+   },
+   "primary_category": {
+    "id": 1,
+    "slug": "watches",
+    "path": "watches",
+    "depth": 1,
+    "name": {
+     "en": "Watches",
+     "ar": "ساعات"
+    }
+   },
+   "image": {
+    "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1792586141_2026-10-21_6ad8b19d7f7bf.webp",
+    "srcset": [],
+    "width": 960,
+    "height": 1200,
+    "alt": null
+   },
+   "hover_image": {
+    "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1792586132_2026-10-21_6ad8b19423fbd.webp",
+    "srcset": [],
+    "width": 1200,
+    "height": 1200,
+    "alt": null
+   },
+   "colors": [
+    {
+     "id": 3,
+     "hex": "#C0C0C0",
+     "name": {
+      "en": "Silver",
+      "ar": "فضي"
+     },
+     "role": "dial"
+    },
+    {
+     "id": 1,
+     "hex": "#111111",
+     "name": {
+      "en": "Black",
+      "ar": "أسود"
+     },
+     "role": "dial"
+    }
+   ],
+   "variants": [],
+   "price": {
+    "amount": 10500,
+    "sale_amount": 7500,
+    "currency": "EGP",
+    "discount_pct": 29,
+    "has_sale": true
+   },
+   "stock": {
+    "express": 0,
+    "market": 2,
+    "in_stock": true
+   },
+   "rating": {
+    "avg": null,
+    "count": 0
+   },
+   "is_featured": false,
+   "sort_order": 0,
+   "created_at": "2026-10-21T12:48:09.000000Z",
+   "updated_at": "2026-10-21T12:49:02.000000Z"
+  },
+  {
+   "id": 25771,
+   "slug": "hublot-big-bang-mens-skeleton-watch-silver-case-black-rubber-strap",
+   "family": "watch",
+   "title": {
+    "ar": "ساعة هوبلو بيج بانج رجالي سكيلتون بعلبة فضية وحزام مطاطي أسود",
+    "en": "Hublot Big Bang Men's Skeleton Watch – Silver Case, Black Rubber Strap"
+   },
+   "short_description": {
+    "ar": "ساعة رجالي بتصميم سكيلتون مميز، تتميز بعلبة فضية بنقشة هندسية تشبه النسيج، ومينا مفتوحة تُظهر تفاصيل الميكانيزم، مع أسطوانات رقمية دوّارة وعقارب فضية، وحزام مطاطي أسود بنقشة بارزة وقفل معدني فضي قابل للطي.",
+    "en": "A distinctive men's skeleton-style watch featuring a silver-tone case with a woven-texture finish, an open-worked dial revealing intricate mechanical details, a rotating numerical drum display, silver-tone hands, and a black textured rubber strap with a silver-tone folding clasp."
+   },
+   "brand": {
+    "id": 9,
+    "slug": "hublot",
+    "name": {
+     "en": "Hublot",
+     "ar": "هوبلو"
+    }
+   },
+   "grade": {
+    "id": 4,
+    "name": {
+     "en": "Classic",
+     "ar": "كلاسيكية"
+    }
+   },
+   "primary_category": {
+    "id": 1,
+    "slug": "watches",
+    "path": "watches",
+    "depth": 1,
+    "name": {
+     "en": "Watches",
+     "ar": "ساعات"
+    }
+   },
+   "image": {
+    "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1792585435_2026-10-21_6ad8aedb8f59b.webp",
+    "srcset": [],
+    "width": 1050,
+    "height": 1200,
+    "alt": null
+   },
+   "hover_image": {
+    "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1792585424_2026-10-21_6ad8aed05ce56.webp",
+    "srcset": [],
+    "width": 1200,
+    "height": 1097,
+    "alt": null
+   },
+   "colors": [
+    {
+     "id": 1,
+     "hex": "#111111",
+     "name": {
+      "en": "Black",
+      "ar": "أسود"
+     },
+     "role": "dial"
+    },
+    {
+     "id": 3,
+     "hex": "#C0C0C0",
+     "name": {
+      "en": "Silver",
+      "ar": "فضي"
+     },
+     "role": "dial"
+    }
+   ],
+   "variants": [],
+   "price": {
+    "amount": 7500,
+    "sale_amount": 5500,
+    "currency": "EGP",
+    "discount_pct": 27,
+    "has_sale": true
+   },
+   "stock": {
+    "express": 0,
+    "market": 2,
+    "in_stock": true
+   },
+   "rating": {
+    "avg": null,
+    "count": 0
+   },
+   "is_featured": false,
+   "sort_order": 0,
+   "created_at": "2026-10-21T12:31:25.000000Z",
+   "updated_at": "2026-10-21T12:32:16.000000Z"
+  },
+  {
+   "id": 25770,
+   "slug": "hublot-big-bang-mens-analog-watch-purple-dial-black-case-black-rubber-strap",
+   "family": "watch",
+   "title": {
+    "ar": "ساعة هوبلو بيج بانج رجالي بمينا بنفسجي وعلبة سوداء وحزام مطاطي أسود",
+    "en": "Hublot Big Bang Men's Analog Watch – Purple Dial, Black Case & Black Rubber Strap"
+   },
+   "short_description": {
+    "ar": "ساعة رجالي أنيقة بتصميم رياضي جريء، تتميز بمينا بنفسجي مميز، وعلبة دائرية سوداء بمسامير ظاهرة، ومؤشرات ساعات فضية، وثلاث عدادات فرعية، وتفاصيل حمراء ونافذة تاريخ، مع حزام مطاطي أسود بنقشة بارزة وقفل معدني قابل للطي.",
+    "en": "A bold men's analog watch featuring a distinctive purple dial, black round case with exposed screws, silver-tone hour markers, three subdials, red accents, a date window, and a textured black rubber strap with a folding clasp."
+   },
+   "brand": {
+    "id": 9,
+    "slug": "hublot",
+    "name": {
+     "en": "Hublot",
+     "ar": "هوبلو"
+    }
+   },
+   "grade": {
+    "id": 4,
+    "name": {
+     "en": "Classic",
+     "ar": "كلاسيكية"
+    }
+   },
+   "primary_category": {
+    "id": 1,
+    "slug": "watches",
+    "path": "watches",
+    "depth": 1,
+    "name": {
+     "en": "Watches",
+     "ar": "ساعات"
+    }
+   },
+   "image": {
+    "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1792585069_2026-10-21_6ad8ad6d9f27a.webp",
+    "srcset": [],
+    "width": 1200,
+    "height": 1200,
+    "alt": null
+   },
+   "hover_image": {
+    "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1792585057_2026-10-21_6ad8ad61d0f87.webp",
+    "srcset": [],
+    "width": 1200,
+    "height": 1200,
+    "alt": null
+   },
+   "colors": [
+    {
+     "id": 17,
+     "hex": "#000000",
+     "name": {
+      "en": "Multi Color",
+      "ar": "متعدد الألوان"
+     },
+     "role": "dial"
+    },
+    {
+     "id": 1,
+     "hex": "#111111",
+     "name": {
+      "en": "Black",
+      "ar": "أسود"
+     },
+     "role": "band"
+    }
+   ],
+   "variants": [],
+   "price": {
+    "amount": 6900,
+    "sale_amount": 4900,
+    "currency": "EGP",
+    "discount_pct": 29,
+    "has_sale": true
+   },
+   "stock": {
+    "express": 0,
+    "market": 2,
+    "in_stock": true
+   },
+   "rating": {
+    "avg": null,
+    "count": 0
+   },
+   "is_featured": false,
+   "sort_order": 0,
+   "created_at": "2026-10-21T12:20:52.000000Z",
+   "updated_at": "2026-10-21T12:21:26.000000Z"
+  },
+  {
+   "id": 25767,
+   "slug": "hublot-big-bang-mens-gold-chronograph-watch-black-dial-rubber-strap",
+   "family": "watch",
+   "title": {
+    "ar": "ساعة هوبلو بيج بانج كرونوغراف رجالي ذهبي بمينا سوداء وحزام مطاط",
+    "en": "Hublot Big Bang Men's Gold Chronograph Watch – Black Dial & Rubber Strap"
+   },
+   "short_description": {
+    "ar": "ساعة رجالي بتصميم كرونوغراف رياضي فاخر، تتميز بعلبة دائرية ذهبية ومينا سوداء بمؤشرات وعقارب ذهبية وعقرب مركزي أحمر، مع ثلاثة عدادات فرعية ونافذة للتاريخ. تأتي بحزام مطاطي أسود بنقشة بارزة وقفل معدني ذهبي قابل للطي.",
+    "en": "A bold men's chronograph-style watch featuring a gold-tone round case, black dial, gold-tone hour markers, a red central hand, three subdials, and a date window. Finished with a textured black rubber strap and a gold-tone folding clasp for a sporty, luxurious appearance."
+   },
+   "brand": {
+    "id": 9,
+    "slug": "hublot",
+    "name": {
+     "en": "Hublot",
+     "ar": "هوبلو"
+    }
+   },
+   "grade": {
+    "id": 4,
+    "name": {
+     "en": "Classic",
+     "ar": "كلاسيكية"
+    }
+   },
+   "primary_category": {
+    "id": 1,
+    "slug": "watches",
+    "path": "watches",
+    "depth": 1,
+    "name": {
+     "en": "Watches",
+     "ar": "ساعات"
+    }
+   },
+   "image": {
+    "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1792581622_2026-10-21_6ad89ff6b4269.webp",
+    "srcset": [],
+    "width": 1200,
+    "height": 1200,
+    "alt": null
+   },
+   "hover_image": {
+    "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1792581616_2026-10-21_6ad89ff0d0ed8.webp",
+    "srcset": [],
+    "width": 1200,
+    "height": 1200,
+    "alt": null
+   },
+   "colors": [
+    {
+     "id": 4,
+     "hex": "#D4AF37",
+     "name": {
+      "en": "Gold",
+      "ar": "ذهبي"
+     },
+     "role": "dial"
+    },
+    {
+     "id": 1,
+     "hex": "#111111",
+     "name": {
+      "en": "Black",
+      "ar": "أسود"
+     },
+     "role": "band"
+    }
+   ],
+   "variants": [],
+   "price": {
+    "amount": 6200,
+    "sale_amount": 4200,
+    "currency": "EGP",
+    "discount_pct": 32,
+    "has_sale": true
+   },
+   "stock": {
+    "express": 0,
+    "market": 2,
+    "in_stock": true
+   },
+   "rating": {
+    "avg": null,
+    "count": 0
+   },
+   "is_featured": false,
+   "sort_order": 0,
+   "created_at": "2026-10-21T11:27:27.000000Z",
+   "updated_at": "2026-10-21T11:29:02.000000Z"
+  },
+  {
+   "id": 25766,
+   "slug": "hublot-big-bang-mens-black-chronograph-watch-black-rubber-strap",
+   "family": "watch",
+   "title": {
+    "ar": "ساعة هوبلو بيج بانج كرونوغراف رجالي أسود بحزام مطاط أسود",
+    "en": "Hublot Big Bang Men's Black Chronograph Watch – Black Rubber Strap"
+   },
+   "short_description": {
+    "ar": "ساعة رجالي بتصميم كرونوغراف رياضي فاخر، تتميز بهيكل دائري أسود ومينا سوداء بمؤشرات فضية وعقرب مركزي أحمر، مع 3 عدادات فرعية ونافذة لعرض التاريخ. تأتي بحزام مطاطي أسود مضلع وقفل معدني أسود قابل للطي.",
+    "en": "A bold men's chronograph-style watch featuring a black round case, black dial, silver-tone hour markers, a striking red central hand, three subdials, and a date window. Completed with a textured black rubber strap and a black metal folding clasp."
+   },
+   "brand": {
+    "id": 9,
+    "slug": "hublot",
+    "name": {
+     "en": "Hublot",
+     "ar": "هوبلو"
+    }
+   },
+   "grade": {
+    "id": 4,
+    "name": {
+     "en": "Classic",
+     "ar": "كلاسيكية"
+    }
+   },
+   "primary_category": {
+    "id": 1,
+    "slug": "watches",
+    "path": "watches",
+    "depth": 1,
+    "name": {
+     "en": "Watches",
+     "ar": "ساعات"
+    }
+   },
+   "image": {
+    "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1792581093_2026-10-21_6ad89de5f3226.webp",
+    "srcset": [],
+    "width": 873,
+    "height": 1200,
+    "alt": null
+   },
+   "hover_image": {
+    "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1792581084_2026-10-21_6ad89ddcbc4ae.webp",
+    "srcset": [],
+    "width": 900,
+    "height": 1200,
+    "alt": null
+   },
+   "colors": [
+    {
+     "id": 1,
+     "hex": "#111111",
+     "name": {
+      "en": "Black",
+      "ar": "أسود"
+     },
+     "role": "dial"
+    }
+   ],
+   "variants": [],
+   "price": {
+    "amount": 6199,
+    "sale_amount": 4200,
+    "currency": "EGP",
+    "discount_pct": 32,
+    "has_sale": true
+   },
+   "stock": {
+    "express": 0,
+    "market": 2,
+    "in_stock": true
+   },
+   "rating": {
+    "avg": null,
+    "count": 0
+   },
+   "is_featured": false,
+   "sort_order": 0,
+   "created_at": "2026-10-21T11:16:54.000000Z",
+   "updated_at": "2026-10-21T11:17:12.000000Z"
+  },
+  {
+   "id": 25765,
+   "slug": "hublot-big-bang-mens-black-skeleton-watch-black-rubber-strap",
+   "family": "watch",
+   "title": {
+    "ar": "ساعة هوبلو بيج بانج رجالي سكيلتون أسود بحزام مطاط",
+    "en": "Hublot Big Bang Men's Black Skeleton Watch – Black Rubber Strap"
+   },
+   "short_description": {
+    "ar": "ساعة رجالي بتصميم سكيلتون مميز باللون الأسود، تتميز بمينا مفرغة تكشف تفاصيل ميكانيكية باللون الذهبي مع مؤشرات فضية ولمسات حمراء. تأتي بهيكل دائري أسود وحزام مطاطي مضلع مع قفل معدني قابل للطي وظهر شفاف يكشف أجزاء من الحركة.",
+    "en": "A bold men's skeleton-style watch featuring a black round case, intricate openwork dial with gold-tone mechanical details, silver-tone hour markers, and striking red accents. Completed with a textured black rubber strap, a folding clasp, and a transparent exhibition case back."
+   },
+   "brand": {
+    "id": 9,
+    "slug": "hublot",
+    "name": {
+     "en": "Hublot",
+     "ar": "هوبلو"
+    }
+   },
+   "grade": {
+    "id": 4,
+    "name": {
+     "en": "Classic",
+     "ar": "كلاسيكية"
+    }
+   },
+   "primary_category": {
+    "id": 1,
+    "slug": "watches",
+    "path": "watches",
+    "depth": 1,
+    "name": {
+     "en": "Watches",
+     "ar": "ساعات"
+    }
+   },
+   "image": {
+    "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1792580502_2026-10-21_6ad89b96588a8.webp",
+    "srcset": [],
+    "width": 1200,
+    "height": 1200,
+    "alt": null
+   },
+   "hover_image": {
+    "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1792580488_2026-10-21_6ad89b88979da.webp",
+    "srcset": [],
+    "width": 1200,
+    "height": 1200,
+    "alt": null
+   },
+   "colors": [
+    {
+     "id": 1,
+     "hex": "#111111",
+     "name": {
+      "en": "Black",
+      "ar": "أسود"
+     },
+     "role": "dial"
+    },
+    {
+     "id": 4,
+     "hex": "#D4AF37",
+     "name": {
+      "en": "Gold",
+      "ar": "ذهبي"
+     },
+     "role": "dial"
+    },
+    {
+     "id": 3,
+     "hex": "#C0C0C0",
+     "name": {
+      "en": "Silver",
+      "ar": "فضي"
+     },
+     "role": "dial"
+    },
+    {
+     "id": 10,
+     "hex": "#CC0000",
+     "name": {
+      "en": "Red",
+      "ar": "أحمر"
+     },
+     "role": "dial"
+    }
+   ],
+   "variants": [],
+   "price": {
+    "amount": 6500,
+    "sale_amount": 4500,
+    "currency": "EGP",
+    "discount_pct": 31,
+    "has_sale": true
+   },
+   "stock": {
+    "express": 0,
+    "market": 2,
+    "in_stock": true
+   },
+   "rating": {
+    "avg": null,
+    "count": 0
+   },
+   "is_featured": false,
+   "sort_order": 0,
+   "created_at": "2026-10-21T11:08:27.000000Z",
+   "updated_at": "2026-10-21T11:09:04.000000Z"
+  },
+  {
+   "id": 25764,
+   "slug": "hublot-mens-rose-gold-skeleton-watch-black-rubber-strap",
+   "family": "watch",
+   "title": {
+    "ar": "ساعة هوبلو رجالي سكيلتون روز جولد بحزام مطاط أسود",
+    "en": "Hublot Men's Rose Gold Skeleton Watch – Black Rubber Strap"
+   },
+   "short_description": {
+    "ar": "ساعة رجالي بتصميم سكيلتون هندسي مميز، تتميز بهيكل دائري باللون الروز جولد ومينا مفرغة بتفاصيل هندسية متداخلة بالروز جولد والأسود. تأتي بحزام مطاطي أسود بنقشة بارزة وقفل معدني قابل للطي باللون الروز جولد، لإطلالة عصرية جريئة.",
+    "en": "A distinctive men's skeleton-style watch featuring a rose gold-tone round case, an intricate geometric openwork dial in rose gold and black, and a textured black rubber-style strap. Completed with a matching rose gold-tone folding clasp for a bold, contemporary appearance."
+   },
+   "brand": {
+    "id": 9,
+    "slug": "hublot",
+    "name": {
+     "en": "Hublot",
+     "ar": "هوبلو"
+    }
+   },
+   "grade": {
+    "id": 4,
+    "name": {
+     "en": "Classic",
+     "ar": "كلاسيكية"
+    }
+   },
+   "primary_category": {
+    "id": 1,
+    "slug": "watches",
+    "path": "watches",
+    "depth": 1,
+    "name": {
+     "en": "Watches",
+     "ar": "ساعات"
+    }
+   },
+   "image": {
+    "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1792580173_2026-10-21_6ad89a4d01cea.webp",
+    "srcset": [],
+    "width": 1200,
+    "height": 1200,
+    "alt": null
+   },
+   "hover_image": {
+    "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1792580165_2026-10-21_6ad89a4571e46.webp",
+    "srcset": [],
+    "width": 1200,
+    "height": 1200,
+    "alt": null
+   },
+   "colors": [
+    {
+     "id": 5,
+     "hex": "#B76E79",
+     "name": {
+      "en": "Rose Gold",
+      "ar": "ذهبي وردي"
+     },
+     "role": "dial"
+    },
+    {
+     "id": 1,
+     "hex": "#111111",
+     "name": {
+      "en": "Black",
+      "ar": "أسود"
+     },
+     "role": "dial"
+    }
+   ],
+   "variants": [],
+   "price": {
+    "amount": 6200,
+    "sale_amount": 4200,
+    "currency": "EGP",
+    "discount_pct": 32,
+    "has_sale": true
+   },
+   "stock": {
+    "express": 0,
+    "market": 2,
+    "in_stock": true
+   },
+   "rating": {
+    "avg": null,
+    "count": 0
+   },
+   "is_featured": false,
+   "sort_order": 0,
+   "created_at": "2026-10-21T10:59:27.000000Z",
+   "updated_at": "2026-10-21T11:00:18.000000Z"
+  },
+  {
+   "id": 25763,
+   "slug": "hublot-mens-black-chronograph-watch-black-dial-rubber-strap",
+   "family": "watch",
+   "title": {
+    "ar": "ساعة هوبلو رجالي كرونوغراف سوداء بمينا سوداء وحزام مطاط",
+    "en": "Hublot Men's Black Chronograph Watch – Black Dial & Rubber Strap"
+   },
+   "short_description": {
+    "ar": "ساعة رجالي بتصميم كرونوغراف رياضي باللون الأسود بالكامل، تتميز بمينا سوداء ومؤشرات فضية وعقرب مركزي أحمر، مع ثلاثة عدادات فرعية ونافذة للتاريخ. تأتي بحزام مطاطي أسود بنقشة بارزة وقفل معدني أسود قابل للطي.",
+    "en": "A bold men's chronograph-style watch featuring an all-black round case, black dial, contrasting silver-tone hour markers, a red central hand, three subdials, and a date window. Finished with a textured black rubber-style strap and a black folding clasp for a distinctive sporty look."
+   },
+   "brand": {
+    "id": 9,
+    "slug": "hublot",
+    "name": {
+     "en": "Hublot",
+     "ar": "هوبلو"
+    }
+   },
+   "grade": {
+    "id": 4,
+    "name": {
+     "en": "Classic",
+     "ar": "كلاسيكية"
+    }
+   },
+   "primary_category": {
+    "id": 1,
+    "slug": "watches",
+    "path": "watches",
+    "depth": 1,
+    "name": {
+     "en": "Watches",
+     "ar": "ساعات"
+    }
+   },
+   "image": {
+    "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1792579761_2026-10-21_6ad898b183c2a.webp",
+    "srcset": [],
+    "width": 1125,
+    "height": 1200,
+    "alt": null
+   },
+   "hover_image": {
+    "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1792579751_2026-10-21_6ad898a755075.webp",
+    "srcset": [],
+    "width": 1200,
+    "height": 1097,
+    "alt": null
+   },
+   "colors": [
+    {
+     "id": 1,
+     "hex": "#111111",
+     "name": {
+      "en": "Black",
+      "ar": "أسود"
+     },
+     "role": "dial"
+    }
+   ],
+   "variants": [],
+   "price": {
+    "amount": 6200,
+    "sale_amount": 4200,
+    "currency": "EGP",
+    "discount_pct": 32,
+    "has_sale": true
+   },
+   "stock": {
+    "express": 0,
+    "market": 2,
+    "in_stock": true
+   },
+   "rating": {
+    "avg": null,
+    "count": 0
+   },
+   "is_featured": false,
+   "sort_order": 0,
+   "created_at": "2026-10-21T10:53:02.000000Z",
+   "updated_at": "2026-10-21T10:53:25.000000Z"
+  }
+ ],
+ "locale": "en"
+}

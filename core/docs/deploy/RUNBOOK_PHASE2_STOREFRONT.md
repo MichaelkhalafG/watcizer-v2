@@ -362,7 +362,7 @@ deploy's archive, so each deploy OVERWROTE the previous deploy's — the only ch
 what had gone live. The 2026-10-13 deploy nearly overwrote the 2026-10-12 archive (7.1 MB, Oct 12)
 while that archive was still the previous state's evidence. The name is `core-<YYYYMMDD>.tar.gz`
 from now on, on the workstation and on the server, and the matching pre-deploy snapshot is
-`core-before-<YYYYMMDD>.tar.gz` (§2.4). Yesterday's archive is left where it is.
+`core-before-<YYYYMMDD>-<tag>.tar.gz` (§2.4; the tag is unique per deploy of the day since 2026-10-21). Yesterday's archive is left where it is.
 
 **Why absolute paths and `-C` (2026-10-13 — the SECOND deploy this cost).** `tar.exe` resolves a
 relative path against the PROCESS working directory, which PowerShell does not keep in step with its
@@ -455,8 +455,9 @@ again. **Do not continue.**
 
 ```bash
 cd ~/domains/eleganceeg.com
-tar -czf ~/core-before-$(date +%Y%m%d).tar.gz core
-ls -l ~/core-before-*.tar.gz && sha256sum ~/core-before-$(date +%Y%m%d).tar.gz
+TAG=a   # UNIQUE PER DEPLOY OF THE DAY (a, b, c …) — two deploys on 2026-10-21 would have shared one name and the second would have overwritten the first's rollback point
+tar -czf ~/core-before-$(date +%Y%m%d)-$TAG.tar.gz core
+ls -l ~/core-before-*.tar.gz && sha256sum ~/core-before-$(date +%Y%m%d)-$TAG.tar.gz
 du -sh core/public core/vendor core/storage core/storage/logs      # the breakdown, every time
 ```
 

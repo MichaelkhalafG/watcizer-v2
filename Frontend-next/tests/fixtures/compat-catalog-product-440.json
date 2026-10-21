@@ -1,0 +1,347 @@
+{
+ "products": [
+  {
+   "id": 440,
+   "category_type_id": 1,
+   "brand_id": 23,
+   "grade_id": 6,
+   "sub_type_id": 2,
+   "band_closure_id": 1,
+   "dial_display_type_id": 1,
+   "case_size_type_id": 32,
+   "case_shape_id": 1,
+   "band_material_id": 2,
+   "watch_movement_id": 1,
+   "band_length": null,
+   "band_size_type_id": null,
+   "water_resistance": 50,
+   "water_resistance_size_type_id": 3,
+   "band_width": "22.00",
+   "band_width_size_type_id": 32,
+   "case_thickness": "10.00",
+   "case_thickness_size_type_id": 32,
+   "dial_case_material_id": 1,
+   "dial_glass_material_id": 1,
+   "watch_height": null,
+   "watch_height_size_type_id": null,
+   "watch_width": null,
+   "watch_width_size_type_id": null,
+   "watch_length": null,
+   "watch_length_size_type_id": null,
+   "image": "1788795089_2026-09-07_6a9ed8d1b4a4b.webp",
+   "warranty_years": "3",
+   "interchangeable_dial": 0,
+   "interchangeable_strap": 1,
+   "average_rate": null,
+   "selling_price": "3900.00",
+   "sale_price_after_discount": "3090.00",
+   "percentage_discount": "21.00",
+   "stock": 0,
+   "market_stock": 3,
+   "search_keywords": "tommy hilfiger brown watch for men 1791631, select…",
+   "watch_box": 1,
+   "active": 1,
+   "created_at": "2026-09-07T18:31:31.000000Z",
+   "updated_at": "2026-09-07T18:31:31.000000Z",
+   "product_title": "Tommy Hilfiger brown Watch For Men 1791631",
+   "model_name": "Tommy Hilfiger Kyle",
+   "country": null,
+   "stone": null,
+   "long_description": "Complete your look with the Tommy Hilfiger Men’s Watch 1791631, a stylish timepiece designed for the modern man. Its refined aesthetic combines contemporary appeal with the timeless character of Tommy Hilfiger accessories.\r\n\r\nThe 1791631 is an easy-to-wear accessory for a wide range of occasions, from daily outfits and business wear to dinners and special events. Its polished appearance adds a sophisticated finishing touch to your wrist while remaining versatile enough for everyday styling.\r\n\r\nWhether you're adding a new piece to your collection or choosing a thoughtful gift, the Tommy Hilfiger 1791631 is a stylish choice for any modern wardrobe.",
+   "short_description": "Tommy Hilfiger Men’s Watch 1791631 features a sleek, modern design with a sophisticated masculine finish. A versatile timepiece that complements both everyday and formal outfits.",
+   "feature": [
+    {
+     "id": 1,
+     "created_at": "2026-07-19T01:14:41.000000Z",
+     "updated_at": "2026-07-19T01:14:41.000000Z",
+     "feature_name": "Water Resistant",
+     "pivot": {
+      "product_id": 440,
+      "feature_id": 1
+     },
+     "translations": [
+      {
+       "id": 2,
+       "locale": "ar",
+       "feature_id": 1,
+       "feature_name": "مقاوم للماء"
+      },
+      {
+       "id": 1,
+       "locale": "en",
+       "feature_id": 1,
+       "feature_name": "Water Resistant"
+      }
+     ]
+    },
+    {
+     "id": 2,
+     "created_at": "2026-07-19T01:14:41.000000Z",
+     "updated_at": "2026-07-19T01:14:41.000000Z",
+     "feature_name": "Chronograph",
+     "pivot": {
+      "product_id": 440,
+      "feature_id": 2
+     },
+     "translations": [
+      {
+       "id": 4,
+       "locale": "ar",
+       "feature_id": 2,
+       "feature_name": "كرونوغراف"
+      },
+      {
+       "id": 3,
+       "locale": "en",
+       "feature_id": 2,
+       "feature_name": "Chronograph"
+      }
+     ]
+    },
+    {
+     "id": 4,
+     "created_at": "2026-07-19T01:14:41.000000Z",
+     "updated_at": "2026-07-19T01:14:41.000000Z",
+     "feature_name": "Day & Date",
+     "pivot": {
+      "product_id": 440,
+      "feature_id": 4
+     },
+     "translations": [
+      {
+       "id": 8,
+       "locale": "ar",
+       "feature_id": 4,
+       "feature_name": "اليوم والتاريخ"
+      },
+      {
+       "id": 7,
+       "locale": "en",
+       "feature_id": 4,
+       "feature_name": "Day & Date"
+      }
+     ]
+    },
+    {
+     "id": 9,
+     "created_at": "2026-07-19T01:14:41.000000Z",
+     "updated_at": "2026-07-19T01:14:41.000000Z",
+     "feature_name": "Quartz",
+     "pivot": {
+      "product_id": 440,
+      "feature_id": 9
+     },
+     "translations": [
+      {
+       "id": 18,
+       "locale": "ar",
+       "feature_id": 9,
+       "feature_name": "كوارتز"
+      },
+      {
+       "id": 17,
+       "locale": "en",
+       "feature_id": 9,
+       "feature_name": "Quartz"
+      }
+     ]
+    }
+   ],
+   "gender": [
+    {
+     "id": 1,
+     "created_at": "2026-07-19T01:14:41.000000Z",
+     "updated_at": "2026-07-19T01:14:41.000000Z",
+     "gender_name": "Men",
+     "pivot": {
+      "product_id": 440,
+      "gender_id": 1
+     },
+     "translations": [
+      {
+       "id": 2,
+       "locale": "ar",
+       "gender_id": 1,
+       "gender_name": "رجالي"
+      },
+      {
+       "id": 1,
+       "locale": "en",
+       "gender_id": 1,
+       "gender_name": "Men"
+      }
+     ]
+    }
+   ],
+   "dial_color": [
+    {
+     "id": 1,
+     "color_value": "#111111",
+     "created_at": "2026-07-19T01:14:41.000000Z",
+     "updated_at": "2026-07-19T01:14:41.000000Z",
+     "color_name": "Black",
+     "pivot": {
+      "product_id": 440,
+      "color_id": 1
+     },
+     "translations": [
+      {
+       "id": 2,
+       "locale": "ar",
+       "color_id": 1,
+       "color_name": "أسود"
+      },
+      {
+       "id": 1,
+       "locale": "en",
+       "color_id": 1,
+       "color_name": "Black"
+      }
+     ]
+    }
+   ],
+   "band_color": [
+    {
+     "id": 8,
+     "color_value": "#4A2C1A",
+     "created_at": "2026-07-19T01:14:41.000000Z",
+     "updated_at": "2026-07-19T01:14:41.000000Z",
+     "color_name": "Brown",
+     "pivot": {
+      "product_id": 440,
+      "color_id": 8
+     },
+     "translations": [
+      {
+       "id": 16,
+       "locale": "ar",
+       "color_id": 8,
+       "color_name": "بني"
+      },
+      {
+       "id": 15,
+       "locale": "en",
+       "color_id": 8,
+       "color_name": "Brown"
+      }
+     ]
+    }
+   ],
+   "translations": [
+    {
+     "id": 872,
+     "locale": "ar",
+     "product_id": 440,
+     "product_title": "ساعة تومي هيلفيغر للرجال باللون البني 1791631",
+     "model_name": null,
+     "country": null,
+     "stone": null,
+     "long_description": "أكمل إطلالتك مع ساعة Tommy Hilfiger الرجالية (موديل 1791631)، وهي ساعة أنيقة صُممت خصيصاً للرجل العصري؛ إذ يجمع تصميمها الراقي بين الجاذبية العصرية والطابع الكلاسيكي المميز لإكسسوارات Tommy Hilfiger.\r\n\r\nتُعد هذه الساعة خياراً مثالياً ومريحاً لمختلف المناسبات، بدءاً من الإطلالات اليومية وملابس العمل، ووصولاً إلى حفلات العشاء والمناسبات الخاصة. يضفي مظهرها المصقول لمسة من الرقي والأناقة على معصمك، مع الحفاظ على طابع عملي يلائم تنسيقاتك اليومية المتنوعة.\r\n\r\nسواء كنت تضيف قطعة جديدة إلى مجموعتك الخاصة أو تبحث عن هدية مميزة ومدروسة، فإن ساعة Tommy Hilfiger (موديل 1791631) تُعد خياراً أنيقاً يثري أي خزانة ملابس عصرية.",
+     "short_description": "تتميز ساعة Tommy Hilfiger الرجالية (طراز 1791631) بتصميم عصري وأنيق يضفي لمسة ذكورية راقية؛ فهي ساعة متعددة الاستخدامات تكمّل الإطلالات اليومية والرسمية على حد سواء."
+    },
+    {
+     "id": 871,
+     "locale": "en",
+     "product_id": 440,
+     "product_title": "Tommy Hilfiger brown Watch For Men 1791631",
+     "model_name": "Tommy Hilfiger Kyle",
+     "country": null,
+     "stone": null,
+     "long_description": "Complete your look with the Tommy Hilfiger Men’s Watch 1791631, a stylish timepiece designed for the modern man. Its refined aesthetic combines contemporary appeal with the timeless character of Tommy Hilfiger accessories.\r\n\r\nThe 1791631 is an easy-to-wear accessory for a wide range of occasions, from daily outfits and business wear to dinners and special events. Its polished appearance adds a sophisticated finishing touch to your wrist while remaining versatile enough for everyday styling.\r\n\r\nWhether you're adding a new piece to your collection or choosing a thoughtful gift, the Tommy Hilfiger 1791631 is a stylish choice for any modern wardrobe.",
+     "short_description": "Tommy Hilfiger Men’s Watch 1791631 features a sleek, modern design with a sophisticated masculine finish. A versatile timepiece that complements both everyday and formal outfits."
+    }
+   ],
+   "family": "watch"
+  }
+ ],
+ "ratings": [],
+ "images": [
+  {
+   "id": 1688,
+   "product_id": 440,
+   "image": "1788795089_2026-09-07_6a9ed8d1e9cc4.webp",
+   "is_cover": false,
+   "sort": 0,
+   "alt_ar": null,
+   "alt_en": null,
+   "created_at": "2026-09-07T18:31:31.000000Z",
+   "updated_at": "2026-09-07T18:31:31.000000Z"
+  },
+  {
+   "id": 1689,
+   "product_id": 440,
+   "image": "1788795090_2026-09-07_6a9ed8d22e7d9.webp",
+   "is_cover": false,
+   "sort": 1,
+   "alt_ar": null,
+   "alt_en": null,
+   "created_at": "2026-09-07T18:31:31.000000Z",
+   "updated_at": "2026-09-07T18:31:31.000000Z"
+  },
+  {
+   "id": 1690,
+   "product_id": 440,
+   "image": "1788795090_2026-09-07_6a9ed8d26af2c.webp",
+   "is_cover": false,
+   "sort": 2,
+   "alt_ar": null,
+   "alt_en": null,
+   "created_at": "2026-09-07T18:31:31.000000Z",
+   "updated_at": "2026-09-07T18:31:31.000000Z"
+  },
+  {
+   "id": 1691,
+   "product_id": 440,
+   "image": "1788795090_2026-09-07_6a9ed8d2a1d47.webp",
+   "is_cover": false,
+   "sort": 3,
+   "alt_ar": null,
+   "alt_en": null,
+   "created_at": "2026-09-07T18:31:31.000000Z",
+   "updated_at": "2026-09-07T18:31:31.000000Z"
+  },
+  {
+   "id": 1692,
+   "product_id": 440,
+   "image": "1788795090_2026-09-07_6a9ed8d2d7bd2.webp",
+   "is_cover": false,
+   "sort": 4,
+   "alt_ar": null,
+   "alt_en": null,
+   "created_at": "2026-09-07T18:31:31.000000Z",
+   "updated_at": "2026-09-07T18:31:31.000000Z"
+  },
+  {
+   "id": 1693,
+   "product_id": 440,
+   "image": "1788795091_2026-09-07_6a9ed8d3121b0.webp",
+   "is_cover": false,
+   "sort": 5,
+   "alt_ar": null,
+   "alt_en": null,
+   "created_at": "2026-09-07T18:31:31.000000Z",
+   "updated_at": "2026-09-07T18:31:31.000000Z"
+  },
+  {
+   "id": 1694,
+   "product_id": 440,
+   "image": "1788795091_2026-09-07_6a9ed8d35125b.webp",
+   "is_cover": false,
+   "sort": 6,
+   "alt_ar": null,
+   "alt_en": null,
+   "created_at": "2026-09-07T18:31:31.000000Z",
+   "updated_at": "2026-09-07T18:31:31.000000Z"
+  }
+ ],
+ "meta": {
+  "title": {
+   "en": "Tommy Hilfiger brown Watch For Men 1791631",
+   "ar": null
+  },
+  "description": {
+   "en": "Tommy Hilfiger Men’s Watch 1791631 features a sleek, modern design with a sophisticated masculine finish. A versatile timepiece that complements both everyday a",
+   "ar": null
+  }
+ }
+}

@@ -18,6 +18,7 @@ import ProductSlider from './ProductSlider'
 import TrustSignals from '../Merchandising/TrustSignals'
 import BackToTop from '../BackToTop/BackToTop'
 import { specRowsIn } from '../../lib/v2Product'
+import useGalleryKeys, { imagePosition } from '../../Hooks/useGalleryKeys'
 import { trackViewContent } from '../../scripts/pixels'
 import { finishBackground } from '../../utils/finish'
 import { getImageUrl, PLACEHOLDER_IMG } from '../../utils/imageUrl'
@@ -477,6 +478,9 @@ function ProductDetailClient({ param, isOffer = false, productPayload = null, v2
   // The desktop zoom gallery is untouched; both render and CSS shows one.
   const carouselRef = useRef(null)
   const slideRefs = useRef([])
+  // a programmatic move (a key, a dot) owns the index until its slide is in view: the observer used to set the
+  // index from every slide the smooth scroll passed through, so a second key mid-scroll stepped from one of them
+  const slideTarget = useRef(null)
   useEffect(() => {
     const root = carouselRef.current
     if (!root) return
@@ -487,7 +491,12 @@ function ProductDetailClient({ param, isOffer = false, productPayload = null, v2
         entries.forEach((entry) => {
           if (entry.isIntersecting && entry.intersectionRatio >= 0.5) {
             const idx = Number(entry.target.dataset.idx)
-            if (!Number.isNaN(idx)) setActiveImg(idx)
+            if (Number.isNaN(idx)) return
+            if (slideTarget.current !== null) {
+              if (idx !== slideTarget.current) return
+              slideTarget.current = null
+            }
+            setActiveImg(idx)
           }
         })
       },
@@ -498,8 +507,21 @@ function ProductDetailClient({ param, isOffer = false, productPayload = null, v2
   }, [images.length])
   const scrollToSlide = useCallback((i) => {
     const root = carouselRef.current
-    if (root) root.scrollTo({ left: i * root.clientWidth, behavior: 'smooth' })
-  }, [])
+    if (!root || !root.clientWidth) return
+    slideTarget.current = i
+    // in RTL a scroll-snap track's offsets run negative (Brand Fashion's gallery already scrolls this way)
+    root.scrollTo({ left: i * root.clientWidth * (isRTL ? -1 : 1), behavior: 'smooth' })
+  }, [isRTL])
+  // ← → move between the images (2026-10-21): in the reading direction, wrapping as the swipe does, never
+  // from a field, a select, the stepper, the pickers or an open drawer — see useGalleryKeys.
+  const goToImage = useCallback(
+    (i) => {
+      setActiveImg(i)
+      scrollToSlide(i)
+    },
+    [scrollToSlide],
+  )
+  useGalleryKeys({ count: images.length, index: activeImg, onChange: goToImage, rtl: isRTL })
 
   // ── Cart ────────────────────────────────────────────────────────────────
   const [quantity, setQuantity] = useState(1)
@@ -1097,6 +1119,12 @@ function ProductDetailClient({ param, isOffer = false, productPayload = null, v2
         <div className="wz-pd-grid">
           {/* ── Gallery ── */}
           <div className="wz-pd-gallery">
+            {/* what a screen reader hears when the image changes — by key, thumbnail or swipe */}
+            {images.length > 1 && (
+              <p className="wz-pd-sr" aria-live="polite" aria-atomic="true">
+                {imagePosition(activeImg, images.length, isRTL)}
+              </p>
+            )}
             {/* DESKTOP (md+): in-place hover/zoom + thumbnails — unchanged. */}
             <div className="wz-pd-gallery-desktop">
               <div

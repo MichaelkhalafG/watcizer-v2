@@ -131,3 +131,6 @@
 .bf-pdp h1, .bf-pdp h2 { text-transform: none; letter-spacing: 0; }
 /* the twin StockAlertForm inside the buy box: Brand Fashion's tokens on its own classes are left to its sheet; its container only */
 .bf-buy__cta .wz-stock-alert { margin: 0; }
+
+/* the gallery's live region: read, never seen (the image position, after a key, a thumb or a swipe) */
+.bf-gal__sr { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
