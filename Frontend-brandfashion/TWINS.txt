@@ -107,6 +107,14 @@ src/Hooks/useLocaleRouter.js
 src/Hooks/useRailScroll.js
 src/Hooks/useShippingPrices.js
 src/Hooks/useSwitchLanguage.js
+src/Hooks/useGalleryKeys.js
+tests/galleryKeys.test.mjs
+tests/v2Product.test.mjs
+tests/fixtures/v2-product-440.json
+tests/fixtures/compat-catalog-product-440.json
+vitest.config.mjs
+# 2026-10-21 (the gallery regression + the arrow keys): the adapter test and the keyboard hook are twins with their fixtures and the
+# vitest config; `pnpm test` runs them in each app. ProductDetailClient and v2Product.js stay twins (changed on both sides, identical).
 src/PageViews/Auth/AuthCallback.jsx
 src/PageViews/Auth/ForgotPassword.jsx
 src/PageViews/Auth/ResetPassword.jsx
