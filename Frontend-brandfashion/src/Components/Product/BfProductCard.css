@@ -30,25 +30,27 @@
 .bf-card__link { flex: 1 0 auto; display: flex; flex-direction: column; color: inherit; text-decoration: none; border-radius: 8px 8px 0 0; }
 .bf-card__link:focus-visible { outline: 2px solid var(--wz-focus-ring); outline-offset: -2px; }
 
-/* photo on the aisle tint, 1:1, inset; the photo multiplies into the tint (§8.3); the second photo fades in on hover */
-.bf-card__tile { position: relative; box-sizing: border-box; aspect-ratio: 1 / 1; padding: var(--bf-inset-top) var(--bf-inset) var(--bf-inset-bottom); display: flex; align-items: center; justify-content: center; border-radius: 7px 7px 0 0; overflow: hidden; }
+/* photo on the page's WHITE (2026-10-22, the owner's call — the family tint and the multiply went with it), 1:1, inset;
+   the second photo fades in on hover once it has loaded */
+.bf-card__tile { position: relative; background: var(--wz-page); box-sizing: border-box; aspect-ratio: 1 / 1; padding: var(--bf-inset-top) var(--bf-inset) var(--bf-inset-bottom); display: flex; align-items: center; justify-content: center; border-radius: 7px 7px 0 0; overflow: hidden; }
+/* the <picture> of recorded renditions (2026-10-22) is a box the photo fills, in the tile and in the hover wrapper */
+.bf-card__picture { display: block; width: 100%; height: 100%; }
 .bf-card__img { width: 100%; height: 100%; object-fit: contain; display: block; }
-.bf-card__img.is-photo { mix-blend-mode: multiply; }
 .bf-card__img.is-placeholder { opacity: 0.6; }
 /* THE SECOND PHOTO — T1, Michael's pick (round 4, 2026-10-18): a 180 ms ease-out crossfade, hover-only. The photo sits in
-   its own wrapper (.bf-card__ph2) that carries the TILE'S TINT as its ground and `isolation: isolate`: the photo's
-   multiply resolves against that tint inside the wrapper — against the tile, never against the first photo — and the
-   wrapper is opaque, so the overlap is a dissolve (α·B + (1−α)·A), not a double exposure (A·B), and at the end only the
-   second photo shows. (`isolation` on the <img> alone would not do it: a transparent isolated group makes multiply
-   resolve against nothing and the photo's white would paint white.) The wrapper repeats the tile's padding, so the
-   second photo lands exactly on the first one's box (the night's HOVER-CARD-OVERFLOW stays fixed). Leaving fades back. */
+   its own OPAQUE wrapper (.bf-card__ph2) on the page's white, so the overlap is a dissolve (α·B + (1−α)·A), not a double
+   exposure, and at the end only the second photo shows. The wrapper repeats the tile's padding, so the second photo lands
+   exactly on the first one's box (the night's HOVER-CARD-OVERFLOW stays fixed). Leaving fades back.
+   `is-ready` (2026-10-22): the wrapper is shown only once its photo has LOADED — it is a lazy 1200 px file that arrives
+   after every cover on the page, and before that the hover painted an empty tile over the first photo for as long as the
+   file took (seconds on a slow line), which read as "the hover shows nothing". Until it is ready, hovering changes nothing. */
 .bf-card__ph2 {
   position: absolute; inset: 0; box-sizing: border-box; padding: var(--bf-inset-top) var(--bf-inset) var(--bf-inset-bottom);
-  display: flex; align-items: center; justify-content: center; isolation: isolate; pointer-events: none;
+  display: flex; align-items: center; justify-content: center; background: var(--wz-page); pointer-events: none;
   opacity: 0; visibility: hidden; transition: opacity 180ms ease-out, visibility 0s linear 180ms;
 }
 @media (hover: hover) and (pointer: fine) {
-  .bf-card:hover .bf-card__ph2 { opacity: 1; visibility: visible; transition: opacity 180ms ease-out, visibility 0s; }
+  .bf-card:hover .bf-card__ph2.is-ready { opacity: 1; visibility: visible; transition: opacity 180ms ease-out, visibility 0s; }
 }
 @media (prefers-reduced-motion: reduce) {
   .bf-card__ph2, .bf-card:hover .bf-card__ph2 { transition: none; }

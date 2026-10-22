@@ -8,22 +8,35 @@
 .bf-pdp__crumb a { color: inherit; text-decoration: none; }
 @media (hover: hover) { .bf-pdp__crumb a:hover { text-decoration: underline; text-underline-offset: 3px; } }
 
-/* desktop: gallery (thumbs beside it) · buy box 460 sticky under the 104px header (§10.3) */
+/* desktop (2026-10-22): the gallery column is capped at 600 px (thumbs + a frame of about 530) and the buy box at
+   480, the pair centred in the 1,600 container — the frame used to take every pixel the buy box left (848 wide at
+   1440, the photo 600 tall in it: "too big"). Below 1,160 px of inner width both columns give way, the buy box last. */
 .bf-pdp__top { display: grid; grid-template-columns: 1fr; gap: 16px; align-items: start; }
-@media (min-width: 1024px) { .bf-pdp__top { grid-template-columns: minmax(0, 1fr) minmax(360px, 440px); gap: 32px; } }
+@media (min-width: 1024px) { .bf-pdp__top { grid-template-columns: minmax(0, 600px) minmax(360px, 480px); justify-content: center; gap: 40px; } }
 .bf-pdp__buy { position: static; }
 @media (min-width: 1024px) { .bf-pdp__buy { position: sticky; top: 120px; } }
+/* the gallery sticks on desktop too (2026-10-22): it follows the buy column down and stops where the grid row ends,
+   so the left half is never a white void while the details and the description scroll; on a phone it is static and
+   never covers what follows */
+@media (min-width: 1024px) { .bf-gal { position: sticky; top: 120px; } }
 
-/* gallery (bug 7 of the review: a small photo floating in a large empty box) — the main image sits on the FAMILY TINT,
-   multiplied in like the card's, at 100% of a 1:1 frame capped at 600 px; on desktop the 64px thumbs stand at the
+/* gallery — the main image sits on the page's WHITE (2026-10-22, the owner's call: no family tint, no blend) at 100%
+   of a 1:1 frame capped at 600 px (the column caps it near 530 on desktop); on desktop the 64px thumbs stand at the
    inline-start side and the frame fills the rest; phone keeps the swipe track with dots */
 .bf-gal { display: grid; grid-template-columns: 1fr; gap: 8px; }
 @media (min-width: 1024px) { .bf-gal { grid-template-columns: 64px minmax(0, 1fr); align-items: start; } .bf-gal__main { grid-column: 2; grid-row: 1; } .bf-gal__thumbs { grid-column: 1; grid-row: 1; } }
-.bf-gal__main { position: relative; border-radius: 8px; overflow: hidden; background: var(--bf-pdp-tint, var(--wz-tile)); max-height: 600px; }
+.bf-gal__main { position: relative; border-radius: 8px; overflow: hidden; background: var(--wz-page); max-height: 600px; }
 .bf-gal__track { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; aspect-ratio: 1 / 1; max-height: 600px; }
 .bf-gal__track::-webkit-scrollbar { display: none; }
-.bf-gal__slide { flex: 0 0 100%; scroll-snap-align: start; display: flex; align-items: center; justify-content: center; padding: 0; }
-.bf-gal__slide img { width: 100%; height: 100%; object-fit: contain; mix-blend-mode: multiply; }
+/* each slide clips its own photo: the magnified photo must not widen the track's scroll range */
+.bf-gal__slide { flex: 0 0 100%; scroll-snap-align: start; display: flex; align-items: center; justify-content: center; padding: 0; overflow: hidden; }
+/* the <picture> of recorded renditions is a box the photo fills, in a slide and in a thumb alike */
+.bf-gal__picture { display: block; width: 100%; height: 100%; }
+.bf-gal__slide img { width: 100%; height: 100%; object-fit: contain; transition: transform 150ms ease-out; }
+/* the magnifier (2026-10-22): a fine pointer on desktop sees a zoom-in cursor over the frame; the scale itself is
+   set inline on the current slide's photo around the cursor (BfProductPage.jsx) and clipped by the slide */
+@media (hover: hover) and (pointer: fine) and (min-width: 1024px) { .bf-gal__main { cursor: zoom-in; } }
+@media (prefers-reduced-motion: reduce) { .bf-gal__slide img { transition: none; } }
 .bf-gal__badge { position: absolute; top: 12px; inset-inline-start: 12px; font-size: 10px; font-weight: 600; padding: 5px 8px; border-radius: var(--wz-r-pill); background: var(--wz-ink-3); color: #fff; box-shadow: 0 0 0 1px var(--wz-page); }
 .bf-gal__dots { display: flex; justify-content: center; gap: 0; padding-block: 2px; }
 /* a 24 × 24 box around a 6 px dot: the dot is the indicator, the box the hit area (it was 6 × 6, 2026-10-18 night run) */
@@ -102,7 +115,12 @@
 .bf-attrs__row dt { color: var(--wz-ink-2); font-size: var(--bf-small); margin: 0; }
 .bf-attrs__row dd { margin: 0; text-align: end; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
 .bf-attrs__dot { width: 12px; height: 12px; border-radius: var(--wz-r-swatch); box-shadow: inset 0 0 0 1px var(--wz-edge); display: inline-block; }
-.bf-desc { font-size: var(--bf-body); line-height: var(--bf-body-lh); color: var(--wz-ink); margin-block: 16px; white-space: pre-line; max-width: 70ch; }
+/* the description (2026-10-22): a Disclosure, closed until opened — its heading is the h2 button, the text under it keeps
+   the 70-character measure and the line breaks of the source */
+.bf-desc { font-size: var(--bf-body); line-height: var(--bf-body-lh); color: var(--wz-ink); margin-block: 16px; }
+.bf-desc .bf-desc__title { margin: 0; padding-block: 2px; }
+.bf-desc .wz-disc__icon { width: 9px; height: 9px; }
+.bf-desc__text { white-space: pre-line; max-width: 70ch; padding-block: 8px 4px; }
 .bf-ratings { margin-block: 16px; font-size: var(--bf-body); }
 
 /* phone: the h1 and the price one step down (a 4-line 22 px title was a third of the viewport, 2026-10-18 night run) */
