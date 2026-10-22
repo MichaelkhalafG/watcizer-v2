@@ -5,6 +5,7 @@ import Image from 'next/image'
 import { useRouter } from '@/src/Hooks/useLocaleRouter'
 import { FiShare2 } from 'react-icons/fi'
 import ImageZoom from '../UI/ImageZoom'
+import Disclosure from '../UI/Disclosure'
 import DOMPurify from 'dompurify'
 import { useTables } from '../../Hooks/queries/useTables'
 import { useCards, useCardsOf, useRelated, useV2Related } from '../../Hooks/queries/useListing'
@@ -22,6 +23,7 @@ import useGalleryKeys, { imagePosition } from '../../Hooks/useGalleryKeys'
 import { trackViewContent } from '../../scripts/pixels'
 import { finishBackground } from '../../utils/finish'
 import { getImageUrl, PLACEHOLDER_IMG } from '../../utils/imageUrl'
+import { pictureSources, hasRenditions, SIZES } from '../../utils/picture'
 import { toSlug } from '../../utils/slugs'
 import { buildListingParams } from '../../utils/listingParams'
 import http from '../../Context/api'
@@ -426,6 +428,32 @@ function ProductDetailClient({ param, isOffer = false, productPayload = null, v2
     return uniq.length ? uniq : [catalogImg || PLACEHOLDER_IMG]
   }, [item, offerProduct, isOffer, catalogImg])
 
+  // The RECORDED renditions of a gallery url (2026-10-22): the transform keys each gallery row's `srcset` by
+  // its url and carries the cover's as `image_srcset`. A url with none gets no <picture> — the plain image,
+  // as before. Nothing here derives a URL from a filename.
+  const srcsetOf = useCallback(
+    (url) => {
+      const own = item?.images_srcset?.[url]
+      if (hasRenditions(own)) return own
+      if (url && url === getImageUrl(item?.image, 'Product') && hasRenditions(item?.image_srcset)) return item.image_srcset
+      if (isOffer && url && url === catalogImg && hasRenditions(offerProduct?.image_srcset)) return offerProduct.image_srcset
+      return null
+    },
+    [item, isOffer, offerProduct, catalogImg],
+  )
+  /** A <picture> for a gallery url, or null when it records no renditions. */
+  const picture = (url, sizes, imgProps) => {
+    const s = pictureSources(srcsetOf(url))
+    if (!s.avif && !s.webp) return null
+    return (
+      <picture className="wz-pd-picture">
+        {s.avif ? <source type="image/avif" srcSet={s.avif} sizes={sizes} /> : null}
+        {s.webp ? <source type="image/webp" srcSet={s.webp} sizes={sizes} /> : null}
+        <img src={url} alt="" {...imgProps} />
+      </picture>
+    )
+  }
+
   // Graceful image fallback for the gallery (main image + thumbnails). A broken
   // gallery URL first swaps to the catalog image, then to the inline placeholder.
   //
@@ -441,6 +469,10 @@ function ProductDetailClient({ param, isOffer = false, productPayload = null, v2
       if (img.dataset.fbStage === 'placeholder') return
       img.removeAttribute('srcset')
       img.removeAttribute('sizes')
+      // inside a <picture>, the <source>s would win over the swapped src: take them out first
+      if (img.parentElement?.tagName === 'PICTURE') {
+        img.parentElement.querySelectorAll('source').forEach((s) => s.remove())
+      }
       if (img.dataset.fbStage !== 'catalog' && catalogImg && img.src !== catalogImg) {
         img.dataset.fbStage = 'catalog'
         img.src = catalogImg
@@ -911,18 +943,30 @@ function ProductDetailClient({ param, isOffer = false, productPayload = null, v2
     return () => obs.disconnect()
   }, [item?.id])
 
-  // ── Accordions (mobile) ──
-  // Exclusive accordion (mobile): only one section open at a time — tapping a
-  // header collapses the others. Desktop shows every section regardless (the
-  // collapse styling is mobile-only), so this only changes the phone view.
-  const [openSection, setOpenSection] = useState(null) // 'specs' | 'desc' | 'reviews' | null
+  // ── The sections under the product (2026-10-22) ──
+  // Description and Reviews open and close on every viewport, each from its own heading button
+  // (Disclosure), and start CLOSED: a shopper who wants the text opens it, and the page under the
+  // product stays short. Independent, not exclusive — opening one no longer closes another. The
+  // specification table keeps its place: open under a plain heading on desktop, the phone's own
+  // closed section (both render, CSS shows one — the gallery's pattern, no hydration flip).
+  const [openSections, setOpenSections] = useState({})
   const toggleSection = useCallback(
-    (id) => setOpenSection((cur) => (cur === id ? null : id)),
+    (id) => setOpenSections((cur) => ({ ...cur, [id]: !cur[id] })),
     [],
   )
-  const specsOpen = openSection === 'specs'
-  const descOpen = openSection === 'desc'
-  const reviewsOpen = openSection === 'reviews'
+  const specsOpen = !!openSections.specs
+  const descOpen = !!openSections.desc
+  const reviewsOpen = !!openSections.reviews
+  const specGrid = (
+    <div className="wz-pd-spec-grid">
+      {specs.map((row, i) => (
+        <div className="wz-pd-spec-item" key={i}>
+          <span className="wz-pd-spec-label">{row.label}</span>
+          <span className="wz-pd-spec-value">{row.value}</span>
+        </div>
+      ))}
+    </div>
+  )
 
   // ── Share ──
   const handleShare = useCallback(async () => {
@@ -1143,6 +1187,8 @@ function ProductDetailClient({ param, isOffer = false, productPayload = null, v2
                   zoomScale={2.5}
                   className="wz-pd-main-img-zoom"
                   onError={handleGalleryImgError}
+                  sources={pictureSources(srcsetOf(images[activeImg]))}
+                  sizes={SIZES.galleryMain}
                 />
                 {hasSale && <span className="wz-pd-discount">−{discount}%</span>}
               </div>
@@ -1156,14 +1202,16 @@ function ProductDetailClient({ param, isOffer = false, productPayload = null, v2
                       onClick={() => setActiveImg(i)}
                       aria-label={`Image ${i + 1}`}
                     >
-                      <Image
-                        src={img}
-                        alt={`${name} - image ${i + 1}`}
-                        width={48}
-                        height={48}
-                        quality={70}
-                        onError={handleGalleryImgError}
-                      />
+                      {picture(img, SIZES.thumb, { alt: `${name} - image ${i + 1}`, width: 48, height: 48, loading: 'lazy', decoding: 'async', onError: handleGalleryImgError }) ?? (
+                        <Image
+                          src={img}
+                          alt={`${name} - image ${i + 1}`}
+                          width={48}
+                          height={48}
+                          quality={70}
+                          onError={handleGalleryImgError}
+                        />
+                      )}
                     </button>
                   ))}
                 </div>
@@ -1182,15 +1230,17 @@ function ProductDetailClient({ param, isOffer = false, productPayload = null, v2
                       slideRefs.current[i] = el
                     }}
                   >
-                    <Image
-                      src={img}
-                      alt={`${name} - image ${i + 1}`}
-                      width={600}
-                      height={600}
-                      quality={80}
-                      className="wz-pd-slide-img"
-                      onError={handleGalleryImgError}
-                    />
+                    {picture(img, SIZES.galleryMain, { alt: `${name} - image ${i + 1}`, width: 600, height: 600, loading: i === 0 ? 'eager' : 'lazy', decoding: 'async', className: 'wz-pd-slide-img', onError: handleGalleryImgError }) ?? (
+                      <Image
+                        src={img}
+                        alt={`${name} - image ${i + 1}`}
+                        width={600}
+                        height={600}
+                        quality={80}
+                        className="wz-pd-slide-img"
+                        onError={handleGalleryImgError}
+                      />
+                    )}
                     {hasSale && i === 0 && <span className="wz-pd-discount">−{discount}%</span>}
                   </div>
                 ))}
@@ -1461,64 +1511,56 @@ function ProductDetailClient({ param, isOffer = false, productPayload = null, v2
           </div>
         </div>
 
-        {/* ── Specifications ── */}
+        {/* ── Specifications ── open under a plain heading on desktop; the phone's own closed
+            section. Both render (SSR-safe, no hydration flip); ProductDetail.css shows one. */}
         {specs.length > 0 && (
-          <section className="wz-pd-section wz-pd-specs">
-            <button
-              className="wz-pd-section-head"
-              onClick={() => toggleSection('specs')}
-              aria-expanded={specsOpen}
+          <>
+            <section className="wz-pd-section wz-pd-specs wz-pd-specs--desktop" aria-labelledby="wz-pd-specs-title">
+              <h2 className="wz-pd-section-title" id="wz-pd-specs-title">
+                {isRTL ? 'المواصفات' : 'Specifications'}
+              </h2>
+              <div className="wz-pd-section-body">{specGrid}</div>
+            </section>
+            <Disclosure
+              id="wz-pd-specs"
+              as="h2"
+              className="wz-pd-section wz-pd-specs wz-pd-specs--phone"
+              headClassName="wz-pd-section-head"
+              label={isRTL ? 'المواصفات' : 'Specifications'}
+              open={specsOpen}
+              onToggle={() => toggleSection('specs')}
             >
-              <span>{isRTL ? 'المواصفات' : 'Specifications'}</span>
-              <span className={`wz-pd-acc-icon${specsOpen ? ' is-open' : ''}`}>›</span>
-            </button>
-            <div className={`wz-pd-section-body${specsOpen ? ' is-open' : ''}`}>
-              <div className="wz-pd-spec-grid">
-                {specs.map((row, i) => (
-                  <div className="wz-pd-spec-item" key={i}>
-                    <span className="wz-pd-spec-label">{row.label}</span>
-                    <span className="wz-pd-spec-value">{row.value}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </section>
+              {specGrid}
+            </Disclosure>
+          </>
         )}
 
-        {/* ── Description ── */}
+        {/* ── Description ── closed until opened, the text served regardless; the full inner
+            width in two columns on desktop (ProductDetail.css) */}
         {description && (
-          <section className="wz-pd-section wz-pd-desc">
-            <button
-              className="wz-pd-section-head"
-              onClick={() => toggleSection('desc')}
-              aria-expanded={descOpen}
-            >
-              <span>{isRTL ? 'الوصف' : 'Description'}</span>
-              <span className={`wz-pd-acc-icon${descOpen ? ' is-open' : ''}`}>›</span>
-            </button>
-            <div className={`wz-pd-section-body${descOpen ? ' is-open' : ''}`}>
-              <div
-                className="wz-pd-desc-content"
-                dangerouslySetInnerHTML={{ __html: descHtml }}
-              />
-            </div>
-          </section>
+          <Disclosure
+            id="wz-pd-desc"
+            as="h2"
+            className="wz-pd-section wz-pd-desc"
+            headClassName="wz-pd-section-head"
+            label={isRTL ? 'الوصف' : 'Description'}
+            open={descOpen}
+            onToggle={() => toggleSection('desc')}
+          >
+            <div className="wz-pd-desc-content" dangerouslySetInnerHTML={{ __html: descHtml }} />
+          </Disclosure>
         )}
 
-        {/* ── Ratings & reviews ── */}
-        <section className="wz-pd-section wz-pd-ratings">
-          <button
-            className="wz-pd-section-head"
-            onClick={() => toggleSection('reviews')}
-            aria-expanded={reviewsOpen}
-          >
-            <span>
-              {isRTL ? 'التقييمات' : 'Reviews'}
-              {reviewCount > 0 ? ` (${reviewCount})` : ''}
-            </span>
-            <span className={`wz-pd-acc-icon${reviewsOpen ? ' is-open' : ''}`}>›</span>
-          </button>
-          <div className={`wz-pd-section-body${reviewsOpen ? ' is-open' : ''}`}>
+        {/* ── Ratings & reviews ── closed until opened */}
+        <Disclosure
+          id="wz-pd-reviews"
+          as="h2"
+          className="wz-pd-section wz-pd-ratings"
+          headClassName="wz-pd-section-head"
+          label={`${isRTL ? 'التقييمات' : 'Reviews'}${reviewCount > 0 ? ` (${reviewCount})` : ''}`}
+          open={reviewsOpen}
+          onToggle={() => toggleSection('reviews')}
+        >
           <div className="wz-pd-acc-inner">
           <div className="wz-pd-ratings-summary">
             <div className="wz-pd-ratings-avg">{(avgRating || 0).toFixed(1)}</div>
@@ -1580,8 +1622,7 @@ function ProductDetailClient({ param, isOffer = false, productPayload = null, v2
             </p>
           )}
           </div>
-          </div>
-        </section>
+        </Disclosure>
       </div>
 
       {/* ── Related (full-width band) ── */}
