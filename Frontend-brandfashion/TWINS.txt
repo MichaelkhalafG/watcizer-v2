@@ -18,6 +18,10 @@
 # client component, which cannot export metadata, so the English cart inherited the root layout's Arabic
 # title; a layout is where a client route can be given one. It carries no brand name on purpose, which is
 # exactly what lets it be a twin — see the note in the file.
+# 2026-10-22 (the renditions): src/utils/picture.js is NEW and a twin — the <picture> built from the renditions the API
+# records (never from a filename), with the sizes measured on both shops; tests/picture.test.mjs proves it and the adapters.
+# 2026-10-22 (Search Console): tests/facetRedirect.test.mjs is NEW and a twin — the brand/grade variant redirect helper in
+# src/lib/listingSeo.js (diverged by one title line, the helper identical on both sides).
 # A2-RULE: the two apps are copies, not a shared package.
 
 app/(auth)/auth/callback/page.jsx
@@ -110,9 +114,20 @@ src/Hooks/useSwitchLanguage.js
 src/Hooks/useGalleryKeys.js
 tests/galleryKeys.test.mjs
 tests/v2Product.test.mjs
+tests/picture.test.mjs
+tests/facetRedirect.test.mjs
 tests/fixtures/v2-product-440.json
 tests/fixtures/compat-catalog-product-440.json
 vitest.config.mjs
+src/Components/UI/Disclosure.jsx
+src/Components/UI/Disclosure.css
+tests/pixels.test.mjs
+tests/disclosure.test.mjs
+# 2026-10-22 (the overnight queue): Disclosure (the shared collapsible section — Watchizer's Description and Reviews, Brand Fashion's
+# description in its own dress) and the two test files are twins; pixels.js, ProductDetailClient, OrderConfirmation, analytics.jsx and
+# vitest.config.mjs stay twins (changed on both sides, identical). The already-diverged cartStore.js, Checkout.jsx, Cart.jsx and
+# ListingClient.jsx took the SAME analytics delta on both sides (remove_from_cart, the card snapshot, view_cart, view_item_list);
+# ProductDetail.css (diverged by tokens) took the same section CSS on both sides. BfProductPage.* and BfProductCard.* are Brand Fashion's own.
 # 2026-10-21 (the gallery regression + the arrow keys): the adapter test and the keyboard hook are twins with their fixtures and the
 # vitest config; `pnpm test` runs them in each app. ProductDetailClient and v2Product.js stay twins (changed on both sides, identical).
 src/PageViews/Auth/AuthCallback.jsx
@@ -144,6 +159,7 @@ src/utils/chunkError.js
 src/utils/finish.js
 src/utils/hasWebGL.js
 src/utils/imageUrl.js
+src/utils/picture.js
 src/utils/localePath.js
 src/utils/productUrl.js
 src/utils/slugs.js
