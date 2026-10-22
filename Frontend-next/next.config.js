@@ -59,7 +59,15 @@ const nextConfig = {
     ]
   },
   async redirects() {
-    return [
+    // Every legacy path below has an ARABIC twin under /ar (S-AR stage 1 puts Arabic there): /ar/offers 404'd
+    // while /offers redirected (Search Console, 2026-10-22), because middleware rewrites /ar/offers onto
+    // /offers AFTER redirects have run, and /offers is a redirect, not a page. So each rule is declared twice,
+    // the second time with /ar on both sides; a destination on another host (core) is left as it is.
+    const arabicToo = (rules) =>
+      rules.flatMap((r) =>
+        r.destination.startsWith('/') ? [r, { ...r, source: `/ar${r.source}`, destination: `/ar${r.destination}` }] : [r],
+      )
+    return arabicToo([
       // /api/* and /Uploads_Images/* on the storefront's own host are REDIRECTED to core, no longer
       // proxied (2026-10-01). The proxy had the sitemaps' fault: measured live from Chrome (Brotli on),
       // /api/catalog/meta, /api/show_shipping_city and /api/all_product_rating answered 200 with an
@@ -90,10 +98,15 @@ const nextConfig = {
       // Three Rolex products that were real but are gone, under CLEAN slugs — so the raw-title fallback
       // in the product route does not catch them, by design (widening it would 308 seeder URLs that
       // never existed). Bounded entries to the brand instead (developer 2026-10-09).
+      // Search Console, 2026-10-22: two old product URLs whose product IS in the catalogue today, matched on the
+      // model number alone (NF8080-RG-B-B, 1514268 — each names exactly one visible product). The 144 other old
+      // product URLs name nothing that is sold on this storefront and stay 404 (the record lists them).
+      { source: '/product/naviforce-chronograph-trendy-rubber-strap-mens-watch-nf8080-rg-b-b', destination: '/product/naviforce-nf8080-rg-b-b-mens-black-rubber-chronograph-watch', permanent: true },
+      { source: '/product/hugo-boss-hero-1514268-mens-watch-green-dial-silver-bracelet', destination: '/product/hugo-boss-watch-for-men-silver-belt-green-dial-1514268', permanent: true },
       { source: '/product/rolex-yacht-master-ii-44-white-dial-watch-for-men', destination: '/brand/rolex', permanent: true },
       { source: '/product/rolex-cosmograph-daytona-40-gold-white-dial-watch-for-men', destination: '/brand/rolex', permanent: true },
       { source: '/product/rolex-sky-dweller-42-black-dial-watch-for-men', destination: '/brand/rolex', permanent: true },
-    ]
+    ])
   },
   images: {
     // Self-hosted catalog/brand images live on the Laravel origin

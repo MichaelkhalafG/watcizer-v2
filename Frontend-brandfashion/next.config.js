@@ -59,7 +59,15 @@ const nextConfig = {
     ]
   },
   async redirects() {
-    return [
+    // Every legacy path below has an ARABIC twin under /ar (S-AR stage 1 puts Arabic there): /ar/offers 404'd
+    // while /offers redirected (Search Console, 2026-10-22), because middleware rewrites /ar/offers onto
+    // /offers AFTER redirects have run, and /offers is a redirect, not a page. So each rule is declared twice,
+    // the second time with /ar on both sides; a destination on another host (core) is left as it is.
+    const arabicToo = (rules) =>
+      rules.flatMap((r) =>
+        r.destination.startsWith('/') ? [r, { ...r, source: `/ar${r.source}`, destination: `/ar${r.destination}` }] : [r],
+      )
+    return arabicToo([
       // /api/* and /Uploads_Images/* on the storefront's own host are REDIRECTED to core, no longer
       // proxied (2026-10-01). The proxy had the sitemaps' fault: measured live from Chrome (Brotli on),
       // /api/catalog/meta, /api/show_shipping_city and /api/all_product_rating answered 200 with an
@@ -94,7 +102,7 @@ const nextConfig = {
       { source: '/product/rolex-yacht-master-ii-44-white-dial-watch-for-men', destination: '/brand/rolex', permanent: true },
       { source: '/product/rolex-cosmograph-daytona-40-gold-white-dial-watch-for-men', destination: '/brand/rolex', permanent: true },
       { source: '/product/rolex-sky-dweller-42-black-dial-watch-for-men', destination: '/brand/rolex', permanent: true },
-    ]
+    ])
   },
   images: {
     // Self-hosted catalog/brand images live on the Laravel origin
