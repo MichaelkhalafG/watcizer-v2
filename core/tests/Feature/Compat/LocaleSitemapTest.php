@@ -3,8 +3,10 @@
 use App\Compat\CompatLocaleSitemap;
 use App\Compat\CompatServices;
 use App\Domain\Content\BlogWriter;
+use App\Storefront\StorefrontUrls;
 use App\Support\LegacySlug;
 use Illuminate\Support\Facades\DB;
+use Tests\Support\Shops;
 use Tests\Support\T;
 
 use function Pest\Laravel\get;
@@ -130,4 +132,29 @@ it('lists only trust pages the storefront actually has', function () {
         }
     }
     expect($missing)->toBe([]);
+});
+
+it("names Brand Fashion's own site on Brand Fashion's sitemaps, never Watchizer's (the backlog item, 2026-10-22)", function () {
+    $fashion = Shops::id('brandfashion');
+    $own = StorefrontUrls::frontend($fashion);
+    expect($own)->not->toContain('watchizereg');
+
+    $index = simplexml_load_string((string) get(Shops::api('brandfashion').'/sitemaps/index.xml')->assertOk()->getContent());
+    expect($index)->not->toBeFalse();
+    $locs = [];
+    foreach ($index === false ? [] : iterator_to_array($index->sitemap, false) as $s) {
+        $locs[] = (string) $s->loc;
+    }
+    expect($locs)->toBe([$own.'/sitemaps/en.xml', $own.'/sitemaps/ar.xml']);
+
+    // Every <loc> and every alternate href, read off the raw XML so no namespace handling can hide one.
+    $xml = (string) get(Shops::api('brandfashion').'/sitemaps/en.xml')->assertOk()->getContent();
+    preg_match_all('#<loc>([^<]+)</loc>#', $xml, $locs);
+    preg_match_all('#hreflang="[^"]+" href="([^"]+)"#', $xml, $alts);
+    $count = count($locs[1]);
+    $wrong = array_values(array_filter(array_merge($locs[1], $alts[1]), fn (string $u): bool => ! str_starts_with($u, $own.'/')));
+    expect($count)->toBeGreaterThan(10)
+        ->and(count($alts[1]))->toBe(3 * $count, 'three alternates per URL')
+        ->and($wrong)->toBe([], count($wrong).' URL(s) not on '.$own.': '.implode(', ', array_slice($wrong, 0, 5)));
+    // Watchizer's own index is held by the first test of this file: byte for byte where it was.
 });
