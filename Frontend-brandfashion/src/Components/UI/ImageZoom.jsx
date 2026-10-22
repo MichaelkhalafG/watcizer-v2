@@ -5,6 +5,9 @@ import './ImageZoom.css'
 // Custom hover-to-zoom (no external library, ~0 KB). Zoom happens IN PLACE inside
 // the image container — no lightbox overlay — like Rolex / SSENSE / Farfetch.
 // Desktop: hover tracks the cursor; mobile: touch-and-drag tracks the finger.
+// `sources` (2026-10-22): the recorded renditions as `{ avif, webp }` srcset strings (utils/picture.js) with
+// their `sizes`; when either is present the <img> sits in a <picture> that offers them, AVIF first, and the
+// original `src` stays the fallback. Without them the markup is exactly what it was.
 export default function ImageZoom({
   src,
   alt = '',
@@ -13,6 +16,8 @@ export default function ImageZoom({
   zoomScale = 2.5,
   className = '',
   onError,
+  sources = null,
+  sizes = undefined,
 }) {
   const containerRef = useRef(null)
   const [zooming, setZooming] = useState(false)
@@ -65,26 +70,30 @@ export default function ImageZoom({
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
     >
-      <img
-        src={src}
-        alt={alt}
-        width={width}
-        height={height}
-        draggable={false}
-        onError={onError}
-        className="wz-img-zoom__img"
-        style={
-          zooming
-            ? {
-                transformOrigin: `${position.x}% ${position.y}%`,
-                transform: `scale(${zoomScale})`,
-              }
-            : {
-                transformOrigin: 'center center',
-                transform: 'scale(1)',
-              }
-        }
-      />
+      <picture className="wz-img-zoom__picture">
+        {sources?.avif ? <source type="image/avif" srcSet={sources.avif} sizes={sizes} /> : null}
+        {sources?.webp ? <source type="image/webp" srcSet={sources.webp} sizes={sizes} /> : null}
+        <img
+          src={src}
+          alt={alt}
+          width={width}
+          height={height}
+          draggable={false}
+          onError={onError}
+          className="wz-img-zoom__img"
+          style={
+            zooming
+              ? {
+                  transformOrigin: `${position.x}% ${position.y}%`,
+                  transform: `scale(${zoomScale})`,
+                }
+              : {
+                  transformOrigin: 'center center',
+                  transform: 'scale(1)',
+                }
+          }
+        />
+      </picture>
     </div>
   )
 }
