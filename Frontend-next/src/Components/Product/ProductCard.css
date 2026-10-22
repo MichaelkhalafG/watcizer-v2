@@ -54,6 +54,13 @@
   background: #fff;
 }
 
+/* the <picture> of recorded renditions fills the square like next/image's `fill` did */
+.wz-pc__picture {
+  position: absolute;
+  inset: 0;
+  display: block;
+}
+
 .wz-pc__img {
   width: 100%;
   height: 100%;

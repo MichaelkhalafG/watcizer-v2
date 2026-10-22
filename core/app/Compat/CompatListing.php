@@ -57,9 +57,10 @@ final class CompatListing
     /**
      * The SHAPE of a `compat_card` entry, in its cache key (spec §19-W1, A2, 2026-10-12). Bump it
      * whenever the row gains or loses a field, or a warm cache keeps serving the old shape until its
-     * TTL. `f1`: `family` added to the row.
+     * TTL. `f1`: `family` added to the row. `f2` (2026-10-22): `image_srcset` on the row and `srcset` on
+     * each gallery image — the recorded renditions, for the card's `<picture>`.
      */
-    public const CARD_SHAPE = 'f1';
+    public const CARD_SHAPE = 'f2';
 
     /** `ListingClient`'s PRICE_MAX: a max at or above it means "no upper bound". */
     public const PRICE_MAX = 99999999;

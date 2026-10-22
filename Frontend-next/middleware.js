@@ -16,6 +16,18 @@ const YEAR = 60 * 60 * 24 * 365
 
 export function middleware(request) {
   const { pathname } = request.nextUrl
+  // www → the apex, permanently (Search Console, 2026-10-22): https://www.watchizereg.com/ answered 200 with a
+  // canonical to the apex, so Google held two addresses for every page it reached under www. The host header is
+  // the request's own; the path and query are kept. Pages only (this matcher), so /robots.txt under www is not
+  // redirected here — nothing links it.
+  const host = (request.headers.get('host') || '').toLowerCase()
+  if (host.startsWith('www.')) {
+    const url = request.nextUrl.clone()
+    url.host = host.slice(4)
+    url.protocol = 'https:'
+    url.port = ''
+    return NextResponse.redirect(url, 301)
+  }
   const headers = new Headers(request.headers)
   const arabic = pathname === '/ar' || pathname.startsWith('/ar/')
 

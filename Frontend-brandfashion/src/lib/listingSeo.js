@@ -173,7 +173,7 @@ export function listingSummary(listing, tables = {}) {
 
 // The page's own clean path, from the RESOLVED entity's slug — so /brand/Rolex and /brand/rol (both
 // resolve to Rolex) share one canonical, /brand/rolex. `kind` is the route's first segment.
-function cleanPath(kind, tables, filters, pathname) {
+export function cleanPath(kind, tables, filters, pathname) {
   const one = (arr) => ((arr || []).length === 1 ? arr[0] : null)
   const find = (list, id) => (id == null ? null : (list || []).find((i) => i.id === id) || null)
   if (kind === 'brand') {
@@ -190,6 +190,23 @@ function cleanPath(kind, tables, filters, pathname) {
     if (g) return `/grade/${toSlug(nameEn(g, 'grade_name'))}`
   }
   return pathname
+}
+
+// A facet URL whose segment is not the entity's clean slug — a brand by its NAME (/brand/TAG Heuer), a case
+// variant (/brand/Citizen), a prefix the tolerant match accepted (/brand/rol), a grade by its name — is one page
+// under two addresses. Search Console listed 40 of them as "alternate page with proper canonical" and the
+// owner's decision (2026-10-22) is ONE address: a permanent redirect to the clean path. Returns that path when
+// the request differs from it (after decoding), null when the URL is already clean or the route has no clean form.
+export function facetRedirectPath(pathname, clean) {
+  if (!clean || !pathname || clean === pathname) return null
+  const dec = (s) => {
+    try {
+      return decodeURIComponent(s)
+    } catch {
+      return s
+    }
+  }
+  return dec(pathname) === dec(clean) ? null : clean
 }
 
 // Robots + canonical path for a listing page (the rules above). `query` is listingQuery() of /listing's

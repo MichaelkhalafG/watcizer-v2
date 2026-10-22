@@ -1,8 +1,8 @@
 'use client'
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from '@/src/Components/LocaleLink'
 import { PLACEHOLDER_IMG } from '@/src/utils/imageUrl'
-import { aisleTint } from '@/src/lib/aisleTint'
+import { pictureSources, SIZES } from '@/src/utils/picture'
 import { txt, money, cardColours, cardVariants, isNewProduct } from '@/src/lib/cardData'
 import useCart, { getItemKey } from '@/src/Hooks/useCart'
 import { refusedAddMessage } from '@/src/Store/cartStore'
@@ -70,8 +70,6 @@ export default function BfProductCard({
   product,
   lang = 'en',
   density = 'comfortable',
-  tintMode = 'auto',
-  ground = 'white',
   showRating = false,
   isNew,
   href,
@@ -92,6 +90,14 @@ export default function BfProductCard({
   // touch has no hover: a swatch tap "engages" the card and the size row rises over the photo (desktop: hover/focus, CSS)
   const [engaged, setEngaged] = useState(false)
   const groupRef = useRef(null)
+  // the second photo is shown on hover only once it has LOADED (is-ready); a file complete before hydration never
+  // fires onLoad, so the effect reads its state too (2026-10-22, see BfProductCard.css)
+  const hoverRef = useRef(null)
+  const [hoverReady, setHoverReady] = useState(false)
+  useEffect(() => {
+    const el = hoverRef.current
+    setHoverReady(!!(el && el.complete && el.naturalWidth > 0))
+  }, [product?.hover_image?.src])
   if (!product) return null
   const t = STR[lang] ?? STR.en
   const dir = lang === 'ar' ? 'rtl' : 'ltr'
@@ -110,8 +116,9 @@ export default function BfProductCard({
   // the stock KIND, Watchizer's two words and tones (ProductCard.jsx:90); the count lives on the product page (§8.4)
   const kind = soldOut ? null : Number(product.stock?.express) > 0 ? 'express' : Number(product.stock?.market) > 0 ? 'market' : null
 
-  // the tint rule (§8.3): the family tint on a white ground; `tile` on any tinted ground
-  const tintVar = tintMode === 'never' || (tintMode === 'auto' && ground === 'tint') ? 'var(--wz-tile)' : `var(--wz-${aisleTint(product.family)})`
+  // the ground behind the photo is the page's white (2026-10-22, the owner's call): no family tint and no blend;
+  // the card's own hairline border keeps its edge on the white page. The `tintMode` / `ground` props callers still
+  // pass decide nothing now and are ignored.
 
   const colours = cardColours(product)
   const colourNames = colours.map((c) => txt(c.name, lang)).filter(Boolean)
@@ -119,6 +126,10 @@ export default function BfProductCard({
   const src = !broken && product.image?.src ? product.image.src : PLACEHOLDER_IMG
   const isPhoto = src !== PLACEHOLDER_IMG
   const hoverSrc = isPhoto && product.hover_image?.src && product.hover_image.src !== src ? product.hover_image.src : null
+  // the RECORDED renditions of each photo (image.srcset, 2026-10-22): a <picture> offers exactly these, AVIF then
+  // WebP, with the 1200 px original as the fallback; a photo with none is the plain <img> it was
+  const coverSources = isPhoto ? pictureSources(product.image?.srcset) : { avif: null, webp: null }
+  const hoverSources = hoverSrc ? pictureSources(product.hover_image?.srcset) : { avif: null, webp: null }
   const link = href ?? `/product/${product.slug}`
 
   // ── the picker (only with variant rows, §11.5 / §8.6)
@@ -184,14 +195,22 @@ export default function BfProductCard({
   return (
     <article className={`bf-card ${density === 'compact' ? 'bf-card--compact' : ''} ${soldOut ? 'is-sold-out' : ''} ${hasPicker ? 'has-picker' : ''} ${engaged ? 'is-engaged' : ''}`} dir={dir} lang={lang} data-family={product.family}>
       <Link className="bf-card__link" href={link} aria-label={name}>
-        <div className="bf-card__tile" style={{ background: tintVar }} aria-hidden="true">
-          {/* eslint-disable-next-line @next/next/no-img-element -- absolute asset-host URL, fallback is an inline SVG */}
-          <img className={`bf-card__img ${isPhoto ? 'is-photo' : 'is-placeholder'}`} src={src} alt="" loading="lazy" decoding="async" onError={() => setBroken(true)} />
+        <div className="bf-card__tile" aria-hidden="true">
+          <picture className="bf-card__picture">
+            {coverSources.avif ? <source type="image/avif" srcSet={coverSources.avif} sizes={SIZES.cardDense} /> : null}
+            {coverSources.webp ? <source type="image/webp" srcSet={coverSources.webp} sizes={SIZES.cardDense} /> : null}
+            <img className={`bf-card__img ${isPhoto ? 'is-photo' : 'is-placeholder'}`} src={src} alt="" loading="lazy" decoding="async" onError={() => setBroken(true)} />
+          </picture>
           {hoverSrc ? (
-            // the second photo, crossfaded in on hover (desktop) inside its own wrapper on the tile's tint (T1, round 4)
-            <span className="bf-card__ph2" style={{ background: tintVar }}>
-              {/* eslint-disable-next-line @next/next/no-img-element -- the second photo, absolute asset-host URL */}
-              <img className="bf-card__img bf-card__img--hover is-photo" src={hoverSrc} alt="" loading="lazy" decoding="async" />
+            // the second photo, crossfaded in on hover (desktop) inside its own wrapper on the page's white (T1, round 4),
+            // and only once it has loaded (is-ready): a lazy file that arrives after every cover on the page —
+            // until then the hover painted an empty tile over the first photo (measured 2026-10-22)
+            <span className={`bf-card__ph2${hoverReady ? ' is-ready' : ''}`}>
+              <picture className="bf-card__picture">
+                {hoverSources.avif ? <source type="image/avif" srcSet={hoverSources.avif} sizes={SIZES.cardDense} /> : null}
+                {hoverSources.webp ? <source type="image/webp" srcSet={hoverSources.webp} sizes={SIZES.cardDense} /> : null}
+                <img ref={hoverRef} className="bf-card__img bf-card__img--hover is-photo" src={hoverSrc} alt="" loading="lazy" decoding="async" onLoad={() => setHoverReady(true)} />
+              </picture>
             </span>
           ) : null}
           {badge ? <span className={`bf-card__badge bf-card__badge--${badge}`}>{badge === 'sold-out' ? t.soldOut : t.isNew}</span> : null}

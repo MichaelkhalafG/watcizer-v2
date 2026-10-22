@@ -177,9 +177,13 @@ export function fromV2Product(page) {
   row.average_rate = p.rating?.avg ?? null
   // the gallery, in the ONE shape the transform rebuilds `images` from: compat's rows, `{ product_id, image }`.
   // v2 lists the cover first (compat listed the gallery rows and the cover separately); the page dedups by url.
-  const gallery = (p.images || []).filter((i) => i?.src).map((i) => ({ id: i.id ?? null, product_id: p.id, image: i.src, is_cover: !!i.is_cover }))
+  // `srcset` rides along (2026-10-22): v2 records each image's renditions, and `transformProductData` keys them by url.
+  const gallery = (p.images || []).filter((i) => i?.src).map((i) => ({ id: i.id ?? null, product_id: p.id, image: i.src, is_cover: !!i.is_cover, srcset: Array.isArray(i.srcset) ? i.srcset : [] }))
   row.images = gallery.map((i) => i.image)
-  if (!row.image && row.images.length) row.image = row.images[0]
+  if (!row.image && row.images.length) {
+    row.image = row.images[0]
+    row.image_srcset = gallery[0].srcset
+  }
 
   return {
     // the compat-shaped payload every existing consumer reads

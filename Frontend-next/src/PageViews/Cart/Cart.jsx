@@ -14,6 +14,7 @@ import {
 } from 'react-icons/fi'
 import { useCards, useCardsOf, useRelated } from '../../Hooks/queries/useListing'
 import { useOffers } from '../../Hooks/queries/useOffers'
+import { trackViewCart } from '../../scripts/pixels'
 import { useUIStore } from '../../Store/uiStore'
 import { useAuthStore } from '../../Store/authStore'
 import { useShippingStore } from '../../Store/shippingStore'
@@ -301,6 +302,17 @@ function Cart() {
     }
     return { subtotal: sub, savings: sav, anyUnavailable: bad, itemCount: count }
   }, [items, resolve])
+
+  // GA4 view_cart (2026-10-22): once per visit, when the lines are known and the money is on screen
+  const viewCartFired = useRef(false)
+  useEffect(() => {
+    if (viewCartFired.current || loading || !items.length) return
+    viewCartFired.current = true
+    trackViewCart({
+      value: subtotal,
+      contents: items.map((it) => ({ id: it.product_id ?? it.offer_id ?? null, name: resolve(it).name, quantity: it.quantity, price: Number(it.piece_price) })),
+    })
+  }, [loading, items, subtotal, resolve])
 
   // ── Shipping (always the selected governorate cost — no free shipping) ──
   const cities = shippingPrices || []

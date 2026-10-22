@@ -60,7 +60,14 @@ it('sets the configured (private) cache headers, a strong ETag, cache tags and a
 
 it('keeps every endpoint under its payload ceiling on the local catalog (§5.5)', function () {
     expect(strlen((string) getJson(H::base('meta'))->getContent()))->toBeLessThanOrEqual(300 * 1024);
-    expect(strlen((string) getJson(H::base('products?per_page=24'))->getContent()))->toBeLessThanOrEqual(120 * 1024);
-    expect(strlen((string) getJson(H::base('products/'.H::visibleSlug()))->getContent()))->toBeLessThanOrEqual(60 * 1024);
+    /*
+     * The listing and detail ceilings moved on 2026-10-22, when the image objects started carrying the
+     * renditions the rows RECORD (`srcset`, up to ten absolute URLs per photo). Measured on the local
+     * catalogue that day: a 24-card listing page 133 KB raw where it was 69 KB — and 12.9 KB gzipped on
+     * the wire where it was 10.0 KB, because the URLs share their prefix; a 10-photo detail 78 KB raw,
+     * 9 KB gzipped. The ceilings are raw sizes, so they follow the raw growth: 160 KB and 100 KB.
+     */
+    expect(strlen((string) getJson(H::base('products?per_page=24'))->getContent()))->toBeLessThanOrEqual(160 * 1024);
+    expect(strlen((string) getJson(H::base('products/'.H::visibleSlug()))->getContent()))->toBeLessThanOrEqual(100 * 1024);
     expect(strlen((string) get(H::base('sitemaps/ar/products-1.xml'))->getContent()))->toBeLessThanOrEqual(2 * 1024 * 1024);
 });

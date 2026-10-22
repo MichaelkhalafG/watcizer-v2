@@ -116,6 +116,14 @@ export const transformProductData = (products, tables, ratings, images, locale) 
           .filter((img) => img.product_id === product.id)
           .map((img) => getImageUrl(img.image, 'Product_image'))
           .filter(Boolean),
+        // The RECORDED renditions of each gallery image, by its url (2026-10-22): compat's gallery rows carry
+        // `srcset` (v2's `images[].srcset`, mapped by v2Product), and a <picture> may offer exactly these and
+        // nothing derived from a filename. A row without any records nothing here.
+        images_srcset: Object.fromEntries(
+          (images || [])
+            .filter((img) => img.product_id === product.id && Array.isArray(img.srcset) && img.srcset.length > 0)
+            .map((img) => [getImageUrl(img.image, 'Product_image'), img.srcset]),
+        ),
         features: product.feature.map((f) =>
           getTranslatedName(f.translations || [], locale, 'feature_name'),
         ),
@@ -129,6 +137,8 @@ export const transformProductData = (products, tables, ratings, images, locale) 
           .filter(Boolean),
         band_length: product.band_length,
         image: getImageUrl(product.image, 'Product'),
+        // the cover's recorded renditions (compat `image_srcset`, v2 `image.srcset`) — `[]` when none
+        image_srcset: Array.isArray(product.image_srcset) ? product.image_srcset : [],
         product_title: getTranslatedName(product.translations || [], locale, 'product_title'),
         name: getTranslatedName(product.translations || [], 'en', 'product_title'),
         model_name: getTranslatedName(product.translations || [], locale, 'model_name'),

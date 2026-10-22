@@ -157,6 +157,18 @@
   opacity: 0.5;
   transition: opacity 0.2s ease, border-color 0.2s ease;
 }
+/* a <picture> of recorded renditions (2026-10-22) is a box its photo fills — a thumb's, a slide's — never an
+   inline wrapper that would collapse the photo's height */
+.wz-pd-picture {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.wz-pd-picture img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
 .wz-pd-thumb img {
   width: 100%;
   height: 100%;
@@ -670,19 +682,25 @@
   height: 2px;
   background: var(--pd-gold);
 }
-.wz-pd-acc-icon {
-  display: none;
-  font-size: 22px;
-  font-weight: 400;
-  line-height: 1;
-  color: rgba(0, 0, 0, 0.4);
-  /* Chevron (›) points DOWN when the section is closed and UP when open.
-     Down/up is direction-symmetric, so no separate RTL rotation is needed. */
-  transform: rotate(90deg);
-  transition: transform 0.25s ease;
+/* Description and Reviews are Disclosures (2026-10-22, src/Components/UI/Disclosure.jsx): the heading button keeps
+   this small tracked caps and gold rule, the chevron is the shared one. The specification table stays open under a
+   plain heading on desktop (.wz-pd-section-title) and is the phone's own closed section (both render, one shows). */
+.wz-pd-section-head {
+  cursor: pointer;
 }
-.wz-pd-acc-icon.is-open {
-  transform: rotate(-90deg);
+.wz-pd-section-head .wz-disc__icon {
+  margin-inline-end: 2px;
+}
+.wz-pd-specs--phone {
+  display: none;
+}
+@media (max-width: 900px) {
+  .wz-pd-specs--desktop {
+    display: none;
+  }
+  .wz-pd-specs--phone {
+    display: block;
+  }
 }
 .wz-pd-section-body {
   display: block;
@@ -718,14 +736,22 @@
 }
 
 /* ── Description ──────────────────────────────── */
+/* Full width (2026-10-22): the text used to stop at 70 characters and leave the rest of the 1,104 px inner width
+   empty. It now fills it in TWO balanced columns, each no wider than about 75 characters at this size (a 48 px
+   gutter between) — the whole width without a 150-character line, which nobody can read. One column below 901 px. */
 .wz-pd-desc-content {
-  max-width: 70ch;
+  column-count: 2;
+  column-width: 40ch;
+  column-gap: 48px;
   font-size: 14px;
   line-height: 1.8;
   color: rgba(0, 0, 0, 0.6);
 }
 .wz-pd-desc-content p {
   margin: 0 0 12px;
+}
+.wz-pd-desc-content > :last-child {
+  margin-bottom: 0;
 }
 
 /* ── Ratings ──────────────────────────────────── */
@@ -1207,7 +1233,8 @@ body[style*='overflow:hidden'] .wz-pd-sticky {
     line-height: 1.2;
   }
 
-  /* Specs / description / reviews → tap-to-expand accordions (start closed) */
+  /* Specs / description / reviews: the phone's three closed sections (Disclosure, 2026-10-22 — the collapse
+     mechanics live in src/Components/UI/Disclosure.css; this is the look) */
   .wz-pd-section {
     margin-top: 0;
   }
@@ -1215,58 +1242,21 @@ body[style*='overflow:hidden'] .wz-pd-sticky {
     height: 52px;
     margin: 0;
     padding: 0;
-    cursor: pointer;
     border-top: 1px solid rgba(0, 0, 0, 0.06);
     font-size: 11px;
     letter-spacing: 0.2em;
   }
-  /* the gold underline accent is desktop-only; accordions use the chevron */
+  /* the gold underline accent is desktop-only; the phone's sections use the chevron */
   .wz-pd-section-head::after {
     display: none;
   }
-  .wz-pd-acc-icon {
-    display: block;
-  }
-  /* Smooth accordion via the grid-template-rows 0fr→1fr trick (composite-safe,
-     no max-height stutter). Each body wraps a single child that carries the
-     padding and overflow so it collapses cleanly. */
-  .wz-pd-specs .wz-pd-section-body,
-  .wz-pd-desc .wz-pd-section-body,
-  .wz-pd-ratings .wz-pd-section-body {
-    display: grid;
-    grid-template-rows: 0fr;
-    overflow: hidden;
-    padding: 0;
-    border: none;
-    transition: grid-template-rows var(--wz-duration-slow) var(--wz-ease);
-  }
-  .wz-pd-specs .wz-pd-section-body.is-open,
-  .wz-pd-desc .wz-pd-section-body.is-open,
-  .wz-pd-ratings .wz-pd-section-body.is-open {
-    grid-template-rows: 1fr;
-  }
-  .wz-pd-specs .wz-pd-section-body > *,
-  .wz-pd-desc .wz-pd-section-body > *,
-  .wz-pd-ratings .wz-pd-section-body > * {
-    min-height: 0;
-    overflow: hidden;
+  /* the open body's content keeps clear of the next heading (on the grandchild: a padded grid item could never
+     collapse to 0, which was the strip of BRAND / CATEGORY that used to leak through a closed section) */
+  .wz-pd-section .wz-disc__inner > * {
     padding-bottom: 20px;
-    transition: padding var(--wz-duration-slow) var(--wz-ease);
   }
-  .wz-pd-specs .wz-pd-section-body > * {
+  .wz-pd-specs--phone .wz-disc__inner > * {
     padding-top: 4px;
-  }
-  /* The collapsing child MUST lose its padding when closed. Padding is
-     incompressible, so with grid-template-rows:0fr the row can never shrink
-     below the child's 20–24px of padding — a strip of the content (BRAND /
-     CATEGORY, the first description line, …) leaks through the closed section.
-     Zeroing the padding here lets each section fully collapse to 0; the
-     transition above animates it back in smoothly on open. */
-  .wz-pd-specs .wz-pd-section-body:not(.is-open) > *,
-  .wz-pd-desc .wz-pd-section-body:not(.is-open) > *,
-  .wz-pd-ratings .wz-pd-section-body:not(.is-open) > * {
-    padding-top: 0;
-    padding-bottom: 0;
   }
   .wz-pd-spec-grid {
     grid-template-columns: 1fr 1fr;

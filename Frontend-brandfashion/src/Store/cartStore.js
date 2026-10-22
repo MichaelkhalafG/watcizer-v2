@@ -1,5 +1,5 @@
 import http from '../Context/api'
-import { trackAddToCart } from '../scripts/pixels'
+import { trackAddToCart, trackRemoveFromCart } from '../scripts/pixels'
 import { API_BASE, STOREFRONT_CODE } from '../lib/env'
 import { useAuthStore } from './authStore'
 
@@ -186,6 +186,9 @@ const trackConfirmedAdd = (synced, { id, name, unitPrice, added }) =>
   synced.then((result) => {
     if (result.ok && added > 0) {
       trackAddToCart({ id, name, value: parseFloat(unitPrice) * added, quantity: added })
+    } else if (result.ok && added < 0) {
+      // a DECREASE is GA4's remove_from_cart for what left (2026-10-22); the pixels have no event for it
+      trackRemoveFromCart({ id, name, value: parseFloat(unitPrice) * -added, quantity: -added })
     }
     return result
   })
@@ -297,6 +300,8 @@ export const cartStore = {
       return { ...cart, cart_item: cart.cart_item.filter((i) => getItemKey(i) !== identifier) }
     })
     if (!removed) return
+    // GA4 remove_from_cart for the whole line (2026-10-22)
+    trackRemoveFromCart({ id: removed.product_id ?? null, value: parseFloat(removed.piece_price) * removed.quantity, quantity: removed.quantity })
     if (removed.server) {
       send('delete', `cart/items/${removed.id}`).then((r) => {
         if (r.ok && r.data) applyPayload(r.data)

@@ -4,6 +4,7 @@ import Image from 'next/image'
 import Link from '@/src/Components/LocaleLink'
 import { useUIStore } from '../../Store/uiStore'
 import { getImageUrl, PLACEHOLDER_IMG } from '../../utils/imageUrl'
+import { pictureSources, hasRenditions, SIZES } from '../../utils/picture'
 import { productUrl } from '../../utils/productUrl'
 import useCart from '../../Hooks/useCart'
 import { refusedAddMessage } from '../../Store/cartStore'
@@ -82,9 +83,12 @@ const ProductCard = ({ product, showBrand = true, showRating = true }) => {
   const rating = Number(product.average_rating || product.ratings_avg || product.rating || 0)
   const reviews = Number(product.ratings_count || product.reviews_count || 0)
 
-  /* ── Image — next/image (auto AVIF/WebP + per-device srcset). Falls back to the
-     inline gray SVG placeholder when the product has no image. ── */
+  /* ── Image ── A cover whose row RECORDS renditions (image_srcset, 2026-10-22: 93 % of covers) is a <picture>
+     of those files from the asset host — AVIF, then WebP, the original as the fallback — so the Node server
+     resizes nothing for it. A cover with no record keeps next/image exactly as before (auto AVIF/WebP from
+     the optimiser). Falls back to the inline gray SVG placeholder when the product has no image. */
   const imgSrc = getImageUrl(product.image, 'Product') || PLACEHOLDER_IMG
+  const sources = hasRenditions(product.image_srcset) ? pictureSources(product.image_srcset) : null
 
   /* ── Stock status descriptor ── */
   const stock = isExpress
@@ -145,15 +149,23 @@ const ProductCard = ({ product, showBrand = true, showRating = true }) => {
 
       {/* ── Media ── */}
       <div className="wz-pc__media">
-        <Image
-          src={imgSrc}
-          alt={name}
-          fill
-          sizes="(max-width: 400px) 50vw, (max-width: 768px) 33vw, (max-width: 1200px) 25vw, 300px"
-          quality={80}
-          className="wz-pc__img"
-          style={{ objectFit: 'contain' }}
-        />
+        {sources ? (
+          <picture className="wz-pc__picture">
+            {sources.avif ? <source type="image/avif" srcSet={sources.avif} sizes={SIZES.card} /> : null}
+            {sources.webp ? <source type="image/webp" srcSet={sources.webp} sizes={SIZES.card} /> : null}
+            <img src={imgSrc} alt={name} loading="lazy" decoding="async" className="wz-pc__img" />
+          </picture>
+        ) : (
+          <Image
+            src={imgSrc}
+            alt={name}
+            fill
+            sizes="(max-width: 400px) 50vw, (max-width: 768px) 33vw, (max-width: 1200px) 25vw, 300px"
+            quality={80}
+            className="wz-pc__img"
+            style={{ objectFit: 'contain' }}
+          />
+        )}
 
         {/* Badges — independent small pills, can coexist */}
         {isNew && <span className="wz-pc__badge wz-pc__badge--new">{isRTL ? 'جديد' : 'New'}</span>}

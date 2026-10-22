@@ -2,7 +2,9 @@
 
 namespace App\Compat;
 
+use App\Storefront\ImageUrl;
 use App\Storefront\StorefrontCache;
+use App\Storefront\StorefrontUrls;
 use App\Transform\Row;
 use Illuminate\Support\Facades\DB;
 use stdClass;
@@ -203,6 +205,11 @@ final class CompatCatalog
                 $r[$col] = CompatProducts::watch($row, $col);
             }
             $r['image'] = LegacyJson::legacyImage(Row::nstr($row, 'cover_path'), 'Product') ?? '';
+            // NEW KEY (2026-10-22), beside the legacy `image` and never instead of it: the cover's recorded
+            // renditions as absolute URLs on this storefront's compat image host — `[]` when the row has
+            // none. The Watchizer home still draws its rails from this row (catalog/home), and a card
+            // cannot offer a `<picture>` it was not told about. CARD_SHAPE carries the change.
+            $r['image_srcset'] = $this->srcset(Row::nstr($row, 'cover_path'), Row::nstr($row, 'cover_renditions'));
             $r['warranty_years'] = CompatProducts::warranty($row);
             $r['interchangeable_dial'] = CompatProducts::watch($row, 'interchangeable_dial');
             $r['interchangeable_strap'] = CompatProducts::watch($row, 'interchangeable_strap');
@@ -465,7 +472,7 @@ final class CompatCatalog
     {
         $out = [];
         $query = DB::table('catalog_product_images')
-            ->select(['id', 'product_id', 'path', 'sort', 'alt_ar', 'alt_en', 'created_at', 'updated_at'])
+            ->select(['id', 'product_id', 'path', 'sort', 'alt_ar', 'alt_en', 'renditions', 'created_at', 'updated_at'])
             ->where('is_cover', 0)
             ->orderBy('id');
         if ($only !== null) {
@@ -476,6 +483,7 @@ final class CompatCatalog
                 'id' => Row::int($row, 'id'),
                 'product_id' => Row::int($row, 'product_id'),
                 'image' => LegacyJson::legacyImage(Row::str($row, 'path'), 'Product_image') ?? '',
+                'srcset' => $this->srcset(Row::str($row, 'path'), Row::nstr($row, 'renditions')),
                 'is_cover' => false,
                 'sort' => max(0, Row::int($row, 'sort') - 1),
                 'alt_ar' => Row::nstr($row, 'alt_ar'),
@@ -486,6 +494,23 @@ final class CompatCatalog
         }
 
         return $out;
+    }
+
+    /**
+     * A row's recorded renditions as `{src, width, format}` on this storefront's compat image host
+     * (COMPAT-ASSET-HOST: the default storefront keeps `compat.asset_base`, every other its own).
+     * Only what the row RECORDS: nothing is derived from the naming convention.
+     *
+     * @return list<array{src: string, width: int, format: string}>
+     */
+    private function srcset(?string $path, ?string $renditions): array
+    {
+        if ($path === null || $path === '' || $renditions === null || $renditions === '') {
+            return [];
+        }
+        $decoded = json_decode($renditions, true);
+
+        return is_array($decoded) ? ImageUrl::srcset($path, $decoded, StorefrontUrls::compatAssetBase($this->storefrontId)) : [];
     }
 
     /**

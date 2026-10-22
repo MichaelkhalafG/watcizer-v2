@@ -1,0 +1,73 @@
+/* Disclosure — the mechanics of a section that opens and closes (a twin; see Disclosure.jsx).
+   The look of the heading and the body belongs to the page that uses it. */
+
+.wz-disc__heading {
+  margin: 0;
+  font: inherit;
+  text-transform: none;
+  letter-spacing: normal;
+}
+.wz-disc__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 0;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  font: inherit;
+  color: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.wz-disc__head:focus-visible {
+  outline: 2px solid var(--wz-focus-ring, currentColor);
+  outline-offset: 3px;
+}
+.wz-disc__label {
+  min-width: 0;
+}
+/* the chevron: a bordered corner, down when closed, up when open — symmetric, nothing to mirror in RTL */
+.wz-disc__icon {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-inline-end: 1.5px solid currentColor;
+  border-block-end: 1.5px solid currentColor;
+  opacity: 0.55;
+  transform: translateY(-2px) rotate(45deg);
+  transition: transform 200ms ease;
+}
+.wz-disc.is-open > .wz-disc__heading .wz-disc__icon {
+  transform: translateY(2px) rotate(225deg);
+}
+/* the body: grid-template-rows 0fr → 1fr (the inner child carries min-height 0 + overflow hidden, so the row can
+   reach 0); hidden while closed so nothing inside is focusable or announced, yet all of it stays in the HTML */
+.wz-disc__body {
+  display: grid;
+  grid-template-rows: 0fr;
+  visibility: hidden;
+  transition:
+    grid-template-rows 300ms ease,
+    visibility 0s linear 300ms;
+}
+.wz-disc.is-open > .wz-disc__body {
+  grid-template-rows: 1fr;
+  visibility: visible;
+  transition:
+    grid-template-rows 300ms ease,
+    visibility 0s;
+}
+.wz-disc__inner {
+  min-height: 0;
+  overflow: hidden;
+}
+@media (prefers-reduced-motion: reduce) {
+  .wz-disc__icon,
+  .wz-disc__body,
+  .wz-disc.is-open > .wz-disc__body {
+    transition: none;
+  }
+}

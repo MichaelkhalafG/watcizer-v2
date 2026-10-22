@@ -1,4 +1,4 @@
-import { notFound } from 'next/navigation'
+import { notFound, permanentRedirect } from 'next/navigation'
 import { QueryClient, dehydrate, HydrationBoundary } from '@tanstack/react-query'
 import { listingRequest } from './listingRequest'
 import { parseListingParams } from '../utils/listingParams'
@@ -10,7 +10,10 @@ import {
   listingMetadata,
   listingSummary,
   listingBreadcrumbLd,
+  cleanPath,
+  facetRedirectPath,
 } from './listingSeo'
+import { localePath } from '../utils/localePath'
 import ListingClient from '@/app/(main)/listing/ListingClient'
 import { safeJsonLd } from './safeJsonLd'
 
@@ -44,11 +47,22 @@ async function facetContext(facet) {
   return { tables, filters, ok, seedParams, qs, listing }
 }
 
+// A request whose segment is not the clean slug is sent to the clean path, permanently (2026-10-22; the owner's
+// decision — see facetRedirectPath). Called from generateMetadata, which runs before the page streams, so the
+// response really is a redirect and not a 200 with a redirect inside it (the same reason the product page 404s
+// there). The two-segment route has no clean form and is never redirected.
+function redirectToCleanPath(pathname, tables, filters, urlLang) {
+  const kind = pathname.split('/')[1] || ''
+  const to = facetRedirectPath(pathname, cleanPath(kind, tables, filters, pathname))
+  if (to) permanentRedirect(localePath(to, urlLang))
+}
+
 // generateMetadata for a facet route (returns {} → the not-found response wins).
 export async function facetMetadataFor({ facet, pathname }) {
   const { tables, filters, ok, listing } = await facetContext(facet)
   if (!ok) return {}
   const { urlLang } = await requestLang()
+  redirectToCleanPath(pathname, tables, filters, urlLang)
   return listingMetadata({ tables, ...listingSummary(listing, tables), filters, pathname, lang: urlLang })
 }
 
@@ -62,6 +76,7 @@ export async function FacetPage({ facet, pathname }) {
   if (!ok) notFound()
 
   const { urlLang } = await requestLang()
+  redirectToCleanPath(pathname, tables, filters, urlLang)
   const breadcrumbLd = listingBreadcrumbLd({ tables, filters, pathname, lang: urlLang })
 
   // The first page and its facet counts from core (C-1 stage 3).

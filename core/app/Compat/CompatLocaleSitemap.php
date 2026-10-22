@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Compat;
 
+use App\Storefront\StorefrontUrls;
 use App\Support\LegacySlug;
 use App\Transform\Row;
 
@@ -50,7 +51,7 @@ final class CompatLocaleSitemap
 
     public function index(): string
     {
-        $domain = config()->string('compat.sitemap_domain');
+        $domain = $this->domain();
         $entries = [];
         foreach (self::LOCALES as $locale) {
             $entries[] = '  <sitemap><loc>'.htmlspecialchars("{$domain}/sitemaps/{$locale}.xml").'</loc></sitemap>';
@@ -159,12 +160,27 @@ final class CompatLocaleSitemap
     /** The shop URL of an English path in a language: English bare, Arabic under /ar. */
     private function href(string $path, string $locale): string
     {
-        $domain = config()->string('compat.sitemap_domain');
+        $domain = $this->domain();
         if ($locale !== 'ar') {
             return $domain.$path;
         }
 
         return $domain.($path === '/' ? '/ar' : '/ar'.$path);
+    }
+
+    /**
+     * The SHOP this sitemap is for (2026-10-22). The default storefront keeps `compat.sitemap_domain`, byte for
+     * byte what Google has always been given; every other storefront names its own site — Brand Fashion's
+     * sitemap used to list all 1,059 URLs on watchizereg.com, because this read one config value for every
+     * shop (the backlog item). `StorefrontUrls::frontend()` is where the shop's own address is decided.
+     */
+    private function domain(): string
+    {
+        if ($this->storefrontId === config()->integer('compat.storefront_id')) {
+            return rtrim(config()->string('compat.sitemap_domain'), '/');
+        }
+
+        return StorefrontUrls::frontend($this->storefrontId);
     }
 
     private static function str(mixed $v): ?string

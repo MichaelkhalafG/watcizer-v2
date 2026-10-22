@@ -8,7 +8,9 @@ import { refusedAddMessage } from '@/src/Store/cartStore'
 import { txt, money } from '@/src/lib/cardData'
 import { aisleTint } from '@/src/lib/aisleTint'
 import { PLACEHOLDER_IMG } from '@/src/utils/imageUrl'
+import { pictureSources, SIZES } from '@/src/utils/picture'
 import useGalleryKeys, { imagePosition } from '@/src/Hooks/useGalleryKeys'
+import Disclosure from '@/src/Components/UI/Disclosure'
 import { localizeHref } from '@/src/utils/localePath'
 import BfRail from '@/src/Components/Listing/BfRail'
 import StockAlertForm from './StockAlertForm'
@@ -169,6 +171,9 @@ export default function BfProductPage({ detail, related }) {
 
   // ── gallery
   const images = (Array.isArray(p.images) && p.images.length ? p.images : p.image ? [p.image] : []).filter((i) => i?.src)
+  // each image's recorded renditions as <source> strings, computed once per render (utils/picture.js)
+  const sources = useMemo(() => new Map(images.map((img) => [img, pictureSources(img.srcset)])), [images])
+  const sourcesOf = (img) => sources.get(img) ?? pictureSources(img?.srcset)
   const [slide, setSlide] = useState(0)
   const trackRef = useRef(null)
   // A programmatic move (a key, a dot, a thumb) OWNS the slide until the smooth scroll lands on it: the scroll
@@ -194,6 +199,24 @@ export default function BfProductPage({ detail, related }) {
   // ← → move between the images (2026-10-21): in the reading direction, wrapping, never from a field, a
   // select, the pickers (radiogroups) or an open drawer — see useGalleryKeys
   useGalleryKeys({ count: images.length, index: slide, onChange: goSlide, rtl: isRTL })
+  // ── the magnifier (2026-10-22): desktop with a fine pointer only — the current slide scales 2.2× in place
+  // around the cursor while it is over the frame, and leaves with it. A phone keeps its swipe and never zooms:
+  // a tap raises a mouse event too, which is why the media query is read once and asked on every move.
+  const [zoom, setZoom] = useState(null) // { x, y } in % of the frame while magnifying, else null
+  const finePointer = useRef(false)
+  useEffect(() => {
+    finePointer.current = window.matchMedia('(hover: hover) and (pointer: fine) and (min-width: 1024px)').matches
+  }, [])
+  const onZoomMove = (e) => {
+    if (!finePointer.current) return
+    const r = e.currentTarget.getBoundingClientRect()
+    if (!r.width || !r.height) return
+    const clamp = (v) => Math.min(100, Math.max(0, v))
+    setZoom({ x: clamp(((e.clientX - r.left) / r.width) * 100), y: clamp(((e.clientY - r.top) / r.height) * 100) })
+  }
+  const onZoomLeave = () => setZoom(null)
+  // the description (2026-10-22): closed until opened, served regardless — the twin Disclosure in this page's dress
+  const [descOpen, setDescOpen] = useState(false)
 
   // ── attributes (§11.4): specs first, else the pivots, else nothing
   const specs = Array.isArray(p.specs) ? p.specs : []
@@ -241,12 +264,23 @@ export default function BfProductPage({ detail, related }) {
             {images.length > 1 ? (
               <p className="bf-gal__sr" aria-live="polite" aria-atomic="true">{imagePosition(slide, images.length, isRTL)}</p>
             ) : null}
-            <div className="bf-gal__main">
+            <div className={`bf-gal__main${zoom ? ' is-zoomed' : ''}`} onMouseMove={onZoomMove} onMouseLeave={onZoomLeave}>
               <div className="bf-gal__track" ref={trackRef} onScroll={onScroll}>
                 {(images.length ? images : [{ src: PLACEHOLDER_IMG }]).map((img, i) => (
                   <div className="bf-gal__slide" key={img.id ?? i}>
-                    {/* eslint-disable-next-line @next/next/no-img-element -- absolute asset-host URL */}
-                    <img src={img.src} alt={i === 0 ? txt(p.title, lang) : ''} loading={i === 0 ? 'eager' : 'lazy'} decoding="async" />
+                    {/* the RECORDED renditions as a <picture> (2026-10-22), AVIF then WebP, the original the fallback */}
+                    <picture className="bf-gal__picture">
+                      {sourcesOf(img).avif ? <source type="image/avif" srcSet={sourcesOf(img).avif} sizes={SIZES.galleryMain} /> : null}
+                      {sourcesOf(img).webp ? <source type="image/webp" srcSet={sourcesOf(img).webp} sizes={SIZES.galleryMain} /> : null}
+                      <img
+                        src={img.src}
+                        alt={i === 0 ? txt(p.title, lang) : ''}
+                        loading={i === 0 ? 'eager' : 'lazy'}
+                        decoding="async"
+                        draggable={false}
+                        style={i === slide && zoom ? { transformOrigin: `${zoom.x}% ${zoom.y}%`, transform: 'scale(2.2)' } : undefined}
+                      />
+                    </picture>
                   </div>
                 ))}
               </div>
@@ -260,8 +294,11 @@ export default function BfProductPage({ detail, related }) {
                 <div className="bf-gal__thumbs">
                   {images.map((img, i) => (
                     <button key={img.id ?? i} type="button" className="bf-gal__thumb" aria-current={i === slide} onClick={() => goSlide(i)} aria-label={`${i + 1} / ${images.length}`}>
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={img.src} alt="" loading="lazy" decoding="async" />
+                      <picture className="bf-gal__picture">
+                        {sourcesOf(img).avif ? <source type="image/avif" srcSet={sourcesOf(img).avif} sizes={SIZES.thumbLarge} /> : null}
+                        {sourcesOf(img).webp ? <source type="image/webp" srcSet={sourcesOf(img).webp} sizes={SIZES.thumbLarge} /> : null}
+                        <img src={img.src} alt="" loading="lazy" decoding="async" />
+                      </picture>
                     </button>
                   ))}
                 </div>
@@ -368,10 +405,9 @@ export default function BfProductPage({ detail, related }) {
             ) : null}
 
             {description ? (
-              <section className="bf-desc" aria-label={t.description}>
-                <h2 className="bf-desc__title">{t.description}</h2>
-                {description}
-              </section>
+              <Disclosure id="bf-desc" as="h2" className="bf-desc" headClassName="bf-desc__title" label={t.description} open={descOpen} onToggle={() => setDescOpen((o) => !o)}>
+                <div className="bf-desc__text">{description}</div>
+              </Disclosure>
             ) : null}
 
             {Number(rating.count) > 0 ? (

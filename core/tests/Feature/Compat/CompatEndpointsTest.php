@@ -130,7 +130,10 @@ it('builds the catalogue rows with the 42 legacy columns (purchase_price hidden)
     expect($ids)->toBe($sorted);
     $first = arr($rows[0] ?? null);
     $keys = array_keys($first);
-    expect($keys)->toHaveCount(53)
+    // 53 legacy-shaped keys plus `image_srcset` (2026-10-22): the cover's RECORDED renditions, beside the
+    // legacy `image` and never instead of it, so the Watchizer home's cards can offer a <picture>.
+    expect($keys)->toHaveCount(54)
+        ->and($keys)->toContain('image_srcset')
         ->and(array_slice($keys, 0, 5))->toBe(['id', 'category_type_id', 'brand_id', 'grade_id', 'sub_type_id'])
         ->and(array_slice($keys, -11))->toBe(['product_title', 'model_name', 'country', 'stone', 'long_description', 'short_description', 'feature', 'gender', 'dial_color', 'band_color', 'translations'])
         ->and($keys)->not->toContain('purchase_price')
@@ -148,7 +151,9 @@ it('builds the gallery rows; ratings and shipping cities are still served', func
     $images = catalogueReferenceImages($visible);
     expect($images)->not->toBeEmpty();
     $image = arr($images[0] ?? null);
-    expect(array_keys($image))->toBe(['id', 'product_id', 'image', 'is_cover', 'sort', 'alt_ar', 'alt_en', 'created_at', 'updated_at'])
+    // `srcset` (2026-10-22) is the one key the legacy gallery row never had: the row's recorded renditions.
+    expect(array_keys($image))->toBe(['id', 'product_id', 'image', 'srcset', 'is_cover', 'sort', 'alt_ar', 'alt_en', 'created_at', 'updated_at'])
+        ->and($image['srcset'])->toBeArray()
         ->and($image['is_cover'])->toBeFalse();
     compat('all_product_rating')->assertOk();
     expect(arr(compat('show_shipping_city')->assertOk()->json('0')))->toHaveKeys(['id', 'shipping_cost', 'city_name', 'translations']);

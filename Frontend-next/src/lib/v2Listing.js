@@ -130,6 +130,8 @@ export function legacyRow(card) {
       short_description: short[locale] ?? short.en ?? '',
     })),
     image: card.image?.src ?? null,
+    // the cover's recorded renditions, for the card's <picture> (2026-10-22); compat's rows carry the same key
+    image_srcset: Array.isArray(card.image?.srcset) ? card.image.srcset : [],
     stock: card.stock?.express ?? 0,
     market_stock: card.stock?.market ?? 0,
     in_stock: !!card.stock?.in_stock,
