@@ -1,5 +1,5 @@
 'use client'
-import { memo, useCallback, useEffect, useMemo, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from '@/src/Components/LocaleLink'
 import { useRouter } from '@/src/Hooks/useLocaleRouter'
 import { useQuery } from '@tanstack/react-query'
@@ -12,6 +12,7 @@ import useCart, { getItemKey } from '../../Hooks/useCart'
 import { cartStore } from '../../Store/cartStore'
 import BfRail from '../../Components/Listing/BfRail'
 import { txt, money } from '../../lib/cardData'
+import { trackViewCart } from '../../scripts/pixels'
 import { localizeHref } from '../../utils/localePath'
 import { STOREFRONT_CODE } from '../../lib/env'
 import './Cart.css'
@@ -217,6 +218,17 @@ function Cart() {
     }
     return { subtotal: sub, savings: sav, anyUnavailable: bad, itemCount: count }
   }, [items, views])
+
+  // GA4 view_cart (2026-10-22): once per visit, when core's verdict is in and the money is on screen
+  const viewCartFired = useRef(false)
+  useEffect(() => {
+    if (viewCartFired.current || loading || !items.length) return
+    viewCartFired.current = true
+    trackViewCart({
+      value: subtotal,
+      contents: items.map((i) => ({ id: i.product_id ?? null, name: txt(i.product?.title, 'en') || views.get(getItemKey(i))?.name, quantity: i.quantity, price: Number(i.piece_price) })),
+    })
+  }, [loading, items, subtotal, views])
 
   // every unit in the cart, sold-out lines included — the header's badge counts the same way
   const lineUnits = items.reduce((n, i) => n + i.quantity, 0)

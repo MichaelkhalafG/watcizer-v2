@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { useRouter } from '@/src/Hooks/useLocaleRouter'
 import DOMPurify from 'dompurify'
-import { trackPurchase } from '../../scripts/pixels'
+import { trackPurchase, takePendingPurchase } from '../../scripts/pixels'
 import { useUIStore } from '../../Store/uiStore'
 import { useAuthStore } from '../../Store/authStore'
 import { useToastStore } from '../../Store/toastStore'
@@ -47,9 +47,10 @@ const deliveryWindow = (price) => {
  *
  * What this page is NOT: it renders whatever the query says. It is a confirmation MESSAGE, not a
  * receipt and not proof of payment — it fetches nothing and verifies nothing, so a hand-typed URL
- * fools only its author. Support reads the ORDER, never this page. And it fires NO Purchase event
- * on the card path: that needs an event id matching the one the callback already sends
- * server-side, or card sales count twice — a separate decision (developer, 2026-10-12).
+ * fools only its author. Support reads the ORDER, never this page. The Purchase for a PAID card
+ * order fires from here too (2026-10-22): from the snapshot Checkout saved before the hand-off,
+ * for the order number in the query only, with the event id the server's Conversions API purchase
+ * carries — so Meta counts one sale, not two. See CardLanding.
  */
 const CARD_STATUSES = ['paid', 'failed', 'pending']
 
@@ -138,12 +139,10 @@ function OrderConfirmation() {
   /*
    * ── Analytics: Purchase (FB) / CompletePayment (TikTok) ───────────────────────
    *
-   * CASH ON DELIVERY ONLY. A card order now DOES reach this component — the payment callback
-   * lands the shopper here with `?order=…&status=…` (2026-10-12) — but it arrives with an empty
-   * store, so `orderNumber` is unset and the first guard holds; the second is the stated rule. A
-   * Purchase for a card sale is sent SERVER-SIDE by the callback (Meta CAPI); firing one here as
-   * well would need a matching event id or every card sale counts twice. Not part of this page
-   * (developer decision, 2026-10-12): do not fold it in without asking.
+   * THE CASH PATH. A card order reaches this component through the payment callback's
+   * `?order=…&status=…` with an empty store, so `orderNumber` is unset here and the first guard
+   * holds; its Purchase fires in CardLanding below (2026-10-22), from the snapshot Checkout saved,
+   * with the event id the server's Conversions API purchase carries — one sale on Meta, not two.
    *
    * Deduped per order number inside trackPurchase, and that record now survives a reload, so a
    * refresh of this page does not report the sale twice.
@@ -153,6 +152,7 @@ function OrderConfirmation() {
     if (paymentMethod !== 'cash') return
     trackPurchase({
       orderNumber,
+      shipping: shippingPrice,
       /*
        * MERCHANDISE value, not `total` — `total` includes shipping, and shipping is the courier's
        * share rather than a conversion value. It also has to equal what `InitiateCheckout`
@@ -168,7 +168,7 @@ function OrderConfirmation() {
         price: it.price ?? (it.qty ? Number(it.lineTotal) / it.qty : 0),
       })),
     })
-  }, [orderNumber, total, subtotal, items, paymentMethod])
+  }, [orderNumber, total, subtotal, items, paymentMethod, shippingPrice])
 
   if (cardStatus) {
     return <CardLanding status={cardStatus} orderNumber={cardOrder} t={t} isRTL={isRTL} router={router} />
@@ -323,6 +323,17 @@ function OrderConfirmation() {
  *            client cart IS the retry path. The recovery e-mail covers the shopper who closed the tab.
  */
 function CardLanding({ status, orderNumber, t, isRTL, router }) {
+  // The Purchase for a card order (2026-10-22): from the snapshot Checkout saved before the Paymob
+  // hand-off, for a PAID landing and the same order number only. `pending` is not a sale yet — a
+  // kiosk code the shopper has yet to pay, or a callback the policy could not settle — and
+  // `failed` never was; both just drop the snapshot (takePendingPurchase clears it either way).
+  // Meta's server event for the same order carries the same event id, so this is one sale, not
+  // two; a reload does not repeat it (deduped per order number inside trackPurchase).
+  useEffect(() => {
+    const pending = takePendingPurchase()
+    if (status !== 'paid' || !pending || !orderNumber || pending.orderNumber !== String(orderNumber)) return
+    trackPurchase({ orderNumber, value: pending.value, shipping: pending.shipping, contents: pending.contents || [] })
+  }, [status, orderNumber])
   const { clearCart } = useCart()
   useEffect(() => {
     if (status === 'failed') return

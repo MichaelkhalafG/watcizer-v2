@@ -1,6 +1,6 @@
 import http from '../Context/api'
 import { v2CartRead, v2CartSet, v2CartRemove } from '../lib/v2Cart'
-import { trackAddToCart } from '../scripts/pixels'
+import { trackAddToCart, trackRemoveFromCart } from '../scripts/pixels'
 
 let listeners = new Set()
 let currentCart = null
@@ -235,6 +235,9 @@ const trackConfirmedAdd = (synced, { id, name, unitPrice, added }) =>
   synced.then((result) => {
     if (result.ok && added > 0) {
       trackAddToCart({ id, name, value: parseFloat(unitPrice) * added, quantity: added })
+    } else if (result.ok && added < 0) {
+      // a DECREASE is GA4's remove_from_cart for what left (2026-10-22); the pixels have no event for it
+      trackRemoveFromCart({ id, name, value: parseFloat(unitPrice) * -added, quantity: -added })
     }
     return result
   })
@@ -427,6 +430,8 @@ export const cartStore = {
       return { ...cart, cart_item: cart.cart_item.filter((i) => getItemKey(i) !== identifier) }
     })
     if (removed) {
+      // GA4 remove_from_cart for the whole line (2026-10-22)
+      trackRemoveFromCart({ id: removed.product_id ?? removed.offer_id ?? null, value: parseFloat(removed.piece_price) * removed.quantity, quantity: removed.quantity })
       // Delete the row from the DB cart too (was local-only before, which left
       // phantom cart_items that inflated the next order's server total). Undo
       // re-adds the line via syncLine, which recreates the row.

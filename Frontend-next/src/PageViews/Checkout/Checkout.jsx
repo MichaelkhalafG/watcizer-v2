@@ -27,7 +27,7 @@ import { STOREFRONT_CODE } from '../../lib/env'
 import TrustSignals from '../../Components/Merchandising/TrustSignals'
 import { trustSignals } from '../../config/trust.config'
 import { PAYMOB_ENABLED } from '../../lib/env'
-import { trackInitiateCheckout } from '../../scripts/pixels'
+import { trackInitiateCheckout, savePendingPurchase } from '../../scripts/pixels'
 import { useOrderConfirmStore } from '../../Store/orderConfirmStore'
 import './Checkout.css'
 
@@ -541,9 +541,16 @@ function Checkout() {
         //
         // NO Purchase event here, deliberately. The shopper has been sent to a payment page,
         // not paid: firing Purchase at this line would count every abandoned and every declined
-        // card payment as a sale. See the card-payment note at the top of src/scripts/pixels.js
-        // for what closing that gap properly requires.
+        // card payment as a sale. What the Purchase needs is SAVED here instead (2026-10-22), and
+        // the landing the payment callback sends the browser to fires it for a PAID order only —
+        // see the card note at the top of src/scripts/pixels.js.
         if (data.redirect_url) {
+          savePendingPurchase({
+            orderNumber: data.order_number,
+            value: subtotal,
+            shipping: shippingCost,
+            contents: items.map((i) => ({ id: i.product_id ?? i.offer_id ?? null, name: titleOf(i.product?.title, false), quantity: i.quantity, price: Number(i.piece_price) })),
+          })
           window.location.href = data.redirect_url
           return
         }

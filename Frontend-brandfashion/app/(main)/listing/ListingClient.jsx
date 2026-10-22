@@ -8,6 +8,7 @@ import { useListing, useCardsOf } from '@/src/Hooks/queries/useListing'
 import { useUIStore } from '@/src/Store/uiStore'
 import { buildListingParams, parseListingParams, paramsKey } from '@/src/utils/listingParams'
 import ProductCard from '@/src/Components/Product/ProductCard'
+import { trackViewItemList } from '@/src/scripts/pixels'
 import SideBar from '@/src/Components/SideBar/SideBar'
 import SmartSuggestions from '@/src/Components/Listing/SmartSuggestions'
 import BfEmptyResult from '@/src/Components/Listing/BfEmptyResult'
@@ -313,6 +314,24 @@ export default function ListingClient({ seedParams = null }) {
     if ((parsed.q || '').trim()) return isRTL ? `نتائج «${parsed.q.trim()}»` : `Results for “${parsed.q.trim()}”`
     return isRTL ? 'كل المنتجات' : 'All Products'
   }, [filters, nameMap, isRTL, parsed.q])
+
+  // GA4 view_item_list (2026-10-22): once per result set — the page, the sort, the filters — the cards in the
+  // order they are drawn (the first 50). Keyed by the ids: the array is a new object on every render.
+  const listKey = displayedProducts.map((p) => p.id).join(',')
+  useEffect(() => {
+    if (!displayedProducts.length) return
+    const q = urlSearchParams?.toString()
+    trackViewItemList({
+      listId: `${pathname}${q ? `?${q}` : ''}`,
+      listName: crumb,
+      contents: displayedProducts.map((p) => {
+        const selling = Number(p.selling_price) || 0
+        const sale = Number(p.sale_price) || 0
+        return { id: p.id, name: p.product_title || p.name, price: sale > 0 && sale < selling ? sale : selling }
+      }),
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per result set, by its ids
+  }, [listKey])
 
   // Nothing yet (first load, no prefetched page): skeletons. A later filter change keeps the previous
   // page on screen until the next one arrives (keepPreviousData), so there is no skeleton flash.
