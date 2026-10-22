@@ -119,6 +119,82 @@ final class ImagePipeline
             throw new RuntimeException("Could not write the master image to [{$masterPath}]: the encoder produced no bytes.");
         }
 
+        $written = $this->renditions($master, $masterPath, $config, $detailWidth, false);
+
+        $bytes = (int) (filesize($masterPath) ?: 0);
+        imagedestroy($master);
+
+        return [
+            // Reported as the PICTURE's resolution, which is what the operator uploaded and what
+            // they are being asked to judge. The file on disk is the padded canvas; its size is
+            // an implementation detail of the preset and tells nobody anything actionable.
+            'width' => $detailWidth,
+            'height' => $detailHeight,
+            'bytes' => $bytes,
+            'renditions' => $written['renditions'],
+            'skipped' => $written['skipped'],
+        ];
+    }
+
+    /**
+     * The renditions of a master that ALREADY EXISTS — the backfill's door (`media:backfill-renditions`,
+     * 2026-10-22). The master is opened read-only and never written: 626 covers and 2,332 gallery
+     * images came through the transform from the legacy app with no ladder at all, and they get one
+     * here through the SAME resize, the same encoders, the same qualities and the same bytes-on-disk
+     * check as an upload, so a backfilled file and an uploaded one cannot be told apart.
+     *
+     * Two things differ from `write()`, both deliberate:
+     *
+     *  • **The picture's width is MEASURED, not known.** An upload tells `write()` how wide the
+     *    photograph is before padding; a stored master is the padded canvas. So the canvas is scanned
+     *    for its non-white bounding box (every `pad_square` preset pads onto pure white) and that is
+     *    the width the D-16 rule compares against — an 800 px photo on a 1,200 canvas still gets no
+     *    960 rendition. A preset that does not pad is its own picture.
+     *  • **A rendition that is already on disk with bytes is kept and recorded, not re-encoded.** That
+     *    is what makes a run killed halfway restartable: the files it wrote are found, the row is
+     *    completed, and only what is missing costs CPU.
+     *
+     * @param  array{folder: string, master: array{width: int, height: int, quality: int, pad_square: bool}, widths: list<int>, thumbnails: list<int>}  $config
+     * @return array{width: int, height: int, renditions: array<int, array<string, string>>, skipped: list<string>}
+     */
+    public function renditionsOf(string $masterPath, array $config): array
+    {
+        if (! MediaCapabilities::hasGd()) {
+            throw new RuntimeException('GD is not available: this host cannot process images.');
+        }
+        if (! MediaCapabilities::canWriteWebp()) {
+            throw new RuntimeException('GD cannot write WebP on this host, and WebP is the master format (§5.4).');
+        }
+
+        $master = $this->read($masterPath);
+        [$detailWidth, $detailHeight] = $config['master']['pad_square']
+            ? self::pictureSize($master)
+            : [imagesx($master), imagesy($master)];
+
+        $written = $this->renditions($master, $masterPath, $config, $detailWidth, true);
+        imagedestroy($master);
+
+        return [
+            'width' => $detailWidth,
+            'height' => $detailHeight,
+            'renditions' => $written['renditions'],
+            'skipped' => $written['skipped'],
+        ];
+    }
+
+    /**
+     * The ladder beside a master: every declared width below the PICTURE's width, in every format
+     * this host can write, each checked for bytes on disk before it is recorded.
+     *
+     * Shared by `write()` (a fresh upload) and `renditionsOf()` (the backfill) so there is one
+     * definition of what a rendition is. `$reuseExisting` is the backfill's: a file already there with
+     * bytes is recorded as it stands instead of being encoded again.
+     *
+     * @param  array{folder: string, master: array{width: int, height: int, quality: int, pad_square: bool}, widths: list<int>, thumbnails: list<int>}  $config
+     * @return array{renditions: array<int, array<string, string>>, skipped: list<string>}
+     */
+    private function renditions(GdImage $master, string $masterPath, array $config, int $detailWidth, bool $reuseExisting): array
+    {
         // The CANVAS, for resizing the renditions — they have to match the master's geometry or
         // a padded image would come back cropped.
         $width = imagesx($master);
@@ -151,9 +227,15 @@ final class ImagePipeline
 
                 continue;
             }
-            $resized = $this->fit($master, $target, (int) round($target * $height / $width), false);
+            $resized = null;
             foreach ($formats as $format) {
                 $path = $base.'-'.$target.'.'.$format;
+                if ($reuseExisting && is_file($path) && (int) (@filesize($path) ?: 0) > 0) {
+                    $renditions[$target][$format] = basename($path);
+
+                    continue;
+                }
+                $resized ??= $this->fit($master, $target, (int) round($target * $height / $width), false);
                 $ok = $format === 'avif'
                     ? imageavif($resized, $path, config()->integer('media.renditions.avif_quality'))
                     : imagewebp($resized, $path, config()->integer('media.renditions.webp_quality'));
@@ -186,22 +268,69 @@ final class ImagePipeline
                 $skipped[] = self::FAILED_PREFIX."{$target}w {$format}: the encoder reported "
                     .($ok ? 'success but wrote 0 bytes' : 'failure');
             }
-            imagedestroy($resized);
+            if ($resized !== null) {
+                imagedestroy($resized);
+            }
         }
 
-        $bytes = (int) (filesize($masterPath) ?: 0);
-        imagedestroy($master);
+        return ['renditions' => $renditions, 'skipped' => $skipped];
+    }
 
-        return [
-            // Reported as the PICTURE's resolution, which is what the operator uploaded and what
-            // they are being asked to judge. The file on disk is the padded canvas; its size is
-            // an implementation detail of the preset and tells nobody anything actionable.
-            'width' => $detailWidth,
-            'height' => $detailHeight,
-            'bytes' => $bytes,
-            'renditions' => $renditions,
-            'skipped' => $skipped,
-        ];
+    /**
+     * The photograph inside a padded master: the bounding box of its non-white pixels.
+     *
+     * `fit()` pads onto pure white (255,255,255); the photograph is whatever is not. A channel below
+     * 250 counts as picture, so the encoder's faint ringing at a white edge does not. Rows are sampled
+     * every 4 px and each sampled row is scanned inwards from both sides until the first non-white
+     * pixel, so a 1,200 px canvas costs a few hundred thousand reads rather than 1.4 million; the
+     * width is exact to the pixel, the height to 4. A canvas with nothing but white (a blank upload)
+     * is reported at its full size, which produces the whole ladder — harmless, and honest about a
+     * file that has no picture to measure.
+     *
+     * @return array{0: int, 1: int} width, height
+     */
+    public static function pictureSize(GdImage $image): array
+    {
+        $w = imagesx($image);
+        $h = imagesy($image);
+        $minX = $w;
+        $maxX = -1;
+        $minY = $h;
+        $maxY = -1;
+        $step = 4;
+        $isPicture = static function (int $rgb): bool {
+            return (($rgb >> 16) & 0xFF) < 250 || (($rgb >> 8) & 0xFF) < 250 || ($rgb & 0xFF) < 250;
+        };
+
+        for ($y = 0; $y < $h; $y += $step) {
+            $left = null;
+            for ($x = 0; $x < $w; $x++) {
+                if ($isPicture((int) imagecolorat($image, $x, $y))) {
+                    $left = $x;
+                    break;
+                }
+            }
+            if ($left === null) {
+                continue;
+            }
+            $right = $left;
+            for ($x = $w - 1; $x > $left; $x--) {
+                if ($isPicture((int) imagecolorat($image, $x, $y))) {
+                    $right = $x;
+                    break;
+                }
+            }
+            $minX = min($minX, $left);
+            $maxX = max($maxX, $right);
+            $minY = min($minY, $y);
+            $maxY = max($maxY, $y);
+        }
+
+        if ($maxX < 0) {
+            return [$w, $h];
+        }
+
+        return [max(1, $maxX - $minX + 1), max(1, min($h, $maxY + $step) - $minY)];
     }
 
     /**

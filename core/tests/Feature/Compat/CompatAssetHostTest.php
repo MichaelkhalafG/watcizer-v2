@@ -29,7 +29,7 @@ beforeEach(function () {
     config(['compat.api_key' => CAH_API_KEY]);
 });
 
-/** @return list<string> every absolute image URL in the payload (logo_url, image_url, image, images[]) */
+/** @return list<string> every absolute image URL in the payload (logo_url, image_url, image, images[], and the renditions' src) */
 function compatImageUrls(mixed $payload): array
 {
     $out = [];
@@ -41,7 +41,7 @@ function compatImageUrls(mixed $payload): array
 
             return;
         }
-        if (is_string($node) && in_array($key, ['logo_url', 'image_url', 'image', 'images'], true) && preg_match('#^https?://#', $node) === 1) {
+        if (is_string($node) && in_array($key, ['logo_url', 'image_url', 'image', 'images', 'src'], true) && preg_match('#^https?://#', $node) === 1) {
             $out[] = $node;
         }
     };

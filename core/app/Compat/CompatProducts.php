@@ -67,7 +67,10 @@ final class CompatProducts
             ->where('p.is_active', 1)
             ->whereNull('p.deleted_at')
             ->select($select)
-            ->selectRaw('(SELECT ci.path FROM catalog_product_images ci WHERE ci.product_id = p.id AND ci.is_cover = 1 ORDER BY ci.sort, ci.id LIMIT 1) AS cover_path');
+            ->selectRaw('(SELECT ci.path FROM catalog_product_images ci WHERE ci.product_id = p.id AND ci.is_cover = 1 ORDER BY ci.sort, ci.id LIMIT 1) AS cover_path')
+            // The cover's recorded renditions (2026-10-22), for the card's `image_srcset`: the same row the
+            // path comes from, so the two can never name different files.
+            ->selectRaw('(SELECT ci.renditions FROM catalog_product_images ci WHERE ci.product_id = p.id AND ci.is_cover = 1 ORDER BY ci.sort, ci.id LIMIT 1) AS cover_renditions');
     }
 
     /**
