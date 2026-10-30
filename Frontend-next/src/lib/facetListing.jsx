@@ -15,6 +15,7 @@ import {
 } from './listingSeo'
 import { localePath } from '../utils/localePath'
 import ListingClient from '@/app/(main)/listing/ListingClient'
+import FacetIntro from '@/src/Components/FacetIntro/FacetIntro'
 import { safeJsonLd } from './safeJsonLd'
 
 // Shared server logic for the facet alias routes (/brand/[brand],
@@ -93,6 +94,7 @@ export async function FacetPage({ facet, pathname }) {
           boundary only made React send the finished grid as a separate block swapped in LATER — a
           page with an empty grid first, and on desktop the footer jumping down (CLS 0.50, measured). */}
       <ListingClient seedParams={seedParams} />
+      <FacetIntro context={listingSummary(listing, tables).context} lang={urlLang} />
     </HydrationBoundary>
   )
 }

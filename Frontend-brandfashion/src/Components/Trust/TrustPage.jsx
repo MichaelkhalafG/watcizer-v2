@@ -4,6 +4,7 @@ import { FaFacebook, FaInstagram, FaWhatsapp } from 'react-icons/fa'
 import Link from '@/src/Components/LocaleLink'
 import { useUIStore } from '@/src/Store/uiStore'
 import { TRUST_PAGES, TRUST_UPDATED } from '@/src/content/trustPages'
+import { FAQ } from '@/src/content/faq'
 import { useGoogleSignIn } from '@/src/Hooks/queries/useSocialProviders'
 // The home sections' label-over-title header (.wz-section-header / .wz-section-title), reused as is.
 import '@/src/Components/Home/home.css'
@@ -135,7 +136,7 @@ function ContactPage({ t }) {
               <div>
                 <span className="wz-contact-card__label">{store.label}</span>
                 <p className="wz-contact-store__address">{store.address}</p>
-                {store.hours && t.hours ? <p className="wz-contact-card__hours">{t.hours}</p> : null}
+                {store.hours && (t.storeHours || t.hours) ? <p className="wz-contact-card__hours">{t.storeHours || t.hours}</p> : null}
               </div>
             </div>
           ))}
@@ -242,6 +243,36 @@ export default function TrustPage({ page }) {
       {page === 'contact' ? <ContactPage t={t} /> : null}
       {page === 'about' ? <AboutPage t={t} /> : null}
       {page === 'privacy' || page === 'terms' ? <LegalPage t={t} ar={ar} /> : null}
+    </main>
+  )
+}
+
+// The questions and answers (SEO item 5, 2026-10-30): the trust pages' hero, then one section per group, each question a
+// <details> — readable without JavaScript, every answer in the HTML a search engine reads. The text is the storefront's
+// own src/content/faq.js.
+export function TrustFaq() {
+  const { language } = useUIStore()
+  const ar = language === 'ar'
+  const t = FAQ[ar ? 'ar' : 'en']
+  return (
+    <main className="wz-trust wz-trust--faq" dir={ar ? 'rtl' : 'ltr'}>
+      <TrustHero title={t.title} />
+      <section className="wz-trust-section">
+        <div className="wz-trust-container wz-faq">
+          <p className="wz-faq-intro">{inline(t.intro)}</p>
+          {t.groups.map((g, i) => (
+            <section key={i} className="wz-faq-group" aria-labelledby={`faq-group-${i + 1}`}>
+              <h2 className="wz-faq-group__title" id={`faq-group-${i + 1}`}>{g.title}</h2>
+              {g.items.map((item, j) => (
+                <details key={j} className="wz-faq-item">
+                  <summary className="wz-faq-item__q">{item.q}</summary>
+                  <p className="wz-faq-item__a">{inline(item.a, `${i}.${j}`)}</p>
+                </details>
+              ))}
+            </section>
+          ))}
+        </div>
+      </section>
     </main>
   )
 }

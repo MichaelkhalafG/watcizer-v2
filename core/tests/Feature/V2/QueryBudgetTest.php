@@ -10,6 +10,13 @@ use function Pest\Laravel\getJson;
  * §5.3 query budget per endpoint, asserted with the query log on the default connection:
  * listing ≤ 7, PDP ≤ 15, meta ≤ 20, sitemap chunk ≤ 3.
  *
+ * 2026-10-30, the FIRST request of a category page moved 7 → 8 for ONE reason (M1y, recommendation D-S6): the page's
+ * own introduction and meta description (`ProductListing::context`, table `core_seo_texts`) — one flat SELECT on its
+ * unique key, only when the listing IS one category or one brand, and cached per page under the storefront's version,
+ * so the second request of the same page is back at 7 (asserted below). The unfiltered listing and the search do not
+ * read it and keep 7. It was not folded into an existing cached build: the tree is built by the cold meta, which is
+ * at its budget of 20 exactly.
+ *
  * 2026-10-17, the listing moved 6 → 7 for ONE reason: the Brand Fashion card's picker (spec v2.11
  * §8.6 — Michael's reference: a colour row whose hover shows that colour's sizes) needs each card's
  * active variant rows, and a card cannot render what the row does not carry. `ProductCards::variants()`
@@ -60,6 +67,7 @@ it('stays within the per-endpoint query budgets once the storefront caches are w
         'meta' => countQueries(fn () => getJson(H::base('meta'))->assertOk()),
         'listing' => countQueries(fn () => getJson(H::base('products?per_page=96'))->assertOk()),
         'listing_category' => countQueries(fn () => getJson(H::base('products?category='.$node['path']))->assertOk()),
+        'listing_category_again' => countQueries(fn () => getJson(H::base('products?category='.$node['path']))->assertOk()),
         'listing_search' => countQueries(fn () => getJson(H::base('products?q=watch&locale=en'))->assertOk()),
         'pdp_cold' => countQueries(fn () => getJson(H::base('products/'.$slug))->assertOk()),
         'pdp_warm' => countQueries(fn () => getJson(H::base('products/'.$slug))->assertOk()),
@@ -71,7 +79,8 @@ it('stays within the per-endpoint query budgets once the storefront caches are w
     expect($warm['meta'])->toBeLessThanOrEqual(20)
         ->and($cold['meta'])->toBeLessThanOrEqual(20)
         ->and($warm['listing'])->toBeLessThanOrEqual(7)
-        ->and($warm['listing_category'])->toBeLessThanOrEqual(7)
+        ->and($warm['listing_category'])->toBeLessThanOrEqual(8)
+        ->and($warm['listing_category_again'])->toBeLessThanOrEqual(7)
         ->and($warm['listing_search'])->toBeLessThanOrEqual(7)
         ->and($warm['pdp_cold'])->toBeLessThanOrEqual(15)
         ->and($warm['pdp_warm'])->toBeLessThanOrEqual(3)

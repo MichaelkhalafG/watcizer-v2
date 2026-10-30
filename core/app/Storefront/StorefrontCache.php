@@ -33,6 +33,9 @@ final class StorefrontCache
         // events of a listing index plus the banner's; the rails screen flushes the storefront on every write.
         'home' => ['PlacementChanged', 'StorefrontProductChanged', 'ProductUpdated', 'StockChanged', 'LookupChanged', 'CategoryTreeChanged', 'BannerChanged'],
         'product' => ['ProductUpdated', 'StockChanged', 'StorefrontProductChanged'],
+        // 2026-10-30 (M1y): a brand or category page's own text, both languages (ProductListing::context). Written only by
+        // the dashboard's Page texts screen and seo:seed-texts, and both flush the storefront after the write.
+        'page_text' => ['PageTextChanged'],
         'sitemap' => ['StorefrontProductChanged', 'CategoryTreeChanged', 'PlacementChanged', 'ProductUpdated'],
         'compat_names' => ['LookupChanged', 'CategoryTreeChanged'],
         'compat_meta' => ['CategoryTreeChanged', 'LookupChanged', 'BannerChanged', 'PlacementChanged', 'StorefrontProductChanged'],

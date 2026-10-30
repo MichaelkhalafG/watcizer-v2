@@ -22,6 +22,20 @@
 # records (never from a filename), with the sizes measured on both shops; tests/picture.test.mjs proves it and the adapters.
 # 2026-10-22 (Search Console): tests/facetRedirect.test.mjs is NEW and a twin — the brand/grade variant redirect helper in
 # src/lib/listingSeo.js (diverged by one title line, the helper identical on both sides).
+# 2026-10-27 (the hero product page, WATCHIZER ONLY — not a twin, not a divergence of one): one page for one Watchizer watch,
+# reached from a home banner. app/(main)/experience/hugo-boss-grand-prix-1513477/page.jsx, src/Components/Experience/
+# (GrandPrixExperience.jsx, ExperienceMedia.jsx, ExperienceGlb.jsx, experience.css), src/content/grandPrix1513477.js,
+# src/lib/experienceSpecs.js, tests/experience.test.mjs and tests/fixtures/v2-product-26101.json exist in Frontend-next ONLY.
+# Brand Fashion has no copy and must not get one by a sweep: the page names a Watchizer product id and Watchizer's domain.
+# app/(main)/HomeClient.jsx STAYS A TWIN: the banner strip under the 3D hero (drawn only with hero `three_d` and at least one
+# active banner) landed on both sides, identical.
+# 2026-10-28 (the campaign hero, WATCHIZER ONLY): app/(main)/HomeClient.jsx now DIVERGES (see the DIVERGED section) — Watchizer's
+# draws src/Components/Home/GrandPrixBanner.jsx (+ .css) in place of the 3D WatchHero for the Hugo Boss Grand Prix 1513477 campaign; the
+# campaign's files exist in Frontend-next ONLY and must not be copied by a sweep: src/Components/Home/GrandPrixBanner.jsx + .css,
+# src/Components/Experience/ (GrandPrixExperience.jsx, WatchStage.jsx, watchModel.js, explode.js, timeline.js, experience.css — ExperienceMedia.jsx
+# and ExperienceGlb.jsx are gone), public/experience/ (the brand's optimised model, its logo file, the posters), tests/explode.test.mjs,
+# tests/timeline.test.mjs; and `lenis` in Frontend-next's package.json + pnpm-lock.yaml (Brand Fashion's are untouched).
+# When the campaign ends the developer restores the WatchHero import in Watchizer's HomeClient.jsx and re-twins the line below.
 # A2-RULE: the two apps are copies, not a shared package.
 
 app/(auth)/auth/callback/page.jsx
@@ -35,9 +49,9 @@ app/(main)/(shop)/account/page.jsx
 app/(main)/(shop)/cart/layout.jsx
 app/(main)/(shop)/cart/page.jsx
 app/(main)/(shop)/checkout/page.jsx
-app/(main)/HomeClient.jsx
 app/(main)/[suptype]/[brand]/page.jsx
 app/(main)/about-us/page.jsx
+app/(main)/faq/page.jsx
 app/(main)/app-state-bridge.jsx
 app/(main)/blog/[name]/BlogClient.jsx
 app/(main)/contact-us/page.jsx
@@ -59,10 +73,10 @@ app/providers.jsx
 app/sitemaps/[file]/route.js
 app/cart-modal-host.jsx
 eslint.config.mjs
+instrumentation.js
 jsconfig.json
 middleware.js
 patches/@react-three__fiber@9.6.1.patch
-pnpm-lock.yaml
 pnpm-workspace.yaml
 public/Watchizer_Gold.glb
 public/logo.webp
@@ -72,6 +86,10 @@ src/Components/Auth/SocialIcons.jsx
 src/Components/BackToTop/BackToTop.jsx
 src/Components/Blog/ArticleBody.jsx
 src/Components/Cart/CartModal.jsx
+src/Components/Cart/CouponBox.css
+src/Components/Cart/CouponBox.jsx
+src/Components/FacetIntro/FacetIntro.css
+src/Components/FacetIntro/FacetIntro.jsx
 src/Components/Hero/WatchCanvas.jsx
 src/Components/Hero/WatchHero.jsx
 src/Components/Home/BannerHero.css
@@ -112,6 +130,8 @@ src/Hooks/useRailScroll.js
 src/Hooks/useShippingPrices.js
 src/Hooks/useSwitchLanguage.js
 src/Hooks/useGalleryKeys.js
+src/Hooks/useFreeShipping.js
+src/Hooks/usePromotion.js
 tests/galleryKeys.test.mjs
 tests/v2Product.test.mjs
 tests/picture.test.mjs
@@ -123,6 +143,13 @@ src/Components/UI/Disclosure.jsx
 src/Components/UI/Disclosure.css
 tests/pixels.test.mjs
 tests/disclosure.test.mjs
+tests/freeShipping.test.mjs
+tests/storesJsonLd.test.mjs
+tests/coupon.test.mjs
+src/lib/processLog.js
+tests/processLog.test.mjs
+# 2026-10-30 (security): instrumentation.js, src/lib/processLog.js and its test are NEW twins - one JSON line on stderr per
+# start / uncaughtException / unhandledRejection / SIGTERM / SIGINT / exit, for the restarts of 2026-10-30 that left no trace.
 # 2026-10-22 (the overnight queue): Disclosure (the shared collapsible section — Watchizer's Description and Reviews, Brand Fashion's
 # description in its own dress) and the two test files are twins; pixels.js, ProductDetailClient, OrderConfirmation, analytics.jsx and
 # vitest.config.mjs stay twins (changed on both sides, identical). The already-diverged cartStore.js, Checkout.jsx, Cart.jsx and
@@ -154,6 +181,9 @@ src/lib/serverV2.js
 src/lib/socialNonce.js
 src/lib/v2Listing.js
 src/lib/v2Product.js
+src/lib/freeShipping.js
+src/lib/storesJsonLd.js
+src/lib/coupon.js
 src/scripts/pixels.js
 src/utils/chunkError.js
 src/utils/finish.js
@@ -196,6 +226,7 @@ DIVERGED 2026-10-14 public/robots.txt — Sitemap on michaelkhalaf.com (develope
 # src/Hooks/queries/useTables.js and the new shared adapter src/lib/v2Listing.js (which was Brand-Fashion-only).
 # The two listing ENTRY POINTS stay split, but no longer for that reason — see the two lines below.
 DIVERGED 2026-10-22 app/(main)/listing/page.jsx — ONE line: Brand Fashion imports its skin sheet (src/styles/bf-listing-skin.css). The page, its ListingClient and the v2 request are Watchizer's, identical on both sides since the listing move.
+DIVERGED 2026-10-28 pnpm-lock.yaml — Watchizer only adds `lenis` (the Grand Prix 1513477 experience page's smooth scroll); Brand Fashion's lockfile and package.json are untouched. Re-twin when the campaign ends and `lenis` leaves Watchizer's package.json.
 DIVERGED 2026-10-22 src/lib/facetListing.jsx — the same one line: Brand Fashion imports its skin sheet. Everything else is identical since the listing move.
 # B4 (2026-10-17) built the listing pages as BfListing (not twins) on v2; REVERSED 2026-10-18 (the visual reset, Part 1b —
 # Michael: "the skin changes, the behaviour does not"): the listing is Watchizer's ListingClient + SideBar + SmartSuggestions +
@@ -232,3 +263,4 @@ DIVERGED 2026-10-19 src/lib/env.js — Brand Fashion's v2 storefront code falls 
 DIVERGED 2026-10-19 src/Components/Auth/SocialButtons.jsx — draws the "or" divider and the Google button only while core's v2 auth/providers lists Google for this storefront (L3); Watchizer always draws the button. The divider moved in from the login and register pages so a page without Google shows no orphan "or".
 DIVERGED 2026-10-19 src/PageViews/Auth/Login/Login.jsx — the "or" divider removed (SocialButtons draws it with the button, only while Google sign-in runs on this storefront — L3); every other line is Watchizer's.
 DIVERGED 2026-10-19 src/PageViews/Auth/Register/Register.jsx — the "or" divider removed, as in Login.jsx (L3); every other line is Watchizer's.
+DIVERGED 2026-10-28 app/(main)/HomeClient.jsx — ONE import, ONE line and ONE prop (`campaign`, passed from the home page's server render to the banner, 2026-10-29): Watchizer draws GrandPrixBanner (the Hugo Boss Grand Prix 1513477 campaign banner, no dashboard switch) where Brand Fashion draws WatchHero; the banner-under-hero strip and everything else identical. Re-twin when the campaign ends.

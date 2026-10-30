@@ -25,7 +25,7 @@ use App\Transform\Row;
  *    those with at least one visible product (the legacy sitemap listed empty brands);
  *  - `/` and `/listing`. The legacy sitemap's `/products` (a 404) and `/offers` (a redirect) are
  *    gone (S5, B9);
- *  - the four trust pages, `/about-us`, `/contact-us`, `/privacy-policy`, `/terms-and-conditions`
+ *  - the trust pages, `/about-us`, `/contact-us`, `/privacy-policy`, `/terms-and-conditions`, and `/faq` (2026-10-30)
  *    (TRUST_PAGES). They were 404s and left out until the storefront built them (2026-10-02);
  *    `LocaleSitemapTest` holds that each one listed is a page the storefront has;
  *  - `/blogs` and every `/blog/{slug}` — only once the storefront HAS a published article (B9: an
@@ -38,7 +38,7 @@ final class CompatLocaleSitemap
     public const LOCALES = ['en', 'ar'];
 
     /** The storefront's trust pages (2026-10-02), English paths. */
-    public const TRUST_PAGES = ['/about-us', '/contact-us', '/privacy-policy', '/terms-and-conditions'];
+    public const TRUST_PAGES = ['/about-us', '/contact-us', '/privacy-policy', '/terms-and-conditions', '/faq'];
 
     public function __construct(
         private readonly CompatListing $listing,
