@@ -1,4 +1,5 @@
 import { Link, router, usePage } from '@inertiajs/react';
+import { QuickSearch, matchesTerm, useQueryTerm } from '@/components/table/QuickSearch';
 import { Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -55,8 +56,11 @@ interface Props {
  * Fallback is off (AGENTS §2.17), so an empty English name is DELETED rather than stored blank: a
  * blank row and a missing row look the same to a reader and completely different to the storefront.
  */
-export default function LookupsIndex({ list, lists, rows, pre_switch }: Props) {
+export default function LookupsIndex({ list, lists, rows: allRows, pre_switch }: Props) {
     const t = useT();
+    // M1x: the whole list is on the page, so the search filters it here; the term stays in the URL
+    const [term, setTerm] = useQueryTerm();
+    const rows = allRows.filter((row) => matchesTerm(term, ...Object.values(row.name)));
     const { errors } = usePage<SharedProps>().props;
     const [draft, setDraft] = useState<{ ar: string; en: string; extra: Record<string, string | boolean> }>({ ar: '', en: '', extra: {} });
     const [edits, setEdits] = useState<Record<number, { ar?: string; en?: string; extra?: Record<string, string | boolean> }>>({});
@@ -182,6 +186,13 @@ export default function LookupsIndex({ list, lists, rows, pre_switch }: Props) {
                         </p>
                     ) : null}
 
+                    <QuickSearch
+                        value={term}
+                        onChange={setTerm}
+                        placeholder={t('lookups.search_placeholder', 'ابحث بالاسم العربي أو الإنجليزي…')}
+                        count={rows.length}
+                        total={allRows.length}
+                    />
                     <div className="overflow-x-auto">
                         <Table>
                             <TableHeader>

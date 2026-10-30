@@ -211,7 +211,7 @@ export default function PromotionsIndex({ table, storefronts, stacking_notice }:
                     table={table}
                     columns={columns}
                     rowId={(row) => row.id}
-                    searchPlaceholder={t('promotions.list_search_placeholder', 'ابحث باسم العرض')}
+                    searchPlaceholder={t('promotions.list_search_placeholder_code', 'ابحث باسم العرض أو كود الخصم')}
                     emptyTitle={t('promotions.list_empty_title', 'لا توجد عروض بعد')}
                     emptyDescription={t('promotions.list_empty_description', 'أنشئ عرضًا ليظهر هنا مع حالته الفعلية.')}
                     filters={(setFilter, current) => (

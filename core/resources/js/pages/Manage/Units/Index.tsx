@@ -1,4 +1,5 @@
 import { router } from "@inertiajs/react";
+import { QuickSearch, matchesTerm, useQueryTerm } from "@/components/table/QuickSearch";
 import { useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
@@ -55,8 +56,11 @@ interface Props {
     columns: string[];
 }
 
-export default function UnitsIndex({ units }: Props) {
+export default function UnitsIndex({ units: allUnits }: Props) {
     const t = useT();
+    // M1x: search by code or name; the term stays in the URL
+    const [term, setTerm] = useQueryTerm();
+    const units = allUnits.filter((unit) => matchesTerm(term, unit.code, unit.name_ar, unit.name_en));
     const [mergeFrom, setMergeFrom] = useState<Unit | null>(null);
     const [mergeInto, setMergeInto] = useState<string>("");
 
@@ -161,6 +165,13 @@ export default function UnitsIndex({ units }: Props) {
                 </div>
 
                 <div className="overflow-x-auto rounded-lg border">
+                    <QuickSearch
+                        value={term}
+                        onChange={setTerm}
+                        placeholder={t('units.search_placeholder', 'ابحث بالرمز أو الاسم…')}
+                        count={units.length}
+                        total={allUnits.length}
+                    />
                     <Table>
                         <TableHeader className="bg-muted/50">
                             <tr>

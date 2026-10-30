@@ -1,4 +1,5 @@
 import { router, useForm } from '@inertiajs/react';
+import { QuickSearch, matchesTerm, useQueryTerm } from '@/components/table/QuickSearch';
 import { useState } from 'react';
 
 import { ExportLink } from '@/components/table/ExportLink';
@@ -47,8 +48,11 @@ interface Props {
     notice: string;
 }
 
-export default function ShippingIndex({ cities, abilities, notice }: Props) {
+export default function ShippingIndex({ cities: allCities, abilities, notice }: Props) {
     const t = useT();
+    // M1x: search the governorates on the page; the term stays in the URL
+    const [term, setTerm] = useQueryTerm();
+    const cities = allCities.filter((city) => matchesTerm(term, city.name_ar, city.name_en));
     const [editing, setEditing] = useState<number | null>(null);
     const [adding, setAdding] = useState(false);
 
@@ -98,6 +102,13 @@ export default function ShippingIndex({ cities, abilities, notice }: Props) {
                 No outer `overflow-x-auto` either: `Table` now owns its scroll container (item 9),
                 and two nested scrollers means the inner one can never reach its own edge. */}
             <div className="mt-4">
+                <QuickSearch
+                    value={term}
+                    onChange={setTerm}
+                    placeholder={t('shipping.search_placeholder', 'ابحث باسم المحافظة…')}
+                    count={cities.length}
+                    total={allCities.length}
+                />
                 <Table>
                     <TableHeader>
                         <TableRow>

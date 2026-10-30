@@ -756,7 +756,15 @@ final class OrderController
                         ->whereColumn('sa.id', 'o.address_id')
                         ->where(fn (Builder $p) => $p->where('sa.phone_number_one', 'like', $like)->orWhere('sa.phone_number_two', 'like', $like)))
                     ->orWhereExists(fn (Builder $u) => $u->selectRaw('1')->from('users as su')
-                        ->whereColumn('su.id', 'o.user_id')->where('su.phone_number', 'like', $like));
+                        ->whereColumn('su.id', 'o.user_id')->where('su.phone_number', 'like', $like))
+                    // M1x (2026-10-30): …and the customer's NAME and E-MAIL — a guest's on the order, a registered buyer's
+                    // on the account — the other two things a team member is given to find an order with
+                    ->orWhere('o.guest_name', 'like', $like)
+                    ->orWhere('o.guest_email', 'like', $like)
+                    ->orWhereExists(fn (Builder $u) => $u->selectRaw('1')->from('users as sn')
+                        ->whereColumn('sn.id', 'o.user_id')
+                        ->where(fn (Builder $n) => $n->where('sn.email', 'like', $like)
+                            ->orWhereRaw("CONCAT(sn.first_name, ' ', sn.last_name) LIKE ?", [$like])));
             });
         }
     }

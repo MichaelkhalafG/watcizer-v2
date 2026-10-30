@@ -222,8 +222,8 @@ export default function OrdersIndex({ table, filters, abilities }: Props) {
                 columns={columns}
                 rowId={(row) => row.id}
                 searchPlaceholder={t(
-                    "orders.search_placeholder",
-                    "رقم الطلب أو الهاتف…",
+                    "orders.search_placeholder_full",
+                    "رقم الطلب، أو اسم العميل، أو الهاتف، أو البريد…",
                 )}
                 emptyTitle={t("orders.empty_title", "لا توجد طلبات")}
                 emptyDescription={t(
