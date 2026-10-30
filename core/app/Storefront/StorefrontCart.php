@@ -3,6 +3,12 @@
 namespace App\Storefront;
 
 use App\Domain\Inventory\InventoryService;
+use App\Domain\Promotions\CartLine;
+use App\Domain\Promotions\CartSnapshot;
+use App\Domain\Promotions\PromotionDiscounts;
+use App\Domain\Promotions\PromotionEngine;
+use App\Domain\Shipping\FreeShipping;
+use App\Support\Coerce;
 use App\Transform\Row;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
@@ -206,17 +212,74 @@ final class StorefrontCart
     }
 
     /**
+     * The cart's promotion PREVIEW (M1u, 2026-10-30): the automatic promotions and the typed code, priced by the same
+     * engine the checkout runs, on the buyable lines, before delivery (unknown until the address — a free-delivery
+     * reward is therefore never in the preview). Only a preview: the checkout prices the order again and is the
+     * only number that is ever charged.
+     *
+     * Asked only where the storefront's money rewards are switched on (from the resolved row, no query) or a code
+     * was typed — the cart is the hottest read in the shop and must not pay for promotions it cannot show.
+     *
+     * @param  list<CartLine>  $lines
+     * @param  list<int>  $itemIds  the cart item id of each line, by index
+     * @return array{discount: float, applied: list<array<string, mixed>>, lines: list<array{item_id: int, amount: float}>, coupon: array<string, mixed>|null}
+     */
+    private function promotionPreview(array $lines, array $itemIds, float $subtotal, ?string $coupon, ?int $userId): array
+    {
+        $none = ['discount' => 0.0, 'applied' => [], 'lines' => [], 'coupon' => null];
+        $settings = $this->ctx->storefront->getAttribute('settings');
+        $enabled = is_array($settings) && (Coerce::arr($settings['promotions'] ?? null)['money_rewards'] ?? false) === true;
+        if (! $enabled && $coupon === null) {
+            return $none;
+        }
+        $outcome = app(PromotionEngine::class)->evaluate(new CartSnapshot(
+            storefrontId: $this->ctx->id(),
+            lines: $lines,
+            subtotal: $subtotal,
+            shippingCost: 0.0,
+            paymentMethod: '',
+            code: $coupon,
+            customerKeys: PromotionDiscounts::customerKeys($userId, null, null),
+        ));
+        $goods = [];
+        foreach ($outcome->lines as $line) {
+            $itemId = $itemIds[$line['index']] ?? null;
+            if ($itemId !== null) {
+                $goods[$itemId] = round(($goods[$itemId] ?? 0.0) + $line['amount'], 2);
+            }
+        }
+        $perItem = [];
+        foreach ($goods as $itemId => $amount) {
+            $perItem[] = ['item_id' => $itemId, 'amount' => $amount];
+        }
+        $applied = [];
+        foreach ($outcome->applied as $rule) {
+            $applied[] = ['rule_id' => $rule['rule_id'], 'code' => $rule['code'], 'label_en' => $rule['label_en'],
+                'label_ar' => $rule['label_ar'], 'amount' => $rule['amount']];
+        }
+
+        return ['discount' => round(array_sum($goods), 2), 'applied' => $applied, 'lines' => $perItem, 'coupon' => $outcome->coupon];
+    }
+
+    /** The free-shipping threshold of the request's storefront, from the row already resolved (no query). */
+    private function freeOver(): ?float
+    {
+        return FreeShipping::fromSettings($this->ctx->storefront->getAttribute('settings'));
+    }
+
+    /**
      * The cart as the storefront shows it: each line with the product's card, its variant, bucket, quantity, the
      * unit price and line total re-resolved NOW, the stock of its bucket, and `problem` when it cannot be bought
      * as it stands; the subtotal counts the buyable lines only.
      *
-     * @return array{id: int|null, items: list<array<string, mixed>>, totals: array{count: int, subtotal: float, currency: string}}
+     * @return array{id: int|null, items: list<array<string, mixed>>, totals: array{count: int, subtotal: float, currency: string, shipping: array{free_over: float|null, free: bool, remaining: float|null}}}
      */
-    public function payload(?stdClass $cart): array
+    public function payload(?stdClass $cart, ?string $coupon = null, ?int $userId = null): array
     {
         $currency = $this->cards->currency();
         if ($cart === null) {
-            return ['id' => null, 'items' => [], 'totals' => ['count' => 0, 'subtotal' => 0.0, 'currency' => $currency]];
+            return ['id' => null, 'items' => [], 'totals' => ['count' => 0, 'subtotal' => 0.0, 'currency' => $currency, 'shipping' => FreeShipping::summaryFor($this->freeOver(), 0.0),
+                'promotion' => $this->promotionPreview([], [], 0.0, $coupon, $userId)]];
         }
         $rows = [];
         foreach (DB::table('cart_items')->where('cart_id', Row::int($cart, 'id'))->whereNull('offer_id')->orderBy('id')
@@ -245,6 +308,8 @@ final class StorefrontCart
         $items = [];
         $count = 0;
         $subtotal = 0.0;
+        $promoLines = [];
+        $promoItemIds = [];
         foreach ($rows as $r) {
             $productId = Row::int($r, 'product_id');
             $variantId = Row::nint($r, 'variant_id');
@@ -272,6 +337,9 @@ final class StorefrontCart
             if ($problem === null && $line !== null) {
                 $count += $quantity;
                 $subtotal += $line;
+                $promoLines[] = new CartLine(productId: $productId, variantId: $variantId, offerId: null,
+                    quantity: $quantity, unitPrice: (float) $unit, typeStock: $bucket);
+                $promoItemIds[] = Row::int($r, 'id');
             }
             $items[] = [
                 'id' => Row::int($r, 'id'),
@@ -292,7 +360,10 @@ final class StorefrontCart
             // Offer rows are not items here (v2 cannot price one), but their COUNT is reported so the cart can
             // say so. Silence would mean a shopper sees a total that does not include something they added.
             'blocked' => $this->offerLines($cart),
-            'totals' => ['count' => $count, 'subtotal' => round($subtotal, 2), 'currency' => $currency],
+            // `shipping`: the storefront's free-shipping threshold, whether THIS cart ships free, how much more it needs
+            'totals' => ['count' => $count, 'subtotal' => round($subtotal, 2), 'currency' => $currency, 'shipping' => FreeShipping::summaryFor($this->freeOver(), round($subtotal, 2)),
+                // `promotion`: what core would take off these lines today (M1u) — the page SHOWS it; the checkout recomputes it
+                'promotion' => $this->promotionPreview($promoLines, $promoItemIds, round($subtotal, 2), $coupon, $userId)],
         ];
     }
 

@@ -2,7 +2,12 @@
 import { useMemo, useCallback } from 'react'
 import Image from 'next/image'
 import { useRouter } from '@/src/Hooks/useLocaleRouter'
-import WatchHero from '@/src/Components/Hero/WatchHero'
+// THE CAMPAIGN (2026-10-28/29, WATCHIZER ONLY — this file DIVERGES from its Brand Fashion twin by this import and
+// the one line that draws it; Frontend-brandfashion/TWINS.txt records it). The Hugo Boss Grand Prix 1513477 banner
+// replaces the 3D hero in code for the campaign's run, in the 3D hero's exact box; there is no dashboard switch. To
+// end the campaign: import WatchHero from '@/src/Components/Hero/WatchHero' again and draw <WatchHero /> below —
+// that hero's code is untouched in src/Components/Hero/ — then restore the twin line in TWINS.txt.
+import GrandPrixBanner from '@/src/Components/Home/GrandPrixBanner'
 import '@/src/Components/Home/home.css'
 import ProductSlider from '@/src/Components/Product/ProductSlider'
 import OfferSlider from '@/src/Components/Product/OfferSlider'
@@ -68,7 +73,7 @@ const KIND_TITLES = {
   newest: { en: 'New Arrivals', ar: 'وصل حديثًا' },
 }
 
-export default function HomeClient({ initialHome = null }) {
+export default function HomeClient({ initialHome = null, campaign = null }) {
   const { data: home, isFetching, isError, refetch } = useHome(initialHome)
   const { data: tables } = useTables()
   const { language } = useUIStore()
@@ -246,7 +251,23 @@ export default function HomeClient({ initialHome = null }) {
           </div>
         </section>
       ) : (
-        <WatchHero />
+        <>
+          <GrandPrixBanner data={campaign} />
+          {/*
+           * A banner UNDER the 3D hero (2026-10-27, the hero product page). Until today a shop's banners
+           * showed only when its hero was `banner`, which REPLACES the 3D watch; a Watchizer banner that
+           * points at a page (the dashboard's "URL" target takes any internal path) therefore cost the 3D
+           * hero. With the hero `three_d` and at least one active banner, the same BannerHero draws here,
+           * below the watch; with none — Watchizer today — nothing changes. A twin: both apps, one line.
+           */}
+          {banners.length > 0 && (
+            <section className="wz-home-section">
+              <div className="wz-container">
+                <BannerHero banners={banners} lang={language} dir={isRTL ? 'rtl' : 'ltr'} />
+              </div>
+            </section>
+          )}
+        </>
       )}
 
       <section className="wz-home-section">

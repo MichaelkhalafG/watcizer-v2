@@ -75,7 +75,7 @@ final readonly class OrderTotals
 
     public static function of(int $orderId): ?self
     {
-        $order = DB::table('orders')->where('id', $orderId)->first(['total_price_for_order', 'address_id']);
+        $order = DB::table('orders')->where('id', $orderId)->first(['total_price_for_order', 'address_id', 'free_shipping_over']);
         if ($order === null) {
             return null;
         }
@@ -117,8 +117,10 @@ final readonly class OrderTotals
         $paid = round($paid, 2);
 
         $discount = PromotionDiscounts::forOrder($orderId);
-        $freeShipping = $discount !== null && $discount['free_shipping'];
-        $promotion = $discount === null || $freeShipping ? 0.0 : round((float) $discount['amount'], 2);
+        $promoFreeShipping = $discount !== null && $discount['free_shipping'];
+        // free over the storefront's threshold (FreeShipping, 2026-10-29): the order stores the threshold that waived it
+        $freeShipping = $promoFreeShipping || Row::nmoney($order, 'free_shipping_over') !== null;
+        $promotion = $discount === null || $promoFreeShipping ? 0.0 : round((float) $discount['amount'], 2);
 
         $expected = null;
         $addressId = Row::nint($order, 'address_id');

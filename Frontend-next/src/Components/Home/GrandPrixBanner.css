@@ -1,0 +1,541 @@
+/* ══════════════════════════════════════════════════════════════════════════
+   THE GRAND PRIX BANNER — Hugo Boss Grand Prix 1513477 on the Watchizer home (2026-10-29)
+
+   The experience page's desktop world, warm: deep umber and bronze under an amber light with two beams, amber bokeh
+   at three depths, the store's line (the H1), the brand's logo, the campaign's name, one line, three facts, the price
+   and the stock, two links, and the watch, face-on and large. The box is WatchHero.css's, rule for rule, so the page
+   below it does not move when the campaign ends. Two compositions: --a (recommended) and --b.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.wz-gp {
+  --gp-umber: #1b120c;
+  --gp-bronze: #2c1c11;
+  --gp-brown: #432a17;
+  --gp-amber: #e8a552;
+  --gp-glow: #f3bd72;
+  --gp-bone: #f4eee4;
+  --gp-muted: rgba(244, 238, 228, 0.66);
+  --gp-faint: rgba(244, 238, 228, 0.2);
+  --gp-art: 52%; /* the watch's box */
+  --gp-art-end: 6%; /* its distance from the end edge: the watch at ~60–65 % of the width, not against the edge */
+  position: relative;
+  width: 100%;
+  height: 50vh;
+  min-height: 400px;
+  max-height: 600px;
+  box-sizing: border-box;
+  overflow: hidden;
+  /* an amber light high over the watch with two beams fanning from it, bronze depth low on the words' side */
+  background:
+    conic-gradient(from 196deg at 68% -8%, transparent 0deg, rgba(243, 189, 114, 0.17) 6deg, transparent 13deg, transparent 22deg, rgba(243, 189, 114, 0.11) 27deg, transparent 36deg),
+    radial-gradient(ellipse 50% 78% at 66% 46%, rgba(232, 165, 82, 0.3) 0%, rgba(232, 165, 82, 0.08) 42%, transparent 66%),
+    radial-gradient(ellipse 60% 70% at 12% 100%, rgba(67, 42, 23, 0.9) 0%, transparent 64%),
+    linear-gradient(166deg, var(--gp-brown) 0%, var(--gp-bronze) 42%, var(--gp-umber) 100%);
+  color: var(--gp-bone);
+  -webkit-font-smoothing: antialiased;
+}
+
+[dir='rtl'].wz-gp {
+  background:
+    conic-gradient(from 128deg at 32% -8%, transparent 0deg, rgba(243, 189, 114, 0.11) 9deg, transparent 18deg, transparent 23deg, rgba(243, 189, 114, 0.17) 30deg, transparent 36deg),
+    radial-gradient(ellipse 50% 78% at 34% 46%, rgba(232, 165, 82, 0.3) 0%, rgba(232, 165, 82, 0.08) 42%, transparent 66%),
+    radial-gradient(ellipse 60% 70% at 88% 100%, rgba(67, 42, 23, 0.9) 0%, transparent 64%),
+    linear-gradient(194deg, var(--gp-brown) 0%, var(--gp-bronze) 42%, var(--gp-umber) 100%);
+}
+
+/* ── the bokeh: amber points at three depths ────────────────────────────── */
+.wz-gp__bokeh {
+  --px: 0;
+  --py: 0;
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.wz-gp__dot {
+  --par: 6px;
+  position: absolute;
+  left: var(--x);
+  top: var(--y);
+  width: var(--s);
+  height: var(--s);
+  margin: calc(var(--s) / -2) 0 0 calc(var(--s) / -2);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 216, 156, 1) 0%, rgba(242, 172, 86, 0.9) var(--soft), rgba(232, 150, 62, 0.35) calc(var(--soft) + 26%), rgba(232, 150, 62, 0) 72%);
+  opacity: var(--a);
+  /* the parallax lives in `translate`, the drift in `transform` (the keyframes): the two compose */
+  translate: calc(var(--px) * var(--par)) calc(var(--py) * var(--par));
+  transition: translate 1.2s cubic-bezier(0.2, 0.7, 0.2, 1);
+  will-change: transform, opacity;
+}
+
+.wz-gp__dot.d1 {
+  --par: 14px;
+}
+
+.wz-gp__dot.d2 {
+  --par: 26px;
+  mix-blend-mode: screen;
+}
+
+.wz-gp.is-moving .wz-gp__dot {
+  animation:
+    wz-gp-drift var(--drift) ease-in-out var(--delay) infinite alternate,
+    wz-gp-pulse var(--pulse) ease-in-out var(--delay) infinite alternate;
+}
+
+@keyframes wz-gp-drift {
+  from {
+    transform: translate3d(-8px, 6px, 0);
+  }
+  to {
+    transform: translate3d(10px, -14px, 0);
+  }
+}
+
+@keyframes wz-gp-pulse {
+  from {
+    opacity: calc(var(--a) * 0.55);
+  }
+  to {
+    opacity: var(--a);
+  }
+}
+
+/* ── the art: the full height of the banner on the watch's side; the poster, and the canvas over it ── */
+.wz-gp__art {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  bottom: 0;
+  inset-inline-end: var(--gp-art-end);
+  width: var(--gp-art);
+  overflow: hidden;
+}
+
+.wz-gp__poster,
+.wz-gp__canvas,
+.wz-gp__canvas-wrap {
+  position: absolute;
+  inset: 0;
+}
+
+/* the poster: a still of the canvas, centred on the canvas's centre, scaled by its height (the camera's fov is
+   vertical, so the watch's size and its nudge scale with the height alone) */
+.wz-gp__poster img {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  height: 100%;
+  width: auto;
+  max-width: none;
+  transform: translate(-50%, -50%);
+  transition: opacity 0.35s ease;
+  -webkit-user-drag: none;
+}
+
+.wz-gp.is-live .wz-gp__poster img {
+  opacity: 0;
+}
+
+/* the banner's colour grade, on the poster and the canvas alike (so the swap stays invisible): the model's steel is
+   cool and the studio map neutral, and against the warm ground the bracelet read blue (blue − red +21–26 of 255 on
+   the capture); a 0.2 sepia brings it to ~+7 and leaves the black dial black. The model is untouched. */
+.wz-gp__poster img,
+.wz-gp__canvas canvas {
+  filter: sepia(0.2);
+}
+
+/* the canvas: fades in over 0.35 s on a frame identical to the poster */
+.wz-gp__canvas {
+  opacity: 0;
+  transition: opacity 0.35s ease;
+}
+
+.wz-gp.is-live .wz-gp__canvas {
+  opacity: 1;
+}
+
+/* [OLD] .wz-hero-watch canvas: grab, and the canvas owns touch */
+.wz-gp__canvas canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+  outline: none;
+  cursor: grab;
+  touch-action: none;
+}
+
+.wz-gp__canvas canvas:active {
+  cursor: grabbing;
+}
+
+/* ── the words: one column, centred on the watch's vertical centre ──────── */
+.wz-gp__copy {
+  position: relative;
+  z-index: 2;
+  height: 100%;
+  box-sizing: border-box;
+  width: calc(100% - var(--gp-art) - var(--gp-art-end));
+  max-width: 760px;
+  padding-inline: clamp(24px, 6vw, 116px) 16px;
+  padding-block: clamp(22px, 4.2%, 40px); /* comfortable room under the navbar and above the next section */
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+}
+
+.wz-gp__store {
+  margin: 0 0 10px;
+  font-family: var(--wz-serif);
+  font-style: italic;
+  font-weight: 400;
+  font-size: clamp(0.85rem, 0.9vw, 0.98rem);
+  letter-spacing: 0.01em;
+  line-height: 1.3;
+  text-transform: none;
+  color: var(--gp-muted);
+}
+
+[dir='rtl'] .wz-gp__store {
+  font-style: normal;
+}
+
+/* the brand's supplied logo file, inverted on the dark surface */
+.wz-gp__logo {
+  display: block;
+  width: clamp(118px, 9vw, 172px);
+  height: auto;
+  filter: invert(1) brightness(1.1);
+  margin: 0 0 8px;
+}
+
+.wz-gp__name {
+  margin: 0 0 6px;
+  font-family: Georgia, 'Times New Roman', serif; /* the name is English on both pages */
+  font-weight: 400;
+  /* one line: "GRAND PRIX 1513477" is ~13 em wide in this face; 2.6vw keeps it inside the column from 1366 px up */
+  font-size: clamp(1.9rem, 2.6vw, 3.3rem);
+  line-height: 1;
+  white-space: nowrap;
+  letter-spacing: -0.012em;
+  color: var(--gp-bone);
+}
+
+.wz-gp__line {
+  margin: 0 0 12px;
+  font-family: var(--wz-serif);
+  font-style: italic;
+  font-size: clamp(0.98rem, 1.05vw, 1.15rem);
+  line-height: 1.4;
+  color: var(--gp-muted);
+}
+
+[dir='rtl'] .wz-gp__line {
+  font-style: normal;
+}
+
+/* the facts: three, from the record, a hairline between them */
+.wz-gp__facts {
+  display: flex;
+  flex-wrap: wrap;
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+  font-size: clamp(13px, 0.85vw, 15px);
+  letter-spacing: 0.02em;
+  color: var(--gp-bone);
+}
+
+.wz-gp__facts li + li {
+  margin-inline-start: 12px;
+  padding-inline-start: 12px;
+  border-inline-start: 1px solid var(--gp-faint);
+}
+
+/* the price, the struck price, the stock — one line */
+.wz-gp__buy {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  margin: 0 0 14px;
+}
+
+.wz-gp__now {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: clamp(1.3rem, 1.5vw, 1.65rem);
+  color: var(--gp-bone);
+}
+
+[dir='rtl'] .wz-gp__now {
+  font-family: var(--wz-serif);
+}
+
+.wz-gp__now small {
+  font-size: 0.55em;
+  color: var(--gp-muted);
+}
+
+.wz-gp__was {
+  font-size: 0.95rem;
+  color: var(--gp-muted);
+}
+
+.wz-gp__stock {
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  color: var(--gp-glow);
+}
+
+[dir='rtl'] .wz-gp__stock {
+  letter-spacing: 0;
+  font-size: 13px;
+}
+
+.wz-gp__actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px 22px;
+}
+
+.wz-gp__cta {
+  display: inline-flex;
+  align-items: center;
+  height: 46px;
+  padding: 0 26px;
+  border-radius: 999px;
+  background: var(--gp-amber);
+  color: #20150c;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-decoration: none;
+  box-shadow: 0 10px 30px rgba(232, 165, 82, 0.24);
+  transition:
+    background-color 0.2s ease,
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.wz-gp__cta:hover {
+  background: var(--gp-glow);
+  box-shadow: 0 12px 34px rgba(232, 165, 82, 0.34);
+}
+
+.wz-gp__cta:active {
+  transform: translateY(1px);
+}
+
+.wz-gp__link {
+  font-size: 14px;
+  color: var(--gp-bone);
+  text-decoration: none;
+  border-bottom: 1px solid var(--gp-faint);
+  padding-bottom: 2px;
+  transition: border-color 0.2s ease;
+}
+
+.wz-gp__link:hover {
+  border-color: var(--gp-glow);
+}
+
+.wz-gp__cta:focus-visible,
+.wz-gp__link:focus-visible {
+  outline: 2px solid var(--gp-bone);
+  outline-offset: 3px;
+}
+
+/* a short banner — the 400 px floor (50vh under 800 px of height, e.g. 1366 × 768): the tagline goes */
+@media (min-width: 769px) and (max-height: 860px) {
+  .wz-gp__line {
+    display: none;
+  }
+}
+
+/* ── option B: the watch in the middle, the words on its left, the facts and the price on its right ── */
+.wz-gp--b {
+  --gp-art: 40%;
+  --gp-art-end: 30%;
+}
+
+.wz-gp--b .wz-gp__copy {
+  /* the full width, so the facts and the price can sit right of the watch; the words keep the left third */
+  width: 100%;
+  max-width: none;
+  padding-inline-end: 67%;
+  pointer-events: none;
+}
+
+.wz-gp--b .wz-gp__copy > * {
+  pointer-events: auto;
+}
+
+.wz-gp--b .wz-gp__name {
+  font-size: clamp(2.1rem, 3.1vw, 3.4rem);
+}
+
+.wz-gp--b .wz-gp__now {
+  white-space: nowrap;
+}
+
+.wz-gp--b .wz-gp__facts,
+.wz-gp--b .wz-gp__buy {
+  position: absolute;
+  inset-inline-end: clamp(24px, 4vw, 72px);
+  width: calc(30% - 2 * clamp(24px, 4vw, 72px));
+  margin: 0;
+}
+
+.wz-gp--b .wz-gp__facts {
+  top: 34%;
+  flex-direction: column;
+  gap: 10px;
+  font-size: 14px;
+}
+
+.wz-gp--b .wz-gp__facts li + li {
+  margin: 0;
+  padding: 10px 0 0;
+  border-inline-start: 0;
+  border-top: 1px solid var(--gp-faint);
+}
+
+.wz-gp--b .wz-gp__buy {
+  top: 62%;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+/* ── a tablet: the old hero's 55vh ─────────────────────────────────────── */
+@media (max-width: 1024px) and (min-width: 769px) {
+  .wz-gp {
+    height: 55vh;
+    min-height: 380px;
+  }
+}
+
+/* ── a phone: the old hero's column — the watch first, the words under it; the box is the viewport under the
+      52 px header ─────────────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .wz-gp,
+  .wz-gp--b {
+    height: calc(100vh - 52px);
+    height: calc(100dvh - 52px);
+    min-height: 320px;
+    max-height: none;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
+    padding: 18px 20px 22px;
+    background:
+      radial-gradient(ellipse 90% 40% at 50% 24%, rgba(232, 165, 82, 0.28) 0%, transparent 64%),
+      radial-gradient(ellipse 80% 40% at 50% 100%, rgba(67, 42, 23, 0.9) 0%, transparent 70%),
+      linear-gradient(176deg, var(--gp-brown) 0%, var(--gp-bronze) 46%, var(--gp-umber) 100%);
+  }
+
+  .wz-gp__dot.is-wide {
+    display: none;
+  }
+
+  .wz-gp__art,
+  .wz-gp--b .wz-gp__art {
+    position: relative;
+    inset: auto;
+    inset-inline-end: auto;
+    flex: 0 0 auto;
+    width: calc(100% + 40px);
+    margin: 0 -20px;
+    height: 40vh;
+    min-height: 220px;
+    max-height: 360px;
+  }
+
+  .wz-gp__copy,
+  .wz-gp--b .wz-gp__copy {
+    width: 100%;
+    height: auto;
+    padding: 0;
+    align-items: center;
+    text-align: center;
+  }
+
+  .wz-gp--b .wz-gp__facts,
+  .wz-gp--b .wz-gp__buy {
+    position: static;
+    width: auto;
+    flex-direction: row;
+    align-items: baseline;
+  }
+
+  .wz-gp--b .wz-gp__facts li + li {
+    margin-inline-start: 10px;
+    padding: 0;
+    padding-inline-start: 10px;
+    border-top: 0;
+    border-inline-start: 1px solid var(--gp-faint);
+  }
+
+  .wz-gp__store {
+    margin-bottom: 8px;
+    font-size: 0.86rem;
+  }
+
+  .wz-gp__logo {
+    width: 104px;
+    margin: 0 auto 6px;
+  }
+
+  .wz-gp__name {
+    font-size: clamp(1.5rem, 6.6vw, 2.2rem); /* one line on a 360 px phone */
+    margin-bottom: 4px;
+  }
+
+  .wz-gp__line {
+    font-size: 0.98rem;
+    margin-bottom: 10px;
+  }
+
+  .wz-gp__facts {
+    justify-content: center;
+    margin-bottom: 10px;
+    font-size: 12px;
+  }
+
+  .wz-gp__facts li + li {
+    margin-inline-start: 10px;
+    padding-inline-start: 10px;
+  }
+
+  .wz-gp__buy {
+    justify-content: center;
+    margin-bottom: 14px;
+  }
+
+  .wz-gp__actions {
+    justify-content: center;
+    gap: 10px 18px;
+  }
+
+  .wz-gp__cta {
+    height: 44px;
+    padding: 0 24px;
+  }
+}
+
+/* ── reduced motion: the poster is the banner, the points are still ──── */
+@media (prefers-reduced-motion: reduce) {
+  .wz-gp__poster img,
+  .wz-gp__canvas,
+  .wz-gp__cta,
+  .wz-gp__dot {
+    transition: none;
+    animation: none !important;
+  }
+}

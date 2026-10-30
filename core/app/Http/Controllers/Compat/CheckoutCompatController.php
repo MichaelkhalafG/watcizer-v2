@@ -22,6 +22,7 @@ use App\Domain\Promotions\PromotionDiscounts;
 use App\Domain\Promotions\PromotionEngine;
 use App\Domain\Promotions\PromotionOutcome;
 use App\Domain\Promotions\PromotionSkips;
+use App\Domain\Shipping\FreeShipping;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Payment\PaymentCallbackController;
 use App\Http\Middleware\CompatGuestCart;
@@ -256,7 +257,10 @@ class CheckoutCompatController extends Controller
                 return response()->json($priced['error'], 422);
             }
 
-            $serverTotal = round($priced['total'] + $this->compat->checkout->shippingCost($addressId), 2);
+            // free shipping over the storefront's threshold — the same rule as v2's checkout (FreeShipping)
+            $freeOver = FreeShipping::threshold($this->compat->storefrontId);
+            $waived = FreeShipping::applies($freeOver, (float) $priced['total']);
+            $serverTotal = round($priced['total'] + ($waived ? 0.0 : $this->compat->checkout->shippingCost($addressId)), 2);
             $clientTotal = round((float) Val::str($data, 'total_price_for_order'), 2);
             if (abs($clientTotal - $serverTotal) > 0.01) {
                 self::unwindTo($outer);
@@ -337,6 +341,9 @@ class CheckoutCompatController extends Controller
              * and must not exist if that order does not.
              */
             PromotionDiscounts::record($orderId, $promotion);
+            if ($waived) {
+                DB::table('orders')->where('id', $orderId)->update(['free_shipping_over' => $freeOver]);
+            }
 
             // The shopper's browser (user agent, IP, Meta's browser ids) — the card Purchase is sent
             // from the payment callback, which has no browser in it (B2). A fact about this order:
@@ -698,7 +705,8 @@ class CheckoutCompatController extends Controller
             // The SERVER's subtotal, from `priceLines()`. A condition that read the client's
             // number would be a discount a shopper could grant themselves.
             subtotal: $priced['total'],
-            shippingCost: $this->compat->checkout->shippingCost($addressId),
+            // what delivery is CHARGED (0 when the threshold waived it), so a free-shipping promotion never waives it twice
+            shippingCost: FreeShipping::charged($this->compat->storefrontId, (float) $priced['total'], $this->compat->checkout->shippingCost($addressId)),
             paymentMethod: $paymentMethod,
         );
 

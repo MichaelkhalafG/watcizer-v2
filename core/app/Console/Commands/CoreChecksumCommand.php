@@ -141,6 +141,14 @@ final class CoreChecksumCommand extends Command
          * to 500 and whose total reads 475, with nothing left to say why.
          */
         'promotion_order_discounts',
+        // M1u (2026-10-30): which items a rule targets, its redemptions (usage limits) and the discount per order line —
+        // typed by an admin or describing an order, so preserved for the same reasons as the rows above
+        'promotion_rule_scopes', 'promotion_redemptions', 'promotion_order_discount_lines',
+        // M1v (2026-10-30): a bulk price change and the price each product had, so the batch can be undone
+        'core_price_batches', 'core_price_batch_items',
+        // M1y (2026-10-30): the brand and category pages' texts, typed in the dashboard and keyed by slug/path so the
+        // switch-night rebuild of the brand and category tables cannot touch them
+        'core_seo_texts',
         /*
          * The operator's own dashboard preferences (M1m, wave 4D).
          *

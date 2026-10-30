@@ -59,6 +59,8 @@ class OrderController extends Controller
                 'guest_name' => 'nullable|string|max:255',
                 'guest_phone' => 'nullable|string|max:20',
                 'guest_email' => 'nullable|email|max:255',
+                // the coupon code the shopper typed (M1u); core prices it — the page never sends an amount
+                'coupon' => 'nullable|string|max:40',
             ])->validate();
         } catch (ValidationException $e) {
             return $this->respond(['error' => 'invalid', 'fields' => array_keys($e->errors())], 422);
@@ -76,6 +78,7 @@ class OrderController extends Controller
             'guest_name' => Val::nstr($data, 'guest_name'),
             'guest_phone' => Val::nstr($data, 'guest_phone'),
             'guest_email' => Val::nstr($data, 'guest_email'),
+            'coupon' => Val::nstr($data, 'coupon'),
         ];
         $result = $checkout->place($request, $userId, $guestToken, Val::nint($data, 'address_id'), $fields);
 

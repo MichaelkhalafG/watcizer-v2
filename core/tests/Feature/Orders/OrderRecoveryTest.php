@@ -5,6 +5,7 @@ use App\Domain\Inventory\InventoryService;
 use App\Domain\Inventory\StockTarget;
 use App\Domain\Notifications\OrderMailer;
 use App\Domain\Orders\OrderRecovery;
+use App\Domain\Shipping\FreeShipping;
 use App\Mail\PaymentExpired;
 use App\Mail\PaymentExpiredAdmin;
 use App\Transform\Row;
@@ -76,7 +77,9 @@ function orOrder(array $products, string $method, string $guest, ?string $email,
     $city = T::row(DB::table('shipping_cities')->orderBy('id')->first(['id', 'shipping_cost']));
     $items = array_map(fn (array $p): array => ['product_id' => $p['id'], 'quantity' => $p['qty'] ?? 1, 'piece_price' => $p['price'],
         'total_price' => $p['price'] * ($p['qty'] ?? 1), 'type_stock' => 'Express'], $products);
-    $total = array_sum(array_map(fn (array $p): float => $p['price'] * ($p['qty'] ?? 1), $products)) + (float) Row::money($city, 'shipping_cost');
+    $goods = array_sum(array_map(fn (array $p): float => $p['price'] * ($p['qty'] ?? 1), $products));
+    // Delivery as core charges it: waived when the goods reach the storefront's free-shipping threshold.
+    $total = $goods + FreeShipping::charged(1, $goods, (float) Row::money($city, 'shipping_cost'));
     $response = withHeaders(['Api-Code' => OR_API_KEY, 'X-Guest-Token' => $guest])
         ->postJson('https://api.watchizereg.com/api/add_order', array_filter([
             'address_line' => 'Corniche El Nil 12', 'shipping_city_id' => Row::int($city, 'id'), 'phone' => $phone,

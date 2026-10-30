@@ -165,7 +165,9 @@ export function listingSummary(listing, tables = {}) {
   // `answered`: core actually returned this listing. A failed call also yields total 0, and an empty
   // listing is `noindex` — so without this flag an outage would de-index every listing in the shop.
   const answered = listing != null && Number.isFinite(Number(listing.total))
-  return { total: Number(listing?.total) || 0, image: first?.image || null, answered }
+  // the page's own text from the dashboard, both languages, when it has one (M1y, core's `meta.context`)
+  const context = listing?.v2?.meta?.context || null
+  return { total: Number(listing?.total) || 0, image: first?.image || null, answered, context }
 }
 
 // The page's own clean path, from the RESOLVED entity's slug — so /brand/Rolex and /brand/rol (both
@@ -222,7 +224,7 @@ function indexing({ pathname, query, tables, filters, total, answered }) {
 
 // Next `metadata` object mirroring old Listing's <Helmet> (title / description /
 // canonical + OG / Twitter). `pathname` is the clean self-canonical path.
-export function listingMetadata({ tables = {}, total = 0, image = null, answered = false, filters = {}, pathname = '/listing', query = '', lang = 'en' }) {
+export function listingMetadata({ tables = {}, total = 0, image = null, answered = false, context = null, filters = {}, pathname = '/listing', query = '', lang = 'en' }) {
   const ar = lang === 'ar'
   const crumb = listingCrumb(tables, filters, lang)
   const resultCount = total
@@ -261,7 +263,12 @@ export function listingMetadata({ tables = {}, total = 0, image = null, answered
     title = ar ? 'تسوّق كل الساعات والإكسسوارات الفاخرة | Watchizer' : 'Shop All Luxury Watches & Accessories | Watchizer'
   }
 
-  const description = ar
+  // The meta description written for this brand or category page in the dashboard wins (M1y); the templated
+  // sentence stays the fallback for every page nobody has written one for.
+  const written = context?.[lang]?.meta_description
+  const description = written
+    ? written
+    : ar
     ? `تصفّح ${resultCount} من ${crumb} في Watchizer — ساعات وإكسسوارات فاخرة بتصاميم راقية وأسعار لا تُقاوم في مصر.`
     : `Browse ${resultCount} ${crumb} at Watchizer — luxury watches and accessories with premium designs and unbeatable prices in Egypt.`
   // Self-canonical in the URL's language, with hreflang to the other (S-AR stage 1) — built from the

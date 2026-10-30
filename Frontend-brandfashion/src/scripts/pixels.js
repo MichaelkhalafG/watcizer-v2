@@ -114,6 +114,9 @@ export const gaItem = (c, index) => ({
   ...(c.name ? { item_name: String(c.name) } : {}),
   price: money(c.price),
   quantity: Number(c.quantity) || 1,
+  // GA4's own item fields for a promotion (M1u): the discount per unit, and the code that gave it
+  ...(Number(c.discount) > 0 ? { discount: money(c.discount) } : {}),
+  ...(c.coupon ? { coupon: String(c.coupon) } : {}),
   ...(index != null ? { index } : {}),
 })
 const gaItems = (contents) => contents.filter((c) => c.id != null || c.name).map((c) => gaItem(c))
@@ -209,7 +212,7 @@ export const trackViewCart = ({ value, contents = [] }) => {
 // Checkout started — the shopper has reached the checkout page with something in
 // the cart. `value` is the MERCHANDISE subtotal: shipping is not known until a
 // governorate is chosen, and it is not merchandise value in any case.
-export const trackInitiateCheckout = ({ value, contents = [] }) => {
+export const trackInitiateCheckout = ({ value, contents = [], coupon = null }) => {
   const v = money(value)
   const numItems = contents.reduce((sum, c) => sum + (Number(c.quantity) || 0), 0)
   fb('InitiateCheckout', {
@@ -235,6 +238,7 @@ export const trackInitiateCheckout = ({ value, contents = [] }) => {
   ga('begin_checkout', {
     currency: CURRENCY,
     value: v,
+    ...(coupon ? { coupon: String(coupon) } : {}),
     items: gaItems(contents),
   })
 }
@@ -279,7 +283,7 @@ export const purchaseEventId = (orderNumber) => `purchase-${orderNumber}`
 // InitiateCheckout reported, or the funnel shows every order growing by its delivery cost
 // between the two steps; `shipping` rides beside it for GA4, which has a field for it.
 // The caller decides WHEN: cash on the confirmation page; card on the paid landing only.
-export const trackPurchase = ({ orderNumber, value, shipping = 0, contents = [] }) => {
+export const trackPurchase = ({ orderNumber, value, shipping = 0, contents = [], coupon = null }) => {
   const key = orderNumber != null ? String(orderNumber) : ''
   if (key && alreadyPurchased(key)) return false
   if (key) rememberPurchased(key)
@@ -319,6 +323,7 @@ export const trackPurchase = ({ orderNumber, value, shipping = 0, contents = [] 
     currency: CURRENCY,
     value: v,
     shipping: money(shipping),
+    ...(coupon ? { coupon: String(coupon) } : {}),
     items: gaItems(contents),
   })
   return true
@@ -332,12 +337,12 @@ export const trackPurchase = ({ orderNumber, value, shipping = 0, contents = [] 
 // does not survive every such return. One slot: the next checkout overwrites it, and a
 // snapshot nobody came back for is harmless — the landing fires only for ITS order number.
 const PENDING_KEY = 'wz_pending_purchase'
-export const savePendingPurchase = ({ orderNumber, value, shipping = 0, contents = [] }) => {
+export const savePendingPurchase = ({ orderNumber, value, shipping = 0, contents = [], coupon = null }) => {
   if (orderNumber == null) return
   try {
     localStorage.setItem(
       PENDING_KEY,
-      JSON.stringify({ orderNumber: String(orderNumber), value: money(value), shipping: money(shipping), contents, at: Date.now() }),
+      JSON.stringify({ orderNumber: String(orderNumber), value: money(value), shipping: money(shipping), contents, coupon, at: Date.now() }),
     )
   } catch {
     // storage unavailable: the server's Conversions API purchase still counts the sale for Meta

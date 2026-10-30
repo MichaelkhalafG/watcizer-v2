@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Manage;
 
 use App\Domain\Access\Role;
 use App\Domain\Activity\ActivityLog;
+use App\Domain\Activity\ProductHistory;
+use App\Domain\Catalog\BulkPrice;
 use App\Domain\Catalog\ConversionGuard;
 use App\Domain\Catalog\FamilyForCategory;
 use App\Domain\Catalog\FieldRefusal;
@@ -29,6 +31,7 @@ use App\Transform\Row;
 use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Database\Query\JoinClause;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -119,6 +122,10 @@ final class ProductController
             ->filterable([
                 'p.family' => Product::FAMILIES,
                 'p.brand_id' => self::optionValues($brands),
+                // M1v (2026-10-30): the grade, and a price range on the CHARGED price (a valid sale, else the price)
+                'p.grade_id' => self::optionValues(self::gradeOptions()),
+                'price_min' => null,
+                'price_max' => null,
                 'p.is_active' => ['0', '1'],
                 'p.in_stock' => ['0', '1'],
                 'sp.is_visible' => ['0', '1'],
@@ -154,7 +161,7 @@ final class ProductController
             ])
             // …and declared VIRTUAL, because neither is a column: `category` is a whole branch of
             // the tree and `flag` is four different predicates. `listQuery()` applies them.
-            ->virtual(['category', 'flag', 'scope'])
+            ->virtual(['category', 'flag', 'scope', 'price_min', 'price_max'])
             /** @param  EloquentBuilder<covariant \Illuminate\Database\Eloquent\Model>|Builder  $query */
             ->searchUsing(function (EloquentBuilder|Builder $query, string $term): void {
                 self::applySearch($query, $term);
@@ -364,7 +371,10 @@ final class ProductController
             'storefronts' => self::storefrontOptions(),
             'brands' => $brands,
             'categories' => $categories,
+            'grades' => self::gradeOptions(),
             'families' => self::familyOptions(),
+            // M1v: the bulk price change's cap, and the last batch (for "undo")
+            'bulk_price' => ['max' => BulkPrice::MAX, 'last' => self::lastPriceBatch()],
             'table' => $table->paginate($query, $map, $prepare),
             /*
              * How many products the default is HIDING — the number the escape hatch is labelled
@@ -536,6 +546,12 @@ final class ProductController
      * half a selection would be worse than no bulk action.
      */
     public function bulk(Request $request, Storefront $storefront): RedirectResponse
+    {
+        // M1w (2026-10-30): every row this bulk action writes is tagged, so the activity log can show "bulk changes"
+        return ActivityLog::within(ActivityLog::CONTEXT_BULK, fn (): RedirectResponse => $this->bulkTagged($request, $storefront));
+    }
+
+    private function bulkTagged(Request $request, Storefront $storefront): RedirectResponse
     {
         $request->validate([
             'action' => ['required', 'string', Rule::in(['activate', 'deactivate', 'archive', 'restore', 'set_threshold'])],
@@ -784,6 +800,111 @@ final class ProductController
     }
 
     /**
+     * BULK PRICE CHANGE — the PREVIEW (M1v, 2026-10-30): the old → new price of every product the selection or the
+     * screen's filters name, computed by {@see BulkPrice}. Nothing is written. Above the cap it answers with the count
+     * and the sentence, no rows.
+     */
+    public function bulkPricePreview(Request $request, Storefront $storefront): JsonResponse
+    {
+        $data = Coerce::arr($request->validate(self::bulkPriceRules()));
+        $ids = self::bulkPriceIds($request, $storefront, $this);
+        $count = count($ids);
+        if ($count > BulkPrice::MAX) {
+            return response()->json(['count' => $count, 'max' => BulkPrice::MAX, 'over_cap' => true,
+                'message' => BulkPrice::overCapMessage($count), 'rows' => [], 'changing' => 0]);
+        }
+        $rows = app(BulkPrice::class)->plan($ids, Coerce::str($data['mode'] ?? ''), Coerce::nfloat($data['value'] ?? null),
+            Coerce::str($data['target'] ?? ''), Coerce::int($data['rounding'] ?? 0));
+
+        return response()->json(['count' => $count, 'max' => BulkPrice::MAX, 'over_cap' => false, 'rows' => $rows,
+            'changing' => count(array_filter($rows, fn (array $r): bool => $r['change']))]);
+    }
+
+    /**
+     * BULK PRICE CHANGE — APPLY: the same request, re-planned on the server, written only after an explicit confirm.
+     */
+    public function bulkPriceApply(Request $request, Storefront $storefront): RedirectResponse
+    {
+        $data = Coerce::arr($request->validate(self::bulkPriceRules() + ['confirm' => ['accepted']]));
+        $ids = self::bulkPriceIds($request, $storefront, $this);
+        if ($ids === []) {
+            return back()->with('error', ManageText::t('products.bulk_nothing', 'لم يُحدَّد أي منتج، فلم يتغيّر شيء.'));
+        }
+        if (count($ids) > BulkPrice::MAX) {
+            return back()->withErrors(['bulk_price' => BulkPrice::overCapMessage(count($ids))]);
+        }
+        $result = app(BulkPrice::class)->apply($ids, Coerce::str($data['mode'] ?? ''), Coerce::nfloat($data['value'] ?? null),
+            Coerce::str($data['target'] ?? ''), Coerce::int($data['rounding'] ?? 0), $storefront->id, self::actorId($request));
+
+        return back()->with('status', ManageText::t('products.bulk_price_done',
+            'تم تغيير أسعار :changed منتجًا (الدفعة #:batch). لم يتغيّر :refused. يمكنك التراجع من الزر «تراجع عن آخر تغيير أسعار».',
+            ['changed' => $result['changed'], 'refused' => $result['refused'], 'batch' => $result['batch_id'] ?? '—']));
+    }
+
+    /** BULK PRICE CHANGE — UNDO one batch, product by product, only where the price is still the batch's. */
+    public function bulkPriceUndo(Request $request, Storefront $storefront, int $batch): RedirectResponse
+    {
+        abort_if(! DB::table('core_price_batches')->where('id', $batch)->exists(), 404);
+        $result = app(BulkPrice::class)->undo($batch, self::actorId($request));
+        if ($result['already']) {
+            return back()->with('error', ManageText::t('products.bulk_price_already_undone', 'تم التراجع عن هذه الدفعة من قبل.'));
+        }
+
+        return back()->with('status', ManageText::t('products.bulk_price_undone',
+            'تم إرجاع أسعار :restored منتجًا. تُرك :skipped منتجًا تغيّر سعره بعد الدفعة.',
+            ['restored' => $result['restored'], 'skipped' => count($result['skipped'])]));
+    }
+
+    /** @return array<string, list<mixed>> */
+    private static function bulkPriceRules(): array
+    {
+        return [
+            'scope' => ['nullable', 'string', Rule::in(['ids', 'matching'])],
+            'ids' => ['required_unless:scope,matching', 'array', 'min:1', 'max:500'],
+            'ids.*' => ['integer', 'min:1'],
+            'query' => ['nullable', 'string', 'max:2000'],
+            'mode' => ['required', 'string', Rule::in(BulkPrice::MODES)],
+            'target' => ['required', 'string', Rule::in(BulkPrice::TARGETS)],
+            'value' => ['nullable', 'required_unless:target,clear_sale', 'numeric', 'min:0', 'max:9999999'],
+            'rounding' => ['required', 'integer', Rule::in(BulkPrice::ROUNDING)],
+        ];
+    }
+
+    /**
+     * The products a bulk price request names: the ids on screen, or every product matching the screen's filters —
+     * the same resolution {@see self::bulk()} uses, so a hand-written request cannot reach a row the screen hides.
+     *
+     * @return list<int>
+     */
+    private static function bulkPriceIds(Request $request, Storefront $storefront, self $controller): array
+    {
+        return $request->string('scope')->toString() === 'matching'
+            ? $controller->idsMatching($request, $storefront)
+            : Coerce::intList($request->input('ids'));
+    }
+
+    /** @return array{id: int, count: int, created_at: string|null, by: string|null}|null the last batch not undone */
+    private static function lastPriceBatch(): ?array
+    {
+        $row = DB::table('core_price_batches as b')->leftJoin('users as u', 'u.id', '=', 'b.user_id')
+            ->whereNull('b.undone_at')->orderByDesc('b.id')
+            ->first(['b.id', 'b.product_count', 'b.created_at', 'u.email']);
+        if (! is_object($row)) {
+            return null;
+        }
+        $batch = Row::cast($row);
+
+        return ['id' => Row::int($batch, 'id'), 'count' => Row::int($batch, 'product_count'),
+            'created_at' => Row::nstr($batch, 'created_at'), 'by' => Row::nstr($batch, 'email')];
+    }
+
+    /** @return list<array<string, mixed>> the grade options, the same lookup the form uses */
+    private static function gradeOptions(): array
+    {
+        return SpecBlocks::options('grades');
+    }
+
+    /**
      * Archive one product, from its own form (W-6).
      *
      * A soft delete, exactly as the bulk action's `archive` is: order lines, the stock ledger and
@@ -1018,6 +1139,17 @@ final class ProductController
                     // plans in `docs/wave2/SCALE_PROOF_2026-09-08.md`).
                     ->limit(1);
             });
+        }
+
+        // the price range (M1v): what the customer is charged — the same valid-sale rule every price in the shop uses
+        $charged = 'CASE WHEN p.sale_price > 0 AND p.sale_price < p.selling_price THEN p.sale_price ELSE p.selling_price END';
+        $min = $filters['price_min'] ?? null;
+        $max = $filters['price_max'] ?? null;
+        if (is_numeric($min)) {
+            $query->whereRaw("({$charged}) >= ?", [(float) $min]);
+        }
+        if (is_numeric($max)) {
+            $query->whereRaw("({$charged}) <= ?", [(float) $max]);
         }
 
         match ($filters['flag'] ?? null) {
@@ -1440,6 +1572,8 @@ final class ProductController
         return [
             'storefront' => ['id' => $storefront->id, 'code' => $storefront->code, 'name' => $storefront->name],
             'storefronts' => self::storefrontOptions(),
+            // M1w: the History tab — the product's log rows and every stock movement, newest first
+            'history' => $productId === null ? [] : ProductHistory::for($productId),
             'product' => $product === null ? null : [
                 'id' => $productId,
                 'wa_code' => Row::str($product, 'wa_code'),

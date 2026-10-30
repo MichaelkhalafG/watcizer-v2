@@ -88,6 +88,8 @@ function OrderConfirmation() {
     shippingName = '',
     shippingPrice = 0,
     paymentMethod = 'cash',
+    // the coupon code the order used (M1u), for the Purchase event
+    coupon = null,
   } = state || {}
 
   const [days] = useState(() => deliveryWindow(shippingPrice))
@@ -167,8 +169,10 @@ function OrderConfirmation() {
         quantity: it.qty,
         price: it.price ?? (it.qty ? Number(it.lineTotal) / it.qty : 0),
       })),
+      // the code the order used (M1u), in GA4's own field
+      coupon: coupon || null,
     })
-  }, [orderNumber, total, subtotal, items, paymentMethod, shippingPrice])
+  }, [orderNumber, total, subtotal, items, paymentMethod, shippingPrice, coupon])
 
   if (cardStatus) {
     return <CardLanding status={cardStatus} orderNumber={cardOrder} t={t} isRTL={isRTL} router={router} />
@@ -332,7 +336,7 @@ function CardLanding({ status, orderNumber, t, isRTL, router }) {
   useEffect(() => {
     const pending = takePendingPurchase()
     if (status !== 'paid' || !pending || !orderNumber || pending.orderNumber !== String(orderNumber)) return
-    trackPurchase({ orderNumber, value: pending.value, shipping: pending.shipping, contents: pending.contents || [] })
+    trackPurchase({ orderNumber, value: pending.value, shipping: pending.shipping, contents: pending.contents || [], coupon: pending.coupon || null })
   }, [status, orderNumber])
   const { clearCart } = useCart()
   useEffect(() => {

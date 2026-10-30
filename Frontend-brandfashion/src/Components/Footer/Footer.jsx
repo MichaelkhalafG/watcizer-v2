@@ -1,6 +1,5 @@
 'use client'
 import { memo } from 'react'
-import Image from 'next/image'
 import './Footer.css'
 import Link from '@/src/Components/LocaleLink'
 import { FaWhatsapp, FaInstagram, FaFacebook } from 'react-icons/fa'
@@ -10,6 +9,7 @@ import { useNav } from '../../Hooks/queries/useNav'
 import { useHasOffers } from '../../Hooks/queries/useRunningOffers'
 import { brandSlug, categorySlug } from '../../utils/slugs'
 import { TRUST_PAGES } from '../../content/trustPages'
+import { FAQ } from '../../content/faq'
 
 /*
  * The Brand Fashion footer — spec v2.10 §10.8 ("categories, brands, main pages, social. No newsletter field"),
@@ -53,6 +53,7 @@ function Footer() {
   const pages = [
     ['/about-us', TRUST_PAGES.about?.[lang]?.title],
     ['/contact-us', TRUST_PAGES.contact?.[lang]?.title],
+    ['/faq', FAQ[lang]?.title],
     ['/blogs', t.blog],
     ['/privacy-policy', TRUST_PAGES.privacy?.[lang]?.title],
     ['/terms-and-conditions', TRUST_PAGES.terms?.[lang]?.title],
@@ -63,7 +64,8 @@ function Footer() {
       <div className="bf-foot__inner">
         <div className="bf-foot__brand">
           <Link href="/" className="bf-foot__logo" aria-label="Brand Fashion">
-            <Image src="/logo-lockup-white.svg" alt="Brand Fashion" width={96} height={70} />
+            {/* No SVG goes through next/image (2026-10-30, GHSA-2464-fhr4-w9xw): next/image already served it unoptimised, as the file. */}
+            <img src="/logo-lockup-white.svg" alt="Brand Fashion" width={96} height={70} loading="lazy" decoding="async" />
           </Link>
           {social.length ? (
             <div className="bf-foot__social" aria-label={t.follow}>

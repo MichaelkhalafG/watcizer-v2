@@ -1,0 +1,253 @@
+{
+  "_about": "Category page texts (M1y, 2026-10-30), keyed by the category's path as the storefront's tree builds it. Applied by `php artisan seo:seed-texts`; a key a storefront does not have is reported and skipped. {shop} becomes the storefront's name in the text's language. Business facts: the client's, 2026-10-29 — delivery to every governorate within 24 hours, free over EGP 10,000; exchange within 14 days in the original unopened state; watch warranty up to 3 years depending on the watch.",
+  "watches": {
+    "en": {
+      "description": "Watches for men and women, from everyday quartz pieces to Swiss automatics: dress watches, chronographs, divers, GMTs, sports and digital watches, from the brands on this page. Filter by brand, movement, size, colour or price to narrow it down.\n\nEvery watch is original and comes with its box, a warranty card and a sales invoice, with a warranty of up to 3 years depending on the watch. We deliver to every governorate within 24 hours, and orders over EGP 10,000 ship free.",
+      "meta_description": "Shop original watches for men and women at {shop}: dress, chronograph, diver, GMT and sports watches. Warranty up to 3 years; delivery in 24 hours."
+    },
+    "ar": {
+      "description": "ساعات للرجال والنساء، من ساعات الكوارتز اليومية إلى الأوتوماتيك السويسرية: ساعات رسمية، وكرونوغراف، وساعات غوص، وجي إم تي، ورياضية، ورقمية، من الماركات في هذه الصفحة. صفِّ النتائج حسب الماركة أو الماكينة أو المقاس أو اللون أو السعر.\n\nكل ساعة أصلية، وتأتي بعلبتها وبطاقة الضمان وفاتورة البيع، بضمان حتى ٣ سنوات حسب الساعة. نوصّل لكل المحافظات خلال ٢٤ ساعة، والطلبات فوق ١٠٬٠٠٠ جنيه شحنها مجاني.",
+      "meta_description": "تسوّق ساعات أصلية للرجال والنساء من {shop}: رسمية وكرونوغراف وغوص وجي إم تي ورياضية. ضمان حتى ٣ سنوات، وتوصيل خلال ٢٤ ساعة."
+    }
+  },
+  "watches/automatic": {
+    "en": {
+      "description": "An automatic watch winds itself: a rotor turns with the movement of your wrist and keeps the mainspring charged, so there is no battery to change. Worn every day, it keeps running; left in a drawer, it stops after a day or two and is set again with a few turns of the crown.\n\nThe movement, power reserve and warranty of each automatic watch on this page are on its product page.",
+      "meta_description": "Automatic watches at {shop}: self-winding mechanical movements, no battery. Original, with warranty card and invoice; delivery in 24 hours."
+    },
+    "ar": {
+      "description": "الساعة الأوتوماتيك تعبّئ نفسها: دوّار يتحرك مع حركة معصمك فيُبقي النابض مشحوناً، فلا بطارية لتغييرها. إن ارتديتها كل يوم تظل تعمل؛ وإن تركتها في الدرج تتوقف بعد يوم أو يومين، وتعود بلفّات قليلة للتاج.\n\nونوع الماكينة واحتياطي الطاقة والضمان لكل ساعة أوتوماتيك في هذه الصفحة في صفحة المنتج.",
+      "meta_description": "ساعات أوتوماتيك من {shop}: ماكينات ميكانيكية ذاتية التعبئة بلا بطارية. أصلية ببطاقة الضمان والفاتورة، وتوصيل خلال ٢٤ ساعة."
+    }
+  },
+  "watches/casual": {
+    "en": {
+      "description": "Casual watches are the ones you reach for every day: easy to read, comfortable on steel, leather, silicone or fabric, and relaxed enough for the office, the weekend and everything in between. Many are quartz, so they keep accurate time with nothing to do but change the battery every few years.\n\nFilter by brand, colour, size or price to find yours.",
+      "meta_description": "Casual watches for every day at {shop}: steel, leather and silicone straps, for men and women. Original, with warranty; delivery in 24 hours."
+    },
+    "ar": {
+      "description": "الساعات الكاجوال هي التي تمد يدك إليها كل يوم: سهلة القراءة، ومريحة على أساور الستانلس ستيل أو الجلد أو السيليكون أو القماش، وبسيطة بما يكفي للمكتب وعطلة نهاية الأسبوع وما بينهما. وكثير منها كوارتز، فتحافظ على دقة الوقت ولا تحتاج إلا تغيير البطارية كل بضع سنوات.\n\nصفِّ النتائج حسب الماركة أو اللون أو المقاس أو السعر لتجد ساعتك.",
+      "meta_description": "ساعات كاجوال لكل يوم من {shop}: أساور ستانلس ستيل وجلد وسيليكون، للرجال والنساء. أصلية بضمان، وتوصيل خلال ٢٤ ساعة."
+    }
+  },
+  "watches/chronograph": {
+    "en": {
+      "description": "A chronograph is a watch with a built-in stopwatch: push the button at two o'clock to start and stop it, the one at four to reset, and read the elapsed time on the small sub-dials. Many have a tachymeter on the bezel to measure speed over a known distance.\n\nThe chronographs on this page range from sporty everyday pieces to Swiss automatics. Each product page gives the movement, the size and the warranty.",
+      "meta_description": "Chronograph watches at {shop}: stopwatch sub-dials, sporty and dressy, quartz and automatic. Original, with warranty; delivery in 24 hours."
+    },
+    "ar": {
+      "description": "الكرونوغراف ساعة بها ساعة إيقاف مدمجة: اضغط الزر عند الساعة الثانية للتشغيل والإيقاف، والزر عند الرابعة للتصفير، واقرأ الزمن المنقضي على الموانئ الصغيرة. وكثير منها به مقياس سرعة (تاكيميتر) على الإطار لقياس السرعة على مسافة معروفة.\n\nتتنوع ساعات الكرونوغراف في هذه الصفحة من القطع الرياضية اليومية إلى الأوتوماتيك السويسرية. وفي صفحة كل منتج نوع الماكينة والمقاس والضمان.",
+      "meta_description": "ساعات كرونوغراف من {shop}: موانئ ساعة الإيقاف، رياضية ورسمية، كوارتز وأوتوماتيك. أصلية بضمان، وتوصيل خلال ٢٤ ساعة."
+    }
+  },
+  "watches/digital-watch": {
+    "en": {
+      "description": "Digital watches show the time as numbers on a screen, and usually do much more: alarms, a stopwatch and timer, a backlight for the dark, and on many models a second time zone. Light, tough and easy to read, they are made for sport, travel and everyday wear.\n\nSee the features, water resistance and price of each on its product page.",
+      "meta_description": "Digital watches at {shop}: alarm, stopwatch, backlight and more, for sport and every day. Delivery to every governorate within 24 hours."
+    },
+    "ar": {
+      "description": "الساعات الرقمية تعرض الوقت أرقاماً على شاشة، وتفعل عادةً أكثر من ذلك بكثير: منبّه، وساعة إيقاف ومؤقت، وإضاءة للظلام، وفي كثير من الموديلات توقيت ثانٍ. خفيفة ومتينة وسهلة القراءة، مصنوعة للرياضة والسفر والاستخدام اليومي.\n\nالمزايا ومقاومة الماء وسعر كل ساعة في صفحة المنتج.",
+      "meta_description": "ساعات رقمية من {shop}: منبّه وساعة إيقاف وإضاءة وأكثر، للرياضة ولكل يوم. توصيل لكل المحافظات خلال ٢٤ ساعة."
+    }
+  },
+  "watches/diver": {
+    "en": {
+      "description": "A diver's watch is built for the water: high water resistance, a screw-down crown, a rotating bezel that turns one way only to time a dive, and bright luminous hands and markers you can read in the dark. The same toughness makes it one of the most versatile everyday watches there is.\n\nCheck each watch's water-resistance rating on its product page before you take it swimming.",
+      "meta_description": "Diver watches at {shop}: high water resistance, rotating bezels and luminous dials. Original, with warranty card and invoice; delivery in 24 hours."
+    },
+    "ar": {
+      "description": "ساعة الغوص مصنوعة للماء: مقاومة عالية للماء، وتاج يُربط بالقلاووظ، وإطار دوّار يدور في اتجاه واحد لحساب زمن الغطس، وعقارب وعلامات مضيئة تُقرأ في الظلام. والمتانة نفسها تجعلها من أكثر الساعات اليومية مرونة.\n\nراجع درجة مقاومة الماء لكل ساعة في صفحتها قبل أن تسبح بها.",
+      "meta_description": "ساعات غوص من {shop}: مقاومة عالية للماء وإطارات دوّارة وموانئ مضيئة. أصلية ببطاقة الضمان والفاتورة، وتوصيل خلال ٢٤ ساعة."
+    }
+  },
+  "watches/dress": {
+    "en": {
+      "description": "A dress watch is slim, simple and elegant: a clean dial, a thin case that slides under a shirt cuff, and usually a leather strap. It is the watch for suits, weddings and evenings, and the one that looks right when nothing should shout.\n\nThe dress watches on this page come in steel, gold and rose-gold tones. Each product page shows the size, the movement and the warranty.",
+      "meta_description": "Dress watches at {shop}: slim, elegant watches on leather and steel for suits and evenings. Original, with warranty; delivery in 24 hours."
+    },
+    "ar": {
+      "description": "الساعة الرسمية نحيفة وبسيطة وأنيقة: مينا نظيفة، وعلبة رفيعة تنزلق تحت كُم القميص، وغالباً سوار جلدي. هي ساعة البدلات والأفراح والسهرات، والساعة التي تبدو مناسبة حين لا يجب أن يلفت شيء النظر.\n\nتأتي الساعات الرسمية في هذه الصفحة بدرجات الستانلس ستيل والذهبي والروز جولد. وفي صفحة كل منتج المقاس ونوع الماكينة والضمان.",
+      "meta_description": "ساعات رسمية من {shop}: ساعات نحيفة أنيقة بأساور جلد وستانلس ستيل للبدلات والسهرات. أصلية بضمان، وتوصيل خلال ٢٤ ساعة."
+    }
+  },
+  "watches/gmt": {
+    "en": {
+      "description": "A GMT watch shows two time zones at once. A fourth hand goes round the dial once every 24 hours and points to a second time on the 24-hour bezel or scale — home time while you travel, or the time of someone you call abroad. The idea was born for airline pilots in the 1950s and has been a traveller's favourite ever since.\n\nEach product page explains how its second time zone is set.",
+      "meta_description": "GMT watches at {shop}: two time zones at a glance, for travellers. Original, with box, warranty card and invoice; delivery in 24 hours."
+    },
+    "ar": {
+      "description": "ساعة جي إم تي تعرض توقيتين في آنٍ واحد. عقرب رابع يدور حول المينا مرة كل ٢٤ ساعة ويشير إلى توقيت ثانٍ على إطار أو تدريج الـ٢٤ ساعة — توقيت بلدك وأنت مسافر، أو توقيت من تتصل به في الخارج. وُلدت الفكرة لطياري الخطوط الجوية في الخمسينيات، وما زالت المفضلة لدى المسافرين.\n\nفي صفحة كل منتج طريقة ضبط التوقيت الثاني.",
+      "meta_description": "ساعات جي إم تي من {shop}: توقيتان بنظرة واحدة، للمسافرين. أصلية بالعلبة وبطاقة الضمان والفاتورة، وتوصيل خلال ٢٤ ساعة."
+    }
+  },
+  "watches/skeleton": {
+    "en": {
+      "description": "A skeleton watch lets you see its movement: the dial, and often the caseback, are open or cut away to show the wheels, the balance and the mainspring at work. It turns the engineering inside the watch into its design.\n\nEach product page gives the movement and the warranty of the watch.",
+      "meta_description": "Skeleton watches at {shop}: open dials that show the movement at work. Original, with warranty card and invoice; delivery in 24 hours."
+    },
+    "ar": {
+      "description": "الساعة السكيلتون تتيح لك رؤية ماكينتها: المينا، وغالباً الغطاء الخلفي، مفتوحان أو مفرّغان ليظهر عمل التروس والميزان والنابض. فتتحول الهندسة داخل الساعة إلى تصميمها.\n\nونوع الماكينة والضمان في صفحة كل منتج.",
+      "meta_description": "ساعات سكيلتون من {shop}: موانئ مفتوحة تُظهر الماكينة وهي تعمل. أصلية ببطاقة الضمان والفاتورة، وتوصيل خلال ٢٤ ساعة."
+    }
+  },
+  "watches/sport": {
+    "en": {
+      "description": "Sports watches are made to be worn hard: robust cases, good water resistance, legible dials and straps in steel, rubber or silicone that shrug off sweat and water. Chronographs, divers and bold everyday pieces all live here.\n\nFilter by brand, size, colour or price, and check each watch's water resistance on its product page.",
+      "meta_description": "Sports watches at {shop}: robust, water-resistant and easy to read, on steel, rubber and silicone. Original, with warranty; delivery in 24 hours."
+    },
+    "ar": {
+      "description": "الساعات الرياضية مصنوعة لتتحمل: علب متينة، ومقاومة جيدة للماء، وموانئ واضحة، وأساور من الستانلس ستيل أو المطاط أو السيليكون لا يضرها العرق والماء. هنا تجد الكرونوغراف وساعات الغوص والقطع اليومية الجريئة.\n\nصفِّ النتائج حسب الماركة أو المقاس أو اللون أو السعر، وراجع مقاومة الماء لكل ساعة في صفحتها.",
+      "meta_description": "ساعات رياضية من {shop}: متينة ومقاومة للماء وسهلة القراءة، بأساور ستانلس ستيل ومطاط وسيليكون. أصلية بضمان، وتوصيل خلال ٢٤ ساعة."
+    }
+  },
+  "watches/tourbillon": {
+    "en": {
+      "description": "The tourbillon is one of the great complications of watchmaking. Patented by Abraham-Louis Breguet in 1801, it places the balance and escapement in a rotating cage that turns, usually once a minute, to even out the effect of gravity on their rate. On the wrist it is above all a spectacle — a small mechanism turning in an opening on the dial.\n\nAsk us about any tourbillon on this page before you order.",
+      "meta_description": "Tourbillon watches at {shop}: the rotating cage complication on display. Original, with box, warranty card and invoice."
+    },
+    "ar": {
+      "description": "التوربيون من أعظم التعقيدات في صناعة الساعات. سجّل براءته أبراهام لوي بريغيه عام ١٨٠١، وهو يضع الميزان وآلية الانفلات في قفص دوّار يدور، عادةً مرة كل دقيقة، ليوازن أثر الجاذبية على دقتهما. وعلى المعصم هو قبل كل شيء مشهد — آلية صغيرة تدور في فتحة على المينا.\n\nاسألنا عن أي ساعة توربيون في هذه الصفحة قبل أن تطلب.",
+      "meta_description": "ساعات توربيون من {shop}: تعقيد القفص الدوّار ظاهر على المينا. أصلية بالعلبة وبطاقة الضمان والفاتورة."
+    }
+  },
+  "fashion": {
+    "en": {
+      "description": "The accessories that go with a watch: bags, wallets, belts, bracelets and perfumes from the brands on this page. Choose them to match your watch — the same leather colour, the same metal tone — and the whole look comes together.\n\nWe deliver to every governorate within 24 hours, and orders over EGP 10,000 ship free. Exchanges are accepted within 14 days, with the item in its original, unopened state.",
+      "meta_description": "Bags, wallets, belts, bracelets and perfumes at {shop}, from Coach, Tommy Hilfiger, Guess and more. Delivery in 24 hours, free over EGP 10,000."
+    },
+    "ar": {
+      "description": "الإكسسوارات التي تكمل الساعة: حقائب ومحافظ وأحزمة وأساور وعطور من الماركات في هذه الصفحة. اخترها لتناسب ساعتك — اللون نفسه للجلد، ودرجة المعدن نفسها — فتكتمل الإطلالة.\n\nنوصّل لكل المحافظات خلال ٢٤ ساعة، والطلبات فوق ١٠٬٠٠٠ جنيه شحنها مجاني. ويُقبل الاستبدال خلال ١٤ يوماً والقطعة بحالتها الأصلية دون فتح.",
+      "meta_description": "حقائب ومحافظ وأحزمة وأساور وعطور من {shop}، من كوتش وتومي هيلفيغر وجيس وغيرها. توصيل خلال ٢٤ ساعة، ومجاني فوق ١٠٬٠٠٠ جنيه."
+    }
+  },
+  "fashion/bags": {
+    "en": {
+      "description": "Handbags, shoulder bags, crossbody bags and totes from Coach, Tommy Hilfiger, Guess, Michael Kors and the other brands on this page. Look at the size and the strap for how you will carry it, and the material and hardware for how it will wear.\n\nThe dimensions and details of each bag are on its product page. Exchanges are accepted within 14 days, unused and in the original state.",
+      "meta_description": "Women's bags at {shop}: handbags, crossbody bags and totes from Coach, Tommy Hilfiger, Guess and more. Delivery to every governorate in 24 hours."
+    },
+    "ar": {
+      "description": "حقائب يد وكتف وكروس بودي وتوت من كوتش وتومي هيلفيغر وجيس ومايكل كورس وبقية الماركات في هذه الصفحة. انظر إلى المقاس والحزام لتعرف كيف ستحملها، وإلى الخامة والمعادن لتعرف كيف ستدوم.\n\nأبعاد كل حقيبة وتفاصيلها في صفحة المنتج. ويُقبل الاستبدال خلال ١٤ يوماً دون استخدام وبالحالة الأصلية.",
+      "meta_description": "حقائب نسائية من {shop}: حقائب يد وكروس بودي وتوت من كوتش وتومي هيلفيغر وجيس وغيرها. توصيل لكل المحافظات خلال ٢٤ ساعة."
+    }
+  },
+  "fashion/belts": {
+    "en": {
+      "description": "Leather belts for men and women, in black, brown and more, with classic and branded buckles. A simple rule makes them easy to choose: match the leather to your shoes and watch strap, and the buckle to the metal of your watch.\n\nThe width, length and details of each belt are on its product page.",
+      "meta_description": "Leather belts for men and women at {shop}, from Tommy Hilfiger, Coach, Guess and more. Delivery to every governorate within 24 hours."
+    },
+    "ar": {
+      "description": "أحزمة جلدية للرجال والنساء، بالأسود والبني وألوان أخرى، بأبازيم كلاسيكية وأخرى تحمل شعار الماركة. وقاعدة بسيطة تسهّل الاختيار: نسّق الجلد مع حذائك وسوار ساعتك، والإبزيم مع معدن ساعتك.\n\nعرض كل حزام وطوله وتفاصيله في صفحة المنتج.",
+      "meta_description": "أحزمة جلدية للرجال والنساء من {shop}، من تومي هيلفيغر وكوتش وجيس وغيرها. توصيل لكل المحافظات خلال ٢٤ ساعة."
+    }
+  },
+  "fashion/bracelets": {
+    "en": {
+      "description": "Bracelets for men and women — steel, leather, beaded and charm styles — to wear on their own or stacked beside a watch. Keep the metal tone the same as your watch for a polished look, or mix textures for a relaxed one.\n\nThe size and material of each bracelet are on its product page.",
+      "meta_description": "Bracelets for men and women at {shop}: steel, leather and beaded, to wear alone or with a watch. Delivery to every governorate within 24 hours."
+    },
+    "ar": {
+      "description": "أساور للرجال والنساء — ستانلس ستيل وجلد وخرز وتعليقات — تُلبس وحدها أو بجانب الساعة. اجعل درجة المعدن مثل ساعتك لإطلالة مصقولة، أو امزج الملمس لإطلالة مريحة.\n\nمقاس كل سوار وخامته في صفحة المنتج.",
+      "meta_description": "أساور للرجال والنساء من {shop}: ستانلس ستيل وجلد وخرز، تُلبس وحدها أو مع الساعة. توصيل لكل المحافظات خلال ٢٤ ساعة."
+    }
+  },
+  "fashion/jewelry": {
+    "en": {
+      "description": "Jewellery to wear with your watch: necklaces, earrings, rings and bracelets from the fashion brands on this page. Gold, rose-gold and silver tones make it easy to match the piece to the watch you wear most.\n\nThe material and size of each piece are on its product page.",
+      "meta_description": "Jewellery at {shop}: necklaces, earrings, rings and bracelets in gold, rose-gold and silver tones. Delivery to every governorate within 24 hours."
+    },
+    "ar": {
+      "description": "مجوهرات تُلبس مع ساعتك: قلائد وأقراط وخواتم وأساور من ماركات الموضة في هذه الصفحة. ودرجات الذهبي والروز جولد والفضي تسهّل تنسيق القطعة مع الساعة التي ترتديها أكثر.\n\nخامة كل قطعة ومقاسها في صفحة المنتج.",
+      "meta_description": "مجوهرات من {shop}: قلائد وأقراط وخواتم وأساور بدرجات الذهبي والروز جولد والفضي. توصيل لكل المحافظات خلال ٢٤ ساعة."
+    }
+  },
+  "fashion/perfumes": {
+    "en": {
+      "description": "Perfumes for men and women from the fashion houses on this page. A fragrance is personal: read the notes on each product page — fresh, floral, woody or oriental — and choose the concentration that suits how long you want it to last.\n\nPerfumes are exchanged only sealed and unopened, within 14 days.",
+      "meta_description": "Perfumes for men and women at {shop}, from the fashion houses you know. Delivery to every governorate within 24 hours, free over EGP 10,000."
+    },
+    "ar": {
+      "description": "عطور للرجال والنساء من دور الأزياء في هذه الصفحة. العطر شيء شخصي: اقرأ النوتات في صفحة كل منتج — منعش أو زهري أو خشبي أو شرقي — واختر التركيز الذي يناسب المدة التي تريده أن يدومها.\n\nتُستبدل العطور مغلقة دون فتح فقط، خلال ١٤ يوماً.",
+      "meta_description": "عطور للرجال والنساء من {shop}، من دور الأزياء التي تعرفها. توصيل لكل المحافظات خلال ٢٤ ساعة، ومجاني فوق ١٠٬٠٠٠ جنيه."
+    }
+  },
+  "fashion/socks": {
+    "en": {
+      "description": "Socks from the brands on this page, in everyday and sport styles and in packs. The small finishing touch of an outfit, and an easy addition to an order.\n\nThe size and pack contents of each are on its product page.",
+      "meta_description": "Socks at {shop}, everyday and sport styles from the brands you know. Delivery to every governorate within 24 hours."
+    },
+    "ar": {
+      "description": "شرابات من الماركات في هذه الصفحة، بتصميمات يومية ورياضية وفي عبوات. اللمسة الأخيرة الصغيرة في الإطلالة، وإضافة سهلة إلى أي طلب.\n\nالمقاس ومحتوى كل عبوة في صفحة المنتج.",
+      "meta_description": "شرابات من {shop}، بتصميمات يومية ورياضية من الماركات التي تعرفها. توصيل لكل المحافظات خلال ٢٤ ساعة."
+    }
+  },
+  "fashion/wallets": {
+    "en": {
+      "description": "Wallets and cardholders for men and women from Tommy Hilfiger, Coach, Guess and the other brands on this page — bifold, zip-around and slim card styles in leather. A wallet comes out at every till, so it is worth matching it to your belt and watch strap.\n\nThe size and details of each wallet are on its product page.",
+      "meta_description": "Wallets and cardholders for men and women at {shop}, from Tommy Hilfiger, Coach, Guess and more. Delivery to every governorate in 24 hours."
+    },
+    "ar": {
+      "description": "محافظ وحافظات كروت للرجال والنساء من تومي هيلفيغر وكوتش وجيس وبقية الماركات في هذه الصفحة — طيّ مزدوج وبسحّاب وحافظات كروت نحيفة من الجلد. المحفظة تخرج عند كل دفع، فيستحق الأمر أن تنسّقها مع حزامك وسوار ساعتك.\n\nمقاس كل محفظة وتفاصيلها في صفحة المنتج.",
+      "meta_description": "محافظ وحافظات كروت للرجال والنساء من {shop}، من تومي هيلفيغر وكوتش وجيس وغيرها. توصيل لكل المحافظات خلال ٢٤ ساعة."
+    }
+  },
+  "electronics": {
+    "en": {
+      "description": "Everyday mobile accessories: chargers and cables, power banks, earbuds and headphones, phone holders and screen protectors, mostly from Joyroom. Check each product page for compatibility with your phone — the connector, the charging standard or the screen size.\n\nWe deliver to every governorate within 24 hours.",
+      "meta_description": "Chargers, power banks, earbuds, phone holders and screen protectors at {shop}. Check compatibility on each product page; delivery in 24 hours."
+    },
+    "ar": {
+      "description": "إكسسوارات الموبايل اليومية: شواحن وكابلات، وبنوك طاقة، وسماعات، وحوامل موبايل، وواقيات شاشة، أغلبها من جوي روم. راجع في صفحة كل منتج توافقه مع هاتفك — نوع المنفذ، أو معيار الشحن، أو مقاس الشاشة.\n\nنوصّل لكل المحافظات خلال ٢٤ ساعة.",
+      "meta_description": "شواحن وبنوك طاقة وسماعات وحوامل موبايل وواقيات شاشة من {shop}. راجع التوافق في صفحة كل منتج، وتوصيل خلال ٢٤ ساعة."
+    }
+  },
+  "electronics/audio": {
+    "en": {
+      "description": "Wireless earbuds, headphones and speakers for calls, music and the gym. Each product page gives the connection, the battery life and the charging case details, so you can compare before you choose.",
+      "meta_description": "Wireless earbuds, headphones and speakers at {shop}: battery life and connection on every product page. Delivery in 24 hours."
+    },
+    "ar": {
+      "description": "سماعات لاسلكية وسماعات رأس ومكبرات صوت للمكالمات والموسيقى والجيم. في صفحة كل منتج نوع الاتصال وعمر البطارية وتفاصيل علبة الشحن، لتقارن قبل أن تختار.",
+      "meta_description": "سماعات لاسلكية وسماعات رأس ومكبرات صوت من {shop}: عمر البطارية ونوع الاتصال في صفحة كل منتج. توصيل خلال ٢٤ ساعة."
+    }
+  },
+  "electronics/chargers": {
+    "en": {
+      "description": "Wall chargers, car chargers and cables for USB-C, Lightning and micro-USB. For fast charging, pick a charger and cable that support the same standard as your phone — each product page lists the output and the connectors.",
+      "meta_description": "Phone chargers and cables at {shop}: USB-C, Lightning and fast charging, wall and car. Output on every product page; delivery in 24 hours."
+    },
+    "ar": {
+      "description": "شواحن حائط وشواحن سيارة وكابلات USB-C ولايتنينج وميكرو USB. وللشحن السريع اختر شاحناً وكابلاً يدعمان المعيار نفسه الذي يدعمه هاتفك — في صفحة كل منتج قدرة الخرج ونوع المنافذ.",
+      "meta_description": "شواحن وكابلات موبايل من {shop}: USB-C ولايتنينج وشحن سريع، للحائط والسيارة. القدرة في صفحة كل منتج، وتوصيل خلال ٢٤ ساعة."
+    }
+  },
+  "electronics/phone-holders": {
+    "en": {
+      "description": "Phone holders for the car, the desk and the bike: vent, dashboard and magnetic mounts, and stands for video calls. Each product page shows the phone sizes it fits and how it attaches.",
+      "meta_description": "Phone holders at {shop}: car vent, dashboard, magnetic and desk mounts. Fit and fixing on every product page; delivery in 24 hours."
+    },
+    "ar": {
+      "description": "حوامل موبايل للسيارة والمكتب والدراجة: حوامل لفتحات التكييف ولوحة القيادة ومغناطيسية، وحوامل للمكالمات المرئية. في صفحة كل منتج مقاسات الهواتف المناسبة وطريقة التثبيت.",
+      "meta_description": "حوامل موبايل من {shop}: لفتحات التكييف ولوحة القيادة ومغناطيسية وللمكتب. المقاس والتثبيت في صفحة كل منتج، وتوصيل خلال ٢٤ ساعة."
+    }
+  },
+  "electronics/power-banks": {
+    "en": {
+      "description": "Power banks to keep your phone charged away from a socket, from slim pocket sizes to high-capacity models that charge a phone several times. Each product page gives the capacity in mAh, the output and the ports.",
+      "meta_description": "Power banks at {shop}: slim and high-capacity, with fast-charging outputs. Capacity and ports on every product page; delivery in 24 hours."
+    },
+    "ar": {
+      "description": "بنوك طاقة تُبقي هاتفك مشحوناً بعيداً عن المقبس، من المقاسات النحيفة للجيب إلى الموديلات عالية السعة التي تشحن الهاتف عدة مرات. في صفحة كل منتج السعة بالملي أمبير وقدرة الخرج والمنافذ.",
+      "meta_description": "بنوك طاقة من {shop}: نحيفة وعالية السعة، بمخارج شحن سريع. السعة والمنافذ في صفحة كل منتج، وتوصيل خلال ٢٤ ساعة."
+    }
+  },
+  "electronics/screen-protectors": {
+    "en": {
+      "description": "Tempered-glass and film screen protectors for popular phone models. Choose the one made for your exact model so it covers the screen edge to edge — the compatible models are listed on each product page.",
+      "meta_description": "Screen protectors at {shop}: tempered glass for popular phones. Compatible models on every product page; delivery in 24 hours."
+    },
+    "ar": {
+      "description": "واقيات شاشة من الزجاج المقوّى والفيلم لموديلات الهواتف الشائعة. اختر الواقي المصنوع لموديلك بالضبط ليغطي الشاشة من الحافة إلى الحافة — الموديلات المتوافقة في صفحة كل منتج.",
+      "meta_description": "واقيات شاشة من {shop}: زجاج مقوّى للهواتف الشائعة. الموديلات المتوافقة في صفحة كل منتج، وتوصيل خلال ٢٤ ساعة."
+    }
+  }
+}

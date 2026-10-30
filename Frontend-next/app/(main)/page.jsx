@@ -1,9 +1,15 @@
 import HomeClient from './HomeClient'
 import { safeJsonLd } from '@/src/lib/safeJsonLd'
 import { getServerHome } from '@/src/lib/serverCatalog'
+// the campaign banner's live price, stock and facts (2026-10-29, Watchizer only): one cached read of the product
+import { getServerV2Product } from '@/src/lib/serverV2'
+import { bannerModel } from '@/src/lib/experienceSpecs'
+import { PRODUCT_SLUG } from '@/src/content/grandPrix1513477'
 import { requestLang, alternatesFor, localePath, SITE } from '@/src/lib/requestLang'
 // the shop's real accounts, from the one place the contact page reads them (2026-10-19)
 import { FACEBOOK, INSTAGRAM } from '@/src/content/trustPages'
+// the proposed title and meta behind the home headline switch (off: null, and HOME_TEXT stands)
+import { PROPOSED_HOME_META } from '@/src/content/homeHeadline'
 
 // ISR: render on the server (with the rails' cards in the HTML for SEO), cache, and
 // revalidate every 5 min — also how soon a change on the dashboard's Home rails screen shows.
@@ -31,7 +37,7 @@ const HOME_TEXT = {
 
 export async function generateMetadata() {
   const { urlLang } = await requestLang()
-  const t = HOME_TEXT[urlLang]
+  const t = { ...HOME_TEXT[urlLang], ...(PROPOSED_HOME_META?.[urlLang] || {}) }
   // English keeps its exact canonical, trailing slash included.
   const url = urlLang === 'ar' ? `${SITE}${localePath('/', 'ar')}` : `${SITE}/`
   return {
@@ -106,7 +112,8 @@ const storeJsonLd = {
       '@type': 'OpeningHoursSpecification',
       dayOfWeek: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
       opens: '10:00',
-      closes: '22:00',
+      // the client's hours (Michael, 2026-10-29): every day 10:00 to midnight, written 23:59 (Google's form)
+      closes: '23:59',
     },
   ],
   // The accounts the site actually links (2026-10-19, the developer). This used to name a different pair — a bare
@@ -125,14 +132,18 @@ const storeJsonLd = {
 // The rails and their cards come from core's `catalog/home` (C-1 stage 4 slice C) — not the whole
 // catalogue. null on failure: the client shows its retry instead of rails.
 export default async function HomePage() {
-  const home = await getServerHome()
+  const [home, campaign] = await Promise.all([
+    getServerHome(),
+    // never the home's failure: a product that cannot be read leaves the banner without price, stock and facts
+    getServerV2Product(PRODUCT_SLUG).then((page) => (page ? bannerModel(page) : null), () => null),
+  ])
   return (
     <>
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: safeJsonLd(storeJsonLd) }}
       />
-      <HomeClient initialHome={home} />
+      <HomeClient initialHome={home} campaign={campaign} />
     </>
   )
 }

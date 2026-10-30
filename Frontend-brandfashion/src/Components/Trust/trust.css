@@ -511,3 +511,77 @@
   .wz-contact-grid { grid-template-columns: minmax(0, 1fr); }
   .wz-contact-grid > li:has(.wz-contact-card--instagram) { grid-column: auto; }
 }
+
+/* ── FAQ (SEO item 5, 2026-10-30) ─────────────────────────────────────── */
+.wz-faq {
+  max-width: 820px;
+}
+.wz-faq-intro {
+  margin: 0 0 32px;
+  font-family: var(--wz-serif);
+  font-size: clamp(1.05rem, 1.8vw, 1.25rem);
+  font-weight: 300;
+  line-height: 1.75;
+  color: var(--wz-ink-soft);
+}
+.wz-faq-intro a,
+.wz-faq-item__a a {
+  color: var(--wz-ink);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.wz-faq-intro a:hover,
+.wz-faq-item__a a:hover {
+  color: var(--wz-gold-dark);
+}
+.wz-faq-group {
+  margin: 0 0 36px;
+}
+.wz-faq-group__title {
+  margin: 0 0 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  font-family: var(--wz-serif);
+  font-size: 1.35rem;
+  font-weight: 400;
+  color: var(--wz-ink);
+}
+.wz-faq-item {
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+.wz-faq-item__q {
+  position: relative;
+  padding: 16px 0;
+  padding-inline-end: 32px;
+  cursor: pointer;
+  list-style: none;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--wz-ink);
+}
+.wz-faq-item__q::-webkit-details-marker {
+  display: none;
+}
+.wz-faq-item__q::after {
+  content: '+';
+  position: absolute;
+  inset-inline-end: 4px;
+  top: 14px;
+  font-size: 20px;
+  line-height: 1;
+  color: var(--wz-gold-dark);
+}
+.wz-faq-item[open] > .wz-faq-item__q::after {
+  content: '\2212';
+}
+.wz-faq-item__q:focus-visible {
+  outline: 2px solid var(--wz-gold);
+  outline-offset: 2px;
+}
+.wz-faq-item__a {
+  margin: 0 0 18px;
+  font-size: 15.5px;
+  line-height: 1.85;
+  color: rgba(0, 0, 0, 0.72);
+}

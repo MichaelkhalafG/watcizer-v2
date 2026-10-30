@@ -246,7 +246,23 @@ export default function HomeClient({ initialHome = null }) {
           </div>
         </section>
       ) : (
-        <WatchHero />
+        <>
+          <WatchHero />
+          {/*
+           * A banner UNDER the 3D hero (2026-10-27, the hero product page). Until today a shop's banners
+           * showed only when its hero was `banner`, which REPLACES the 3D watch; a Watchizer banner that
+           * points at a page (the dashboard's "URL" target takes any internal path) therefore cost the 3D
+           * hero. With the hero `three_d` and at least one active banner, the same BannerHero draws here,
+           * below the watch; with none — Watchizer today — nothing changes. A twin: both apps, one line.
+           */}
+          {banners.length > 0 && (
+            <section className="wz-home-section">
+              <div className="wz-container">
+                <BannerHero banners={banners} lang={language} dir={isRTL ? 'rtl' : 'ltr'} />
+              </div>
+            </section>
+          )}
+        </>
       )}
 
       <section className="wz-home-section">

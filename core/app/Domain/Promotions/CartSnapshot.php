@@ -35,6 +35,8 @@ final readonly class CartSnapshot
      * @param  float  $subtotal  sum of the lines, excluding shipping
      * @param  float  $shippingCost  the resolved city's cost, so a `free_shipping` rule has something to read when it is unlocked
      * @param  string  $paymentMethod  cash | paymob | whatsapp
+     * @param  string|null  $code  the coupon code the shopper typed (M1u), or null
+     * @param  list<string>  $customerKeys  who is buying, for per-customer limits: u:<id>, e:<email>, p:<phone>
      */
     public function __construct(
         public int $storefrontId,
@@ -42,6 +44,8 @@ final readonly class CartSnapshot
         public float $subtotal,
         public float $shippingCost,
         public string $paymentMethod,
+        public ?string $code = null,
+        public array $customerKeys = [],
     ) {}
 
     /** Total units of one product across every line, whatever its variant or bucket. */

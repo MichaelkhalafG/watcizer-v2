@@ -1,4 +1,5 @@
 import type { FormDataConvertible } from "@inertiajs/core";
+import { QuickSearch, matchesTerm, useQueryTerm } from "@/components/table/QuickSearch";
 import { router, usePage } from "@inertiajs/react";
 import {
     ChevronDown,
@@ -264,12 +265,41 @@ export default function CategoriesIndex({
      * with a greater depth, up to the next row at its own depth or shallower. That makes hiding a
      * subtree a single scan with no tree to rebuild.
      */
+    // M1x: search by name (either language) or link; a match shows with every ancestor, so the branch still reads
+    const [term, setTerm] = useQueryTerm();
+    const keep = useMemo(() => {
+        if (term.trim() === "") {
+            return null;
+        }
+        const ids = new Set<number>();
+        for (const node of nodes) {
+            if (matchesTerm(term, ...Object.values(node.name), node.slug)) {
+                for (const part of node.path.split("/")) {
+                    if (part !== "") {
+                        ids.add(Number(part));
+                    }
+                }
+                ids.add(node.id);
+            }
+        }
+        return ids;
+    }, [nodes, term]);
+    const matched = keep === null ? nodes.length : nodes.filter((node) => matchesTerm(term, ...Object.values(node.name), node.slug)).length;
+
     const visible = useMemo(() => {
         const out: Array<{ node: Node; isLast: boolean; hasChildren: boolean }> = [];
         let hiddenBelow: number | null = null;
 
         for (let i = 0; i < nodes.length; i++) {
             const node = nodes[i];
+            if (keep !== null) {
+                // searching: the matches and their ancestors, whatever is folded
+                if (keep.has(node.id)) {
+                    const nextKept = nodes.slice(i + 1).find((other) => keep.has(other.id));
+                    out.push({ node, isLast: nextKept === undefined || nextKept.depth < node.depth, hasChildren: nextKept !== undefined && nextKept.depth > node.depth });
+                }
+                continue;
+            }
 
             if (hiddenBelow !== null) {
                 if (node.depth > hiddenBelow) {
@@ -293,7 +323,7 @@ export default function CategoriesIndex({
         }
 
         return out;
-    }, [nodes, collapsed]);
+    }, [nodes, collapsed, keep]);
 
     /** Every node that HAS children — what "collapse all" needs and what "expand all" clears. */
     const branches = useMemo(
@@ -511,6 +541,15 @@ export default function CategoriesIndex({
                     )}
                 </CardHeader>
                 <CardContent className="space-y-1.5">
+                    {nodes.length > 0 ? (
+                        <QuickSearch
+                            value={term}
+                            onChange={setTerm}
+                            placeholder={t("categories.search_placeholder", "ابحث باسم التصنيف أو الرابط…")}
+                            count={matched}
+                            total={nodes.length}
+                        />
+                    ) : null}
                     {nodes.length === 0 ? (
                         <p className="py-6 text-center text-sm text-muted-foreground">
                             {t("categories.empty", "لا توجد تصنيفات بعد.")}

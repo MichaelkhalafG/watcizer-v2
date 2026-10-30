@@ -4,7 +4,9 @@ namespace App\Http\Controllers\Manage\Auth;
 
 use App\Domain\Access\Preferences;
 use App\Domain\Access\Roles;
+use App\Domain\Activity\ActivityLog;
 use App\Models\User;
+use App\Support\Coerce;
 use App\Support\ManageText;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -106,6 +108,8 @@ final class LoginController
 
         RateLimiter::clear($key);
         $request->session()->regenerate();
+        // who opened the dashboard, and when (M1w) — the signed-in user is the actor
+        ActivityLog::record('users', Coerce::nint($user->getAuthIdentifier()), ActivityLog::LOGIN, label: $user->email);
 
         return redirect()->intended(route('manage.home'));
     }

@@ -25,6 +25,12 @@ final readonly class PromotionOutcome
      * @param  array<int, string>  $skipped  rule id => a `PromotionRules::SKIP_*` reason
      * @param  float  $discount  what the money rewards take off the order total, in EGP
      * @param  bool  $freeShipping  true when the discount above includes a waived shipping cost
+     * @param  list<array{rule_id: int, code: string|null, label_en: string|null, label_ar: string|null, amount: float, free_shipping: bool}>  $applied
+     *         every rule that moved money, the winner first (more than one only when the rules are stackable) — M1u
+     * @param  list<array{index: int, rule_id: int, product_id: int|null, variant_id: int|null, quantity: int, amount: float}>  $lines
+     *         what came off each cart line (`index` into the snapshot's lines), summing to the goods part of `discount`
+     * @param  array{code: string, status: string, rule_id: int|null, messages: array{en: string, ar: string}}|null  $coupon
+     *         what happened to the code the shopper typed, or null when none was typed
      */
     public function __construct(
         public ?int $ruleId = null,
@@ -32,6 +38,9 @@ final readonly class PromotionOutcome
         public array $skipped = [],
         public float $discount = 0.0,
         public bool $freeShipping = false,
+        public array $applied = [],
+        public array $lines = [],
+        public ?array $coupon = null,
     ) {}
 
     /** Nothing applies. The most common answer, and the one that must cost nothing. */

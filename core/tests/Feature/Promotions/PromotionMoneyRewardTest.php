@@ -91,11 +91,12 @@ it('never discounts more than the cart is worth', function () {
     $outcome = moneyEngine()->evaluate($cart);
 
     /*
-     * Clamped to what the cart can bear — subtotal plus the shipping it could waive. The customer
-     * gets a free cart, never a refund, and the order total can never go negative.
+     * Clamped to what the GOODS can bear (M1u, 2026-10-30, Michael: order total = goods − discount + delivery).
+     * The customer gets the goods free, never a refund, and still pays the delivery a money-off reward does not
+     * waive — only a `free_shipping` reward takes delivery off. Before M1u this read 130 (goods + delivery).
      */
-    expect($outcome->discount)->toBe(130.0)
-        ->and($outcome->discount)->toBeLessThanOrEqual($cart->subtotal + $cart->shippingCost);
+    expect($outcome->discount)->toBe(100.0)
+        ->and($outcome->discount)->toBeLessThanOrEqual($cart->subtotal);
 });
 
 it('reports a money rule that discounts NOTHING as a skip rather than a silent win', function () {
@@ -247,9 +248,9 @@ it('clamps the SUM of a rule’s rewards, not each one on its own', function () 
     $cart = PromotionFixture::cart([['product' => $product, 'qty' => 1, 'price' => 300.0]], shipping: 40.0);
     $outcome = moneyEngine()->evaluate($cart);
 
-    // Exactly what the cart can bear — once.
-    expect($outcome->discount)->toBe(340.0)
-        ->and($outcome->discount)->toBe(round($cart->subtotal + $cart->shippingCost, 2));
+    // Exactly what the goods can bear — once (M1u: delivery is not a money-off reward's to take; it read 340).
+    expect($outcome->discount)->toBe(300.0)
+        ->and($outcome->discount)->toBe(round($cart->subtotal, 2));
 });
 
 it('leaves one reward’s value unclamped, because the ceiling belongs to the cart', function () {

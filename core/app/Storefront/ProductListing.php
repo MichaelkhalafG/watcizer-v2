@@ -2,7 +2,9 @@
 
 namespace App\Storefront;
 
+use App\Domain\Content\SeoTexts;
 use App\Support\ArabicSearch;
+use App\Support\Coerce;
 use App\Support\Val;
 use App\Transform\Row;
 use Illuminate\Database\Query\Builder;
@@ -227,6 +229,8 @@ final class ProductListing
                 'locale' => $this->ctx->locale,
                 'filters' => $filters,
                 'category' => $node === null ? null : CategoryTree::ref($node),
+                // the brand or category page's own introduction and meta description, both languages (M1y)
+                'context' => $this->context($nodes, $filters['brand']),
             ],
             'links' => [
                 'self' => $link($page),
@@ -234,6 +238,47 @@ final class ProductListing
                 'prev' => $page > 1 ? $link($page - 1) : null,
             ],
         ];
+    }
+
+    /**
+     * The text of the page this listing IS (M1y, 2026-10-30): one category and no brand → that category's text,
+     * keyed by its path; one brand and no category → that brand's, keyed by its slug (an id is resolved to it).
+     * Anything else is a filtered view, not a page with a text of its own → null.
+     *
+     * Cached per page under the storefront's version (QueryBudgetTest: a category listing stays within its 7 queries
+     * warm). Wrapped in an array so a page WITHOUT a text is cached too — `Cache::remember` stores no null — and
+     * forgotten by the flush every write of a page text ends with.
+     *
+     * @param  list<array<string, mixed>>  $nodes
+     * @param  list<string>  $brands
+     * @return array<string, mixed>|null
+     */
+    private function context(array $nodes, array $brands): ?array
+    {
+        if (count($nodes) === 1 && $brands === []) {
+            return $this->pageText('category', Val::str($nodes[0], 'path'));
+        }
+        if ($nodes === [] && count($brands) === 1) {
+            $slug = $brands[0];
+            if (ctype_digit($slug)) {
+                $ref = $this->lookups->ref('brands', (int) $slug);
+                $slug = is_string($ref['slug'] ?? null) ? $ref['slug'] : null;
+            }
+
+            return $slug === null ? null : $this->pageText('brand', $slug);
+        }
+
+        return null;
+    }
+
+    /** @return array<string, mixed>|null */
+    private function pageText(string $type, string $key): ?array
+    {
+        $sf = $this->ctx->id();
+        $hit = Coerce::arr($this->cache->remember($sf, 'page_text', $type.':'.$key, config()->integer('storefront.ttl.count'),
+            fn (): array => ['text' => SeoTexts::bilingual($sf, $type, $key)]));
+
+        return is_array($hit['text'] ?? null) ? Coerce::arr($hit['text']) : null;
     }
 
     /**

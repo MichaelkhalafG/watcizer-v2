@@ -60,6 +60,8 @@ interface StorefrontForm {
     is_active: boolean;
     /** Does this storefront's frontend compute and display a promotion-aware total? */
     money_rewards: boolean;
+    /** Free shipping when the goods reach this amount (EGP); null = off (FreeShipping, 2026-10-29). */
+    free_shipping_over: number | null;
     urls: StorefrontUrls;
     /** What the shop uses today for each URL — the override or the derived value. */
     derived_urls: StorefrontUrls;
@@ -97,6 +99,8 @@ export default function StorefrontEdit({ storefront, locale_options }: { storefr
         currency: storefront.currency,
         is_active: storefront.is_active,
         money_rewards: storefront.money_rewards,
+        // a string for the field; empty (or 0) is "off" on the server
+        free_shipping_over: storefront.free_shipping_over === null ? '' : String(storefront.free_shipping_over),
         urls: {
             frontend: storefront.urls.frontend,
             payment_return: storefront.urls.payment_return,
@@ -529,6 +533,34 @@ export default function StorefrontEdit({ storefront, locale_options }: { storefr
                                 )}
                             </p>
                         </Alert>
+                    </CardContent>
+                </Card>
+
+                {/*
+                 * Free shipping over a threshold (2026-10-29, the client's 10,000 EGP). Checked on the goods at the
+                 * prices charged, before any promotion — the number the storefront shows as the subtotal, so the cart,
+                 * the checkout, the order and the amount sent to Paymob agree (App\Domain\Shipping\FreeShipping).
+                 */}
+                <Card>
+                    <CardHeader>
+                        <CardTitle>{t('storefronts.edit_free_shipping_section', 'الشحن المجاني')}</CardTitle>
+                    </CardHeader>
+                    <CardContent className="grid gap-5 sm:grid-cols-2">
+                        <TextField
+                            label={t('storefronts.edit_free_shipping_over', 'شحن مجاني للطلبات من (ج.م)')}
+                            type="number"
+                            inputMode="decimal"
+                            min={0}
+                            step="0.01"
+                            dir="ltr"
+                            value={form.data.free_shipping_over}
+                            onChange={(value) => form.setData('free_shipping_over', value)}
+                            error={errors.free_shipping_over ?? null}
+                            hint={t(
+                                'storefronts.edit_free_shipping_hint',
+                                'الطلبات التي تبلغ قيمة منتجاتها هذا المبلغ تُشحن مجانًا على هذا المتجر، بالأسعار المحصَّلة وقبل أي عرض. ٠ أو فارغ يوقفه. رقم العميل: ١٠٬٠٠٠.',
+                            )}
+                        />
                     </CardContent>
                 </Card>
 

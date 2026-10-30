@@ -4,7 +4,8 @@ import { Badge } from '@/components/ui/badge';
 import { Num } from '@/components/ui/bidi';
 import { Select } from '@/components/ui/input';
 import ManageLayout from '@/layouts/ManageLayout';
-import { useT } from '@/lib/i18n';
+import { useLocale, useT } from '@/lib/i18n';
+import { Link } from '@inertiajs/react';
 import { changedFieldLabel } from '@/lib/labels';
 import type { TablePayload } from '@/types';
 
@@ -50,6 +51,11 @@ interface Entry {
     pre_handover: boolean;
     changes: Record<string, Change>;
     summary: string;
+    /** M1w: the product's SKU (or internal code) and its edit page, for a product or variant row. */
+    sku: string | null;
+    link: string | null;
+    /** Written inside a bulk action. */
+    bulk: boolean;
 }
 
 interface Props {
@@ -58,6 +64,8 @@ interface Props {
         users: { value: string; label: string }[];
         actions: { value: string; label: string }[];
         subject_types: { value: string; label: string }[];
+        /** M1w: price / stock / bulk / sign-in. */
+        kinds: { value: string; label: string }[];
         /** §4.2: the shops, for "what happened on this shop". */
         storefronts: { value: string; label: string }[];
     };
@@ -98,6 +106,8 @@ function Value({ value }: { value: Change['from'] }) {
 
 export default function ActivityIndex({ table, filters, coverage, pre_handover_note: preHandoverNote }: Props) {
     const t = useT();
+    // the arrow reads old → new in the page's direction: ← in Arabic, → in English
+    const arrow = useLocale() === 'ar' ? '←' : '→';
     const columns: Column<Entry>[] = [
         {
             key: 'created_at',
@@ -126,7 +136,12 @@ export default function ActivityIndex({ table, filters, coverage, pre_handover_n
             key: 'action',
             header: t('activity.action', 'الإجراء'),
             sortable: true,
-            cell: (row) => <Badge variant={actionTone(row.action)}>{row.action_label}</Badge>,
+            cell: (row) => (
+                <div className="flex flex-wrap items-center gap-1">
+                    <Badge variant={actionTone(row.action)}>{row.action_label}</Badge>
+                    {row.bulk && <Badge variant="neutral">{t('activity.kind_bulk', 'تغيير جماعي')}</Badge>}
+                </div>
+            ),
         },
         /*
          * `ما تغيّر` sits DIRECTLY beside `الإجراء`, and `السجل` is capped.
@@ -157,7 +172,7 @@ export default function ActivityIndex({ table, filters, coverage, pre_handover_n
                                     one is something to notice. */}
                                 <span className="font-medium">{changedFieldLabel(t, field)}</span>
                                 <Value value={change.from} />
-                                <span className="text-muted-foreground">←</span>
+                                <span className="text-muted-foreground">{arrow}</span>
                                 <Value value={change.to} />
                             </li>
                         ))}
@@ -175,8 +190,20 @@ export default function ActivityIndex({ table, filters, coverage, pre_handover_n
             cell: (row) => (
                 <div className="min-w-0 max-w-[20rem]">
                     <div className="truncate" title={row.subject_label ?? undefined}>
-                        {row.subject_label ?? '—'}
+                        {/* M1w: a product row opens the product */}
+                        {row.link ? (
+                            <Link href={row.link} className="underline-offset-2 hover:underline">
+                                {row.subject_label ?? '—'}
+                            </Link>
+                        ) : (
+                            (row.subject_label ?? '—')
+                        )}
                     </div>
+                    {row.sku && (
+                        <div className="truncate text-xs">
+                            <Num>{row.sku}</Num>
+                        </div>
+                    )}
                     <div className="truncate text-xs text-muted-foreground">
                         {/* Item 10: the word, which the filter above has always used. */}
                         {row.subject_type_label}
@@ -197,7 +224,8 @@ export default function ActivityIndex({ table, filters, coverage, pre_handover_n
             <div className="mb-3">
                 <h1 className="text-lg font-semibold">{t('activity.title', 'سجل النشاط')}</h1>
                 <p className="mt-1 text-sm text-muted-foreground">
-                    {t('activity.subtitle', 'من غيّر ماذا، ومتى، وما كانت القيمة قبل التغيير.')}
+                    {t('activity.subtitle', 'من غيّر ماذا، ومتى، وما كانت القيمة قبل التغيير.')}{' '}
+                    {t('activity.times_cairo', 'الأوقات بتوقيت القاهرة.')}
                 </p>
             </div>
 
@@ -213,13 +241,14 @@ export default function ActivityIndex({ table, filters, coverage, pre_handover_n
                 table={table}
                 columns={columns}
                 rowId={(row) => row.id}
-                searchPlaceholder={t('activity.search_placeholder', 'بداية اسم السجل أو المستخدم، أو رقم السجل…')}
+                searchPlaceholder={t('activity.search_placeholder_product', 'اسم المنتج أو جزء من رقم الموديل، بداية اسم السجل أو المستخدم، أو رقم السجل…')}
                 filters={(setFilter, current) => (
                     <>
                         {(
                             [
                                 ['user_id', t('activity.all_users', 'كل المستخدمين'), filters.users],
                                 ['action', t('activity.all_actions', 'كل الإجراءات'), filters.actions],
+                                ['kind', t('activity.all_kinds', 'كل أنواع التغيير'), filters.kinds],
                                 ['subject_type', t('activity.all_types', 'كل الأنواع'), filters.subject_types],
                                 ['storefront_id', t('activity.all_storefronts', 'كل المتاجر'), filters.storefronts],
                             ] as const

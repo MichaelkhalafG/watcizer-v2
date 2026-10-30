@@ -139,6 +139,8 @@ final class Navigation
                     // The home page's product rails and their order (C-1 stage 4 slice C, 2026-09-29).
                     self::item('home_rails', ManageText::t('home_rails.title', 'أشرطة الصفحة الرئيسية'), 'Rows3', Role::MANAGE_LEGACY_CONTENT, route: 'manage.home_rails.index', params: ['storefront' => $storefrontId]),
                     self::item('blogs', ManageText::t('nav.blogs', 'المقالات'), 'Newspaper', Role::MANAGE_LEGACY_CONTENT, route: 'manage.blogs.index'),
+                    // The brand and category pages' own words (M1y, 2026-10-30).
+                    self::item('page_texts', ManageText::t('page_texts.title', 'نصوص الصفحات'), 'FileText', Role::MANAGE_LEGACY_CONTENT, route: 'manage.page_texts.index', params: ['storefront' => $storefrontId]),
                     /*
                      * Promotions — BUILT, and deliberately PARKED (developer, 2026-09-17).
                      *

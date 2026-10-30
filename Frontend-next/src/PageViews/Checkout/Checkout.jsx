@@ -22,6 +22,11 @@ import { useShippingPrices } from '../../Hooks/useShippingPrices'
 import http from '../../Context/api'
 import useCart from '../../Hooks/useCart'
 import { cartStore } from '../../Store/cartStore'
+import useFreeShipping from '../../Hooks/useFreeShipping'
+import usePromotion from '../../Hooks/usePromotion'
+import CouponBox from '../../Components/Cart/CouponBox'
+import { discountLabel, payable, setStoredCoupon, storedCoupon } from '../../lib/coupon'
+import { freeShippingOf, shippingCharged } from '../../lib/freeShipping'
 import { handleImgError, PLACEHOLDER_IMG } from '../../utils/imageUrl'
 import { STOREFRONT_CODE } from '../../lib/env'
 import TrustSignals from '../../Components/Merchandising/TrustSignals'
@@ -100,6 +105,7 @@ const OrderSummary = memo(function OrderSummary({
   language,
   shippingCost,
   shippingName,
+  shipsFree,
   subtotal,
   savings,
   total,
@@ -108,6 +114,7 @@ const OrderSummary = memo(function OrderSummary({
   onPlace,
   isRTL,
 }) {
+  const promotion = usePromotion()
   const t = (en, ar) => (isRTL ? ar : en)
   const currency = isRTL ? 'ج.م' : 'EGP'
   const fmt = (v) => Math.round(Number(v) || 0).toLocaleString(isRTL ? 'ar-EG' : 'en-US')
@@ -153,7 +160,7 @@ const OrderSummary = memo(function OrderSummary({
           {shippingName ? ` · ${shippingName}` : ''}
         </span>
         <span className="v">
-          {shippingCost > 0 ? `${fmt(shippingCost)} ${currency}` : '—'}
+          {shipsFree ? t('Free', 'مجاني') : shippingCost > 0 ? `${fmt(shippingCost)} ${currency}` : '—'}
         </span>
       </div>
 
@@ -163,6 +170,15 @@ const OrderSummary = memo(function OrderSummary({
           <span className="v">−{fmt(savings)} {currency}</span>
         </div>
       )}
+
+      {promotion.discount > 0 ? (
+        <div className="wz-checkout-line is-save">
+          <span>{discountLabel(promotion.applied, isRTL)}</span>
+          <span className="v">−{fmt(promotion.discount)} {currency}</span>
+        </div>
+      ) : null}
+
+      <CouponBox isRTL={isRTL} />
 
       <div className="wz-checkout-divider" />
 
@@ -400,24 +416,32 @@ function Checkout() {
    * handed to the confirmation page explicitly, below, rather than re-derived there — two places
    * subtracting shipping is two places to drift.
    */
+  // what the shopper pays, as core priced the promotion in the cart answer (M1u): shown; core takes it off itself
+  const promotion = usePromotion()
+  const couponApplied = promotion.coupon?.status === 'applied' ? promotion.coupon.code : null
   const initiateFired = useRef(false)
   useEffect(() => {
     if (initiateFired.current) return
     if (items.length === 0 || subtotal <= 0) return
     initiateFired.current = true
     trackInitiateCheckout({
-      value: subtotal,
+      value: payable(subtotal, promotion.discount, 0),
+      coupon: couponApplied,
       contents: items.map((i) => ({
         id: i.product_id ?? i.offer_id ?? null,
         quantity: i.quantity,
         price: Number(i.piece_price),
+        discount: (promotion.lines[i.id] || 0) / (i.quantity || 1),
       })),
     })
-  }, [items, subtotal])
+  }, [items, subtotal, promotion, couponApplied])
 
-  const shippingCost = activeCity ? Number(activeCity.Price) || 0 : 0
+  // free over the storefront's threshold (core's cart answer, 2026-10-29); the governorate's price otherwise
+  const freeShipping = useFreeShipping(subtotal)
+  const shippingCost = activeCity ? shippingCharged(activeCity.Price, freeShipping) : 0
   const shippingName = activeCity ? (isRTL ? activeCity.GovernorateAr : activeCity.GovernorateEn) : ''
   const total = subtotal + shippingCost
+  const payTotal = payable(subtotal, promotion.discount, shippingCost)
 
   const onlineMethods = useMemo(
     () =>
@@ -466,6 +490,7 @@ function Checkout() {
   // ── Cleanup (replaces the old localStorage.clear() bug) ──────────────────
   const cleanupAfterOrder = useCallback(() => {
     clearCart()
+    setStoredCoupon('')
     if (isGuest) localStorage.removeItem('wz_guest_token')
     // Language, shipping cache, banners etc. are deliberately preserved.
   }, [clearCart, isGuest])
@@ -497,6 +522,10 @@ function Checkout() {
       return
     }
 
+    // the delivery core will charge, from the cart answer the reconcile above just stored (the threshold may only
+    // be known now): the total sent is the total core computes, so free shipping never meets a mismatch
+    const sentShipping = activeCity ? shippingCharged(activeCity.Price, freeShippingOf(cartStore.getExtraSnapshot()?.totals?.shipping?.free_over, subtotal)) : 0
+    const sentTotal = subtotal + sentShipping
     const body = {
       payment_method: paymentMethod, // 'cash' | 'card' (core maps card→paymob)
       // Which online method: core checks it (this shop's, switched on, inside its limits) before
@@ -504,7 +533,9 @@ function Checkout() {
       ...(methodId != null ? { payment_method_id: methodId } : {}),
       note: notes,
       // the client's total, checked against the server's: a price or a fee that moved is a refusal, never a charge
-      total,
+      total: sentTotal,
+      // the code the cart showed (M1u): core prices it again, and refuses the order if it no longer applies
+      ...(storedCoupon() ? { coupon: storedCoupon() } : {}),
     }
 
     if (useInline) {
@@ -547,8 +578,9 @@ function Checkout() {
         if (data.redirect_url) {
           savePendingPurchase({
             orderNumber: data.order_number,
-            value: subtotal,
-            shipping: shippingCost,
+            value: payable(subtotal, promotion.discount, 0),
+            shipping: sentShipping,
+            coupon: couponApplied,
             contents: items.map((i) => ({ id: i.product_id ?? i.offer_id ?? null, name: titleOf(i.product?.title, false), quantity: i.quantity, price: Number(i.piece_price) })),
           })
           window.location.href = data.redirect_url
@@ -576,12 +608,14 @@ function Checkout() {
           lastName: lastName.trim(),
           isGuest,
           items: snapshot,
-          total,
+          // what core charged (the stored order total, after any promotion), else what the page showed
+          total: Number(data.total ?? payTotal),
           // The MERCHANDISE value, carried separately from `total` for the Purchase pixel event:
-          // it must equal what InitiateCheckout reported, and `total` includes shipping.
-          subtotal,
+          // it must equal what InitiateCheckout reported (after the discount), and `total` includes shipping.
+          subtotal: payable(subtotal, promotion.discount, 0),
+          coupon: couponApplied,
           shippingName,
-          shippingPrice: shippingCost,
+          shippingPrice: sentShipping,
           paymentMethod,
         })
         router.push('/order-confirmation')
@@ -600,6 +634,10 @@ function Checkout() {
         }
         setErrors(map)
         setBanner(t('Please check the highlighted fields.', 'يرجى مراجعة الحقول المظللة.'))
+      } else if (status === 422 && b.error === 'coupon') {
+        setStoredCoupon('')
+        await cartStore.fetchCart()
+        setBanner(b.messages?.[isRTL ? 'ar' : 'en'] || t('This code no longer applies. Review your order.', 'هذا الكود لم يعد ينطبق. راجع طلبك.'))
       } else if (status === 422 && b.messages) {
         // A payment-method refusal: nothing was written. Both languages come back because the
         // request's Accept-Language is the browser's, not the language this page is shown in.
@@ -642,10 +680,10 @@ function Checkout() {
       setProcessing(false)
     }
   }, [
-    canSubmit, items, paymentMethod, methodId, refetchMethods, notes, total, useInline, street,
+    canSubmit, items, paymentMethod, methodId, refetchMethods, notes, useInline, street,
     apartment, shippingid, phone, selectedAddressId, isGuest, firstName, lastName, email,
-    isRTL, cleanupAfterOrder, router, setOrderData, shippingName, shippingCost, user, t,
-    subtotal, reconcile,
+    isRTL, cleanupAfterOrder, router, setOrderData, shippingName, activeCity, user, t,
+    subtotal, promotion, payTotal, couponApplied, reconcile,
   ])
 
   const handleSignOut = useCallback(() => {
@@ -1011,8 +1049,9 @@ function Checkout() {
             subtotal={subtotal}
             savings={savings}
             shippingCost={shippingCost}
+            shipsFree={Boolean(activeCity) && freeShipping.free}
             shippingName={shippingName}
-            total={total}
+            total={payTotal}
             canSubmit={canSubmit}
             processing={processing}
             onPlace={placeOrder}

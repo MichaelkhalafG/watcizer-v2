@@ -14,23 +14,15 @@ allowBuilds:
   sharp: true
   unrs-resolver: true
 
-minimumReleaseAgeExclude:
-  - '@next/env@15.5.27'
-  - '@next/swc-darwin-arm64@15.5.27'
-  - '@next/swc-darwin-x64@15.5.27'
-  - '@next/swc-linux-arm64-gnu@15.5.27'
-  - '@next/swc-linux-arm64-musl@15.5.27'
-  - '@next/swc-linux-x64-gnu@15.5.27'
-  - '@next/swc-linux-x64-musl@15.5.27'
-  - '@next/swc-win32-arm64-msvc@15.5.27'
-  - '@next/swc-win32-x64-msvc@15.5.27'
-  - next@15.5.27
-
 # Security overrides (transitive deps pulled in by next / eslint). pnpm 11 reads
 # overrides from here, not the package.json "pnpm" field. Ranges stay within the
 # same major / 0.x line so nothing jumps a major version.
 overrides:
-  sharp: "^0.35.4" # <0.35.0 → libvips CVEs; 0.35.4 bundles libheif 1.23.2, which Next 15.5.2x requires before it will optimise an AVIF SOURCE (isAvifDecodeSafe)
+  # sharp: <0.35.0 → libvips CVEs; 0.35.4 bundles libheif 1.23.2, which Next 15.5.2x requires before it will optimise an
+  # AVIF SOURCE (isAvifDecodeSafe). Raised 2026-10-30: 0.35.5 is the floor of GHSA-2464-fhr4-w9xw (Critical, RCE in the image
+  # optimiser through an upstream library, glibc Linux): the advisory's own workaround is "sharp >= 0.35.5", and
+  # next@15.5.28 requires "^0.34.3 || ^0.35.5". The lockfile already resolved 0.35.5; the floor makes it the minimum.
+  sharp: "^0.35.5"
   postcss: "^8.5.18" # <=8.5.17 → 3 advisories
   # brace-expansion: BOTH lines now have patched releases (2026-10-01) — CVE-2026-102276/-102277/
   # -102278 (DoS: recursion on nested braces, recursion in parseCommaParts, quadratic expansion).
@@ -48,6 +40,11 @@ overrides:
   # redirects by default, so a cross-origin 3xx from the Laravel origin would carry it. The origin issues none in
   # normal operation; the override is so a FRESH install can never resolve the vulnerable line again.
   follow-redirects: ">=1.16.1"
+  # zod: CVE-2023-54404 (High, DoS: one issue object per failing array element, no cap — memory) in <=4.6.5, fixed in
+  # 4.6.6 ("check array, set and map size bounds before parsing elements", colinhacks/zod#6652). 2026-10-30. Dev-only:
+  # eslint-config-next → eslint-plugin-react-hooks@7 (and its zod-validation-error), which declare ^3.25 || ^4; no
+  # storefront code imports zod and `pnpm why zod --prod` is empty, so it never parsed a visitor's input. Same major.
+  zod: "^4.6.6"
 
 patchedDependencies:
   '@react-three/fiber@9.6.1': patches/@react-three__fiber@9.6.1.patch

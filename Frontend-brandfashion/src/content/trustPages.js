@@ -46,7 +46,7 @@ export const TRUST_PAGES = {
   },
 
   // The client's confirmed details (C-4): phone and WhatsApp 01283888490, Info@brandfashionegy.com, Arcadia
-  // Mall, Instagram brand_fashion_eg. No Facebook (Michael, round 5). No opening hours: not confirmed.
+  // Mall, Instagram brand_fashion_eg. No Facebook (Michael, round 5). Opening hours: every day 10:00 to midnight (Michael, 2026-10-29).
   // 2026-10-19 (Michael): the same two branches as Watchizer — Arcadia Mall and Heliopolis, 90 El-Thawra Street.
   contact: {
     path: '/contact-us',
@@ -56,6 +56,8 @@ export const TRUST_PAGES = {
       description: `Brand Fashion customer service: phone and WhatsApp ${PHONE}. Email ${EMAIL}.`,
       group: 'Customer service (phone and WhatsApp)',
       hours: '',
+      // the STORES' hours (Michael, 2026-10-29: the client's figure, both branches); customer service has none given
+      storeHours: 'Every day, 10:00–24:00.',
       cards: [
         { icon: 'phone', label: 'Phone', value: PHONE, href: TEL, ltr: true },
         { icon: 'whatsapp', label: 'WhatsApp', value: PHONE, href: WHATSAPP, ltr: true },
@@ -63,8 +65,8 @@ export const TRUST_PAGES = {
         { icon: 'instagram', label: 'Instagram', value: '@brand_fashion_eg', href: INSTAGRAM, ltr: true },
       ],
       stores: [
-        { label: 'Arcadia Mall branch', address: 'Arcadia Mall, Corniche El Nil, Maspero extension, next to the Fairmont, 2nd floor, Cairo.' },
-        { label: 'Heliopolis branch', address: '90 El-Thawra Street, Heliopolis.' },
+        { label: 'Arcadia Mall branch', address: 'Arcadia Mall, Corniche El Nil, Maspero extension, next to the Fairmont, 2nd floor, Cairo.', hours: true },
+        { label: 'Heliopolis branch', address: '90 El-Thawra Street, Heliopolis.', hours: true },
       ],
       note: "If your question is about an order, have your order number ready. You'll find it in your confirmation email and under [*My Orders*](/account?tab=orders).",
     },
@@ -74,6 +76,7 @@ export const TRUST_PAGES = {
       description: `خدمة عملاء براند فاشون: هاتف وواتساب ${PHONE}. البريد ${EMAIL}.`,
       group: 'خدمة العملاء (هاتف وواتساب)',
       hours: '',
+      storeHours: 'يومياً من ١٠ صباحاً حتى منتصف الليل.',
       cards: [
         { icon: 'phone', label: 'هاتف', value: PHONE, href: TEL, ltr: true },
         { icon: 'whatsapp', label: 'واتساب', value: PHONE, href: WHATSAPP, ltr: true },
@@ -81,8 +84,8 @@ export const TRUST_PAGES = {
         { icon: 'instagram', label: 'إنستجرام', value: '@brand_fashion_eg', href: INSTAGRAM, ltr: true },
       ],
       stores: [
-        { label: 'فرع أركاديا مول', address: 'أركاديا مول، كورنيش النيل، امتداد ماسبيرو، بجوار فندق فيرمونت، الدور الثاني، القاهرة.' },
-        { label: 'فرع مصر الجديدة', address: '٩٠ شارع الثورة، مصر الجديدة.' },
+        { label: 'فرع أركاديا مول', address: 'أركاديا مول، كورنيش النيل، امتداد ماسبيرو، بجوار فندق فيرمونت، الدور الثاني، القاهرة.', hours: true },
+        { label: 'فرع مصر الجديدة', address: '٩٠ شارع الثورة، مصر الجديدة.', hours: true },
       ],
       note: 'إن كان سؤالك عن طلب، جهّز رقم الطلب. تجده في رسالة التأكيد وفي [«طلباتي»](/account?tab=orders).',
     },
@@ -254,4 +257,35 @@ export const TRUST_PAGES = {
       ],
     },
   },
+}
+
+/*
+ * THE STORES as structured data (Part 3 task 5, 2026-10-29) — the contact and about pages' Store + Organization
+ * JSON-LD (src/lib/storesJsonLd.js) reads these, and they say exactly what the contact page above shows: two
+ * branches, both open every day 10:00 to midnight (Michael, 2026-10-29: the client's hours, the ONLY policy-page
+ * change; midnight written `closes: '23:59'`, Google's form), and the shop's own number, 01283888490 (Michael,
+ * 2026-10-29: every storefront keeps the number it shows). `contact.*.hours` and these change together.
+ * No geo coordinates: none has been verified.
+ */
+export const STORES_LD = {
+  name: 'Brand Fashion',
+  phone: '+201283888490',
+  whatsapp: WHATSAPP,
+  email: EMAIL,
+  logo: '/logo.svg',
+  sameAs: [INSTAGRAM],
+  stores: [
+    {
+      key: 'arcadia',
+      name: 'Brand Fashion — Arcadia Mall',
+      address: { streetAddress: 'Arcadia Mall, 2nd floor, Corniche El Nil, Maspero extension, next to the Fairmont', addressLocality: 'Cairo', addressCountry: 'EG' },
+      hours: { days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'], opens: '10:00', closes: '23:59' },
+    },
+    {
+      key: 'heliopolis',
+      name: 'Brand Fashion — Heliopolis',
+      address: { streetAddress: '90 El-Thawra Street', addressLocality: 'Heliopolis', addressRegion: 'Cairo', addressCountry: 'EG' },
+      hours: { days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'], opens: '10:00', closes: '23:59' },
+    },
+  ],
 }

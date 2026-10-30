@@ -1,7 +1,6 @@
 'use client'
 import { useState, useEffect, useRef, useMemo } from 'react'
 import Link from '@/src/Components/LocaleLink'
-import Image from 'next/image'
 import { useRouter } from '@/src/Hooks/useLocaleRouter'
 import { FiMenu, FiSearch, FiShoppingBag, FiX, FiChevronDown, FiUser } from 'react-icons/fi'
 import './Header.css'
@@ -173,8 +172,9 @@ function Header() {
 
       <div className="wz-logo">
         <Link href="/" aria-label="Brand Fashion">
-          {/* LCP-critical: priority preloads it. The white wordmark on the ink bar (spec §22.4). 565×172 source. */}
-          <Image src="/wordmark-white.svg" alt="Brand Fashion" width={118} height={36} priority />
+          {/* LCP-critical: fetched first. The white wordmark on the ink bar (spec §22.4). 565×172 source.
+              No SVG goes through next/image (2026-10-30, GHSA-2464-fhr4-w9xw): next/image already served it unoptimised, as the file. */}
+          <img src="/wordmark-white.svg" alt="Brand Fashion" width={118} height={36} fetchPriority="high" decoding="async" />
         </Link>
       </div>
 
@@ -246,7 +246,7 @@ function Header() {
       <aside className={`wz-drawer ${drawerOpen ? 'is-open' : ''}`} dir={isRTL ? 'rtl' : 'ltr'} role="dialog" aria-modal="true" aria-label={t.menu} inert={!drawerOpen ? true : undefined}>
         <div className="wz-drawer-head">
           <Link href="/" onClick={closeDrawer} className="wz-drawer-logo" aria-label="Brand Fashion">
-            <Image src="/wordmark.svg" alt="Brand Fashion" width={105} height={32} />
+            <img src="/wordmark.svg" alt="Brand Fashion" width={105} height={32} loading="lazy" decoding="async" />
           </Link>
           <button type="button" className="wz-drawer-close" onClick={closeDrawer} aria-label={t.close}>
             <FiX aria-hidden="true" />

@@ -1,0 +1,825 @@
+{
+ "product": {
+  "id": 26101,
+  "slug": "hugo-boss-grand-prix-1513477-mens-chronograph-watch-black-dial-silver-stainless-steel",
+  "family": "watch",
+  "title": {
+   "ar": "ساعة هوجو بوس جراند بري 1513477 رجالي كرونوغراف مينا سوداء بسوار ستانلس ستيل فضي",
+   "en": "Hugo Boss Grand Prix 1513477 Men's Chronograph Watch Black Dial Silver Stainless Steel"
+  },
+  "short_description": {
+   "ar": "ساعة هوجو بوس جراند بري 1513477 رجالي بتصميم كرونوغراف رياضي أنيق ومينا سوداء وسوار ستانلس ستيل فضي مع ثلاث عدادات فرعية وعرض للتاريخ ومقاومة للماء حتى 30 متر",
+   "en": "Hugo Boss Grand Prix 1513477 men's chronograph watch featuring a black analog dial, silver stainless steel bracelet, three subdials, date display and 30 meter water resistance."
+  },
+  "brand": {
+   "id": 25,
+   "slug": "hugo-boss",
+   "name": {
+    "en": "Hugo Boss",
+    "ar": "هوغو بوس"
+   }
+  },
+  "grade": {
+   "id": 4,
+   "name": {
+    "en": "Classic",
+    "ar": "كلاسيكية"
+   }
+  },
+  "primary_category": {
+   "id": 1,
+   "slug": "watches",
+   "path": "watches",
+   "depth": 1,
+   "name": {
+    "en": "Watches",
+    "ar": "ساعات"
+   }
+  },
+  "image": {
+   "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018429_2026-10-26_6adf4a3d84b69.webp",
+   "srcset": [
+    {
+     "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018429_2026-10-26_6adf4a3d84b69-160.avif",
+     "width": 160,
+     "format": "avif"
+    },
+    {
+     "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018429_2026-10-26_6adf4a3d84b69-160.webp",
+     "width": 160,
+     "format": "webp"
+    },
+    {
+     "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018429_2026-10-26_6adf4a3d84b69-320.avif",
+     "width": 320,
+     "format": "avif"
+    },
+    {
+     "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018429_2026-10-26_6adf4a3d84b69-320.webp",
+     "width": 320,
+     "format": "webp"
+    },
+    {
+     "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018429_2026-10-26_6adf4a3d84b69-480.avif",
+     "width": 480,
+     "format": "avif"
+    },
+    {
+     "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018429_2026-10-26_6adf4a3d84b69-480.webp",
+     "width": 480,
+     "format": "webp"
+    },
+    {
+     "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018429_2026-10-26_6adf4a3d84b69-640.avif",
+     "width": 640,
+     "format": "avif"
+    },
+    {
+     "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018429_2026-10-26_6adf4a3d84b69-640.webp",
+     "width": 640,
+     "format": "webp"
+    },
+    {
+     "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018429_2026-10-26_6adf4a3d84b69-960.avif",
+     "width": 960,
+     "format": "avif"
+    },
+    {
+     "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018429_2026-10-26_6adf4a3d84b69-960.webp",
+     "width": 960,
+     "format": "webp"
+    }
+   ],
+   "width": 1150,
+   "height": 1150,
+   "alt": null
+  },
+  "hover_image": {
+   "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018428_2026-10-26_6adf4a3c91bbd.webp",
+   "srcset": [
+    {
+     "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018428_2026-10-26_6adf4a3c91bbd-160.avif",
+     "width": 160,
+     "format": "avif"
+    },
+    {
+     "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018428_2026-10-26_6adf4a3c91bbd-160.webp",
+     "width": 160,
+     "format": "webp"
+    },
+    {
+     "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018428_2026-10-26_6adf4a3c91bbd-320.avif",
+     "width": 320,
+     "format": "avif"
+    },
+    {
+     "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018428_2026-10-26_6adf4a3c91bbd-320.webp",
+     "width": 320,
+     "format": "webp"
+    },
+    {
+     "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018428_2026-10-26_6adf4a3c91bbd-480.avif",
+     "width": 480,
+     "format": "avif"
+    },
+    {
+     "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018428_2026-10-26_6adf4a3c91bbd-480.webp",
+     "width": 480,
+     "format": "webp"
+    },
+    {
+     "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018428_2026-10-26_6adf4a3c91bbd-640.avif",
+     "width": 640,
+     "format": "avif"
+    },
+    {
+     "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018428_2026-10-26_6adf4a3c91bbd-640.webp",
+     "width": 640,
+     "format": "webp"
+    },
+    {
+     "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018428_2026-10-26_6adf4a3c91bbd-960.avif",
+     "width": 960,
+     "format": "avif"
+    },
+    {
+     "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018428_2026-10-26_6adf4a3c91bbd-960.webp",
+     "width": 960,
+     "format": "webp"
+    }
+   ],
+   "width": 976,
+   "height": 976,
+   "alt": null
+  },
+  "colors": [
+   {
+    "id": 1,
+    "hex": "#111111",
+    "name": {
+     "en": "Black",
+     "ar": "أسود"
+    },
+    "role": "dial"
+   },
+   {
+    "id": 3,
+    "hex": "#C0C0C0",
+    "name": {
+     "en": "Silver",
+     "ar": "فضي"
+    },
+    "role": "band"
+   }
+  ],
+  "variants": [],
+  "price": {
+   "amount": 6500,
+   "sale_amount": 4200,
+   "currency": "EGP",
+   "discount_pct": 35,
+   "has_sale": true
+  },
+  "stock": {
+   "express": 0,
+   "market": 2,
+   "in_stock": true
+  },
+  "rating": {
+   "avg": null,
+   "count": 0
+  },
+  "is_featured": false,
+  "sort_order": 0,
+  "created_at": "2026-10-26T12:46:33.000000Z",
+  "updated_at": "2026-10-26T12:46:54.000000Z",
+  "long_description": {
+   "ar": "تتميز ساعة هوجو بوس جراند بري 1513477 الرجالي بتصميم يجمع بين الأناقة الكلاسيكية والطابع الرياضي العصري\n\nتأتي الساعة بمينا سوداء أنيقة مع عقارب ومؤشرات ساعات باللون الفضي بالإضافة إلى ثلاثة عدادات فرعية ونافذة لعرض التاريخ ومقياس تاكيميتر يمنح الساعة مظهرا رياضيا مميزا\n\nتتميز بهيكل وسوار من الستانلس ستيل باللون الفضي مع حركة كوارتز تعمل بالبطارية ومقاومة للماء حتى 30 متر\n\nاختيار أنيق للرجال الباحثين عن ساعة تناسب الاستخدام اليومي والإطلالات الرسمية والكاجوال",
+   "en": "The Hugo Boss Grand Prix 1513477 men's watch combines sporty sophistication with timeless elegance. Featuring a bold black dial with silver tone hands and hour markers, this chronograph watch delivers a refined and modern appearance.\n\nIts stainless steel case and silver bracelet provide a durable and stylish finish. The dial features three multifunction subdials, a date window and a tachymeter scale for a distinctive motorsport inspired design.\n\nPowered by quartz movement and featuring 30 meter water resistance, this watch is suitable for everyday wear and smart casual occasions."
+  },
+  "model_name": [],
+  "country": [],
+  "stone": [],
+  "model_number": "1513477",
+  "warranty_years": null,
+  "images": [
+   {
+    "id": 1025495,
+    "is_cover": true,
+    "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018429_2026-10-26_6adf4a3d84b69.webp",
+    "srcset": [
+     {
+      "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018429_2026-10-26_6adf4a3d84b69-160.avif",
+      "width": 160,
+      "format": "avif"
+     },
+     {
+      "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018429_2026-10-26_6adf4a3d84b69-160.webp",
+      "width": 160,
+      "format": "webp"
+     },
+     {
+      "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018429_2026-10-26_6adf4a3d84b69-320.avif",
+      "width": 320,
+      "format": "avif"
+     },
+     {
+      "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018429_2026-10-26_6adf4a3d84b69-320.webp",
+      "width": 320,
+      "format": "webp"
+     },
+     {
+      "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018429_2026-10-26_6adf4a3d84b69-480.avif",
+      "width": 480,
+      "format": "avif"
+     },
+     {
+      "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018429_2026-10-26_6adf4a3d84b69-480.webp",
+      "width": 480,
+      "format": "webp"
+     },
+     {
+      "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018429_2026-10-26_6adf4a3d84b69-640.avif",
+      "width": 640,
+      "format": "avif"
+     },
+     {
+      "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018429_2026-10-26_6adf4a3d84b69-640.webp",
+      "width": 640,
+      "format": "webp"
+     },
+     {
+      "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018429_2026-10-26_6adf4a3d84b69-960.avif",
+      "width": 960,
+      "format": "avif"
+     },
+     {
+      "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018429_2026-10-26_6adf4a3d84b69-960.webp",
+      "width": 960,
+      "format": "webp"
+     }
+    ],
+    "width": 1150,
+    "height": 1150,
+    "alt": null
+   },
+   {
+    "id": 1025496,
+    "is_cover": false,
+    "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018428_2026-10-26_6adf4a3c91bbd.webp",
+    "srcset": [
+     {
+      "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018428_2026-10-26_6adf4a3c91bbd-160.avif",
+      "width": 160,
+      "format": "avif"
+     },
+     {
+      "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018428_2026-10-26_6adf4a3c91bbd-160.webp",
+      "width": 160,
+      "format": "webp"
+     },
+     {
+      "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018428_2026-10-26_6adf4a3c91bbd-320.avif",
+      "width": 320,
+      "format": "avif"
+     },
+     {
+      "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018428_2026-10-26_6adf4a3c91bbd-320.webp",
+      "width": 320,
+      "format": "webp"
+     },
+     {
+      "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018428_2026-10-26_6adf4a3c91bbd-480.avif",
+      "width": 480,
+      "format": "avif"
+     },
+     {
+      "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018428_2026-10-26_6adf4a3c91bbd-480.webp",
+      "width": 480,
+      "format": "webp"
+     },
+     {
+      "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018428_2026-10-26_6adf4a3c91bbd-640.avif",
+      "width": 640,
+      "format": "avif"
+     },
+     {
+      "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018428_2026-10-26_6adf4a3c91bbd-640.webp",
+      "width": 640,
+      "format": "webp"
+     },
+     {
+      "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018428_2026-10-26_6adf4a3c91bbd-960.avif",
+      "width": 960,
+      "format": "avif"
+     },
+     {
+      "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018428_2026-10-26_6adf4a3c91bbd-960.webp",
+      "width": 960,
+      "format": "webp"
+     }
+    ],
+    "width": 976,
+    "height": 976,
+    "alt": null
+   },
+   {
+    "id": 1025497,
+    "is_cover": false,
+    "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018427_2026-10-26_6adf4a3bb40f0.webp",
+    "srcset": [
+     {
+      "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018427_2026-10-26_6adf4a3bb40f0-160.avif",
+      "width": 160,
+      "format": "avif"
+     },
+     {
+      "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018427_2026-10-26_6adf4a3bb40f0-160.webp",
+      "width": 160,
+      "format": "webp"
+     },
+     {
+      "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018427_2026-10-26_6adf4a3bb40f0-320.avif",
+      "width": 320,
+      "format": "avif"
+     },
+     {
+      "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018427_2026-10-26_6adf4a3bb40f0-320.webp",
+      "width": 320,
+      "format": "webp"
+     },
+     {
+      "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018427_2026-10-26_6adf4a3bb40f0-480.avif",
+      "width": 480,
+      "format": "avif"
+     },
+     {
+      "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018427_2026-10-26_6adf4a3bb40f0-480.webp",
+      "width": 480,
+      "format": "webp"
+     },
+     {
+      "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018427_2026-10-26_6adf4a3bb40f0-640.avif",
+      "width": 640,
+      "format": "avif"
+     },
+     {
+      "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018427_2026-10-26_6adf4a3bb40f0-640.webp",
+      "width": 640,
+      "format": "webp"
+     },
+     {
+      "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018427_2026-10-26_6adf4a3bb40f0-960.avif",
+      "width": 960,
+      "format": "avif"
+     },
+     {
+      "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018427_2026-10-26_6adf4a3bb40f0-960.webp",
+      "width": 960,
+      "format": "webp"
+     }
+    ],
+    "width": 1000,
+    "height": 1000,
+    "alt": null
+   },
+   {
+    "id": 1025498,
+    "is_cover": false,
+    "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018426_2026-10-26_6adf4a3ac102f.webp",
+    "srcset": [
+     {
+      "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018426_2026-10-26_6adf4a3ac102f-160.avif",
+      "width": 160,
+      "format": "avif"
+     },
+     {
+      "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018426_2026-10-26_6adf4a3ac102f-160.webp",
+      "width": 160,
+      "format": "webp"
+     },
+     {
+      "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018426_2026-10-26_6adf4a3ac102f-320.avif",
+      "width": 320,
+      "format": "avif"
+     },
+     {
+      "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018426_2026-10-26_6adf4a3ac102f-320.webp",
+      "width": 320,
+      "format": "webp"
+     },
+     {
+      "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018426_2026-10-26_6adf4a3ac102f-480.avif",
+      "width": 480,
+      "format": "avif"
+     },
+     {
+      "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018426_2026-10-26_6adf4a3ac102f-480.webp",
+      "width": 480,
+      "format": "webp"
+     },
+     {
+      "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018426_2026-10-26_6adf4a3ac102f-640.avif",
+      "width": 640,
+      "format": "avif"
+     },
+     {
+      "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018426_2026-10-26_6adf4a3ac102f-640.webp",
+      "width": 640,
+      "format": "webp"
+     },
+     {
+      "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018426_2026-10-26_6adf4a3ac102f-960.avif",
+      "width": 960,
+      "format": "avif"
+     },
+     {
+      "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018426_2026-10-26_6adf4a3ac102f-960.webp",
+      "width": 960,
+      "format": "webp"
+     }
+    ],
+    "width": 1200,
+    "height": 1200,
+    "alt": null
+   },
+   {
+    "id": 1025499,
+    "is_cover": false,
+    "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018425_2026-10-26_6adf4a39a8540.webp",
+    "srcset": [
+     {
+      "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018425_2026-10-26_6adf4a39a8540-160.avif",
+      "width": 160,
+      "format": "avif"
+     },
+     {
+      "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018425_2026-10-26_6adf4a39a8540-160.webp",
+      "width": 160,
+      "format": "webp"
+     },
+     {
+      "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018425_2026-10-26_6adf4a39a8540-320.avif",
+      "width": 320,
+      "format": "avif"
+     },
+     {
+      "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018425_2026-10-26_6adf4a39a8540-320.webp",
+      "width": 320,
+      "format": "webp"
+     },
+     {
+      "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018425_2026-10-26_6adf4a39a8540-480.avif",
+      "width": 480,
+      "format": "avif"
+     },
+     {
+      "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018425_2026-10-26_6adf4a39a8540-480.webp",
+      "width": 480,
+      "format": "webp"
+     },
+     {
+      "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018425_2026-10-26_6adf4a39a8540-640.avif",
+      "width": 640,
+      "format": "avif"
+     },
+     {
+      "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018425_2026-10-26_6adf4a39a8540-640.webp",
+      "width": 640,
+      "format": "webp"
+     },
+     {
+      "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018425_2026-10-26_6adf4a39a8540-960.avif",
+      "width": 960,
+      "format": "avif"
+     },
+     {
+      "src": "https://api.watchizereg.com/Uploads_Images/Product_image/1793018425_2026-10-26_6adf4a39a8540-960.webp",
+      "width": 960,
+      "format": "webp"
+     }
+    ],
+    "width": 1000,
+    "height": 1000,
+    "alt": null
+   }
+  ],
+  "specs": [
+   {
+    "key": "case_size",
+    "label": {
+     "ar": "قياس جسم الساعة",
+     "en": "Case size"
+    },
+    "value": 44,
+    "unit": {
+     "id": 32,
+     "code": "mm",
+     "name": {
+      "en": "mm",
+      "ar": "مم"
+     }
+    }
+   },
+   {
+    "key": "case_shape",
+    "label": {
+     "ar": "شكل جسم الساعة",
+     "en": "Case shape"
+    },
+    "value": {
+     "en": "Round",
+     "ar": "دائري"
+    },
+    "unit": null
+   },
+   {
+    "key": "case_material",
+    "label": {
+     "ar": "مادة جسم الساعة",
+     "en": "Case material"
+    },
+    "value": {
+     "en": "Stainless Steel",
+     "ar": "ستانلس ستيل"
+    },
+    "unit": null
+   },
+   {
+    "key": "glass_material",
+    "label": {
+     "ar": "خامة الزجاج",
+     "en": "Glass material"
+    },
+    "value": {
+     "en": "Sapphire Crystal",
+     "ar": "كريستال ياقوتي"
+    },
+    "unit": null
+   },
+   {
+    "key": "case_thickness",
+    "label": {
+     "ar": "سماكة جسم الساعة",
+     "en": "Case thickness"
+    },
+    "value": 11,
+    "unit": {
+     "id": 32,
+     "code": "mm",
+     "name": {
+      "en": "mm",
+      "ar": "مم"
+     }
+    }
+   },
+   {
+    "key": "band_material",
+    "label": {
+     "ar": "خامة السوار",
+     "en": "Band material"
+    },
+    "value": {
+     "en": "Stainless Steel",
+     "ar": "ستانلس ستيل"
+    },
+    "unit": null
+   },
+   {
+    "key": "band_closure",
+    "label": {
+     "ar": "قفل السوار",
+     "en": "Band closure"
+    },
+    "value": {
+     "en": "Folding Clasp",
+     "ar": "مشبك قابل للطي"
+    },
+    "unit": null
+   },
+   {
+    "key": "band_length",
+    "label": {
+     "ar": "طول السوار",
+     "en": "Band length"
+    },
+    "value": 220,
+    "unit": {
+     "id": 32,
+     "code": "mm",
+     "name": {
+      "en": "mm",
+      "ar": "مم"
+     }
+    }
+   },
+   {
+    "key": "band_width",
+    "label": {
+     "ar": "عرض السوار",
+     "en": "Band width"
+    },
+    "value": 22,
+    "unit": {
+     "id": 32,
+     "code": "mm",
+     "name": {
+      "en": "mm",
+      "ar": "مم"
+     }
+    }
+   },
+   {
+    "key": "dial_display_type",
+    "label": {
+     "ar": "نوع عرض القرص",
+     "en": "Dial display type"
+    },
+    "value": {
+     "en": "Analog",
+     "ar": "تناظري"
+    },
+    "unit": null
+   },
+   {
+    "key": "movement_type",
+    "label": {
+     "ar": "نوع الحركة",
+     "en": "Movement"
+    },
+    "value": {
+     "en": "Quartz",
+     "ar": "كوارتز"
+    },
+    "unit": null
+   },
+   {
+    "key": "height",
+    "label": {
+     "ar": "ارتفاع الساعة",
+     "en": "Watch height"
+    },
+    "value": 44,
+    "unit": {
+     "id": 32,
+     "code": "mm",
+     "name": {
+      "en": "mm",
+      "ar": "مم"
+     }
+    }
+   },
+   {
+    "key": "width",
+    "label": {
+     "ar": "عرض الساعة",
+     "en": "Watch width"
+    },
+    "value": 11,
+    "unit": {
+     "id": 32,
+     "code": "mm",
+     "name": {
+      "en": "mm",
+      "ar": "مم"
+     }
+    }
+   },
+   {
+    "key": "length",
+    "label": {
+     "ar": "طول الساعة",
+     "en": "Watch length"
+    },
+    "value": 44,
+    "unit": {
+     "id": 32,
+     "code": "mm",
+     "name": {
+      "en": "mm",
+      "ar": "مم"
+     }
+    }
+   }
+  ],
+  "attributes": {
+   "features": [
+    {
+     "id": 1,
+     "name": {
+      "en": "Water Resistant",
+      "ar": "مقاوم للماء"
+     }
+    },
+    {
+     "id": 2,
+     "name": {
+      "en": "Chronograph",
+      "ar": "كرونوغراف"
+     }
+    },
+    {
+     "id": 3,
+     "name": {
+      "en": "Date Display",
+      "ar": "عرض التاريخ"
+     }
+    },
+    {
+     "id": 9,
+     "name": {
+      "en": "Quartz",
+      "ar": "كوارتز"
+     }
+    },
+    {
+     "id": 12,
+     "name": {
+      "en": "Stopwatch",
+      "ar": "ساعة إيقاف"
+     }
+    }
+   ],
+   "genders": [
+    {
+     "id": 1,
+     "name": {
+      "en": "Men",
+      "ar": "رجالي"
+     }
+    }
+   ],
+   "colors": {
+    "dial": [
+     {
+      "id": 1,
+      "hex": "#111111",
+      "name": {
+       "en": "Black",
+       "ar": "أسود"
+      }
+     }
+    ],
+    "band": [
+     {
+      "id": 3,
+      "hex": "#C0C0C0",
+      "name": {
+       "en": "Silver",
+       "ar": "فضي"
+      }
+     }
+    ],
+    "main": []
+   }
+  },
+  "categories": [
+   {
+    "id": 1,
+    "slug": "watches",
+    "path": "watches",
+    "depth": 1,
+    "name": {
+     "en": "Watches",
+     "ar": "ساعات"
+    },
+    "is_primary": true
+   },
+   {
+    "id": 6,
+    "slug": "chronograph",
+    "path": "watches/chronograph",
+    "depth": 2,
+    "name": {
+     "en": "Chronograph",
+     "ar": "كرونوغراف"
+    },
+    "is_primary": false
+   }
+  ],
+  "breadcrumb": [
+   {
+    "id": 1,
+    "slug": "watches",
+    "path": "watches",
+    "depth": 1,
+    "name": {
+     "en": "Watches",
+     "ar": "ساعات"
+    }
+   }
+  ],
+  "meta": {
+   "title": {
+    "ar": "Hugo Boss Watch For Men 1513477 | هوغو بوس",
+    "en": "Hugo Boss Watch For Men 1513477"
+   },
+   "description": {
+    "ar": "Hugo Boss Watch For Men 1513477. موديل 1513477. المواصفات الكاملة والصور داخل صفحة المنتج.",
+    "en": "Hugo Boss Watch For Men 1513477. Model 1513477. Full specification and photos on the product page."
+   }
+  }
+ },
+ "related": [],
+ "locale": "en"
+}

@@ -92,6 +92,37 @@ final class ActivityLog
 
     public const REVOKED = 'revoked';
 
+    /** A dashboard sign-in (M1w, 2026-10-30): who opened the dashboard, and when. */
+    public const LOGIN = 'login';
+
+    /** The `context` of a row written inside a bulk action (M1w): one tag, so "bulk changes" is one filter. */
+    public const CONTEXT_BULK = 'bulk';
+
+    public const CONTEXT_BULK_PRICE = 'bulk_price';
+
+    /** The context the rows written now belong to (see {@see self::within()}), or null. */
+    private static ?string $context = null;
+
+    /**
+     * Run `$work` with every row it writes tagged `$context` — a bulk action wraps its per-product writes in this, so
+     * the log can show "bulk changes" without every writer knowing it was called in bulk. Nests; always restores.
+     *
+     * @template T
+     *
+     * @param  callable(): T  $work
+     * @return T
+     */
+    public static function within(string $context, callable $work): mixed
+    {
+        $previous = self::$context;
+        self::$context = $context;
+        try {
+            return $work();
+        } finally {
+            self::$context = $previous;
+        }
+    }
+
     /**
      * Record one write.
      *
@@ -131,6 +162,7 @@ final class ActivityLog
                 'subject_id' => $subjectId,
                 'subject_label' => $label === null ? null : mb_substr($label, 0, 191),
                 'action' => $action,
+                'context' => self::$context,
                 'storefront_id' => $storefrontId,
                 'changes' => $changes === [] ? null : json_encode($changes, JSON_UNESCAPED_UNICODE),
                 'created_at' => now(),

@@ -39,6 +39,7 @@ function Footer() {
   const trustLinks = [
     { label: t('About us', 'من نحن'), to: '/about-us' },
     { label: t('Contact us', 'تواصل معنا'), to: '/contact-us' },
+    { label: t('FAQ', 'الأسئلة الشائعة'), to: '/faq' },
     { label: t('Privacy policy', 'سياسة الخصوصية'), to: '/privacy-policy' },
     { label: t('Terms and conditions', 'الشروط والأحكام'), to: '/terms-and-conditions' },
   ]

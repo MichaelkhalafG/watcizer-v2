@@ -26,6 +26,7 @@ use App\Http\Controllers\Manage\ProductVariantController;
 use App\Http\Controllers\Manage\ProfileController;
 use App\Http\Controllers\Manage\PromotionController;
 use App\Http\Controllers\Manage\ReEngagementController;
+use App\Http\Controllers\Manage\SeoTextController;
 use App\Http\Controllers\Manage\ShippingController;
 use App\Http\Controllers\Manage\StorefrontController;
 use App\Http\Controllers\Manage\UnitController;
@@ -147,6 +148,11 @@ Route::prefix('manage')->name('manage.')->group(function (): void {
             Route::get('storefronts/{storefront}/products/{product}/edit', [ProductController::class, 'edit'])->name('products.edit');
             Route::put('storefronts/{storefront}/products/{product}', [ProductController::class, 'update'])->name('products.update');
             Route::post('storefronts/{storefront}/products/bulk', [ProductController::class, 'bulk'])->name('products.bulk');
+            // M1v (2026-10-30): the bulk PRICE change — preview (writes nothing), apply (after a confirm), undo one batch
+            Route::post('storefronts/{storefront}/products/bulk-price/preview', [ProductController::class, 'bulkPricePreview'])->name('products.bulk_price.preview');
+            Route::post('storefronts/{storefront}/products/bulk-price', [ProductController::class, 'bulkPriceApply'])->name('products.bulk_price');
+            Route::post('storefronts/{storefront}/products/bulk-price/{batch}/undo', [ProductController::class, 'bulkPriceUndo'])
+                ->whereNumber('batch')->name('products.bulk_price.undo');
             /*
             | Archive ONE product, from the form that created it (W-6, 2026-09-19).
             |
@@ -241,6 +247,11 @@ Route::prefix('manage')->name('manage.')->group(function (): void {
                 ->where('rail', '[0-9]+')->name('home_rails.update');
             Route::delete('storefronts/{storefront}/home-rails/{rail}', [HomeRailController::class, 'destroy'])
                 ->where('rail', '[0-9]+')->name('home_rails.destroy');
+
+            // PAGE TEXTS (M1y, 2026-10-30): the introduction and meta description of each brand and category page.
+            // Same ability and scope as banners — the storefront's words, not its catalogue.
+            Route::get('storefronts/{storefront}/page-texts', [SeoTextController::class, 'index'])->name('page_texts.index');
+            Route::put('storefronts/{storefront}/page-texts', [SeoTextController::class, 'update'])->name('page_texts.update');
         });
 
         /*

@@ -100,6 +100,9 @@ it('names EVERY table the dashboard authors, in order, so adding one is a delibe
         'promotion_rules', 'promotion_rule_storefront', 'promotion_rule_conditions',
         'promotion_rule_rewards', 'promotion_rule_skips',
         'promotion_order_discounts',
+        'promotion_rule_scopes', 'promotion_redemptions', 'promotion_order_discount_lines',
+        'core_price_batches', 'core_price_batch_items',
+        'core_seo_texts',
         'core_user_preferences',
         'core_activity_log',
         // Articles join the list in item 14 (2026-09-18). Core-owned because the legacy

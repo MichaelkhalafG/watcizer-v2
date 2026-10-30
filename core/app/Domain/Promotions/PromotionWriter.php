@@ -75,16 +75,19 @@ final class PromotionWriter
         $conditions = self::rows($data, 'conditions');
         $rewards = self::rows($data, 'rewards');
         $storefronts = Coerce::intList($data['storefronts'] ?? []);
+        $scopes = self::scopeRows($data);
 
-        $this->assertSavable($data, $conditions, $rewards, $storefronts, $ruleId);
+        $this->assertSavable($data, $conditions, $rewards, $storefronts, $ruleId, $scopes);
 
-        return DB::transaction(function () use ($data, $conditions, $rewards, $storefronts, $ruleId, $actorId): int {
+        return DB::transaction(function () use ($data, $conditions, $rewards, $storefronts, $ruleId, $actorId, $scopes): int {
             $row = [
                 'name' => trim(Coerce::str($data['name'] ?? '')),
                 'priority' => Coerce::int($data['priority'] ?? null),
                 'is_active' => Coerce::bool($data['is_active'] ?? null),
-                'starts_at' => Coerce::str($data['starts_at'] ?? ''),
-                'ends_at' => Coerce::str($data['ends_at'] ?? ''),
+                // a DRAFT may have no window yet (M1u); an active rule cannot (assertSavable)
+                'starts_at' => self::nullableText($data['starts_at'] ?? null),
+                'ends_at' => self::nullableText($data['ends_at'] ?? null),
+            ] + self::couponColumns($data) + [
                 'updated_by' => $actorId,
                 'updated_at' => now(),
             ];
@@ -107,6 +110,15 @@ final class PromotionWriter
                 DB::table('promotion_rule_conditions')->where('promotion_rule_id', $ruleId)->delete();
                 DB::table('promotion_rule_rewards')->where('promotion_rule_id', $ruleId)->delete();
                 DB::table('promotion_rule_storefront')->where('promotion_rule_id', $ruleId)->delete();
+                DB::table('promotion_rule_scopes')->where('promotion_rule_id', $ruleId)->delete();
+            }
+
+            foreach ($scopes as $scope) {
+                DB::table('promotion_rule_scopes')->insert($scope + [
+                    'promotion_rule_id' => $ruleId,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
             }
 
             foreach ($conditions as $condition) {
@@ -148,7 +160,8 @@ final class PromotionWriter
      */
     public function delete(int $ruleId): array
     {
-        $granted = DB::table('order_items')->where('promotion_rule_id', $ruleId)->count();
+        $granted = DB::table('order_items')->where('promotion_rule_id', $ruleId)->count()
+            + DB::table('promotion_order_discounts')->where('promotion_rule_id', $ruleId)->count();
 
         if ($granted > 0) {
             return [
@@ -159,7 +172,7 @@ final class PromotionWriter
 
         DB::transaction(function () use ($ruleId): void {
             foreach (['promotion_rule_skips', 'promotion_rule_rewards', 'promotion_rule_conditions',
-                'promotion_rule_storefront'] as $table) {
+                'promotion_rule_storefront', 'promotion_rule_scopes'] as $table) {
                 DB::table($table)->where('promotion_rule_id', $ruleId)->delete();
             }
             DB::table('promotion_rules')->where('id', $ruleId)->delete();
@@ -175,8 +188,9 @@ final class PromotionWriter
      * @param  list<array<string, mixed>>  $conditions
      * @param  list<array<string, mixed>>  $rewards
      * @param  list<int>  $storefronts
+     * @param  list<array<string, mixed>>  $scopes  the M1u item scopes
      */
-    private function assertSavable(array $data, array $conditions, array $rewards, array $storefronts, ?int $ruleId): void
+    private function assertSavable(array $data, array $conditions, array $rewards, array $storefronts, ?int $ruleId, array $scopes = []): void
     {
         $errors = [];
 
@@ -184,9 +198,13 @@ final class PromotionWriter
         $startsAt = trim(Coerce::str($data['starts_at'] ?? ''));
         $endsAt = trim(Coerce::str($data['ends_at'] ?? ''));
 
-        if ($endsAt === '') {
+        $active = Coerce::bool($data['is_active'] ?? null);
+        if ($endsAt === '' && $active) {
+            // an INACTIVE draft may wait for its dates (M1u: Black1000 is created that way); switching it on may not
             $errors['ends_at'] = ManageText::t('promotions.needs_end_date', 'كل عرض لازم له تاريخ انتهاء. عرض بدون نهاية هو عرض ينسى أحد إيقافه.');
-        } elseif ($startsAt !== '' && $endsAt <= $startsAt) {
+        } elseif ($startsAt === '' && $active) {
+            $errors['starts_at'] = ManageText::t('promotions.needs_start_date', 'حدّد تاريخ البداية قبل تفعيل العرض.');
+        } elseif ($startsAt !== '' && $endsAt !== '' && $endsAt <= $startsAt) {
             $errors['ends_at'] = ManageText::t('promotions.end_before_start', 'تاريخ الانتهاء لازم يكون بعد تاريخ البداية.');
         }
 
@@ -194,8 +212,13 @@ final class PromotionWriter
         if ($storefronts === []) {
             $errors['storefronts'] = ManageText::t('promotions.needs_storefront', 'اختر متجرًا واحدًا على الأقل. قاعدة بدون متاجر لا تنطبق في أي مكان.');
         }
-        if ($conditions === []) {
+        if ($conditions === [] && ! self::scopedData($data, $scopes)) {
+            // a coded, item-scoped or minimum-order rule limits itself (M1u); a bare one would match every cart
             $errors['conditions'] = ManageText::t('promotions.needs_condition', 'أضف شرطًا واحدًا على الأقل. قاعدة بدون شروط تنطبق على كل سلة.');
+        }
+
+        foreach (self::couponErrors($data, $scopes, $ruleId) as $field => $message) {
+            $errors[$field] = $message;
         }
         if ($rewards === []) {
             $errors['rewards'] = ManageText::t('promotions.needs_reward', 'أضف مكافأة واحدة على الأقل.');
@@ -275,7 +298,8 @@ final class PromotionWriter
         }
 
         // ── the ambiguity refusal ───────────────────────────────────────────────────────────
-        $clash = self::samePriorityClash($data, $storefronts, $ruleId);
+        // a coded rule never races an automatic one: it applies only when its code is typed (M1u)
+        $clash = trim(Coerce::str($data['code'] ?? '')) === '' ? self::samePriorityClash($data, $storefronts, $ruleId) : null;
         if ($clash !== null) {
             /*
              * The rule's name is quoted with «» rather than the straight " it carried before: a
@@ -389,6 +413,7 @@ final class PromotionWriter
             ->join('promotion_rule_storefront as rs', 'rs.promotion_rule_id', '=', 'r.id')
             ->whereIn('rs.storefront_id', $storefronts)
             ->where('r.is_active', 1)
+            ->whereNull('r.code')
             ->where('r.priority', Coerce::int($data['priority'] ?? null));
 
         if ($ruleId !== null) {
@@ -402,6 +427,159 @@ final class PromotionWriter
         $name = $query->orderBy('r.id')->value('r.name');
 
         return is_scalar($name) ? (string) $name : null;
+    }
+
+    // ── M1u: coupon codes, item scopes, limits (2026-10-30) ─────────────────────────────────
+
+    /** A code as the shop writes it: letters, digits, dash, underscore — what a shopper can type without doubt. */
+    public const CODE_PATTERN = '/^[A-Za-z0-9_-]{3,40}$/';
+
+    private static function nullableText(mixed $value): ?string
+    {
+        $text = trim(Coerce::str($value ?? ''));
+
+        return $text === '' ? null : $text;
+    }
+
+    /**
+     * The M1u columns of `promotion_rules`, typed from the form.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    public static function couponColumns(array $data): array
+    {
+        $money = static function (mixed $value): ?string {
+            $number = Coerce::nfloat($value);
+
+            return $number === null ? null : number_format(max(0.0, $number), 2, '.', '');
+        };
+        $count = static function (mixed $value): ?int {
+            $number = Coerce::nint($value);
+
+            return $number === null || $number < 1 ? null : $number;
+        };
+        $per = Coerce::str($data['apply_per'] ?? PromotionMoney::PER_ORDER);
+
+        return [
+            'code' => self::nullableText($data['code'] ?? null),
+            'label_en' => self::nullableText($data['label_en'] ?? null),
+            'label_ar' => self::nullableText($data['label_ar'] ?? null),
+            'apply_per' => in_array($per, PromotionMoney::PER, true) ? $per : PromotionMoney::PER_ORDER,
+            'max_discount' => $money($data['max_discount'] ?? null),
+            'min_order_amount' => $money($data['min_order_amount'] ?? null),
+            'usage_limit' => $count($data['usage_limit'] ?? null),
+            'usage_limit_per_customer' => $count($data['usage_limit_per_customer'] ?? null),
+            'include_sale_items' => array_key_exists('include_sale_items', $data) ? Coerce::bool($data['include_sale_items']) : true,
+            'stackable' => Coerce::bool($data['stackable'] ?? null),
+            'unit_floor' => $money($data['unit_floor'] ?? null) ?? '0.00',
+            'qualify_min_quantity' => $count($data['qualify_min_quantity'] ?? null),
+            'qualify_min_amount' => $money($data['qualify_min_amount'] ?? null),
+        ];
+    }
+
+    /**
+     * The scope rows from the form: `scopes` = list of {role, dimension, value_id | value}.
+     *
+     * @param  array<string, mixed>  $data
+     * @return list<array{role: string, dimension: string, value_id: int|null, value: string|null}>
+     */
+    public static function scopeRows(array $data): array
+    {
+        $out = [];
+        $seen = [];
+        foreach (self::rows($data, 'scopes') as $scope) {
+            $role = Coerce::str($scope['role'] ?? '');
+            $dimension = Coerce::str($scope['dimension'] ?? '');
+            $family = $dimension === 'family';
+            $valueId = $family ? null : Coerce::nint($scope['value_id'] ?? null);
+            $value = $family ? self::nullableText($scope['value'] ?? null) : null;
+            $key = $role.'|'.$dimension.'|'.($valueId ?? $value ?? '');
+            if (isset($seen[$key])) {
+                continue;                       // the same item twice is one item
+            }
+            $seen[$key] = true;
+            $out[] = ['role' => $role, 'dimension' => $dimension, 'value_id' => $valueId, 'value' => $value];
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @param  list<array<string, mixed>>  $scopes
+     */
+    private static function scopedData(array $data, array $scopes): bool
+    {
+        return trim(Coerce::str($data['code'] ?? '')) !== '' || $scopes !== []
+            || (Coerce::nfloat($data['min_order_amount'] ?? null) ?? 0.0) > 0.0
+            || Coerce::nint($data['qualify_min_quantity'] ?? null) !== null
+            || Coerce::nfloat($data['qualify_min_amount'] ?? null) !== null;
+    }
+
+    /**
+     * The refusals of the M1u fields, each beside its field.
+     *
+     * @param  array<string, mixed>  $data
+     * @param  list<array<string, mixed>>  $scopes
+     * @return array<string, string>
+     */
+    private static function couponErrors(array $data, array $scopes, ?int $ruleId): array
+    {
+        $errors = [];
+        $code = trim(Coerce::str($data['code'] ?? ''));
+        if ($code !== '') {
+            if (preg_match(self::CODE_PATTERN, $code) !== 1) {
+                $errors['code'] = ManageText::t('promotions.code_format', 'الكود من ٣ إلى ٤٠ حرفًا: حروف إنجليزية وأرقام و - و _ فقط، بدون مسافات.');
+            } else {
+                $taken = DB::table('promotion_rules')->where('code', $code);
+                if ($ruleId !== null) {
+                    $taken->where('id', '!=', $ruleId);
+                }
+                $other = $taken->value('name');
+                if (is_scalar($other)) {
+                    $errors['code'] = ManageText::t('promotions.code_taken', 'هذا الكود مستخدم في عرض آخر («:name»). الكود لازم يكون فريدًا.', ['name' => (string) $other]);
+                }
+            }
+        }
+
+        foreach (['max_discount', 'min_order_amount', 'unit_floor', 'qualify_min_amount'] as $field) {
+            $value = Coerce::nfloat($data[$field] ?? null);
+            if ($value !== null && $value < 0) {
+                $errors[$field] = ManageText::t('promotions.amount_not_negative', 'المبلغ لا يكون أقل من صفر.');
+            }
+        }
+        foreach (['usage_limit', 'usage_limit_per_customer', 'qualify_min_quantity'] as $field) {
+            $value = $data[$field] ?? null;
+            if ($value !== null && $value !== '' && (Coerce::nint($value) ?? 0) < 1) {
+                $errors[$field] = ManageText::t('promotions.count_at_least_one', 'اكتب رقمًا من ١ فأكثر، أو اترك الخانة فارغة لعدم وجود حد.');
+            }
+        }
+
+        foreach ($scopes as $index => $scope) {
+            $role = Coerce::str($scope['role'] ?? '');
+            $dimension = Coerce::str($scope['dimension'] ?? '');
+            $valueId = Coerce::nint($scope['value_id'] ?? null);
+            $known = in_array($role, PromotionScopes::ROLES, true) && in_array($dimension, PromotionScopes::DIMENSIONS, true);
+            $exists = match (true) {
+                ! $known => false,
+                $dimension === 'family' => in_array(Coerce::nstr($scope['value'] ?? null), self::families(), true),
+                $dimension === 'brand' => $valueId !== null && DB::table('catalog_brands')->where('id', $valueId)->exists(),
+                $dimension === 'grade' => $valueId !== null && DB::table('catalog_grades')->where('id', $valueId)->exists(),
+                default => $valueId !== null && DB::table('storefront_categories')->where('id', $valueId)->exists(),
+            };
+            if (! $exists) {
+                $errors["scopes.{$index}"] = ManageText::t('promotions.scope_unknown', 'اختر عنصرًا من القائمة. هذا الاختيار غير موجود.');
+            }
+        }
+
+        return $errors;
+    }
+
+    /** @return list<string> the product families the catalogue holds (watch, bag, ...) */
+    public static function families(): array
+    {
+        return ['watch', 'fashion', 'bag', 'wallet', 'perfume', 'electronics'];
     }
 
     // ── row shaping ──────────────────────────────────────────────────────────────────────────

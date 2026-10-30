@@ -1,4 +1,6 @@
 import { Link, router, usePage } from "@inertiajs/react";
+import { QuickSearch, matchesTerm, useQueryTerm } from "@/components/table/QuickSearch";
+import { Select } from "@/components/ui/input";
 import { Pencil, Plus } from "lucide-react";
 
 import ManageLayout from "@/layouts/ManageLayout";
@@ -44,7 +46,7 @@ interface Row {
  * with the reason on the control — the same shape as every other refusal in this dashboard.
  */
 export default function BlogsIndex({
-    rows,
+    rows: allRows,
     storefront_note,
 }: {
     rows: Row[];
@@ -53,6 +55,17 @@ export default function BlogsIndex({
     const t = useT();
     const locale = useLocale();
     const { errors } = usePage<SharedProps>().props;
+    // M1x: search by title or link, and filter by storefront and status — all on the page, kept in the URL
+    const [term, setTerm] = useQueryTerm();
+    const [status, setStatus] = useQueryTerm("status");
+    const [shop, setShop] = useQueryTerm("storefront");
+    const shops = Array.from(new Set(allRows.map((row) => row.storefront).filter((name): name is string => name !== null)));
+    const rows = allRows.filter(
+        (row) =>
+            matchesTerm(term, ...Object.values(row.title), row.slug) &&
+            (status === "" || (status === "published") === row.is_published) &&
+            (shop === "" || row.storefront === shop),
+    );
 
     return (
         <ManageLayout
@@ -79,6 +92,33 @@ export default function BlogsIndex({
                 <Alert tone="error" title={t("common.action_failed", "تعذّر تنفيذ العملية")}>
                     {errors.is_published}
                 </Alert>
+            ) : null}
+
+            {allRows.length > 0 ? (
+                <div className="flex flex-wrap items-start gap-2">
+                    <QuickSearch
+                        value={term}
+                        onChange={setTerm}
+                        placeholder={t("blogs.search_placeholder", "ابحث بالعنوان أو الرابط…")}
+                        count={rows.length}
+                        total={allRows.length}
+                    />
+                    <Select aria-label={t("blogs.filter_status", "الحالة")} className="w-40" value={status} onChange={(event) => setStatus(event.target.value)}>
+                        <option value="">{t("blogs.all_statuses", "كل الحالات")}</option>
+                        <option value="published">{t("blogs.published", "منشور")}</option>
+                        <option value="draft">{t("blogs.draft", "مسودة")}</option>
+                    </Select>
+                    {shops.length > 1 ? (
+                        <Select aria-label={t("common.storefront", "المتجر")} className="w-40" value={shop} onChange={(event) => setShop(event.target.value)}>
+                            <option value="">{t("activity.all_storefronts", "كل المتاجر")}</option>
+                            {shops.map((name) => (
+                                <option key={name} value={name}>
+                                    {name}
+                                </option>
+                            ))}
+                        </Select>
+                    ) : null}
+                </div>
             ) : null}
 
             {rows.length === 0 ? (
