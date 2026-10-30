@@ -319,6 +319,21 @@
   color: #16a34a !important;
   font-weight: 600 !important;
 }
+/* free shipping over the storefront's threshold (2026-10-29): the delivery row's "Free", and the line under it */
+.wz-cart-free {
+  color: #16a34a !important;
+  font-weight: 600 !important;
+}
+.wz-cart-freeship {
+  margin: 2px 0 10px;
+  font-size: 0.82rem;
+  line-height: 1.4;
+  color: #6b6b6b;
+}
+.wz-cart-freeship.is-free {
+  color: #16a34a;
+  font-weight: 600;
+}
 .wz-cart-divider {
   height: 1px;
   background: rgba(0, 0, 0, 0.08);

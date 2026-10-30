@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Manage;
 use App\Domain\Activity\ActivityLog;
 use App\Domain\Notifications\StorefrontMailer;
 use App\Domain\Promotions\PromotionRules;
+use App\Domain\Shipping\FreeShipping;
 use App\Models\Storefront\Storefront;
 use App\Models\Storefront\StorefrontMailbox;
 use App\Storefront\StorefrontCache;
@@ -124,6 +125,8 @@ final class StorefrontController
                 'currency' => $storefront->currency,
                 'is_active' => $storefront->is_active,
                 'money_rewards' => PromotionRules::moneyRewardsEnabled($storefront->id),
+                // free shipping over this amount (EGP); null = off. Absent in settings → the default 10,000 (FreeShipping)
+                'free_shipping_over' => FreeShipping::threshold((int) $storefront->id),
                 /*
                  * ── The three sections that were SQL-only until 2026-10-13 (§4.1; backlog
                  *    SF-SETTINGS-SCREEN reverses SF-URL-SETTINGS) ──────────────────────────────
@@ -161,6 +164,9 @@ final class StorefrontController
             'currency' => ['required', 'string', 'size:3'],
             'is_active' => ['required', 'boolean'],
             'money_rewards' => ['required', 'boolean'],
+            // `sometimes`: a caller that does not send it (the tests that drive the old form) leaves it as it is.
+            // Empty or 0 switches free shipping off.
+            'free_shipping_over' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:10000000'],
         ] + StorefrontSettingsForm::rules());
 
         $locales = self::stringList($request->input('locales'));
@@ -214,7 +220,10 @@ final class StorefrontController
              * whole object would silently drop anything another feature has put there.
              */
             'settings' => StorefrontSettingsForm::merge(
-                self::withMoneyRewards($storefront->settings, $request->boolean('money_rewards')),
+                self::withFreeShipping(
+                    self::withMoneyRewards($storefront->settings, $request->boolean('money_rewards')),
+                    $request->has('free_shipping_over') ? $request->input('free_shipping_over') : false,
+                ),
                 $urls,
                 $identity,
             ),
@@ -418,6 +427,7 @@ final class StorefrontController
     {
         $raw = DB::table('storefronts')->where('id', $id)
             ->first(['name', 'domain', 'locales', 'default_locale', 'currency', 'is_active']);
+        $freeOver = FreeShipping::threshold($id);
         if (! is_object($raw)) {
             return [];
         }
@@ -432,6 +442,8 @@ final class StorefrontController
             'default_locale' => Row::str($row, 'default_locale'),
             'currency' => Row::str($row, 'currency'),
             'is_active' => Row::bool($row, 'is_active'),
+            // free shipping over this amount, or "off" — what customers are charged, so a change is in the log
+            'free_shipping_over' => $freeOver === null ? 'off' : number_format($freeOver, 2, '.', ''),
             'money_rewards' => PromotionRules::moneyRewardsEnabled($id),
             // §4.1 (2026-10-13): the three sections the screen gained. Flat `section.key` names, so
             // "who changed the WhatsApp number" has an answer; the mailbox password is `password`,
@@ -471,6 +483,26 @@ final class StorefrontController
         }
 
         return $out;
+    }
+
+    /**
+     * `settings.shipping.free_over` from the form: a positive amount, or 0 (off) for an empty field. `false` = not
+     * sent, nothing changes. Merged like money_rewards — the bag keeps every other key.
+     *
+     * @param  array<string, mixed>  $settings
+     * @return array<string, mixed>
+     */
+    private static function withFreeShipping(array $settings, mixed $value): array
+    {
+        if ($value === false) {
+            return $settings;
+        }
+        $over = is_numeric($value) ? round((float) $value, 2) : 0.0;
+        $bag = Coerce::arr($settings['shipping'] ?? null);
+        $bag['free_over'] = $over > 0.0 ? $over : 0;
+        $settings['shipping'] = $bag;
+
+        return $settings;
     }
 
     /**
