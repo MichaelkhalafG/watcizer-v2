@@ -39,7 +39,7 @@ export const TRUST_PAGES = {
       metaTitle: 'About us | Watchizer',
       description: 'Watchizer is an online shop for watches and accessories in Egypt, delivering to 27 governorates.',
       lead: 'Watchizer is an online shop for watches and accessories in Egypt. We sell watches for men and women, along with bags, wallets, belts, jewellery and a small range of electronics, and we deliver to 27 governorates.',
-      store: 'Shop at watchizereg.com in English or Arabic, or visit our store at Arkadia Mall, Corniche El Nil, Maspero extension, Cairo. It is open every day, 10:00–22:00.',
+      store: 'Shop at watchizereg.com in English or Arabic, or visit our store at Arkadia Mall, Corniche El Nil, Maspero extension, Cairo. It is open every day, 10:00–24:00.',
       service: "We confirm every order with you before it ships. You can pay in cash when it arrives, or online by card. If anything isn't right, our customer service team is on [WhatsApp](" + WHATSAPP + ') every day.',
     },
     ar: {
@@ -47,7 +47,7 @@ export const TRUST_PAGES = {
       metaTitle: 'من نحن | Watchizer',
       description: 'واتشايزر متجر إلكتروني للساعات والإكسسوارات في مصر، ونوصّل إلى ٢٧ محافظة.',
       lead: 'واتشايزر متجر إلكتروني للساعات والإكسسوارات في مصر. نبيع ساعات رجالية ونسائية، إلى جانب الحقائب والمحافظ والأحزمة والمجوهرات ومجموعة صغيرة من الإلكترونيات، ونوصّل إلى ٢٧ محافظة.',
-      store: 'تسوّق على watchizereg.com بالعربية أو الإنجليزية، أو زر متجرنا في أركاديا مول، كورنيش النيل، امتداد ماسبيرو، القاهرة. المتجر مفتوح يومياً من ١٠ صباحاً حتى ١٠ مساءً.',
+      store: 'تسوّق على watchizereg.com بالعربية أو الإنجليزية، أو زر متجرنا في أركاديا مول، كورنيش النيل، امتداد ماسبيرو، القاهرة. المتجر مفتوح يومياً من ١٠ صباحاً حتى منتصف الليل.',
       service: 'نؤكد كل طلب معك قبل شحنه. يمكنك الدفع نقداً عند الاستلام، أو بالبطاقة أونلاين. وإن كان هناك أي خطأ، فريق خدمة العملاء متاح على [واتساب](' + WHATSAPP + ') يومياً.',
     },
   },
@@ -64,6 +64,8 @@ export const TRUST_PAGES = {
       description: `Watchizer customer service: phone and WhatsApp ${PHONE}, every day 10:00–22:00. Email ${EMAIL}.`,
       group: 'Customer service (phone and WhatsApp)',
       hours: 'Every day, 10:00–22:00.',
+      // the STORES' hours (Michael, 2026-10-29: the client's figure, both branches); customer service keeps its own
+      storeHours: 'Every day, 10:00–24:00.',
       cards: [
         { icon: 'phone', label: 'Phone', value: PHONE, href: TEL, hours: true, ltr: true },
         { icon: 'whatsapp', label: 'WhatsApp', value: PHONE, href: WHATSAPP, hours: true, ltr: true },
@@ -73,7 +75,7 @@ export const TRUST_PAGES = {
       ],
       stores: [
         { label: 'Arkadia Mall branch', address: 'Arkadia Mall, Corniche El Nil, Maspero extension, Cairo.', hours: true },
-        { label: 'Heliopolis branch', address: '90 El-Thawra Street, Heliopolis.' },
+        { label: 'Heliopolis branch', address: '90 El-Thawra Street, Heliopolis.', hours: true },
       ],
       note: "If your question is about an order, have your order number ready. You'll find it in your confirmation email and under [*My Orders*](/account?tab=orders).",
     },
@@ -83,6 +85,7 @@ export const TRUST_PAGES = {
       description: `خدمة عملاء واتشايزر: هاتف وواتساب ${PHONE}، يومياً من ١٠ صباحاً حتى ١٠ مساءً. البريد ${EMAIL}.`,
       group: 'خدمة العملاء (هاتف وواتساب)',
       hours: 'يومياً من ١٠ صباحاً حتى ١٠ مساءً.',
+      storeHours: 'يومياً من ١٠ صباحاً حتى منتصف الليل.',
       cards: [
         { icon: 'phone', label: 'هاتف', value: PHONE, href: TEL, hours: true, ltr: true },
         { icon: 'whatsapp', label: 'واتساب', value: PHONE, href: WHATSAPP, hours: true, ltr: true },
@@ -92,7 +95,7 @@ export const TRUST_PAGES = {
       ],
       stores: [
         { label: 'فرع أركاديا مول', address: 'أركاديا مول، كورنيش النيل، امتداد ماسبيرو، القاهرة.', hours: true },
-        { label: 'فرع مصر الجديدة', address: '٩٠ شارع الثورة، مصر الجديدة.' },
+        { label: 'فرع مصر الجديدة', address: '٩٠ شارع الثورة، مصر الجديدة.', hours: true },
       ],
       note: 'إن كان سؤالك عن طلب، جهّز رقم الطلب. تجده في رسالة التأكيد وفي [«طلباتي»](/account?tab=orders).',
     },
@@ -276,4 +279,35 @@ export const TRUST_PAGES = {
       ],
     },
   },
+}
+
+/*
+ * THE STORES as structured data (Part 3 task 5, 2026-10-29) — the contact and about pages' Store + Organization
+ * JSON-LD (src/lib/storesJsonLd.js) reads these, and they say exactly what the contact page above shows: both
+ * branches every day 10:00 to midnight (Michael, 2026-10-29: the client's hours, the ONLY policy-page change).
+ * Midnight is written `closes: '23:59'`, Google's own form for a day that ends at midnight; `contact.*.hours`
+ * and these change together.
+ * No geo coordinates: none has been verified for either branch.
+ */
+export const STORES_LD = {
+  name: 'Watchizer',
+  phone: '+201551096234',
+  whatsapp: WHATSAPP,
+  email: EMAIL,
+  logo: '/logo.svg',
+  sameAs: [FACEBOOK, INSTAGRAM],
+  stores: [
+    {
+      key: 'arkadia',
+      name: 'Watchizer — Arkadia Mall',
+      address: { streetAddress: 'Arkadia Mall, Corniche El Nil, Maspero extension', addressLocality: 'Cairo', addressCountry: 'EG' },
+      hours: { days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'], opens: '10:00', closes: '23:59' },
+    },
+    {
+      key: 'heliopolis',
+      name: 'Watchizer — Heliopolis',
+      address: { streetAddress: '90 El-Thawra Street', addressLocality: 'Heliopolis', addressRegion: 'Cairo', addressCountry: 'EG' },
+      hours: { days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'], opens: '10:00', closes: '23:59' },
+    },
+  ],
 }
