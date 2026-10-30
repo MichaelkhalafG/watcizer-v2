@@ -7,6 +7,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input, Select } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+    CouponFields,
+    couponDefaults,
+    type CouponData,
+    type CouponRule,
+    type ScopeOptions,
+} from "@/components/manage/promotions/CouponFields";
 import ManageLayout from "@/layouts/ManageLayout";
 import { Ltr } from "@/components/ui/bidi";
 import { useT } from "@/lib/i18n";
@@ -99,7 +106,7 @@ interface RuleState {
     };
 }
 
-interface Rule {
+interface Rule extends CouponRule {
     id: number;
     name: string;
     priority: number;
@@ -148,6 +155,8 @@ interface Props {
     reward_types: TypeOption[];
     stacking_notice: string;
     max_reward_quantity: number;
+    /** M1u: what a coupon or a "buy from X" can be about. */
+    scope_options: ScopeOptions;
 }
 
 /** One line of the sample cart the admin builds by searching. */
@@ -302,6 +311,7 @@ export default function PromotionForm({
     reward_types,
     stacking_notice,
     max_reward_quantity,
+    scope_options,
 }: Props) {
     const t = useT();
     const form = useForm({
@@ -317,6 +327,8 @@ export default function PromotionForm({
             ),
         conditions: rule?.conditions ?? [emptyCondition()],
         rewards: rule?.rewards ?? [emptyReward()],
+        // M1u: the code, the items, the limits (CouponFields)
+        ...couponDefaults(rule),
     });
 
     const [sample, setSample] = useState<SampleLine[]>([]);
@@ -1091,6 +1103,18 @@ export default function PromotionForm({
                         </CardContent>
                     </Card>
                 </div>
+
+                {/* ── M1u: the coupon code, the items it is about, the limits ─────────────── */}
+                <CouponFields
+                    data={form.data}
+                    errors={form.errors as Partial<Record<string, string>>}
+                    setField={<K extends keyof CouponData>(key: K, value: CouponData[K]) =>
+                        form.setData(key, value as never)
+                    }
+                    options={scope_options}
+                    storefronts={form.data.storefronts}
+                    redemptions={rule?.redemptions}
+                />
 
                 {/* ── THE SAMPLE CART: both outcomes, before saving ────────────────────────── */}
                 <Card>

@@ -9,12 +9,15 @@ use App\Domain\Activity\ActivityLog;
 use App\Domain\Promotions\CartLine;
 use App\Domain\Promotions\CartSnapshot;
 use App\Domain\Promotions\PromotionEngine;
+use App\Domain\Promotions\PromotionMoney;
 use App\Domain\Promotions\PromotionOutcome;
 use App\Domain\Promotions\PromotionRules;
+use App\Domain\Promotions\PromotionScopes;
 use App\Domain\Promotions\PromotionState;
 use App\Domain\Promotions\PromotionWriter;
 use App\Storefront\ImageUrl;
 use App\Support\Coerce;
+use App\Support\LocalisedName;
 use App\Support\ManageText;
 use App\Support\Table\TableQuery;
 use App\Transform\Row;
@@ -98,7 +101,8 @@ final class PromotionController
              * the next reader learns the wrong rule.
              */
             ->virtual(['is_active', 'storefront_id'])
-            ->searchable(['r.name'])
+            // M1x: the coupon code too — the word a customer reads out on the phone
+            ->searchable(['r.name', 'r.code'])
             /*
              * `label` and `summary` rather than `is_active` alone, for the same reason the SCREEN
              * shows them: `is_active` is what somebody typed, and a rule can be switched on with a
@@ -184,7 +188,7 @@ final class PromotionController
      */
     public static function stackingNotice(): string
     {
-        return ManageText::t('promotions.stacking_notice', 'العروض لا تتجمع: تُطبَّق قاعدة واحدة فقط على كل سلة — صاحبة الأولوية الأعلى. لو نشرت ثلاثة عروض، العميل يحصل على واحد منها فقط، وليس الثلاثة.');
+        return ManageText::t('promotions.stacking_notice', 'العروض لا تتجمع إلا إذا عُلِّمت كلها «تتجمّع»: تحصل السلة على عرض واحد — صاحب الأولوية الأعلى، وعند تساوي الأولوية صاحب الخصم الأكبر. كود الخصم لا يُطبَّق إلا إذا كتبه العميل في السلة.');
     }
 
     public function create(): Response
@@ -223,12 +227,12 @@ final class PromotionController
          * what makes the child tables' own timestamps interpretable.
          */
         $before = ActivityLog::fields(DB::table('promotion_rules')->where('id', $promotion)
-            ->first(['name', 'priority', 'is_active', 'starts_at', 'ends_at']));
+            ->first(['name', 'code', 'priority', 'is_active', 'starts_at', 'ends_at', 'apply_per', 'max_discount', 'min_order_amount', 'usage_limit', 'usage_limit_per_customer', 'include_sale_items', 'stackable', 'unit_floor']));
 
         $this->writer->save($data, $promotion, self::actorId($request));
 
         $after = ActivityLog::fields(DB::table('promotion_rules')->where('id', $promotion)
-            ->first(['name', 'priority', 'is_active', 'starts_at', 'ends_at']));
+            ->first(['name', 'code', 'priority', 'is_active', 'starts_at', 'ends_at', 'apply_per', 'max_discount', 'min_order_amount', 'usage_limit', 'usage_limit_per_customer', 'include_sale_items', 'stackable', 'unit_floor']));
 
         ActivityLog::record('promotion_rules', $promotion, ActivityLog::UPDATED, $before, $after,
             label: Coerce::nstr($data['name'] ?? null));
@@ -493,6 +497,8 @@ final class PromotionController
              * coming after the switch" has their answer.
              */
             'reward_types' => self::rewardTypes(),
+            // M1u: what a coupon or a "buy from X" can be about — searchable lists, never typed ids
+            'scope_options' => self::scopeOptions(),
             'stacking_notice' => self::stackingNotice(),
             'max_reward_quantity' => PromotionWriter::MAX_REWARD_QUANTITY,
         ]);
@@ -518,6 +524,18 @@ final class PromotionController
             ];
         }
 
+        $full = Row::cast(DB::table('promotion_rules')->where('id', $id)->first() ?? new \stdClass);
+        $scopes = [];
+        foreach (DB::table('promotion_rule_scopes')->where('promotion_rule_id', $id)->orderBy('id')->get() as $raw) {
+            $row = Row::cast($raw);
+            $scopes[] = [
+                'role' => Row::str($row, 'role'),
+                'dimension' => Row::str($row, 'dimension'),
+                'value_id' => Row::nint($row, 'value_id'),
+                'value' => Row::nstr($row, 'value'),
+            ];
+        }
+
         $rewards = [];
         foreach (DB::table('promotion_rule_rewards')->where('promotion_rule_id', $id)->orderBy('id')->get() as $raw) {
             $row = Row::cast($raw);
@@ -539,6 +557,21 @@ final class PromotionController
             'is_active' => Row::bool($rule, 'is_active'),
             'starts_at' => Row::nstr($rule, 'starts_at'),
             'ends_at' => Row::nstr($rule, 'ends_at'),
+            'code' => Row::nstr($full, 'code'),
+            'label_en' => Row::nstr($full, 'label_en'),
+            'label_ar' => Row::nstr($full, 'label_ar'),
+            'apply_per' => Row::nstr($full, 'apply_per') ?? PromotionMoney::PER_ORDER,
+            'max_discount' => Row::nmoney($full, 'max_discount'),
+            'min_order_amount' => Row::nmoney($full, 'min_order_amount'),
+            'usage_limit' => Row::nint($full, 'usage_limit'),
+            'usage_limit_per_customer' => Row::nint($full, 'usage_limit_per_customer'),
+            'include_sale_items' => Row::bool($full, 'include_sale_items'),
+            'stackable' => Row::bool($full, 'stackable'),
+            'unit_floor' => Row::nmoney($full, 'unit_floor'),
+            'qualify_min_quantity' => Row::nint($full, 'qualify_min_quantity'),
+            'qualify_min_amount' => Row::nmoney($full, 'qualify_min_amount'),
+            'scopes' => $scopes,
+            'redemptions' => PromotionEngine::redemptions($id, null),
             'storefronts' => Coerce::intList(
                 DB::table('promotion_rule_storefront')->where('promotion_rule_id', $id)->pluck('storefront_id')
             ),
@@ -773,6 +806,74 @@ final class PromotionController
         return $out;
     }
 
+    /**
+     * The lists a coupon's item scopes are picked from (M1u): brands and grades by name (Arabic first, English
+     * beside it), the product families, and each storefront's category tree split into categories (top level) and
+     * sub-types (below), because the screen names them separately.
+     *
+     * @return array{brands: list<array{id: int, label: string}>, grades: list<array{id: int, label: string}>, families: list<array{value: string, label: string}>, categories: list<array{id: int, storefront_id: int, label: string}>, sub_types: list<array{id: int, storefront_id: int, label: string}>}
+     */
+    private static function scopeOptions(): array
+    {
+        $named = static function (string $table, string $translations, string $key): array {
+            $out = [];
+            foreach (DB::table($table.' as b')
+                ->leftJoin($translations.' as ar', function (JoinClause $j) use ($key): void {
+                    $j->on('ar.'.$key, '=', 'b.id')->where('ar.locale', '=', 'ar');
+                })
+                ->leftJoin($translations.' as en', function (JoinClause $j) use ($key): void {
+                    $j->on('en.'.$key, '=', 'b.id')->where('en.locale', '=', 'en');
+                })
+                ->orderBy('en.name')->get(['b.id', 'ar.name as ar_name', 'en.name as en_name']) as $raw) {
+                $row = Row::cast($raw);
+                $out[] = ['id' => Row::int($row, 'id'), 'label' => LocalisedName::pick(
+                    Row::nstr($row, 'ar_name'), Row::nstr($row, 'en_name'), '#'.Row::int($row, 'id'),
+                )];
+            }
+
+            return $out;
+        };
+
+        $nodes = ['categories' => [], 'sub_types' => []];
+        foreach (DB::table('storefront_categories as c')
+            ->leftJoin('storefront_category_translations as ar', function (JoinClause $j): void {
+                $j->on('ar.storefront_category_id', '=', 'c.id')->where('ar.locale', '=', 'ar');
+            })
+            ->leftJoin('storefront_category_translations as en', function (JoinClause $j): void {
+                $j->on('en.storefront_category_id', '=', 'c.id')->where('en.locale', '=', 'en');
+            })
+            ->leftJoin('storefronts as s', 's.id', '=', 'c.storefront_id')
+            ->orderBy('c.storefront_id')->orderBy('c.path')
+            ->get(['c.id', 'c.storefront_id', 'c.depth', 'c.slug', 'ar.name as ar_name', 'en.name as en_name', 's.name as storefront']) as $raw) {
+            $row = Row::cast($raw);
+            $label = LocalisedName::pick(Row::nstr($row, 'ar_name'), Row::nstr($row, 'en_name'), Row::str($row, 'slug'))
+                .' — '.(Row::nstr($row, 'storefront') ?? '');
+            $nodes[Row::int($row, 'depth') <= 1 ? 'categories' : 'sub_types'][] = [
+                'id' => Row::int($row, 'id'), 'storefront_id' => Row::int($row, 'storefront_id'), 'label' => $label,
+            ];
+        }
+
+        $families = [];
+        foreach (PromotionWriter::families() as $family) {
+            $families[] = ['value' => $family, 'label' => match ($family) {
+                'watch' => ManageText::t('promotions.family_watch', 'ساعات'),
+                'fashion' => ManageText::t('promotions.family_fashion', 'أزياء وإكسسوارات'),
+                'bag' => ManageText::t('promotions.family_bag', 'حقائب'),
+                'wallet' => ManageText::t('promotions.family_wallet', 'محافظ'),
+                'perfume' => ManageText::t('promotions.family_perfume', 'عطور'),
+                default => ManageText::t('promotions.family_electronics', 'إلكترونيات'),
+            }];
+        }
+
+        return [
+            'brands' => $named('catalog_brands', 'catalog_brand_translations', 'brand_id'),
+            'grades' => $named('catalog_grades', 'catalog_grade_translations', 'grade_id'),
+            'families' => $families,
+            'categories' => $nodes['categories'],
+            'sub_types' => $nodes['sub_types'],
+        ];
+    }
+
     /** @return array<string, list<mixed>> */
     private static function rules(): array
     {
@@ -780,8 +881,27 @@ final class PromotionController
             'name' => ['required', 'string', 'max:120'],
             'priority' => ['required', 'integer', 'min:-1000', 'max:1000'],
             'is_active' => ['required', 'boolean'],
-            'starts_at' => ['required', 'date'],
-            'ends_at' => ['required', 'date'],
+            // nullable since M1u: an inactive DRAFT may wait for its dates; PromotionWriter refuses to activate one without
+            'starts_at' => ['nullable', 'date'],
+            'ends_at' => ['nullable', 'date'],
+            'code' => ['nullable', 'string', 'max:40'],
+            'label_en' => ['nullable', 'string', 'max:160'],
+            'label_ar' => ['nullable', 'string', 'max:160'],
+            'apply_per' => ['nullable', 'string', Rule::in(PromotionMoney::PER)],
+            'max_discount' => ['nullable', 'numeric', 'min:0', 'max:9999999'],
+            'min_order_amount' => ['nullable', 'numeric', 'min:0', 'max:9999999'],
+            'usage_limit' => ['nullable', 'integer', 'min:1', 'max:1000000'],
+            'usage_limit_per_customer' => ['nullable', 'integer', 'min:1', 'max:1000'],
+            'include_sale_items' => ['nullable', 'boolean'],
+            'stackable' => ['nullable', 'boolean'],
+            'unit_floor' => ['nullable', 'numeric', 'min:0', 'max:9999999'],
+            'qualify_min_quantity' => ['nullable', 'integer', 'min:1', 'max:999'],
+            'qualify_min_amount' => ['nullable', 'numeric', 'min:0', 'max:9999999'],
+            'scopes' => ['array', 'max:200'],
+            'scopes.*.role' => ['required', 'string', Rule::in(PromotionScopes::ROLES)],
+            'scopes.*.dimension' => ['required', 'string', Rule::in(PromotionScopes::DIMENSIONS)],
+            'scopes.*.value_id' => ['nullable', 'integer', 'min:1'],
+            'scopes.*.value' => ['nullable', 'string', 'max:32'],
             'storefronts' => ['array'],
             'storefronts.*' => ['integer', 'exists:storefronts,id'],
             'conditions' => ['array'],

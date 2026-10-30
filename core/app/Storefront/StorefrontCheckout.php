@@ -16,10 +16,12 @@ use App\Domain\Payment\CheckoutMethods;
 use App\Domain\Payment\PaymentInitiator;
 use App\Domain\Promotions\CartLine;
 use App\Domain\Promotions\CartSnapshot;
+use App\Domain\Promotions\CouponStatus;
 use App\Domain\Promotions\PromotionDiscounts;
 use App\Domain\Promotions\PromotionEngine;
 use App\Domain\Promotions\PromotionOutcome;
 use App\Domain\Promotions\PromotionSkips;
+use App\Domain\Shipping\FreeShipping;
 use App\Transform\Row;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -151,7 +153,11 @@ final class StorefrontCheckout
             if ($addressId === null) {
                 $addressId = $this->createAddress($userId, $guestToken, $data);
             }
-            $shipping = $this->shippingCost($addressId);
+            // free shipping over the storefront's threshold (FreeShipping): waived BEFORE the guard, on the goods at
+            // the prices charged — the storefront shows and sends the same number
+            $freeOver = FreeShipping::threshold($storefrontId);
+            $waived = FreeShipping::applies($freeOver, $subtotal);
+            $shipping = $waived ? 0.0 : $this->shippingCost($addressId);
             $serverTotal = round($subtotal + $shipping, 2);
             if (abs($clientTotal - $serverTotal) > 0.01) {
                 self::unwindTo($outer);
@@ -159,7 +165,21 @@ final class StorefrontCheckout
                 return ['status' => 422, 'body' => ['error' => 'total_mismatch', 'server_total' => $serverTotal]];
             }
 
-            $promotion = $this->evaluatePromotions($storefrontId, $priced, $subtotal, $shipping, $paymentMethod);
+            $coupon = self::str($data['coupon'] ?? null);
+            $promotion = $this->evaluatePromotions($storefrontId, $priced, $subtotal, $shipping, $paymentMethod, $coupon,
+                PromotionDiscounts::customerKeys($userId, self::str($data['guest_email'] ?? null),
+                    self::str($data['guest_phone'] ?? null) ?? self::str($data['phone'] ?? null)));
+            if ($coupon !== null && ($promotion->coupon['status'] ?? null) !== CouponStatus::APPLIED) {
+                /*
+                 * A typed code that does not apply STOPS the order (M1u): the shopper was shown a discount in the
+                 * cart, so placing the order without it would charge more than they agreed to. Nothing is written;
+                 * the page shows the sentence and takes the code off.
+                 */
+                self::unwindTo($outer);
+
+                return ['status' => 422, 'body' => ['error' => 'coupon', 'status' => $promotion->coupon['status'] ?? CouponStatus::INVALID,
+                    'messages' => $promotion->coupon['messages'] ?? CouponStatus::messages(CouponStatus::INVALID)]];
+            }
             if ($promotion->discount > 0.0) {
                 $serverTotal = round(max(0.0, $serverTotal - $promotion->discount), 2);
             }
@@ -180,6 +200,10 @@ final class StorefrontCheckout
                 $promotion,
             );
             PromotionDiscounts::record($orderId, $promotion);
+            if ($waived) {
+                // the order says WHY its delivery was free, so OrderTotals shows "free", not an unexplained gap
+                DB::table('orders')->where('id', $orderId)->update(['free_shipping_over' => $freeOver]);
+            }
             MetaConversions::recordSignals($orderId, $request);
             $this->carts->clear($cart);
 
@@ -257,8 +281,10 @@ final class StorefrontCheckout
 
     /**
      * @param  list<array<string, mixed>>  $priced
+     * @param  list<string>  $customerKeys  who is buying, for a promotion's per-customer limit (M1u)
      */
-    private function evaluatePromotions(int $storefrontId, array $priced, float $subtotal, float $shipping, string $paymentMethod): PromotionOutcome
+    private function evaluatePromotions(int $storefrontId, array $priced, float $subtotal, float $shipping, string $paymentMethod,
+        ?string $coupon = null, array $customerKeys = []): PromotionOutcome
     {
         $lines = [];
         foreach ($priced as $line) {
@@ -278,6 +304,8 @@ final class StorefrontCheckout
             subtotal: $subtotal,
             shippingCost: $shipping,
             paymentMethod: $paymentMethod,
+            code: $coupon,
+            customerKeys: $customerKeys,
         ));
     }
 

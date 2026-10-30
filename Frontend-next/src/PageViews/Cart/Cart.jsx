@@ -20,6 +20,11 @@ import { useAuthStore } from '../../Store/authStore'
 import { useShippingStore } from '../../Store/shippingStore'
 import { useShippingPrices } from '../../Hooks/useShippingPrices'
 import useCart, { getItemKey } from '../../Hooks/useCart'
+import useFreeShipping from '../../Hooks/useFreeShipping'
+import usePromotion from '../../Hooks/usePromotion'
+import CouponBox from '../../Components/Cart/CouponBox'
+import { discountLabel, payable } from '../../lib/coupon'
+import { shippingCharged } from '../../lib/freeShipping'
 import { cartStore } from '../../Store/cartStore'
 import ProductSlider from '../../Components/Product/ProductSlider'
 import { trustSignals } from '../../config/trust.config'
@@ -314,12 +319,15 @@ function Cart() {
     })
   }, [loading, items, subtotal, resolve])
 
-  // ── Shipping (always the selected governorate cost — no free shipping) ──
+  // ── Shipping: the selected governorate's cost — or free over the storefront's threshold (core's cart answer) ──
+  const freeShipping = useFreeShipping(subtotal)
   const cities = shippingPrices || []
   const selectedCity = cities.find((c) => String(c.id) === String(shippingid)) || null
-  const shippingCost = selectedCity ? Number(selectedCity.Price) : 0
+  const shippingCost = selectedCity ? shippingCharged(selectedCity.Price, freeShipping) : 0
   const citySelected = !!selectedCity
-  const total = subtotal + shippingCost
+  // the promotions and the typed code, as core priced them in the cart answer (M1u) — shown, never computed here
+  const promotion = usePromotion()
+  const total = payable(subtotal, promotion.discount, shippingCost)
   const fmt = useCallback((v) => Math.round(Number(v) || 0).toLocaleString(isRTL ? 'ar-EG' : 'en-US'), [isRTL])
   const currency = isRTL ? 'ج.م' : 'EGP'
 
@@ -626,12 +634,23 @@ function Cart() {
               </div>
               <div className="wz-cart-row">
                 <span>{t('Shipping', 'الشحن')}</span>
-                {citySelected ? (
+                {freeShipping.free ? (
+                  <span className="wz-cart-free">{t('Free', 'مجاني')}</span>
+                ) : citySelected ? (
                   <span>{fmt(shippingCost)} {currency}</span>
                 ) : (
                   <span>—</span>
                 )}
               </div>
+
+              {/* free shipping over the storefront's threshold (core's cart answer) */}
+              {freeShipping.over != null ? (
+                <p className={`wz-cart-freeship${freeShipping.free ? ' is-free' : ''}`}>
+                  {freeShipping.free
+                    ? t('This order ships free.', 'هذا الطلب يُشحن مجانًا.')
+                    : t(`Add ${fmt(freeShipping.remaining)} ${currency} more for free shipping.`, `أضف منتجات بقيمة ${fmt(freeShipping.remaining)} ${currency} ليُشحن طلبك مجانًا.`)}
+                </p>
+              ) : null}
 
               {savings > 0 && (
                 <div className="wz-cart-row wz-cart-savings">
@@ -641,6 +660,15 @@ function Cart() {
                   </span>
                 </div>
               )}
+
+              {promotion.discount > 0 ? (
+                <div className="wz-cart-row wz-cart-discount">
+                  <span>{discountLabel(promotion.applied, isRTL)}</span>
+                  <span>−{fmt(promotion.discount)} {currency}</span>
+                </div>
+              ) : null}
+
+              <CouponBox isRTL={isRTL} />
 
               <div className="wz-cart-divider" />
 

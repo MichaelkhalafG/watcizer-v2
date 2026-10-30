@@ -1,5 +1,6 @@
 import http from '../Context/api'
 import { STOREFRONT_CODE } from './env'
+import { couponParams } from './coupon'
 
 // THE CART on core's v2 API — `/api/v2/{storefront}/cart` (slice 3, 2026-10-21).
 //
@@ -27,6 +28,12 @@ import { STOREFRONT_CODE } from './env'
 //  • `cart/merge` (the guest cart folded into the user's at login) and `cart/recover` (the abandoned-cart
 //    link) have NO v2 equivalent — and need none: both operate on the SAME `carts` / `cart_items` rows that
 //    v2 reads, so they keep working whichever API is reading. Listed, not invented.
+//
+// ── The coupon (M1u, 2026-10-30) ───────────────────────────────────────────────────────────────
+//
+//  • Every request carries the code this browser keeps (`params: { coupon }`, src/lib/coupon.js), so every cart answer
+//    says what core would take off (`totals.promotion`) and whether the code applies. A PREVIEW: the order is
+//    priced again by core, and the page never sends a discount.
 
 /** The legacy line shape the cart store and the cart screen already read. */
 const legacyLine = (item) => ({
@@ -105,7 +112,7 @@ const refused = (err) => ({
 
 /** The shopper's cart as it stands on the server. Throws only when core could not answer at all. */
 export const v2CartRead = async () => {
-  const { data } = await http.get(`v2/${STOREFRONT_CODE}/cart`)
+  const { data } = await http.get(`v2/${STOREFRONT_CODE}/cart`, { params: couponParams() })
   return fromV2Cart(data)
 }
 
@@ -120,7 +127,7 @@ export const v2CartSet = async ({ productId, variantId = null, bucket = 'Express
       variant_id: variantId,
       bucket,
       quantity,
-    })
+    }, { params: couponParams() })
     return ok(data)
   } catch (err) {
     return refused(err)
@@ -130,7 +137,7 @@ export const v2CartSet = async ({ productId, variantId = null, bucket = 'Express
 /** Change a line's quantity, by the line's own id. */
 export const v2CartUpdate = async (lineId, quantity) => {
   try {
-    const { data } = await http.patch(`v2/${STOREFRONT_CODE}/cart/items/${lineId}`, { quantity })
+    const { data } = await http.patch(`v2/${STOREFRONT_CODE}/cart/items/${lineId}`, { quantity }, { params: couponParams() })
     return ok(data)
   } catch (err) {
     return refused(err)
@@ -140,7 +147,7 @@ export const v2CartUpdate = async (lineId, quantity) => {
 /** Remove a line, by the line's own id — never by product, which is what compat had to do. */
 export const v2CartRemove = async (lineId) => {
   try {
-    const { data } = await http.delete(`v2/${STOREFRONT_CODE}/cart/items/${lineId}`)
+    const { data } = await http.delete(`v2/${STOREFRONT_CODE}/cart/items/${lineId}`, { params: couponParams() })
     return ok(data)
   } catch (err) {
     return refused(err)

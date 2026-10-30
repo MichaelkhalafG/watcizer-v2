@@ -1,0 +1,83 @@
+/* The coupon field and the discount line (M1u, 2026-10-30). A TWIN: the storefront's own tokens give it its look. */
+.wz-coupon {
+  margin: 4px 0 12px;
+}
+.wz-coupon__label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.6);
+}
+.wz-coupon__row {
+  display: flex;
+  gap: 8px;
+}
+.wz-coupon__input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid rgba(0, 0, 0, 0.18);
+  border-radius: 6px;
+  background: #fff;
+  font-size: 14px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.wz-coupon__input:focus-visible {
+  outline: 2px solid var(--wz-gold);
+  outline-offset: 1px;
+}
+.wz-coupon__apply,
+.wz-coupon__remove {
+  flex: 0 0 auto;
+  height: 40px;
+  padding: 0 16px;
+  border: 1px solid var(--wz-ink, #111);
+  border-radius: 6px;
+  background: var(--wz-ink, #111);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.wz-coupon__apply:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.wz-coupon__remove {
+  height: 32px;
+  padding: 0 12px;
+  background: transparent;
+  color: var(--wz-ink, #111);
+}
+.wz-coupon__apply:focus-visible,
+.wz-coupon__remove:focus-visible {
+  outline: 2px solid var(--wz-gold);
+  outline-offset: 2px;
+}
+.wz-coupon__applied {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px dashed #16a34a;
+  border-radius: 6px;
+  color: #166534;
+  font-size: 13px;
+  font-weight: 600;
+}
+.wz-coupon__message {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+}
+.wz-coupon__message--error {
+  color: #b91c1c;
+}
+/* the discount row of the cart summary */
+.wz-cart-discount > span {
+  color: #16a34a !important;
+  font-weight: 600 !important;
+}

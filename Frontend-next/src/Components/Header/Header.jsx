@@ -17,6 +17,9 @@ import { useUIStore } from '../../Store/uiStore'
 import { useAuthStore } from '../../Store/authStore'
 import { useShippingStore } from '../../Store/shippingStore'
 import useCart from '../../Hooks/useCart'
+import usePromotion from '../../Hooks/usePromotion'
+import useFreeShipping from '../../Hooks/useFreeShipping'
+import { payable } from '../../lib/coupon'
 import { useTables } from '../../Hooks/queries/useTables'
 import { useNav } from '../../Hooks/queries/useNav'
 import { buildListingParams } from '../../utils/listingParams'
@@ -30,6 +33,10 @@ function Header() {
   // comes from TanStack Query — not the catalogue (C-1 stage 2).
   const { cart } = useCart()
   const shipping = useShippingStore((s) => s.shipping)
+  // the same total the cart screen shows (M1u, 2026-10-30): free delivery over the threshold, the promotion taken off
+  const promotion = usePromotion()
+  const cartSubtotal = (Array.isArray(cart?.cart_item) ? cart.cart_item : []).reduce((sum, item) => sum + (parseFloat(item.piece_price) || 0) * (parseInt(item.quantity, 10) || 0), 0)
+  const freeShipping = useFreeShipping(cartSubtotal)
   const { productsCount, total_cart_price } = useMemo(() => {
     const cartItems = Array.isArray(cart?.cart_item) ? cart.cart_item : []
     const count = cartItems.reduce(
@@ -42,9 +49,9 @@ function Header() {
       return total + piecePrice * quantity
     }, 0)
     // Empty cart → total is 0 (do NOT add the default shipping fee to nothing).
-    const total = (count > 0 ? subtotal + parseFloat(shipping || 0) : 0).toFixed(2)
+    const total = (count > 0 ? payable(subtotal, promotion.discount, freeShipping.free ? 0 : parseFloat(shipping || 0)) : 0).toFixed(2)
     return { productsCount: count, total_cart_price: total }
-  }, [cart, shipping])
+  }, [cart, shipping, promotion.discount, freeShipping.free])
   const { data: tables = {} } = useTables()
   const { data: nav } = useNav()
   const { language } = useUIStore()

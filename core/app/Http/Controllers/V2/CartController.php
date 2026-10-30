@@ -36,7 +36,7 @@ class CartController extends Controller
     {
         [$userId, $token] = $this->identity($request);
 
-        return $this->respond($carts->payload($carts->find($userId, $token)), $userId === null ? $token : null);
+        return $this->respond($carts->payload($carts->find($userId, $token), self::coupon($request), $userId), $userId === null ? $token : null);
     }
 
     public function store(Request $request, StorefrontCart $carts): JsonResponse
@@ -64,7 +64,7 @@ class CartController extends Controller
             return $this->refuse($refusal, $userId === null ? $token : null);
         }
 
-        return $this->respond($carts->payload($cart), $userId === null ? $token : null);
+        return $this->respond($carts->payload($cart, self::coupon($request), $userId), $userId === null ? $token : null);
     }
 
     public function update(Request $request, StorefrontCart $carts, int $item): JsonResponse
@@ -80,7 +80,7 @@ class CartController extends Controller
             return $this->refuse($refusal, $userId === null ? $token : null);
         }
 
-        return $this->respond($carts->payload($cart), $userId === null ? $token : null);
+        return $this->respond($carts->payload($cart, self::coupon($request), $userId), $userId === null ? $token : null);
     }
 
     public function destroy(Request $request, StorefrontCart $carts, int $item): JsonResponse
@@ -91,7 +91,7 @@ class CartController extends Controller
             return $this->refuse('not_found', $userId === null ? $token : null);
         }
 
-        return $this->respond($carts->payload($cart), $userId === null ? $token : null);
+        return $this->respond($carts->payload($cart, self::coupon($request), $userId), $userId === null ? $token : null);
     }
 
     /** @return array{0: ?int, 1: ?string} the signed-in customer's id, or the guest token (either may be absent) */
@@ -129,4 +129,11 @@ class CartController extends Controller
         return response()->json(['error' => $code], $code === 'not_found' ? 404 : 422, $headers);
     }
 
+    /** The coupon code the page is showing (`?coupon=`), for the cart's promotion preview (M1u). */
+    private static function coupon(Request $request): ?string
+    {
+        $code = $request->query('coupon');
+
+        return is_string($code) && trim($code) !== '' && strlen(trim($code)) <= 40 ? trim($code) : null;
+    }
 }
