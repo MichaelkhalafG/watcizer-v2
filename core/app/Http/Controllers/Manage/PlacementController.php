@@ -313,6 +313,12 @@ final class PlacementController
      */
     public function bulk(Request $request, Storefront $storefront): RedirectResponse
     {
+        // M1w (2026-10-30): every row this bulk action writes is tagged, so the activity log can show "bulk changes"
+        return ActivityLog::within(ActivityLog::CONTEXT_BULK, fn (): RedirectResponse => $this->bulkTagged($request, $storefront));
+    }
+
+    private function bulkTagged(Request $request, Storefront $storefront): RedirectResponse
+    {
         $request->validate([
             'action' => ['required', 'string', 'in:show,hide,feature,unfeature,set_category,clear_category'],
             'product_ids' => ['required', 'array', 'min:1', 'max:500'],

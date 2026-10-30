@@ -718,6 +718,12 @@ final class InventoryController
      */
     public function bulk(Request $request): RedirectResponse
     {
+        // M1w (2026-10-30): every row this bulk action writes is tagged, so the activity log can show "bulk changes"
+        return ActivityLog::within(ActivityLog::CONTEXT_BULK, fn (): RedirectResponse => $this->bulkTagged($request));
+    }
+
+    private function bulkTagged(Request $request): RedirectResponse
+    {
         $data = Coerce::arr($request->validate([
             'action' => ['required', 'string', Rule::in(['count_to', 'receive', 'set_threshold', 'move_bucket'])],
             'ids' => ['required', 'array', 'min:1', 'max:'.self::BULK_MAX],

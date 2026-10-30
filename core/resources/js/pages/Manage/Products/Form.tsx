@@ -3,6 +3,7 @@ import { Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { CategoryPicker } from "@/components/manage/CategoryPicker";
+import { ProductHistory, type HistoryEntry } from "@/components/manage/products/ProductHistory";
 import { ErrorCount, ErrorSummary } from "@/components/form/ErrorSummary";
 import {
     FormTabs,
@@ -239,6 +240,8 @@ interface Props {
     variants: { rows: VariantRow[]; state: VariantState };
     pre_switch: PreSwitchState;
     pre_switch_variant: PreSwitchState;
+    /** M1w: the History tab — the product's log rows and its stock movements, newest first. */
+    history: HistoryEntry[];
 }
 
 const EMPTY_PAIR: Pair = { ar: "", en: "" };
@@ -289,6 +292,7 @@ export default function ProductForm({
     variants,
     pre_switch,
     pre_switch_variant,
+    history,
 }: Props) {
     const t = useT();
     const locale = useLocale();
@@ -374,6 +378,10 @@ export default function ProductForm({
             label: t("products.seo_short", "SEO"),
             fields: ["meta_title", "meta_description", "search_keywords"],
         },
+        // M1w: read-only, so it carries no fields; only an existing product has a history
+        ...(product === null
+            ? []
+            : [{ key: "history", label: t("products.history", "السجل"), fields: [] }]),
     ];
 
     const [tab, setTab] = useState("identity");
@@ -1758,6 +1766,9 @@ export default function ProductForm({
                     error={errors.variants ?? null}
                 />
             ) : null}
+
+            {/* M1w: outside the <form> like the variants panel — it writes nothing */}
+            {tab === "history" && product !== null ? <ProductHistory entries={history} /> : null}
 
             {storefronts.length > 1 ? (
                 <p className="mt-4 text-xs text-muted-foreground">

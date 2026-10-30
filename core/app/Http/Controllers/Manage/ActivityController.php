@@ -12,6 +12,7 @@ use App\Transform\Row;
 use Illuminate\Contracts\Database\Query\Builder as BuilderContract;
 use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
 use Illuminate\Database\Query\Builder;
+use Illuminate\Database\Query\JoinClause;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
@@ -61,11 +62,24 @@ final class ActivityController
                 // Prefix, on indexed columns — never `%term%` (see the file note). `%`, `_` and `\`
                 // are LIKE metacharacters and are escaped so a search for "50%" finds "50%".
                 $prefix = addcslashes($term, '%_\\').'%';
-                $query->where(function (BuilderContract $inner) use ($prefix, $term): void {
+                /*
+                 * M1w (2026-10-30): …and through the PRODUCT. Its SKU (exact or any part), its internal code and its
+                 * title in either language are matched on the CATALOGUE (8,000 rows, not a log that grows), resolved
+                 * to product and variant ids, and the log is then probed by its indexed subject — so "who changed
+                 * the Daytona", "ROL07" or "1513477" finds the product's whole history without scanning the log.
+                 */
+                [$productIds, $variantIds] = self::productsMatching($term);
+                $query->where(function (BuilderContract $inner) use ($prefix, $term, $productIds, $variantIds): void {
                     $inner->where('a.subject_label', 'like', $prefix)
                         ->orWhere('a.user_name', 'like', $prefix);
                     if (preg_match('/^[0-9]{1,18}$/', $term) === 1) {
                         $inner->orWhere('a.subject_id', (int) $term);
+                    }
+                    if ($productIds !== []) {
+                        $inner->orWhere(fn (BuilderContract $p) => $p->where('a.subject_type', 'catalog_products')->whereIn('a.subject_id', $productIds));
+                    }
+                    if ($variantIds !== []) {
+                        $inner->orWhere(fn (BuilderContract $v) => $v->where('a.subject_type', 'catalog_product_variants')->whereIn('a.subject_id', $variantIds));
                     }
                 });
             })
@@ -74,15 +88,17 @@ final class ActivityController
                 'action' => [
                     ActivityLog::CREATED, ActivityLog::UPDATED, ActivityLog::DELETED,
                     ActivityLog::RESTORED, ActivityLog::ADJUSTED, ActivityLog::GRANTED,
-                    ActivityLog::REVOKED,
+                    ActivityLog::REVOKED, ActivityLog::LOGIN,
                 ],
+                // M1w: what KIND of change — a price, the stock, a bulk action, a sign-in — across actions and types
+                'kind' => self::KINDS,
                 'subject_type' => self::subjectTypes(),
                 'subject_id' => null,
                 'storefront_id' => null,
                 'from' => null,
                 'to' => null,
             ])
-            ->virtual(['user_id', 'subject_type', 'subject_id', 'storefront_id', 'from', 'to'])
+            ->virtual(['user_id', 'subject_type', 'subject_id', 'storefront_id', 'from', 'to', 'kind'])
             /*
              * The CSV's column headings, off the SAME keys the screen's own columns use
              * (`Activity/Index.tsx`): a download whose headings disagreed with the table above it
@@ -99,8 +115,16 @@ final class ActivityController
             ], 'activity');
 
         $query = DB::table(ActivityLog::TABLE.' as a')
+            // M1w: the product behind a product or a variant row — its SKU and a link, looked up by primary key
+            ->leftJoin('catalog_product_variants as v', function (JoinClause $j): void {
+                $j->on('v.id', '=', 'a.subject_id')->where('a.subject_type', '=', 'catalog_product_variants');
+            })
+            ->leftJoin('catalog_products as p', function (JoinClause $j): void {
+                $j->on('p.id', '=', DB::raw("(CASE WHEN a.subject_type = 'catalog_products' THEN a.subject_id ELSE v.product_id END)"));
+            })
             ->select(['a.id', 'a.user_id', 'a.user_name', 'a.subject_type', 'a.subject_id',
-                'a.subject_label', 'a.action', 'a.storefront_id', 'a.changes', 'a.created_at']);
+                'a.subject_label', 'a.action', 'a.context', 'a.storefront_id', 'a.changes', 'a.created_at',
+                'p.id as product_id', 'p.sku as product_sku', 'p.wa_code as product_wa_code']);
 
         /*
          * ── The acting grant's storefronts, like every other list (🟡-2, 2026-09-17) ──────────
@@ -189,6 +213,12 @@ final class ActivityController
                 'action_label' => self::actionLabel(Row::str($row, 'action')),
                 'storefront_id' => Row::nint($row, 'storefront_id'),
                 'created_at' => Row::nstr($row, 'created_at'),
+                // M1w: which product, by the codes people look for, and where to open it
+                'sku' => Row::nstr($row, 'product_sku') ?? Row::nstr($row, 'product_wa_code'),
+                'link' => Row::nint($row, 'product_id') === null ? null : route('manage.products.edit', [
+                    'storefront' => Row::nint($row, 'storefront_id') ?? 1, 'product' => Row::nint($row, 'product_id'),
+                ]),
+                'bulk' => Row::nstr($row, 'context') !== null,
                 'changes' => $changes,
                 // A one-line rendering for the CSV, where a nested object would be unreadable.
                 'summary' => self::summarise($changes),
@@ -207,7 +237,11 @@ final class ActivityController
                     fn (string $a): array => ['value' => $a, 'label' => self::actionLabel($a)],
                     [ActivityLog::CREATED, ActivityLog::UPDATED, ActivityLog::DELETED,
                         ActivityLog::RESTORED, ActivityLog::ADJUSTED, ActivityLog::GRANTED,
-                        ActivityLog::REVOKED],
+                        ActivityLog::REVOKED, ActivityLog::LOGIN],
+                ),
+                'kinds' => array_map(
+                    fn (string $k): array => ['value' => $k, 'label' => self::kindLabel($k)],
+                    self::KINDS,
                 ),
                 'subject_types' => array_map(
                     fn (string $t): array => ['value' => $t, 'label' => self::typeLabel($t)],
@@ -323,6 +357,26 @@ final class ActivityController
         if ($to !== null && $to !== '') {
             $query->where('a.created_at', '<=', $to.' 23:59:59');
         }
+
+        match (Coerce::nstr($filters['kind'] ?? null)) {
+            // a price moved: the regular price, the sale price, or a storefront's override of either
+            'price' => $query->where(function (Builder $q): void {
+                foreach (['selling_price', 'sale_price', 'price_override', 'sale_price_override'] as $field) {
+                    $q->orWhere('a.changes', 'like', '%"'.$field.'"%');
+                }
+            }),
+            // the stock moved: a person's adjustment (the system's own movements are the stock ledger's, and the
+            // product's History tab shows both)
+            'stock' => $query->where(function (Builder $q): void {
+                $q->where('a.action', ActivityLog::ADJUSTED)
+                    ->orWhere('a.changes', 'like', '%"stock_express"%')
+                    ->orWhere('a.changes', 'like', '%"stock_market"%');
+            }),
+            // written inside a bulk action (tagged), or a batch row with no single subject
+            'bulk' => $query->where(fn (Builder $q) => $q->whereNotNull('a.context')->orWhereNull('a.subject_id')),
+            'login' => $query->where('a.action', ActivityLog::LOGIN),
+            default => null,
+        };
     }
 
     /**
@@ -474,6 +528,8 @@ final class ActivityController
             'storefront_home_rails',
             // The re-engagement e-mail's settings (2026-10-01).
             'core_reengagement_settings',
+            // The brand and category page texts (M1y, 2026-10-30).
+            'core_seo_texts',
         ];
     }
 
@@ -511,6 +567,48 @@ final class ActivityController
         return is_scalar($value) ? (string) $value : '…';
     }
 
+    /** @var list<string> the kinds of change the log can be filtered by (M1w) */
+    public const KINDS = ['price', 'stock', 'bulk', 'login'];
+
+    private static function kindLabel(string $kind): string
+    {
+        return match ($kind) {
+            'price' => ManageText::t('activity.kind_price', 'تغيير سعر'),
+            'stock' => ManageText::t('activity.kind_stock', 'تغيير مخزون'),
+            'bulk' => ManageText::t('activity.kind_bulk', 'تغيير جماعي'),
+            default => ManageText::t('activity.kind_login', 'تسجيل دخول'),
+        };
+    }
+
+    /**
+     * The products (and their variants) a search term names: SKU exact first, then any part of the SKU, the internal
+     * code or the title in either language. Capped at 500 products — a term that matches more is too broad to be a
+     * product search, and the label and user search still apply.
+     *
+     * @return array{0: list<int>, 1: list<int>}
+     */
+    private static function productsMatching(string $term): array
+    {
+        $term = trim($term);
+        if (mb_strlen($term) < 2) {
+            return [[], []];
+        }
+        $like = '%'.addcslashes($term, '%_\\').'%';
+        $ids = Coerce::intList(DB::table('catalog_products')
+            ->where(fn (Builder $q) => $q->where('sku', $term)->orWhere('wa_code', $term)
+                ->orWhere('sku', 'like', $like)->orWhere('wa_code', 'like', $like))
+            ->limit(500)->pluck('id'));
+        if (count($ids) < 500) {
+            $ids = array_values(array_unique(array_merge($ids, Coerce::intList(DB::table('catalog_product_translations')
+                ->where('title', 'like', $like)->limit(500 - count($ids))->pluck('product_id')))));
+        }
+        if ($ids === []) {
+            return [[], []];
+        }
+
+        return [$ids, Coerce::intList(DB::table('catalog_product_variants')->whereIn('product_id', $ids)->pluck('id'))];
+    }
+
     /**
      * The LABEL for a stored action.
      *
@@ -528,6 +626,7 @@ final class ActivityController
             ActivityLog::ADJUSTED => ManageText::t('activity.action_adjusted', 'تعديل مخزون'),
             ActivityLog::GRANTED => ManageText::t('activity.action_granted', 'منح صلاحية'),
             ActivityLog::REVOKED => ManageText::t('activity.action_revoked', 'سحب صلاحية'),
+            ActivityLog::LOGIN => ManageText::t('activity.action_login', 'تسجيل دخول'),
             default => $action,
         };
     }
@@ -591,6 +690,7 @@ final class ActivityController
             'core_blogs' => ManageText::t('activity.type_blog', 'مقال'),
             'storefront_home_rails' => ManageText::t('activity.type_home_rail', 'شريط الصفحة الرئيسية'),
             'core_reengagement_settings' => ManageText::t('reengagement.title', 'رسائل العودة'),
+            'core_seo_texts' => ManageText::t('activity.type_seo_text', 'نص صفحة'),
             default => $type,
         };
     }
