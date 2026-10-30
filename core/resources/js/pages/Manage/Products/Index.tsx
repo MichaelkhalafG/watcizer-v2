@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import { DataTable, type Column } from "@/components/table/DataTable";
 import ManageLayout from "@/layouts/ManageLayout";
+import { BulkPriceDialog } from "@/components/manage/products/BulkPriceDialog";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -75,8 +76,15 @@ interface Props {
     all_storefronts: Array<{ id: number; code: string; name: string }>;
     brands: Option[];
     categories: Option[];
+    /** M1v: the grade filter's options. */
+    grades: Option[];
     families: Option[];
     table: TablePayload<ProductRow>;
+    /** M1v: the bulk price change's cap, and the last batch not undone (for the undo button). */
+    bulk_price: {
+        max: number;
+        last: { id: number; count: number; created_at: string | null; by: string | null } | null;
+    };
     /**
      * Which catalogue is on screen, and what the other choice would show (W1).
      *
@@ -110,10 +118,12 @@ export default function ProductsIndex({
     all_storefronts,
     brands,
     categories,
+    grades,
     families,
     table,
     scope,
     pre_switch,
+    bulk_price,
 }: Props) {
     const t = useT();
     const locale = useLocale();
@@ -599,6 +609,27 @@ export default function ProductsIndex({
             ]}
             actions={
                 <div className="flex items-center gap-2">
+                    {/* M1v: undo the last bulk price change — product by product, only where nobody changed the price since */}
+                    {bulk_price.last !== null ? (
+                        <Button
+                            type="button"
+                            variant="outline"
+                            title={t("products.bulk_price_undo_hint", "الدفعة #:id — :count منتجًا", {
+                                id: bulk_price.last.id,
+                                count: bulk_price.last.count,
+                            })}
+                            onClick={() =>
+                                bulk_price.last !== null &&
+                                router.post(
+                                    `/manage/storefronts/${storefront.id}/products/bulk-price/${bulk_price.last.id}/undo`,
+                                    {},
+                                    { preserveScroll: true },
+                                )
+                            }
+                        >
+                            {t("products.bulk_price_undo", "تراجع عن آخر تغيير أسعار")}
+                        </Button>
+                    ) : null}
                     {storefronts.length > 1 ? (
                         <Select
                             aria-label={t("common.storefront", "المتجر")}
@@ -751,6 +782,32 @@ export default function ProductsIndex({
                                 </option>
                             ))}
                         </Select>
+                        {/* M1v: the grade, and a price range on the price the customer is charged */}
+                        <Select
+                            aria-label={t("products.filter_by_grade", "تصفية بالفئة")}
+                            className="w-32"
+                            value={current["p.grade_id"] ?? ""}
+                            onChange={(event) =>
+                                setFilter("p.grade_id", event.target.value === "" ? null : event.target.value)
+                            }
+                        >
+                            <option value="">{t("products.all_grades", "كل الفئات")}</option>
+                            {grades.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                    {option.label}
+                                </option>
+                            ))}
+                        </Select>
+                        <PriceBound
+                            label={t("products.price_min", "السعر من")}
+                            value={current["price_min"] ?? ""}
+                            onCommit={(value) => setFilter("price_min", value)}
+                        />
+                        <PriceBound
+                            label={t("products.price_max", "إلى")}
+                            value={current["price_max"] ?? ""}
+                            onCommit={(value) => setFilter("price_max", value)}
+                        />
                         <Select
                             aria-label={t(
                                 "products.filter_by_family",
@@ -926,6 +983,17 @@ export default function ProductsIndex({
                                 product, and a bulk action that silently skipped half a selection
                                 would be worse than no bulk action. It lives on the placement screen,
                                 which reports what it skipped. */}
+                            <BulkPriceDialog
+                                storefrontId={storefront.id}
+                                selection={
+                                    scope.matching
+                                        ? { matching: true, query: scope.query }
+                                        : { ids: selected.map((id) => Number(id)) }
+                                }
+                                count={scope.count}
+                                max={bulk_price.max}
+                                onDone={clear}
+                            />
                             <Button
                                 type="button"
                                 size="sm"
@@ -1006,5 +1074,37 @@ export default function ProductsIndex({
                 )}
             />
         </ManageLayout>
+    );
+}
+
+/** A price bound for the list filter (M1v). It commits on Enter or when it loses focus, never per keystroke. */
+function PriceBound({ label, value, onCommit }: { label: string; value: string; onCommit: (value: string | null) => void }) {
+    const [draft, setDraft] = useState(value);
+    const commit = () => {
+        const clean = draft.trim();
+        if (clean === value) {
+            return;
+        }
+        onCommit(clean === "" || Number.isNaN(Number(clean)) ? null : clean);
+    };
+
+    return (
+        <Input
+            aria-label={label}
+            placeholder={label}
+            type="number"
+            min={0}
+            dir="ltr"
+            className="h-9 w-24"
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            onBlur={commit}
+            onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                    event.preventDefault();
+                    commit();
+                }
+            }}
+        />
     );
 }
