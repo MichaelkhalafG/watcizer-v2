@@ -1,5 +1,4 @@
 'use client'
-import Image from 'next/image'
 import Link from '@/src/Components/LocaleLink'
 import { useUIStore } from '../../Store/uiStore'
 import '../../PageViews/Auth/auth.css'
@@ -19,8 +18,8 @@ export default function AuthShell({ title, subtitle, children }) {
         <div className="wz-auth-brand-grid" />
         <div className="wz-auth-brand-inner">
           <Link href="/" aria-label="Brand Fashion">
-            {/* next/image (2026-10-11): the raw <img> downloaded the 141,944 B original. */}
-            <Image src={logo} alt="Brand Fashion" className="wz-auth-brand-logo" width={190} height={58} quality={90} />
+            {/* An SVG wordmark, drawn as the file. No SVG goes through next/image (2026-10-30, GHSA-2464-fhr4-w9xw): next/image already served it unoptimised, as the file. */}
+            <img src={logo} alt="Brand Fashion" className="wz-auth-brand-logo" width={190} height={58} decoding="async" />
           </Link>
           <span className="wz-auth-brand-rule" />
           <p className="wz-auth-brand-tagline">

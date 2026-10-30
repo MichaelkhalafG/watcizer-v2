@@ -119,6 +119,12 @@ const nextConfig = {
     // plain-http loopback host lets anyone ask the live optimiser to fetch from the
     // server's own port 8000, and no production image names either of them or
     // Farfetch (none in the 2026-09-17 data).
+    //
+    // Locked to the upload folders (2026-10-30, after GHSA-2464-fhr4-w9xw — RCE in the image optimiser through an
+    // upstream library when SVG files are used). Every optimised image the live storefronts request is under
+    // /Uploads_Images/ (measured on both home pages and a brand page: Brand, Product, Product_image, Sub_type,
+    // Banner_home), and core re-encodes every upload to WebP (MediaStore), so nothing else on the API host is an
+    // image. Without the pathname, /_next/image would fetch ANY path of the API host and hand its bytes to sharp.
     remotePatterns: [
       /*
        * Storefront Phase 2 (2026-09-22): the API and asset host moves to a sub-domain of this
@@ -131,15 +137,19 @@ const nextConfig = {
        * legacy host was switched off on 2026-09-29, deleted, and no longer resolves, so the entry
        * went with it (2026-10-12, C3-delete code half).
        */
-      { protocol: 'https', hostname: 'api.watchizereg.com' },
+      { protocol: 'https', hostname: 'api.watchizereg.com', pathname: '/Uploads_Images/**' },
       ...(process.env.NODE_ENV === 'production'
         ? []
         : [
-            { protocol: 'http', hostname: '127.0.0.1', port: '8000' },
-            { protocol: 'http', hostname: 'localhost', port: '8000' },
-            { protocol: 'https', hostname: 'cdn-images.farfetch-contents.com' },
+            { protocol: 'http', hostname: '127.0.0.1', port: '8000', pathname: '/Uploads_Images/**' },
+            { protocol: 'http', hostname: 'localhost', port: '8000', pathname: '/Uploads_Images/**' },
+            { protocol: 'https', hostname: 'cdn-images.farfetch-contents.com' }, // dev only; the seeder's placeholders are not under /Uploads_Images/
           ]),
     ],
+    // SVG is never optimised (GHSA-2464-fhr4-w9xw). This is Next's default, written down so it is not switched on by
+    // accident: with it false the optimiser answers an SVG source with 400 before sharp sees it, and a next/image
+    // whose src ends in .svg (the header and footer marks) is served as the file itself, unoptimised.
+    dangerouslyAllowSVG: false,
     // AVIF first (30–50% smaller than WebP), WebP fallback.
     formats: ['image/avif', 'image/webp'],
     // Allowed quality values — must cover every `quality` prop used in components
