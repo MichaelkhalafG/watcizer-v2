@@ -10,6 +10,7 @@ import { aisleTint } from '@/src/lib/aisleTint'
 import { PLACEHOLDER_IMG } from '@/src/utils/imageUrl'
 import { pictureSources, SIZES } from '@/src/utils/picture'
 import useGalleryKeys, { imagePosition } from '@/src/Hooks/useGalleryKeys'
+import { colourCount, defaultColorId, galleryFor, swatchFor } from '@/src/lib/variantGallery'
 import Disclosure from '@/src/Components/UI/Disclosure'
 import { localizeHref } from '@/src/utils/localePath'
 import BfRail from '@/src/Components/Listing/BfRail'
@@ -41,6 +42,13 @@ import './BfProductPage.css'
  * 3 in stock", "Market · 12 available", its exact words and tones) under the pill; a sold-out product shows the twin
  * StockAlertForm (Watchizer's notify-me, e-mail only) instead of a button that only toasted; `?color=&size=` from
  * the card's picker preselect the row; the type is the --bf-* scale.
+ *
+ * 2026-11-04 (Part 1, colour chosen by image): a colour's swatch is that row's own photo where the dashboard marked
+ * one (the hex circle otherwise), choosing a colour switches the WHOLE gallery to that colour's photos (the product's
+ * general photos when it has none), the picker opens on the product's own colour (core's `base_variant_id`) so it
+ * never asks the shopper to choose between options that leave out what they opened, and the band/material colour
+ * line of the details is hidden when the rows carry more than one colour — it describes one of them only. The
+ * rules are src/lib/variantGallery.js (a twin, unit-tested).
  */
 
 const STR = {
@@ -114,7 +122,9 @@ export default function BfProductPage({ detail, related }) {
   const sizes = useMemo(() => uniq(variants.map((v) => v.size).filter(Boolean)).sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0)), [variants])
   const hasColour = colours.length > 0
   const hasSize = sizes.length > 0
-  const [colorId, setColorId] = useState(() => (preColor != null && variants.some((v) => v.color?.id === preColor) ? preColor : null))
+  // the picker OPENS on a colour (Part 1, 1.4): ?color= when a row carries it, else the product's own colour, else the
+  // first colour in stock — never on nothing while the shopper is looking at one of its options
+  const [colorId, setColorId] = useState(() => defaultColorId(variants, p.base_variant_id ?? null, preColor))
   const [sizeId, setSizeId] = useState(() => (preSize != null && variants.some((v) => v.size?.id === preSize) ? preSize : null))
   const rowsFor = (c, s) => variants.filter((v) => (c == null || v.color?.id === c) && (s == null || v.size?.id === s))
   const chosen = variants.length ? (rowsFor(hasColour ? colorId : null, hasSize ? sizeId : null).length === 1 && (!hasColour || colorId != null) && (!hasSize || sizeId != null) ? rowsFor(hasColour ? colorId : null, hasSize ? sizeId : null)[0] : null) : null
@@ -169,8 +179,9 @@ export default function BfProductPage({ detail, related }) {
     }
   }
 
-  // ── gallery
-  const images = (Array.isArray(p.images) && p.images.length ? p.images : p.image ? [p.image] : []).filter((i) => i?.src)
+  // ── gallery — it FOLLOWS the chosen colour (Part 1, 1.2): that colour's own photos, else the product's general ones
+  const allImages = useMemo(() => (Array.isArray(p.images) && p.images.length ? p.images : p.image ? [p.image] : []).filter((i) => i?.src), [p.images, p.image])
+  const images = useMemo(() => galleryFor(allImages, variants, hasColour ? colorId : null), [allImages, variants, hasColour, colorId])
   // each image's recorded renditions as <source> strings, computed once per render (utils/picture.js)
   const sources = useMemo(() => new Map(images.map((img) => [img, pictureSources(img.srcset)])), [images])
   const sourcesOf = (img) => sources.get(img) ?? pictureSources(img?.srcset)
@@ -185,6 +196,11 @@ export default function BfProductPage({ detail, related }) {
     slideTarget.current = i
     const el = trackRef.current
     if (el) el.scrollTo({ left: el.clientWidth * i * (isRTL ? -1 : 1), behavior: 'smooth' })
+  }
+  // choosing a colour changes the pictures, so the gallery goes back to the first of the new set
+  const chooseColour = (id) => {
+    setColorId(id)
+    goSlide(0)
   }
   const onScroll = () => {
     const el = trackRef.current
@@ -226,7 +242,10 @@ export default function BfProductPage({ detail, related }) {
   if (p.family) pivotRows.push({ k: t.family, v: t.families[p.family] || p.family })
   if (Array.isArray(p.categories) && p.categories.length) pivotRows.push({ k: t.category, v: p.categories.map((c) => txt(c.name, lang)).join(isRTL ? '، ' : ', ') })
   if (Array.isArray(attrs.genders) && attrs.genders.length) pivotRows.push({ k: t.gender, v: attrs.genders.map((g) => txt(g.name, lang)).join(isRTL ? '، ' : ', ') })
-  const allColours = [...(attrs.colors?.dial || []), ...(attrs.colors?.band || []), ...(attrs.colors?.main || [])].filter((c, i, a) => a.findIndex((y) => y.id === c.id) === i)
+  // the band/material colour describes ONE row when the rows carry several colours, so it is not listed then (1.5);
+  // a single-colour product keeps it as it was
+  const multiColour = colourCount(variants) > 1
+  const allColours = [...(attrs.colors?.dial || []), ...(multiColour ? [] : [...(attrs.colors?.band || []), ...(attrs.colors?.main || [])])].filter((c, i, a) => a.findIndex((y) => y.id === c.id) === i)
   if (allColours.length) pivotRows.push({ k: t.colours, colours: allColours })
   if (Array.isArray(attrs.features) && attrs.features.length) pivotRows.push({ k: t.features, v: attrs.features.map((f) => txt(f.name, lang)).join(isRTL ? '، ' : ', ') })
   // a spec value is a number (with a unit), a lookup ref ({id, name}), a flag or a string — never an object on screen
@@ -342,8 +361,11 @@ export default function BfProductPage({ detail, related }) {
                   {colours.map((c) => {
                     const st = colourState(c)
                     if (st.absent) return null
+                    // the swatch is the row's OWN photo where the dashboard marked one; the hex circle otherwise
+                    const photo = swatchFor(allImages, variants, c.id)
                     return (
-                      <button key={c.id} type="button" role="radio" aria-checked={colorId === c.id} className={`bf-opt__swatch ${st.dead ? 'is-dead' : ''}`} style={{ background: c.hex }} aria-label={`${txt(c.name, lang)}${st.dead ? ` — ${t.soldOut}` : ''}`} title={txt(c.name, lang)} onClick={() => setColorId(colorId === c.id ? null : c.id)}>
+                      <button key={c.id} type="button" role="radio" aria-checked={colorId === c.id} className={`bf-opt__swatch ${photo ? 'bf-opt__swatch--photo' : ''} ${st.dead ? 'is-dead' : ''}`} style={photo ? undefined : { background: c.hex }} aria-label={`${txt(c.name, lang)}${st.dead ? ` — ${t.soldOut}` : ''}`} title={txt(c.name, lang)} onClick={() => chooseColour(colorId === c.id ? null : c.id)}>
+                        {photo ? <img src={photo.src} alt="" loading="lazy" decoding="async" draggable={false} /> : null}
                         <span className="bf-swatch__hit" aria-hidden="true" />
                       </button>
                     )

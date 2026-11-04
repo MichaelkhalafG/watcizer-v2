@@ -79,7 +79,8 @@ final class VariantFixture
     {
         $addressId = T::int(DB::table('addresses')->orderBy('id')->value('id'));
         $orderId = (int) DB::table('orders')->insertGetId([
-            'user_id' => null, 'address_id' => $addressId,
+            // `storefront_id` is NOT NULL since the 2026-10-23 backfill; the fixture predated it.
+            'user_id' => null, 'address_id' => $addressId, 'storefront_id' => 1,
             'total_price_for_order' => '0.00', 'payment_method' => 'cash',
             'order_number' => 'ZZ'.random_int(100000, 999999), 'status' => 'processing',
             'guest_name' => 'variant-test', 'created_at' => now(), 'updated_at' => now(),

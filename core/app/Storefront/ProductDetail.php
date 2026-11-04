@@ -85,9 +85,17 @@ final class ProductDetail
         $primary = $this->cards->primaryPlacements([$productId]);
         $card = $this->cards->card($row, $translations, $images2, $primary);
 
+        // `variant_id` (M1y, Part 1): which row an image belongs to, null for the product's general
+        // gallery. Read HERE and nowhere else - the cards' images query never selects it, so the
+        // listing index and the header menu carry none of it (the L8 memory path).
         $images = [];
-        foreach (DB::table('catalog_product_images')->select(['id', 'path', 'is_cover', 'sort', 'width', 'height', 'alt_en', 'alt_ar', 'renditions'])->where('product_id', $productId)->orderByDesc('is_cover')->orderBy('sort')->orderBy('id')->get() as $img) {
-            $images[] = ['id' => Row::int($img, 'id'), 'is_cover' => Row::bool($img, 'is_cover')] + ProductCards::image($img);
+        $imageIdsByVariant = [];
+        foreach (DB::table('catalog_product_images')->select(['id', 'variant_id', 'path', 'is_cover', 'sort', 'width', 'height', 'alt_en', 'alt_ar', 'renditions'])->where('product_id', $productId)->orderByDesc('is_cover')->orderBy('sort')->orderBy('id')->get() as $img) {
+            $variantId = Row::nint($img, 'variant_id');
+            $images[] = ['id' => Row::int($img, 'id'), 'is_cover' => Row::bool($img, 'is_cover'), 'variant_id' => $variantId] + ProductCards::image($img);
+            if ($variantId !== null) {
+                $imageIdsByVariant[$variantId][] = Row::int($img, 'id');
+            }
         }
 
         $pivots = $this->pivots($productId);
@@ -106,6 +114,23 @@ final class ProductDetail
             }
         }
         $card['colors'] = array_values($cardColours);
+        // The product's OWN colour, as the dashboard's VariantWriter::ownColor() reads it (band,
+        // then main, then dial): the row carrying it is the one selected when the shopper arrives.
+        $ownColorId = null;
+        foreach ([$band, $main, $dial] as $refs) {
+            if (isset($refs[0]) && is_int($refs[0]['id'] ?? null)) {
+                $ownColorId = $refs[0]['id'];
+                break;
+            }
+        }
+        $variants = $this->variants($productId, $card, $imageIdsByVariant, $ownColorId);
+        $baseVariantId = null;
+        foreach ($variants as $v) {
+            if ($v['is_base'] === true) {
+                $baseVariantId = Val::int($v, 'id');
+                break;
+            }
+        }
         $categories = [];
         foreach (DB::table('storefront_category_product')->select(['storefront_category_id', 'is_primary'])->where('storefront_id', $this->ctx->id())->where('product_id', $productId)->orderByDesc('is_primary')->orderBy('storefront_category_id')->get() as $pl) {
             $node = $this->tree->node(Row::int($pl, 'storefront_category_id'));
@@ -141,7 +166,11 @@ final class ProductDetail
             ],
             'categories' => $categories,
             'breadcrumb' => $breadcrumb,
-            'variants' => $this->variants($productId, $card),
+            'variants' => $variants,
+            // The row the picker opens on (Part 1, 1.4): the product's own colour, so a picker never
+            // asks the shopper to choose between options that leave out what they are looking at.
+            // Null when no active row carries that colour (or the product has no colour rows).
+            'base_variant_id' => $baseVariantId,
             'meta' => ['title' => $tr['meta_title'] ?? [], 'description' => $tr['meta_description'] ?? []],
         ]);
 
@@ -190,10 +219,15 @@ final class ProductDetail
      * product's quantity (they exist in the warehouse and the ledger balances on them) but never
      * toward `in_stock` — see §3.10.
      *
+     * Part 1 (2026-11-04) adds two facts per row: `image_ids`, the product images the dashboard
+     * marked as this row's (the swatch is the first of them; choosing the row switches the
+     * gallery to all of them), and `is_base`, true for the row whose colour is the product's own.
+     *
      * @param  array<string, mixed>  $card
+     * @param  array<int, list<int>>  $imageIdsByVariant
      * @return list<array<string, mixed>>
      */
-    private function variants(int $productId, array $card): array
+    private function variants(int $productId, array $card, array $imageIdsByVariant, ?int $ownColorId): array
     {
         $rows = DB::table('catalog_product_variants')
             ->where('product_id', $productId)->where('is_active', 1)
@@ -223,6 +257,8 @@ final class ProductDetail
                 'label' => Row::str($row, 'label'),
                 'size' => $sizeId === null ? null : $this->lookups->ref('sizes', $sizeId),
                 'color' => $colorId === null ? null : $this->lookups->ref('colors', $colorId),
+                'image_ids' => $imageIdsByVariant[Row::int($row, 'id')] ?? [],
+                'is_base' => $colorId !== null && $colorId === $ownColorId,
                 'price' => StorefrontPricing::resolve(
                     number_format($base + $delta, 2, '.', ''),
                     $sale === null ? null : number_format($sale + $delta, 2, '.', ''),

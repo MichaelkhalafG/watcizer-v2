@@ -20,6 +20,17 @@ import type { SharedProps } from '@/types';
  * mistyping a `/manage` URL — there is no menu to render and no session to show, so it falls back
  * to a centred card on the dashboard's own background. The one thing both must have is a way back,
  * which is what the pages this replaces did not.
+ *
+ * ── The shared props may be ABSENT (Part 1, 1.6, 2026-11-04) ─────────────────────────────────
+ *
+ * A URL that matches NO route (`/manage/storefronts/1/promotions`) is refused by the router
+ * before any route middleware runs, so `HandleInertiaRequests::share()` never ran and `auth`,
+ * `nav` and the rest are simply not on the page. The first version read `auth.user` and crashed
+ * with "Cannot read properties of undefined (reading 'user')" — a blank white page in place of
+ * the 404 it was meant to draw. So the page reads `auth` defensively, and it takes the signed-in
+ * shell ONLY when the shared props are actually there: `ManageLayout` needs them too, and a
+ * signed-in operator on a URL that matched nothing gets the centred card with its way back, which
+ * is the point of this page.
  */
 
 interface Props {
@@ -78,9 +89,11 @@ function Body({ status, title, body, who_to_ask: whoToAsk, home, signed_in: sign
 }
 
 export default function ManageErrorPage(props: Props) {
-    const { auth } = usePage<SharedProps>().props;
+    // `Partial`: on an unmatched URL the shared props were never shared (see the file comment).
+    const shared = usePage<Partial<SharedProps>>().props;
+    const user = shared.auth?.user ?? null;
 
-    if (auth.user !== null) {
+    if (user !== null && Array.isArray(shared.nav)) {
         return (
             <ManageLayout title={props.title}>
                 <Body {...props} />

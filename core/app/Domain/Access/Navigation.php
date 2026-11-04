@@ -142,22 +142,16 @@ final class Navigation
                     // The brand and category pages' own words (M1y, 2026-10-30).
                     self::item('page_texts', ManageText::t('page_texts.title', 'نصوص الصفحات'), 'FileText', Role::MANAGE_LEGACY_CONTENT, route: 'manage.page_texts.index', params: ['storefront' => $storefrontId]),
                     /*
-                     * Promotions — BUILT, and deliberately PARKED (developer, 2026-09-17).
+                     * Promotions — OPEN since 2026-11-04 (Part 1, 1.6).
                      *
-                     * The engine is finished and tested: rules, conditions, rewards, the skip
-                     * ledger, the preview, and the discount audit trail that records which rule
-                     * discounted which order and by how much. Nothing here is a stub.
-                     *
-                     * It is off the sidebar because the developer does not want the team using it
-                     * yet — item 13 of the 2026-09-17 dashboard review, "the way Articles is". The
-                     * ROUTES stay registered (see routes/web.php): they are admin-only, no rule
-                     * exists to apply, and deleting a tested engine to hide a link would be the
-                     * expensive way to do a cheap thing. An admin who knows the URL still reaches
-                     * the screen — that is the intended shape, not an oversight.
-                     *
-                     * To bring it back: give this item its route again and drop `later`.
+                     * The engine was built and tested in wave 4D and PARKED on the sidebar on
+                     * 2026-09-17 (item 13 of that review: the developer did not want the team
+                     * using it yet). The coupon code went live on 2026-10-30 and the team needed
+                     * the screen; a sidebar still saying "later" over a screen that works is the
+                     * exact defect `ShellTest` guards against, so the item carries its route again.
+                     * The routes themselves were never unregistered and stay admin-only.
                      */
-                    self::item('promotions', ManageText::t('promotions.title', 'العروض الترويجية'), 'Gift', Role::MANAGE_PROMOTIONS, later: true),
+                    self::item('promotions', ManageText::t('promotions.title', 'العروض الترويجية'), 'Gift', Role::MANAGE_PROMOTIONS, 'manage.promotions.index'),
                 ],
             ],
             [

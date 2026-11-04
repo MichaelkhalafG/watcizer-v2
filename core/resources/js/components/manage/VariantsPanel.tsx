@@ -1,5 +1,5 @@
 import { router } from "@inertiajs/react";
-import { Lock, Plus, Trash2 } from "lucide-react";
+import { Check, Lock, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 
 import { ConfirmAction } from "@/components/manage/ConfirmAction";
@@ -29,7 +29,12 @@ export interface VariantRow {
     label: string;
     color_id: number | null;
     size_id: number | null;
+    /** What the column stores: this row's price minus the product's selling price. */
     price_delta: string;
+    /** What the form shows and asks for: the row's FULL selling price (Part 1, 2026-11-04). */
+    price: string;
+    /** The product images the dashboard marked as this row's (M1y); the first is its swatch. */
+    image_ids: number[];
     stock_express: number;
     stock_market: number;
     is_active: boolean;
@@ -53,12 +58,25 @@ export interface VariantState {
     legacy_backed: boolean;
 }
 
+/** The panel's facts about the PRODUCT (Part 1): the base price, and its own colour's row state. */
+export interface VariantSummary {
+    base_price: string;
+    own_color: { id: number; name: string; has_row: boolean } | null;
+}
+
+/** A SAVED product image the rows can claim (an unsaved upload has no id yet and cannot be). */
+export interface PanelImage {
+    id: number | null;
+    url: string;
+}
+
 type Draft = {
     label: string;
     sku: string;
     color_id: string;
     size_id: string;
-    price_delta: string;
+    price: string;
+    image_ids: number[];
     stock_express: string;
     stock_market: string;
     is_active: boolean;
@@ -69,11 +87,87 @@ const EMPTY: Draft = {
     sku: "",
     color_id: "",
     size_id: "",
-    price_delta: "0",
+    price: "",
+    image_ids: [],
     stock_express: "0",
     stock_market: "0",
     is_active: true,
 };
+
+/**
+ * Which of the product's photos belong to a row (Part 1, 1.2 — colour chosen by image).
+ *
+ * The product's saved photos as small toggles. A photo belongs to ONE row only (the schema says
+ * so: `catalog_product_images.variant_id`), so a photo another row holds is drawn with that row's
+ * name on it, and tapping it moves it here — there is no second step, because the rule has no
+ * second answer. A photo belonging to no row is a general photo of the product and shows on the
+ * shop when no colour is chosen.
+ *
+ * Only SAVED photos are offered: an upload made in this session has no id until the product is
+ * saved, and a row cannot claim what the database has not seen.
+ */
+function ImagePicks({
+    images,
+    selected,
+    heldBy,
+    onChange,
+    label,
+}: {
+    images: PanelImage[];
+    selected: number[];
+    /** image id => the OTHER row's name, when another row holds it */
+    heldBy: Record<number, string>;
+    onChange: (ids: number[]) => void;
+    label: string;
+}) {
+    const t = useT();
+    const saved = images.filter((image): image is PanelImage & { id: number } => image.id !== null);
+
+    if (saved.length === 0) {
+        return (
+            <p className="text-[11px] text-muted-foreground">
+                {t("variants.images_none_saved", "احفظ صور المنتج أولًا، ثم حدّد صور كل صف.")}
+            </p>
+        );
+    }
+
+    return (
+        <div className="flex flex-wrap gap-1.5" role="group" aria-label={label}>
+            {saved.map((image, index) => {
+                const on = selected.includes(image.id);
+                const holder = on ? null : (heldBy[image.id] ?? null);
+
+                return (
+                    <button
+                        key={image.id}
+                        type="button"
+                        aria-pressed={on}
+                        aria-label={t("variants.image_toggle_aria", "الصورة :n", { n: index + 1 })}
+                        title={holder === null ? undefined : t("variants.image_held_by", "مع: :label", { label: holder })}
+                        className={`relative h-11 w-11 overflow-hidden rounded-md border bg-muted/30 ${
+                            on ? "border-primary ring-2 ring-primary" : holder === null ? "border-border opacity-90" : "border-dashed opacity-60"
+                        }`}
+                        onClick={() =>
+                            onChange(on ? selected.filter((id) => id !== image.id) : [...selected, image.id])
+                        }
+                    >
+                        <img src={image.url} alt="" className="h-full w-full object-cover" loading="lazy" />
+                        {on ? (
+                            <span className="absolute end-0 top-0 rounded-bl-md bg-primary p-0.5 text-primary-foreground">
+                                <Check className="h-3 w-3" aria-hidden="true" />
+                            </span>
+                        ) : null}
+                        {holder === null ? null : (
+                            <span className="absolute inset-x-0 bottom-0 truncate bg-background/85 px-0.5 text-[9px] leading-3">
+                                {holder}
+                            </span>
+                        )}
+                    </button>
+                );
+            })}
+        </div>
+    );
+}
 
 /**
  * The variants panel (scope item 3) — inside the product form, bounded by wave 3.5's rules.
@@ -165,6 +259,8 @@ export function VariantsPanel({
     productId,
     rows,
     state,
+    summary,
+    images,
     preSwitch,
     colors,
     sizes,
@@ -173,6 +269,9 @@ export function VariantsPanel({
     productId: number | null;
     rows: VariantRow[];
     state: VariantState;
+    summary: VariantSummary;
+    /** The product's SAVED images, for the per-row photo picks. */
+    images: PanelImage[];
     /** The broader pre-switch block: no variant ROW may be created at all before the switch. */
     preSwitch: PreSwitchState;
     colors: Array<{ value: string; label: string }>;
@@ -180,11 +279,26 @@ export function VariantsPanel({
     error?: string | null;
 }) {
     const t = useT();
-    const [draft, setDraft] = useState<Draft>(EMPTY);
+    // A new row starts at the product's own price: "the same as the product" is the common case,
+    // and a box reading the real number says what it is where "0" said nothing (item 3, 2026-10-05).
+    const fresh = (): Draft => ({ ...EMPTY, price: summary.base_price });
+    const [draft, setDraft] = useState<Draft>(fresh);
     const [edits, setEdits] = useState<Record<number, Partial<VariantRow>>>({});
 
     const base =
         productId === null ? "" : `/manage/products/${productId}/variants`;
+
+    /** image id => the name of the row holding it, for every row but `except`. */
+    const heldByOthers = (except: number | null): Record<number, string> => {
+        const out: Record<number, string> = {};
+        for (const row of rows) {
+            if (row.id === except) continue;
+            const ids = edits[row.id]?.image_ids ?? row.image_ids;
+            for (const id of ids) out[id] = row.label;
+        }
+
+        return out;
+    };
 
     const submitNew = () => {
         router.post(
@@ -194,14 +308,40 @@ export function VariantsPanel({
                 sku: draft.sku === "" ? null : draft.sku,
                 color_id: draft.color_id === "" ? null : draft.color_id,
                 size_id: draft.size_id === "" ? null : draft.size_id,
-                price_delta: draft.price_delta === "" ? 0 : draft.price_delta,
+                price: draft.price === "" ? null : draft.price,
+                image_ids: draft.image_ids,
                 is_active: draft.is_active,
                 stock_express:
                     draft.stock_express === "" ? null : draft.stock_express,
                 stock_market:
                     draft.stock_market === "" ? null : draft.stock_market,
             },
-            { preserveScroll: true, onSuccess: () => setDraft(EMPTY) },
+            { preserveScroll: true, onSuccess: () => setDraft(fresh()) },
+        );
+    };
+
+    /**
+     * The product's own colour as a row, in one click (1.4). The brown wallet's page offered
+     * only red: the brown — what the shopper opened — was not an option at all. The row is made
+     * at the product's price with no units; the operator sets its quantity and photos here.
+     */
+    const addOwnColour = () => {
+        const own = summary.own_color;
+        if (own === null) return;
+        router.post(
+            base,
+            {
+                label: own.name,
+                sku: null,
+                color_id: own.id,
+                size_id: null,
+                price: summary.base_price,
+                image_ids: [],
+                is_active: true,
+                stock_express: null,
+                stock_market: null,
+            },
+            { preserveScroll: true },
         );
     };
 
@@ -215,7 +355,8 @@ export function VariantsPanel({
                 sku: merged.sku,
                 color_id: merged.color_id,
                 size_id: merged.size_id,
-                price_delta: merged.price_delta,
+                price: merged.price,
+                image_ids: merged.image_ids,
                 is_active: merged.is_active,
                 sort: merged.sort,
                 stock_express: merged.stock_express,
@@ -232,7 +373,7 @@ export function VariantsPanel({
     const patch = (
         id: number,
         key: keyof VariantRow,
-        value: string | number | boolean,
+        value: string | number | boolean | number[],
     ) =>
         setEdits((current) => ({
             ...current,
@@ -316,6 +457,35 @@ export function VariantsPanel({
                     </p>
                 ) : null}
 
+                {/* 1.4: the product's own colour must be a row. A picker that offers red to somebody
+                    looking at the brown wallet is asking them to choose between options that leave
+                    out what they came for; this is the one-click way out, and the server makes the
+                    same row on its own when the FIRST colour row is added from now on. */}
+                {productId !== null &&
+                rows.length > 0 &&
+                rows.some((row) => row.color_id !== null) &&
+                summary.own_color !== null &&
+                !summary.own_color.has_row ? (
+                    <Alert
+                        tone="warning"
+                        title={t("variants.own_colour_missing_title", "لون المنتج الأصلي ليس صفًا")}
+                    >
+                        <p>
+                            {t(
+                                "variants.own_colour_missing_body",
+                                "المنتج لونه «:colour»، لكن لا يوجد صف يبيع هذا اللون، فالمتجر يطلب من العميل الاختيار بين الألوان الأخرى فقط. أضفه كصف مثل أي صف آخر.",
+                                { colour: summary.own_color.name },
+                            )}
+                        </p>
+                        <div className="mt-2">
+                            <Button type="button" size="sm" variant="outline" className="gap-1.5" onClick={addOwnColour}>
+                                <Plus className="h-4 w-4" aria-hidden="true" />
+                                {t("variants.own_colour_add", "أضف «:colour» كصف", { colour: summary.own_color.name })}
+                            </Button>
+                        </div>
+                    </Alert>
+                ) : null}
+
                 {rows.length > 0 ? (
                     <div className="overflow-x-auto">
                         <Table>
@@ -334,7 +504,10 @@ export function VariantsPanel({
                                         {t("variants.size", "المقاس")}
                                     </TableHead>
                                     <TableHead>
-                                        {t("variants.price_delta", "فرق السعر")}
+                                        {t("variants.price", "سعر بيع الصف")}
+                                    </TableHead>
+                                    <TableHead>
+                                        {t("variants.images", "الصور")}
                                     </TableHead>
                                     {/* Item 10: the bucket NAMES, not the stored tokens.
                                         The same two words the ledger has always used. */}
@@ -469,29 +642,45 @@ export function VariantsPanel({
                                             </Select>
                                         </TableCell>
                                         <TableCell>
+                                            {/* The FULL price (Part 1, 1.3). The server stores the
+                                                difference from the product's selling price; the
+                                                screen never shows that difference. */}
                                             <Input
                                                 dir="ltr"
                                                 type="number"
+                                                min={0}
                                                 step="0.01"
                                                 aria-label={t(
-                                                    "variants.row_price_delta_aria",
-                                                    "فرق سعر الصف :id",
+                                                    "variants.row_price_aria",
+                                                    "سعر بيع الصف :id",
                                                     { id: row.id },
                                                 )}
-                                                className="w-24"
+                                                className="w-28"
                                                 value={String(
-                                                    valueOf(
-                                                        row,
-                                                        "price_delta",
-                                                    ) ?? "0",
+                                                    valueOf(row, "price") ?? "",
                                                 )}
                                                 onChange={(event) =>
                                                     patch(
                                                         row.id,
-                                                        "price_delta",
+                                                        "price",
                                                         event.target.value,
                                                     )
                                                 }
+                                            />
+                                        </TableCell>
+                                        <TableCell>
+                                            <ImagePicks
+                                                images={images}
+                                                selected={
+                                                    (valueOf(row, "image_ids") as number[] | undefined) ?? []
+                                                }
+                                                heldBy={heldByOthers(row.id)}
+                                                onChange={(ids) => patch(row.id, "image_ids", ids)}
+                                                label={t(
+                                                    "variants.row_images_aria",
+                                                    "صور الصف :id",
+                                                    { id: row.id },
+                                                )}
                                             />
                                         </TableCell>
                                         <TableCell>
@@ -776,19 +965,37 @@ export function VariantsPanel({
                                 }
                             />
                             <TextField
-                                label={t("variants.price_delta", "فرق السعر")}
+                                label={t("variants.price", "سعر بيع الصف")}
                                 dir="ltr"
                                 type="number"
+                                min={0}
                                 step="0.01"
                                 hint={t(
-                                    "variants.price_delta_hint",
-                                    "يُضاف إلى سعر المنتج لهذا الصف وحده — واكتب رقمًا سالبًا ليُخصم. اتركه صفرًا ليُباع بسعر المنتج نفسه.",
+                                    "variants.price_hint",
+                                    "السعر الكامل الذي يدفعه العميل لهذا الصف. المنتج يُباع بـ :base؛ اكتب سعر الصف نفسه، أعلى أو أقل. يُحفظ الفرق، فإذا تغيّر سعر المنتج تحرّكت كل الصفوف معه.",
+                                    { base: summary.base_price },
                                 )}
-                                value={draft.price_delta}
+                                value={draft.price}
                                 onChange={(value) =>
-                                    setDraft({ ...draft, price_delta: value })
+                                    setDraft({ ...draft, price: value })
                                 }
                             />
+                            <div className="sm:col-span-2 lg:col-span-3">
+                                <p className="mb-1.5 text-sm font-medium">{t("variants.images", "الصور")}</p>
+                                <ImagePicks
+                                    images={images}
+                                    selected={draft.image_ids}
+                                    heldBy={heldByOthers(null)}
+                                    onChange={(ids) => setDraft({ ...draft, image_ids: ids })}
+                                    label={t("variants.images", "الصور")}
+                                />
+                                <p className="mt-1 text-xs text-muted-foreground">
+                                    {t(
+                                        "variants.images_hint",
+                                        "اضغط على الصور التي تُظهر هذا الصف. الصورة تخص صفًا واحدًا فقط، والصورة التي لا تخص أي صف هي صورة عامة للمنتج.",
+                                    )}
+                                </p>
+                            </div>
                             <div className="grid gap-3 sm:grid-cols-2">
                                 <TextField
                                     label={t(

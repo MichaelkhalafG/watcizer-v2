@@ -37,6 +37,7 @@ import {
 } from "@/components/manage/SpecBlock";
 import {
     VariantsPanel,
+    type VariantSummary,
     type VariantRow,
     type VariantState,
 } from "@/components/manage/VariantsPanel";
@@ -237,7 +238,7 @@ interface Props {
     /** `list => id => {ar, en}` for genders, colours and materials — the SEO generator's other
      *  facts. Only the three lists that appear in a sentence somebody would click (item 5). */
     lookup_names: Record<string, Record<string, NamePair>>;
-    variants: { rows: VariantRow[]; state: VariantState };
+    variants: { rows: VariantRow[]; state: VariantState; summary: VariantSummary };
     pre_switch: PreSwitchState;
     pre_switch_variant: PreSwitchState;
     /** M1w: the History tab — the product's log rows and its stock movements, newest first. */
@@ -1756,6 +1757,10 @@ export default function ProductForm({
                 <VariantsPanel
                     productId={product === null ? null : product.id}
                     rows={variants.rows}
+                    summary={variants.summary}
+                    // The SAVED images (Part 1, 1.2): a row claims pictures by id, and an upload
+                    // made in this session has none until the product is saved.
+                    images={product === null ? [] : product.images.map((image) => ({ id: image.id, url: image.url }))}
                     // The panel already has a `may_convert` gate from wave 3.5; the pre-switch
                     // block is a second, broader one, so the panel is told about both and shows
                     // whichever applies.

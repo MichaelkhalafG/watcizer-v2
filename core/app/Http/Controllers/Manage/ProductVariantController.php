@@ -55,7 +55,7 @@ final class ProductVariantController
     public function store(Request $request, int $product): RedirectResponse
     {
         self::assertProduct($product);
-        $data = $this->validated($request, null);
+        $data = $this->validated($request, $product, null);
 
         try {
             $variant = $this->variants->create($product, $data, self::actorId($request));
@@ -63,6 +63,22 @@ final class ProductVariantController
             // The conversion refusal lands here. It is not a field error on `label` — it is about
             // the PRODUCT — so it is reported under a name the panel renders at its top.
             throw ValidationException::withMessages(['variants' => $e->getMessage()]);
+        }
+
+        // The base-colour row the conversion made on its own (Part 1, 2026-11-04) is logged
+        // FIRST and under the same actor: nobody typed it, but somebody's click caused it, and a
+        // row that appears in the panel with no entry saying where it came from is exactly the
+        // question this log exists to answer.
+        $baseRow = $this->variants->baseRowCreated;
+        if ($baseRow !== null) {
+            ActivityLog::record(
+                'catalog_product_variants',
+                $baseRow,
+                ActivityLog::CREATED,
+                [],
+                self::logFields($baseRow),
+                label: self::logLabel($product, $baseRow),
+            );
         }
 
         // AFTER the create, and only on the path that reached it: a refusal above leaves by
@@ -76,13 +92,15 @@ final class ProductVariantController
             label: self::logLabel($product, $variant),
         );
 
-        return back()->with('status', ManageText::t('variants.added', 'تمت إضافة الصف.'));
+        return back()->with('status', $baseRow === null
+            ? ManageText::t('variants.added', 'تمت إضافة الصف.')
+            : ManageText::t('variants.added_with_base', 'تمت إضافة الصف، وأُضيف صف للون المنتج الأصلي يحمل كميته.'));
     }
 
     public function update(Request $request, int $product, int $variant): RedirectResponse
     {
         self::assertProduct($product);
-        $data = $this->validated($request, $variant);
+        $data = $this->validated($request, $product, $variant);
 
         // BEFORE the write, or the diff is a row compared with itself. A save that changed nothing
         // produces an empty diff and `ActivityLog::record()` drops it, so the panel's per-row save
@@ -195,7 +213,7 @@ final class ProductVariantController
     /**
      * @return array<string, mixed>
      */
-    private function validated(Request $request, ?int $variantId): array
+    private function validated(Request $request, int $productId, ?int $variantId): array
     {
         // Written for the person holding the keyboard: what to do, not what is invalid. ONE key
         // said on whichever of the two fields the operator is looking at — two keys would be two
@@ -217,9 +235,23 @@ final class ProductVariantController
              */
             'color_id' => ['nullable', 'required_without:size_id', 'integer', Rule::exists('catalog_colors', 'id')],
             'size_id' => ['nullable', 'required_without:color_id', 'integer', Rule::exists('catalog_sizes', 'id')],
+            /*
+             * The FULL selling price of this row (Part 1, 2026-11-04): the panel asks "what does
+             * the red one sell at?" and the writer stores the difference from the product's
+             * selling price, exactly as the column always has. `price_delta` is still accepted
+             * for the importer and any older caller; when both arrive, `price` wins.
+             */
+            'price' => ['nullable', 'numeric', 'min:0', 'max:99999999'],
             // A DELTA, not a price: the variant's price is the product's plus this. Negative is
             // legal (a smaller size costing less) and is exactly why the rule is not `min:0`.
             'price_delta' => ['nullable', 'numeric', 'min:-99999999', 'max:99999999'],
+            /*
+             * Which of the PRODUCT'S images belong to this row (M1y). The whole set for the row,
+             * every id checked against this product — an image of another product is "not there"
+             * rather than "not yours" — and the writer checks ownership again in its query.
+             */
+            'image_ids' => ['nullable', 'array', 'max:40'],
+            'image_ids.*' => ['integer', Rule::exists('catalog_product_images', 'id')->where('product_id', $productId)],
             'is_active' => ['required', 'boolean'],
             'sort' => ['nullable', 'integer', 'min:0', 'max:65535'],
             // Absolute quantities. Optional: a save that does not send them moves no units and
@@ -267,7 +299,7 @@ final class ProductVariantController
     private static function logFields(int $variantId): array
     {
         $row = DB::table('catalog_product_variants')->where('id', $variantId)
-            ->first(['label', 'sku', 'color_id', 'size_id', 'price_delta', 'is_active', 'sort']);
+            ->first(['product_id', 'label', 'sku', 'color_id', 'size_id', 'price_delta', 'is_active', 'sort']);
         if (! is_object($row)) {
             return [];
         }
@@ -281,6 +313,9 @@ final class ProductVariantController
             'price_delta' => Row::money($variant, 'price_delta'),
             'is_active' => Row::bool($variant, 'is_active'),
             'sort' => Row::int($variant, 'sort'),
+            // The row's images (M1y): which pictures belong to it is an attribute of the row, and
+            // "who gave the red one the brown photo" is a question this log has to answer.
+            'image_ids' => VariantWriter::imageIdsByVariant(Row::int($variant, 'product_id'))[$variantId] ?? [],
         ];
     }
 
