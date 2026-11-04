@@ -3,6 +3,7 @@
 namespace App\Http;
 
 use App\Domain\Access\Role;
+use App\Http\Middleware\HandleInertiaRequests;
 use App\Support\ManageText;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -41,6 +42,25 @@ final class ManageError
 {
     public static function render(Request $request, int $status, ?Throwable $exception = null): SymfonyResponse
     {
+        /*
+         * A URL that matched NO route never ran the route middleware, so `HandleInertiaRequests`
+         * never shared `auth`, `branding`, `translations` or `nav` — and the page crashed on the
+         * first of them it read (Part 1, 1.6, 2026-11-04: `/manage/storefronts/1/promotions`
+         * rendered a blank white page with "Cannot read properties of undefined (reading 'user')").
+         * The shell's props are computed here from the same builder when they are missing, so the
+         * page draws the brand, speaks the operator's language and shows its way back. The session
+         * middleware did not run either, so `$request->user()` is null on that path and the page
+         * is the guest shell — which is what a 404 on an address nobody routed should be.
+         */
+        if (Inertia::getShared('branding') === null) {
+            $shared = app(HandleInertiaRequests::class)->share($request);
+            if (! $request->hasSession()) {
+                // The flash closures read the session when the page is rendered; there is none.
+                $shared['flash'] = ['status' => null, 'error' => null, 'warning' => null];
+            }
+            Inertia::share($shared);
+        }
+
         return Inertia::render('Manage/Error', [
             'status' => $status,
             'title' => self::title($status),
