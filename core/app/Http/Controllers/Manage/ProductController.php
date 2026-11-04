@@ -1685,6 +1685,11 @@ final class ProductController
             'families' => self::familyOptions(),
             'variants' => [
                 'rows' => $productId === null ? [] : $this->variants->rows($productId),
+                // Part 1 (2026-11-04): the base price every row's full price is read against, and
+                // the product's own colour with whether a row carries it yet (1.4).
+                'summary' => $productId === null
+                    ? ['base_price' => '0.00', 'own_color' => null]
+                    : $this->variants->summary($productId),
                 'state' => $productId === null
                     ? ['has_variants' => false, 'may_convert' => false, 'reason' => ManageText::t('variants.save_product_first_reason', 'احفظ المنتج أولًا ثم أضف المقاسات.'), 'write_switch_completed' => ConversionGuard::writeSwitchCompleted(), 'legacy_backed' => false]
                     : $this->conversion->state($productId),

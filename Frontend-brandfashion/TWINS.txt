@@ -37,6 +37,11 @@
 # tests/timeline.test.mjs; and `lenis` in Frontend-next's package.json + pnpm-lock.yaml (Brand Fashion's are untouched).
 # When the campaign ends the developer restores the WatchHero import in Watchizer's HomeClient.jsx and re-twins the line below.
 # A2-RULE: the two apps are copies, not a shared package.
+# 2026-11-04 (Part 1, colour chosen by image): src/lib/variantGallery.js and tests/variantGallery.test.mjs are NEW twins - the
+# gallery-per-colour, swatch-photo, default-colour and colour-count rules both product pages read (BfProductPage on Brand Fashion,
+# the twin ProductDetailClient on Watchizer). ProductDetailClient.jsx and v2Product.js changed on both sides, identically; Watchizer's
+# ProductDetail.css (diverged by tokens) carries the photo-chip styles, Brand Fashion's does not: its copy of ProductDetailClient draws
+# the offer page only, where the picker never renders.
 
 app/(auth)/auth/callback/page.jsx
 app/(auth)/error.jsx
@@ -134,6 +139,7 @@ src/Hooks/useFreeShipping.js
 src/Hooks/usePromotion.js
 tests/galleryKeys.test.mjs
 tests/v2Product.test.mjs
+tests/variantGallery.test.mjs
 tests/picture.test.mjs
 tests/facetRedirect.test.mjs
 tests/fixtures/v2-product-440.json
@@ -181,6 +187,7 @@ src/lib/serverV2.js
 src/lib/socialNonce.js
 src/lib/v2Listing.js
 src/lib/v2Product.js
+src/lib/variantGallery.js
 src/lib/freeShipping.js
 src/lib/storesJsonLd.js
 src/lib/coupon.js

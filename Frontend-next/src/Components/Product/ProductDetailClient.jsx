@@ -19,6 +19,7 @@ import ProductSlider from './ProductSlider'
 import TrustSignals from '../Merchandising/TrustSignals'
 import BackToTop from '../BackToTop/BackToTop'
 import { specRowsIn } from '../../lib/v2Product'
+import { defaultColorId, galleryFor, swatchFor } from '../../lib/variantGallery'
 import useGalleryKeys, { imagePosition } from '../../Hooks/useGalleryKeys'
 import { trackViewContent } from '../../scripts/pixels'
 import { finishBackground } from '../../utils/finish'
@@ -269,15 +270,25 @@ function ProductDetailClient({ param, isOffer = false, productPayload = null, v2
     () => (!isOffer && Array.isArray(v2Product?.variants) ? v2Product.variants : []),
     [isOffer, v2Product],
   )
-  const [variantColorId, setVariantColorId] = useState(null)
+  /*
+   * The colour the picker OPENS on (Part 1, 1.4, 2026-11-04): the product's own colour - core names its row as
+   * `base_variant_id` - else the first colour with a row in stock. The brown wallet's page used to read "Not
+   * chosen" over a row offering only red: the brown the shopper had opened was not an option at all. The rule
+   * and its fallbacks are src/lib/variantGallery.js (a twin, unit-tested).
+   */
+  const defaultVariantColour = useMemo(
+    () => defaultColorId(variantRows, v2Product?.base_variant_id ?? null),
+    [variantRows, v2Product],
+  )
+  const [variantColorId, setVariantColorId] = useState(defaultVariantColour)
   const [variantSizeId, setVariantSizeId] = useState(null)
   // a different product means a different set of rows: never carry a selection across
   useEffect(() => {
-    // Clearing the picker when the URL changes is the whole purpose of this effect.
+    // Resetting the picker when the URL changes is the whole purpose of this effect.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setVariantColorId(null)
+    setVariantColorId(defaultVariantColour)
     setVariantSizeId(null)
-  }, [param])
+  }, [param, defaultVariantColour])
 
   /** A v2 `{en, ar}` name in the shopper's language — the picker's labels come straight from core. */
   const getLocalized = useCallback(
@@ -423,10 +434,19 @@ function ProductDetailClient({ param, isOffer = false, productPayload = null, v2
     if (item?.images?.length) item.images.forEach(push)
     if (item?.image) push(item.image)
     if (isOffer && offerProduct?.image) push(offerProduct.image)
-    const uniq = [...new Set(list.filter(Boolean))]
+    /*
+     * The gallery FOLLOWS the chosen colour (Part 1, 1.2): that colour's own photos - v2's `images[]` carry
+     * `variant_id`, its rows `image_ids` - or the product's general photos when the colour owns none. The urls
+     * are v2's own `src`, which is what the list above holds for a v2 page, so the two agree by construction.
+     */
+    const chosenGallery =
+      !isOffer && hasColourAxis && variantColorId != null
+        ? galleryFor(v2Product?.images, variantRows, variantColorId).map((i) => getImageUrl(i.src)).filter(Boolean)
+        : []
+    const uniq = [...new Set((chosenGallery.length ? chosenGallery : list).filter(Boolean))]
     // Empty gallery → show the reliable catalog image, then the placeholder.
     return uniq.length ? uniq : [catalogImg || PLACEHOLDER_IMG]
-  }, [item, offerProduct, isOffer, catalogImg])
+  }, [item, offerProduct, isOffer, catalogImg, hasColourAxis, variantColorId, v2Product, variantRows])
 
   // The RECORDED renditions of a gallery url (2026-10-22): the transform keys each gallery row's `srcset` by
   // its url and carries the cover's as `image_srcset`. A url with none gets no <picture> — the plain image,
@@ -485,9 +505,9 @@ function ProductDetailClient({ param, isOffer = false, productPayload = null, v2
   )
 
   const [activeImg, setActiveImg] = useState(0)
-  // Reset gallery to the first image on route change — intentional.
+  // Reset gallery to the first image on route change, and when the chosen colour swaps the pictures — intentional.
   // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => setActiveImg(0), [param, isOffer])
+  useEffect(() => setActiveImg(0), [param, isOffer, variantColorId])
   // Horizontal-swipe gallery on mouse/touch. (Zoom itself is handled in-place by
   // the custom ImageZoom component below — hover on desktop, touch-drag on mobile.)
   const touchX = useRef(null)
@@ -1373,6 +1393,8 @@ function ProductDetailClient({ param, isOffer = false, productPayload = null, v2
                       {variantColours.map((c) => {
                         const sold = !colourOfferable(c.id)
                         const on = variantColorId === c.id
+                        // the chip carries the row's OWN photo where the dashboard marked one (Part 1), the hex otherwise
+                        const photo = swatchFor(v2Product?.images, variantRows, c.id)
                         return (
                           <button
                             key={c.id}
@@ -1380,13 +1402,17 @@ function ProductDetailClient({ param, isOffer = false, productPayload = null, v2
                             role="radio"
                             aria-checked={on}
                             aria-disabled={sold || undefined}
-                            className={`wz-pd-chip${on ? ' is-on' : ''}${sold ? ' is-sold' : ''}`}
+                            className={`wz-pd-chip${photo ? ' wz-pd-chip--photo' : ''}${on ? ' is-on' : ''}${sold ? ' is-sold' : ''}`}
                             onClick={() => {
                               if (sold) return
                               setVariantColorId(on ? null : c.id)
                             }}
                           >
-                            <span className="wz-pd-chip-swatch" style={{ background: c.hex || 'transparent' }} />
+                            {photo ? (
+                              <img className="wz-pd-chip-photo" src={photo.src} alt="" loading="lazy" decoding="async" draggable={false} />
+                            ) : (
+                              <span className="wz-pd-chip-swatch" style={{ background: c.hex || 'transparent' }} />
+                            )}
                             <span className="wz-pd-chip-text">{getLocalized(c.name)}</span>
                             {sold && (
                               <span className="wz-pd-sr">{isRTL ? 'غير متاح' : 'Sold out'}</span>

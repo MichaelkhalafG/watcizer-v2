@@ -1,5 +1,6 @@
 <?php
 
+use App\Domain\Catalog\VariantWriter;
 use App\Models\Storefront\Storefront;
 use App\Storefront\CacheTags;
 use App\Storefront\ProductListing;
@@ -7,6 +8,8 @@ use App\Storefront\StorefrontContext;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
 use Tests\Feature\V2\ApiTestHelpers as H;
+use Tests\Support\CatalogFixture;
+use Tests\Support\T;
 
 use function Pest\Laravel\getJson;
 
@@ -139,4 +142,66 @@ it('omits a locale key when the translation row is missing (fallback OFF)', func
 
     $title = getJson(H::base('products/'.$slug))->assertOk()->json('product.title');
     expect($title)->toHaveKey('ar')->and($title)->not->toHaveKey('en');
+});
+
+it('serves each variant with its own images, each image with its row, and the row the picker opens on (Part 1)', function () {
+    // Built, not found: a product with its own colour (brown, under `band` as a fashion product's colour is
+    // recorded), three images, and a red row - so the conversion makes the brown row on its own.
+    CatalogFixture::assumeSwitched();
+    $colours = DB::table('catalog_colors')->orderBy('id')->limit(2)->pluck('id')->map(fn (mixed $id): int => T::int($id))->all();
+    expect(count($colours))->toBe(2);
+    [$brown, $red] = $colours;
+    $productId = CatalogFixture::product(selling: 1200.0);
+    CatalogFixture::onStorefront($productId);
+    CatalogFixture::place($productId, CatalogFixture::anyNodeOf(1));
+    DB::table('catalog_product_color')->insert(['product_id' => $productId, 'color_id' => $brown, 'role' => 'band', 'position' => 0]);
+    $cover = T::int(DB::table('catalog_product_images')->where('product_id', $productId)->value('id'));
+    $redPhoto = (int) DB::table('catalog_product_images')->insertGetId(['product_id' => $productId, 'path' => 'Product/v2-red.webp', 'is_cover' => 0, 'sort' => 1, 'created_at' => now(), 'updated_at' => now()]);
+    $brownPhoto = (int) DB::table('catalog_product_images')->insertGetId(['product_id' => $productId, 'path' => 'Product/v2-brown.webp', 'is_cover' => 0, 'sort' => 2, 'created_at' => now(), 'updated_at' => now()]);
+
+    $writer = app(VariantWriter::class);
+    $redId = $writer->create($productId, ['label' => 'أحمر', 'color_id' => $red, 'is_active' => true, 'price' => 1290, 'image_ids' => [$redPhoto]], null);
+    $brownId = T::int($writer->baseRowCreated);
+    expect($brownId)->toBeGreaterThan(0, 'the conversion makes the own-colour row');
+    $writer->assignImages($productId, $brownId, [$brownPhoto]);
+    H::flush();
+
+    $slug = H::str(DB::table('storefront_product')->where('storefront_id', 1)->where('product_id', $productId)->value('slug'));
+    $p = H::arr(getJson(H::base('products/'.$slug))->assertOk()->json('product'));
+
+    // every image says which row it belongs to; the cover belongs to none (the general gallery)
+    $owner = [];
+    foreach (H::rows($p['images']) as $image) {
+        $owner[T::int($image['id'])] = $image['variant_id'];
+    }
+    expect($owner[$cover])->toBeNull()->and($owner[$redPhoto])->toBe($redId)->and($owner[$brownPhoto])->toBe($brownId);
+
+    // every row says which images are its, and which one is the product's own colour
+    $rows = [];
+    foreach (H::rows($p['variants']) as $row) {
+        $rows[T::int($row['id'])] = $row;
+    }
+    expect($rows[$brownId]['image_ids'])->toBe([$brownPhoto])
+        ->and($rows[$brownId]['is_base'])->toBeTrue()
+        ->and($rows[$redId]['image_ids'])->toBe([$redPhoto])
+        ->and($rows[$redId]['is_base'])->toBeFalse()
+        // the price is the FULL price the dashboard typed, resolved the same way as before
+        ->and(H::arr($rows[$redId]['price'])['amount'])->toEqual(1290)
+        ->and(H::arr($rows[$brownId]['price'])['amount'])->toEqual(1200)
+        // and the picker opens on the brown
+        ->and($p['base_variant_id'])->toBe($brownId);
+
+    // the LISTING card carries none of it: the index and the menu are built from the cards (L8)
+    $card = null;
+    foreach (H::rows(getJson(H::base('products?locale=en&q=4B'))->assertOk()->json('data')) as $c) {
+        if (T::int($c['id']) === $productId) {
+            $card = $c;
+        }
+    }
+    if ($card !== null) {
+        expect(H::arr($card)['image'])->not->toHaveKey('variant_id');
+        foreach (H::rows(H::arr($card)['variants']) as $v) {
+            expect($v)->not->toHaveKeys(['image_ids', 'is_base']);
+        }
+    }
 });

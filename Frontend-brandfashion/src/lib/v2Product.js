@@ -1,4 +1,5 @@
 import { legacyRow } from './v2Listing'
+import { colourCount } from './variantGallery'
 
 // ONE product from core's v2 API — `/api/v2/{storefront}/products/{slug}` — adapted to the shape the product
 // page and ProductDetailClient already read (2026-10-23, slice 1's second half).
@@ -103,8 +104,13 @@ export function specRowsIn(specs, lang, product = null) {
   if (!product) return out
   const colors = product.attributes?.colors || {}
   add(isAr ? 'لون الميناء' : 'Dial Colour', refText(colors.dial, l))
-  add(isAr ? 'لون السوار' : 'Band Colour', refText(colors.band, l))
-  add(isAr ? 'اللون' : 'Colour', refText(colors.main, l))
+  // the band/material colour describes ONE row when the product's rows carry several colours (Part 1, 1.5,
+  // 2026-11-04): "BAND COLOR: Brown" sat directly above a picker offering red. Hidden then; a single-colour
+  // product keeps both lines as they were
+  if (colourCount(product.variants) <= 1) {
+    add(isAr ? 'لون السوار' : 'Band Colour', refText(colors.band, l))
+    add(isAr ? 'اللون' : 'Colour', refText(colors.main, l))
+  }
   add(isAr ? 'بلد المنشأ' : 'Country', refText(product.country, l))
   add(isAr ? 'الحجر' : 'Stone', refText(product.stone, l))
   if (product.warranty_years) add(isAr ? 'الضمان' : 'Warranty', `${product.warranty_years} ${isAr ? 'سنة' : 'yrs'}`)
