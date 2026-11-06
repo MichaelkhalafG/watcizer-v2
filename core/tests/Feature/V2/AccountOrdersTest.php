@@ -25,7 +25,7 @@ function v2AccountCustomer(): array
     return ['user' => T::int($row->user_id), 'address' => T::int($row->id)];
 }
 
-function v2AccountOrder(int $userId, int $addressId, ?int $storefrontId, string $number): void
+function v2AccountOrder(int $userId, int $addressId, int $storefrontId, string $number): void
 {
     DB::table('orders')->insert([
         'user_id' => $userId, 'address_id' => $addressId, 'storefront_id' => $storefrontId,
@@ -50,19 +50,18 @@ it('refuses a request with no customer token', function () {
     getJson('/api/v2/brandfashion/me/orders')->assertStatus(401)->assertJson(['error' => 'unauthenticated']);
 });
 
-it('lists a customer\'s orders on the path\'s storefront only — untagged ones on the default storefront', function () {
+it('lists a customer\'s orders on the path\'s storefront only', function () {
+    // An "untagged" third order stood here until 2026-11-05 (listed on the default storefront). It cannot be
+    // written any more: `orders.storefront_id` is NOT NULL since the migration of 2026-10-23.
     ['user' => $user, 'address' => $address] = v2AccountCustomer();
     v2AccountOrder($user, $address, 1, '970001');
     v2AccountOrder($user, $address, 2, '970002');
-    v2AccountOrder($user, $address, null, '970003');
 
     $bf = v2AccountNumbers('brandfashion', $user);
     expect($bf)->toContain('970002')
-        ->and($bf)->not->toContain('970001')
-        ->and($bf)->not->toContain('970003');
+        ->and($bf)->not->toContain('970001');
 
     $wz = v2AccountNumbers('watchizer', $user);
     expect($wz)->toContain('970001')
-        ->and($wz)->toContain('970003')
         ->and($wz)->not->toContain('970002');
 });

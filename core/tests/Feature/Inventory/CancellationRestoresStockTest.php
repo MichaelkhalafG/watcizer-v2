@@ -34,6 +34,7 @@ function cancellationFixture(int $quantity = 2): array
     $orderId = (int) DB::table('orders')->insertGetId([
         'user_id' => null,
         'address_id' => (int) (is_numeric($addressId) ? $addressId : 0),
+        'storefront_id' => 1,
         'total_price_for_order' => '0.00',
         'payment_method' => 'cash',
         'order_number' => '910'.random_int(100, 999),

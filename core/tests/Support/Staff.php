@@ -2,6 +2,7 @@
 
 namespace Tests\Support;
 
+use App\Domain\Access\Preferences;
 use App\Domain\Access\Role;
 use App\Domain\Access\Roles;
 use App\Models\User;
@@ -107,6 +108,28 @@ final class Staff
         $email = $user->getAttribute('email');
 
         return is_string($email) ? $email : 'user';
+    }
+
+    /**
+     * The dashboard speaks ARABIC to the accounts this fixture hands out — stated, not inherited.
+     *
+     * The dashboard is Arabic-first and its tests assert Arabic sentences. They used to rely on the
+     * picked accounts having no language preference; on the production copy the first two accounts
+     * (real people) carry `en` in `core_user_preferences`, `SetDashboardLocale` answered in English, and
+     * 24 tests failed on a row of somebody's laptop — baselined on 2026-10-17 as "production's rows".
+     * That is the shape AGENTS §4 forbids (a test that inherits an ambient condition), so the condition
+     * is made here (2026-11-05).
+     *
+     * Called ONCE per test from the suite's global `beforeEach` (tests/Pest.php), before the test body —
+     * never from `admin()` itself: a test that sets English and then asks for its admin again must still
+     * have English (SettlementExportTest does exactly that), and a file that needs "nobody has chosen"
+     * clears the table in its own `beforeEach`, which runs after this one (ProfileScreenTest).
+     */
+    public static function speakArabic(): void
+    {
+        foreach (User::query()->orderBy('id')->limit(2)->get() as $user) {
+            Preferences::setLocale($user, 'ar');
+        }
     }
 
     private static function clear(User $user): void

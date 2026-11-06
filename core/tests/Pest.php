@@ -19,6 +19,7 @@ use App\Storefront\StorefrontCache;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Tests\Support\LegacyShadow;
 use Tests\Support\Scratch;
+use Tests\Support\Staff;
 use Tests\Support\StorefrontIdentityFixture;
 use Tests\Support\StorefrontMailboxFixture;
 use Tests\TestCase;
@@ -41,6 +42,9 @@ pest()->extend(TestCase::class)
     ->beforeEach(function (): void {
         StorefrontIdentityFixture::ensure();
         StorefrontMailboxFixture::ensure();
+        // The dashboard's tests assert Arabic sentences: the two accounts `Staff` hands out get Arabic here,
+        // instead of inheriting whatever a real person chose on the copy the suite runs against (2026-11-05).
+        Staff::speakArabic();
     })
     ->in('Feature');
 
