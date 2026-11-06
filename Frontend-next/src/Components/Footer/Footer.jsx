@@ -4,9 +4,11 @@ import Image from 'next/image'
 import './Footer.css'
 import Link from '@/src/Components/LocaleLink'
 import { useRouter } from '@/src/Hooks/useLocaleRouter'
-import { FaFacebook, FaInstagram, FaWhatsapp } from 'react-icons/fa'
+import { FaFacebook, FaInstagram, FaTiktok, FaWhatsapp } from 'react-icons/fa'
+import { FACEBOOK, INSTAGRAM, TIKTOK } from '@/src/content/social'
 import { useUIStore } from '../../Store/uiStore'
 import LanguageDropdown from '../LanguageDropdown/LanguageDropdowen'
+import PaymentBadges from '../Promo/PaymentBadges'
 
 const logo = '/logo.webp'
 
@@ -65,30 +67,22 @@ function Footer() {
             )}
           </p>
           <div className="wz-foot__social">
-            <a
-              href="https://www.facebook.com/profile.php?id=100076267296916"
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label="Facebook"
-              className="wz-foot__social-btn"
-            >
+            {/* The shop's accounts come from content/trustPages.js (2026-11-05) — the one place they are typed. */}
+            <a href={FACEBOOK} target="_blank" rel="noopener noreferrer" aria-label="Facebook" className="wz-foot__social-btn">
               <FaFacebook />
             </a>
-            <a
-              href="https://www.instagram.com/watchizer_eg/"
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label="Instagram"
-              className="wz-foot__social-btn"
-            >
+            <a href={INSTAGRAM} target="_blank" rel="noopener noreferrer" aria-label="Instagram" className="wz-foot__social-btn">
               <FaInstagram />
+            </a>
+            <a href={TIKTOK} target="_blank" rel="noopener noreferrer" aria-label="TikTok" className="wz-foot__social-btn">
+              <FaTiktok />
             </a>
           </div>
         </div>
 
         {/* Column 2 — Shop */}
         <div className="wz-foot__col">
-          <h3 className="wz-foot__title">{t('Shop', 'تسوق')}</h3>
+          <h2 className="wz-foot__title">{t('Shop', 'تسوق')}</h2>
           <ul className="wz-foot__links">
             {shopLinks.map((link) => (
               <li key={link.label}>
@@ -102,7 +96,7 @@ function Footer() {
 
         {/* Column 3 — Account */}
         <div className="wz-foot__col">
-          <h3 className="wz-foot__title">{t('Account', 'الحساب')}</h3>
+          <h2 className="wz-foot__title">{t('Account', 'الحساب')}</h2>
           <ul className="wz-foot__links">
             {accountLinks.map((link) => (
               <li key={link.to}>
@@ -116,7 +110,7 @@ function Footer() {
 
         {/* Column 4 — Support */}
         <div className="wz-foot__col">
-          <h3 className="wz-foot__title">{t('Support', 'الدعم')}</h3>
+          <h2 className="wz-foot__title">{t('Support', 'الدعم')}</h2>
           <ul className="wz-foot__links">
             <li>
               <Link className="wz-foot__link" href="/blogs">
@@ -139,6 +133,10 @@ function Footer() {
           </ul>
         </div>
       </div>
+
+      {/* The ways to pay this shop really offers (Part 7, 2026-11-05): the list is the checkout's own, the
+          pictures are the dashboard's. Nothing is drawn while no method is enabled. */}
+      <PaymentBadges tone="dark" className="wz-foot__pay" />
 
       {/* Bottom bar */}
       <div className="wz-foot__bottombar">
