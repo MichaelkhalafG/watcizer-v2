@@ -6,6 +6,7 @@ use App\Compat\CompatHome;
 use App\Compat\CompatServices;
 use App\Compat\CompatStorefront;
 use App\Domain\Content\HomeBanners;
+use App\Domain\Content\HomeRails;
 use App\Domain\Inventory\InventoryService;
 use App\Support\Val;
 use App\Transform\Row;
@@ -63,7 +64,11 @@ final class StorefrontHome
         $compat = new CompatServices(app(StorefrontCache::class), app(InventoryService::class), CompatStorefront::pinned($sf));
         // `rails()`, not `build()['rails']`: compat's full build also reads this storefront's settings and
         // its banners for ITS own payload, and this endpoint builds both itself.
-        $railsRaw = $compat->home->rails();
+        // The hero is on the storefront row this request already resolved: handed to the rails (the Banners block
+        // row depends on it) rather than read a second time.
+        $settings = $this->ctx->storefront->getAttribute('settings');
+        $hero = HomeHero::of(is_array($settings) ? $settings : null);
+        $railsRaw = $compat->home->rails($hero);
 
         $ids = [];
         foreach ($railsRaw as $rail) {
@@ -75,6 +80,15 @@ final class StorefrontHome
 
         $rails = [];
         foreach ($railsRaw as $rail) {
+            if (in_array($rail['kind'], HomeRails::SECTIONS, true)) {
+                // A SECTION's place among the sliders (the Banners block, the campaign sliders, the category tiles,
+                // the brand strip): no cards — the page draws the section here from this same payload. Compat
+                // already left the Banners block out when it leads the page.
+                $rails[] = ['id' => $rail['id'], 'kind' => $rail['kind'], 'target' => null, 'title' => $rail['title'],
+                    'count' => 0, 'cards' => [], 'background' => null, 'blend' => false, 'masks' => []];
+
+                continue;
+            }
             $cards = [];
             foreach ($rail['products'] as $id) {
                 if (isset($byId[$id])) {
@@ -91,7 +105,19 @@ final class StorefrontHome
                 'title' => $rail['title'],
                 'count' => count($cards),
                 'cards' => $cards,
-            ];
+                // Part 3.2 (2026-11-05): the slider's section colour and whether its photos blend into it.
+                'background' => $rail['background'],
+                'blend' => $rail['blend'],
+                // …and, with the blend on, the mask of each card's studio background (card id => a `data:` URL): the
+                // photo is drawn as it is and only its white gives way to the colour (CutMasks, 2026-11-05).
+                'masks' => $rail['masks'],
+            ] + ($rail['kind'] !== HomeRails::BRAND_BANNER ? [] : [
+                // Part 3.3: a brand banner — the brand (with its logo and the slug its page lives at), the three
+                // colours that fill it and its sentence. The cards above are its three products.
+                'brand' => $this->brandRef($rail['target']),
+                'colors' => $rail['colors'],
+                'description' => $rail['description'],
+            ]);
         }
 
         // D1 (2026-10-20): EVERY active in-window banner, in the dashboard's order, each with its `device`
@@ -102,20 +128,38 @@ final class StorefrontHome
         // (HomeAndRelatedTest) came within one query of its ceiling.
         $banners = $this->banners();
 
-        $settings = $this->ctx->storefront->getAttribute('settings');
-
         return [
             // Which hero this storefront's home draws (the addendum, 2026-10-20) — `three_d` or `banner`,
             // from `settings.home.hero`. The storefront app reads THIS and never its own build: one shared
             // hero component, one value per shop, flipped from the dashboard. See {@see HomeHero}.
-            'hero' => HomeHero::of(is_array($settings) ? $settings : null),
+            'hero' => $hero,
             'rails' => $rails,
+            // the sections the dashboard has a row for, on or off (see CompatHome::build)
+            'managed_sections' => HomeRails::managedSections($sf),
             'deals' => $this->deals(),
             'categories' => $this->categories(),
             'banners' => $banners,
             'banner' => $banners[0] ?? null,
+            // The two slots beside the large hero, `[top, bottom]`, each a banner or null (Part 3.1, 2026-11-05).
+            // Both null and the hero is full width, as it has always been.
+            'side_banners' => HomeBanners::side($sf),
             'brands' => $this->brands(),
         ];
+    }
+
+    /**
+     * The brand a brand banner is about: `{id, slug, name, logo}` — null when the brand is gone or switched off.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function brandRef(?int $brandId): ?array
+    {
+        $brand = $brandId === null ? null : $this->lookups->get('brands', $brandId);
+        if ($brand === null || ($brand['is_active'] ?? true) !== true) {
+            return null;
+        }
+
+        return ['id' => $brand['id'], 'slug' => $brand['slug'], 'name' => $brand['name'], 'logo' => $brand['logo'] ?? null];
     }
 
     /**
@@ -242,5 +286,4 @@ final class StorefrontHome
 
         return $out;
     }
-
 }

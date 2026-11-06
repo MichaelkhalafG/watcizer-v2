@@ -47,10 +47,12 @@ function restoreSettings(int $storefrontId, array $settings): void
     app(StorefrontCache::class)->flush($storefrontId);
 }
 
-it('starts where each shop already was: Watchizer on the 3D hero, Brand Fashion on its banners', function () {
-    // What the release's migration wrote. It is written out rather than inferred so that the two decisions stay
-    // independent — see the next test for the fallback, which protects the live shop if the value goes missing.
-    expect(HomeHero::of(heroSettings(1)))->toBe(HomeHero::THREE_D)
+it('starts where each shop already is: Watchizer on the Campaign hero, Brand Fashion on its banners', function () {
+    // What the releases' migrations wrote: 3D for Watchizer on 2026-10-20, then Campaign on 2026-11-05 (Part 3.1 — the
+    // Grand Prix banner it had been drawing in code since 2026-10-28 became a mode, and the shop was moved onto it so
+    // its home did not change). Written out rather than inferred so that the two decisions stay independent — see the
+    // next test for the fallback, which protects the live shop if the value goes missing.
+    expect(HomeHero::of(heroSettings(1)))->toBe(HomeHero::CAMPAIGN)
         ->and(HomeHero::of(heroSettings(2)))->toBe(HomeHero::BANNER);
 });
 
@@ -99,14 +101,15 @@ it('reaches the shop: the flip busts this storefront\'s cached home, and only th
     try {
         // warm both, so a stale answer would be the thing that fails
         expect(T::str(getJson('/api/v2/brandfashion/home')->assertOk()->json('hero')))->toBe(HomeHero::BANNER)
-            ->and(T::str(getJson('/api/v2/watchizer/home')->assertOk()->json('hero')))->toBe(HomeHero::THREE_D);
+            ->and(T::str(getJson('/api/v2/watchizer/home')->assertOk()->json('hero')))->toBe(HomeHero::CAMPAIGN);
 
         actingAs(Staff::admin())->post('/manage/storefronts/2/banners/hero', ['hero' => HomeHero::THREE_D])->assertRedirect();
 
         // the cached payload carries `hero` for ten minutes; a switch the shop cannot see take effect is a
         // switch the shop presses twice
         expect(T::str(getJson('/api/v2/brandfashion/home')->assertOk()->json('hero')))->toBe(HomeHero::THREE_D)
-            ->and(T::str(getJson('/api/v2/watchizer/home')->assertOk()->json('hero')))->toBe(HomeHero::THREE_D);
+            // …and only this one: Watchizer's is where it was
+            ->and(T::str(getJson('/api/v2/watchizer/home')->assertOk()->json('hero')))->toBe(HomeHero::CAMPAIGN);
     } finally {
         restoreSettings(2, $before2);
         restoreSettings(1, $before1);
@@ -117,6 +120,6 @@ it('shows the operator which hero is on, and says when the banners are not being
     $page = actingAs(Staff::admin())->get('/manage/storefronts/1/banners')->assertOk();
     $props = Props::of($page);
 
-    expect(T::str($props['hero'] ?? null))->toBe(HomeHero::THREE_D)
+    expect(T::str($props['hero'] ?? null))->toBe(HomeHero::CAMPAIGN)
         ->and(T::arr($props['heroes'] ?? []))->toBe(HomeHero::MODES);
 });

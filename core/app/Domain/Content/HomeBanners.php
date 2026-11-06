@@ -4,7 +4,10 @@ declare(strict_types=1);
 
 namespace App\Domain\Content;
 
+use App\Compat\CompatHome;
 use App\Storefront\ImageUrl;
+use App\Storefront\StorefrontHome;
+use App\Storefront\StorefrontUrls;
 use App\Transform\Row;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
@@ -16,8 +19,8 @@ use Illuminate\Support\Facades\DB;
  * ── Why this is not inside either endpoint ──────────────────────────────────────────────────────
  *
  * The same hero component now runs in BOTH storefront apps, and the two apps read two different
- * endpoints: Brand Fashion reads v2 (`/api/v2/{sf}/home`, {@see \App\Storefront\StorefrontHome}) and
- * Watchizer reads compat (`catalog/home`, {@see \App\Compat\CompatHome}) — its live path, which is not
+ * endpoints: Brand Fashion reads v2 (`/api/v2/{sf}/home`, {@see StorefrontHome}) and
+ * Watchizer reads compat (`catalog/home`, {@see CompatHome}) — its live path, which is not
  * being moved for this. One component cannot read two shapes, so the shape is built once, here, and both
  * endpoints hand it out. v2 adds its own `category` ref on top for the build that is still in flight.
  *
@@ -49,17 +52,72 @@ final class HomeBanners
      * would be served to the wrong device out of a cached copy (V2-CDN-PRIVATE, 2026-10-19).
      *
      * @param  string|null  $assetBase  the image host to name. v2 passes null and keeps the request's own host;
-     *                                    compat passes {@see \App\Storefront\StorefrontUrls::compatAssetBase()},
-     *                                    because a compat payload's image host is NOT the v2 one and the live
-     *                                    shop's URLs must not move a byte (COMPAT-ASSET-HOST, 2026-10-14).
+     *                                  compat passes {@see StorefrontUrls::compatAssetBase()},
+     *                                  because a compat payload's image host is NOT the v2 one and the live
+     *                                  shop's URLs must not move a byte (COMPAT-ASSET-HOST, 2026-10-14).
      * @return list<array<string, mixed>>
      */
     public static function list(int $storefrontId, ?string $assetBase = null): array
     {
+        return self::rows($storefrontId, BannerWriter::HOME, $assetBase);
+    }
+
+    /**
+     * The two SIDE slots beside the large hero (the twelve updates, Part 3.1, 2026-11-05): `[top, bottom]`,
+     * each the slot's banner or null.
+     *
+     * A slot is a placement of its own (`home_side_1`, `home_side_2`), managed on the banners screen apart
+     * from the hero's slides — they are not slides. A slot shows ONE banner: the first active, in-window row
+     * of its placement in the dashboard's order, so the team can schedule its successor without a gap. Both
+     * null — every storefront that never fills them — and the hero renders full width exactly as it did.
+     * The same shape as a hero slide, so the storefront draws both with one component.
+     *
+     * @return array{0: array<string, mixed>|null, 1: array<string, mixed>|null}
+     */
+    public static function side(int $storefrontId, ?string $assetBase = null): array
+    {
+        return [
+            self::slot(self::rows($storefrontId, BannerWriter::SIDE[0], $assetBase)),
+            self::slot(self::rows($storefrontId, BannerWriter::SIDE[1], $assetBase)),
+        ];
+    }
+
+    /**
+     * ONE slot from its active banners (the review of 2026-11-05: a side slot may have a picture per device). The
+     * slot IS its first banner for a computer (`both` or `desktop`) — or, with none, its first banner at all — and it
+     * carries `mobile_image`, the picture of its first `mobile` banner, when it has one of each: the page then
+     * draws that one on a phone. A slot with a single picture goes out exactly as it did before (no extra key).
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return array<string, mixed>|null
+     */
+    private static function slot(array $rows): ?array
+    {
+        $wide = null;
+        $phone = null;
+        foreach ($rows as $row) {
+            if (($row['device'] ?? null) === 'mobile') {
+                $phone ??= $row;
+            } else {
+                $wide ??= $row;
+            }
+        }
+        if ($wide === null) {
+            return $phone;
+        }
+
+        return $phone === null ? $wide : $wide + ['mobile_image' => $phone['image']];
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private static function rows(int $storefrontId, string $placement, ?string $assetBase): array
+    {
         $rows = DB::table('storefront_banners as b')
             ->leftJoin('storefront_categories as c', 'c.id', '=', 'b.storefront_category_id')
             ->where('b.storefront_id', $storefrontId)
-            ->where('b.placement', 'home')
+            ->where('b.placement', $placement)
             ->where('b.is_active', 1)
             ->where(fn (Builder $q) => $q->whereNull('b.starts_at')->orWhere('b.starts_at', '<=', now()))
             ->where(fn (Builder $q) => $q->whereNull('b.ends_at')->orWhere('b.ends_at', '>=', now()))

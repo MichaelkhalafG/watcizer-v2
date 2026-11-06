@@ -46,7 +46,9 @@ it('renders the rails in order, with a target\'s name and the options the form o
         ->and(T::str($rails[0]['target_name']))->not->toBe('')
         ->and($rails[1]['target_name'])->toBeNull()
         ->and(T::str($rails[1]['title_en']))->toBe('Deals')
-        ->and(array_keys($targets))->toBe(['grade', 'brand', 'category_type'])
+        // `brand_banner` (Part 3.3, 2026-11-05) is aimed at a brand, from the brand slider's own list
+        ->and(array_keys($targets))->toBe(['grade', 'brand', 'category_type', 'brand_banner'])
+        ->and($targets['brand_banner'])->toBe($targets['brand'])
         ->and(T::arr($targets['grade']))->not->toBeEmpty();
 
     // The category list offers what a shopper can browse — never the legacy tree's placeholder root.
