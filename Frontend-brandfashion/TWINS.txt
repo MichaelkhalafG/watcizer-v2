@@ -42,6 +42,37 @@
 # the twin ProductDetailClient on Watchizer). ProductDetailClient.jsx and v2Product.js changed on both sides, identically; Watchizer's
 # ProductDetail.css (diverged by tokens) carries the photo-chip styles, Brand Fashion's does not: its copy of ProductDetailClient draws
 # the offer page only, where the picker never renders.
+# 2026-11-05 (the twelve updates, Parts 2 to 7, and the self-hosted fonts): NEW TWINS. The campaign surfaces, the mega menu, the
+# home zone and the payment badges are one set of files for both shops - each shop sets its look with the --pm-*, --mm-* and --hz-*
+# tokens in its own app/globals.css (not a twin) and mounts them from its own shell (HomeClient.jsx / BfHome.jsx, Header.jsx, Nav.jsx,
+# Footer.jsx, Cart.jsx, Checkout.jsx - all diverged long ago). src/Components/Promo/ (Countdown, DealCard, CampaignRail, CampaignPage,
+# CampaignNav, PaymentBadges, icons, promo.css), src/Components/Header/MegaMenu/ (MegaMenu.jsx, megaMenu.css), src/Components/Home/
+# HeroZone.jsx + BrandBanner.jsx + homeZone.css, src/lib/campaign.js, src/lib/pageFaq.js, src/Hooks/queries/usePromo.js, the two pages
+# app/(main)/hot-deals and app/(main)/flash-sale, tests/campaign.test.mjs, tests/pageFaq.test.mjs; and app/fonts/elMessiri.js with the
+# three El Messiri files and their licence (next/font/local - Watchizer also has Cormorant Garamond for its experience page, not a twin).
+# Changed on both sides, identically, and still twins: src/Hooks/queries/useListing.js (Hot Deals mode narrows a listing),
+# src/Components/FacetIntro/FacetIntro.jsx + .css (a page text is Markdown, and its questions are FAQPage data).
+# 2026-11-05, the design pass: one NEW TWIN, src/Components/Header/MegaMenu/MegaDrawer.jsx (the mega menu on a phone, mounted in each
+# shop's own drawer). NOT a twin, on purpose: src/content/campaignPages.js - the title and description of the two campaign pages
+# are each shop's own words (the page files that read it are twins). The campaigns' colours left each shop's globals.css: fire and
+# storm are the campaigns' own identities and live in the twin promo.css.
+# 2026-11-05, round 2 (the developer's review): NEW TWINS - src/Components/Header/MegaMenu/megaBus.js and SalePane.jsx (ONE menu: every
+# nav item opens the same panel; its Sale pane), src/Components/NavProgress/NavProgress.jsx + navProgress.css (the line from a click to
+# the new page). Changed on both sides, identically, and still twins: BannerHero.jsx + .css, HeroZone.jsx, BrandBanner.jsx, homeZone.css,
+# the Promo files, FacetIntro.jsx + .css, pageFaq.js, TrustSignals.jsx + .css, usePromo.js, campaign.js and their tests.
+# INTENTIONAL DESIGN DIVERGENCES (the developer: 'each shop its own design') - the SAME components, behaviour and data rules; the LOOK is
+# each shop's own, set by tokens in its own app/globals.css and by its own shell files (none of them twins):
+#   menu          Watchizer: a near-black panel, ivory type, gold accent, photo plates with 4 px corners. Brand Fashion: a white panel
+#                 the full width of its bar, a warm light featured card, plates with 20 px corners (--mm-*; Header.css hangs the panel
+#                 from the bar).
+#   Hot Deals     Watchizer: the cards on a dark stage. Brand Fashion: on a warm light one (--pm-hot-stage).
+#   Flash Sale    Watchizer: gold lightning on black. Brand Fashion: the blue storm (--pm-storm, -2, -3, --pm-volt-1, -2, -3).
+#   page text     Watchizer: warm paper, the serif, 4 px corners. Brand Fashion: a cool tinted sheet, 16 px corners (--fi-*).
+#   trust chips   Watchizer: champagne and gold. Brand Fashion: ink (--tr-*). Navigation line: gold / red (--nav-progress).
+#   home          Watchizer: five cards a row on a computer (ProductSlider.css) and ONLY a coloured slider is a full-width band
+#                 (home.css, HomeClient.jsx). Brand Fashion: EVERY home section runs the full width (BfHome.css). The new home's order
+#                 differs per shop (core, HomeRebuildCommand::ORDER). The phone's floating Hot Deals pill is lifted 60 px on Brand
+#                 Fashion, over its bottom bar (--pm-float-lift).
 
 app/(auth)/auth/callback/page.jsx
 app/(auth)/error.jsx
@@ -111,7 +142,6 @@ src/Components/Merchandising/TrustSignals.css
 src/Components/Merchandising/TrustSignals.jsx
 src/Components/Product/OfferSlider.jsx
 src/Components/Product/ProductDetailClient.jsx
-src/Components/Product/ProductSlider.css
 src/Components/Product/ProductSlider.jsx
 src/Components/Product/StockAlertForm.jsx
 src/Components/ScrollToTop/ScrollToTop.jsx
@@ -202,6 +232,64 @@ src/utils/productUrl.js
 src/utils/slugs.js
 src/utils/subTypeGroups.js
 src/utils/transformProduct.js
+app/(main)/flash-sale/page.jsx
+app/(main)/hot-deals/page.jsx
+app/fonts/OFL-ElMessiri.txt
+app/fonts/el-messiri-arabic.woff2
+app/fonts/el-messiri-latin-ext.woff2
+app/fonts/el-messiri-latin.woff2
+app/fonts/elMessiri.js
+src/Components/Header/MegaMenu/MegaDrawer.jsx
+src/Components/Header/MegaMenu/MegaMenu.jsx
+src/Components/Header/MegaMenu/SalePane.jsx
+src/Components/Header/MegaMenu/megaBus.js
+src/Components/Header/MegaMenu/megaMenu.css
+src/Components/Home/BrandBanner.jsx
+src/Components/Home/HeroZone.jsx
+src/Components/Home/homeZone.css
+src/Components/NavProgress/NavProgress.jsx
+src/Components/NavProgress/navProgress.css
+src/Components/Promo/CampaignNav.jsx
+src/Components/Promo/CampaignPage.jsx
+src/Components/Promo/CampaignRail.jsx
+src/Components/Promo/Countdown.jsx
+src/Components/Promo/DealCard.jsx
+src/Components/Promo/OfferStrip.jsx
+src/Components/Promo/PaymentBadges.jsx
+src/Components/Promo/icons.jsx
+src/Components/Promo/promo.css
+src/Hooks/queries/usePromo.js
+src/lib/campaign.js
+src/lib/menuData.js
+src/lib/pageFaq.js
+tests/campaign.test.mjs
+tests/pageFaq.test.mjs
+# 2026-11-05, the performance pass: ONE NEW TWIN and two new tests. src/lib/homeData.js cuts the home's payload to what a home card reads
+# (slimCompatHome for Watchizer's catalog/home, slimV2Home for Brand Fashion's v2 home; each shop's own app/(main)/page.jsx, not a twin,
+# calls its one). Changed on both sides, identically, and still twins: src/lib/coreRead.js (held reads: HOLD and the third argument),
+# src/lib/serverCatalog.js and src/lib/serverV2.js (which reads are held), src/utils/picture.js (CARD_MAX, optimizedWide),
+# BannerHero.jsx + .css, HeroZone.jsx, BrandBanner.jsx, DealCard.jsx, CategoryTiles.jsx, SideBar.css, Listing.css, tests/picture.test.mjs.
+src/lib/homeData.js
+tests/homeData.test.mjs
+tests/coreReadHold.test.mjs
+# 2026-11-06, the follow-up to the performance pass: FOUR NEW TWINS. src/Components/Promo/promo-surfaces.css is the campaign surfaces'
+# own rules (the deal card, the home's two rails, the campaign page), split out of promo.css rule by rule and imported by CampaignRail.jsx
+# and CampaignPage.jsx after promo.css - a category, brand or product page no longer loads them. tests/listingPack.test.mjs with its
+# fixture tests/fixtures/v2-listing-3.json (a listing page's HTML carries core's page once: v2Listing.js packListing / unpackListing) and
+# tests/campaignHold.test.mjs (a campaign's start or end voids the held campaigns answer at that second: coreRead.js heldValue,
+# campaign.js campaignHoldRules). Changed on both sides, identically, and still twins: promo.css, CampaignRail.jsx, CampaignPage.jsx,
+# CampaignNav.jsx, MegaMenu.jsx, megaMenu.css, src/lib/menuData.js, campaign.js, coreRead.js, serverV2.js, v2Listing.js, listingRequest.js,
+# src/Hooks/queries/useListing.js, usePromo.js, tests/coreReadHold.test.mjs. The listing page.jsx and facetListing.jsx (diverged by one
+# import line each) took the same one-line change on both sides.
+# WATCHIZER ONLY, no copy in Brand Fashion (the 3D watch of the home's campaign banner): src/Components/Experience/studioLight.js,
+# tests/watchBatches.test.mjs, and the changes to GrandPrixCanvas.jsx and watchModel.js.
+# And one more new twin the same day: tests/liveOffers.test.mjs - the live campaigns are read ONCE for every product card
+# (usePromo.js LiveOffersProvider, mounted in app/(main)/layout.jsx inside the HydrationBoundary; useProductOffer reads its value).
+src/Components/Promo/promo-surfaces.css
+tests/listingPack.test.mjs
+tests/campaignHold.test.mjs
+tests/fixtures/v2-listing-3.json
+tests/liveOffers.test.mjs
 
 # DIVERGED — files that were twins and were split on purpose. A line in the form
 #   DIVERGED <YYYY-MM-DD> <path> — <reason>
@@ -271,3 +359,9 @@ DIVERGED 2026-10-19 src/Components/Auth/SocialButtons.jsx — draws the "or" div
 DIVERGED 2026-10-19 src/PageViews/Auth/Login/Login.jsx — the "or" divider removed (SocialButtons draws it with the button, only while Google sign-in runs on this storefront — L3); every other line is Watchizer's.
 DIVERGED 2026-10-19 src/PageViews/Auth/Register/Register.jsx — the "or" divider removed, as in Login.jsx (L3); every other line is Watchizer's.
 DIVERGED 2026-10-28 app/(main)/HomeClient.jsx — ONE import, ONE line and ONE prop (`campaign`, passed from the home page's server render to the banner, 2026-10-29): Watchizer draws GrandPrixBanner (the Hugo Boss Grand Prix 1513477 campaign banner, no dashboard switch) where Brand Fashion draws WatchHero; the banner-under-hero strip and everything else identical. Re-twin when the campaign ends.
+DIVERGED 2026-11-05 src/Components/Product/ProductSlider.css — Watchizer shows FIVE cards a row on a computer (from 1200 px; the developer's review, item 27: "Watchizer only … Brand Fashion keeps its own count"); Brand Fashion's copy keeps four. Everything else in the file is the same.
+# 2026-11-06, later the same day (Michael's decision): ONE NEW TWIN. tests/lookupHold.test.mjs - the two small lookups every page reads
+# (the category names and the menu's facts) answer from the held copy and are refreshed behind the request, so no request waits for
+# them: coreRead.js heldLookup / LOOKUP_HOLD and heldValue's `keep`, used by serverCatalog.js getServerTables and getServerNav.
+# Changed on both sides, identically, and still twins: src/lib/coreRead.js, src/lib/serverCatalog.js.
+tests/lookupHold.test.mjs

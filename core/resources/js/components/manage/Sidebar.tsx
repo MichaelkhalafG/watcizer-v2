@@ -22,6 +22,7 @@ import {
     Scale,
     ShoppingCart,
     Store,
+    Timer,
     Trash2,
     Users,
 } from 'lucide-react';
@@ -58,6 +59,7 @@ const ICONS: Record<string, ComponentType<{ className?: string }>> = {
     FileText,
     Image,
     Rows3,
+    Timer,
     Gift,
     Store,
     Trash2,

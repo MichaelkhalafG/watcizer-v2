@@ -72,6 +72,12 @@ it('lists every page once per language — English bare, Arabic under /ar — ea
         foreach (CompatLocaleSitemap::TRUST_PAGES as $page) {
             expect($locs)->toContain(($locale === 'ar' ? 'https://watchizereg.com/ar' : 'https://watchizereg.com').$page);
         }
+        // The two campaign pages (the design pass, 2026-11-05): permanent, indexable pages — up between campaigns,
+        // only their products change — so they are listed like any other fixed page, in this language.
+        expect(CompatLocaleSitemap::CAMPAIGN_PAGES)->toBe(['/hot-deals', '/flash-sale']);
+        foreach (CompatLocaleSitemap::CAMPAIGN_PAGES as $page) {
+            expect($locs)->toContain(($locale === 'ar' ? 'https://watchizereg.com/ar' : 'https://watchizereg.com').$page);
+        }
     }
 });
 

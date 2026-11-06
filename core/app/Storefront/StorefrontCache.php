@@ -36,6 +36,14 @@ final class StorefrontCache
         // 2026-10-30 (M1y): a brand or category page's own text, both languages (ProductListing::context). Written only by
         // the dashboard's Page texts screen and seo:seed-texts, and both flush the storefront after the write.
         'page_text' => ['PageTextChanged'],
+        // 2026-11-05 (Part 4): the mega menu (StorefrontMenu) — per top-level category its sub-categories with a picture,
+        // its most-stocked brands and one featured product; the same for each gender. Everything a listing index is
+        // staled by, plus the tree's own events.
+        'menu' => ['PlacementChanged', 'StorefrontProductChanged', 'ProductUpdated', 'StockChanged', 'LookupChanged', 'CategoryTreeChanged'],
+        // 2026-11-05 (Part 2): a live campaign's cards and its ledger sums (StorefrontCampaigns), 60 seconds. WHICH
+        // campaign is live is never cached. The campaigns page flushes the storefront on every write, and so does
+        // `campaigns:activate` when it records a start; a sale reaches the bar within the TTL.
+        'campaign' => ['CampaignChanged', 'PlacementChanged', 'StorefrontProductChanged', 'ProductUpdated', 'StockChanged'],
         'sitemap' => ['StorefrontProductChanged', 'CategoryTreeChanged', 'PlacementChanged', 'ProductUpdated'],
         'compat_names' => ['LookupChanged', 'CategoryTreeChanged'],
         'compat_meta' => ['CategoryTreeChanged', 'LookupChanged', 'BannerChanged', 'PlacementChanged', 'StorefrontProductChanged'],

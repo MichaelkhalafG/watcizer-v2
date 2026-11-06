@@ -103,6 +103,13 @@ it('names EVERY table the dashboard authors, in order, so adding one is a delibe
         'promotion_rule_scopes', 'promotion_redemptions', 'promotion_order_discount_lines',
         'core_price_batches', 'core_price_batch_items',
         'core_seo_texts',
+        /*
+         * Since 2026-11-05 (the twelve updates): `storefront_campaigns` + `storefront_campaign_products` — a timed
+         * campaign and its selection with the STARTING stock of each product, recorded once when the sale goes
+         * live; the progress bar is computed from it and nothing can reconstruct it afterwards. And
+         * `storefront_payment_badges` — the picture the team uploaded for each payment method.
+         */
+        'storefront_campaigns', 'storefront_campaign_products', 'storefront_payment_badges',
         'core_user_preferences',
         'core_activity_log',
         // Articles join the list in item 14 (2026-09-18). Core-owned because the legacy

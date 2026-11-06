@@ -2,6 +2,7 @@
 
 namespace App\Storefront;
 
+use App\Domain\Campaigns\Campaigns;
 use App\Domain\Content\SeoTexts;
 use App\Support\ArabicSearch;
 use App\Support\Coerce;
@@ -174,6 +175,18 @@ final class ProductListing
             'min_discount' => self::minDiscount($input['min_discount'] ?? null),
             'q' => self::str($input['q'] ?? null),
         ];
+        /*
+         * `campaign` (Part 2, 2026-11-05): the products of the LIVE campaign of that presentation. Resolved to its
+         * ids HERE, on every request, and the ids are what joins the cache key — so the moment a campaign ends
+         * (or its selection changes) the same URL is a different key and an empty list, never a cached page of a
+         * sale that is over. No live campaign: `[0]`, which matches nothing; the filter never widens the list.
+         */
+        $presentation = self::str($input['campaign'] ?? null);
+        if (in_array($presentation, Campaigns::PRESENTATIONS, true)) {
+            $live = Campaigns::liveOne($this->ctx->id(), $presentation);
+            $filters['campaign'] = $presentation;
+            $filters['campaign_ids'] = $live === null ? [0] : (Campaigns::productIds($live['id']) ?: [0]);
+        }
 
         $indexed = self::indexed($node);
         /*
@@ -300,6 +313,11 @@ final class ProductListing
      */
     private function applyFilters(Builder $query, array $f, bool $indexed, ?string $except = null): void
     {
+        // The live campaign's selection (see run()): always applies, like the category — it is what the page IS.
+        $campaignIds = $f['campaign_ids'] ?? null;
+        if (is_array($campaignIds)) {
+            $query->whereIn('sp.product_id', $campaignIds);
+        }
         /** @var list<int> $categoryIds */
         $categoryIds = $f['category_ids'] ?? [];
         if ($categoryIds !== []) {

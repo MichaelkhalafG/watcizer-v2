@@ -40,7 +40,9 @@ final class ProductPickerController
 
         $query = self::base($storefront->id);
         if ($ids !== []) {
-            $query->whereIn('p.id', array_slice($ids, 0, 50));
+            // 300 = the largest selection a screen keeps (a campaign's, Campaigns::MAX_PRODUCTS); it was 50 while the
+            // largest was a home rail's 24, and a longer list would have shown its tail as "no longer available".
+            $query->whereIn('p.id', array_slice($ids, 0, 300));
         } else {
             ProductSearch::apply($query, $term, 't', 'te');
             $query->orderByDesc('sp.is_visible')->orderBy('p.id')->limit(self::LIMIT);
