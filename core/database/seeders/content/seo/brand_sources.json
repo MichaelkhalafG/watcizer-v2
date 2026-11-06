@@ -1,0 +1,833 @@
+{
+  "_about": "The BRANDS' OWN catalogue figures behind the brand page texts — the whole brand, not what the shop stocks. TWO LAYERS. (1) THE RECORD, never printed: `figures` — each read from the brand's OFFICIAL sources (its own site and catalogue, its group's official pages, official press material) with the `source` URL, `how` it was read or counted, and the brand's `checked_on` date; `left_out` — what was not found, with the reason (nothing is estimated; a third party's estimate is never written as the brand's number); `sources` — every page read. (2) THE PAGE: `page.families` (the family / collection / line names the shop presents as the brand's range) and `page.facts` (plain label-value facts about that range: movements, sizes, materials). `php artisan seo:seed-texts` prints ONLY the `page` block, as the range available at the shop — with NO date, NO outbound link, NO source note and NO comparison between the brand's catalogue and ours (the developer's decision, 2026-11-05); a brand's own COUNTS (\"18 families\", \"more than 1,000 models\") are in the record and are not printed. Every name and fact in `page` must be backed by a figure of the same entry (a test holds the file to that). TO REFRESH: open each `sources[].url`, re-read, update `figures` (`value`, `how`), `checked_on` and then `page`; run `php artisan seo:seed-texts --storefront=<code> --overwrite --apply`. OUR catalogue's numbers are in facts.json (`php artisan seo:count-facts`).",
+  "rolex": {
+    "name": "Rolex",
+    "checked_on": "2026-11-05",
+    "figures": [
+      {
+        "label": {
+          "en": "Model families",
+          "ar": "عائلات الموديلات"
+        },
+        "value": {
+          "en": "18 — Land-Dweller, Day-Date, Sky-Dweller, Lady-Datejust, Datejust, Oyster Perpetual, Cosmograph Daytona, Submariner, Sea-Dweller, Deepsea, GMT-Master II, Yacht-Master, Yacht-Master II, Explorer, Explorer II, Air-King, 1908, Padellone",
+          "ar": "18 — Land-Dweller، Day-Date، Sky-Dweller، Lady-Datejust، Datejust، Oyster Perpetual، Cosmograph Daytona، Submariner، Sea-Dweller، Deepsea، GMT-Master II، Yacht-Master، Yacht-Master II، Explorer، Explorer II، Air-King، 1908، Padellone"
+        },
+        "source": "https://www.rolex.com/watches",
+        "how": "The page reads \"18 Results\" and lists these eighteen families by name; read in a browser (the site refuses automated readers)."
+      },
+      {
+        "label": {
+          "en": "How Rolex groups them",
+          "ar": "تقسيم Rolex لها"
+        },
+        "value": {
+          "en": "Professional and Classic watches from the Oyster Perpetual collection, and models from the Perpetual collection",
+          "ar": "ساعات Professional وClassic من مجموعة Oyster Perpetual، وموديلات من مجموعة Perpetual"
+        },
+        "source": "https://www.rolex.com/watches",
+        "how": "The page's own sentence: \"It includes both Professional and Classic watches from the Oyster Perpetual collection, as well as models from the Perpetual collection.\""
+      }
+    ],
+    "left_out": [
+      {
+        "figure": "number of individual models / references",
+        "why": "not stated on the page read; Rolex's configurator was not counted"
+      },
+      {
+        "figure": "movement types, case sizes, materials",
+        "why": "not read from an official Rolex page in this pass (each family's page states them: read by hand to add)"
+      }
+    ],
+    "sources": [
+      {
+        "url": "https://www.rolex.com/watches",
+        "read": true
+      }
+    ],
+    "page": {
+      "families": [
+        "Land-Dweller",
+        "Day-Date",
+        "Sky-Dweller",
+        "Lady-Datejust",
+        "Datejust",
+        "Oyster Perpetual",
+        "Cosmograph Daytona",
+        "Submariner",
+        "Sea-Dweller",
+        "Deepsea",
+        "GMT-Master II",
+        "Yacht-Master",
+        "Yacht-Master II",
+        "Explorer",
+        "Explorer II",
+        "Air-King",
+        "1908",
+        "Padellone"
+      ],
+      "facts": []
+    }
+  },
+  "patek-philippe": {
+    "name": "Patek Philippe",
+    "checked_on": "2026-11-05",
+    "figures": [
+      {
+        "label": {
+          "en": "Wristwatch collections",
+          "ar": "مجموعات ساعات اليد"
+        },
+        "value": {
+          "en": "9 — Grand Complications, Complications, Calatrava, Gondolo, Golden Ellipse, Cubitus, Nautilus, Aquanaut, Twenty~4; pocket watches are listed separately",
+          "ar": "9 — Grand Complications، Complications، Calatrava، Gondolo، Golden Ellipse، Cubitus، Nautilus، Aquanaut، Twenty~4؛ وساعات الجيب مذكورة على حدة"
+        },
+        "source": "https://www.patek.com/en/collection/all-models",
+        "how": "Counted from the collection list of the brand's \"all models\" page: the nine wristwatch collections named there (the list also carries Pocket Watches, Rare Handcrafts, Movements and Jewelry & Accessories, which are not wristwatch collections)."
+      }
+    ],
+    "left_out": [
+      {
+        "figure": "number of models / references",
+        "why": "not stated on the page"
+      },
+      {
+        "figure": "movement types, case sizes, materials",
+        "why": "not stated on the page read"
+      }
+    ],
+    "sources": [
+      {
+        "url": "https://www.patek.com/en/collection/all-models",
+        "read": true
+      }
+    ],
+    "page": {
+      "families": [
+        "Grand Complications",
+        "Complications",
+        "Calatrava",
+        "Gondolo",
+        "Golden Ellipse",
+        "Cubitus",
+        "Nautilus",
+        "Aquanaut",
+        "Twenty~4"
+      ],
+      "facts": []
+    }
+  },
+  "audemars-piguet": {
+    "name": "Audemars Piguet",
+    "checked_on": "2026-11-05",
+    "figures": [
+      {
+        "label": {
+          "en": "Collections",
+          "ar": "المجموعات"
+        },
+        "value": {
+          "en": "7 — Code 11.59 by Audemars Piguet, Royal Oak, Royal Oak Offshore, Royal Oak Concept, Neo Frame, Établisseurs, 150 Heritage",
+          "ar": "7 — Code 11.59 by Audemars Piguet، Royal Oak، Royal Oak Offshore، Royal Oak Concept، Neo Frame، Établisseurs، 150 Heritage"
+        },
+        "source": "https://www.audemarspiguet.com/en/watch-collection",
+        "how": "The \"Collection\" filter of the brand's watch-collection page lists these seven; read in a browser."
+      },
+      {
+        "label": {
+          "en": "Movements",
+          "ar": "أنواع الحركة"
+        },
+        "value": {
+          "en": "hand-wound, selfwinding and quartz",
+          "ar": "تعبئة يدوية، وتعبئة ذاتية (أوتوماتيك)، وكوارتز"
+        },
+        "source": "https://www.audemarspiguet.com/en/watch-collection",
+        "how": "The \"Mechanism\" filter of the same page: Hand-Wound, Selfwinding, Quartz."
+      },
+      {
+        "label": {
+          "en": "Case sizes",
+          "ar": "مقاسات العلبة"
+        },
+        "value": {
+          "en": "three bands: up to 37 mm, 38 to 41 mm, 42 mm and up",
+          "ar": "ثلاث فئات: حتى 37 مم، ومن 38 إلى 41 مم، و42 مم فأكثر"
+        },
+        "source": "https://www.audemarspiguet.com/en/watch-collection",
+        "how": "The \"Size\" filter of the same page."
+      },
+      {
+        "label": {
+          "en": "Case materials",
+          "ar": "خامات العلبة"
+        },
+        "value": {
+          "en": "18-carat yellow gold, 18-carat white gold, 18-carat pink gold, 18-carat sand gold, platinum, stainless steel, titanium, carbon, black ceramic, white ceramic, “Bleu Nuit” ceramic",
+          "ar": "ذهب أصفر عيار 18، ذهب أبيض عيار 18، ذهب وردي عيار 18، ذهب رملي عيار 18، بلاتين، ستانلس ستيل، تيتانيوم، كربون، سيراميك أسود، سيراميك أبيض، سيراميك «Bleu Nuit»"
+        },
+        "source": "https://www.audemarspiguet.com/en/watch-collection",
+        "how": "The \"Material\" filter of the same page (its \"gem-set watches\" entry is not a material and is left out)."
+      }
+    ],
+    "left_out": [
+      {
+        "figure": "number of models / references",
+        "why": "the page shows no total"
+      }
+    ],
+    "sources": [
+      {
+        "url": "https://www.audemarspiguet.com/en/watch-collection",
+        "read": true
+      }
+    ],
+    "page": {
+      "families": [
+        "Code 11.59 by Audemars Piguet",
+        "Royal Oak",
+        "Royal Oak Offshore",
+        "Royal Oak Concept",
+        "Neo Frame",
+        "Établisseurs",
+        "150 Heritage"
+      ],
+      "facts": [
+        {
+          "label": {
+            "en": "Movements in the range",
+            "ar": "أنواع الحركة في المجموعة"
+          },
+          "value": {
+            "en": "hand-wound, selfwinding and quartz",
+            "ar": "تعبئة يدوية، وتعبئة ذاتية (أوتوماتيك)، وكوارتز"
+          }
+        },
+        {
+          "label": {
+            "en": "Case sizes in the range",
+            "ar": "مقاسات العلبة في المجموعة"
+          },
+          "value": {
+            "en": "up to 37 mm, 38 to 41 mm, and 42 mm and up",
+            "ar": "حتى 37 مم، ومن 38 إلى 41 مم، و42 مم فأكثر"
+          }
+        },
+        {
+          "label": {
+            "en": "Case materials in the range",
+            "ar": "خامات العلبة في المجموعة"
+          },
+          "value": {
+            "en": "18-carat yellow gold, 18-carat white gold, 18-carat pink gold, 18-carat sand gold, platinum, stainless steel, titanium, carbon, black ceramic, white ceramic, “Bleu Nuit” ceramic",
+            "ar": "ذهب أصفر عيار 18، ذهب أبيض عيار 18، ذهب وردي عيار 18، ذهب رملي عيار 18، بلاتين، ستانلس ستيل، تيتانيوم، كربون، سيراميك أسود، سيراميك أبيض، سيراميك «Bleu Nuit»"
+          }
+        }
+      ]
+    }
+  },
+  "hublot": {
+    "name": "Hublot",
+    "checked_on": "2026-11-05",
+    "figures": [
+      {
+        "label": {
+          "en": "How Hublot groups its watches",
+          "ar": "تقسيم Hublot لساعاته"
+        },
+        "value": {
+          "en": "Big Bang collection, Classic Fusion collection, Exceptional Timepieces",
+          "ar": "مجموعة Big Bang، مجموعة Classic Fusion، و«Exceptional Timepieces»"
+        },
+        "source": "https://www.hublot.com/en-int/watches",
+        "how": "The three groups of the Watches menu on the brand's site; read in a browser (the site refuses automated readers)."
+      },
+      {
+        "label": {
+          "en": "In-house movement",
+          "ar": "الحركة المصنّعة داخليًا"
+        },
+        "value": {
+          "en": "Unico, developed in 2009, with 330 components",
+          "ar": "Unico، طُوّرت عام 2009 وتتكوّن من 330 مكوّنًا"
+        },
+        "source": "https://www.lvmh.com/en/our-maisons/watches-jewelry/hublot",
+        "how": "LVMH's official page for the Maison: Unico, \"a movement with a double coupling system\", developed in 2009; 330 components."
+      },
+      {
+        "label": {
+          "en": "Materials Hublot is known for",
+          "ar": "خامات تشتهر بها Hublot"
+        },
+        "value": {
+          "en": "Magic Gold (18-carat gold fused with boron carbide ceramic), coloured ceramic, sapphire and natural rubber",
+          "ar": "Magic Gold (ذهب عيار 18 مدموج بسيراميك كربيد البورون)، والسيراميك الملوّن، والياقوت (السافير)، والمطاط الطبيعي"
+        },
+        "source": "https://www.lvmh.com/en/our-maisons/watches-jewelry/hublot",
+        "how": "Named on LVMH's official page for the Maison (the Big Bang collection dates from 2005; the first watch, in 1980, combined natural rubber and gold)."
+      }
+    ],
+    "left_out": [
+      {
+        "figure": "number of models and of collections; case sizes",
+        "why": "no total is stated on either page (the sizes on the site's page are those of a few featured watches, not of the catalogue)"
+      }
+    ],
+    "sources": [
+      {
+        "url": "https://www.hublot.com/en-int/watches",
+        "read": true
+      },
+      {
+        "url": "https://www.lvmh.com/en/our-maisons/watches-jewelry/hublot",
+        "read": true
+      }
+    ],
+    "page": {
+      "families": [
+        "Big Bang",
+        "Classic Fusion"
+      ],
+      "facts": [
+        {
+          "label": {
+            "en": "In-house movement",
+            "ar": "الحركة المصنّعة داخليًا"
+          },
+          "value": {
+            "en": "Unico, with 330 components",
+            "ar": "Unico، بـ330 مكوّنًا"
+          }
+        },
+        {
+          "label": {
+            "en": "Materials the brand is known for",
+            "ar": "خامات تشتهر بها الماركة"
+          },
+          "value": {
+            "en": "Magic Gold (18-carat gold fused with boron carbide ceramic), coloured ceramic, sapphire and natural rubber",
+            "ar": "Magic Gold (ذهب عيار 18 مدموج بسيراميك كربيد البورون)، والسيراميك الملوّن، والياقوت (السافير)، والمطاط الطبيعي"
+          }
+        }
+      ]
+    }
+  },
+  "tissot": {
+    "name": "Tissot",
+    "checked_on": "2026-11-05",
+    "figures": [
+      {
+        "label": {
+          "en": "Watchmaking since",
+          "ar": "صناعة الساعات منذ"
+        },
+        "value": {
+          "en": "1853, in Le Locle, in the Swiss mountains",
+          "ar": "1853، في لو لوكل بجبال سويسرا"
+        },
+        "source": "https://www.swatchgroup.com/en/companies-brands/watches-jewelry/tissot",
+        "how": "Swatch Group's official page for the brand: \"watchmakers blending tradition and pioneering spirit since 1853\"; \"nestled in the Swiss mountains of Le Locle\"."
+      },
+      {
+        "label": {
+          "en": "Lines the brand's site names",
+          "ar": "خطوط يذكرها موقع الماركة"
+        },
+        "value": {
+          "en": "Gentleman, PRX, Seastar, Le Locle, Ballade, PRC 100 Solar, PR 100, Classic Dream, T-Race, Supersport Chrono, PR516, Visodate, Désir, SRV, Bellissima, Lovely, Chemin des Tourelles",
+          "ar": "Gentleman، PRX، Seastar، Le Locle، Ballade، PRC 100 Solar، PR 100، Classic Dream، T-Race، Supersport Chrono، PR516، Visodate، Désir، SRV، Bellissima، Lovely، Chemin des Tourelles"
+        },
+        "source": "https://www.tissotwatches.com/en-us/",
+        "how": "The families named in the navigation of the brand's US site on that day. It is a list of names, not a count of the catalogue: no total is claimed."
+      },
+      {
+        "label": {
+          "en": "Movements offered",
+          "ar": "أنواع الحركة المتاحة"
+        },
+        "value": {
+          "en": "automatic (mechanical), quartz and solar",
+          "ar": "أوتوماتيك (ميكانيكية)، وكوارتز، وبالطاقة الشمسية"
+        },
+        "source": "https://www.tissotwatches.com/en-us/",
+        "how": "The site's own selections (\"Automatic\", \"Solar\") and the movements named on the watches it shows (quartz chronograph, automatic)."
+      }
+    ],
+    "left_out": [
+      {
+        "figure": "number of models and of collections; case sizes; materials",
+        "why": "no total is stated on the pages read"
+      }
+    ],
+    "sources": [
+      {
+        "url": "https://www.swatchgroup.com/en/companies-brands/watches-jewelry/tissot",
+        "read": true
+      },
+      {
+        "url": "https://www.tissotwatches.com/en-us/",
+        "read": true
+      }
+    ],
+    "page": {
+      "families": [
+        "Gentleman",
+        "PRX",
+        "Seastar",
+        "Le Locle",
+        "Ballade",
+        "PRC 100 Solar",
+        "PR 100",
+        "Classic Dream",
+        "T-Race",
+        "Supersport Chrono",
+        "PR516",
+        "Visodate",
+        "Désir",
+        "SRV",
+        "Bellissima",
+        "Lovely",
+        "Chemin des Tourelles"
+      ],
+      "facts": [
+        {
+          "label": {
+            "en": "Movements in the range",
+            "ar": "أنواع الحركة في المجموعة"
+          },
+          "value": {
+            "en": "automatic (mechanical), quartz and solar",
+            "ar": "أوتوماتيك (ميكانيكية)، وكوارتز، وبالطاقة الشمسية"
+          }
+        }
+      ]
+    }
+  },
+  "naviforce": {
+    "name": "NAVIFORCE",
+    "checked_on": "2026-11-05",
+    "figures": [
+      {
+        "label": {
+          "en": "Models",
+          "ar": "عدد الموديلات"
+        },
+        "value": {
+          "en": "more than 1,000 (the brand's own statement)",
+          "ar": "أكثر من 1000 (بحسب الماركة نفسها)"
+        },
+        "source": "https://www.naviforce.com/",
+        "how": "The brand's site: \"more than 1000 models\" (wholesale section) and \"over 1000 high-quality SKUs\" (contact section)."
+      },
+      {
+        "label": {
+          "en": "Kinds of watch",
+          "ar": "أنواع الساعات"
+        },
+        "value": {
+          "en": "Digital, Quartz Standard, Quartz Calendar, Quartz Chronograph, Quartz Multi-Function, Automatic Mechanical, Solar-Powered, Smart Watch",
+          "ar": "رقمية، كوارتز عادية، كوارتز بتقويم، كوارتز كرونوغراف، كوارتز متعددة الوظائف، ميكانيكية أوتوماتيكية، بالطاقة الشمسية، ساعة ذكية"
+        },
+        "source": "https://www.naviforce.com/",
+        "how": "The eight watch categories the brand's site lists."
+      }
+    ],
+    "left_out": [
+      {
+        "figure": "case sizes, materials, founding year",
+        "why": "not stated on the page read"
+      }
+    ],
+    "sources": [
+      {
+        "url": "https://www.naviforce.com/",
+        "read": true
+      }
+    ],
+    "page": {
+      "families": [],
+      "facts": [
+        {
+          "label": {
+            "en": "Kinds of watch in the range",
+            "ar": "أنواع الساعات في المجموعة"
+          },
+          "value": {
+            "en": "Digital, Quartz Standard, Quartz Calendar, Quartz Chronograph, Quartz Multi-Function, Automatic Mechanical, Solar-Powered, Smart Watch",
+            "ar": "رقمية، كوارتز عادية، كوارتز بتقويم، كوارتز كرونوغراف، كوارتز متعددة الوظائف، ميكانيكية أوتوماتيكية، بالطاقة الشمسية، ساعة ذكية"
+          }
+        }
+      ]
+    }
+  },
+  "emporio-armani": {
+    "name": "Emporio Armani",
+    "checked_on": "2026-11-05",
+    "figures": [
+      {
+        "label": {
+          "en": "Watch lines the brand's site names",
+          "ar": "خطوط ساعات يذكرها موقع الماركة"
+        },
+        "value": {
+          "en": "World Explorer, Sea Explorer, Archetipo",
+          "ar": "World Explorer، Sea Explorer، Archetipo"
+        },
+        "source": "https://www.armani.com/en-us/emporio-armani/man/watches/",
+        "how": "Named on the men's watches page of armani.com (US). A list of names, not a count of the catalogue."
+      },
+      {
+        "label": {
+          "en": "Movements on that page",
+          "ar": "أنواع الحركة في تلك الصفحة"
+        },
+        "value": {
+          "en": "automatic, quartz (including chronographs) and solar-powered",
+          "ar": "أوتوماتيك، وكوارتز (ومنها الكرونوغراف)، وبالطاقة الشمسية"
+        },
+        "source": "https://www.armani.com/en-us/emporio-armani/man/watches/",
+        "how": "The movements the page names for the watches it lists."
+      }
+    ],
+    "left_out": [
+      {
+        "figure": "number of models; case sizes",
+        "why": "the page shows the number of items in that regional shop page (86 on the day), which is a shop listing and not the brand's catalogue; no catalogue total is published there"
+      }
+    ],
+    "sources": [
+      {
+        "url": "https://www.armani.com/en-us/emporio-armani/man/watches/",
+        "read": true
+      }
+    ],
+    "page": {
+      "families": [
+        "World Explorer",
+        "Sea Explorer",
+        "Archetipo"
+      ],
+      "facts": [
+        {
+          "label": {
+            "en": "Movements in the range",
+            "ar": "أنواع الحركة في المجموعة"
+          },
+          "value": {
+            "en": "automatic, quartz (including chronographs) and solar-powered",
+            "ar": "أوتوماتيك، وكوارتز (ومنها الكرونوغراف)، وبالطاقة الشمسية"
+          }
+        }
+      ]
+    }
+  },
+  "tory-burch": {
+    "name": "Tory Burch",
+    "checked_on": "2026-11-05",
+    "figures": [
+      {
+        "label": {
+          "en": "Watch lines the brand's site names",
+          "ar": "خطوط ساعات يذكرها موقع الماركة"
+        },
+        "value": {
+          "en": "Eleanor, Miller, Oval, Kira — chronograph and analog designs",
+          "ar": "Eleanor، Miller، Oval، Kira — بتصاميم كرونوغراف وتناظرية"
+        },
+        "source": "https://www.toryburch.com/en-us/watches/",
+        "how": "Named on the watches page of toryburch.com (US), which says \"Our collection features chronograph and analog watch designs\". A list of names, not a count."
+      }
+    ],
+    "left_out": [
+      {
+        "figure": "number of models; movement types; case sizes",
+        "why": "not stated on the page"
+      }
+    ],
+    "sources": [
+      {
+        "url": "https://www.toryburch.com/en-us/watches/",
+        "read": true
+      }
+    ],
+    "page": {
+      "families": [
+        "Eleanor",
+        "Miller",
+        "Oval",
+        "Kira"
+      ],
+      "facts": []
+    }
+  },
+  "guess": {
+    "name": "GUESS",
+    "checked_on": "2026-11-05",
+    "figures": [
+      {
+        "label": {
+          "en": "Watch collections the brand's site names",
+          "ar": "مجموعات ساعات يذكرها موقع الماركة"
+        },
+        "value": {
+          "en": "The New Royalty, Modern Icons, The Venix Collection, Icebreaker, Sweet & Petite, Suit & Time; and the Gc luxury watches",
+          "ar": "The New Royalty، Modern Icons، The Venix Collection، Icebreaker، Sweet & Petite، Suit & Time؛ وساعات Gc الفاخرة"
+        },
+        "source": "https://www.guesswatches.com/",
+        "how": "The collections named on guesswatches.com on that day. The site prints a number beside each collection, but a watch can sit in several and no total is stated, so no count is given."
+      }
+    ],
+    "left_out": [
+      {
+        "figure": "number of models; movement types; case sizes",
+        "why": "no total is stated; the per-collection numbers on the site overlap"
+      }
+    ],
+    "sources": [
+      {
+        "url": "https://www.guesswatches.com/",
+        "read": true
+      }
+    ],
+    "page": {
+      "families": [
+        "The New Royalty",
+        "Modern Icons",
+        "The Venix Collection",
+        "Icebreaker",
+        "Sweet & Petite",
+        "Suit & Time",
+        "Gc"
+      ],
+      "facts": []
+    }
+  },
+  "joyroom": {
+    "name": "JOYROOM",
+    "checked_on": "2026-11-05",
+    "figures": [
+      {
+        "label": {
+          "en": "Product groups the brand's site names",
+          "ar": "فئات المنتجات على موقع الماركة"
+        },
+        "value": {
+          "en": "Charging, Car Life, Daily Accessories, Audios & Wearables",
+          "ar": "الشحن، وملحقات السيارة، والإكسسوارات اليومية، والصوتيات والأجهزة القابلة للارتداء"
+        },
+        "source": "https://www.joyroom.com/",
+        "how": "The four product groups of the brand's site."
+      }
+    ],
+    "left_out": [
+      {
+        "figure": "number of products; founding year",
+        "why": "not stated on the page read"
+      }
+    ],
+    "sources": [
+      {
+        "url": "https://www.joyroom.com/",
+        "read": true
+      }
+    ],
+    "page": {
+      "families": [
+        "Charging",
+        "Car Life",
+        "Daily Accessories",
+        "Audios & Wearables"
+      ],
+      "facts": []
+    }
+  },
+  "tommy-hilfiger": {
+    "name": "Tommy Hilfiger",
+    "checked_on": "2026-11-05",
+    "figures": [],
+    "left_out": [
+      {
+        "figure": "every figure of the brand's own catalogue (number of models or collections, movement types, case sizes, materials)",
+        "why": "the brand's official site refused the automated reader (HTTP 403) on 2026-11-05, so nothing was read from it; nothing is printed rather than a figure from anywhere else. Read the page by hand to add figures."
+      }
+    ],
+    "sources": [
+      {
+        "url": "https://usa.tommy.com/en/men/accessories/watches",
+        "read": false
+      }
+    ],
+    "page": {
+      "families": [],
+      "facts": []
+    }
+  },
+  "hugo-boss": {
+    "name": "BOSS",
+    "checked_on": "2026-11-05",
+    "figures": [],
+    "left_out": [
+      {
+        "figure": "every figure of the brand's own catalogue (number of models or collections, movement types, case sizes, materials)",
+        "why": "the brand's official site refused the automated reader (HTTP 403) on 2026-11-05, so nothing was read from it; nothing is printed rather than a figure from anywhere else. Read the page by hand to add figures."
+      }
+    ],
+    "sources": [
+      {
+        "url": "https://www.hugoboss.com/us/men-watches/",
+        "read": false
+      }
+    ],
+    "page": {
+      "families": [],
+      "facts": []
+    }
+  },
+  "calvin-klein": {
+    "name": "Calvin Klein",
+    "checked_on": "2026-11-05",
+    "figures": [],
+    "left_out": [
+      {
+        "figure": "every figure of the brand's own catalogue (number of models or collections, movement types, case sizes, materials)",
+        "why": "the brand's official site refused the automated reader (HTTP 403) on 2026-11-05, so nothing was read from it; nothing is printed rather than a figure from anywhere else. Read the page by hand to add figures."
+      }
+    ],
+    "sources": [
+      {
+        "url": "https://www.calvinklein.us/en/men/accessories/watches",
+        "read": false
+      }
+    ],
+    "page": {
+      "families": [],
+      "facts": []
+    }
+  },
+  "coach": {
+    "name": "Coach",
+    "checked_on": "2026-11-05",
+    "figures": [],
+    "left_out": [
+      {
+        "figure": "every figure of the brand's own catalogue (number of models or collections, movement types, case sizes, materials)",
+        "why": "the brand's official site refused the automated reader (HTTP 403) on 2026-11-05, so nothing was read from it; nothing is printed rather than a figure from anywhere else. Read the page by hand to add figures."
+      }
+    ],
+    "sources": [
+      {
+        "url": "https://www.coach.com/shop/women/watches",
+        "read": false
+      }
+    ],
+    "page": {
+      "families": [],
+      "facts": []
+    }
+  },
+  "lacoste": {
+    "name": "Lacoste",
+    "checked_on": "2026-11-05",
+    "figures": [],
+    "left_out": [
+      {
+        "figure": "every figure of the brand's own catalogue (number of models or collections, movement types, case sizes, materials)",
+        "why": "the brand's official site refused the automated reader (HTTP 403) on 2026-11-05, so nothing was read from it; nothing is printed rather than a figure from anywhere else. Read the page by hand to add figures."
+      }
+    ],
+    "sources": [
+      {
+        "url": "https://www.lacoste.com/us/lacoste/men/accessories/watches/",
+        "read": false
+      }
+    ],
+    "page": {
+      "families": [],
+      "facts": []
+    }
+  },
+  "michael-kors": {
+    "name": "Michael Kors",
+    "checked_on": "2026-11-05",
+    "figures": [],
+    "left_out": [
+      {
+        "figure": "every figure of the brand's own catalogue (number of models or collections, movement types, case sizes, materials)",
+        "why": "the brand's site redirected to its regional site (michaelkors.global/eg/en/), which was not read on 2026-11-05; nothing is printed. Read it by hand to add figures."
+      }
+    ],
+    "sources": [
+      {
+        "url": "https://www.michaelkors.com/watches/",
+        "read": false
+      }
+    ],
+    "page": {
+      "families": [],
+      "facts": []
+    }
+  },
+  "pinko": {
+    "name": "Pinko",
+    "checked_on": "2026-11-05",
+    "figures": [],
+    "left_out": [
+      {
+        "figure": "every figure of the brand's own catalogue (number of models or collections, movement types, case sizes, materials)",
+        "why": "the brand's site redirected to its store (store.pinko.com), which was not read on 2026-11-05; nothing is printed. Read it by hand to add figures."
+      }
+    ],
+    "sources": [
+      {
+        "url": "https://www.pinko.com/en-us/",
+        "read": false
+      }
+    ],
+    "page": {
+      "families": [],
+      "facts": []
+    }
+  },
+  "just-cavalli": {
+    "name": "Just Cavalli",
+    "checked_on": "2026-11-05",
+    "figures": [],
+    "left_out": [
+      {
+        "figure": "every figure of the brand's own catalogue (number of models or collections, movement types, case sizes, materials)",
+        "why": "the brand's address redirected to robertocavalli.com/explore-just-cavalli, which was not read on 2026-11-05; nothing is printed. Read it by hand to add figures."
+      }
+    ],
+    "sources": [
+      {
+        "url": "https://www.justcavalli.com/",
+        "read": false
+      }
+    ],
+    "page": {
+      "families": [],
+      "facts": []
+    }
+  },
+  "armani-exchange": {
+    "name": "Armani Exchange",
+    "checked_on": "2026-11-05",
+    "figures": [],
+    "left_out": [
+      {
+        "figure": "every figure of the brand's own catalogue (number of models or collections, movement types, case sizes, materials)",
+        "why": "the brand's site could not be read on 2026-11-05 (its certificate was reported expired to the reader); nothing is printed. Read it by hand to add figures."
+      }
+    ],
+    "sources": [
+      {
+        "url": "https://www.armaniexchange.com/us/armani-exchange/men/watches",
+        "read": false
+      }
+    ],
+    "page": {
+      "families": [],
+      "facts": []
+    }
+  }
+}

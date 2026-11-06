@@ -1,14 +1,16 @@
 import { router } from '@inertiajs/react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { QuickSearch, matchesTerm, useQueryTerm } from '@/components/table/QuickSearch';
 import { Ltr } from '@/components/ui/bidi';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { MarkdownField } from '@/components/form/MarkdownField';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import ManageLayout from '@/layouts/ManageLayout';
 import { useT } from '@/lib/i18n';
+import { LayoutPreview, StructuredFields, toPayload, type Structure } from './StructuredFields';
 
 /**
  * Page texts — the introduction and meta description of every brand and category page, in both languages (M1y,
@@ -44,6 +46,8 @@ interface Props {
     subjects: Subject[];
     meta_limit: number;
     notice: string;
+    /** The image host the Markdown preview reads an uploaded picture from. */
+    assetBase: string;
 }
 
 const LOCALES: Locale[] = ['ar', 'en'];
@@ -62,7 +66,7 @@ function filled(subject: Subject): boolean {
     return LOCALES.some((l) => subject.texts[l].description.trim() !== '' || subject.texts[l].meta_description.trim() !== '');
 }
 
-export default function PageTextsIndex({ storefront, subjects, meta_limit, notice }: Props) {
+export default function PageTextsIndex({ storefront, subjects, meta_limit, notice, assetBase }: Props) {
     const t = useT();
     const [tab, setTab] = useState<'brand' | 'category'>('brand');
     const [term, setTerm] = useQueryTerm();
@@ -141,6 +145,7 @@ export default function PageTextsIndex({ storefront, subjects, meta_limit, notic
                                             storefrontId={storefront.id}
                                             subject={subject}
                                             metaLimit={meta_limit}
+                                            assetBase={assetBase}
                                             onDone={() => setEditing(null)}
                                         />
                                     </TableCell>
@@ -186,11 +191,13 @@ function TextForm({
     storefrontId,
     subject,
     metaLimit,
+    assetBase,
     onDone,
 }: {
     storefrontId: number;
     subject: Subject;
     metaLimit: number;
+    assetBase: string;
     onDone: () => void;
 }) {
     const t = useT();
@@ -201,11 +208,49 @@ function TextForm({
     const set = (locale: Locale, field: keyof Texts, value: string) =>
         setData((d) => ({ ...d, [locale]: { ...d[locale], [field]: value } }));
 
+    /*
+     * THE TEXT AS ITS PARTS (item 43 B, 2026-11-05): core reads this page's text into the parts its layout draws —
+     * intro, "<name> at <shop>" with the catalogue's facts, the other sections with their points, the questions —
+     * and the form shows those as fields. A language whose text is not in that shape (written freely) keeps the
+     * Markdown editor; so does the whole form when the admin asks for it ("Markdown").
+     */
+    const [parts, setParts] = useState<Record<Locale, Structure> | null>(null);
+    const [mode, setMode] = useState<'fields' | 'markdown'>('markdown');
+    useEffect(() => {
+        let alive = true;
+        fetch(`/manage/storefronts/${storefrontId}/page-texts/structure?type=${subject.type}&key=${encodeURIComponent(subject.key)}`, {
+            headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            credentials: 'same-origin',
+        })
+            .then((response) => (response.ok ? response.json() : null))
+            .then((body: Record<Locale, Structure> | null) => {
+                if (alive && body && LOCALES.every((l) => body[l]?.structured)) {
+                    setParts(body);
+                    setMode('fields');
+                }
+            })
+            .catch(() => {
+                // the Markdown editor stays: nothing is lost
+            });
+
+        return () => {
+            alive = false;
+        };
+    }, [storefrontId, subject.type, subject.key]);
+    const structured = mode === 'fields' && parts !== null;
+
     const submit = (e: React.FormEvent) => {
         e.preventDefault();
         router.put(
             `/manage/storefronts/${storefrontId}/page-texts`,
-            { type: subject.type, key: subject.key, ar: { ...data.ar }, en: { ...data.en } },
+            structured && parts
+                ? {
+                      type: subject.type,
+                      key: subject.key,
+                      ar: { meta_description: data.ar.meta_description, structure: toPayload(parts.ar) },
+                      en: { meta_description: data.en.meta_description, structure: toPayload(parts.en) },
+                  }
+                : { type: subject.type, key: subject.key, ar: { ...data.ar }, en: { ...data.en } },
             {
                 preserveScroll: true,
                 onStart: () => setProcessing(true),
@@ -218,6 +263,64 @@ function TextForm({
 
     return (
         <form onSubmit={submit} className="my-2 grid gap-4 rounded-md border p-3 lg:grid-cols-2">
+            {/*
+              The page text is MARKDOWN since 2026-11-05 (the twelve updates, Part 6.1): the same editor the articles
+              use — toolbar, live preview, the same rules as the shop (headings, lists, bold, links to https://,
+              mailto:, tel: or a site path only, pictures uploaded here only; any HTML typed is shown as text and
+              never run). A text written before that day is plain paragraphs, which Markdown draws as the same
+              paragraphs, so nothing already on a page changes until somebody edits it.
+            */}
+            {parts !== null && (
+                <div className="flex items-center gap-2 text-sm lg:col-span-2">
+                    <span className="text-muted-foreground">{t('page_texts.s_mode', 'طريقة التحرير')}</span>
+                    <Button type="button" size="sm" variant={mode === 'fields' ? 'default' : 'outline'} onClick={() => setMode('fields')}>
+                        {t('page_texts.s_mode_fields', 'حقول')}
+                    </Button>
+                    <Button type="button" size="sm" variant={mode === 'markdown' ? 'default' : 'outline'} onClick={() => setMode('markdown')}>
+                        {t('page_texts.s_mode_markdown', 'ماركداون')}
+                    </Button>
+                    {mode === 'markdown' && (
+                        <span className="text-xs text-amber-700">
+                            {t('page_texts.s_mode_note', 'ما تكتبه هنا يُحفظ كما هو؛ ما كُتب في الحقول ولم يُحفظ لا يُنقل إلى هنا.')}
+                        </span>
+                    )}
+                </div>
+            )}
+            {structured && parts
+                ? LOCALES.map((locale) => (
+                      <div key={`parts-${locale}`} className="grid content-start gap-3">
+                          <span className="text-sm font-medium">
+                              {locale === 'ar' ? t('page_texts.lang_ar', 'العربية') : t('page_texts.lang_en', 'الإنجليزية')}
+                          </span>
+                          <StructuredFields locale={locale} value={parts[locale]} onChange={(next) => setParts({ ...parts, [locale]: next })} />
+                          <LayoutPreview locale={locale} value={parts[locale]} />
+                      </div>
+                  ))
+                : null}
+            <div className={structured ? 'hidden' : 'lg:col-span-2'}>
+                <MarkdownField
+                    label={t('page_texts.description', 'المقدمة (تظهر تحت المنتجات)')}
+                    name="description"
+                    value={{ ar: data.ar.description, en: data.en.description }}
+                    onChange={(pair) =>
+                        setData((d) => ({
+                            ar: { ...d.ar, description: pair.ar ?? '' },
+                            en: { ...d.en, description: pair.en ?? '' },
+                        }))
+                    }
+                    errors={Object.fromEntries(
+                        LOCALES.filter((l) => Boolean(errors[`${l}.description`])).map((l) => [
+                            `description.${l}`,
+                            errors[`${l}.description`],
+                        ]),
+                    )}
+                    assetBase={assetBase}
+                    hint={t(
+                        'page_texts.description_hint',
+                        'اكتب عناوين الأقسام بـ «عنوان» من الشريط، والقوائم بنقاط. الأسئلة والأجوبة: كل سؤال عنوان فرعي ينتهي بعلامة استفهام وتحته جوابه — تظهر لجوجل كأسئلة شائعة.',
+                    )}
+                />
+            </div>
             {LOCALES.map((locale) => {
                 const meta = data[locale].meta_description;
                 const dir = locale === 'ar' ? 'rtl' : 'ltr';
@@ -227,20 +330,6 @@ function TextForm({
                         <legend className="mb-1 text-sm font-medium">
                             {locale === 'ar' ? t('page_texts.lang_ar', 'العربية') : t('page_texts.lang_en', 'الإنجليزية')}
                         </legend>
-                        <label className="text-xs text-muted-foreground" htmlFor={`description_${locale}`}>
-                            {t('page_texts.description', 'المقدمة (تظهر تحت المنتجات)')}
-                        </label>
-                        <textarea
-                            id={`description_${locale}`}
-                            dir={dir}
-                            rows={6}
-                            className="w-full rounded-md border bg-background p-2 text-sm"
-                            value={data[locale].description}
-                            onChange={(e) => set(locale, 'description', e.target.value)}
-                        />
-                        {errors[`${locale}.description`] && (
-                            <p className="text-xs text-destructive">{errors[`${locale}.description`]}</p>
-                        )}
                         <label className="text-xs text-muted-foreground" htmlFor={`meta_${locale}`}>
                             {t('page_texts.meta', 'الوصف المختصر (يظهر في نتائج جوجل)')}
                         </label>

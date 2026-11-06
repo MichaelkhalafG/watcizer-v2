@@ -1,20 +1,302 @@
-/* The brand or category page's own text, under the grid (M1y, 2026-10-30). A reading measure, not a banner. */
+/*
+ * The brand or category page's own text, under the grid (M1y, 2026-10-30; Markdown since 2026-11-05; laid out
+ * across the page in the review of the same day). A TWIN.
+ *
+ * It uses the PAGE's width: the opening words beside a facts sheet, the other sections as cards, the questions
+ * in two columns under them. Each shop sets its look with the --fi-* tokens in its globals.css; the values here
+ * are the floor (zero specificity).
+ */
+:where(:root) {
+  --fi-container: var(--pm-container, 1400px);
+  --fi-gutter: var(--pm-gutter, 16px);
+  --fi-ink: inherit;
+  --fi-muted: color-mix(in srgb, currentColor 72%, transparent);
+  --fi-line: color-mix(in srgb, currentColor 14%, transparent);
+  --fi-sheet: color-mix(in srgb, currentColor 5%, transparent);
+  --fi-accent: currentColor;
+  --fi-radius: var(--pm-radius-lg, 16px);
+  --fi-display: var(--pm-display, inherit);
+  --fi-title-case: var(--pm-title-case, none);
+  --fi-title-tracking: var(--pm-title-tracking, normal);
+}
+
 .facet-intro {
-  max-width: 72ch;
-  margin: 2.5rem auto 3rem;
-  padding: 0 16px;
-  color: inherit;
+  max-width: var(--fi-container);
+  margin: 3rem auto 3.5rem;
+  padding: 0 var(--fi-gutter);
+  color: var(--fi-ink);
 }
 
 .facet-intro__heading {
+  margin: 0 0 1rem;
   font-size: 1.125rem;
   font-weight: 600;
-  margin: 0 0 0.75rem;
 }
 
-.facet-intro__text {
+/* ── the opening words beside the facts sheet ── */
+.fi__top {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+  gap: clamp(20px, 4vw, 56px);
+  align-items: start;
+}
+.fi__top--one {
+  grid-template-columns: minmax(0, 1fr);
+}
+.fi__lead .facet-intro__body {
+  max-width: 62ch;
+  font-size: 1.06rem;
+  line-height: 1.8;
+}
+.fi__lead .facet-intro__body p:first-child::first-line {
+  font-weight: 600;
+}
+
+.facet-intro .fi__title {
+  margin: 0 0 0.9rem;
+  color: inherit;
+  letter-spacing: var(--fi-title-tracking);
+  text-transform: var(--fi-title-case);
+  font-family: var(--fi-display);
+  font-size: 1.3rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+/* the facts: a sheet — each "**Label:** value" line is a row, the label in one column and the value in the other */
+.fi__facts {
+  padding: clamp(18px, 2.2vw, 28px);
+  border: 1px solid var(--fi-line);
+  border-radius: var(--fi-radius);
+  background: var(--fi-sheet);
+}
+.fi__facts-body ul {
+  margin: 0.6rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+.fi__facts-body li {
+  display: grid;
+  grid-template-columns: minmax(7.5rem, 30%) minmax(0, 1fr);
+  gap: 4px 16px;
+  margin: 0;
+  padding: 0.6rem 0;
+  border-block-start: 1px solid var(--fi-line);
+  opacity: 1;
+}
+.fi__facts-body li strong {
+  color: var(--fi-muted);
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
+/* ── the other sections, as cards ── */
+.fi__cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+  gap: 16px;
+  margin-block-start: clamp(20px, 3vw, 32px);
+}
+.fi__card {
+  padding: clamp(18px, 2.2vw, 26px);
+  border: 1px solid var(--fi-line);
+  border-radius: var(--fi-radius);
+}
+
+/* ── the questions: two columns, each question opens its own answer ── */
+.fi__faq {
+  margin-block-start: clamp(28px, 4vw, 44px);
+}
+.facet-intro .fi__title--faq {
+  font-size: 1.5rem;
+}
+.fi__faq-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 clamp(20px, 4vw, 56px);
+  align-items: start;
+  border-block-start: 1px solid var(--fi-line);
+}
+.fi__qa {
+  border-block-end: 1px solid var(--fi-line);
+}
+.fi__qa summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-block-size: 56px;
+  padding: 10px 0;
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.4;
+  list-style: none;
+  cursor: pointer;
+}
+.fi__qa summary::-webkit-details-marker {
+  display: none;
+}
+/* a plus that turns into a minus: drawn, so it needs no icon font */
+.fi__qa summary::after {
+  content: '';
+  flex: none;
+  inline-size: 14px;
+  block-size: 14px;
+  background:
+    linear-gradient(var(--fi-accent), var(--fi-accent)) center / 100% 2px no-repeat,
+    linear-gradient(var(--fi-accent), var(--fi-accent)) center / 2px 100% no-repeat;
+  transition: transform 0.2s ease;
+}
+.fi__qa[open] summary::after {
+  background: linear-gradient(var(--fi-accent), var(--fi-accent)) center / 100% 2px no-repeat;
+  transform: rotate(180deg);
+}
+.fi__qa summary:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+.fi__qa .facet-intro__body {
+  padding-block-end: 14px;
+}
+
+/* ── the Markdown inside any of them ── */
+.facet-intro__body {
   font-size: 0.95rem;
   line-height: 1.7;
+}
+.facet-intro__body p {
   margin: 0 0 0.85rem;
-  opacity: 0.85;
+  color: var(--fi-muted);
+}
+.facet-intro__body p:last-child,
+.facet-intro__body ul:last-child {
+  margin-block-end: 0;
+}
+.facet-intro__body h2,
+.facet-intro__body h3,
+.facet-intro__body h4 {
+  margin: 1.2rem 0 0.4rem;
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.4;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.facet-intro__body ul,
+.facet-intro__body ol {
+  margin: 0 0 0.9rem;
+  padding-inline-start: 1.25rem;
+}
+.facet-intro__body li {
+  margin: 0 0 0.35rem;
+  color: var(--fi-muted);
+}
+.facet-intro__body li strong,
+.facet-intro__body p strong {
+  color: var(--fi-ink);
+  font-weight: 700;
+}
+.facet-intro__body a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.facet-intro__body img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+}
+
+@media (max-width: 899.98px) {
+  .fi__top {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .fi__faq-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 599.98px) {
+  .facet-intro {
+    margin-block: 2rem 2.5rem;
+  }
+  .fi__facts-body li {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
+}
+/*
+ * FULL-WIDTH BLOCKS, STACKED (the developer's review, 2026-11-05, item 43 A). The intro was a short column beside a
+ * tall facts box, and a large white area was left under it. Now, in order and each the full width of the page:
+ *   1. the intro — a comfortable line inside the full-width block;
+ *   2. "<name> at <shop>" — its paragraph, then the FACTS as a grid of small cells of one height
+ *      (4 a row on a computer, 3 on a small one, 2 on a tablet and a phone, 1 on a narrow phone);
+ *   3. each other section ("Original, with its papers") — its paragraph, then its points in two columns where
+ *      there is room, so the block is filled rather than a narrow strip with white beside it.
+ * No wording is touched: the same markdown, laid out differently.
+ */
+.fi__top {
+  grid-template-columns: minmax(0, 1fr);
+  gap: clamp(18px, 2.4vw, 28px);
+}
+.fi__lead .facet-intro__body,
+.fi__facts-body > p,
+.fi__card .facet-intro__body > p {
+  max-width: 82ch;
+}
+.fi__facts-body ul {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin: 1rem 0 0;
+}
+.fi__facts-body li {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--fi-line);
+  border-radius: calc(var(--fi-radius) * 0.6);
+  background: var(--fi-cell, transparent);
+  line-height: 1.45;
+}
+.fi__facts-body li strong {
+  display: block;
+}
+.fi__cards {
+  grid-template-columns: minmax(0, 1fr);
+}
+@media (min-width: 860px) {
+  .fi__card .facet-intro__body ul {
+    columns: 2;
+    column-gap: 44px;
+  }
+  .fi__card .facet-intro__body li {
+    break-inside: avoid;
+  }
+}
+@media (max-width: 1099.98px) {
+  .fi__facts-body ul {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (max-width: 859.98px) {
+  .fi__facts-body ul {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 599.98px) {
+  .fi__facts-body li {
+    gap: 2px;
+    padding: 10px 12px;
+  }
+}
+@media (max-width: 379.98px) {
+  .fi__facts-body ul {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fi__qa summary::after {
+    transition: none;
+  }
 }
