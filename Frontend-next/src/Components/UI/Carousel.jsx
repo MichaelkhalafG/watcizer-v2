@@ -18,6 +18,9 @@ function Carousel({
   className = '',
   autoplay = false,
   autoplayDelay = 3000,
+  // WHOLE ITEMS ONLY (the category row, 2026-11-05): the row rests on an item's edge and the arrows move a full view
+  // at a time, instead of gliding to wherever the drag ended — which left the last item cut in half.
+  snap = false,
 }) {
   const { language } = useUIStore()
   const isRTL = language === 'ar'
@@ -26,7 +29,8 @@ function Carousel({
     loop,
     align,
     direction: isRTL ? 'rtl' : 'ltr',
-    dragFree: true,
+    dragFree: !snap,
+    slidesToScroll: snap ? 'auto' : 1,
     containScroll: 'trimSnaps',
     skipSnaps: false,
   })

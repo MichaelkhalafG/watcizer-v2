@@ -1,5 +1,6 @@
 'use client'
 import { useMemo } from 'react'
+import dynamic from 'next/dynamic'
 import { useUIStore } from '@/src/Store/uiStore'
 import { useTables } from '@/src/Hooks/queries/useTables'
 import { useNav } from '@/src/Hooks/queries/useNav'
@@ -11,7 +12,11 @@ import { localizeHref } from '@/src/utils/localePath'
 import BfProductCard from '@/src/Components/Product/BfProductCard'
 import BfRail, { dominantFamily, useRailScroll } from '@/src/Components/Listing/BfRail'
 import WatchHero from '@/src/Components/Hero/WatchHero'
-import BannerHero from '@/src/Components/Home/BannerHero'
+import HeroZone from '@/src/Components/Home/HeroZone'
+import BrandBanner, { onColor } from '@/src/Components/Home/BrandBanner'
+import CampaignRail from '@/src/Components/Promo/CampaignRail'
+import { useHotDealsMode, useLiveCampaign } from '@/src/Hooks/queries/usePromo'
+import { money as dealMoney } from '@/src/lib/campaign'
 import './BfHome.css'
 
 /*
@@ -40,16 +45,24 @@ const STR = {
   en: {
     heroLine: 'The season’s watches and fashion, up to 60% off', heroCta: 'Shop the deals',
     deals: 'Deals', dealsSub: '30% off or more, in stock now', seeAll: 'See all', categories: 'Categories', brands: 'Brands',
-    home: 'Home', cart: 'Cart', account: 'Account', products: (n) => `${n} products`, railNames: { newest: 'New this week', offers: 'Offers' },
+    home: 'Home', cart: 'Cart', account: 'Account', products: (n) => `${n} products`, railNames: { newest: 'New this week', offers: 'Offers', best_value: 'Best value' },
+    under: (price) => `Under ${price}`,
     prev: 'Scroll back', next: 'Scroll forward',
   },
   ar: {
     heroLine: 'ساعات وأزياء الموسم، خصومات حتى 60%', heroCta: 'تسوّق التخفيضات',
     deals: 'تخفيضات', dealsSub: 'خصم 30% أو أكثر، متوفر الآن', seeAll: 'عرض الكل', categories: 'الفئات', brands: 'العلامات التجارية',
-    home: 'الرئيسية', cart: 'السلة', account: 'حسابي', products: (n) => `${n} منتج`, railNames: { newest: 'جديد هذا الأسبوع', offers: 'العروض' },
+    home: 'الرئيسية', cart: 'السلة', account: 'حسابي', products: (n) => `${n} منتج`, railNames: { newest: 'جديد هذا الأسبوع', offers: 'العروض', best_value: 'أفضل قيمة' },
+    under: (price) => `أقل من ${price}`,
     prev: 'السابق', next: 'التالي',
   },
 }
+// Hot Deals mode replaces the home with the campaign's page; loaded only when the switch is on.
+const CampaignPage = dynamic(() => import('@/src/Components/Promo/CampaignPage'))
+
+// The kinds that are a SECTION of the page rather than a slider of products (core: HomeRails::SECTIONS).
+const SECTION_KINDS = ['banners', 'hot_deals', 'flash_sale', 'categories', 'brands']
+
 const CHIPS_PER_FAMILY = 5
 const BRAND_STRIP_AFTER = 6
 
@@ -68,9 +81,25 @@ export default function BfHome({ home, meta }) {
   const { data: nav } = useNav()
   const [brandsRef, brandsRail] = useRailScroll(dir)
   const [catsRef, catsRail] = useRailScroll(dir)
+  // the live campaigns (Part 2, 2026-11-05): the header switch's mode, and whether a Flash Sale is running
+  const hotDeals = useHotDealsMode()
+  const flashSale = useLiveCampaign('flash_sale')
 
   const deals = home?.deals || []
-  const rails = (home?.rails || []).filter((r) => r.cards?.length >= 2)
+  // a brand banner (Part 3.3) is a banner with three products by design, not a row of cards: it needs its brand,
+  // not the two-card minimum
+  // …and the Banners block's row (the design pass): core sends it at its place among the sliders only while a
+  // hero leads the page; it is drawn there when the shop has a banner to show.
+  // EVERY HOME SECTION IS A ROW OF THE DASHBOARD (the review of 2026-11-05): `managed_sections` names the sections
+  // the Home sliders screen has a row for, on or off. Such a section is drawn ONLY where its row is (it arrives as a
+  // rail of its kind) and not at all when the row is off; a section with no row keeps its old fixed place below.
+  // A `featured` row is never drawn: the rotating featured banner is gone.
+  const managed = new Set(home?.managed_sections || [])
+  const rails = (home?.rails || []).filter((r) =>
+    r.kind === 'featured' ? false : SECTION_KINDS.includes(r.kind) ? true : r.kind === 'brand_banner' ? !!r.brand?.slug : r.cards?.length >= 2,
+  )
+  // the two side slots of the hero zone (Part 3.1): [top, bottom], each a banner or null; both null = the hero alone
+  const sideBanners = Array.isArray(home?.side_banners) ? home.side_banners : []
   const categories = (home?.categories || []).filter((c) => c.count > 0)
   // D1 (2026-10-20): EVERY active banner, so the hero can rotate. `banners` is core's list since that day;
   // `banner` was the one object the payload carried before it, and is read here as a one-banner list so this
@@ -110,11 +139,12 @@ export default function BfHome({ home, meta }) {
     })
   }, [categories, meta, tables, nav, lang])
 
-  const railTitle = (r) => txt(r.title, lang) || t.railNames[r.kind] || (r.cards[0] ? (r.kind === 'brand' ? txt(r.cards[0].brand?.name, lang) : txt(r.cards[0].primary_category?.name, lang)) : '')
+  const railTitle = (r) => txt(r.title, lang) || (r.kind === 'price' ? t.under(dealMoney(Number(r.target) || 0, lang)) : '') || t.railNames[r.kind] || (r.cards[0] ? (r.kind === 'brand' ? txt(r.cards[0].brand?.name, lang) : txt(r.cards[0].primary_category?.name, lang)) : '')
   const railHref = (r) => {
     if (r.kind === 'brand' && r.cards[0]?.brand?.slug) return `/brand/${r.cards[0].brand.slug}`
     if (r.kind === 'category_type' && r.cards[0]?.primary_category?.path) return `/category/${r.cards[0].primary_category.path.split('/')[0]}`
     if (r.kind === 'newest') return '/listing?sort=newest'
+    if (r.kind === 'best_value') return '/listing?sale=1'
     return '/listing'
   }
   const railCount = (r) => {
@@ -123,60 +153,9 @@ export default function BfHome({ home, meta }) {
     return null
   }
 
-  const bands = []
-  ordinary.forEach((r, i) => {
-    bands.push(<BfRail key={`rail-${r.id}`} title={railTitle(r)} count={railCount(r)} cards={r.cards} seeAllHref={railHref(r)} lang={lang} />)
-    if (i === BRAND_STRIP_AFTER - 1 && brands.length >= 3) {
-      bands.push(
-        <section className="bf-brands" key="brands" aria-label={t.brands} dir={dir}>
-          <header className="bf-rail__head">
-            <h2 className="bf-rail__title">{t.brands}<span className="bf-rail__count">{brands.length}</span></h2>
-            <div className="bf-rail__tools">
-              <button type="button" className="bf-rail__arrow" onClick={() => brandsRail.page(-1)} disabled={brandsRail.atStart} aria-label={t.prev}><Chevron flip={!isRTL} /></button>
-              <button type="button" className="bf-rail__arrow" onClick={() => brandsRail.page(1)} disabled={brandsRail.atEnd} aria-label={t.next}><Chevron flip={isRTL} /></button>
-            </div>
-          </header>
-          <div className="bf-brands__row" ref={brandsRef}>
-            {brands.map((b) => (
-              <a key={b.id} className="bf-brand" href={L(`/brand/${b.slug}`)}>
-                {/* eslint-disable-next-line @next/next/no-img-element -- brand logo, asset-host URL */}
-                <img src={b.logo.src} alt="" loading="lazy" />
-                <span className="bf-brand__name" lang="en">{txt(b.name, lang)}</span>
-                <span className="bf-brand__count">{b.count}</span>
-              </a>
-            ))}
-          </div>
-        </section>,
-      )
-    }
-  })
-
-  return (
-    <div className="bf-home" dir={dir} lang={lang}>
-      {/* band 1: hero + the category row */}
-      <section className="bf-open" aria-label={t.home}>
-        {threeD ? (
-          <WatchHero />
-        ) : banners.length ? (
-          <BannerHero banners={banners} lang={lang} dir={dir} />
-        ) : (
-          <div className="bf-hero bf-hero--system">
-            <div>
-              <p className="bf-hero__line">{t.heroLine}</p>
-              {/* the deals' own page (2026-10-19): `in_stock=1` is no listing key, so this opened the whole shop */}
-              <a className="bf-cta-gold" href={L('/listing?sale=1&discount=30&inStock=1')}>{t.heroCta}</a>
-            </div>
-            <div className="bf-hero__strip" aria-hidden="true">
-              {deals.slice(0, 6).map((c, i) => (
-                <a className="bf-hero__photo" key={c.id} href={L(`/product/${c.slug}`)} tabIndex={-1} style={i >= 3 ? { display: 'var(--bf-hero-extra, none)' } : undefined}>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={c.image?.src} alt="" loading={i < 3 ? 'eager' : 'lazy'} />
-                </a>
-              ))}
-            </div>
-          </div>
-        )}
-        {chipRow.length ? (
+  // the category row: a tile per family + its busiest sub-types — a constant, so it can be drawn in the opening band
+  // (its old fixed place) or where its dashboard row is
+  const catsNav = chipRow.length ? (
           <nav className="bf-cats" aria-label={t.categories}>
             <div className="bf-cats__row" ref={catsRef}>
               {chipRow.map((c) => (
@@ -206,11 +185,165 @@ export default function BfHome({ home, meta }) {
               <button type="button" className="bf-rail__arrow" onClick={() => catsRail.page(1)} disabled={catsRail.atEnd} aria-label={t.next}><Chevron flip={isRTL} /></button>
             </div>
           </nav>
-        ) : null}
+  ) : null
+
+  // the brand strip, a constant for the same reason
+  const brandsBand = (
+    <section className="bf-brands" key="brands" aria-label={t.brands} dir={dir}>
+          <header className="bf-rail__head">
+            <h2 className="bf-rail__title">{t.brands}<span className="bf-rail__count">{brands.length}</span></h2>
+            <div className="bf-rail__tools">
+              <button type="button" className="bf-rail__arrow" onClick={() => brandsRail.page(-1)} disabled={brandsRail.atStart} aria-label={t.prev}><Chevron flip={!isRTL} /></button>
+              <button type="button" className="bf-rail__arrow" onClick={() => brandsRail.page(1)} disabled={brandsRail.atEnd} aria-label={t.next}><Chevron flip={isRTL} /></button>
+            </div>
+          </header>
+          <div className="bf-brands__row" ref={brandsRef}>
+            {brands.map((b) => (
+              <a key={b.id} className="bf-brand" href={L(`/brand/${b.slug}`)}>
+                {/* eslint-disable-next-line @next/next/no-img-element -- brand logo, asset-host URL */}
+                <img src={b.logo.src} alt="" loading="lazy" />
+                <span className="bf-brand__name" lang="en">{txt(b.name, lang)}</span>
+                <span className="bf-brand__count">{b.count}</span>
+              </a>
+            ))}
+          </div>
+        </section>
+  )
+
+  const bands = []
+  ordinary.forEach((r, i) => {
+    if (r.kind === 'banners') {
+      // THE BANNERS BLOCK AS A SECTION: the large banner and its two side slots, where the dashboard placed them
+      if (banners.length) {
+        bands.push(
+          <section className="bf-band" key={`rail-${r.id}`}>
+            <HeroZone banners={banners} side={sideBanners} lang={lang} dir={dir} />
+          </section>,
+        )
+      }
+    } else if (r.kind === 'hot_deals' || r.kind === 'flash_sale') {
+      // a campaign's section, where its row is — and only while its campaign is live
+      if (r.kind === 'hot_deals' ? hotDeals.campaign : flashSale.campaign) {
+        bands.push(
+          <section className="bf-band bf-band--bleed" key={`rail-${r.id}`}>
+            <CampaignRail presentation={r.kind} lang={lang} bleed />
+          </section>,
+        )
+      }
+    } else if (r.kind === 'categories') {
+      if (catsNav) bands.push(<section className="bf-band" key={`rail-${r.id}`}>{catsNav}</section>)
+    } else if (r.kind === 'brands') {
+      if (brands.length >= 3) bands.push(brandsBand)
+    } else if (r.kind === 'brand_banner') {
+      // THE BRAND BANNER (Part 3.3): the brand's logo and page, the team's title, description and three colours,
+      // and up to three of the brand's products — as the plain model the twin BrandBanner draws.
+      bands.push(
+        <section className="bf-band bf-band--bleed" key={`rail-${r.id}`}>
+          <BrandBanner
+            bleed
+            lang={lang}
+            dir={dir}
+            model={{
+              href: `/brand/${r.brand.slug}`,
+              brand: txt(r.brand.name, 'en'),
+              logo: r.brand.logo?.src || null,
+              title: txt(r.title, lang),
+              description: txt(r.description, lang),
+              colors: r.colors || [],
+              products: (r.cards || []).slice(0, 3).map((c) => ({
+                id: c.id,
+                // each card of the banner opens ITS OWN product
+                href: `/product/${c.slug}`,
+                image: c.image?.src,
+                title: txt(c.title, lang),
+                price: dealMoney(c.price?.has_sale ? c.price.sale_amount : c.price?.amount, lang),
+                was: c.price?.has_sale ? dealMoney(c.price.amount, lang) : null,
+                // the product's real discount, as its card prints it
+                off: c.price?.has_sale && c.price.discount_pct > 0 ? c.price.discount_pct : null,
+              })),
+            }}
+          />
+        </section>,
+      )
+    } else if (r.background) {
+      /*
+       * A SLIDER'S OWN LOOK (Part 3.2): a background colour for its section and, separately, the blend that
+       * dissolves the white studio background of its product photos into that colour. A slider with neither is
+       * the plain BfRail below, exactly as before.
+       */
+      bands.push(
+        <section className="bf-band bf-band--colour" key={`rail-${r.id}`} style={{ '--hl-ground': r.background }}>
+          <div className={`hl${r.blend ? ' hl--blend' : ''}`} style={{ '--hl-ground': r.background, '--hl-ink': onColor(r.background) }}>
+            {/* with the blend on, each card goes out with the mask of its photo's studio background (core: r.masks) */}
+            <BfRail
+              title={railTitle(r)}
+              count={railCount(r)}
+              cards={r.blend && r.masks ? r.cards.map((c) => (r.masks[c.id] ? { ...c, cut_mask: r.masks[c.id] } : c)) : r.cards}
+              seeAllHref={railHref(r)}
+              lang={lang}
+              tint="never"
+            />
+          </div>
+        </section>,
+      )
+    } else {
+      bands.push(<BfRail key={`rail-${r.id}`} title={railTitle(r)} count={railCount(r)} cards={r.cards} seeAllHref={railHref(r)} lang={lang} />)
+    }
+    if (!managed.has('brands') && i === BRAND_STRIP_AFTER - 1 && brands.length >= 3) {
+      bands.push(brandsBand)
+    }
+  })
+
+  // HOT DEALS MODE (Part 2.4): the switch in the header is on, so the shop shows only the live Hot Deals
+  // campaign — and its home IS that campaign's page. Off (or the campaign over), the home below returns.
+  if (hotDeals.on) return <CampaignPage presentation="hot_deals" />
+
+  return (
+    <div className="bf-home" dir={dir} lang={lang}>
+      {/* band 1: hero + the category row */}
+      <section className="bf-open" aria-label={t.home}>
+        {threeD ? (
+          <WatchHero />
+        ) : banners.length ? (
+          <HeroZone banners={banners} side={sideBanners} lang={lang} dir={dir} />
+        ) : (
+          <div className="bf-hero bf-hero--system">
+            <div>
+              <p className="bf-hero__line">{t.heroLine}</p>
+              {/* the deals' own page (2026-10-19): `in_stock=1` is no listing key, so this opened the whole shop */}
+              <a className="bf-cta-gold" href={L('/listing?sale=1&discount=30&inStock=1')}>{t.heroCta}</a>
+            </div>
+            <div className="bf-hero__strip" aria-hidden="true">
+              {deals.slice(0, 6).map((c, i) => (
+                <a className="bf-hero__photo" key={c.id} href={L(`/product/${c.slug}`)} tabIndex={-1} style={i >= 3 ? { display: 'var(--bf-hero-extra, none)' } : undefined}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={c.image?.src} alt="" loading={i < 3 ? 'eager' : 'lazy'} />
+                </a>
+              ))}
+            </div>
+          </div>
+        )}
+        {managed.has('categories') ? null : catsNav}
       </section>
 
+      {/*
+       * THE LIVE CAMPAIGNS (Part 2.2, 2026-11-05): a Flash Sale and a Hot Deals slider, each in its own design,
+       * each drawn only while a campaign of its kind is live and gone at its end — band and all.
+       */}
+      {!managed.has('flash_sale') && flashSale.campaign ? (
+        <section className="bf-band bf-band--bleed">
+          <CampaignRail presentation="flash_sale" lang={lang} bleed />
+        </section>
+      ) : null}
+      {!managed.has('hot_deals') && hotDeals.campaign ? (
+        <section className="bf-band bf-band--bleed">
+          <CampaignRail presentation="hot_deals" lang={lang} bleed />
+        </section>
+      ) : null}
+
       {/* band 2: the deals — the first cards */}
-      {deals.length >= 2 ? (
+      {/* …unless the dashboard has a "best value" slider: that IS the deals band, placed where the team wants it */}
+      {deals.length >= 2 && !ordinary.some((r) => r.kind === 'best_value') ? (
         <section className="bf-deals" aria-label={t.deals}>
           <div className="bf-deals__grid">
             <div className="bf-deals__head">

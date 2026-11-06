@@ -1,5 +1,5 @@
 import { QueryClient, dehydrate, HydrationBoundary } from '@tanstack/react-query'
-import { listingRequest } from '@/src/lib/listingRequest'
+import { listingRequest, packListing } from '@/src/lib/listingRequest'
 import { getServerTables, getServerListing } from '@/src/lib/serverCatalog'
 import { requestLang } from '@/src/lib/requestLang'
 import { parseListingParams } from '@/src/utils/listingParams'
@@ -52,7 +52,8 @@ export default async function ListingPage({ searchParams }) {
   // The first page and its facet counts, from core (C-1 stage 3) — with the SAME request builder
   // ListingClient uses, so its first render hits this data.
   const qc = new QueryClient()
-  if (listing) qc.setQueryData(['listing', qs], listing)
+  // packed: core's page once — the browser rebuilds the rest (v2Listing.js `packListing`, 2026-11-06)
+  if (listing) qc.setQueryData(['listing', qs], packListing(listing))
 
   return (
     <HydrationBoundary state={dehydrate(qc)}>

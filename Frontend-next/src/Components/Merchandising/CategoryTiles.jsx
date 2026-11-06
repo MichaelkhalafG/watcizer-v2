@@ -1,5 +1,5 @@
 'use client'
-import { memo } from 'react'
+import { memo, useState } from 'react'
 import Image from 'next/image'
 import { useRouter } from '@/src/Hooks/useLocaleRouter'
 import { useTables } from '../../Hooks/queries/useTables'
@@ -7,15 +7,47 @@ import { useUIStore } from '../../Store/uiStore'
 import { getImageUrl } from '../../utils/imageUrl'
 import { subTypeSlug } from '../../utils/slugs'
 import { Carousel, CarouselSlide } from '../UI/Carousel'
+import { useMenu } from '../../Hooks/queries/usePromo'
 import './CategoryTiles.css'
+
+/*
+ * A category's picture (the review of 2026-11-05, item 35): its OWN picture; when it has none — or its file does not
+ * load — the picture core's menu gives that category (the rule used everywhere: a product photo from it); a letter
+ * only when there is neither, which no category with a product in it can reach.
+ */
+function ChipPicture({ own, fallback, name }) {
+  const [ownFailed, setOwnFailed] = useState(false)
+  const [fallbackFailed, setFallbackFailed] = useState(false)
+  if (own && !ownFailed) {
+    // alt="" (Lighthouse: image-redundant-alt): the name is printed under the picture, inside the same button —
+    // a screen reader read it twice
+    // no `sizes`: a fixed 80 px picture needs a 1x and a 2x file, not next/image's whole ladder in every chip
+    return <Image src={own} alt="" width={80} height={80} quality={75} className="wz-cat-img" onError={() => setOwnFailed(true)} />
+  }
+  if (fallback && !fallbackFailed) {
+    // eslint-disable-next-line @next/next/no-img-element -- a small recorded rendition, an absolute asset-host URL
+    return <img src={fallback} alt="" width="80" height="80" loading="lazy" decoding="async" className="wz-cat-img wz-cat-img--product" onError={() => setFallbackFailed(true)} />
+  }
+  return <span className="wz-cat-chip-initial">{name.charAt(0).toUpperCase()}</span>
+}
 
 const CategoryTiles = () => {
   // The lookup tables only — not the catalogue (C-1 stage 2).
   const { data: tables, isFetching } = useTables()
   const { language } = useUIStore()
   const router = useRouter()
+  // the menu is in the page (item 36): each category's fallback picture, by its slug
+  const { data: menu } = useMenu(true)
+  const fallbackOf = {}
+  for (const top of menu?.categories || []) {
+    for (const child of top.children || []) {
+      if (child.image?.src) fallbackOf[child.slug] = child.image.src
+    }
+  }
 
-  const subTypes = tables?.subTypes || []
+  // A category is in the row when it has a picture to show: its own, or — through the menu — a product of it. One
+  // that has neither has no product in this shop either: it was a grey circle with a letter that led to an empty page.
+  const subTypes = (tables?.subTypes || []).filter((sub) => sub.image_url || sub.image || !menu || fallbackOf[subTypeSlug(sub)])
 
   // While the catalog tables are still loading, show placeholder chips so the
   // section fills in progressively instead of popping in. Once loaded, an empty
@@ -62,7 +94,7 @@ const CategoryTiles = () => {
       </div>
 
       {/* Scrollable row (Embla) */}
-      <Carousel gap={10} showArrows showDots={false}>
+      <Carousel gap={10} showArrows showDots={false} snap>
         {subTypes.map((sub) => {
           const name = getName(sub)
           // Prefer the absolute image_url the API now appends; fall back to the
@@ -73,28 +105,8 @@ const CategoryTiles = () => {
           return (
             <CarouselSlide key={sub.id} className="wz-cat-slide">
               <button className="wz-cat-chip" onClick={() => handleClick(sub)} title={name}>
-                <div className={`wz-cat-chip-img${img ? '' : ' wz-cat-chip-img-fallback'}`}>
-                  {img ? (
-                    <Image
-                      src={img}
-                      alt={name}
-                      width={80}
-                      height={80}
-                      quality={75}
-                      sizes="80px"
-                      className="wz-cat-img"
-                      onError={(e) => {
-                        e.target.onerror = null
-                        e.target.style.display = 'none'
-                        e.target.parentElement.classList.add('wz-cat-chip-img-fallback')
-                        const fb = e.target.parentElement.querySelector('.wz-cat-chip-initial')
-                        if (fb) fb.style.display = 'flex'
-                      }}
-                    />
-                  ) : null}
-                  <span className="wz-cat-chip-initial" style={{ display: img ? 'none' : 'flex' }}>
-                    {name.charAt(0).toUpperCase()}
-                  </span>
+                <div className="wz-cat-chip-img">
+                  <ChipPicture own={img} fallback={fallbackOf[subTypeSlug(sub)]} name={name} />
                 </div>
 
                 <span className="wz-cat-chip-name">{name}</span>

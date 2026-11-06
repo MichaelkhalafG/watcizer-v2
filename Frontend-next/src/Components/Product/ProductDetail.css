@@ -218,7 +218,7 @@
   font-weight: 600;
   letter-spacing: 0.3em;
   text-transform: uppercase;
-  color: var(--pd-gold);
+  color: var(--wz-gold-text, #8a6b2a); /* small text: the gold is 2.3 : 1 on the page (Lighthouse: color-contrast) */
   text-decoration: none;
 }
 .wz-pd-brand-logo {
@@ -312,7 +312,7 @@
   padding: 3px 9px;
   border-radius: 999px;
   background: rgba(220, 38, 38, 0.1);
-  color: var(--wz-danger);
+  color: #b91c1c; /* was --wz-danger (#dc2626): 4.0 : 1 on its own pink ground; this is 5.3 : 1 (Lighthouse: color-contrast) */
   font-size: 11px;
   font-weight: 800;
 }
@@ -602,6 +602,23 @@
 
 /* The action row holds: [qty] then add + share stacked below.
    We use a wrapper layout: qty inline above, then full-width buttons. */
+/* THE PRODUCT IS IN A LIVE OFFER (item 42): the buy buttons — the page's and the sticky bar's — and the info column's
+   accent take the offer's colours (promo.css tokens). Nothing is resized or moved; the photos are not tinted.
+   White on the fire bar ≥ 4.6:1, on Watchizer's storm 16:1 (measured on the tokens). */
+.wz-pd.pm-offer .wz-pd-add:not(:disabled),
+.wz-pd.pm-offer .wz-pd-sticky-add:not(:disabled) {
+  background: var(--pm-offer-bar);
+  color: var(--pm-offer-on);
+  border-color: transparent;
+}
+.wz-pd.pm-offer .wz-pd-price--sale,
+.wz-pd.pm-offer .wz-pd-sticky-amount--sale {
+  color: var(--pm-offer-edge);
+}
+.wz-pd.pm-offer .wz-pd-sticky {
+  border-block-start: 2px solid var(--pm-offer-edge);
+}
+
 .wz-pd-add {
   width: 100%;
   height: 54px;
@@ -968,7 +985,7 @@ body[style*='overflow:hidden'] .wz-pd-sticky {
 }
 .wz-pd-sticky-orig {
   font-size: 11px;
-  color: rgba(0, 0, 0, 0.32);
+  color: rgba(0, 0, 0, 0.56); /* was 0.32: 2.2 : 1 on white; this is 4.7 : 1 (Lighthouse: color-contrast) */
   text-decoration: line-through;
 }
 .wz-pd-sticky-add {
@@ -1145,7 +1162,7 @@ body[style*='overflow:hidden'] .wz-pd-sticky {
     font-weight: 600;
     letter-spacing: 0.25em;
     text-transform: uppercase;
-    color: var(--pd-gold);
+    color: var(--wz-gold-text, #8a6b2a); /* small text: the gold is 2.3 : 1 on the page (Lighthouse: color-contrast) */
   }
   .wz-pd-ms-name {
     margin: 0;
@@ -1183,7 +1200,7 @@ body[style*='overflow:hidden'] .wz-pd-sticky {
   .wz-pd-ms-discount {
     font-size: 9px;
     font-weight: 700;
-    background: #ea2b0f;
+    background: #dc270d; /* was #ea2b0f: white on it measured 4.3 : 1; this is 4.8 : 1 */
     color: #fff;
     padding: 2px 6px;
     border-radius: 3px;

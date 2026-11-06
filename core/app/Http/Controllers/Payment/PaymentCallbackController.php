@@ -7,9 +7,8 @@ namespace App\Http\Controllers\Payment;
 use App\Compat\CompatCheckout;
 use App\Domain\Analytics\MetaConversions;
 use App\Domain\Inventory\Actor;
-use App\Domain\Inventory\InventoryService;
 use App\Domain\Notifications\OrderMailer;
-use App\Domain\Orders\OrderRecovery;
+use App\Domain\Orders\LatePayment;
 use App\Domain\Payment\CallbackPolicy;
 use App\Domain\Payment\CallbackVerdict;
 use App\Domain\Payment\Landing;
@@ -63,15 +62,25 @@ use Throwable;
  * with one row, and the second gets 200 "already processed" rather than a duplicate release.
  *
  * The whole verdict-to-state transition is one `DB::transaction` — record, order status and stock
- * release roll back together, as the wave-3 review proved they must.
+ * movement roll back together, as the wave-3 review proved they must.
+ *
+ * ── Since 2026-11-05 (order 000092) ──────────────────────────────────────────────────────────
+ *
+ * The decision is taken UNDER THE ORDER ROW'S LOCK, on the status the order has at that moment —
+ * not on the one read before the transaction, which a second callback or the expiry cron may have
+ * changed in between. A decline no longer cancels (the order keeps waiting until
+ * `orders:expire-unpaid`); a success on a cancelled order goes through {@see LatePayment}, which
+ * reserves the stock again when it is still there; and every finding raised with the outcome
+ * `success` e-mails the shop ({@see OrderMailer::paymentAlert()}), because that combination means
+ * a customer was charged and the order does not show it.
  */
 final class PaymentCallbackController
 {
     public function __construct(
         private readonly ProviderRegistry $registry,
-        private readonly InventoryService $inventory,
         private readonly OrderMailer $mailer,
         private readonly MetaConversions $meta,
+        private readonly LatePayment $latePayment,
     ) {}
 
     /**
@@ -200,13 +209,13 @@ final class PaymentCallbackController
             $orderStorefront = Row::nint($order, 'storefront_id');
 
             /*
-             * NULL means the order was written before core recorded a storefront on it — every
-             * such order belongs to Watchizer, the only storefront the legacy app ever served. It
-             * is accepted for the PRIMARY storefront only, and logged, so the exception is visible
-             * while it lasts; once every order carries the column this branch is dead and goes.
+             * One comparison. There used to be a second arm — an order with NO storefront was
+             * accepted for the primary storefront, "until every order carries the column". Every
+             * order does: `orders.storefront_id` is NOT NULL since the migration of 2026-10-23
+             * (the nine pre-column orders were backfilled), so the arm was dead and went on
+             * 2026-11-05. A NULL here now fails the comparison and is refused like any mismatch.
              */
-            $belongs = $orderStorefront === $storefrontId
-                || ($orderStorefront === null && $storefrontId === Storefront::WATCHIZER_ID);
+            $belongs = $orderStorefront === $storefrontId;
 
             if (! $belongs) {
                 return $this->fail($request, 403, 'order belongs to another storefront', $context + [
@@ -214,9 +223,6 @@ final class PaymentCallbackController
                     'order_storefront_id' => $orderStorefront,
                     'transaction' => $verdict->providerTransactionId,
                 ], landing: $storefrontId);
-            }
-            if ($orderStorefront === null) {
-                Log::info('payment callback: order carries no storefront_id; accepted as the primary storefront.', $context + ['order_id' => $orderId]);
             }
 
             /*
@@ -272,6 +278,8 @@ final class PaymentCallbackController
             $mailIds = [];
             /** @var list<int> $metaIds the card Purchase (B2): enqueued inside, sent after, like the mail */
             $metaIds = [];
+            /** @var array{success: string|null, outcome: string|null}|null $replay set when the twin delivery won the lock */
+            $replay = null;
 
             $attemptRow = [
                 'order_id' => $orderId,
@@ -281,9 +289,9 @@ final class PaymentCallbackController
                 'pay_order_id' => is_numeric($verdict->orderReference) ? (int) $verdict->orderReference : null,
                 'pay_transaction_id' => $verdict->providerTransactionId,
                 'amount_cents' => $verdict->amountMinor,
-                // An amount that disagrees with the order is NEVER recorded as a success, whatever
-                // the provider said.
-                'success' => $decision['paid'] ? 'true' : 'false',
+                // `success` is written inside the transaction, from the decision taken under the
+                // order's lock: an amount that disagrees with the order is NEVER recorded as a
+                // success, whatever the provider said. (The lost-callback fallback adds its own.)
                 // …and WHAT it was, which `success` cannot express: a refund, a void and a decline
                 // are three different things that all used to read `false` (or, worse, `true` for a
                 // refund).
@@ -304,28 +312,93 @@ final class PaymentCallbackController
                  * Without it a deadlocked callback answered 500 and VANISHED: the provider had
                  * taken the money and the rollback removed every trace of the attempt.
                  */
-                DeadlockRetry::run(function () use ($provider, $verdict, $orderId, $amountMatches, $methodId, $storefrontId, $outcome, $orderStatus, $decision, $attemptRow, &$mailIds, &$metaIds): void {
+                DeadlockRetry::run(function () use ($provider, $verdict, $orderId, $amountMatches, $methodId, $outcome, $attemptRow, $transactionId, &$orderStatus, &$decision, &$replay, &$mailIds, &$metaIds): void {
+                    /*
+                     * The order row FIRST (the one lock order: orders → products → variants), and
+                     * the decision on what the order is NOW. Two callbacks of one order — a decline
+                     * and the retry that succeeded, or the provider's POST and the shopper's GET —
+                     * are serialised here, and so is `orders:expire-unpaid`, whose claim is an
+                     * UPDATE on this same row.
+                     */
+                    $locked = DB::table('orders')->where('id', $orderId)->lockForUpdate()->value('status');
+                    if (is_string($locked)) {
+                        $orderStatus = $locked;
+                    }
+
+                    // The twin delivery of this very transaction got here first: nothing to do, and
+                    // the caller lands on what the record says (the unique index would refuse the
+                    // insert below, which used to surface as a failed landing).
+                    if ($transactionId !== null) {
+                        $seen = DB::table('payment_statuses')->where('provider', $provider)
+                            ->where('pay_transaction_id', $transactionId)->first(['success', 'outcome']);
+                        if ($seen !== null) {
+                            $replay = ['success' => Row::nstr($seen, 'success'), 'outcome' => Row::nstr($seen, 'outcome')];
+
+                            return;
+                        }
+                    }
+
+                    $decision = CallbackPolicy::decide($outcome, $orderStatus, $amountMatches);
+
                     $now = now();
-                    $attemptId = (int) DB::table('payment_statuses')->insertGetId($attemptRow + [
+                    $attemptId = (int) DB::table('payment_statuses')->insertGetId(['success' => $decision['paid'] ? 'true' : 'false'] + $attemptRow + [
                         'created_at' => $now,
                         'updated_at' => $now,
                     ]);
 
-                    if ($decision['finding'] !== null) {
-                        CallbackPolicy::record(
-                            $decision['finding'],
+                    $finding = $decision['finding'];
+                    $detail = [
+                        'transaction' => $verdict->providerTransactionId,
+                        'amount_matches' => $amountMatches,
+                        'route' => 'scoped',
+                    ];
+
+                    if ($decision['action'] === CallbackPolicy::ACT_REINSTATE) {
+                        /*
+                         * Money arrived for a cancelled order. Bring it back if its stock is still
+                         * there — reserved again through the ledger, all or nothing — and only
+                         * then call it paid. A refusal writes nothing and falls through to the
+                         * finding the decision carries, with the reason beside it.
+                         */
+                        $late = $this->latePayment->reinstate(
+                            $orderId,
+                            $provider,
+                            $methodId['method'],
+                            Actor::system(),
+                            'late payment after cancellation'.($transactionId === null ? '' : ' — transaction '.$transactionId),
+                        );
+
+                        if ($late['ok']) {
+                            DB::table('payment_statuses')->where('id', $attemptId)->update(['success' => 'true']);
+                            // Paid. A finding stays ONLY when the shopper has since placed another
+                            // order: both are alive now, and a person must look at the pair.
+                            $finding = $late['newer_orders'] === [] ? null : CallbackPolicy::KIND_PAID_TWICE;
+                            $decision = ['action' => CallbackPolicy::ACT_REINSTATE, 'finding' => $finding, 'paid' => true];
+                            $detail += ['reinstated' => true, 'stock_movements' => $late['movements'], 'newer_orders' => $late['newer_orders']];
+
+                            $mailIds = $this->mailer->placed($orderId, notifyCustomer: true);
+                            $metaIds = $this->meta->purchase($orderId);
+                        } else {
+                            $detail += ['reinstated' => false, 'refused' => $late['reason']];
+                        }
+                    }
+
+                    if ($finding !== null) {
+                        $findingId = CallbackPolicy::record(
+                            $finding,
                             $provider,
                             $orderId,
                             $attemptId,
                             $outcome,
                             $orderStatus,
                             $verdict->amountMinor,
-                            [
-                                'transaction' => $verdict->providerTransactionId,
-                                'amount_matches' => $amountMatches,
-                                'route' => 'scoped',
-                            ],
+                            $detail,
                         );
+
+                        // Money in, and the order does not say so: the shop is e-mailed, now.
+                        if ($outcome === CallbackPolicy::OUTCOME_SUCCESS) {
+                            $mailIds = array_merge($mailIds, $this->mailer->paymentAlert($orderId, $findingId, $finding, $detail));
+                        }
                     }
 
                     if ($decision['action'] === CallbackPolicy::ACT_PAY) {
@@ -350,33 +423,15 @@ final class PaymentCallbackController
                         $mailIds = $this->mailer->placed($orderId, notifyCustomer: true);
                         // The card Purchase for Meta (B2): the only place that knows the money arrived.
                         $metaIds = $this->meta->purchase($orderId);
-                    } elseif ($decision['action'] === CallbackPolicy::ACT_CANCEL) {
-                        DB::table('orders')->where('id', $orderId)->update(['status' => 'cancelled', 'updated_at' => now()]);
-                        // The ONE door for stock, even here (D-21): a failed payment returns the
-                        // units it reserved, through the service, ledgered, exactly once.
-                        $this->inventory->releaseOrder($orderId, 'payment_failed', Actor::system(), $storefrontId);
-
-                        /*
-                         * The decline e-mail (developer, 2026-10-12): the SAME recovery e-mail an
-                         * expiry sends (`UnpaidOrders::cancel`), with the reason set so the admins'
-                         * copy says "declined" rather than "didn't pay". Until now a shopper who
-                         * abandoned checkout was e-mailed an hour later and a shopper who tried and
-                         * was declined was told nothing — the one who got further was told less.
-                         * Same gate as the expiry (one per shopper per week, never after they
-                         * ordered again), same dedupe (once per order, whichever reason comes
-                         * first), flushed after this transaction commits like the paid branch.
-                         *
-                         * Decided HERE, when the callback lands, and sent seconds later: nothing
-                         * re-checks the shopper at send time. So a shopper declined at 10:00 who
-                         * retries and pays at 10:02 still gets this e-mail beside their
-                         * confirmation; the recovery link is then refused as `reordered`. Accepted
-                         * (developer, 2026-10-12) rather than holding the row — DeclineRecoveryTest
-                         * pins the behaviour so nobody re-derives it.
-                         */
-                        if (OrderRecovery::shouldRemind($orderId)) {
-                            $mailIds = $this->mailer->paymentExpired($orderId, OrderMailer::REASON_DECLINED);
-                        }
                     }
+                    /*
+                     * A DECLINE on a pending order lands in neither branch (2026-11-05): the
+                     * attempt is on record and the order keeps waiting. It used to be cancelled
+                     * here, with its stock released and the decline e-mail sent — and the retry
+                     * that succeeded two minutes later then found a cancelled order (000092). The
+                     * expiry (`UnpaidOrders`) ends the wait now, and sends that same e-mail with
+                     * the reason `declined` when the order saw a declined attempt.
+                     */
                 });
             } catch (Throwable $e) {
                 /*
@@ -408,12 +463,15 @@ final class PaymentCallbackController
                  * class, which is what separates "contention, find this id in the portal" from
                  * "a bug that will repeat".
                  */
+                // Nothing committed, so nothing was paid or reinstated by THIS callback: the lost
+                // attempt is recorded with what the table alone decides for the order as it stands.
+                $lost = CallbackPolicy::decide($outcome, $orderStatus, $amountMatches);
                 CallbackPolicy::recordLostCallback(
                     $provider,
                     $orderId,
                     $orderStatus,
                     $outcome,
-                    $attemptRow,
+                    ['success' => $lost['action'] === CallbackPolicy::ACT_PAY ? 'true' : 'false'] + $attemptRow,
                     $e,
                     ['route' => 'scoped', 'amount_matches' => $amountMatches, 'storefront_id' => $storefrontId],
                 );
@@ -425,13 +483,15 @@ final class PaymentCallbackController
                 return self::land($request, $storefrontId, Landing::PENDING, $orderNumber, 'Recorded for reconciliation');
             }
 
+            if ($replay !== null) {
+                return self::land($request, $storefrontId, Landing::ofRecorded($replay['success'], $replay['outcome']), $orderNumber, 'Already processed');
+            }
+
             /*
              * Committed, so the outcome is real -- now the e-mail: the order confirmation on the
-             * paid branch, the recovery e-mail on the cancel branch (2026-10-12; until then the
-             * cancel branch sent nothing, on the grounds that the legacy app did not either — an
-             * explanation, not a justification). A relay failure here changes nothing about the
-             * payment or the order: the row stays pending and `mail:drain` retries it on the next
-             * minute's tick.
+             * paid branch (and on a reinstated order), the shop's alert when a finding was raised
+             * on a success. A relay failure here changes nothing about the payment or the order:
+             * the row stays pending and `mail:drain` retries it on the next minute's tick.
              */
             $this->mailer->flush($mailIds);
             // Never fails the callback: a send Meta did not accept stays pending for `meta:drain`.

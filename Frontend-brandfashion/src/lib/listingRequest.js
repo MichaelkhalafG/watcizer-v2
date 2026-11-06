@@ -6,4 +6,4 @@
 // request string is still the query key, and the payload is normalised to the shape those consumers read.
 // This file is a TWIN again as of the second move — it was split only for as long as the two shops read
 // different APIs.
-export { v2ListingRequest as listingRequest, v2ListingQueryFn as listingQueryFn, listingNeedsTables } from './v2Listing'
+export { v2ListingRequest as listingRequest, v2ListingQueryFn as listingQueryFn, listingNeedsTables, packListing } from './v2Listing'

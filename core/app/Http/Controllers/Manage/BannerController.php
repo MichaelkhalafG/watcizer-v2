@@ -9,6 +9,7 @@ use App\Domain\Content\BannerImage;
 use App\Domain\Content\Banners;
 use App\Domain\Content\BannerState;
 use App\Domain\Content\BannerWriter;
+use App\Domain\Content\HomeRails;
 use App\Models\Storefront\Storefront;
 use App\Storefront\HomeHero;
 use App\Storefront\ImageUrl;
@@ -108,6 +109,8 @@ final class BannerController
 
             return [
                 'id' => $id,
+                // Where it shows: the large hero's slides, or one of the two side slots (Part 3.1, 2026-11-05).
+                'placement' => Row::nstr($row, 'placement') ?? BannerWriter::HOME,
                 'image_path' => $image,
                 // F1 (2026-10-20): which device shows this banner, the upload the crop came from, and the
                 // rectangle the tool last used — so it reopens where the operator left it.
@@ -153,7 +156,15 @@ final class BannerController
             // It lives on THIS screen because "my banners are not showing" is the question it answers, and
             // because an operator who is editing banners is the operator who wants to turn them on.
             'hero' => HomeHero::of(is_array($storefront->settings) ? $storefront->settings : null),
-            'heroes' => HomeHero::MODES,
+            // The modes THIS storefront can draw; `hero_modes` is all three, so the screen can say why one is
+            // not offered here instead of silently leaving it out (Part 3.1, 2026-11-05).
+            'heroes' => HomeHero::available((string) $storefront->code),
+            'hero_modes' => HomeHero::MODES,
+            // The Banners block as a home section (the design pass, 2026-11-05): under a hero these banners are
+            // drawn where their row sits among the sliders, when that row is on. `null` = the storefront has no row.
+            'block_row' => self::blockRow((int) $storefront->id),
+            'placements' => BannerWriter::PLACEMENTS,
+            'side_placements' => BannerWriter::SIDE,
             'crop_ratios' => self::cropRatios((string) $storefront->code),
             'media_type' => 'banner',
         ]);
@@ -197,7 +208,36 @@ final class BannerController
             'both' => $desktop,
             'desktop' => $desktop,
             'mobile' => ['w' => 358, 'h' => 160, 'recommended' => '716 × 320'],
+            /*
+             * A SIDE slot (Part 3.1, 2026-11-05). The hero keeps its own shape when the slots are filled — the
+             * same slides fit both layouts — so the side column takes 24 % of the row and each slot half of the
+             * hero's height less the gap: 330 × 172 at a 1440 viewport, 384 × 201 at Brand Fashion's widest,
+             * 173 × 90 under the hero on a phone. All 1.92 : 1. Twice the widest box, rounded up.
+             */
+            'side' => ['w' => 960, 'h' => 500, 'recommended' => '960 × 500'],
+            /*
+             * A side slot ON A PHONE (the review of 2026-11-05): the two slots sit under the hero side by side, each
+             * about 173 px wide at a 390 viewport and 199 px at 430. At the strip's 1.92 : 1 that is a 90 px sliver,
+             * so on a phone the slot is a 4 : 3 tile (173 × 130). Three times the widest box, for dense screens.
+             */
+            'side_mobile' => ['w' => 520, 'h' => 390, 'recommended' => '520 × 390'],
         ];
+    }
+
+    /**
+     * The Banners block's row on the Home sliders screen: whether it is on, and its place in the list (1 = first).
+     *
+     * @return array{is_active: bool, place: int}|null
+     */
+    private static function blockRow(int $storefrontId): ?array
+    {
+        foreach (HomeRails::all($storefrontId) as $index => $rail) {
+            if ($rail['kind'] === HomeRails::BANNERS) {
+                return ['is_active' => $rail['is_active'], 'place' => $index + 1];
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -217,7 +257,8 @@ final class BannerController
      */
     public function hero(Request $request, Storefront $storefront): RedirectResponse
     {
-        $request->validate(['hero' => ['required', 'string', Rule::in(HomeHero::MODES)]]);
+        // Only a mode this storefront can draw: `campaign` exists in Watchizer's app alone (HomeHero::CAMPAIGN_SHOPS).
+        $request->validate(['hero' => ['required', 'string', Rule::in(HomeHero::available((string) $storefront->code))]]);
         $mode = $request->string('hero')->toString();
 
         $settings = is_array($storefront->settings) ? $storefront->settings : [];
@@ -322,7 +363,8 @@ final class BannerController
      * a change of TARGET is a change from one column to another, and a snapshot of only the
      * populated one would record the arrival and lose the departure.
      *
-     * Out: `placement` (always `home`, by decision — a constant is not a change), `storefront_id`
+     * `placement` is IN since 2026-11-05: it used to be always `home`, and a banner moved between the hero
+     * and a side slot is now a change worth a line. Out: `storefront_id`
      * (from the route, and already on the row as `storefront_id`), and `updated_at` — that last one
      * deliberately, because it moves on every save and would make every save write a row saying
      * nothing else changed, which is exactly the noise `ActivityLog::diff()` exists to suppress.
@@ -332,7 +374,7 @@ final class BannerController
     private static function logFields(int $id): array
     {
         $raw = DB::table('storefront_banners')->where('id', $id)->first([
-            'image_path', 'product_id', 'storefront_category_id', 'link_url',
+            'placement', 'image_path', 'product_id', 'storefront_category_id', 'link_url',
             'sort_order', 'is_active', 'starts_at', 'ends_at',
         ]);
         if (! is_object($raw)) {
@@ -382,6 +424,8 @@ final class BannerController
             'crop' => ['nullable', 'string', 'max:255'],
             // optional on purpose: absent means `both`, the value every pre-F1 row carries
             'device' => ['nullable', 'string', Rule::in(BannerWriter::DEVICES)],
+            // optional for the same reason: absent means the hero's slides, the only placement there was
+            'placement' => ['nullable', 'string', Rule::in(BannerWriter::PLACEMENTS)],
             'target' => ['required', 'string', Rule::in(BannerWriter::TARGETS)],
             'product_id' => ['nullable', 'integer', 'exists:catalog_products,id'],
             'storefront_category_id' => ['nullable', 'integer', 'exists:storefront_categories,id'],

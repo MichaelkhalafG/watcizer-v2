@@ -19,6 +19,8 @@
 // pages are first published (deploy day), and again whenever their text changes.
 export const TRUST_UPDATED = '2026-10-19'
 
+import { FACEBOOK, INSTAGRAM, TIKTOK } from './social'
+
 const PHONE = '01551096234'
 const TEL = 'tel:+201551096234'
 const WHATSAPP = 'https://wa.me/201551096234'
@@ -27,9 +29,11 @@ const MAILTO = `mailto:${EMAIL}`
 // The shop's accounts. 2026-10-01 kept these apart from the home page's `sameAs`, which carried a different pair — a
 // bare `/watchizer` vanity name on each network, matching neither of these; 2026-10-19 (the developer): these
 // are the real accounts, and `app/(main)/page.jsx` now imports them rather than typing them a second time, so the
-// structured data cannot drift from the site again. The header and the footer still carry their own copies.
-export const FACEBOOK = 'https://www.facebook.com/profile.php?id=100076267296916'
-export const INSTAGRAM = 'https://www.instagram.com/watchizer_eg/'
+// structured data cannot drift from the site again.
+// 2026-11-05 (the client's accounts, replaced everywhere): a new Facebook page, a new Instagram account and TikTok,
+// which the site had never linked. They are typed once, in `./social.js`, which the header and the footer import
+// too — until this date each carried its own copy. Re-exported here for the pages that read them from this file.
+export { FACEBOOK, INSTAGRAM, TIKTOK }
 
 export const TRUST_PAGES = {
   about: {
@@ -53,7 +57,8 @@ export const TRUST_PAGES = {
   },
 
   // The approved list: "Customer service (phone and WhatsApp): 01551096234. Every day, 10:00–22:00." /
-  // "Email: …" / "Store: …. Every day, 10:00–22:00." / "Facebook: Watchizer · Instagram: @watchizer_eg".
+  // "Email: …" / "Store: …. Every day, 10:00–22:00." / "Facebook: Watchizer · Instagram: @watchizer_official ·
+  // TikTok: @watchizer_eg" (the accounts of 2026-11-05).
   // As cards, the customer-service line heads the group and its number becomes a phone card and a
   // WhatsApp card (each labelled with the approved word for it).
   contact: {
@@ -71,7 +76,8 @@ export const TRUST_PAGES = {
         { icon: 'whatsapp', label: 'WhatsApp', value: PHONE, href: WHATSAPP, hours: true, ltr: true },
         { icon: 'mail', label: 'Email', value: EMAIL, href: MAILTO, ltr: true },
         { icon: 'facebook', label: 'Facebook', value: 'Watchizer', href: FACEBOOK, ltr: true },
-        { icon: 'instagram', label: 'Instagram', value: '@watchizer_eg', href: INSTAGRAM, ltr: true },
+        { icon: 'instagram', label: 'Instagram', value: '@watchizer_official', href: INSTAGRAM, ltr: true },
+        { icon: 'tiktok', label: 'TikTok', value: '@watchizer_eg', href: TIKTOK, ltr: true },
       ],
       stores: [
         { label: 'Arkadia Mall branch', address: 'Arkadia Mall, Corniche El Nil, Maspero extension, Cairo.', hours: true },
@@ -91,7 +97,8 @@ export const TRUST_PAGES = {
         { icon: 'whatsapp', label: 'واتساب', value: PHONE, href: WHATSAPP, hours: true, ltr: true },
         { icon: 'mail', label: 'البريد الإلكتروني', value: EMAIL, href: MAILTO, ltr: true },
         { icon: 'facebook', label: 'فيسبوك', value: 'Watchizer', href: FACEBOOK, ltr: true },
-        { icon: 'instagram', label: 'إنستجرام', value: '@watchizer_eg', href: INSTAGRAM, ltr: true },
+        { icon: 'instagram', label: 'إنستجرام', value: '@watchizer_official', href: INSTAGRAM, ltr: true },
+        { icon: 'tiktok', label: 'تيك توك', value: '@watchizer_eg', href: TIKTOK, ltr: true },
       ],
       stores: [
         { label: 'فرع أركاديا مول', address: 'أركاديا مول، كورنيش النيل، امتداد ماسبيرو، القاهرة.', hours: true },
@@ -295,7 +302,7 @@ export const STORES_LD = {
   whatsapp: WHATSAPP,
   email: EMAIL,
   logo: '/logo.svg',
-  sameAs: [FACEBOOK, INSTAGRAM],
+  sameAs: [FACEBOOK, INSTAGRAM, TIKTOK],
   stores: [
     {
       key: 'arkadia',

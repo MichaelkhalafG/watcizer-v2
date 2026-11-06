@@ -94,7 +94,7 @@ it('reads a NESTED POST and confirms the order', function () {
         ->and(T::str($row?->outcome))->toBe('success');
 });
 
-it('reads a NESTED POST failure and cancels the order', function () {
+it('reads a NESTED POST failure as a failure — recorded, and the order keeps waiting (2026-11-05)', function () {
     $orderId = PaymentFixture::order(total: 100.0);
     $callback = PaymentFixture::processedCallback(
         waveThreeReference($orderId), 10000, success: false,
@@ -103,7 +103,9 @@ it('reads a NESTED POST failure and cancels the order', function () {
 
     postJson('/api/callback_payment?hmac='.$callback['hmac'], $callback['body'])->assertOk();
 
-    expect(fallThroughState($orderId))->toBe(['status' => 'cancelled', 'attempts' => 1]);
+    // It cancelled here until 2026-11-05. A decline no longer does, on either handler (one decision
+    // table): the page that declined is still open and may yet succeed; the expiry ends the wait.
+    expect(fallThroughState($orderId))->toBe(['status' => 'pending', 'attempts' => 1]);
     expect(T::str(DB::table('payment_statuses')->where('order_id', $orderId)->value('outcome')))->toBe('failed');
 });
 

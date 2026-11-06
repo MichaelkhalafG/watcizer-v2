@@ -1,6 +1,6 @@
 'use client'
 import { FiCheckCircle, FiMail, FiMapPin, FiPhone } from 'react-icons/fi'
-import { FaFacebook, FaInstagram, FaWhatsapp } from 'react-icons/fa'
+import { FaFacebook, FaInstagram, FaTiktok, FaWhatsapp } from 'react-icons/fa'
 import Link from '@/src/Components/LocaleLink'
 import { useUIStore } from '@/src/Store/uiStore'
 import { TRUST_PAGES, TRUST_UPDATED } from '@/src/content/trustPages'
@@ -87,7 +87,7 @@ function TrustHero({ title, updated }) {
   )
 }
 
-const ICONS = { phone: FiPhone, whatsapp: FaWhatsapp, mail: FiMail, facebook: FaFacebook, instagram: FaInstagram }
+const ICONS = { phone: FiPhone, whatsapp: FaWhatsapp, mail: FiMail, facebook: FaFacebook, instagram: FaInstagram, tiktok: FaTiktok }
 
 function ContactPage({ t }) {
   return (

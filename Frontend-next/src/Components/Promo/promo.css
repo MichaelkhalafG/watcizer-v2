@@ -1,0 +1,700 @@
+/*
+ * The campaign surfaces and the payment badges (the twelve updates, Parts 2 and 7, 2026-11-05; the campaign
+ * identities redrawn in the design pass of the same day). A TWIN.
+ *
+ * TWO FILES SINCE 2026-11-06: this one is on every page (the tokens, the art, the clock, the offer strip on a
+ * card, the header's switch and chip, the payment badges); what only a campaign SURFACE draws — the deal card,
+ * the home's two rails, the campaign page — is promo-surfaces.css, loaded by the components that draw one and
+ * always after this file. A rule that names a surface class (.pm-card, .pm-bar, .pm-btn, .pm-arrow, .pm-rail,
+ * .pm-flash, .pm-hot, .pm-page, .pm-hero, .pm-chip, .pm-grid, .pm-empty, .pm-idle-nav, .pm-showing, .pm-skel,
+ * .pm-sort, .pm-tools) belongs there; any other belongs here.
+ *
+ * For both shops. The two campaigns have identities of their OWN — they are not the shop's palette:
+ *
+ *   HOT DEALS   FIRE   a glossy orange-to-red ground, a flame that flickers, sparks that rise. Its switch is a
+ *                      coal with a burning rim when off and alight when on. Also the colour of Hot Deals mode.
+ *   FLASH SALE  STORM  a night-blue ground, a yellow bolt that strikes, a thin live line of charge.
+ *
+ * What a shop sets in its globals.css (`:root`) is its own SHAPE, not the colours: --pm-radius, --pm-radius-lg,
+ * --pm-display, --pm-title-case, --pm-title-tracking, --pm-container, --pm-gutter. The values below are the
+ * floor, declared at zero specificity so a shop's `:root` always wins whatever order the stylesheets load in.
+ *
+ * MOTION is plain CSS on transform / opacity (and one small box-shadow), and every animation here is switched
+ * off under `prefers-reduced-motion: reduce` (the last block of this file).
+ *
+ * Direction-neutral throughout (logical properties). The one thing asked of `dir` is which way a gradient
+ * leans, so the deep end is always under the text: `--pm-angle`.
+ */
+:where(:root) {
+  /* fire */
+  --pm-fire-1: #ffb327;
+  --pm-fire-2: #ff6a13;
+  --pm-fire-3: #e2210f;
+  --pm-fire-4: #a80a14;
+  --pm-fire-ink: #4a0905;
+  --pm-fire-wash: #fff2e8;
+  --pm-coal: #170c09;
+  --pm-coal-2: #2b1711;
+  /* storm */
+  --pm-volt-1: #ffe234;
+  --pm-volt-2: #46d7ff;
+  --pm-volt-3: #2f66ff;
+  --pm-storm: #080d2b;
+  --pm-storm-2: #151f63;
+  --pm-storm-3: #2345c4;
+  /* the ground the Hot Deals cards stand on, beside the burning head */
+  --pm-hot-stage: linear-gradient(100deg, #ffd9bf 0%, var(--pm-fire-wash) 22%, #fff7f1 100%);
+  --pm-storm-wash: #eef2ff;
+  /* the names the shops' own stylesheets already use */
+  --pm-hot: var(--pm-fire-3);
+  --pm-hot-deep: var(--pm-fire-4);
+  --pm-hot-wash: var(--pm-fire-wash);
+  --pm-flash-ground: var(--pm-storm);
+  --pm-flash-accent: var(--pm-volt-1);
+  --pm-flash-ink: #ffffff;
+  --pm-save: #15713c;
+  /* what a header band wears in Hot Deals mode: the fire, lying along the bar, with gloss on its top half */
+  --pm-fire-bar:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0) 55%),
+    linear-gradient(90deg, var(--pm-fire-4) 0%, var(--pm-fire-3) 38%, var(--pm-fire-2) 78%, var(--pm-fire-1) 100%);
+  /* a shop's shape */
+  --pm-radius: 10px;
+  --pm-radius-lg: 16px;
+  --pm-display: inherit;
+  --pm-title-case: none;
+  --pm-title-tracking: normal;
+  --pm-container: 1400px;
+  --pm-gutter: 16px;
+}
+
+.pm-nav {
+  --pm-angle: 100deg;
+  --pm-fire-grad: linear-gradient(var(--pm-angle), var(--pm-fire-4) 0%, var(--pm-fire-3) 36%, var(--pm-fire-2) 72%, var(--pm-fire-1) 100%);
+  --pm-storm-grad: linear-gradient(var(--pm-angle), var(--pm-storm) 0%, var(--pm-storm-2) 58%, var(--pm-storm-3) 100%);
+}
+.pm-nav[dir='rtl'] {
+  --pm-angle: 260deg;
+}
+
+.pm-nav :focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+
+/* THE EFFECTS WAIT FOR THE PAGE (the performance pass, 2026-11-05; usePromo.useEffectsAfterLoad): until <html> carries
+   data-pm-fx — one frame after the load event — the switch, the sliders and the campaign pages are drawn without
+   their animations, glows and filters. Same shapes, colours and text; nothing moves when the effects start. */
+html:not([data-pm-fx]) .pm-nav *,
+html:not([data-pm-fx]) .pm-nav *::before,
+html:not([data-pm-fx]) .pm-nav *::after {
+  animation: none !important;
+  box-shadow: none !important;
+  filter: none !important;
+}
+/* …and the switch's layered gradients are flat colours for that first paint (measured piece by piece: the orb, the
+   two-layer ground and the track each cost the first paint 30 to 60 ms in a software-rendered browser — the kind
+   Google's lab tools use). The same pill, the same size and text; its fire comes on with the page. */
+html:not([data-pm-fx]) .pm-nav .pm-switch {
+  background: var(--pm-coal, #1c1412) !important;
+  border-color: var(--pm-fire-3, #e2210f) !important;
+}
+html:not([data-pm-fx]) .pm-nav .pm-switch__orb {
+  background: var(--pm-fire-2, #ff6a13) !important;
+}
+html:not([data-pm-fx]) .pm-nav .pm-switch__track,
+html:not([data-pm-fx]) .pm-nav .pm-switch__thumb {
+  background-image: none !important;
+}
+
+/* ── the art ─────────────────────────────────────────────────────────────────────────────────────── */
+.pm-flameart,
+.pm-boltart {
+  display: block;
+  pointer-events: none;
+}
+.pm-flameart__l {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+}
+.pm-flameart__l--1 {
+  animation: pm-flicker-a 2.9s ease-in-out infinite;
+}
+.pm-flameart__l--2 {
+  animation: pm-flicker-b 2.1s ease-in-out infinite;
+}
+.pm-flameart__l--3 {
+  animation: pm-flicker-c 1.3s ease-in-out infinite;
+}
+@keyframes pm-flicker-a {
+  0%, 100% { transform: scale(1, 1) skewX(0deg); }
+  35% { transform: scale(0.97, 1.04) skewX(-1.6deg); }
+  70% { transform: scale(1.02, 0.97) skewX(1.4deg); }
+}
+@keyframes pm-flicker-b {
+  0%, 100% { transform: scale(1, 1) skewX(0deg); }
+  30% { transform: scale(1.04, 0.95) skewX(2.2deg); }
+  62% { transform: scale(0.95, 1.06) skewX(-2deg); }
+}
+@keyframes pm-flicker-c {
+  0%, 100% { transform: scale(1, 1); opacity: 1; }
+  40% { transform: scale(0.9, 1.1); opacity: 0.86; }
+  75% { transform: scale(1.08, 0.92); opacity: 1; }
+}
+.pm-boltart {
+  filter: drop-shadow(0 0 18px rgba(70, 215, 255, 0.55)) drop-shadow(0 0 4px rgba(255, 226, 52, 0.8));
+}
+.pm-boltart__bolt {
+  animation: pm-strike 5.2s linear infinite;
+}
+.pm-boltart__arc {
+  opacity: 0;
+  animation: pm-arc 5.2s linear infinite;
+}
+.pm-boltart__arc--2 {
+  animation-delay: 0.18s;
+}
+@keyframes pm-strike {
+  0%, 2.5% { opacity: 1; filter: brightness(1.9); }
+  5% { opacity: 0.55; filter: none; }
+  7.5% { opacity: 1; filter: brightness(1.6); }
+  12%, 100% { opacity: 0.94; filter: none; }
+}
+@keyframes pm-arc {
+  0%, 1% { opacity: 0; }
+  2.5% { opacity: 1; }
+  6% { opacity: 0.2; }
+  8% { opacity: 0.9; }
+  13%, 100% { opacity: 0; }
+}
+
+/* sparks: seven dots that rise and die, each on its own clock */
+.pm-embers {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.pm-embers i {
+  position: absolute;
+  inset-block-end: -8px;
+  inline-size: 5px;
+  block-size: 5px;
+  border-radius: 50%;
+  background: #ffd76a;
+  box-shadow: 0 0 8px 2px rgba(255, 190, 70, 0.8);
+  opacity: 0;
+  animation: pm-ember 4.6s linear infinite;
+}
+.pm-embers i:nth-child(1) { inset-inline-start: 8%; animation-delay: 0.2s; }
+.pm-embers i:nth-child(2) { inset-inline-start: 22%; animation-delay: 1.9s; animation-duration: 5.4s; inline-size: 3px; block-size: 3px; }
+.pm-embers i:nth-child(3) { inset-inline-start: 39%; animation-delay: 3.1s; }
+.pm-embers i:nth-child(4) { inset-inline-start: 55%; animation-delay: 0.9s; animation-duration: 3.8s; inline-size: 4px; block-size: 4px; }
+.pm-embers i:nth-child(5) { inset-inline-start: 68%; animation-delay: 2.6s; animation-duration: 5.9s; }
+.pm-embers i:nth-child(6) { inset-inline-start: 81%; animation-delay: 1.3s; inline-size: 3px; block-size: 3px; }
+.pm-embers i:nth-child(7) { inset-inline-start: 93%; animation-delay: 3.8s; animation-duration: 4.1s; }
+@keyframes pm-ember {
+  0% { transform: translate3d(0, 0, 0) scale(1); opacity: 0; }
+  12% { opacity: 0.95; }
+  70% { opacity: 0.5; }
+  100% { transform: translate3d(14px, -210px, 0) scale(0.3); opacity: 0; }
+}
+
+/* ── the countdown ───────────────────────────────────────────────────────────────────────────────── */
+.pm-count {
+  display: inline-flex;
+  align-items: stretch;
+  gap: 12px;
+  vertical-align: middle;
+}
+.pm-count__box {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  min-inline-size: 46px;
+  padding: 7px 6px 6px;
+  border-radius: 10px;
+  background: var(--pm-count-bg, #111111);
+  color: var(--pm-count-fg, #ffffff);
+  line-height: 1;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.6) inset, 0 6px 14px -6px rgba(0, 0, 0, 0.45);
+}
+/* the colon between two units: drawn in the gap, in the colour of the ground's text */
+.pm-count__box + .pm-count__box::before {
+  content: ':';
+  position: absolute;
+  inset-block-start: 50%;
+  inset-inline-start: -9px;
+  transform: translateY(-58%);
+  color: var(--pm-colon, currentColor);
+  font-size: 16px;
+  font-weight: 700;
+  opacity: 0.75;
+}
+.pm-count__num {
+  font-size: 19px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+}
+.pm-count__unit {
+  margin-block-start: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  opacity: 0.8;
+}
+.pm-count--lg {
+  gap: 14px;
+}
+.pm-count--lg .pm-count__box {
+  min-inline-size: 68px;
+  padding: 11px 8px 9px;
+  border-radius: 14px;
+}
+.pm-count--lg .pm-count__num {
+  font-size: 30px;
+}
+.pm-count--lg .pm-count__unit {
+  font-size: 11px;
+}
+/* THE CLOCK NEVER CHANGES WIDTH: one character to a cell of fixed width — not left to the typeface, whose "1" may
+   be narrower than its "8" (tabular figures are not in every face the shops use). Eight cells, always. */
+.pm-clock {
+  display: inline-flex;
+  flex: none;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 1;
+  white-space: nowrap;
+}
+.pm-clock__d {
+  display: inline-block;
+  inline-size: 0.66em;
+  text-align: center;
+}
+.pm-clock__s {
+  display: inline-block;
+  inline-size: 0.34em;
+  text-align: center;
+}
+/*
+ * ── A PRODUCT IN A LIVE OFFER, ON ANY GRID AND ON ITS OWN PAGE (items 41 and 42, 2026-11-05) ─────────────
+ *
+ * `.pm-offer` on a card (or a product page) + `--hot` / `--flash`. The card is NOT resized: the strip is laid over
+ * the foot of the photo box (each shop's card names that box and gives it `position: relative`), the colour is a
+ * border and a faint ground behind the text. The photo is never tinted. Tokens, so each shop keeps its own look:
+ *   --pm-offer-edge   the card's edge and accents        --pm-offer-ground   the faint ground behind the card's text
+ *   --pm-offer-bar    the strip's (and the note's) fill  --pm-offer-on       the text on that fill
+ * Measured contrast (WCAG): the strip's white on the fire bar's darkest half ≥ 4.6:1 and on the storm 15:1; ink
+ * #1a1a1a on the grounds below ≥ 15:1; the shops' sale-price red on them ≥ 4.6:1.
+ */
+.pm-offer--hot {
+  --pm-offer-edge: var(--pm-fire-3);
+  --pm-offer-ground: #fff5ec;
+  --pm-offer-bar: linear-gradient(90deg, var(--pm-fire-4) 0%, var(--pm-fire-3) 55%, #d2480c 100%);
+  --pm-offer-on: #ffffff;
+  --pm-offer-time: #ffffff;
+}
+.pm-offer--flash {
+  --pm-offer-edge: var(--pm-storm-2, #151f63);
+  --pm-offer-ground: #f1f4ff;
+  --pm-offer-bar: linear-gradient(90deg, var(--pm-storm, #080d2b) 0%, var(--pm-storm-2, #151f63) 100%);
+  --pm-offer-on: #ffffff;
+  --pm-offer-time: var(--pm-volt-1, #ffe234);
+}
+.pm-offer__strip {
+  position: absolute;
+  inset-inline: 0;
+  inset-block-end: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  box-sizing: border-box;
+  block-size: 24px;
+  padding-inline: 8px;
+  background: var(--pm-offer-bar);
+  color: var(--pm-offer-on);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0;
+  text-transform: none;
+  pointer-events: none;
+}
+.pm-offer__name,
+.pm-offer__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-inline-size: 0;
+  white-space: nowrap;
+}
+.pm-offer__name svg,
+.pm-offer__badge svg {
+  flex: none;
+  color: var(--pm-offer-time);
+}
+.pm-offer__time {
+  display: inline-flex;
+  flex: none;
+  color: var(--pm-offer-time);
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+}
+.pm-offer__digit {
+  display: inline-block;
+  inline-size: 0.64em;
+  text-align: center;
+}
+.pm-offer__sep {
+  display: inline-block;
+  inline-size: 0.34em;
+  text-align: center;
+}
+/* a very narrow card (two to a row on a small phone): the mark stays, the offer's name gives its room to the time */
+@container (max-width: 150px) {
+  .pm-offer__name {
+    font-size: 0;
+    gap: 0;
+  }
+}
+/* the note near a product page's price: the offer's badge, "ends in", the time — one line of a fixed height */
+.pm-offer__note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  box-sizing: border-box;
+  min-block-size: 36px;
+  margin: 10px 0;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--pm-offer-bar);
+  color: var(--pm-offer-on);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+.pm-offer__note .pm-offer__badge {
+  font-weight: 800;
+}
+.pm-offer__note .pm-offer__ends {
+  opacity: 0.9;
+}
+.pm-offer__note .pm-offer__time {
+  margin-inline-start: auto;
+  font-size: 15px;
+}
+.pm-switch__orb svg {
+  transform-origin: 50% 92%;
+  animation: pm-flicker-b 1.9s ease-in-out infinite;
+}
+
+/* ── the header: the Hot Deals switch and the Flash Sale chip ─────────────────────────────────────── */
+.pm-nav {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+}
+.pm-switch {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  block-size: 40px;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  isolation: isolate;
+}
+.pm-switch__text {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  min-inline-size: 0;
+}
+.pm-switch .pm-clock {
+  font-size: 12px;
+}
+
+/*
+ * THE HOT DEALS SWITCH. Off: a coal — dark, with a rim that is already burning and a flame in a lit orb.
+ * On: alight — the fire fills it, gloss on top, a sheen crossing it now and then, a glow under it.
+ * `.pm-nav` in the selectors on purpose: both headers style `button` with a class + element selector.
+ */
+.pm-nav .pm-switch {
+  padding-inline: 5px 6px;
+  border: 1.5px solid transparent;
+  background:
+    linear-gradient(180deg, var(--pm-coal-2), var(--pm-coal)) padding-box,
+    linear-gradient(var(--pm-angle), var(--pm-fire-3), var(--pm-fire-2) 55%, var(--pm-fire-1)) border-box;
+  color: #ffffff;
+  cursor: pointer;
+  box-shadow: 0 6px 16px -8px rgba(226, 33, 15, 0.7);
+  transition: box-shadow 0.25s ease;
+}
+.pm-switch__orb {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  inline-size: 28px;
+  block-size: 28px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 70%, var(--pm-fire-1), var(--pm-fire-2) 55%, var(--pm-fire-3));
+  color: #ffffff;
+  box-shadow: 0 0 14px rgba(255, 130, 30, 0.75);
+}
+.pm-switch .pm-clock {
+  color: #ffc98f;
+}
+.pm-switch__track {
+  position: relative;
+  flex: none;
+  inline-size: 40px;
+  block-size: 24px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.5) inset;
+  transition: background-color 0.2s ease;
+}
+.pm-switch__thumb {
+  position: absolute;
+  inset-block-start: 3px;
+  inset-inline-start: 3px;
+  inline-size: 18px;
+  block-size: 18px;
+  border-radius: 50%;
+  background: linear-gradient(180deg, #ffffff, #e9e1dc);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+  transition: inset-inline-start 0.22s cubic-bezier(0.3, 1.4, 0.5, 1), background 0.2s ease;
+}
+/* lit */
+.pm-nav .pm-switch[aria-checked='true'] {
+  background:
+    var(--pm-fire-grad) padding-box,
+    linear-gradient(180deg, rgba(255, 255, 255, 0.75), rgba(255, 255, 255, 0.15)) border-box;
+  animation: pm-glow 2.8s ease-in-out infinite;
+}
+@keyframes pm-glow {
+  0%, 100% { box-shadow: 0 6px 18px -6px rgba(255, 90, 18, 0.85), 0 0 0 0 rgba(255, 150, 40, 0.35); }
+  50% { box-shadow: 0 8px 26px -4px rgba(255, 90, 18, 0.95), 0 0 0 5px rgba(255, 150, 40, 0); }
+}
+.pm-switch[aria-checked='true']::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 50% 0;
+  z-index: -1;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.34), rgba(255, 255, 255, 0));
+}
+.pm-switch[aria-checked='true']::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(105deg, transparent 32%, rgba(255, 255, 255, 0.5) 50%, transparent 68%);
+  transform: translateX(-130%);
+  animation: pm-sheen 4.2s ease-in-out infinite;
+}
+@keyframes pm-sheen {
+  0%, 55% { transform: translateX(-130%); }
+  85%, 100% { transform: translateX(130%); }
+}
+.pm-switch[aria-checked='true'] .pm-switch__orb {
+  background: #ffffff;
+  color: var(--pm-fire-3);
+  box-shadow: 0 0 16px rgba(255, 235, 170, 0.9);
+}
+.pm-switch[aria-checked='true'] .pm-clock {
+  color: #fff3d6;
+}
+.pm-switch[aria-checked='true'] .pm-switch__track {
+  background: rgba(90, 8, 4, 0.42);
+}
+.pm-switch[aria-checked='true'] .pm-switch__thumb {
+  inset-inline-start: 19px;
+  background: radial-gradient(circle at 50% 35%, #ffffff, #fff1b8 60%, #ffd45c);
+  box-shadow: 0 0 10px rgba(255, 240, 170, 0.95), 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+/*
+ * On a FIRE GROUND the lit switch turns white-hot, to stay the brightest thing there. A shop marks the band of its
+ * header that burns in Hot Deals mode with the class `pm-fireground` (Brand Fashion's whole bar; Watchizer's
+ * switch sits on its white row, which does not burn, so it stays lit as above).
+ */
+html[data-hot-deals='on'] .pm-fireground .pm-nav--top .pm-switch[aria-checked='true'] {
+  background:
+    linear-gradient(180deg, #ffffff, #ffe9d6) padding-box,
+    linear-gradient(180deg, #ffffff, #ffd2a8) border-box;
+  color: var(--pm-fire-4);
+  animation: none;
+  box-shadow: 0 8px 22px -8px rgba(90, 8, 4, 0.7), 0 0 22px rgba(255, 235, 170, 0.75);
+}
+html[data-hot-deals='on'] .pm-fireground .pm-nav--top .pm-switch[aria-checked='true']::before,
+html[data-hot-deals='on'] .pm-fireground .pm-nav--top .pm-switch[aria-checked='true']::after {
+  display: none;
+}
+html[data-hot-deals='on'] .pm-fireground .pm-nav--top .pm-switch[aria-checked='true'] .pm-switch__orb {
+  background: radial-gradient(circle at 50% 70%, var(--pm-fire-1), var(--pm-fire-2) 55%, var(--pm-fire-3));
+  color: #ffffff;
+}
+html[data-hot-deals='on'] .pm-fireground .pm-nav--top .pm-switch[aria-checked='true'] .pm-clock {
+  color: var(--pm-fire-3);
+}
+html[data-hot-deals='on'] .pm-fireground .pm-nav--top .pm-switch[aria-checked='true'] .pm-switch__track {
+  background: var(--pm-fire-grad);
+}
+
+/*
+ * PHONES: the switch is a PILL FIXED IN THE THUMB'S CORNER (`pm-nav--float`) — the bar under the header is gone
+ * (the developer's review, 2026-11-05). It is outside the page's flow, so it can never shift anything; it is
+ * 52 px tall, a thumb target; and it sits on the inline-end side at the bottom, where one thumb reaches on any
+ * phone. A shop with a bar of its own at the bottom lifts it with `--pm-float-lift`.
+ */
+.pm-nav--float {
+  display: none;
+}
+@media (max-width: 768px) {
+  .pm-nav--float {
+    position: fixed;
+    inset-block-end: calc(14px + env(safe-area-inset-bottom, 0px) + var(--pm-float-lift, 0px));
+    inset-inline-end: 12px;
+    z-index: 900;
+    display: block;
+  }
+  .pm-nav--float .pm-switch {
+    block-size: 52px;
+    gap: 10px;
+    padding-inline: 6px 10px;
+    box-shadow: 0 14px 30px -10px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.06);
+  }
+  .pm-nav--float .pm-switch__orb {
+    inline-size: 40px;
+    block-size: 40px;
+  }
+  .pm-nav--float .pm-switch__text {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+  .pm-nav--float .pm-switch__label {
+    font-size: 13px;
+  }
+  .pm-nav--float .pm-clock {
+    font-size: 11.5px;
+  }
+}
+
+/* ── payment badges ──────────────────────────────────────────────────────────────────────────────── */
+.pm-pay__title {
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 700;
+}
+.pm-pay__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.pm-pay__badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-inline-size: 62px;
+  block-size: 40px;
+  padding: 5px 10px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 9px;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+.pm-pay__badge img {
+  display: block;
+  inline-size: auto;
+  max-inline-size: 64px;
+  block-size: auto;
+  max-block-size: 28px;
+  object-fit: contain;
+}
+.pm-pay__name {
+  max-inline-size: 108px;
+  color: #1a1a1a;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
+  text-align: center;
+}
+.pm-pay__note {
+  margin: 10px 0 0;
+  font-size: 12px;
+  opacity: 0.75;
+}
+/* inside a narrow column (a cart or checkout summary): smaller tiles, so seven methods are two rows */
+.pm-pay--compact .pm-pay__list {
+  gap: 6px;
+}
+.pm-pay--compact .pm-pay__badge {
+  min-inline-size: 52px;
+  block-size: 34px;
+  padding: 3px 8px;
+  border-radius: 8px;
+}
+.pm-pay--compact .pm-pay__badge img {
+  max-inline-size: 52px;
+  max-block-size: 22px;
+}
+.pm-pay--compact .pm-pay__name {
+  font-size: 10.5px;
+}
+.pm-pay--dark .pm-pay__title,
+.pm-pay--dark .pm-pay__note {
+  color: #ffffff;
+}
+.pm-pay--dark .pm-pay__badge {
+  border-color: transparent;
+  box-shadow: 0 6px 14px -8px rgba(0, 0, 0, 0.8);
+}
+
+/* ── phones ──────────────────────────────────────────────────────────────────────────────────────── */
+@media (max-width: 767.98px) {
+  .pm-count--lg .pm-count__box {
+    min-inline-size: 0;
+    padding: 9px 6px 8px;
+  }
+  .pm-count--lg .pm-count__num {
+    font-size: 26px;
+  }
+
+  /* payment badges: a centred block of even tiles, four to a row on the narrowest phone */
+  .pm-pay__list {
+    gap: 6px;
+  }
+  .pm-pay__badge {
+    flex: 1 1 calc(25% - 6px);
+    min-inline-size: 70px;
+    max-inline-size: 110px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pm-nav *,
+  .pm-nav *::before,
+  .pm-nav *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+  .pm-embers {
+    display: none;
+  }
+}

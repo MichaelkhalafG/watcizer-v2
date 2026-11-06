@@ -34,6 +34,8 @@ import { getImageUrl } from '../../../utils/imageUrl'
 import { buildListingParams } from '../../../utils/listingParams'
 import { brandSlug, categorySlug, subTypeSlug } from '../../../utils/slugs'
 import { subTypesByName } from '../../../utils/subTypeGroups'
+import MegaMenu from '../MegaMenu/MegaMenu'
+import { megaBus, megaItemProps } from '../MegaMenu/megaBus'
 
 // Map a sub-type name (English key) to a React Icon. Falls back to a generic
 // category icon. Exact match first, then partial (substring) match.
@@ -346,253 +348,70 @@ function Nav() {
             </Link>
           </li>
 
-          {/* 2 — SHOP (all category types + their sub-types, grouped) */}
-          <li
-            className="nav-item"
-            onMouseEnter={() => openMenu('shop')}
-            onMouseLeave={scheduleClose}
-          >
-            <button type="button" className="nav-link-item">
-              {isRTL ? 'المتجر' : 'Shop'}
-              <MdOutlineKeyboardArrowDown
-                style={{
-                  fontSize: '15px',
-                  transition: 'transform 0.2s ease',
-                  transform: openKey === 'shop' ? 'rotate(180deg)' : 'rotate(0deg)',
-                }}
-              />
-            </button>
-            {openKey === 'shop' && categoryTypes.length > 0 && (
-              <div
-                ref={dropRef}
-                className="wz-shop-dropdown wz-dropdown-scrollable"
-                onMouseEnter={() => openMenu('shop')}
-              >
-                {categoryTypes.map((ct, idx) => {
-                  const subs = subTypesFor(ct)
-                  return (
-                    <div key={`shop-${ct.id}`}>
-                      <Link
-                        href={catHref(ct)}
-                        className="wz-shop-cat-header"
-                        onClick={closeMenus}
-                      >
-                        <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <span
-                            style={{ color: '#262626', opacity: 0.7, display: 'flex', alignItems: 'center' }}
-                          >
-                            {getCategoryIcon(
-                              enName(ct, 'category_type_name') || label(ct, 'category_type_name'),
-                              16,
-                            )}
-                          </span>
-                          <span>{label(ct, 'category_type_name')}</span>
-                        </span>
-                        <span className="wz-shop-cat-arrow">{isRTL ? '‹' : '›'}</span>
-                      </Link>
-                      {subs.length > 0 && <div className="wz-shop-cat-divider" />}
-                      {subs.slice(0, 8).map((st) => (
-                        <Link
-                          key={`shop-st-${st.id}`}
-                          href={catSubHref(ct, st)}
-                          className="wz-shop-sub-item"
-                          onClick={closeMenus}
-                        >
-                          <span
-                            style={{
-                              width: 22,
-                              height: 22,
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              flexShrink: 0,
-                              marginInlineEnd: 10,
-                              color: '#262626',
-                              opacity: 0.5,
-                            }}
-                          >
-                            {getSubTypeIcon(enName(st, 'sub_type_name') || label(st, 'sub_type_name'), 14)}
-                          </span>
-                          <span>{label(st, 'sub_type_name')}</span>
-                        </Link>
-                      ))}
-                      {subs.length > 8 && (
-                        <Link
-                          href={catHref(ct)}
-                          className="wz-shop-sub-item wz-shop-see-all"
-                          onClick={closeMenus}
-                        >
-                          {isRTL ? `عرض الكل (${subs.length})` : `See all (${subs.length})`}
-                        </Link>
-                      )}
-                      {idx < categoryTypes.length - 1 && <div className="wz-shop-section-sep" />}
-                    </div>
-                  )
-                })}
-              </div>
-            )}
+          {/*
+            2 — THE MEGA MENU (the twelve updates, Part 4, 2026-11-05). It replaces the "Shop" dropdown, which was
+            one narrow column that scrolled inside itself: a rail of the top level, the pointed entry's
+            sub-categories as picture tiles, its brands, and a featured product. The twin component draws it from
+            `/api/v2/{storefront}/menu`; this Nav only hands it the links that are this shop's own (a gender, a
+            gender's sub-category, the sale page) — the listing URL scheme lives here.
+          */}
+          {/* no "All categories" button on a computer (the review of 2026-11-05): every entry below opens the panel
+              on itself; the menu is mounted here without its trigger. A phone reaches all categories from its drawer. */}
+          <li className="nav-item nav-item--mega nav-item--mega-bare">
+            <MegaMenu
+              trigger={false}
+              onNavigate={closeMenus}
+              hrefs={{
+                gender: (g) => hrefFor({ genders: [g.name?.en] }),
+                genderChild: (g, child) => {
+                  const st = (tables?.subTypes || []).find((s) => subTypeSlug(s) === child.slug)
+                  return hrefFor(st ? { genders: [g.name?.en], subTypes: [st.id] } : { genders: [g.name?.en] })
+                },
+                sale: () => offersHref(),
+                saleCategory: (c) => hrefFor({ offers: true, categories: [c.legacy_id] }),
+                saleBrand: (b) => {
+                  const brand = (tables?.brands || []).find((x) => brandSlug(x) === b.slug)
+                  return brand ? hrefFor({ offers: true, brands: [brand.id] }) : offersHref()
+                },
+              }}
+            />
           </li>
 
-          {/* 3 — CATEGORY TYPES (with sub-type dropdown) */}
-          {categoryTypes.map((ct) => {
-            const subs = subTypesFor(ct)
-            return (
-              <li
-                key={`ct-${ct.id}`}
-                className="nav-item"
-                onMouseEnter={() => openMenu(`ct-${ct.id}`)}
-                onMouseLeave={scheduleClose}
-              >
-                <Link href={catHref(ct)} className="nav-link-item" onClick={closeMenus}>
-                  {label(ct, 'category_type_name')}
-                  {subs.length > 0 && <MdOutlineKeyboardArrowDown style={{ fontSize: '15px' }} />}
-                </Link>
-                {subs.length > 0 && openKey === `ct-${ct.id}` && (
-                  <div
-                    ref={dropRef}
-                    className="nav-dropdown"
-                    onMouseEnter={() => openMenu(`ct-${ct.id}`)}
-                  >
-                    {subs.map((st) => (
-                      <Link
-                        key={`st-${st.id}`}
-                        href={catSubHref(ct, st)}
-                        className="nav-dropdown-item"
-                        onClick={closeMenus}
-                      >
-                        {label(st, 'sub_type_name')}
-                      </Link>
-                    ))}
-                  </div>
-                )}
-              </li>
-            )
-          })}
-
-          {/* 3 — GENDERS (with brand dropdown → "Rolex for Men") */}
-          {genders.map((g) => (
-            <li
-              key={`g-${g.en}`}
-              className="nav-item"
-              onMouseEnter={() => openMenu(`g-${g.en}`)}
-              onMouseLeave={scheduleClose}
-            >
-              <Link href={genderHref(g)} className="nav-link-item" onClick={closeMenus}>
-                {g.label}
-                {brands.length > 0 && <MdOutlineKeyboardArrowDown style={{ fontSize: '15px' }} />}
+          {/*
+            3 — THE TOP LEVEL, ONE MENU (the developer's review, 2026-11-05). Each entry is a plain link to its own page,
+            and pointing at it — or focusing it and pressing the down arrow — opens THE SAME mega panel on that entry
+            (megaItemProps, the twin menu's handle). There is no second, narrow dropdown anywhere in this row.
+          */}
+          {categoryTypes.map((ct) => (
+            <li key={`ct-${ct.id}`} className="nav-item" {...megaItemProps({ kind: 'category', legacyId: ct.id, slug: categorySlug(ct) })}>
+              <Link href={catHref(ct)} className="nav-link-item" onClick={closeMenus}>
+                {label(ct, 'category_type_name')}
+                <MdOutlineKeyboardArrowDown style={{ fontSize: '15px' }} aria-hidden="true" />
               </Link>
-              {brands.length > 0 && openKey === `g-${g.en}` && (
-                <div
-                  ref={dropRef}
-                  className="nav-dropdown wz-dropdown-scrollable"
-                  onMouseEnter={() => openMenu(`g-${g.en}`)}
-                >
-                  {brands.map((b) => (
-                    <Link
-                      key={`gb-${b.id}`}
-                      href={genderBrandHref(g, b)}
-                      className="wz-brand-item"
-                      onClick={closeMenus}
-                    >
-                      {brandCell(b, forGenderNode(label(b, 'brand_name'), g))}
-                    </Link>
-                  ))}
-                </div>
-              )}
             </li>
           ))}
-
-          {/* 4 — BRANDS (with nested brand → gender dropdown) */}
-          <li
-            className="nav-item"
-            onMouseEnter={() => openMenu('brands')}
-            onMouseLeave={scheduleClose}
-          >
-            <button type="button" className="nav-link-item">
-              <TbBuildingStore size={14} style={{ opacity: 0.7 }} />
+          {genders.map((g) => (
+            <li key={`g-${g.en}`} className="nav-item" {...megaItemProps({ kind: 'gender', name: g.en })}>
+              <Link href={genderHref(g)} className="nav-link-item" onClick={closeMenus}>
+                {g.label}
+                <MdOutlineKeyboardArrowDown style={{ fontSize: '15px' }} aria-hidden="true" />
+              </Link>
+            </li>
+          ))}
+          <li className="nav-item" {...megaItemProps({ kind: 'brands' })}>
+            <button type="button" className="nav-link-item" aria-haspopup="true" onClick={() => megaBus.open({ kind: 'brands' }, { focus: true })}>
+              <TbBuildingStore size={14} style={{ opacity: 0.7 }} aria-hidden="true" />
               {isRTL ? 'العلامات التجارية' : 'Brands'}
-              <MdOutlineKeyboardArrowDown style={{ fontSize: '15px' }} />
+              <MdOutlineKeyboardArrowDown style={{ fontSize: '15px' }} aria-hidden="true" />
             </button>
-            {openKey === 'brands' && brandsByCategory.length > 0 && (
-              <div
-                ref={dropRef}
-                className="nav-dropdown nav-dropdown-brands wz-dropdown-scrollable"
-                onMouseEnter={() => openMenu('brands')}
-              >
-                {brandsByCategory.map(({ category, brands: catBrands }) => (
-                  <div key={`bcat-${category.id}`}>
-                    {/* Category section header (⌚ Watch Brands / 👗 Fashion Brands) */}
-                    <div className="nav-brand-group-header">
-                      <span className="nav-brand-group-icon">
-                        {getCategoryIcon(
-                          enName(category, 'category_type_name') ||
-                            label(category, 'category_type_name'),
-                          13,
-                        )}
-                      </span>
-                      <span>{label(category, 'category_type_name')}</span>
-                    </div>
-                    {catBrands.map((b) => {
-                      const bn = label(b, 'brand_name')
-                      // Composite key: the SAME brand can appear under multiple
-                      // category types (e.g. Tommy in Watches AND Fashion). Keying
-                      // the open state by brand id alone opened every instance's
-                      // flyout at once — scope it to this category+brand row.
-                      const rowKey = `${category.id}-${b.id}`
-                      return (
-                        <div
-                          key={rowKey}
-                          className="nav-dropdown-row"
-                          onMouseEnter={() => openBrandMenu(rowKey)}
-                          onMouseLeave={scheduleBrandClose}
-                        >
-                          <Link
-                            href={brandHref(b)}
-                            className="wz-brand-item nav-dropdown-parent"
-                            onClick={closeMenus}
-                          >
-                            {brandCell(b, bn)}
-                            <span className="nav-row-caret">{isRTL ? '‹' : '›'}</span>
-                          </Link>
-                          {openBrand === rowKey && (
-                            <div
-                              ref={nestedRef}
-                              className="nav-subdropdown"
-                              onMouseEnter={() => openBrandMenu(rowKey)}
-                            >
-                              <Link
-                                href={brandHref(b)}
-                                className="wz-brand-item"
-                                onClick={closeMenus}
-                              >
-                                {brandCell(b, isRTL ? `كل ${bn}` : `All ${bn}`)}
-                              </Link>
-                              {genders.map((g) => (
-                                <Link
-                                  key={`bg-${b.id}-${g.en}`}
-                                  href={brandGenderHref(b, g)}
-                                  className="wz-brand-item"
-                                  onClick={closeMenus}
-                                >
-                                  {brandCell(b, forGenderNode(bn, g))}
-                                </Link>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      )
-                    })}
-                  </div>
-                ))}
-              </div>
-            )}
           </li>
-
-          {/* 5 — OFFERS (discounted products only) */}
-          <li className="nav-item">
+          {/* SALE — everything discounted (it was "Offers"; renamed in the review of 2026-11-05). Its panel: the live
+              campaigns, then the discounts by category and by brand. */}
+          <li className="nav-item" {...megaItemProps({ kind: 'sale' })}>
             <Link href={offersHref()} className="nav-link-item" onClick={closeMenus}>
-              <RiPercentLine size={14} style={{ color: '#ea2b0f' }} />
-              {isRTL ? 'العروض' : 'Offers'}
+              <RiPercentLine size={14} style={{ color: '#ea2b0f' }} aria-hidden="true" />
+              {isRTL ? 'تخفيضات' : 'Sale'}
+              <MdOutlineKeyboardArrowDown style={{ fontSize: '15px' }} aria-hidden="true" />
             </Link>
           </li>
         </ul>

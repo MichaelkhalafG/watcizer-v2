@@ -1,6 +1,8 @@
 import './globals.css'
+import ReactDOM from 'react-dom'
+import { ASSET_BASE } from '@/src/lib/env'
 import { requestLang } from '@/src/lib/requestLang'
-import { El_Messiri } from 'next/font/google'
+import { elMessiriClass } from './fonts/elMessiri'
 import Providers from './providers'
 import Analytics from './analytics'
 import Toast from './toast'
@@ -9,13 +11,8 @@ import OfflineBanner from '@/src/Components/Offline/OfflineBanner'
 
 // Watchizer's face (spec v2.11 §5, Michael's decision of 2026-10-17): English on system Georgia, Arabic on
 // El Messiri — the same pair Frontend-next loads, so the two shops share one voice. El Messiri is self-hosted
-// by next/font and exposed as --font-el-messiri; globals.css puts it on everything under [dir='rtl'].
-const elMessiri = El_Messiri({
-  subsets: ['arabic', 'latin'],
-  weight: ['400', '500', '600', '700'],
-  variable: '--font-el-messiri',
-  display: 'swap',
-})
+// from app/fonts/ (2026-11-05: next/font/local, no request to Google at build time) and exposed as
+// --font-el-messiri; globals.css puts it on everything under [dir='rtl']. Same weights, `swap` and variable name.
 
 // Static <head> parity with Frontend/index.html + the global SEO defaults from
 // App.jsx (each page overrides title/description/canonical in Phase 3).
@@ -75,7 +72,19 @@ export const viewport = {
   colorScheme: 'only light',
 }
 
+// THE PHOTOS' HOST IS CONNECTED TO BEFORE THE FIRST PHOTO IS FOUND (the performance pass, 2026-11-05). Every product
+// photo and banner is on the asset host, another origin than the page: the browser opened that connection (DNS, TCP,
+// TLS — 100 to 300 ms on a phone) only when it reached the first <img> in the HTML, and the page's largest picture
+// waited behind it. One <link rel="preconnect"> in <head> starts it with the page. Nothing is downloaded by it.
+let ASSET_ORIGIN = ''
+try {
+  ASSET_ORIGIN = ASSET_BASE ? new URL(ASSET_BASE).origin : ''
+} catch {
+  // a malformed value: no hint, the page works as before
+}
+
 export default async function RootLayout({ children }) {
+  if (ASSET_ORIGIN) ReactDOM.preconnect(ASSET_ORIGIN)
   // The request's language (S-AR stage 1): Arabic under /ar/, else the wz-lang cookie
   // (middleware.js). It sets <html lang/dir> AND starts the per-request UI store in that language,
   // so the page's server HTML is already in it — Arabic pages exist for Google, and there is no
@@ -86,7 +95,7 @@ export default async function RootLayout({ children }) {
   const { lang } = await requestLang()
   const dir = lang === 'ar' ? 'rtl' : 'ltr'
   return (
-    <html lang={lang} dir={dir} className={elMessiri.variable}>
+    <html lang={lang} dir={dir} className={elMessiriClass}>
       <body>
         <Providers language={lang}>
           {children}

@@ -278,15 +278,16 @@ it('lands the shopper and settles the v2-created order on the callback — paid,
         // paid: the reserved units stay reserved — no release row
         ->and(DB::table('inventory_movements')->where('reference_id', $paid['order_id'])->where('reason', 'payment_failed')->count())->toBe(0);
 
-    // FAILED — a card declined: cancelled, the units back, the landing says so
+    // FAILED — a card declined: the landing says so, and the order KEEPS WAITING with its units (2026-11-05:
+    // the payment page is still open and a retry may succeed; `orders:expire-unpaid` ends the wait)
     $card = $byMethod['card'];
     $failed = comV2Order(comPlain(1), $card, 'failed');
     $cb = PaymentFixture::callback($failed['order_number'], (int) round($failed['total'] * 100), success: false, transactionId: 771002, integrationId: $card['integration']);
     get('/api/pay/watchizer/paymob/callback?'.http_build_query($cb))
         ->assertRedirect($landing($failed['order_number'], 'failed'));
-    expect(T::str(DB::table('orders')->where('id', $failed['order_id'])->value('status')))->toBe('cancelled')
+    expect(T::str(DB::table('orders')->where('id', $failed['order_id'])->value('status')))->toBe('pending')
         ->and(T::str(DB::table('payment_statuses')->where('order_id', $failed['order_id'])->value('outcome')))->toBe(CallbackPolicy::OUTCOME_FAILED)
-        ->and(DB::table('inventory_movements')->where('reference_id', $failed['order_id'])->where('reason', 'payment_failed')->count())->toBe(1);
+        ->and(DB::table('inventory_movements')->where('reference_id', $failed['order_id'])->where('reason', 'payment_failed')->count())->toBe(0);
 
     // PENDING — a kiosk reference issued, not yet paid: the order waits, the landing says pending
     $kiosk = $byMethod['kiosk'];

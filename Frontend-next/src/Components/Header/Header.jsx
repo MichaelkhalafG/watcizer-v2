@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useRef, useMemo, Suspense } from 'react'
 import Link from '@/src/Components/LocaleLink'
 import Image from 'next/image'
 import { usePathname } from 'next/navigation'
@@ -12,6 +12,10 @@ const logo = '/logo.webp'
 import './Header.css'
 import SearchBox from './SearchBox/SearchBox'
 import Nav from './Nav/Nav'
+import CampaignNav from '../Promo/CampaignNav'
+import NavProgress from '../NavProgress/NavProgress'
+import { useHotDealsMode } from '../../Hooks/queries/usePromo'
+import MegaDrawer from './MegaMenu/MegaDrawer'
 import { useSwitchLanguage } from '../../Hooks/useSwitchLanguage'
 import { useUIStore } from '../../Store/uiStore'
 import { useAuthStore } from '../../Store/authStore'
@@ -23,9 +27,14 @@ import { payable } from '../../lib/coupon'
 import { useTables } from '../../Hooks/queries/useTables'
 import { useNav } from '../../Hooks/queries/useNav'
 import { buildListingParams } from '../../utils/listingParams'
+import { subTypeSlug } from '../../utils/slugs'
 import { subTypesByName } from '../../utils/subTypeGroups'
 import { getImageUrl } from '../../utils/imageUrl'
-import { FaFacebookF, FaInstagram } from 'react-icons/fa'
+import { FaFacebookF, FaInstagram, FaTiktok } from 'react-icons/fa'
+import { FACEBOOK, INSTAGRAM, TIKTOK } from '@/src/content/social'
+
+// The drawer lists the shop's Offers page under its own name, so the mega menu's "On sale" row is left out there.
+const DRAWER_OMIT = ['sale']
 
 function Header() {
   // Cart-derived counters (were MyProvider state) are derived here from the cart
@@ -69,6 +78,9 @@ function Header() {
   // has scrolled most of the way past it — then the bar turns frosted white.
   const heroPage = pathname === '/'
   const transparent = heroPage && !pastHero
+  // HOT DEALS MODE recolours the phone header too (the review of 2026-11-05): it takes the header's DARK state —
+  // white logo, white icons, already designed for the hero — and Header.css paints that state with the fire.
+  const hotMode = useHotDealsMode()
 
   // ── Mobile drawer + search state ──
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -158,6 +170,22 @@ function Header() {
     router.push(qs ? `/listing?${qs}` : '/listing')
   }
 
+  // The mega menu's links that are this shop's own (a gender, a gender's sub-category): the listing URL scheme
+  // lives in this app, as it does for the desktop Nav. Stable, so the drawer's menu does not rebuild every render.
+  const megaHrefs = useMemo(() => {
+    const listing = (filters) => {
+      const qs = buildListingParams({ categories: [], brands: [], subTypes: [], genders: [], offers: false, price: [0, 99999999], ...filters }, {}, tables).toString()
+      return qs ? `/listing?${qs}` : '/listing'
+    }
+    return {
+      gender: (g) => listing({ genders: [g.name?.en] }),
+      genderChild: (g, child) => {
+        const st = (tables?.subTypes || []).find((x) => subTypeSlug(x) === child.slug)
+        return listing(st ? { genders: [g.name?.en], subTypes: [st.id] } : { genders: [g.name?.en] })
+      },
+    }
+  }, [tables])
+
   const goTo = (path) => {
     closeDrawer()
     router.push(path)
@@ -210,7 +238,7 @@ function Header() {
     <header
       dir={isRTL ? 'rtl' : 'ltr'}
       className={`wz-header ${scrolled ? 'wz-scrolled' : ''} ${
-        transparent ? 'wz-bar-transparent' : ''
+        transparent || hotMode.on ? 'wz-bar-transparent' : ''
       }`}
     >
       {/* ── SECTION A — announcement strip ─────────────────── */}
@@ -234,21 +262,15 @@ function Header() {
             </div>
           </div>
           <div className="wz-strip-social">
-            <a
-              href="https://www.facebook.com/profile.php?id=100076267296916"
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label="Facebook"
-            >
+            {/* The shop's accounts come from content/trustPages.js (2026-11-05) — the one place they are typed. */}
+            <a href={FACEBOOK} target="_blank" rel="noopener noreferrer" aria-label="Facebook">
               <FaFacebookF style={{ height: '13px', width: '13px' }} />
             </a>
-            <a
-              href="https://www.instagram.com/watchizer_eg/"
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label="Instagram"
-            >
+            <a href={INSTAGRAM} target="_blank" rel="noopener noreferrer" aria-label="Instagram">
               <FaInstagram style={{ height: '14px', width: '14px' }} />
+            </a>
+            <a href={TIKTOK} target="_blank" rel="noopener noreferrer" aria-label="TikTok">
+              <FaTiktok style={{ height: '13px', width: '13px' }} />
             </a>
           </div>
         </div>
@@ -270,13 +292,16 @@ function Header() {
           <Link href={'/'}>
             {/* LCP-critical: priority preloads it, no lazy-loading. Kept at the
                 logo's true 150×46 aspect; CSS renders it height:46 / width:auto. */}
-            <Image src={logo} alt="Watchizer-logo" width={150} height={46} priority quality={90} />
+            <Image src={logo} alt="Watchizer-logo" width={68} height={46} priority quality={90} />
           </Link>
         </div>
 
         <div className="wz-search-box">
           <SearchBox />
         </div>
+
+        {/* the Hot Deals switch (Part 2.4, 2026-11-05) — only while a Hot Deals campaign is live */}
+        <CampaignNav variant="top" />
 
         <div className="wz-actions">
           {/* ── Language: EN | ع (each letter its own button) ── */}
@@ -371,8 +396,10 @@ function Header() {
             type="button"
             className="wz-act-bag"
             onClick={() => router.push('/cart')}
-            aria-label={isRTL ? 'السلة' : 'Cart'}
           >
+            {/* the button's name is "Cart" FOLLOWED BY what it shows (Lighthouse: label-content-name-mismatch — an
+                aria-label of "Cart" alone hid the count and the total from a screen reader and from voice control) */}
+            <span className="wz-sr-only">{isRTL ? 'السلة' : 'Cart'}</span>
             <span className="wz-act-bag__icon">
               <FiShoppingBag />
             </span>
@@ -426,6 +453,15 @@ function Header() {
         <Nav />
       </div>
 
+      {/* The live campaigns on a phone, where the nav row is hidden: the Hot Deals switch and the Flash Sale
+          countdown, in one slim row. Nothing is drawn without a live campaign (Part 2, 2026-11-05). */}
+      {/* phones: the Hot Deals switch is a pill fixed in the thumb's corner (the review of 2026-11-05) */}
+      <CampaignNav variant="float" />
+      {/* the line across the top from a click to the new page (item 19): an answer within one frame */}
+      <Suspense fallback={null}>
+        <NavProgress />
+      </Suspense>
+
       {/* ── Mobile drawer (left, or right in RTL) ──────────── */}
       <div
         className={`wz-drawer-overlay ${drawerOpen ? 'is-open' : ''}`}
@@ -444,7 +480,7 @@ function Header() {
           <Link href="/" onClick={closeDrawer} className="wz-drawer-logo" aria-label="Watchizer">
             {/* Same props as the header logo above → the same optimised URL, so the drawer reuses the
                 bytes the header already fetched (it requested the 141,944 B original, 2026-10-11). */}
-            <Image src={logo} alt="Watchizer" width={150} height={46} quality={90} />
+            <Image src={logo} alt="Watchizer" width={68} height={46} quality={90} />
           </Link>
           <button
             type="button"
@@ -474,125 +510,12 @@ function Header() {
             {isRTL ? 'الرئيسية' : 'Home'}
           </button>
 
-          {/* Shop accordion → sub-categories */}
-          {hasAnySubTypes && (
-            <div className="wz-drawer-acc">
-              <button
-                type="button"
-                className={`wz-drawer-link wz-drawer-acc-head ${openSection === 'shop' ? 'is-open' : ''}`}
-                onClick={() => toggleSection('shop')}
-                aria-expanded={openSection === 'shop'}
-              >
-                {isRTL ? 'المتجر' : 'Shop'}
-                <FiChevronDown className="wz-drawer-caret" />
-              </button>
-              {openSection === 'shop' && (
-                <div className="wz-drawer-sub">
-                  {categoryTypes.map((ct) => {
-                    const subs = subTypesForCat(ct)
-                    if (!subs.length) return null
-                    return (
-                      <div key={ct.id} className="wz-drawer-group">
-                        <button
-                          type="button"
-                          className="wz-drawer-group-head"
-                          onClick={() => go({ categories: [ct.id] })}
-                        >
-                          {label(ct, 'category_type_name')}
-                        </button>
-                        {subs.map((st) => (
-                          <button
-                            key={st.id}
-                            type="button"
-                            className="wz-drawer-sublink"
-                            onClick={() => go({ categories: [ct.id], subTypes: [st.id] })}
-                          >
-                            {label(st, 'sub_type_name')}
-                          </button>
-                        ))}
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Category-type accordions (Watches / Fashion) → their sub-types.
-              Mirrors the desktop nav's top-level category items. */}
-          {categoryTypes.map((ct) => {
-            const subs = subTypesForCat(ct)
-            if (!subs.length) return null
-            const key = `ct-${ct.id}`
-            return (
-              <div className="wz-drawer-acc" key={key}>
-                <button
-                  type="button"
-                  className={`wz-drawer-link wz-drawer-acc-head ${openSection === key ? 'is-open' : ''}`}
-                  onClick={() => toggleSection(key)}
-                  aria-expanded={openSection === key}
-                >
-                  {label(ct, 'category_type_name')}
-                  <FiChevronDown className="wz-drawer-caret" />
-                </button>
-                {openSection === key && (
-                  <div className="wz-drawer-sub">
-                    {subs.map((st) => (
-                      <button
-                        key={st.id}
-                        type="button"
-                        className="wz-drawer-sublink"
-                        onClick={() => go({ categories: [ct.id], subTypes: [st.id] })}
-                      >
-                        {label(st, 'sub_type_name')}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )
-          })}
-
-          {/* Brands accordion */}
-          {drawerBrands.length > 0 && (
-            <div className="wz-drawer-acc">
-              <button
-                type="button"
-                className={`wz-drawer-link wz-drawer-acc-head ${openSection === 'brands' ? 'is-open' : ''}`}
-                onClick={() => toggleSection('brands')}
-                aria-expanded={openSection === 'brands'}
-              >
-                {isRTL ? 'العلامات التجارية' : 'All Brands'}
-                <FiChevronDown className="wz-drawer-caret" />
-              </button>
-              {openSection === 'brands' && (
-                <div className="wz-drawer-sub">
-                  {drawerBrands.map((b) => {
-                    const lg = brandLogo(b)
-                    return (
-                      <button
-                        key={b.id}
-                        type="button"
-                        className="wz-drawer-sublink wz-drawer-brand"
-                        onClick={() => go({ brands: [b.id] })}
-                      >
-                        <span className="wz-drawer-brand-logo">
-                          {lg ? (
-                            <img src={lg} alt="" width="24" height="24" loading="lazy" />
-                          ) : (
-                            <span className="wz-drawer-brand-ph">
-                              {(label(b, 'brand_name') || '?').charAt(0)}
-                            </span>
-                          )}
-                        </span>
-                        {label(b, 'brand_name')}
-                      </button>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
-          )}
+          {/*
+            THE MEGA MENU ON A PHONE (the design pass, 2026-11-05): the top level as picture rows, an entry opened
+            in place as picture tiles, with its brands and its featured product — the same content, links and
+            counts as the desktop mega menu (the twin MegaDrawer), in place of the text accordions that were here.
+          */}
+          <MegaDrawer active={drawerOpen} omit={DRAWER_OMIT} hrefs={megaHrefs} onNavigate={closeDrawer} />
 
           <button type="button" className="wz-drawer-link" onClick={() => go({ offers: true })}>
             {isRTL ? 'العروض' : 'Offers'}

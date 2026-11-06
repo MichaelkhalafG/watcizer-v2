@@ -39,7 +39,7 @@ function exactlyOnceOrder(int $quantity = 2, int $lineCount = 1): array
 
     $addressId = T::int(DB::table('addresses')->orderBy('id')->value('id'));
     $orderId = (int) DB::table('orders')->insertGetId([
-        'user_id' => null, 'address_id' => $addressId,
+        'user_id' => null, 'address_id' => $addressId, 'storefront_id' => 1,
         'total_price_for_order' => '0.00', 'payment_method' => 'cash',
         'order_number' => 'ZZ'.random_int(100000, 999999), 'status' => 'processing',
         'guest_name' => 'exactly-once', 'created_at' => now(), 'updated_at' => now(),

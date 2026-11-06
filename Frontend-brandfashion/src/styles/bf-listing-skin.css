@@ -101,6 +101,8 @@ html .wz-fs-title { padding: 10px 14px; min-height: 40px; }
 html .wz-fs-title-text { font-size: 13px; font-weight: 700; letter-spacing: 0; text-transform: none; color: var(--wz-ink); }
 html .wz-fs-toggle { font-size: 16px; color: var(--wz-ink-2); font-weight: 400; }
 html .wz-fs-clear { font-size: 11px; color: var(--wz-ink-2); border: 0; padding: 0; letter-spacing: 0; text-decoration: underline; text-underline-offset: 3px; border-radius: 0; }
+/* Brand Fashion's "clear" is an underlined word, not a pill: the pill's outline (SideBar.css, ::before) is not drawn here */
+html .wz-fs-clear::before { content: none; }
 html .wz-fs-body { padding: 0 14px 10px; }
 html .wz-fs-search { height: 32px; border: 1px solid var(--wz-edge); border-radius: var(--wz-r-input); padding: 0 10px; font-size: var(--bf-small); color: var(--wz-ink); font-family: inherit; }
 html .wz-fs-search:focus { border-color: var(--wz-ink); }

@@ -40,6 +40,12 @@ final class CompatLocaleSitemap
     /** The storefront's trust pages (2026-10-02), English paths. */
     public const TRUST_PAGES = ['/about-us', '/contact-us', '/privacy-policy', '/terms-and-conditions', '/faq'];
 
+    /**
+     * The two campaign pages (the design pass, 2026-11-05). They are PERMANENT pages — up, and indexable, between
+     * campaigns; only their products change — so they are listed like any other fixed page of the shop.
+     */
+    public const CAMPAIGN_PAGES = ['/hot-deals', '/flash-sale'];
+
     public function __construct(
         private readonly CompatListing $listing,
         private readonly CompatNames $names,
@@ -67,7 +73,7 @@ final class CompatLocaleSitemap
             return null;
         }
         $urls = [];
-        foreach (['/', '/listing', ...self::TRUST_PAGES] as $path) {
+        foreach (['/', '/listing', ...self::TRUST_PAGES, ...self::CAMPAIGN_PAGES] as $path) {
             $urls[] = $this->url($locale, $path);
         }
 

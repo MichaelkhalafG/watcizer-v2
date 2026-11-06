@@ -16,6 +16,7 @@ use App\Mail\CustomerEmailVerification;
 use App\Mail\CustomerPasswordReset;
 use App\Mail\OrderConfirmation;
 use App\Mail\OrderStatusUpdate;
+use App\Mail\PaymentAlertAdmin;
 use App\Mail\PaymentExpired;
 use App\Mail\PaymentExpiredAdmin;
 use App\Mail\ReEngagementMail;
@@ -259,7 +260,7 @@ it('the drain report reads per storefront, and the mailbox command never prints 
 
 // ── §0(b), the developer's number (2026-10-13 brief) ─────────────────────────────────────────────
 
-it('renders the DEVELOPER\'S WhatsApp number in NONE of the ten mail templates, for either shop', function () {
+it('renders the DEVELOPER\'S WhatsApp number in NONE of the eleven mail templates, for either shop', function () {
     /*
      * Two numbers, two roles (BF handover D22): `whatsapp_support` (customer service) is what a
      * customer may reach from a mail; `whatsapp_developer` is the storefront's header/footer only
@@ -287,6 +288,7 @@ it('renders the DEVELOPER\'S WhatsApp number in NONE of the ten mail templates, 
             new OrderStatusUpdate($data + ['status' => 'shipped']),
             new PaymentExpired($expiredData),
             new PaymentExpiredAdmin($expiredData),
+            new PaymentAlertAdmin($expiredData + ['alert' => ['finding' => 'callback_on_terminal_order', 'refused' => 'insufficient_stock', 'transaction' => '566147894', 'newer_orders' => []]]),
             new CustomerEmailVerification('https://example.test/verify', 'Shopper', $identity),
             new CustomerPasswordReset('https://example.test/reset', 'Shopper', 60, $identity),
             new StockAlertMail(['email' => 'c@example.test', 'locale' => 'en', 'token' => 'tok', 'storefront_id' => $storefrontId, 'product' => $card], 'https://example.test/stop', $identity),
@@ -301,10 +303,10 @@ it('renders the DEVELOPER\'S WhatsApp number in NONE of the ten mail templates, 
         }
     }
 
-    // Ten templates, two shops: 22 renders (the stock alert in both languages), 0 developer numbers.
+    // Eleven templates, two shops: 24 renders (the stock alert in both languages), 0 developer numbers.
     $templates = glob(resource_path('views/emails/*.blade.php')) ?: [];
     $templates = array_values(array_filter($templates, fn (string $f): bool => ! str_contains($f, DIRECTORY_SEPARATOR.'partials'.DIRECTORY_SEPARATOR) && ! str_starts_with(basename($f), '_')));
-    expect($rendered)->toHaveCount(22)->and(count($templates))->toBe(10);
+    expect($rendered)->toHaveCount(24)->and(count($templates))->toBe(11);
     $hits = [];
     foreach ($rendered as $key => $html) {
         $n = substr_count($html, $developer) + substr_count($html, '01274550956');

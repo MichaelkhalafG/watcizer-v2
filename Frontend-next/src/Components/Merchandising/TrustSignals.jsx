@@ -6,6 +6,29 @@ import './TrustSignals.css'
 // printed as it is.
 const inLanguage = (label, isRTL) => (typeof label === 'string' ? label : label[isRTL ? 'ar' : 'en'])
 
+// THE ICONS ARE DRAWN (the review of 2026-11-05: the strip is redesigned, its WORDING untouched). The config still
+// names each signal by the character it used to print (↩ ✓ 🔒 💬); here that character picks a drawn glyph, which sits
+// in a round chip — the same chip the cart and checkout lists use — so the strip looks the same on every device
+// instead of however that device draws an emoji. A character with no glyph is printed as it is.
+const GLYPHS = {
+  '↩': 'M9 14 4 9l5-5M4 9h10a6 6 0 0 1 0 12h-3',
+  '✓': 'M12 3 4.5 6v5.5c0 4.5 3.2 8.4 7.5 9.5 4.3-1.1 7.5-5 7.5-9.5V6zM8.8 12.2l2.3 2.3 4.2-4.6',
+  '🔒': 'M6.5 11V8a5.5 5.5 0 0 1 11 0v3M5 11h14v10H5zM12 15v2.5',
+  '💬': 'M21 12a8.5 8.5 0 0 1-12.6 7.4L3 21l1.7-5.2A8.5 8.5 0 1 1 21 12z',
+}
+
+function Glyph({ icon }) {
+  const d = GLYPHS[icon]
+  if (!d) return icon
+  return (
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d={d} />
+    </svg>
+  )
+}
+
+Glyph.propTypes = { icon: PropTypes.string.isRequired }
+
 const labelShape = PropTypes.oneOfType([
   PropTypes.string,
   PropTypes.shape({ en: PropTypes.string.isRequired, ar: PropTypes.string.isRequired }),
@@ -15,22 +38,22 @@ const labelShape = PropTypes.oneOfType([
 // otherwise as a plain inline label. Pure static render — no API calls.
 function Signal({ icon, label, href, isRTL = false }) {
   const content = (
-    <span className="wz-trust-item">
+    <>
       <span className="wz-trust-item-icon" aria-hidden="true">
-        {icon}
+        <Glyph icon={icon} />
       </span>
       <span>{inLanguage(label, isRTL)}</span>
-    </span>
+    </>
   )
 
   if (href) {
     return (
-      <a href={href} target="_blank" rel="noopener noreferrer" className="wz-trust-item">
+      <a href={href} target="_blank" rel="noopener noreferrer" className="wz-trust-item wz-trust-item--link">
         {content}
       </a>
     )
   }
-  return content
+  return <span className="wz-trust-item">{content}</span>
 }
 
 Signal.propTypes = {
@@ -50,7 +73,7 @@ function ReturnsSignal({ isFashion, isRTL }) {
     <div className="wz-trust-returns">
       <span className="wz-trust-item">
         <span className="wz-trust-item-icon" aria-hidden="true">
-          {icon}
+          <Glyph icon={icon} />
         </span>
         <span>{isRTL ? p.ar : p.en}</span>
       </span>
@@ -79,7 +102,7 @@ function LiveSignals({ rating, reviewCount, stockLeft, isRTL }) {
   return (
     <div className="wz-trust-live">
       {hasRating && (
-        <span className="wz-trust-rating" aria-label={`${rating.toFixed(1)} / 5`}>
+        <span className="wz-trust-rating" role="img" aria-label={`${rating.toFixed(1)} / 5`}>
           <span className="wz-trust-stars" aria-hidden="true">
             {'★★★★★☆☆☆☆☆'.slice(5 - rounded, 10 - rounded)}
           </span>

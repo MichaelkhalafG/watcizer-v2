@@ -3,6 +3,7 @@
 use App\Domain\Payment\Landing;
 use App\Models\Storefront\Storefront;
 use App\Storefront\StorefrontUrls;
+use Illuminate\Database\QueryException;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Tests\Support\PaymentFixture;
@@ -270,26 +271,33 @@ it('runs the SAME checks through the legacy Watchizer alias', function () {
     expect(T::str(DB::table('orders')->where('id', $orderId)->value('status')))->toBe('processing');
 });
 
-it('accepts a legacy order with NO storefront_id as the primary storefront, and only there', function () {
+it('cannot be handed an order with NO storefront: the column refuses it, so ownership is one comparison', function () {
     /*
-     * Orders written before core recorded a storefront carry NULL. Every one of them belongs to
-     * Watchizer, the only storefront the legacy app ever served — so NULL is accepted for the
-     * PRIMARY storefront and refused for any other. A deviation with a sunset: when every order
-     * carries the column this branch is dead.
+     * Until 2026-10-23 an order written before core recorded a storefront carried NULL, and the callback
+     * accepted it for the PRIMARY storefront only — "a deviation with a sunset: when every order carries the
+     * column this branch is dead". The migration of that date backfilled the nine such orders and made the
+     * column NOT NULL, so the branch was removed on 2026-11-05 and this test holds the premise instead: such an
+     * order cannot exist. (Rewritten from "accepts a legacy order with NO storefront_id", which built one.)
      */
+    $refused = false;
+    try {
+        DB::transaction(fn () => PaymentFixture::order(total: 20.0, storefrontId: null));
+    } catch (QueryException) {
+        $refused = true;
+    }
+    expect($refused)->toBeTrue('an order without a storefront must be refused by the column');
+
+    // …and an order of ANOTHER storefront is refused on this one's callback, the comparison that remains.
     PaymentFixture::paymob(storefrontId: 1, hmacSecret: 'null-secret');
     PaymentFixture::paymob(storefrontId: Storefront::BRAND_FASHION_ID, hmacSecret: 'null-secret');
+    $order = PaymentFixture::order(total: 20.0, storefrontId: 1);
+    $payload = PaymentFixture::callback(PaymentFixture::orderNumber($order), 2000, secret: 'null-secret');
 
-    $legacyOrder = PaymentFixture::order(total: 20.0, storefrontId: null);
-    $payload = PaymentFixture::callback(PaymentFixture::orderNumber($legacyOrder), 2000, secret: 'null-secret');
-
-    // Refused on the secondary storefront, whose own failed landing the browser is sent to…
     get('/api/pay/brandfashion/paymob/callback?'.http_build_query($payload))
         ->assertRedirect(StorefrontUrls::paymentLanding(Storefront::BRAND_FASHION_ID, Landing::FAILED, null));
-    expect(T::str(DB::table('orders')->where('id', $legacyOrder)->value('status')))->toBe('pending');
+    expect(T::str(DB::table('orders')->where('id', $order)->value('status')))->toBe('pending');
 
-    // …accepted on the primary.
     get('/api/pay/watchizer/paymob/callback?'.http_build_query($payload))
-        ->assertRedirect(landing(Landing::PAID, PaymentFixture::orderNumber($legacyOrder)));
-    expect(T::str(DB::table('orders')->where('id', $legacyOrder)->value('status')))->toBe('processing');
+        ->assertRedirect(landing(Landing::PAID, PaymentFixture::orderNumber($order)));
+    expect(T::str(DB::table('orders')->where('id', $order)->value('status')))->toBe('processing');
 });

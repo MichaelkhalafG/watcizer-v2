@@ -92,33 +92,38 @@ beforeEach(function (): void {
     PaymentFixture::method(PaymentFixture::paymob());
 });
 
-it('DECLINE THEN SUCCEED: the retry does not resurrect a cancelled order, and stock is not re-reserved', function () {
+it('DECLINE THEN SUCCEED: the decline leaves the order waiting with its stock, and the retry PAYS it (order 000092)', function () {
+    /*
+     * Rewritten 2026-11-05. This test used to pin: the decline cancels and releases, the retry then
+     * finds a cancelled order, records a finding and leaves it. That WAS the defence against paying
+     * an order whose units were already back on the shelf — and it is exactly what happened to
+     * order 000092: charged by the retry, left cancelled, nobody told. The sequence can no longer
+     * start: the decline writes an attempt and nothing else, so the reservation never leaves the
+     * order and the retry is an ordinary payment. (What a success does to an order that IS
+     * cancelled — by the expiry, by a newer order, by a person — is LatePaymentTest.)
+     */
     $f = terminalFixture();
     $service = app(InventoryService::class);
+    $reference = fn () => DB::table('inventory_movements')->where('reference_type', 'orders')->where('reference_id', $f['order']);
+    $movements = $reference()->count();
+    expect($movements)->toBe(1);                                    // the reservation, and only it
 
-    // The decline: the order cancels and its units go back. This is wave 3's behaviour and stays.
     get(callbackFor($f['order'], false, 500001))->assertRedirect();
 
-    expect(statusOfOrder($f['order']))->toBe('cancelled')
-        ->and($service->isReleased($f['order']))->toBeTrue();
-
-    $movements = DB::table('inventory_movements')->where('reference_type', 'orders')->where('reference_id', $f['order'])->count();
+    expect(statusOfOrder($f['order']))->toBe('pending', 'a decline must not cancel: the payment page is still open')
+        ->and($service->isReleased($f['order']))->toBeFalse('a decline must not return the stock')
+        ->and($reference()->count())->toBe($movements);
 
     // The retry SUCCEEDS — a different transaction id, so the idempotency guard does not see it.
     get(callbackFor($f['order'], true, 500002))->assertRedirect();
 
-    expect(statusOfOrder($f['order']))->toBe('cancelled', 'a callback must not resurrect a cancelled order')
-        // …no stock movement was invented to back the payment…
-        ->and(DB::table('inventory_movements')->where('reference_type', 'orders')->where('reference_id', $f['order'])->count())
-        ->toBe($movements, 'stock must never be silently re-reserved')
-        // …the money IS on record…
-        ->and(DB::table('payment_statuses')->where('order_id', $f['order'])->count())->toBe(2)
-        // …and a human has something to clear.
-        ->and(findingsFor($f['order']))->toBe([[
-            'kind' => CallbackPolicy::KIND_TERMINAL,
-            'outcome' => CallbackPolicy::OUTCOME_SUCCESS,
-            'order_status' => 'cancelled',
-        ]]);
+    expect(statusOfOrder($f['order']))->toBe('processing')
+        // …on the reservation it always had: nothing released, nothing reserved twice…
+        ->and($reference()->count())->toBe($movements)
+        // …both attempts on record, the second one as the payment…
+        ->and(DB::table('payment_statuses')->where('order_id', $f['order'])->orderBy('id')->pluck('success')->all())->toBe(['false', 'true'])
+        // …and nothing for a human to clear.
+        ->and(findingsFor($f['order']))->toBe([]);
 });
 
 it('VOID AFTER SUCCESS: the order stays processing and the void is not read as a sale', function () {

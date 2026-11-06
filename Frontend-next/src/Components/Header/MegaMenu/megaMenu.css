@@ -1,0 +1,1301 @@
+/*
+ * The mega menu (the twelve updates, Part 4, 2026-11-05). A TWIN.
+ *
+ * Tokens: each shop sets --mm-* in its globals.css; the values here are the floor (zero specificity).
+ * Logical properties only — the Arabic menu is these same rules read right to left.
+ */
+:where(:root) {
+  --mm-ink: #111111;
+  --mm-accent: #111111;
+  --mm-on-accent: #ffffff;
+  --mm-wash: #f4f4f4;
+  --mm-line: rgba(0, 0, 0, 0.1);
+  --mm-radius: 12px;
+  --mm-trigger-bg: #111111;
+  --mm-trigger-fg: #ffffff;
+  --mm-display: inherit;
+  --mm-feature-bg: #111111;
+  --mm-feature-fg: #ffffff;
+  /* the panel's own ground and the text tones on it — a shop with a dark panel sets these four */
+  --mm-panel: #ffffff;
+  --mm-muted: rgba(0, 0, 0, 0.6);
+  --mm-faint: rgba(0, 0, 0, 0.4);
+  --mm-pic: var(--mm-wash);
+}
+
+/* In the nav row: the menu's item is NOT a positioning context (every other item is, for its own dropdown), so the
+   panel hangs from the row itself and can be as wide as the page's content. */
+.nav-inner {
+  position: relative;
+}
+.nav-ul li.nav-item--mega {
+  position: static;
+  align-items: center;
+  margin-inline-end: 6px;
+}
+
+.mm {
+  display: inline-flex;
+  align-items: center;
+}
+/* `.mm` in the selector on purpose: both headers style `button` with a class + element selector */
+.mm .mm__trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  block-size: 36px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--mm-trigger-bg);
+  color: var(--mm-trigger-fg);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.mm :focus-visible {
+  outline: 2px solid var(--mm-accent);
+  outline-offset: 2px;
+}
+.mm__trigger:focus-visible {
+  outline-color: currentColor;
+}
+
+/* The panel hangs from the nav row (the row is the positioned ancestor), full content width. */
+.mm__panel {
+  position: absolute;
+  /* THE HOVER CORRIDOR: 8 transparent pixels of the panel lie over the bottom of the nav row, so a pointer going
+     down from an entry is on the panel before it has left the row — there is no gap to fall through */
+  inset-block-start: calc(100% - 8px);
+  border-block-start: 8px solid transparent;
+  background-clip: padding-box;
+  inset-inline: 0;
+  z-index: 60;
+  display: grid;
+  grid-template-columns: 232px minmax(0, 1fr) 264px;
+  /* THE PANEL IS AS WIDE AS THE BAR IT HANGS FROM (the review of 2026-11-05: it was a 1180 px box centred in a wider
+     bar, and the page showed through beside it). Where a shop's bar runs the full width of the screen, so does the
+     panel, and `--mm-max` keeps what is in it on the page's column; it can never run past the screen. */
+  inline-size: auto;
+  padding-inline: max(0px, calc((100% - var(--mm-max, 100%)) / 2));
+  /* as tall as its content; only a very short window makes the PANEL scroll — never a column inside it */
+  max-block-size: calc(100vh - 170px);
+  overflow-y: auto;
+  border: 1px solid var(--mm-line);
+  border-radius: 0 0 var(--mm-radius) var(--mm-radius);
+  background: var(--mm-panel);
+  color: var(--mm-ink);
+  box-shadow: 0 24px 48px -12px rgba(0, 0, 0, 0.22);
+  text-align: start;
+}
+.mm__panel[hidden] {
+  display: none;
+}
+.mm__state {
+  display: flex;
+  grid-column: 1 / -1;
+  align-items: center;
+  gap: 12px;
+  min-block-size: 120px;
+  padding: 24px;
+  color: var(--mm-muted);
+  font-size: 14px;
+}
+.mm__retry {
+  padding: 6px 12px;
+  border: 1px solid var(--mm-line);
+  border-radius: 8px;
+  background: var(--mm-panel);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+/* ── the rail ── */
+.mm__rail {
+  margin: 0;
+  padding: 10px;
+  border-inline-end: 1px solid var(--mm-line);
+  background: var(--mm-wash);
+  list-style: none;
+}
+.mm__rail-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  inline-size: 100%;
+  min-block-size: 42px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  text-align: start;
+  text-decoration: none;
+  cursor: pointer;
+}
+.mm__rail-name {
+  flex: 1;
+  min-inline-size: 0;
+}
+.mm__rail-count {
+  color: var(--mm-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.mm__rail-tag {
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--pm-flash-accent, #d0182e);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+}
+.mm__rail-caret {
+  display: inline-flex;
+  color: var(--mm-faint);
+}
+.mm__rail-item.is-active {
+  background: var(--mm-panel);
+  box-shadow: 0 0 0 1px var(--mm-line);
+  font-weight: 700;
+}
+.mm__rail-item.is-active .mm__rail-caret {
+  color: inherit;
+}
+
+/* ── the pane ── */
+.mm__pane {
+  min-inline-size: 0;
+  padding: 20px 22px 22px;
+}
+.mm__pane--wide {
+  grid-column: 2 / -1;
+}
+.mm__pane-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-block-end: 16px;
+}
+.mm__pane-title {
+  margin: 0;
+  font-family: var(--mm-display);
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.15;
+}
+.mm__pane-sub {
+  margin: 2px 0 0;
+  color: var(--mm-muted);
+  font-size: 13px;
+}
+.mm__pane-all {
+  flex: none;
+  color: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.mm__tiles {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.mm__pane--wide .mm__tiles {
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+.mm__tile {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px 6px;
+  align-items: baseline;
+  padding: 8px;
+  border-radius: 10px;
+  color: inherit;
+  text-decoration: none;
+}
+.mm__tile-pic {
+  display: flex;
+  grid-column: 1 / -1;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 4 / 3;
+  border-radius: 8px;
+  background: var(--mm-wash);
+  color: var(--mm-faint);
+  font-family: var(--mm-display);
+  font-size: 28px;
+  font-weight: 700;
+  overflow: hidden;
+}
+.mm__tile-pic img {
+  inline-size: 100%;
+  block-size: 100%;
+  object-fit: contain;
+}
+.mm__tile-name {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mm__tile-count {
+  color: var(--mm-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.mm__tile:hover,
+.mm__tile:focus-visible {
+  background: var(--mm-wash);
+}
+.mm__tile:hover .mm__tile-pic,
+.mm__tile:focus-visible .mm__tile-pic {
+  background: var(--mm-panel);
+}
+
+.mm__chips {
+  margin-block-start: 18px;
+  padding-block-start: 16px;
+  border-block-start: 1px solid var(--mm-line);
+}
+.mm__chips-title {
+  margin: 0 0 10px;
+  color: var(--mm-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+.mm__chips ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.mm__chip {
+  display: inline-flex;
+  align-items: center;
+  min-block-size: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--mm-line);
+  border-radius: 999px;
+  color: inherit;
+  font-size: 13px;
+  text-decoration: none;
+}
+.mm__chip:hover,
+.mm__chip:focus-visible {
+  border-color: var(--mm-accent);
+  background: var(--mm-accent);
+  color: var(--mm-on-accent);
+}
+
+/* the Brands pane: every brand, logo first */
+.mm__brands {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.mm__brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  color: inherit;
+  text-decoration: none;
+}
+.mm__brand:hover,
+.mm__brand:focus-visible {
+  background: var(--mm-wash);
+}
+.mm__brand-logo {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  inline-size: 44px;
+  block-size: 32px;
+  border: 1px solid var(--mm-line);
+  border-radius: 6px;
+  background: var(--mm-panel);
+  color: var(--mm-muted);
+  font-size: 11px;
+  font-weight: 700;
+  overflow: hidden;
+}
+.mm__brand-logo img {
+  max-inline-size: 36px;
+  max-block-size: 24px;
+  object-fit: contain;
+}
+.mm__brand-name {
+  flex: 1;
+  min-inline-size: 0;
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── the featured card ── */
+.mm__feature {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 22px 20px 20px;
+  background: var(--mm-feature-bg);
+  color: var(--mm-feature-fg);
+  text-decoration: none;
+}
+/* THE FEATURED PHOTO STANDS ON A PLATE (the review of 2026-11-05): it was a circle cut out of the photo on a dark
+   disc. A plate the full width of the card, in the shop's own shape and colour (--mm-plate, --mm-plate-radius), with
+   room around the photo — so any product photo, tall or wide, on a white studio ground or not, is WHOLE and centred. */
+.mm__feature-pic {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  inline-size: 100%;
+  aspect-ratio: 1;
+  margin-block-end: 14px;
+  padding: 9%;
+  border-radius: var(--mm-plate-radius, 14px);
+  background: var(--mm-plate, #ffffff);
+  box-shadow: 0 14px 26px -18px rgba(0, 0, 0, 0.45);
+}
+.mm__feature-pic img {
+  inline-size: 100%;
+  block-size: 100%;
+  object-fit: contain;
+}
+.mm__feature-off {
+  position: absolute;
+  inset-block-start: 16px;
+  inset-inline-end: 16px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: var(--pm-flash-accent, #d0182e);
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 700;
+}
+.mm__feature-brand {
+  font-size: 12px;
+  opacity: 0.75;
+}
+.mm__feature-title {
+  display: -webkit-box;
+  overflow: hidden;
+  font-family: var(--mm-display);
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.3;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+.mm__feature-price {
+  margin-block-start: 4px;
+  font-size: 14px;
+}
+.mm__feature-cta {
+  align-self: flex-start;
+  margin-block-start: auto;
+  padding: 9px 14px;
+  border-radius: 999px;
+  background: var(--mm-feature-fg);
+  color: var(--mm-feature-cta-fg, var(--mm-feature-bg));
+  font-size: 13px;
+  font-weight: 600;
+}
+.mm__feature:focus-visible {
+  outline-color: var(--mm-feature-fg);
+  outline-offset: -4px;
+}
+
+/* A narrower desktop: the featured card goes, the tiles keep four columns. */
+@media (max-width: 1099.98px) {
+  .mm__panel {
+    grid-template-columns: 208px minmax(0, 1fr);
+  }
+  .mm__feature {
+    display: none;
+  }
+  .mm__pane--wide .mm__tiles {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+/* a tile's picture stands on its own ground (white studio photos on a dark panel need one) */
+.mm__tile-pic {
+  background: var(--mm-pic);
+}
+
+/* ── the SALE pane: the live campaigns, then the discounts by category and by brand ── */
+.mm__sale {
+  display: grid;
+  gap: 4px;
+}
+.mm__deals {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0 0 14px;
+  padding: 0;
+  list-style: none;
+}
+.mm__deals--1 {
+  grid-template-columns: minmax(0, 1fr);
+}
+.mm__deal {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-block-size: 76px;
+  padding: 12px 16px;
+  border-radius: var(--mm-radius);
+  color: #ffffff;
+  text-decoration: none;
+  overflow: hidden;
+  isolation: isolate;
+  box-shadow: 0 14px 26px -18px rgba(0, 0, 0, 0.7);
+}
+.mm__deal::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 50% 0;
+  z-index: -1;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0));
+}
+.mm__deal--hot {
+  background: linear-gradient(100deg, var(--pm-fire-4, #a80a14) 0%, var(--pm-fire-3, #e2210f) 40%, var(--pm-fire-2, #ff6a13) 80%, var(--pm-fire-1, #ffb327) 100%);
+}
+.mm__deal--flash {
+  background: linear-gradient(100deg, var(--pm-storm, #080d2b) 0%, var(--pm-storm-2, #151f63) 60%, #2345c4 100%);
+}
+.mm[dir='rtl'] .mm__deal--hot {
+  background: linear-gradient(260deg, var(--pm-fire-4, #a80a14) 0%, var(--pm-fire-3, #e2210f) 40%, var(--pm-fire-2, #ff6a13) 80%, var(--pm-fire-1, #ffb327) 100%);
+}
+.mm[dir='rtl'] .mm__deal--flash {
+  background: linear-gradient(260deg, var(--pm-storm, #080d2b) 0%, var(--pm-storm-2, #151f63) 60%, #2345c4 100%);
+}
+.mm__deal-mark {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  inline-size: 40px;
+  block-size: 40px;
+  border-radius: 50%;
+  background: #ffffff;
+  color: var(--pm-fire-3, #e2210f);
+}
+.mm__deal--flash .mm__deal-mark {
+  border-radius: 12px;
+  background: linear-gradient(160deg, #fff06e, var(--pm-volt-1, #ffe234) 55%, #ffb400);
+  color: var(--pm-storm, #080d2b);
+}
+.mm__deal-text {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 3px;
+  min-inline-size: 0;
+}
+.mm__deal-name {
+  font-family: var(--mm-display);
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1.1;
+}
+.mm__deal-sub {
+  font-size: 12px;
+  opacity: 0.92;
+}
+.mm__deal-time {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  font-size: 11px;
+}
+.mm__deal-ends {
+  opacity: 0.85;
+}
+.mm__deal-time .pm-clock {
+  font-size: 15px;
+}
+.mm__deal--flash .mm__deal-time .pm-clock {
+  color: var(--pm-volt-1, #ffe234);
+}
+.mm__deal-go {
+  display: inline-flex;
+  flex: none;
+  opacity: 0.85;
+}
+.mm__deal:focus-visible {
+  outline-color: #ffffff;
+  outline-offset: -4px;
+}
+.mm__tiles--sale {
+  margin-block-start: 8px;
+}
+.mm__tile-pic {
+  position: relative;
+}
+.mm__tile-off {
+  position: absolute;
+  inset-block-start: 6px;
+  inset-inline-start: 6px;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: var(--pm-fire-3, #e2210f);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+.mm__chip-n {
+  margin-inline-start: 6px;
+  color: var(--mm-muted);
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+@media (max-width: 1099.98px) {
+  .mm__deals {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* no "All categories" button on a computer: the menu's place in the nav row takes no room at all */
+.nav-ul li.nav-item--mega-bare {
+  inline-size: 0;
+  margin: 0;
+  padding: 0;
+}
+
+/* THE RAIL IS ONE TYPE: a link and a button are the same row (a shop's header styles `a` and `button` apart, which
+   made "Brands" — the one button — larger than the rest) */
+.mm .mm__rail-item {
+  box-sizing: border-box;
+  min-block-size: 44px;
+  margin: 0;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: normal;
+  line-height: 1.2;
+  text-align: start;
+  text-transform: none;
+}
+.mm .mm__rail-item.is-active {
+  box-shadow: inset 3px 0 0 var(--mm-accent);
+}
+.mm[dir='rtl'] .mm__rail-item.is-active {
+  box-shadow: inset -3px 0 0 var(--mm-accent);
+}
+
+/* EVERY TILE'S PICTURE IS TREATED THE SAME — the category's own picture or the newest product's: a square plate,
+   the picture whole and centred with the same margin */
+.mm .mm__tile-pic {
+  box-sizing: border-box;
+  aspect-ratio: 1;
+  padding: 8%;
+  background: var(--mm-pic);
+  overflow: hidden;
+}
+.mm .mm__tile-pic img {
+  inline-size: 100%;
+  block-size: 100%;
+  object-fit: contain;
+}
+
+/* a section with few sub-categories: larger tiles, and its top picks under them, so the panel is full and balanced */
+.mm__tiles.mm__tiles--few,
+.mm__pane--wide .mm__tiles.mm__tiles--few {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+.mm__picks {
+  margin-block-start: 18px;
+  padding-block-start: 16px;
+  border-block-start: 1px solid var(--mm-line);
+}
+.mm__picks ul {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.mm__pick {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  grid-template-rows: auto auto auto;
+  align-content: center;
+  gap: 2px 12px;
+  padding: 8px;
+  border: 1px solid var(--mm-line);
+  border-radius: var(--mm-radius);
+  color: inherit;
+  text-decoration: none;
+}
+.mm__pick:hover,
+.mm__pick:focus-visible {
+  border-color: var(--mm-accent);
+}
+.mm__pick-pic {
+  position: relative;
+  grid-row: 1 / -1;
+  box-sizing: border-box;
+  aspect-ratio: 1;
+  padding: 6%;
+  border-radius: calc(var(--mm-radius) - 2px);
+  background: var(--mm-pic);
+}
+.mm__pick-pic img {
+  inline-size: 100%;
+  block-size: 100%;
+  object-fit: contain;
+}
+.mm__pick-pic .mm__tile-off {
+  inset-block-start: -6px;
+  inset-inline-start: -6px;
+  font-size: 10px;
+}
+.mm__pick-brand {
+  align-self: end;
+  color: var(--mm-muted);
+  font-size: 11px;
+}
+.mm__pick-title {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.3;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.mm__pick-price {
+  align-self: start;
+  font-size: 13px;
+  font-weight: 800;
+}
+@media (max-width: 1279.98px) {
+  .mm__picks ul {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+/* A PICK'S TITLE IS TWO LINES, WHOLE (measured in the browser, 2026-11-05: the photo spans the card's three rows and
+   its height was shared out among them, so the title's box was taller than its two lines and half of a third line
+   showed under the price). The spare height goes to the last row; the title keeps its own two lines and one type. */
+.mm .mm__pick {
+  grid-template-rows: auto auto 1fr;
+  align-content: stretch;
+}
+.mm .mm__pick-title {
+  align-self: start;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.3;
+  max-block-size: 2.6em;
+}
+
+/* THE TILE GRID FITS ITS SECTION AND FILLS ITS PANE (measured, 2026-11-05, items 30 and 34). The columns were fixed —
+   five, or seven without the featured card — so "Men", with sixteen sub-categories, was four rows and the panel
+   scrolled inside a 900 px window, and on a 1920 px screen one tile's picture grew to 214 px. Now:
+     • the menu sets the columns from the NUMBER of tiles (--mm-cols: one row up to eight, two rows up to sixteen,
+       three beyond), and on a wide pane more of them go on a row (--mm-cols-wide: one row up to twelve);
+     • the columns share the pane's whole width — nothing is left unused beside them;
+     • a tile's PICTURE never grows past --mm-pic-max in height, however wide its column is: the plate gets wider,
+       the photo stays whole and centred on it. So the panel's height no longer depends on the screen's width. */
+.mm .mm__pane {
+  container-type: inline-size;
+}
+.mm .mm__tiles,
+.mm .mm__pane--wide .mm__tiles,
+.mm .mm__tiles.mm__tiles--few {
+  grid-template-columns: repeat(var(--mm-cols, 5), minmax(0, 1fr));
+}
+@container (min-width: 1180px) {
+  .mm .mm__tiles,
+  .mm .mm__pane--wide .mm__tiles,
+  .mm .mm__tiles.mm__tiles--few {
+    grid-template-columns: repeat(var(--mm-cols-wide, var(--mm-cols, 5)), minmax(0, 1fr));
+  }
+}
+.mm .mm__tile-pic {
+  /* stretch, said outright: a grid item with an aspect ratio would otherwise shrink to its capped height's width */
+  justify-self: stretch;
+  max-block-size: var(--mm-pic-max, 120px);
+}
+.mm .mm__tiles.mm__tiles--few {
+  --mm-pic-max: 140px;
+}
+/* a shop's header may lay out every <li> of its nav row as a flex box (Watchizer's does): inside the panel that made a
+   brand card as wide as its NAME — "Rolex" narrow, "Tommy Hilfiger" wide. Every list item of the panel is a plain
+   block, so what is in it takes its grid cell. */
+.mm .mm__panel li {
+  display: block;
+  position: static;
+  min-inline-size: 0;
+}
+/* …and A NAME IS READ WHOLE in a small tile (measured with sixteen tiles in two rows: the cells are ~95 px and
+   "Chronograph" was cut): the name takes up to two lines beside its count. */
+.mm .mm__tile {
+  align-items: start;
+}
+.mm .mm__tile-name {
+  display: -webkit-box;
+  white-space: normal;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+/* a DENSE grid (seven columns or more): the count goes under the name, so the name has the tile's whole width and a
+   word is never broken in two ("Tourbillo-n", seen in the browser) */
+.mm .mm__tiles--dense .mm__tile {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px 0;
+  padding-inline: 4px;
+}
+.mm .mm__tiles--dense .mm__tile-name {
+  font-size: 11.5px;
+}
+.mm .mm__tiles--dense .mm__tile-count {
+  font-size: 11px;
+}
+/* the brand chips stand at the foot of the pane: when the rail is taller than the tiles (one row of them on a wide
+   screen), the spare height is the space between the two groups, not a blank under the last one */
+.mm .mm__pane > .mm__chips:last-child {
+  margin-block-start: auto;
+}
+/* …and never closer to what is above them than they were (the automatic margin is 0 when there is no spare height) */
+.mm .mm__pane > :has(+ .mm__chips:last-child) {
+  margin-block-end: 18px;
+}
+/* a short window (a 720 px laptop): smaller pictures, so two rows and the brand chips still fit the panel */
+@media (max-height: 780px) {
+  .mm .mm__tiles {
+    --mm-pic-max: 96px;
+  }
+  .mm .mm__tiles.mm__tiles--few {
+    --mm-pic-max: 116px;
+  }
+}
+@media (max-width: 1099.98px) {
+  .mm .mm__tiles,
+  .mm .mm__pane--wide .mm__tiles,
+  .mm .mm__tiles.mm__tiles--few {
+    grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+  }
+}
+
+/* A NAME IS READ WHOLE FROM A 1280 px WINDOW UP (the follow-up of 2026-11-06). Measured at 1280 x 720, every pane of
+   both shops: "Chronograph" — one word, so it cannot take the second line — was cut with an ellipsis in Brand
+   Fashion's Men (73 px for 79) and Women (77 for 90) and in Watchizer's Women (85 for 90). The pane is the
+   container, so these rules follow the room there is, not the window:
+     • SIX IN A ROW in a pane narrower than 800 px: the count goes under the name, as in a dense grid, so the name
+       has the tile's whole width; the picture is 4:3 instead of square and gives back the line the count takes —
+       the pane is not taller than it was;
+     • A DENSE GRID (seven or more in a row) in a pane narrower than 760 px: the tiles stand side by side with no
+       gap and 1 px of padding, which is 11 px more for the name; the picture keeps its width (its own margin).
+   Measured after, 84 panes (both shops, English and Arabic, 1100 to 1920 px wide): no name cut from 1280 up, no
+   pane scrolling inside; at 1440 and wider nothing changes. */
+@container (max-width: 799.98px) {
+  .mm .mm__tiles--six .mm__tile {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px 0;
+  }
+  .mm .mm__tiles--six .mm__tile-pic {
+    aspect-ratio: 4 / 3;
+  }
+}
+@container (max-width: 759.98px) {
+  .mm .mm__tiles--dense {
+    column-gap: 0;
+  }
+  .mm .mm__tiles--dense .mm__tile {
+    padding-inline: 1px;
+  }
+  .mm .mm__tiles--dense .mm__tile-pic {
+    margin-inline: 5.6px;
+  }
+}
+/* …and in a window 740 px tall or less the suggested products stand 8 px closer to the tiles: Brand Fashion's
+   Arabic Fashion pane was 6 px taller than the panel at 1280 x 720 and scrolled inside by that much. */
+@media (max-height: 740px) {
+  .mm .mm__pane > .mm__picks {
+    margin-block-start: 14px;
+    padding-block-start: 12px;
+  }
+}
+
+/* THE BRANDS PANE: EVERY CARD THE SAME, EVERY NAME WHOLE, THE PANE FILLED (measured, 2026-11-05: in 150 px cells
+   "Tommy Hilfiger" read "Tomm…"; then, on Watchizer, each card was as wide as its name; and under the nineteen
+   brands a third of the panel was empty). A brand is a card — its logo on a white plate of one size, its name on up
+   to two lines, its count at the end — in equal columns that share the pane's width, as many as fit; the rows share
+   the pane's height, so nothing is left under the last one. */
+.mm .mm__pane {
+  display: flex;
+  flex-direction: column;
+}
+.mm .mm__brands {
+  flex: 1 1 auto;
+  grid-template-columns: repeat(auto-fill, minmax(204px, 1fr));
+  grid-auto-rows: minmax(70px, 1fr);
+  gap: 10px;
+}
+.mm .mm__brand {
+  box-sizing: border-box;
+  gap: 12px;
+  inline-size: 100%;
+  block-size: 100%;
+  min-block-size: 70px;
+  padding: 10px 12px;
+  border: 1px solid var(--mm-line);
+  border-radius: var(--mm-radius);
+}
+.mm .mm__brand .mm__tile-count {
+  flex: none;
+  min-inline-size: 28px;
+  text-align: end;
+}
+.mm .mm__brand:hover,
+.mm .mm__brand:focus-visible {
+  border-color: var(--mm-accent);
+}
+.mm .mm__brand-logo {
+  inline-size: 64px;
+  block-size: 46px;
+  border-radius: calc(var(--mm-radius) - 2px);
+  background: var(--mm-plate, #ffffff);
+}
+.mm .mm__brand-logo img {
+  max-inline-size: 54px;
+  max-block-size: 36px;
+}
+.mm .mm__brand-name {
+  display: -webkit-box;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.25;
+  white-space: normal;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+/*
+ * ── THE MENU ON A PHONE (the design pass, 2026-11-05) — MegaDrawer, inside each shop's menu drawer ─────────────
+ *
+ * Rows a thumb can hit (56 px), an entry opened in place, picture tiles three to a row, brands as chips that
+ * scroll sideways, the featured product as one horizontal card. Muted text and washes are mixed from the drawer's
+ * own text colour, so the same rules read on a light drawer and a dark one.
+ */
+.md {
+  --md-muted: color-mix(in srgb, currentColor 58%, transparent);
+  --md-wash: color-mix(in srgb, currentColor 7%, transparent);
+  --md-line: color-mix(in srgb, currentColor 14%, transparent);
+  padding-block: 6px 10px;
+  color: inherit;
+  text-align: start;
+}
+.md :focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+.md__heading {
+  margin: 0 0 6px;
+  padding-inline: 16px;
+  color: var(--md-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+.md__list {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0 8px;
+  list-style: none;
+}
+.md__row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  inline-size: 100%;
+  min-block-size: 56px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 12px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  text-align: start;
+  text-decoration: none;
+  cursor: pointer;
+}
+/* the shops' drawers style `a` and `button` differently: a row is one thing whichever element it is */
+.md .md__row {
+  box-sizing: border-box;
+  margin: 0;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: normal;
+  line-height: 1.2;
+  text-transform: none;
+}
+.md__row:active {
+  background: var(--md-wash);
+}
+.md__row--skel {
+  min-block-size: 52px;
+  margin-block: 3px;
+  background: var(--md-wash);
+}
+.md__pic {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  inline-size: 44px;
+  block-size: 44px;
+  border-radius: 12px;
+  background: #ffffff;
+  color: rgba(0, 0, 0, 0.45);
+  font-weight: 700;
+  overflow: hidden;
+  box-shadow: 0 0 0 1px var(--md-line);
+}
+.md__pic img {
+  inline-size: 100%;
+  block-size: 100%;
+  object-fit: contain;
+}
+.md__pic--sale {
+  background: #fde7e2;
+  color: #c2200c;
+}
+.md__pic--brands,
+.md__pic--newest {
+  background: var(--mm-accent);
+  color: var(--mm-on-accent);
+  box-shadow: none;
+}
+.md__name {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.md__tag {
+  flex: none;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #c2200c;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+}
+.md__count {
+  flex: none;
+  color: var(--md-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+.md__caret {
+  display: inline-flex;
+  flex: none;
+  color: var(--md-muted);
+}
+.md__state {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  color: var(--md-muted);
+  font-size: 14px;
+}
+
+/* an entry, opened in place */
+.md--pane {
+  animation: md-in 0.22s ease both;
+}
+@keyframes md-in {
+  from {
+    opacity: 0;
+    transform: translateX(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.md--pane[dir='rtl'] {
+  animation-name: md-in-rtl;
+}
+@keyframes md-in-rtl {
+  from {
+    opacity: 0;
+    transform: translateX(-14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.md__back {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-block-size: 44px;
+  padding-inline: 12px;
+  border: 0;
+  background: none;
+  color: var(--md-muted);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.md__pane-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 2px 16px 14px;
+}
+.md__pane-title {
+  margin: 0;
+  font-family: var(--mm-display);
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.15;
+}
+.md__pane-all {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  min-block-size: 36px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: var(--mm-accent);
+  color: var(--mm-on-accent);
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.md__tiles {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px 8px;
+  margin: 0;
+  padding: 0 12px;
+  list-style: none;
+}
+.md__tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  color: inherit;
+  text-align: center;
+  text-decoration: none;
+}
+.md__tile-pic {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 100%;
+  aspect-ratio: 1;
+  border-radius: 14px;
+  background: #ffffff;
+  color: rgba(0, 0, 0, 0.35);
+  font-size: 22px;
+  font-weight: 700;
+  overflow: hidden;
+  box-shadow: 0 0 0 1px var(--md-line);
+}
+.md__tile-pic img {
+  inline-size: 100%;
+  block-size: 100%;
+  object-fit: contain;
+}
+.md__tile-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+.md__chips {
+  margin-block-start: 18px;
+}
+.md__chips-title {
+  margin: 0 0 8px;
+  padding-inline: 16px;
+  color: var(--md-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+.md__chips ul {
+  display: flex;
+  gap: 8px;
+  margin: 0;
+  padding: 0 16px 2px;
+  overflow-x: auto;
+  list-style: none;
+  scrollbar-width: none;
+}
+.md__chips ul::-webkit-scrollbar {
+  display: none;
+}
+.md__chip {
+  display: inline-flex;
+  align-items: center;
+  min-block-size: 38px;
+  padding: 0 14px;
+  border: 1px solid var(--md-line);
+  border-radius: 999px;
+  color: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.md__feature {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 18px 12px 4px;
+  padding: 10px;
+  border-radius: 14px;
+  background: var(--mm-feature-bg);
+  color: var(--mm-feature-fg);
+  text-decoration: none;
+}
+.md__feature-pic {
+  flex: none;
+  inline-size: 84px;
+  block-size: 84px;
+  border-radius: 10px;
+  background: #ffffff;
+  overflow: hidden;
+}
+.md__feature-pic img {
+  inline-size: 100%;
+  block-size: 100%;
+  object-fit: contain;
+}
+.md__feature-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-inline-size: 0;
+}
+.md__feature-brand {
+  font-size: 11px;
+  opacity: 0.75;
+}
+.md__feature-title {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.3;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.md__feature-price {
+  font-size: 14px;
+  font-weight: 800;
+}
+.md__feature-off {
+  position: absolute;
+  inset-block-start: 8px;
+  inset-inline-end: 8px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #c2200c;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 800;
+}
+.md__brands {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 0 12px;
+  list-style: none;
+}
+.md__brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-block-size: 52px;
+  padding: 6px 8px;
+  border: 1px solid var(--md-line);
+  border-radius: 12px;
+  color: inherit;
+  text-decoration: none;
+}
+.md__brand-logo {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  inline-size: 40px;
+  block-size: 30px;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #111111;
+  font-size: 11px;
+  font-weight: 800;
+  overflow: hidden;
+}
+.md__brand-logo img {
+  max-inline-size: 100%;
+  max-block-size: 100%;
+  object-fit: contain;
+}
+.md__brand-name {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (prefers-reduced-motion: reduce) {
+  .md--pane {
+    animation: none;
+  }
+}

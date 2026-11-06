@@ -111,7 +111,7 @@ function seedUserOrders(int $userId, int $count): void
 
     for ($i = 0; $i < $count; $i++) {
         $orderId = DB::table('orders')->insertGetId([
-            'user_id' => $userId, 'address_id' => $addressId,
+            'user_id' => $userId, 'address_id' => $addressId, 'storefront_id' => 1,
             'total_price_for_order' => '100.00', 'payment_method' => 'cash',
             'order_number' => '92'.str_pad((string) random_int(1000, 9999), 4, '0', STR_PAD_LEFT),
             'status' => 'processing', 'created_at' => now(), 'updated_at' => now(),

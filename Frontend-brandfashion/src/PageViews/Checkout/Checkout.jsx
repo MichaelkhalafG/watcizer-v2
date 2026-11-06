@@ -31,6 +31,7 @@ import { txt, money } from '../../lib/cardData'
 import { STOREFRONT_CODE } from '../../lib/env'
 import { trackInitiateCheckout, savePendingPurchase } from '../../scripts/pixels'
 import { useOrderConfirmStore } from '../../Store/orderConfirmStore'
+import PaymentBadges from '../../Components/Promo/PaymentBadges'
 import './Checkout.css'
 
 /*
@@ -210,6 +211,8 @@ const OrderSummary = memo(function OrderSummary({
         <li><FiShield size={14} /> {t('100% authentic', 'أصلي 100%')}</li>
         <li><FiPhone size={14} /> {t('WhatsApp support', 'دعم واتساب')}</li>
       </ul>
+      {/* the ways to pay this shop offers (Part 7, 2026-11-05) — the same list the method picker reads */}
+      <PaymentBadges className="wz-checkout-badges pm-pay--compact" />
     </aside>
   )
 })

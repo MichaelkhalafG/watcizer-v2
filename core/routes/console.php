@@ -22,6 +22,13 @@ Schedule::command('inventory:reconcile-cancellations')->everyMinute()->withoutOv
 */
 Schedule::command('orders:expire-unpaid')->everyMinute()->withoutOverlapping();
 
+/*
+| Timed campaigns (Part 2, 2026-11-05). A campaign scheduled for a later start has its products' starting
+| stock recorded the minute it goes live — the progress bar's "start" is the stock when the sale begins,
+| not when it was typed. Nothing to do on most ticks, and it says so. Same cron entry.
+*/
+Schedule::command('campaigns:activate')->everyMinute()->withoutOverlapping();
+
 // The Morabaa connector does not exist yet, so the outbox is drained by a no-op consumer to keep
 // the table bounded (study §4.2). The `mail` channel is deliberately never drained.
 Schedule::command('integration:drain --channel=morabaa')->hourly()->withoutOverlapping();

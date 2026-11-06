@@ -349,6 +349,7 @@ function SideBar({ facets }) {
               step={step}
               value={priceMin}
               onChange={onMinChange}
+              aria-label={isRTL ? 'أقل سعر' : 'Minimum price'}
             />
             <input
               type="range"
@@ -358,6 +359,7 @@ function SideBar({ facets }) {
               step={step}
               value={priceMaxView}
               onChange={onMaxChange}
+              aria-label={isRTL ? 'أعلى سعر' : 'Maximum price'}
             />
           </div>
           <div className="wz-price-vals">

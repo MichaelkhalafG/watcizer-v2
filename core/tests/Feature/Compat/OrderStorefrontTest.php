@@ -5,6 +5,7 @@ use App\Models\Storefront\Storefront;
 use App\Transform\Row;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Database\Query\JoinClause;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -160,67 +161,51 @@ it('keeps the storefront OUT of the compat response, so the harness cannot see i
         ->and($body)->not->toContain('storefront');
 });
 
-it('backfills every pre-column order to the primary storefront, and is idempotent', function () {
-    // Two orders that predate the writer, exactly as the 33 real ones do.
-    $stale = [PaymentFixture::order(total: 10.0, storefrontId: null), PaymentFixture::order(total: 20.0, storefrontId: null)];
-    foreach ($stale as $id) {
-        expect(Row::nint(Row::cast(T::one(DB::table('orders')->where('id', $id))), 'storefront_id'))->toBeNull();
+/*
+ * ── The backfill, after it ran (rewritten 2026-11-05) ─────────────────────────────────────────────
+ *
+ * Three tests stood here: the command backfills pre-column orders, refuses once an order names another
+ * storefront, and writes nothing without --force. Each BUILT an order with no storefront — and since the
+ * migration `2026_10_23_000000_orders_storefront_backfill` (production, 2026-10-23) the column is NOT NULL,
+ * so that order cannot be written: the three failed on their own fixture, not on the command. The local
+ * copies had never run that migration (they were migrated file by file), which is why the gate of
+ * 2026-10-30 still passed; a plain `migrate` on 2026-11-04 applied it and 36 tests met the constraint.
+ *
+ * What is still true and worth holding: the constraint itself, and that the one-time command is a safe
+ * no-op on a database where it has nothing left to do.
+ */
+it('holds every order to a storefront: the column refuses NULL, and the one-time backfill has nothing to do', function () {
+    $column = Row::cast(T::row(DB::select("SHOW COLUMNS FROM `orders` LIKE 'storefront_id'")[0] ?? null));
+    expect(Row::str($column, 'Null'))->toBe('NO');
+
+    // The database is the guard: a writer that forgets the storefront fails loudly instead of leaving an
+    // order no per-storefront read can find. (A savepoint, so the refusal does not poison the test's transaction.)
+    $refused = false;
+    try {
+        DB::transaction(fn () => PaymentFixture::order(total: 10.0, storefrontId: null));
+    } catch (QueryException) {
+        $refused = true;
     }
+    expect($refused)->toBeTrue('an order without a storefront must be refused by the column');
+    expect(DB::table('orders')->whereNull('storefront_id')->count())->toBe(0);
 
-    // A row that already names the primary storefront must be left exactly as it is.
-    $fresh = PaymentFixture::order(total: 30.0, storefrontId: 1);
-
-    expect(Artisan::call('orders:backfill-storefront', ['--force' => true]))->toBe(0);
-
-    foreach ([...$stale, $fresh] as $id) {
-        expect(Row::nint(Row::cast(T::one(DB::table('orders')->where('id', $id))), 'storefront_id'))->toBe(1);
-    }
-
-    // Idempotent: a second run finds nothing and says so.
+    // The command, on the state it left behind: nothing to do, with or without the flags.
     expect(Artisan::call('orders:backfill-storefront', ['--force' => true]))->toBe(0);
     expect(Artisan::output())->toContain('Nothing to do');
-});
-
-it('REFUSES to backfill once an order names another storefront', function () {
-    /*
-     * The backfill's whole justification is that no historical order can belong to storefront 2 —
-     * Brand Fashion has never had a write path. That argument has an expiry date, so the command
-     * re-checks it instead of trusting the paragraph that made it.
-     */
-    PaymentFixture::order(total: 40.0, storefrontId: null);
-    PaymentFixture::order(total: 50.0, storefrontId: Storefront::BRAND_FASHION_ID);
-
-    expect(Artisan::call('orders:backfill-storefront', ['--force' => true]))->toBe(1);
-    expect(Artisan::output())->toContain('no longer holds');
-
-    // …and it wrote nothing.
-    expect(DB::table('orders')->whereNull('storefront_id')->count())->toBeGreaterThan(0);
-});
-
-it('writes nothing without --force, and nothing on a dry run', function () {
-    PaymentFixture::order(total: 60.0, storefrontId: null);
-    $before = DB::table('orders')->whereNull('storefront_id')->count();
-
-    expect(Artisan::call('orders:backfill-storefront'))->toBe(1);
-    expect(DB::table('orders')->whereNull('storefront_id')->count())->toBe($before);
-
     expect(Artisan::call('orders:backfill-storefront', ['--dry-run' => true]))->toBe(0);
-    expect(Artisan::output())->toContain('DRY RUN');
-    expect(DB::table('orders')->whereNull('storefront_id')->count())->toBe($before);
 });
 
-it('leaves the column NULLABLE and the callback NULL branch alone, and knows every v2 write route by name', function () {
-    // Deferred on 2026-09-13, and DECIDED by Michael on 2026-10-18 (round 6) once the v2 checkout existed: the
-    // column stays NULLABLE and the callback keeps its branch for an order without one — making it NOT NULL needs a
-    // backfill of live rows, its own job after Brand Fashion ships (POST_CUTOVER_BACKLOG.md, ORDERS-STOREFRONT-NOT-NULL).
-    // What changed instead: the v2 path ALWAYS writes the column (tests/Feature/V2/CheckoutTest.php proves it on both
-    // shops, and that an order without a storefront cannot be written).
-    $column = Row::cast(T::row(DB::select("SHOW COLUMNS FROM `orders` LIKE 'storefront_id'")[0] ?? null));
-    expect(Row::str($column, 'Null'))->toBe('YES');
-
+it('has no NULL branch left in the payment callback, and knows every v2 write route by name', function () {
+    // History: deferred on 2026-09-13; on 2026-10-18 the column was to stay NULLABLE with a callback branch for an
+    // order without a storefront; on 2026-10-23 ORDERS-STOREFRONT-NOT-NULL was done after all (the migration backfilled
+    // the nine pre-column orders and made the column NOT NULL — DEPLOY_20261023.md §3.1). This test still said
+    // NULLABLE because the local copies had not run that migration; it says what production says now.
+    // With no NULL order possible, the callback's "accepted as the primary storefront" branch was dead and is gone
+    // (2026-11-05): ownership is one comparison, and nothing can fall through it.
     $source = file_get_contents(app_path('Http/Controllers/Payment/PaymentCallbackController.php'));
     expect(is_string($source))->toBeTrue();
-    expect(T::str($source))->toContain('carries no storefront_id');
+    expect(T::str($source))->not->toContain('carries no storefront_id')
+        ->and(T::str($source))->toContain('$belongs = $orderStorefront === $storefrontId;');
 
     // Every v2 write route, by name. Still a tripwire: a NEW one must first prove it writes the path's storefront
     // (as CartStorefrontTest does for carts and CheckoutTest for orders), and only then be added here.

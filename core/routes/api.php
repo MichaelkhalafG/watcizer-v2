@@ -18,15 +18,18 @@ use App\Http\Controllers\Customer\CustomerVerificationController;
 use App\Http\Controllers\Payment\PaymentCallbackController;
 use App\Http\Controllers\V2\AccountController;
 use App\Http\Controllers\V2\AuthController;
+use App\Http\Controllers\V2\CampaignController;
 use App\Http\Controllers\V2\CartController;
 use App\Http\Controllers\V2\CategoryController;
 use App\Http\Controllers\V2\HomeController;
+use App\Http\Controllers\V2\MenuController;
 use App\Http\Controllers\V2\MetaController;
 use App\Http\Controllers\V2\OfferController;
 use App\Http\Controllers\V2\OrderController;
-use App\Http\Controllers\V2\RelatedController;
+use App\Http\Controllers\V2\PaymentBadgeController;
 use App\Http\Controllers\V2\PaymentMethodController;
 use App\Http\Controllers\V2\ProductController;
+use App\Http\Controllers\V2\RelatedController;
 use App\Http\Controllers\V2\SitemapController;
 use Illuminate\Support\Facades\Route;
 
@@ -49,6 +52,8 @@ Route::prefix('v2/{storefront}')->middleware(['storefront', 'http.cache'])->wher
     // V2-READ-HALF step 1 (2026-10-17): the PDP's two rails and the home page, on v2 shapes (compat's rules, unedited).
     Route::get('products/{slug}/related', [RelatedController::class, 'show'])->where('slug', '[^/]+');
     Route::get('home', [HomeController::class, 'show']);
+    // The mega menu's data (Part 4, 2026-11-05): categories with picture tiles, popular brands, a featured product.
+    Route::get('menu', [MenuController::class, 'show']);
     Route::get('sitemap.xml', [SitemapController::class, 'index']);
     Route::get('sitemaps/{locale}/{file}.xml', [SitemapController::class, 'chunk'])->where(['locale' => '[a-z]{2}', 'file' => '[a-z0-9\-]+']);
 });
@@ -57,9 +62,15 @@ Route::prefix('v2/{storefront}')->middleware(['storefront', 'http.cache'])->wher
 // stale would keep a switched-off method on the checkout for that long (PaymentMethodController).
 Route::prefix('v2/{storefront}')->middleware('storefront')->where(['storefront' => '[a-z0-9_-]+'])->group(function (): void {
     Route::get('payment-methods', [PaymentMethodController::class, 'index']);
+    // The badges of those same methods, for the footer, the cart and the checkout (Part 7, 2026-11-05):
+    // derived from the list above, so a method switched off stops being advertised (PaymentBadgeController).
+    Route::get('payment-badges', [PaymentBadgeController::class, 'index']);
     // The OFFERS the storefront is running — the dashboard's promotions (round 5, 2026-10-18); not under
     // http.cache for the same reason: an offer switched off must leave the page at once (OfferController).
     Route::get('offers', [OfferController::class, 'index']);
+    // The LIVE timed campaigns — Hot Deals and Flash Sale — with the server's clock (Part 2, 2026-11-05). Not under
+    // http.cache for the same reason again: a countdown is wrong by the second, and an ended sale must leave at once.
+    Route::get('campaigns', [CampaignController::class, 'index']);
     // B7 S1 (round 5, 2026-10-18): the v2 CART of the storefront in the path — variant-aware, beside compat's cart and
     // never through it. Never cached (CartController): one shopper's cart is never served to another.
     Route::get('cart', [CartController::class, 'show']);

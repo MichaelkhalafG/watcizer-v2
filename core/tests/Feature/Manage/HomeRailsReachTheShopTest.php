@@ -31,12 +31,16 @@ function shopRailOrder(string $code): array
 }
 
 it('serves a REORDER to the shop at once, not when the cache happens to expire', function () {
-    $ids = array_column(HomeRails::all(2), 'id');
-    expect(count($ids))->toBeGreaterThan(1);
+    $all = HomeRails::all(2);
+    $ids = array_column($all, 'id');
+    // the two rails to swap are SLIDERS: the Banners block row (the design pass, 2026-11-05) is in the list too, and
+    // on this shop it is not part of the payload at all — its hero is `banner`, so the block leads the page
+    $sliders = array_keys(array_filter($all, fn (array $r): bool => $r['kind'] !== HomeRails::BANNERS));
+    expect(count($sliders))->toBeGreaterThan(1);
 
     $before = shopRailOrder('brandfashion');          // warms the cached payload
     $swapped = $ids;
-    [$swapped[0], $swapped[1]] = [$swapped[1], $swapped[0]];
+    [$swapped[$sliders[0]], $swapped[$sliders[1]]] = [$swapped[$sliders[1]], $swapped[$sliders[0]]];
 
     actingAs(Staff::admin())->post('/manage/storefronts/2/home-rails/order', ['order' => $swapped])
         ->assertRedirect();
@@ -47,7 +51,8 @@ it('serves a REORDER to the shop at once, not when the cache happens to expire',
 });
 
 it('serves a rail switched OFF to the shop at once', function () {
-    $rail = HomeRails::all(2)[0];
+    // the first SLIDER (the Banners block row is not a slider, and is not in this shop's payload)
+    $rail = array_values(array_filter(HomeRails::all(2), fn (array $r): bool => $r['kind'] !== HomeRails::BANNERS))[0];
     $id = T::int($rail['id']);
     expect(shopRailOrder('brandfashion'))->toContain($id);
 

@@ -1,0 +1,526 @@
+/*
+ * The home zone (the twelve updates, Part 3, 2026-11-05; the design pass of the same day). A TWIN.
+ *
+ *   .hz   the Banners block: the large banner + two stacked side banners — at the top of the home, or a section
+ *         among the sliders when a hero leads the page
+ *   .hl   a slider's own colour: its SECTION's background and — with the blend on — the background of the
+ *         product PHOTOS. Nothing else: a card keeps its own surface, text, prices and buttons.
+ *   .bb   the brand banner
+ *
+ * Logical properties throughout; the brand banner's slant is the only thing that knows the direction.
+ */
+
+/* ── the Banners block ───────────────────────────────────────────────────────────────────────────── */
+.hz {
+  display: grid;
+  grid-template-columns: minmax(0, 2.15fr) minmax(0, 1fr);
+  gap: 14px;
+  align-items: stretch;
+}
+.hz__main {
+  min-inline-size: 0;
+}
+/* the hero keeps its own aspect ratio; the side column takes the hero's height and splits it */
+.hz__side {
+  display: grid;
+  grid-auto-rows: minmax(0, 1fr);
+  gap: 14px;
+  min-inline-size: 0;
+}
+.hz__slot {
+  position: relative;
+  display: block;
+  min-block-size: 0;
+  border-radius: var(--hz-radius, 12px);
+  background: rgba(0, 0, 0, 0.05);
+  overflow: hidden;
+  box-shadow: 0 16px 30px -24px rgba(0, 0, 0, 0.55);
+}
+.hz__slot img {
+  position: absolute;
+  inset: 0;
+  inline-size: 100%;
+  block-size: 100%;
+  object-fit: cover;
+  transition: transform 0.5s ease;
+}
+@media (hover: hover) {
+  .hz__slot:hover img {
+    transform: scale(1.04);
+  }
+}
+.hz__slot:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+/* Tablets and phones: the two side banners go UNDER the large one, side by side — each a real banner at a
+   size a thumb can hit, not a thin column. */
+@media (max-width: 1023.98px) {
+  .hz {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+  }
+  .hz__side {
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    grid-auto-rows: auto;
+    gap: 10px;
+  }
+  .hz__slot {
+    aspect-ratio: 960 / 500;
+  }
+}
+/* a phone: each slot is a 4 : 3 tile (the dashboard crops a "Phone only" picture to exactly this) */
+@media (max-width: 599.98px) {
+  .hz__slot {
+    aspect-ratio: 4 / 3;
+  }
+}
+/* a slot whose only picture is for one device is not drawn on the other */
+@media (max-width: 599.98px) {
+  .hz__slot--desktop {
+    display: none;
+  }
+}
+@media (min-width: 600px) {
+  .hz__slot--mobile {
+    display: none;
+  }
+}
+
+/* ── a slider's colour ───────────────────────────────────────────────────────────────────────────── */
+/*
+ * ONLY the section. `--hl-ground` is the colour; `--hl-ink` is ink or white, whichever reads on it, and it is
+ * given to the slider's own HEADING by each shop's stylesheet (the heading stands on the section) — never
+ * inherited into the cards, which keep everything of their own.
+ */
+.hl {
+  padding: 20px 20px 22px;
+  border-radius: var(--hz-radius, 12px);
+  background: var(--hl-ground);
+}
+@media (max-width: 767.98px) {
+  .hl {
+    padding: 14px 10px 14px;
+  }
+}
+/*
+ * THE BLEND NEVER TINTS THE PRODUCT (the developer's review, 2026-11-05). It used `mix-blend-mode: multiply`, which
+ * multiplies EVERY pixel of the photo by the section's colour: on beige the watches turned beige. Now the photo is
+ * drawn exactly as it is, and a MASK of its white studio background (made once per photo by core, ~1.7 KB, sent
+ * with the slider) is laid over it: where the white was the photo is transparent and the photo box — painted with
+ * the section's colour — shows through; every product pixel is the photo's own.
+ *
+ * A card that has a mask marks its photo box `hl-cut` and carries the mask in `--cut`. A card WITHOUT one (no
+ * studio background, no mask yet) is not touched at all: its photo stays on its own white, whole. The mask is
+ * fitted the way the photo is (`contain`, centred), so the two always coincide; a browser without CSS masks draws
+ * the photo unmasked on the coloured box, which is the photo as it is.
+ */
+.hl--blend .hl-cut {
+  background: var(--hl-ground);
+}
+.hl--blend .hl-cut img.hl-cut__img {
+  -webkit-mask: var(--cut) center / contain no-repeat;
+  mask: var(--cut) center / contain no-repeat;
+}
+
+/* ── the brand banner ────────────────────────────────────────────────────────────────────────────── */
+.bb {
+  --bb-cut: 44%;
+  position: relative;
+  border-radius: var(--hz-radius, 12px);
+  /* bottom to top: the stage; the blade's shadow falling on it; a hairline echo of the blade; the blade; the text ground */
+  background:
+    linear-gradient(104deg, var(--bb-1) 0 var(--bb-cut), transparent var(--bb-cut)),
+    linear-gradient(104deg, transparent 0 var(--bb-cut), var(--bb-2) var(--bb-cut) calc(var(--bb-cut) + 5%), transparent calc(var(--bb-cut) + 5%)),
+    linear-gradient(104deg, transparent 0 calc(var(--bb-cut) + 6.4%), var(--bb-1) calc(var(--bb-cut) + 6.4%) calc(var(--bb-cut) + 6.9%), transparent calc(var(--bb-cut) + 6.9%)),
+    linear-gradient(104deg, transparent 0 calc(var(--bb-cut) + 5%), rgba(0, 0, 0, 0.16) calc(var(--bb-cut) + 5%), transparent calc(var(--bb-cut) + 11%)),
+    var(--bb-3);
+  color: var(--bb-on-1);
+  overflow: hidden;
+  isolation: isolate;
+  box-shadow: 0 22px 44px -30px rgba(0, 0, 0, 0.6);
+}
+.bb[dir='rtl'] {
+  background:
+    linear-gradient(256deg, var(--bb-1) 0 var(--bb-cut), transparent var(--bb-cut)),
+    linear-gradient(256deg, transparent 0 var(--bb-cut), var(--bb-2) var(--bb-cut) calc(var(--bb-cut) + 5%), transparent calc(var(--bb-cut) + 5%)),
+    linear-gradient(256deg, transparent 0 calc(var(--bb-cut) + 6.4%), var(--bb-1) calc(var(--bb-cut) + 6.4%) calc(var(--bb-cut) + 6.9%), transparent calc(var(--bb-cut) + 6.9%)),
+    linear-gradient(256deg, transparent 0 calc(var(--bb-cut) + 5%), rgba(0, 0, 0, 0.16) calc(var(--bb-cut) + 5%), transparent calc(var(--bb-cut) + 11%)),
+    var(--bb-3);
+}
+/* FULL WIDTH: the banner runs edge to edge; its words and its products stay on the page's own column */
+.bb--bleed {
+  border-radius: 0;
+  box-shadow: none;
+}
+.bb__inner {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  align-items: stretch;
+  min-block-size: 340px;
+}
+.bb--bleed .bb__inner {
+  max-inline-size: var(--pm-container, 1400px);
+  margin-inline: auto;
+  padding-inline: var(--pm-gutter, 16px);
+  min-block-size: 380px;
+}
+.bb :focus-visible {
+  outline: 2px solid var(--bb-2);
+  outline-offset: 3px;
+}
+.bb__text {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 12px;
+  max-inline-size: 31rem;
+  padding: clamp(24px, 3.2vw, 46px);
+  padding-inline-end: clamp(28px, 5vw, 76px);
+}
+.bb--bleed .bb__text {
+  padding-inline-start: 0;
+}
+/* the brand's name, very large and very faint, behind the words */
+.bb__ghost {
+  position: absolute;
+  inset-block-end: -0.16em;
+  inset-inline-start: -0.04em;
+  z-index: -1;
+  color: var(--bb-on-1);
+  font-family: var(--pm-display, inherit);
+  font-size: clamp(72px, 11.5vw, 168px);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 0.8;
+  opacity: 0.07;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.bb__logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-inline-size: 92px;
+  block-size: 52px;
+  padding: 7px 14px;
+  border-radius: 12px;
+  background: #ffffff;
+  color: #111111;
+  box-shadow: 0 10px 22px -12px rgba(0, 0, 0, 0.55);
+}
+.bb__logo img {
+  max-inline-size: 124px;
+  max-block-size: 36px;
+  object-fit: contain;
+}
+.bb__logo--name {
+  font-size: 15px;
+  font-weight: 800;
+}
+.bb .bb__title {
+  margin: 0;
+  color: inherit;
+  letter-spacing: normal;
+  text-transform: none;
+  font-family: var(--pm-display, inherit);
+  font-size: clamp(26px, 3.2vw, 44px);
+  font-weight: 800;
+  line-height: 1.08;
+  text-wrap: balance;
+}
+.bb .bb__desc {
+  max-inline-size: 36ch;
+  margin: 0;
+  color: inherit;
+  font-size: 15px;
+  line-height: 1.5;
+  opacity: 0.92;
+}
+.bb .bb__cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  box-sizing: border-box;
+  min-block-size: 46px;
+  margin-block-start: 8px;
+  padding: 0 22px;
+  border-radius: 999px;
+  background: var(--bb-2);
+  color: var(--bb-on-2);
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: none;
+  box-shadow: 0 12px 22px -12px rgba(0, 0, 0, 0.6);
+}
+.bb__cta svg {
+  transition: transform 0.25s ease;
+}
+.bb .bb__cta--bar {
+  display: none;
+}
+.bb__stage {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 30px clamp(14px, 2.6vw, 40px) 30px clamp(40px, 6vw, 96px);
+}
+.bb--bleed .bb__stage {
+  padding-inline-end: 0;
+}
+/* the halo: the second colour again, as a soft disc with a ring, behind the fan */
+.bb__halo {
+  position: absolute;
+  inset-block-start: 50%;
+  inset-inline-start: 54%;
+  inline-size: min(78%, 430px);
+  aspect-ratio: 1;
+  border: 1.5px solid color-mix(in srgb, var(--bb-2) 34%, transparent);
+  border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--bb-2) 20%, transparent) 0 58%, transparent 59%);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+.bb[dir='rtl'] .bb__halo {
+  transform: translate(50%, -50%);
+}
+.bb__products {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 100%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+/* each product is a list item that holds ITS OWN link; the fan is made of the items */
+.bb__products > li {
+  position: relative;
+  flex: 0 1 186px;
+  min-inline-size: 0;
+  transition: transform 0.45s cubic-bezier(0.2, 0.9, 0.25, 1), opacity 0.4s ease;
+}
+.bb .bb__card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 10px 12px;
+  border-radius: 14px;
+  background: #ffffff;
+  color: #111111;
+  text-decoration: none;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08), 0 22px 36px -18px rgba(0, 0, 0, 0.5);
+}
+/* the fan: the outer cards lean away behind the middle one, which stands forward and a little larger */
+.bb--3 .bb__products > li:nth-child(1) {
+  margin-inline-end: -10px;
+  transform: rotate(-6deg) translateY(14px) scale(0.94);
+}
+.bb--3 .bb__products > li:nth-child(2) {
+  z-index: 2;
+  transform: translateY(-10px) scale(1.04);
+}
+.bb--3 .bb__products > li:nth-child(3) {
+  margin-inline-start: -10px;
+  transform: rotate(6deg) translateY(14px) scale(0.94);
+}
+.bb[dir='rtl'].bb--3 .bb__products > li:nth-child(1) {
+  transform: rotate(6deg) translateY(14px) scale(0.94);
+}
+.bb[dir='rtl'].bb--3 .bb__products > li:nth-child(3) {
+  transform: rotate(-6deg) translateY(14px) scale(0.94);
+}
+.bb--2 .bb__products > li:nth-child(1) {
+  margin-inline-end: -14px;
+  transform: rotate(-5deg);
+}
+.bb--2 .bb__products > li:nth-child(2) {
+  z-index: 1;
+  transform: rotate(4deg) translateY(-8px);
+}
+/* the card pointed at (or focused) comes forward, straight, over its neighbours */
+@media (hover: hover) and (min-width: 768px) {
+  .bb.bb .bb__products > li:hover,
+  .bb.bb .bb__products > li:focus-within {
+    z-index: 3;
+    transform: translateY(-16px) scale(1.07);
+  }
+  .bb__cta:hover svg {
+    transform: translateX(4px);
+  }
+  .bb[dir='rtl'] .bb__cta:hover svg {
+    transform: scaleX(-1) translateX(4px);
+  }
+}
+/* THE DEAL (once, when a banner below the fold scrolls into view): the cards start stacked low and are dealt out */
+.bb.bb[data-bb='armed'] .bb__products > li:nth-child(n) {
+  opacity: 0;
+  transform: translateY(46px) scale(0.86);
+  transition: none;
+}
+.bb[data-bb='in'] .bb__products > li {
+  transition-duration: 0.75s, 0.5s;
+  transition-delay: calc(var(--i, 0) * 110ms);
+}
+.bb__pic {
+  display: block;
+  aspect-ratio: 1;
+}
+.bb__pic img {
+  inline-size: 100%;
+  block-size: 100%;
+  object-fit: contain;
+}
+.bb__off {
+  position: absolute;
+  inset-block-start: -8px;
+  inset-inline-start: -6px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: var(--bb-2);
+  color: var(--bb-on-2);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.2;
+  box-shadow: 0 6px 12px -6px rgba(0, 0, 0, 0.55);
+}
+/* two lines: a product's name is not cut to a stub */
+.bb__name {
+  display: -webkit-box;
+  min-block-size: 2.6em;
+  overflow: hidden;
+  font-size: 12px;
+  line-height: 1.3;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.bb__price {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 6px;
+  font-size: 15px;
+  font-weight: 800;
+}
+.bb__price s {
+  color: rgba(0, 0, 0, 0.55);
+  font-size: 11px;
+  font-weight: 400;
+}
+
+/*
+ * Phones: a poster, not the banner squeezed. The words on the first colour; then the blade as a slanted seam
+ * into the stage; the three products as a shallow, OVERLAPPING fan that stays inside the screen — the outer
+ * cards are a little smaller and lean a little, and the stage keeps room on both sides for their corners;
+ * the button as a bar under them.
+ */
+@media (max-width: 767.98px) {
+  .bb,
+  .bb[dir='rtl'] {
+    background: var(--bb-1);
+  }
+  .bb__inner,
+  .bb--bleed .bb__inner {
+    grid-template-columns: minmax(0, 1fr);
+    min-block-size: 0;
+    padding-inline: 0;
+  }
+  .bb__text,
+  .bb--bleed .bb__text {
+    max-inline-size: none;
+    gap: 10px;
+    padding: 22px 18px 20px;
+  }
+  .bb__ghost {
+    inset-block-end: auto;
+    inset-block-start: 6px;
+    inset-inline-start: auto;
+    inset-inline-end: -0.06em;
+    font-size: 92px;
+  }
+  .bb__logo {
+    min-inline-size: 78px;
+    block-size: 44px;
+  }
+  .bb .bb__title {
+    font-size: clamp(24px, 7.4vw, 30px);
+  }
+  .bb .bb__desc {
+    font-size: 14px;
+  }
+  .bb .bb__cta--text {
+    display: none;
+  }
+  .bb .bb__cta--bar {
+    display: flex;
+    inline-size: 100%;
+    margin-block-start: 20px;
+  }
+  .bb__stage,
+  .bb--bleed .bb__stage {
+    flex-direction: column;
+    padding: 46px 18px 16px;
+    /* the seam: first colour → the blade → the stage, on a slant across the top of the stage */
+    background: linear-gradient(175deg, var(--bb-1) 0 26px, var(--bb-2) 26px 34px, var(--bb-3) 34px);
+  }
+  .bb[dir='rtl'] .bb__stage {
+    background: linear-gradient(185deg, var(--bb-1) 0 26px, var(--bb-2) 26px 34px, var(--bb-3) 34px);
+  }
+  .bb__halo {
+    inset-block-start: 46%;
+    inset-inline-start: 50%;
+    inline-size: 74%;
+  }
+  .bb__products > li {
+    flex: 1 1 0;
+  }
+  .bb .bb__card {
+    padding: 6px 6px 8px;
+    border-radius: 11px;
+  }
+  /* the overlap stays; the lean and the size are small enough that no corner leaves the stage */
+  .bb--3 .bb__products > li:nth-child(1) {
+    margin-inline-end: -8px;
+    transform: rotate(-3deg) translateY(8px) scale(0.93);
+  }
+  .bb--3 .bb__products > li:nth-child(2) {
+    transform: translateY(-6px) scale(1.03);
+  }
+  .bb--3 .bb__products > li:nth-child(3) {
+    margin-inline-start: -8px;
+    transform: rotate(3deg) translateY(8px) scale(0.93);
+  }
+  .bb[dir='rtl'].bb--3 .bb__products > li:nth-child(1) {
+    transform: rotate(3deg) translateY(8px) scale(0.93);
+  }
+  .bb[dir='rtl'].bb--3 .bb__products > li:nth-child(3) {
+    transform: rotate(-3deg) translateY(8px) scale(0.93);
+  }
+  .bb__off {
+    inset-block-start: -7px;
+    inset-inline-start: -3px;
+    padding: 3px 7px;
+    font-size: 10.5px;
+  }
+  .bb__name {
+    font-size: 11px;
+  }
+  .bb__price {
+    font-size: 12.5px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hz__slot img,
+  .bb__products > li,
+  .bb__cta svg {
+    transition: none;
+  }
+}

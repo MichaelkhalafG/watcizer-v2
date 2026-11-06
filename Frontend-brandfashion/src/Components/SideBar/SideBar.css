@@ -47,7 +47,7 @@
 
 .wz-sidebar-clear-all {
   font-size: 10px;
-  color: #ea2b0f;
+  color: #dc270d; /* was #ea2b0f: 4.3 : 1 on white; this is 4.8 : 1 (Lighthouse: color-contrast) */
   background: none;
   border: none;
   cursor: pointer;
@@ -87,15 +87,31 @@
   font-weight: 300;
 }
 
+/* A 24 PX TARGET AROUND THE SAME 16 PX PILL (Lighthouse: target-size and color-contrast, 2026-11-05). The pill is now
+   the ::before — the same border, radius and height as before — inside a box 24 px tall whose negative margin gives
+   the row back the 8 px it added, so nothing moves. The word takes the gold for small text: the plain gold measured
+   2.35 : 1 on white at 9 px. */
 .wz-fs-clear {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  box-sizing: border-box;
+  min-height: 24px;
+  margin-block: -4px;
   font-size: 9px;
-  color: var(--wz-gold);
-  border: 1px solid rgba(200, 164, 92, 0.3);
-  border-radius: 10px;
-  padding: 2px 7px;
+  color: var(--wz-gold-text, #8a6b2a);
+  padding: 0 8px;
   cursor: pointer;
   letter-spacing: 0.05em;
   white-space: nowrap;
+}
+.wz-fs-clear::before {
+  content: '';
+  position: absolute;
+  inset: 4px 0;
+  border: 1px solid rgba(200, 164, 92, 0.3);
+  border-radius: 10px;
+  pointer-events: none;
 }
 
 .wz-fs-body {
@@ -182,7 +198,7 @@
   border: none;
   cursor: pointer;
   padding: 3px 0;
-  opacity: 0.5;
+  opacity: 0.68; /* was 0.5: 11 px text at 3.1 : 1 on white; this is 5.3 : 1 (Lighthouse: color-contrast) */
   letter-spacing: 0.05em;
   display: block;
 }
@@ -218,7 +234,9 @@
 .wz-price-input {
   position: absolute;
   width: 100%;
-  height: 2px;
+  /* 24 px, not the 2 px of the line it sits on (Lighthouse: target-size): the input is transparent and takes no
+     pointer events itself — only its handle does — so nothing looks or behaves differently; the handle stays centred */
+  height: 24px;
   top: 50%;
   transform: translateY(-50%);
   background: transparent;

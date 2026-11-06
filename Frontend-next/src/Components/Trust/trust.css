@@ -111,12 +111,10 @@
   margin: 0;
   padding: 0;
   display: grid;
-  /* Six tracks, the e-mail card two wide: the address fits on one line and no card sits alone. */
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  /* Six cards since TikTok joined (2026-11-05): three to a row — how to reach us, then where to follow us.
+     Until then it was six tracks with the e-mail card two wide, for five cards. */
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 16px;
-}
-.wz-contact-grid > li:has(.wz-contact-card--mail) {
-  grid-column: span 2;
 }
 .wz-contact-card {
   display: flex;
@@ -433,9 +431,14 @@
 
 /* ── Tablets and phones ───────────────────────────────────────────────── */
 @media (max-width: 900px) {
-  /* Phone and WhatsApp side by side, the e-mail full width, then Facebook and Instagram. */
+  /* Phone and WhatsApp side by side, the e-mail full width (its address needs the line), Facebook and
+     Instagram side by side, TikTok full width — so no half-width card sits alone. */
   .wz-contact-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .wz-contact-grid > li:has(.wz-contact-card--mail),
+  .wz-contact-grid > li:has(.wz-contact-card--tiktok) {
+    grid-column: span 2;
   }
   .wz-legal {
     grid-template-columns: minmax(0, 1fr);
@@ -475,7 +478,8 @@
   .wz-contact-grid {
     grid-template-columns: minmax(0, 1fr);
   }
-  .wz-contact-grid > li:has(.wz-contact-card--mail) {
+  .wz-contact-grid > li:has(.wz-contact-card--mail),
+  .wz-contact-grid > li:has(.wz-contact-card--tiktok) {
     grid-column: auto;
   }
 }

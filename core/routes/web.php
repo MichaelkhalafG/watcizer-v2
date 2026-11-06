@@ -9,6 +9,7 @@ use App\Http\Controllers\Manage\ActivityController;
 use App\Http\Controllers\Manage\Auth\LoginController;
 use App\Http\Controllers\Manage\BannerController;
 use App\Http\Controllers\Manage\BlogController;
+use App\Http\Controllers\Manage\CampaignController;
 use App\Http\Controllers\Manage\CategoryController;
 use App\Http\Controllers\Manage\CustomerController;
 use App\Http\Controllers\Manage\HomeController;
@@ -18,6 +19,7 @@ use App\Http\Controllers\Manage\LookupController;
 use App\Http\Controllers\Manage\MediaController;
 use App\Http\Controllers\Manage\MediaPruneController;
 use App\Http\Controllers\Manage\OrderController;
+use App\Http\Controllers\Manage\PaymentBadgeController;
 use App\Http\Controllers\Manage\PaymentSettingsController;
 use App\Http\Controllers\Manage\PlacementController;
 use App\Http\Controllers\Manage\ProductController;
@@ -180,6 +182,10 @@ Route::prefix('manage')->name('manage.')->group(function (): void {
             */
             Route::get('storefronts/{storefront}/categories', [CategoryController::class, 'index'])->name('categories.index');
             Route::put('storefronts/{storefront}/categories/{category}', [CategoryController::class, 'update'])->name('categories.update');
+            // The category's picture: its own, the automatic one, or none (Part 5, 2026-11-05). On the rename
+            // ability: it changes what the menu draws, not the shape of the tree.
+            Route::put('storefronts/{storefront}/categories/{category}/image', [CategoryController::class, 'image'])
+                ->where('category', '[0-9]+')->name('categories.image');
 
             Route::middleware('can:'.Role::EDIT_CATEGORY_TREE)->group(function (): void {
                 Route::post('storefronts/{storefront}/categories', [CategoryController::class, 'store'])->name('categories.store');
@@ -241,6 +247,8 @@ Route::prefix('manage')->name('manage.')->group(function (): void {
             Route::get('storefronts/{storefront}/home-rails', [HomeRailController::class, 'index'])->name('home_rails.index');
             // The custom rail's hand-picked products (2026-09-30) — the shared picker search.
             Route::get('storefronts/{storefront}/home-rails/products', [ProductPickerController::class, 'search'])->name('home_rails.products');
+            // a brand banner's suggested three products (the brand's range) — read-only, for the form's picker
+            Route::get('storefronts/{storefront}/home-rails/banner-picks', [HomeRailController::class, 'bannerPicks'])->name('home_rails.banner_picks');
             Route::post('storefronts/{storefront}/home-rails', [HomeRailController::class, 'store'])->name('home_rails.store');
             Route::post('storefronts/{storefront}/home-rails/order', [HomeRailController::class, 'reorder'])->name('home_rails.reorder');
             Route::put('storefronts/{storefront}/home-rails/{rail}', [HomeRailController::class, 'update'])
@@ -248,10 +256,22 @@ Route::prefix('manage')->name('manage.')->group(function (): void {
             Route::delete('storefronts/{storefront}/home-rails/{rail}', [HomeRailController::class, 'destroy'])
                 ->where('rail', '[0-9]+')->name('home_rails.destroy');
 
+            // TIMED CAMPAIGNS (Part 2, 2026-11-05): Hot Deals and Flash Sale — one page per storefront. Same
+            // ability and scope as the banners and the rails: it decides what one storefront's home shows.
+            Route::get('storefronts/{storefront}/campaigns', [CampaignController::class, 'index'])->name('campaigns.index');
+            Route::get('storefronts/{storefront}/campaigns/products', [ProductPickerController::class, 'search'])->name('campaigns.products');
+            Route::post('storefronts/{storefront}/campaigns', [CampaignController::class, 'store'])->name('campaigns.store');
+            Route::put('storefronts/{storefront}/campaigns/{campaign}', [CampaignController::class, 'update'])
+                ->where('campaign', '[0-9]+')->name('campaigns.update');
+            Route::delete('storefronts/{storefront}/campaigns/{campaign}', [CampaignController::class, 'destroy'])
+                ->where('campaign', '[0-9]+')->name('campaigns.destroy');
+
             // PAGE TEXTS (M1y, 2026-10-30): the introduction and meta description of each brand and category page.
             // Same ability and scope as banners — the storefront's words, not its catalogue.
             Route::get('storefronts/{storefront}/page-texts', [SeoTextController::class, 'index'])->name('page_texts.index');
             Route::put('storefronts/{storefront}/page-texts', [SeoTextController::class, 'update'])->name('page_texts.update');
+            // one page's text as the parts its layout draws — read-only, for the edit form (item 43 B)
+            Route::get('storefronts/{storefront}/page-texts/structure', [SeoTextController::class, 'structure'])->name('page_texts.structure');
         });
 
         /*
@@ -451,6 +471,10 @@ Route::prefix('manage')->name('manage.')->group(function (): void {
             // The MERGED ordering screen: sort is storefront-wide, so the admin drags one list
             // across every provider, exactly as the customer will see it (3.9.7).
             Route::post('storefronts/{storefront}/payments/order', [PaymentSettingsController::class, 'reorder'])->name('payments.order');
+            // The PICTURE of one method's badge (Part 7, 2026-11-05). {method} is a method KEY here, not a
+            // row id: a badge belongs to the key, whichever contract offers it.
+            Route::put('storefronts/{storefront}/payments/badges/{method}', [PaymentBadgeController::class, 'update'])
+                ->where('method', '[a-z0-9_]+')->name('payments.badges.update');
         });
 
         /*

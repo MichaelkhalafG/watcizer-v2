@@ -1,13 +1,18 @@
+import { QueryClient, dehydrate, HydrationBoundary } from '@tanstack/react-query'
 import HomeClient from './HomeClient'
+import { getServerV2Menu } from '@/src/lib/serverV2'
+import { slimMenu } from '@/src/lib/menuData'
+import { slimCompatHome } from '@/src/lib/homeData'
+import { STOREFRONT_CODE } from '@/src/lib/env'
 import { safeJsonLd } from '@/src/lib/safeJsonLd'
 import { getServerHome } from '@/src/lib/serverCatalog'
 // the campaign banner's live price, stock and facts (2026-10-29, Watchizer only): one cached read of the product
-import { getServerV2Product } from '@/src/lib/serverV2'
+import { getServerV2ProductForHome } from '@/src/lib/serverV2'
 import { bannerModel } from '@/src/lib/experienceSpecs'
 import { PRODUCT_SLUG } from '@/src/content/grandPrix1513477'
 import { requestLang, alternatesFor, localePath, SITE } from '@/src/lib/requestLang'
 // the shop's real accounts, from the one place the contact page reads them (2026-10-19)
-import { FACEBOOK, INSTAGRAM } from '@/src/content/trustPages'
+import { FACEBOOK, INSTAGRAM, TIKTOK } from '@/src/content/trustPages'
 // the proposed title and meta behind the home headline switch (off: null, and HOME_TEXT stands)
 import { PROPOSED_HOME_META } from '@/src/content/homeHeadline'
 
@@ -119,7 +124,7 @@ const storeJsonLd = {
   // The accounts the site actually links (2026-10-19, the developer). This used to name a different pair — a bare
   // `/watchizer` vanity name on each network — which matched neither the header, the footer nor the contact page.
   // Imported, never retyped, so the markup and the site stay the same two accounts.
-  sameAs: [FACEBOOK, INSTAGRAM],
+  sameAs: [FACEBOOK, INSTAGRAM, TIKTOK],
   contactPoint: {
     '@type': 'ContactPoint',
     telephone: '+201551096234',
@@ -132,18 +137,28 @@ const storeJsonLd = {
 // The rails and their cards come from core's `catalog/home` (C-1 stage 4 slice C) — not the whole
 // catalogue. null on failure: the client shows its retry instead of rails.
 export default async function HomePage() {
-  const [home, campaign] = await Promise.all([
+  const [home, campaign, menu] = await Promise.all([
     getServerHome(),
     // never the home's failure: a product that cannot be read leaves the banner without price, stock and facts
-    getServerV2Product(PRODUCT_SLUG).then((page) => (page ? bannerModel(page) : null), () => null),
+    getServerV2ProductForHome(PRODUCT_SLUG).then((page) => (page ? bannerModel(page) : null), () => null),
+    // nor is the menu: without it the category row draws each category's own picture and the browser fills the rest
+    getServerV2Menu().then((body) => slimMenu(body?.data || null), () => null),
   ])
+  const menuClient = new QueryClient()
+  if (menu) menuClient.setQueryData(['menu', STOREFRONT_CODE], menu)
   return (
     <>
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: safeJsonLd(storeJsonLd) }}
       />
-      <HomeClient initialHome={home} campaign={campaign} />
+      {/* The home's category row draws each category's picture from the menu (the fallback rule, item 35), so THIS
+          page carries the menu — slimmed — in its server render; every other page gets it from the browser's one
+          request after load (usePromo.useMenu). */}
+      <HydrationBoundary state={dehydrate(menuClient)}>
+        {/* the sliders' data cut to what a card reads (src/lib/homeData.js): 788 KB of this page's HTML was the rest */}
+        <HomeClient initialHome={slimCompatHome(home)} campaign={campaign} />
+      </HydrationBoundary>
     </>
   )
 }

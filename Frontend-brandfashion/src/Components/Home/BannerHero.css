@@ -78,55 +78,95 @@
 .banner-hero__track img, .banner-hero__track a { -webkit-user-drag: none; user-drag: none; }
 
 /* ── controls ───────────────────────────────────────────────────────────────────────────── */
+/* THE ARROWS (the review of 2026-11-05, item 37). They stood at mid-height on each side: the left one in the middle
+   of a banner's artwork, a pale disc that an orange or a white picture swallowed. They are now a PAIR, together in
+   the top corner at the end of the reading direction — away from the artwork's subject, its words and its buttons —
+   and SOLID: a dark control with a white arrow and a light ring reads on any colour a banner can be. Each shop
+   gives them its own shape and hover colour (--bh-arrow-*); 40 px, with a 44 px target around it. */
 .banner-hero__arrow {
   position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 36px;
-  height: 36px;
+  top: 12px;
+  width: 40px;
+  height: 40px;
   display: grid;
   place-items: center;
   border: 0;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.86);
-  color: var(--wz-ink);
+  border-radius: var(--bh-arrow-radius, 999px);
+  background: var(--bh-arrow-bg, rgba(17, 17, 17, 0.82));
+  color: var(--bh-arrow-fg, #ffffff);
   cursor: pointer;
   transition: background 0.15s ease, opacity 0.15s ease;
 }
-.banner-hero__arrow--prev { inset-inline-start: 8px; }
-.banner-hero__arrow--next { inset-inline-end: 8px; }
+.banner-hero__arrow--prev { inset-inline-end: 60px; }
+.banner-hero__arrow--next { inset-inline-end: 12px; }
+.banner-hero__arrow { box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.7), 0 8px 18px -8px rgba(0, 0, 0, 0.6); transition: background-color 0.15s ease, color 0.15s ease, transform 0.15s ease; }
+.banner-hero__arrow::after { content: ''; position: absolute; inset: -2px; }
+/* a phone swipes: the arrows would only cover the picture there */
+@media (hover: none) and (max-width: 767.98px) { .banner-hero__arrow { display: none; } }
 .banner-hero__arrow:disabled { opacity: 0.35; cursor: default; }
-@media (hover: hover) { .banner-hero__arrow:not(:disabled):hover { background: #fff; } }
-.banner-hero__arrow:focus-visible { outline: 2px solid var(--wz-ink); outline-offset: 2px; }
+@media (hover: hover) { .banner-hero__arrow:not(:disabled):hover { background: var(--bh-arrow-hover-bg, #000000); color: var(--bh-arrow-hover-fg, #ffffff); transform: scale(1.06); } }
+.banner-hero__arrow:focus-visible { outline: 2px solid #ffffff; outline-offset: 2px; box-shadow: 0 0 0 4px rgba(17, 17, 17, 0.9); }
 
+/* THE DOT IS DRAWN INSIDE A 24 PX BUTTON (Lighthouse: target-size, 2026-11-05). The button was the 8 px dot itself
+   with a larger pseudo-element around it — which a finger could hit but which is not the button's own size, and two
+   dots stood 14 px apart. Now the button is 24 × 24 and the dot is its ::before: the same 8 px dot (22 px when on),
+   on the same line, the dots 24 px apart. */
 .banner-hero__dots {
   position: absolute;
   inset-inline: 0;
-  bottom: 8px;
+  bottom: 0;
   display: flex;
   justify-content: center;
-  gap: 6px;
+  gap: 0;
 }
 .banner-hero__dot {
-  width: 8px;
-  height: 8px;
+  width: 24px;
+  height: 24px;
   padding: 0;
   border: 0;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.55);
+  background: transparent;
   cursor: pointer;
   position: relative;
 }
-/* a 44 px target around an 8 px dot, without moving anything */
-.banner-hero__dot::after { content: ''; position: absolute; inset: -18px -8px; }
-.banner-hero__dot.is-on { background: #fff; width: 18px; }
+.banner-hero__dot::before {
+  content: '';
+  position: absolute;
+  inset-block: 8px;
+  inset-inline: 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.55);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.18);
+  transition: inset-inline 0.25s ease, background-color 0.25s ease;
+}
+/* a 44 px target around the button, without moving anything */
+.banner-hero__dot::after { content: ''; position: absolute; inset: -10px 0; }
+.banner-hero__dot.is-on::before { background: #fff; inset-inline: 1px; }
+/* "2 / 4": which slide this is, in a corner where it never covers the artwork's own words */
+.banner-hero__count {
+  position: absolute;
+  inset-inline-end: 12px;
+  bottom: 10px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  /* 0.66, was 0.5 (Lighthouse: color-contrast): white 12 px digits on a half-black pill over a light banner measured
+     3.9 : 1; at this it is 4.5 : 1 or better over any artwork, white included */
+  background: rgba(0, 0, 0, 0.66);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+  pointer-events: none;
+}
 .banner-hero__dot:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 
 @media (max-width: 599px) {
-  .banner-hero__arrow { width: 32px; height: 32px; }
+  .banner-hero__arrow { top: 8px; width: 32px; height: 32px; }
+  .banner-hero__arrow--prev { inset-inline-end: 48px; }
+  .banner-hero__arrow--next { inset-inline-end: 8px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .banner-hero__track { scroll-behavior: auto; }
-  .banner-hero__arrow, .banner-hero__dot { transition: none; }
+  .banner-hero__arrow, .banner-hero__dot::before { transition: none; }
 }

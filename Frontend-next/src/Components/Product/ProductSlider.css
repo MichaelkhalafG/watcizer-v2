@@ -23,10 +23,19 @@
   gap: 3px;
 }
 
-/* ── Slide widths (4 up desktop → 2 up mobile), gap = 16px from Carousel ── */
+/* ── Slide widths (5 up on a computer → 2 up mobile), gap = 16px from Carousel ── */
 .wz-slider-slide {
   flex: 0 0 calc(25% - 12px);
   min-width: 200px;
+}
+/* FIVE CARDS A ROW from 1200 px up (the developer's review, 2026-11-05; it was four): slightly smaller cards, the
+   same type sizes. Four 16 px gaps shared by five cards = 12.8 px each. Checked at 1280, 1366, 1440 and 1920: a card
+   is 224, 241, 256 and 269 px wide (the column stops growing at 1400). Below 1200 the row is as it was. */
+@media (min-width: 1200px) {
+  .wz-slider-slide {
+    flex: 0 0 calc(20% - 12.8px);
+    min-width: 0;
+  }
 }
 @media (max-width: 1024px) {
   .wz-slider-slide {
@@ -51,6 +60,13 @@
   flex: 0 0 calc(25% - 11px);
   min-width: 190px;
   max-width: 260px;
+}
+@media (min-width: 1200px) {
+  .wz-slider-item {
+    flex: 0 0 calc(20% - 12.8px);
+    min-width: 0;
+    max-width: none;
+  }
 }
 @media (max-width: 1100px) {
   .wz-slider-item {

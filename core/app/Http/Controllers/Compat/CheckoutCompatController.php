@@ -583,12 +583,15 @@ class CheckoutCompatController extends Controller
                         $mailIds = $this->mailer->placed($orderId, notifyCustomer: true);
                         // The card Purchase for Meta (B2): the only place that knows the money arrived.
                         $metaIds = $this->meta->purchase($orderId);
-                    } elseif ($decision['action'] === CallbackPolicy::ACT_CANCEL) {
-                        DB::table('orders')->where('id', $orderId)->update(['status' => 'cancelled', 'updated_at' => now()]);
-                        $this->inventory->releaseOrder($orderId, 'payment_failed', Actor::system(), $this->compat->storefrontId);
                     }
-                    // Every other decision: the attempt is on record, a finding is raised, and the
-                    // ORDER IS NOT TOUCHED. Stock is never re-reserved here — the units may be gone.
+                    // Every other decision: the attempt is on record, a finding is raised where the
+                    // table says so, and the ORDER IS NOT TOUCHED. Since 2026-11-05 that includes a
+                    // DECLINE on a pending order (`CallbackPolicy`, correction 1): it used to cancel
+                    // and release here; the order now waits for `orders:expire-unpaid` on this
+                    // handler exactly as on the scoped one. Stock is never re-reserved HERE — this
+                    // is the wave-3 fall-through, dead wherever the contract is live, and a success
+                    // on a cancelled order keeps its finding (`ACT_REINSTATE` carries it) for a
+                    // person or `orders:reinstate-paid` to act on.
                 });
             } catch (Throwable $e) {
                 /*

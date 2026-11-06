@@ -2,11 +2,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from '@/src/Components/LocaleLink'
 import { PLACEHOLDER_IMG } from '@/src/utils/imageUrl'
-import { pictureSources, SIZES } from '@/src/utils/picture'
+import { pictureSources, optimized, optimizedSet, SIZES, CARD_MAX } from '@/src/utils/picture'
 import { txt, money, cardColours, cardVariants, isNewProduct } from '@/src/lib/cardData'
 import useCart, { getItemKey } from '@/src/Hooks/useCart'
 import { refusedAddMessage } from '@/src/Store/cartStore'
 import { useToastStore } from '@/src/Store/toastStore'
+import { useProductOffer } from '@/src/Hooks/queries/usePromo'
+import OfferStrip, { offerClass } from '@/src/Components/Promo/OfferStrip'
 import './BfProductCard.css'
 
 /*
@@ -74,10 +76,16 @@ export default function BfProductCard({
   isNew,
   href,
   onAdd,
+  // a listing's first row (the performance pass, 2026-11-05): its photos are the page's largest paint — not lazy,
+  // and the very first asked for before everything else
+  eager = false,
+  first = false,
 }) {
   // The stepper IS the cart line (2026-10-19): it shows the cart's quantity for this product and every tap
   // writes it. It used to be a local number — after the first add, + and − changed the card and not the cart.
   const { cart, addItem, updateQuantity } = useCart()
+  // in a live Hot Deals / Flash Sale campaign (item 41): the card takes that offer's look; null the second it ends
+  const offer = useProductOffer(product?.id)
   const showToast = useToastStore((s) => s.showToast)
   const line = product ? (cart?.cart_item || []).find((i) => i.product_id === product.id && !i.variant_id) : null
   const qty = line?.quantity ?? 0
@@ -128,8 +136,11 @@ export default function BfProductCard({
   const hoverSrc = isPhoto && product.hover_image?.src && product.hover_image.src !== src ? product.hover_image.src : null
   // the RECORDED renditions of each photo (image.srcset, 2026-10-22): a <picture> offers exactly these, AVIF then
   // WebP, with the 1200 px original as the fallback; a photo with none is the plain <img> it was
-  const coverSources = isPhoto ? pictureSources(product.image?.srcset) : { avif: null, webp: null }
-  const hoverSources = hoverSrc ? pictureSources(product.hover_image?.srcset) : { avif: null, webp: null }
+  const coverSources = isPhoto ? pictureSources(product.image?.srcset, CARD_MAX) : { avif: null, webp: null }
+  const hoverSources = hoverSrc ? pictureSources(product.hover_image?.srcset, CARD_MAX) : { avif: null, webp: null }
+  // a second photo with no recorded rendition: the optimiser's copy at the card's size, as for the cover — measured
+  // on a category page, the second photos alone were 1.2 MB of 1200 px files for 190 px tiles (the performance pass)
+  const hoverPlain = !!hoverSrc && !hoverSources.avif && !hoverSources.webp
   const link = href ?? `/product/${product.slug}`
 
   // ── the picker (only with variant rows, §11.5 / §8.6)
@@ -193,13 +204,27 @@ export default function BfProductCard({
   }
 
   return (
-    <article className={`bf-card ${density === 'compact' ? 'bf-card--compact' : ''} ${soldOut ? 'is-sold-out' : ''} ${hasPicker ? 'has-picker' : ''} ${engaged ? 'is-engaged' : ''}`} dir={dir} lang={lang} data-family={product.family}>
+    <article className={`bf-card ${density === 'compact' ? 'bf-card--compact' : ''} ${soldOut ? 'is-sold-out' : ''} ${hasPicker ? 'has-picker' : ''} ${engaged ? 'is-engaged' : ''}${offerClass(offer)}`} dir={dir} lang={lang} data-family={product.family}>
       <Link className="bf-card__link" href={link} aria-label={name}>
-        <div className="bf-card__tile" aria-hidden="true">
+        {/* `cut_mask` (the home's blended sliders only, 2026-11-05): the mask of this photo's white studio background.
+            The photo is drawn as it is; the mask lets the slider's colour show where the white was (homeZone.css). */}
+        <div className={`bf-card__tile${product.cut_mask && isPhoto ? ' hl-cut' : ''}`} style={product.cut_mask && isPhoto ? { '--cut': `url("${product.cut_mask}")` } : undefined} aria-hidden="true">
+          {/* in a live Hot Deals / Flash Sale campaign: the offer's strip over the foot of the photo box (item 41) */}
+          <OfferStrip offer={offer} lang={lang} />
           <picture className="bf-card__picture">
             {coverSources.avif ? <source type="image/avif" srcSet={coverSources.avif} sizes={SIZES.cardDense} /> : null}
             {coverSources.webp ? <source type="image/webp" srcSet={coverSources.webp} sizes={SIZES.cardDense} /> : null}
-            <img className={`bf-card__img ${isPhoto ? 'is-photo' : 'is-placeholder'}`} src={src} alt="" loading="lazy" decoding="async" onError={() => setBroken(true)} />
+            {/* a photo with no recorded rendition: the optimiser's copy at the card's size, never the 1200 px master */}
+            <img
+              className={`bf-card__img hl-cut__img ${isPhoto ? 'is-photo' : 'is-placeholder'}`}
+              src={isPhoto && !coverSources.avif && !coverSources.webp ? optimized(src) : src}
+              srcSet={isPhoto && !coverSources.avif && !coverSources.webp ? optimizedSet(src) : undefined}
+              alt=""
+              loading={eager ? 'eager' : 'lazy'}
+              fetchPriority={first ? 'high' : undefined}
+              decoding="async"
+              onError={() => setBroken(true)}
+            />
           </picture>
           {hoverSrc ? (
             // the second photo, crossfaded in on hover (desktop) inside its own wrapper on the page's white (T1, round 4),
@@ -209,7 +234,16 @@ export default function BfProductCard({
               <picture className="bf-card__picture">
                 {hoverSources.avif ? <source type="image/avif" srcSet={hoverSources.avif} sizes={SIZES.cardDense} /> : null}
                 {hoverSources.webp ? <source type="image/webp" srcSet={hoverSources.webp} sizes={SIZES.cardDense} /> : null}
-                <img ref={hoverRef} className="bf-card__img bf-card__img--hover is-photo" src={hoverSrc} alt="" loading="lazy" decoding="async" onLoad={() => setHoverReady(true)} />
+                <img
+                  ref={hoverRef}
+                  className="bf-card__img bf-card__img--hover is-photo"
+                  src={hoverPlain ? optimized(hoverSrc) : hoverSrc}
+                  srcSet={hoverPlain ? optimizedSet(hoverSrc) : undefined}
+                  alt=""
+                  loading="lazy"
+                  decoding="async"
+                  onLoad={() => setHoverReady(true)}
+                />
               </picture>
             </span>
           ) : null}

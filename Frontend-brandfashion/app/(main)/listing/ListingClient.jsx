@@ -72,6 +72,10 @@ export default function ListingClient({ seedParams = null }) {
   const syncUrl = seedParams == null
 
   const [drawerOpen, setDrawerOpen] = useState(false)
+  // THE DRAWER'S FILTERS ARE BUILT WHEN IT IS FIRST OPENED (the performance pass, 2026-11-05). The drawer holds a
+  // second copy of the whole sidebar — about 330 elements — and it was rendered, sent and hydrated on every listing
+  // page, on a computer too, where the drawer is never opened. It is built by the tap that opens it, and stays.
+  const [drawerBuilt, setDrawerBuilt] = useState(false)
 
   // Hydration flag: false during SSR + the first client render (so both agree),
   // then true — handing the source of truth to the client store.
@@ -377,8 +381,10 @@ export default function ListingClient({ seedParams = null }) {
             <div className="wz-toolbar">
               <button
                 className="wz-toolbar-filter"
-                onClick={() => setDrawerOpen(true)}
-                aria-label={isRTL ? 'الفلاتر' : 'Filters'}
+                onClick={() => {
+                  setDrawerBuilt(true)
+                  setDrawerOpen(true)
+                }}
               >
                 <FiSliders />
                 <span>{isRTL ? 'الفلاتر' : 'Filters'}</span>
@@ -461,12 +467,16 @@ export default function ListingClient({ seedParams = null }) {
               />
             ) : (
               <>
+                {/* a heading between the page's h1 and the cards' h3 (Lighthouse: heading-order), for a screen reader only */}
+                <h2 className="wz-sr-only">{isRTL ? 'المنتجات' : 'Products'}</h2>
                 <div
                   className="wz-listing-grid wz-fade"
                   key={`${currentPage}-${parsed.sort}-${resultCount}`}
                 >
-                  {displayedProducts.map((product) => (
-                    <ProductCard key={product.id} product={product} />
+                  {/* the first TWO rows' photos are on the screen of a computer when the page opens, and one of them is
+                      the page's largest paint (Lighthouse: lcp-lazy-loaded): they are not lazy; the first is asked for first */}
+                  {displayedProducts.map((product, index) => (
+                    <ProductCard key={product.id} product={product} eager={index < 8} first={index === 0} />
                   ))}
                 </div>
 
@@ -477,6 +487,7 @@ export default function ListingClient({ seedParams = null }) {
                       className="wz-pager-btn wz-pager-edge"
                       disabled={currentPage <= 1}
                       onClick={() => goToPage(currentPage - 1)}
+                      /* the name stays: on a phone the word is hidden and the button is an arrow (Lighthouse: button-name) */
                       aria-label={isRTL ? 'السابق' : 'Previous'}
                     >
                       {isRTL ? <FiChevronRight /> : <FiChevronLeft />}
@@ -539,9 +550,7 @@ export default function ListingClient({ seedParams = null }) {
             <FiX />
           </button>
         </div>
-        <div className="wz-fdrawer-body">
-          <SideBar facets={facets} />
-        </div>
+        <div className="wz-fdrawer-body">{drawerBuilt ? <SideBar facets={facets} /> : null}</div>
         <div className="wz-fdrawer-foot">
           <button className="wz-fdrawer-apply" onClick={() => setDrawerOpen(false)}>
             {isRTL ? `عرض ${resultCount} منتج` : `Show ${resultCount} results`}

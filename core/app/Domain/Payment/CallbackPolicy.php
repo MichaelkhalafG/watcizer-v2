@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Domain\Payment;
 
 use App\Compat\CompatCheckout;
+use App\Domain\Orders\LatePayment;
 use App\Support\DeadlockRetry;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
@@ -41,6 +42,27 @@ use Illuminate\Support\Facades\Log;
  *
  * `pending` is the one non-decision: a 3-D Secure callback that says "not yet" is normal traffic,
  * recorded with no finding and no transition.
+ *
+ * ── Two corrections, 2026-11-05 (order 000092: charged by valU, left cancelled, nobody told) ──
+ *
+ * **1. A decline no longer cancels.** It used to: `failed` on a `pending` order cancelled it and
+ * released its stock in the same second. But the provider's payment page stays open after a
+ * declined attempt and the shopper can try again on the SAME intention — measured on production:
+ * five of seven valU orders were declined and cancelled within minutes, and on one of them the
+ * retry SUCCEEDED two minutes later (transaction 566147894) against an order that was already
+ * cancelled. So a decline is now RECORDED and the order keeps waiting, exactly like an order whose
+ * shopper is still typing a card number: a later success pays it through the normal branch, and
+ * if none comes `orders:expire-unpaid` cancels it at the end of the window and returns the stock
+ * (`UnpaidOrders`), or the shopper's own next order supersedes it. One clock, not two.
+ *
+ * **2. A success on a CANCELLED order may bring it back.** The first rule's "never re-reserves
+ * stock" protected against selling units that were gone. It is kept as a CHECK instead of a ban:
+ * {@see LatePayment} reserves the lines again through the ledger, all or
+ * nothing, and only for an order that was cancelled for non-payment (never one a person
+ * cancelled). When the units are there the order is paid and the customer is told; when they are
+ * not, nothing is reserved, the finding is raised as before — and since the same date an open
+ * finding whose outcome is `success` e-mails the shop and heads the orders screen, because
+ * "money taken, order cancelled" must be impossible to miss.
  */
 final class CallbackPolicy
 {
@@ -69,9 +91,14 @@ final class CallbackPolicy
     /** What the caller must do with the order. */
     public const ACT_PAY = 'pay';
 
-    public const ACT_CANCEL = 'cancel';
-
     public const ACT_RECORD_ONLY = 'record';
+
+    /**
+     * A success on a cancelled order: TRY to bring the order back ({@see LatePayment}).
+     * The decision carries the finding a handler must raise when it cannot (or does not) reinstate —
+     * so a handler that knows nothing about reinstating still leaves the old, safe record.
+     */
+    public const ACT_REINSTATE = 'reinstate';
 
     /** Finding kinds — the vocabulary the command and the screen show. */
     public const KIND_TERMINAL = 'callback_on_terminal_order';
@@ -81,6 +108,13 @@ final class CallbackPolicy
     public const KIND_REVERSAL = 'refund_or_void';
 
     public const KIND_AMOUNT = 'amount_mismatch';
+
+    /**
+     * A late payment brought a cancelled order back while the shopper had ALREADY placed another
+     * order. The first order is paid and reserved again; a person has to look at the pair, because
+     * the shopper may now be about to receive (and pay for) the same goods twice.
+     */
+    public const KIND_PAID_TWICE = 'late_payment_with_newer_order';
 
     /**
      * Read Paymob's payload as ONE outcome.
@@ -97,9 +131,10 @@ final class CallbackPolicy
      *
      * Top-level array access saw none of the nested fields. So on a processed callback every flag
      * below read false — including `success` — and a payment that had SUCCEEDED came out of here
-     * as `OUTCOME_FAILED`. On a `pending` order that is `ACT_CANCEL`: **the order cancelled and
-     * its stock released, with the money taken.** Registering the POST route without this fix
-     * would have turned a stuck order into a destroyed one.
+     * as `OUTCOME_FAILED`. On a `pending` order a failure then meant a cancellation (it did until
+     * 2026-11-05; a decline no longer cancels): **the order cancelled and its stock released, with
+     * the money taken.** Registering the POST route without this fix would have turned a stuck
+     * order into a destroyed one.
      *
      * {@see CompatCheckout::paymobField()} is the extractor the signature check already uses, and
      * it reads both shapes and normalises booleans. Using it here is what makes the two deliveries
@@ -145,6 +180,18 @@ final class CallbackPolicy
         }
 
         if (in_array($orderStatus, self::TERMINAL, true)) {
+            if ($orderStatus === 'cancelled' && $outcome === self::OUTCOME_SUCCESS) {
+                // Money arrived for a cancelled order (2026-11-05). The handler tries to bring the
+                // order back; `finding` is what it raises when it cannot — never nothing.
+                return ['action' => self::ACT_REINSTATE, 'finding' => self::KIND_TERMINAL, 'paid' => false];
+            }
+            if ($orderStatus === 'cancelled' && $outcome === self::OUTCOME_FAILED) {
+                // One more decline on an order that is already cancelled: no money moved and
+                // nothing is left to decide. Recorded as an attempt, and that is all — a finding
+                // per failed retry buried the one that mattered (000057, 000082, 000100).
+                return ['action' => self::ACT_RECORD_ONLY, 'finding' => null, 'paid' => false];
+            }
+
             // THE rule. Whatever the provider says, this order does not move.
             return ['action' => self::ACT_RECORD_ONLY, 'finding' => self::KIND_TERMINAL, 'paid' => false];
         }
@@ -162,10 +209,11 @@ final class CallbackPolicy
             return ['action' => self::ACT_PAY, 'finding' => null, 'paid' => true];
         }
 
-        // A decline. Only an order that was never paid may be cancelled by one: on a `processing`
-        // order the money is already in, and cancelling would release the stock of a paid sale.
+        // A decline on an order still waiting for its money: recorded, and the order KEEPS WAITING
+        // (correction 1 in the class comment). The page that declined is still open and may yet
+        // succeed; the expiry window is what ends the wait.
         if ($orderStatus === 'pending') {
-            return ['action' => self::ACT_CANCEL, 'finding' => null, 'paid' => false];
+            return ['action' => self::ACT_RECORD_ONLY, 'finding' => null, 'paid' => false];
         }
 
         return ['action' => self::ACT_RECORD_ONLY, 'finding' => self::KIND_FAILED_AFTER_PAID, 'paid' => false];

@@ -6,7 +6,33 @@
 
 .bf-home { background: var(--wz-page); color: var(--wz-ink); padding-block-end: calc(56px + env(safe-area-inset-bottom) + 24px); }
 @media (min-width: 1024px) { .bf-home { padding-block-end: 48px; } }
-.bf-home > * { max-width: var(--bf-container); margin-inline: auto; padding-inline: var(--bf-gutter); }
+/* EVERY HOME SECTION RUNS THE FULL WIDTH OF THE PAGE (the review of 2026-11-05) — sliders, banners, the category and
+   brand rows: no column cap, only the gutter, so a section's ground reaches both edges and what is in it starts at
+   the gutter. (It was capped at --bf-container and centred.) */
+.bf-home > * { max-width: none; margin-inline: 0; padding-inline: var(--bf-gutter); }
+
+/* a plain band for the twin surfaces of 2026-11-05 (campaign sliders, brand banner, a slider with its own colour) */
+.bf-band { padding-block: 10px 6px; }
+/* a band that runs the FULL WIDTH of the page (the campaign sections, the brand banner): out of the page's column —
+   the piece inside keeps its own content on it */
+.bf-home > .bf-band--bleed { max-width: none; padding-inline: 0; }
+/* a slider with its own colour: the colour is the BAND's, edge to edge; the rail inside starts at the gutter */
+.bf-home > .bf-band--colour { padding-block: 16px 14px; background: var(--hl-ground); }
+.bf-band--colour > .hl { padding: 0; border-radius: 0; background: none; }
+/* a slider with its own colour keeps its BfRail, without the rail's own tint or inset */
+.bf-band .hl .bf-rail { padding-block: 0; }
+/* A SLIDER'S COLOUR IS THE SECTION'S (the design pass, 2026-11-05): the card keeps its own surface, text, prices and
+   button. The rail's heading stands on the section, so it takes the ink that reads on the colour.
+   THE CARD IS A CLEARLY SEPARATE SURFACE on it (the review of 2026-11-05: cards "melted" into the section): its own
+   ground, an edge and a shadow — and with the blend on, the tinted photo sits INSIDE the card, framed by it. */
+.bf-band .hl .bf-card { border: 1px solid rgba(0, 0, 0, 0.1); background: #ffffff; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06), 0 14px 26px -18px rgba(0, 0, 0, 0.45); }
+.bf-band .hl--blend .bf-card__tile { margin: 6px 6px 0; border-radius: 6px; }
+.bf-band .hl .bf-rail__title { color: var(--hl-ink); }
+.bf-band .hl .bf-rail__count { color: color-mix(in srgb, var(--hl-ink) 72%, transparent); }
+/* THE BLEND NEVER TINTS THE PRODUCT (2026-11-05): a card whose photo has a background mask paints its photo box with
+   the slider's colour and lays the mask over the unchanged photo (the twin rule, `.hl-cut`, in homeZone.css); a card
+   without one keeps its photo on the page's white. `.bf-band` raises the twin rule over the tile's own ground. */
+.bf-band .hl--blend .bf-card__tile.hl-cut { background: var(--hl-ground); }
 
 /* ── band 1: the hero + the category row ─────────────────────────────────────────────────────────── */
 .bf-open { padding-block: 12px 4px; }
@@ -114,6 +140,11 @@
 .bf-bottom-nav a { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: var(--bf-caption); font-weight: 700; color: var(--wz-ink-2); text-decoration: none; }
 .bf-bottom-nav a[aria-current='page'] { color: var(--wz-ink); }
 .bf-bottom-nav svg { width: 22px; height: 22px; }
+/* HOT DEALS MODE: the bottom bar burns with the header — the whole phone chrome changes, and changes back (the review
+   of 2026-11-05). White on the fire bar: 4.6:1 at its lightest end for the current entry, the others at 82%. */
+html[data-hot-deals='on'] .bf-bottom-nav { background: var(--pm-fire-bar); border-block-start-color: rgba(255, 255, 255, 0.3); }
+html[data-hot-deals='on'] .bf-bottom-nav a { color: rgba(255, 255, 255, 0.86); }
+html[data-hot-deals='on'] .bf-bottom-nav a[aria-current='page'] { color: #ffffff; }
 
 /* the copied app's global heading rule upper-cases h1–h3; the spec's type scale (§5) has no caps outside the brand line */
 .bf-home h2, .bf-home h3 { text-transform: none; letter-spacing: 0; }

@@ -16,9 +16,16 @@ function ScrollToTop() {
       firstRun.current = false
       return
     }
+    //
+    // THE FOCUS MUST NOT SCROLL (measured 2026-11-05, both shops, a computer and a phone): `main.focus()` scrolls a
+    // region taller than the window to ITS top — so every new page landed one header-height down (153 px on
+    // Watchizer's computer header, 53 px on its phone one), and under a sticky header that hid the top of the page:
+    // the Hot Deals and Flash Sale heroes started under the bar. `preventScroll` moves the focus and leaves the page
+    // at the top. Back and Forward are untouched: the browser and the router restore the old position after this
+    // runs (measured: the same scrollY as at the click).
     window.scrollTo(0, 0)
     const main = document.getElementById('main-content')
-    if (main) main.focus()
+    if (main) main.focus({ preventScroll: true })
   }, [pathname])
 
   return null

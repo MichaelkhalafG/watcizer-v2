@@ -5,6 +5,7 @@ import { SelectField, TextField } from "@/components/form/TextField";
 import { Select } from "@/components/ui/input";
 import { methodLabel, providerLabel } from "@/lib/labels";
 import { SwitchField } from "@/components/form/SwitchField";
+import { ImageField } from "@/components/form/ImageField";
 import { ConfirmAction } from "@/components/manage/ConfirmAction";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -107,6 +108,8 @@ interface Props {
         credential_fields: string[];
     }>;
     method_keys: string[];
+    /** The badges the storefront shows: one per method a shopper is offered (derived, never typed). */
+    badges: Array<{ method: string; label: string; image_url: string | null }>;
 }
 
 type Translator = ReturnType<typeof useT>;
@@ -151,6 +154,7 @@ export default function PaymentsIndex({
     customer_preview,
     registry,
     method_keys,
+    badges,
 }: Props) {
     const t = useT();
     const { errors } = usePage<SharedProps>().props;
@@ -804,6 +808,126 @@ export default function PaymentsIndex({
                             {t(
                                 "payments.one_key_once",
                                 "مفتاح واحد يظهر مرة واحدة فقط، حتى لو كان متاحًا تحت عقدين.",
+                            )}
+                        </p>
+                    </CardContent>
+                </Card>
+
+                {/* ── the badges the storefront shows (Part 7, 2026-11-05) ────────────────── */}
+                <Card>
+                    <CardHeader>
+                        <CardTitle>
+                            {t(
+                                "payments.badges_title",
+                                "شارات الدفع في المتجر (:count)",
+                                { count: badges.length },
+                            )}
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        <p className="text-sm text-muted-foreground">
+                            {t(
+                                "payments.badges_intro",
+                                "تظهر في أسفل الموقع وفي السلة وصفحة إتمام الطلب. القائمة ليست يدوية: شارة لكل وسيلة مفعَّلة يراها العميل، وتختفي الشارة حين تُعطَّل الوسيلة. من هنا تُرفع صورة كل شارة فقط.",
+                            )}
+                        </p>
+                        {badges.length === 0 ? (
+                            <Alert tone="warning">
+                                {t(
+                                    "payments.badges_none",
+                                    "لا توجد وسيلة مفعَّلة، فلا تظهر أي شارة في المتجر.",
+                                )}
+                            </Alert>
+                        ) : (
+                            <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                                {badges.map((badge) => (
+                                    <li
+                                        key={badge.method}
+                                        className="space-y-3 rounded-lg border p-3"
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <span className="flex h-11 w-[4.5rem] shrink-0 items-center justify-center rounded-md border bg-white p-1.5">
+                                                {badge.image_url !== null ? (
+                                                    <img
+                                                        src={badge.image_url}
+                                                        alt=""
+                                                        className="max-h-full max-w-full object-contain"
+                                                    />
+                                                ) : (
+                                                    <span className="text-center text-[10px] font-semibold leading-tight text-neutral-700">
+                                                        {badge.label}
+                                                    </span>
+                                                )}
+                                            </span>
+                                            <div className="min-w-0">
+                                                <p className="truncate text-sm font-medium">
+                                                    {badge.label}
+                                                </p>
+                                                <p className="text-xs text-muted-foreground">
+                                                    {badge.image_url !== null
+                                                        ? t(
+                                                              "payments.badge_has_image",
+                                                              "تظهر بصورتها",
+                                                          )
+                                                        : t(
+                                                              "payments.badge_no_image",
+                                                              "بلا صورة: يظهر اسم الوسيلة",
+                                                          )}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <ImageField
+                                            type="payment"
+                                            compact
+                                            label={t(
+                                                "payments.badge_upload",
+                                                "رفع صورة الشارة",
+                                            )}
+                                            value={null}
+                                            onChange={(image) => {
+                                                if (image !== null) {
+                                                    router.put(
+                                                        `${base}/badges/${badge.method}`,
+                                                        {
+                                                            image_path: `${image.folder}/${image.file}`,
+                                                        },
+                                                        { preserveScroll: true },
+                                                    );
+                                                }
+                                            }}
+                                        />
+                                        {badge.image_url !== null ? (
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() =>
+                                                    router.put(
+                                                        `${base}/badges/${badge.method}`,
+                                                        { image_path: null },
+                                                        { preserveScroll: true },
+                                                    )
+                                                }
+                                            >
+                                                {t(
+                                                    "payments.badge_remove",
+                                                    "إزالة الصورة",
+                                                )}
+                                            </Button>
+                                        ) : null}
+                                    </li>
+                                ))}
+                            </ul>
+                        )}
+                        {errors.badge ? (
+                            <p className="text-sm text-destructive">
+                                {errors.badge}
+                            </p>
+                        ) : null}
+                        <p className="text-xs text-muted-foreground">
+                            {t(
+                                "payments.badge_hint",
+                                "صورة أفقية صغيرة بخلفية بيضاء أو شفافة (حتى 320×200). تُعرض داخل بطاقة بيضاء.",
                             )}
                         </p>
                     </CardContent>

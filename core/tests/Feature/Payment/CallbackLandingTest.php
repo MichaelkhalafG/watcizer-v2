@@ -41,7 +41,10 @@ function landedAt(string $status, ?string $orderNumber = null): string
 
 it('decides the landing from the POLICY, never from what the provider claimed', function () {
     $paid = ['action' => CallbackPolicy::ACT_PAY, 'finding' => null, 'paid' => true];
-    $declined = ['action' => CallbackPolicy::ACT_CANCEL, 'finding' => null, 'paid' => false];
+    // A decline is "record only" since 2026-11-05 (it used to be a cancel); the landing is still `failed`.
+    $declined = ['action' => CallbackPolicy::ACT_RECORD_ONLY, 'finding' => null, 'paid' => false];
+    $reinstated = ['action' => CallbackPolicy::ACT_REINSTATE, 'finding' => null, 'paid' => true];
+    $notReinstated = ['action' => CallbackPolicy::ACT_REINSTATE, 'finding' => CallbackPolicy::KIND_TERMINAL, 'paid' => false];
     $amount = ['action' => CallbackPolicy::ACT_RECORD_ONLY, 'finding' => CallbackPolicy::KIND_AMOUNT, 'paid' => false];
     $terminal = ['action' => CallbackPolicy::ACT_RECORD_ONLY, 'finding' => CallbackPolicy::KIND_TERMINAL, 'paid' => false];
     $pending = ['action' => CallbackPolicy::ACT_RECORD_ONLY, 'finding' => null, 'paid' => false];
@@ -51,6 +54,9 @@ it('decides the landing from the POLICY, never from what the provider claimed', 
         // A "success" the policy refused is a finding: the shopper is told it is being confirmed.
         ->and(Landing::of($amount, CallbackPolicy::OUTCOME_SUCCESS))->toBe(Landing::PENDING)
         ->and(Landing::of($terminal, CallbackPolicy::OUTCOME_SUCCESS))->toBe(Landing::PENDING)
+        // A late payment that brought the order back is paid; one that could not is being confirmed.
+        ->and(Landing::of($reinstated, CallbackPolicy::OUTCOME_SUCCESS))->toBe(Landing::PAID)
+        ->and(Landing::of($notReinstated, CallbackPolicy::OUTCOME_SUCCESS))->toBe(Landing::PENDING)
         ->and(Landing::of($pending, CallbackPolicy::OUTCOME_PENDING))->toBe(Landing::PENDING)
         // A replay is told what the RECORD says.
         ->and(Landing::ofRecorded('true', CallbackPolicy::OUTCOME_SUCCESS))->toBe(Landing::PAID)
@@ -106,7 +112,8 @@ it('answers the PROVIDER with JSON on every exit: refusal, success, decline, rep
         ->assertOk()->assertExactJson(['message' => 'failed']);
 
     expect(T::str(DB::table('orders')->where('id', $orderId)->value('status')))->toBe('processing')
-        ->and(T::str(DB::table('orders')->where('id', $other)->value('status')))->toBe('cancelled');
+        // declined: told `failed`, and the order keeps waiting (2026-11-05)
+        ->and(T::str(DB::table('orders')->where('id', $other)->value('status')))->toBe('pending');
 });
 
 it('sends the SHOPPER to the confirmation page on every exit, with the order number where it is proven', function () {
@@ -139,7 +146,7 @@ it('sends the SHOPPER to the confirmation page on every exit, with the order num
     ))->assertRedirect(landedAt('failed'));
 
     expect(T::str(DB::table('orders')->where('id', $paidOrder)->value('status')))->toBe('processing')
-        ->and(T::str(DB::table('orders')->where('id', $declinedOrder)->value('status')))->toBe('cancelled')
+        ->and(T::str(DB::table('orders')->where('id', $declinedOrder)->value('status')))->toBe('pending')
         ->and(T::str(DB::table('orders')->where('id', $mismatchOrder)->value('status')))->toBe('pending');
 });
 

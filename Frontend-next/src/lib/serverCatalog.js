@@ -7,7 +7,7 @@ import { homeQueryFn } from '../Hooks/queries/useListing'
 import { listingQueryFn } from './listingRequest'
 import { toSlug } from '../utils/slugs'
 import { transformProductData } from '../utils/transformProduct'
-import { coreRead, MISS, CoreUnavailableError } from './coreRead'
+import { coreRead, heldLookup, MISS, CoreUnavailableError, HOLD } from './coreRead'
 
 // SERVER-ONLY catalogue access for the pages' server renders.
 //
@@ -25,47 +25,23 @@ import { coreRead, MISS, CoreUnavailableError } from './coreRead'
 // good copy, and only then thrown as CoreUnavailableError — which the pages let reach their error
 // boundary (a 5xx) instead of calling notFound(). A core failure never becomes a 404 again.
 
-// CROSS-REQUEST memo for the small, shared reads (nav, tables). React `cache()`
+// CROSS-REQUEST copies of the small, shared reads (nav, tables). React `cache()`
 // alone only dedupes within ONE request, and serverHttp is axios (which bypasses
-// Next's fetch Data Cache), so a process-level memo of the in-flight/resolved
-// promise (5-min TTL) keeps them from being re-fetched on every navigation. The
-// promise is cleared on error so the next request retries.
-const CATALOG_TTL = 300_000 // 5 min — parity with the routes' `revalidate = 300`
+// Next's fetch Data Cache), so this process holds them: `heldLookup` (coreRead.js) —
+// the copy is the answer for five minutes, and after that it still is while core is
+// asked again BEHIND the request (2026-11-06: until then, once every five minutes one
+// request waited for them). A failed read is not held, so the next request retries.
 
-// The header menu's facts (C-1 stage 2) — a few KB, memoised like the catalogue.
-let _navPromise = null
-let _navAt = 0
-export const getServerNav = cache(async () => {
-  const now = Date.now()
-  if (!_navPromise || now - _navAt >= CATALOG_TTL) {
-    _navAt = now
-    _navPromise = coreRead('nav', navQueryFn(serverHttp)).catch((e) => {
-      _navPromise = null
-      throw e
-    })
-  }
-  return _navPromise
-})
+// The header menu's facts (C-1 stage 2) — a few KB.
+export const getServerNav = cache(heldLookup('nav', navQueryFn(serverHttp)))
 
 // The lookup tables alone (C-1 stage 4) — what the (main) layout needs. It used to fetch the whole
-// catalogue on the server just to take the tables out of it. Memoised like nav.
-let _tablesPromise = null
-let _tablesAt = 0
+// catalogue on the server just to take the tables out of it. Held like nav.
+const heldTables = heldLookup('tables', tablesQueryFn(serverHttp))
 export const getServerTables = cache(async () => {
-  const now = Date.now()
-  if (!_tablesPromise || now - _tablesAt >= CATALOG_TTL) {
-    _tablesAt = now
-    _tablesPromise = coreRead('tables', tablesQueryFn(serverHttp))
-      .then((tables) => {
-        if (tables === MISS) throw new CoreUnavailableError('tables', new Error('no tables'))
-        return tables
-      })
-      .catch((e) => {
-        _tablesPromise = null
-        throw e
-      })
-  }
-  return _tablesPromise
+  const tables = await heldTables()
+  if (tables === MISS) throw new CoreUnavailableError('tables', new Error('no tables'))
+  return tables
 })
 
 // ONE product for the product page, by URL param — numeric id or english slug — resolved by core
@@ -81,10 +57,14 @@ export const getServerProduct = cache(async (param) => {
   } catch {
     // a malformed escape — look it up as typed
   }
-  const data = await coreRead(`product:${decoded}`, async () => {
-    const res = await serverHttp.get(`catalog/product?slug=${encodeURIComponent(decoded)}`)
-    return res.data
-  })
+  const data = await coreRead(
+    `product:${decoded}`,
+    async () => {
+      const res = await serverHttp.get(`catalog/product?slug=${encodeURIComponent(decoded)}`)
+      return res.data
+    },
+    HOLD.product,
+  )
   return data?.products?.length ? data : null
 })
 
@@ -110,7 +90,7 @@ export const getServerProductCard = cache(async (param) => {
 // 404; the home page cannot be "not found").
 export const getServerHome = cache(async () => {
   try {
-    return await coreRead('home', homeQueryFn(serverHttp))
+    return await coreRead('home', homeQueryFn(serverHttp), HOLD.home)
   } catch {
     return null
   }
@@ -120,7 +100,7 @@ export const getServerHome = cache(async () => {
 // route's generateMetadata (its count and preview image) and the page (its prefetch) in ONE request.
 // Throws when core could not answer and there is no last good copy; the callers then let the
 // browser fetch it (the listing is never "not found").
-export const getServerListing = cache(async (qs) => coreRead(`listing:${qs}`, listingQueryFn(qs, serverHttp)))
+export const getServerListing = cache(async (qs) => coreRead(`listing:${qs}`, listingQueryFn(qs, serverHttp), HOLD.listing))
 
 // A resolved product card's text in `lang` (S-AR stage 1): the same raw row core sent, transformed
 // in that language — for the Arabic page's title, description and JSON-LD. null without a payload.

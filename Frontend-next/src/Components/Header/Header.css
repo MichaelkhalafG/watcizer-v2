@@ -17,8 +17,9 @@
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 .wz-strip-inner {
-  /* the icon cluster's width plus a gutter, reserved on the marquee so the two never meet (item 8) */
-  --wz-strip-social-space: 76px;
+  /* the icon cluster's width plus a gutter, reserved on the marquee so the two never meet (item 8).
+     Three icons since 2026-11-05 (TikTok): 13 + 14 + 13 px of icon, two 14 px gaps, the same 35 px gutter. */
+  --wz-strip-social-space: 103px;
   position: relative;
   height: 32px;
   display: flex;
@@ -353,7 +354,7 @@
 }
 
 .wz-act-lang__btn.is-active {
-  color: var(--wz-gold);
+  color: var(--wz-gold-text);
   font-weight: 700;
 }
 
@@ -670,6 +671,30 @@
 .nav-item {
   position: relative;
   overflow: visible;
+}
+/* THE ROW ALWAYS FITS (the responsive pass of 2026-11-05). Measured: at 844 px (a phone held sideways) the row was
+   1015 px of entries in an 844 px page and at 1024 px it still ran 42 px over — the page scrolled sideways. Up to
+   1100 px the entries close up (less padding and tracking, no arrow: the entry still opens the panel), and the row
+   may wrap as the last resort, because the number of categories is the dashboard's and not this file's. */
+.nav-ul {
+  flex-wrap: wrap;
+}
+@media (max-width: 1100px) {
+  .nav-inner {
+    padding-inline: clamp(8px, 2vw, 24px);
+  }
+  .nav-link-item {
+    padding: 0 9px;
+    letter-spacing: 0.06em;
+    gap: 4px;
+  }
+  .nav-link-item::after {
+    left: 9px;
+    right: 9px;
+  }
+  .nav-link-item > svg:last-child {
+    display: none;
+  }
 }
 /* …but the page itself must not scroll sideways if a menu reaches the edge.
    Use `clip` (not `hidden`) so this never establishes a scroll container that
@@ -1761,4 +1786,38 @@ a.wz-drawer-link {
   .wz-msearch.is-open {
     box-shadow: 0 6px 16px rgba(0, 0, 0, 0.06);
   }
+}
+
+/* ── The campaigns in the header (the twelve updates, Part 2, 2026-11-05) ──────────────────────────────── */
+/* the nav row's end: the Hot Deals switch and the Flash Sale chip, centred on the row */
+.nav-inner > .pm-nav--nav {
+  align-self: center;
+}
+/* phones (the nav row is hidden there): the slim strip under the header, and no switch in the logo row */
+@media (max-width: 768px) {
+  .wz-row1 > .pm-nav--top {
+    display: none;
+  }
+}
+/* HOT DEALS MODE ON A PHONE: the whole header burns — the bar (in its dark state: white logo and icons), the
+   slide-down search and the edge under it — and goes back the moment the mode is switched off */
+@media (max-width: 768px) {
+  html[data-hot-deals='on'] .wz-header,
+  html[data-hot-deals='on'] .wz-header.wz-bar-transparent {
+    border-bottom-color: transparent;
+    background: var(--pm-fire-bar);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    box-shadow: 0 6px 18px -8px rgba(168, 10, 20, 0.7);
+  }
+  html[data-hot-deals='on'] .wz-msearch {
+    background: var(--pm-fire-4);
+  }
+}
+/* HOT DEALS MODE: the two dark bands of the header burn; the white logo row stays white, and the lit switch on it */
+html[data-hot-deals='on'] .wz-strip {
+  background: var(--pm-fire-4);
+}
+html[data-hot-deals='on'] .Nav {
+  background: var(--pm-fire-bar);
 }

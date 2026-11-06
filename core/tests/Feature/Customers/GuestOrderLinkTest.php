@@ -66,6 +66,7 @@ function guestOrder(string $email, ?string $phone = null): int
         'guest_phone' => $phone,
         'guest_token' => 'tok-'.bin2hex(random_bytes(4)),
         'address_id' => $addressId,
+        'storefront_id' => 1,
         'total_price_for_order' => 100.00,
         'status' => 'pending',
         'payment_method' => 'cash',
@@ -351,6 +352,7 @@ it('REFUSES to move a REGISTERED customer orders to another account', function (
         $orders()->insert([
             'user_id' => $ownerId,
             'address_id' => T::int($orders()->whereNotNull('address_id')->value('address_id')),
+            'storefront_id' => 1,
             'total_price_for_order' => 250.00,
             'status' => 'pending',
             'payment_method' => 'cash',

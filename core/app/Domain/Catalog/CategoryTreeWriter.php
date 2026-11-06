@@ -278,6 +278,34 @@ final class CategoryTreeWriter
     }
 
     /** Activate / deactivate, and show / hide in the menu — the two manual overrides of §3.3. */
+    /**
+     * A category's PICTURE (the twelve updates, Part 5, 2026-11-05) — one of three states:
+     *
+     *   own     `$imagePath` given          its own uploaded image
+     *   auto    null, `$hidden` false       the cover of its newest product a shopper can buy (CategoryImages)
+     *   none    null, `$hidden` true        no picture at all — "deleted" in the dashboard, and it stays deleted:
+     *                                       the automatic picture does not come back until somebody asks for it
+     *
+     * It changes what the menu draws and nothing about the tree's shape, so it is on the rename ability, not
+     * the tree-edit one. Still refused on a mirrored tree before the write-switch, like every tree write.
+     */
+    public function setImage(int $storefrontId, int $nodeId, ?string $imagePath, bool $hidden): StorefrontCategory
+    {
+        PreSwitch::assertMayEditTree($storefrontId);
+        $this->requireNode($storefrontId, $nodeId);
+
+        $path = $imagePath === null || trim($imagePath) === '' ? null : trim($imagePath);
+        DB::table('storefront_categories')->where('id', $nodeId)->update([
+            'image_path' => $path,
+            // an own image is never hidden: uploading one is asking for it to show
+            'image_hidden' => $path === null && $hidden,
+            'updated_at' => now(),
+        ]);
+        $this->bump($storefrontId);
+
+        return $this->requireNode($storefrontId, $nodeId);
+    }
+
     public function setFlags(int $storefrontId, int $nodeId, ?bool $isActive, ?bool $showInMenu): StorefrontCategory
     {
         PreSwitch::assertMayEditTree($storefrontId);

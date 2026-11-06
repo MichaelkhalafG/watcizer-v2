@@ -42,9 +42,9 @@ final class Banners
                 $join->on('cte.storefront_category_id', '=', 'b.storefront_category_id')->where('cte.locale', '=', 'en');
             })
             ->where('b.storefront_id', $storefrontId)
-            ->where('b.placement', BannerWriter::PLACEMENTS[0])
+            ->whereIn('b.placement', BannerWriter::PLACEMENTS)
             ->select([
-                'b.id', 'b.image_path', 'b.device', 'b.image_original_path', 'b.crop',
+                'b.id', 'b.placement', 'b.image_path', 'b.device', 'b.image_original_path', 'b.crop',
                 'b.link_url', 'b.product_id', 'b.storefront_category_id',
                 'b.sort_order', 'b.is_active', 'b.starts_at', 'b.ends_at',
                 'pt.title as product_title', 'ct.name as category_name',
@@ -57,7 +57,7 @@ final class Banners
         return DB::table('storefront_banners')
             ->where('id', $bannerId)
             ->where('storefront_id', $storefrontId)
-            ->where('placement', BannerWriter::PLACEMENTS[0])
+            ->whereIn('placement', BannerWriter::PLACEMENTS)
             ->exists();
     }
 }

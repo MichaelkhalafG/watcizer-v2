@@ -141,6 +141,8 @@ it('every BULK mail template links only what its mailable hands it', function ()
 const ORDER_MAIL_OWN_LINKS = [
     'payment-expired.blade.php' => ['recoveryUrl'],
     'payment-expired-admin.blade.php' => ['telUrl', 'waUrl'],
+    // the shop's "customer charged, order does not show it" alert (2026-11-05): the same two buttons
+    'payment-alert-admin.blade.php' => ['telUrl', 'waUrl'],
 ];
 
 it('every ORDER mail template links only variables the order builder declares', function () {

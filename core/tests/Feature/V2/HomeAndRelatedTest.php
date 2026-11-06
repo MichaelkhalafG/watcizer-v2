@@ -43,7 +43,9 @@ it('serves the home: the storefront\'s rails with v2 cards in order, the deals b
     // `hero` (the addendum, 2026-10-20) is which hero this storefront draws. `banners` (D1) is every active
     // banner in the dashboard's order; `banner` stays beside it, the first of that list, for the storefront
     // build still running while core is deployed ahead of it.
-    expect(array_keys($home))->toBe(['hero', 'rails', 'deals', 'categories', 'banners', 'banner', 'brands']);
+    // `side_banners` (the twelve updates, Part 3.1, 2026-11-05): the two slots beside the large hero, `[top, bottom]`.
+    expect(array_keys($home))->toBe(['hero', 'rails', 'managed_sections', 'deals', 'categories', 'banners', 'banner', 'side_banners', 'brands'])
+        ->and($home['side_banners'])->toHaveCount(2);
 
     $active = HomeRails::active(1);
     $rails = H::rows($home['rails']);
@@ -52,6 +54,15 @@ it('serves the home: the storefront\'s rails with v2 cards in order, the deals b
     $order = array_map(fn (array $r) => $r['id'], $active);
     expect(array_values(array_intersect($order, $ids)))->toBe($ids, 'rails come in the dashboard\'s order');
     foreach ($rails as $rail) {
+        if ($rail['kind'] === HomeRails::BANNERS) {
+            // The Banners block's place among the sliders (the design pass, 2026-11-05): the one rail with no cards
+            // — the page draws `banners` and `side_banners` there.
+            expect($rail)->toHaveKeys(['id', 'kind', 'target', 'title', 'count', 'cards'])
+                ->and($rail['cards'])->toBe([])
+                ->and($rail['count'])->toBe(0);
+
+            continue;
+        }
         expect($rail)->toHaveKeys(['id', 'kind', 'target', 'title', 'count', 'cards'])
             ->and(T::int($rail['count']))->toBe(count(H::rows($rail['cards'])))->toBeGreaterThan(0);
         $def = collect($active)->firstWhere('id', T::int($rail['id']));

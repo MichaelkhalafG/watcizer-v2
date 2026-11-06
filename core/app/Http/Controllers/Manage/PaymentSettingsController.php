@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Manage;
 use App\Domain\Access\Roles;
 use App\Domain\Activity\ActivityLog;
 use App\Domain\Payment\MethodList;
+use App\Domain\Payment\PaymentBadges;
 use App\Domain\Payment\ProviderRegistry;
 use App\Models\Storefront\Storefront;
 use App\Models\Storefront\StorefrontPaymentMethod;
@@ -48,7 +49,7 @@ use Inertia\Response;
  */
 final class PaymentSettingsController
 {
-    public function __construct(private readonly ProviderRegistry $registry) {}
+    public function __construct(private readonly ProviderRegistry $registry, private readonly PaymentBadges $badges) {}
 
     public function index(Request $request, Storefront $storefront): Response
     {
@@ -88,6 +89,16 @@ final class PaymentSettingsController
                 $this->registry->keys(),
             ),
             'method_keys' => self::METHOD_KEYS,
+            // The badges the storefront shows (Part 7, 2026-11-05): exactly the methods a shopper is
+            // offered — the list is derived, only the picture is the team's.
+            'badges' => array_map(
+                fn (array $badge): array => [
+                    'method' => $badge['method'],
+                    'label' => $badge['label']['ar'] !== '' ? $badge['label']['ar'] : $badge['label']['en'],
+                    'image_url' => $badge['image']['src'] ?? null,
+                ],
+                $this->badges->forStorefront($storefrontId),
+            ),
         ]);
     }
 

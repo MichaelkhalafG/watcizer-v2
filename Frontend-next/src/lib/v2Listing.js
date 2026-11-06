@@ -233,6 +233,19 @@ export function fromV2Listing(page) {
   }
 }
 
+/**
+ * WHAT A SERVER PAGE HANDS THE BROWSER INSIDE ITS HTML: core's page, once (2026-11-06).
+ *
+ * `fromV2Listing` keeps the raw page under `v2` AND maps every card into a legacy row that itself keeps every v2
+ * field — fine in memory, but dehydrated into a page's HTML it is each card twice and each facet block twice
+ * (about 100 KB of a category page's 403 KB, measured 2026-11-05). `packListing` is what the two listing pages
+ * put in the query cache instead — the raw page alone — and `unpackListing` rebuilds the full payload from it,
+ * with the same function, where it is read (`useListing`'s `select`). A payload that is already whole (the
+ * browser's own refetch) passes through both untouched.
+ */
+export const packListing = (payload) => (payload && payload.v2 ? { v2: payload.v2 } : payload)
+export const unpackListing = (data) => (data && data.products === undefined && data.v2 ? fromV2Listing(data.v2) : data)
+
 export const v2ListingQueryFn =
   // The browser default is the header-less client (no CORS preflight); the server passes serverFetch.
   (qs, client = publicHttp) =>

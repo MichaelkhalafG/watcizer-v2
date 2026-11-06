@@ -49,6 +49,12 @@
  * Done with item 15a and meaningless without it: the tracked-out sentence over every heading was
  * half of the flatness, and removing one without the other reads as neither.
  */
+/* A section that runs the FULL WIDTH of the page (the campaign sections, the brand banner): no side padding and no
+   container — the piece inside keeps its own content on the page's column. */
+.wz-home-section.wz-home-section--bleed {
+  padding-inline: 0;
+}
+
 .wz-home-section--repeat {
   padding-top: clamp(26px, 3.6vh, 48px);
   padding-bottom: clamp(30px, 4.4vh, 58px);
@@ -78,9 +84,9 @@
   font-size: 10px;
   letter-spacing: 0.3em;
   text-transform: uppercase;
-  /* Darker gold — 10px text on white needs ≥4.5:1 (WCAG AA). #c8a45c ~2.8:1;
-     #9a7b3c ~4.6:1. Decorative/large gold and gold-on-dark keep #c8a45c. */
-  color: var(--wz-gold-dark);
+  /* The gold for small text (globals.css, --wz-gold-text): 10 px text needs 4.5 : 1. Lighthouse measured the dark
+     gold #9a7b3c at 3.8 : 1 on the page's #fafafa (2026-11-05). Decorative/large gold and gold-on-dark keep #c8a45c. */
+  color: var(--wz-gold-text);
   margin-bottom: 4px;
 }
 
@@ -381,4 +387,53 @@
 
 .wz-brand-strip-item:hover .wz-brand-strip-name {
   color: var(--wz-charcoal);
+}
+
+/* THE BLEND (Part 3.2; redone 2026-11-05 so it never tints the product): inside a slider that has its own colour and
+   the blend switched on, a card whose photo has a background mask paints its photo box with the section's colour and
+   lays the mask over the unchanged photo (homeZone.css). A slider without the switch is untouched. */
+/* …and that colour is a BAND THE FULL WIDTH OF THE PAGE (the review of 2026-11-05): the section carries it edge to
+   edge, the cards stay on the page's column, and the box the colour used to be is gone. */
+.wz-home-section.wz-home-section--band {
+  background: var(--hl-ground);
+}
+.wz-home-section--band .hl {
+  padding: 0;
+  border-radius: 0;
+  background: none;
+}
+
+/* A SLIDER'S COLOUR IS THE SECTION'S (the design pass, 2026-11-05): the card keeps its own surface, text, prices
+   and button. The slider's heading stands on the section, so it takes the ink that reads on the colour.
+   THE CARD IS A CLEARLY SEPARATE SURFACE on it (the review of 2026-11-05: cards "melted" into the section): its own
+   white ground, an edge and a shadow — and with the blend on, the tinted photo sits INSIDE the card, framed by it. */
+.hl .wz-pc {
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06), 0 14px 26px -18px rgba(0, 0, 0, 0.45);
+}
+.hl--blend .wz-pc__media {
+  inline-size: auto;
+  margin: 8px 8px 0;
+  border-radius: 6px;
+}
+.hl .wz-slider-header {
+  border-color: color-mix(in srgb, var(--hl-ink) 18%, transparent);
+}
+.hl .wz-section-title,
+.hl .wz-section-label {
+  color: var(--hl-ink);
+}
+.hl .wz-section-action {
+  border-color: color-mix(in srgb, var(--hl-ink) 40%, transparent);
+  color: var(--hl-ink);
+}
+.hl .wz-section-action:hover {
+  background: var(--hl-ink);
+  color: var(--hl-ground);
+}
+/* the photo box of a card with a mask is painted with the slider's colour (the twin rule, `.hl-cut`); the <picture>
+   inside it is transparent so that colour is what shows through the mask */
+.hl--blend .hl-cut .wz-pc__picture {
+  background: transparent;
 }

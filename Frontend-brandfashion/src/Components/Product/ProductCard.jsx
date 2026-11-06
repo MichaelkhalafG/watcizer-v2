@@ -18,7 +18,7 @@ import BfProductCard from './BfProductCard'
  * exists else Market, the English name for analytics), the same refusal toast, the same product URL. Only the look
  * and the card's own additions (hover photo, descriptive colours as text, the picker) are Brand Fashion's.
  */
-const ProductCard = ({ product, showRating = true }) => {
+const ProductCard = ({ product, showRating = true, eager = false, first = false }) => {
   const { language } = useUIStore()
   const { addItem } = useCart()
   const showToast = useToastStore((s) => s.showToast)
@@ -50,7 +50,7 @@ const ProductCard = ({ product, showRating = true }) => {
     return true
   }
 
-  return <BfProductCard product={card} lang={lang} showRating={showRating} href={href} onAdd={onAdd} />
+  return <BfProductCard product={card} lang={lang} showRating={showRating} href={href} onAdd={onAdd} eager={eager} first={first} />
 }
 
 // Watchizer's own comparison: skip a re-render when the card's meaningful data is unchanged.

@@ -236,6 +236,7 @@ function seedOrderWithLine(int $productId, int $quantity, string $typeStock): in
     $orderId = (int) DB::table('orders')->insertGetId([
         'user_id' => null,
         'address_id' => $addressId,
+        'storefront_id' => 1,
         'total_price_for_order' => '0.00',
         'payment_method' => 'cash',
         'order_number' => '900'.random_int(100, 999),

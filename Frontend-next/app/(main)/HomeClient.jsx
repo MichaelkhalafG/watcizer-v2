@@ -1,24 +1,37 @@
 'use client'
 import { useMemo, useCallback } from 'react'
+import dynamic from 'next/dynamic'
 import Image from 'next/image'
 import { useRouter } from '@/src/Hooks/useLocaleRouter'
-// THE CAMPAIGN (2026-10-28/29, WATCHIZER ONLY — this file DIVERGES from its Brand Fashion twin by this import and
-// the one line that draws it; Frontend-brandfashion/TWINS.txt records it). The Hugo Boss Grand Prix 1513477 banner
-// replaces the 3D hero in code for the campaign's run, in the 3D hero's exact box; there is no dashboard switch. To
-// end the campaign: import WatchHero from '@/src/Components/Hero/WatchHero' again and draw <WatchHero /> below —
-// that hero's code is untouched in src/Components/Hero/ — then restore the twin line in TWINS.txt.
+// THE HERO ZONE HAS THREE MODES since 2026-11-05 (the twelve updates, Part 3.1), chosen on the dashboard's Banners
+// screen: `campaign` — the Hugo Boss Grand Prix 1513477 banner (WATCHIZER ONLY, which is why this file DIVERGES from
+// its Brand Fashion twin; Frontend-brandfashion/TWINS.txt records it) — `three_d`, the original 3D watch, and
+// `banner`, the large hero with two side slots. Until that day the campaign banner replaced the 3D hero IN CODE and
+// ending the campaign meant editing this file; now it is the dashboard's switch, and both heroes are here.
 import GrandPrixBanner from '@/src/Components/Home/GrandPrixBanner'
 import '@/src/Components/Home/home.css'
 import ProductSlider from '@/src/Components/Product/ProductSlider'
+import TrustSignals from '@/src/Components/Merchandising/TrustSignals'
 import OfferSlider from '@/src/Components/Product/OfferSlider'
-import FeaturedBanner from '@/src/Components/Home/FeaturedBanner'
-import BannerHero from '@/src/Components/Home/BannerHero'
+import HeroZone from '@/src/Components/Home/HeroZone'
+import BrandBanner, { onColor } from '@/src/Components/Home/BrandBanner'
+import CampaignRail from '@/src/Components/Promo/CampaignRail'
+import { useHotDealsMode, useLiveCampaign } from '@/src/Hooks/queries/usePromo'
+import { money } from '@/src/lib/campaign'
+import { brandSlug } from '@/src/utils/slugs'
 import { useHome, useCardsOf } from '@/src/Hooks/queries/useListing'
 import { useTables } from '@/src/Hooks/queries/useTables'
 import { useUIStore } from '@/src/Store/uiStore'
 import CategoryTiles from '@/src/Components/Merchandising/CategoryTiles'
 import { getImageUrl } from '@/src/utils/imageUrl'
+import { productUrl } from '@/src/utils/productUrl'
 import { buildListingParams } from '@/src/utils/listingParams'
+
+// The 3D hero is drawn only in `three_d` mode, so its code (three.js) is not in the home page's first bundle while
+// the shop is on the campaign banner.
+const WatchHero = dynamic(() => import('@/src/Components/Hero/WatchHero'))
+// Hot Deals mode replaces the home with the campaign's page; loaded only when the switch is on.
+const CampaignPage = dynamic(() => import('@/src/Components/Promo/CampaignPage'))
 
 // A home rail is drawn only with at least this many products (item 14, 2026-10-23). Four is one full row of
 // cards at desktop width: below it the band is mostly empty under its own heading. See the rails memo.
@@ -71,7 +84,11 @@ const nameIn = (row, key, language) =>
 const KIND_TITLES = {
   offers: { en: 'Season Offers', ar: 'عروض الموسم' },
   newest: { en: 'New Arrivals', ar: 'وصل حديثًا' },
+  best_value: { en: 'Best Value', ar: 'أفضل قيمة' },
 }
+
+// The kinds that are a SECTION of the page rather than a slider of products (core: HomeRails::SECTIONS).
+const SECTION_KINDS = ['banners', 'hot_deals', 'flash_sale', 'categories', 'brands']
 
 export default function HomeClient({ initialHome = null, campaign = null }) {
   const { data: home, isFetching, isError, refetch } = useHome(initialHome)
@@ -79,6 +96,8 @@ export default function HomeClient({ initialHome = null, campaign = null }) {
   const { language } = useUIStore()
   const router = useRouter()
   const isRTL = language === 'ar'
+  const hotDeals = useHotDealsMode()
+  const flashSale = useLiveCampaign('flash_sale')
 
   // Every rail's cards, transformed once in the shopper's language.
   const cards = useCardsOf(home, language)
@@ -90,15 +109,27 @@ export default function HomeClient({ initialHome = null, campaign = null }) {
   /*
    * WHICH HERO THIS SHOP DRAWS (the developer's addendum, 2026-10-20).
    *
-   * `home.hero` is the storefront's own setting — `three_d` or `banner` — flipped on the dashboard's
-   * Banners screen, not decided by which app is deployed. ANYTHING ELSE, INCLUDING A MISSING VALUE,
-   * IS THE 3D HERO: Watchizer is live, this page is its home page, and a payload that arrives without
-   * the key (an old cached answer, a core deployed without its migration) must render exactly what it
-   * renders today. A shop set to `banner` with no banners falls back to the 3D hero too — an empty
-   * hero slot is worse than the one that was already there.
+   * `home.hero` is the storefront's own setting — `campaign`, `three_d` or `banner` (Part 3.1, 2026-11-05) —
+   * flipped on the dashboard's Banners screen, not decided by which app is deployed. ANYTHING ELSE, INCLUDING
+   * A MISSING VALUE, IS THE CAMPAIGN BANNER: Watchizer is live, this page is its home page, and a payload that
+   * arrives without the key (an old cached answer, a core deployed without its migration) must render exactly
+   * what it renders today — and today that is the campaign banner. A shop set to `banner` with no banners
+   * falls back to it too — an empty hero slot is worse than the one that was already there.
    */
   const banners = home?.banners?.length ? home.banners : home?.banner ? [home.banner] : []
   const bannerHero = home?.hero === 'banner' && banners.length > 0
+  const threeD = home?.hero === 'three_d'
+  // the two side slots of the hero zone: [top, bottom], each a banner or null; both null = the hero alone
+  const sideBanners = Array.isArray(home?.side_banners) ? home.side_banners : []
+  // does the Banners block have anything to draw (a slide of the large banner, or a filled side slot)?
+  const blockBanners = banners.length > 0
+  /*
+   * EVERY HOME SECTION IS A ROW OF THE DASHBOARD (the developer's review, 2026-11-05). `managed_sections` names the
+   * sections the Home sliders screen has a row for, on or off: such a section is drawn ONLY where its row is (it
+   * arrives as a rail of its kind, in the rails' order) and not at all when the row is off. A section with no row
+   * keeps the fixed place it has always had in this file, so nothing moves until the team adds the row.
+   */
+  const managed = useMemo(() => new Set(home?.managed_sections || []), [home])
 
   // Each rail with its cards, its title and where "View all" goes. A rail whose target is gone from
   // the tables still shows, under its custom title if it has one.
@@ -136,9 +167,51 @@ export default function HomeClient({ initialHome = null, campaign = null }) {
           href = `/listing?${buildListingParams({ categories: [rail.target] }, {}, tables).toString()}`
         } else if (rail.kind === 'newest') {
           href = '/listing?sort=newest'
+        } else if (rail.kind === 'best_value') {
+          // the biggest real discounts in stock: "view all" opens every discounted product
+          href = `/listing?${buildListingParams({ offers: true }, {}, tables).toString()}`
+        } else if (rail.kind === 'price') {
+          // under a price: the rail's `target` is its cap
+          const cap = Number(rail.target) || 0
+          title = { en: `Under ${money(cap, 'en')}`, ar: `أقل من ${money(cap, 'ar')}` }
+          href = `/listing?${buildListingParams({ price: [0, cap] }, {}, tables).toString()}`
+        }
+        // THE BRAND BANNER (Part 3.3): the brand's logo and page, the team's title, description and three
+        // colours, and up to three of the brand's products — as the plain model BrandBanner draws.
+        let banner = null
+        if (rail.kind === 'brand_banner') {
+          const brand = tables?.brands?.find((b) => b.id === rail.target)
+          if (brand) {
+            banner = {
+              href: `/brand/${brandSlug(brand)}`,
+              brand: nameIn(brand, 'brand_name', 'en'),
+              logo: getImageUrl(brand.image, 'Brand'),
+              title: custom[language] || custom.en,
+              description: rail.description?.[language] || rail.description?.en || '',
+              colors: rail.colors || [],
+              products: products.slice(0, 3).map((p) => {
+                // the shop's one price rule: a sale counts only when 0 < sale < selling
+                const selling = Number(p.selling_price) || 0
+                const sale = Number(p.sale_price_after_discount) || 0
+                const onSale = sale > 0 && sale < selling
+                return {
+                  id: p.id,
+                  // each card of the banner opens ITS OWN product
+                  href: productUrl(p),
+                  image: p.image,
+                  title: p.product_title || p.name,
+                  price: money(onSale ? sale : selling, language),
+                  was: onSale ? money(selling, language) : null,
+                  // the product's real discount, rounded as its card prints it
+                  off: onSale ? Math.round(((selling - sale) / selling) * 100) : null,
+                }
+              }),
+            }
+          }
         }
         return {
           ...rail,
+          banner,
           products,
           text: {
             title: { en: custom.en || title.en, ar: custom.ar || title.ar },
@@ -167,8 +240,24 @@ export default function HomeClient({ initialHome = null, campaign = null }) {
        * The owner's reason — "a rail that cannot fill one row of cards should not be a full-width band with
        * a heading" — describes the card rails and not the banner, so the banner keeps its own behaviour.
        */
-      .filter((rail) => rail.kind === 'featured' || rail.products.length >= MIN_RAIL_PRODUCTS)
-  }, [home, cardById, tables, language])
+      // The brand banner is exempt for the same reason (Part 3.3): it is a banner with three products by
+      // design, not a row of cards — it needs its brand, nothing else.
+      // THE BANNERS BLOCK AS A SECTION (the design pass): core sends its row at its place among the sliders only
+      // while a hero leads the page; it is drawn there when the shop has a banner to show.
+      .filter((rail) => {
+        // THE ROTATING "FEATURED" BANNER IS GONE (the review of 2026-11-05): a `featured` row is not drawn — the
+        // Hot Deals section took its place. The Hugo Boss Grand Prix hero above is untouched.
+        if (rail.kind === 'featured') return false
+        if (rail.kind === 'banners') return blockBanners
+        // a campaign's section exists only while its campaign is live
+        if (rail.kind === 'hot_deals') return !!hotDeals.campaign
+        if (rail.kind === 'flash_sale') return !!flashSale.campaign
+        if (rail.kind === 'categories') return true
+        if (rail.kind === 'brands') return (tables?.brands || []).length > 0
+        if (rail.kind === 'brand_banner') return !!rail.banner
+        return rail.products.length >= MIN_RAIL_PRODUCTS
+      })
+  }, [home, cardById, tables, language, blockBanners, hotDeals.campaign, flashSale.campaign])
 
   const brands = tables?.brands || []
   const brandName = (b) => nameIn(b, 'brand_name', language)
@@ -196,6 +285,10 @@ export default function HomeClient({ initialHome = null, campaign = null }) {
                 type="button"
               >
                 {img ? (
+                  /* NO `sizes` (the performance pass, 2026-11-05): with it next/image writes every width it knows into
+                     each logo's srcset — thirteen URLs a logo, 160 logos (the strip is drawn twice for the loop): 303 KB
+                     of this page's 619 KB of markup. A fixed 90 x 32 logo needs two: 1x and 2x. The same two files are
+                     chosen as before (96 px and 256 px). */
                   <Image
                     src={img}
                     alt={name}
@@ -203,7 +296,6 @@ export default function HomeClient({ initialHome = null, campaign = null }) {
                     width={90}
                     height={32}
                     quality={70}
-                    sizes="90px"
                     onError={onBrandImgError}
                   />
                 ) : null}
@@ -219,62 +311,137 @@ export default function HomeClient({ initialHome = null, campaign = null }) {
 
   // `repeat` is every rail after the first: the opening rail keeps the page's full heading weight
   // and the ones below it step down, which is what gives the column a top-to-bottom taper (item 16).
+  /*
+   * A SLIDER'S OWN LOOK (Part 3.2, 2026-11-05): a background colour for its section and, separately, the
+   * blend that dissolves the white studio background of its product photos into that colour. Both are per
+   * slider and come from the dashboard's Home sliders screen. A slider with neither is drawn EXACTLY as
+   * before — no wrapper at all.
+   */
+  // ONLY the section's ground and, with the blend, the photo boxes: `--hl-ink` (ink or white, whichever reads on
+  // the colour) is for the slider's own heading, which stands on the section — a card keeps everything of its own.
+  const look = (rail, children) =>
+    rail.background ? (
+      <div className={`hl${rail.blend ? ' hl--blend' : ''}`} style={{ '--hl-ground': rail.background, '--hl-ink': onColor(rail.background) }}>
+        {children}
+      </div>
+    ) : (
+      children
+    )
+
+  // THE BLEND NEVER TINTS THE PRODUCT (2026-11-05): with the blend on, core sends the mask of each product's studio
+  // background (`rail.masks`, product id => a data: URL); each product goes to its card with its own. A product
+  // that has none is drawn as it is.
+  const cut = (rail) => (rail.blend && rail.masks ? rail.products.map((p) => (rail.masks[p.id] ? { ...p, cut_mask: rail.masks[p.id] } : p)) : rail.products)
+
   const renderRail = (rail, repeat = false) => {
     const section = `wz-home-section${repeat ? ' wz-home-section--repeat' : ''}`
-    if (rail.kind === 'featured') {
-      return <FeaturedBanner key={rail.id} products={rail.products} />
+    if (rail.kind === 'hot_deals' || rail.kind === 'flash_sale') {
+      return (
+        <section className={`${section} wz-home-section--bleed`} key={rail.id}>
+          <CampaignRail presentation={rail.kind} lang={language} bleed />
+        </section>
+      )
     }
-    if (rail.kind === 'offers') {
+    if (rail.kind === 'categories') {
       return (
         <section className={section} key={rail.id}>
           <div className="wz-container">
-            <OfferSlider text={{ title: rail.text.title, description: rail.text.title }} products={rail.products} />
+            <CategoryTiles />
+          </div>
+        </section>
+      )
+    }
+    if (rail.kind === 'brands') {
+      return <div key={rail.id}>{brandStrip}</div>
+    }
+    if (rail.kind === 'banners') {
+      return (
+        <section className={section} key={rail.id}>
+          <div className="wz-container">
+            <HeroZone banners={banners} side={sideBanners} lang={language} dir={isRTL ? 'rtl' : 'ltr'} />
+          </div>
+        </section>
+      )
+    }
+    if (rail.kind === 'brand_banner') {
+      return (
+        <section className={`${section} wz-home-section--bleed`} key={rail.id}>
+          <BrandBanner model={rail.banner} lang={language} dir={isRTL ? 'rtl' : 'ltr'} bleed />
+        </section>
+      )
+    }
+    // A SLIDER WITH ITS OWN COLOUR IS A FULL-WIDTH BAND (the review of 2026-11-05): the colour runs edge to edge and
+    // the cards stay on the page's normal column inside it. Only these — every other slider keeps the normal width.
+    const band = rail.background ? { className: `${section} wz-home-section--band`, style: { '--hl-ground': rail.background } } : { className: section }
+    if (rail.kind === 'offers') {
+      return (
+        <section {...band} key={rail.id}>
+          <div className="wz-container">
+            {look(rail, <OfferSlider text={{ title: rail.text.title, description: rail.text.title }} products={cut(rail)} />)}
           </div>
         </section>
       )
     }
     return (
-      <section className={section} key={rail.id}>
+      <section {...band} key={rail.id}>
         <div className="wz-container">
-          <ProductSlider text={rail.text} gradeproducts={rail.products} moreid={rail.moreid} href={rail.href} viewAll={rail.kind !== 'custom'} />
+          {look(
+            rail,
+            <ProductSlider text={rail.text} gradeproducts={cut(rail)} moreid={rail.moreid} href={rail.href} viewAll={rail.kind !== 'custom'} />,
+          )}
         </div>
       </section>
     )
   }
+
+  // HOT DEALS MODE (Part 2.4): the switch in the header is on, so the shop shows only the live Hot Deals
+  // campaign — and its home IS that campaign's page. Off (or the campaign over), the home below returns.
+  if (hotDeals.on) return <CampaignPage presentation="hot_deals" />
 
   return (
     <div className="wz-home" dir={isRTL ? 'rtl' : 'ltr'}>
       {bannerHero ? (
         <section className="wz-home-section">
           <div className="wz-container">
-            <BannerHero banners={banners} lang={language} dir={isRTL ? 'rtl' : 'ltr'} />
+            <HeroZone banners={banners} side={sideBanners} lang={language} dir={isRTL ? 'rtl' : 'ltr'} />
           </div>
         </section>
       ) : (
         <>
-          <GrandPrixBanner data={campaign} />
           {/*
-           * A banner UNDER the 3D hero (2026-10-27, the hero product page). Until today a shop's banners
-           * showed only when its hero was `banner`, which REPLACES the 3D watch; a Watchizer banner that
-           * points at a page (the dashboard's "URL" target takes any internal path) therefore cost the 3D
-           * hero. With the hero `three_d` and at least one active banner, the same BannerHero draws here,
-           * below the watch; with none — Watchizer today — nothing changes. A twin: both apps, one line.
+           * THE HERO LEADS; THE BANNERS BLOCK IS A SECTION (the design pass, 2026-11-05). From 2026-10-27 the
+           * banners were drawn straight under the hero, always. They are now a home section whose place the
+           * dashboard sets among the sliders (the "Banners block" row of the Home sliders screen): core sends that
+           * row as a rail of kind `banners`, and it is drawn there, below. With the hero set to `banner` — no
+           * hero — the block is the first thing on the page, above, automatically.
            */}
-          {banners.length > 0 && (
-            <section className="wz-home-section">
-              <div className="wz-container">
-                <BannerHero banners={banners} lang={language} dir={isRTL ? 'rtl' : 'ltr'} />
-              </div>
-            </section>
-          )}
+          {threeD ? <WatchHero /> : <GrandPrixBanner data={campaign} />}
         </>
       )}
 
-      <section className="wz-home-section">
-        <div className="wz-container">
-          <CategoryTiles />
-        </div>
-      </section>
+      {/*
+       * THE LIVE CAMPAIGNS (Part 2.2, 2026-11-05): a Flash Sale and a Hot Deals slider, each in its own design,
+       * each drawn only while a campaign of its kind is live and gone at its end — section and all, so a day
+       * without a campaign leaves no gap here.
+       */}
+      {!managed.has('flash_sale') && flashSale.campaign ? (
+        <section className="wz-home-section wz-home-section--bleed">
+          <CampaignRail presentation="flash_sale" lang={language} bleed />
+        </section>
+      ) : null}
+      {!managed.has('hot_deals') && hotDeals.campaign ? (
+        <section className="wz-home-section wz-home-section--bleed">
+          <CampaignRail presentation="hot_deals" lang={language} bleed />
+        </section>
+      ) : null}
+
+      {managed.has('categories') ? null : (
+        <section className="wz-home-section">
+          <div className="wz-container">
+            <CategoryTiles />
+          </div>
+        </section>
+      )}
 
       {/* The rails failed to load → inline error + retry (not a blank page). */}
       {homeError && (
@@ -303,9 +470,19 @@ export default function HomeClient({ initialHome = null, campaign = null }) {
           </section>
         ))}
 
-      {rails.length > 0 && renderRail(rails[0])}
-      {brandStrip}
+      {rails.length > 0 && renderRail(rails[0], SECTION_KINDS.includes(rails[0].kind))}
+      {managed.has('brands') ? null : brandStrip}
       {rails.slice(1).map((rail) => renderRail(rail, true))}
+
+      {/* THE TRUST STRIP CLOSES THE PAGE (the developer's order for this home, 2026-11-05): the component and the
+          wording the cart already shows — nothing new. It is the page's last line, not a row of the sliders screen. */}
+      {rails.length > 0 ? (
+        <section className="wz-home-section wz-home-section--trust">
+          <div className="wz-container">
+            <TrustSignals variant="cart" isRTL={language === 'ar'} />
+          </div>
+        </section>
+      ) : null}
     </div>
   )
 }

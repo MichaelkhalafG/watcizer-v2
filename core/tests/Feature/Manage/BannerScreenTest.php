@@ -120,14 +120,22 @@ it('stores exactly ONE destination, never two', function () {
         ->and(Row::nint($row, 'storefront_category_id'))->toBeNull();
 });
 
-it('writes the HOME placement and never takes one from the payload', function () {
-    // The developer's decision: home only. The column stays open (see BannerWriter), so the
-    // constraint has to be in the writer — and a payload cannot slip past it.
-    $id = makeBanner(['placement' => 'side']);
+it('writes only the three placements this application serves, and the hero\'s slides by default', function () {
+    // HOME only until 2026-11-05 (the developer's decision of 2026-09-14); since the twelve updates, Part 3.1, the
+    // two SIDE slots beside the large hero are placements too. The column is still open and the constraint is still
+    // in the writer: a payload cannot name a placement the storefront does not read.
+    expect(BannerWriter::PLACEMENTS)->toBe(['home', 'home_side_1', 'home_side_2']);
 
-    expect(T::str(DB::table('storefront_banners')->where('id', $id)->value('placement')))
-        ->toBe(BannerWriter::PLACEMENTS[0])
-        ->toBe('home');
+    $default = makeBanner();
+    $side = makeBanner(['placement' => BannerWriter::SIDE[1], 'device' => 'mobile']);
+    expect(T::str(DB::table('storefront_banners')->where('id', $default)->value('placement')))->toBe('home')
+        ->and(T::str(DB::table('storefront_banners')->where('id', $side)->value('placement')))->toBe('home_side_2')
+        // a side slot keeps its device since the review of 2026-11-05 (item 12): a wide strip for a computer and a
+        // 4:3 tile for a phone are two pictures, each cropped for its screen (it was "one picture for every screen")
+        ->and(T::str(DB::table('storefront_banners')->where('id', $side)->value('device')))->toBe('mobile');
+
+    expect(fn () => makeBanner(['placement' => 'side']))->toThrow(ValidationException::class);
+    expect(DB::table('storefront_banners')->where('placement', 'side')->exists())->toBeFalse();
 });
 
 // ── 2. the at-a-glance state ─────────────────────────────────────────────────────────────────

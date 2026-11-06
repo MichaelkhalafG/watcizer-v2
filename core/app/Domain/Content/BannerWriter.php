@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Domain\Content;
 
-use App\Domain\Content\BannerImage;
 use App\Storefront\StorefrontCache;
 use App\Support\Coerce;
 use App\Support\ManageText;
@@ -44,7 +43,18 @@ use Illuminate\Validation\ValidationException;
 final class BannerWriter
 {
     /** Every placement this application serves. HOME only, by decision. */
-    public const PLACEMENTS = ['home'];
+    public const PLACEMENTS = ['home', 'home_side_1', 'home_side_2'];
+
+    /** The large hero's slides — the placement every banner had until 2026-11-05. */
+    public const HOME = 'home';
+
+    /**
+     * The two slots beside the large hero, top then bottom (the twelve updates, Part 3.1, 2026-11-05).
+     * Each is managed on its own; neither is a slide of the hero. The whitelist above grew by exactly these.
+     *
+     * @var array{0: string, 1: string}
+     */
+    public const SIDE = ['home_side_1', 'home_side_2'];
 
     /** What a banner can point at. */
     public const TARGETS = ['product', 'category', 'url', 'none'];
@@ -81,6 +91,10 @@ final class BannerWriter
         $storefrontId = Coerce::int($data['storefront_id'] ?? null);
         $image = trim(Coerce::str($data['image_path'] ?? ''));
         $target = Coerce::str($data['target'] ?? 'none');
+        $placement = Coerce::nstr($data['placement'] ?? null) ?? self::HOME;
+        // A side slot has a DEVICE too since the review of 2026-11-05: beside the hero on a computer it is a wide
+        // strip (1.92 : 1); under it on a phone it is a taller tile (4 : 3) — two shapes, so the team may give the
+        // slot a picture cropped for each (`desktop` and `mobile`), or one for `both`.
         $device = self::device(Coerce::nstr($data['device'] ?? null));
         // The upload as it arrived, kept so the banner can be re-cropped without re-uploading. Empty = none kept
         // (every row written before F1, and any saved without the crop tool): the form falls back to `image_path`.
@@ -96,6 +110,9 @@ final class BannerWriter
         }
         if (! in_array($target, self::TARGETS, true)) {
             $errors['target'] = ManageText::t('banners.target_unknown', 'وجهة غير معروفة.');
+        }
+        if (! in_array($placement, self::PLACEMENTS, true)) {
+            $errors['placement'] = ManageText::t('banners.placement_unknown', 'مكان غير معروف للبانر.');
         }
         if ($endsAt !== null && $startsAt !== null && $endsAt <= $startsAt) {
             $errors['ends_at'] = ManageText::t('banners.ends_before_starts', 'تاريخ الانتهاء لازم يكون بعد تاريخ البداية.');
@@ -142,8 +159,8 @@ final class BannerWriter
 
         $row = [
             'storefront_id' => $storefrontId,
-            // Home only, by decision — never taken from the payload.
-            'placement' => self::PLACEMENTS[0],
+            // One of the three this application serves (validated above): the hero's slides, or a side slot.
+            'placement' => $placement,
             'image_path' => BannerImage::path($image),
             'device' => $device,
             'image_original_path' => $original === '' ? null : BannerImage::path($original),

@@ -251,7 +251,9 @@ it('answers GET catalog/home with the API key, and only with it', function () {
     // `hero` and `banners` were added on 2026-10-20 (the addendum): this endpoint is Watchizer's live path and
     // its home page can now be switched to the banner hero from the dashboard. Every key that was here is
     // unchanged, and the two new ones come FIRST so a payload diff shows them as added rather than shuffled.
-    expect(array_keys($body))->toBe(['hero', 'banners', 'rails', 'products', 'ratings', 'images'])
+    // `side_banners` joined on 2026-11-05 (the twelve updates, Part 3.1): the two slots beside the large hero.
+    expect(array_keys($body))->toBe(['hero', 'banners', 'side_banners', 'rails', 'managed_sections', 'products', 'ratings', 'images'])
+        ->and($body['side_banners'])->toHaveCount(2)
         ->and(T::arr($body['rails']))->not->toBeEmpty();
     withHeaders(['Api-Code' => 'not-the-key'])->getJson('/api/catalog/home')->assertStatus(401);
 });

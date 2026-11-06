@@ -228,3 +228,21 @@
 @media (prefers-reduced-motion: reduce) {
   .wz-drawer, .wz-drawer-overlay, .wz-drawer-caret { transition: none; }
 }
+
+/* ── The campaigns in the header (the twelve updates, Part 2, 2026-11-05) ──────────────────────────────── */
+.nav-inner { display: flex; align-items: stretch; }
+/* THE MENU'S PANEL RUNS THE FULL WIDTH OF THE BAR (the review of 2026-11-05): it hangs from the bar itself, not from
+   the centred row inside it, so the page never shows beside it; what is in it stays on the page's column (--mm-max) */
+.Nav { position: relative; }
+.Nav .nav-inner { position: static; }
+.nav-inner > .nav-ul { flex: 1; min-width: 0; }
+.nav-inner > .pm-nav--nav { align-self: center; }
+/* the switch in the bar: a computer only — a phone has the strip below */
+.wz-actions > .pm-nav--top { display: none; margin-inline-end: 8px; }
+@media (min-width: 768px) { .wz-actions > .pm-nav--top { display: inline-flex; } }
+/* phones: the Hot Deals switch is the twin's floating pill; it clears this shop's bottom bar (56 px) */
+:root { --pm-float-lift: 60px; }
+/* HOT DEALS MODE: the one ink bar burns (the fire lying along it, promo.css), with the white focus ring it already has.
+   The bar carries `pm-fireground`, so the lit switch on it turns white-hot. */
+html[data-hot-deals='on'] .wz-header { background: var(--pm-fire-bar); --hdr-line: rgba(255, 255, 255, 0.3); }
+html[data-hot-deals='on'] .wz-header :focus-visible { box-shadow: 0 0 0 2px var(--pm-fire-3); }

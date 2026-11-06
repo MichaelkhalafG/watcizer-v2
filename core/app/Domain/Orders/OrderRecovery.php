@@ -168,6 +168,20 @@ final class OrderRecovery
     }
 
     /**
+     * The same shopper's LATER orders that are still alive (anything but cancelled), by id — what
+     * {@see LatePayment} reports when a late payment brings an order back: the shopper may have
+     * ordered the same goods again in the meantime, and then a person has to look at both.
+     *
+     * @return list<int>
+     */
+    public static function laterLiveOrders(int $orderId): array
+    {
+        $later = DB::table('orders')->where('id', '>', $orderId)->where('status', '!=', 'cancelled')->pluck('id')->all();
+
+        return self::sameShopper($orderId, self::ids($later));
+    }
+
+    /**
      * Which of `$candidates` belong to the same shopper as `$orderId`: the same account, the same
      * guest token, the same e-mail (case-insensitive) or the same phone (last ten digits — `01…` and
      * `+201…` are one number). Misses only a shopper who types a different e-mail AND a different

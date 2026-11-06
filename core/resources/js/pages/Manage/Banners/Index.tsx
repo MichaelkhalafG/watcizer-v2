@@ -28,6 +28,8 @@ import type { TablePayload } from '@/types';
 
 interface Banner {
     id: number;
+    /** home (a slide of the large hero) | home_side_1 | home_side_2 (the two slots beside it — Part 3.1, 2026-11-05). */
+    placement: string;
     image_path: string;
     /** both | desktop | mobile — which device shows this banner (F1, 2026-10-20). */
     device: string;
@@ -64,9 +66,16 @@ interface Props {
     devices: string[];
     /** Per device: the shape to crop to, and the pixel size to ask the operator for. */
     crop_ratios: Record<string, { w: number; h: number; recommended: string }>;
-    /** Which hero this storefront's home draws, and the two it can draw (the addendum, 2026-10-20). */
+    /** Which hero this storefront's home draws, and the ones it can draw (the addendum, 2026-10-20). */
     hero: string;
     heroes: string[];
+    /** The Banners block's row on the Home sliders screen — on/off and its place — or null when there is none. */
+    block_row: { is_active: boolean; place: number } | null;
+    /** All three modes, so one this storefront cannot draw is shown disabled with its reason rather than left out. */
+    hero_modes: string[];
+    /** Where a banner can sit, and which of those are the side slots (Part 3.1, 2026-11-05). */
+    placements: string[];
+    side_placements: string[];
     media_type: string;
 }
 
@@ -95,6 +104,7 @@ function targetLabels(t: ReturnType<typeof useT>): Record<string, string> {
 
 interface Draft {
     id: number | null;
+    placement: string;
     /** The FILENAME the row stores. `image` below is the full upload result, only while editing. */
     image_path: string;
     image: StoredImage | null;
@@ -116,6 +126,7 @@ interface Draft {
 
 const EMPTY: Draft = {
     id: null,
+    placement: 'home',
     image_path: '',
     image: null,
     device: 'both',
@@ -132,7 +143,22 @@ const EMPTY: Draft = {
     ends_at: '',
 };
 
-export default function BannersIndex({ storefront, storefronts, table, categories, targets, devices, crop_ratios, hero, heroes, media_type }: Props) {
+export default function BannersIndex({
+    storefront,
+    storefronts,
+    table,
+    categories,
+    targets,
+    devices,
+    crop_ratios,
+    hero,
+    heroes,
+    hero_modes,
+    block_row,
+    placements,
+    side_placements,
+    media_type,
+}: Props) {
     const t = useT();
     const [draft, setDraft] = useState<Draft | null>(null);
     const [cropBusy, setCropBusy] = useState(false);
@@ -142,12 +168,24 @@ export default function BannersIndex({ storefront, storefronts, table, categorie
         desktop: t('banners.device_desktop', 'الكمبيوتر فقط'),
         mobile: t('banners.device_mobile', 'الهاتف فقط'),
     };
-    /** The shape and the size this device's banner is cropped to — core measured them on the hero. */
-    const shapeFor = (device: string) => crop_ratios[device] ?? crop_ratios.both;
+    const PLACEMENT_LABELS: Record<string, string> = {
+        home: t('banners.placement_home', 'صور الهيرو الكبير (تتبدّل)'),
+        home_side_1: t('banners.placement_side_1', 'الخانة الجانبية العليا'),
+        home_side_2: t('banners.placement_side_2', 'الخانة الجانبية السفلى'),
+    };
+    const isSide = (placement: string) => side_placements.includes(placement);
+    /**
+     * The shape and the size a banner is cropped to — core measured them on the hero. A hero slide has one per
+     * device, and so does a side slot since the review of 2026-11-05: a wide strip beside the hero on a computer
+     * (960 × 500), a 4 : 3 tile under it on a phone (520 × 390). "Both" is cropped to the computer's shape.
+     */
+    const shapeFor = (device: string, placement = 'home') =>
+        isSide(placement) ? (device === 'mobile' ? crop_ratios.side_mobile : crop_ratios.side) : (crop_ratios[device] ?? crop_ratios.both);
 
     const HERO_LABELS: Record<string, string> = {
         three_d: t('banners.hero_three_d', 'الساعة ثلاثية الأبعاد'),
-        banner: t('banners.hero_banner', 'البانرات'),
+        campaign: t('banners.hero_campaign', 'الحملة (Hugo Boss Grand Prix)'),
+        banner: t('banners.hero_banner_v3', 'قسم البانرات (لا شيء فوقه)'),
     };
 
     /**
@@ -190,6 +228,7 @@ export default function BannersIndex({ storefront, storefronts, table, categorie
     const edit = (row: Banner) =>
         setDraft({
             id: row.id,
+            placement: row.placement,
             image_path: row.image_path,
             // Reconstructed from what the list already carries: enough for the preview, and the
             // upload endpoint replaces it wholesale the moment a new file is chosen.
@@ -226,6 +265,7 @@ export default function BannersIndex({ storefront, storefronts, table, categorie
             image_original_path: draft.image_original_path === '' ? null : draft.image_original_path,
             crop: draft.crop === null ? null : JSON.stringify(draft.crop),
             device: draft.device,
+            placement: draft.placement,
             target: draft.target,
             product_id: draft.target === 'product' && draft.product_id !== '' ? Number(draft.product_id) : null,
             storefront_category_id:
@@ -259,6 +299,12 @@ export default function BannersIndex({ storefront, storefronts, table, categorie
                     </span>
                 </div>
             ),
+        },
+        {
+            key: 'placement',
+            header: t('banners.placement', 'المكان'),
+            // Hero slide or side slot (Part 3.1): the two are managed apart, so the row says which it is.
+            cell: (row) => <Badge variant={isSide(row.placement) ? 'default' : 'neutral'}>{PLACEMENT_LABELS[row.placement] ?? row.placement}</Badge>,
         },
         {
             key: 'device',
@@ -342,22 +388,35 @@ export default function BannersIndex({ storefront, storefronts, table, categorie
                                 router.post(`/manage/storefronts/${storefront.id}/banners/hero`, { hero: event.target.value }, { preserveScroll: true })
                             }
                         >
-                            {heroes.map((mode) => (
-                                <option key={mode} value={mode}>
+                            {hero_modes.map((mode) => (
+                                <option key={mode} value={mode} disabled={!heroes.includes(mode)}>
                                     {HERO_LABELS[mode] ?? mode}
+                                    {heroes.includes(mode) ? '' : ` — ${t('banners.hero_unavailable', 'غير متاح لهذا المتجر')}`}
                                 </option>
                             ))}
                         </Select>
                     </div>
                     <p className="mt-2 text-sm text-muted-foreground">
                         {t(
-                            'banners.hero_note',
-                            'يحدّد ما يظهر أعلى الصفحة الرئيسية لهذا المتجر: الساعة ثلاثية الأبعاد أو البانرات التي بالأسفل. التغيير يصل للزوار خلال دقائق قليلة.',
+                            'banners.hero_note_v3',
+                            'يحدّد ما يتصدّر الصفحة الرئيسية لهذا المتجر. مع «الحملة» أو «الساعة ثلاثية الأبعاد» يبقى قسم البانرات (البانر الكبير والخانتان الجانبيتان) قسمًا داخل الصفحة، ومكانه وتشغيله من صفّ «قسم البانرات» في شاشة أشرطة الصفحة الرئيسية. مع «قسم البانرات» لا شيء فوقه: يصبح أول ما في الصفحة تلقائيًا. التغيير يصل للزوار خلال دقائق قليلة.',
                         )}
                     </p>
+                    {!heroes.includes('campaign') ? (
+                        <p className="mt-2 text-sm text-muted-foreground">
+                            {t('banners.hero_campaign_missing', 'وضع «الحملة» غير متاح هنا: لا توجد حملة مبنية لهذا المتجر.')}
+                        </p>
+                    ) : null}
                     {hero !== 'banner' ? (
-                        <p className="mt-2 text-sm font-medium text-amber-600 dark:text-amber-500">
-                            {t('banners.hero_off', 'البانرات بالأسفل لا تظهر للزوار الآن، لأن هذا المتجر يعرض الساعة ثلاثية الأبعاد.')}
+                        <p className={`mt-2 text-sm font-medium ${block_row !== null && block_row.is_active ? 'text-emerald-700 dark:text-emerald-500' : 'text-amber-600 dark:text-amber-500'}`}>
+                            {block_row === null
+                                ? t('banners.block_missing', 'قسم البانرات غير مضاف إلى الصفحة: أضف صفّ «قسم البانرات» من شاشة أشرطة الصفحة الرئيسية ليظهر تحت الهيرو.')
+                                : block_row.is_active
+                                  ? t('banners.block_on', 'قسم البانرات يظهر الآن داخل الصفحة تحت الهيرو، في المكان رقم :place بين الأشرطة.', { place: block_row.place })
+                                  : t('banners.block_off', 'قسم البانرات موقوف الآن: البانرات التي بالأسفل لا تظهر للزوار. فعّل صفّه من شاشة أشرطة الصفحة الرئيسية.')}{' '}
+                            <a className="underline" href={`/manage/storefronts/${storefront.id}/home-rails`}>
+                                {t('banners.block_open_rails', 'فتح أشرطة الصفحة الرئيسية')}
+                            </a>
                         </p>
                     ) : null}
                 </div>
@@ -398,8 +457,10 @@ export default function BannersIndex({ storefront, storefronts, table, categorie
                                 />
                                 <p className="mt-1 text-xs text-muted-foreground">
                                     {t('banners.recommended_size', 'المقاس المقترح لـ:device — :size بكسل', {
-                                        device: DEVICE_LABELS[draft.device] ?? draft.device,
-                                        size: shapeFor(draft.device).recommended,
+                                        device: isSide(draft.placement)
+                                            ? `${PLACEMENT_LABELS[draft.placement] ?? draft.placement} — ${DEVICE_LABELS[draft.device] ?? draft.device}`
+                                            : (DEVICE_LABELS[draft.device] ?? draft.device),
+                                        size: shapeFor(draft.device, draft.placement).recommended,
                                     })}
                                 </p>
 
@@ -424,8 +485,8 @@ export default function BannersIndex({ storefront, storefronts, table, categorie
                                         </p>
                                         <ImageCrop
                                             src={draft.cropping}
-                                            ratio={{ w: shapeFor(draft.device).w, h: shapeFor(draft.device).h }}
-                                            output={{ w: shapeFor(draft.device).w * 2, h: shapeFor(draft.device).h * 2 }}
+                                            ratio={{ w: shapeFor(draft.device, draft.placement).w, h: shapeFor(draft.device, draft.placement).h }}
+                                            output={{ w: shapeFor(draft.device, draft.placement).w * 2, h: shapeFor(draft.device, draft.placement).h * 2 }}
                                             initial={draft.crop}
                                             busy={cropBusy}
                                             onCancel={() => setDraft({ ...draft, cropping: null })}
@@ -436,10 +497,35 @@ export default function BannersIndex({ storefront, storefronts, table, categorie
                             </div>
 
                             <label className="space-y-1 text-sm">
+                                <span>{t('banners.placement', 'المكان')}</span>
+                                <Select
+                                    value={draft.placement}
+                                    // A different place is a different shape: the crop made for the old one is dropped,
+                                    // and the picture is cropped again for the new one.
+                                    onChange={(event) => setDraft({ ...draft, placement: event.target.value, crop: null })}
+                                >
+                                    {placements.map((placement) => (
+                                        <option key={placement} value={placement}>
+                                            {PLACEMENT_LABELS[placement] ?? placement}
+                                        </option>
+                                    ))}
+                                </Select>
+                                <span className="block text-xs text-muted-foreground">
+                                    {isSide(draft.placement)
+                                        ? t(
+                                              'banners.placement_side_hint',
+                                              'خانة ثابتة بجانب الهيرو الكبير (وتحته على الهاتف)، تُدار وحدها وليست من صوره المتبدّلة. تظهر صورة واحدة: أول بانر مفعّل في وقته. إن بقيت الخانتان فارغتين يظهر الهيرو بعرض الصفحة كاملًا.',
+                                          )
+                                        : t('banners.placement_home_hint', 'صورة من صور الهيرو الكبير التي تتبدّل.')}
+                                </span>
+                            </label>
+
+                            <label className="space-y-1 text-sm">
                                 <span>{t('banners.device', 'الجهاز')}</span>
                                 <Select
                                     value={draft.device}
-                                    onChange={(event) => setDraft({ ...draft, device: event.target.value })}
+                                    // a different device is a different shape: the picture is cropped again for it
+                                    onChange={(event) => setDraft({ ...draft, device: event.target.value, crop: isSide(draft.placement) ? null : draft.crop })}
                                 >
                                     {devices.map((device) => (
                                         <option key={device} value={device}>
@@ -447,6 +533,14 @@ export default function BannersIndex({ storefront, storefronts, table, categorie
                                         </option>
                                     ))}
                                 </Select>
+                                {isSide(draft.placement) ? (
+                                    <span className="block text-xs text-muted-foreground">
+                                        {t(
+                                            'banners.side_device_hint',
+                                            'الخانة الجانبية شريط عريض بجانب الهيرو على الكمبيوتر (‎960 × 500‎) ومربّع أطول تحته على الهاتف (‎520 × 390‎). لصورة تناسب كل شاشة: أضف بانرًا لـ«الكمبيوتر فقط» وآخر لـ«الهاتف فقط» في الخانة نفسها واقصص كلًّا لمقاسه؛ أو بانرًا واحدًا لـ«الكمبيوتر والهاتف» يُقصّ بمقاس الكمبيوتر ويُقتطع جانباه على الهاتف.',
+                                        )}
+                                    </span>
+                                ) : null}
                             </label>
 
                             <label className="space-y-1 text-sm">

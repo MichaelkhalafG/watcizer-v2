@@ -388,9 +388,13 @@ it('carries the no-stacking sentence on both screens, from one source', function
      */
     expect($list['stacking_notice'])->toBe(PromotionController::stackingNotice())
         ->and($form['stacking_notice'])->toBe(PromotionController::stackingNotice())
-        // The sentence has to SAY the thing, not merely exist.
+        // The sentence has to SAY the thing, not merely exist: promotions do not combine, the cart gets ONE,
+        // and a code applies only when typed. (The second needle was «واحدة فقط» until the sentence was reworded
+        // with the coupon on 2026-10-30; this test was already baselined red for the staff account's language, so
+        // nobody saw the needle go stale — found on 2026-11-05 when that cause was fixed.)
         ->and(PromotionController::stackingNotice())->toContain('لا تتجمع')
-        ->toContain('واحدة فقط');
+        ->toContain('عرض واحد')
+        ->toContain('كود الخصم');
 });
 
 // ── 5. product SEARCH, not typed ids ─────────────────────────────────────────────────────────

@@ -149,6 +149,10 @@ final class CoreChecksumCommand extends Command
         // M1y (2026-10-30): the brand and category pages' texts, typed in the dashboard and keyed by slug/path so the
         // switch-night rebuild of the brand and category tables cannot touch them
         'core_seo_texts',
+        // 2026-11-05 (the twelve updates): the timed campaigns and their products with the start quantities the
+        // progress bar is computed from (Part 2), and each payment method's badge picture (Part 7) — typed and
+        // uploaded in the dashboard, no legacy source; a recorded start quantity can never be reconstructed
+        'storefront_campaigns', 'storefront_campaign_products', 'storefront_payment_badges',
         /*
          * The operator's own dashboard preferences (M1m, wave 4D).
          *

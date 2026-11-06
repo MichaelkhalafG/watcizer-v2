@@ -8,6 +8,7 @@ use App\Domain\Orders\OrderCustomer;
 use App\Mail\AdminOrderNotification;
 use App\Mail\OrderConfirmation;
 use App\Mail\OrderStatusUpdate;
+use App\Mail\PaymentAlertAdmin;
 use App\Mail\PaymentExpired;
 use App\Mail\PaymentExpiredAdmin;
 use App\Storefront\StorefrontHasNoHost;
@@ -89,6 +90,14 @@ final class OrderMailer
      * this a declined shopper was told NOTHING, while one who merely abandoned checkout was e-mailed
      * an hour later: the one who got further was told less.
      */
+    /**
+     * Money arrived and the order does not show it (2026-11-05, order 000092): the shop's alert,
+     * one per finding per recipient. Admins only — the customer is told by whoever acts on it.
+     */
+    public const EVENT_PAYMENT_ALERT = 'order.payment_alert';
+
+    public const KIND_PAYMENT_ALERT = 'payment_alert_admin';
+
     public const REASON_EXPIRED = 'expired';
 
     public const REASON_DECLINED = 'declined';
@@ -194,6 +203,45 @@ final class OrderMailer
                 orderId: $orderId,
                 recipient: $recipient,
                 extra: ['reason' => $reason],
+            );
+            if ($id !== null) {
+                $ids[] = $id;
+            }
+        }
+
+        return $ids;
+    }
+
+    /**
+     * A payment finding was raised with the outcome `success`: the customer was CHARGED and the
+     * order is cancelled, finished, of another amount, or was brought back beside a newer order.
+     * One e-mail per finding to each of the storefront's order recipients, so it cannot wait on
+     * somebody opening the right screen. Enqueued in the callback's transaction (a finding that
+     * rolls back owes no e-mail), sent after it. A storefront with no recipients gets the same
+     * loud `failed` row every admin notification gets.
+     *
+     * @param  array<string, mixed>  $detail  the finding's detail: `refused`, `transaction`, `newer_orders`
+     * @return list<int>
+     */
+    public function paymentAlert(int $orderId, int $findingId, string $finding, array $detail = []): array
+    {
+        $alert = [
+            'finding_id' => $findingId,
+            'finding' => $finding,
+            'refused' => is_string($detail['refused'] ?? null) ? $detail['refused'] : null,
+            'transaction' => is_scalar($detail['transaction'] ?? null) ? (string) $detail['transaction'] : null,
+            'newer_orders' => is_array($detail['newer_orders'] ?? null) ? array_values($detail['newer_orders']) : [],
+        ];
+
+        $ids = [];
+        foreach ($this->adminRecipients($orderId) as $recipient) {
+            $id = $this->enqueue(
+                event: self::EVENT_PAYMENT_ALERT,
+                dedupe: self::adminKey($orderId, 'alert:'.$findingId.':'.$recipient),
+                kind: self::KIND_PAYMENT_ALERT,
+                orderId: $orderId,
+                recipient: $recipient,
+                extra: ['alert' => $alert],
             );
             if ($id !== null) {
                 $ids[] = $id;
@@ -348,6 +396,10 @@ final class OrderMailer
         if (is_string($payload['reason'] ?? null)) {
             $data['reason'] = $payload['reason'];
         }
+        // …and what a payment alert is about (the finding, why the order could not come back).
+        if (is_array($payload['alert'] ?? null)) {
+            $data['alert'] = $payload['alert'];
+        }
 
         $mailable = self::mailable($kind, $data);
         if ($mailable === null) {
@@ -444,6 +496,7 @@ final class OrderMailer
             self::KIND_STATUS => 'تحديث حالة الطلب (للعميل)',
             self::KIND_EXPIRED => 'لم يكتمل الدفع — رابط استعادة الطلب (للعميل)',
             self::KIND_EXPIRED_ADMIN => 'طلب بطاقة لم يُدفع — للمتابعة (للإدارة)',
+            self::KIND_PAYMENT_ALERT => 'دفعة تحتاج مراجعة — تنبيه (للإدارة)',
             default => $kind,
         };
     }
@@ -689,6 +742,7 @@ final class OrderMailer
             self::KIND_STATUS => new OrderStatusUpdate($data),
             self::KIND_EXPIRED => new PaymentExpired($data),
             self::KIND_EXPIRED_ADMIN => new PaymentExpiredAdmin($data),
+            self::KIND_PAYMENT_ALERT => new PaymentAlertAdmin($data),
             default => null,
         };
     }

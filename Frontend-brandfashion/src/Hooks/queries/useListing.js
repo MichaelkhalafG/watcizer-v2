@@ -1,10 +1,11 @@
-import { useMemo } from 'react'
+import { useCallback, useMemo } from 'react'
 import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import publicHttp from '../../Context/publicApi'
 import { listingRequest, listingQueryFn, listingNeedsTables } from '../../lib/listingRequest'
-import { withLegacyCategoryFacets, legacyRow } from '../../lib/v2Listing'
+import { withLegacyCategoryFacets, legacyRow, unpackListing } from '../../lib/v2Listing'
 import { STOREFRONT_CODE } from '../../lib/env'
 import { useTables } from './useTables'
+import { useHotDealsMode } from './usePromo'
 import { transformProductData } from '../../utils/transformProduct'
 
 // The listing on the server (C-1 stage 3, 2026-09-27; on v2 since the move) — one page of products plus
@@ -22,7 +23,17 @@ import { transformProductData } from '../../utils/transformProduct'
 
 export const useListing = (args, options = {}) => {
   const { data: tables } = useTables()
-  const qs = listingRequest(args, tables)
+  // HOT DEALS MODE (the twelve updates, Part 2.4, 2026-11-05): while the header switch is on, every listing —
+  // a category, a brand, a search — shows only the products of the live Hot Deals campaign. It is one more
+  // key on the query string, so it is part of the query key and the page refetches when the switch moves;
+  // the server render never has it (the switch is the browser's), and core answers an empty list for
+  // `campaign=hot_deals` once the campaign is over.
+  const hot = useHotDealsMode()
+  const base = listingRequest(args, tables)
+  const qs = hot.on ? `${base}&campaign=hot_deals` : base
+  // The server page's copy arrives packed (core's page alone — v2Listing.js `packListing`); it is made whole here,
+  // and only when the data or the tables change (a stable function: React Query re-runs `select` otherwise).
+  const select = useCallback((data) => withLegacyCategoryFacets(unpackListing(data), tables), [tables])
   return useQuery({
     queryKey: ['listing', qs],
     queryFn: listingQueryFn(qs),
@@ -30,7 +41,7 @@ export const useListing = (args, options = {}) => {
     placeholderData: keepPreviousData,
     staleTime: 60 * 1000,
     enabled: !listingNeedsTables(args?.filters) || !!tables,
-    select: (data) => withLegacyCategoryFacets(data, tables),
+    select,
     ...options,
   })
 }

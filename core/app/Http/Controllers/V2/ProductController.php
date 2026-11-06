@@ -41,6 +41,9 @@ class ProductController extends Controller
             'in_stock' => 'nullable|in:0,1,true,false',
             'on_sale' => 'nullable|in:0,1,true,false',   // 2026-10-18: a valid sale only (ProductListing::applyFilters)
             'min_discount' => 'nullable|integer|min:1|max:95',   // 2026-10-19: a valid sale of at least N % (ProductListing::applyFilters)
+            // 2026-11-05 (Part 2): only the products of the LIVE campaign of this presentation — the campaign page and
+            // the Hot Deals mode. No live campaign = an empty list, never the whole catalogue.
+            'campaign' => 'nullable|in:hot_deals,flash_sale',
             'facets' => 'nullable|in:0,1,true,false',   // 2026-10-17: per-result facet counts + price bounds, opt-in (ProductListing::facets)
             'q' => 'nullable|string|max:120',
             'sort' => 'nullable|in:'.implode(',', ProductListing::SORTS),
