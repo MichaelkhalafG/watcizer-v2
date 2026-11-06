@@ -45,13 +45,19 @@ final class CategoryTree
     private static function load(int $storefrontId, array $locales): array
     {
         $visible = StorefrontCategory::query()->visibleInMenu($storefrontId)
-            ->select(['storefront_categories.id', 'storefront_categories.parent_id', 'storefront_categories.depth', 'storefront_categories.path', 'storefront_categories.slug', 'storefront_categories.image_path', 'storefront_categories.sort_order', 'storefront_categories.updated_at'])
+            ->select(['storefront_categories.id', 'storefront_categories.parent_id', 'storefront_categories.depth', 'storefront_categories.path', 'storefront_categories.slug', 'storefront_categories.image_path', 'storefront_categories.image_hidden', 'storefront_categories.sort_order', 'storefront_categories.updated_at'])
             ->orderBy('storefront_categories.depth')->orderBy('storefront_categories.sort_order')->orderBy('storefront_categories.id')
             ->get();
         /** @var array<int, array<string, mixed>> $nodes */
         $nodes = [];
+        /** @var array<int, true> $hidden nodes whose picture the team deleted: they show none, and never fall back */
+        $hidden = [];
         foreach ($visible as $node) {
             $id = (int) $node->id;
+            $own = is_string($node->image_path) && trim($node->image_path) !== '';
+            if ((bool) $node->image_hidden) {
+                $hidden[$id] = true;
+            }
             $nodes[$id] = [
                 'id' => $id,
                 'parent_id' => $node->parent_id === null ? null : (int) $node->parent_id,
@@ -59,7 +65,13 @@ final class CategoryTree
                 'id_path' => (string) $node->path,
                 'slug' => (string) $node->slug,
                 'path' => '',
-                'image' => is_string($node->image_path) ? ImageUrl::object($node->image_path, null, null, null, null) : null,
+                /*
+                 * The picture (Part 5, 2026-11-05): the node's own; else — filled in below — the cover of its most
+                 * recently added product a shopper can buy here (CategoryImages); and NONE when the team deleted it
+                 * (`image_hidden`), which is "show nothing", never "fall back again". `image_source` says which.
+                 */
+                'image' => $own && ! isset($hidden[$id]) ? ImageUrl::object((string) $node->image_path, null, null, null, null) : null,
+                'image_source' => $own && ! isset($hidden[$id]) ? 'own' : null,
                 'sort_order' => (int) $node->sort_order,
                 'updated_at' => $node->updated_at?->toJSON(),
                 'name' => [],
@@ -93,6 +105,17 @@ final class CategoryTree
             ->get();
         foreach ($counts as $c) {
             $nodes[Row::int($c, 'id')]['product_count'] = Row::int($c, 'n');
+        }
+        // The fallback picture, for every node that has none of its own and was not told to show none.
+        $missing = [];
+        foreach ($nodes as $id => $node) {
+            if ($node['image'] === null && ! isset($hidden[$id])) {
+                $missing[$id] = Val::str($node, 'id_path');
+            }
+        }
+        foreach (CategoryImages::fallbacks($storefrontId, $missing) as $id => $image) {
+            $nodes[$id]['image'] = $image;
+            $nodes[$id]['image_source'] = 'product';
         }
         // Slug paths, children lists (a visible node whose parent is invisible becomes a root).
         $roots = [];
@@ -203,7 +226,7 @@ final class CategoryTree
      */
     public static function item(array $node): array
     {
-        return self::ref($node) + ['image' => $node['image'], 'sort_order' => $node['sort_order'], 'product_count' => $node['product_count'], 'updated_at' => $node['updated_at']];
+        return self::ref($node) + ['image' => $node['image'], 'image_source' => $node['image_source'] ?? null, 'sort_order' => $node['sort_order'], 'product_count' => $node['product_count'], 'updated_at' => $node['updated_at']];
     }
 
     /**

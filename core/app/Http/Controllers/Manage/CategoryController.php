@@ -9,6 +9,8 @@ use App\Domain\Catalog\FamilyForCategory;
 use App\Domain\Catalog\PreSwitch;
 use App\Models\Storefront\Storefront;
 use App\Models\Storefront\StorefrontCategory;
+use App\Storefront\CategoryImages;
+use App\Storefront\ImageUrl;
 use App\Support\Coerce;
 use App\Support\ManageText;
 use App\Support\Table\TableExport;
@@ -19,6 +21,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -590,7 +593,7 @@ final class CategoryController
              * the database and are arranged below.
              */
             ->get([
-                'c.id', 'c.parent_id', 'c.depth', 'c.path', 'c.slug', 'c.icon', 'c.image_path',
+                'c.id', 'c.parent_id', 'c.depth', 'c.path', 'c.slug', 'c.icon', 'c.image_path', 'c.image_hidden',
                 'c.is_active', 'c.show_in_menu', 'c.sort_order', 'c.legacy_source', 'c.legacy_id',
                 'ar.name as name_ar', 'en.name as name_en',
             ]);
@@ -621,6 +624,20 @@ final class CategoryController
         $subtreeLive = self::subtreeDistinct($ordered, $livePairs);
         $subtreeAny = self::subtreeDistinct($ordered, $anyPairs);
 
+        /*
+         * The AUTOMATIC picture of every node that has none of its own and was not told to show none (Part 5,
+         * 2026-11-05) — the same rule the storefront's tree uses (CategoryImages), so the screen shows the photo
+         * shoppers see, not a guess at it.
+         */
+        $wantsFallback = [];
+        foreach ($ordered as $raw) {
+            $row = Row::cast($raw);
+            if ((Row::nstr($row, 'image_path') ?? '') === '' && ! Row::bool($row, 'image_hidden')) {
+                $wantsFallback[Row::int($row, 'id')] = Row::str($row, 'path');
+            }
+        }
+        $fallbacks = CategoryImages::fallbacks($storefrontId, $wantsFallback);
+
         $out = [];
         foreach ($ordered as $raw) {
             $row = Row::cast($raw);
@@ -641,6 +658,11 @@ final class CategoryController
                 'slug' => Row::str($row, 'slug'),
                 'icon' => Row::nstr($row, 'icon') ?? '',
                 'image_path' => Row::nstr($row, 'image_path') ?? '',
+                // own | auto | none, the picture's address in that state (null when there is none to show).
+                'image_mode' => ($ownImage = Row::nstr($row, 'image_path') ?? '') !== '' ? 'own' : (Row::bool($row, 'image_hidden') ? 'none' : 'auto'),
+                'image_url' => $ownImage !== ''
+                    ? ImageUrl::srcFor($storefrontId, $ownImage)
+                    : (is_string($fallbacks[$id]['src'] ?? null) ? $fallbacks[$id]['src'] : null),
                 'name' => [
                     'ar' => Row::nstr($row, 'name_ar') ?? '',
                     'en' => Row::nstr($row, 'name_en') ?? '',
@@ -732,6 +754,58 @@ final class CategoryController
     }
 
     // ── request plumbing ─────────────────────────────────────────────────────────────────────
+
+    /**
+     * A category's picture: its own upload, the automatic one, or none at all (the twelve updates, Part 5,
+     * 2026-11-05). "Delete" on the screen is `none` — show nothing — and it does not fall back again.
+     */
+    public function image(Request $request, Storefront $storefront, int $category): RedirectResponse
+    {
+        $data = Coerce::arr($request->validate([
+            'mode' => ['required', 'string', Rule::in(['own', 'auto', 'none'])],
+            'image_path' => ['nullable', 'required_if:mode,own', 'string', 'max:255'],
+        ]));
+        $mode = Coerce::str($data['mode'] ?? null);
+
+        $before = self::imageFields($storefront->id, $category);
+        abort_if($before === [], 404);
+
+        try {
+            $this->tree->setImage(
+                $storefront->id,
+                $category,
+                $mode === 'own' ? Coerce::nstr($data['image_path'] ?? null) : null,
+                $mode === 'none',
+            );
+        } catch (RuntimeException $e) {
+            throw ValidationException::withMessages(['image' => $e->getMessage()]);
+        }
+
+        $after = self::imageFields($storefront->id, $category);
+        ActivityLog::record('storefront_categories', $category, ActivityLog::UPDATED, $before, $after, label: Coerce::nstr($after['name'] ?? null), storefrontId: $storefront->id);
+
+        return back()->with('status', match ($mode) {
+            'own' => ManageText::t('categories.image_saved', 'تم حفظ صورة التصنيف.'),
+            'none' => ManageText::t('categories.image_removed', 'حُذفت الصورة: هذا التصنيف لن يعرض أي صورة.'),
+            default => ManageText::t('categories.image_auto', 'يعرض التصنيف الآن صورة أحدث منتج متوفر فيه.'),
+        });
+    }
+
+    /**
+     * @return array<string, mixed> the picture's two columns and the name for the log's label; [] when the node is not this storefront's
+     */
+    private static function imageFields(int $storefrontId, int $category): array
+    {
+        $raw = DB::table('storefront_categories as c')
+            ->leftJoin('storefront_category_translations as t', fn (JoinClause $j) => $j->on('t.storefront_category_id', '=', 'c.id')->where('t.locale', '=', 'ar'))
+            ->where('c.storefront_id', $storefrontId)->where('c.id', $category)
+            ->first(['c.image_path', 'c.image_hidden', 't.name']);
+        if (! is_object($raw)) {
+            return [];
+        }
+
+        return ['image_path' => Row::nstr($raw, 'image_path'), 'image_hidden' => Row::bool($raw, 'image_hidden'), 'name' => Row::nstr($raw, 'name')];
+    }
 
     /**
      * @return array<string, mixed>

@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input, Select } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ImageField } from "@/components/form/ImageField";
 import { Switch } from "@/components/ui/switch";
 import { useT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
@@ -49,6 +50,10 @@ interface Node {
     slug: string;
     icon: string;
     image_path: string;
+    /** own (an uploaded image) | auto (its newest buyable product's photo) | none (deleted: shows nothing) — Part 5. */
+    image_mode: "own" | "auto" | "none";
+    /** The picture in that state, or null when there is none to show. */
+    image_url: string | null;
     name: { ar: string; en: string };
     is_active: boolean;
     show_in_menu: boolean;
@@ -1025,6 +1030,12 @@ export default function CategoriesIndex({
                             </Alert>
                         )}
 
+                        <NodePicture
+                            node={editing}
+                            url={`${base}/${editing.id}/image`}
+                            onDone={() => setEditing(null)}
+                        />
+
                         <NodeForm
                             node={editing}
                             parents={parentOptions(editing)}
@@ -1208,6 +1219,119 @@ export default function CategoriesIndex({
 }
 
 /** The create/edit dialog body. Move is its own action, because it rewrites a whole subtree. */
+/**
+ * A category's PICTURE (the twelve updates, Part 5, 2026-11-05).
+ *
+ * Three states, and the block says which one this category is in and shows the photo shoppers see:
+ *
+ *   own   an image uploaded here;
+ *   auto  none of its own, so the storefront shows the photo of its newest product that can be bought;
+ *   none  deleted — the category shows NO picture, and stays that way until somebody chooses otherwise.
+ *
+ * "Delete" means `none`, not "fall back again": the brief's rule. Going back to the automatic picture is
+ * its own button, so it is a decision and not an accident.
+ */
+function NodePicture({ node, url, onDone }: { node: Node; url: string; onDone: () => void }) {
+    const t = useT();
+    const errors = (usePage().props.errors ?? {}) as Record<string, string>;
+    const [busy, setBusy] = useState(false);
+    const send = (payload: { mode: "own" | "auto" | "none"; image_path?: string }) => {
+        setBusy(true);
+        router.put(url, payload, {
+            preserveScroll: true,
+            onSuccess: onDone,
+            onFinish: () => setBusy(false),
+        });
+    };
+
+    return (
+        <div className="space-y-2 rounded-md border p-3">
+            <div className="flex flex-wrap items-start gap-3">
+                {node.image_url !== null ? (
+                    <img
+                        src={node.image_url}
+                        alt=""
+                        className="size-20 shrink-0 rounded-md border bg-white object-contain"
+                    />
+                ) : (
+                    <span className="flex size-20 shrink-0 items-center justify-center rounded-md border border-dashed text-center text-xs text-muted-foreground">
+                        {t("categories.image_empty", "بلا صورة")}
+                    </span>
+                )}
+                <div className="min-w-0 flex-1 space-y-1 text-sm">
+                    <p className="font-medium">
+                        {t("categories.image_heading", "صورة التصنيف")}
+                    </p>
+                    <p className="text-muted-foreground">
+                        {node.image_mode === "own"
+                            ? t(
+                                  "categories.image_state_own",
+                                  "صورة مرفوعة لهذا التصنيف.",
+                              )
+                            : node.image_mode === "none"
+                              ? t(
+                                    "categories.image_state_none",
+                                    "حُذفت الصورة: لا يعرض هذا التصنيف أي صورة في المتجر.",
+                                )
+                              : node.image_url !== null
+                                ? t(
+                                      "categories.image_state_auto",
+                                      "تلقائية: صورة أحدث منتج متوفر في هذا التصنيف. تتغيّر وحدها إذا أُخفي المنتج أو نفد.",
+                                  )
+                                : t(
+                                      "categories.image_state_auto_empty",
+                                      "تلقائية، ولا يوجد الآن منتج متوفر له صورة في هذا التصنيف، فلا تظهر صورة.",
+                                  )}
+                    </p>
+                </div>
+            </div>
+
+            <ImageField
+                type="category"
+                label={t("categories.image_upload", "رفع صورة خاصة بالتصنيف")}
+                value={null}
+                disabled={busy}
+                onChange={(image) => {
+                    if (image !== null) {
+                        send({ mode: "own", image_path: `${image.folder}/${image.file}` });
+                    }
+                }}
+            />
+
+            <div className="flex flex-wrap gap-2">
+                {node.image_mode !== "none" ? (
+                    <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={busy}
+                        onClick={() => send({ mode: "none" })}
+                    >
+                        {t("categories.image_delete", "حذف الصورة (لا تظهر أي صورة)")}
+                    </Button>
+                ) : null}
+                {node.image_mode !== "auto" ? (
+                    <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={busy}
+                        onClick={() => send({ mode: "auto" })}
+                    >
+                        {t("categories.image_use_auto", "استخدام صورة أحدث منتج تلقائيًا")}
+                    </Button>
+                ) : null}
+            </div>
+            {errors.image ? (
+                <p className="text-sm text-destructive">{errors.image}</p>
+            ) : null}
+            {errors.image_path ? (
+                <p className="text-sm text-destructive">{errors.image_path}</p>
+            ) : null}
+        </div>
+    );
+}
+
 function NodeForm({
     node,
     parentId = null,

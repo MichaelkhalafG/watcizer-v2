@@ -77,7 +77,10 @@ it('stays within the per-endpoint query budgets once the storefront caches are w
     fwrite(STDERR, "\nquery budget — cold: ".json_encode($cold).' warm: '.json_encode($warm)."\n");
 
     expect($warm['meta'])->toBeLessThanOrEqual(20)
-        ->and($cold['meta'])->toBeLessThanOrEqual(20)
+        // 22 since 2026-11-05 (was 20): the category picture fallback of Part 5 adds two queries to a COLD tree build —
+        // the newest in-stock product of every category without a picture (one window query) and those products' covers.
+        // The tree is cached, so a warm `meta` is still 0.
+        ->and($cold['meta'])->toBeLessThanOrEqual(22)
         ->and($warm['listing'])->toBeLessThanOrEqual(7)
         ->and($warm['listing_category'])->toBeLessThanOrEqual(8)
         ->and($warm['listing_category_again'])->toBeLessThanOrEqual(7)
