@@ -22,6 +22,11 @@
   --wz-charcoal: #262626;
   --wz-gold: #C8A45C;
   --wz-gold-dark: #9A7B3C;
+  /* GOLD AS SMALL TEXT ON A LIGHT GROUND (Lighthouse: color-contrast, 2026-11-05). The gold is 2.3 : 1 on white and
+     the dark gold 3.8 : 1 — both under the 4.5 : 1 small text needs. This is the gold the trust chips already use for
+     their words (--tr-chip-ink): 4.8 : 1 on the page's #fafafa, 5.0 : 1 on white. Only text takes it; rules, fills,
+     borders and large type keep --wz-gold / --wz-gold-dark. */
+  --wz-gold-text: #8a6b2a;
   --wz-danger: #dc2626;
   --wz-success: #16a34a;
   --wz-bone: #f8f6f3;
@@ -49,6 +54,21 @@
   --wz-fs-xl: 24px;
   --wz-fs-2xl: 32px;
   --wz-fs-3xl: 40px;
+}
+/* El Messiri, self-hosted (2026-11-05, app/fonts/elMessiri.js): three families, one per script, joined here into
+   the variable every rule below already reads. The fallback face carries the metrics next/font/google generated
+   for this family, so text holds its place while the font loads exactly as it did before. */
+@font-face {
+  font-family: 'El Messiri Fallback';
+  src: local('Arial');
+  ascent-override: 106.39%;
+  descent-override: 56.8%;
+  line-gap-override: 0%;
+  size-adjust: 95.78%;
+}
+:root {
+  --font-el-messiri: var(--font-el-messiri-arabic), var(--font-el-messiri-latin-ext), var(--font-el-messiri-latin),
+    'El Messiri Fallback';
 }
 [dir='rtl'] {
   --wz-serif: var(--font-el-messiri), Georgia, 'Times New Roman', serif;
@@ -443,3 +463,99 @@ textarea {
 .wz-error--auth .wz-error-text { color: rgba(255,255,255,0.55); }
 .wz-error--auth .wz-error-retry { background: #C8A45C; color: #fff; }
 .wz-error--auth .wz-error-retry:hover { background: #b08d3e; }
+
+/*
+ * The campaign surfaces, the mega menu and the home zone (the twelve updates, Parts 2 to 4, 2026-11-05).
+ * The components are twins; these tokens are what makes them Watchizer's: the serif, set in capitals, for display
+ * type, and the shop's tighter corners. The campaigns' COLOURS are not here since the design pass of 2026-11-05:
+ * Hot Deals is fire and a Flash Sale is storm in both shops — their own identities (promo.css), not the shop's gold.
+ */
+:root {
+  --nav-progress: #c8a45c;
+  --pm-save: #16703a;
+  --pm-radius: 6px;
+  --pm-radius-lg: 10px;
+  --pm-display: var(--wz-serif);
+  --pm-title-case: uppercase;
+  --pm-title-tracking: 0.04em;
+  --pm-container: 1440px;
+  --pm-gutter: clamp(16px, 5vw, 64px);
+  --hz-radius: 8px;
+  /*
+   * EACH SHOP ITS OWN LOOK (the review of 2026-11-05). Watchizer is the dark, quiet one:
+   *   • the MENU is a near-black panel with warm ivory type and gold, the pictures on white plates;
+   *   • HOT DEALS burns on a dark stage (the cards on coal, not on peach);
+   *   • a FLASH SALE is lightning in gold on black, not Brand Fashion's blue storm;
+   *   • the PAGE TEXT sits on warm paper with the serif, and the TRUST chips are champagne and gold.
+   * The same components, behaviour and data as Brand Fashion; only these values differ (TWINS.txt records it).
+   */
+  --mm-panel: #14110e;
+  --mm-ink: #f3efe7;
+  --mm-muted: rgba(243, 239, 231, 0.68);
+  --mm-faint: rgba(243, 239, 231, 0.44);
+  --mm-line: rgba(255, 255, 255, 0.1);
+  --mm-wash: #1e1a16;
+  --mm-pic: #ffffff;
+  --mm-accent: #c8a45c;
+  --mm-on-accent: #15130f;
+  --mm-radius: 6px;
+  --mm-trigger-bg: #c8a45c;
+  --mm-trigger-fg: #111111;
+  --mm-display: var(--wz-serif);
+  --mm-feature-bg: #c8a45c;
+  --mm-feature-fg: #15130f;
+  --mm-feature-cta-fg: #f3efe7;
+  --mm-plate: #ffffff;
+  --mm-plate-radius: 4px;
+  /* a product in a live offer (items 41, 42): Watchizer's Flash Sale is gold on coal — a warm paper ground, a gold
+     edge; its Hot Deals keeps the fire */
+  --wz-offer-flash-ground: #f8f4ea;
+  --wz-offer-flash-edge: #a8832f;
+  /* the banner slider's arrows: Watchizer's are squared like its plates, coal with a gold hover */
+  --bh-arrow-radius: 4px;
+  --bh-arrow-bg: rgba(20, 17, 14, 0.86);
+  --bh-arrow-hover-bg: #c8a45c;
+  --bh-arrow-hover-fg: #15130f;
+  /* (no --mm-max here: the panel runs the full width of the screen and so does what is in it — a column inside it
+     left dead dark bands on both sides at 1536 and 1920 px, the review of 2026-11-05, item 34) */
+  --pm-hot-stage: linear-gradient(100deg, #2a120b 0%, #17110e 26%, #0f0d0b 100%);
+  --pm-storm: #0b0b0d;
+  --pm-storm-2: #19150f;
+  --pm-storm-3: #4a3a17;
+  --pm-volt-1: #e9c46a;
+  --pm-volt-2: #f6e3a8;
+  --pm-volt-3: #b08d3e;
+  --fi-sheet: #f8f6f3;
+  --fi-line: rgba(0, 0, 0, 0.1);
+  --fi-accent: #b08d3e;
+  --fi-radius: 4px;
+  --tr-chip: #f3ebdd;
+  --tr-chip-ink: #8a6b2a;
+  --tr-radius: 6px;
+}
+/* HOT DEALS MODE (Part 2.4): the shop's accent turns to fire everywhere it is used, for as long as the switch is on. */
+html[data-hot-deals='on'] {
+  --wz-gold: #e2210f;
+  --wz-gold-dark: #a80a14;
+  --wz-gold-text: #a80a14;
+}
+
+/* a product in a live Flash Sale, on Watchizer (items 41, 42): warm paper and gold, not Brand Fashion's blue */
+.pm-offer--flash {
+  --pm-offer-ground: var(--wz-offer-flash-ground, #f8f4ea);
+  --pm-offer-edge: var(--wz-offer-flash-edge, #a8832f);
+}
+
+/* Text for a screen reader only (Lighthouse, 2026-11-05): a name or a heading the page needs and the design does not
+   draw. Not `display: none` — that hides it from the screen reader too. */
+.wz-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}

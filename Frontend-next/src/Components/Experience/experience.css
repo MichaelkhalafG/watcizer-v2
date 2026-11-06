@@ -6,6 +6,15 @@
    twelve pinned compositions, the Home control, the buy bar.
    ══════════════════════════════════════════════════════════════════════════ */
 
+@font-face {
+  font-family: 'Cormorant Garamond Fallback';
+  src: local('Times New Roman');
+  ascent-override: 95.27%;
+  descent-override: 29.59%;
+  line-gap-override: 0%;
+  size-adjust: 96.98%;
+}
+
 .exp {
   --exp-petrol: #2c1c11;
   --exp-deep: #140d08;
@@ -20,6 +29,9 @@
   --exp-safe: env(safe-area-inset-bottom, 0px);
   --exp-gutter: clamp(20px, 5vw, 80px);
   --exp-top: 0px;
+  /* --font-exp-display-face is the self-hosted Cormorant Garamond (the page's next/font/local, 2026-11-05); the
+     fallback face above carries the metrics next/font/google generated, so the headings hold their place. */
+  --font-exp-display: var(--font-exp-display-face), 'Cormorant Garamond Fallback';
   --exp-display: var(--font-exp-display), 'Cormorant Garamond', Georgia, serif;
   position: relative;
   background: var(--exp-deep);

@@ -6,11 +6,24 @@ import { safeJsonLd } from '@/src/lib/safeJsonLd'
 import { experienceModel, productSeoFor } from '@/src/lib/experienceSpecs'
 import { COPY, PATH, PRODUCT_SLUG, ASSETS } from '@/src/content/grandPrix1513477'
 import GrandPrixExperience from '@/src/Components/Experience/GrandPrixExperience'
-import { Cormorant_Garamond } from 'next/font/google'
+import localFont from 'next/font/local'
 
-// The page's Latin display face, self-hosted by next/font and loaded on this route only; Arabic display is the
-// site's El Messiri (the root layout's --font-el-messiri).
-const display = Cormorant_Garamond({ subsets: ['latin'], weight: ['300', '400', '500'], style: ['normal', 'italic'], variable: '--font-exp-display', display: 'swap' })
+// The page's Latin display face, loaded on this route only; Arabic display is the site's El Messiri (the root
+// layout's --font-el-messiri). SELF-HOSTED since 2026-11-05 (app/fonts/, next/font/local): this is the import
+// whose download from Google failed Hostinger's build on 2026-11-04. The files are the ones Google served that
+// day (Cormorant Garamond v21, variable, Latin, upright and italic), restricted to the same characters; weights
+// 300 to 500 as before. The fallback face (Times New Roman with the metrics next/font/google generated) is in
+// experience.css, which joins it into --font-exp-display. Licence: SIL OFL 1.1, app/fonts/OFL-CormorantGaramond.txt.
+const display = localFont({
+  src: [
+    { path: '../../../fonts/cormorant-garamond-latin.woff2', weight: '300 500', style: 'normal' },
+    { path: '../../../fonts/cormorant-garamond-latin-italic.woff2', weight: '300 500', style: 'italic' },
+  ],
+  variable: '--font-exp-display-face',
+  display: 'swap',
+  adjustFontFallback: false,
+  declarations: [{ prop: 'unicode-range', value: 'U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD' }],
+})
 
 /*
  * /experience/hugo-boss-grand-prix-1513477 and /ar/experience/… — THE HERO PRODUCT PAGE (2026-10-27, Watchizer
