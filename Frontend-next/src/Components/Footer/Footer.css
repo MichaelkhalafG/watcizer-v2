@@ -161,7 +161,7 @@
 .wz-foot__copy {
   margin: 0;
   font-size: 11px;
-  color: rgba(255, 255, 255, 0.4);
+  color: rgba(255, 255, 255, 0.5); /* was 0.4: 3.8 : 1 on the footer's black; this is 5.3 : 1 (Lighthouse: color-contrast) */
 }
 
 .wz-foot__bottom-right {
@@ -182,7 +182,7 @@
   gap: 8px;
   text-align: center;
   font-size: 12px;
-  color: rgba(255, 255, 255, 0.45);
+  color: rgba(255, 255, 255, 0.5); /* was 0.45: 4.48 : 1, a hair under 4.5 */
 }
 
 .wz-foot__credit-sep {
@@ -249,4 +249,18 @@
     align-items: flex-start;
     gap: 14px;
   }
+}
+
+/* the payment badges row, above the bottom bar (Part 7, 2026-11-05) */
+.wz-foot__pay {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 18px;
+  padding: 18px clamp(16px, 5vw, 64px);
+  border-block-start: 1px solid rgba(255, 255, 255, 0.08);
+}
+.wz-foot__pay .pm-pay__title {
+  margin: 0;
+  opacity: 0.75;
 }

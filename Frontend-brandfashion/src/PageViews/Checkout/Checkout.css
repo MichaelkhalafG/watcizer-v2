@@ -789,3 +789,57 @@
   .wz-checkout-summary .wz-checkout-items { display: none; }
 }
 @media (prefers-reduced-motion: reduce) { .bf-co-mini > summary span::after { transition: none; } }
+
+/* the payment badges under the summary (Part 7, 2026-11-05) */
+.wz-checkout-badges {
+  margin-block-start: 16px;
+  padding-block-start: 14px;
+  border-block-start: 1px solid var(--wz-line);
+}
+
+/*
+ * THE TRUST LIST (the review of 2026-11-05) — the same look as the trust strip everywhere it appears: a framed
+ * sheet, hairlines between the rows, each icon in the round chip (the --tr-* tokens of this shop). Design only:
+ * the words are the ones that were here.
+ */
+.wz-cart-trust,
+.wz-checkout-trust {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin: 20px 0 0;
+  padding: 2px 14px;
+  border: 1px solid var(--tr-line, rgba(0, 0, 0, 0.1));
+  border-radius: var(--tr-radius, 12px);
+  background: var(--tr-ground, #ffffff);
+  list-style: none;
+}
+.wz-cart-trust li,
+.wz-checkout-trust li {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 12px;
+  padding: 9px 0;
+  border-block-start: 1px solid var(--tr-line, rgba(0, 0, 0, 0.1));
+  color: var(--tr-ink, #1a1a1a);
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+.wz-cart-trust li:first-child,
+.wz-checkout-trust li:first-child {
+  border-block-start: 0;
+}
+.wz-cart-trust li svg,
+.wz-checkout-trust li svg {
+  box-sizing: border-box;
+  flex: none;
+  inline-size: 32px;
+  block-size: 32px;
+  padding: 8px;
+  border-radius: 50%;
+  background: var(--tr-chip, #f1f1f1);
+  color: var(--tr-chip-ink, #111111);
+  font-size: 16px;
+}

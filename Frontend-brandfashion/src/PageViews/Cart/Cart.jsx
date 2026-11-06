@@ -20,6 +20,7 @@ import { txt, money } from '../../lib/cardData'
 import { trackViewCart } from '../../scripts/pixels'
 import { localizeHref } from '../../utils/localePath'
 import { STOREFRONT_CODE } from '../../lib/env'
+import PaymentBadges from '../../Components/Promo/PaymentBadges'
 import './Cart.css'
 
 /*
@@ -521,6 +522,9 @@ function Cart() {
                 <li><FiRefreshCw aria-hidden="true" /> {t('Returns within 4 days of delivery', 'الإرجاع خلال 4 أيام من الاستلام')}</li>
                 <li><FiCheck aria-hidden="true" /> {t('100% authentic guarantee', 'أصالة مضمونة 100%')}</li>
               </ul>
+
+              {/* the ways to pay this shop offers (Part 7, 2026-11-05) — the checkout's own list */}
+              <PaymentBadges className="wz-cart-pay pm-pay--compact" note />
             </div>
           </aside>
         </div>

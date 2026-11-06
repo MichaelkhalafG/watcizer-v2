@@ -74,6 +74,14 @@ return [
             'widths' => [160, 320],
             'thumbnails' => [],
         ],
+        // A payment method's badge (Part 7, 2026-11-05): a small logo on a white tile, shown at 28-40px
+        // high in the footer, the cart and the checkout — so the master is small and nothing is padded.
+        'payment' => [
+            'folder' => 'Payment',
+            'master' => ['width' => 320, 'height' => 200, 'quality' => 90, 'pad_square' => false],
+            'widths' => [160],
+            'thumbnails' => [],
+        ],
         'category' => [
             'folder' => 'Category_type',
             'master' => ['width' => 600, 'height' => 600, 'quality' => 80, 'pad_square' => false],

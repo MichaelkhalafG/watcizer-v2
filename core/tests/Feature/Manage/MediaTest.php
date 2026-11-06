@@ -271,5 +271,11 @@ it('declares one folder per type, and they are the legacy folders', function () 
      * `MediaPruneCommand::REFERENCE_COLUMNS`, so the LIVE one is safe from the moment the folder
      * becomes visible to the scan — which is the order these two changes have to happen in.
      */
-    expect($folders)->toBe(['Product', 'Product_image', 'Brand', 'Category_type', 'Banner_home', 'User']);
+    /*
+     * `Payment` JOINED 2026-11-05 (the twelve updates, Part 7): the pictures of the payment badges, a new folder of
+     * its own. Same order as for `User`: `storefront_payment_badges.image_path` is in
+     * `MediaPruneCommand::REFERENCE_COLUMNS` (MediaReferenceCoverageTest would not let the table exist without it), so
+     * the pictures in use are safe from the moment the scan can see the folder.
+     */
+    expect($folders)->toBe(['Product', 'Product_image', 'Brand', 'Payment', 'Category_type', 'Banner_home', 'User']);
 });

@@ -30,6 +30,7 @@ import ProductSlider from '../../Components/Product/ProductSlider'
 import { trustSignals } from '../../config/trust.config'
 import { getImageUrl, handleImgError, PLACEHOLDER_IMG } from '../../utils/imageUrl'
 import { productUrl, offerUrl } from '../../utils/productUrl'
+import PaymentBadges from '../../Components/Promo/PaymentBadges'
 import './Cart.css'
 import { finishBackground } from '../../utils/finish'
 
@@ -599,6 +600,11 @@ function Cart() {
             <Link href="/listing" className="wz-cart-continue wz-cart-continue--inline">
               ← {t('Continue Shopping', 'متابعة التسوق')}
             </Link>
+
+            {/* The ways to pay this shop offers (Part 7, 2026-11-05) — the checkout's own list. Under the items, not
+                in the summary: the summary is a sticky box with a height limit, and seven badges there pushed its
+                last row into an inner scroll (measured at 1440x900). */}
+            <PaymentBadges className="wz-cart-pay" note />
           </div>
 
           {/* Summary */}

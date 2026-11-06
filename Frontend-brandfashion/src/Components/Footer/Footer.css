@@ -38,3 +38,7 @@
   .bf-foot__inner { grid-template-columns: repeat(2, 1fr); }
   .bf-foot__brand { grid-column: 1 / -1; }
 }
+
+/* the payment badges row, above the bottom line (Part 7, 2026-11-05) */
+.bf-foot__pay { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; padding-block: 16px; padding-inline: max(var(--bf-gutter), calc((100% - var(--bf-container)) / 2 + var(--bf-gutter))); border-block-start: 1px solid rgba(255, 255, 255, 0.14); }
+.bf-foot__pay .pm-pay__title { margin: 0; opacity: 0.8; }

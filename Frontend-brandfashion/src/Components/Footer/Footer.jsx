@@ -10,6 +10,7 @@ import { useHasOffers } from '../../Hooks/queries/useRunningOffers'
 import { brandSlug, categorySlug } from '../../utils/slugs'
 import { TRUST_PAGES } from '../../content/trustPages'
 import { FAQ } from '../../content/faq'
+import PaymentBadges from '../Promo/PaymentBadges'
 
 /*
  * The Brand Fashion footer — spec v2.10 §10.8 ("categories, brands, main pages, social. No newsletter field"),
@@ -128,6 +129,10 @@ function Footer() {
           </ul>
         </nav>
       </div>
+
+      {/* The ways to pay this shop really offers (Part 7, 2026-11-05): the list is the checkout's own, the
+          pictures are the dashboard's. Nothing is drawn while no method is enabled. */}
+      <PaymentBadges tone="dark" className="bf-foot__pay" />
 
       <div className="bf-foot__bottom">
         <p className="bf-foot__copy">© {year} Brand Fashion · {t.rights}</p>

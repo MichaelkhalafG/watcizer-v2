@@ -93,6 +93,10 @@ final class MediaPruneCommand extends Command
              * caught it. It is doing more work than the list it guards.
              */
             'core_blogs' => ['cover_path'],
+            // The payment badges' pictures (Part 7, 2026-11-05) — the third time the coverage test caught this list
+            // being forgotten, on the day the table was made. Without the line `media:prune --delete` would have
+            // removed every badge picture the team uploaded.
+            'storefront_payment_badges' => ['image_path'],
         ],
         'legacy' => [
             'products' => ['image'],

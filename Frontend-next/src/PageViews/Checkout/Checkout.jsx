@@ -34,6 +34,7 @@ import { trustSignals } from '../../config/trust.config'
 import { PAYMOB_ENABLED } from '../../lib/env'
 import { trackInitiateCheckout, savePendingPurchase } from '../../scripts/pixels'
 import { useOrderConfirmStore } from '../../Store/orderConfirmStore'
+import PaymentBadges from '../../Components/Promo/PaymentBadges'
 import './Checkout.css'
 
 // Paymob availability comes from lib/env (NEXT_PUBLIC_PAYMOB_ENABLED), the Next
@@ -213,6 +214,8 @@ const OrderSummary = memo(function OrderSummary({
         <li><FiShield size={14} /> {t('100% authentic', 'أصلي 100%')}</li>
         <li><FiPhone size={14} /> {t('WhatsApp support', 'دعم واتساب')}</li>
       </ul>
+      {/* the ways to pay this shop offers (Part 7, 2026-11-05) — the same list the method picker reads */}
+      <PaymentBadges className="wz-checkout-badges pm-pay--compact" />
     </aside>
   )
 })
