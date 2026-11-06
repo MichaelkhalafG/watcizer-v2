@@ -119,6 +119,8 @@ final class ProductHistory
             'order' => ManageText::t('activity.reason_order', 'طلب'),
             'order_cancel' => ManageText::t('activity.reason_order_cancel', 'إلغاء طلب'),
             'payment_failed' => ManageText::t('activity.reason_payment_failed', 'فشل الدفع'),
+            'order_reinstate' => ManageText::t('activity.reason_order_reinstate', 'إعادة حجز بعد دفع متأخر'),
+            'reinstate_cancel' => ManageText::t('activity.reason_reinstate_cancel', 'إرجاع طلب أُعيد بعد دفع متأخر'),
             'restock' => ManageText::t('activity.reason_restock', 'توريد'),
             'adjustment', 'manual' => ManageText::t('activity.reason_adjustment', 'تعديل مخزون'),
             'import' => ManageText::t('activity.reason_import', 'استيراد'),

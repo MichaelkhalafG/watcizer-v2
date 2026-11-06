@@ -39,6 +39,7 @@ function callbackOrder(int $quantity = 2, string $total = '250.00'): array
     $orderId = (int) DB::table('orders')->insertGetId([
         'user_id' => null,
         'address_id' => T::int(DB::table('addresses')->orderBy('id')->value('id')),
+        'storefront_id' => 1,
         'total_price_for_order' => $total, 'payment_method' => 'paymob',
         'order_number' => 'ZZ'.random_int(100000, 999999), 'status' => 'pending',
         'guest_name' => 'callback-probe', 'guest_email' => 'callback@example.test',
@@ -129,15 +130,19 @@ it('accepts a correctly signed success callback and marks the order processing',
     expect($kinds)->toEqualCanonicalizing(['customer_confirmation', 'admin_notification']);
 });
 
-it('returns the stock and cancels the order when the payment failed', function () {
+it('records a FAILED payment and leaves the order waiting with its stock (2026-11-05)', function () {
+    // Until 2026-11-05: "returns the stock and cancels the order when the payment failed". A decline
+    // no longer cancels on either handler (CallbackPolicy, correction 1 — order 000092): the payment
+    // page is still open and may yet succeed; `orders:expire-unpaid` ends the wait.
     $f = callbackOrder(2, '250.00');
 
     callback(signedCallback(['merchant_order_id' => $f['order'], 'amount_cents' => '25000', 'success' => 'false']))
         ->assertRedirect('https://watchizereg.test/');
 
-    expect(DB::table('orders')->where('id', $f['order'])->value('status'))->toBe('cancelled')
-        ->and(T::int(DB::table('catalog_products')->where('id', $f['product'])->value('stock_express')))->toBe($f['before'])
-        ->and(app(InventoryService::class)->isReleased($f['order']))->toBeTrue();
+    expect(DB::table('orders')->where('id', $f['order'])->value('status'))->toBe('pending')
+        ->and(T::int(DB::table('catalog_products')->where('id', $f['product'])->value('stock_express')))->toBe($f['before'] - 2)
+        ->and(app(InventoryService::class)->isReleased($f['order']))->toBeFalse()
+        ->and(T::str(DB::table('payment_statuses')->where('order_id', $f['order'])->value('outcome')))->toBe('failed');
 });
 
 it('rejects a callback whose amount does not match the order, and touches nothing (🟡-5)', function () {
@@ -187,27 +192,31 @@ it('ignores a replayed transaction id (idempotent), leaving the first outcome al
 
     expect(DB::table('payment_statuses')->where('pay_transaction_id', $query['id'])->count())->toBe(1)
         ->and(DB::table('inventory_movements')->count())->toBe($movements)
-        ->and(T::int(DB::table('catalog_products')->where('id', $f['product'])->value('stock_express')))->toBe($f['before']);
+        // still reserved: a decline returns nothing since 2026-11-05, and a replay changes nothing
+        ->and(T::int(DB::table('catalog_products')->where('id', $f['product'])->value('stock_express')))->toBe($f['before'] - 2);
 });
 
-it('writes the payment row, the status change and the release as ONE unit (review 🟠-4)', function () {
-    // If the three were separate statements, a failure part-way would leave a payment recorded
-    // against an order that was never updated, or an order cancelled whose stock was never
-    // returned. Here the RELEASE is made to fail deterministically -- the movement is told to
-    // reference a storefront that does not exist, so its insert violates a foreign key -- and the
-    // assertion is that the two writes which had already succeeded are rolled back with it.
+it('a decline writes ONE row — the attempt — and moves nothing else (2026-11-05)', function () {
+    /*
+     * This test proved that the payment row, the cancellation and the stock release of a DECLINE
+     * were one unit, by making the release fail and watching the other two roll back (review 🟠-4).
+     * A decline has no cancellation and no release any more, so there is nothing left for that
+     * mechanism to break. What is held instead is the new shape, by count: exactly one row written.
+     * The all-or-nothing property now lives where stock moves again — a late payment bringing an
+     * order back — and is proved there (LatePaymentTest: "stock sold in between").
+     */
     $f = callbackOrder(2, '250.00');
     $payments = DB::table('payment_statuses')->count();
     $movements = DB::table('inventory_movements')->count();
-
-    config(['compat.storefront_id' => 999999]);
+    $findings = DB::table('payment_reconciliation_findings')->count();
 
     callback(signedCallback(['merchant_order_id' => $f['order'], 'amount_cents' => '25000', 'success' => 'false']))
-        ->assertRedirect('https://watchizereg.test/?payment_error=1');
+        ->assertRedirect('https://watchizereg.test/');
 
-    expect(DB::table('payment_statuses')->count())->toBe($payments)                // rolled back
-        ->and(DB::table('inventory_movements')->count())->toBe($movements)          // rolled back
-        ->and(DB::table('orders')->where('id', $f['order'])->value('status'))->toBe('pending')   // rolled back
+    expect(DB::table('payment_statuses')->count())->toBe($payments + 1)
+        ->and(DB::table('inventory_movements')->count())->toBe($movements)
+        ->and(DB::table('payment_reconciliation_findings')->count())->toBe($findings)
+        ->and(DB::table('orders')->where('id', $f['order'])->value('status'))->toBe('pending')
         ->and(T::int(DB::table('catalog_products')->where('id', $f['product'])->value('stock_express')))->toBe($f['before'] - 2);
 });
 

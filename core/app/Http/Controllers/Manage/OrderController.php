@@ -233,6 +233,10 @@ final class OrderController
                 // from a neighbouring one.
                 'settle' => Gate::allows(Role::MANAGE_PAYMENTS),
             ],
+            // Customers who were CHARGED while their order does not show it (2026-11-05): the
+            // queue opens with them, because a finding that lives only on one order's page is a
+            // charged customer waiting for somebody to stumble on it (order 000092).
+            'money_alerts' => self::moneyAlerts(),
         ]);
     }
 
@@ -954,6 +958,51 @@ final class OrderController
     }
 
     /**
+     * Open findings whose outcome is `success`, newest first, inside the acting grant's storefronts.
+     *
+     * "Open + success" is the whole definition: the provider says the money arrived, and the order
+     * is cancelled, finished, of another amount, or back beside a newer order of the same shopper.
+     * Twenty is a ceiling for the notice, not a page: more than a handful open at once is itself
+     * the news, and the notice says how many there are.
+     *
+     * @return array{count: int, rows: list<array{finding_id: int, order_id: int, order_number: string, kind: string, refused: string|null, amount: string|null, status: string, created_at: string|null, url: string}>}
+     */
+    private static function moneyAlerts(): array
+    {
+        $base = fn (): Builder => tap(
+            DB::table('payment_reconciliation_findings as f')
+                ->join('orders as o', 'o.id', '=', 'f.order_id')
+                ->whereNull('f.resolved_at')
+                ->where('f.outcome', CallbackPolicy::OUTCOME_SUCCESS),
+            fn (Builder $query) => self::applyScope($query),
+        );
+
+        $rows = [];
+        foreach (
+            $base()->orderByDesc('f.id')->limit(20)
+                ->get(['f.id', 'f.order_id', 'f.kind', 'f.amount_cents', 'f.detail', 'f.created_at', 'o.order_number', 'o.status']) as $raw
+        ) {
+            $row = Row::cast($raw);
+            $minor = Row::nint($row, 'amount_cents');
+            $detail = json_decode(Row::nstr($row, 'detail') ?? '', true);
+            $orderId = Row::int($row, 'order_id');
+            $rows[] = [
+                'finding_id' => Row::int($row, 'id'),
+                'order_id' => $orderId,
+                'order_number' => Row::nstr($row, 'order_number') ?? ('#'.$orderId),
+                'kind' => Row::str($row, 'kind'),
+                'refused' => is_array($detail) && is_string($detail['refused'] ?? null) ? $detail['refused'] : null,
+                'amount' => $minor === null ? null : number_format($minor / 100, 2, '.', ''),
+                'status' => OrderFulfilment::label(Row::str($row, 'status')),
+                'created_at' => Row::nstr($row, 'created_at'),
+                'url' => '/manage/orders/'.$orderId,
+            ];
+        }
+
+        return ['count' => $base()->count(), 'rows' => $rows];
+    }
+
+    /**
      * Every payment finding for this order, open ones first.
      *
      * @return list<array<string, mixed>>
@@ -974,10 +1023,23 @@ final class OrderController
         ) {
             $row = Row::cast($raw);
             $minor = Row::nint($row, 'amount_cents');
+            $detail = json_decode(Row::nstr($row, 'detail') ?? '', true);
+            $detail = is_array($detail) ? $detail : [];
+            $newer = [];
+            foreach (is_array($detail['newer_orders'] ?? null) ? $detail['newer_orders'] : [] as $other) {
+                if (is_scalar($other)) {
+                    $newer[] = (string) $other;
+                }
+            }
             $out[] = [
                 'id' => Row::int($row, 'id'),
                 'kind' => Row::str($row, 'kind'),
                 'outcome' => Row::nstr($row, 'outcome'),
+                // What the screen needs to say the right sentence (2026-11-05): why the order could
+                // not be brought back, the provider's transaction, and the shopper's newer orders.
+                'refused' => is_string($detail['refused'] ?? null) ? $detail['refused'] : null,
+                'transaction' => is_scalar($detail['transaction'] ?? null) ? (string) $detail['transaction'] : null,
+                'newer_orders' => $newer,
                 'order_status' => Row::nstr($row, 'order_status'),
                 'amount' => $minor === null ? null : number_format($minor / 100, 2, '.', ''),
                 'created_at' => Row::nstr($row, 'created_at'),

@@ -36,13 +36,20 @@ use Illuminate\Support\Facades\DB;
  *
  * ── A payment that arrives afterwards ─────────────────────────────────────────────────────────
  *
- * The status change is a CLAIM (`where status = pending`), the same shape as the dashboard cancel
- * and the payment callback, so an expiry and a callback in the same second cannot both win. A
- * success that arrives after the claim finds a `cancelled` order, which `CallbackPolicy` never
- * reopens: it records a finding for the operator (refund, or re-open by hand). An intention
+ * The status change is a CLAIM (`where status = pending`), the same shape as the dashboard cancel,
+ * and the payment callback decides under the order row's lock, so an expiry and a callback in the
+ * same second cannot both win. A success that arrives after the claim finds a `cancelled` order:
+ * since 2026-11-05 `LatePayment` brings it back when its stock is still there (reserved again
+ * through the ledger) and raises a finding plus an e-mail to the shop when it is not. An intention
  * `expiration` shorter than the window would make Paymob refuse such a payment first; it is sent
- * only once its unit has been measured (PaymobProvider::intentionExpiration()), and until then the
- * finding is the whole net.
+ * only once its unit has been measured (PaymobProvider::intentionExpiration()).
+ *
+ * ── A DECLINED attempt (2026-11-05) ───────────────────────────────────────────────────────────
+ *
+ * A decline no longer cancels the order: Paymob's page stays open and the shopper can retry on the
+ * same intention (order 000092 was charged that way two minutes after its decline). So a declined
+ * order is simply still unpaid, and this class is what ends its wait — at the end of the window,
+ * or sooner when the shopper places another order (SUPERSEDE).
  *
  * ── The e-mail (2026-10-05, developer: "one-click recovery") ───────────────────────────────────
  *
@@ -135,7 +142,16 @@ final class UnpaidOrders
             );
 
             if ($why === self::EXPIRED && OrderRecovery::shouldRemind($orderId)) {
-                $mailIds = $this->mailer->paymentExpired($orderId);
+                /*
+                 * WHY, for the admins' copy (2026-11-05): an order that saw a declined attempt is
+                 * "the card was declined", not "didn't pay" — the reason the decline e-mail carried
+                 * when a decline still cancelled the order on the spot. It no longer does
+                 * (CallbackPolicy), so this is where that shopper is told, at the end of the
+                 * window: one e-mail, after the page that declined them can no longer succeed.
+                 */
+                $declined = DB::table('payment_statuses')->where('order_id', $orderId)
+                    ->where('outcome', CallbackPolicy::OUTCOME_FAILED)->exists();
+                $mailIds = $this->mailer->paymentExpired($orderId, $declined ? OrderMailer::REASON_DECLINED : OrderMailer::REASON_EXPIRED);
             }
 
             return true;

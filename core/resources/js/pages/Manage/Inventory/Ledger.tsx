@@ -76,10 +76,14 @@ const reasonLabels = (t: Translate): Record<string, string> => ({
     // Units given away by a promotion. It was the one reason of the ten with no word, so the
     // filter listed `promotion_reward` among nine Arabic phrases — and the ledger row said it too.
     promotion_reward: t('common.reason_promotion_reward', 'هدية عرض ترويجي'),
+    // A late payment brought a cancelled order back (2026-11-05): its second reservation, and the
+    // return of that reservation if the order is cancelled afterwards.
+    order_reinstate: t('common.reason_order_reinstate', 'إعادة حجز بعد دفع متأخر'),
+    reinstate_cancel: t('common.reason_reinstate_cancel', 'إرجاع طلب أُعيد بعد دفع متأخر'),
 });
 
 /** A release is the movement that proves a cancellation gave the stock back. */
-const RELEASE_REASONS = ['order_cancel', 'payment_failed'];
+const RELEASE_REASONS = ['order_cancel', 'payment_failed', 'reinstate_cancel'];
 
 const bucketLabels = (t: Translate): Record<string, string> => ({
     express: t('common.stock_express', 'إكسبريس'),

@@ -1,5 +1,6 @@
 import { Link } from "@inertiajs/react";
 
+import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/input";
@@ -67,6 +68,54 @@ interface Props {
         methods: Option[];
     };
     abilities: { fulfil: boolean; cancel: boolean; settle: boolean };
+    /**
+     * Customers who were charged while their order does not show it — open payment findings whose
+     * outcome is "success". The queue opens with them (2026-11-05, order 000092).
+     */
+    money_alerts: {
+        count: number;
+        rows: {
+            finding_id: number;
+            order_id: number;
+            order_number: string;
+            kind: string;
+            refused: string | null;
+            amount: string | null;
+            status: string;
+            created_at: string | null;
+            url: string;
+        }[];
+    };
+}
+
+/** One short clause per situation — the full sentence and the action are on the order's page. */
+function moneyAlertReason(
+    t: ReturnType<typeof useT>,
+    kind: string,
+    refused: string | null,
+): string {
+    if (kind === "late_payment_with_newer_order") {
+        return t(
+            "orders.money_alert_newer",
+            "أُعيد الطلب بعد دفع متأخر، وللعميل طلب أحدث",
+        );
+    }
+    if (kind === "amount_mismatch") {
+        return t("orders.money_alert_amount", "المبلغ لا يطابق الطلب");
+    }
+    if (refused === "insufficient_stock") {
+        return t(
+            "orders.money_alert_no_stock",
+            "دُفع بعد الإلغاء والمخزون لم يعد متاحًا",
+        );
+    }
+    if (refused === "cancelled_by_operator") {
+        return t(
+            "orders.money_alert_operator",
+            "دُفع على طلب أُلغي من لوحة التحكم",
+        );
+    }
+    return t("orders.money_alert_terminal", "دُفع على طلب ملغى أو مُغلق");
 }
 
 const STATUS_TONE: Record<
@@ -83,7 +132,12 @@ const STATUS_TONE: Record<
     cancelled: "destructive",
 };
 
-export default function OrdersIndex({ table, filters, abilities }: Props) {
+export default function OrdersIndex({
+    table,
+    filters,
+    abilities,
+    money_alerts,
+}: Props) {
     const t = useT();
     const columns: Array<Column<OrderRow>> = [
         {
@@ -217,6 +271,53 @@ export default function OrdersIndex({ table, filters, abilities }: Props) {
                 { label: t("common.orders", "الطلبات") },
             ]}
         >
+            {/* Money in, order not showing it: above the queue, in the alarm colour, each one a link.
+                It stays until someone clears the finding on the order's own page, with a reason. */}
+            {money_alerts.count > 0 ? (
+                <Alert
+                    tone="error"
+                    className="mb-4"
+                    title={t(
+                        "orders.money_alert_title",
+                        ":count طلب دُفع ثمنه ولا يظهر ذلك في حالته — يحتاج تصرفًا اليوم",
+                        { count: money_alerts.count },
+                    )}
+                >
+                    <p>
+                        {t(
+                            "orders.money_alert_body",
+                            "أبلغ مزوّد الدفع عن دفعة ناجحة، والطلب ملغى أو مُغلق أو بمبلغ مختلف. افتح الطلب: اتصل بالعميل، ثم نفّذ الطلب أو استرجع المبلغ، وصفِّ المطابقة مع السبب.",
+                        )}
+                    </p>
+                    <ul className="mt-2 space-y-1">
+                        {money_alerts.rows.map((row) => (
+                            <li key={row.finding_id}>
+                                <Link
+                                    href={row.url}
+                                    className="font-medium underline underline-offset-2"
+                                >
+                                    <Num>#{row.order_number}</Num>
+                                </Link>
+                                {row.amount !== null ? (
+                                    <span dir="ltr"> · {row.amount} EGP</span>
+                                ) : null}
+                                <span> · {row.status}</span>
+                                <span>
+                                    {" · "}
+                                    {moneyAlertReason(t, row.kind, row.refused)}
+                                </span>
+                                {row.created_at !== null ? (
+                                    <span dir="ltr" className="opacity-80">
+                                        {" "}
+                                        · {row.created_at}
+                                    </span>
+                                ) : null}
+                            </li>
+                        ))}
+                    </ul>
+                </Alert>
+            ) : null}
+
             <DataTable
                 table={table}
                 columns={columns}

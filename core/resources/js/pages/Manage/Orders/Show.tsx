@@ -135,6 +135,12 @@ interface Finding {
     id: number;
     kind: string;
     outcome: string | null;
+    /** Why the order could not be brought back when money arrived after its cancellation, or null. */
+    refused: string | null;
+    /** The provider's transaction id, to find the payment in its portal. */
+    transaction: string | null;
+    /** The same shopper's later live orders, when a late payment brought this one back. */
+    newer_orders: string[];
     /** The order's status WHEN the callback arrived — compare it with the current one. */
     order_status: string | null;
     amount: string | null;
@@ -305,6 +311,14 @@ const reasonLabels = (t: Translate): Record<string, string> => ({
     erp_sync: t("common.reason_erp_sync", "مزامنة ERP"),
     transform: t("common.reason_transform", "بناء أولي"),
     promotion_reward: t("common.reason_promotion_reward", "هدية عرض ترويجي"),
+    order_reinstate: t(
+        "common.reason_order_reinstate",
+        "إعادة حجز بعد دفع متأخر",
+    ),
+    reinstate_cancel: t(
+        "common.reason_reinstate_cancel",
+        "إرجاع طلب أُعيد بعد دفع متأخر",
+    ),
 });
 
 const bucketLabels = (t: Translate): Record<string, string> => ({
@@ -345,6 +359,16 @@ const findingLabels = (
             "رجع المبلغ للعميل. عكس البيع ليس تغيير حالة: هو قرار عن البضاعة والمخزون معًا، ولهذا لم يفعله النظام وحده.",
         ),
     },
+    late_payment_with_newer_order: {
+        title: t(
+            "orders.finding_newer_title",
+            "دفع متأخر أعاد الطلب — وللعميل طلب أحدث",
+        ),
+        what: t(
+            "orders.finding_newer_what",
+            "نجح الدفع بعد إلغاء هذا الطلب، فأُعيد حجز مخزونه وأصبح مدفوعًا. العميل نفسه لديه طلب أحدث ما زال قائمًا: تأكد أنه لن يستلم أو يدفع ثمن المنتجات نفسها مرتين، ثم ألغِ أحدهما إن لزم.",
+        ),
+    },
     amount_mismatch: {
         title: t("orders.finding_amount_title", "المبلغ لا يطابق الطلب"),
         what: t(
@@ -353,6 +377,66 @@ const findingLabels = (
         ),
     },
 });
+
+/**
+ * A finding whose outcome is `success` on a cancelled order: the customer was CHARGED and the order
+ * could not be brought back. The sentence depends on WHY — the person reading it has to refund,
+ * source the item or call, and "a callback arrived" tells them none of that (2026-11-05).
+ */
+const chargedText = (
+    t: Translate,
+    refused: string | null,
+): { title: string; what: string } | null => {
+    if (refused === "insufficient_stock") {
+        return {
+            title: t(
+                "orders.finding_charged_no_stock_title",
+                "العميل دُفع منه المبلغ — والمخزون لم يعد متاحًا",
+            ),
+            what: t(
+                "orders.finding_charged_no_stock_what",
+                "نجح الدفع بعد إلغاء الطلب، وبيعت القطعة أو نفدت في الأثناء، لذلك لم يُعَد الطلب ولم يُحجز شيء. وفِّر القطعة ونفِّذ الطلب، أو استرجع المبلغ للعميل — واتصل به اليوم.",
+            ),
+        };
+    }
+    if (refused === "no_longer_sellable") {
+        return {
+            title: t(
+                "orders.finding_charged_withdrawn_title",
+                "العميل دُفع منه المبلغ — وأحد المنتجات أُوقف بيعه",
+            ),
+            what: t(
+                "orders.finding_charged_withdrawn_what",
+                "نجح الدفع بعد إلغاء الطلب، وأحد منتجاته أُوقف بيعه منذ ذلك الحين، لذلك لم يُعَد الطلب. اتفق مع العميل ثم استرجع المبلغ أو نفِّذ الطلب يدويًا.",
+            ),
+        };
+    }
+    if (refused === "cancelled_by_operator") {
+        return {
+            title: t(
+                "orders.finding_charged_operator_title",
+                "العميل دُفع منه المبلغ — والطلب أُلغي من لوحة التحكم",
+            ),
+            what: t(
+                "orders.finding_charged_operator_what",
+                "نجح الدفع على طلب ألغاه أحد أفراد الفريق. لم يتغير شيء. استرجع المبلغ للعميل، أو أعد الطلب إن كان الإلغاء خطأ.",
+            ),
+        };
+    }
+    if (refused !== null) {
+        return {
+            title: t(
+                "orders.finding_charged_title",
+                "العميل دُفع منه المبلغ — والطلب ملغى",
+            ),
+            what: t(
+                "orders.finding_charged_what",
+                "نجح الدفع بعد إلغاء الطلب ولم يمكن إعادته تلقائيًا. راجع العملية في لوحة مزوّد الدفع، ثم نفِّذ الطلب أو استرجع المبلغ.",
+            ),
+        };
+    }
+    return null;
+};
 
 const outcomeLabels = (t: Translate): Record<string, string> => ({
     success: t("orders.outcome_success", "نجحت"),
@@ -644,11 +728,21 @@ export default function OrderShow({
                 {openFindings.length > 0 ? (
                     <Alert
                         tone="error"
-                        title={t(
-                            "orders.findings_open_title",
-                            ":count مطابقة دفع تحتاج قرارًا",
-                            { count: openFindings.length },
-                        )}
+                        title={
+                            openFindings.some(
+                                (finding) => finding.outcome === "success",
+                            )
+                                ? t(
+                                      "orders.findings_charged_title",
+                                      "العميل دُفع منه المبلغ وحالة الطلب لا تُظهر ذلك — :count مطابقة تحتاج قرارًا اليوم",
+                                      { count: openFindings.length },
+                                  )
+                                : t(
+                                      "orders.findings_open_title",
+                                      ":count مطابقة دفع تحتاج قرارًا",
+                                      { count: openFindings.length },
+                                  )
+                        }
                     >
                         <div className="space-y-4">
                             {openFindings.map((finding) => (
@@ -657,7 +751,10 @@ export default function OrderShow({
                                     className="space-y-2 border-t border-destructive/20 pt-3 first:border-0 first:pt-0"
                                 >
                                     <div className="font-medium">
-                                        {FINDING_LABEL[finding.kind]?.title ??
+                                        {chargedText(t, finding.refused)
+                                            ?.title ??
+                                            FINDING_LABEL[finding.kind]
+                                                ?.title ??
                                             finding.kind}
                                         {finding.outcome !== null ? (
                                             <Badge
@@ -678,9 +775,37 @@ export default function OrderShow({
                                     </div>
 
                                     <p className="text-sm">
-                                        {FINDING_LABEL[finding.kind]?.what ??
+                                        {chargedText(t, finding.refused)
+                                            ?.what ??
+                                            FINDING_LABEL[finding.kind]?.what ??
                                             ""}
                                     </p>
+
+                                    {finding.newer_orders.length > 0 ? (
+                                        <p className="text-sm font-medium">
+                                            {t(
+                                                "orders.finding_newer_list",
+                                                "الطلب الأحدث للعميل نفسه:",
+                                            )}{" "}
+                                            <span dir="ltr">
+                                                {finding.newer_orders
+                                                    .map((n) => `#${n}`)
+                                                    .join(", ")}
+                                            </span>
+                                        </p>
+                                    ) : null}
+
+                                    {finding.transaction !== null ? (
+                                        <p className="text-xs opacity-80">
+                                            {t(
+                                                "orders.finding_transaction",
+                                                "رقم العملية لدى مزوّد الدفع:",
+                                            )}{" "}
+                                            <span dir="ltr">
+                                                {finding.transaction}
+                                            </span>
+                                        </p>
+                                    ) : null}
 
                                     {/* The order's state WHEN the callback arrived, beside its state now: if they
                                         differ, someone has already acted and this may be stale. */}

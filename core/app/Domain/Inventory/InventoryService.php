@@ -13,6 +13,7 @@ use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
+use LogicException;
 use RuntimeException;
 
 /**
@@ -86,10 +87,21 @@ final class InventoryService
         // `payment_failed` already make on the way back.
         'order', 'promotion_reward', 'order_cancel', 'payment_failed', 'restock', 'manual',
         'import', 'adjustment', 'erp_sync', 'transform',
+        // A LATE PAYMENT brought a cancelled order back (2026-11-05, order 000092): its units are
+        // reserved a second time under `order_reinstate` — the exactly-once index is per
+        // (order, reason, line), so the second reservation needs its own reason — and if that
+        // order is cancelled afterwards the units come back under `reinstate_cancel`.
+        'order_reinstate', 'reinstate_cancel',
     ];
 
     /** Reasons that RETURN stock reserved by an order; used to make a release idempotent. */
-    public const RELEASE_REASONS = ['order_cancel', 'payment_failed'];
+    public const RELEASE_REASONS = ['order_cancel', 'payment_failed', 'reinstate_cancel'];
+
+    /** What a CALLER may ask `releaseOrder()` for. `reinstate_cancel` is chosen by the service, never asked for. */
+    public const RELEASE_REQUESTS = ['order_cancel', 'payment_failed'];
+
+    /** The second reservation of an order a late payment brought back — one per order, ever. */
+    public const REINSTATE_REASON = 'order_reinstate';
 
     /**
      * Reasons that mean SOMETHING LEFT THE SHOP FOR A CUSTOMER — the set the sellable guard polices.
@@ -100,7 +112,7 @@ final class InventoryService
      * looking for one string (review 🔴-3). A list with a name is a list the next reason gets added
      * to; a literal in an `if` is not.
      */
-    public const SELLING_REASONS = ['order', 'promotion_reward'];
+    public const SELLING_REASONS = ['order', 'promotion_reward', 'order_reinstate'];
 
     /** @return array{express: string, market: string} */
     public static function columns(): array
@@ -466,8 +478,8 @@ final class InventoryService
      */
     public function releaseOrder(int $orderId, string $reason, ?Actor $actor = null, ?int $storefrontId = null, ?string $note = null): array
     {
-        if (! in_array($reason, self::RELEASE_REASONS, true)) {
-            throw new InvalidArgumentException('releaseOrder() reason must be one of '.implode(', ', self::RELEASE_REASONS).", got [{$reason}].");
+        if (! in_array($reason, self::RELEASE_REQUESTS, true)) {
+            throw new InvalidArgumentException('releaseOrder() reason must be one of '.implode(', ', self::RELEASE_REQUESTS).", got [{$reason}].");
         }
 
         return $this->transactionWithLockRetry(function () use ($orderId, $reason, $actor, $storefrontId, $note): array {
@@ -483,6 +495,20 @@ final class InventoryService
                 return [];
             }
 
+            /*
+             * A REINSTATED order is released under its own reason (2026-11-05). Its first release
+             * already spent `payment_failed` or `order_cancel` on these very lines, and the
+             * exactly-once index is per (order, reason, line): asking for the same reason again
+             * would be refused as a duplicate credit. What the caller asked for goes into the
+             * note, so the ledger still says whether a person cancelled it or a payment failed.
+             */
+            $written = $reason;
+            $writtenNote = $note;
+            if ($this->isReinstated($orderId)) {
+                $written = 'reinstate_cancel';
+                $writtenNote = $note === null || trim($note) === '' ? $reason : $reason.' — '.$note;
+            }
+
             $movements = [];
             foreach ($this->orderLines($orderId) as $line) {
                 $qty = Row::int($line, 'quantity');
@@ -495,7 +521,7 @@ final class InventoryService
                         StockTarget::fromLine($productId, Row::nint($line, 'variant_id')),
                         self::bucketForTypeStock(Row::nstr($line, 'type_stock')),
                         $qty,
-                        $reason,
+                        $written,
                         Reference::orderLine($orderId, Row::int($line, 'id')),
                         $actor,
                         $storefrontId,
@@ -503,7 +529,7 @@ final class InventoryService
                         // note that stopped at the controller would leave the ledger saying
                         // "order_cancel" and nothing about why — which is the question anyone
                         // reading the row a month later is actually asking.
-                        note: $note,
+                        note: $writtenNote,
                     );
 
                     continue;
@@ -528,14 +554,106 @@ final class InventoryService
         DB::table('orders')->where('id', $orderId)->lockForUpdate()->value('id');
     }
 
-    /** Has this order already been credited back? True when any release movement references it. */
+    /**
+     * Is this order's stock back on the shelf RIGHT NOW?
+     *
+     * True when a release movement references it and no reinstatement came after that release.
+     * Before 2026-11-05 this was "any release movement exists", which is the same answer for every
+     * order that was never reinstated — and the wrong one for an order a late payment brought back:
+     * it would have read "already released" for ever, and a later cancellation of that paid order
+     * would have returned nothing to the shelf.
+     */
     public function isReleased(int $orderId): bool
     {
-        return DB::table('inventory_movements')
+        $release = $this->lastMovementId($orderId, self::RELEASE_REASONS);
+        if ($release === null) {
+            return false;
+        }
+        $reinstated = $this->lastMovementId($orderId, [self::REINSTATE_REASON]);
+
+        return $reinstated === null || $release > $reinstated;
+    }
+
+    /** Was this order brought back by a late payment? One reinstatement per order, ever. */
+    public function isReinstated(int $orderId): bool
+    {
+        return $this->lastMovementId($orderId, [self::REINSTATE_REASON]) !== null;
+    }
+
+    /**
+     * Reserve a RELEASED order's stock again — the late-payment path (2026-11-05, order 000092).
+     *
+     * A card order is cancelled unpaid and its units go back; then the provider reports that the
+     * money arrived after all. The order may only come back if its units are still there, and the
+     * ledger must say what happened: one `order_reinstate` movement per line, negative, through the
+     * same `apply()` as every other movement — so an insufficient bucket throws
+     * {@see InsufficientStock}, a withdrawn product or variant is refused like any sale, and the
+     * caller's transaction rolls the whole attempt back. All-or-nothing: either every line is
+     * reserved again or none is.
+     *
+     * Refuses (LogicException) an order that still holds its reservation, and one that was
+     * reinstated before — the exactly-once index would refuse the second set of movements anyway,
+     * and saying why beats a duplicate-key error.
+     *
+     * @return list<InventoryMovement>
+     *
+     * @throws InsufficientStock|InsufficientOfferStock|InvalidArgumentException
+     */
+    public function reinstateOrder(int $orderId, ?Actor $actor = null, ?int $storefrontId = null, ?string $note = null): array
+    {
+        return $this->transactionWithLockRetry(function () use ($orderId, $actor, $storefrontId, $note): array {
+            $this->lockOrder($orderId);
+
+            if ($this->isReinstated($orderId)) {
+                throw new LogicException("Order {$orderId} was already reinstated once; a second reinstatement is refused.");
+            }
+            if (! $this->isReleased($orderId)) {
+                throw new LogicException("Order {$orderId} has no released stock to reserve again.");
+            }
+
+            $movements = [];
+            foreach ($this->orderLines($orderId) as $line) {
+                $qty = Row::int($line, 'quantity');
+                if ($qty < 1) {
+                    continue;
+                }
+                $productId = Row::nint($line, 'product_id');
+                if ($productId !== null) {
+                    $movements[] = $this->adjust(
+                        StockTarget::fromLine($productId, Row::nint($line, 'variant_id')),
+                        self::bucketForTypeStock(Row::nstr($line, 'type_stock')),
+                        -$qty,
+                        self::REINSTATE_REASON,
+                        Reference::orderLine($orderId, Row::int($line, 'id')),
+                        $actor,
+                        $storefrontId,
+                        // A gift line is reserved again under the same reason; the note keeps the
+                        // distinction `promotion_reward` made the first time.
+                        note: Row::bool($line, 'is_reward') ? trim('promotion reward — '.($note ?? ''), ' —') : $note,
+                    );
+
+                    continue;
+                }
+                $offerId = Row::nint($line, 'offer_id');
+                if ($offerId !== null) {
+                    $this->adjustOffer($offerId, -$qty);
+                }
+            }
+
+            return $movements;
+        });
+    }
+
+    /** @param  list<string>  $reasons */
+    private function lastMovementId(int $orderId, array $reasons): ?int
+    {
+        $id = DB::table('inventory_movements')
             ->where('reference_type', 'orders')
             ->where('reference_id', $orderId)
-            ->whereIn('reason', self::RELEASE_REASONS)
-            ->exists();
+            ->whereIn('reason', $reasons)
+            ->max('id');
+
+        return is_numeric($id) ? (int) $id : null;
     }
 
     /** Has this order ever reserved stock? False for an order whose lines were all offers. */
