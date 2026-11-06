@@ -39,9 +39,44 @@
   padding: 4px 2px 12px;
 }
 
-/* Each Embla slide wraps one chip and only needs to size to content. */
+/* WHOLE ITEMS ONLY, AT EVERY WIDTH (the review of 2026-11-05, item 35). A slide used to be as wide as its chip, so
+   the row ended wherever the page did — "Charger Cables" was cut in half. A slide is now an exact share of the row
+   (--n items and their gaps fill it), the share chosen from the ROW's own width, and the carousel rests on an
+   item's edge (`snap`): the row always shows --n whole items, and the arrows or a swipe bring the next ones. */
+.wz-cats .wz-carousel-viewport {
+  container-type: inline-size;
+}
 .wz-cat-slide {
-  flex: 0 0 auto;
+  --n: 4;
+  flex: 0 0 calc((100cqi - (var(--n) - 1) * 10px) / var(--n));
+  min-width: 0;
+}
+@container (min-width: 380px) { .wz-cat-slide { --n: 5; } }
+@container (min-width: 500px) { .wz-cat-slide { --n: 6; } }
+@container (min-width: 640px) { .wz-cat-slide { --n: 8; } }
+@container (min-width: 860px) { .wz-cat-slide { --n: 10; } }
+@container (min-width: 1080px) { .wz-cat-slide { --n: 12; } }
+@container (min-width: 1280px) { .wz-cat-slide { --n: 14; } }
+
+/* THE ARROWS NEVER COVER AN ITEM: on a computer the row keeps a gutter on each side and the arrows stand in it, level
+   with the pictures. (A phone swipes; it has no arrows and no gutter.) */
+@media (min-width: 769px) {
+  .wz-cats .wz-carousel {
+    padding-inline: 52px;
+    box-sizing: border-box;
+  }
+  .wz-cats .wz-carousel-arrow {
+    top: 36px;
+  }
+  .wz-cats .wz-carousel-prev {
+    inset-inline-start: 0;
+  }
+  .wz-cats .wz-carousel-next {
+    inset-inline-end: 0;
+  }
+  .wz-cats .wz-carousel-arrow.is-disabled {
+    opacity: 0.3;
+  }
 }
 
 /* ── Each chip ── */
@@ -55,7 +90,7 @@
   cursor: pointer;
   padding: 0;
   flex-shrink: 0;
-  width: 80px;
+  width: 100%;
   transition: transform 0.2s;
 }
 
@@ -109,16 +144,33 @@
   justify-content: center;
 }
 
-/* Name label */
+/* a product photo standing in for a missing category picture: whole, on white, not cropped to the circle */
+.wz-cat-chip-img img.wz-cat-img--product {
+  object-fit: contain;
+  padding: 12%;
+  box-sizing: border-box;
+  background: #ffffff;
+}
+.wz-cat-chip-initial {
+  display: flex;
+}
+
+/* Name label: one baseline for the whole row — every label is two lines tall, the text starts at the top, centred,
+   and a long name wraps at a space (never inside a word) without moving its picture or widening its item */
 .wz-cat-chip-name {
+  display: -webkit-box;
+  min-height: 2.6em;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   font-size: 11px;
   font-weight: 500;
   color: rgba(0, 0, 0, 0.65);
   text-align: center;
   line-height: 1.3;
   white-space: normal;
-  word-break: break-word;
-  max-width: 76px;
+  overflow-wrap: break-word;
+  max-width: 100%;
   transition: color 0.2s;
   letter-spacing: 0.01em;
 }
@@ -129,16 +181,12 @@
 
 /* ── Mobile ── */
 @media (max-width: 640px) {
-  .wz-cat-chip {
-    width: 68px;
-  }
   .wz-cat-chip-img {
     width: 56px;
     height: 56px;
   }
   .wz-cat-chip-name {
     font-size: 10px;
-    max-width: 64px;
   }
   .wz-cats-header {
     margin-bottom: 14px;
@@ -149,11 +197,8 @@
   .wz-cats-row {
     gap: 12px;
   }
-  .wz-cat-chip {
-    width: 60px;
-  }
   .wz-cat-chip-img {
-    width: 48px;
-    height: 48px;
+    width: 52px;
+    height: 52px;
   }
 }

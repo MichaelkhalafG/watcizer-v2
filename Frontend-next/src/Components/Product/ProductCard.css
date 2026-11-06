@@ -43,6 +43,17 @@
 }
 
 /* ── Media ───────────────────────────────────── */
+/* A PRODUCT IN A LIVE OFFER (item 41): the same card, the same size — an edge in the offer's colour, a faint ground
+   behind the text, and the offer's strip over the foot of the photo box (promo.css). The photo is not tinted. */
+.wz-pc.pm-offer {
+  border-color: var(--pm-offer-edge);
+  background: var(--pm-offer-ground);
+  box-shadow: inset 0 0 0 1px var(--pm-offer-edge);
+}
+.wz-pc.pm-offer .wz-pc__media {
+  container-type: inline-size;
+}
+
 .wz-pc__media {
   position: relative;
   width: 100%;

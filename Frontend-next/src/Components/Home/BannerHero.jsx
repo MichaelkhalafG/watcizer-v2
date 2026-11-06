@@ -2,6 +2,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRailScroll } from '@/src/Hooks/useRailScroll'
 import { localizeHref } from '@/src/utils/localePath'
+import Link from '@/src/Components/LocaleLink'
+import { optimizedWide } from '@/src/utils/picture'
 import './BannerHero.css'
 
 /**
@@ -51,9 +53,13 @@ import './BannerHero.css'
  *
  * ── The rest of the behaviour ───────────────────────────────────────────────────────────────
  *
- * Autoplay every 6 s, and it stops the moment the shopper is doing anything: pointer over the
- * hero, keyboard focus inside it, the tab hidden, or `prefers-reduced-motion`. Dots and arrows are
- * real buttons with labels in the shopper's language. The track is a native scroll-snap container,
+ * Autoplay every 6 s, and it stops the moment the shopper is doing anything: a MOUSE over the
+ * hero, keyboard focus inside it, the tab hidden, or `prefers-reduced-motion`. A touch does not
+ * freeze it (a phone has no "pointer leave"): a swipe holds the autoplay for eight seconds and it
+ * then carries on. It advances BY INDEX and wraps — after the last slide comes the first — and so
+ * do the arrows, which are therefore never disabled (2026-11-05: the first cut asked the scroller
+ * whether it was "at the end", which a sub-pixel width could answer wrongly, and then stood still).
+ * Dots, arrows and the "2 / 4" counter are real controls with labels in the shopper's language. The track is a native scroll-snap container,
  * so a phone swipes it with its own momentum, and `useRailScroll` — the same hook the rails and
  * the strips use — adds the mouse drag. With ONE banner it renders an anchor and an image, no
  * track, no controls, no animation, in the same box.
@@ -63,12 +69,32 @@ import './BannerHero.css'
 // slide shows on the device it is not for (where the slide is display:none anyway).
 const BLANK = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
 
+/**
+ * A banner's link. A page of this shop goes through the client router (2026-11-05: a banner was a plain anchor, so
+ * the largest link on the home was the one that reloaded the whole site — measured as a full document load where
+ * every other link is a client navigation); anything else — another site — stays a plain anchor.
+ */
+export function BannerLink({ href, lang, children, ...rest }) {
+  const to = href || '/listing'
+  return to.startsWith('/') && !to.startsWith('//') ? (
+    <Link href={to} {...rest}>
+      {children}
+    </Link>
+  ) : (
+    <a href={localizeHref(to, lang)} {...rest}>
+      {children}
+    </a>
+  )
+}
+
 const DESKTOP_MQ = '(min-width: 1024px)'
 const AUTOPLAY_MS = 6000
 
+const HOLD_AFTER_TOUCH_MS = 8000
+
 const TEXT = {
-  en: { region: 'Offers', prev: 'Previous banner', next: 'Next banner', go: (n) => `Go to banner ${n}` },
-  ar: { region: 'العروض', prev: 'البانر السابق', next: 'البانر التالي', go: (n) => `انتقل إلى البانر ${n}` },
+  en: { region: 'Offers', prev: 'Previous banner', next: 'Next banner', go: (n) => `Go to banner ${n}`, of: (i, n) => `Banner ${i} of ${n}`, one: 'Banner' },
+  ar: { region: 'العروض', prev: 'البانر السابق', next: 'البانر التالي', go: (n) => `انتقل إلى البانر ${n}`, of: (i, n) => `البانر ${i} من ${n}`, one: 'بانر' },
 }
 
 /**
@@ -83,30 +109,38 @@ const altOf = (banner, lang) => {
   return alt[lang] ?? alt.en ?? Object.values(alt)[0] ?? ''
 }
 
-function Picture({ banner, lang, priority }) {
+// The width the large banner is drawn at: the whole column alone, about two thirds of it beside the side slots
+// (HeroZone passes its own). The browser picks the smallest file at or above this × the screen's density.
+export const BANNER_SIZES = '(min-width: 1440px) 1400px, 100vw'
+
+function Picture({ banner, lang, priority, sizes = BANNER_SIZES }) {
   const alt = altOf(banner, lang)
   const src = banner.image?.src
   if (!src) return null
+  // AT THE SIZE IT IS DRAWN (the performance pass, 2026-11-05): the optimiser's copies by width, the file itself as
+  // the widest (picture.js, optimizedWide). A banner the optimiser does not take is the plain file, as before.
+  const set = optimizedWide(src)
   // `both` is a plain image — every device downloads it, which is correct.
   if (banner.device !== 'desktop' && banner.device !== 'mobile') {
     // eslint-disable-next-line @next/next/no-img-element -- the dashboard's banner, an absolute asset-host URL
-    return <img src={src} alt={alt} fetchPriority={priority ? 'high' : 'auto'} loading={priority ? 'eager' : 'lazy'} />
+    return <img src={src} srcSet={set} sizes={set ? sizes : undefined} alt={alt} fetchPriority={priority ? 'high' : 'auto'} loading={priority ? 'eager' : 'lazy'} />
   }
   const media = banner.device === 'desktop' ? DESKTOP_MQ : '(max-width: 1023px)'
   return (
     <picture>
-      <source media={media} srcSet={src} />
+      <source media={media} srcSet={set || src} sizes={set ? sizes : undefined} />
       {/* the device this banner is not for resolves to the blank and asks the network for nothing */}
       <img src={BLANK} alt={alt} fetchPriority={priority ? 'high' : 'auto'} loading={priority ? 'eager' : 'lazy'} />
     </picture>
   )
 }
 
-export default function BannerHero({ banners, lang, dir }) {
+export default function BannerHero({ banners, lang, dir, sizes = BANNER_SIZES }) {
   const t = TEXT[lang === 'ar' ? 'ar' : 'en']
   const isRTL = dir === 'rtl'
   const list = Array.isArray(banners) ? banners : []
-  const [trackRef, { atStart, atEnd, page }] = useRailScroll(dir)
+  const [trackRef] = useRailScroll(dir)
+  const touchedAt = useRef(0)
   const [index, setIndex] = useState(0)
   const [visibleIds, setVisibleIds] = useState(() => list.map((b) => b.id))
   const [paused, setPaused] = useState(false)
@@ -159,23 +193,26 @@ export default function BannerHero({ banners, lang, dir }) {
     return () => document.removeEventListener('visibilitychange', on)
   }, [])
 
-  useEffect(() => {
-    if (calm || paused || visibleIds.length < 2) return undefined
-    const id = setInterval(() => {
+  const count = visibleIds.length
+  const goTo = useCallback(
+    (i) => {
       const el = trackRef.current
-      if (!el) return
-      if (atEnd) el.scrollTo({ left: 0, behavior: 'smooth' })
-      else page(1)
+      if (!el || count < 1) return
+      const n = ((i % count) + count) % count // wraps both ways
+      const left = el.clientWidth * n * (isRTL ? -1 : 1)
+      el.scrollTo({ left, behavior: calm ? 'auto' : 'smooth' })
+    },
+    [trackRef, count, isRTL, calm],
+  )
+
+  useEffect(() => {
+    if (calm || paused || count < 2) return undefined
+    const id = setInterval(() => {
+      if (Date.now() - touchedAt.current < HOLD_AFTER_TOUCH_MS) return // the shopper just swiped: wait
+      goTo(index + 1)
     }, AUTOPLAY_MS)
     return () => clearInterval(id)
-  }, [calm, paused, visibleIds.length, atEnd, page, trackRef])
-
-  const goTo = (i) => {
-    const el = trackRef.current
-    if (!el) return
-    const left = el.clientWidth * i * (isRTL ? -1 : 1)
-    el.scrollTo({ left, behavior: calm ? 'auto' : 'smooth' })
-  }
+  }, [calm, paused, count, index, goTo])
 
   if (list.length === 0) return null
 
@@ -184,9 +221,9 @@ export default function BannerHero({ banners, lang, dir }) {
   if (list.length === 1) {
     const b = list[0]
     return (
-      <a className="banner-hero banner-hero--one" href={localizeHref(b.href || '/listing', lang)}>
-        <Picture banner={b} lang={lang} priority />
-      </a>
+      <BannerLink className="banner-hero banner-hero--one" href={b.href} lang={lang} aria-label={altOf(b, lang) || t.one}>
+        <Picture banner={b} lang={lang} priority sizes={sizes} />
+      </BannerLink>
     )
   }
 
@@ -199,8 +236,13 @@ export default function BannerHero({ banners, lang, dir }) {
       role="region"
       aria-roledescription="carousel"
       aria-label={t.region}
-      onPointerEnter={() => setPaused(true)}
+      onPointerEnter={(e) => {
+        if (e.pointerType === 'mouse') setPaused(true)
+      }}
       onPointerLeave={() => setPaused(false)}
+      onPointerDown={(e) => {
+        if (e.pointerType !== 'mouse') touchedAt.current = Date.now()
+      }}
       onFocusCapture={() => setPaused(true)}
       onBlurCapture={(e) => {
         if (!rootRef.current?.contains(e.relatedTarget)) setPaused(false)
@@ -208,15 +250,18 @@ export default function BannerHero({ banners, lang, dir }) {
     >
       <div className="banner-hero__track" ref={trackRef}>
         {list.map((b, i) => (
-          <a
+          <BannerLink
             key={b.id}
             data-id={b.id}
             className={`banner-hero__slide${b.device === 'desktop' || b.device === 'mobile' ? ` banner-hero__slide--${b.device}` : ''}`}
-            href={localizeHref(b.href || '/listing', lang)}
-            aria-label={altOf(b, lang) || undefined}
+            href={b.href}
+            lang={lang}
+            /* a banner with no words of its own is still a link a screen reader must be able to name
+               (Lighthouse: link-name): its place in the row, in the shopper's language */
+            aria-label={altOf(b, lang) || t.of(i + 1, list.length)}
           >
-            <Picture banner={b} lang={lang} priority={i === 0} />
-          </a>
+            <Picture banner={b} lang={lang} priority={i === 0} sizes={sizes} />
+          </BannerLink>
         ))}
       </div>
 
@@ -225,8 +270,7 @@ export default function BannerHero({ banners, lang, dir }) {
           <button
             type="button"
             className="banner-hero__arrow banner-hero__arrow--prev"
-            onClick={() => page(-1)}
-            disabled={atStart}
+            onClick={() => goTo(index - 1)}
             aria-label={t.prev}
           >
             <Chevron flip={!isRTL} />
@@ -234,12 +278,17 @@ export default function BannerHero({ banners, lang, dir }) {
           <button
             type="button"
             className="banner-hero__arrow banner-hero__arrow--next"
-            onClick={() => page(1)}
-            disabled={atEnd}
+            onClick={() => goTo(index + 1)}
             aria-label={t.next}
           >
             <Chevron flip={isRTL} />
           </button>
+          {/* role="img": a name on a bare <span> is not allowed (Lighthouse: aria-prohibited-attr); the counter is read as one thing */}
+          <span className="banner-hero__count" dir="ltr" role="img" aria-label={t.of(index + 1, count)}>
+            <span aria-hidden="true">
+              {index + 1} / {count}
+            </span>
+          </span>
           <div className="banner-hero__dots">
             {list.map((b) => {
               // where this banner sits among the ones this viewport shows — a mobile-only banner is

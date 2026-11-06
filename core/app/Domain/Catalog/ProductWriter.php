@@ -834,7 +834,15 @@ final class ProductWriter
              */
             $row['renditions_failed'] = null;
 
-            if ($image['id'] !== null && DB::table('catalog_product_images')->where('id', $image['id'])->where('product_id', $productId)->exists()) {
+            $storedPath = $image['id'] === null ? null : DB::table('catalog_product_images')->where('id', $image['id'])->where('product_id', $productId)->value('path');
+            if (is_string($storedPath)) {
+                // ANOTHER FILE on the same row: the background mask made from the old photo (CutoutMask, 2026-11-05)
+                // would be laid over the new one. The old code never names these columns, so they are only written
+                // when there is something to clear — a row whose photo is unchanged keeps its mask.
+                if ($storedPath !== $image['path']) {
+                    $row['cut_mask'] = null;
+                    $row['cut_mask_at'] = null;
+                }
                 DB::table('catalog_product_images')->where('id', $image['id'])->update($row);
                 $keptIds[] = $image['id'];
 

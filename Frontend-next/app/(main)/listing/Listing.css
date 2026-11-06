@@ -33,7 +33,7 @@
   gap: 8px;
   padding: 20px 0 4px;
   font-size: 12px;
-  color: #9a948a;
+  color: #736e66; /* was #9a948a, with its links below */
 }
 
 .wz-bc-link {
@@ -41,7 +41,7 @@
   border: none;
   padding: 0;
   font-size: 12px;
-  color: #9a948a;
+  color: #736e66; /* was #9a948a: 2.9 : 1 on the page; this is 4.8 : 1 (Lighthouse: color-contrast) */
   cursor: pointer;
   letter-spacing: 0.02em;
   transition: color 0.2s;
@@ -107,7 +107,7 @@
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: #9a948a;
+  color: #736e66; /* was #9a948a: 3.0 : 1 on white; this is 5.1 : 1 */
 }
 
 /* Minimal custom select */
@@ -430,7 +430,18 @@
   flex-direction: column;
   background: #fff;
   transform: translateX(-100%);
-  transition: transform 0.32s cubic-bezier(0.4, 0, 0.2, 1);
+  /* content-visibility rides the same 0.32 s: opening shows the filters at once, closing keeps them until the slide
+     has finished (allow-discrete). A browser without it closes with the panel already empty — the slide is the same. */
+  transition: transform 0.32s cubic-bezier(0.4, 0, 0.2, 1), content-visibility 0.32s;
+  transition-behavior: allow-discrete;
+}
+/* A CLOSED FILTER DRAWER IS NOT RENDERED (the performance pass, 2026-11-05). It sits off the screen, moved there by
+   a transform — so the browser still styled and laid out every filter in it (about 330 elements, the whole sidebar a
+   second time) before the page's first paint, on a computer too, where the drawer is never opened. Measured on the
+   throttled phone: 70 ms of layout and 100 ms of style work before the first paint, for nothing on the screen.
+   `content-visibility: hidden` keeps the drawer's box and skips what is inside it until it opens. */
+.wz-fdrawer:not(.is-open) {
+  content-visibility: hidden;
 }
 .wz-fdrawer.is-open {
   transform: translateX(0);

@@ -102,6 +102,13 @@
 
 /* CTA: primary 48 full width; secondary outline; disabled per §7.1; the notify-me form (the twin StockAlertForm) in its place when sold out */
 .bf-buy__cta { margin-block: 12px; scroll-margin-top: 120px; }
+/* THE PRODUCT IS IN A LIVE OFFER (item 42): the buy buttons — the page's and the sticky bar's — and the discount take
+   the offer's colours (promo.css tokens). Nothing is resized or moved; the photos are not tinted. White on the fire
+   bar ≥ 4.6:1, on the storm 15:1 (measured on the tokens). */
+.bf-pdp.pm-offer .bf-cta:not(.bf-cta--secondary):not(:disabled) { background: var(--pm-offer-bar); color: var(--pm-offer-on); border-color: transparent; }
+.bf-pdp.pm-offer .bf-buy__pct { color: var(--pm-offer-edge); }
+.bf-pdp.pm-offer .bf-pdp__bar { border-block-start: 2px solid var(--pm-offer-edge); }
+
 .bf-cta { width: 100%; height: 48px; border-radius: var(--wz-r-pill); font: inherit; font-size: var(--bf-body); font-weight: 700; cursor: pointer; border: 1px solid var(--wz-ink); background: var(--wz-ink); color: var(--wz-on-ink); display: inline-flex; align-items: center; justify-content: center; text-decoration: none; transition: background-color 150ms ease-out; }
 @media (hover: hover) { .bf-cta:hover:not(:disabled) { background: var(--wz-ink-soft); } }
 .bf-cta--secondary { background: var(--wz-page); color: var(--wz-ink); }

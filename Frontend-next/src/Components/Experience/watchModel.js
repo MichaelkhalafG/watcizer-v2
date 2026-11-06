@@ -204,6 +204,47 @@ export function applyExplode(parts, amounts) {
  * its instance. Transmissive materials are left as plain meshes (three draws them in their own pass).
  */
 export function buildBatches(prepared) {
+  const { groups, plain } = groupByMaterial(prepared)
+  const batches = []
+  const bindings = []
+  for (const [material, list] of groups) batches.push(batchOf(material, list, bindings))
+  return drawnWith(batches, plain, bindings)
+}
+
+/**
+ * The same batches, built a few at a time: `pause()` is awaited whenever `budget` ms have gone since the last one, so
+ * the page's main thread is never held for the whole model (the home's banner, 2026-11-06 — one task of 180 ms on
+ * the throttled phone profile). The result is buildBatches' result.
+ * @param {() => Promise<void>} pause
+ */
+export async function buildBatchesInSteps(prepared, pause, budget = 8) {
+  const { groups, plain } = groupByMaterial(prepared)
+  const batches = []
+  const bindings = []
+  let since = performance.now()
+  for (const [material, list] of groups) {
+    batches.push(batchOf(material, list, bindings))
+    if (performance.now() - since > budget) {
+      await pause()
+      since = performance.now()
+    }
+  }
+  return drawnWith(batches, plain, bindings)
+}
+
+/** Every texture the materials read, once each — the studio map excluded (it is not a picture of the model). */
+export function texturesOf(materials) {
+  const found = new Set()
+  for (const m of materials) {
+    for (const key of Object.keys(m)) {
+      const v = m[key]
+      if (v && v.isTexture && key !== 'envMap') found.add(v)
+    }
+  }
+  return [...found]
+}
+
+function groupByMaterial(prepared) {
   const groups = new Map()
   const plain = []
   for (const mesh of prepared.meshes) {
@@ -215,9 +256,18 @@ export function buildBatches(prepared) {
     if (!groups.has(m)) groups.set(m, [])
     groups.get(m).push(mesh)
   }
-  const batches = []
-  const bindings = []
-  for (const [material, list] of groups) {
+  return { groups, plain }
+}
+
+function drawnWith(batches, plain, bindings) {
+  const sync = () => {
+    for (const b of bindings) b.batch.setMatrixAt(b.iid, b.mesh.matrixWorld)
+  }
+  return { batches, plain, sync, count: bindings.length }
+}
+
+function batchOf(material, list, bindings) {
+  {
     let verts = 0
     let indices = 0
     for (const mesh of list) {
@@ -245,12 +295,8 @@ export function buildBatches(prepared) {
       const iid = batch.addInstance(gid)
       bindings.push({ batch, iid, mesh })
     }
-    batches.push(batch)
+    return batch
   }
-  const sync = () => {
-    for (const b of bindings) b.batch.setMatrixAt(b.iid, b.mesh.matrixWorld)
-  }
-  return { batches, plain, sync, count: bindings.length }
 }
 
 /** A soft radial disc for the contact shadow — drawn once, on a canvas, never fetched. */

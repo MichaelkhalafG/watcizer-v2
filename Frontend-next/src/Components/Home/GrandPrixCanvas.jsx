@@ -1,10 +1,11 @@
 'use client'
-import { Component, Suspense, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Component, Suspense, memo, useCallback, useEffect, useRef, useState } from 'react'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
-import { OrbitControls, Environment, useGLTF } from '@react-three/drei'
+import { OrbitControls, useEnvironment, useGLTF } from '@react-three/drei'
 import { NeutralToneMapping, SRGBColorSpace } from 'three'
 import { hasWebGL } from '../../utils/hasWebGL'
-import { prepareWatch, buildBatches, bindEnvironment } from '../Experience/watchModel'
+import { prepareWatch, buildBatchesInSteps, bindEnvironment, texturesOf } from '../Experience/watchModel'
+import { prefilterEnvironment } from '../Experience/studioLight'
 
 /*
  * THE GRAND PRIX BANNER'S CANVAS (2026-10-29) — the OLD 3D HERO'S BEHAVIOUR, setting for setting, around the
@@ -32,7 +33,13 @@ import { prepareWatch, buildBatches, bindEnvironment } from '../Experience/watch
  *     studio map bound to each material with the satin dial at 0.12 of it (watchModel.bindEnvironment — the old
  *     hero's envMapIntensity 1.2 never applied under three 0.185), the crystal at opacity 0.05 (0.12 greyed it);
  *   • the parts are drawn as one batch per material (27 draw calls, not 273: the phone's frame rate);
- *   • the materials are this canvas's own copies, so the experience page's stage (same cached file) is untouched.
+ *   • the materials are this canvas's own copies, so the experience page's stage (same cached file) is untouched;
+ *   • the studio map is filtered BEFORE the watch's shaders are compiled, with the filter's own shaders compiled
+ *     by the browser's graphics process first (studioLight.js, 2026-11-06): three did it inside the first compile
+ *     and the page froze for 0.9–1.1 s after it had loaded. Same generator, same map, same picture;
+ *   • the model is prepared, batched and its pictures handed to the graphics card in SHORT TASKS with a pause
+ *     between them (2026-11-06) — the same work, never one long hold of the page; the canvas is shown, as before,
+ *     only when everything its first frame needs is there.
  */
 
 const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768
@@ -52,9 +59,15 @@ const FROM = { x: 0, y: 0 }
 const TO = { x: 0, y: 0 }
 const INTRO_DURATION = 0 // seconds
 const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3) // [OLD]
+// lets the page breathe between two pieces of the model's preparation (a visitor's tap or scroll gets in)
+const pause = () => new Promise((resolve) => setTimeout(resolve, 0))
 
 
-function WatchModel({ src, onIntroDone, onLoaded, modelX }) {
+/**
+ * `light`: undefined while the studio map is on its way, null when it could not be had (the watch is drawn without
+ * it, as before), else the filtered map.
+ */
+function WatchModel({ src, light, onIntroDone, onLoaded, modelX }) {
   const { scene } = useGLTF(src, false, true)
   const group = useRef()
   const start = useRef(null)
@@ -65,52 +78,78 @@ function WatchModel({ src, onIntroDone, onLoaded, modelX }) {
 
   // the model, prepared once: its own material copies, the dial's share of the map, the crystal as plain glass,
   // one batch per material; centred and scaled like the old hero's
-  const { drawn, prepared, scale, centre } = useMemo(() => {
-    const obj = scene.clone(true)
-    // one copy per MATERIAL, shared by every mesh that shared it: the batches group by material, so a copy per mesh
-    // made 273 one-part batches and 100–140 ms frames on a throttled phone (measured 2026-10-29)
-    const copies = new Map()
-    obj.traverse((o) => {
-      if (!o.isMesh || !o.material || Array.isArray(o.material)) return
-      if (!copies.has(o.material)) copies.set(o.material, o.material.clone())
-      o.material = copies.get(o.material)
-    })
-    // phone: true → the crystal as plain transparency at opacity 0.05 (the old hero's choice, at the dial's opacity)
-    const prepared = prepareWatch(obj, { phone: true })
-    let drawn = null
-    try {
-      drawn = buildBatches(prepared)
-    } catch {
-      drawn = null
+  const [built, setBuilt] = useState(null)
+  const [broken, setBroken] = useState(null)
+  useEffect(() => {
+    let alive = true
+    const build = async () => {
+      await pause()
+      const obj = scene.clone(true)
+      // one copy per MATERIAL, shared by every mesh that shared it: the batches group by material, so a copy per mesh
+      // made 273 one-part batches and 100–140 ms frames on a throttled phone (measured 2026-10-29)
+      const copies = new Map()
+      obj.traverse((o) => {
+        if (!o.isMesh || !o.material || Array.isArray(o.material)) return
+        if (!copies.has(o.material)) copies.set(o.material, o.material.clone())
+        o.material = copies.get(o.material)
+      })
+      await pause()
+      // phone: true → the crystal as plain transparency at opacity 0.05 (the old hero's choice, at the dial's opacity)
+      const prepared = prepareWatch(obj, { phone: true })
+      await pause()
+      let drawn = null
+      try {
+        drawn = await buildBatchesInSteps(prepared, pause)
+      } catch {
+        drawn = null
+      }
+      const maxDim = Math.max(prepared.size.x, prepared.size.y, prepared.size.z) || 1
+      if (alive) setBuilt({ drawn, prepared, scale: TARGET_SIZE / maxDim, centre: prepared.centre })
     }
-    const maxDim = Math.max(prepared.size.x, prepared.size.y, prepared.size.z) || 1
-    return { drawn, prepared, scale: TARGET_SIZE / maxDim, centre: prepared.centre }
+    // a model that cannot be prepared ends at the poster, as it did when this ran inside the render
+    build().catch((e) => alive && setBroken(e instanceof Error ? e : new Error('the model could not be prepared')))
+    return () => {
+      alive = false
+    }
   }, [scene])
 
   // the old hero's ready signal: compile every shader the first frame needs, THEN show the canvas — with the studio
-  // map already bound, so the first frame does not recompile (the environment mounts first, in the same Suspense)
+  // map already bound, so the first frame does not recompile (the map is filtered first: `light` is no longer
+  // undefined)
   const readyRef = useRef(onLoaded)
   useEffect(() => {
     readyRef.current = onLoaded
   }, [onLoaded])
   useEffect(() => {
+    if (light === undefined || !built) return undefined
     let alive = true
-    bindEnvironment(prepared, root.environment, 1)
+    const { prepared, drawn } = built
+    bindEnvironment(prepared, light, 1)
     prepared.root.updateMatrixWorld(true)
     drawn?.sync()
     const ready = () => {
       if (alive) readyRef.current?.()
     }
-    if (typeof gl.compileAsync === 'function') gl.compileAsync(root, camera).then(ready, ready)
-    else ready()
+    const warm = async () => {
+      if (typeof gl.compileAsync === 'function') await gl.compileAsync(root, camera)
+      // the model's pictures to the graphics card one per task: the first frame used to upload all of them at once
+      if (typeof gl.initTexture !== 'function') return
+      for (const texture of texturesOf(prepared.materials)) {
+        await pause()
+        if (!alive) return
+        gl.initTexture(texture)
+      }
+    }
+    warm().then(ready, ready)
     return () => {
       alive = false
     }
-  }, [gl, camera, root, prepared, drawn])
+  }, [gl, camera, root, built, light])
 
   useFrame((state) => {
+    if (!built) return
     // an HDR that lands late is bound on the next frame (a no-op once bound)
-    bindEnvironment(prepared, state.scene.environment, 1)
+    bindEnvironment(built.prepared, state.scene.environment, 1)
     if (done.current || !group.current) return
     if (start.current === null) start.current = state.clock.elapsedTime
     const t = INTRO_DURATION > 0 ? Math.min((state.clock.elapsedTime - start.current) / INTRO_DURATION, 1) : 1 // [OLD]
@@ -123,6 +162,9 @@ function WatchModel({ src, onIntroDone, onLoaded, modelX }) {
     }
   })
 
+  if (broken) throw broken
+  if (!built) return null
+  const { drawn, prepared, scale, centre } = built
   // [OLD] the group scales and turns around the origin, where the model's centre sits. Inside it: the quarter turn
   // that stands this model's dial up to face the camera, then the model moved so its centre is at the origin.
   return (
@@ -162,12 +204,36 @@ class ModelErrorBoundary extends Component {
   }
 }
 
-// [OLD] an HDR that lands after the intro asks for one frame
-function InvalidateOnMount() {
+// The studio HDR: loaded (it suspends, beside the model), filtered off the page's critical moment, THEN made the
+// scene's environment and handed to the model. [OLD] a map that lands late asks for one frame.
+function StudioLight({ files, onLight }) {
+  const equirect = useEnvironment({ files })
+  const gl = useThree((state) => state.gl)
+  const scene = useThree((state) => state.scene)
   const invalidate = useThree((state) => state.invalidate)
   useEffect(() => {
-    invalidate()
-  }, [invalidate])
+    let alive = true
+    let target = null
+    const give = (texture) => {
+      scene.environment = texture
+      onLight(texture)
+      invalidate()
+    }
+    prefilterEnvironment(gl, equirect).then(
+      (filtered) => {
+        if (!alive) return filtered.dispose()
+        target = filtered
+        return give(filtered.texture)
+      },
+      // the filter could not be run ahead: three converts the map itself at the first compile, as it always did
+      () => alive && give(equirect),
+    )
+    return () => {
+      alive = false
+      if (scene.environment === equirect || (target && scene.environment === target.texture)) scene.environment = null
+      target?.dispose()
+    }
+  }, [gl, scene, equirect, onLight, invalidate])
   return null
 }
 
@@ -177,7 +243,9 @@ class EnvBoundary extends Component {
   static getDerivedStateFromError() {
     return { failed: true }
   }
-  componentDidCatch() {}
+  componentDidCatch() {
+    this.props.onFail?.()
+  }
   render() {
     if (this.state.failed) return null
     return this.props.children
@@ -186,6 +254,9 @@ class EnvBoundary extends Component {
 
 // [OLD] the canvas in a memoised component, so a parent re-render never remounts it (a remount leaks a context)
 const Scene = memo(function Scene({ src, env, frameloop, introComplete, modelX, onIntroDone, onLoaded, onLost, onRestored }) {
+  // the studio map for the model: undefined = on its way, null = not to be had, else the filtered map
+  const [light, setLight] = useState(undefined)
+  const noLight = useCallback(() => setLight(null), [])
   return (
     <Canvas
       frameloop={frameloop}
@@ -214,11 +285,10 @@ const Scene = memo(function Scene({ src, env, frameloop, introComplete, modelX, 
       <directionalLight position={[-5, 2, 2]} intensity={0.16} color="#dfe9ff" />
       <directionalLight position={[0, 3, -5]} intensity={0.12} color="#ffffff" />
       <Suspense fallback={null}>
-        <EnvBoundary>
-          <Environment files={env} />
-          <InvalidateOnMount />
+        <EnvBoundary onFail={noLight}>
+          <StudioLight files={env} onLight={setLight} />
         </EnvBoundary>
-        <WatchModel src={src} onIntroDone={onIntroDone} onLoaded={onLoaded} modelX={modelX} />
+        <WatchModel src={src} light={light} onIntroDone={onIntroDone} onLoaded={onLoaded} modelX={modelX} />
       </Suspense>
       <OrbitControls
         makeDefault

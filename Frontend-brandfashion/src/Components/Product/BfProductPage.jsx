@@ -15,6 +15,8 @@ import Disclosure from '@/src/Components/UI/Disclosure'
 import { localizeHref } from '@/src/utils/localePath'
 import BfRail from '@/src/Components/Listing/BfRail'
 import StockAlertForm from './StockAlertForm'
+import { useProductOffer } from '@/src/Hooks/queries/usePromo'
+import { OfferNote, offerClass } from '@/src/Components/Promo/OfferStrip'
 import './BfProductPage.css'
 
 /*
@@ -72,12 +74,25 @@ const STR = {
 
 const LOW_STOCK = 3
 
+// A category's page (found by the link crawl of 2026-11-05): a category's `path` is a slug PATH (`fashion/bags`), and
+// the routes are one segment each — a top-level category at /category/{slug}, a sub-category at /subtypes/{slug}.
+// These three links built /category/{path}, so every sub-category link on a product page answered 404.
+const categoryHref = (path) => {
+  const segments = String(path || '').split('/').filter(Boolean)
+  if (!segments.length) return '/listing'
+  return segments.length > 1 ? `/subtypes/${segments[segments.length - 1]}` : `/category/${segments[0]}`
+}
+
 export default function BfProductPage({ detail, related }) {
   const { language } = useUIStore()
   const lang = language === 'ar' ? 'ar' : 'en'
   const t = STR[lang]
   const isRTL = lang === 'ar'
   const p = detail.product
+  // THE PRODUCT IS IN A LIVE HOT DEALS / FLASH SALE CAMPAIGN (item 42, 2026-11-05): the page takes that offer's theme
+  // — its badge and countdown near the price, the buy buttons and accents in its colours — and gives it back the
+  // second the offer ends (the Flash Sale wins when a product is in both). The layout is the same page.
+  const liveOffer = useProductOffer(p?.id)
   const variants = useMemo(() => (Array.isArray(p.variants) ? p.variants : []), [p.variants])
   // the card's picker hands its choice over as ?color=&size= (spec §8.6); a value no row carries is ignored
   const sp = useSearchParams()
@@ -266,14 +281,14 @@ export default function BfProductPage({ detail, related }) {
   const crumbs = Array.isArray(p.breadcrumb) ? p.breadcrumb : []
 
   return (
-    <div className="bf-pdp" dir={isRTL ? 'rtl' : 'ltr'} lang={lang} style={{ '--bf-pdp-tint': `var(--wz-${aisleTint(p.family)})` }}>
+    <div className={`bf-pdp${offerClass(liveOffer)}`} dir={isRTL ? 'rtl' : 'ltr'} lang={lang} style={{ '--bf-pdp-tint': `var(--wz-${aisleTint(p.family)})` }}>
       <div className="bf-pdp__inner">
         <nav className="bf-pdp__crumb" aria-label="Breadcrumb">
           <a href={localizeHref('/', lang)}>{t.home}</a>
           {crumbs.map((c) => (
             <span key={c.id}>
               <span aria-hidden="true">/ </span>
-              <a href={localizeHref(`/category/${c.path}`, lang)}>{txt(c.name, lang)}</a>
+              <a href={localizeHref(categoryHref(c.path), lang)}>{txt(c.name, lang)}</a>
             </span>
           ))}
         </nav>
@@ -328,6 +343,7 @@ export default function BfProductPage({ detail, related }) {
           <div className="bf-pdp__buy">
             <div className="bf-buy__brand">{txt(p.brand?.name, lang)}</div>
             <h1 className="bf-buy__title">{txt(p.title, lang)}</h1>
+            <OfferNote offer={liveOffer} lang={lang} />
             <div className="bf-buy__price">
               <span className="bf-buy__now">{now}</span>
               {was ? <s className="bf-buy__was">{was}</s> : null}
@@ -442,8 +458,8 @@ export default function BfProductPage({ detail, related }) {
         </div>
 
         <div className="bf-pdp__rails">
-          <BfRail title={t.goesWith} cards={addons} lang={lang} seeAllHref={addons[0]?.primary_category?.path ? `/category/${addons[0].primary_category.path}` : '/listing'} />
-          <BfRail title={t.similar} cards={similar} lang={lang} seeAllHref={p.primary_category?.path ? `/category/${p.primary_category.path}` : '/listing'} />
+          <BfRail title={t.goesWith} cards={addons} lang={lang} seeAllHref={addons[0]?.primary_category?.path ? categoryHref(addons[0].primary_category.path) : '/listing'} />
+          <BfRail title={t.similar} cards={similar} lang={lang} seeAllHref={p.primary_category?.path ? categoryHref(p.primary_category.path) : '/listing'} />
         </div>
         {/* the end of the product: once it is on screen the sticky bar leaves (it never covers the footer) */}
         <div className="bf-pdp__end" ref={endRef} aria-hidden="true" />

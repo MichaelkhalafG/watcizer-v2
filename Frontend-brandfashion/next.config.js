@@ -25,6 +25,15 @@ if (process.env.NODE_ENV === 'production') {
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // THE TITLE AND THE DESCRIPTION ARE ALWAYS IN <head> (the performance pass, 2026-11-05). Since Next 15.2 a page whose
+  // shell is ready before its metadata STREAMS the <title>, the description and the canonical into the <body>, for
+  // every reader that is not on Next's short list of "HTML-limited" bots. Measured on the production builds: on
+  // /hot-deals, /flash-sale and Brand Fashion's home the description sat 40–400 KB into the body — Lighthouse (the
+  // engine of PageSpeed Insights) reported "Document does not have a meta description" (SEO 92), and any crawler or
+  // share-preview that reads only <head> saw a page without one. This pattern matches every user agent, so the
+  // metadata is resolved first and written in <head>, as it was before 15.2. Cost: none measured — these pages'
+  // metadata is a few constants, and the pages that fetch for it already had it in <head>.
+  htmlLimitedBots: /.*/,
   // sharp into the STANDALONE output, whole (2026-10-11, backlog PERF-IMG). With pnpm's hoisted layout
   // (pnpm-workspace.yaml) `node_modules/sharp` is a real directory and gets traced — but on Linux its
   // libvips is a SEPARATE package (@img/sharp-libvips-linux-x64) that nothing `require`s: the native

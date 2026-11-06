@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { pictureSources, hasRenditions, SIZES } from '../src/utils/picture'
+import { pictureSources, hasRenditions, SIZES, CARD_MAX, optimized, optimizedWide } from '../src/utils/picture'
 import { fromV2Product } from '../src/lib/v2Product'
 import { legacyRow } from '../src/lib/v2Listing'
 import { transformProductData } from '../src/utils/transformProduct'
@@ -77,5 +77,49 @@ describe('the adapters carry the recorded renditions onto the rows the pages rea
     const row = legacyRow({ ...card, image: { src: `${host}/m.webp`, srcset: [] } })
     expect(row.image_srcset).toEqual([])
     expect(hasRenditions(row.image_srcset)).toBe(false)
+  })
+})
+
+// THE PERFORMANCE PASS (2026-11-05): a card's list stops at the widest file a card can use, and a banner with no
+// recorded rendition is offered by width through the shop's own optimiser, the file itself last.
+describe("a card's cap and a banner's widths", () => {
+  const ladder = [160, 320, 480, 640, 960].flatMap((w) => [
+    { src: `${host}/m-${w}.avif`, width: w, format: 'avif' },
+    { src: `${host}/m-${w}.webp`, width: w, format: 'webp' },
+  ])
+
+  it('leaves the 960 px rendition out of a card, and nothing else', () => {
+    const s = pictureSources(ladder, CARD_MAX)
+    expect(s.widths).toEqual([160, 320, 480, 640])
+    expect(s.avif.split(', ')).toHaveLength(4)
+    expect(s.webp).not.toContain('960w')
+    // without a cap the list is whole, as the gallery reads it
+    expect(pictureSources(ladder).widths).toEqual([160, 320, 480, 640, 960])
+  })
+
+  it('keeps a list whole when every rendition is wider than the cap', () => {
+    const wide = [{ src: `${host}/m-960.webp`, width: 960, format: 'webp' }]
+    expect(pictureSources(wide, CARD_MAX).webp).toBe(`${host}/m-960.webp 960w`)
+  })
+
+  it('offers a banner by width through the optimiser, the file itself the widest', () => {
+    const src = 'https://api.example.test/Uploads_Images/Banner_home/b.webp'
+    const set = optimizedWide(src).split(', ')
+    expect(set).toHaveLength(5)
+    expect(set[0]).toBe(`/_next/image?url=${encodeURIComponent(src)}&w=640&q=80 640w`)
+    expect(set[4]).toBe(`${src} 1600w`)
+    // only next.config's sizes and qualities are ever asked for
+    for (const part of set.slice(0, 4)) {
+      const q = new URLSearchParams(part.split(' ')[0].split('?')[1])
+      expect([320, 420, 640, 768, 1024, 1200]).toContain(Number(q.get('w')))
+      expect([70, 75, 80, 90]).toContain(Number(q.get('q')))
+    }
+  })
+
+  it('leaves a picture the optimiser does not take exactly as it is', () => {
+    expect(optimizedWide('http://localhost:8000/Uploads_Images/Banner_home/b.webp')).toBeUndefined()
+    expect(optimizedWide('/local.webp')).toBeUndefined()
+    expect(optimized('/local.webp')).toBe('/local.webp')
+    expect(optimized(undefined)).toBeUndefined()
   })
 })

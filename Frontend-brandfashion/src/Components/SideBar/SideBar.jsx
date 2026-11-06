@@ -147,14 +147,15 @@ function SaleSection({ filters, setFilters, setCurrentPage, isRTL }) {
         <div className="wz-fs-body">
           <ul className="wz-fs-list" role="radiogroup" aria-label={isRTL ? 'الحد الأدنى للخصم' : 'Minimum discount'}>
             {SALE_CHOICES.map((d) => (
-              <li key={d} className="wz-fs-item">
+              /* the list is a radio group, so its items are not list items to a screen reader (Lighthouse: listitem) */
+              <li key={d} className="wz-fs-item" role="presentation">
                 <label>
                   <input type="radio" name={group} checked={chosen === d} onChange={() => pick(d)} />
                   <span className="wz-fs-item-name">{label(d)}</span>
                 </label>
               </li>
             ))}
-            <li className="wz-fs-item bf-fs-instock">
+            <li className="wz-fs-item bf-fs-instock" role="presentation">
               <label>
                 <input
                   type="checkbox"

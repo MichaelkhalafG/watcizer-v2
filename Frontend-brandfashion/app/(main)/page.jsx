@@ -1,6 +1,7 @@
 import BfHome from '@/src/Components/Home/BfHome'
 import { safeJsonLd } from '@/src/lib/safeJsonLd'
 import { getServerV2Home, getServerV2Meta } from '@/src/lib/serverV2'
+import { slimV2Home } from '@/src/lib/homeData'
 import { requestLang, alternatesFor, localePath, SITE } from '@/src/lib/requestLang'
 
 // ISR: render on the server (with the rails' cards in the HTML for SEO), cache, and
@@ -104,7 +105,8 @@ export default async function HomePage() {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: safeJsonLd(storeJsonLd) }}
       />
-      <BfHome home={home} meta={meta} />
+      {/* the sliders' cards cut to what a card reads (src/lib/homeData.js) */}
+      <BfHome home={slimV2Home(home)} meta={meta} />
     </>
   )
 }

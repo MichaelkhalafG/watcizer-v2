@@ -32,6 +32,11 @@
 
 /* photo on the page's WHITE (2026-10-22, the owner's call — the family tint and the multiply went with it), 1:1, inset;
    the second photo fades in on hover once it has loaded */
+/* A PRODUCT IN A LIVE OFFER (item 41): the same card, the same size — an edge in the offer's colour, a faint ground
+   behind the text, and the offer's strip over the foot of the photo box (promo.css). The photo is not tinted. */
+.bf-card.pm-offer { box-shadow: inset 0 0 0 2px var(--pm-offer-edge); background: var(--pm-offer-ground); border-radius: 8px; }
+.bf-card.pm-offer .bf-card__tile { container-type: inline-size; }
+
 .bf-card__tile { position: relative; background: var(--wz-page); box-sizing: border-box; aspect-ratio: 1 / 1; padding: var(--bf-inset-top) var(--bf-inset) var(--bf-inset-bottom); display: flex; align-items: center; justify-content: center; border-radius: 7px 7px 0 0; overflow: hidden; }
 /* the <picture> of recorded renditions (2026-10-22) is a box the photo fills, in the tile and in the hover wrapper */
 .bf-card__picture { display: block; width: 100%; height: 100%; }
@@ -51,6 +56,12 @@
 }
 @media (hover: hover) and (pointer: fine) {
   .bf-card:hover .bf-card__ph2.is-ready { opacity: 1; visibility: visible; transition: opacity 180ms ease-out, visibility 0s; }
+}
+/* A device that cannot hover never shows the second photo, so it does not download it either (the performance pass,
+   2026-11-05): a lazy image inside `display: none` is not requested. Measured on a phone: every card's second photo
+   was fetched — half the page's picture bytes — for a state a finger cannot reach. */
+@media (hover: none), (pointer: coarse), (pointer: none) {
+  .bf-card__ph2 { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
   .bf-card__ph2, .bf-card:hover .bf-card__ph2 { transition: none; }

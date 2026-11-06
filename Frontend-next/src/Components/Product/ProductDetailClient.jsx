@@ -29,6 +29,8 @@ import { toSlug } from '../../utils/slugs'
 import { buildListingParams } from '../../utils/listingParams'
 import http from '../../Context/api'
 import StockAlertForm from './StockAlertForm'
+import { useProductOffer } from '../../Hooks/queries/usePromo'
+import { OfferNote, offerClass } from '../Promo/OfferStrip'
 import './ProductDetail.css'
 
 // Lightweight star rating (no MUI). Read-only by default; pass onSelect to make
@@ -238,6 +240,10 @@ function ProductDetailClient({ param, isOffer = false, productPayload = null, v2
       ? apiProduct
       : contextProduct || apiProduct
   const item = isOffer ? offer : product
+  // THE PRODUCT IS IN A LIVE HOT DEALS / FLASH SALE CAMPAIGN (item 42, 2026-11-05): the page takes that offer's theme
+  // — its badge and countdown near the price, the buy buttons and accents in its colours — and gives it back the
+  // second the offer ends (the Flash Sale wins when a product is in both). The layout is the same page.
+  const liveOffer = useProductOffer(isOffer ? null : product?.id)
 
   // Loading grace: wait for context before declaring a 404 (fixes refresh bug).
   const [grace, setGrace] = useState(false)
@@ -1135,7 +1141,7 @@ function ProductDetailClient({ param, isOffer = false, productPayload = null, v2
   // given `stockLeft` below and decides for itself, so there is one owner of that sentence now.
 
   return (
-    <div className="wz-pd" dir={isRTL ? 'rtl' : 'ltr'}>
+    <div className={`wz-pd${offerClass(liveOffer)}`} dir={isRTL ? 'rtl' : 'ltr'}>
       <div className="wz-pd-inner">
         {/* Breadcrumb */}
         <nav className="wz-pd-bc" aria-label="Breadcrumb">
@@ -1319,6 +1325,8 @@ function ProductDetailClient({ param, isOffer = false, productPayload = null, v2
             )}
 
             <div className="wz-pd-divider wz-pd-hide-mobile" />
+
+            <OfferNote offer={liveOffer} lang={isRTL ? 'ar' : 'en'} />
 
             {/* Price */}
             <div className="wz-pd-prices wz-pd-hide-mobile">

@@ -13,12 +13,18 @@
 
 export const RENDITION_FORMATS = ['avif', 'webp']
 
+/** The widest rendition a CARD can use: its photo is at most 320 CSS px wide (SIZES below), 640 on a 2× screen. */
+export const CARD_MAX = 640
+
 /**
  * Group a recorded srcset list by format, smallest width first.
+ * `max` (the performance pass, 2026-11-05): leave out the renditions wider than this — a card passes CARD_MAX, so
+ * its markup does not carry a 960 px file no card can choose. A list with nothing at or under `max` is kept whole.
  * @param {Array<{src: string, width: number, format: string}>|null|undefined} list
+ * @param {number} [max]
  * @returns {{ avif: string|null, webp: string|null, widths: number[] }}
  */
-export function pictureSources(list) {
+export function pictureSources(list, max = Infinity) {
   const out = { avif: null, webp: null, widths: [] }
   if (!Array.isArray(list) || list.length === 0) return out
   const byFormat = { avif: [], webp: [] }
@@ -31,11 +37,13 @@ export function pictureSources(list) {
     byFormat[r.format].push({ src: r.src, width: w })
     widths.add(w)
   }
+  const capped = [...widths].some((w) => w <= max)
   for (const f of RENDITION_FORMATS) {
-    const rows = byFormat[f].sort((a, b) => a.width - b.width)
+    const all = byFormat[f].sort((a, b) => a.width - b.width)
+    const rows = capped ? all.filter((r) => r.width <= max) : all
     out[f] = rows.length ? rows.map((r) => `${r.src} ${r.width}w`).join(', ') : null
   }
-  out.widths = [...widths].sort((a, b) => a - b)
+  out.widths = [...widths].filter((w) => !capped || w <= max).sort((a, b) => a - b)
   return out
 }
 
@@ -60,6 +68,29 @@ export const hasRenditions = (list) =>
  * where 320px chooses the 320 file (measured 2026-10-22, after2 vs after3). A 322 px card drawing a
  * 320 px photo is a 0.6 % stretch nobody can see; a 3× phone at 171 px asks for 513 and gets 640.
  */
+/**
+ * A photo that has NO recorded rendition, at the size a card draws it (the performance pass, 2026-11-05). A card
+ * offers the API's renditions when a photo has them; when it has none the card used to load the 1200 px master for
+ * a 220 px box — measured on the Hot Deals page: 597 KB of pictures, its largest painting at 3.9 s on a phone. Such
+ * a photo now goes through the shop's own image optimiser (next.config allows the asset hosts' /Uploads_Images/
+ * only, and these widths). Anything that is not an upload on an asset host is returned as it is.
+ */
+export const optimized = (src, width = 320, quality = 75) =>
+  typeof src === 'string' && /^https:\/\/[^/]+\/Uploads_Images\//.test(src) ? `/_next/image?url=${encodeURIComponent(src)}&w=${width}&q=${quality}` : src
+/** `srcSet` for the same photo on a dense screen; undefined when the photo is not one the optimiser takes. */
+export const optimizedSet = (src) => (optimized(src) !== src ? `${optimized(src, 320)} 1x, ${optimized(src, 640)} 2x` : undefined)
+
+/**
+ * A WIDE picture with no recorded rendition — a dashboard banner — as a `srcSet` the browser chooses from by the
+ * width it will draw (the performance pass, 2026-11-05): the optimiser's copies at these widths (each one of
+ * next.config's sizes), then THE FILE ITSELF as the widest entry, so a large 2× screen still gets the full
+ * artwork exactly as before. Measured on both homes: a phone downloaded the 1,600 px banners whole (168 KB and
+ * 312 KB) for a 390 px slot. undefined when the picture is not one the optimiser takes (it is then drawn as it was).
+ */
+export const BANNER_WIDTHS = [640, 768, 1024, 1200]
+export const optimizedWide = (src, { widths = BANNER_WIDTHS, quality = 80, full = 1600 } = {}) =>
+  optimized(src) !== src ? `${widths.map((w) => `${optimized(src, w, quality)} ${w}w`).join(', ')}, ${src} ${full}w` : undefined
+
 export const SIZES = {
   // two cards a row on a phone, three on a tablet, four (plus a sidebar) on a desktop
   card: '(max-width: 599px) 46vw, (max-width: 1023px) 30vw, 320px',

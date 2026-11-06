@@ -4,17 +4,25 @@ import Image from 'next/image'
 import Link from '@/src/Components/LocaleLink'
 import { useUIStore } from '../../Store/uiStore'
 import { getImageUrl, PLACEHOLDER_IMG } from '../../utils/imageUrl'
-import { pictureSources, hasRenditions, SIZES } from '../../utils/picture'
+import { pictureSources, hasRenditions, SIZES, CARD_MAX } from '../../utils/picture'
 import { productUrl } from '../../utils/productUrl'
 import useCart from '../../Hooks/useCart'
 import { refusedAddMessage } from '../../Store/cartStore'
 import { useToastStore } from '../../Store/toastStore'
+import { useProductOffer } from '../../Hooks/queries/usePromo'
+import OfferStrip, { offerClass } from '../Promo/OfferStrip'
 import './ProductCard.css'
 
 const NEW_WINDOW_MS = 30 * 24 * 60 * 60 * 1000
 
-const ProductCard = ({ product, showBrand = true, showRating = true }) => {
+// `eager` / `first` (the performance pass, 2026-11-05): a listing's first row is on the screen when the page opens and
+// its photos are the page's largest paint — they load at once instead of waiting to be found "near the screen", and
+// the very first is asked for before everything else. Every other card stays lazy.
+const ProductCard = ({ product, showBrand = true, showRating = true, eager = false, first = false }) => {
   const { language } = useUIStore()
+  // in a live Hot Deals / Flash Sale campaign (item 41): the card takes that offer's look; null the second it ends
+  const offer = useProductOffer(product?.id)
+  const offerLang = language === 'ar' ? 'ar' : 'en'
   const { addItem } = useCart()
   const showToast = useToastStore((s) => s.showToast)
   const [added, setAdded] = useState(false)
@@ -88,7 +96,7 @@ const ProductCard = ({ product, showBrand = true, showRating = true }) => {
      resizes nothing for it. A cover with no record keeps next/image exactly as before (auto AVIF/WebP from
      the optimiser). Falls back to the inline gray SVG placeholder when the product has no image. */
   const imgSrc = getImageUrl(product.image, 'Product') || PLACEHOLDER_IMG
-  const sources = hasRenditions(product.image_srcset) ? pictureSources(product.image_srcset) : null
+  const sources = hasRenditions(product.image_srcset) ? pictureSources(product.image_srcset, CARD_MAX) : null
 
   /* ── Stock status descriptor ── */
   const stock = isExpress
@@ -133,7 +141,7 @@ const ProductCard = ({ product, showBrand = true, showRating = true }) => {
 
   return (
     <article
-      className={`wz-pc ${!inStock ? 'wz-pc--out' : ''}`}
+      className={`wz-pc ${!inStock ? 'wz-pc--out' : ''}${offerClass(offer)}`}
       dir={isRTL ? 'rtl' : 'ltr'}
     >
       {/* Stretched-overlay anchor — makes the whole card a real crawlable,
@@ -148,12 +156,16 @@ const ProductCard = ({ product, showBrand = true, showRating = true }) => {
       />
 
       {/* ── Media ── */}
-      <div className="wz-pc__media">
+      {/* `cut_mask` (the home's blended sliders only, 2026-11-05): the mask of this photo's white studio background.
+          The photo is drawn as it is; the mask lets the slider's colour show where the white was (homeZone.css). */}
+      <div className={`wz-pc__media${product.cut_mask ? ' hl-cut' : ''}`} style={product.cut_mask ? { '--cut': `url("${product.cut_mask}")` } : undefined}>
+        {/* in a live Hot Deals / Flash Sale campaign: the offer's strip over the foot of the photo box (item 41) */}
+        <OfferStrip offer={offer} lang={offerLang} />
         {sources ? (
           <picture className="wz-pc__picture">
             {sources.avif ? <source type="image/avif" srcSet={sources.avif} sizes={SIZES.card} /> : null}
             {sources.webp ? <source type="image/webp" srcSet={sources.webp} sizes={SIZES.card} /> : null}
-            <img src={imgSrc} alt={name} loading="lazy" decoding="async" className="wz-pc__img" />
+            <img src={imgSrc} alt={name} loading={eager ? 'eager' : 'lazy'} fetchPriority={first ? 'high' : undefined} decoding="async" className="wz-pc__img hl-cut__img" />
           </picture>
         ) : (
           <Image
@@ -162,7 +174,9 @@ const ProductCard = ({ product, showBrand = true, showRating = true }) => {
             fill
             sizes="(max-width: 400px) 50vw, (max-width: 768px) 33vw, (max-width: 1200px) 25vw, 300px"
             quality={80}
-            className="wz-pc__img"
+            loading={eager ? 'eager' : 'lazy'}
+            fetchPriority={first ? 'high' : undefined}
+            className="wz-pc__img hl-cut__img"
             style={{ objectFit: 'contain' }}
           />
         )}
