@@ -3,6 +3,9 @@ import {
   arrangeDeals,
   barOf,
   categoryChips,
+  dealLineOf,
+  LOW_STOCK,
+  lowStockText,
   clockOffset,
   countdownParts,
   countdownText,
@@ -156,5 +159,38 @@ describe('Hot Deals mode', () => {
     expect(hotModeOn('7', { id: 8 })).toBe(false)     // a NEW campaign does not inherit an old switch
     expect(hotModeOn('7', null)).toBe(false)          // the campaign ended: the mode ends with it
     expect(hotModeOn(null, { id: 7 })).toBe(false)
+  })
+})
+
+describe('the line under a deal card (2026-11-10: no empty bar, honest urgency)', () => {
+  const live = (sold, left, start = 10) => barOf({ start, sold, left, pct: Math.round((sold / start) * 100), state: left > 0 ? 'selling' : sold >= start ? 'sold_out' : 'unavailable' })
+  it('shows a NEW DEAL badge, no bar, when nothing sold since the restock', () => {
+    expect(dealLineOf(live(0, 9))).toEqual({ kind: 'new', left: 9, low: null })
+  })
+  it('adds the stock line to the badge when few are left', () => {
+    expect(dealLineOf(live(0, 3))).toEqual({ kind: 'new', left: 3, low: 3 })
+  })
+  it('draws the real bar with the stock line as its caption once one unit sold and few are left', () => {
+    expect(dealLineOf(live(7, 3))).toEqual({ kind: 'bar', sold: 7, left: 3, pct: 70, low: 3 })
+  })
+  it('draws the real bar as before when sold and stock is above the threshold', () => {
+    expect(dealLineOf(live(2, 8))).toEqual({ kind: 'bar', sold: 2, left: 8, pct: 20, low: null })
+    expect(dealLineOf(live(2, LOW_STOCK + 1)).low).toBe(null)
+    expect(dealLineOf(live(2, LOW_STOCK)).low).toBe(LOW_STOCK)
+  })
+  it('keeps sold out as it was, and draws nothing without a measurement (never a made-up value)', () => {
+    expect(dealLineOf(live(10, 0))).toEqual({ kind: 'all_sold', sold: 10 })
+    expect(dealLineOf(live(3, 0))).toEqual({ kind: 'gone' })
+    expect(dealLineOf(live(2, 8), false)).toEqual({ kind: 'gone' })
+    expect(dealLineOf(null)).toEqual({ kind: 'none' })
+    expect(dealLineOf(barOf({ start: 0, sold: 0, left: 4 }))).toEqual({ kind: 'none' })
+  })
+  it('says how few are left, the Arabic counted 1 / 2 / 3-5', () => {
+    expect(lowStockText(1, 'en')).toBe('Only 1 left')
+    expect(lowStockText(4, 'en')).toBe('Only 4 left')
+    expect(lowStockText(1, 'ar')).toBe('باقي قطعة واحدة بس')
+    expect(lowStockText(2, 'ar')).toBe('باقي قطعتين بس')
+    expect(lowStockText(3, 'ar')).toBe('باقي 3 قطع بس')
+    expect(lowStockText(5, 'ar')).toBe('باقي 5 قطع بس')
   })
 })
