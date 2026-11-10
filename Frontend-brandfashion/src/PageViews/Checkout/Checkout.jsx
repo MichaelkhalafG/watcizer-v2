@@ -31,7 +31,7 @@ import { txt, money } from '../../lib/cardData'
 import { STOREFRONT_CODE } from '../../lib/env'
 import { trackInitiateCheckout, savePendingPurchase } from '../../scripts/pixels'
 import { useOrderConfirmStore } from '../../Store/orderConfirmStore'
-import PaymentBadges from '../../Components/Promo/PaymentBadges'
+import PaymentBadges, { MethodBadge, usePaymentBadgeOf } from '../../Components/Promo/PaymentBadges'
 import './Checkout.css'
 
 /*
@@ -212,7 +212,7 @@ const OrderSummary = memo(function OrderSummary({
         <li><FiPhone size={14} /> {t('WhatsApp support', 'دعم واتساب')}</li>
       </ul>
       {/* the ways to pay this shop offers (Part 7, 2026-11-05) — the same list the method picker reads */}
-      <PaymentBadges className="wz-checkout-badges pm-pay--compact" />
+      <PaymentBadges className="wz-checkout-badges pm-pay--compact" bare />
     </aside>
   )
 })
@@ -271,6 +271,8 @@ function Checkout() {
   const [paymentMethod, setPaymentMethod] = useState(null)
   const [methodId, setMethodId] = useState(null)
   const { data: onlineList, isError: onlineListFailed, isLoading: methodsLoading, refetch: refetchMethods } = usePaymentMethods()
+  // each method's uploaded picture, from the same answer as the "Ways to pay" strip (2026-11-10)
+  const badgeOf = usePaymentBadgeOf()
   // Apple Pay is offered only where it can work: Safari on an Apple device with a card in the
   // wallet. Read after mount — `window` does not exist on the server render.
   const [canApplePay, setCanApplePay] = useState(false)
@@ -945,6 +947,8 @@ function Checkout() {
                   offered.map((m) => {
                     const Icon = METHOD_ICON[m.method] || null
                     const note = METHOD_NOTE[m.method]
+                    const badge = badgeOf.get(m.method)
+                    const name = (isRTL ? m.label?.ar : m.label?.en) || m.label?.ar || m.label?.en
                     const active = methodId === m.id
                     return (
                       <label key={m.id} className={`wz-checkout-payopt${active ? ' is-active' : ''}${m.reason ? ' is-disabled' : ''}`}>
@@ -964,8 +968,9 @@ function Checkout() {
                         <span className="wz-checkout-dot" aria-hidden="true" />
                         <div className="wz-checkout-payopt-main">
                           <div className="wz-checkout-payopt-title">
-                            {(isRTL ? m.label?.ar : m.label?.en) || m.label?.ar || m.label?.en}
-                            {Icon ? (
+                            {name}
+                            {/* the line icon only where no picture was uploaded */}
+                            {Icon && !badge ? (
                               <span className="wz-checkout-cards" aria-hidden="true">
                                 <Icon />
                               </span>
@@ -975,6 +980,7 @@ function Checkout() {
                             {m.reason || (note ? t(note[0], note[1]) : t('Secure online payment', 'دفع إلكتروني آمن'))}
                           </div>
                         </div>
+                        {badge ? <MethodBadge badge={badge} name={name || ''} /> : null}
                       </label>
                     )
                   })
