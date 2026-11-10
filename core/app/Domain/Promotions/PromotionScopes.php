@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domain\Promotions;
 
+use App\Domain\Campaigns\CampaignPrices;
 use App\Support\Coerce;
 use App\Transform\Row;
 use Illuminate\Database\Query\JoinClause;
@@ -166,7 +167,8 @@ final class PromotionScopes
             ->get(['p.id', 'p.brand_id', 'p.grade_id', 'p.family', 'sp.effective_price', 'sp.effective_sale_price']) as $raw) {
             $row = Row::cast($raw);
             $price = (float) (Row::nmoney($row, 'effective_price') ?? '0');
-            $sale = (float) (Row::nmoney($row, 'effective_sale_price') ?? '0');
+            // a product under a live campaign price is ON SALE for the engine too (2026-11-10)
+            $sale = (float) (CampaignPrices::saleFor($this->cart->storefrontId, Row::int($row, 'id'), Row::nmoney($row, 'effective_price') ?? '0', Row::nmoney($row, 'effective_sale_price'))['sale'] ?? '0');
             $this->facts[Row::int($row, 'id')] = [
                 'brand' => Row::nint($row, 'brand_id'),
                 'grade' => Row::nint($row, 'grade_id'),

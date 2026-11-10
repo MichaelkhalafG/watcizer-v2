@@ -7,7 +7,8 @@ import { txt, money, cardColours, cardVariants, isNewProduct } from '@/src/lib/c
 import useCart, { getItemKey } from '@/src/Hooks/useCart'
 import { refusedAddMessage } from '@/src/Store/cartStore'
 import { useToastStore } from '@/src/Store/toastStore'
-import { useProductOffer } from '@/src/Hooks/queries/usePromo'
+import { useLivePrices, useProductOffer } from '@/src/Hooks/queries/usePromo'
+import { livePrice } from '@/src/lib/campaign'
 import OfferStrip, { offerClass } from '@/src/Components/Promo/OfferStrip'
 import './BfProductCard.css'
 
@@ -106,13 +107,15 @@ export default function BfProductCard({
     const el = hoverRef.current
     setHoverReady(!!(el && el.complete && el.naturalWidth > 0))
   }, [product?.hover_image?.src])
+  const livePriceMap = useLivePrices()
   if (!product) return null
   const t = STR[lang] ?? STR.en
   const dir = lang === 'ar' ? 'rtl' : 'ltr'
 
   const title = txt(product.title, lang)
   const brand = txt(product.brand?.name, lang)
-  const price = product.price ?? {}
+  // the price as it holds now: a campaign price follows its campaign to the second (2026-11-10)
+  const price = livePrice(product.price ?? {}, product.id, livePriceMap) ?? {}
   const hasSale = Boolean(price.has_sale) && Number(price.sale_amount) > 0 && Number(price.sale_amount) < Number(price.amount)
   const now = money(hasSale ? price.sale_amount : price.amount, lang, price.currency)
   const was = hasSale ? money(price.amount, lang, price.currency) : null

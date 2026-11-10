@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Domain\Campaigns;
 
 use App\Transform\Row;
-use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 
@@ -22,29 +21,32 @@ use InvalidArgumentException;
  *    Sale" must be one campaign, because the header has one countdown and the page one list. A
  *    campaign that is switched off overlaps nothing.
  *
- * ── The start quantities ({@see self::activate()}) ───────────────────────────────────────────
+ * ── The progress bar (2026-11-10) ─────────────────────────────────────────────────────────────
  *
- * The first time a campaign is found LIVE, each of its products gets its stock at that moment written
- * beside it (`start_express`, `start_market`, `snapshot_at`, and `start_movement_id` — the ledger's
- * last movement at that instant, which is where "sold" starts counting). A product added while the campaign is
- * already live is recorded then, from then. A snapshot is written ONCE and never refreshed: switching
- * the campaign off and on again, or moving its end, keeps the numbers it started with — a bar that
- * resets when somebody edits a date would be the theatre the brief forbids. A new sale is a new
- * campaign.
+ * Nothing is recorded for it any more: the bar counts from each product's last restock in the stock ledger
+ * ({@see Campaigns::sinceRestock()}). The start snapshot this writer used to take when a campaign went live
+ * (`start_express`, `start_market`, `start_movement_id`, `snapshot_at`, and the campaign's `activated_at`) is
+ * neither written nor read; the columns stay until a later clean-up migration.
  *
- * It is called after every save and by `campaigns:activate` on the one-minute cron, which is what
- * records a campaign that was scheduled for a later start.
+ * ── Campaign prices (2026-11-10, {@see CampaignPrices}) ───────────────────────────────────────
+ *
+ * `prices` (optional: absent = the prices stay as they are) maps a picked product to a campaign PRICE or an EXTRA
+ * PERCENTAGE. Refused: a product that is not picked, an unknown mode, a value at or under zero, a percentage above
+ * {@see CampaignPrices::MAX_PERCENT}, and a price that would not be LOWER than the product's current price. Asked for
+ * (`confirm_prices`), not refused, as the dashboard's price safeguard does: a campaign price under the purchase price,
+ * and an extra percentage above {@see CampaignPrices::CONFIRM_PERCENT}. A product without an entry keeps its normal
+ * price during the campaign. Every save forgets the cached price windows, so a change is live at once.
  */
 final class CampaignWriter
 {
     /**
-     * @param  array{name: string, presentation: string, starts_at: string, ends_at: string, is_active: bool, product_ids: list<int>}  $data
+     * @param  array{name: string, presentation: string, starts_at: string, ends_at: string, is_active: bool, product_ids: list<int>, prices?: array<int, array{mode: string, value: float}>, confirm_prices?: bool}  $data
      */
     public static function create(int $storefrontId, array $data, ?int $userId): int
     {
         self::assertValid($storefrontId, null, $data);
 
-        return DB::transaction(function () use ($storefrontId, $data, $userId): int {
+        $id = DB::transaction(function () use ($storefrontId, $data, $userId): int {
             $id = (int) DB::table('storefront_campaigns')->insertGetId([
                 ...self::columns($data),
                 'storefront_id' => $storefrontId,
@@ -53,15 +55,17 @@ final class CampaignWriter
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
-            self::syncProducts($id, $data['product_ids']);
-            self::activate($id);
+            self::syncProducts($id, $data['product_ids'], $data['prices'] ?? null);
 
             return $id;
         });
+        CampaignPrices::forget($storefrontId);
+
+        return $id;
     }
 
     /**
-     * @param  array{name: string, presentation: string, starts_at: string, ends_at: string, is_active: bool, product_ids: list<int>}  $data
+     * @param  array{name: string, presentation: string, starts_at: string, ends_at: string, is_active: bool, product_ids: list<int>, prices?: array<int, array{mode: string, value: float}>, confirm_prices?: bool}  $data
      */
     public static function update(int $storefrontId, int $campaignId, array $data, ?int $userId): void
     {
@@ -70,70 +74,41 @@ final class CampaignWriter
         DB::transaction(function () use ($storefrontId, $campaignId, $data, $userId): void {
             DB::table('storefront_campaigns')->where('storefront_id', $storefrontId)->where('id', $campaignId)
                 ->update([...self::columns($data), 'updated_by' => $userId, 'updated_at' => now()]);
-            self::syncProducts($campaignId, $data['product_ids']);
-            self::activate($campaignId);
+            self::syncProducts($campaignId, $data['product_ids'], $data['prices'] ?? null);
         });
+        CampaignPrices::forget($storefrontId);
     }
 
     public static function delete(int $storefrontId, int $campaignId): void
     {
-        // The products go with it (the foreign key cascades).
+        // The products go with it (the foreign key cascades) — and their campaign prices.
         DB::table('storefront_campaigns')->where('storefront_id', $storefrontId)->where('id', $campaignId)->delete();
+        CampaignPrices::forget($storefrontId);
     }
 
     /**
-     * Record the start quantities of every product of a LIVE campaign that has none yet.
+     * A campaign's prices as stored: product id → {mode, value}, for the dashboard and the activity log.
      *
-     * Idempotent and cheap when there is nothing to do: one query finds the candidates. Returns how many
-     * products were recorded by this call.
-     *
-     * @param  int|null  $campaignId  one campaign, or null for every live campaign (the scheduler)
+     * @return array<int, array{mode: string, value: float}>
      */
-    public static function activate(?int $campaignId = null, ?Carbon $at = null): int
+    public static function prices(int $campaignId): array
     {
-        $now = ($at ?? now())->format('Y-m-d H:i:s');
-
-        $live = DB::table('storefront_campaigns')->where('is_active', 1)->where('starts_at', '<=', $now)->where('ends_at', '>', $now);
-        if ($campaignId !== null) {
-            $live->where('id', $campaignId);
+        $out = [];
+        foreach (DB::table('storefront_campaign_products')->where('campaign_id', $campaignId)->whereNotNull('price_mode')
+            ->orderBy('position')->get(['product_id', 'price_mode', 'price_value']) as $raw) {
+            $out[Row::int($raw, 'product_id')] = ['mode' => Row::str($raw, 'price_mode'), 'value' => Row::nfloat($raw, 'price_value') ?? 0.0];
         }
 
-        $recorded = 0;
-        foreach ($live->pluck('id') as $rawId) {
-            $id = is_numeric($rawId) ? (int) $rawId : 0;
-            $recorded += DB::transaction(function () use ($id, $now): int {
-                /*
-                 * The stock a shopper could buy at this moment: the product's own two buckets — for a
-                 * product sold through variants they are the maintained SUM of its variants (AGENTS
-                 * §2.5), so one read is right for both kinds. Read and written in one statement, so a
-                 * sale landing between a read and a write cannot be counted twice or lost.
-                 */
-                $done = DB::update(
-                    'UPDATE storefront_campaign_products cp
-                       JOIN catalog_products p ON p.id = cp.product_id
-                        SET cp.start_express = GREATEST(p.stock_express, 0),
-                            cp.start_market = GREATEST(p.stock_market, 0),
-                            cp.start_movement_id = (SELECT COALESCE(MAX(m.id), 0) FROM inventory_movements m),
-                            cp.snapshot_at = ?, cp.updated_at = ?
-                      WHERE cp.campaign_id = ? AND cp.snapshot_at IS NULL',
-                    [$now, $now, $id],
-                );
-                DB::table('storefront_campaigns')->where('id', $id)->whereNull('activated_at')->update(['activated_at' => $now]);
-
-                return $done;
-            });
-        }
-
-        return $recorded;
+        return $out;
     }
 
     /**
-     * The picks, in order: new ones inserted, removed ones deleted, kept ones re-positioned WITHOUT
-     * touching their snapshot.
+     * The picks, in order: new ones inserted, removed ones deleted, kept ones re-positioned. With `$prices` (not null) each pick's campaign price is set to its entry, or cleared.
      *
      * @param  list<int>  $productIds
+     * @param  array<int, array{mode: string, value: float}>|null  $prices
      */
-    private static function syncProducts(int $campaignId, array $productIds): void
+    private static function syncProducts(int $campaignId, array $productIds, ?array $prices = null): void
     {
         $existing = [];
         foreach (DB::table('storefront_campaign_products')->where('campaign_id', $campaignId)->get(['id', 'product_id']) as $raw) {
@@ -141,8 +116,12 @@ final class CampaignWriter
         }
 
         foreach ($productIds as $position => $productId) {
+            $price = $prices === null ? [] : [
+                'price_mode' => isset($prices[$productId]) ? $prices[$productId]['mode'] : null,
+                'price_value' => isset($prices[$productId]) ? number_format($prices[$productId]['value'], 2, '.', '') : null,
+            ];
             if (isset($existing[$productId])) {
-                DB::table('storefront_campaign_products')->where('id', $existing[$productId])->update(['position' => $position, 'updated_at' => now()]);
+                DB::table('storefront_campaign_products')->where('id', $existing[$productId])->update(['position' => $position, 'updated_at' => now()] + $price);
                 unset($existing[$productId]);
 
                 continue;
@@ -150,7 +129,7 @@ final class CampaignWriter
             DB::table('storefront_campaign_products')->insert([
                 'campaign_id' => $campaignId, 'product_id' => $productId, 'position' => $position,
                 'created_at' => now(), 'updated_at' => now(),
-            ]);
+            ] + $price);
         }
 
         if ($existing !== []) {
@@ -159,7 +138,7 @@ final class CampaignWriter
     }
 
     /**
-     * @param  array{name: string, presentation: string, starts_at: string, ends_at: string, is_active: bool, product_ids: list<int>}  $data
+     * @param  array{name: string, presentation: string, starts_at: string, ends_at: string, is_active: bool, product_ids: list<int>, prices?: array<int, array{mode: string, value: float}>, confirm_prices?: bool}  $data
      * @return array<string, mixed>
      */
     private static function columns(array $data): array
@@ -174,7 +153,7 @@ final class CampaignWriter
     }
 
     /**
-     * @param  array{name: string, presentation: string, starts_at: string, ends_at: string, is_active: bool, product_ids: list<int>}  $data
+     * @param  array{name: string, presentation: string, starts_at: string, ends_at: string, is_active: bool, product_ids: list<int>, prices?: array<int, array{mode: string, value: float}>, confirm_prices?: bool}  $data
      */
     private static function assertValid(int $storefrontId, ?int $campaignId, array $data): void
     {
@@ -200,6 +179,55 @@ final class CampaignWriter
 
         if ($data['is_active'] && self::overlapping($storefrontId, $campaignId, $data['presentation'], $data['starts_at'], $data['ends_at']) !== null) {
             throw new InvalidArgumentException('overlap');
+        }
+
+        self::assertPrices($storefrontId, $ids, $data['prices'] ?? [], $data['confirm_prices'] ?? false);
+    }
+
+    /**
+     * The campaign prices' rules (the class docblock). Refusals name the product: `prices.<rule>:<product id>`;
+     * the confirmation names every product that needs it: `prices.confirm:<id>,<id>`.
+     *
+     * @param  list<int>  $productIds
+     * @param  array<int, array{mode: string, value: float}>  $prices
+     */
+    private static function assertPrices(int $storefrontId, array $productIds, array $prices, bool $confirmed): void
+    {
+        if ($prices === []) {
+            return;
+        }
+        $facts = [];
+        foreach (DB::table('storefront_product as sp')->join('catalog_products as p', 'p.id', '=', 'sp.product_id')
+            ->where('sp.storefront_id', $storefrontId)->whereIn('sp.product_id', array_keys($prices))
+            ->get(['sp.product_id', 'sp.effective_price', 'sp.effective_sale_price', 'p.purchase_price']) as $raw) {
+            $facts[Row::int($raw, 'product_id')] = [
+                'price' => (float) Row::money($raw, 'effective_price'),
+                'sale' => Row::nmoney($raw, 'effective_sale_price') === null ? null : (float) Row::money($raw, 'effective_sale_price'),
+                'purchase' => (float) Row::money($raw, 'purchase_price'),
+            ];
+        }
+        $confirm = [];
+        foreach ($prices as $productId => $rule) {
+            if (! in_array($productId, $productIds, true) || ! isset($facts[$productId])) {
+                throw new InvalidArgumentException('prices.product:'.$productId);
+            }
+            if (! in_array($rule['mode'], CampaignPrices::MODES, true)) {
+                throw new InvalidArgumentException('prices.mode:'.$productId);
+            }
+            if ($rule['value'] <= 0 || ($rule['mode'] === CampaignPrices::MODE_PERCENT && $rule['value'] > CampaignPrices::MAX_PERCENT)) {
+                throw new InvalidArgumentException('prices.value:'.$productId);
+            }
+            $f = $facts[$productId];
+            $campaign = CampaignPrices::campaignPrice($rule['mode'], $rule['value'], $f['price'], $f['sale']);
+            if ($campaign === null) {
+                throw new InvalidArgumentException('prices.not_lower:'.$productId);
+            }
+            if ($campaign < $f['purchase'] || ($rule['mode'] === CampaignPrices::MODE_PERCENT && $rule['value'] > CampaignPrices::CONFIRM_PERCENT)) {
+                $confirm[] = $productId;
+            }
+        }
+        if ($confirm !== [] && ! $confirmed) {
+            throw new InvalidArgumentException('prices.confirm:'.implode(',', $confirm));
         }
     }
 

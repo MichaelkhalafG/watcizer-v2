@@ -9,12 +9,13 @@ use App\Transform\Row;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Database\Query\JoinClause;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
+use Tests\Support\CatalogFixture;
 use Tests\Support\PaymentFixture;
 use Tests\Support\Props;
 use Tests\Support\Staff;
 use Tests\Support\T;
+use Tests\Support\VariantFixture;
 
 use function Pest\Laravel\actingAs;
 use function Pest\Laravel\delete;
@@ -131,6 +132,8 @@ function cmpLive(): array
 it('creates a campaign from the page with its five things, lists it with its state, and logs the write', function () {
     $products = cmpProducts(3);
     $ids = array_column($products, 'id');
+    // each restocked once: the list's numbers count from there (2026-11-10)
+    $shelves = array_map(fn (array $p): int => cmpRestock($p['id'], 1), $products);
     actingAs(Staff::admin());
 
     post('/manage/storefronts/1/campaigns', cmpPayload($ids, 'hot_deals'))->assertSessionHasNoErrors();
@@ -145,9 +148,9 @@ it('creates a campaign from the page with its five things, lists it with its sta
     expect($listed)->toHaveCount(1)
         ->and(T::arr($listed[0])['state'])->toBe('live')
         ->and(T::arr($listed[0])['product_ids'])->toBe($ids)
-        // live at once, so every product's starting stock is already on record
+        // every product restocked: the shelf right after each restock, nothing sold since
         ->and(T::arr($listed[0])['recorded'])->toBe(3)
-        ->and(T::arr($listed[0])['started_units'])->toBe(array_sum(array_column($products, 'stock')))
+        ->and(T::arr($listed[0])['started_units'])->toBe(array_sum($shelves))
         ->and(T::arr($listed[0])['sold_units'])->toBe(0);
 
     expect(DB::table('core_activity_log')->where('subject_type', 'storefront_campaigns')->where('subject_id', Row::int($row, 'id'))->count())->toBe(1);
@@ -184,81 +187,74 @@ it('REFUSES, on the field, what the storefront could not show honestly', functio
         ->and(DB::table('storefront_campaign_products')->where('campaign_id', $parked)->exists())->toBeFalse();
 });
 
-// ── 2. the starting stock is recorded once, when the sale goes live ───────────────────────────────
+/** A restock through the stock service (the dashboard's own door); returns the shelf right after it. */
+function cmpRestock(int $productId, int $units, string $reason = 'restock'): int
+{
+    app(InventoryService::class)->adjust(StockTarget::product($productId), InventoryService::BUCKET_EXPRESS, $units, $reason);
+    $row = T::one(DB::table('catalog_products')->where('id', $productId));
 
-it('records each product\'s stock when the campaign goes LIVE — not when it is typed, and never twice', function () {
-    $products = cmpProducts(2);
-    [$a, $b] = $products;
+    return Row::int($row, 'stock_express') + Row::int($row, 'stock_market');
+}
 
-    // Scheduled for tomorrow: nothing to record yet.
-    $id = cmpCreate([$a['id']], 'flash_sale', now()->addDay(), now()->addDays(2));
-    expect(DB::table('storefront_campaign_products')->where('campaign_id', $id)->whereNotNull('snapshot_at')->count())->toBe(0)
-        ->and(Artisan::call('campaigns:activate'))->toBe(0)
-        ->and(Artisan::output())->toContain('Nothing to record');
+// ── 2. the bar counts from the product's LAST RESTOCK (Michael, 2026-11-10) ───────────────────────
 
-    // A unit is sold BEFORE the sale begins: the start must be the stock at the start, not at the typing.
+it('counts the bar from the product\'s LAST RESTOCK — and a restock after the campaign started restarts it', function () {
+    [$a] = cmpProducts(1);
+    $shelf = cmpRestock($a['id'], 4);
+    cmpSell($a['id'], 1);                                              // after the restock, before the campaign: counted
+    $campaign = ['id' => cmpCreate([$a['id']], 'hot_deals')];
+    expect(Campaigns::progress($campaign))->toBe([$a['id'] => ['start' => $shelf, 'sold' => 1]]);
+    cmpSell($a['id'], 2);
+    expect(Campaigns::progress($campaign)[$a['id']])->toBe(['start' => $shelf, 'sold' => 3]);
+
+    // a restock DURING the campaign: the bar starts again from it — the shelf right after it, nothing sold yet
+    $again = cmpRestock($a['id'], 6, 'manual');
+    expect($again)->toBe($shelf - 3 + 6)
+        ->and(Campaigns::progress($campaign)[$a['id']])->toBe(['start' => $again, 'sold' => 0]);
     cmpSell($a['id'], 1);
-
-    Carbon::setTestNow(now()->addDay()->addMinute());
-    expect(Artisan::call('campaigns:activate'))->toBe(0);
-    $row = T::one(DB::table('storefront_campaign_products')->where('campaign_id', $id)->where('product_id', $a['id']));
-    expect(Row::int($row, 'start_express') + Row::int($row, 'start_market'))->toBe($a['stock'] - 1)
-        ->and(Row::nstr($row, 'snapshot_at'))->not->toBeNull()
-        ->and(Row::nstr(T::one(DB::table('storefront_campaigns')->where('id', $id)), 'activated_at'))->not->toBeNull();
-
-    // Units sold DURING the sale do not move the recorded start: a second pass, and a save, change nothing.
-    cmpSell($a['id'], 1);
-    expect(Artisan::call('campaigns:activate'))->toBe(0);
-    CampaignWriter::update(1, $id, [
-        'name' => 'Test campaign', 'presentation' => 'flash_sale',
-        'starts_at' => now()->subMinutes(2)->format('Y-m-d H:i:00'), 'ends_at' => now()->addDays(3)->format('Y-m-d H:i:00'),
-        'is_active' => true, 'product_ids' => [$b['id'], $a['id']],            // reordered, and one product added
-    ], null);
-    $again = T::one(DB::table('storefront_campaign_products')->where('campaign_id', $id)->where('product_id', $a['id']));
-    expect(Row::int($again, 'start_express') + Row::int($again, 'start_market'))->toBe($a['stock'] - 1)
-        ->and(Row::nstr($again, 'snapshot_at'))->toBe(Row::nstr($row, 'snapshot_at'))
-        ->and(Campaigns::productIds($id))->toBe([$b['id'], $a['id']]);
-
-    // The product ADDED to a live campaign is recorded from the moment it joined.
-    $added = T::one(DB::table('storefront_campaign_products')->where('campaign_id', $id)->where('product_id', $b['id']));
-    expect(Row::int($added, 'start_express') + Row::int($added, 'start_market'))->toBe($b['stock']);
+    expect(Campaigns::progress($campaign)[$a['id']])->toBe(['start' => $again, 'sold' => 1]);
 });
 
-// ── 3. sold comes from the ledger ────────────────────────────────────────────────────────────────
-
-it('counts SOLD from the stock ledger: sales in the window, net of what they gave back — and nothing else', function () {
-    [$a, $b] = cmpProducts(2);
-    cmpSell($a['id'], 1);                                              // before the campaign: not its sale
-    $stockAtStart = $a['stock'] - 1;
-
-    $id = cmpCreate([$a['id'], $b['id']], 'hot_deals');
-    $campaign = ['id' => $id, 'ends_at' => now()->addDay()->format('Y-m-d H:i:00')];
-    expect(Campaigns::progress($campaign))->toBe([
-        $a['id'] => ['start' => $stockAtStart, 'sold' => 0],
-        $b['id'] => ['start' => $b['stock'], 'sold' => 0],
-    ]);
-
-    // Movements are stamped to the second; the snapshot is this second. Step the clock so "after" is after.
-    Carbon::setTestNow(now()->addSeconds(5));
+it('does NOT restart the bar for units an order gave back or a move between the buckets; a gift is not a sale; sold is net of cancellations', function () {
+    [$a] = cmpProducts(1);
+    $shelf = cmpRestock($a['id'], 5);
+    $campaign = ['id' => cmpCreate([$a['id']], 'flash_sale')];
     $kept = cmpSell($a['id'], 2);
     $cancelled = cmpSell($a['id'], 1);
-    cmpSell($b['id'], 1, reward: true);                                // a gift: units gone, not a sale
-    expect(Campaigns::progress($campaign)[$a['id']])->toBe(['start' => $stockAtStart, 'sold' => 3])
-        ->and(Campaigns::progress($campaign)[$b['id']])->toBe(['start' => $b['stock'], 'sold' => 0]);
+    cmpSell($a['id'], 1, reward: true);                                // a gift line: units gone, not a sale
+    expect(Campaigns::progress($campaign)[$a['id']])->toBe(['start' => $shelf, 'sold' => 3]);
 
-    // A cancellation gives the units back, and the count follows it.
+    // the cancellation gives its unit back: the count follows it, and the bar does NOT restart from the return
     app(InventoryService::class)->releaseOrder($cancelled, 'order_cancel', null, 1);
-    expect(Campaigns::progress($campaign)[$a['id']]['sold'])->toBe(2);
+    expect(Campaigns::progress($campaign)[$a['id']])->toBe(['start' => $shelf, 'sold' => 2]);
 
-    // A restock or a manual correction is not a sale and is not un-selling.
-    app(InventoryService::class)->adjust(StockTarget::product($a['id']), InventoryService::BUCKET_EXPRESS, 5, 'restock');
-    expect(Campaigns::progress($campaign)[$a['id']])->toBe(['start' => $stockAtStart, 'sold' => 2]);
-
-    // A sale AFTER the campaign's end is not the campaign's.
-    Carbon::setTestNow(now()->addDays(2));
-    cmpSell($a['id'], 1);
-    expect(Campaigns::progress($campaign)[$a['id']]['sold'])->toBe(2)
+    // the dashboard's "move between buckets": two movements in one transaction, the plus is not new stock
+    $target = StockTarget::product($a['id']);
+    DB::transaction(function () use ($target): void {
+        app(InventoryService::class)->adjust($target, InventoryService::BUCKET_EXPRESS, -1, 'adjustment', note: 'move');
+        app(InventoryService::class)->adjust($target, InventoryService::BUCKET_MARKET, 1, 'adjustment', note: 'move');
+    });
+    expect(Campaigns::progress($campaign)[$a['id']])->toBe(['start' => $shelf, 'sold' => 2])
         ->and(DB::table('inventory_movements')->where('reference_id', $kept)->where('reason', 'order')->count())->toBe(1);
+});
+
+it('draws NO bar for a product with no stock addition in its ledger, counts from the opening balance when no restock came after it, and counts a variant product across its variants', function () {
+    // no movement at all: no bar, never an invented number
+    $bare = CatalogFixture::product();
+    // only the opening balance carried over from the old system (D-47): the bar counts from it
+    $opened = CatalogFixture::product();
+    app(InventoryService::class)->set(StockTarget::product($opened), InventoryService::BUCKET_EXPRESS, 7, 'transform');
+    // two variants, 5 + 3 units each (four additions): the last addition is on a variant, the shelf is all of them
+    $v = VariantFixture::synthetic(2, express: 5, market: 3);
+    app(InventoryService::class)->commitOrder(VariantFixture::order($v['product'], $v['variants'][0], 2), null, 1);
+
+    expect(Campaigns::sinceRestock([$bare]))->toBe([])
+        ->and(Campaigns::sinceRestock([$bare, $opened, $v['product']]))->toBe([$opened => ['start' => 7, 'sold' => 0], $v['product'] => ['start' => 16, 'sold' => 2]]);
+
+    // a restock after the opening balance takes over from it
+    $after = cmpRestock($opened, 3);
+    expect(Campaigns::sinceRestock([$opened]))->toBe([$opened => ['start' => $after, 'sold' => 0]])
+        ->and($after)->toBe(10);
 });
 
 // ── 4. the storefront endpoint ───────────────────────────────────────────────────────────────────
@@ -268,10 +264,10 @@ it('serves the live campaign with real numbers on each card, and CLOSES it at it
     [$a, $b, $c] = $products;
     $end = now()->addHours(2)->startOfMinute();
     $id = cmpCreate([$b['id'], $a['id'], $c['id']], 'flash_sale', now()->subHour(), $end);
-    // One product whose start was never recorded (as if it had been live before this code existed).
-    DB::table('storefront_campaign_products')->where('campaign_id', $id)->where('product_id', $c['id'])
-        ->update(['start_express' => null, 'start_market' => null, 'snapshot_at' => null]);
-    DB::table('storefront_campaigns')->where('id', $id)->update(['activated_at' => now()]);
+    // a and b restocked (each bar counts from there); c's additions rewritten as order returns — no addition, no bar
+    $shelfA = cmpRestock($a['id'], 1);
+    $shelfB = cmpRestock($b['id'], 1);
+    DB::table('inventory_movements')->where('product_id', $c['id'])->whereIn('reason', Campaigns::RESTOCK_REASONS)->update(['reason' => 'order_cancel']);
 
     Carbon::setTestNow(now()->addSeconds(5));
     cmpSell($a['id'], 2);
@@ -288,9 +284,9 @@ it('serves the live campaign with real numbers on each card, and CLOSES it at it
     // The cards, in the team's order, each with its own REAL bar — or none.
     $cards = T::arr($flash['cards']);
     expect(array_map(fn (mixed $card): int => T::int(T::arr($card)['id']), $cards))->toBe([$b['id'], $a['id'], $c['id']])
-        ->and(T::arr($cards[1])['campaign'])->toBe(['start' => $a['stock'], 'sold' => 2, 'left' => $a['stock'] - 2, 'pct' => min(99, (int) round(2 / $a['stock'] * 100)), 'state' => 'selling'])
-        ->and(T::arr($cards[0])['campaign'])->toBe(['start' => $b['stock'], 'sold' => 0, 'left' => $b['stock'], 'pct' => 0, 'state' => 'selling'])
-        ->and(T::arr($cards[2])['campaign'])->toBeNull('a product with no recorded start has NO bar — never an estimated one');
+        ->and(T::arr($cards[1])['campaign'])->toBe(['start' => $shelfA, 'sold' => 2, 'left' => $shelfA - 2, 'pct' => min(99, (int) round(2 / $shelfA * 100)), 'state' => 'selling'])
+        ->and(T::arr($cards[0])['campaign'])->toBe(['start' => $shelfB, 'sold' => 0, 'left' => $shelfB, 'pct' => 0, 'state' => 'selling'])
+        ->and(T::arr($cards[2])['campaign'])->toBeNull('a product with no stock addition has NO bar — never an estimated one');
     expect(array_keys(T::arr($flash['progress'])))->toEqualCanonicalizing([$a['id'], $b['id']]);
 
     // One second before the end it is still live; AT the end it is gone — no grace, no rollover.

@@ -2,6 +2,7 @@
 
 namespace App\Storefront;
 
+use App\Domain\Campaigns\CampaignPrices;
 use App\Domain\Campaigns\Campaigns;
 use App\Domain\Content\SeoTexts;
 use App\Support\ArabicSearch;
@@ -379,11 +380,17 @@ final class ProductListing
                     ->from('catalog_product_watch_specs')->whereIn($column, $ids));
             }
         }
+        // CAMPAIGN PRICES (2026-11-10): while a priced campaign is live, a product under one is filtered, sorted and
+        // bounded by its campaign price; every other product exactly as before (its list price). No priced campaign
+        // live → nothing joined, the query and its plan unchanged.
+        $usesPrice = ($except !== 'price' && ($f['price_min'] !== null || $f['price_max'] !== null)) || ($f['on_sale'] ?? null) === true || is_int($f['min_discount'] ?? null);
+        $campaign = $usesPrice ? CampaignPrices::sqlSale($query, $this->ctx->id()) : null;
+        $priceKey = $campaign === null ? 'sp.effective_price' : "COALESCE({$campaign}, sp.effective_price)";
         if ($except !== 'price' && $f['price_min'] !== null) {
-            $query->where('sp.effective_price', '>=', $f['price_min']);
+            $query->whereRaw(DB::raw("{$priceKey} >= ?"), [$f['price_min']]);
         }
         if ($except !== 'price' && $f['price_max'] !== null) {
-            $query->where('sp.effective_price', '<=', $f['price_max']);
+            $query->whereRaw(DB::raw("{$priceKey} <= ?"), [$f['price_max']]);
         }
         if ($except !== 'in_stock' && $f['in_stock'] === true) {
             $query->where('p.in_stock', 1);
@@ -393,7 +400,12 @@ final class ProductListing
         // sale only, 0 < sale < selling — the rule `StorefrontPricing::resolve` prints as `has_sale` and the checkout
         // prices by, so a product listed here always shows a was-price. No facet count yet (B4's Sale section).
         if (($f['on_sale'] ?? null) === true) {
-            $query->where('sp.effective_sale_price', '>', 0)->whereColumn('sp.effective_sale_price', '<', 'sp.effective_price');
+            if ($campaign === null) {
+                $query->where('sp.effective_sale_price', '>', 0)->whereColumn('sp.effective_sale_price', '<', 'sp.effective_price');
+            } else {
+                $query->where(fn (Builder $q) => $q->whereRaw(DB::raw("{$campaign} IS NOT NULL"))
+                    ->orWhere(fn (Builder $s) => $s->where('sp.effective_sale_price', '>', 0)->whereColumn('sp.effective_sale_price', '<', 'sp.effective_price')));
+            }
         }
         // `min_discount` (the night run, 2026-10-19 — Michael: the deals band is 30 %+ and in stock; the Sale page's
         // sidebar offers Any / 20 / 30 / 40 %+): a VALID sale whose discount, ROUNDED AS THE CARD PRINTS IT
@@ -401,8 +413,16 @@ final class ProductListing
         // −30 % is always in a "30 %+" list, and one showing −29 % never is.
         $min = $f['min_discount'] ?? null;
         if (is_int($min)) {
-            $query->where('sp.effective_sale_price', '>', 0)->whereColumn('sp.effective_sale_price', '<', 'sp.effective_price')
-                ->whereRaw('ROUND((sp.effective_price - sp.effective_sale_price) / sp.effective_price * 100) >= ?', [$min]);
+            if ($campaign === null) {
+                $query->where('sp.effective_sale_price', '>', 0)->whereColumn('sp.effective_sale_price', '<', 'sp.effective_price')
+                    ->whereRaw('ROUND((sp.effective_price - sp.effective_sale_price) / sp.effective_price * 100) >= ?', [$min]);
+            } else {
+                // the discount the card prints: from the original price to the campaign price, else to the valid sale
+                $current = 'CASE WHEN sp.effective_sale_price > 0 AND sp.effective_sale_price < sp.effective_price THEN sp.effective_sale_price ELSE sp.effective_price END';
+                $query->where('sp.effective_price', '>', 0)
+                    ->whereRaw(DB::raw("ROUND((sp.effective_price - COALESCE({$campaign}, {$current})) / sp.effective_price * 100) >= ?"), [$min])
+                    ->whereRaw(DB::raw("ROUND((sp.effective_price - COALESCE({$campaign}, {$current})) / sp.effective_price * 100) > 0"));
+            }
         }
         $q = $f['q'];
         if (is_string($q) && trim($q) !== '') {
@@ -452,10 +472,20 @@ final class ProductListing
     {
         // Tie-breakers are the primary key the index implicitly ends with (sp.id / p.id), so the
         // order is total AND index-served. NULL ratings sort last under DESC.
+        // a price sort: by the price the shopper PAYS (Michael, 2026-11-10) — the campaign price while one is live, else
+        // the product's current price (its valid sale, 0 < sale < price, else its price)
+        if (in_array($sort, ['price_asc', 'price_desc'], true)) {
+            $campaign = CampaignPrices::sqlSale($query, $this->ctx->id());
+            $current = 'CASE WHEN sp.effective_sale_price > 0 AND sp.effective_sale_price < sp.effective_price THEN sp.effective_sale_price ELSE sp.effective_price END';
+            $paid = $campaign === null ? $current : "COALESCE({$campaign}, {$current})";
+            $sort === 'price_asc'
+                ? $query->orderBy(DB::raw($paid))->orderBy('sp.id')
+                : $query->orderByDesc(DB::raw($paid))->orderByDesc('sp.id');
+
+            return;
+        }
         match ($sort) {
             'position' => $query->orderBy('sp.sort_order')->orderBy('sp.product_id'),
-            'price_asc' => $query->orderBy('sp.effective_price')->orderBy('sp.id'),
-            'price_desc' => $query->orderByDesc('sp.effective_price')->orderByDesc('sp.id'),
             'rating' => $query->orderByDesc('p.rating_avg')->orderByDesc('p.id'),
             'featured' => $query->orderByDesc('sp.is_featured')->orderBy('sp.sort_order')->orderBy('sp.id'),
             // §19-5 "available first": in stock, then today's order, then the one total tie-breaker.
@@ -518,7 +548,10 @@ final class ProductListing
 
         $stock = $base('in_stock')->selectRaw('COALESCE(SUM(p.in_stock = 1), 0) as yes, COALESCE(SUM(p.in_stock = 0), 0) as no')->first();
         $out['in_stock'] = ['in' => $stock === null ? 0 : Row::int($stock, 'yes'), 'out' => $stock === null ? 0 : Row::int($stock, 'no')];
-        $price = $base('price')->selectRaw('MIN(sp.effective_price) as lo, MAX(sp.effective_price) as hi')->first();
+        $priceQuery = $base('price');
+        $campaign = CampaignPrices::sqlSale($priceQuery, $this->ctx->id());
+        $priceKey = $campaign === null ? 'sp.effective_price' : "COALESCE({$campaign}, sp.effective_price)";
+        $price = $priceQuery->select(DB::raw("MIN({$priceKey}) as lo"), DB::raw("MAX({$priceKey}) as hi"))->first();
         $lo = $price === null ? null : Row::nmoney($price, 'lo');
         $hi = $price === null ? null : Row::nmoney($price, 'hi');
         $out['price'] = ['min' => $lo === null ? null : (float) $lo, 'max' => $hi === null ? null : (float) $hi];

@@ -2,6 +2,7 @@
 
 namespace App\Storefront;
 
+use App\Domain\Campaigns\CampaignPrices;
 use App\Support\Val;
 use App\Transform\Row;
 use Illuminate\Database\Query\Builder;
@@ -136,7 +137,8 @@ final class ProductCards
             'hover_image' => $images[$id]['hover'] ?? null,
             'colors' => $colors[$id] ?? [],
             'variants' => $variants[$id] ?? [],
-            'price' => StorefrontPricing::resolve(Row::money($row, 'effective_price'), Row::nmoney($row, 'effective_sale_price'), $this->currency()),
+            // the campaign price while a priced campaign is live, with `regular` and `campaign` beside it (2026-11-10)
+            'price' => CampaignPrices::priceOf($sf, $id, Row::money($row, 'effective_price'), Row::nmoney($row, 'effective_sale_price'), $this->currency()),
             'stock' => ['express' => Row::int($row, 'stock_express'), 'market' => Row::int($row, 'stock_market'), 'in_stock' => Row::bool($row, 'in_stock')],
             'rating' => ['avg' => Row::nfloat($row, 'rating_avg'), 'count' => Row::int($row, 'rating_count')],
             'is_featured' => Row::bool($row, 'is_featured'),

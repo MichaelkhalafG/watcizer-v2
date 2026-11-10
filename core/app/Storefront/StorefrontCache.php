@@ -2,6 +2,7 @@
 
 namespace App\Storefront;
 
+use App\Domain\Campaigns\CampaignPrices;
 use Closure;
 use Illuminate\Support\Facades\Cache;
 
@@ -41,8 +42,8 @@ final class StorefrontCache
         // staled by, plus the tree's own events.
         'menu' => ['PlacementChanged', 'StorefrontProductChanged', 'ProductUpdated', 'StockChanged', 'LookupChanged', 'CategoryTreeChanged'],
         // 2026-11-05 (Part 2): a live campaign's cards and its ledger sums (StorefrontCampaigns), 60 seconds. WHICH
-        // campaign is live is never cached. The campaigns page flushes the storefront on every write, and so does
-        // `campaigns:activate` when it records a start; a sale reaches the bar within the TTL.
+        // campaign is live is never cached. The campaigns page flushes the storefront on every write; a sale or a
+        // restock reaches the bar within the TTL (2026-11-10: the bar counts from the last restock).
         'campaign' => ['CampaignChanged', 'PlacementChanged', 'StorefrontProductChanged', 'ProductUpdated', 'StockChanged'],
         'sitemap' => ['StorefrontProductChanged', 'CategoryTreeChanged', 'PlacementChanged', 'ProductUpdated'],
         'compat_names' => ['LookupChanged', 'CategoryTreeChanged'],
@@ -101,10 +102,18 @@ final class StorefrontCache
         return is_int($v) ? $v : $this->version($storefrontId);
     }
 
-    /** Forget one product's DTO on one storefront (ProductUpdated / StockChanged). */
+    /**
+     * Forget one product's DTO on one storefront (ProductUpdated / StockChanged) — under EVERY campaign state the cached
+     * windows can produce, not only the live one (2026-11-10): the page is held for an hour, so a copy held just before
+     * a priced campaign started would otherwise come back at its end with the product as it was before the edit.
+     */
     public function forgetProduct(int $storefrontId, int $productId): void
     {
-        Cache::forget($this->key($storefrontId, 'product', (string) $productId));
+        $this->key($storefrontId, 'product'); // refuses a family that is not in INVALIDATION_MAP
+        $v = $this->version($storefrontId);
+        foreach (CampaignPrices::liveKeys($storefrontId) as $live) {
+            Cache::forget($this->compose($storefrontId, 'product', (string) $productId, $v, $live));
+        }
     }
 
     /**
@@ -170,8 +179,19 @@ final class StorefrontCache
             throw new \InvalidArgumentException("Cache key family [$what] is not in StorefrontCache::INVALIDATION_MAP.");
         }
         $v = $this->version($storefrontId);
+        // CAMPAIGN PRICES (2026-11-10): the name of the live priced campaigns is part of every storefront key, so every
+        // cached card, product page, home and listing is a different entry the second a priced campaign starts or ends
+        // (no cron, no query: CampaignPrices' cached windows). The compat families build their keys in keysFor() and are
+        // not read by either shop; they keep their keys.
+        $live = str_starts_with($what, 'compat') ? '' : CampaignPrices::liveKey($storefrontId);
 
-        return "sf:{$storefrontId}:{$what}".($suffix !== '' ? ":{$suffix}" : '').":v{$v}";
+        return $this->compose($storefrontId, $what, $suffix, $v, $live);
+    }
+
+    /** The one place a storefront key is spelled. */
+    private function compose(int $storefrontId, string $what, string $suffix, int $version, string $live): string
+    {
+        return "sf:{$storefrontId}:{$what}".($suffix !== '' ? ":{$suffix}" : '').":v{$version}".($live !== '' ? ":{$live}" : '');
     }
 
     /**

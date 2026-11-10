@@ -62,7 +62,7 @@ export function fromLegacyCard(row, lang = 'en') {
     brand: { ...(row.brand && typeof row.brand === 'object' ? row.brand : {}), name: { en: brandName, [lang]: brandName } },
     image: imageSrc ? { src: imageSrc } : null,
     hover_image: row.hover_image?.src ? row.hover_image : null,
-    price: { amount: selling, sale_amount: hasSale ? sale : null, has_sale: hasSale, discount_pct: hasSale ? Math.round((1 - sale / selling) * 100) : 0, currency: 'EGP' },
+    price: { amount: selling, sale_amount: hasSale ? sale : null, has_sale: hasSale, discount_pct: hasSale ? Math.round((1 - sale / selling) * 100) : 0, currency: 'EGP', regular: row.price_regular ?? null },
     stock: { express, market, in_stock: typeof row.in_stock === 'boolean' ? row.in_stock : express > 0 || market > 0 },
     colors: Array.isArray(row.colors) ? row.colors : [],
     variants: Array.isArray(row.variants) ? row.variants : [],

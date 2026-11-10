@@ -15,7 +15,8 @@ import WatchHero from '@/src/Components/Hero/WatchHero'
 import HeroZone from '@/src/Components/Home/HeroZone'
 import BrandBanner, { onColor } from '@/src/Components/Home/BrandBanner'
 import CampaignRail from '@/src/Components/Promo/CampaignRail'
-import { useHotDealsMode, useLiveCampaign } from '@/src/Hooks/queries/usePromo'
+import { useHotDealsMode, useLiveCampaign, useLivePrices } from '@/src/Hooks/queries/usePromo'
+import { livePrice } from '@/src/lib/campaign'
 import { money as dealMoney } from '@/src/lib/campaign'
 import './BfHome.css'
 
@@ -84,6 +85,7 @@ export default function BfHome({ home, meta }) {
   // the live campaigns (Part 2, 2026-11-05): the header switch's mode, and whether a Flash Sale is running
   const hotDeals = useHotDealsMode()
   const flashSale = useLiveCampaign('flash_sale')
+  const livePriceMap = useLivePrices()
 
   const deals = home?.deals || []
   // a brand banner (Part 3.3) is a banner with three products by design, not a row of cards: it needs its brand,
@@ -250,7 +252,7 @@ export default function BfHome({ home, meta }) {
               title: txt(r.title, lang),
               description: txt(r.description, lang),
               colors: r.colors || [],
-              products: (r.cards || []).slice(0, 3).map((c) => ({
+              products: (r.cards || []).slice(0, 3).map((raw) => ({ ...raw, price: livePrice(raw.price, raw.id, livePriceMap) })).map((c) => ({
                 id: c.id,
                 // each card of the banner opens ITS OWN product
                 href: `/product/${c.slug}`,
