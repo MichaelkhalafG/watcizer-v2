@@ -94,6 +94,14 @@ const tt = (event, params, eventId) => {
     () => (eventId ? window.ttq.track(event, params, { event_id: eventId }) : window.ttq.track(event, params)),
   )
 }
+// A custom Meta event (no standard name fits): `trackCustom`, the same guard, the same single call per action.
+const fbCustom = (event, params) => {
+  if (!META_PIXEL_IDS.length) return
+  whenReady(
+    () => typeof window.fbq === 'function',
+    () => window.fbq('trackCustom', event, params),
+  )
+}
 // gtag is the stub app/analytics.jsx defines (it pushes to dataLayer, after `config`), so an
 // event queued before gtag.js loads is sent, in order, once it has.
 const ga = (event, params) => {
@@ -277,6 +285,22 @@ const rememberPurchased = (key) => {
 }
 // The event id the server's Conversions API purchase carries for the same order (core,
 // MetaConversions::purchaseEvent): the browser event with the same id is the one Meta drops.
+// ── "Spin the wheel" (2026-11-07) ────────────────────────────────────────────────────────────
+// Two events, the same way as the rest: `spin` when the wheel turns, `coupon_won` when the code is shown. No phone
+// number ever leaves the page in an event — the code and the prize's key are the whole payload.
+export const trackSpin = ({ campaign = null } = {}) => {
+  fbCustom('Spin', { ...(campaign ? { campaign } : {}) })
+  tt('Spin', { ...(campaign ? { campaign } : {}) })
+  ga('spin', { ...(campaign ? { campaign } : {}) })
+}
+
+export const trackCouponWon = ({ code, prize = null, campaign = null }) => {
+  const params = { coupon: String(code || ''), ...(prize ? { prize } : {}), ...(campaign ? { campaign } : {}) }
+  fbCustom('CouponWon', params)
+  tt('CouponWon', params)
+  ga('coupon_won', params)
+}
+
 export const purchaseEventId = (orderNumber) => `purchase-${orderNumber}`
 
 // Order placed and (for a card) paid. `value` is the MERCHANDISE value — it equals what

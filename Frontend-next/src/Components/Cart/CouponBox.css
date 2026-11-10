@@ -73,6 +73,12 @@
   font-size: 12px;
   line-height: 1.45;
 }
+.wz-coupon__message--note {
+  color: var(--wz-gold-text, #8a6b2a);
+}
+.wz-coupon__applied--held {
+  border-color: #e07a6a;
+}
 .wz-coupon__message--error {
   color: #b91c1c;
 }

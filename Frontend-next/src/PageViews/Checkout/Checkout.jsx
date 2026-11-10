@@ -25,7 +25,7 @@ import { cartStore } from '../../Store/cartStore'
 import useFreeShipping from '../../Hooks/useFreeShipping'
 import usePromotion from '../../Hooks/usePromotion'
 import CouponBox from '../../Components/Cart/CouponBox'
-import { discountLabel, payable, setStoredCoupon, storedCoupon } from '../../lib/coupon'
+import { discountLabel, payable, rewardTitle, setCouponPhone, setStoredCoupon, storedCoupon } from '../../lib/coupon'
 import { freeShippingOf, shippingCharged } from '../../lib/freeShipping'
 import { handleImgError, PLACEHOLDER_IMG } from '../../utils/imageUrl'
 import { STOREFRONT_CODE } from '../../lib/env'
@@ -34,7 +34,7 @@ import { trustSignals } from '../../config/trust.config'
 import { PAYMOB_ENABLED } from '../../lib/env'
 import { trackInitiateCheckout, savePendingPurchase } from '../../scripts/pixels'
 import { useOrderConfirmStore } from '../../Store/orderConfirmStore'
-import PaymentBadges from '../../Components/Promo/PaymentBadges'
+import PaymentBadges, { MethodBadge, usePaymentBadgeOf } from '../../Components/Promo/PaymentBadges'
 import './Checkout.css'
 
 // Paymob availability comes from lib/env (NEXT_PUBLIC_PAYMOB_ENABLED), the Next
@@ -178,6 +178,15 @@ const OrderSummary = memo(function OrderSummary({
           <span className="v">−{fmt(promotion.discount)} {currency}</span>
         </div>
       ) : null}
+      {promotion.rewards.map((reward) => (
+        <div className="wz-checkout-line is-save wz-checkout-gift" key={`gift-${reward.product_id}`}>
+          <span>
+            {t('Gift', 'هدية')}: {rewardTitle(reward, isRTL)}
+            {reward.quantity > 1 ? ` × ${reward.quantity}` : ''}
+          </span>
+          <span className="v">{t('Free', 'مجانًا')}</span>
+        </div>
+      ))}
 
       <CouponBox isRTL={isRTL} />
 
@@ -215,7 +224,7 @@ const OrderSummary = memo(function OrderSummary({
         <li><FiPhone size={14} /> {t('WhatsApp support', 'دعم واتساب')}</li>
       </ul>
       {/* the ways to pay this shop offers (Part 7, 2026-11-05) — the same list the method picker reads */}
-      <PaymentBadges className="wz-checkout-badges pm-pay--compact" />
+      <PaymentBadges className="wz-checkout-badges pm-pay--compact" bare />
     </aside>
   )
 })
@@ -267,11 +276,25 @@ function Checkout() {
   const [street, setStreet] = useState('')
   const [apartment, setApartment] = useState('')
   const [phone, setPhone] = useState('')
+  // A WHEEL CODE IS BOUND TO A PHONE (2026-11-07): the number typed here rides with the cart request while a code is
+  // kept, so core can answer "not this number" and the coupon field can say so BEFORE the order is placed; a change
+  // of number re-reads the cart. Cleared when the page is left.
+  useEffect(() => {
+    setCouponPhone(isValidEgPhone(phone) ? phone.trim() : '')
+    if (!storedCoupon()) return undefined
+    const id = setTimeout(() => {
+      cartStore.fetchCart()
+    }, 450)
+    return () => clearTimeout(id)
+  }, [phone])
+  useEffect(() => () => setCouponPhone(''), [])
   const [paymentMethod, setPaymentMethod] = useState('cash')
   // The chosen row of core's list, posted as `payment_method_id`. null = cash, or the fallback
   // card option when the list could not be loaded (core then routes "card" to its card row).
   const [methodId, setMethodId] = useState(null)
   const { data: onlineList, isError: onlineListFailed, refetch: refetchMethods } = usePaymentMethods()
+  // each method's uploaded picture, from the same answer as the "Ways to pay" strip (2026-11-10)
+  const badgeOf = usePaymentBadgeOf()
   // Apple Pay is offered only where it can work: Safari on an Apple device with a card in the
   // wallet. Read after mount — `window` does not exist on the server render.
   const [canApplePay, setCanApplePay] = useState(false)
@@ -946,6 +969,7 @@ function Checkout() {
                       {t('Pay when you receive your order', 'ادفع عند استلام طلبك')}
                     </div>
                   </div>
+                  {badgeOf.get('cod') ? <MethodBadge badge={badgeOf.get('cod')} name={t('Cash on Delivery', 'الدفع عند الاستلام')} /> : null}
                 </label>
 
                 {/* Core's list once it has loaded. While it loads, if it fails, or with online payment
@@ -955,6 +979,8 @@ function Checkout() {
                   onlineMethods.map((m) => {
                     const Icon = METHOD_ICON[m.method] || FiCreditCard
                     const note = METHOD_NOTE[m.method]
+                    const badge = badgeOf.get(m.method)
+                    const name = isRTL ? m.label?.ar : m.label?.en || m.label?.ar
                     const active = paymentMethod === 'card' && methodId === m.id
                     return (
                       <label
@@ -977,16 +1003,20 @@ function Checkout() {
                         <span className="wz-checkout-dot" />
                         <div className="wz-checkout-payopt-main">
                           <div className="wz-checkout-payopt-title">
-                            {isRTL ? m.label?.ar : m.label?.en || m.label?.ar}
-                            <span className="wz-checkout-cards">
-                              <Icon />
-                            </span>
+                            {name}
+                            {/* the line icon only where no picture was uploaded */}
+                            {badge ? null : (
+                              <span className="wz-checkout-cards">
+                                <Icon />
+                              </span>
+                            )}
                           </div>
                           <div className="wz-checkout-payopt-note">
                             {m.reason ||
                               (note ? t(note[0], note[1]) : t('Secure online payment', 'دفع إلكتروني آمن'))}
                           </div>
                         </div>
+                        {badge ? <MethodBadge badge={badge} name={name || ''} /> : null}
                       </label>
                     )
                   })

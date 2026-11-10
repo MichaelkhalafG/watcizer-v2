@@ -9,6 +9,7 @@ import { cartStore } from '../../../Store/cartStore'
 import { useAuthStore } from '../../../Store/authStore'
 import { useUIStore } from '../../../Store/uiStore'
 import { useToastStore } from '../../../Store/toastStore'
+import { takeAuthReturn } from '../../../lib/authReturn'
 import AuthShell from '../../../Components/Auth/AuthShell'
 import SocialButtons from '../../../Components/Auth/SocialButtons'
 import '../auth.css'
@@ -22,9 +23,8 @@ function Login() {
   const router = useRouter()
   const login = useAuthStore((s) => s.login)
   const showToast = useToastStore((s) => s.showToast)
-  // Next has no navigation state; post-login always returns home (the SPA's
-  // location.state.from is never set by our guards).
-  const from = '/'
+  // Where to go after the sign-in: the path the page that sent us here kept (the wheel's "sign in to activate your
+  // invite" — src/lib/authReturn.js), else home.
 
   const emailRef = useRef(null)
   // localStorage isn't available during SSR — start empty and hydrate the
@@ -82,7 +82,7 @@ function Login() {
         cartStore.mergeGuestCart().then((res) => {
           if (res) showToast(t('Your cart has been saved', 'تم حفظ سلتك'), 'success')
         })
-        router.replace(from)
+        router.replace(takeAuthReturn('/'))
       } catch (err) {
         const status = err.response?.status
         if (status === 422 && err.response.data?.errors) {
@@ -105,7 +105,7 @@ function Login() {
         setLoading(false)
       }
     },
-    [email, password, remember, loading, from, login, router, validate, isRTL],
+    [email, password, remember, loading, login, router, validate, isRTL],
   )
 
   const canSubmit = email.trim() && password && !loading

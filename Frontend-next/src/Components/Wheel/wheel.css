@@ -1,0 +1,1590 @@
+/*
+ * "Spin the wheel" — /spin and the floating button (2026-11-07; the carnival version of 2026-11-08, WATCHIZER ONLY).
+ *
+ * THE SKY: a festive violet (#4C1A9A) lit from above by a brighter violet and from below by magenta, with gold rays
+ * turning slowly behind the wheel and gold motes rising — happy and rewarding, never dark or moody. The gold the shop
+ * is known for carries the headline (a gradient through the letters), the rim and the button; the Watchizer mark sits
+ * at the top in white; the segments are the team's own colours. One centred column on a phone; from 900 px the words,
+ * the form and the legend on one side and the wheel on the other, both centred on the screen — nothing to scroll
+ * (2026-11-09). The rhythm is three gaps, not one: tight inside the words, generous around the wheel.
+ *
+ * THE RESULT (2026-11-09): four kinds of card — a code, a gift, an invite, "better luck". The headline is a number alone
+ * (10%) with the prize's own words under it, or words at a smaller size; the conditions are short lines with a gold
+ * dot, not one run-on sentence; one gold button per card, the way to the shop quiet beside it. "Better luck" has no
+ * rays, no confetti, no gold: a calm fade and the shop's door.
+ *
+ * THE REVEAL: a layer FIXED over the whole viewport (dim, burst, prize, card, confetti) — nothing of it inside a
+ * container that could cut it. The card is `min(100% - 32px, 440px)` wide: it never leaves a 320 px screen.
+ *
+ * MOTION: transforms and opacity only; no filters on big layers but the reveal's one blur; every keyframe pauses while
+ * the tab is hidden (`.is-paused`) and all of it is off under prefers-reduced-motion.
+ */
+
+.sp {
+  --sp-violet: #4c1a9a;
+  --sp-violet-2: #8a3dd6;
+  --sp-plum: #2e0d63;
+  --sp-magenta: #d12e8a;
+  --sp-cream: #fff8ea;
+  --sp-muted: rgba(255, 248, 234, 0.78);
+  --sp-faint: rgba(255, 248, 234, 0.45);
+  --sp-line: rgba(255, 240, 176, 0.28);
+  --sp-gold: #f0c75e;
+  --sp-gold-2: #fff0b0;
+  --sp-gold-3: #b98621;
+  --sp-ink: #2a0f45;
+  --sp-pink: #ff5fa2;
+  --sp-pink-2: #e0356f;
+  --sp-gutter: clamp(16px, 5vw, 72px);
+  --sp-mx: 0.5;
+  --sp-my: 0.4;
+  --sp-wheel: min(70vw, 300px); /* the disc's width; the stage's padding is a share of it */
+  position: relative;
+  isolation: isolate;
+  min-height: 100vh;
+  min-height: 100dvh;
+  overflow-x: clip;
+  background: linear-gradient(170deg, var(--sp-violet) 0%, var(--sp-plum) 60%, #3a1068 100%);
+  color: var(--sp-cream);
+  font-family: var(--wz-serif, Georgia, 'Times New Roman', serif);
+}
+.sp[lang='ar'] {
+  font-family: var(--font-el-messiri), Georgia, 'Times New Roman', serif;
+}
+/* every box here is border-box: the frame and the reveal carry padding, and a content-box frame was 39 px wider than a
+   390 px phone (measured: the card ran off the right edge) */
+.sp,
+.sp *,
+.sp *::before,
+.sp *::after {
+  box-sizing: border-box;
+}
+
+/* ── the sky ──────────────────────────────────────────────────────────────────────────────────────── */
+.sp-sky {
+  position: fixed;
+  inset: -6%;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 70% 55% at 50% -8%, var(--sp-violet-2) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 50% at 12% 104%, rgba(209, 46, 138, 0.55) 0%, transparent 60%),
+    radial-gradient(ellipse 50% 45% at 92% 90%, rgba(138, 61, 214, 0.5) 0%, transparent 60%);
+  transform: translate3d(calc((var(--sp-mx) - 0.5) * -22px), calc((var(--sp-my) - 0.5) * -22px), 0);
+  transition: transform 0.7s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.sp-sky__cloud {
+  position: absolute;
+  width: 70vmax;
+  height: 70vmax;
+  border-radius: 50%;
+  background: radial-gradient(circle at center, color-mix(in srgb, var(--c) 60%, transparent) 0%, color-mix(in srgb, var(--c) 22%, transparent) 30%, transparent 62%);
+  opacity: 0.45;
+  will-change: transform;
+  animation: sp-drift 30s ease-in-out infinite alternate;
+}
+.sp-sky__cloud--1 {
+  top: -28vmax;
+  inset-inline-end: -26vmax;
+}
+.sp-sky__cloud--2 {
+  bottom: -34vmax;
+  inset-inline-start: -20vmax;
+  animation-duration: 36s;
+  animation-direction: alternate-reverse;
+}
+@keyframes sp-drift {
+  from {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(6vmax, -4vmax, 0) scale(1.08);
+  }
+  to {
+    transform: translate3d(-5vmax, 5vmax, 0) scale(0.96);
+  }
+}
+/* the sunburst: gold rays behind the wheel, turning */
+.sp-sky__rays {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 180vmax;
+  height: 180vmax;
+  margin: -90vmax 0 0 -90vmax;
+  background: repeating-conic-gradient(from 0deg, rgba(255, 240, 176, 0.16) 0deg 6deg, transparent 6deg 15deg);
+  -webkit-mask: radial-gradient(circle, #000 0%, rgba(0, 0, 0, 0.6) 22%, transparent 48%);
+  mask: radial-gradient(circle, #000 0%, rgba(0, 0, 0, 0.6) 22%, transparent 48%);
+  animation: sp-turn 70s linear infinite;
+}
+.sp-sky__glow {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 70vmin;
+  height: 70vmin;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 240, 176, 0.22), rgba(255, 240, 176, 0.06) 40%, transparent 62%);
+  transform: translate3d(calc(var(--sp-mx) * 100vw - 50%), calc(var(--sp-my) * 100vh - 50%), 0);
+  transition: transform 0.5s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.sp-sky__motes {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  contain: strict;
+}
+.sp.is-paused .sp-sky__cloud,
+.sp.is-paused .sp-sky__rays,
+.sp.is-paused .sp-glow__ring,
+.sp.is-paused .wz-wheel__lamp,
+.sp.is-paused .wz-wfloat__disc svg {
+  animation-play-state: paused;
+}
+
+/* ── home ─────────────────────────────────────────────────────────────────────────────────────────── */
+.sp-home {
+  position: fixed;
+  top: 18px;
+  inset-inline-start: var(--sp-gutter);
+  z-index: 1300;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  height: 36px;
+  padding: 0 14px 0 10px;
+  border-radius: 999px;
+  border: 1px solid var(--sp-line);
+  background: rgba(42, 15, 69, 0.45);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  color: var(--sp-cream);
+  font-size: 13.5px;
+  text-decoration: none;
+  transition:
+    border-color 0.2s ease,
+    background-color 0.2s ease;
+}
+[dir='rtl'] .sp-home {
+  padding: 0 10px 0 14px;
+  font-size: 14px;
+}
+.sp-home:hover {
+  border-color: var(--sp-gold);
+}
+.sp-home:focus-visible {
+  outline: 2px solid var(--sp-gold);
+  outline-offset: 2px;
+}
+.sp-home__arrow {
+  font-size: 15px;
+  line-height: 1;
+}
+
+/* ── the frame: one centred column ────────────────────────────────────────────────────────────────── */
+.sp-frame {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  max-width: 760px;
+  min-height: 100vh;
+  min-height: 100dvh;
+  margin: 0 auto;
+  padding: 56px var(--sp-gutter) 32px;
+}
+/* the words, the form and the legend: on a phone they stack around the wheel (the stage comes after in the DOM and is
+   moved between them by `order`); on a computer they are the side column */
+.sp-side {
+  display: contents;
+}
+.sp-head {
+  order: 1;
+}
+.sp-stage {
+  order: 2;
+  margin: 6px 0 10px;
+}
+.sp-form {
+  order: 3;
+}
+.sp-chips {
+  order: 4;
+  margin-top: 6px;
+}
+/* the mark at its OWN proportions (the file is 1265×851; a forced 150×46 box stretched it — Michael, 2026-11-09 evening) */
+.sp-brand img {
+  width: 72px;
+  height: auto;
+  filter: brightness(0) invert(1);
+  opacity: 0.95;
+}
+.sp-head {
+  width: 100%;
+  text-align: center;
+}
+.sp-title {
+  margin: 0;
+  font-size: clamp(36px, 10.5vw, 46px);
+  font-weight: 700;
+  line-height: 1.02;
+  letter-spacing: -0.01em;
+  text-transform: none;
+  text-wrap: balance;
+  min-height: 2.04em;
+  /* gold through the letters */
+  background: linear-gradient(180deg, #fff6d6 0%, var(--sp-gold) 55%, var(--sp-gold-3) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 4px 18px rgba(240, 199, 94, 0.35));
+}
+.sp[lang='ar'] .sp-title {
+  letter-spacing: 0;
+  line-height: 1.18;
+  min-height: 2.36em;
+}
+.sp-sub {
+  width: 100%;
+  max-width: 560px; /* px, not ch: a ch changes with the font, and the centred box would move at the swap (measured) */
+  min-height: 4.5em;
+  margin: 12px auto 0;
+  color: var(--sp-muted);
+  font-size: 15px;
+  line-height: 1.5;
+  text-wrap: pretty;
+}
+@media (max-width: 359px) {
+  .sp[lang='ar'] .sp-sub {
+    font-size: 14px;
+  }
+}
+
+/* ── the stage ────────────────────────────────────────────────────────────────────────────────────── */
+/* THE STAGE CLIPS (Michael, 2026-11-09 evening: the scrollbar flickered — the halo's box, turning, reached past the
+   viewport's bottom at short heights and grew the document by up to 100 px every few seconds; measured 1366×657 and
+   1440×780, stability.mjs). What turns or tilts here — the disc, the tilt — stays inside this box: `overflow: clip`
+   keeps their overflow out of the document's scroll size, and the padding (22 % of the wheel) holds the disc's turning
+   corners. The GLOW, the ring of light and the landing flash are not in here any more (2026-11-10: the clip cut the
+   glow into a hard-edged rectangle at wide screens): they are the page's fixed glow layer, `.sp-glow`, below. */
+.sp-stage {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  padding: calc(var(--sp-wheel) * 0.22) 0;
+  overflow: hidden;
+  overflow: clip;
+  --prize: #f0c75e;
+}
+.sp-chips {
+  margin: 0;
+}
+.sp-stage__tilt {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  transform: perspective(900px) rotateX(calc((var(--sp-my) - 0.5) * -8deg)) rotateY(calc((var(--sp-mx) - 0.5) * 8deg));
+  transition: transform 0.6s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+/* ── the glow layer: fixed to the viewport, behind the frame, following the disc ───────────────────────────────────
+   The page measures the disc (SpinPage) and sets `--gx`, `--gy` (its centre in viewport pixels) and `--gs` (its width)
+   on the layer. Three circles, each centred there with the `translate` property so the ring can turn with `transform`:
+   a soft gold glow (what the disc's box-shadow used to be), the turning ring of light (what the halo used to be), and
+   the landing flash in the prize's colour. Fixed + clipped by the viewport: never a hard edge, never part of layout. */
+.sp-glow {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  --gx: 50vw;
+  --gy: 50vh;
+  --gs: 300px;
+  --prize: #f0c75e;
+}
+.sp-glow__soft,
+.sp-glow__ring,
+.sp-glow__flash,
+.sp-glow__shadow {
+  position: absolute;
+  left: var(--gx);
+  top: var(--gy);
+  translate: -50% -50%;
+  border-radius: 50%;
+  pointer-events: none;
+}
+.sp-glow__soft {
+  width: calc(var(--gs) * 1.7);
+  height: calc(var(--gs) * 1.7);
+  background: radial-gradient(circle, rgba(255, 240, 176, 0.42) 0%, rgba(255, 240, 176, 0.14) 36%, transparent 62%);
+}
+.sp-glow__shadow {
+  width: calc(var(--gs) * 1.1);
+  height: calc(var(--gs) * 0.5);
+  top: calc(var(--gy) + var(--gs) * 0.46);
+  border-radius: 50%;
+  background: radial-gradient(ellipse, rgba(20, 5, 40, 0.75) 0%, rgba(20, 5, 40, 0.3) 45%, transparent 70%);
+}
+.sp-glow__ring {
+  width: calc(var(--gs) * 1.32);
+  height: calc(var(--gs) * 1.32);
+  background: conic-gradient(from 0deg, transparent 0 18%, rgba(255, 240, 176, 0.5) 27%, transparent 36%, transparent 58%, rgba(255, 255, 255, 0.3) 67%, transparent 76%);
+  -webkit-mask: radial-gradient(circle, transparent 56%, #000 60%, #000 74%, transparent 80%);
+  mask: radial-gradient(circle, transparent 56%, #000 60%, #000 74%, transparent 80%);
+  animation: sp-turn 14s linear infinite;
+}
+.sp-glow.is-spinning .sp-glow__ring {
+  animation-duration: 2.4s;
+}
+.sp-glow__flash {
+  width: calc(var(--gs) * 1.6);
+  height: calc(var(--gs) * 1.6);
+  background: radial-gradient(circle, color-mix(in srgb, var(--prize) 60%, transparent), transparent 60%);
+  opacity: 0;
+}
+.sp-glow.is-landed .sp-glow__flash {
+  animation: sp-flash 1s ease-out 1;
+}
+.sp--ended .sp-glow,
+.sp--revealing .sp-glow__ring {
+  display: none;
+}
+@keyframes sp-flash {
+  0% {
+    opacity: 0;
+    transform: scale(0.7);
+  }
+  25% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.25);
+  }
+}
+
+/* ── the wheel ────────────────────────────────────────────────────────────────────────────────────── */
+.wz-wheel {
+  position: relative;
+  width: var(--sp-wheel);
+  aspect-ratio: 1;
+  animation: sp-arrive 1.1s cubic-bezier(0.2, 0.7, 0.2, 1) 1;
+}
+@keyframes sp-arrive {
+  from {
+    transform: rotate(-22deg) scale(0.97);
+  }
+  to {
+    transform: rotate(0) scale(1);
+  }
+}
+@keyframes sp-turn {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.wz-wheel__disc {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(255, 240, 176, 0.3); /* the glow and the drop shadow are the fixed layer's (.sp-glow) */
+  will-change: transform;
+}
+.wz-wheel--windup .wz-wheel__disc {
+  transition: transform 0.38s cubic-bezier(0.4, 0, 0.7, 1);
+}
+.wz-wheel--spinning .wz-wheel__disc {
+  transition: transform 5.6s cubic-bezier(0.1, 0.8, 0.14, 1.02);
+}
+.wz-wheel__disc svg {
+  display: block;
+}
+.wz-wheel__pointer {
+  position: absolute;
+  top: -22px;
+  left: 50%;
+  z-index: 2;
+  width: 40px;
+  height: 46px;
+  margin-left: -20px;
+  transform-origin: 50% 20%;
+  transform: rotate(0deg);
+  transition: transform 0.09s ease-out;
+  filter: drop-shadow(0 6px 10px rgba(20, 5, 40, 0.6));
+}
+.wz-wheel__pointer[data-tick='1'] {
+  transform: rotate(-12deg);
+}
+.wz-wheel__pointer[data-tick='0'] {
+  transform: rotate(-3deg);
+}
+.wz-wheel--idle .wz-wheel__pointer,
+.wz-wheel--landed .wz-wheel__pointer {
+  transform: rotate(0deg);
+}
+.wz-wheel__big {
+  font-family: var(--wz-serif, Georgia, serif);
+  font-size: 30px;
+  font-weight: 700;
+  fill: #fff;
+  letter-spacing: -0.02em;
+  paint-order: stroke fill;
+  stroke: rgba(0, 0, 0, 0.3);
+  stroke-width: 2px;
+}
+.wz-wheel__big--words {
+  font-size: 23px;
+  letter-spacing: 0.04em;
+}
+.sp[lang='ar'] .wz-wheel__big--words {
+  font-size: 24px;
+  letter-spacing: 0;
+}
+.wz-wheel__seg.is-off {
+  opacity: 0.55;
+}
+.wz-wheel__small {
+  font-family: var(--wz-serif, Georgia, serif);
+  font-size: 11px;
+  font-weight: 700;
+  fill: rgba(255, 255, 255, 0.94);
+  letter-spacing: 0.14em;
+  paint-order: stroke fill;
+  stroke: rgba(0, 0, 0, 0.26);
+  stroke-width: 1.6px;
+}
+.sp[lang='ar'] .wz-wheel__big,
+.sp[lang='ar'] .wz-wheel__small {
+  font-family: var(--font-el-messiri), Georgia, serif;
+  letter-spacing: 0;
+}
+.sp[lang='ar'] .wz-wheel__small {
+  font-size: 13px;
+}
+.wz-wheel__hub {
+  font-family: var(--wz-serif, Georgia, serif);
+  font-size: 30px;
+  font-weight: 700;
+  fill: var(--sp-gold-2);
+}
+.wz-wheel__seg {
+  transition: opacity 0.4s ease;
+}
+.wz-wheel__seg.is-won {
+  stroke: #fff;
+  stroke-width: 3;
+  animation: sp-won 0.5s ease-in-out 4 alternate;
+}
+@keyframes sp-won {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0.62;
+  }
+}
+.wz-wheel__lamp {
+  fill: var(--sp-gold-2);
+  opacity: 0.4;
+  animation: sp-lamp 1.8s steps(1) infinite;
+}
+.wz-wheel__lamp--1 {
+  animation-delay: 0.9s;
+}
+.wz-wheel--spinning .wz-wheel__lamp {
+  animation-duration: 0.26s;
+}
+.wz-wheel--spinning .wz-wheel__lamp--1 {
+  animation-delay: 0.13s;
+}
+@keyframes sp-lamp {
+  0% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+/* ── the form ─────────────────────────────────────────────────────────────────────────────────────── */
+.sp-form {
+  width: min(100%, 460px);
+  text-align: center;
+}
+.sp-form__label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: var(--sp-muted);
+}
+.sp-form__row {
+  display: grid;
+  gap: 10px;
+}
+.sp-input {
+  width: 100%;
+  min-width: 0;
+  height: 56px;
+  padding: 0 18px;
+  border-radius: 999px;
+  border: 1px solid var(--sp-line);
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--sp-cream);
+  font: inherit;
+  font-size: 19px;
+  letter-spacing: 0.1em;
+  text-align: center;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+.sp-input::placeholder {
+  color: var(--sp-faint);
+  letter-spacing: 0.1em;
+}
+.sp-input:focus-visible {
+  outline: none;
+  border-color: var(--sp-gold);
+  box-shadow: 0 0 0 4px rgba(240, 199, 94, 0.28);
+}
+.sp-input.is-error {
+  border-color: #ff8a8a;
+}
+.sp-input:disabled {
+  opacity: 0.6;
+}
+.sp-form__hint {
+  margin: 10px 0 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--sp-muted);
+}
+.sp-note {
+  margin: 10px 0 0;
+  padding: 10px 14px;
+  border-radius: 14px;
+  font-size: 14px;
+  line-height: 1.4;
+  text-align: center;
+}
+.sp-note--error {
+  background: rgba(255, 90, 90, 0.18);
+  color: #ffd0d0;
+}
+.sp-note--info {
+  background: rgba(255, 240, 176, 0.14);
+  color: var(--sp-gold-2);
+}
+
+/* ── the buttons ──────────────────────────────────────────────────────────────────────────────────── */
+.sp-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 56px;
+  padding: 0 26px;
+  border: 0;
+  border-radius: 999px;
+  background: linear-gradient(180deg, var(--sp-gold-2), var(--sp-gold) 50%, var(--sp-gold-3));
+  color: var(--sp-ink);
+  font: inherit;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-decoration: none;
+  cursor: pointer;
+  box-shadow:
+    0 14px 36px -12px rgba(240, 199, 94, 0.85),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.2s ease,
+    opacity 0.2s ease;
+}
+.sp-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow:
+    0 18px 40px -12px rgba(240, 199, 94, 1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+.sp-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+.sp-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+  box-shadow: none;
+}
+.sp-btn:focus-visible {
+  outline: 2px solid var(--sp-gold-2);
+  outline-offset: 3px;
+}
+.sp-btn--pink {
+  background: linear-gradient(180deg, var(--sp-pink), var(--sp-pink-2));
+  color: #fff;
+  box-shadow:
+    0 14px 36px -12px rgba(224, 53, 111, 0.9),
+    inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+.sp-btn--pink:hover:not(:disabled) {
+  box-shadow:
+    0 18px 40px -12px rgba(224, 53, 111, 1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.4);
+}
+/* the quiet way out: the shop's door beside the gold button, never competing with it */
+.sp-btn--ghost {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--sp-cream);
+  border: 1px solid var(--sp-line);
+  box-shadow: none;
+}
+.sp-btn--ghost:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.13);
+  border-color: var(--sp-gold);
+  box-shadow: none;
+}
+
+/* ── the prizes, as chips ─────────────────────────────────────────────────────────────────────────── */
+.sp-chips {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.sp-chips li {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 6px 12px 6px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.1);
+  font-size: 13px;
+  color: var(--sp-cream);
+}
+.sp-chips span {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+[dir='rtl'] .sp-chips li {
+  padding: 6px 8px 6px 12px;
+}
+.sp-chips i {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--c);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--c) 85%, transparent);
+}
+.sp-chips li.is-off {
+  opacity: 0.55;
+}
+.sp-chips li.is-off i {
+  background: transparent;
+  border: 2px solid var(--c);
+  box-shadow: none;
+}
+
+/* ── the reveal: over the whole screen ────────────────────────────────────────────────────────────── */
+.sp-reveal {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+}
+/* the scroller (2026-11-10): the whole screen, above the dim, the rays and the confetti. The card is centred when it fits
+   (auto margins) and starts at the top when it does not — never cut above, always reachable below. Its scroll stays in
+   the layer (overscroll-behavior), and the layer is fixed: the page's own size never changes. */
+.sp-reveal__scroll {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  overflow: hidden auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 64px 16px 20px;
+}
+.sp-reveal__dim {
+  position: fixed;
+  inset: 0;
+  background: rgba(30, 8, 56, 0.72);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  animation: sp-fade 0.4s ease-out 1;
+}
+.sp-reveal__burst {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  width: 160vmax;
+  height: 160vmax;
+  margin: -80vmax 0 0 -80vmax;
+  background: repeating-conic-gradient(from 0deg, color-mix(in srgb, var(--prize) 55%, transparent) 0deg 8deg, transparent 8deg 20deg);
+  -webkit-mask: radial-gradient(circle, #000 0%, rgba(0, 0, 0, 0.5) 20%, transparent 46%);
+  mask: radial-gradient(circle, #000 0%, rgba(0, 0, 0, 0.5) 20%, transparent 46%);
+  opacity: 0.9;
+  animation:
+    sp-turn 30s linear infinite,
+    sp-burst-in 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) 1;
+  pointer-events: none;
+}
+@keyframes sp-burst-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 0.9;
+  }
+}
+.sp-reveal__centre {
+  position: relative;
+  z-index: 2; /* above the confetti canvas: no flake ever crosses the code */
+  flex: none;
+  margin-block: auto;
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  width: 100%;
+  max-width: 440px;
+  min-width: 0;
+  text-align: center;
+}
+.sp-reveal__centre > * {
+  min-width: 0;
+  max-width: 100%;
+}
+.sp-reveal__congrats {
+  margin: 0;
+  font-size: clamp(18px, min(5.6vw, 3.2vh), 26px);
+  font-size: clamp(18px, min(5.6vw, 3.2dvh), 26px);
+  font-weight: 700;
+  color: var(--sp-gold-2);
+  letter-spacing: 0.04em;
+  text-shadow: 0 2px 20px rgba(0, 0, 0, 0.4);
+  animation: sp-fade 0.5s ease-out 1;
+}
+.sp-reveal__prize {
+  margin: 0 0 4px;
+  font-size: clamp(46px, min(17vw, 12vh), 112px);
+  font-size: clamp(46px, min(17vw, 12dvh), 112px);
+  font-weight: 700;
+  line-height: 1;
+  text-transform: none;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+  background: linear-gradient(180deg, #fff6d6 0%, var(--sp-gold) 55%, var(--sp-gold-3) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 0 28px color-mix(in srgb, var(--prize) 80%, transparent)) drop-shadow(0 8px 24px rgba(0, 0, 0, 0.5));
+  animation: sp-prize-in 0.9s cubic-bezier(0.2, 0.9, 0.2, 1.15) 1;
+}
+.sp[lang='ar'] .sp-reveal__prize {
+  letter-spacing: 0;
+  line-height: 1.15;
+}
+/* words instead of a number: Free shipping, A gift!, Better luck next time */
+.sp-reveal__prize--words {
+  font-size: clamp(30px, min(9vw, 7vh), 64px);
+  font-size: clamp(30px, min(9vw, 7dvh), 64px);
+  line-height: 1.08;
+}
+.sp[lang='ar'] .sp-reveal__prize--words {
+  line-height: 1.25;
+}
+/* the prize's own words under the number: "off the 2nd watch", the gift's name */
+.sp-reveal__prize-sub {
+  max-width: 30ch;
+  margin: -2px 0 4px;
+  font-size: clamp(15px, min(4.6vw, 2.6vh), 22px);
+  font-size: clamp(15px, min(4.6vw, 2.6dvh), 22px);
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--sp-cream);
+  text-wrap: balance;
+  text-shadow: 0 2px 16px rgba(0, 0, 0, 0.4);
+  animation: sp-fade 0.7s ease-out 1;
+}
+/* "better luck": calm — a deeper dim, cream words that fade in without a bounce, no gold glow, no rays */
+.sp-reveal--none .sp-reveal__dim {
+  background: rgba(30, 8, 56, 0.82);
+}
+.sp-reveal--none .sp-reveal__congrats {
+  color: var(--sp-muted);
+}
+.sp-reveal--none .sp-reveal__prize {
+  background: none;
+  color: var(--sp-cream);
+  filter: drop-shadow(0 8px 24px rgba(0, 0, 0, 0.5));
+  animation: sp-soft-in 0.9s ease-out 1;
+}
+@keyframes sp-soft-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.sp-reveal--none .sp-card {
+  border-color: rgba(255, 248, 234, 0.22);
+  box-shadow: 0 30px 80px -24px rgba(0, 0, 0, 0.7);
+}
+@keyframes sp-prize-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.12);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+/* while the prize alone is on screen, the card waits below the fold of attention */
+.sp-reveal--burst .sp-card {
+  opacity: 0;
+  transform: translateY(26px) scale(0.96);
+}
+.sp-reveal--card .sp-card {
+  animation: sp-card-in 0.55s cubic-bezier(0.2, 0.7, 0.2, 1) 1;
+}
+@keyframes sp-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(26px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+@keyframes sp-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.sp-confetti {
+  position: fixed;
+  inset: 0;
+  z-index: 1; /* inside the reveal's own stacking context: over the dim and the rays, UNDER the card */
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* ── the card ─────────────────────────────────────────────────────────────────────────────────────── */
+.sp-card {
+  position: relative;
+  display: grid;
+  gap: 10px;
+  justify-items: center;
+  width: 100%;
+  padding: 24px 20px 22px;
+  border-radius: 28px;
+  border: 1px solid rgba(255, 240, 176, 0.5);
+  background: linear-gradient(170deg, #5a1f9c, #2a0f45);
+  box-shadow:
+    0 30px 80px -24px rgba(0, 0, 0, 0.7),
+    0 0 70px -20px color-mix(in srgb, var(--prize, #f0c75e) 70%, transparent);
+  text-align: center;
+}
+.sp-card__label {
+  margin: 0;
+  font-size: 13px;
+  color: var(--sp-muted);
+}
+.sp-card__code-row {
+  display: grid;
+  gap: 10px;
+  width: 100%;
+}
+.sp-card__code {
+  display: block;
+  width: 100%;
+  padding: 12px 10px;
+  border-radius: 16px;
+  border: 1px dashed rgba(255, 240, 176, 0.6);
+  background: rgba(20, 6, 40, 0.5);
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: clamp(22px, 6.6vw, 28px);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--sp-gold-2);
+  user-select: all;
+  overflow-wrap: anywhere;
+}
+.sp-card .sp-btn {
+  height: 52px;
+  font-size: 16px;
+}
+.sp-card__left {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin: 0;
+  font-size: 14px;
+  color: var(--sp-muted);
+}
+.sp-card__clock {
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  color: var(--sp-cream);
+}
+.sp-card__state {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 12px;
+  font-size: 14px;
+}
+.sp-card__state--used {
+  background: rgba(15, 157, 110, 0.25);
+  color: #c7f5e3;
+}
+.sp-card__state--expired {
+  background: rgba(255, 90, 90, 0.2);
+  color: #ffd0d0;
+}
+.sp-card__bound {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--sp-muted);
+}
+/* the conditions: one short line each, a gold dot before it, read from the start edge */
+.sp-card__lines {
+  display: grid;
+  gap: 3px;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  text-align: start;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--sp-muted);
+}
+.sp-card__lines li {
+  position: relative;
+  padding-inline-start: 16px;
+}
+.sp-card__lines li::before {
+  content: '';
+  position: absolute;
+  inset-inline-start: 1px;
+  top: 0.5em;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--sp-gold);
+  opacity: 0.85;
+}
+/* "better luck" and the gift's line: a sentence, not a label */
+.sp-card__kind {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--sp-cream);
+}
+.sp-card__kind strong {
+  color: var(--sp-gold-2);
+}
+.sp-card--none .sp-btn {
+  margin-top: 6px;
+}
+.sp-card__kind--title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--sp-gold-2);
+}
+/* the optional step on a code or a gift (2026-11-10): save it to the account — quiet, below the conditions */
+.sp-save {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid var(--sp-line);
+  background: rgba(255, 255, 255, 0.06);
+  text-align: start;
+}
+.sp-save__title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--sp-gold-2);
+}
+.sp-save__line {
+  margin: 0 0 4px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--sp-muted);
+}
+.sp-card .sp-btn--small {
+  height: 44px;
+  font-size: 14px;
+}
+.sp-saved {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 14px;
+  color: #c7f5e3;
+}
+.sp-saved a {
+  color: var(--sp-gold-2);
+}
+.sp-card__state--wait {
+  background: rgba(255, 240, 176, 0.14);
+  color: var(--sp-gold-2);
+}
+/* the share buttons: each app in its own colour, two to a row; the phone's own sheet across the row */
+.sp-share {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+}
+.sp-share__row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.sp-share__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 0;
+  height: 44px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--sp-cream);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+.sp-share__btn:hover {
+  transform: translateY(-1px);
+}
+.sp-share__btn:focus-visible {
+  outline: 2px solid var(--sp-gold-2);
+  outline-offset: 2px;
+}
+.sp-share__btn svg {
+  flex: none;
+  font-size: 18px;
+}
+.sp-share__btn span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.sp-share__btn--wa {
+  background: #25d366;
+  color: #073b1d;
+}
+.sp-share__btn--ms {
+  background: #0084ff;
+  color: #fff;
+}
+.sp-share__btn--ig {
+  background: linear-gradient(45deg, #f58529, #dd2a7b 55%, #8134af);
+  color: #fff;
+}
+.sp-share__btn--tt {
+  background: #111;
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.35);
+}
+.sp-share__btn--more {
+  grid-column: 1 / -1;
+  border-color: var(--sp-line);
+}
+.sp-share__note {
+  margin: 0;
+  font-size: 13px;
+  color: var(--sp-gold-2);
+}
+/* the invite: copy and share side by side */
+.sp-card__row2 {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+  width: 100%;
+}
+.sp-card__row2 .sp-btn {
+  width: 100%;
+  min-width: 0;
+  padding: 0 12px;
+}
+/* the friends: two small counts */
+.sp-card__friends {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+  width: 100%;
+}
+.sp-card__friends > div {
+  display: grid;
+  gap: 2px;
+  padding: 10px 8px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.08);
+}
+.sp-card__friends strong {
+  font-size: 26px;
+  line-height: 1;
+  color: var(--sp-gold-2);
+  font-variant-numeric: tabular-nums;
+}
+.sp-card__friends span {
+  font-size: 12.5px;
+  color: var(--sp-muted);
+}
+/* the winner's reward codes, as they are earned */
+.sp-card__rewards {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  text-align: start;
+}
+.sp-card__rewards p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--sp-muted);
+}
+.sp-card__reward {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px dashed rgba(255, 240, 176, 0.45);
+  background: rgba(20, 6, 40, 0.5);
+}
+.sp-card__reward output {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--sp-gold-2);
+}
+.sp-card__reward span {
+  flex: none;
+  font-size: 12px;
+  color: var(--sp-muted);
+}
+.sp-card__reward button {
+  flex: none;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid var(--sp-line);
+  background: transparent;
+  color: var(--sp-cream);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.sp-card__reward button:hover {
+  border-color: var(--sp-gold);
+}
+
+/* ── ended ────────────────────────────────────────────────────────────────────────────────────────── */
+.sp-ended {
+  text-align: center;
+  padding: 24px 0 40px;
+}
+.sp-ended .sp-btn {
+  width: auto;
+  min-width: 240px;
+  margin-top: 26px;
+}
+
+/* ── wider screens: the same column, larger ───────────────────────────────────────────────────────── */
+@media (min-width: 480px) {
+  .sp-form__row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .sp-input {
+    text-align: start;
+    padding-inline-start: 22px;
+  }
+  .sp-btn {
+    width: auto;
+    min-width: 180px;
+  }
+  .sp-card .sp-btn {
+    width: 100%;
+  }
+}
+@media (min-width: 900px) {
+  /* the words, the form and the legend on one side; the wheel on the other; both centred on the screen */
+  .sp-frame {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas:
+      'brand brand'
+      'side stage';
+    grid-template-rows: auto 1fr;
+    align-items: center;
+    column-gap: clamp(32px, 5vw, 80px);
+    row-gap: 0;
+    max-width: 1160px;
+    padding-top: 26px;
+    padding-bottom: 32px;
+  }
+  .sp-brand {
+    grid-area: brand;
+    justify-self: center;
+  }
+  .sp {
+    /* the wheel also fits the HEIGHT: the stage (wheel + 2 x 22 %) under the mark's row, so a 1366x657 laptop has no
+       scrollbar at all (measured 770 px tall before: a steady bar, the wheel's bottom cut) */
+    /* 148 px: the mark's row and the padding — 140 + 0.9 px in Arabic, whose mark row runs 5 px taller (measured 2026-11-10) */
+    --sp-wheel: min(42vw, 440px, calc((100vh - 148px) / 1.44));
+    --sp-wheel: min(42vw, 440px, calc((100dvh - 148px) / 1.44));
+  }
+  .sp-brand img {
+    width: 110px;
+  }
+  .sp-side {
+    grid-area: side;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 26px;
+    width: 100%;
+    max-width: 520px;
+    justify-self: end;
+  }
+  .sp-head {
+    text-align: start;
+  }
+  .sp-title {
+    font-size: clamp(42px, 3.9vw, 56px);
+    min-height: 0;
+  }
+  .sp-sub {
+    margin-inline: 0;
+    font-size: 16px;
+  }
+  .sp-stage {
+    grid-area: stage;
+    margin: 0;
+  }
+  .wz-wheel__pointer {
+    top: -26px;
+  }
+  .sp-form {
+    width: 100%;
+    text-align: start;
+  }
+  .sp-chips {
+    margin: 0;
+  }
+  .sp-ended {
+    grid-column: 1 / -1;
+    justify-self: center;
+  }
+  .sp-card {
+    padding: 30px 28px 26px;
+  }
+  /* the Home pill sits in the corner, beside the centred column: the result may start near the top */
+  .sp-reveal__scroll {
+    padding-top: 28px;
+  }
+}
+
+/* ── the result on a short screen (2026-11-10): every part on the screen down to ~780 px of height; below that the
+   result layer scrolls (never the page) ─────────────────────────────────────────────────────────────────────── */
+@media (min-width: 480px) {
+  /* the code and Copy on one row where the card is wide enough */
+  .sp-card__code-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: stretch;
+  }
+  .sp-card__code-row .sp-btn {
+    width: auto;
+    min-width: 0;
+    height: auto;
+    min-height: 52px;
+    padding-inline: 22px;
+  }
+}
+@media (max-height: 960px) {
+  .sp-reveal__centre {
+    gap: 6px;
+  }
+  .sp-card {
+    gap: 8px;
+    padding: 18px 18px 16px;
+  }
+  .sp-card .sp-btn {
+    height: 46px;
+  }
+  .sp-card__code {
+    padding: 9px 10px;
+    font-size: clamp(20px, 6vw, 25px);
+  }
+  .sp-card__code-row .sp-btn {
+    min-height: 46px;
+  }
+  .sp-card__lines {
+    gap: 1px;
+    font-size: 12.5px;
+    line-height: 1.35;
+  }
+  .sp-save {
+    gap: 4px;
+    padding: 9px 12px;
+  }
+  .sp-save__title {
+    font-size: 14px;
+  }
+  .sp-save__line {
+    margin: 0 0 2px;
+    font-size: 12.5px;
+    line-height: 1.4;
+  }
+  .sp-card .sp-btn--small {
+    height: 40px;
+  }
+}
+@media (min-width: 900px) and (max-height: 960px) {
+  .sp-card {
+    padding: 20px 24px 18px;
+  }
+}
+@media (max-width: 899px) and (max-height: 760px) {
+  /* the Home pill ends at 54 px: the result may start just under it */
+  .sp-reveal__scroll {
+    padding-top: 60px;
+  }
+  .sp-card {
+    gap: 7px;
+  }
+}
+@media (max-height: 720px) {
+  .sp-reveal__scroll {
+    padding-bottom: 14px;
+  }
+  .sp-card .sp-btn {
+    height: 42px;
+    font-size: 15px;
+  }
+  .sp-card__code-row .sp-btn {
+    min-height: 42px;
+  }
+  .sp-card__left,
+  .sp-card__label,
+  .sp-card__bound {
+    font-size: 12.5px;
+  }
+}
+
+/* ── the floating button ──────────────────────────────────────────────────────────────────────────── */
+.wz-wfloat {
+  position: relative;
+  display: inline-block;
+}
+.wz-wfloat__btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  height: 48px;
+  min-width: 48px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 240, 176, 0.7);
+  background: linear-gradient(180deg, #5a1f9c, #2a0f45);
+  color: #fff0b0;
+  text-decoration: none;
+  box-shadow: 0 10px 24px -10px rgba(20, 5, 40, 0.8);
+  overflow: hidden;
+}
+.wz-wfloat__btn::after {
+  content: '';
+  position: absolute;
+  inset: -40% auto -40% -60%;
+  width: 40%;
+  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.24), transparent);
+  transform: skewX(-20deg);
+  animation: wz-wfloat-shine 7s 2s ease-in-out infinite;
+  pointer-events: none;
+}
+.wz-wfloat__ring {
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  border: 1px solid rgba(255, 240, 176, 0.85);
+  animation: wz-wfloat-pulse 2.8s ease-out infinite;
+  pointer-events: none;
+}
+.wz-wfloat__disc {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  flex: none;
+}
+.wz-wfloat__disc svg {
+  animation: wz-wfloat-turn 16s linear infinite;
+}
+.wz-wfloat__label {
+  display: none;
+}
+.wz-wfloat__close {
+  position: absolute;
+  top: -5px;
+  inset-inline-start: -5px;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 240, 176, 0.7);
+  background: #2a0f45;
+  color: #fff0b0;
+  font-size: 12px;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.wz-wfloat__close::before {
+  content: '';
+  position: absolute;
+  inset: -7px;
+}
+@keyframes wz-wfloat-turn {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes wz-wfloat-shine {
+  0%,
+  70% {
+    transform: translateX(-120%) skewX(-20deg);
+  }
+  100% {
+    transform: translateX(520%) skewX(-20deg);
+  }
+}
+@keyframes wz-wfloat-pulse {
+  0% {
+    transform: scale(1);
+    opacity: 0.9;
+  }
+  70%,
+  100% {
+    transform: scale(1.45);
+    opacity: 0;
+  }
+}
+@media (min-width: 769px) {
+  .wz-wfloat__label {
+    display: block;
+    max-width: 0;
+    padding-inline-end: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    opacity: 0;
+    font-size: 13px;
+    font-weight: 700;
+    transition:
+      max-width 0.32s ease,
+      opacity 0.25s ease,
+      padding 0.32s ease;
+  }
+  .wz-wfloat__btn:hover .wz-wfloat__label,
+  .wz-wfloat__btn:focus-visible .wz-wfloat__label {
+    max-width: 240px;
+    padding-inline-end: 16px;
+    opacity: 1;
+  }
+  .wz-wfloat__btn:focus-visible {
+    outline: 2px solid #fff0b0;
+    outline-offset: 2px;
+  }
+}
+
+/* ── no motion ────────────────────────────────────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .sp-sky,
+  .sp-sky__glow,
+  .sp-stage__tilt,
+  .wz-wheel__disc,
+  .wz-wheel__pointer,
+  .sp-btn,
+  .sp-input {
+    transition: none;
+  }
+  .sp-sky,
+  .sp-stage__tilt {
+    transform: none;
+  }
+  .sp-sky__cloud,
+  .sp-sky__rays,
+  .sp-sky__glow,
+  .wz-wheel,
+  .sp-glow__ring,
+  .sp-glow.is-landed .sp-glow__flash,
+  .wz-wheel__lamp,
+  .wz-wheel__seg.is-won,
+  .sp-reveal__dim,
+  .sp-reveal__burst,
+  .sp-reveal__congrats,
+  .sp-reveal__prize,
+  .sp-reveal__prize-sub,
+  .sp-reveal--card .sp-card,
+  .wz-wfloat__disc svg,
+  .wz-wfloat__btn::after,
+  .wz-wfloat__ring {
+    animation: none;
+  }
+  .sp-reveal--burst .sp-card {
+    opacity: 1;
+    transform: none;
+  }
+  .sp-reveal__burst {
+    opacity: 0.5;
+  }
+  .wz-wheel__lamp {
+    opacity: 0.8;
+  }
+}

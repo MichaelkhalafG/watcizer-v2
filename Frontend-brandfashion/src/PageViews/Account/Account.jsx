@@ -24,10 +24,13 @@ import {
   FiCheck,
   FiUpload,
   FiShoppingBag,
+  FiGift,
 } from 'react-icons/fi'
 import { FaWhatsapp } from 'react-icons/fa'
 import { FcGoogle } from 'react-icons/fc'
 import { useCards, useCardsOf } from '../../Hooks/queries/useListing'
+import { useCampaigns } from '../../Hooks/queries/usePromo'
+import WheelTab from '../../Components/Account/WheelTab'
 import { useOffers } from '../../Hooks/queries/useOffers'
 import { useUIStore } from '../../Store/uiStore'
 import { useAuthStore } from '../../Store/authStore'
@@ -46,7 +49,7 @@ const SUPPORT_WHATSAPP = '201283888490'
 
 // No 'wishlist' tab (batch 1, 2026-09-26): the wishlist was deleted in Phase 0 (G6) and its
 // endpoints with it. An old `?tab=wishlist` link lands on the default tab.
-const TABS = ['profile', 'orders', 'addresses', 'password']
+const TABS = ['profile', 'orders', 'addresses', 'password', 'wheel']
 
 // ── helpers ────────────────────────────────────────────────────────────────
 const money = (v, isRTL) =>
@@ -148,12 +151,14 @@ const StatusBadge = ({ status, isRTL }) => {
 // =============================================================================
 //  Sidebar
 // =============================================================================
-const Sidebar = memo(function Sidebar({ tab, onSelect, onSignOut, user, avatar, memberYear, t }) {
+const Sidebar = memo(function Sidebar({ tab, onSelect, onSignOut, user, avatar, memberYear, t, showWheel = false }) {
   const links = [
     { key: 'profile', icon: <FiUser />, label: t('Personal Info', 'المعلومات الشخصية') },
     { key: 'orders', icon: <FiPackage />, label: t('My Orders', 'طلباتي') },
     { key: 'addresses', icon: <FiMapPin />, label: t('Addresses', 'العناوين') },
     { key: 'password', icon: <FiLock />, label: t('Change Password', 'تغيير كلمة المرور') },
+    // the wheel's invites and rewards (2026-11-09 evening): only while this storefront's wheel is switched on
+    ...(showWheel ? [{ key: 'wheel', icon: <FiGift />, label: t('Spin the wheel', 'عجلة الحظ') }] : []),
   ]
 
   return (
@@ -1022,6 +1027,8 @@ function Account() {
   }, [logout, showToast, router, t])
 
   const avatar = user?.image || ''
+  const { data: campaignsData } = useCampaigns()
+  const showWheel = campaignsData?.wheel?.enabled === true
 
   return (
     <div className="wz-account-page" dir={isRTL ? 'rtl' : 'ltr'}>
@@ -1034,12 +1041,14 @@ function Account() {
           avatar={avatar}
           memberYear={memberYear}
           t={t}
+          showWheel={showWheel}
         />
         <main className="wz-account-content">
           {tab === 'profile' && <ProfileTab t={t} isRTL={isRTL} />}
           {tab === 'orders' && <OrdersTab t={t} isRTL={isRTL} />}
           {tab === 'addresses' && <AddressesTab t={t} isRTL={isRTL} />}
           {tab === 'password' && <PasswordTab t={t} />}
+          {tab === 'wheel' && showWheel && <WheelTab isRTL={isRTL} />}
         </main>
         {/* Sign-out is hidden from the horizontal tab row on mobile — this
             dedicated button (mobile-only via CSS) replaces it. */}

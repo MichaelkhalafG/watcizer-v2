@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
+import { takeAuthReturn } from '../../lib/authReturn'
 import { useRouter } from '@/src/Hooks/useLocaleRouter'
 import http from '../../Context/api'
 import { useAuthStore } from '../../Store/authStore'
@@ -66,7 +67,7 @@ export default function AuthCallback() {
       .get('/auth/me')
       .then(({ data }) => {
         login({ ...data, token })
-        router.replace('/')
+        router.replace(takeAuthReturn('/'))                                         // back to the page that sent us (the wheel), else home
       })
       .catch(() => {
         sessionStorage.removeItem('token')

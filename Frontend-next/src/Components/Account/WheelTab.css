@@ -1,0 +1,286 @@
+/* The account's "Spin the wheel" tab (2026-11-10; a TWIN) — the account pages' own tokens (white cards, ink, gold)
+   with ONE festive element: each code is a ticket, its edge in the prize's wheel colour, a torn line across it. A violet
+   band at the top carries the wheel's colour into the white page. Phone first: one column; two from 900 px. */
+
+.wz-wcodes {
+  --wc-violet: #4c1a9a;
+  --wc-plum: #2a0f45;
+  --wc-gold: var(--acc-gold, #c8a45c);
+  --wc-cream: #fff8ea;
+  --wc-ink: var(--acc-ink, #111);
+  --wc-muted: var(--acc-muted, rgba(0, 0, 0, 0.55));
+  --wc-line: var(--acc-border, rgba(0, 0, 0, 0.12));
+  --wc-paper: #fff;
+  --wc-ground: #fafafa;
+}
+
+/* ── the band ─────────────────────────────────────────────────────────────── */
+.wz-wcodes__band {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 22px;
+  padding: 16px 18px;
+  border-radius: 12px;
+  background: linear-gradient(120deg, var(--wc-violet), var(--wc-plum));
+  color: var(--wc-cream);
+}
+.wz-wcodes__wheel {
+  flex: none;
+}
+.wz-wcodes__band-title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  color: #f1dfae;
+}
+.wz-wcodes__band-line {
+  margin: 4px 0 0;
+  max-width: 60ch;
+  font-size: 13px;
+  line-height: 1.55;
+  color: rgba(255, 248, 234, 0.82);
+}
+
+/* ── the groups ───────────────────────────────────────────────────────────── */
+.wz-wcodes__group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--wc-ink);
+}
+.wz-wcodes__group span {
+  min-width: 22px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--wc-gold);
+  color: #fff;
+  font-size: 12px;
+  text-align: center;
+}
+.wz-wcodes__group--past {
+  margin-top: 26px;
+  color: var(--wc-muted);
+}
+.wz-wcodes__group--past span {
+  background: rgba(0, 0, 0, 0.2);
+}
+.wz-wcodes__list {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+@media (min-width: 900px) {
+  .wz-wcodes__list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* ── the ticket ───────────────────────────────────────────────────────────── */
+.wz-wcodes__ticket {
+  --prize: var(--wc-gold);
+  position: relative;
+  display: grid;
+  border: 1px solid var(--wc-line);
+  border-inline-start: 6px solid var(--prize);
+  border-radius: 12px;
+  background: var(--wc-paper);
+  overflow: hidden;
+}
+.wz-wcodes__top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px 12px;
+}
+.wz-wcodes__what {
+  min-width: 0;
+}
+.wz-wcodes__kind {
+  display: inline-block;
+  margin-bottom: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--prize) 14%, transparent);
+  color: color-mix(in srgb, var(--prize) 75%, #000);
+  font-size: 11.5px;
+  font-weight: 700;
+}
+.wz-wcodes__prize {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.35;
+  color: var(--wc-ink);
+}
+.wz-wcodes__note {
+  margin: 4px 0 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--wc-muted);
+}
+.wz-wcodes__state {
+  flex: none;
+  display: grid;
+  justify-items: end;
+  gap: 2px;
+  font-size: 12.5px;
+  color: var(--wc-muted);
+  text-align: end;
+}
+.wz-wcodes__state.is-used {
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: rgba(15, 157, 110, 0.12);
+  color: #0b6b4b;
+  font-weight: 600;
+}
+.wz-wcodes__state.is-expired {
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.06);
+  font-weight: 600;
+}
+.wz-wcodes__clock {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--wc-ink);
+}
+/* the clock run only: the day word keeps the page's typeface */
+.wz-wcodes__clock [dir='ltr'] {
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+}
+/* the torn line: a dashed rule between two notches cut from the ticket's sides */
+.wz-wcodes__tear {
+  position: relative;
+  height: 1px;
+  margin: 0 14px;
+  background-image: linear-gradient(to right, var(--wc-line) 55%, transparent 0);
+  background-size: 9px 1px;
+}
+.wz-wcodes__tear::before,
+.wz-wcodes__tear::after {
+  content: '';
+  position: absolute;
+  top: -8px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--wc-ground);
+  border: 1px solid var(--wc-line);
+}
+.wz-wcodes__tear::before {
+  inset-inline-start: -29px;
+}
+.wz-wcodes__tear::after {
+  inset-inline-end: -23px;
+}
+.wz-wcodes__bottom {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px 14px;
+}
+.wz-wcodes__code {
+  flex: 1;
+  min-width: 0;
+  padding: 9px 12px;
+  border: 1px dashed var(--wc-gold);
+  border-radius: 8px;
+  background: #fffdf7;
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--wc-ink);
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+.wz-wcodes__copy {
+  flex: none;
+  height: 40px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--wc-ink);
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+.wz-wcodes__copy:hover {
+  background: var(--wc-violet);
+}
+.wz-wcodes__copy:focus-visible,
+.wz-wcodes__cta:focus-visible,
+.wz-wcodes__link:focus-visible {
+  outline: 2px solid var(--wc-gold);
+  outline-offset: 2px;
+}
+/* the past: quieter, the code struck through */
+.wz-wcodes__list--past .wz-wcodes__ticket {
+  border-inline-start-color: color-mix(in srgb, var(--prize) 35%, #ddd);
+  background: #fcfcfc;
+}
+.wz-wcodes__list--past .wz-wcodes__prize {
+  color: var(--wc-muted);
+}
+.wz-wcodes__list--past .wz-wcodes__code {
+  border-color: var(--wc-line);
+  background: transparent;
+  color: var(--wc-muted);
+  text-decoration: line-through;
+}
+
+/* ── empty, loading, the way out ──────────────────────────────────────────── */
+.wz-wcodes__msg {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--wc-muted);
+}
+.wz-wcodes__empty {
+  display: grid;
+  gap: 14px;
+  justify-items: start;
+  padding: 20px;
+  border: 1px dashed var(--wc-line);
+  border-radius: 12px;
+  background: var(--wc-paper);
+}
+.wz-wcodes__foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+  margin-top: 24px;
+}
+.wz-wcodes__cta {
+  display: inline-block;
+  padding: 12px 22px;
+  border-radius: 6px;
+  background: var(--wc-ink);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+}
+.wz-wcodes__link {
+  font-size: 13px;
+  color: var(--wc-ink);
+  text-decoration: underline;
+}
+@media (prefers-reduced-motion: reduce) {
+  .wz-wcodes__copy {
+    transition: none;
+  }
+}
