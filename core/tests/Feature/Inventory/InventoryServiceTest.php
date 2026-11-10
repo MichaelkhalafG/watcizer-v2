@@ -112,6 +112,28 @@ it('maintains in_stock as "either bucket has something"', function () {
     expect(T::int(DB::table('catalog_products')->where('id', $id)->value('in_stock')))->toBe(1);
 });
 
+it('keeps in_stock when a decrement leaves NO MORE units than it took (one statement; MariaDB assigns left to right)', function () {
+    $service = app(InventoryService::class);
+    $id = stockedProductId();
+    $inStock = fn (): int => T::int(DB::table('catalog_products')->where('id', $id)->value('in_stock'));
+
+    $service->set(StockTarget::product($id), 'market', 0, 'manual');
+    // the old statement read (old + delta + delta) > 0: it fired whenever what is LEFT is not more than what was taken
+    $service->set(StockTarget::product($id), 'express', 2, 'restock');
+    $service->adjust(StockTarget::product($id), 'express', -1, 'adjustment');      // 2 → 1: still in stock (the EQUAL case)
+    expect(bucketValue($id, 'express'))->toBe(1)->and($inStock())->toBe(1);
+    $service->set(StockTarget::product($id), 'express', 3, 'restock');
+    $service->adjust(StockTarget::product($id), 'express', -2, 'adjustment');      // 3 → 1: still in stock
+    expect(bucketValue($id, 'express'))->toBe(1)->and($inStock())->toBe(1);
+
+    $service->set(StockTarget::product($id), 'express', 0, 'manual');
+    $service->set(StockTarget::product($id), 'market', 5, 'restock');
+    $service->adjust(StockTarget::product($id), 'market', -3, 'adjustment');       // 2 left in the other bucket
+    expect(bucketValue($id, 'market'))->toBe(2)->and($inStock())->toBe(1);
+    $service->adjust(StockTarget::product($id), 'market', -2, 'adjustment');       // none left
+    expect($inStock())->toBe(0);
+});
+
 it('set() writes nothing when the bucket already holds that quantity', function () {
     $service = app(InventoryService::class);
     $id = stockedProductId();
