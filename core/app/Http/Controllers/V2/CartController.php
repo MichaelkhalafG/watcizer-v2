@@ -36,7 +36,7 @@ class CartController extends Controller
     {
         [$userId, $token] = $this->identity($request);
 
-        return $this->respond($carts->payload($carts->find($userId, $token), self::coupon($request), $userId), $userId === null ? $token : null);
+        return $this->respond($carts->payload($carts->find($userId, $token), self::coupon($request), $userId, self::phone($request)), $userId === null ? $token : null);
     }
 
     public function store(Request $request, StorefrontCart $carts): JsonResponse
@@ -64,7 +64,7 @@ class CartController extends Controller
             return $this->refuse($refusal, $userId === null ? $token : null);
         }
 
-        return $this->respond($carts->payload($cart, self::coupon($request), $userId), $userId === null ? $token : null);
+        return $this->respond($carts->payload($cart, self::coupon($request), $userId, self::phone($request)), $userId === null ? $token : null);
     }
 
     public function update(Request $request, StorefrontCart $carts, int $item): JsonResponse
@@ -80,7 +80,7 @@ class CartController extends Controller
             return $this->refuse($refusal, $userId === null ? $token : null);
         }
 
-        return $this->respond($carts->payload($cart, self::coupon($request), $userId), $userId === null ? $token : null);
+        return $this->respond($carts->payload($cart, self::coupon($request), $userId, self::phone($request)), $userId === null ? $token : null);
     }
 
     public function destroy(Request $request, StorefrontCart $carts, int $item): JsonResponse
@@ -91,7 +91,7 @@ class CartController extends Controller
             return $this->refuse('not_found', $userId === null ? $token : null);
         }
 
-        return $this->respond($carts->payload($cart, self::coupon($request), $userId), $userId === null ? $token : null);
+        return $this->respond($carts->payload($cart, self::coupon($request), $userId, self::phone($request)), $userId === null ? $token : null);
     }
 
     /** @return array{0: ?int, 1: ?string} the signed-in customer's id, or the guest token (either may be absent) */
@@ -135,5 +135,18 @@ class CartController extends Controller
         $code = $request->query('coupon');
 
         return is_string($code) && trim($code) !== '' && strlen(trim($code)) <= 40 ? trim($code) : null;
+    }
+
+    /**
+     * The phone the checkout page has typed so far (`?phone=`), for the preview alone (2026-11-07): a wheel code is
+     * bound to the phone it was won with, and the checkout re-reads the cart with the number as it is typed so the
+     * page can say "not this number" BEFORE the order is placed. Never stored, never logged; the order path reads
+     * the phone from the order itself.
+     */
+    private static function phone(Request $request): ?string
+    {
+        $phone = $request->query('phone');
+
+        return is_string($phone) && trim($phone) !== '' && strlen(trim($phone)) <= 24 ? trim($phone) : null;
     }
 }

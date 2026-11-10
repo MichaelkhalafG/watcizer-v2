@@ -25,8 +25,11 @@ final class PromotionMoney
 
     public const PER_ITEM = 'item';
 
+    /** Off ONE unit — the cheapest eligible line's (the wheel's "10 % off the 2nd watch", 2026-11-09). */
+    public const PER_CHEAPEST = 'cheapest';
+
     /** @var list<string> */
-    public const PER = [self::PER_ORDER, self::PER_ITEM];
+    public const PER = [self::PER_ORDER, self::PER_ITEM, self::PER_CHEAPEST];
 
     /**
      * @param  array<int, array{unit: float, quantity: int}>  $lines  the ELIGIBLE lines, by cart index

@@ -26,11 +26,11 @@ final readonly class PromotionOutcome
      * @param  float  $discount  what the money rewards take off the order total, in EGP
      * @param  bool  $freeShipping  true when the discount above includes a waived shipping cost
      * @param  list<array{rule_id: int, code: string|null, label_en: string|null, label_ar: string|null, amount: float, free_shipping: bool}>  $applied
-     *         every rule that moved money, the winner first (more than one only when the rules are stackable) — M1u
+     *                                                                                                                                                   every rule that moved money, the winner first (more than one only when the rules are stackable) — M1u
      * @param  list<array{index: int, rule_id: int, product_id: int|null, variant_id: int|null, quantity: int, amount: float}>  $lines
-     *         what came off each cart line (`index` into the snapshot's lines), summing to the goods part of `discount`
-     * @param  array{code: string, status: string, rule_id: int|null, messages: array{en: string, ar: string}}|null  $coupon
-     *         what happened to the code the shopper typed, or null when none was typed
+     *                                                                                                                                  what came off each cart line (`index` into the snapshot's lines), summing to the goods part of `discount`
+     * @param  array{code: string, status: string, rule_id: int|null, messages: array{en: string, ar: string}, wheel?: array{phone_hint: string, expires_at: string, order_phone_hint: string|null}}|null  $coupon  `wheel` — the spin's facts when the code is the wheel's (2026-11-07)
+     *                                                                                                                                                                                                              what happened to the code the shopper typed, or null when none was typed
      */
     public function __construct(
         public ?int $ruleId = null,
@@ -59,7 +59,7 @@ final readonly class PromotionOutcome
      */
     public function applies(): bool
     {
-        return $this->ruleId !== null && ($this->rewards !== [] || $this->discount > 0.0);
+        return $this->ruleId !== null && ($this->rewards !== [] || $this->discount > 0.0 || $this->freeShipping);
     }
 
     /** Total reward units, for a report or a screen's summary. */

@@ -33,6 +33,7 @@ use App\Http\Controllers\Manage\ShippingController;
 use App\Http\Controllers\Manage\StorefrontController;
 use App\Http\Controllers\Manage\UnitController;
 use App\Http\Controllers\Manage\UserRoleController;
+use App\Http\Controllers\Manage\WheelController;
 use App\Http\Middleware\EnsureDashboardAccess;
 use App\Http\Middleware\EnsureStorefrontScope;
 use App\Http\Middleware\HandleInertiaRequests;
@@ -260,6 +261,8 @@ Route::prefix('manage')->name('manage.')->group(function (): void {
             // ability and scope as the banners and the rails: it decides what one storefront's home shows.
             Route::get('storefronts/{storefront}/campaigns', [CampaignController::class, 'index'])->name('campaigns.index');
             Route::get('storefronts/{storefront}/campaigns/products', [ProductPickerController::class, 'search'])->name('campaigns.products');
+            // the campaign prices table's facts (2026-11-10): normal, sale, current — and cost for MANAGE_CATALOG only
+            Route::get('storefronts/{storefront}/campaigns/price-facts', [CampaignController::class, 'priceFacts'])->name('campaigns.price_facts');
             Route::post('storefronts/{storefront}/campaigns', [CampaignController::class, 'store'])->name('campaigns.store');
             Route::put('storefronts/{storefront}/campaigns/{campaign}', [CampaignController::class, 'update'])
                 ->where('campaign', '[0-9]+')->name('campaigns.update');
@@ -490,6 +493,23 @@ Route::prefix('manage')->name('manage.')->group(function (): void {
         | `manage-promotions` is admin-only and absent from data-entry's abilities: a promotion
         | moves money and gives away stock, the same reasoning that keeps `cancel-orders` from them.
         */
+        /*
+        | SPIN THE WHEEL (2026-11-07): the read-only list of spins (phones masked), the totals and the one on/off
+        | switch, per storefront. Under the promotions ability — a wheel code is a discount code — and scoped to
+        | the storefront like the campaigns, because the switch is a setting of one storefront.
+        */
+        Route::middleware([
+            'can:'.Role::MANAGE_PROMOTIONS,
+            EnsureStorefrontScope::with(Role::MANAGE_PROMOTIONS),
+        ])->group(function (): void {
+            Route::get('storefronts/{storefront}/wheel', [WheelController::class, 'index'])->name('wheel.index');
+            Route::post('storefronts/{storefront}/wheel/switch', [WheelController::class, 'toggle'])->name('wheel.switch');
+            // the prizes and the terms (2026-11-08): the segments, the validity, the minimum — one save, all or nothing
+            Route::put('storefronts/{storefront}/wheel/prizes', [WheelController::class, 'prizes'])->name('wheel.prizes');
+            // a new round (2026-11-08): everybody may spin again; the old round's codes keep their terms
+            Route::post('storefronts/{storefront}/wheel/round', [WheelController::class, 'round'])->name('wheel.round');
+        });
+
         Route::middleware(['can:'.Role::MANAGE_PROMOTIONS])->group(function (): void {
             Route::get('promotions', [PromotionController::class, 'index'])->name('promotions.index');
             Route::get('promotions/create', [PromotionController::class, 'create'])->name('promotions.create');

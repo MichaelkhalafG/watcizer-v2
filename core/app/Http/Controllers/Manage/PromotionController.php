@@ -125,7 +125,15 @@ final class PromotionController
             ], 'promotions');
 
         $query = DB::table('promotion_rules as r')
-            ->select(['r.id', 'r.name', 'r.priority', 'r.is_active', 'r.starts_at', 'r.ends_at', 'r.updated_at']);
+            ->select(['r.id', 'r.name', 'r.priority', 'r.is_active', 'r.starts_at', 'r.ends_at', 'r.updated_at'])
+            /*
+             * The wheel's prize rules are NOT listed here (2026-11-08). They are made by the wheel, one per set
+             * of prize terms, reached only through a spin's code, and the team edits the prizes on the wheel's
+             * own page — a row here would invite an edit the engine does not expect. They are still ordinary
+             * rules to the engine and to the edit screen by id. The list also stays at its query budget: every
+             * row costs its summary's reads, and a wheel with twelve prizes would add twelve rows nobody asked for.
+             */
+            ->whereNull('r.issuer');
 
         $filters = $table->resolvedFilters();
 

@@ -4,10 +4,13 @@ declare(strict_types=1);
 
 namespace App\Domain\Promotions;
 
+use App\Domain\Campaigns\CampaignPrices;
+use App\Domain\Wheel\Wheel;
 use App\Support\Coerce;
 use App\Transform\Row;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Database\Query\JoinClause;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use stdClass;
 
@@ -84,11 +87,32 @@ final class PromotionEngine
         $now = $at ?? now();
         $code = $cart->code === null ? null : trim($cart->code);
         $code = $code === '' ? null : $code;
+        // a wheel code (App\Domain\Wheel, 2026-11-07) names a spin, and the spin names the prize rule it resolves to
+        $spin = $code === null ? null : Wheel::spinByCode($cart->storefrontId, $code);
 
-        $candidates = $this->candidates($cart->storefrontId, $now, $code);
+        $candidates = $this->candidates($cart->storefrontId, $now, $code, $spin);
         if ($candidates === []) {
             // The common case, and it must cost nothing: one indexed query, no second step.
-            return new PromotionOutcome(coupon: $code === null ? null : $this->couponRefusal($code, $cart->storefrontId, $now));
+            return new PromotionOutcome(coupon: $code === null ? null : self::withWheel($this->couponRefusal($code, $cart->storefrontId, $now), $spin, $cart));
+        }
+
+        /*
+         * ONE OFFER PER ORDER (Michael, 2026-11-10). A cart holding ANY item at a live campaign price (Hot Deals / Flash
+         * Sale) takes no other offer, for the WHOLE order: no code of any kind (a discount code, a wheel code, an invite
+         * or its reward, a free-shipping code) and no automatic promotion. A typed code the shop knows is told so
+         * (`on_offer`); a code it does not know, or out of its dates, keeps its own answer. Evaluated at every read —
+         * the cart, the checkout, the order placement — so a campaign that starts after a code was applied refuses it
+         * at the order, and one that ends gives the code back. A product's regular sale price is NOT an offer.
+         */
+        if (self::holdsCampaignItem($cart, $now)) {
+            $codeKnown = $spin !== null;
+            foreach ($candidates as $rule) {
+                $codeKnown = $codeKnown || Row::nstr($rule, 'code') !== null;
+            }
+
+            return new PromotionOutcome(coupon: $code === null ? null : self::withWheel($codeKnown
+                ? self::coupon($code, CouponStatus::ON_OFFER, null, $cart)
+                : $this->couponRefusal($code, $cart->storefrontId, $now), $spin, $cart));
         }
 
         $scopes = new PromotionScopes($cart);
@@ -105,6 +129,16 @@ final class PromotionEngine
             $ruleCode = Row::nstr($rule, 'code');
             $isTypedCode = $ruleCode !== null && $code !== null;
 
+            if ($spin !== null && $ruleId === Row::int($spin, 'promotion_rule_id')) {
+                // the spin's own three gates — bound to its phone, 48 hours, one order — before the rule's
+                $why = Wheel::refusal($spin, $cart, $now);
+                if ($why !== null) {
+                    $refusedCode = $why;
+
+                    continue;
+                }
+            }
+
             $gate = $this->gate($rule, $cart, $scopes);
             if ($gate !== null || ! $this->matches($ruleId, $cart, $rule)) {
                 if ($isTypedCode) {
@@ -119,14 +153,22 @@ final class PromotionEngine
                 // MATCHED and refused — the thing the admin has to be told about.
                 $skipped[$ruleId] = ['reason' => $grant['reason'], 'priority' => Row::int($rule, 'priority')];
                 if ($isTypedCode) {
-                    $refusedCode = CouponStatus::NO_ELIGIBLE_ITEMS;
+                    // a wheel GIFT whose product ran out is told so (the code stays valid; 2026-11-09)
+                    $refusedCode = $spin !== null && $grant['reason'] === PromotionRules::SKIP_OUT_OF_STOCK ? CouponStatus::GIFT_OUT_OF_STOCK : CouponStatus::NO_ELIGIBLE_ITEMS;
                 }
 
                 continue;
             }
 
             $money = $this->moneyOf($rule, $grant['money'], $cart, $scopes, []);
-            if ($grant['rewards'] === [] && $money['discount'] <= 0.0) {
+            if ($isTypedCode && $money['discount'] <= 0.0 && $money['free_shipping_possible']) {
+                // A TYPED free-shipping code on a cart whose delivery is not yet known (the cart page prices before a
+                // city is chosen, 2026-11-08): the shopper reads "applied", the checkout prices the delivery, and an
+                // order whose delivery costs nothing records no redemption (PromotionDiscounts::record) — the code is
+                // not spent on nothing. An AUTOMATIC rule with nothing to give stays a reported skip (wave-4D rule).
+                $money['free_shipping'] = true;
+            }
+            if ($grant['rewards'] === [] && $money['discount'] <= 0.0 && ! $money['free_shipping']) {
                 // won and delivered nothing at all: reported, never a silent win (wave-4D rule)
                 $skipped[$ruleId] = ['reason' => PromotionRules::SKIP_NOT_VISIBLE, 'priority' => Row::int($rule, 'priority')];
                 if ($isTypedCode) {
@@ -141,9 +183,9 @@ final class PromotionEngine
                 'stackable' => Row::bool($rule, 'stackable') && $grant['rewards'] === []];
         }
 
-        $refusal = $code === null ? null : ($codeIsCandidate
+        $refusal = $code === null ? null : self::withWheel($codeIsCandidate
             ? self::coupon($code, $refusedCode ?? CouponStatus::NO_ELIGIBLE_ITEMS, null, $cart)
-            : $this->couponRefusal($code, $cart->storefrontId, $now));
+            : $this->couponRefusal($code, $cart->storefrontId, $now), $spin, $cart);
         if ($grants === []) {
             return new PromotionOutcome(skipped: self::skipReasons($skipped, null), coupon: $refusal);
         }
@@ -181,14 +223,15 @@ final class PromotionEngine
         $appliedOut = [];
         $linesOut = [];
         foreach ($applied as $g) {
-            if ($g['money']['discount'] <= 0.0) {
+            if ($g['money']['discount'] <= 0.0 && ! $g['money']['free_shipping']) {
                 continue;
             }
             $discount += $g['money']['discount'];
             $freeShipping = $freeShipping || $g['money']['free_shipping'];
             $appliedOut[] = [
                 'rule_id' => $g['id'],
-                'code' => Row::nstr($g['rule'], 'code'),
+                // a wheel rule is reached through the SPIN's code, and that is the code the order records
+                'code' => Row::nstr($g['rule'], 'issuer') === Wheel::ISSUER ? $code : Row::nstr($g['rule'], 'code'),
                 'label_en' => Row::nstr($g['rule'], 'label_en'),
                 'label_ar' => Row::nstr($g['rule'], 'label_ar'),
                 'amount' => $g['money']['discount'],
@@ -211,8 +254,8 @@ final class PromotionEngine
             }
             $won = $typed !== null && in_array($typed['id'], array_column($applied, 'id'), true);
             $coupon = match (true) {
-                $won => self::coupon($code, CouponStatus::APPLIED, $typed['id'], $cart),
-                $typed !== null => self::coupon($code, CouponStatus::NOT_BEST, $typed['id'], $cart),
+                $won => self::withWheel(self::coupon($code, CouponStatus::APPLIED, $typed['id'], $cart), $spin, $cart),
+                $typed !== null => self::withWheel(self::coupon($code, CouponStatus::NOT_BEST, $typed['id'], $cart), $spin, $cart, $discount),
                 default => $refusal,
             };
         }
@@ -250,6 +293,22 @@ final class PromotionEngine
         return $out;
     }
 
+    /** Does the cart hold an item at a live campaign price? No query while no priced campaign is live. */
+    private static function holdsCampaignItem(CartSnapshot $cart, \DateTimeInterface $now): bool
+    {
+        $rules = CampaignPrices::rules($cart->storefrontId, Carbon::instance($now));
+        if ($rules === []) {
+            return false;
+        }
+        foreach ($cart->lines as $line) {
+            if ($line->productId !== null && isset($rules[$line->productId])) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /**
      * Active, in-window rules enabled for THIS storefront, best first — plus, when a code was typed, the rule with
      * that code. A coded rule is never a candidate otherwise.
@@ -260,7 +319,7 @@ final class PromotionEngine
      *
      * @return list<stdClass>
      */
-    private function candidates(int $storefrontId, \DateTimeInterface $now, ?string $code): array
+    private function candidates(int $storefrontId, \DateTimeInterface $now, ?string $code, ?stdClass $spin = null): array
     {
         $stamp = $now->format('Y-m-d H:i:s');
 
@@ -270,14 +329,20 @@ final class PromotionEngine
             ->where('r.is_active', 1)
             ->where('r.starts_at', '<=', $stamp)
             ->where('r.ends_at', '>=', $stamp)
-            ->where(function (Builder $q) use ($code): void {
+            ->where(function (Builder $q) use ($code, $spin): void {
                 $q->whereNull('r.code');
-                if ($code !== null) {
-                    $q->orWhere('r.code', $code);
+                if ($spin !== null) {
+                    // a wheel code names its prize rule through the spin (App\Domain\Wheel, 2026-11-07)
+                    $q->orWhere('r.id', Row::int($spin, 'promotion_rule_id'));
+                } elseif ($code !== null) {
+                    // a typed code reaches a rule the TEAM typed; a wheel rule's own code typed by a shopper reaches nothing
+                    $q->orWhere(function (Builder $typed) use ($code): void {
+                        $typed->where('r.code', $code)->whereNull('r.issuer');
+                    });
                 }
             })
             ->orderByDesc('r.priority')->orderBy('r.id')
-            ->get(['r.id', 'r.priority', 'r.code', 'r.label_en', 'r.label_ar', 'r.apply_per', 'r.max_discount',
+            ->get(['r.id', 'r.priority', 'r.code', 'r.issuer', 'r.label_en', 'r.label_ar', 'r.apply_per', 'r.max_discount',
                 'r.min_order_amount', 'r.usage_limit', 'r.usage_limit_per_customer', 'r.include_sale_items',
                 'r.stackable', 'r.unit_floor', 'r.qualify_min_quantity', 'r.qualify_min_amount']);
 
@@ -307,7 +372,7 @@ final class PromotionEngine
         if ($qualify !== [] || $minQuantity !== null || $minAmount !== null) {
             $within = $scopes->totalsWithin($qualify);
             if ($within['quantity'] < max(1, $minQuantity ?? 1)
-                || ($minAmount !== null && $within['amount'] + 0.001 < (float) $minAmount)) {
+                || ($minAmount !== null && (float) $minAmount > $within['amount'] + 0.001)) {
                 return CouponStatus::NO_ELIGIBLE_ITEMS;
             }
         }
@@ -349,12 +414,12 @@ final class PromotionEngine
      *
      * @param  list<stdClass>  $rewards  the rule's money reward rows
      * @param  array<int, float>  $taken  what stacked rules before it already took per line
-     * @return array{discount: float, lines: array<int, float>, free_shipping: bool}
+     * @return array{discount: float, lines: array<int, float>, free_shipping: bool, free_shipping_possible: bool}
      */
     private function moneyOf(stdClass $rule, array $rewards, CartSnapshot $cart, PromotionScopes $scopes, array $taken): array
     {
         if ($rewards === []) {
-            return ['discount' => 0.0, 'lines' => [], 'free_shipping' => false];
+            return ['discount' => 0.0, 'lines' => [], 'free_shipping' => false, 'free_shipping_possible' => false];
         }
 
         $target = PromotionScopes::of(Row::int($rule, 'id'))[PromotionScopes::ROLE_TARGET] ?? [];
@@ -378,16 +443,36 @@ final class PromotionEngine
         $lines = [];
         $shipping = 0.0;
         $freeShipping = false;
+        $freeShippingPossible = false;
         foreach ($rewards as $reward) {
             $type = Row::str($reward, 'type');
             if ($type === 'free_shipping') {
                 $shipping = max($shipping, round($cart->shippingCost, 2));
                 $freeShipping = $freeShipping || $cart->shippingCost > 0.0;
+                $freeShippingPossible = $freeShippingPossible || $eligible !== [];
 
                 continue;
             }
             $value = (float) (Row::nmoney($reward, 'amount') ?? '0');
-            if ($type === 'percent_discount' && $per === PromotionMoney::PER_ORDER) {
+            if ($per === PromotionMoney::PER_CHEAPEST) {
+                // ONE unit of the cheapest eligible line (ties: the first): a percentage of it, or an amount up to it
+                $cheapest = null;
+                foreach ($eligible as $index => $line) {
+                    if ($line['quantity'] < 1) {
+                        continue;
+                    }
+                    if ($cheapest === null || $line['unit'] < $eligible[$cheapest]['unit']) {
+                        $cheapest = $index;
+                    }
+                }
+                $share = [];
+                if ($cheapest !== null) {
+                    $unit = max(0.0, $eligible[$cheapest]['unit'] - $floor);
+                    $want = $type === 'percent_discount' ? round($unit * max(0.0, min(100.0, $value)) / 100, 2) : min($unit, max(0.0, $value));
+                    $room = max(0.0, $eligible[$cheapest]['unit'] * $eligible[$cheapest]['quantity'] - ($taken[$cheapest] ?? 0.0) - ($lines[$cheapest] ?? 0.0));
+                    $share = $want > 0 ? [$cheapest => round(min($want, $room), 2)] : [];
+                }
+            } elseif ($type === 'percent_discount' && $per === PromotionMoney::PER_ORDER) {
                 // a percentage of the eligible goods, ONCE, then split — the same total as wave 4D's subtotal × rate
                 $base = 0.0;
                 foreach ($eligible as $index => $line) {
@@ -414,7 +499,7 @@ final class PromotionEngine
 
         $goods = round(array_sum($lines), 2);
 
-        return ['discount' => round($goods + $shipping, 2), 'lines' => $lines, 'free_shipping' => $freeShipping];
+        return ['discount' => round($goods + $shipping, 2), 'lines' => $lines, 'free_shipping' => $freeShipping, 'free_shipping_possible' => $freeShippingPossible];
     }
 
     /**
@@ -473,6 +558,32 @@ final class PromotionEngine
         }
 
         return ['code' => $code, 'status' => $status, 'rule_id' => $ruleId, 'messages' => CouponStatus::messages($status, $minimum)];
+    }
+
+    /**
+     * A wheel code's coupon payload carries the spin's facts — whose phone it is bound to (masked), when it expires —
+     * and the two wheel statuses word themselves with them. Any other code passes through untouched.
+     *
+     * @param  array{code: string, status: string, rule_id: int|null, messages: array{en: string, ar: string}}  $coupon
+     * @return array{code: string, status: string, rule_id: int|null, messages: array{en: string, ar: string}, wheel?: array{phone_hint: string, expires_at: string, order_phone_hint: string|null}}
+     */
+    private static function withWheel(array $coupon, ?stdClass $spin, CartSnapshot $cart, float $otherDiscount = 0.0): array
+    {
+        if ($spin === null) {
+            return $coupon;
+        }
+        $facts = Wheel::couponFacts($spin, $cart);
+        $coupon['wheel'] = $facts;
+        if (in_array($coupon['status'], [CouponStatus::PHONE_MISMATCH, CouponStatus::WHEEL_USED, CouponStatus::NO_ELIGIBLE_ITEMS, CouponStatus::GIFT_OUT_OF_STOCK,
+            CouponStatus::INVITE_OWN, CouponStatus::INVITE_NOT_FIRST, CouponStatus::INVITE_USED, CouponStatus::INVITE_INACTIVE, CouponStatus::EXPIRED], true)) {
+            $coupon['messages'] = CouponStatus::messages($coupon['status'], null, $facts + ['order_number' => Wheel::usedBy($spin)['number'] ?? null]);
+        }
+        if ($coupon['status'] === CouponStatus::NOT_BEST) {
+            // Michael, 2026-11-08: never let the shopper believe the code was applied — say what won, and that the code keeps
+            $coupon['messages'] = CouponStatus::messages($coupon['status'], null, $facts + ['other_discount' => $otherDiscount]);
+        }
+
+        return $coupon;
     }
 
     /**

@@ -110,6 +110,9 @@ it('names EVERY table the dashboard authors, in order, so adding one is a delibe
          * `storefront_payment_badges` — the picture the team uploaded for each payment method.
          */
         'storefront_campaigns', 'storefront_campaign_products', 'storefront_payment_badges',
+        // Since 2026-11-07: the wheel's spins — a shopper's code and the order that used it; nothing can rebuild them.
+        // Since 2026-11-08: the wheel's prizes — typed on the dashboard.
+        'storefront_wheel_spins', 'storefront_wheel_prizes', 'storefront_wheel_referrals',
         'core_user_preferences',
         'core_activity_log',
         // Articles join the list in item 14 (2026-09-18). Core-owned because the legacy

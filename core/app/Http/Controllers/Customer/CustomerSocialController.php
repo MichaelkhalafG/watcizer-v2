@@ -7,6 +7,7 @@ namespace App\Http\Controllers\Customer;
 use App\Domain\Customers\CustomerSocial;
 use App\Domain\Customers\CustomerTokens;
 use App\Domain\Customers\SocialNonce;
+use App\Domain\Wheel\Wheel;
 use App\Http\Controllers\Controller;
 use App\Storefront\StorefrontUrls;
 use App\Support\Coerce;
@@ -181,6 +182,9 @@ final class CustomerSocialController extends Controller
         if (array_key_exists('refused', $outcome)) {
             return $this->back($request, Coerce::str($outcome['refused']), null, $nonce);
         }
+
+        // the wheel's spins of this account's phone become the account's (2026-11-10)
+        Wheel::attachAccount(Coerce::int($outcome['user']->getKey()), Coerce::nstr($outcome['user']->getAttribute('phone_number')));
 
         return $this->back($request, null, $this->tokens->issue($outcome['user']), $nonce);
     }

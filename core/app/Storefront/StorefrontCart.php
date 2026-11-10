@@ -2,11 +2,13 @@
 
 namespace App\Storefront;
 
+use App\Domain\Campaigns\CampaignPrices;
 use App\Domain\Inventory\InventoryService;
 use App\Domain\Promotions\CartLine;
 use App\Domain\Promotions\CartSnapshot;
 use App\Domain\Promotions\PromotionDiscounts;
 use App\Domain\Promotions\PromotionEngine;
+use App\Domain\Promotions\RewardLine;
 use App\Domain\Shipping\FreeShipping;
 use App\Support\Coerce;
 use App\Transform\Row;
@@ -222,11 +224,13 @@ final class StorefrontCart
      *
      * @param  list<CartLine>  $lines
      * @param  list<int>  $itemIds  the cart item id of each line, by index
-     * @return array{discount: float, applied: list<array<string, mixed>>, lines: list<array{item_id: int, amount: float}>, coupon: array<string, mixed>|null}
+     *                              `rewards` (2026-11-09): the free ITEMS the winning rule grants — a gift won on the wheel — named so the cart and the
+     *                              checkout can show "Gift: …, free" before the order; the order path adds the line itself at EGP 0.
+     * @return array{discount: float, applied: list<array<string, mixed>>, lines: list<array{item_id: int, amount: float}>, coupon: array<string, mixed>|null, rewards: list<array{product_id: int, quantity: int, title: array{en: string|null, ar: string|null}}>}
      */
-    private function promotionPreview(array $lines, array $itemIds, float $subtotal, ?string $coupon, ?int $userId): array
+    private function promotionPreview(array $lines, array $itemIds, float $subtotal, ?string $coupon, ?int $userId, ?string $phone = null): array
     {
-        $none = ['discount' => 0.0, 'applied' => [], 'lines' => [], 'coupon' => null];
+        $none = ['discount' => 0.0, 'applied' => [], 'lines' => [], 'coupon' => null, 'rewards' => []];
         $settings = $this->ctx->storefront->getAttribute('settings');
         $enabled = is_array($settings) && (Coerce::arr($settings['promotions'] ?? null)['money_rewards'] ?? false) === true;
         if (! $enabled && $coupon === null) {
@@ -239,7 +243,8 @@ final class StorefrontCart
             shippingCost: 0.0,
             paymentMethod: '',
             code: $coupon,
-            customerKeys: PromotionDiscounts::customerKeys($userId, null, null),
+            // the phone only when the checkout page sends the one it has typed (a wheel code's binding, 2026-11-07)
+            customerKeys: PromotionDiscounts::customerKeys($userId, null, $phone),
         ));
         $goods = [];
         foreach ($outcome->lines as $line) {
@@ -258,7 +263,42 @@ final class StorefrontCart
                 'label_ar' => $rule['label_ar'], 'amount' => $rule['amount']];
         }
 
-        return ['discount' => round(array_sum($goods), 2), 'applied' => $applied, 'lines' => $perItem, 'coupon' => $outcome->coupon];
+        return ['discount' => round(array_sum($goods), 2), 'applied' => $applied, 'lines' => $perItem, 'coupon' => $outcome->coupon,
+            'rewards' => self::rewardsNamed($outcome->rewards)];
+    }
+
+    /**
+     * The granted items with their names (one query, only when a rule granted any).
+     *
+     * @param  list<RewardLine>  $rewards
+     * @return list<array{product_id: int, quantity: int, title: array{en: string|null, ar: string|null}}>
+     */
+    private static function rewardsNamed(array $rewards): array
+    {
+        $ids = [];
+        foreach ($rewards as $reward) {
+            if ($reward->productId !== null) {
+                $ids[] = $reward->productId;
+            }
+        }
+        if ($ids === []) {
+            return [];
+        }
+        $titles = [];
+        foreach (DB::table('catalog_product_translations')->whereIn('product_id', array_values(array_unique($ids)))->whereIn('locale', ['en', 'ar'])->get(['product_id', 'locale', 'title']) as $raw) {
+            $row = Row::cast($raw);
+            $titles[Row::int($row, 'product_id')][Row::str($row, 'locale')] = Row::nstr($row, 'title');
+        }
+        $out = [];
+        foreach ($rewards as $reward) {
+            if ($reward->productId === null) {
+                continue;
+            }
+            $out[] = ['product_id' => $reward->productId, 'quantity' => $reward->quantity,
+                'title' => ['en' => $titles[$reward->productId]['en'] ?? null, 'ar' => $titles[$reward->productId]['ar'] ?? null]];
+        }
+
+        return $out;
     }
 
     /** The free-shipping threshold of the request's storefront, from the row already resolved (no query). */
@@ -274,12 +314,12 @@ final class StorefrontCart
      *
      * @return array{id: int|null, items: list<array<string, mixed>>, totals: array{count: int, subtotal: float, currency: string, shipping: array{free_over: float|null, free: bool, remaining: float|null}}}
      */
-    public function payload(?stdClass $cart, ?string $coupon = null, ?int $userId = null): array
+    public function payload(?stdClass $cart, ?string $coupon = null, ?int $userId = null, ?string $phone = null): array
     {
         $currency = $this->cards->currency();
         if ($cart === null) {
             return ['id' => null, 'items' => [], 'totals' => ['count' => 0, 'subtotal' => 0.0, 'currency' => $currency, 'shipping' => FreeShipping::summaryFor($this->freeOver(), 0.0),
-                'promotion' => $this->promotionPreview([], [], 0.0, $coupon, $userId)]];
+                'promotion' => $this->promotionPreview([], [], 0.0, $coupon, $userId, $phone)]];
         }
         $rows = [];
         foreach (DB::table('cart_items')->where('cart_id', Row::int($cart, 'id'))->whereNull('offer_id')->orderBy('id')
@@ -363,7 +403,7 @@ final class StorefrontCart
             // `shipping`: the storefront's free-shipping threshold, whether THIS cart ships free, how much more it needs
             'totals' => ['count' => $count, 'subtotal' => round($subtotal, 2), 'currency' => $currency, 'shipping' => FreeShipping::summaryFor($this->freeOver(), round($subtotal, 2)),
                 // `promotion`: what core would take off these lines today (M1u) — the page SHOWS it; the checkout recomputes it
-                'promotion' => $this->promotionPreview($promoLines, $promoItemIds, round($subtotal, 2), $coupon, $userId)],
+                'promotion' => $this->promotionPreview($promoLines, $promoItemIds, round($subtotal, 2), $coupon, $userId, $phone)],
         ];
     }
 
@@ -407,9 +447,11 @@ final class StorefrontCart
         foreach ($this->cards->base()->whereIn('sp.product_id', $ids)
             ->get(['sp.product_id', 'sp.effective_price', 'sp.effective_sale_price', 'p.stock_express', 'p.stock_market']) as $raw) {
             $r = Row::cast($raw);
-            $out[Row::int($r, 'product_id')] = [
+            $productId = Row::int($r, 'product_id');
+            $out[$productId] = [
                 'price' => Row::money($r, 'effective_price'),
-                'sale' => Row::nmoney($r, 'effective_sale_price'),
+                // the campaign price while a priced campaign is live (2026-11-10): the cart shows and the checkout charges it
+                'sale' => CampaignPrices::saleFor($this->ctx->id(), $productId, Row::money($r, 'effective_price'), Row::nmoney($r, 'effective_sale_price'))['sale'],
                 'stock' => ['Express' => Row::int($r, 'stock_express'), 'Market' => Row::int($r, 'stock_market')],
             ];
         }

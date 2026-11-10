@@ -8,6 +8,7 @@ use App\Domain\Activity\ActivityLog;
 use App\Domain\Inventory\Actor;
 use App\Domain\Inventory\InventoryService;
 use App\Domain\Notifications\OrderMailer;
+use App\Domain\Wheel\WheelReferrals;
 use App\Support\ManageText;
 use App\Transform\Row;
 use Illuminate\Support\Facades\DB;
@@ -111,6 +112,8 @@ final class OrderFulfilment
         }
 
         DB::table('orders')->where('id', $orderId)->update(['status' => $to, 'updated_at' => now()]);
+        // the wheel's invite-a-friend prize (2026-11-09): a friend's DELIVERED first order earns the winner their reward
+        WheelReferrals::onOrderStatus($orderId, $to);
 
         /*
          * ── WHO moved this order, and when (B-GUARD-2, 2026-09-17) ─────────────────────────────
@@ -222,6 +225,10 @@ final class OrderFulfilment
                 ->where('id', $orderId)
                 ->where('status', '!=', 'cancelled')
                 ->update(['status' => 'cancelled', 'updated_at' => now()]);
+            if ($claimed > 0) {
+                // a cancelled friend's order earns the inviter nothing (the wheel, 2026-11-09)
+                WheelReferrals::onOrderStatus($orderId, 'cancelled');
+            }
 
             if ($claimed === 0) {
                 /*
