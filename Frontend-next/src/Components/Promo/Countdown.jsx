@@ -8,9 +8,13 @@ import { clockText, countdownParts, msLeft, two } from '../../lib/campaign'
 // the parent removes the whole surface at that moment (useLiveCampaign), so a finished countdown is never
 // left on the page and nothing here restarts.
 //
-// SERVER HTML: the countdown is rendered on the server too (so nothing arrives late and shifts the page), and the
-// second it shows there is not the second the browser hydrates on. `suppressHydrationWarning` on exactly the elements
-// whose text or label is the time tells React that difference is expected; the first tick, a second later, corrects it.
+// THE FIRST RENDER IS THE ANSWER'S OWN SECOND (2026-11-07, React #418 on the live site). The countdown is in the
+// server HTML (nothing arrives late and shifts the page), and that HTML is held for minutes by the storefront's
+// cache — so the second it printed and the second the browser hydrated on differed, and at a day boundary (the
+// `3d` prefix, the day box) the two differed in SHAPE, which no `suppressHydrationWarning` covers. The first render
+// now reads `now` — the moment of core's answer, carried in the same HTML as the campaign (useLiveCampaign
+// `serverNow`) — identical on the server and in the hydration render; the first tick, right after mount, moves it
+// to the browser's clock. No hydration warning is suppressed any more.
 //
 // `boxes`  — a unit per box with its name under it: the campaign page and the home sliders.
 // `inline` — `02:14:58` as a clock: the header switch and the menu's Sale panel. Every character sits in a cell
@@ -22,9 +26,12 @@ const UNITS = {
   ar: { d: 'يوم', h: 'ساعة', m: 'دقيقة', s: 'ثانية', label: (t) => `ينتهي خلال ${t}` },
 }
 
-export default function Countdown({ endsAt, offset = 0, lang = 'en', variant = 'boxes', className = '' }) {
-  const [now, setNow] = useState(() => Date.now())
+export default function Countdown({ endsAt, offset = 0, now: serverNow = null, lang = 'en', variant = 'boxes', className = '' }) {
+  // the answer's second when the page knows it (the same number on the server and in the hydration render), else this device's
+  const [now, setNow] = useState(() => (Number.isFinite(serverNow) && serverNow > 0 ? serverNow : Date.now()))
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- this device's clock is only read after mount (the first render is the answer's second)
+    setNow(Date.now())
     const id = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(id)
   }, [])
@@ -37,11 +44,11 @@ export default function Countdown({ endsAt, offset = 0, lang = 'en', variant = '
 
   if (variant === 'inline') {
     return (
-      <span className={`pm-clock ${className}`} role="timer" aria-label={spoken} dir="ltr" suppressHydrationWarning>
+      <span className={`pm-clock ${className}`} role="timer" aria-label={spoken} dir="ltr">
         {clockText(left)
           .split('')
           .map((ch, i) => (
-            <span key={i} className={ch === ':' ? 'pm-clock__s' : 'pm-clock__d'} aria-hidden="true" suppressHydrationWarning>
+            <span key={i} className={ch === ':' ? 'pm-clock__s' : 'pm-clock__d'} aria-hidden="true">
               {ch}
             </span>
           ))}
@@ -51,12 +58,10 @@ export default function Countdown({ endsAt, offset = 0, lang = 'en', variant = '
 
   const boxes = [d > 0 ? [d, t.d] : null, [h, t.h], [m, t.m], [s, t.s]].filter(Boolean)
   return (
-    <span className={`pm-count ${className}`} role="timer" aria-label={spoken} dir="ltr" suppressHydrationWarning>
+    <span className={`pm-count ${className}`} role="timer" aria-label={spoken} dir="ltr">
       {boxes.map(([value, name]) => (
         <span className="pm-count__box" key={name} aria-hidden="true">
-          <span className="pm-count__num" suppressHydrationWarning>
-            {two(value)}
-          </span>
+          <span className="pm-count__num">{two(value)}</span>
           <span className="pm-count__unit">{name}</span>
         </span>
       ))}

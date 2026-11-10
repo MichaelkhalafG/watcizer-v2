@@ -22,8 +22,8 @@ export default function SalePane({ sale, lang, dir, to, go, t }) {
   const hot = useLiveCampaign('hot_deals')
   const flash = useLiveCampaign('flash_sale')
   const deals = [
-    hot.campaign ? { key: 'hot', campaign: hot.campaign, offset: hot.offset, name: t.hot, icon: <FlameIcon size={20} />, href: CAMPAIGN_PATH.hot_deals } : null,
-    flash.campaign ? { key: 'flash', campaign: flash.campaign, offset: flash.offset, name: t.flash, icon: <BoltIcon size={20} />, href: CAMPAIGN_PATH.flash_sale } : null,
+    hot.campaign ? { key: 'hot', campaign: hot.campaign, offset: hot.offset, now: hot.serverNow, name: t.hot, icon: <FlameIcon size={20} />, href: CAMPAIGN_PATH.hot_deals } : null,
+    flash.campaign ? { key: 'flash', campaign: flash.campaign, offset: flash.offset, now: flash.serverNow, name: t.flash, icon: <BoltIcon size={20} />, href: CAMPAIGN_PATH.flash_sale } : null,
   ].filter(Boolean)
 
   return (
@@ -42,7 +42,7 @@ export default function SalePane({ sale, lang, dir, to, go, t }) {
                 </span>
                 <span className="mm__deal-time">
                   <span className="mm__deal-ends">{t.endsIn}</span>
-                  <Countdown endsAt={d.campaign.ends_at} offset={d.offset} lang={lang} variant="inline" />
+                  <Countdown endsAt={d.campaign.ends_at} offset={d.offset} now={d.now} lang={lang} variant="inline" />
                 </span>
                 <span className="mm__deal-go" aria-hidden="true">
                   <Chevron flip={dir === 'rtl'} size={16} />

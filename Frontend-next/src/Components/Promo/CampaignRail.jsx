@@ -52,7 +52,7 @@ const STR = {
 }
 
 export default function CampaignRail({ presentation, lang = 'en', bleed = false }) {
-  const { campaign, offset } = useLiveCampaign(presentation)
+  const { campaign, offset, serverNow } = useLiveCampaign(presentation)
   useEffectsAfterLoad()
   const l = lang === 'ar' ? 'ar' : 'en'
   const dir = l === 'ar' ? 'rtl' : 'ltr'
@@ -102,7 +102,7 @@ export default function CampaignRail({ presentation, lang = 'en', bleed = false 
             <p className="pm-hot__sub">{t.count(campaign.count)}</p>
             <div className="pm-hot__time">
               <span className="pm-hot__ends">{t.ends}</span>
-              <Countdown endsAt={campaign.ends_at} offset={offset} lang={l} />
+              <Countdown endsAt={campaign.ends_at} offset={offset} now={serverNow} lang={l} />
             </div>
           </div>
           <div className="pm-hot__cards">{cards}</div>
@@ -129,7 +129,7 @@ export default function CampaignRail({ presentation, lang = 'en', bleed = false 
           <h2 className="pm-flash__title">{title}</h2>
           <span className="pm-flash__time">
             <span className="pm-flash__ends">{t.ends}</span>
-            <Countdown endsAt={campaign.ends_at} offset={offset} lang={l} />
+            <Countdown endsAt={campaign.ends_at} offset={offset} now={serverNow} lang={l} />
           </span>
           <span className="pm-flash__tools">
             <Link className="pm-btn pm-btn--glass" href={href}>

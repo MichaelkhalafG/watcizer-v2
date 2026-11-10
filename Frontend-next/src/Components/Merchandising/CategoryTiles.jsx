@@ -31,13 +31,19 @@ function ChipPicture({ own, fallback, name }) {
   return <span className="wz-cat-chip-initial">{name.charAt(0).toUpperCase()}</span>
 }
 
-const CategoryTiles = () => {
+const CategoryTiles = ({ menu: menuFromPage = null }) => {
   // The lookup tables only — not the catalogue (C-1 stage 2).
   const { data: tables, isFetching } = useTables()
   const { language } = useUIStore()
   const router = useRouter()
-  // the menu is in the page (item 36): each category's fallback picture, by its slug
-  const { data: menu } = useMenu(true)
+  // THE MENU COMES FROM THE PAGE'S OWN SERVER RENDER (`menu`, 2026-11-07; before, from the query cache). The header's
+  // menu component creates the menu query — empty — before this page's HydrationBoundary could fill it, so the
+  // server render of this row never saw the menu (every category without a picture of its own was a letter) while
+  // the browser's first render, on a repeat visit, had the sessionStorage copy: a different tree than the HTML,
+  // React #418 on the live home. A prop is the same on both sides by construction. The hook stays a reader of the
+  // cache for a caller that passes nothing.
+  const { data: fetched } = useMenu(!menuFromPage)
+  const menu = menuFromPage || fetched
   const fallbackOf = {}
   for (const top of menu?.categories || []) {
     for (const child of top.children || []) {
