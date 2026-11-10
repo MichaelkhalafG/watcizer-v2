@@ -22,11 +22,13 @@ use App\Mail\PaymentExpiredAdmin;
 use App\Mail\ReEngagementMail;
 use App\Mail\ReEngagementPreviewMail;
 use App\Mail\StockAlertMail;
+use App\Mail\WheelReferralReward;
 use App\Models\Storefront\StorefrontMailbox;
 use App\Storefront\StorefrontIdentity;
 use App\Transform\Row;
 use Illuminate\Database\Query\JoinClause;
 use Illuminate\Mail\Mailable;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Testing\PendingCommand;
@@ -260,7 +262,7 @@ it('the drain report reads per storefront, and the mailbox command never prints 
 
 // ── §0(b), the developer's number (2026-10-13 brief) ─────────────────────────────────────────────
 
-it('renders the DEVELOPER\'S WhatsApp number in NONE of the eleven mail templates, for either shop', function () {
+it('renders the DEVELOPER\'S WhatsApp number in NONE of the twelve mail templates, for either shop', function () {
     /*
      * Two numbers, two roles (BF handover D22): `whatsapp_support` (customer service) is what a
      * customer may reach from a mail; `whatsapp_developer` is the storefront's header/footer only
@@ -295,6 +297,8 @@ it('renders the DEVELOPER\'S WhatsApp number in NONE of the eleven mail template
             new StockAlertMail(['email' => 'c@example.test', 'locale' => 'ar', 'token' => 'tok', 'storefront_id' => $storefrontId, 'product' => $card], 'https://example.test/stop', $identity),
             new ReEngagementMail($reengage, 'https://example.test/unsubscribe', $identity),
             new ReEngagementPreviewMail(['week' => '2026-W42', 'audience' => 'team', 'recipients' => 3, 'send_after' => '2026-10-14 09:00', 'sample' => $reengage], 'https://example.test/manage', $identity),
+            // the wheel's invite reward (2026-11-09): the shop's own layout, its own footer
+            new WheelReferralReward('SPIN-AAAA-BBBB', 15.0, Carbon::now()->addDays(2), 'ar', $identity),
         ];
         foreach ($mailables as $mailable) {
             $html = $mailable->render();
@@ -303,10 +307,10 @@ it('renders the DEVELOPER\'S WhatsApp number in NONE of the eleven mail template
         }
     }
 
-    // Eleven templates, two shops: 24 renders (the stock alert in both languages), 0 developer numbers.
+    // Twelve templates, two shops: 26 renders (the stock alert in both languages), 0 developer numbers.
     $templates = glob(resource_path('views/emails/*.blade.php')) ?: [];
     $templates = array_values(array_filter($templates, fn (string $f): bool => ! str_contains($f, DIRECTORY_SEPARATOR.'partials'.DIRECTORY_SEPARATOR) && ! str_starts_with(basename($f), '_')));
-    expect($rendered)->toHaveCount(24)->and(count($templates))->toBe(11);
+    expect($rendered)->toHaveCount(26)->and(count($templates))->toBe(12);
     $hits = [];
     foreach ($rendered as $key => $html) {
         $n = substr_count($html, $developer) + substr_count($html, '01274550956');

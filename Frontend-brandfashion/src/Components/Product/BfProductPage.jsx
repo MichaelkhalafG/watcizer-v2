@@ -6,6 +6,8 @@ import { useToastStore } from '@/src/Store/toastStore'
 import useCart from '@/src/Hooks/useCart'
 import { refusedAddMessage } from '@/src/Store/cartStore'
 import { txt, money } from '@/src/lib/cardData'
+import { livePrice, liveVariantPrice } from '@/src/lib/campaign'
+import { useLivePrices } from '@/src/Hooks/queries/usePromo'
 import { aisleTint } from '@/src/lib/aisleTint'
 import { PLACEHOLDER_IMG } from '@/src/utils/imageUrl'
 import { pictureSources, SIZES } from '@/src/utils/picture'
@@ -93,6 +95,7 @@ export default function BfProductPage({ detail, related }) {
   // — its badge and countdown near the price, the buy buttons and accents in its colours — and gives it back the
   // second the offer ends (the Flash Sale wins when a product is in both). The layout is the same page.
   const liveOffer = useProductOffer(p?.id)
+  const livePriceMap = useLivePrices()
   const variants = useMemo(() => (Array.isArray(p.variants) ? p.variants : []), [p.variants])
   // the card's picker hands its choice over as ?color=&size= (spec §8.6); a value no row carries is ignored
   const sp = useSearchParams()
@@ -154,7 +157,8 @@ export default function BfProductPage({ detail, related }) {
   }
 
   // ── price and stock follow the chosen row, else the product
-  const price = chosen?.price || p.price || {}
+  // …as they hold NOW: a campaign price follows its campaign to the second (2026-11-10)
+  const price = (chosen?.price ? liveVariantPrice(chosen.price, p.price, p.id, livePriceMap) : livePrice(p.price, p.id, livePriceMap)) || {}
   const stock = chosen?.stock || p.stock || {}
   const hasSale = Boolean(price.has_sale) && Number(price.sale_amount) > 0 && Number(price.sale_amount) < Number(price.amount)
   const now = money(hasSale ? price.sale_amount : price.amount, lang, price.currency)

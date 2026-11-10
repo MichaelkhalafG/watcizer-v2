@@ -2,8 +2,8 @@
 import { useMemo, useState } from 'react'
 import Link from '../../LocaleLink'
 import { useUIStore } from '../../../Store/uiStore'
-import { useMenu } from '../../../Hooks/queries/usePromo'
-import { money, txt } from '../../../lib/campaign'
+import { useLivePrices, useMenu } from '../../../Hooks/queries/usePromo'
+import { livePrice, money, txt } from '../../../lib/campaign'
 import { Chevron } from '../../Promo/icons'
 import { STR, DEFAULT_HREFS, menuEntries } from './MegaMenu'
 import './megaMenu.css'
@@ -30,6 +30,7 @@ const GLYPH = {
 }
 
 export default function MegaDrawer({ active = false, hrefs = {}, omit = [], onNavigate }) {
+  const livePriceMap = useLivePrices()
   const language = useUIStore((s) => s.language)
   const lang = language === 'ar' ? 'ar' : 'en'
   const dir = lang === 'ar' ? 'rtl' : 'ltr'
@@ -168,8 +169,8 @@ export default function MegaDrawer({ active = false, hrefs = {}, omit = [], onNa
                   <span className="md__feature-title">{txt(featured.product.title, lang)}</span>
                   <span className="md__feature-price">{t.from(money(featured.price_from, lang))}</span>
                 </span>
-                {featured.product.price?.has_sale && featured.product.price.discount_pct > 0 ? (
-                  <span className="md__feature-off">{t.off(featured.product.price.discount_pct)}</span>
+                {livePrice(featured.product.price, featured.product.id, livePriceMap)?.has_sale && livePrice(featured.product.price, featured.product.id, livePriceMap).discount_pct > 0 ? (
+                  <span className="md__feature-off">{t.off(livePrice(featured.product.price, featured.product.id, livePriceMap).discount_pct)}</span>
                 ) : null}
               </Link>
             ) : null}

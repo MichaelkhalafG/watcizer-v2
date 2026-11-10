@@ -9,7 +9,8 @@ import { productUrl } from '../../utils/productUrl'
 import useCart from '../../Hooks/useCart'
 import { refusedAddMessage } from '../../Store/cartStore'
 import { useToastStore } from '../../Store/toastStore'
-import { useProductOffer } from '../../Hooks/queries/usePromo'
+import { useLivePrices, useProductOffer } from '../../Hooks/queries/usePromo'
+import { liveFields } from '../../lib/campaign'
 import OfferStrip, { offerClass } from '../Promo/OfferStrip'
 import './ProductCard.css'
 
@@ -22,6 +23,7 @@ const ProductCard = ({ product, showBrand = true, showRating = true, eager = fal
   const { language } = useUIStore()
   // in a live Hot Deals / Flash Sale campaign (item 41): the card takes that offer's look; null the second it ends
   const offer = useProductOffer(product?.id)
+  const livePriceMap = useLivePrices()
   const offerLang = language === 'ar' ? 'ar' : 'en'
   const { addItem } = useCart()
   const showToast = useToastStore((s) => s.showToast)
@@ -64,8 +66,10 @@ const ProductCard = ({ product, showBrand = true, showRating = true, eager = fal
   })()
 
   /* ── Prices ── */
-  const price = Number(product.selling_price || 0)
-  const salePrice = Number(product.sale_price_after_discount || 0)
+  // the price as it holds now: a campaign price follows its campaign to the second (2026-11-10)
+  const live = liveFields(product, livePriceMap)
+  const price = Number(live.selling_price || 0)
+  const salePrice = Number(live.sale_price_after_discount || 0)
   const hasSale = salePrice > 0 && salePrice < price
   const discount = hasSale ? Math.round((1 - salePrice / price) * 100) : 0
   const currency = isRTL ? 'ج.م' : 'EGP'

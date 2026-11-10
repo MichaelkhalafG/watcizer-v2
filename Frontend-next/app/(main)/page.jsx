@@ -1,9 +1,7 @@
-import { QueryClient, dehydrate, HydrationBoundary } from '@tanstack/react-query'
 import HomeClient from './HomeClient'
 import { getServerV2Menu } from '@/src/lib/serverV2'
 import { slimMenu } from '@/src/lib/menuData'
 import { slimCompatHome } from '@/src/lib/homeData'
-import { STOREFRONT_CODE } from '@/src/lib/env'
 import { safeJsonLd } from '@/src/lib/safeJsonLd'
 import { getServerHome } from '@/src/lib/serverCatalog'
 // the campaign banner's live price, stock and facts (2026-10-29, Watchizer only): one cached read of the product
@@ -144,8 +142,6 @@ export default async function HomePage() {
     // nor is the menu: without it the category row draws each category's own picture and the browser fills the rest
     getServerV2Menu().then((body) => slimMenu(body?.data || null), () => null),
   ])
-  const menuClient = new QueryClient()
-  if (menu) menuClient.setQueryData(['menu', STOREFRONT_CODE], menu)
   return (
     <>
       <script
@@ -153,12 +149,14 @@ export default async function HomePage() {
         dangerouslySetInnerHTML={{ __html: safeJsonLd(storeJsonLd) }}
       />
       {/* The home's category row draws each category's picture from the menu (the fallback rule, item 35), so THIS
-          page carries the menu — slimmed — in its server render; every other page gets it from the browser's one
-          request after load (usePromo.useMenu). */}
-      <HydrationBoundary state={dehydrate(menuClient)}>
-        {/* the sliders' data cut to what a card reads (src/lib/homeData.js): 788 KB of this page's HTML was the rest */}
-        <HomeClient initialHome={slimCompatHome(home)} campaign={campaign} />
-      </HydrationBoundary>
+          page carries the menu — slimmed — in its server render, AS A PROP (2026-11-07): a HydrationBoundary here
+          never reached the row's server render, because the header's menu component had created the query (empty)
+          first, and React Query fills an existing query in an effect — which a server has none of. The browser's
+          first render then had the menu from sessionStorage and the server's HTML did not: React #418 on the live
+          home. HomeClient hands the prop to the row and seeds the query cache from it after mount, so the menu is
+          still ready before the first hover. Every other page gets it from the browser's one request after load. */}
+      {/* the sliders' data cut to what a card reads (src/lib/homeData.js): 788 KB of this page's HTML was the rest */}
+      <HomeClient initialHome={slimCompatHome(home)} campaign={campaign} menu={menu} />
     </>
   )
 }

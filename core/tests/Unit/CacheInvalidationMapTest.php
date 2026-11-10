@@ -1,5 +1,6 @@
 <?php
 
+use App\Domain\Campaigns\CampaignPrices;
 use App\Storefront\StorefrontCache;
 use App\Storefront\StorefrontPricing;
 use Illuminate\Support\Facades\File;
@@ -35,7 +36,9 @@ it('bumps every versioned key on flush and forgets a product key individually', 
     $cache = new StorefrontCache;
     $before = $cache->key(1, 'meta');
     $v = $cache->flush(1);
-    expect($cache->key(1, 'meta'))->not->toBe($before)->and($cache->key(1, 'meta'))->toEndWith(":v{$v}");
+    // the version, then the name of the live priced campaigns when one is live on the copy (2026-11-10)
+    $live = CampaignPrices::liveKey(1);
+    expect($cache->key(1, 'meta'))->not->toBe($before)->and($cache->key(1, 'meta'))->toEndWith(":v{$v}".($live !== '' ? ":{$live}" : ''));
 
     $n = 0;
     expect($cache->remember(1, 'product', '5', 60, function () use (&$n) {

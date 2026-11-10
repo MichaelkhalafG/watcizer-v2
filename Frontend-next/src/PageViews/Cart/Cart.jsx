@@ -23,7 +23,7 @@ import useCart, { getItemKey } from '../../Hooks/useCart'
 import useFreeShipping from '../../Hooks/useFreeShipping'
 import usePromotion from '../../Hooks/usePromotion'
 import CouponBox from '../../Components/Cart/CouponBox'
-import { discountLabel, payable } from '../../lib/coupon'
+import { discountLabel, payable, rewardTitle } from '../../lib/coupon'
 import { shippingCharged } from '../../lib/freeShipping'
 import { cartStore } from '../../Store/cartStore'
 import ProductSlider from '../../Components/Product/ProductSlider'
@@ -604,7 +604,7 @@ function Cart() {
             {/* The ways to pay this shop offers (Part 7, 2026-11-05) — the checkout's own list. Under the items, not
                 in the summary: the summary is a sticky box with a height limit, and seven badges there pushed its
                 last row into an inner scroll (measured at 1440x900). */}
-            <PaymentBadges className="wz-cart-pay" note />
+            <PaymentBadges className="wz-cart-pay" bare note />
           </div>
 
           {/* Summary */}
@@ -673,6 +673,15 @@ function Cart() {
                   <span>−{fmt(promotion.discount)} {currency}</span>
                 </div>
               ) : null}
+              {promotion.rewards.map((reward) => (
+                <div className="wz-cart-row wz-cart-discount wz-cart-gift" key={`gift-${reward.product_id}`}>
+                  <span>
+                    {t('Gift', 'هدية')}: {rewardTitle(reward, isRTL)}
+                    {reward.quantity > 1 ? ` × ${reward.quantity}` : ''}
+                  </span>
+                  <span>{t('Free', 'مجانًا')}</span>
+                </div>
+              ))}
 
               <CouponBox isRTL={isRTL} />
 

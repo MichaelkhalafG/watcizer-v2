@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers\Manage;
 
+use App\Domain\Access\Role;
 use App\Domain\Activity\ActivityLog;
+use App\Domain\Campaigns\CampaignPrices;
 use App\Domain\Campaigns\Campaigns;
 use App\Domain\Campaigns\CampaignWriter;
 use App\Models\Storefront\Storefront;
@@ -10,10 +12,13 @@ use App\Storefront\StorefrontCache;
 use App\Support\Coerce;
 use App\Support\ManageText;
 use App\Transform\Row;
+use Illuminate\Database\Query\JoinClause;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
@@ -62,8 +67,10 @@ final class CampaignController
                 'is_active' => $active,
                 'state' => Campaigns::state($active, $startsAt, $endsAt),
                 'product_ids' => Campaigns::productIds($id),
-                // The REAL numbers behind the storefront's bar, for the team: how many products have a
-                // recorded start, how many units they started with, how many of those were sold.
+                // the campaign prices (2026-11-10): product id → {mode, value}
+                'prices' => (object) CampaignWriter::prices($id),
+                // The REAL numbers behind the storefront's bar, for the team (2026-11-10: from each product's LAST
+                // RESTOCK): how many products have one, the units on the shelf right after it, how many sold since.
                 'recorded' => count($progress),
                 'started_units' => array_sum(array_column($progress, 'start')),
                 'sold_units' => array_sum(array_column($progress, 'sold')),
@@ -80,7 +87,50 @@ final class CampaignController
             // The shop's clock, so "starts now" on the form means now in the time zone the dates are stored in.
             'now' => now()->format('Y-m-d\TH:i'),
             'timezone' => config()->string('app.timezone'),
+            // the purchase price and the margin show only to whom the product form shows cost (MANAGE_CATALOG)
+            'can_see_cost' => Gate::allows(Role::MANAGE_CATALOG),
+            'confirm_percent' => CampaignPrices::CONFIRM_PERCENT,
+            'max_percent' => CampaignPrices::MAX_PERCENT,
         ]);
+    }
+
+    /**
+     * GET campaigns/price-facts?ids=1,2 — what the campaign prices table computes from, per product of this storefront:
+     * the name, the code, the normal price, the valid sale, the current price, and the purchase price only for
+     * MANAGE_CATALOG (null otherwise).
+     */
+    public function priceFacts(Request $request, Storefront $storefront): JsonResponse
+    {
+        $ids = array_values(array_unique(array_filter(array_map('intval', explode(',', Coerce::str($request->input('ids')))), fn (int $id): bool => $id > 0)));
+        $ids = array_slice($ids, 0, Campaigns::MAX_PRODUCTS);
+        $cost = Gate::allows(Role::MANAGE_CATALOG);
+        $out = [];
+        if ($ids !== []) {
+            foreach (DB::table('storefront_product as sp')->join('catalog_products as p', 'p.id', '=', 'sp.product_id')
+                ->leftJoin('catalog_product_translations as ta', function (JoinClause $j): void {
+                    $j->on('ta.product_id', '=', 'p.id')->where('ta.locale', '=', 'ar');
+                })
+                ->leftJoin('catalog_product_translations as te', function (JoinClause $j): void {
+                    $j->on('te.product_id', '=', 'p.id')->where('te.locale', '=', 'en');
+                })
+                ->where('sp.storefront_id', $storefront->id)->whereIn('sp.product_id', $ids)
+                ->get(['sp.product_id', 'sp.effective_price', 'sp.effective_sale_price', 'p.purchase_price', 'p.wa_code', 'ta.title as title_ar', 'te.title as title_en']) as $raw) {
+                $row = Row::cast($raw);
+                $price = (float) Row::money($row, 'effective_price');
+                $sale = Row::nmoney($row, 'effective_sale_price') === null ? null : (float) Row::money($row, 'effective_sale_price');
+                $current = CampaignPrices::current($price, $sale);
+                $out[(string) Row::int($row, 'product_id')] = [
+                    'title' => Row::nstr($row, 'title_ar') ?? Row::nstr($row, 'title_en') ?? '#'.Row::int($row, 'product_id'),
+                    'code' => Row::nstr($row, 'wa_code'),
+                    'selling' => $price,
+                    'sale' => $current < $price ? $current : null,
+                    'current' => $current,
+                    'purchase' => $cost ? (float) Row::money($row, 'purchase_price') : null,
+                ];
+            }
+        }
+
+        return response()->json(['data' => (object) $out]);
     }
 
     public function store(Request $request, Storefront $storefront): RedirectResponse
@@ -131,13 +181,17 @@ final class CampaignController
      * Run a write and turn the writer's refusal into the sentence for the field it names.
      *
      * @param  callable(): int  $write
-     * @param  array{name: string, presentation: string, starts_at: string, ends_at: string, is_active: bool, product_ids: list<int>}  $data
+     * @param  array{name: string, presentation: string, starts_at: string, ends_at: string, is_active: bool, product_ids: list<int>, prices?: array<int, array{mode: string, value: float}>, confirm_prices: bool}  $data
      */
     private static function write(callable $write, int $storefrontId, ?int $campaignId, array $data): int
     {
         try {
             return $write();
         } catch (InvalidArgumentException $e) {
+            // the campaign prices' refusals and their confirmation name the product (CampaignWriter::assertPrices)
+            if (str_starts_with($e->getMessage(), 'prices.')) {
+                throw ValidationException::withMessages(self::priceErrors($e->getMessage()));
+            }
             $other = $e->getMessage() === 'overlap'
                 ? CampaignWriter::overlapping($storefrontId, $campaignId, $data['presentation'], $data['starts_at'], $data['ends_at'])
                 : null;
@@ -158,7 +212,26 @@ final class CampaignController
         }
     }
 
-    /** @return array{name: string, presentation: string, starts_at: string, ends_at: string, is_active: bool, product_ids: list<int>} */
+    /** @return array<string, string> */
+    private static function priceErrors(string $code): array
+    {
+        [$rule, $ids] = array_pad(explode(':', substr($code, strlen('prices.')), 2), 2, '');
+        $first = explode(',', $ids)[0];
+
+        return match ($rule) {
+            'confirm' => ['confirm_prices' => ManageText::t(
+                'campaigns.price_confirm',
+                'بعض أسعار الحملة أقل من سعر الشراء أو بخصم إضافي أكثر من :pct%. راجعها ثم أكّد الحفظ.',
+                ['pct' => (int) CampaignPrices::CONFIRM_PERCENT],
+            ).' ['.$ids.']'],
+            'not_lower' => ["prices.{$first}" => ManageText::t('campaigns.price_not_lower', 'سعر الحملة يجب أن يكون أقل من السعر الحالي للمنتج.')],
+            'value' => ["prices.{$first}" => ManageText::t('campaigns.price_value', 'القيمة أكبر من صفر؛ والنسبة الإضافية حتى :max%.', ['max' => (int) CampaignPrices::MAX_PERCENT])],
+            'mode' => ["prices.{$first}" => ManageText::t('campaigns.price_mode', 'اختر: سعر الحملة أو نسبة خصم إضافية.')],
+            default => ["prices.{$first}" => ManageText::t('campaigns.price_product', 'هذا المنتج ليس ضمن منتجات الحملة.')],
+        };
+    }
+
+    /** @return array{name: string, presentation: string, starts_at: string, ends_at: string, is_active: bool, product_ids: list<int>, prices?: array<int, array{mode: string, value: float}>, confirm_prices: bool} */
     private function validated(Request $request): array
     {
         $data = Coerce::arr($request->validate([
@@ -169,6 +242,10 @@ final class CampaignController
             'is_active' => ['required', 'boolean'],
             'product_ids' => ['required', 'array', 'min:1', 'max:'.Campaigns::MAX_PRODUCTS],
             'product_ids.*' => ['integer', 'min:1', 'distinct'],
+            'prices' => ['nullable', 'array'],
+            'prices.*.mode' => ['required', 'string', Rule::in(CampaignPrices::MODES)],
+            'prices.*.value' => ['required', 'numeric', 'gt:0', 'max:99999999'],
+            'confirm_prices' => ['nullable', 'boolean'],
         ], [
             'ends_at.after' => ManageText::t('campaigns.error_window', 'يجب أن تكون النهاية بعد البداية.'),
         ]));
@@ -176,6 +253,11 @@ final class CampaignController
         $ids = [];
         foreach (Coerce::arr($data['product_ids'] ?? []) as $id) {
             $ids[] = Coerce::int($id);
+        }
+        $prices = [];
+        foreach (Coerce::arr($data['prices'] ?? []) as $productId => $rule) {
+            $rule = Coerce::arr($rule);
+            $prices[Coerce::int($productId)] = ['mode' => Coerce::str($rule['mode'] ?? ''), 'value' => Coerce::float($rule['value'] ?? 0)];
         }
 
         return [
@@ -187,7 +269,8 @@ final class CampaignController
             'ends_at' => Carbon::parse(Coerce::str($data['ends_at'] ?? null))->format('Y-m-d H:i:00'),
             'is_active' => (bool) ($data['is_active'] ?? false),
             'product_ids' => $ids,
-        ];
+            'confirm_prices' => (bool) ($data['confirm_prices'] ?? false),
+        ] + ($request->exists('prices') ? ['prices' => $prices] : []);   // absent = the prices stay as they are; empty = none
     }
 
     private static function requireCampaign(int $storefrontId, int $campaignId): void
@@ -214,6 +297,8 @@ final class CampaignController
             'ends_at' => Row::str($raw, 'ends_at'),
             'is_active' => Row::bool($raw, 'is_active'),
             'product_ids' => Campaigns::productIds($campaignId),
+            // the campaign prices set and changed land in the activity log with who did it (2026-11-10)
+            'prices' => CampaignWriter::prices($campaignId),
         ];
     }
 

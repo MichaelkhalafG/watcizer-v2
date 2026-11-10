@@ -1,0 +1,35 @@
+/* THE FLOATING CORNER (2026-11-07). A TWIN. One fixed column, inline-end and bottom; every floating element is an item
+   of it, so they stack with a gap and never overlap. The host itself lets taps through (pointer-events: none) and only
+   its items take them. A shop with a bar of its own at the bottom lifts the whole column with `--pm-float-lift`
+   (Brand Fashion: its phone bottom nav). Below the nav drawer (3000) and the cart drawer (2500), above page content. */
+.wz-floating {
+  position: fixed;
+  inset-block-end: calc(14px + env(safe-area-inset-bottom, 0px) + var(--pm-float-lift, 0px));
+  inset-inline-end: 12px;
+  z-index: 900;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+  pointer-events: none;
+}
+.wz-floating:empty {
+  display: none;
+}
+.wz-floating__item {
+  pointer-events: auto;
+}
+.wz-floating__item:empty {
+  display: none;
+}
+@media (min-width: 769px) {
+  .wz-floating {
+    inset-block-end: calc(24px + var(--pm-float-lift, 0px));
+    inset-inline-end: 24px;
+    gap: 12px;
+  }
+  /* the Hot Deals pill is the header's switch on a computer (promo.css hides the floating copy): its item leaves the column too */
+  .wz-floating__item[data-float='hot-deals'] {
+    display: none;
+  }
+}

@@ -31,6 +31,7 @@ use App\Http\Controllers\V2\PaymentMethodController;
 use App\Http\Controllers\V2\ProductController;
 use App\Http\Controllers\V2\RelatedController;
 use App\Http\Controllers\V2\SitemapController;
+use App\Http\Controllers\V2\WheelController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -71,6 +72,18 @@ Route::prefix('v2/{storefront}')->middleware('storefront')->where(['storefront' 
     // The LIVE timed campaigns — Hot Deals and Flash Sale — with the server's clock (Part 2, 2026-11-05). Not under
     // http.cache for the same reason again: a countdown is wrong by the second, and an ended sale must leave at once.
     Route::get('campaigns', [CampaignController::class, 'index']);
+
+    // SPIN THE WHEEL (2026-11-07): the segments and the switch, a spin (the prize is decided HERE), and the spin a phone
+    // already made. Under /api/v2/, so the API host's allow-list (runbook §4.1.1) and ApiAllowListTest are unchanged.
+    // The two spin routes are throttled per address (AppServiceProvider `wheel-spin`); the wheel's own limits are a
+    // spin per phone and per device per campaign (App\Domain\Wheel\Wheel).
+    Route::get('wheel', [WheelController::class, 'show']);
+    Route::post('wheel/spin', [WheelController::class, 'spin'])->middleware('throttle:wheel-spin');
+    Route::get('wheel/spin', [WheelController::class, 'lookup'])->middleware('throttle:wheel-spin');
+    // a spin is SAVED to an account (2026-11-09 evening, every prize since 2026-11-10): the signed-in customer claims this
+    // round's spin of their phone (an invite is activated by it); the account page lists every spin saved to it
+    Route::post('wheel/claim', [WheelController::class, 'claim'])->middleware('throttle:wheel-spin');
+    Route::get('wheel/mine', [WheelController::class, 'mine']);
     // B7 S1 (round 5, 2026-10-18): the v2 CART of the storefront in the path — variant-aware, beside compat's cart and
     // never through it. Never cached (CartController): one shopper's cart is never served to another.
     Route::get('cart', [CartController::class, 'show']);

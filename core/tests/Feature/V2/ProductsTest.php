@@ -55,7 +55,13 @@ it('returns an empty page for a filter nothing matches', function () {
 });
 
 it('sorts by price and filters by brand slug and in-stock', function () {
-    $prices = array_map(fn (array $c) => H::arr($c['price'])['amount'], H::rows(getJson(H::base('products?sort=price_asc&per_page=50'))->assertOk()->json('data')));
+    // by the price the shopper PAYS (Michael, 2026-11-10): the valid sale when the card has one, else the price
+    $paid = function (array $c): mixed {
+        $price = H::arr($c['price']);
+
+        return ($price['has_sale'] ?? false) === true ? $price['sale_amount'] : $price['amount'];
+    };
+    $prices = array_map($paid, H::rows(getJson(H::base('products?sort=price_asc&per_page=50'))->assertOk()->json('data')));
     $sorted = $prices;
     sort($sorted);
     expect($prices)->toBe($sorted);

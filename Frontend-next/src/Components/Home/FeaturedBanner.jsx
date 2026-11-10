@@ -5,6 +5,8 @@ import { useRouter } from '@/src/Hooks/useLocaleRouter'
 import { useUIStore } from '../../Store/uiStore'
 import { getImageUrl, PLACEHOLDER_IMG } from '../../utils/imageUrl'
 import { productUrl } from '../../utils/productUrl'
+import { useLivePrices } from '../../Hooks/queries/usePromo'
+import { liveFields } from '../../lib/campaign'
 
 // Title can live in a translations[] array or be pre-localized on the catalog
 // object (product_title / name) — cover both.
@@ -31,6 +33,7 @@ function FeaturedBanner({ products, loading = false }) {
   const { language } = useUIStore()
   const router = useRouter()
   const isRTL = language === 'ar'
+  const livePriceMap = useLivePrices()
 
   // Eligible product pool — deterministic (depends only on `products`).
   const pool = useMemo(() => {
@@ -91,7 +94,8 @@ function FeaturedBanner({ products, loading = false }) {
     )
   }
 
-  const p = featured[current]
+  // the price as it holds now (a campaign price follows its campaign, 2026-11-10)
+  const p = liveFields(featured[current], livePriceMap)
   const name = getName(p, language)
   const brand = typeof p.brand === 'string' ? p.brand : p.brand?.name_en || p.brand_name || ''
   const price = Number(p.selling_price || 0)

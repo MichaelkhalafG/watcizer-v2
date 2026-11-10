@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domain\Promotions;
 
+use App\Domain\Wheel\Wheel;
 use App\Transform\Row;
 use Illuminate\Support\Facades\DB;
 use stdClass;
@@ -41,7 +42,9 @@ final class PromotionDiscounts
      */
     public static function record(int $orderId, PromotionOutcome $outcome): bool
     {
-        if ($outcome->ruleId === null || $outcome->discount <= 0.0) {
+        $giftCode = $outcome->rewards !== [] && $outcome->coupon !== null && $outcome->coupon['status'] === CouponStatus::APPLIED
+            ? $outcome->coupon['code'] : null;
+        if ($outcome->ruleId === null || ($outcome->discount <= 0.0 && $giftCode === null)) {
             // The common case by far: no promotion, or a free-item one that moved no money.
             return false;
         }
@@ -51,8 +54,10 @@ final class PromotionDiscounts
         }
 
         // a pre-M1u outcome (or a hand-built one) carries only the total: record it against the winning rule
+        // a pre-M1u outcome (or a hand-built one) carries only the total; a GIFT code (the wheel, 2026-11-09) moved no
+        // money and is recorded at 0 so the code is spent once and the dashboard sees the order
         $applied = $outcome->applied !== [] ? $outcome->applied : [[
-            'rule_id' => $outcome->ruleId, 'code' => null, 'label_en' => null, 'label_ar' => null,
+            'rule_id' => $outcome->ruleId, 'code' => $giftCode, 'label_en' => null, 'label_ar' => null,
             'amount' => $outcome->discount, 'free_shipping' => $outcome->freeShipping,
         ]];
 
@@ -90,6 +95,8 @@ final class PromotionDiscounts
                 'amount' => number_format($rule['amount'], 2, '.', ''),
                 'created_at' => now(),
             ]);
+            // a wheel code (App\Domain\Wheel, 2026-11-07) remembers the order that used it; any other code is left alone
+            Wheel::markUsed(is_string($rule['code']) ? $rule['code'] : null, $orderId);
         }
 
         foreach ($outcome->lines as $line) {

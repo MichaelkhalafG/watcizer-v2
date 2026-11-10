@@ -296,11 +296,16 @@ final class InventoryService
             if ($delta < 0) {
                 $query->where($column, '>=', -$delta);
             }
-            $values = [$column => Sql::delta($column, $delta), 'updated_at' => now()];
+            $values = [];
             if (! $target->isVariant()) {
-                // A product without variants keeps wave 3's exact behaviour, including in_stock.
+                // A product without variants keeps wave 3's exact behaviour, including in_stock — assigned FIRST
+                // (2026-11-10): MariaDB evaluates a single-table UPDATE's assignments left to right with the values
+                // already assigned, so `in_stock` computed after the bucket read the NEW bucket plus the delta again
+                // (express 3 − 2 left 1 unit and read "out of stock"). Before the bucket it reads the old value + delta.
                 $values['in_stock'] = Sql::eitherBucketPositive($column, $other, $delta);
             }
+            $values[$column] = Sql::delta($column, $delta);
+            $values['updated_at'] = now();
             $affected = $query->update($values);
 
             if ($affected === 0) {

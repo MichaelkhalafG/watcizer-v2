@@ -524,7 +524,7 @@ function Cart() {
               </ul>
 
               {/* the ways to pay this shop offers (Part 7, 2026-11-05) — the checkout's own list */}
-              <PaymentBadges className="wz-cart-pay pm-pay--compact" note />
+              <PaymentBadges className="wz-cart-pay pm-pay--compact" bare note />
             </div>
           </aside>
         </div>

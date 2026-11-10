@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 namespace App\Storefront;
 
+use App\Domain\Campaigns\CampaignPrices;
 use App\Domain\Campaigns\Campaigns;
+use App\Domain\Wheel\Wheel;
 use App\Support\Val;
+use App\Transform\Row;
 use Illuminate\Support\Carbon;
 
 /**
@@ -26,12 +29,12 @@ use Illuminate\Support\Carbon;
  *   max_discount the largest discount among them, as the cards print it — a fact, not a slogan
  *   cards        the first {@see self::SLIDER} for the home slider, v2 card rows in the team's order,
  *                each with `campaign` (below) or `campaign: null`
- *   progress     product id → {start, sold, left, pct} for EVERY product that has a recorded start —
+ *   progress     product id → {start, sold, left, pct} for EVERY product that has a stock addition —
  *                the campaign page joins it to the listing's own cards (`products?campaign=…`)
  *
- * `campaign` on a card is real or absent ({@see Campaigns::progress()}): `start` recorded when the
- * product joined the live campaign, `sold` from the stock ledger since then, `left` the live stock,
- * `pct` = sold ÷ start, capped at 100 (a restock mid-campaign can sell more than it started with).
+ * `campaign` on a card is real or absent ({@see Campaigns::progress()}): `start` the units on the shelf
+ * right after the product's LAST RESTOCK, `sold` from the stock ledger since then, `left` the live stock,
+ * `pct` = sold ÷ start (2026-11-10: from the last restock, no longer from the campaign's start).
  *
  * WHICH campaign is live is decided on every request (one indexed read), never from a cache: an ended
  * campaign must not be served for a second longer. What IS cached, for {@see self::TTL} seconds under
@@ -81,7 +84,55 @@ final class StorefrontCampaigns
         $next = Campaigns::nextStart($this->ctx->id(), $now);
         $out['next_start_at'] = $next === null ? null : Carbon::parse($next)->toIso8601String();
 
+        // THE LIVE CAMPAIGN PRICES (2026-11-10): product id → its price object while a priced campaign is live. The
+        // storefront apps hold this answer and drop it at the next start and at each end, so every price on a page
+        // follows it to the second — a card from a page held since before the start or the end reads its price here.
+        $out['prices'] = $this->prices($now);
+
+        // The wheel's switch (2026-11-07) rides with the campaigns — the one answer every page already holds — so the
+        // storefront's floating wheel button costs no request of its own and is in the server's HTML state. Read from
+        // the resolved storefront row (no query); the dashboard's switch flushes that row.
+        $wheel = Wheel::settingsFrom($this->ctx->storefront->getAttribute('settings'));
+        // the round's key too (2026-11-08): the button says "your code" only for a spin of THIS round
+        $out['wheel'] = ['enabled' => $wheel['enabled'], 'campaign' => $wheel['campaign']];
+
         return $out;
+    }
+
+    /**
+     * The live campaign prices: product id → the price object a card prints (amount, sale_amount, discount_pct,
+     * has_sale, currency) with the campaign's presentation and end. Empty when no priced campaign is live (no query).
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    private function prices(Carbon $now): array
+    {
+        $rules = CampaignPrices::rules($this->ctx->id(), $now);
+        if ($rules === []) {
+            return [];
+        }
+        $currency = $this->cards->currency();
+        /** @var array<string, array<string, mixed>> $prices */
+        $prices = $this->cache->remember($this->ctx->id(), 'campaign', 'prices', self::TTL, function () use ($rules, $now, $currency): array {
+            $out = [];
+            foreach ($this->cards->base()->whereIn('sp.product_id', array_keys($rules))->get(['sp.product_id', 'sp.effective_price', 'sp.effective_sale_price']) as $raw) {
+                $row = Row::cast($raw);
+                $id = Row::int($row, 'product_id');
+                $price = Row::money($row, 'effective_price');
+                $now2 = CampaignPrices::saleFor($this->ctx->id(), $id, $price, Row::nmoney($row, 'effective_sale_price'), $now);
+                if ($now2['rule'] === null) {
+                    continue;
+                }
+                $out[(string) $id] = StorefrontPricing::resolve($price, $now2['sale'], $currency) + [
+                    'presentation' => $now2['rule']['presentation'],
+                    'ends_at' => Carbon::parse($now2['rule']['ends_at'])->toIso8601String(),
+                ];
+            }
+
+            return $out;
+        });
+
+        return $prices;
     }
 
     /**
@@ -167,7 +218,7 @@ final class StorefrontCampaigns
      * WHAT A CARD'S BAR SAYS — one rule, so the bar and the stock label can never contradict each other
      * (the developer's review, 2026-11-05: a card read "50% sold" and "Sold out" at once).
      *
-     * Three real numbers: `start`, the units on the shelf when the campaign was activated (the snapshot);
+     * Three real numbers: `start`, the units on the shelf right after the product's last restock;
      * `sold`, the units the stock ledger says were sold since then; `left`, the units a shopper can buy on
      * this storefront NOW (0 when the product is not in stock here, whatever the shelf count says).
      *

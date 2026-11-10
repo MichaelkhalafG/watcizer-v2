@@ -554,20 +554,17 @@ html[data-hot-deals='on'] .pm-fireground .pm-nav--top .pm-switch[aria-checked='t
 }
 
 /*
- * PHONES: the switch is a PILL FIXED IN THE THUMB'S CORNER (`pm-nav--float`) — the bar under the header is gone
- * (the developer's review, 2026-11-05). It is outside the page's flow, so it can never shift anything; it is
- * 52 px tall, a thumb target; and it sits on the inline-end side at the bottom, where one thumb reaches on any
- * phone. A shop with a bar of its own at the bottom lifts it with `--pm-float-lift`.
+ * PHONES: the switch is a PILL IN THE THUMB'S CORNER (`pm-nav--float`) — the bar under the header is gone
+ * (the developer's review, 2026-11-05). Since 2026-11-07 the corner is the page's ONE floating column
+ * (src/Components/Floating/floating.css): it is that column that is fixed, lifted over a shop's own bottom bar by
+ * `--pm-float-lift`, and hidden on the cart, the checkout and every product page; the pill is an item of it, 52 px
+ * tall, a thumb target, stacked with any other floating element instead of over it.
  */
 .pm-nav--float {
   display: none;
 }
 @media (max-width: 768px) {
   .pm-nav--float {
-    position: fixed;
-    inset-block-end: calc(14px + env(safe-area-inset-bottom, 0px) + var(--pm-float-lift, 0px));
-    inset-inline-end: 12px;
-    z-index: 900;
     display: block;
   }
   .pm-nav--float .pm-switch {
@@ -640,6 +637,10 @@ html[data-hot-deals='on'] .pm-fireground .pm-nav--top .pm-switch[aria-checked='t
   font-size: 12px;
   opacity: 0.75;
 }
+/* the picture's own frame is 320:200 with its padding inside: wherever it is drawn, it keeps that shape */
+.pm-pay__badge:not(.pm-pay__badge--name) img {
+  aspect-ratio: 320 / 200;
+}
 /* inside a narrow column (a cart or checkout summary): smaller tiles, so seven methods are two rows */
 .pm-pay--compact .pm-pay__list {
   gap: 6px;
@@ -665,6 +666,96 @@ html[data-hot-deals='on'] .pm-fireground .pm-nav--top .pm-switch[aria-checked='t
   border-color: transparent;
   box-shadow: 0 6px 14px -8px rgba(0, 0, 0, 0.8);
 }
+/* the footer (2026-11-10): the white card keeps the picture's own 320:200 shape and the picture fills it — no inner
+   padding (the PNG has its own), no border, no letterboxing; every card the same size, none stretched by its row */
+.pm-pay--dark .pm-pay__list {
+  align-items: flex-start;
+}
+.pm-pay--dark .pm-pay__badge {
+  box-sizing: border-box;
+  border: 0;
+}
+.pm-pay--dark .pm-pay__badge:not(.pm-pay__badge--name) {
+  inline-size: 84px;
+  min-inline-size: 0;
+  block-size: auto;
+  aspect-ratio: 320 / 200;
+  padding: 0;
+  overflow: hidden;
+}
+.pm-pay--dark .pm-pay__badge:not(.pm-pay__badge--name) img {
+  inline-size: 100%;
+  max-inline-size: none;
+  block-size: 100%;
+  max-block-size: none;
+  object-fit: contain;
+}
+.pm-pay--dark .pm-pay__badge--name {
+  inline-size: 84px;
+  min-inline-size: 0;
+  block-size: auto;
+  aspect-ratio: 320 / 200;
+  padding: 4px 6px;
+}
+
+/* the cart (2026-11-10): the pictures bare, side by side — no tile, no border, no ground; a name without a picture
+   is plain small text */
+.pm-pay--bare .pm-pay__list {
+  gap: 6px 10px;
+  align-items: center;
+}
+.pm-pay--bare .pm-pay__badge {
+  flex: none;
+  min-inline-size: 0;
+  max-inline-size: none;
+  block-size: auto;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+.pm-pay--bare .pm-pay__badge img {
+  inline-size: auto;
+  max-inline-size: none;
+  block-size: 40px;
+  max-block-size: none;
+}
+.pm-pay--bare.pm-pay--compact .pm-pay__badge img {
+  block-size: 36px;
+}
+/* the icon of a method without a picture, the picture's height */
+.pm-pay__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  block-size: 40px;
+  inline-size: 40px;
+  font-size: 24px;
+  color: inherit;
+}
+.pm-pay--bare.pm-pay--compact .pm-pay__icon {
+  block-size: 36px;
+  inline-size: 36px;
+  font-size: 22px;
+}
+.pm-pay--bare .pm-pay__name {
+  color: inherit;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* a method's picture at the end of a checkout row: bare, 40 px high, centred on the row, at the end side */
+.pm-method-badge {
+  display: block;
+  flex: none;
+  align-self: center;
+  inline-size: auto;
+  block-size: 40px;
+  aspect-ratio: 320 / 200;
+  margin-inline-start: auto;
+  object-fit: contain;
+}
 
 /* ── phones ──────────────────────────────────────────────────────────────────────────────────────── */
 @media (max-width: 767.98px) {
@@ -684,6 +775,19 @@ html[data-hot-deals='on'] .pm-fireground .pm-nav--top .pm-switch[aria-checked='t
     flex: 1 1 calc(25% - 6px);
     min-inline-size: 70px;
     max-inline-size: 110px;
+  }
+  /* the footer's cards: one fixed size, four to a row on a 390 px phone, the last row the same size (never stretched) */
+  .pm-pay--dark .pm-pay__badge:not(.pm-pay__badge--name),
+  .pm-pay--dark .pm-pay__badge--name {
+    flex: none;
+    inline-size: 76px;
+    min-inline-size: 0;
+    max-inline-size: none;
+  }
+  .pm-pay--bare .pm-pay__badge {
+    flex: none;
+    min-inline-size: 0;
+    max-inline-size: none;
   }
 }
 

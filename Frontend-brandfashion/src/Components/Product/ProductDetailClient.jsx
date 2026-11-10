@@ -29,7 +29,8 @@ import { toSlug } from '../../utils/slugs'
 import { buildListingParams } from '../../utils/listingParams'
 import http from '../../Context/api'
 import StockAlertForm from './StockAlertForm'
-import { useProductOffer } from '../../Hooks/queries/usePromo'
+import { useLivePrices, useProductOffer } from '../../Hooks/queries/usePromo'
+import { liveFields, liveVariantPrice, rowPrice } from '../../lib/campaign'
 import { OfferNote, offerClass } from '../Promo/OfferStrip'
 import './ProductDetail.css'
 
@@ -244,6 +245,7 @@ function ProductDetailClient({ param, isOffer = false, productPayload = null, v2
   // — its badge and countdown near the price, the buy buttons and accents in its colours — and gives it back the
   // second the offer ends (the Flash Sale wins when a product is in both). The layout is the same page.
   const liveOffer = useProductOffer(isOffer ? null : product?.id)
+  const livePriceMap = useLivePrices()
 
   // Loading grace: wait for context before declaring a 404 (fixes refresh bug).
   const [grace, setGrace] = useState(false)
@@ -370,13 +372,16 @@ function ProductDetailClient({ param, isOffer = false, productPayload = null, v2
    * row and not the product's headline - otherwise the shopper is shown one price and charged another.
    * Before anything is chosen the product's own figures stand, which is what the card linked to.
    */
-  const price = Number(chosenVariant ? (chosenVariant.price?.amount ?? 0) : item?.selling_price || 0)
+  // …and both as they hold NOW: a campaign price follows its campaign to the second (2026-11-10)
+  const liveItem = isOffer ? item : liveFields(item, livePriceMap)
+  const variantPrice = chosenVariant && !isOffer ? liveVariantPrice(chosenVariant.price, rowPrice(item), item?.id, livePriceMap) : chosenVariant?.price
+  const price = Number(chosenVariant ? (variantPrice?.amount ?? 0) : liveItem?.selling_price || 0)
   const salePrice = Number(
     chosenVariant
-      ? chosenVariant.price?.has_sale
-        ? (chosenVariant.price?.sale_amount ?? 0)
+      ? variantPrice?.has_sale
+        ? (variantPrice?.sale_amount ?? 0)
         : 0
-      : item?.sale_price_after_discount || 0,
+      : liveItem?.sale_price_after_discount || 0,
   )
   const hasSale = salePrice > 0 && salePrice < price
   const finalPrice = hasSale ? salePrice : price

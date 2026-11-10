@@ -37,6 +37,16 @@ const node = (n) => ({
   picks: (n.picks || []).map((p) => product(p, SIZE.row)),
 })
 
+/**
+ * The menu's TOP LEVEL alone — a slug, a path and a name per category — for a page whose "nothing running" state
+ * lists the shop's categories (the campaign pages, 2026-11-07). A few hundred bytes in the page instead of the whole
+ * slimmed menu, and the same list on the server and in the browser's first render.
+ */
+export function idleMenu(menu) {
+  if (!menu) return null
+  return { slim: true, idle: true, categories: (menu.categories || []).map((c) => ({ id: c.id, slug: c.slug, path: c.path, name: c.name })) }
+}
+
 export function slimMenu(menu) {
   if (!menu || menu.slim) return menu || null
   return {

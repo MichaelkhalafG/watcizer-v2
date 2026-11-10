@@ -1,5 +1,5 @@
 import { router, usePage } from '@inertiajs/react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { ConfirmAction } from '@/components/manage/ConfirmAction';
 import ProductPicker from '@/components/manage/ProductPicker';
@@ -23,13 +23,20 @@ import { useT } from '@/lib/i18n';
  * the header switch.
  *
  * The list says where each campaign STANDS (scheduled, live, ended, off) from the shop's own clock, and
- * for one that has gone live the real numbers behind the storefront's progress bar: how many units its
- * products started with and how many of those were sold. Those numbers are recorded and counted by the
- * server (the stock ledger), never typed here.
+ * the real numbers behind the storefront's progress bar: the units on the shelf after each product's last
+ * restock and how many of those were sold since (2026-11-10). The server counts them from the stock ledger;
+ * they are never typed here.
  *
  * Every rule is in the form before it is a refusal (AGENTS §2.27): Save is disabled with the reason
  * beside it, and a server refusal (two active campaigns of one presentation overlapping) lands on the
  * field it is about.
+ *
+ * CAMPAIGN PRICES (2026-11-10): under the picker, one row per picked product — "No change", a campaign
+ * price, or an extra percentage off its current price — with, live, its normal price, its current price,
+ * the campaign price that will apply, the % off the original and (for whom the product form shows cost)
+ * the margin over the purchase price. A price that is not lower than the current one blocks Save on its
+ * row; one under the purchase price, or more than 50 % extra, asks for a confirmation (the server asks
+ * too: CampaignWriter). The arithmetic is the server's (CampaignPrices::campaignPrice), to the cent.
  */
 
 interface Campaign {
@@ -42,7 +49,9 @@ interface Campaign {
     is_active: boolean;
     state: 'off' | 'scheduled' | 'live' | 'ended';
     product_ids: number[];
-    /** Products that have a recorded starting stock (the progress bar's "start"). */
+    /** product id → its campaign price rule (2026-11-10) */
+    prices: Record<string, { mode: string; value: number }>;
+    /** Products with a restock on record (the progress bar's "start" is the shelf right after it). */
     recorded: number;
     started_units: number;
     sold_units: number;
@@ -62,7 +71,38 @@ interface Props {
     max_products: number;
     now: string;
     timezone: string;
+    can_see_cost: boolean;
+    confirm_percent: number;
+    max_percent: number;
 }
+
+type PriceMode = '' | 'price' | 'percent';
+
+interface PriceRow {
+    mode: PriceMode;
+    value: string;
+}
+
+interface PriceFact {
+    title: string;
+    code: string | null;
+    selling: number;
+    sale: number | null;
+    current: number;
+    purchase: number | null;
+}
+
+/** CampaignPrices::campaignPrice, to the cent: null when it would not be lower than the current price. */
+function campaignPriceOf(row: PriceRow | undefined, fact: PriceFact | undefined): number | null {
+    if (!row || row.mode === '' || !fact) return null;
+    const value = Number(row.value);
+    if (!Number.isFinite(value) || value <= 0) return null;
+    const candidate =
+        row.mode === 'price' ? Math.round(value * 100) / 100 : Math.round((Math.round(fact.current * 100) * (10000 - Math.round(value * 100))) / 1000000);
+    return candidate > 0 && candidate < fact.current ? candidate : null;
+}
+
+const money = (n: number) => n.toLocaleString('en-US', { maximumFractionDigits: 2 });
 
 interface Draft {
     id: number | null;
@@ -72,6 +112,7 @@ interface Draft {
     ends_at: string;
     is_active: boolean;
     product_ids: number[];
+    prices: Record<string, PriceRow>;
 }
 
 const STATE_TONE: Record<Campaign['state'], 'neutral' | 'outline' | 'success' | 'warning'> = {
@@ -84,7 +125,7 @@ const STATE_TONE: Record<Campaign['state'], 'neutral' | 'outline' | 'success' | 
 /** A date-time as the list prints it: `2026-11-05 18:00`, left to right in both languages. */
 const shown = (value: string) => value.replace('T', ' ');
 
-export default function CampaignsIndex({ storefront, storefronts, campaigns, presentations, max_products, now, timezone }: Props) {
+export default function CampaignsIndex({ storefront, storefronts, campaigns, presentations, max_products, now, timezone, can_see_cost, confirm_percent, max_percent }: Props) {
     const t = useT();
     const errors = (usePage().props.errors ?? {}) as Record<string, string>;
     const [draft, setDraft] = useState<Draft | null>(null);
@@ -109,6 +150,7 @@ export default function CampaignsIndex({ storefront, storefronts, campaigns, pre
         ends_at: '',
         is_active: true,
         product_ids: [],
+        prices: {},
     });
 
     const edit = (campaign: Campaign) =>
@@ -120,10 +162,28 @@ export default function CampaignsIndex({ storefront, storefronts, campaigns, pre
             ends_at: campaign.ends_at,
             is_active: campaign.is_active,
             product_ids: campaign.product_ids,
+            prices: Object.fromEntries(
+                Object.entries(campaign.prices ?? {}).map(([id, rule]) => [id, { mode: (rule.mode === 'percent' ? 'percent' : 'price') as PriceMode, value: String(rule.value) }]),
+            ),
         });
 
-    const payloadOf = (source: Draft | Campaign, patch: Partial<Draft> = {}) => {
+    /** the rows that carry a price, as the server reads them: product id → {mode, value} */
+    const pricesOf = (rows: Record<string, PriceRow>, ids: number[]) =>
+        Object.fromEntries(
+            Object.entries(rows)
+                .filter(([id, row]) => row.mode !== '' && row.value.trim() !== '' && ids.includes(Number(id)))
+                .map(([id, row]) => [id, { mode: row.mode, value: Number(row.value) }]),
+        );
+
+    const payloadOf = (source: Draft | Campaign, patch: Partial<Draft> = {}, confirmPrices = false) => {
         const next = { ...source, ...patch };
+        const prices =
+            'prices' in next && next.prices
+                ? pricesOf(
+                      Object.fromEntries(Object.entries(next.prices).map(([id, row]) => [id, { mode: row.mode as PriceMode, value: String(row.value) }])),
+                      next.product_ids,
+                  )
+                : {};
 
         return {
             name: next.name,
@@ -132,19 +192,66 @@ export default function CampaignsIndex({ storefront, storefronts, campaigns, pre
             ends_at: next.ends_at,
             is_active: next.is_active,
             product_ids: next.product_ids,
+            prices,
+            confirm_prices: confirmPrices,
         };
     };
 
-    const submit = () => {
+    // the facts the price rows compute from, for every picked product not yet known
+    const [facts, setFacts] = useState<Record<string, PriceFact>>({});
+    const pickedIds = draft?.product_ids ?? [];
+    const missingFacts = pickedIds.filter((id) => !(String(id) in facts));
+    useEffect(() => {
+        if (missingFacts.length === 0) return;
+        let alive = true;
+        void fetch(`${base}/price-facts?ids=${missingFacts.join(',')}`, { headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' })
+            .then((r) => (r.ok ? r.json() : null))
+            .then((body: { data?: Record<string, PriceFact> } | null) => {
+                if (alive && body?.data) setFacts((all) => ({ ...all, ...body.data }));
+            })
+            .catch(() => {});
+        return () => {
+            alive = false;
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- the list of missing ids is the trigger
+    }, [missingFacts.join(','), base]);
+
+    // each picked product's row, judged live
+    const priceRows =
+        draft === null
+            ? []
+            : draft.product_ids.map((id) => {
+                  const row = draft.prices[String(id)] ?? { mode: '' as PriceMode, value: '' };
+                  const fact = facts[String(id)];
+                  const result = campaignPriceOf(row, fact);
+                  const value = Number(row.value);
+                  const invalid =
+                      row.mode !== '' &&
+                      fact !== undefined &&
+                      (row.value.trim() === '' || !Number.isFinite(value) || value <= 0 || (row.mode === 'percent' && value > max_percent) || result === null);
+                  const belowCost = result !== null && fact?.purchase != null && result < fact.purchase;
+                  const deep = row.mode === 'percent' && Number.isFinite(value) && value > confirm_percent;
+                  return { id, row, fact, result, invalid, belowCost, deep };
+              });
+    const priceInvalid = priceRows.some((r) => r.invalid);
+    const priceWarnings = priceRows.filter((r) => !r.invalid && r.result !== null && (r.belowCost || r.deep));
+    const setPrice = (id: number, patch: Partial<PriceRow>) =>
+        draft &&
+        setDraft({ ...draft, prices: { ...draft.prices, [String(id)]: { ...(draft.prices[String(id)] ?? { mode: '', value: '' }), ...patch } } });
+
+    const submit = (confirmPrices = false) => {
         if (draft === null) {
             return;
         }
         const done = { preserveScroll: true, onSuccess: () => setDraft(null) };
-        draft.id === null ? router.post(base, payloadOf(draft), done) : router.put(`${base}/${draft.id}`, payloadOf(draft), done);
+        draft.id === null
+            ? router.post(base, payloadOf(draft, {}, confirmPrices), done)
+            : router.put(`${base}/${draft.id}`, payloadOf(draft, {}, confirmPrices), done);
     };
 
+    // the switch keeps the campaign's prices as they are (they were confirmed when they were saved)
     const toggle = (campaign: Campaign) =>
-        router.put(`${base}/${campaign.id}`, payloadOf(campaign, { is_active: !campaign.is_active }), { preserveScroll: true });
+        router.put(`${base}/${campaign.id}`, payloadOf(campaign, { is_active: !campaign.is_active }, true), { preserveScroll: true });
 
     // Why Save is disabled, said next to it.
     const blocked =
@@ -158,7 +265,9 @@ export default function CampaignsIndex({ storefront, storefronts, campaigns, pre
                   ? t('campaigns.error_window', 'يجب أن تكون النهاية بعد البداية.')
                   : draft.product_ids.length === 0
                     ? t('campaigns.need_products', 'اختر منتجًا واحدًا على الأقل.')
-                    : null;
+                    : priceInvalid
+                      ? t('campaigns.price_err_not_lower', 'يجب أن يكون أقل من السعر الحالي')
+                      : null;
 
     const listErrors = Object.entries(errors).filter(([key]) => key === 'product_ids' || key.startsWith('product_ids.'));
 
@@ -280,6 +389,106 @@ export default function CampaignsIndex({ storefront, storefronts, campaigns, pre
                                 ))}
                             </div>
 
+                            {draft.product_ids.length > 0 ? (
+                                <div className="space-y-2 text-sm sm:col-span-2">
+                                    <span className="font-medium">{t('campaigns.prices_heading', 'أسعار الحملة')}</span>
+                                    <p className="max-w-3xl text-xs text-muted-foreground">
+                                        {t(
+                                            'campaigns.prices_hint',
+                                            'اختياري لكل منتج: سعر للحملة، أو نسبة خصم إضافية على سعره الحالي. يسري في كل مكان من بداية الحملة إلى نهايتها، ثم يعود السعر العادي تلقائيًا. المنتج المتروك فارغًا يحتفظ بسعره العادي.',
+                                        )}
+                                    </p>
+                                    {errors.confirm_prices ? <Alert tone="warning">{errors.confirm_prices}</Alert> : null}
+                                    <div className="overflow-x-auto rounded-md border">
+                                        <Table>
+                                            <TableHeader>
+                                                <TableRow>
+                                                    <TableHead>{t('campaigns.price_col_product', 'المنتج')}</TableHead>
+                                                    <TableHead className="text-end">{t('campaigns.price_col_normal', 'السعر العادي')}</TableHead>
+                                                    <TableHead className="text-end">{t('campaigns.price_col_current', 'السعر الحالي')}</TableHead>
+                                                    <TableHead>{t('campaigns.price_col_how', 'خصم الحملة')}</TableHead>
+                                                    <TableHead className="text-end">{t('campaigns.price_col_result', 'سعر الحملة')}</TableHead>
+                                                    <TableHead className="text-end">{t('campaigns.price_col_off', 'الخصم من الأصلي')}</TableHead>
+                                                    {can_see_cost ? <TableHead className="text-end">{t('campaigns.price_col_margin', 'الهامش')}</TableHead> : null}
+                                                </TableRow>
+                                            </TableHeader>
+                                            <TableBody>
+                                                {priceRows.map(({ id, row, fact, result, invalid, belowCost, deep }) => {
+                                                    const shown = result ?? fact?.current ?? null;
+                                                    const off = fact && shown !== null && fact.selling > 0 ? Math.round(((fact.selling - shown) / fact.selling) * 100) : null;
+                                                    const margin = fact?.purchase != null && shown !== null ? shown - fact.purchase : null;
+                                                    const serverError = errors[`prices.${id}`];
+                                                    return (
+                                                        <TableRow key={id} className="align-top">
+                                                            <TableCell className="max-w-64">
+                                                                <div className="truncate font-medium" title={fact?.title}>
+                                                                    {fact?.title ?? `#${id}`}
+                                                                </div>
+                                                                {fact?.code ? <Ltr className="text-xs text-muted-foreground">{fact.code}</Ltr> : null}
+                                                            </TableCell>
+                                                            <TableCell className="text-end tabular-nums">
+                                                                {fact ? <Ltr>{money(fact.selling)}</Ltr> : <span className="text-muted-foreground">{t('campaigns.price_loading', 'جارٍ تحميل الأسعار…')}</span>}
+                                                            </TableCell>
+                                                            <TableCell className="text-end tabular-nums">{fact ? <Ltr>{money(fact.current)}</Ltr> : null}</TableCell>
+                                                            <TableCell>
+                                                                <div className="flex min-w-56 items-center gap-2">
+                                                                    <Select
+                                                                        aria-label={t('campaigns.price_col_how', 'خصم الحملة')}
+                                                                        className="w-36"
+                                                                        value={row.mode}
+                                                                        onChange={(event) => setPrice(id, { mode: event.target.value as PriceMode })}
+                                                                    >
+                                                                        <option value="">{t('campaigns.price_mode_none', 'بدون تغيير')}</option>
+                                                                        <option value="price">{t('campaigns.price_mode_price', 'سعر الحملة')}</option>
+                                                                        <option value="percent">{t('campaigns.price_mode_percent', 'نسبة خصم إضافية')}</option>
+                                                                    </Select>
+                                                                    {row.mode !== '' ? (
+                                                                        <Input
+                                                                            aria-label={row.mode === 'price' ? t('campaigns.price_mode_price', 'سعر الحملة') : t('campaigns.price_mode_percent', 'نسبة خصم إضافية')}
+                                                                            aria-invalid={invalid || serverError ? true : undefined}
+                                                                            className="w-24"
+                                                                            dir="ltr"
+                                                                            inputMode="decimal"
+                                                                            min={0}
+                                                                            max={row.mode === 'percent' ? max_percent : undefined}
+                                                                            step={row.mode === 'percent' ? 1 : 1}
+                                                                            type="number"
+                                                                            value={row.value}
+                                                                            onChange={(event) => setPrice(id, { value: event.target.value })}
+                                                                        />
+                                                                    ) : null}
+                                                                    {row.mode === 'percent' ? <span className="text-muted-foreground">%</span> : null}
+                                                                </div>
+                                                                {invalid ? <p className="mt-1 text-xs text-destructive">{t('campaigns.price_err_not_lower', 'يجب أن يكون أقل من السعر الحالي')}</p> : null}
+                                                                {serverError ? <p className="mt-1 text-xs text-destructive">{serverError}</p> : null}
+                                                                {belowCost ? <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">{t('campaigns.price_warn_cost', 'أقل من سعر الشراء')}</p> : null}
+                                                                {deep ? <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">{t('campaigns.price_warn_percent', 'خصم إضافي أكثر من :pct%', { pct: confirm_percent })}</p> : null}
+                                                            </TableCell>
+                                                            <TableCell className="text-end font-medium tabular-nums">
+                                                                {result !== null ? <Ltr>{money(result)}</Ltr> : <span className="text-muted-foreground">—</span>}
+                                                            </TableCell>
+                                                            <TableCell className="text-end tabular-nums">{off !== null && off > 0 ? <Ltr>{`−${off}%`}</Ltr> : '—'}</TableCell>
+                                                            {can_see_cost ? (
+                                                                <TableCell className={`text-end tabular-nums ${margin !== null && margin < 0 ? 'text-destructive' : ''}`}>
+                                                                    {margin !== null ? (
+                                                                        <Ltr>
+                                                                            {money(margin)}
+                                                                            {shown ? ` (${Math.round((margin / shown) * 100)}%)` : ''}
+                                                                        </Ltr>
+                                                                    ) : (
+                                                                        '—'
+                                                                    )}
+                                                                </TableCell>
+                                                            ) : null}
+                                                        </TableRow>
+                                                    );
+                                                })}
+                                            </TableBody>
+                                        </Table>
+                                    </div>
+                                </div>
+                            ) : null}
+
                             <label className="flex items-center gap-3 text-sm sm:col-span-2">
                                 <Switch checked={draft.is_active} onCheckedChange={(checked) => setDraft({ ...draft, is_active: checked })} />
                                 <span>
@@ -291,9 +500,23 @@ export default function CampaignsIndex({ storefront, storefronts, campaigns, pre
                         </div>
 
                         <div className="mt-4 flex flex-wrap items-center gap-3">
-                            <Button onClick={submit} disabled={blocked !== null}>
-                                {t('common.save', 'حفظ')}
-                            </Button>
+                            {priceWarnings.length > 0 && blocked === null ? (
+                                <ConfirmAction
+                                    title={t('campaigns.price_confirm_title', 'حفظ أسعار الحملة هذه؟')}
+                                    consequence={t(
+                                        'campaigns.price_confirm_body',
+                                        'هذه الأسعار أقل من سعر الشراء أو بخصم إضافي أكثر من :pct%: :list. ستسري من بداية الحملة إلى نهايتها.',
+                                        { pct: confirm_percent, list: priceWarnings.map((r) => r.fact?.title ?? `#${r.id}`).join(t('campaigns.list_separator', '، ')) },
+                                    )}
+                                    confirmLabel={t('campaigns.price_confirm_save', 'تأكيد وحفظ')}
+                                    trigger={<Button>{t('common.save', 'حفظ')}</Button>}
+                                    onConfirm={() => submit(true)}
+                                />
+                            ) : (
+                                <Button onClick={() => submit(false)} disabled={blocked !== null}>
+                                    {t('common.save', 'حفظ')}
+                                </Button>
+                            )}
                             <Button variant="outline" onClick={() => setDraft(null)}>
                                 {t('common.cancel', 'إلغاء')}
                             </Button>
@@ -344,12 +567,12 @@ export default function CampaignsIndex({ storefront, storefronts, campaigns, pre
                                             {campaign.recorded === 0 ? (
                                                 <span className="text-muted-foreground">
                                                     {campaign.state === 'scheduled' || campaign.state === 'off'
-                                                        ? t('campaigns.sales_pending', 'يُسجَّل المخزون عند بدء الحملة')
-                                                        : t('campaigns.sales_none', 'لا مخزون مسجَّل')}
+                                                        ? t('campaigns.sales_pending', 'يُحسب من آخر توريد لكل منتج — لا توريد مسجَّل بعد')
+                                                        : t('campaigns.sales_none', 'لا توريد مسجَّل')}
                                                 </span>
                                             ) : (
                                                 <span>
-                                                    {t('campaigns.sales_line', ':sold من :start وحدة (:count منتج مسجَّل)', {
+                                                    {t('campaigns.sales_line', ':sold من :start وحدة منذ آخر توريد (:count منتج)', {
                                                         sold: campaign.sold_units,
                                                         start: campaign.started_units,
                                                         count: campaign.recorded,

@@ -214,5 +214,11 @@ it('has no NULL branch left in the payment callback, and knows every v2 write ro
         'api/v2/{storefront}/cart/items',
         'api/v2/{storefront}/cart/items/{item}',
         'api/v2/{storefront}/orders',
+        // the wheel's claim (2026-11-10): writes only a spin of the PATH's storefront (Wheel::claim → spinByPhone with the path's
+        // id), proved in WheelTest › "saves any code to an account" (claimed and listed through /api/v2/watchizer)
+        'api/v2/{storefront}/wheel/claim',
+        // the wheel's spin (2026-11-07): proved to write the path's storefront in WheelTest › "writes the spin under the
+        // storefront of its path" (Watchizer's path → storefront 1, Brand Fashion's → 2, never the other)
+        'api/v2/{storefront}/wheel/spin',
     ], 'a NEW v2 write route: prove it writes the storefront of its path, then name it here');
 });

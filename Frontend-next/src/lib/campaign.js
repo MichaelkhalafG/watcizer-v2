@@ -71,7 +71,7 @@ export function barOf(campaign) {
   const sold = Math.max(0, Math.round(Number(campaign.sold) || 0))
   // ONE RULE, so the bar and the stock label never contradict (core's `state`; the same rule from the three
   // numbers when an older core sends none):
-  //   selling      a unit can still be bought → "N% sold" (never 100) and "N left"
+  //   selling      a unit can still be bought → "N sold" (since the last restock; the bar never 100) and "N left"
   //   sold_out     nothing left and the campaign SOLD every unit → a full bar and "Sold out"
   //   unavailable  nothing left, but not by this deal's sales (an adjustment, another channel) → NO bar: the card
   //                says "Sold out" and claims no share
@@ -79,6 +79,34 @@ export function barOf(campaign) {
   if (state === 'unavailable') return { state, left: 0, sold, pct: null }
   if (state === 'sold_out') return { state, left: 0, sold, pct: 100 }
   return { state: 'selling', left, sold, pct: Math.min(99, Math.max(0, Math.round(Number(campaign.pct) || 0))) }
+}
+
+/** At or under this many units a deal card says how few are left (Michael, 2026-11-10). ONE place. */
+export const LOW_STOCK = 5
+
+/** The low-stock line: "Only 3 left"; Arabic counted — 1 قطعة واحدة, 2 قطعتين, 3–5 قطع. */
+export function lowStockText(n, lang) {
+  if (lang === 'ar') return n === 1 ? 'باقي قطعة واحدة بس' : n === 2 ? 'باقي قطعتين بس' : `باقي ${n} قطع بس`
+  return `Only ${n} left`
+}
+
+/**
+ * WHAT A DEAL CARD SHOWS UNDER ITS PRICE (Michael, 2026-11-10: no fake numbers, honest urgency), from the bar
+ * ({@link barOf}) and the card's own in-stock flag:
+ *   gone      not buyable here, or the stock reached zero another way → "Sold out", no bar (as before)
+ *   all_sold  every unit since the restock was SOLD → the full bar and "Sold out" (as before)
+ *   new       nothing sold since the last restock → a "New deal" badge instead of an empty bar
+ *   bar       sold > 0 → the real bar
+ *   none      no measurement → nothing (never a made-up value)
+ * `low` is the stock line's number when 0 < left <= LOW_STOCK (with `new` and with `bar`), else null.
+ */
+export function dealLineOf(bar, inStock = true) {
+  if (!inStock || bar?.state === 'unavailable') return { kind: 'gone' }
+  if (bar?.state === 'sold_out') return { kind: 'all_sold', sold: bar.sold }
+  if (!bar || bar.state !== 'selling' || !(bar.left > 0)) return { kind: 'none' }
+  const low = bar.left <= LOW_STOCK ? bar.left : null
+  if (!(bar.sold > 0)) return { kind: 'new', left: bar.left, low }
+  return { kind: 'bar', sold: bar.sold, left: bar.left, pct: bar.pct, low }
 }
 
 /**
@@ -168,11 +196,92 @@ const slimCard = (c) => ({
 })
 const slimCampaign = (c) => (c ? { ...c, cards: (c.cards || []).map(slimCard) } : null)
 export const slimCampaigns = (body) => ({
+  // the moment of core's answer (its clock): the FIRST render of every countdown and every "is it live" reads this,
+  // on the server and in the browser's hydration render alike, so the two cannot disagree (usePromo, 2026-11-07)
+  now: body?.now ?? null,
+  // the wheel's switch rides with the campaigns (2026-11-07): the floating "Spin & win" button reads it, no request of its own
+  wheel: body?.wheel && typeof body.wheel === 'object' ? { enabled: body.wheel.enabled === true, campaign: typeof body.wheel.campaign === 'string' ? body.wheel.campaign : null } : null,
   hot_deals: slimCampaign(body?.hot_deals),
   flash_sale: slimCampaign(body?.flash_sale),
   // the next scheduled start (core, 2026-11-06): the browser asks again at that second (usePromo.useCampaignStart)
   next_start_at: body?.next_start_at ?? null,
+  // the live campaign prices (core, 2026-11-10): every price on a page follows them (livePrice below)
+  prices: slimPrices(body?.prices),
 })
+
+// ── CAMPAIGN PRICES (2026-11-10) ───────────────────────────────────────────────────────────────────────────
+// While a Hot Deals or Flash Sale campaign is live, core prices its products at their campaign price everywhere —
+// and names those prices in the campaigns answer. The answer is the storefront's clock for campaigns: the server
+// drops a held copy at each start and end (nextChangeAt), the browser asks again at the next start
+// (useCampaignStart) and drops a campaign at its end by its own timer (useLiveCampaign). So a price on a page FOLLOWS
+// the answer: the campaign price while the product's campaign is live, its regular price otherwise — even on a page
+// held from before the start, or a card core priced during the campaign and a cache still holds after its end
+// (core puts `regular` beside such a price). No clock is read while rendering: the first render reads the answer
+// the HTML carried, exactly as the server did.
+
+/** The answer's live campaign prices, slimmed to what a page needs: id → { sale_amount, discount_pct, presentation }. */
+export function slimPrices(map) {
+  if (!map || typeof map !== 'object') return null
+  const out = {}
+  for (const [id, p] of Object.entries(map)) {
+    const sale = Number(p?.sale_amount)
+    if (!(sale > 0)) continue
+    out[id] = { sale_amount: sale, discount_pct: Number(p.discount_pct) || 0, presentation: p.presentation === 'flash_sale' ? 'flash_sale' : 'hot_deals' }
+  }
+  return out
+}
+
+/** Only the prices of the campaigns live NOW (`live` = { flash_sale, hot_deals }, each dropped at its end). null = unknown. */
+export function livePrices(prices, live) {
+  if (prices == null) return null
+  const out = {}
+  for (const [id, p] of Object.entries(prices)) if (live?.[p.presentation]) out[id] = p
+  return out
+}
+
+/**
+ * A v2 price object as it holds NOW: the live campaign price when the product has one, else the regular price a
+ * held card carries beside a campaign price that is over, else the object itself. `prices` null = not known yet.
+ */
+export function livePrice(price, productId, prices) {
+  if (!price || typeof price !== 'object' || prices == null) return price
+  const base = price.regular && typeof price.regular === 'object' ? price.regular : price
+  const entry = prices[productId] ?? prices[String(productId)]
+  if (entry && entry.sale_amount < Number(base.amount)) {
+    return { ...base, sale_amount: entry.sale_amount, has_sale: true, discount_pct: entry.discount_pct }
+  }
+  return base
+}
+
+/** The price object of a legacy-shaped row (selling_price / sale_price_after_discount / price_regular). */
+export function rowPrice(row) {
+  const amount = Number(row?.selling_price) || 0
+  const sale = Number(row?.sale_price_after_discount) || 0
+  const has = sale > 0 && sale < amount
+  return { amount, sale_amount: has ? sale : null, has_sale: has, discount_pct: has ? Number(row?.percentage_discount) || Math.round((1 - sale / amount) * 100) : 0, regular: row?.price_regular || null }
+}
+
+/** A legacy-shaped row with its price fields as they hold NOW (the same object when nothing changes). */
+export function liveFields(row, prices) {
+  if (!row || prices == null) return row
+  const price = rowPrice(row)
+  const now = livePrice(price, row.id, prices)
+  if (now === price) return row
+  const has = Boolean(now.has_sale) && Number(now.sale_amount) > 0 && Number(now.sale_amount) < Number(now.amount)
+  return { ...row, selling_price: Number(now.amount), sale_price_after_discount: has ? Number(now.sale_amount) : 0, percentage_discount: has ? Number(now.discount_pct) || 0 : 0 }
+}
+
+/** A variant's price as it holds NOW: the product's live price, shifted by the variant's own difference. */
+export function liveVariantPrice(variantPrice, productPrice, productId, prices) {
+  if (!variantPrice || !productPrice || prices == null) return variantPrice
+  const now = livePrice(productPrice, productId, prices)
+  if (now === productPrice) return variantPrice // nothing differs from what core priced the variant with
+  const delta = Number(variantPrice.amount) - Number(productPrice.amount)
+  const amount = Number(now.amount) + delta
+  const sale = now.has_sale && now.sale_amount != null ? Number(now.sale_amount) + delta : null
+  const has = sale !== null && sale > 0 && sale < amount
+  return { ...variantPrice, amount, sale_amount: has ? sale : null, has_sale: has, discount_pct: has ? Math.round(((amount - sale) / amount) * 100) : 0 }
+}
 
 // ── when a held copy of the campaigns stops being true (the follow-up of 2026-11-06) ─────────────────────
 // The storefront's server holds core's campaigns answer for a few seconds so that no page waits for it. Two

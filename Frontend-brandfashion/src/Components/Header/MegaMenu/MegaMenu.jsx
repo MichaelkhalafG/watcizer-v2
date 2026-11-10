@@ -2,8 +2,8 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import Link from '../../LocaleLink'
 import { useUIStore } from '../../../Store/uiStore'
-import { useMenu } from '../../../Hooks/queries/usePromo'
-import { money, payOf, txt } from '../../../lib/campaign'
+import { useLivePrices, useMenu } from '../../../Hooks/queries/usePromo'
+import { livePrice, money, payOf, txt } from '../../../lib/campaign'
 import { Chevron, GridIcon } from '../../Promo/icons'
 import { megaBus } from './megaBus'
 import { warmMenuImages } from '../../../lib/menuData'
@@ -145,6 +145,8 @@ export function menuEntries(menu, lang, t, to) {
 // opens this panel on itself, so the button was a second way into the same thing. The panel, the bus and the
 // keyboard are all still here without it (Esc sends focus back to the nav item that opened the panel).
 export default function MegaMenu({ hrefs = {}, onNavigate, trigger = true }) {
+  // a pick's price as it holds now: a campaign price follows its campaign (2026-11-10)
+  const livePriceMap = useLivePrices()
   const language = useUIStore((s) => s.language)
   const lang = language === 'ar' ? 'ar' : 'en'
   const dir = lang === 'ar' ? 'rtl' : 'ltr'
@@ -614,7 +616,7 @@ export default function MegaMenu({ hrefs = {}, onNavigate, trigger = true }) {
                         <div className="mm__picks">
                           <p className="mm__chips-title">{t.picks(current.label)}</p>
                           <ul>
-                            {node.picks.slice(0, 4).map((p) => (
+                            {node.picks.slice(0, 4).map((raw) => ({ ...raw, price: livePrice(raw.price, raw.id, livePriceMap) })).map((p) => (
                               <li key={p.id}>
                                 <Link className="mm__pick" href={to.product(p)} data-mm-tile="" onClick={go} prefetch={false}>
                                   <span className="mm__pick-pic" aria-hidden="true">
@@ -657,8 +659,8 @@ export default function MegaMenu({ hrefs = {}, onNavigate, trigger = true }) {
                   {/* eslint-disable-next-line @next/next/no-img-element -- product photo, asset-host URL */}
                   <img src={featured.product.image?.src} alt="" loading="lazy" />
                 </span>
-                {featured.product.price?.has_sale && featured.product.price.discount_pct > 0 ? (
-                  <span className="mm__feature-off">{t.off(featured.product.price.discount_pct)}</span>
+                {livePrice(featured.product.price, featured.product.id, livePriceMap)?.has_sale && livePrice(featured.product.price, featured.product.id, livePriceMap).discount_pct > 0 ? (
+                  <span className="mm__feature-off">{t.off(livePrice(featured.product.price, featured.product.id, livePriceMap).discount_pct)}</span>
                 ) : null}
                 <span className="mm__feature-brand" lang="en">{txt(featured.product.brand?.name, 'en')}</span>
                 <span className="mm__feature-title">{txt(featured.product.title, lang)}</span>

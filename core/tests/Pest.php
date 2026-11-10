@@ -17,6 +17,7 @@ use App\Compat\CompatStorefront;
 use App\Domain\Inventory\InventoryService;
 use App\Storefront\StorefrontCache;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
+use Tests\Support\CampaignPriceFixture;
 use Tests\Support\LegacyShadow;
 use Tests\Support\Scratch;
 use Tests\Support\Staff;
@@ -45,6 +46,8 @@ pest()->extend(TestCase::class)
         // The dashboard's tests assert Arabic sentences: the two accounts `Staff` hands out get Arabic here,
         // instead of inheriting whatever a real person chose on the copy the suite runs against (2026-11-05).
         Staff::speakArabic();
+        // Campaign prices off on the copy, inside the transaction (2026-11-10) — see the fixture.
+        CampaignPriceFixture::neutral();
     })
     ->in('Feature');
 

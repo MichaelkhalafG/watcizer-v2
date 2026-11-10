@@ -64,6 +64,8 @@ final class Sql
     /**
      * `` ((`a` + (delta)) > 0 OR `b` > 0) `` — the denormalised `in_stock` flag recomputed from
      * the bucket that is moving and the one that is not, in the same statement that moves it.
+     * It must be assigned BEFORE `a` in that statement: MariaDB assigns left to right and reads the values
+     * already assigned (2026-11-10, InventoryServiceTest › "keeps in_stock when a decrement leaves NO MORE units…").
      */
     public static function eitherBucketPositive(string $moving, string $other, int $delta): Expression
     {

@@ -365,3 +365,32 @@ DIVERGED 2026-11-05 src/Components/Product/ProductSlider.css — Watchizer shows
 # them: coreRead.js heldLookup / LOOKUP_HOLD and heldValue's `keep`, used by serverCatalog.js getServerTables and getServerNav.
 # Changed on both sides, identically, and still twins: src/lib/coreRead.js, src/lib/serverCatalog.js.
 tests/lookupHold.test.mjs
+# 2026-11-07 (floating elements, the hydration fix and the wheel): FOUR NEW TWINS. src/lib/floating.js (the one rule: no floating
+# element on the cart, the checkout or a product page; the wheel's button not on /spin), src/Components/Floating/FloatingStack.jsx +
+# floating.css (the ONE fixed corner every floating element portals into after hydration, stacked, mounted by the twin (main) layout)
+# and tests/floating.test.mjs. Changed on both sides, identically, and still twins: the Hot Deals pill (CampaignNav.jsx, promo.css) and
+# BackToTop.jsx now live in that corner; Countdown.jsx, usePromo.js, campaign.js, CampaignRail.jsx, SalePane.jsx and CampaignPage.jsx
+# take the campaigns answer's own second as the first render's "now" (React #418 on the live site); useMenu's sessionStorage copy
+# enters the cache after mount, never in the first render; CategoryTiles.jsx and CampaignPage.jsx take the menu from the page's own
+# server render (menuData.js idleMenu; hot-deals and flash-sale page.jsx); coupon.js, CouponBox.jsx + .css and pixels.js carry a wheel
+# code's phone binding and the two wheel events (the wheel itself is WATCHIZER ONLY: src/Components/Wheel/, src/lib/wheel.js,
+# src/lib/utm.js, app/(spin)/ (its own shell, no header or footer, since 2026-11-08), public/og-spin.jpg, tests/wheel.test.mjs - and its
+# button is mounted from Watchizer's own Header.jsx).
+src/lib/floating.js
+src/Components/Floating/FloatingStack.jsx
+src/Components/Floating/floating.css
+tests/floating.test.mjs
+# 2026-11-10 (the wheel's codes in the account, campaign prices): SIX NEW TWINS. src/lib/authReturn.js (where to go back to after a
+# sign-in: the wheel's "sign in to save / activate", read by Login, Register and the social callback), src/lib/wheelCodes.js and
+# tests/wheelCodes.test.mjs (every wheel code an account holds, as the account tab draws it), src/Components/Account/WheelTab.jsx + .css
+# (the account's "Spin the wheel" tab - shown only where the storefront's wheel is on, so Brand Fashion draws nothing), and
+# tests/campaignPrices.test.mjs (campaign prices on a page). Changed on both sides, identically, and still twins: campaign.js and
+# usePromo.js (the campaigns answer's live prices, followed to the second by every price on a page: livePrice, liveFields,
+# useLivePrices), v2Listing.js (price_regular), DealCard.jsx, MegaMenu.jsx, MegaDrawer.jsx, FeaturedBanner.jsx,
+# ProductDetailClient.jsx (the price as it holds now), AuthCallback.jsx and Account.jsx (the return path; the wheel tab).
+src/lib/authReturn.js
+src/lib/wheelCodes.js
+tests/wheelCodes.test.mjs
+tests/campaignPrices.test.mjs
+src/Components/Account/WheelTab.jsx
+src/Components/Account/WheelTab.css

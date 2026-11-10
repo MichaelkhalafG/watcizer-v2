@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Domain\Campaigns;
 
 use App\Transform\Row;
+use Illuminate\Database\Query\Builder;
 use Illuminate\Database\Query\JoinClause;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -27,21 +28,28 @@ use Illuminate\Support\Facades\DB;
  *
  * ── The progress bar is REAL or absent ────────────────────────────────────────────────────────
  *
- * "80% sold · only 13 left" needs three numbers per product:
+ * "12 sold · only 13 left" needs three numbers per product, all counted from the product's LAST RESTOCK
+ * (Michael, 2026-11-10 — before, from the campaign's start):
  *
- *   start  the stock the product had when it joined the live campaign — `start_express + start_market`,
- *          recorded ONCE by `CampaignWriter::activate()` (decision D1, 2026-11-04). The database held
- *          no such number before; it is never derived after the fact.
- *   sold   read from the stock LEDGER: units of order lines sold from that moment until the campaign's
- *          end, minus the units those same lines gave back (a cancellation, a failed payment)
- *          — `inventory_movements`, reasons `order` and its releases. Stock is one shared warehouse, so
- *          a sale on the other storefront counts: the units are gone either way, and "start − sold =
- *          left" has to hold for the shopper reading the bar.
+ *   start  the units on the shelf right after the last stock ADDITION — the latest ledger movement that adds
+ *          units for a real restock ({@see self::RESTOCK_REASONS}: the dashboard's restock, count and
+ *          correction, an import, an ERP sync), never units given back by an order (a cancellation, a failed
+ *          payment, a release), never the second half of a move between the two buckets. The opening balance
+ *          carried over from the old system (`transform`) counts too — it is the oldest addition, so it is the
+ *          last one only for a product never restocked since (decision D-47, 2026-11-10: without it 46 of the 48
+ *          live campaign products of the scratch copy lose their bar). For a product sold through variants: its
+ *          last addition on ANY variant, and the shelf across all its variants and both buckets — the card
+ *          shows the product, not one variant.
+ *   sold   read from the stock LEDGER: units of order lines sold AFTER that movement, minus the units those
+ *          same lines gave back (a cancellation, a failed payment) — `inventory_movements`, reasons `order`
+ *          and its releases; a gift line (`promotion_reward`) is not a sale. Stock is one shared warehouse, so
+ *          a sale on the other storefront counts: the units are gone either way.
  *   left   the live stock, from the card itself.
  *
- * A product with no recorded start (a campaign that was live before this code was deployed, or a
- * product whose start was zero) has NO bar: {@see self::progress()} returns no entry for it and the
- * storefronts render nothing. Nothing is estimated.
+ * A product with no stock addition in the ledger at all has NO bar: {@see self::progress()} returns no
+ * entry for it and the storefronts render nothing. Nothing is estimated. (The campaign's start snapshot,
+ * `storefront_campaign_products.start_*`, is no longer read or written; its columns stay until a later
+ * clean-up migration.)
  */
 final class Campaigns
 {
@@ -136,65 +144,115 @@ final class Campaigns
     }
 
     /**
-     * Start and sold, per product that HAS a recorded start above zero. No entry = no bar.
+     * The ledger reasons that put NEW units on the shelf — the dashboard's five, and the opening balance carried over
+     * from the old system (`transform`, D-47); never an order's return.
+     */
+    public const RESTOCK_REASONS = ['restock', 'manual', 'import', 'adjustment', 'erp_sync', 'transform'];
+
+    /**
+     * Start and sold since the last restock, per product of the campaign that has one. No entry = no bar.
      *
      * `left` is not here: it is the live stock, which the storefront card already carries, and reading it
      * a second time would let the two disagree for the length of a cache.
      *
-     * @param  array{id: int, ends_at: string}  $campaign
+     * @param  array{id: int}  $campaign
      * @return array<int, array{start: int, sold: int}>
      */
     public static function progress(array $campaign): array
     {
-        $start = [];
-        foreach (
-            DB::table('storefront_campaign_products')->where('campaign_id', $campaign['id'])->whereNotNull('snapshot_at')
-                ->get(['product_id', 'start_express', 'start_market']) as $raw
-        ) {
-            $total = (Row::nint($raw, 'start_express') ?? 0) + (Row::nint($raw, 'start_market') ?? 0);
-            if ($total > 0) {
-                $start[Row::int($raw, 'product_id')] = $total;
-            }
-        }
-        if ($start === []) {
+        return self::sinceRestock(self::productIds($campaign['id']));
+    }
+
+    /**
+     * Three reads, whatever the number of products: the last addition of each, the shelf right after it, and the
+     * units sold since.
+     *
+     * @param  list<int>  $productIds
+     * @return array<int, array{start: int, sold: int}>
+     */
+    public static function sinceRestock(array $productIds): array
+    {
+        if ($productIds === []) {
             return [];
         }
 
+        // 1. The last ADDITION of each product (the highest ledger id: movements are stamped to the second, ids are exact).
+        $adds = [];
+        foreach (
+            DB::table('inventory_movements as m')
+                ->whereIn('m.product_id', $productIds)
+                ->whereIn('m.reason', self::RESTOCK_REASONS)
+                ->where('m.quantity_delta', '>', 0)
+                ->whereNotExists(function (Builder $q): void {
+                    // the second half of a move between the buckets (InventoryController::moveBetweenBuckets — one
+                    // transaction, the minus first, the same reason and note): units that were already on the shelf
+                    $q->select(DB::raw('1'))->from('inventory_movements as o')
+                        ->whereColumn('o.product_id', 'm.product_id')
+                        ->whereRaw('o.variant_id <=> m.variant_id')
+                        ->whereColumn('o.reason', 'm.reason')
+                        ->whereColumn('o.bucket', '<>', 'm.bucket')
+                        ->whereRaw('o.quantity_delta = -m.quantity_delta')
+                        ->whereRaw('o.note <=> m.note')
+                        // ids are UNSIGNED: never `m.id - 5` (out of range for the first ledger rows) — add on the other side
+                        ->whereColumn('o.id', '<', 'm.id')->whereRaw('o.id + 5 >= m.id');
+                })
+                ->groupBy('m.product_id')
+                ->selectRaw('m.product_id, MAX(m.id) AS add_id')
+                ->get() as $raw
+        ) {
+            $adds[Row::int($raw, 'product_id')] = Row::int($raw, 'add_id');
+        }
+        if ($adds === []) {
+            return [];
+        }
+        // each product's own ledger position: `$op` '<=' up to its addition, '>' after it
+        $scope = function (Builder $query, string $alias, string $op) use ($adds): void {
+            $query->where(function (Builder $any) use ($adds, $alias, $op): void {
+                foreach ($adds as $productId => $addId) {
+                    $any->orWhere(fn (Builder $one) => $one->where($alias.'.product_id', $productId)->where($alias.'.id', $op, $addId));
+                }
+            });
+        };
+
+        // 2. The shelf right after it: every stock line's (variant × bucket) balance at its last movement up to then.
+        $lines = DB::table('inventory_movements as i');
+        $scope($lines, 'i', '<=');
+        $lines->groupBy('i.product_id', 'i.variant_id', 'i.bucket')->selectRaw('i.product_id, MAX(i.id) AS last_id');
+        $shelf = [];
+        foreach (
+            DB::table('inventory_movements as b')->joinSub($lines, 'x', 'x.last_id', '=', 'b.id')
+                ->groupBy('x.product_id')->selectRaw('x.product_id, SUM(b.quantity_after) AS shelf')->get() as $raw
+        ) {
+            $shelf[Row::int($raw, 'product_id')] = max(0, (int) (Row::nfloat($raw, 'shelf') ?? 0.0));
+        }
+
         /*
-         * Sold = the units of every ORDER LINE whose sale (`reason = order`) was written AFTER the product's
-         * snapshot — after that position in the ledger, `start_movement_id`, so a sale in the same second as
-         * the snapshot falls on exactly one side of it — and BEFORE the campaign's end, net of whatever that
-         * same line gave back or took again later:
+         * 3. Sold = the units of every ORDER LINE whose sale (`reason = order`) was written AFTER the addition, net of
+         * whatever that same line gave back or took again later:
          * `order` −q, `order_cancel` / `payment_failed` / `reinstate_cancel` +q, `order_reinstate` −q.
          * Summing the signed deltas of the line and negating gives the units that are really gone.
          * A gift line (`promotion_reward`) is not a sale and never joins: `s.reason` is `order` only.
          */
+        $soldQuery = DB::table('inventory_movements as s')
+            ->join('inventory_movements as m', function (JoinClause $join): void {
+                $join->on('m.reference_id', '=', 's.reference_id')
+                    ->on('m.reference_line_id', '=', 's.reference_line_id')
+                    ->where('m.reference_type', '=', 'orders')
+                    ->whereIn('m.reason', ['order', 'order_cancel', 'payment_failed', 'order_reinstate', 'reinstate_cancel']);
+            })
+            ->where('s.reference_type', 'orders')->where('s.reason', 'order');
+        $scope($soldQuery, 's', '>');
         $sold = [];
-        foreach (
-            DB::table('storefront_campaign_products as cp')
-                ->join('inventory_movements as s', function (JoinClause $join): void {
-                    $join->on('s.product_id', '=', 'cp.product_id')
-                        ->where('s.reference_type', '=', 'orders')->where('s.reason', '=', 'order')
-                        ->whereColumn('s.id', '>', 'cp.start_movement_id');
-                })
-                ->join('inventory_movements as m', function (JoinClause $join): void {
-                    $join->on('m.reference_id', '=', 's.reference_id')
-                        ->on('m.reference_line_id', '=', 's.reference_line_id')
-                        ->where('m.reference_type', '=', 'orders')
-                        ->whereIn('m.reason', ['order', 'order_cancel', 'payment_failed', 'order_reinstate', 'reinstate_cancel']);
-                })
-                ->where('cp.campaign_id', $campaign['id'])->whereNotNull('cp.snapshot_at')
-                ->where('s.created_at', '<', $campaign['ends_at'])
-                ->groupBy('cp.product_id')
-                ->selectRaw('cp.product_id, -SUM(m.quantity_delta) AS sold')
-                ->get() as $raw
-        ) {
+        foreach ($soldQuery->groupBy('s.product_id')->selectRaw('s.product_id, -SUM(m.quantity_delta) AS sold')->get() as $raw) {
             $sold[Row::int($raw, 'product_id')] = max(0, (int) (Row::nfloat($raw, 'sold') ?? 0.0));
         }
 
         $out = [];
-        foreach ($start as $productId => $total) {
-            $out[$productId] = ['start' => $total, 'sold' => $sold[$productId] ?? 0];
+        foreach (array_keys($adds) as $productId) {
+            $start = $shelf[$productId] ?? 0;
+            if ($start > 0) {
+                $out[$productId] = ['start' => $start, 'sold' => $sold[$productId] ?? 0];
+            }
         }
 
         return $out;

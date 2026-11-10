@@ -154,6 +154,9 @@ final class Navigation
                      * The routes themselves were never unregistered and stay admin-only.
                      */
                     self::item('promotions', ManageText::t('promotions.title', 'العروض الترويجية'), 'Gift', Role::MANAGE_PROMOTIONS, 'manage.promotions.index'),
+                    // "Spin the wheel" (2026-11-07): who spun, what they won, which ad brought them, and the on/off switch.
+                    // Under the promotions ability: a wheel code is a discount code, and the same people decide about both.
+                    self::item('wheel', ManageText::t('wheel.title', 'عجلة الحظ'), 'Disc3', Role::MANAGE_PROMOTIONS, route: 'manage.wheel.index', params: ['storefront' => $storefrontId]),
                 ],
             ],
             [

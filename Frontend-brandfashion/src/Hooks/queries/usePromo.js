@@ -1,9 +1,9 @@
 'use client'
 import { createContext, createElement, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import publicHttp from '../../Context/publicApi'
 import { STOREFRONT_CODE } from '../../lib/env'
-import { clockOffset, isLive, msLeft, withProgress, hotModeOn, HOT_MODE_KEY, offerOf, slimCampaigns, subscribeClock, noClock, readClock, readServerClock } from '../../lib/campaign'
+import { clockOffset, isLive, msLeft, withProgress, hotModeOn, HOT_MODE_KEY, offerOf, slimCampaigns, subscribeClock, noClock, readClock, readServerClock, livePrices } from '../../lib/campaign'
 import { slimMenu } from '../../lib/menuData'
 
 // The data of the twelve updates' storefront surfaces (2026-11-05). A TWIN.
@@ -48,8 +48,19 @@ export function useLiveCampaign(presentation) {
   const { data, refetch, isLoading } = useCampaigns()
   const campaign = data?.[presentation] || null
   const offset = data?.offset || 0
-  // "now" as the render knows it: the moment of mount, moved forward by the timer below at the campaign's end
-  const [now, setNow] = useState(() => Date.now())
+  // THE FIRST RENDER'S "NOW" IS THE ANSWER'S OWN SECOND (2026-11-07, React #418 on the live site). The campaigns ride
+  // in the page's HTML, which the storefront's cache holds for minutes; a campaign that ENDED in between was in that
+  // HTML and gone from the browser's first render — a different tree than the server's, every time, for every
+  // visitor in that window. The first render now judges "live" by the answer's own clock (`now`, core's, carried in
+  // the same HTML), identical on both sides; the effect below moves to this device's clock right after mount, and
+  // an ended campaign leaves one render later — exactly as it leaves at its end while the page is open.
+  const serverNow = Date.parse(data?.now)
+  const [now, setNow] = useState(() => (Number.isFinite(serverNow) ? serverNow : Date.now()))
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- this device's clock is only read after mount (the first render is the answer's second)
+    setNow(Date.now())
+  }, [data])
 
   useEffect(() => {
     if (!campaign) return undefined
@@ -67,7 +78,7 @@ export function useLiveCampaign(presentation) {
   }, [campaign, offset, refetch])
 
   const live = isLive(campaign, now, offset) ? campaign : null
-  return { campaign: live, offset, isLoading }
+  return { campaign: live, offset, isLoading, serverNow: Number.isFinite(serverNow) ? serverNow : null }
 }
 
 /**
@@ -211,8 +222,17 @@ export function LiveOffersProvider({ children }) {
   const flash = useLiveCampaign('flash_sale').campaign
   const hot = useLiveCampaign('hot_deals').campaign
   const offset = data?.offset || 0
-  const value = useMemo(() => ({ flash_sale: flash, hot_deals: hot, offset }), [flash, hot, offset])
+  // the live campaign prices (2026-11-10), kept only while their campaign is live: a campaign that ends drops its
+  // prices at the same second as its countdown (useLiveCampaign's timer), before the refetch confirms it
+  const prices = useMemo(() => (data ? livePrices(data.prices ?? {}, { flash_sale: flash, hot_deals: hot }) : null), [data, flash, hot])
+  const value = useMemo(() => ({ flash_sale: flash, hot_deals: hot, offset, prices }), [flash, hot, offset, prices])
   return createElement(LiveOffers.Provider, { value }, children)
+}
+
+/** The live campaign prices for every price on a page (null outside the provider, or before the campaigns are known). */
+export function useLivePrices() {
+  const live = useContext(LiveOffers)
+  return live ? live.prices : null
 }
 
 /**
@@ -259,8 +279,22 @@ const keptMenu = () => {
   }
 }
 
-export const useMenu = (enabled = true) =>
-  useQuery({
+export const useMenu = (enabled = true) => {
+  const client = useQueryClient()
+  // THE KEPT COPY ENTERS THE CACHE AFTER MOUNT, NEVER IN THE FIRST RENDER (2026-11-07, React #418 on the live site).
+  // As `initialData` it was in the browser's hydration render and not in the server's HTML — the server has no
+  // sessionStorage — so on every page load after the first of a visit, whatever read the menu in its first paint (the
+  // home's category row, the campaign pages' "shop by category") drew a different tree than the HTML. An effect runs
+  // right after hydration, long before any hover, so "ready before the first hover" still holds; a cache that already
+  // has the menu (the page seeded it, or an earlier page of this visit fetched it) is left alone.
+  useEffect(() => {
+    const kept = keptMenu()
+    if (kept && client.getQueryState(['menu', STOREFRONT_CODE])?.data === undefined) {
+      client.setQueryData(['menu', STOREFRONT_CODE], kept.menu, { updatedAt: kept.at })
+    }
+  }, [client])
+
+  return useQuery({
     queryKey: ['menu', STOREFRONT_CODE],
     enabled,
     queryFn: async () => {
@@ -274,12 +308,11 @@ export const useMenu = (enabled = true) =>
       }
       return menu
     },
-    initialData: () => keptMenu()?.menu,
-    initialDataUpdatedAt: () => keptMenu()?.at,
     staleTime: 10 * 60 * 1000,
     refetchOnWindowFocus: false,
     retry: 1,
   })
+}
 
 export const usePaymentBadges = () =>
   useQuery({

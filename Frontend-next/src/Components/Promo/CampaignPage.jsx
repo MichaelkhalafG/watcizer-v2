@@ -81,13 +81,13 @@ const STR = {
   },
 }
 
-export default function CampaignPage({ presentation }) {
+export default function CampaignPage({ presentation, menu: menuFromPage = null }) {
   const language = useUIStore((s) => s.language)
   const lang = language === 'ar' ? 'ar' : 'en'
   const dir = lang === 'ar' ? 'rtl' : 'ltr'
   const t = STR[lang]
   const hot = presentation === 'hot_deals'
-  const { campaign, offset, isLoading } = useLiveCampaign(presentation)
+  const { campaign, offset, isLoading, serverNow } = useLiveCampaign(presentation)
   useEffectsAfterLoad()
   const { data: cards, isLoading: loadingCards, isError, refetch } = useCampaignProducts(presentation, campaign)
   const mode = useHotDealsMode()
@@ -96,7 +96,12 @@ export default function CampaignPage({ presentation }) {
   // request (1.1 s behind the products' own on a one-request-at-a-time server) was the slowest thing on the page.
   // Without it a chip is named by its cards' own category. Only the "nothing running" state asks for the menu: it
   // lists the shop's categories as the way on.
-  const { data: menu } = useMenu(!campaign && !isLoading)
+  // THE PAGE'S OWN SERVER RENDER MAY HAND THE MENU'S CATEGORIES IN (`menu`, 2026-11-07): read in the first paint — the
+  // idle "shop by category" — they must be the same on the server and in the hydration render, and a sessionStorage
+  // copy only the browser has made them differ (React #418 on the live site). With the prop, the hook is only a reader
+  // of the cache (no request of its own).
+  const { data: fetched } = useMenu(!menuFromPage && !campaign && !isLoading)
+  const menu = fetched || menuFromPage || undefined
   const topName = (chip) => txt(menu?.categories?.find((c) => c.path === chip.key)?.name, lang) || txt(chip.name, lang) || chip.key.replace(/-/g, ' ')
   const [category, setCategory] = useState(null)
   const [minDiscount, setMinDiscount] = useState(0)
@@ -190,7 +195,7 @@ export default function CampaignPage({ presentation }) {
         </div>
         <div className="pm-hero__time">
           <span className="pm-hero__ends">{t.ends}</span>
-          <Countdown endsAt={campaign.ends_at} offset={offset} lang={lang} className="pm-count--lg" />
+          <Countdown endsAt={campaign.ends_at} offset={offset} now={serverNow} lang={lang} className="pm-count--lg" />
         </div>
       </section>
 

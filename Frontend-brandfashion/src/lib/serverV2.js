@@ -51,6 +51,12 @@ export const getServerV2Meta = memo('v2:meta', async () => (await serverHttp.get
  */
 export const getServerV2Campaigns = memo('v2:campaigns', async () => (await serverHttp.get(`v2/${STOREFRONT_CODE}/campaigns`)).data, 30_000, 300_000, campaignHoldRules)
 
+/**
+ * The wheel's switch and segments (2026-11-07, read by Watchizer's /spin page): held 30 s and answered at once, so the
+ * landing page's first byte never waits for core; the dashboard's switch reaches it within the minute.
+ */
+export const getServerV2Wheel = memo('v2:wheel', async () => (await serverHttp.get(`v2/${STOREFRONT_CODE}/wheel`)).data, 30_000, 120_000)
+
 /** v2 home: the rails with cards, the deals band, the category entries, the banner. */
 // The menu (item 36, 2026-11-05): the same for every visitor, so one read per five minutes serves every page render.
 export const getServerV2Menu = memo('v2:menu', async () => (await serverHttp.get(`v2/${STOREFRONT_CODE}/menu`)).data)

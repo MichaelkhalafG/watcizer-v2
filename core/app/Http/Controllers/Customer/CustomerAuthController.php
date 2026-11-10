@@ -9,6 +9,7 @@ use App\Domain\Customers\CustomerAccounts;
 use App\Domain\Customers\CustomerMail;
 use App\Domain\Customers\CustomerPayload;
 use App\Domain\Customers\CustomerTokens;
+use App\Domain\Wheel\Wheel;
 use App\Http\Controllers\Controller;
 use App\Http\Middleware\CompatAuth;
 use App\Http\Middleware\CompatGuestCart;
@@ -205,6 +206,9 @@ final class CustomerAuthController extends Controller
                 ]);
             }
         }
+
+        // the wheel's spins of this account's phone become the account's (2026-11-10); never a reason to fail the sign-in
+        Wheel::attachAccount(Coerce::int($user->getKey()), Coerce::nstr($user->getAttribute('phone_number')));
 
         return CustomerPayload::withToken($user, $token);
     }

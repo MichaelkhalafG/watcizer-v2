@@ -6,6 +6,8 @@ import { useUIStore } from '../../../Store/uiStore'
 import { useRouter } from '@/src/Hooks/useLocaleRouter'
 import { getImageUrl, handleImgError, PLACEHOLDER_IMG } from '../../../utils/imageUrl'
 import { productUrl } from '../../../utils/productUrl'
+import { useLivePrices } from '../../../Hooks/queries/usePromo'
+import { liveFields } from '../../../lib/campaign'
 
 const MAX_RESULTS = 6
 // One letter matches nearly the whole catalogue: the dropdown starts answering at two (2026-09-28).
@@ -16,6 +18,7 @@ const MIN_LETTERS = 2
 // search the whole downloaded catalogue in the browser.
 function SearchBox() {
   const { language } = useUIStore()
+  const livePriceMap = useLivePrices()
   const [searchTerm, setSearchTerm] = useState('')
   const [debounced, setDebounced] = useState('')
   const [open, setOpen] = useState(false)
@@ -95,7 +98,9 @@ function SearchBox() {
         <div className="wz-search-results">
           {results.length > 0 ? (
             <>
-              {results.map((product) => {
+              {results.map((raw) => {
+                // the price as it holds now (a campaign price follows its campaign, 2026-11-10)
+                const product = liveFields(raw, livePriceMap)
                 const hasDiscount = Number(product.percentage_discount) > 0
                 return (
                   <button

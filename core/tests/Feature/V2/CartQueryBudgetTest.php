@@ -42,10 +42,15 @@ function cqbMeasure(Closure $request): array
     $ms = (hrtime(true) - $t) / 1e6;
     $log = DB::connection()->getQueryLog();
     DB::connection()->disableQueryLog();
-    if (getenv('CQB_DUMP')) { fwrite(STDERR, "
---- ".count($log)." queries ---
-"); foreach ($log as $q) { fwrite(STDERR, '  '.substr($q['query'], 0, 150)."
-"); } }
+    if (getenv('CQB_DUMP')) {
+        fwrite(STDERR, '
+--- '.count($log).' queries ---
+');
+        foreach ($log as $q) {
+            fwrite(STDERR, '  '.substr($q['query'], 0, 150).'
+');
+        }
+    }
 
     return ['queries' => count($log), 'ms' => round($ms, 1)];
 }
@@ -134,8 +139,15 @@ it('prints the compat cart path for the record, and holds the v2 cart to its bud
     // Warm: GET 11/12, POST 19–21, PATCH 18, DELETE 13; 12–23 ms in-process. Compat's path, for the record:
     // add 9, me/cart 6, cart/validate 6 — v2 pays more per call because every answer carries the product
     // cards and re-prices every line, which is the point of it; what it must never do is scale with the cart.
-    expect($after['get_1_line']['queries'])->toBeLessThanOrEqual(12)
-        ->and($after['get_3_lines']['queries'])->toBeLessThanOrEqual(12)
+    /*
+     * +1 on the two reads (2026-11-08): the ceilings were measured with the storefront's MONEY REWARDS OFF, where
+     * StorefrontCart::promotionPreview() skips the engine for a cart without a code. With money rewards ON (the
+     * preview, and production since Black1000) the engine reads its candidate rules ONCE per cart read — the cart must
+     * know the automatic discounts — so a one-line read is 12 and a three-line read with a variant 13. Nothing per line,
+     * nothing of the wheel's (a spin is looked up only when a code is typed). Found while chasing a 13 on the scratch copy.
+     */
+    expect($after['get_1_line']['queries'])->toBeLessThanOrEqual(13)
+        ->and($after['get_3_lines']['queries'])->toBeLessThanOrEqual(13)
         ->and($after['add_plain_warm']['queries'])->toBeLessThanOrEqual(22)
         ->and($after['add_variant']['queries'])->toBeLessThanOrEqual(22)
         ->and($after['patch_line']['queries'])->toBeLessThanOrEqual(20)

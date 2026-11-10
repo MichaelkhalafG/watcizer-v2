@@ -1,5 +1,7 @@
 'use client'
-import { useMemo, useCallback } from 'react'
+import { useMemo, useCallback, useEffect } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
+import { STOREFRONT_CODE } from '@/src/lib/env'
 import dynamic from 'next/dynamic'
 import Image from 'next/image'
 import { useRouter } from '@/src/Hooks/useLocaleRouter'
@@ -16,8 +18,8 @@ import OfferSlider from '@/src/Components/Product/OfferSlider'
 import HeroZone from '@/src/Components/Home/HeroZone'
 import BrandBanner, { onColor } from '@/src/Components/Home/BrandBanner'
 import CampaignRail from '@/src/Components/Promo/CampaignRail'
-import { useHotDealsMode, useLiveCampaign } from '@/src/Hooks/queries/usePromo'
-import { money } from '@/src/lib/campaign'
+import { useHotDealsMode, useLiveCampaign, useLivePrices } from '@/src/Hooks/queries/usePromo'
+import { liveFields, money } from '@/src/lib/campaign'
 import { brandSlug } from '@/src/utils/slugs'
 import { useHome, useCardsOf } from '@/src/Hooks/queries/useListing'
 import { useTables } from '@/src/Hooks/queries/useTables'
@@ -90,7 +92,16 @@ const KIND_TITLES = {
 // The kinds that are a SECTION of the page rather than a slider of products (core: HomeRails::SECTIONS).
 const SECTION_KINDS = ['banners', 'hot_deals', 'flash_sale', 'categories', 'brands']
 
-export default function HomeClient({ initialHome = null, campaign = null }) {
+export default function HomeClient({ initialHome = null, campaign = null, menu = null }) {
+  // THE MENU ARRIVES AS A PROP (2026-11-07): the category row reads it directly (the same on the server and in the
+  // hydration render), and the query cache is seeded from it right after mount so the header's menu is ready before
+  // the first hover without a request of its own. A cache that already holds the menu is left alone.
+  const queryClient = useQueryClient()
+  useEffect(() => {
+    if (menu && queryClient.getQueryState(['menu', STOREFRONT_CODE])?.data === undefined) {
+      queryClient.setQueryData(['menu', STOREFRONT_CODE], menu)
+    }
+  }, [menu, queryClient])
   const { data: home, isFetching, isError, refetch } = useHome(initialHome)
   const { data: tables } = useTables()
   const { language } = useUIStore()
@@ -98,6 +109,7 @@ export default function HomeClient({ initialHome = null, campaign = null }) {
   const isRTL = language === 'ar'
   const hotDeals = useHotDealsMode()
   const flashSale = useLiveCampaign('flash_sale')
+  const livePriceMap = useLivePrices()
 
   // Every rail's cards, transformed once in the shopper's language.
   const cards = useCardsOf(home, language)
@@ -189,7 +201,9 @@ export default function HomeClient({ initialHome = null, campaign = null }) {
               title: custom[language] || custom.en,
               description: rail.description?.[language] || rail.description?.en || '',
               colors: rail.colors || [],
-              products: products.slice(0, 3).map((p) => {
+              products: products.slice(0, 3).map((raw) => {
+                // the price as it holds now (a campaign price follows its campaign, 2026-11-10)
+                const p = liveFields(raw, livePriceMap)
                 // the shop's one price rule: a sale counts only when 0 < sale < selling
                 const selling = Number(p.selling_price) || 0
                 const sale = Number(p.sale_price_after_discount) || 0
@@ -257,7 +271,7 @@ export default function HomeClient({ initialHome = null, campaign = null }) {
         if (rail.kind === 'brand_banner') return !!rail.banner
         return rail.products.length >= MIN_RAIL_PRODUCTS
       })
-  }, [home, cardById, tables, language, blockBanners, hotDeals.campaign, flashSale.campaign])
+  }, [home, cardById, tables, language, blockBanners, hotDeals.campaign, flashSale.campaign, livePriceMap])
 
   const brands = tables?.brands || []
   const brandName = (b) => nameIn(b, 'brand_name', language)
@@ -346,7 +360,7 @@ export default function HomeClient({ initialHome = null, campaign = null }) {
       return (
         <section className={section} key={rail.id}>
           <div className="wz-container">
-            <CategoryTiles />
+            <CategoryTiles menu={menu} />
           </div>
         </section>
       )
@@ -438,7 +452,7 @@ export default function HomeClient({ initialHome = null, campaign = null }) {
       {managed.has('categories') ? null : (
         <section className="wz-home-section">
           <div className="wz-container">
-            <CategoryTiles />
+            <CategoryTiles menu={menu} />
           </div>
         </section>
       )}

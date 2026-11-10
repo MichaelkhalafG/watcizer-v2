@@ -145,6 +145,18 @@ class AppServiceProvider extends ServiceProvider
             Limit::perHour(20)->by($request->ip() ?? 'unknown')->response(self::tooMany()),
         ]);
 
+        /*
+         * The wheel's spin and lookup (2026-11-07). Unauthenticated, and each accepted spin creates a code — but the
+         * real limits are the wheel's own (one spin per phone and per device per campaign, Wheel::spin), because an
+         * ad campaign's visitors arrive from Egyptian mobile carriers behind carrier-grade NAT, where hundreds of
+         * real people share one address: a tight per-address limit would turn real visitors away. These figures are
+         * a ceiling for a script, not a gate for people.
+         */
+        RateLimiter::for('wheel-spin', fn (Request $request) => [
+            Limit::perMinute(20)->by($request->ip() ?? 'unknown')->response(self::tooMany()),
+            Limit::perHour(200)->by($request->ip() ?? 'unknown')->response(self::tooMany()),
+        ]);
+
         // Wave 3: no statement outside InventoryService (or the transform, which opens its own
         // window) may write a stock column. Armed outside production, exactly as study §4.2
         // scopes it; production relies on the nightly `inventory:verify` reconciliation instead.

@@ -1,12 +1,11 @@
 'use client'
-import { useSyncExternalStore } from 'react'
-import { createPortal } from 'react-dom'
 import { usePathname } from 'next/navigation'
 import { useRouter } from '../../Hooks/useLocaleRouter'
 import { useUIStore } from '../../Store/uiStore'
 import { barePath } from '../../utils/localePath'
 import { useHotDealsMode, useLiveCampaign, useEffectsAfterLoad, useCampaignStart } from '../../Hooks/queries/usePromo'
 import { CAMPAIGN_PATH } from '../../lib/campaign'
+import { FloatingSlot } from '../Floating/FloatingStack'
 import Countdown from './Countdown'
 import { FlameIcon } from './icons'
 import './promo.css'
@@ -28,15 +27,11 @@ import './promo.css'
 //
 // `variant` says where this copy sits:
 //   "top"    the header's top row on a computer
-//   "float"  PHONES: a pill fixed in the thumb's corner of the screen — reachable with one thumb on any phone,
-//            always in sight, and outside the page's flow, so it can never shift a thing. (It replaced the bar
-//            under the header, which the review rejected.) Each shop lifts it over its own bottom bar with
-//            `--pm-float-lift`.
-
-// "Are we in the browser, after hydration?" without a state and an effect: false on the server and during
-// hydration, true afterwards.
-const noop = () => () => {}
-const useMounted = () => useSyncExternalStore(noop, () => true, () => false)
+//   "float"  PHONES: a pill in the page's FLOATING CORNER (FloatingStack, 2026-11-07) — reachable with one thumb on
+//            any phone, always in sight, outside the page's flow, and stacked with any other floating element instead
+//            of over it. The corner itself is not drawn on the cart, the checkout and every product page (seen live:
+//            the pill sat on the product page's sticky "Add to cart" bar and hid the button); the MODE is untouched
+//            there — the header's switch stays. It replaced a bar under the header, which the review rejected.
 
 const STR = {
   en: { hot: 'Hot deals', on: 'Hot Deals mode is on', off: 'Turn on Hot Deals mode' },
@@ -50,18 +45,12 @@ export default function CampaignNav({ variant = 'top' }) {
   const router = useRouter()
   const pathname = usePathname()
   const mode = useHotDealsMode()
-  const { offset } = useLiveCampaign('hot_deals')
+  const { offset, serverNow } = useLiveCampaign('hot_deals')
   // a sale that starts while this page is open is asked for at its first second (one timer a page: the top copy)
   useCampaignStart(variant === 'top')
-  const mounted = useMounted()
   useEffectsAfterLoad()
 
   if (!mode.available) return null
-  // THE FLOATING PILL IS DRAWN ON <body>, not inside the header that mounts it: a header with a backdrop filter is
-  // the containing block of everything `position: fixed` inside it, and the pill sat under the header instead of in
-  // the thumb's corner (measured on Watchizer, 2026-11-05). A portal needs the browser, so the pill arrives after
-  // hydration — it is outside the page's flow, so its arrival shifts nothing.
-  if (variant === 'float' && !mounted) return null
 
   const toggle = () => {
     const next = !mode.on
@@ -78,7 +67,7 @@ export default function CampaignNav({ variant = 'top' }) {
         </span>
         <span className="pm-switch__text">
           <span className="pm-switch__label">{t.hot}</span>
-          <Countdown endsAt={mode.campaign.ends_at} offset={offset} lang={lang} variant="inline" />
+          <Countdown endsAt={mode.campaign.ends_at} offset={offset} now={serverNow} lang={lang} variant="inline" />
         </span>
         <span className="pm-switch__track" aria-hidden="true">
           <span className="pm-switch__thumb" />
@@ -86,5 +75,12 @@ export default function CampaignNav({ variant = 'top' }) {
       </button>
     </div>
   )
-  return variant === 'float' ? createPortal(control, document.body) : control
+  // the floating copy arrives after hydration, into the page's one corner (nothing in the server HTML, so nothing shifts)
+  return variant === 'float' ? (
+    <FloatingSlot name="hot-deals" order={20}>
+      {control}
+    </FloatingSlot>
+  ) : (
+    control
+  )
 }

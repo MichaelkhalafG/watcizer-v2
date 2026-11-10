@@ -227,6 +227,37 @@ html:not([data-pm-fx]) .pm-page *::after {
   color: #111111;
   font-weight: 700;
 }
+/* "New deal" (2026-11-10): the bar's frame with its track's room kept empty and a small badge where the caption starts
+   — the same height as the bar, so nothing moves when the first sale turns it into one */
+.pm-bar__track--room {
+  background: none;
+}
+.pm-bar__new {
+  display: inline-block;
+  padding-inline: 7px;
+  border-radius: 999px;
+  background: var(--pm-accent, #111111);
+  color: #ffffff;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+.pm-rail--hot .pm-bar__new,
+.pm-page--hot .pm-bar__new {
+  background: linear-gradient(90deg, var(--pm-fire-3), var(--pm-fire-2));
+}
+.pm-rail--flash .pm-bar__new,
+.pm-page--flash .pm-bar__new {
+  background: var(--pm-volt-1);
+  color: var(--pm-storm);
+}
+/* the low-stock line: the campaign's own colour */
+.pm-bar__left--low {
+  color: var(--pm-hot, #c81e1e);
+}
+.pm-rail--flash .pm-bar__left--low,
+.pm-page--flash .pm-bar__left--low {
+  color: var(--pm-storm-3);
+}
 
 /* ── shared controls ─────────────────────────────────────────────────────────────────────────────── */
 .pm-btn {

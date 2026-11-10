@@ -9,6 +9,7 @@ import Header from '@/src/Components/Header/Header'
 import CartModalHost from '../cart-modal-host'
 import SkipLink from './skip-link'
 import DesktopFooter from './desktop-footer'
+import { FloatingHost } from '@/src/Components/Floating/FloatingStack'
 
 // Main app chrome (mirrors Frontend App.jsx MainApp): skip link → sticky header
 // → #main-content landmark → desktop-only footer.
@@ -71,6 +72,10 @@ export default async function MainLayout({ children }) {
           {children}
         </main>
         <DesktopFooter />
+        {/* THE ONE CORNER FOR EVERYTHING THAT FLOATS (2026-11-07): the Hot Deals pill, the back-to-top button, the wheel's
+            button portal into this empty fixed column after hydration, stacked, and none of them on the cart, the checkout
+            or a product page (src/lib/floating.js) */}
+        <FloatingHost />
         {/* Cart drawer lives here (below the boundary) — CartModal reads the
             catalog to resolve line-item names. */}
         <CartModalHost />

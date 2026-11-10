@@ -154,6 +154,13 @@ final class CoreChecksumCommand extends Command
         // uploaded in the dashboard, no legacy source; a recorded start quantity can never be reconstructed
         'storefront_campaigns', 'storefront_campaign_products', 'storefront_payment_badges',
         /*
+         * Since 2026-11-07: `storefront_wheel_spins` — every spin of the wheel: the phone it was played with, the
+         * prize, the single-use code, the order that used it. Written by SHOPPERS, with no source anywhere else; a
+         * rebuild that dropped it would void every code a customer is holding. And since 2026-11-08
+         * `storefront_wheel_prizes` — the segments the team authors on the dashboard (label, type, value, odds, colour).
+         */
+        'storefront_wheel_spins', 'storefront_wheel_prizes', 'storefront_wheel_referrals',
+        /*
          * The operator's own dashboard preferences (M1m, wave 4D).
          *
          * Small, and on the list for the same reason as everything above it: a human typed it and

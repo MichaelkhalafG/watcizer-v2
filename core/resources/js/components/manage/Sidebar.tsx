@@ -6,6 +6,7 @@ import {
     ChevronsRight,
     Circle,
     CreditCard,
+    Disc3,
     FileText,
     FolderTree,
     Gift,
@@ -65,6 +66,7 @@ const ICONS: Record<string, ComponentType<{ className?: string }>> = {
     Trash2,
     Users,
     CreditCard,
+    Disc3,
 };
 
 function NavIcon({ name, className }: { name: string; className?: string }) {

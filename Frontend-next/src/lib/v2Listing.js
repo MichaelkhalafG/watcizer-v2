@@ -138,6 +138,8 @@ export function legacyRow(card) {
     selling_price: card.price?.amount ?? 0,
     sale_price_after_discount: card.price?.has_sale ? card.price.sale_amount : 0,
     percentage_discount: card.price?.has_sale ? card.price.discount_pct : 0,
+    // core's price without the campaign, beside a campaign price (2026-11-10): a held card goes back by itself
+    price_regular: card.price?.regular ?? null,
     ratings_avg: card.rating?.avg ?? null,
     ratings_count: card.rating?.count ?? 0,
     gender: [],

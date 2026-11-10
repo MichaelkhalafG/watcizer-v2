@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { couponMessage, couponQuery, discountLabel, payable, promotionOf, setStoredCoupon, storedCoupon, subscribeCoupon } from '../src/lib/coupon'
+import { couponMessage, couponQuery, discountLabel, isHeldRefusal, payable, promotionOf, rewardTitle, setStoredCoupon, storedCoupon, subscribeCoupon, wheelNote } from '../src/lib/coupon'
 
 // The coupon on the storefront (M1u, 2026-10-30): the kept code, the cart answer's promotion read defensively, the
 // words shown, the amount shown to pay — and the GA4 events carrying the code and the per-unit discount in GA4's own
@@ -48,7 +48,7 @@ describe("the cart answer's promotion", () => {
   })
 
   it('reads an older core (no promotion) as no discount, never as an error', () => {
-    expect(promotionOf({ count: 1 })).toEqual({ available: false, discount: 0, applied: [], lines: {}, coupon: null })
+    expect(promotionOf({ count: 1 })).toEqual({ available: false, discount: 0, applied: [], lines: {}, coupon: null, rewards: [] })
     expect(promotionOf(null).discount).toBe(0)
   })
 
@@ -107,5 +107,35 @@ describe('GA4 carries the code and the discount in its own fields', () => {
     const px = await import('../src/scripts/pixels')
     px.trackInitiateCheckout({ value: 100, contents: [{ id: 1, quantity: 1, price: 100 }] })
     expect(gtag.mock.calls[0][2]).not.toHaveProperty('coupon')
+  })
+})
+
+describe("the wheel's kinds on a code (2026-11-09)", () => {
+  it('names the gift a rule grants, and nothing from an older core', () => {
+    const p = promotionOf({ promotion: { discount: 0, applied: [], lines: [], coupon: null, rewards: [{ product_id: 25652, quantity: 1, title: { en: 'Asad 100 ml', ar: null } }, { product_id: 0 }, null] } })
+    expect(p.rewards).toHaveLength(1)
+    expect(rewardTitle(p.rewards[0], false)).toBe('Asad 100 ml')
+    expect(rewardTitle(p.rewards[0], true)).toBe('Asad 100 ml')
+    expect(promotionOf({ promotion: { discount: 0, applied: [], lines: [], coupon: null } }).rewards).toEqual([])
+  })
+  it("words the note by kind: a friend's invite, a gift, a bound code", () => {
+    const bound = { code: 'SPIN-A', status: 'applied', wheel: { kind: 'code', phone_hint: '010•••••678' } }
+    expect(wheelNote(bound, false)).toContain('010•••••678')
+    expect(wheelNote({ ...bound, wheel: { ...bound.wheel, kind: 'invite' } }, false)).toContain('first order')
+    expect(wheelNote({ ...bound, wheel: { ...bound.wheel, kind: 'invite' } }, false)).not.toContain('010•••••678')
+    expect(wheelNote({ ...bound, wheel: { ...bound.wheel, kind: 'gift' } }, false)).toContain('gift')
+    expect(wheelNote({ ...bound, wheel: { ...bound.wheel, kind: 'gift' } }, true)).toContain('هديتك')
+    expect(wheelNote({ code: 'X', status: 'applied' }, false)).toBe('')
+  })
+  it('holds a code the shopper can put right here, forgets the rest', () => {
+    const w = { phone_hint: '010•••••678' }
+    for (const status of ['phone_mismatch', 'invite_own', 'invite_not_first', 'invite_used']) expect(isHeldRefusal({ status, wheel: w })).toBe(true)
+    expect(isHeldRefusal({ status: 'no_eligible_items', wheel: w })).toBe(true)
+    expect(isHeldRefusal({ status: 'no_eligible_items' })).toBe(false)
+    for (const status of ['invalid', 'expired', 'wheel_used', 'gift_out_of_stock', 'not_best', 'minimum_not_reached']) expect(isHeldRefusal({ status, wheel: w })).toBe(false)
+    // one offer per order (2026-11-10): a code refused because the cart holds a campaign item is FORGOTTEN, never held
+    expect(isHeldRefusal({ status: 'on_offer' })).toBe(false)
+    expect(isHeldRefusal({ status: 'on_offer', wheel: w })).toBe(false)
+    expect(isHeldRefusal(null)).toBe(false)
   })
 })
