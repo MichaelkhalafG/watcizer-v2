@@ -9,6 +9,40 @@ cannot get past tonight; every item is a known, named state. Pick batches from i
 
 ---
 
+## ▶ 2026-11-12 — FIX LATER: the dashboard's typed times are UTC, the team types Cairo times (2 hours off)
+
+Found on 2026-11-12, when production refused a script on its time zone:
+- Production's app time zone is **UTC** (APP_TIMEZONE is not set). Michael does not want it changed.
+- The promotion and campaign screens take a `datetime-local` value and store the typed text as it is (DATETIME
+  columns; the campaign controller only reformats it). The engine and the campaign prices compare it with `now()`
+  in the app's zone.
+- So a time the team types is a **UTC** time. Egypt is UTC+2 now (UTC+3 in summer time), so every typed start and
+  end falls 2 hours (3 in summer) LATER in Cairo than the team meant:
+  - Hot Deals typed to end "12 Nov 00:00" ended at **02:00** Cairo;
+  - Black1000 typed to end "31 Dec 23:59:59" ends at **01:59:59 on 1 Jan** Cairo;
+  - a campaign typed to start at 10:00 starts at 12:00 Cairo.
+- The campaign screen says so in small print ("بتوقيت المتجر (UTC)"); the promotion screen says nothing.
+- The storefront countdowns are right about the REAL instant: they read ISO times with the zone.
+
+The fix, for Michael to choose:
+- (a) the screens convert: show stored UTC as Cairo time, and convert a typed Cairo time to UTC on save, in one
+  helper for the promotion, campaign and wheel-round screens, with a test across the summer-time change;
+- (b) only a clear label "UTC — Cairo minus 2 hours (3 in summer)" beside every date field.
+
+Until then: type the UTC time (Cairo minus 2 hours). WR10 was created by script with its instants converted
+(13:00:00 → 21:59:59 stored = 15:00 → 23:59:59 Cairo).
+
+## ▶ 2026-11-12 — FIX LATER: bf-images.sh status can call a dead shard RUNNING
+
+Seen on switch day: `bash ~/bf-images.sh status` showed a finished shard as RUNNING, because the shard's old pid had
+been reused by an unrelated process (pid 3216269). The check is a `pgrep -f` on the shard's command line, so it is
+fooled once the system gives that number to another program.
+
+The fix: test the pid's own command line, for example `tr '\0' ' ' < /proc/<pid>/cmdline` containing
+`bf:legacy-images` and `--shard=K/N`, recording each shard's pid at start. Until then, the shard's log decides: its
+last line `shard K/N: … processed …` means it finished, whatever status says. The same check pattern is in
+bf-fetch-2022.sh and bf-switch-import.sh (import-status).
+
 ## ▶ 2026-11-12 — LATER: each shop's Conversions API token and pixel on the dashboard (D-25 option a)
 
 Decided by Michael on 2026-11-12: for now, option (b), an env pair per shop on the core server

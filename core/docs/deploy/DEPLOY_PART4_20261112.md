@@ -251,7 +251,7 @@ unbranded products and every brand added later.
 | Name | `WR10 — 10% off (except the Black1000 watches)` | `BR10 — 10% off (except the FRIDAY1000 watches)` |
 | Storefronts | **Watchizer only** | **Brand Fashion only** |
 | مفعّلة (active) | ON | ON (see "when" below) |
-| Starts / Ends | `2026-11-12 15:00` → `2026-12-31 23:59:59` (the dashboard's time is Cairo, `APP_TIMEZONE=Africa/Cairo`) | the same |
+| Starts / Ends | **15:00 on 12 Nov → 23:59:59 on 31 Dec, CAIRO time = type `2026-11-12 13:00` → `2026-12-31 21:59`** (corrected 2026-11-12: production's app time zone is **UTC**, not Cairo. The form stores the typed time as it is and the engine reads it as UTC, so a Cairo time is typed 2 hours EARLIER in November–April. `wr10-create.sh` converts it itself and stores 13:00:00 → 21:59:59) | the same (`offers:copy` carries the same instants) |
 | Conditions | none | none |
 | المكافآت (reward) | percent discount, **10** | the same |
 | كود الخصم (code) | `WR10` | `BR10` |
