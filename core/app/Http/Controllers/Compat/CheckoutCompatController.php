@@ -470,7 +470,10 @@ class CheckoutCompatController extends Controller
             $field = static fn (string $key): ?string => ($v = CompatCheckout::paymobField($input, $key)) === '' ? null : $v;
 
             $transactionId = $field('id');
-            $transactionId = $transactionId === null ? null : (int) $transactionId;
+            // Normalised as a number (as always), compared and stored as TEXT (2026-11-12): the column is VARCHAR since
+            // the MyFatoorah migration, and an integer bound against it would compare numerically — no index, and
+            // inexact past 2^53
+            $transactionId = $transactionId === null ? null : (string) (int) $transactionId;
             if ($transactionId !== null && DB::table('payment_statuses')->where('pay_transaction_id', $transactionId)->exists()) {
                 return response()->json(['message' => 'Already processed'], 200);
             }

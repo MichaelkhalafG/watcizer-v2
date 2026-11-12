@@ -113,6 +113,16 @@ return [
     | wave-3 callback handler the legacy alias falls through to while Watchizer's contract is not
     | live (never, on production) — it refuses with an empty secret.
     */
+    /*
+     * MyFatoorah (Brand Fashion, 2026-11-12): only the API HOST lives here — the key and the webhook secret are the
+     * storefront contract's encrypted credentials (dashboard → Payments). No default on purpose: a live key on the test
+     * host (or the reverse) fails like an outage, so an unset host refuses to start a payment. Test:
+     * https://apitest.myfatoorah.com — live (Egypt): the base URL MyFatoorah's portal gives the account.
+     */
+    'myfatoorah' => [
+        'base_url' => env('MYFATOORAH_BASE_URL'),
+    ],
+
     'paymob' => [
         'hmac_secret' => env('PAYMOB_HMAC_SECRET'),
     ],
@@ -133,6 +143,15 @@ return [
         'pixel_id' => (string) env('META_CAPI_PIXEL_ID', '1614877760150035'),
         'graph_version' => (string) env('META_GRAPH_API_VERSION', 'v23.0'),
         'test_event_code' => (string) env('META_CAPI_TEST_EVENT_CODE', ''),
+        // token / pixel_id above are WATCHIZER's (the primary). Every other shop has its OWN pair here, from the core
+        // server's .env only (D-25, Michael 2026-11-12): a shop's orders go only to its own pair, and a shop whose pair
+        // is incomplete sends nothing (MetaConversions::pair). Never committed, never logged, never on a screen.
+        'storefronts' => [
+            'brandfashion' => [
+                'token' => (string) env('META_CAPI_BRANDFASHION_TOKEN', ''),
+                'pixel_id' => (string) env('META_CAPI_BRANDFASHION_PIXEL_ID', ''),
+            ],
+        ],
         'timeout' => 10,
         // Retry ladder (minutes) for a send Meta did not accept; after the last rung the row is `failed`.
         'backoff_minutes' => [1, 5, 15, 60, 240],

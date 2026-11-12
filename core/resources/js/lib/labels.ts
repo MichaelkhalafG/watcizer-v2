@@ -81,6 +81,8 @@ export function familyLabel(t: Translator, family: string | null): string {
  */
 export function providerLabel(t: Translator, provider: string | null): string {
     switch (provider) {
+        case 'myfatoorah':
+            return t('payments.provider_myfatoorah', 'MyFatoorah');
         case 'paymob':
             // A brand name, and brand names are not translated. Returned through the seam anyway so
             // a future transliteration is a lang entry rather than an edit here.
@@ -107,6 +109,8 @@ export function methodLabel(t: Translator, method: string | null): string {
             return 'Tamara'; // i18n-exempt: a brand name
         case 'wallet':
             return t('payments.method_wallet', 'محفظة');
+        case 'meeza':
+            return t('payments.method_meeza', 'ميزة');
         case 'cagg':
             return t('payments.method_cagg', 'تقسيط');
         case 'bank_installment':

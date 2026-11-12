@@ -141,6 +141,10 @@ function fieldLabel(t: Translator, field: string): string {
             return t("payments.field_public_key", "المفتاح العام");
         case "hmac_secret":
             return t("payments.field_hmac_secret", "مفتاح التوقيع (HMAC)");
+        case "api_key":
+            return t("payments.field_api_key", "مفتاح الـ API");
+        case "webhook_secret":
+            return t("payments.field_webhook_secret", "مفتاح توقيع الـ Webhook");
         default:
             return field;
     }
@@ -1228,8 +1232,8 @@ function MethodDialog({
                         }
                         error={errors.integration_id ?? null}
                         hint={t(
-                            "payments.integration_id_hint",
-                            "الرقم الذي أرسلته Paymob لهذه الطريقة بالذات (أرقام فقط)، وهو ما يوجّه العميل إليها. ليس مفتاحًا سريًّا. بدونه لا يمكن تفعيل الطريقة.",
+                            "payments.integration_id_hint_v2",
+                            "ما يوجّه العميل إلى هذه الطريقة بالذات، وليس مفتاحًا سريًّا: لـ Paymob رقم التكامل الذي أرسلته (أرقام فقط)؛ ولـ MyFatoorah رمز الطريقة كما يعرضه الحساب (مثل vm للبطاقات و md لميزة). بدونه لا يمكن تفعيل الطريقة.",
                         )}
                     />
                     {/* No icon input (hidden 2026-09-24). The column takes free text of up to 64
