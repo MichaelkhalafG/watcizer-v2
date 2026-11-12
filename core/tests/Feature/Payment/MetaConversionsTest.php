@@ -108,6 +108,48 @@ it('enqueues ONE Purchase per order, and none while the token is empty', functio
     expect($meta->purchase($other))->toBe([])->and(metaRows($other))->toBe([]);
 });
 
+it('sends each shop\'s orders with ITS OWN pair, and nothing for a shop without one (D-25, 2026-11-12)', function () {
+    fakeMeta(200, ['events_received' => 1]);
+    $meta = app(MetaConversions::class);
+    $sent = function (string $pixel, string $token): int {
+        return count(Http::recorded(function (HttpRequest $r) use ($pixel, $token): bool {
+            return str_contains($r->url(), '/'.$pixel.'/events') && T::arr($r->data())['access_token'] === $token;
+        }));
+    };
+
+    // 1. Brand Fashion has NO pair yet: its card order is not queued, and Watchizer's pixel never sees it
+    config(['services.meta_capi.storefronts.brandfashion' => ['token' => '', 'pixel_id' => '']]);
+    $bf = capiOrder();
+    DB::table('orders')->where('id', $bf)->update(['storefront_id' => 2]);
+    expect($meta->purchase($bf))->toBe([])->and(metaRows($bf))->toBe([])
+        ->and(MetaConversions::pair('brandfashion'))->toBeNull();
+
+    // 2. Brand Fashion's pair set: its order goes to ITS pixel with ITS token
+    config(['services.meta_capi.storefronts.brandfashion' => ['token' => 'EAAbrandfashionTOKEN987', 'pixel_id' => '1594687941022756']]);
+    $bf2 = capiOrder();
+    DB::table('orders')->where('id', $bf2)->update(['storefront_id' => 2]);
+    $meta->flush($meta->purchase($bf2));
+    expect($sent('1594687941022756', 'EAAbrandfashionTOKEN987'))->toBe(1)
+        ->and($sent('1614877760150035', CAPI_TOKEN))->toBe(0)
+        ->and(metaRows($bf2)[0]['status'])->toBe('sent');
+
+    // 3. Watchizer's order goes to WATCHIZER's pair only
+    $wz = capiOrder();
+    DB::table('orders')->where('id', $wz)->update(['storefront_id' => 1]);
+    $meta->flush($meta->purchase($wz));
+    expect($sent('1614877760150035', CAPI_TOKEN))->toBe(1)
+        ->and($sent('1594687941022756', 'EAAbrandfashionTOKEN987'))->toBe(1);
+
+    // 4. a pair removed after the enqueue: the queued row FAILS, it is never sent with another shop's pair
+    $bf3 = capiOrder();
+    DB::table('orders')->where('id', $bf3)->update(['storefront_id' => 2]);
+    $ids = $meta->purchase($bf3);
+    config(['services.meta_capi.storefronts.brandfashion' => ['token' => '', 'pixel_id' => '']]);
+    $meta->flush($ids);
+    expect(metaRows($bf3)[0]['status'])->toBe('failed')
+        ->and($sent('1614877760150035', CAPI_TOKEN))->toBe(1);
+});
+
 it('sends to the new pixel with the token and the test code, and marks the row sent', function () {
     config(['services.meta_capi.test_event_code' => 'TEST24178']);
     fakeMeta(200, ['events_received' => 1, 'fbtrace_id' => 'abc']);

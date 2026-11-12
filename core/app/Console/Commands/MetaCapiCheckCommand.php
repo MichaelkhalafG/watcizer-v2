@@ -3,12 +3,14 @@
 namespace App\Console\Commands;
 
 use App\Domain\Analytics\MetaConversions;
+use App\Storefront\StorefrontUrls;
 use App\Support\Coerce;
 use Illuminate\Console\Command;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use IntlChar;
+use Throwable;
 
 /**
  * meta:capi-check — is the Conversions API set up right? (B2, 2026-09-29)
@@ -33,26 +35,29 @@ use IntlChar;
  */
 final class MetaCapiCheckCommand extends Command
 {
-    protected $signature = 'meta:capi-check {--send-test : also send one Purchase with the test event code}';
+    protected $signature = 'meta:capi-check {--send-test : also send one Purchase with the test event code} {--storefront=watchizer : whose pair to check (each shop has its own token and pixel, D-25)}';
 
     protected $description = 'Check the Meta Conversions API token, pixel and outbox (never prints the token)';
 
     public function handle(MetaConversions $meta): int
     {
         $cfg = config()->array('services.meta_capi');
-        $token = Coerce::str($cfg['token'] ?? '');
-        $pixel = Coerce::str($cfg['pixel_id'] ?? '');
+        $shop = Coerce::str($this->option('storefront')) ?: MetaConversions::PRIMARY;
+        $keys = $shop === MetaConversions::PRIMARY ? 'META_CAPI_TOKEN / META_CAPI_PIXEL_ID' : 'META_CAPI_'.strtoupper($shop).'_TOKEN / _PIXEL_ID';
+        $pair = MetaConversions::pair($shop);
+        $token = $pair['token'] ?? '';
+        $pixel = $pair['pixel_id'] ?? '';
         $version = Coerce::str($cfg['graph_version'] ?? '');
         $test = trim(Coerce::str($cfg['test_event_code'] ?? ''));
         $bad = false;
 
         // ── 1. CONFIG ──────────────────────────────────────────────────────────────────────
-        if ($token === '') {
-            $this->error('CONFIG  FAIL — META_CAPI_TOKEN is empty. Set it in core/.env, then `php artisan config:cache`.');
+        if ($pair === null) {
+            $this->error("CONFIG  FAIL — {$shop} has no complete pair ({$keys} empty). Set both in core/.env, then `php artisan config:cache`.");
 
             return self::FAILURE;
         }
-        $this->line(sprintf('CONFIG  token: %d chars, fingerprint %s · pixel %s · API %s · test code %s',
+        $this->line(sprintf('CONFIG  %s · token: %d chars, fingerprint %s · pixel %s · API %s · test code %s', $shop,
             mb_strlen($token), substr(hash('sha256', $token), 0, 12), $pixel, $version, $test !== '' ? $test.' (events go to Test events only)' : 'NOT SET (events count as real)'));
 
         // ── 2. CHARS ───────────────────────────────────────────────────────────────────────
@@ -114,14 +119,14 @@ final class MetaCapiCheckCommand extends Command
                     'event_time' => now()->getTimestamp(),
                     'event_id' => 'capi-check-'.now()->getTimestamp(),
                     'action_source' => 'website',
-                    'event_source_url' => 'https://watchizereg.com/',
+                    'event_source_url' => $shop === MetaConversions::PRIMARY ? 'https://watchizereg.com/' : $this->siteOf($shop),
                     'user_data' => [
                         'external_id' => [hash('sha256', 'meta-capi-check')],
                         'client_user_agent' => 'watchizer meta:capi-check',
                         'client_ip_address' => '127.0.0.1',
                     ],
                     'custom_data' => ['currency' => 'EGP', 'value' => 1, 'content_type' => 'product', 'content_ids' => ['capi-check']],
-                ]);
+                ], $pair);
                 if ($result['ok']) {
                     $this->info(sprintf('EVENTS  OK — Meta received the test Purchase (events_received=%d). Look in Events Manager → pixel %s → Test events → code %s.',
                         Coerce::int($result['body']['events_received'] ?? 0), $pixel, $test));
@@ -146,5 +151,16 @@ final class MetaCapiCheckCommand extends Command
         }
 
         return $bad ? self::FAILURE : self::SUCCESS;
+    }
+
+    /** The shop's own site address for the test event (its storefront row), else its code as a host. */
+    private function siteOf(string $code): string
+    {
+        $id = Coerce::int(DB::table('storefronts')->where('code', $code)->value('id'));
+        try {
+            return $id > 0 ? rtrim(StorefrontUrls::frontend($id), '/').'/' : 'https://'.$code.'/';
+        } catch (Throwable) {
+            return 'https://'.$code.'/';
+        }
     }
 }

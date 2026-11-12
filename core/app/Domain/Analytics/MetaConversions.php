@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Domain\Analytics;
 
 use App\Domain\Orders\OrderCustomer;
+use App\Storefront\ContentIds;
 use App\Support\Coerce;
 use App\Transform\Row;
 use Illuminate\Http\Client\ConnectionException;
@@ -37,7 +38,8 @@ use Throwable;
  * the outbox never holds a raw e-mail or phone. The test event code is applied at SEND time, so
  * removing it from `.env` takes effect on the next send.
  *
- * ONE pixel (the new one, `services.meta_capi.pixel_id`). The browser's COD `Purchase` carries no
+ * ONE pixel PER SHOP (D-25, 2026-11-12): Watchizer's `services.meta_capi.pixel_id`, another shop's
+ * `services.meta_capi.storefronts.<code>` — see pair(). The browser's COD `Purchase` carries no
  * event id and card orders have no browser event, so nothing needs deduplicating today; the event
  * id is still stable (`purchase-{order number}`) so a browser event added later can match it.
  */
@@ -47,9 +49,57 @@ final class MetaConversions
 
     public const EVENT_PURCHASE = 'order.purchase';
 
+    /** The primary storefront: its pair is the top-level token / pixel, and an order with no storefront stamped is its. */
+    public const PRIMARY = 'watchizer';
+
+    /** Whether ANY storefront has a complete pair (the drain's switch). */
     public static function enabled(): bool
     {
-        return trim(config()->string('services.meta_capi.token')) !== '';
+        if (self::pair(self::PRIMARY) !== null) {
+            return true;
+        }
+        foreach (array_keys(config()->array('services.meta_capi.storefronts', [])) as $code) {
+            if (self::pair((string) $code) !== null) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * ONE token and ONE pixel PER SHOP (D-25, Michael 2026-11-12): Watchizer's is the top-level
+     * META_CAPI_TOKEN / META_CAPI_PIXEL_ID, another shop's is `services.meta_capi.storefronts.<code>`
+     * (META_CAPI_<CODE>_TOKEN / _PIXEL_ID in the server's .env, never in the repository). A shop's orders go
+     * ONLY to its own pair; a shop without a complete pair sends nothing — never another shop's.
+     *
+     * @return array{token: string, pixel_id: string}|null
+     */
+    public static function pair(string $code): ?array
+    {
+        $cfg = $code === self::PRIMARY
+            ? config()->array('services.meta_capi')
+            : Coerce::arr(config()->array('services.meta_capi.storefronts', [])[$code] ?? null);
+        $token = trim(Coerce::str($cfg['token'] ?? ''));
+        $pixel = trim(Coerce::str($cfg['pixel_id'] ?? ''));
+
+        return $token !== '' && $pixel !== '' ? ['token' => $token, 'pixel_id' => $pixel] : null;
+    }
+
+    /**
+     * The pair an ORDER reports to: its storefront's (an order with no storefront stamped is the primary's, as
+     * orders:backfill-storefront treats it), or null.
+     *
+     * @return array{token: string, pixel_id: string}|null
+     */
+    public static function pairForOrder(int $orderId): ?array
+    {
+        $storefrontId = DB::table('orders')->where('id', $orderId)->value('storefront_id');
+        $code = $storefrontId === null
+            ? self::PRIMARY
+            : Coerce::str(DB::table('storefronts')->where('id', Coerce::int($storefrontId))->value('code'));
+
+        return $code === '' ? null : self::pair($code);
     }
 
     /**
@@ -85,7 +135,8 @@ final class MetaConversions
      */
     public function purchase(int $orderId): array
     {
-        if (! self::enabled()) {
+        // each shop's orders go to ITS OWN pair only; a shop without one sends nothing (D-25, 2026-11-12)
+        if (self::pairForOrder($orderId) === null) {
             return [];
         }
         $event = $this->purchaseEvent($orderId);
@@ -148,11 +199,16 @@ final class MetaConversions
         if ($claimed === 0) {
             return false;
         }
-        $row = DB::table('integration_outbox')->where('id', $id)->first(['payload', 'attempts']);
+        $row = DB::table('integration_outbox')->where('id', $id)->first(['payload', 'attempts', 'aggregate_id']);
         $event = $row === null ? [] : Coerce::arr(json_decode(Row::str(Row::cast($row), 'payload'), true));
         $attempts = $row === null ? 1 : Row::int(Row::cast($row), 'attempts');
 
-        $result = $this->send($event);
+        // the ORDER's shop decides the pair at send time too (D-25): a pair removed since the enqueue fails the row,
+        // it is never sent with another shop's
+        $pair = $row === null ? null : self::pairForOrder(Row::int(Row::cast($row), 'aggregate_id'));
+        $result = $pair === null
+            ? ['ok' => false, 'status' => 0, 'token_rejected' => true, 'error' => 'no Conversions API token / pixel for this order\'s storefront — not sent', 'body' => []]
+            : $this->send($event, $pair);
         if ($result['ok']) {
             DB::table('integration_outbox')->where('id', $id)->update(['status' => 'sent', 'processed_at' => now(), 'last_error' => null]);
 
@@ -200,17 +256,19 @@ final class MetaConversions
      * POST one event to Meta and say plainly what happened.
      *
      * @param  array<array-key, mixed>  $event
+     * @param  array{token: string, pixel_id: string}|null  $pair  the shop's pair (null: the primary's — meta:capi-check's default)
      * @return array{ok: bool, status: int, token_rejected: bool, error: ?string, body: array<array-key, mixed>}
      */
-    public function send(array $event): array
+    public function send(array $event, ?array $pair = null): array
     {
         $cfg = config()->array('services.meta_capi');
-        $body = ['data' => [$event], 'access_token' => Coerce::str($cfg['token'] ?? '')];
+        $pair ??= ['token' => Coerce::str($cfg['token'] ?? ''), 'pixel_id' => Coerce::str($cfg['pixel_id'] ?? '')];   // the primary's
+        $body = ['data' => [$event], 'access_token' => $pair['token']];
         $test = trim(Coerce::str($cfg['test_event_code'] ?? ''));
         if ($test !== '') {
             $body['test_event_code'] = $test;
         }
-        $url = sprintf('https://graph.facebook.com/%s/%s/events', Coerce::str($cfg['graph_version'] ?? 'v23.0'), Coerce::str($cfg['pixel_id'] ?? ''));
+        $url = sprintf('https://graph.facebook.com/%s/%s/events', Coerce::str($cfg['graph_version'] ?? 'v23.0'), $pair['pixel_id']);
 
         try {
             $response = Http::asJson()->timeout(Coerce::int($cfg['timeout'] ?? 10))->post($url, $body);
@@ -269,7 +327,7 @@ final class MetaConversions
         $order = DB::table('orders as o')
             ->leftJoin('storefronts as s', 's.id', '=', 'o.storefront_id')
             ->where('o.id', $orderId)
-            ->first(['o.order_number', 'o.total_price_for_order', 'o.user_id', 's.domain', 's.currency']);
+            ->first(['o.order_number', 'o.total_price_for_order', 'o.user_id', 'o.storefront_id', 's.domain', 's.currency']);
         if ($order === null) {
             return null;
         }
@@ -278,11 +336,17 @@ final class MetaConversions
         $signals = DB::table('core_order_signals')->where('order_id', $orderId)->first(['ip', 'user_agent', 'fbp', 'fbc']);
         $signals = $signals === null ? null : Row::cast($signals);
 
-        $contents = [];
+        $lines = [];
         foreach (DB::table('order_items')->where('order_id', $orderId)->whereNotNull('product_id')->orderBy('id')
             ->get(['product_id', 'quantity', 'piece_price']) as $line) {
-            $line = Row::cast($line);
-            $contents[] = ['id' => (string) Row::int($line, 'product_id'), 'quantity' => Row::int($line, 'quantity'), 'item_price' => (float) Row::str($line, 'piece_price')];
+            $lines[] = Row::cast($line);
+        }
+        // the SAME id the pixel and the feeds give each product (ContentIds, Block C, 2026-11-12)
+        $ids = ContentIds::map(Row::int($order, 'storefront_id'), array_values(array_unique(array_map(fn (object $l): int => Row::int($l, 'product_id'), $lines))));
+        $contents = [];
+        foreach ($lines as $line) {
+            $pid = Row::int($line, 'product_id');
+            $contents[] = ['id' => $ids[$pid] ?? (string) $pid, 'quantity' => Row::int($line, 'quantity'), 'item_price' => (float) Row::str($line, 'piece_price')];
         }
 
         $user = array_filter([

@@ -28,7 +28,14 @@
 |               goes in). It exists so a product Meta flags can be pulled with a config edit, then
 |               `config:cache` and one `feeds:meta` run — no code change, no deploy.
 |
-| The Google Merchant feed is NOT here: it is gated on O10 (authenticity), see the backlog.
+| The GOOGLE Merchant (Shopping) feed (2026-11-11, D-9) has its own section below, the same keys, its
+| own token per storefront (FEED_GOOGLE_<CODE>_TOKEN) and its own URL:
+|
+|   GET /feeds/google/{storefront code}/{token}.tsv
+|
+| Its rows are the Meta feed's lines renamed (`GoogleFeed`), so the two catalogues cannot disagree.
+| Brand Fashion's domain is the REAL one (www, D-3); its token stays empty until the domain switch,
+| so the feed is off until the links it would send shoppers to are Brand Fashion's.
 */
 
 return [
@@ -43,6 +50,34 @@ return [
             'locale' => 'en',
             'exclude' => [],
         ],
-        // 'brandfashion' — deliberately absent until its own domain is live (phase D/F).
+        // Brand Fashion's REAL domain (www, D-3), written 2026-11-12 overnight for the switch: the token stays EMPTY
+        // until the switch, so the feed is off (no file, the URL 404) until the links it carries are Brand Fashion's.
+        // Its ids are the old site's (ContentIds, Block C), so the old Meta catalogue's items continue.
+        'brandfashion' => [
+            'token' => (string) env('FEED_META_BRANDFASHION_TOKEN', ''),
+            'domain' => 'https://www.brandfashionegy.com',
+            'image_host' => 'https://api.brandfashionegy.com',
+            'locale' => 'en',
+            'exclude' => [],
+        ],
+    ],
+
+    'google' => [
+        'watchizer' => [
+            'token' => (string) env('FEED_GOOGLE_WATCHIZER_TOKEN', ''),
+            'domain' => 'https://watchizereg.com',
+            'image_host' => 'https://api.watchizereg.com',
+            'locale' => 'en',
+            'exclude' => [],
+        ],
+        // Brand Fashion's REAL domain (www, D-3): the token stays EMPTY until the domain switch, so the
+        // feed cannot send Google's shoppers to a host that is not yet Brand Fashion's (the Meta rule above).
+        'brandfashion' => [
+            'token' => (string) env('FEED_GOOGLE_BRANDFASHION_TOKEN', ''),
+            'domain' => 'https://www.brandfashionegy.com',
+            'image_host' => 'https://api.brandfashionegy.com',
+            'locale' => 'en',
+            'exclude' => [],
+        ],
     ],
 ];

@@ -8,6 +8,7 @@ use App\Compat\CompatServices;
 use App\Compat\CompatStorefront;
 use App\Compat\LegacyJson;
 use App\Domain\Inventory\InventoryService;
+use App\Storefront\ContentIds;
 use App\Storefront\StorefrontCache;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -72,7 +73,18 @@ final class MetaFeed
      */
     public static function config(string $code): ?array
     {
-        $c = config("feeds.meta.{$code}");
+        return self::configFrom('meta', $code);
+    }
+
+    /**
+     * The same validation for any feed section of `config/feeds.php` (`meta`, `google`): one
+     * reader, so the two catalogues refuse a half-configured storefront by the same rule.
+     *
+     * @return array{code: string, storefront_id: int, currency: string, token: string, domain: string, image_host: string, locale: string, exclude: list<int>}|null
+     */
+    public static function configFrom(string $section, string $code): ?array
+    {
+        $c = config("feeds.{$section}.{$code}");
         if (! is_array($c)) {
             return null;
         }
@@ -202,6 +214,42 @@ final class MetaFeed
      */
     private function write($h, array $cfg, int $chunk): array
     {
+        fputcsv($h, self::COLUMNS, ',', '"', '');
+        $count = 0;
+        $express = 0;
+        $market = 0;
+        $out = 0;
+        $over = [];
+        foreach ($this->lines($cfg, $chunk) as $id => $line) {
+            match ($line['custom_label_2']) {
+                'express' => $express++,
+                'market' => $market++,
+                default => $out++,
+            };
+            foreach (self::LIMITS as $field => $limit) {
+                $length = mb_strlen($line[$field]);
+                if ($length > $limit) {
+                    $over[] = ['id' => $id, 'field' => $field, 'length' => $length, 'limit' => $limit];
+                }
+            }
+            fputcsv($h, array_values($line), ',', '"', '');
+            $count++;
+        }
+
+        return ['products' => $count, 'stock' => ['express' => $express, 'market' => $market, 'out' => $out], 'over_limit' => $over];
+    }
+
+    /**
+     * Every product's feed line, keyed by column, in the shop's index order — the ONE builder of
+     * product data for a feed. The Meta CSV writes these as they are; the Google feed
+     * ({@see GoogleFeed}) maps the same lines to Google's columns, so prices, availability, links
+     * and images can never disagree between the two catalogues.
+     *
+     * @param  array{code: string, storefront_id: int, currency: string, token: string, domain: string, image_host: string, locale: string, exclude: list<int>}  $cfg
+     * @return \Generator<int, array<string, string>>
+     */
+    public function lines(array $cfg, int $chunk = self::CHUNK): \Generator
+    {
         $svc = new CompatServices($this->cache, $this->inventory, CompatStorefront::pinned($cfg['storefront_id']));
         $locale = $cfg['locale'];
 
@@ -223,12 +271,6 @@ final class MetaFeed
             $subNames[CompatCategories::legacyIdOf($node)] = $svc->categories->name($node, $locale);
         }
 
-        fputcsv($h, self::COLUMNS, ',', '"', '');
-        $count = 0;
-        $express = 0;
-        $market = 0;
-        $out = 0;
-        $over = [];
         foreach (array_chunk(array_keys($index), max(1, $chunk)) as $ids) {
             $rows = [];
             foreach ($svc->catalog->productRows($locale, $ids) as $row) {
@@ -246,6 +288,8 @@ final class MetaFeed
                 }
             }
             usort($images, fn (array $a, array $b): int => [$a[0], $a[1], $a[2]] <=> [$b[0], $b[1], $b[2]]);
+            // the id the pixel and the Conversions API send for each product (ContentIds, Block C, 2026-11-12)
+            $content = ContentIds::map($cfg['storefront_id'], $ids);
             $gallery = [];
             foreach ($images as [$pid, , , $file]) {
                 $url = LegacyJson::imageUrl($file, 'Product_image', $cfg['image_host']);
@@ -259,25 +303,10 @@ final class MetaFeed
                 if ($row === null) {
                     continue;                                        // hidden since the index was built
                 }
-                $line = $this->line($id, $row, $index[$id], $gallery[$id] ?? [], $cfg, $categoryNames, $subNames, $svc);
-                match ($line['custom_label_2']) {
-                    'express' => $express++,
-                    'market' => $market++,
-                    default => $out++,
-                };
-                foreach (self::LIMITS as $field => $limit) {
-                    $length = mb_strlen($line[$field]);
-                    if ($length > $limit) {
-                        $over[] = ['id' => $id, 'field' => $field, 'length' => $length, 'limit' => $limit];
-                    }
-                }
-                fputcsv($h, array_values($line), ',', '"', '');
-                $count++;
+                yield $id => ['id' => $content[$id] ?? (string) $id] + $this->line($id, $row, $index[$id], $gallery[$id] ?? [], $cfg, $categoryNames, $subNames, $svc);
             }
             unset($rows, $gallery, $images);
         }
-
-        return ['products' => $count, 'stock' => ['express' => $express, 'market' => $market, 'out' => $out], 'over_limit' => $over];
     }
 
     /**
