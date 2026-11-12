@@ -1151,6 +1151,7 @@ what §4.3 does and why it is a mandatory step rather than a suggestion.
     RewriteCond %{REQUEST_URI} !^/stock-alerts/stop/[A-Za-z0-9]{40}$
     RewriteCond %{REQUEST_URI} !^/unsubscribe/[0-9]+/[a-f0-9]{40}$
     RewriteCond %{REQUEST_URI} !^/feeds/meta/[a-z0-9-]+/[A-Za-z0-9]{40}\.csv$
+    RewriteCond %{REQUEST_URI} !^/feeds/google/[a-z0-9-]+/[A-Za-z0-9]{40}\.tsv$
     RewriteCond %{REQUEST_URI} !^/(sitemap\.xml|robots\.txt|favicon\.ico)$
     RewriteRule ^ - [R=404,L]
 

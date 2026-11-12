@@ -187,6 +187,10 @@ export default function HomeClient({ initialHome = null, campaign = null, menu =
           const cap = Number(rail.target) || 0
           title = { en: `Under ${money(cap, 'en')}`, ar: `أقل من ${money(cap, 'ar')}` }
           href = `/listing?${buildListingParams({ price: [0, cap] }, {}, tables).toString()}`
+        } else if (rail.kind === 'custom' && rail.more_href) {
+          // a hand-picked slider has no listing of its own: its "See more" is the link the team set on the dashboard
+          // (the rail's settings, 2026-11-12) — and with none set there is no button at all
+          href = rail.more_href
         }
         // THE BRAND BANNER (Part 3.3): the brand's logo and page, the team's title, description and three
         // colours, and up to three of the brand's products — as the plain model BrandBanner draws.
@@ -401,7 +405,7 @@ export default function HomeClient({ initialHome = null, campaign = null, menu =
         <div className="wz-container">
           {look(
             rail,
-            <ProductSlider text={rail.text} gradeproducts={cut(rail)} moreid={rail.moreid} href={rail.href} viewAll={rail.kind !== 'custom'} />,
+            <ProductSlider text={rail.text} gradeproducts={cut(rail)} moreid={rail.moreid} href={rail.href} viewAll={rail.kind !== 'custom' || !!rail.href} />,
           )}
         </div>
       </section>

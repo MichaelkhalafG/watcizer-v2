@@ -47,7 +47,7 @@ final class CompatHome
     ) {}
 
     /**
-     * @return array{hero: string, managed_sections: list<string>, banners: list<array<string, mixed>>, side_banners: array{0: array<string, mixed>|null, 1: array<string, mixed>|null}, rails: list<array{id: int, kind: string, background: ?string, blend: bool, masks: array<int, string>, colors: list<string>, description: array{en: ?string, ar: ?string}, target: ?int, title: array{en: ?string, ar: ?string}, products: list<int>}>, products: list<array<array-key, mixed>>, ratings: list<array<array-key, mixed>>, images: list<array<array-key, mixed>>}
+     * @return array{hero: string, managed_sections: list<string>, banners: list<array<string, mixed>>, side_banners: array{0: array<string, mixed>|null, 1: array<string, mixed>|null}, rails: list<array{id: int, kind: string, background: ?string, blend: bool, masks: array<int, string>, colors: list<string>, description: array{en: ?string, ar: ?string}, more_href: ?string, target: ?int, title: array{en: ?string, ar: ?string}, products: list<int>}>, products: list<array<array-key, mixed>>, ratings: list<array<array-key, mixed>>, images: list<array<array-key, mixed>>}
      */
     public function build(): array
     {
@@ -83,7 +83,7 @@ final class CompatHome
      * `$hero` is the storefront's hero mode when the caller already has it (both home builders do); left out,
      * it is read here — and only if a Banners block row is met, the one rail that depends on it.
      *
-     * @return list<array{id: int, kind: string, background: ?string, blend: bool, masks: array<int, string>, colors: list<string>, description: array{en: ?string, ar: ?string}, target: ?int, title: array{en: ?string, ar: ?string}, products: list<int>}>
+     * @return list<array{id: int, kind: string, background: ?string, blend: bool, masks: array<int, string>, colors: list<string>, description: array{en: ?string, ar: ?string}, more_href: ?string, target: ?int, title: array{en: ?string, ar: ?string}, products: list<int>}>
      */
     public function rails(?string $hero = null): array
     {
@@ -107,7 +107,7 @@ final class CompatHome
                 }
                 if ($rail['kind'] !== HomeRails::BANNERS || $hero !== HomeHero::BANNER) {
                     $rails[] = [
-                        'id' => $rail['id'], 'kind' => $rail['kind'], 'background' => null, 'blend' => false, 'masks' => [], 'colors' => [],
+                        'id' => $rail['id'], 'kind' => $rail['kind'], 'background' => null, 'blend' => false, 'masks' => [], 'colors' => [], 'more_href' => null,
                         'description' => ['en' => null, 'ar' => null], 'target' => null, 'title' => ['en' => null, 'ar' => null], 'products' => [],
                     ];
                 }
@@ -143,6 +143,8 @@ final class CompatHome
                 'masks' => $rail['blend'] && $rail['background'] !== null ? CutMasks::forProducts($ids) : [],
                 'colors' => $rail['colors'],
                 'description' => ['en' => $rail['description_en'], 'ar' => $rail['description_ar']],
+                // a hand-picked rail's "See more" link, set on the dashboard (Block A3, 2026-11-12); null = no button
+                'more_href' => $rail['kind'] === HomeRails::CUSTOM ? $rail['more_href'] : null,
                 // What the storefront names and links the rail by: category types in their LEGACY id,
                 // the id every other storefront read uses for them.
                 'target' => match ($rail['kind']) {

@@ -4,6 +4,7 @@ use App\Domain\Access\Role;
 use App\Http\Controllers\Compat\SitemapCompatController;
 use App\Http\Controllers\Compat\StockAlertController;
 use App\Http\Controllers\Compat\UnsubscribeController;
+use App\Http\Controllers\Feeds\GoogleFeedController;
 use App\Http\Controllers\Feeds\MetaFeedController;
 use App\Http\Controllers\Manage\ActivityController;
 use App\Http\Controllers\Manage\Auth\LoginController;
@@ -608,6 +609,11 @@ Route::get('/sitemaps/{locale}.xml', [SitemapCompatController::class, 'localeUrl
 // built on a request. Cookieless like the sitemaps; the token in the path is the only credential.
 // On the API host's allow-list (runbook §4.1.1), or Apache 404s it while every local test passes.
 Route::get('/feeds/meta/{storefront}/{token}.csv', [MetaFeedController::class, 'show'])
+    ->where(['storefront' => '[a-z0-9-]+', 'token' => '[A-Za-z0-9]{40}'])->withoutMiddleware($sitemapBare);
+
+// The Google Merchant (Shopping) feed per storefront (2026-11-11, D-9): the same shape — the file
+// `feeds:google` wrote, served; on the API host's allow-list (runbook §4.1.1) like the Meta feed.
+Route::get('/feeds/google/{storefront}/{token}.tsv', [GoogleFeedController::class, 'show'])
     ->where(['storefront' => '[a-z0-9-]+', 'token' => '[A-Za-z0-9]{40}'])->withoutMiddleware($sitemapBare);
 
 // The stock-alert e-mail's "stop" link (2026-10-01), on the API host (allow-list, runbook §4.1.1).

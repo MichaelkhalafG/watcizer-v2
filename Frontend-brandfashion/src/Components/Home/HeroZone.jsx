@@ -45,7 +45,9 @@ export default function HeroZone({ banners, side = [], lang = 'en', dir = 'ltr' 
           const phoneSet = banner.mobile_image?.src ? optimizedWide(banner.mobile_image.src, { widths: [320, 420, 640], full: 960 }) : undefined
           return (
             <BannerLink
-              className={`hz__slot${banner.device === 'desktop' || banner.device === 'mobile' ? ` hz__slot--${banner.device}` : ''}`}
+              // a slot with a computer banner AND a phone picture shows on every screen: hiding it on a phone as
+              // "computer only" (as it did) meant its phone picture was never seen (measured 2026-11-12, Block A2)
+              className={`hz__slot${(banner.device === 'desktop' && !banner.mobile_image?.src) || banner.device === 'mobile' ? ` hz__slot--${banner.device}` : ''}`}
               key={banner.id}
               href={banner.href}
               lang={lang}

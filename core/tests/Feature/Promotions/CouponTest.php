@@ -532,3 +532,47 @@ it('refuses Black1000 where money rewards are off, and writes nothing', function
     expect(Artisan::call('promotions:black-friday', ['--apply' => true]))->toBe(1)
         ->and(DB::table('promotion_rules')->where('code', 'Black1000')->exists())->toBeFalse();
 });
+
+// ── the EXCLUSION scope (2026-11-12, WR10 / BR10): 10 % off everything EXCEPT these brands' watches ──────────────────
+
+it('takes 10 % off every product EXCEPT the excluded brands\' watches — WR10\'s shape', function () {
+    $watch = cpProduct('watch', 0, 5000.0);                            // brand X: excluded
+    $other = cpProduct('watch', 0, 3000.0, $watch['brand']);          // another brand: discounted
+    $bag = cpProduct('bag', 0, 2000.0);                                 // not a watch: discounted
+    cpRule(['code' => 'WR10', 'apply_per' => PromotionMoney::PER_ORDER, 'include_sale_items' => 1], [
+        ['role' => 'exclude', 'dimension' => 'brand', 'value_id' => $watch['brand']],
+        ['role' => 'exclude', 'dimension' => 'family', 'value' => 'watch'],
+    ], [PromotionFixture::percentDiscount(10)]);
+    $engine = app(PromotionEngine::class);
+
+    $mixed = $engine->evaluate(cpSnapshot([[$watch, 1], [$other, 1], [$bag, 1]], 'WR10'));
+    expect($mixed->discount)->toBe(500.0)                                // 10 % of 3,000 + 2,000 — never of the excluded 5,000
+        ->and(array_column($mixed->lines, 'product_id'))->toEqualCanonicalizing([$other['id'], $bag['id']]);
+
+    $only = $engine->evaluate(cpSnapshot([[$watch, 2]], 'WR10'));
+    expect($only->discount)->toBe(0.0)
+        ->and($only->coupon['status'] ?? null)->toBe(CouponStatus::NO_ELIGIBLE_ITEMS);
+
+    $included = $engine->evaluate(cpSnapshot([[$bag, 1]], 'WR10'));
+    expect($included->discount)->toBe(200.0);
+});
+
+it('excludes only the brand AND the product type together: a non-watch of an excluded brand keeps the discount', function () {
+    $bag = cpProduct('bag', 0, 2000.0);
+    cpRule(['code' => 'BR10', 'apply_per' => PromotionMoney::PER_ORDER], [
+        ['role' => 'exclude', 'dimension' => 'brand', 'value_id' => $bag['brand']],   // the bag's own brand…
+        ['role' => 'exclude', 'dimension' => 'family', 'value' => 'watch'],           // …but only its WATCHES are excluded
+    ], [PromotionFixture::percentDiscount(10)]);
+
+    expect(app(PromotionEngine::class)->evaluate(cpSnapshot([[$bag, 1]], 'BR10'))->discount)->toBe(200.0);
+});
+
+it('saves exclusion rows from the screen like the other scopes', function () {
+    $watch = cpProduct('watch');
+    $id = app(PromotionWriter::class)->save(cpForm(['code' => 'EXCL10', 'scopes' => [
+        ['role' => 'exclude', 'dimension' => 'brand', 'value_id' => $watch['brand']],
+        ['role' => 'exclude', 'dimension' => 'family', 'value' => 'watch'],
+    ]]), null, null);
+
+    expect(DB::table('promotion_rule_scopes')->where('promotion_rule_id', $id)->where('role', 'exclude')->count())->toBe(2);
+});

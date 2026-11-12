@@ -112,6 +112,7 @@ it('stores the folder when the screen writes a banner, so no new row is ever bar
         'link_url' => 'https://example.com/x',
         'sort_order' => 1,
         'is_active' => true,
+        'device' => 'desktop',                                  // a new banner is for one device (Block A2, 2026-11-12)
     ])->assertSessionHasNoErrors();
 
     expect(T::str(DB::table('storefront_banners')->where('storefront_id', $fashion)->value('image_path')))

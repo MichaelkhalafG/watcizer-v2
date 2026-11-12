@@ -29,6 +29,7 @@ final class ProviderRegistry
     {
         return new self([
             PaymobProvider::KEY => new PaymobProvider,
+            MyFatoorahProvider::KEY => new MyFatoorahProvider,
             OfflineProvider::COD => new OfflineProvider(OfflineProvider::COD),
             OfflineProvider::WHATSAPP => new OfflineProvider(OfflineProvider::WHATSAPP),
         ]);

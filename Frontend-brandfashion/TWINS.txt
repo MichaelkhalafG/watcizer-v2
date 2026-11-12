@@ -111,7 +111,6 @@ app/cart-modal-host.jsx
 eslint.config.mjs
 instrumentation.js
 jsconfig.json
-middleware.js
 patches/@react-three__fiber@9.6.1.patch
 pnpm-workspace.yaml
 public/Watchizer_Gold.glb
@@ -394,3 +393,5 @@ tests/wheelCodes.test.mjs
 tests/campaignPrices.test.mjs
 src/Components/Account/WheelTab.jsx
 src/Components/Account/WheelTab.css
+# 2026-11-12: src/lib/siteAddress.js exists in Frontend-brandfashion ONLY — the shop's one site-address literal (switch plan §3 item 1); not a twin.
+DIVERGED 2026-11-11 middleware.js — Brand Fashion only (D-3, D-17): the canonical host is www (SITE_CANONICAL_HOST; Watchizer keeps www → apex), and the old WordPress shop's URLs are answered here — old-looking paths asked of core's redirect map (one 301), WordPress internals 410.

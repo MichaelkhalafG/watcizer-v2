@@ -12,10 +12,12 @@ export const revalidate = 300
 // language (S-AR stage 1): English on /, Arabic on /ar, each self-canonical with hreflang to the
 // other. The Arabic copy is the site's own (the root layout's Arabic defaults), not new wording.
 const HOME_TEXT = {
+  // The English title and description are the old site's Rank Math text (D-14, 2026-11-11), the old site's
+  // "BrandFashion" written "Brand Fashion", as the shop writes its name; the Arabic stays this site's own (the old site had no Arabic SEO).
   en: {
-    title: 'Brand Fashion | Luxury Watches & Accessories in Egypt',
+    title: 'Original Watches in Egypt | Bags | Sunglasses | Brand Fashion',
     description:
-      'Shop luxury watches and accessories at Brand Fashion — premium timepieces, elegant designs and unbeatable prices across Egypt.',
+      'Shop 100% original watches in Egypt, bags, sunglasses, and accessories for men and women at Brand Fashion. Enjoy exclusive discounts and fast delivery on all products.',
     alt: 'Brand Fashion — Luxury Watches',
     locale: 'en_US',
   },
@@ -46,7 +48,7 @@ export async function generateMetadata() {
       locale: t.locale,
       images: [
         {
-          url: 'https://michaelkhalaf.com/og-image.jpg',
+          url: `${SITE}/og-image.jpg`,
           width: 1200,
           height: 630,
           alt: t.alt,
@@ -57,7 +59,7 @@ export async function generateMetadata() {
       card: 'summary_large_image',
       title: t.title,
       description: t.description,
-      images: ['https://michaelkhalaf.com/og-image.jpg'],
+      images: [`${SITE}/og-image.jpg`],
     },
   }
 }
@@ -68,9 +70,9 @@ const storeJsonLd = {
   '@context': 'https://schema.org/',
   '@type': 'Store',
   name: 'Brand Fashion',
-  url: 'https://michaelkhalaf.com',
-  logo: 'https://michaelkhalaf.com/logo.svg',
-  image: 'https://michaelkhalaf.com/og-image.jpg',
+  url: SITE,
+  logo: `${SITE}/logo.svg`,
+  image: `${SITE}/og-image.jpg`,
   description:
     'Discover a premium collection of luxury watches and fashion accessories at Brand Fashion. Shop exclusive timepieces with elegant designs and unbeatable prices in Egypt.',
   contactPoint: {

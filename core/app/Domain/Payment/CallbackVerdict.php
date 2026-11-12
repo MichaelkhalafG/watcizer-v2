@@ -31,6 +31,11 @@ final class CallbackVerdict
          */
         public readonly ?string $signedOrderReference = null,
         public readonly array $raw = [],
+        /**
+         * What the payment IS, when the provider says it in its own terms (MyFatoorah, 2026-11-12): one of
+         * {@see CallbackPolicy}'s OUTCOME_* values. Null = read it from `raw` the Paymob way, as before.
+         */
+        public readonly ?string $outcome = null,
     ) {}
 
     public static function invalidSignature(): self

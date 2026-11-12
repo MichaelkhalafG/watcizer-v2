@@ -21,7 +21,7 @@
   .banner-hero--carousel, .banner-hero--one { aspect-ratio: 1377 / 480; }
 }
 /* one banner draws the same picture a slide does */
-.banner-hero--one img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: center; }
+.banner-hero--one img { display: block; width: 100%; height: 100%; object-fit: contain; object-position: center; /* the box is the crop's shape (2026-11-12): never a second crop */ }
 .banner-hero--one picture { display: block; height: 100%; }
 
 .banner-hero__track {
@@ -56,7 +56,7 @@
   min-height: 0;
   min-width: 0;
 }
-.banner-hero__slide img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: center; }
+.banner-hero__slide img { display: block; width: 100%; height: 100%; object-fit: contain; object-position: center; /* the box is the crop's shape (2026-11-12): never a second crop */ }
 .banner-hero__slide picture { display: block; height: 100%; }
 
 /* Which device shows which banner. `display: none` takes the slide out of the scroll flow as well

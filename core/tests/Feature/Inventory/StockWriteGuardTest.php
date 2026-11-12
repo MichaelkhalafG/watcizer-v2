@@ -127,6 +127,9 @@ it('names every file allowed to open the guard window', function () {
         'app/Console/Commands/Concerns/CreatesProbeProduct.php',
         'app/Console/Commands/CoreTransformCommand.php',
         'app/Console/Commands/InventoryProveReleaseRaceCommand.php',
+        // bf:catalogue-clean --restore (2026-11-11): re-inserts the SAME product rows it backed up,
+        // their ledger movements with them, so columns and ledger agree again — refused without it
+        'app/Domain/Import/BrandFashion/CatalogueCleanup.php',
         'app/Domain/Inventory/InventoryService.php',
     ]);
 });

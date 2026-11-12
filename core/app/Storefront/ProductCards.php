@@ -99,10 +99,14 @@ final class ProductCards
         $primary = $this->primaryPlacements($ids);
         $colors = $this->colors($ids);
         $variants = $this->variants($ids);
+        // the id the pixel, the Conversions API and the feeds give this product (Block C, 2026-11-12) — ONE rule
+        $content = ContentIds::map($this->ctx->id(), $ids);
 
         $out = [];
         foreach ($rows as $row) {
-            $out[] = $this->card($row, $translations, $images, $primary, $colors, $variants);
+            $card = $this->card($row, $translations, $images, $primary, $colors, $variants);
+            $card['content_id'] = $content[Row::int($row, 'product_id')] ?? (string) Row::int($row, 'product_id');
+            $out[] = $card;
         }
 
         return $out;

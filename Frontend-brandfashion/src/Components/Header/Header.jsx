@@ -195,9 +195,11 @@ function Header() {
 
       <div className="wz-logo">
         <Link href="/" aria-label="Brand Fashion">
-          {/* LCP-critical: fetched first. The white wordmark on the ink bar (spec §22.4). 565×172 source.
+          {/* LCP-critical: fetched first. The FULL logo (Michael, 2026-11-12): the client's monogram with the name — the
+              official white lockup on the ink bar (new branding/design/brand-fashion-logo, 565×410), scaled whole as its
+              README asks, never re-spaced. Its box is fixed by width/height and the header's row (56 / 64 px) does not change.
               No SVG goes through next/image (2026-10-30, GHSA-2464-fhr4-w9xw): next/image already served it unoptimised, as the file. */}
-          <img src="/wordmark-white.svg" alt="Brand Fashion" width={118} height={36} fetchPriority="high" decoding="async" />
+          <img src="/logo-lockup-white.svg" alt="Brand Fashion" width={61} height={44} fetchPriority="high" decoding="async" />
         </Link>
       </div>
 
@@ -280,7 +282,7 @@ function Header() {
       <aside className={`wz-drawer ${drawerOpen ? 'is-open' : ''}`} dir={isRTL ? 'rtl' : 'ltr'} role="dialog" aria-modal="true" aria-label={t.menu} inert={!drawerOpen ? true : undefined}>
         <div className="wz-drawer-head">
           <Link href="/" onClick={closeDrawer} className="wz-drawer-logo" aria-label="Brand Fashion">
-            <img src="/wordmark.svg" alt="Brand Fashion" width={105} height={32} loading="lazy" decoding="async" />
+            <img src="/logo.svg" alt="Brand Fashion" width={55} height={40} loading="lazy" decoding="async" />
           </Link>
           <button type="button" className="wz-drawer-close" onClick={closeDrawer} aria-label={t.close}>
             <FiX aria-hidden="true" />

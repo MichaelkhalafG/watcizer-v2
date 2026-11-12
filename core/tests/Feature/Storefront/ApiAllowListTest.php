@@ -128,7 +128,11 @@ it('lets Meta fetch the catalogue feed through the api host, and only the feed s
     expect($allowed('/feeds/meta/watchizer/'.str_repeat('a1B2', 10).'.csv'))->toBeTrue()
         ->and($allowed('/feeds/meta/watchizer/short.csv'))->toBeFalse()
         ->and($allowed('/feeds/meta/watchizer/'.str_repeat('a', 40).'.csv/extra'))->toBeFalse()
-        ->and($allowed('/feeds/google/watchizer/'.str_repeat('a', 40).'.csv'))->toBeFalse();
+        ->and($allowed('/feeds/google/watchizer/'.str_repeat('a', 40).'.csv'))->toBeFalse()
+        // the Google Merchant feed (2026-11-11, D-9): its own exact shape, .tsv only
+        ->and($allowed('/feeds/google/brandfashion/'.str_repeat('a1B2', 10).'.tsv'))->toBeTrue()
+        ->and($allowed('/feeds/google/brandfashion/short.tsv'))->toBeFalse()
+        ->and($allowed('/feeds/google/brandfashion/'.str_repeat('a', 40).'.tsv/extra'))->toBeFalse();
 });
 
 it('lets every mail embed its wordmark from the api host, both shops, and only that file shape', function () {

@@ -191,6 +191,7 @@ it('creates, updates and deletes through the screen', function () {
         'link_url' => '/category/watches',
         'sort_order' => 5,
         'is_active' => true,
+        'device' => 'desktop',                                  // a new banner is for one device (Block A2, 2026-11-12)
     ])->assertSessionHasNoErrors();
 
     $id = T::int(DB::table('storefront_banners')->orderByDesc('id')->value('id'));
@@ -200,6 +201,7 @@ it('creates, updates and deletes through the screen', function () {
         'target' => 'none',
         'sort_order' => 9,
         'is_active' => false,
+        'device' => 'desktop',
     ])->assertSessionHasNoErrors();
 
     expect(T::int(DB::table('storefront_banners')->where('id', $id)->value('sort_order')))->toBe(9)
@@ -237,6 +239,7 @@ it('records what the home page used to show, and who changed it', function () {
         'link_url' => '/category/watches',
         'sort_order' => 5,
         'is_active' => true,
+        'device' => 'desktop',                                  // a new banner is for one device (Block A2, 2026-11-12)
     ])->assertSessionHasNoErrors();
 
     $id = T::int(DB::table('storefront_banners')->orderByDesc('id')->value('id'));
@@ -246,6 +249,7 @@ it('records what the home page used to show, and who changed it', function () {
         'target' => 'none',
         'sort_order' => 5,
         'is_active' => true,
+        'device' => 'desktop',
     ])->assertSessionHasNoErrors();
 
     $actions = DB::table(ActivityLog::TABLE)

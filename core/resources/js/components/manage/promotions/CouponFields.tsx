@@ -17,7 +17,7 @@ import { useT } from "@/lib/i18n";
  * Its own component so the long rule form only gains one line; the fields live in the same `useForm` as the rest.
  */
 
-export type ScopeRole = "target" | "qualify";
+export type ScopeRole = "target" | "qualify" | "exclude";
 export type ScopeDimension = "brand" | "category" | "sub_type" | "grade" | "family";
 
 export interface ScopeRow {
@@ -203,6 +203,17 @@ export function CouponFields({ data, errors, setField, options, storefronts, red
                 />
 
                 <ScopePicker
+                    role="exclude"
+                    title={t("promotions.exclude_title", "ما عدا (لا يُخصم منها أبدًا)")}
+                    hint={t("promotions.exclude_hint", "اتركه فارغًا إذا لم يكن هناك استثناء. مثال: الماركة رولكس أو أوميغا، ونوع المنتج ساعة = كل المنتجات ما عدا ساعات هاتين الماركتين. داخل النوع الواحد «أو»، وبين الأنواع «و».")}
+                    data={data}
+                    setField={setField}
+                    options={options}
+                    storefronts={storefronts}
+                    errors={errors}
+                />
+
+                <ScopePicker
                     role="qualify"
                     title={t("promotions.qualify_title", "بشرط وجود هذه المنتجات في السلة (اشترِ من… واحصل على خصم)")}
                     hint={t("promotions.qualify_hint", "اتركه فارغًا إذا لم يكن هناك شرط. مثال: ساعة من ماركة معيّنة، فيُخصم من الحقائب.")}
@@ -319,7 +330,11 @@ function ScopePicker({
                 </ul>
             ) : (
                 <p className="text-xs text-muted-foreground">
-                    {role === "target" ? t("promotions.scope_all", "كل المنتجات") : t("promotions.scope_none", "بدون شرط")}
+                    {role === "target"
+                        ? t("promotions.scope_all", "كل المنتجات")
+                        : role === "exclude"
+                          ? t("promotions.scope_no_exclusion", "بلا استثناء")
+                          : t("promotions.scope_none", "بدون شرط")}
                 </p>
             )}
             {children}

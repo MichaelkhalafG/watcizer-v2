@@ -12,8 +12,9 @@ import { fromSlug, brandSlug, subTypeSlug, categorySlug, toSlug } from '../utils
 import { buildListingParams } from '../utils/listingParams'
 import { transformProductData } from '../utils/transformProduct'
 import { localePath } from '../utils/localePath'
+import { SITE } from './siteAddress'
 
-export const SEO_DOMAIN = 'https://michaelkhalaf.com'
+export const SEO_DOMAIN = SITE   // ONE literal in ./siteAddress
 const PRICE_MAX = 99999999
 
 // ── Indexing rules (2026-10-08, developer's decision) ────────────────────────────────────────────

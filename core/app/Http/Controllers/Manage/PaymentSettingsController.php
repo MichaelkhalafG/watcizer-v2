@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Manage;
 use App\Domain\Access\Roles;
 use App\Domain\Activity\ActivityLog;
 use App\Domain\Payment\MethodList;
+use App\Domain\Payment\MyFatoorahProvider;
 use App\Domain\Payment\PaymentBadges;
 use App\Domain\Payment\ProviderRegistry;
 use App\Models\Storefront\Storefront;
@@ -415,7 +416,7 @@ final class PaymentSettingsController
      * @var list<string>
      */
     private const METHOD_KEYS = [
-        'card', 'valu', 'tamara', 'wallet', 'cagg', 'bank_installment', 'apple_pay', 'kiosk',
+        'card', 'meeza', 'valu', 'tamara', 'wallet', 'cagg', 'bank_installment', 'apple_pay', 'kiosk',
         'souhoola', 'aman', 'halan', 'sympl', 'forsa', 'premium', 'contact', 'fawry_code', 'cod', 'whatsapp',
     ];
 
@@ -561,7 +562,9 @@ final class PaymentSettingsController
         throw ValidationException::withMessages([
             'integration_id' => match ($problem) {
                 'missing' => ManageText::t('payments.integration_id_missing', 'لا يمكن تفعيل هذه الطريقة بدون رقم التكامل (integration id). احفظها موقوفة حتى يصل الرقم.'),
-                'malformed' => ManageText::t('payments.integration_id_malformed', 'رقم التكامل يجب أن يكون أرقامًا فقط. راجع الرقم الذي أرسلته Paymob.'),
+                'malformed' => $implementation instanceof MyFatoorahProvider
+                    ? ManageText::t('payments.integration_id_malformed_myfatoorah', 'رمز طريقة MyFatoorah حروف وأرقام فقط (مثل vm أو md) كما يعرضه الحساب.')
+                    : ManageText::t('payments.integration_id_malformed', 'رقم التكامل يجب أن يكون أرقامًا فقط. راجع الرقم الذي أرسلته Paymob.'),
                 default => ManageText::t('payments.provider_unknown', 'لا يوجد تنفيذ لهذا العقد، فلا يمكن تفعيل طرق الدفع تحته.'),
             },
         ]);

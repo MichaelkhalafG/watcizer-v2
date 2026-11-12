@@ -13,9 +13,19 @@
 /* ── the Banners block ───────────────────────────────────────────────────────────────────────────── */
 .hz {
   display: grid;
-  grid-template-columns: minmax(0, 2.15fr) minmax(0, 1fr);
+  /*
+   * EXACT SHAPES (Block A2, 2026-11-12): the dashboard crops a side banner to 960 : 500 and the hero to 1377 : 480,
+   * so the columns are computed to make every box exactly those shapes — no second crop. With the 14 px gap, hero
+   * width x, hero height x / 2.86875 and two slots of (height - 14) / 2 each at 1.92 : 1, the row R solves to
+   * x = (R - 0.56px) / 1.33464; ONE slot fills the column, x = (R - 14px) / 1.66928. (It was 2.15fr / 1fr: the slots'
+   * shape drifted with the width.)
+   */
+  grid-template-columns: calc((100% - 0.56px) / 1.33464) minmax(0, 1fr);
   gap: 14px;
   align-items: stretch;
+}
+.hz--1 {
+  grid-template-columns: calc((100% - 14px) / 1.66928) minmax(0, 1fr);
 }
 .hz__main {
   min-inline-size: 0;
@@ -41,7 +51,8 @@
   inset: 0;
   inline-size: 100%;
   block-size: 100%;
-  object-fit: cover;
+  /* the box IS the crop's shape; a picture of another shape (an old upload) is shown whole, never cut again */
+  object-fit: contain;
   transition: transform 0.5s ease;
 }
 @media (hover: hover) {
@@ -56,7 +67,8 @@
 /* Tablets and phones: the two side banners go UNDER the large one, side by side — each a real banner at a
    size a thumb can hit, not a thin column. */
 @media (max-width: 1023.98px) {
-  .hz {
+  .hz,
+  .hz--1 {
     grid-template-columns: minmax(0, 1fr);
     gap: 10px;
   }

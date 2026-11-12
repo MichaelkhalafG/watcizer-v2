@@ -134,3 +134,9 @@ count(config()->array('compat.warm_storefronts', [])) > 1 ? $cachePrune->hourlyA
 | a missed tick leaves the previous hour's feed in place. Meta's own scheduled fetch can be hourly.
 */
 Schedule::command('feeds:meta')->hourlyAt(40)->withoutOverlapping();
+
+/*
+| The Google Merchant feeds (2026-11-11, D-9): the same lines as the Meta feed, renamed to Google's
+| columns. Hourly at :45, after the Meta run, without overlapping. A storefront with no token: nothing.
+*/
+Schedule::command('feeds:google')->hourlyAt(45)->withoutOverlapping();

@@ -431,7 +431,8 @@ function Checkout() {
       value: payable(subtotal, promotion.discount, 0),
       coupon: couponApplied,
       contents: items.map((i) => ({
-        id: i.product_id ?? i.offer_id ?? null,
+        // the catalogue's id for the product (core's content_id: the old site's id for an old product, 2026-11-12)
+        id: i.product?.content_id ?? i.product_id ?? i.offer_id ?? null,
         quantity: i.quantity,
         price: Number(i.piece_price),
         discount: (promotion.lines[i.id] || 0) / (i.quantity || 1),
@@ -571,7 +572,7 @@ function Checkout() {
             value: payable(subtotal, promotion.discount, 0),
             shipping: sentShipping,
             coupon: couponApplied,
-            contents: items.map((i) => ({ id: i.product_id ?? null, name: txt(i.product?.title, 'en') || txt(i.product?.title, lang), quantity: i.quantity, price: Number(i.piece_price) })),
+            contents: items.map((i) => ({ id: i.product?.content_id ?? i.product_id ?? null, name: txt(i.product?.title, 'en') || txt(i.product?.title, lang), quantity: i.quantity, price: Number(i.piece_price) })),
           })
           window.location.href = data.redirect_url
           return
@@ -585,6 +586,8 @@ function Checkout() {
             lineTotal: Number(i.piece_price) * i.quantity,
             // Carried for the Purchase pixel event on the confirmation page.
             id: i.product_id ?? null,
+            // …as the catalogue knows the product (core's content_id, 2026-11-12)
+            cid: i.product?.content_id ?? null,
             price: Number(i.piece_price),
           }
         })

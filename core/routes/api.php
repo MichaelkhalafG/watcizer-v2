@@ -29,6 +29,7 @@ use App\Http\Controllers\V2\OrderController;
 use App\Http\Controllers\V2\PaymentBadgeController;
 use App\Http\Controllers\V2\PaymentMethodController;
 use App\Http\Controllers\V2\ProductController;
+use App\Http\Controllers\V2\RedirectController;
 use App\Http\Controllers\V2\RelatedController;
 use App\Http\Controllers\V2\SitemapController;
 use App\Http\Controllers\V2\WheelController;
@@ -72,6 +73,10 @@ Route::prefix('v2/{storefront}')->middleware('storefront')->where(['storefront' 
     // The LIVE timed campaigns — Hot Deals and Flash Sale — with the server's clock (Part 2, 2026-11-05). Not under
     // http.cache for the same reason again: a countdown is wrong by the second, and an ended sale must leave at once.
     Route::get('campaigns', [CampaignController::class, 'index']);
+
+    // The REDIRECT reader (2026-11-11, D-17): an old URL → its new one, from `storefront_redirects`. Asked by the
+    // storefront app's middleware for old-looking paths only. Not under http.cache: the map is re-run on switch day.
+    Route::get('redirect', [RedirectController::class, 'show']);
 
     // SPIN THE WHEEL (2026-11-07): the segments and the switch, a spin (the prize is decided HERE), and the spin a phone
     // already made. Under /api/v2/, so the API host's allow-list (runbook §4.1.1) and ApiAllowListTest are unchanged.

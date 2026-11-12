@@ -29,8 +29,9 @@ export const TRUST_PAGES = {
     path: '/about-us',
     en: {
       title: 'About Brand Fashion',
-      metaTitle: 'About us | Brand Fashion',
-      description: 'Brand Fashion is an online shop for watches, bags and accessories in Egypt, delivering to 27 governorates.',
+      // The old site's Rank Math title and description (D-14, 2026-11-11), the old "BrandFashion" written "Brand Fashion", as the shop writes its name.
+      metaTitle: 'About Us | Brand Fashion the best Watches Store in Egypt',
+      description: "Learn more about Brand Fashion, Egypt's top destination for original watches, accessories, and fashion items. Order now for fast delivery.",
       lead: 'Brand Fashion is an online shop for watches, bags and accessories in Egypt. We sell watches for men and women, along with bags, wallets, belts, jewellery and perfumes, and a small range of electronics, and we deliver to 27 governorates.',
       store: 'Shop here in English or Arabic, or visit our store at Arcadia Mall, Corniche El Nil, Maspero extension, next to the Fairmont, 2nd floor, Cairo.',
       service: "We confirm every order with you before it ships, and you pay in cash when it arrives. If anything isn't right, our customer service team is on [WhatsApp](" + WHATSAPP + ').',
@@ -52,8 +53,9 @@ export const TRUST_PAGES = {
     path: '/contact-us',
     en: {
       title: 'Contact us',
-      metaTitle: 'Contact us | Brand Fashion',
-      description: `Brand Fashion customer service: phone and WhatsApp ${PHONE}. Email ${EMAIL}.`,
+      // The old site's Rank Math text (D-14): its title template "%title% %sep% %sitename% in Egypt", expanded.
+      metaTitle: 'Contact us - Brand Fashion in Egypt',
+      description: 'Contact us - Arcadia Mall, Corniche El Nil, Maspero Extension, next to Fairmont Hotel, second floor, Cairo.',
       group: 'Customer service (phone and WhatsApp)',
       hours: '',
       // the STORES' hours (Michael, 2026-10-29: the client's figure, both branches); customer service has none given
@@ -98,8 +100,9 @@ export const TRUST_PAGES = {
     updated: true,
     en: {
       title: 'Privacy policy',
-      metaTitle: 'Privacy policy | Brand Fashion',
-      description: 'What Brand Fashion collects, why, who it is shared with, and your choices.',
+      // The old site's Rank Math text (D-14), its "Privcay" typo fixed.
+      metaTitle: 'Privacy Policy | Brand Fashion',
+      description: 'Learn how Brand Fashion ensures your privacy and protects your personal data. Review our privacy policy for all details.',
       sections: [
         {
           title: 'What we collect, and why',

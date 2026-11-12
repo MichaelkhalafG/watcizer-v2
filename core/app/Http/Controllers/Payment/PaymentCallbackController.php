@@ -12,6 +12,7 @@ use App\Domain\Orders\LatePayment;
 use App\Domain\Payment\CallbackPolicy;
 use App\Domain\Payment\CallbackVerdict;
 use App\Domain\Payment\Landing;
+use App\Domain\Payment\MyFatoorahProvider;
 use App\Domain\Payment\PaymobProvider;
 use App\Domain\Payment\ProviderCredentials;
 use App\Domain\Payment\ProviderRegistry;
@@ -191,6 +192,12 @@ final class PaymentCallbackController
             // ── 2. verify the signature with THIS contract's secret ─────────────────────────
             /** @var array<string, mixed> $payload */
             $payload = $request->all();
+            // A provider that signs a HEADER (MyFatoorah's webhook) gets it inside the payload, under a key no provider
+            // field can collide with; every other provider ignores it.
+            $signatureHeader = $request->header(MyFatoorahProvider::SIGNATURE_HEADER);
+            if ($provider === MyFatoorahProvider::KEY && is_string($signatureHeader) && $signatureHeader !== '') {
+                $payload[MyFatoorahProvider::HEADER_KEY] = $signatureHeader;
+            }
             $verdict = $implementation->verifyCallback($payload, $credentials);
             if (! $verdict->signatureValid) {
                 return $this->fail($request, 403, 'signature did not verify against this contract', $context, landing: $storefrontId);
@@ -258,7 +265,7 @@ final class PaymentCallbackController
              * order may move at all: it never moves out of a terminal state, and a decline never
              * cancels an order that was already paid.
              */
-            $outcome = CallbackPolicy::outcomeFromPaymob($verdict->raw);
+            $outcome = $verdict->outcome ?? CallbackPolicy::outcomeFromPaymob($verdict->raw);
             $orderStatus = Row::str($order, 'status');
             $decision = CallbackPolicy::decide($outcome, $orderStatus, $amountMatches);
 

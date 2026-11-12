@@ -164,7 +164,8 @@ function OrderConfirmation() {
        */
       value: subtotal ?? total,
       contents: items.map((it) => ({
-        id: it.id,
+        // the catalogue's id when the checkout handed it over (content_id, 2026-11-12), else the product id
+        id: it.cid ?? it.id,
         name: it.name,
         quantity: it.qty,
         price: it.price ?? (it.qty ? Number(it.lineTotal) / it.qty : 0),

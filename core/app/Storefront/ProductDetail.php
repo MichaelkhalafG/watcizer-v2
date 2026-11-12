@@ -84,6 +84,8 @@ final class ProductDetail
         $images2 = $this->cards->images([$productId]);
         $primary = $this->cards->primaryPlacements([$productId]);
         $card = $this->cards->card($row, $translations, $images2, $primary);
+        // the pixel's id for this product (Block C, 2026-11-12): what the feeds and the Conversions API give it too
+        $card['content_id'] = ContentIds::of($this->ctx->id(), $productId);
 
         // `variant_id` (M1y, Part 1): which row an image belongs to, null for the product's general
         // gallery. Read HERE and nowhere else - the cards' images query never selects it, so the

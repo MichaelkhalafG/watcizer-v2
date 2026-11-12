@@ -25,6 +25,10 @@ if (process.env.NODE_ENV === 'production') {
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // The old WordPress shop's URLs all end in "/" (D-17, 2026-11-11): middleware.js treats a trailing slash as the sign
+  // of an old URL and asks core's redirect map. Next's own trailing-slash 308 would have stripped it BEFORE the
+  // middleware ran, so the middleware does that step itself (one 301 when the map has no row).
+  skipTrailingSlashRedirect: true,
   // THE TITLE AND THE DESCRIPTION ARE ALWAYS IN <head> (the performance pass, 2026-11-05). Since Next 15.2 a page whose
   // shell is ready before its metadata STREAMS the <title>, the description and the canonical into the <body>, for
   // every reader that is not on Next's short list of "HTML-limited" bots. Measured on the production builds: on
@@ -143,6 +147,7 @@ const nextConfig = {
        * went with it (2026-10-12, C3-delete code half).
        */
       { protocol: 'https', hostname: 'api.michaelkhalaf.com', pathname: '/Uploads_Images/**' },   // Brand Fashion's asset host (2026-10-14)
+      { protocol: 'https', hostname: 'api.brandfashionegy.com', pathname: '/Uploads_Images/**' }, // its real one (switch plan §3 item 3, added BEFORE the switch; keep the old one until §8.4)
       { protocol: 'https', hostname: 'api.watchizereg.com', pathname: '/Uploads_Images/**' },     // kept until measured unused on this app
       ...(process.env.NODE_ENV === 'production'
         ? []
