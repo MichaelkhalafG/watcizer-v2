@@ -5,6 +5,7 @@ namespace App\Domain\Media;
 use Illuminate\Http\UploadedFile;
 use InvalidArgumentException;
 use RuntimeException;
+use Throwable;
 
 /**
  * Where an uploaded image goes, and what comes back (CLEAN_CORE_STUDY §5.4).
@@ -58,10 +59,35 @@ final class MediaStore
         $folder = $config['folder'];
         $directory = self::directory($folder);
 
-        $name = self::filename();
-        $absolute = $directory.'/'.$name;
+        /*
+         * CLAIM the name before writing (Block D, 2026-11-12). The legacy scheme's `uniqid()` is the clock to the
+         * microsecond, so two processes (the image pass's parallel shards) can draw the same name; an exclusive create
+         * is atomic on the filesystem — exactly one process gets a name, the other draws again. The pipeline then
+         * writes over the claimed (empty) file; a failure removes it.
+         */
+        $name = '';
+        $absolute = '';
+        for ($try = 0; $try < 20; $try++) {
+            $name = self::filename();
+            $absolute = $directory.'/'.$name;
+            $claim = @fopen($absolute, 'x');
+            if ($claim !== false) {
+                fclose($claim);
+                break;
+            }
+            $name = '';
+            usleep(50);
+        }
+        if ($name === '') {
+            throw new RuntimeException("Cannot claim a new file name in [{$directory}].");
+        }
 
-        $result = $this->pipeline->write($sourcePath, $absolute, $config);
+        try {
+            $result = $this->pipeline->write($sourcePath, $absolute, $config);
+        } catch (Throwable $e) {
+            @unlink($absolute);
+            throw $e;
+        }
 
         return [
             'file' => $name,
