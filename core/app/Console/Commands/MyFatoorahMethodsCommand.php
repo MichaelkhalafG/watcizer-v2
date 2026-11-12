@@ -73,24 +73,33 @@ final class MyFatoorahMethodsCommand extends Command
         }
 
         $this->info('MyFatoorah at '.MyFatoorahProvider::base().' — '.count($methods).' methods enabled on the account:');
-        $codes = [];
+        $byCode = [];
         foreach ($methods as $m) {
             $code = Coerce::str($m['PaymentMethodCode'] ?? null);
-            $codes[strtolower($code)] = true;
+            $byCode[strtolower($code)][] = Coerce::str($m['PaymentMethodId'] ?? null);
             $this->line(sprintf('  %-8s id %-4s %-28s %s', $code, Coerce::str($m['PaymentMethodId'] ?? null), Coerce::str($m['PaymentMethodEn'] ?? null), Coerce::str($m['CurrencyIso'] ?? null)));
+        }
+        // a code the account lists more than once can only be routed by its method ID (2026-11-12: vm = 14 and 2)
+        foreach ($byCode as $code => $ids) {
+            if (count($ids) > 1) {
+                $this->warn(sprintf('  WARNING: the code %s is listed %d times (ids %s) — a dashboard row must use the method ID, not the code.', $code, count($ids), implode(', ', $ids)));
+            }
         }
 
         $failures = 0;
         $rows = DB::table('storefront_payment_methods')->where('storefront_payment_provider_id', $contract->getKey())->orderBy('sort')
             ->get(['id', 'method', 'integration_id', 'is_enabled']);
-        $this->line('  dashboard rows on this contract:');
+        $this->line('  dashboard rows on this contract (each checked by the same rule as the checkout, MyFatoorahProvider::pick):');
         foreach ($rows as $raw) {
             $row = Row::cast($raw);
-            $code = strtolower(trim(Row::nstr($row, 'integration_id') ?? ''));
-            $ok = $code !== '' && isset($codes[$code]);
+            $integration = trim(Row::nstr($row, 'integration_id') ?? '');
+            $picked = $integration === '' ? ['method' => null, 'problem' => 'no integration id'] : MyFatoorahProvider::pick($methods, $integration);
+            $ok = $picked['method'] !== null;
             $on = Row::bool($row, 'is_enabled');
-            $this->line(sprintf('    #%-6s %-12s code %-8s %s %s', (string) Row::int($row, 'id'), Row::str($row, 'method'), $code === '' ? '-' : $code,
-                $on ? 'ON ' : 'off', $ok ? '✓ offered' : '✗ NOT offered by the account'));
+            $this->line(sprintf('    #%-6s %-12s id/code %-8s %s %s', (string) Row::int($row, 'id'), Row::str($row, 'method'), $integration === '' ? '-' : $integration,
+                $on ? 'ON ' : 'off', $ok
+                    ? sprintf('✓ → id %s %s', Coerce::str($picked['method']['PaymentMethodId'] ?? null), Coerce::str($picked['method']['PaymentMethodEn'] ?? null))
+                    : '✗ '.($picked['problem'] ?? 'NOT offered by the account')));
             if (! $ok && $on) {
                 $failures++;
             }

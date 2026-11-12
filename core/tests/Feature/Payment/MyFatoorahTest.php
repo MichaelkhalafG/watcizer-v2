@@ -9,9 +9,11 @@ use App\Models\Storefront\StorefrontPaymentProvider;
 use Illuminate\Http\Client\Request as ClientRequest;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Testing\PendingCommand;
 use Tests\Support\PaymentFixture;
 use Tests\Support\T;
 
+use function Pest\Laravel\artisan;
 use function Pest\Laravel\get;
 use function Pest\Laravel\postJson;
 
@@ -149,4 +151,93 @@ it('never pays an order when MyFatoorah reports another amount, or an unpaid inv
         'InvoiceTransactions' => [['PaymentId' => 'PAY-2', 'TransactionStatus' => 'Succss']]]);
     get('/api/pay/brandfashion/myfatoorah/callback?paymentId=PAY-2');
     expect(T::str(DB::table('orders')->where('id', $orderId)->value('status')))->toBe('pending');
+});
+
+// ── a code the account lists TWICE (2026-11-12): Brand Fashion's live account, in its own order ─────────────────────
+
+/**
+ * InitiatePayment as the live api-eg account answers it: `vm` is BOTH installments (14) and cards (2).
+ *
+ * @param  array<string, mixed>  $status  GetPaymentStatus's Data
+ */
+function mfFakeLive(array $status = []): void
+{
+    Http::fake([
+        MF_BASE.'/v2/InitiatePayment' => Http::response(['IsSuccess' => true, 'Data' => ['PaymentMethods' => [
+            ['PaymentMethodId' => 11, 'PaymentMethodCode' => 'mz', 'PaymentMethodEn' => 'Meeza', 'CurrencyIso' => 'EGP'],
+            ['PaymentMethodId' => 13, 'PaymentMethodCode' => 'mw', 'PaymentMethodEn' => 'Mobile Wallet', 'CurrencyIso' => 'EGP'],
+            ['PaymentMethodId' => 14, 'PaymentMethodCode' => 'vm', 'PaymentMethodEn' => 'Ahli Installment', 'CurrencyIso' => 'EGP'],
+            ['PaymentMethodId' => 18, 'PaymentMethodCode' => 'fw', 'PaymentMethodEn' => 'Fawry', 'CurrencyIso' => 'EGP'],
+            ['PaymentMethodId' => 2, 'PaymentMethodCode' => 'vm', 'PaymentMethodEn' => 'VISA/MASTER', 'CurrencyIso' => 'EGP'],
+        ]]]),
+        MF_BASE.'/v2/ExecutePayment' => Http::response(['IsSuccess' => true, 'Data' => ['InvoiceId' => 5552, 'PaymentURL' => 'https://demo.myfatoorah.test/pay/live']]),
+        MF_BASE.'/v2/GetPaymentStatus' => Http::response(['IsSuccess' => true, 'Data' => $status + [
+            'InvoiceId' => 5552, 'InvoiceStatus' => 'Paid', 'InvoiceValue' => 1234.5, 'CustomerReference' => 'BF000077',
+            'UserDefinedField' => '{"order_id":77,"storefront_id":2,"method":"2"}',
+            'InvoiceTransactions' => [['PaymentId' => 'PAY-2', 'TransactionStatus' => 'Succss', 'PaymentGateway' => 'VISA/MASTER']],
+        ]]),
+    ]);
+}
+
+it('routes a method ID exactly: integration id 2 pays by VISA/MASTER (id 2), never the installments that share its code', function () {
+    mfFakeLive();
+    $r = (new MyFatoorahProvider)->initiate(mfIntent('2'), mfCredentials());
+
+    expect($r->ok)->toBeTrue()
+        ->and((new MyFatoorahProvider)->integrationIdProblem('2'))->toBeNull();
+    Http::assertSent(fn (ClientRequest $req): bool => $req->url() === MF_BASE.'/v2/ExecutePayment'
+        && $req['PaymentMethodId'] === 2 && MyFatoorahProvider::methodCodeOf(T::str($req['UserDefinedField'])) === '2');
+    Http::assertNotSent(fn (ClientRequest $req): bool => $req->url() === MF_BASE.'/v2/ExecutePayment' && $req['PaymentMethodId'] === 14);
+});
+
+it('REFUSES a code the account lists twice, naming the ids, instead of taking the first', function () {
+    mfFakeLive();
+    $r = (new MyFatoorahProvider)->initiate(mfIntent('vm'), mfCredentials());
+
+    expect($r->ok)->toBeFalse()
+        ->and($r->failureReason)->toBe('The MyFatoorah method code vm is ambiguous on this account: ids 14, 2 — set the method id instead.');
+    Http::assertNotSent(fn (ClientRequest $req): bool => $req->url() === MF_BASE.'/v2/ExecutePayment');
+});
+
+it('still routes a code the account lists once: mz → Meeza, id 11', function () {
+    mfFakeLive();
+    expect((new MyFatoorahProvider)->initiate(mfIntent('mz'), mfCredentials())->ok)->toBeTrue();
+    Http::assertSent(fn (ClientRequest $req): bool => $req->url() === MF_BASE.'/v2/ExecutePayment' && $req['PaymentMethodId'] === 11);
+});
+
+it('maps a paid callback of an ID-based row ("2") back to THAT method row', function () {
+    $contract = StorefrontPaymentProvider::query()->updateOrCreate(['storefront_id' => 2, 'provider' => MyFatoorahProvider::KEY],
+        ['is_enabled' => true, 'credentials' => ['api_key' => 'mf-test-key'], 'settings' => null]);
+    $card = (int) DB::table('storefront_payment_methods')->insertGetId(['storefront_payment_provider_id' => $contract->getKey(),
+        'method' => 'card', 'integration_id' => '2', 'is_enabled' => 1, 'sort' => 0, 'created_at' => now(), 'updated_at' => now()]);
+    DB::table('storefront_payment_methods')->insert(['storefront_payment_provider_id' => $contract->getKey(),
+        'method' => 'meeza', 'integration_id' => 'mz', 'is_enabled' => 1, 'sort' => 1, 'created_at' => now(), 'updated_at' => now()]);
+
+    $orderId = PaymentFixture::order(1234.50, 2);
+    mfFakeLive(['CustomerReference' => PaymentFixture::orderNumber($orderId), 'UserDefinedField' => '{"order_id":'.$orderId.',"storefront_id":2,"method":"2"}']);
+    get('/api/pay/brandfashion/myfatoorah/callback?paymentId=PAY-2');
+
+    $attempt = T::row(DB::table('payment_statuses')->where('order_id', $orderId)->first(['storefront_payment_method_id', 'method', 'success']));
+    expect(T::int($attempt->storefront_payment_method_id))->toBe($card)
+        ->and($attempt->method)->toBe('card')
+        ->and($attempt->success)->toBe('true')
+        ->and(DB::table('orders')->where('id', $orderId)->value('status'))->toBe('processing');
+});
+
+it('warns of a code listed twice and checks every row by the checkout rule (payments:myfatoorah-methods)', function () {
+    $contract = StorefrontPaymentProvider::query()->updateOrCreate(['storefront_id' => 2, 'provider' => MyFatoorahProvider::KEY],
+        ['is_enabled' => true, 'credentials' => ['api_key' => 'mf-test-key'], 'settings' => null]);
+    foreach ([['card', '2', 0], ['meeza', 'mz', 1], ['wallet', 'vm', 2]] as [$method, $integration, $sort]) {
+        DB::table('storefront_payment_methods')->insert(['storefront_payment_provider_id' => $contract->getKey(), 'method' => $method,
+            'integration_id' => $integration, 'is_enabled' => 0, 'sort' => $sort, 'created_at' => now(), 'updated_at' => now()]);
+    }
+    mfFakeLive();
+
+    $command = artisan('payments:myfatoorah-methods', ['storefront' => 'brandfashion']);
+    assert($command instanceof PendingCommand);
+    $command
+        ->expectsOutputToContain('WARNING: the code vm is listed 2 times (ids 14, 2)')
+        ->expectsOutputToContain('✓ → id 2 VISA/MASTER')
+        ->expectsOutputToContain('✓ → id 11 Meeza')
+        ->expectsOutputToContain('✗ The MyFatoorah method code vm is ambiguous on this account: ids 14, 2');
 });

@@ -15,8 +15,9 @@ use Throwable;
  * ── The flow: MyFatoorah's hosted payment page, as the old site and as Paymob ──────────────────
  *
  *   initiate   InitiatePayment (the account's ENABLED methods, read now — never a list in code) → the method whose
- *              `PaymentMethodCode` is this dashboard row's integration id (`vm` cards, `md` Meeza, … — the codes the
- *              account answers with) → ExecutePayment → its `PaymentURL`: the shopper is redirected there;
+ *              `PaymentMethodCode` is this dashboard row's integration id (`mz` Meeza, `mw` wallets, … — the codes the
+ *              account answers with), or whose `PaymentMethodId` it is when the account lists a code twice (pick())
+ *              → ExecutePayment → its `PaymentURL`: the shopper is redirected there;
  *   return     MyFatoorah sends the shopper back to `CallBackUrl` / `ErrorUrl` with `?paymentId=…` — an UNSIGNED
  *              GET: nothing in it is trusted;
  *   webhook    a POST with `Data` (the event) and the `MyFatoorah-Signature` header, configured in the portal;
@@ -72,9 +73,10 @@ final class MyFatoorahProvider implements PaymentProvider
     }
 
     /**
-     * The row's integration id is a MyFatoorah `PaymentMethodCode` (`vm`, `md`, `kn`, …): letters, digits, `_` or
-     * `-`. Whether the ACCOUNT offers it is only known by asking the account — at initiation, or from the dashboard's
-     * methods check — so a well-formed code is accepted here.
+     * The row's integration id is a MyFatoorah `PaymentMethodCode` (`vm`, `mz`, `mw`, …: letters, digits, `_` or `-`),
+     * or — when the account lists a code twice — the method's `PaymentMethodId` (digits only; see pick()). Whether the
+     * ACCOUNT offers it is only known by asking the account — at initiation, or from payments:myfatoorah-methods — so a
+     * well-formed value is accepted here.
      */
     public function integrationIdProblem(?string $integrationId): ?string
     {
@@ -107,15 +109,10 @@ final class MyFatoorahProvider implements PaymentProvider
         if ($methods === null) {
             return InitiationResult::failed('MyFatoorah could not be reached, or refused the methods request.');
         }
-        $method = null;
-        foreach ($methods as $m) {
-            if (strcasecmp(Coerce::str($m['PaymentMethodCode'] ?? null), $code) === 0) {
-                $method = $m;
-                break;
-            }
-        }
+        $picked = self::pick($methods, $code);
+        $method = $picked['method'];
         if ($method === null) {
-            return InitiationResult::failed("This MyFatoorah account does not offer the method [{$code}] now.");
+            return InitiationResult::failed($picked['problem'] ?? "This MyFatoorah account does not offer the method [{$code}] now.");
         }
 
         // 2. the invoice for that method, and its hosted page
@@ -303,6 +300,42 @@ final class MyFatoorahProvider implements PaymentProvider
         $given = base64_decode(trim($signature), true);
 
         return $given !== false && hash_equals(hash_hmac('sha256', implode(',', $pairs), $secret, true), $given);
+    }
+
+    /**
+     * The account's method for a dashboard row's integration id (2026-11-12). DIGITS = a MyFatoorah `PaymentMethodId`,
+     * matched exactly. Otherwise a `PaymentMethodCode`, case-insensitive — and when the account lists that code MORE
+     * than once (Brand Fashion's live account: `vm` is both "Ahli Installment" id 14 and "VISA/MASTER" id 2) it FAILS
+     * CLOSED and names the ids, rather than taking the first (which routed every card payment to installments).
+     *
+     * @param  list<array<string, mixed>>  $methods  InitiatePayment's PaymentMethods
+     * @return array{method: array<string, mixed>|null, problem: string|null}
+     */
+    public static function pick(array $methods, string $integrationId): array
+    {
+        $wanted = trim($integrationId);
+        $byId = $wanted !== '' && ctype_digit($wanted);
+        $matches = [];
+        foreach ($methods as $m) {
+            $hit = $byId
+                ? Coerce::int($m['PaymentMethodId'] ?? null) === (int) $wanted
+                : strcasecmp(Coerce::str($m['PaymentMethodCode'] ?? null), $wanted) === 0;
+            if ($hit) {
+                $matches[] = $m;
+            }
+        }
+        if ($matches === []) {
+            return ['method' => null, 'problem' => $byId
+                ? "This MyFatoorah account does not offer the method id [{$wanted}] now."
+                : "This MyFatoorah account does not offer the method [{$wanted}] now."];
+        }
+        if (count($matches) > 1) {
+            $ids = implode(', ', array_map(fn (array $m): string => Coerce::str($m['PaymentMethodId'] ?? null), $matches));
+
+            return ['method' => null, 'problem' => "The MyFatoorah method code {$wanted} is ambiguous on this account: ids {$ids} — set the method id instead."];
+        }
+
+        return ['method' => $matches[0], 'problem' => null];
     }
 
     /** Our method code from the invoice's `UserDefinedField` (set at initiation), or null. */

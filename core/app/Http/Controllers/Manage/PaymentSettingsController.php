@@ -563,7 +563,7 @@ final class PaymentSettingsController
             'integration_id' => match ($problem) {
                 'missing' => ManageText::t('payments.integration_id_missing', 'لا يمكن تفعيل هذه الطريقة بدون رقم التكامل (integration id). احفظها موقوفة حتى يصل الرقم.'),
                 'malformed' => $implementation instanceof MyFatoorahProvider
-                    ? ManageText::t('payments.integration_id_malformed_myfatoorah', 'رمز طريقة MyFatoorah حروف وأرقام فقط (مثل vm أو md) كما يعرضه الحساب.')
+                    ? ManageText::t('payments.integration_id_malformed_myfatoorah', 'لـ MyFatoorah: رمز الطريقة كما يعرضه الحساب (حروف وأرقام، مثل mz أو mw)، أو رقم الطريقة (أرقام فقط) إذا عرض الحساب الرمز نفسه مرتين.')
                     : ManageText::t('payments.integration_id_malformed', 'رقم التكامل يجب أن يكون أرقامًا فقط. راجع الرقم الذي أرسلته Paymob.'),
                 default => ManageText::t('payments.provider_unknown', 'لا يوجد تنفيذ لهذا العقد، فلا يمكن تفعيل طرق الدفع تحته.'),
             },

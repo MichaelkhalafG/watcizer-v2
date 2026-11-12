@@ -1482,12 +1482,12 @@ return [
 
     // ── payment providers and methods ──
     'payments' => [
-        'integration_id_hint_v2' => 'What routes the customer to THIS method, not a secret: for Paymob the integration id it sent (digits only); for MyFatoorah the method code as the account lists it (e.g. vm for cards, md for Meeza). The method cannot be switched on without it.',
+        'integration_id_hint_v2' => 'What routes the customer to THIS method, not a secret: for Paymob the integration id it sent (digits only); for MyFatoorah the method code as the account lists it (e.g. mz for Meeza, mw for wallets), or its method id (digits) when the account lists a code twice (e.g. 2 for VISA/MASTER when vm is also installments). The method cannot be switched on without it.',
         'field_api_key' => 'API key',
         'field_webhook_secret' => 'Webhook signing key',
         'provider_myfatoorah' => 'MyFatoorah',
         'method_meeza' => 'Meeza',
-        'integration_id_malformed_myfatoorah' => 'A MyFatoorah method code is letters and digits only (e.g. vm or md), as the account lists it.',
+        'integration_id_malformed_myfatoorah' => 'For MyFatoorah: the method code as the account lists it (letters and digits, e.g. mz or mw), or the method id (digits only) when the account lists a code twice.',
         'add_contract' => 'Add a provider contract',
         'add_method' => 'Add a method',
         'contract_added' => 'The contract has been added.',
