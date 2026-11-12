@@ -9,6 +9,20 @@ cannot get past tonight; every item is a known, named state. Pick batches from i
 
 ---
 
+## ▶ 2026-11-12 — LATER: each shop's Conversions API token and pixel on the dashboard (D-25 option a)
+
+Decided by Michael on 2026-11-12: for now, option (b), an env pair per shop on the core server
+(META_CAPI_BRANDFASHION_TOKEN / META_CAPI_BRANDFASHION_PIXEL_ID beside Watchizer's META_CAPI_TOKEN / META_CAPI_PIXEL_ID;
+MetaConversions::pair()). Each shop's orders go only to its own pair; a shop without one sends nothing.
+
+The later item: the same pair typed on the storefront's settings screen.
+- The token is encrypted at rest like the payment keys, write-only on the screen, shown only as "set" plus a
+  fingerprint.
+- Read before the env pair, which stays as the fallback.
+- One permission (the owner role) and an activity-log entry for each change (the value never logged).
+- `meta:capi-check --storefront=<code>` reads the same source.
+- About 2 h with tests. No urgency: the env pair works.
+
 ## ▶ 2026-10-22 — the overnight queue: built, proved, NOT committed, NOT deployed (record: RUN_20261022.md, "The overnight queue")
 
 - **GA4 e-commerce events + the pixels' event ids + the card-order Purchase in the browser** — built in both
