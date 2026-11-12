@@ -46,6 +46,8 @@ interface Rail {
     description_en: string | null;
     /** An under-a-price rail's cap in EGP; null on every other kind. */
     max_price: number | null;
+    /** A hand-picked rail's optional "See more" link (an internal path, 2026-11-12); null on every other kind. */
+    more_href: string | null;
 }
 
 interface Option {
@@ -93,6 +95,8 @@ interface Draft {
     description_en: string;
     /** '' = not set. */
     max_price: string;
+    /** '' = no "See more" button (a hand-picked rail only). */
+    more_href: string;
 }
 
 /** A brand banner starts on ink, a red accent and white — three colours to change, never three blanks. */
@@ -113,6 +117,7 @@ const EMPTY: Draft = {
     description_ar: '',
     description_en: '',
     max_price: '',
+    more_href: '',
 };
 
 const HEX = /^#[0-9A-Fa-f]{6}$/;
@@ -180,6 +185,7 @@ export default function HomeRailsIndex({
             description_ar: next.description_ar,
             description_en: next.description_en,
             max_price: next.max_price,
+            more_href: next.kind === 'custom' ? next.more_href : null,
         };
     };
 
@@ -199,6 +205,7 @@ export default function HomeRailsIndex({
             description_ar: rail.description_ar ?? '',
             description_en: rail.description_en ?? '',
             max_price: rail.max_price === null ? '' : String(rail.max_price),
+            more_href: rail.more_href ?? '',
         });
 
     const submit = () => {
@@ -221,6 +228,7 @@ export default function HomeRailsIndex({
             description_ar: draft.kind === 'brand_banner' ? draft.description_ar : null,
             description_en: draft.kind === 'brand_banner' ? draft.description_en : null,
             max_price: draft.kind === 'price' && draft.max_price !== '' ? Number(draft.max_price) : null,
+            more_href: draft.kind === 'custom' && draft.more_href.trim() !== '' ? draft.more_href.trim() : null,
         };
         const done = { preserveScroll: true, onSuccess: () => setDraft(null) };
         draft.id === null ? router.post(base, payload, done) : router.put(`${base}/${draft.id}`, payload, done);
@@ -520,6 +528,26 @@ export default function HomeRailsIndex({
                             </label>
                             </>
                             )}
+
+                            {isCustom ? (
+                                <label className="space-y-1 text-sm">
+                                    <span>{t('home_rails.more_href', 'رابط «عرض المزيد» (اختياري)')}</span>
+                                    <Input
+                                        dir="ltr"
+                                        value={draft.more_href}
+                                        maxLength={255}
+                                        placeholder="/listing?sale=1"
+                                        onChange={(event) => setDraft({ ...draft, more_href: event.target.value })}
+                                    />
+                                    <span className="block text-xs text-muted-foreground">
+                                        {t(
+                                            'home_rails.more_href_hint',
+                                            'رابط داخل المتجر يبدأ بـ / (صفحة ماركة أو فئة أو قائمة بفلتر). فارغ = لا يظهر زر «عرض المزيد» لهذا الشريط.',
+                                        )}
+                                    </span>
+                                    {errors.more_href ? <span className="text-xs text-destructive">{errors.more_href}</span> : null}
+                                </label>
+                            ) : null}
 
                             {draft.kind === 'price' ? (
                                 <label className="space-y-1 text-sm">

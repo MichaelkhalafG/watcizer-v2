@@ -147,6 +147,9 @@ export default function BfHome({ home, meta }) {
     if (r.kind === 'category_type' && r.cards[0]?.primary_category?.path) return `/category/${r.cards[0].primary_category.path.split('/')[0]}`
     if (r.kind === 'newest') return '/listing?sort=newest'
     if (r.kind === 'best_value') return '/listing?sale=1'
+    // a hand-picked slider has no listing of its own: "See all" only where the team set a link on the dashboard
+    // (the rail's settings, 2026-11-12) — it used to open the whole shop
+    if (r.kind === 'custom') return r.more_href || null
     return '/listing'
   }
   const railCount = (r) => {
@@ -368,7 +371,7 @@ export default function BfHome({ home, meta }) {
 
       {bands}
 
-      {curated ? <BfRail title={railTitle(curated)} cards={curated.cards} seeAllHref="/listing" lang={lang} tint="always" className="bf-rail--curated" /> : null}
+      {curated ? <BfRail title={railTitle(curated)} cards={curated.cards} seeAllHref={curated.more_href || null} lang={lang} tint="always" className="bf-rail--curated" /> : null}
 
       <nav className="bf-bottom-nav" aria-label={t.home}>
         <a href={L('/')} aria-current="page"><Icon d="M3 11 12 3l9 8v10h-6v-6H9v6H3z" />{t.home}</a>

@@ -16,7 +16,7 @@ use InvalidArgumentException;
  * dashboard, and writing them for the dashboard. One class so the two sides cannot disagree about
  * what a valid rail is.
  *
- * @phpstan-type Rail array{id: int, kind: string, target_id: ?int, product_ids: list<int>, title_en: ?string, title_ar: ?string, position: int, is_active: bool, card_count: int, background: ?string, blend: bool, colors: list<string>, description_ar: ?string, description_en: ?string, max_price: ?int}
+ * @phpstan-type Rail array{id: int, kind: string, target_id: ?int, product_ids: list<int>, title_en: ?string, title_ar: ?string, position: int, is_active: bool, card_count: int, background: ?string, blend: bool, colors: list<string>, description_ar: ?string, description_en: ?string, max_price: ?int, more_href: ?string}
  */
 final class HomeRails
 {
@@ -135,7 +135,7 @@ final class HomeRails
     /**
      * Add a rail at the END of the list.
      *
-     * @param  array{kind: string, target_id: ?int, product_ids?: ?list<int>, title_en: ?string, title_ar: ?string, is_active: bool, card_count: int, background?: ?string, blend?: bool, colors?: list<string>, description_ar?: ?string, description_en?: ?string, max_price?: ?int}  $data
+     * @param  array{kind: string, target_id: ?int, product_ids?: ?list<int>, title_en: ?string, title_ar: ?string, is_active: bool, card_count: int, background?: ?string, blend?: bool, colors?: list<string>, description_ar?: ?string, description_en?: ?string, max_price?: ?int, more_href?: ?string}  $data
      */
     public static function create(int $storefrontId, array $data): int
     {
@@ -152,7 +152,7 @@ final class HomeRails
         ]);
     }
 
-    /** @param  array{kind: string, target_id: ?int, product_ids?: ?list<int>, title_en: ?string, title_ar: ?string, is_active: bool, card_count: int, background?: ?string, blend?: bool, colors?: list<string>, description_ar?: ?string, description_en?: ?string, max_price?: ?int}  $data */
+    /** @param  array{kind: string, target_id: ?int, product_ids?: ?list<int>, title_en: ?string, title_ar: ?string, is_active: bool, card_count: int, background?: ?string, blend?: bool, colors?: list<string>, description_ar?: ?string, description_en?: ?string, max_price?: ?int, more_href?: ?string}  $data */
     public static function update(int $storefrontId, int $id, array $data): void
     {
         self::assertValid($data);
@@ -235,7 +235,7 @@ final class HomeRails
         });
     }
 
-    /** @param  array{kind: string, target_id: ?int, product_ids?: ?list<int>, title_en: ?string, title_ar: ?string, is_active: bool, card_count: int, background?: ?string, blend?: bool, colors?: list<string>, description_ar?: ?string, description_en?: ?string, max_price?: ?int}  $data */
+    /** @param  array{kind: string, target_id: ?int, product_ids?: ?list<int>, title_en: ?string, title_ar: ?string, is_active: bool, card_count: int, background?: ?string, blend?: bool, colors?: list<string>, description_ar?: ?string, description_en?: ?string, max_price?: ?int, more_href?: ?string}  $data */
     private static function assertValid(array $data): void
     {
         if (! in_array($data['kind'], self::KINDS, true)) {
@@ -418,7 +418,7 @@ final class HomeRails
     }
 
     /**
-     * @param  array{kind: string, target_id: ?int, product_ids?: ?list<int>, title_en: ?string, title_ar: ?string, is_active: bool, card_count: int, background?: ?string, blend?: bool, colors?: list<string>, description_ar?: ?string, description_en?: ?string, max_price?: ?int}  $data
+     * @param  array{kind: string, target_id: ?int, product_ids?: ?list<int>, title_en: ?string, title_ar: ?string, is_active: bool, card_count: int, background?: ?string, blend?: bool, colors?: list<string>, description_ar?: ?string, description_en?: ?string, max_price?: ?int, more_href?: ?string}  $data
      * @return array<string, mixed>
      */
     private static function columns(array $data): array
@@ -447,6 +447,11 @@ final class HomeRails
         if ($data['kind'] === self::PRICE) {
             $settings['max_price'] = (int) ($data['max_price'] ?? 0);
         }
+        // A hand-picked rail has no listing of its own: its optional "See more" link (Block A3, 2026-11-12) — an
+        // internal path only, so both shops' locale routers can follow it.
+        if ($data['kind'] === self::CUSTOM && self::isPath($data['more_href'] ?? null)) {
+            $settings['more_href'] = trim((string) $data['more_href']);
+        }
         if ($data['kind'] === self::BRAND_BANNER) {
             $settings['colors'] = array_map('strtoupper', $data['colors'] ?? []);
             $settings['description'] = ['ar' => trim($data['description_ar'] ?? ''), 'en' => trim($data['description_en'] ?? '')];
@@ -471,7 +476,7 @@ final class HomeRails
      * no colour, no blend, no colours, no description. Anything malformed reads as nothing rather than failing
      * the home page.
      *
-     * @return array{background: string|null, blend: bool, colors: list<string>, description_ar: string|null, description_en: string|null, max_price: int|null}
+     * @return array{background: string|null, blend: bool, colors: list<string>, description_ar: string|null, description_en: string|null, max_price: int|null, more_href: string|null}
      */
     private static function settings(?string $json): array
     {
@@ -495,7 +500,14 @@ final class HomeRails
             'description_ar' => $text($description['ar'] ?? null),
             'description_en' => $text($description['en'] ?? null),
             'max_price' => is_int($raw['max_price'] ?? null) && $raw['max_price'] > 0 ? $raw['max_price'] : null,
+            'more_href' => self::isPath($raw['more_href'] ?? null) ? trim(is_string($raw['more_href']) ? $raw['more_href'] : '') : null,
         ];
+    }
+
+    /** An internal path the shops can route: `/…`, never `//host`, no spaces, at most 255 characters. */
+    public static function isPath(mixed $value): bool
+    {
+        return is_string($value) && strlen(trim($value)) <= 255 && preg_match('#^/(?!/)\S*$#', trim($value)) === 1;
     }
 
     /**

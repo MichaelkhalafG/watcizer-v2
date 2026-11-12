@@ -85,7 +85,7 @@ final class StorefrontHome
                 // the brand strip): no cards — the page draws the section here from this same payload. Compat
                 // already left the Banners block out when it leads the page.
                 $rails[] = ['id' => $rail['id'], 'kind' => $rail['kind'], 'target' => null, 'title' => $rail['title'],
-                    'count' => 0, 'cards' => [], 'background' => null, 'blend' => false, 'masks' => []];
+                    'count' => 0, 'cards' => [], 'background' => null, 'blend' => false, 'masks' => [], 'more_href' => null];
 
                 continue;
             }
@@ -111,6 +111,8 @@ final class StorefrontHome
                 // …and, with the blend on, the mask of each card's studio background (card id => a `data:` URL): the
                 // photo is drawn as it is and only its white gives way to the colour (CutMasks, 2026-11-05).
                 'masks' => $rail['masks'],
+                // a hand-picked rail's "See more" link (Block A3, 2026-11-12); null = no button
+                'more_href' => $rail['more_href'],
             ] + ($rail['kind'] !== HomeRails::BRAND_BANNER ? [] : [
                 // Part 3.3: a brand banner — the brand (with its logo and the slug its page lives at), the three
                 // colours that fill it and its sentence. The cards above are its three products.

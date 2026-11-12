@@ -318,7 +318,10 @@ final class HomeRailController
             'description_en' => ['nullable', 'string', 'max:240'],
             // an under-a-price rail's cap, in EGP (the review of 2026-11-05)
             'max_price' => ['nullable', 'integer', 'min:1', 'max:100000000'],
+            // a hand-picked rail's optional "See more" link (Block A3, 2026-11-12): an internal path only
+            'more_href' => ['nullable', 'string', 'max:255', 'regex:#^/(?!/)\S*$#'],
         ], [
+            'more_href.regex' => ManageText::t('home_rails.more_href_shape', 'الرابط يبدأ بـ / ويكون داخل المتجر، بدون مسافات (مثال: ‎/brand/rolex‎).'),
             'background.regex' => ManageText::t('home_rails.color_shape', 'اللون يُكتب بهذا الشكل: ‎#1A2B3C.'),
             'colors.*.regex' => ManageText::t('home_rails.color_shape', 'اللون يُكتب بهذا الشكل: ‎#1A2B3C.'),
             'colors.size' => ManageText::t('home_rails.banner_colors_required', 'اختر الألوان الثلاثة التي تملأ البانر.'),
@@ -430,6 +433,7 @@ final class HomeRailController
             'description_ar' => $kind === HomeRails::BRAND_BANNER ? Coerce::nstr($data['description_ar'] ?? null) : null,
             'description_en' => $kind === HomeRails::BRAND_BANNER ? Coerce::nstr($data['description_en'] ?? null) : null,
             'max_price' => $kind === HomeRails::PRICE ? $maxPrice : null,
+            'more_href' => $kind === HomeRails::CUSTOM ? Coerce::nstr($data['more_href'] ?? null) : null,
         ];
     }
 

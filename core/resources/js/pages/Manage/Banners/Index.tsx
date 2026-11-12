@@ -129,7 +129,8 @@ const EMPTY: Draft = {
     placement: 'home',
     image_path: '',
     image: null,
-    device: 'both',
+    // a new banner is cropped for ONE device (Block A2, 2026-11-12): a computer box and a phone box are two shapes
+    device: 'desktop',
     image_original_path: '',
     crop: null,
     cropping: null,
@@ -456,11 +457,13 @@ export default function BannersIndex({
                                     }}
                                 />
                                 <p className="mt-1 text-xs text-muted-foreground">
-                                    {t('banners.recommended_size', 'المقاس المقترح لـ:device — :size بكسل', {
+                                    {t('banners.recommended_size_shape', 'المقاس المقترح لـ:device — :size بكسل (الشكل :w : :h، وهو شكل الخانة على الموقع بالضبط)', {
                                         device: isSide(draft.placement)
                                             ? `${PLACEMENT_LABELS[draft.placement] ?? draft.placement} — ${DEVICE_LABELS[draft.device] ?? draft.device}`
                                             : (DEVICE_LABELS[draft.device] ?? draft.device),
                                         size: shapeFor(draft.device, draft.placement).recommended,
+                                        w: String(shapeFor(draft.device, draft.placement).w),
+                                        h: String(shapeFor(draft.device, draft.placement).h),
                                     })}
                                 </p>
 
@@ -527,17 +530,29 @@ export default function BannersIndex({
                                     // a different device is a different shape: the picture is cropped again for it
                                     onChange={(event) => setDraft({ ...draft, device: event.target.value, crop: isSide(draft.placement) ? null : draft.crop })}
                                 >
-                                    {devices.map((device) => (
-                                        <option key={device} value={device}>
-                                            {DEVICE_LABELS[device] ?? device}
-                                        </option>
-                                    ))}
+                                    {/* "Both" is no longer offered (Block A2, 2026-11-12): one crop cannot be both the computer's shape
+                                        and the phone's, so the site cut it a second time. A banner saved as "both" before keeps it. */}
+                                    {devices
+                                        .filter((device) => device !== 'both' || (draft.id !== null && draft.device === 'both'))
+                                        .map((device) => (
+                                            <option key={device} value={device}>
+                                                {DEVICE_LABELS[device] ?? device}
+                                            </option>
+                                        ))}
                                 </Select>
+                                {draft.device === 'both' ? (
+                                    <span className="block text-xs text-destructive">
+                                        {t(
+                                            'banners.both_legacy_hint',
+                                            'هذا البانر محفوظ لـ«الكمبيوتر والهاتف»: الشاشتان بمقاسين مختلفين، فيظهر على إحداهما بهوامش. أعد رفعه بانرين: واحدًا لـ«الكمبيوتر فقط» وآخر لـ«الهاتف فقط»، كلٌّ بمقاسه.',
+                                        )}
+                                    </span>
+                                ) : null}
                                 {isSide(draft.placement) ? (
                                     <span className="block text-xs text-muted-foreground">
                                         {t(
-                                            'banners.side_device_hint',
-                                            'الخانة الجانبية شريط عريض بجانب الهيرو على الكمبيوتر (‎960 × 500‎) ومربّع أطول تحته على الهاتف (‎520 × 390‎). لصورة تناسب كل شاشة: أضف بانرًا لـ«الكمبيوتر فقط» وآخر لـ«الهاتف فقط» في الخانة نفسها واقصص كلًّا لمقاسه؛ أو بانرًا واحدًا لـ«الكمبيوتر والهاتف» يُقصّ بمقاس الكمبيوتر ويُقتطع جانباه على الهاتف.',
+                                            'banners.side_device_hint_v2',
+                                            'الخانة الجانبية شريط عريض بجانب الهيرو على الكمبيوتر (‎960 × 500‎) ومربّع أطول تحته على الهاتف (‎520 × 390‎). أضف بانرًا لـ«الكمبيوتر فقط» وآخر لـ«الهاتف فقط» في الخانة نفسها، ويُقصّ كلٌّ بمقاس خانته بالضبط.',
                                         )}
                                     </span>
                                 ) : null}

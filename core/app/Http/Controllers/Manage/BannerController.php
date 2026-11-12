@@ -24,6 +24,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 use stdClass;
@@ -286,7 +287,7 @@ final class BannerController
 
     public function store(Request $request, Storefront $storefront): RedirectResponse
     {
-        $id = $this->writer->save($this->validated($request, $storefront), null);
+        $id = $this->writer->save($this->validated($request, $storefront, null), null);
 
         $after = self::logFields($id);
         ActivityLog::record(
@@ -310,7 +311,7 @@ final class BannerController
         // and where it used to send people — and the update overwrites both.
         $before = self::logFields($banner);
 
-        $this->writer->save($this->validated($request, $storefront), $banner);
+        $this->writer->save($this->validated($request, $storefront, $banner), $banner);
 
         $after = self::logFields($banner);
         ActivityLog::record(
@@ -416,7 +417,7 @@ final class BannerController
     /**
      * @return array<string, mixed>
      */
-    private function validated(Request $request, Storefront $storefront): array
+    private function validated(Request $request, Storefront $storefront, ?int $bannerId): array
     {
         $data = Coerce::arr($request->validate([
             'image_path' => ['required', 'string', 'max:255'],
@@ -435,6 +436,19 @@ final class BannerController
             'starts_at' => ['nullable', 'date'],
             'ends_at' => ['nullable', 'date'],
         ]));
+
+        /*
+         * ONE DEVICE PER NEW BANNER (Block A2, 2026-11-12). A computer box and a phone box have different shapes, so a
+         * picture cropped for "both" was cut a second time on one of them. A new banner is for the computer OR the
+         * phone; a banner saved as "both" before may keep it (its row is listed for re-upload), never gain it.
+         */
+        $device = Coerce::nstr($data['device'] ?? null) ?? BannerWriter::DEVICES[0];
+        if ($device === BannerWriter::DEVICES[0]) {
+            $was = $bannerId === null ? null : BannerWriter::device(Row::nstr(Row::cast(DB::table('storefront_banners')->where('id', $bannerId)->first(['device']) ?? new stdClass), 'device'));
+            if ($was !== BannerWriter::DEVICES[0]) {
+                throw ValidationException::withMessages(['device' => ManageText::t('banners.device_one', 'اختر «الكمبيوتر فقط» أو «الهاتف فقط»: لكل جهاز مقاس، ويُقصّ كل بانر بمقاس خانته.')]);
+            }
+        }
 
         // The storefront comes from the ROUTE, never from the body: a payload that could name it
         // would let one storefront's operator write a banner onto the other's home page.

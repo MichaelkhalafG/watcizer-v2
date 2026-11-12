@@ -7,9 +7,6 @@ use Tests\Support\Staff;
 use Tests\Support\T;
 
 use function Pest\Laravel\actingAs;
-use function Pest\Laravel\get;
-use function Pest\Laravel\post;
-use function Pest\Laravel\put;
 
 /*
  * Per-device banners and the crop (F1, the developer's decision 2026-10-20).
@@ -28,8 +25,8 @@ function bannerBody(array $overrides = []): array
     /** @var array<string, mixed> $body */
     $body = $overrides + [
         'image_path' => 'Banner_home/cropped.webp',
-        // no `device` here on purpose: a body that does not name one is the pre-F1 shape, and the
-        // test below asserts it is stored as `both`. A test that needs a device passes it.
+        // a NEW banner is for one device since Block A2 (2026-11-12); a test about `both` says so itself
+        'device' => 'desktop',
         'target' => 'none',
         'sort_order' => 0,
         'is_active' => true,
@@ -84,13 +81,25 @@ it('asks each storefront for its OWN banner size, measured on its own hero', fun
         ->and(T::str($sizes[1]['recommended'] ?? null))->not->toBe(T::str($sizes[2]['recommended'] ?? null));
 });
 
-it('defaults a banner saved without a device to `both`, and keeps every existing row showing everywhere', function () {
-    actingAs(Staff::admin())->post('/manage/storefronts/2/banners', bannerBody())->assertRedirect();
+it('refuses a NEW banner for both devices or none, and lets a banner saved as both keep it — never gain it', function () {
+    // Block A2 (2026-11-12): one crop cannot be both shapes, so a new banner names the computer or the phone
+    $before = DB::table('storefront_banners')->where('storefront_id', 2)->count();
+    $none = bannerBody();
+    unset($none['device']);
+    actingAs(Staff::admin())->post('/manage/storefronts/2/banners', $none)->assertSessionHasErrors('device');
+    actingAs(Staff::admin())->post('/manage/storefronts/2/banners', bannerBody(['device' => 'both']))->assertSessionHasErrors('device');
+    expect(DB::table('storefront_banners')->where('storefront_id', 2)->count())->toBe($before);
 
-    $row = T::row(DB::table('storefront_banners')->where('storefront_id', 2)->orderByDesc('id')->first());
-    expect(T::str($row->device))->toBe('both')
-        ->and($row->image_original_path)->toBeNull()
-        ->and($row->crop)->toBeNull();
+    // a row saved as `both` before (the live ones are listed for re-upload) stays editable as it is
+    $legacy = DB::table('storefront_banners')->insertGetId(['storefront_id' => 2, 'placement' => 'home', 'device' => 'both',
+        'image_path' => 'Banner_home/old.webp', 'type_show' => 'none', 'sort_order' => 0, 'is_active' => 1, 'created_at' => now(), 'updated_at' => now()]);
+    actingAs(Staff::admin())->put("/manage/storefronts/2/banners/{$legacy}", bannerBody(['device' => 'both', 'sort_order' => 3]))->assertRedirect();
+    expect(T::str(DB::table('storefront_banners')->where('id', $legacy)->value('device')))->toBe('both');
+
+    // …but a banner for one device is never turned into `both`
+    actingAs(Staff::admin())->post('/manage/storefronts/2/banners', bannerBody())->assertRedirect();
+    $one = T::int(DB::table('storefront_banners')->where('storefront_id', 2)->max('id'));
+    actingAs(Staff::admin())->put("/manage/storefronts/2/banners/{$one}", bannerBody(['device' => 'both']))->assertSessionHasErrors('device');
 });
 
 it('refuses a device it does not serve, rather than storing a value the shop cannot read', function () {
@@ -107,13 +116,13 @@ it('keeps the original and the rectangle when only the device changes', function
     $id = T::int(DB::table('storefront_banners')->where('storefront_id', 2)->max('id'));
 
     actingAs(Staff::admin())->put("/manage/storefronts/2/banners/{$id}", bannerBody([
-        'device' => 'both',
+        'device' => 'mobile',
         'image_original_path' => 'Banner_home/original.webp',
         'crop' => json_encode(['x' => 0, 'y' => 0, 'w' => 900, 'h' => 314]),
     ]))->assertRedirect();
 
     $row = T::row(DB::table('storefront_banners')->where('id', $id)->first());
-    expect(T::str($row->device))->toBe('both')
+    expect(T::str($row->device))->toBe('mobile')
         ->and(T::str($row->image_original_path))->toBe('Banner_home/original.webp');
 });
 
