@@ -4,6 +4,8 @@ namespace App\Storefront;
 
 use App\Domain\Campaigns\CampaignPrices;
 use Closure;
+use Illuminate\Contracts\Cache\LockProvider;
+use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Support\Facades\Cache;
 
 /**
@@ -204,6 +206,120 @@ final class StorefrontCache
     {
         /** @var T */
         return Cache::remember($this->key($storefrontId, $what, $suffix), $ttl, $build);
+    }
+
+    /** How long a guarded entry's LAST GOOD value is kept (the copy served while one request rebuilds). */
+    public const LAST_GOOD_TTL = 86400;
+
+    /** How long one build may hold the build lock before another request may take it over. */
+    public const BUILD_LOCK_SECONDS = 120;
+
+    /**
+     * remember(), guarded against a STAMPEDE (2026-11-12 production incident: the tree's cache went empty after the
+     * import and the switch flushed it, every request that missed it started its own 150-second build, and 93 copies
+     * stopped both storefront APIs).
+     *
+     * - A hit is returned as before.
+     * - On a miss, ONE request per storefront and entry takes the build lock and builds. It stores the value under the
+     *   versioned key AND as the entry's LAST GOOD value: a key without the version, so a flush does not lose it.
+     * - Every other request meanwhile gets that last good value at once. Only when there has never been one does it
+     *   wait for the builder (at most BUILD_LOCK_SECONDS), and then it reads the builder's result.
+     * - A store without locks keeps the old behaviour.
+     *
+     * @template T
+     *
+     * @param  Closure(): T  $build
+     * @return T
+     */
+    public function rememberGuarded(int $storefrontId, string $what, string $suffix, int $ttl, Closure $build): mixed
+    {
+        $key = $this->key($storefrontId, $what, $suffix);
+        $hit = Cache::get($key);
+        if ($hit !== null) {
+            /** @var T */
+            return $hit;
+        }
+        $lastKey = self::lastGoodKey($storefrontId, $what, $suffix);
+        if (! Cache::getStore() instanceof LockProvider) {
+            $value = $build();
+            Cache::put($key, $value, $ttl);
+            Cache::put($lastKey, $value, self::LAST_GOOD_TTL);
+
+            return $value;
+        }
+
+        $lock = Cache::lock(self::buildLockKey($storefrontId, $what, $suffix), self::BUILD_LOCK_SECONDS);
+        if (! $lock->get()) {
+            $last = Cache::get($lastKey);
+            if ($last !== null) {
+                /** @var T */
+                return $last;                                   // another request is building: the last good value now
+            }
+            try {
+                $lock->block(self::BUILD_LOCK_SECONDS);         // never built before: wait for the one builder…
+            } catch (LockTimeoutException $e) {
+                throw new \RuntimeException("The [{$what}] of storefront {$storefrontId} is still being built — try again shortly.", 0, $e);
+            }
+        }
+        try {
+            $hit = Cache::get($key);                            // …whose result is usually there by now
+            if ($hit !== null) {
+                /** @var T */
+                return $hit;
+            }
+            $value = $build();
+            Cache::put($key, $value, $ttl);
+            Cache::put($lastKey, $value, self::LAST_GOOD_TTL);
+
+            return $value;
+        } finally {
+            $lock->release();
+        }
+    }
+
+    /**
+     * Build a guarded entry NOW under its build lock (the warm-up): the versioned value and the last good one. If
+     * another process holds the lock (a request building it), this one leaves it to that process and returns null.
+     *
+     * @template T
+     *
+     * @param  Closure(): T  $build
+     * @return T|null
+     */
+    public function refreshGuarded(int $storefrontId, string $what, string $suffix, int $ttl, Closure $build): mixed
+    {
+        $key = $this->key($storefrontId, $what, $suffix);
+        $lastKey = self::lastGoodKey($storefrontId, $what, $suffix);
+        if (! Cache::getStore() instanceof LockProvider) {
+            $value = $build();
+            Cache::put($key, $value, $ttl);
+            Cache::put($lastKey, $value, self::LAST_GOOD_TTL);
+
+            return $value;
+        }
+        $lock = Cache::lock(self::buildLockKey($storefrontId, $what, $suffix), self::BUILD_LOCK_SECONDS);
+        if (! $lock->get()) {
+            return null;
+        }
+        try {
+            $value = $build();
+            Cache::put($key, $value, $ttl);
+            Cache::put($lastKey, $value, self::LAST_GOOD_TTL);
+
+            return $value;
+        } finally {
+            $lock->release();
+        }
+    }
+
+    public static function lastGoodKey(int $storefrontId, string $what, string $suffix = ''): string
+    {
+        return "sf:{$storefrontId}:{$what}".($suffix !== '' ? ":{$suffix}" : '').':last-good';
+    }
+
+    public static function buildLockKey(int $storefrontId, string $what, string $suffix = ''): string
+    {
+        return "sf:{$storefrontId}:{$what}".($suffix !== '' ? ":{$suffix}" : '').':build';
     }
 
     /**

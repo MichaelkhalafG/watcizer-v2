@@ -44,6 +44,26 @@ final class CatalogWarmer
     }
 
     /**
+     * The storefronts whose CATEGORY TREE is warmed: every active one, whatever `compat.warm_storefronts` lists (that
+     * list is for the compat listing index; the tree serves every storefront's v2 menu — 2026-11-12 incident). When
+     * ids are given, only those of them that are active.
+     *
+     * @param  list<int>  $only
+     * @return list<int>
+     */
+    public function treeStorefronts(array $only = []): array
+    {
+        $active = [];
+        foreach (DB::table('storefronts')->where('is_active', true)->orderBy('id')->pluck('id') as $id) {
+            if (is_numeric($id)) {
+                $active[] = (int) $id;
+            }
+        }
+
+        return $only === [] ? $active : array_values(array_intersect($active, $only));
+    }
+
+    /**
      * Only the storefronts `activeStorefronts()` allows, out of these.
      *
      * @param  list<int>  $ids

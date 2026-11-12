@@ -9,6 +9,7 @@ use App\Domain\Access\UserWriteGuard;
 use App\Domain\Import\ImageCache;
 use App\Domain\Inventory\StockWriteGuard;
 use App\Domain\Payment\ProviderRegistry;
+use App\Storefront\CategoryTree;
 use App\Storefront\StorefrontCache;
 use App\Support\LegacyReadOnly;
 use App\Support\StorefrontServerKey;
@@ -236,7 +237,23 @@ class AppServiceProvider extends ServiceProvider
          */
         $this->app->terminating(function (): void {
             $ids = StorefrontCache::takeFlushed();
-            if ($ids === [] || ! config()->boolean('compat.warm_on_write')) {
+            if ($ids === []) {
+                return;
+            }
+            /*
+             * The CATEGORY TREE of each flushed storefront, rebuilt now (2026-11-12 incident: after the import and the
+             * switch flushed both storefronts, every request rebuilt it at once). Under its build lock: a request
+             * already building it is left to it. A failure is logged; the 5-minute catalog:warm builds it anyway.
+             */
+            try {
+                $warmer = $this->app->make(CatalogWarmer::class);
+                foreach ($warmer->treeStorefronts($ids) as $id) {
+                    CategoryTree::warm($id);
+                }
+            } catch (\Throwable $e) {
+                Log::warning('category tree warm-up after a write failed', ['storefronts' => $ids, 'error' => $e->getMessage()]);
+            }
+            if (! config()->boolean('compat.warm_on_write')) {
                 return;
             }
             try {

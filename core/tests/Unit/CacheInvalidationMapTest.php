@@ -15,7 +15,7 @@ it('lists every cache key family the application writes, and nothing else', func
     $used = [];
     foreach (File::allFiles(app_path()) as $file) {
         $src = $file->getContents();
-        if (preg_match_all("/->(?:remember|key|refresh|many|putMany)\\(\\s*[^,]+,\\s*'([a-z_]+)'/", $src, $m) > 0) {
+        if (preg_match_all("/->(?:rememberGuarded|refreshGuarded|remember|key|refresh|many|putMany)\\(\\s*[^,]+,\\s*'([a-z_]+)'/", $src, $m) > 0) {
             foreach ($m[1] as $what) {
                 $used[$what] = true;
             }

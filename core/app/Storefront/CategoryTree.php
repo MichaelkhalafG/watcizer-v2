@@ -2,10 +2,10 @@
 
 namespace App\Storefront;
 
+use App\Models\Storefront\Storefront;
 use App\Models\Storefront\StorefrontCategory;
 use App\Support\Val;
 use App\Transform\Row;
-use Illuminate\Database\Query\JoinClause;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -33,9 +33,28 @@ final class CategoryTree
         $locales = $this->ctx->locales();
 
         /** @var array{nodes: array<int, array<string, mixed>>, roots: list<int>} $data */
-        $data = $this->cache->remember($sf, 'tree', '', config()->integer('storefront.ttl.tree'), fn () => self::load($sf, $locales));
+        // GUARDED (2026-11-12 incident): one build per storefront at a time, the last good tree served meanwhile
+        $data = $this->cache->rememberGuarded($sf, 'tree', '', config()->integer('storefront.ttl.tree'), fn () => self::load($sf, $locales));
 
         return $this->data = $data;
+    }
+
+    /**
+     * Build a storefront's tree NOW, before a shopper needs it (catalog:warm every 5 minutes, and right after a
+     * write flushed the storefront — 2026-11-12). Its locales as a request would read them. Null when a request is
+     * building it at this moment (that build stores it).
+     *
+     * @return array<string, mixed>|null
+     */
+    public static function warm(int $storefrontId): ?array
+    {
+        $raw = Storefront::query()->whereKey($storefrontId)->value('locales');
+        $decoded = is_string($raw) ? json_decode($raw, true) : $raw;
+        $locales = is_array($decoded) ? array_values(array_filter($decoded, 'is_string')) : [];
+        $locales = $locales === [] ? ['ar', 'en'] : $locales;
+
+        return app(StorefrontCache::class)->refreshGuarded($storefrontId, 'tree', '', config()->integer('storefront.ttl.tree'),
+            fn () => self::load($storefrontId, $locales));
     }
 
     /**
@@ -89,31 +108,21 @@ final class CategoryTree
             $name[Row::str($t, 'locale')] = Row::str($t, 'name');
             $nodes[$id]['name'] = $name;
         }
-        // Subtree product counts: visible + active products placed on the node or any descendant.
-        $counts = DB::table('storefront_categories as c')
-            ->join('storefront_categories as node', 'node.path', 'like', DB::raw("CONCAT(c.path, '%')"))
-            ->join('storefront_category_product as scp', 'scp.storefront_category_id', '=', 'node.id')
-            ->join('storefront_product as sp', function (JoinClause $j) use ($storefrontId): void {
-                $j->on('sp.product_id', '=', 'scp.product_id')->where('sp.storefront_id', '=', $storefrontId);
-            })
-            ->join('catalog_products as cp', 'cp.id', '=', 'sp.product_id')
-            ->where('c.storefront_id', $storefrontId)
-            ->whereIn('c.id', array_keys($nodes))
-            ->where('sp.is_visible', 1)->where('cp.is_active', 1)->whereNull('cp.deleted_at')
-            ->groupBy('c.id')
-            ->selectRaw('c.id AS id, COUNT(DISTINCT scp.product_id) AS n')
-            ->get();
-        foreach ($counts as $c) {
-            $nodes[Row::int($c, 'id')]['product_count'] = Row::int($c, 'n');
+        // Subtree product counts (visible + active products placed on the node or any descendant) AND each node's
+        // fallback picture, from ONE pass over the storefront's placements (2026-11-12: the LIKE-on-path self join it
+        // replaces took 150 s+ on production — CategoryImages::rollup()).
+        $rollup = CategoryImages::rollup($storefrontId, array_keys($nodes));
+        foreach ($rollup['counts'] as $id => $n) {
+            $nodes[$id]['product_count'] = $n;
         }
         // The fallback picture, for every node that has none of its own and was not told to show none.
-        $missing = [];
+        $winners = [];
         foreach ($nodes as $id => $node) {
-            if ($node['image'] === null && ! isset($hidden[$id])) {
-                $missing[$id] = Val::str($node, 'id_path');
+            if ($node['image'] === null && ! isset($hidden[$id]) && isset($rollup['best'][$id])) {
+                $winners[$id] = $rollup['best'][$id];
             }
         }
-        foreach (CategoryImages::fallbacks($storefrontId, $missing) as $id => $image) {
+        foreach (CategoryImages::picturesOf($winners) as $id => $image) {
             $nodes[$id]['image'] = $image;
             $nodes[$id]['image_source'] = 'product';
         }

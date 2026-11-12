@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Storefront;
 
 use App\Transform\Row;
-use Illuminate\Database\Query\Builder;
 use Illuminate\Database\Query\JoinClause;
 use Illuminate\Support\Facades\DB;
 
@@ -57,29 +56,20 @@ final class CategoryImages
             return [];
         }
 
-        $ranked = DB::table('storefront_categories as c')
-            ->join('storefront_categories as node', function (JoinClause $join): void {
-                $join->on('node.storefront_id', '=', 'c.storefront_id')->on('node.path', 'like', DB::raw("CONCAT(c.path, '%')"));
-            })
-            ->join('storefront_category_product as scp', 'scp.storefront_category_id', '=', 'node.id')
-            ->join('storefront_product as sp', function (JoinClause $join) use ($storefrontId): void {
-                $join->on('sp.product_id', '=', 'scp.product_id')->where('sp.storefront_id', '=', $storefrontId);
-            })
-            ->join('catalog_products as p', 'p.id', '=', 'sp.product_id')
-            ->where('c.storefront_id', $storefrontId)->whereIn('c.id', array_keys($idPaths))
-            ->where('sp.is_visible', 1)->where('p.is_active', 1)->whereNull('p.deleted_at')
-            ->whereExists(fn (Builder $q) => $q->selectRaw('1')->from('catalog_product_images as i')->whereColumn('i.product_id', 'p.id'))
-            // in stock FIRST, then newest: a sold-out product represents a category only when nothing in it can be bought
-            ->selectRaw('c.id AS node_id, p.id AS product_id, ROW_NUMBER() OVER (PARTITION BY c.id ORDER BY p.in_stock DESC, p.created_at DESC, p.id DESC) AS rn');
+        return self::picturesOf(self::rollup($storefrontId, array_keys($idPaths))['best']);
+    }
 
-        $winners = [];
-        foreach (DB::query()->fromSub($ranked, 'r')->where('r.rn', 1)->get(['r.node_id', 'r.product_id']) as $raw) {
-            $winners[Row::int($raw, 'node_id')] = Row::int($raw, 'product_id');
-        }
+    /**
+     * The cover image of each node's winning product (node id → product id, from rollup()['best']).
+     *
+     * @param  array<int, int>  $winners
+     * @return array<int, array<string, mixed>>
+     */
+    public static function picturesOf(array $winners): array
+    {
         if ($winners === []) {
             return [];
         }
-
         $covers = self::covers(array_values(array_unique($winners)));
         $out = [];
         foreach ($winners as $nodeId => $productId) {
@@ -89,6 +79,75 @@ final class CategoryImages
         }
 
         return $out;
+    }
+
+    /**
+     * Per node of the storefront's tree, over its WHOLE subtree (the node and every descendant, by the materialised
+     * id path): how many distinct visible + active products are placed there (`counts`), and which product with a
+     * photo represents it (`best`: in stock first, then the newest, then the highest id — the order the window query
+     * used).
+     *
+     * Rewritten 2026-11-12 (production incident): the old form joined every category to every other with
+     * `node.path LIKE CONCAT(c.path, '%')` — no index can serve it — and took 150 s+ per copy on 9,746 products while
+     * every request that missed the cache started its own copy. Now: ONE indexed query for the storefront's
+     * placements (category → product, with the product's stock, age and whether it has a photo), and each placement
+     * is credited to the ancestors in its node's path (`/4/76/77/` → 4, 76, 77) in PHP. Same results.
+     *
+     * @param  list<int>  $nodeIds  the nodes asked about
+     * @return array{counts: array<int, int>, best: array<int, int>}
+     */
+    public static function rollup(int $storefrontId, array $nodeIds): array
+    {
+        $wanted = array_fill_keys($nodeIds, true);
+        if ($wanted === []) {
+            return ['counts' => [], 'best' => []];
+        }
+        /** @var array<int, list<int>> $ancestors every node of the tree → the ids on its path, itself included */
+        $ancestors = [];
+        foreach (DB::table('storefront_categories')->where('storefront_id', $storefrontId)->get(['id', 'path']) as $raw) {
+            $ids = [];
+            foreach (explode('/', trim(Row::str($raw, 'path'), '/')) as $segment) {
+                if ($segment !== '' && ctype_digit($segment) && isset($wanted[(int) $segment])) {
+                    $ids[] = (int) $segment;
+                }
+            }
+            $ancestors[Row::int($raw, 'id')] = $ids;
+        }
+
+        $members = [];
+        $best = [];
+        $rank = [];
+        $placements = DB::table('storefront_category_product as scp')
+            ->join('storefront_product as sp', function (JoinClause $join) use ($storefrontId): void {
+                $join->on('sp.product_id', '=', 'scp.product_id')->where('sp.storefront_id', '=', $storefrontId);
+            })
+            ->join('catalog_products as p', 'p.id', '=', 'sp.product_id')
+            ->whereIn('scp.storefront_category_id', array_keys($ancestors))
+            ->where('sp.is_visible', 1)->where('p.is_active', 1)->whereNull('p.deleted_at')
+            ->selectRaw('scp.storefront_category_id AS node_id, p.id AS product_id, p.in_stock AS in_stock, p.created_at AS created_at, '
+                .'EXISTS (SELECT 1 FROM catalog_product_images i WHERE i.product_id = p.id) AS has_image')
+            ->cursor();
+        foreach ($placements as $raw) {
+            $node = Row::int($raw, 'node_id');
+            $product = Row::int($raw, 'product_id');
+            $hasImage = Row::bool($raw, 'has_image');
+            // in stock FIRST, then newest, then the highest id: a sold-out product represents a category only when
+            // nothing in it can be bought (a NULL creation date sorts last, as it did in the window query)
+            $key = [Row::bool($raw, 'in_stock') ? 1 : 0, Row::nstr($raw, 'created_at') ?? '', $product];
+            foreach ($ancestors[$node] ?? [] as $a) {
+                $members[$a][$product] = true;
+                if ($hasImage && (! isset($rank[$a]) || $key > $rank[$a])) {
+                    $rank[$a] = $key;
+                    $best[$a] = $product;
+                }
+            }
+        }
+        $counts = [];
+        foreach ($members as $a => $products) {
+            $counts[$a] = count($products);
+        }
+
+        return ['counts' => $counts, 'best' => $best];
     }
 
     /**
