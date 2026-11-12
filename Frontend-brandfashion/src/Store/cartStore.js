@@ -184,11 +184,14 @@ const setLine = (line, quantity) =>
 // The AddToCart event fires on a CONFIRMED add only, for the delta (Watchizer's rule).
 const trackConfirmedAdd = (synced, { id, name, unitPrice, added }) =>
   synced.then((result) => {
+    // the catalogue's id for the product, from the cart core just answered (content_id, 2026-11-12): the old site's id
+    // for an old product, so the pixel, the Conversions API and the feeds agree; the product id when there is none
+    const cid = (result.data?.items || []).find((it) => it.product?.id === id)?.product?.content_id ?? id
     if (result.ok && added > 0) {
-      trackAddToCart({ id, name, value: parseFloat(unitPrice) * added, quantity: added })
+      trackAddToCart({ id: cid, name, value: parseFloat(unitPrice) * added, quantity: added })
     } else if (result.ok && added < 0) {
       // a DECREASE is GA4's remove_from_cart for what left (2026-10-22); the pixels have no event for it
-      trackRemoveFromCart({ id, name, value: parseFloat(unitPrice) * -added, quantity: -added })
+      trackRemoveFromCart({ id: cid, name, value: parseFloat(unitPrice) * -added, quantity: -added })
     }
     return result
   })

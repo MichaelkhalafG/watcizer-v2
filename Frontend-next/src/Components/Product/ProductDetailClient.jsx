@@ -669,9 +669,12 @@ function ProductDetailClient({ param, isOffer = false, productPayload = null, v2
 
   // ── Analytics: ViewContent (fires once per resolved product/offer) ────────
   const viewedId = isOffer ? offer?.id : product?.id
+  // the catalogue's id (core's content_id, 2026-11-12): the old site's id for an old Brand Fashion product, so the pixel,
+  // the Conversions API and the feeds agree; Watchizer's is the product id, as before
+  const viewedContentId = isOffer ? viewedId : ((v2Product && v2Product.id === product?.id ? v2Product.content_id : null) ?? product?.content_id ?? viewedId)
   useEffect(() => {
     if (viewedId == null) return
-    trackViewContent({ id: viewedId, name: getName(item, 'en'), value: finalPrice })
+    trackViewContent({ id: viewedContentId, name: getName(item, 'en'), value: finalPrice })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewedId])
 
