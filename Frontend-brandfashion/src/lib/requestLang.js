@@ -1,5 +1,6 @@
 import { headers, cookies } from 'next/headers'
 import { localePath } from '../utils/localePath'
+import { SITE } from './siteAddress'
 
 export { localePath }
 
@@ -16,7 +17,8 @@ export async function requestLang() {
   return { lang, urlLang }
 }
 
-export const SITE = 'https://michaelkhalaf.com'
+// the site address: ONE literal in ./siteAddress (switch day edits that line only)
+export { SITE }
 
 // Next `alternates` for a page available in both languages: self-canonical in `lang`, plus
 // hreflang for both and x-default (English). `path` is the English path, query included if any.

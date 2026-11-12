@@ -1,6 +1,7 @@
 import { productUrl, offerUrl } from '../utils/productUrl'
 import { buildListingParams } from '../utils/listingParams'
 import { localePath } from '../utils/localePath'
+import { SITE } from './siteAddress'
 
 // Server-side SEO for the product/offer detail pages. Produces BOTH the Next
 // `metadata` object (→ generateMetadata, replacing the old <Helmet>) and the
@@ -9,7 +10,7 @@ import { localePath } from '../utils/localePath'
 // title, description, JSON-LD names, breadcrumbs — is in the URL's language (S-AR stage 1):
 // English on /product/…, Arabic on /ar/product/…, each self-canonical with hreflang to the other.
 
-export const SEO_DOMAIN = 'https://michaelkhalaf.com'
+export const SEO_DOMAIN = SITE   // ONE literal in ./siteAddress
 
 const stripDesc = (raw, fallback) =>
   (raw || fallback || '')

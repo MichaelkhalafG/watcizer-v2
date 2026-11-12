@@ -2,6 +2,7 @@ import './globals.css'
 import ReactDOM from 'react-dom'
 import { ASSET_BASE } from '@/src/lib/env'
 import { requestLang } from '@/src/lib/requestLang'
+import { SITE } from '@/src/lib/siteAddress'
 import { elMessiriClass } from './fonts/elMessiri'
 import Providers from './providers'
 import Analytics from './analytics'
@@ -17,7 +18,7 @@ import OfflineBanner from '@/src/Components/Offline/OfflineBanner'
 // Static <head> parity with Frontend/index.html + the global SEO defaults from
 // App.jsx (each page overrides title/description/canonical in Phase 3).
 export const metadata = {
-  metadataBase: new URL('https://michaelkhalaf.com'),
+  metadataBase: new URL(SITE),
   title: 'Brand Fashion',
   description:
     'اكتشف أفخم الساعات والإكسسوارات في Brand Fashion. تسوق الآن أرقى الساعات الفاخرة بتصاميم أنيقة وجودة عالمية بأسعار تنافسية.',
@@ -25,7 +26,7 @@ export const metadata = {
     "luxury watches, men's watches, women's watches, branded watches, best watch store Egypt, online watch shop, Rolex, Omega, TAG Heuer, Swiss watches, ساعات فاخرة, ساعات رجالي, ساعات نسائية, متجر ساعات في مصر",
   authors: [{ name: 'Brand Fashion' }],
   robots: 'index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1',
-  alternates: { canonical: 'https://michaelkhalaf.com' },
+  alternates: { canonical: SITE },
   manifest: '/manifest.json',
   // NOTE: no `icons` key here on purpose. The icons come from the Next.js file
   // conventions app/favicon.ico + app/icon.png + app/apple-icon.png, which Next
@@ -44,13 +45,13 @@ export const metadata = {
       'اكتشف مجموعة رائعة من الساعات الفاخرة والإكسسوارات العصرية في Brand Fashion. جودة استثنائية، تصاميم راقية، وعروض لا تُقاوم.',
     images: [
       {
-        url: 'https://michaelkhalaf.com/og-image.jpg',
+        url: `${SITE}/og-image.jpg`,
         width: 1200,
         height: 630,
         alt: 'Brand Fashion',
       },
     ],
-    url: 'https://michaelkhalaf.com',
+    url: SITE,
     siteName: 'Brand Fashion',
     locale: 'ar_EG',
   },
@@ -59,7 +60,7 @@ export const metadata = {
     title: 'Brand Fashion',
     description:
       'تسوق أحدث موديلات الساعات الفاخرة والإكسسوارات الراقية بأفضل الأسعار فقط على Brand Fashion.',
-    images: ['https://michaelkhalaf.com/og-image.jpg'],
+    images: [`${SITE}/og-image.jpg`],
   },
 }
 
