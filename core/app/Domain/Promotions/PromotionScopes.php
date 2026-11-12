@@ -15,7 +15,9 @@ use Illuminate\Support\Facades\DB;
  * facts of the lines they are matched against.
  *
  * A scope row is (role, dimension, value): `target` rows say which items the discount is taken OFF, `qualify` rows
- * which items must be in the cart for the rule to apply ("buy from X"). Within one role: AND across dimensions, OR
+ * which items must be in the cart for the rule to apply ("buy from X"), and `exclude` rows (2026-11-12) which items the
+ * discount is NEVER taken off, even inside the target ("10 % off everything except these brands' watches" — WR10/BR10).
+ * Within one role: AND across dimensions, OR
  * within one — "brand Rolex OR Omega, AND family watch". A role with no rows matches every line.
  *
  * Dimensions: `brand` (catalog_brands.id), `grade` (catalog_grades.id), `family` (catalog_products.family: watch,
@@ -31,8 +33,11 @@ final class PromotionScopes
 
     public const ROLE_QUALIFY = 'qualify';
 
+    /** Lines the discount never comes off (2026-11-12). Same reading as a role: AND across dimensions, OR within one. */
+    public const ROLE_EXCLUDE = 'exclude';
+
     /** @var list<string> */
-    public const ROLES = [self::ROLE_TARGET, self::ROLE_QUALIFY];
+    public const ROLES = [self::ROLE_TARGET, self::ROLE_QUALIFY, self::ROLE_EXCLUDE];
 
     /** @var list<string> */
     public const DIMENSIONS = ['brand', 'category', 'sub_type', 'grade', 'family'];

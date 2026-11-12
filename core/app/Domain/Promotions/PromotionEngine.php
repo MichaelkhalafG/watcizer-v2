@@ -422,11 +422,18 @@ final class PromotionEngine
             return ['discount' => 0.0, 'lines' => [], 'free_shipping' => false, 'free_shipping_possible' => false];
         }
 
-        $target = PromotionScopes::of(Row::int($rule, 'id'))[PromotionScopes::ROLE_TARGET] ?? [];
+        $ruleScopes = PromotionScopes::of(Row::int($rule, 'id'));
+        $target = $ruleScopes[PromotionScopes::ROLE_TARGET] ?? [];
+        // the EXCLUSION (2026-11-12): a line it matches never takes the discount, even inside the target. Empty = none
+        // (lineMatches() reads an EMPTY scope as "every line", so it is only asked when the rule has exclude rows)
+        $exclude = $ruleScopes[PromotionScopes::ROLE_EXCLUDE] ?? [];
         $includeSale = ! property_exists($rule, 'include_sale_items') || Row::bool($rule, 'include_sale_items');
         $eligible = [];
         foreach ($cart->lines as $index => $line) {
             if ($line->productId === null || ! $scopes->lineMatches($index, $target)) {
+                continue;
+            }
+            if ($exclude !== [] && $scopes->lineMatches($index, $exclude)) {
                 continue;
             }
             if (! $includeSale && $scopes->onSale($index)) {
