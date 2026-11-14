@@ -139,7 +139,7 @@ function OrderConfirmation() {
   const hasOrder = useMemo(() => Boolean(orderNumber), [orderNumber])
 
   /*
-   * ── Analytics: Purchase (FB) / CompletePayment (TikTok) ───────────────────────
+   * ── Analytics: Purchase (Meta, GA4) ────────────────────────────────────────────
    *
    * THE CASH PATH. A card order reaches this component through the payment callback's
    * `?order=…&status=…` with an empty store, so `orderNumber` is unset here and the first guard

@@ -1,6 +1,10 @@
-// Analytics events for GA4 (gtag), the Meta pixel (fbq) and the TikTok pixel (ttq). A TWIN.
+// Analytics events for GA4 (gtag) and the Meta pixel (fbq). A TWIN.
 //
-// All three globals are bootstrapped in app/analytics.jsx, which also fires PageView on
+// 2026-11-14: the TikTok pixel is GONE from both shops (Michael: no TikTok ads) — its script, its init, every event
+// call and the env key it read (NEXT_PUBLIC_TIKTOK_PIXEL_ID). It cost about 0.9 s of main-thread time per visit on a
+// throttled phone for a pixel nobody bought ads on. Meta and the Conversions API are unchanged.
+//
+// Both globals are bootstrapped in app/analytics.jsx, which also fires PageView on
 // every route change, and each is rendered only when ITS id is configured (env.js) — a
 // storefront with no ids loads no script and sends nothing, and the helpers below are
 // then no-ops. Each stub queues calls made before its script finishes loading, then
@@ -18,11 +22,11 @@
 //                                          addition, and counting it teaches the ad auction to
 //                                          chase people who never got the item into their basket.
 //   GA4 remove_from_cart                   cartStore, when a line is removed or its quantity cut.
-//                                          GA4 only: neither pixel has a standard event for it.
+//                                          GA4 only: the Meta pixel has no standard event for it.
 //   GA4 view_cart                          Cart, once per visit with a non-empty cart. GA4 only.
 //   GA4 begin_checkout · InitiateCheckout  Checkout, once per visit to the page with a non-empty cart.
-//   GA4 purchase · Purchase ·              OrderConfirmation — the cash path from the order the
-//   CompletePayment                        store hands over, the card path from the snapshot
+//   GA4 purchase · Purchase                OrderConfirmation — the cash path from the order the
+//                                          store hands over, the card path from the snapshot
 //                                          Checkout saves before the Paymob hand-off (below).
 //
 // ── BEFORE 2026-10-22 ───────────────────────────────────────────────────────
@@ -48,24 +52,18 @@
 // The server already sends Meta a Purchase from the payment callback through the Conversions
 // API, with event_id `purchase-<order number>` (core, MetaConversions). The browser Purchase
 // here carries the SAME event id, so Meta keeps one of the two — that is how its deduplication
-// works — and no card sale counts twice. TikTok gets the same id as `event_id` for the same
-// reason, should a server event ever be added there. GA4 deduplicates on `transaction_id`.
+// works — and no card sale counts twice. GA4 deduplicates on `transaction_id`.
 //
 // A reload of the confirmation page, or opening it again in a new tab, must not count a
 // second sale: the order numbers already reported are PERSISTED (wz_fb_purchased), not held
 // in a Set that dies with the page.
-//
-// Event-name note: ViewContent and AddToCart are identical on both pixels. For a completed
-// order, Meta's event is `Purchase`; TikTok's canonical purchase conversion is `CompletePayment`
-// (TikTok has no `Purchase` standard event), so we send the correct name to each.
-import { GA4_MEASUREMENT_ID, META_PIXEL_IDS, TIKTOK_PIXEL_ID } from '../lib/env'
+import { GA4_MEASUREMENT_ID, META_PIXEL_IDS } from '../lib/env'
 
 const CURRENCY = 'EGP'
 
 // A vendor global that is not there YET (its bootstrap is injected after hydration, after the
-// page's own effects; TikTok's only after the load event): try now, then every 250 ms for
-// thirty seconds, then give up quietly. A storefront whose id is not configured never gets this
-// far — see the three callers.
+// page's own effects): try now, then every 250 ms for thirty seconds, then give up quietly. A
+// storefront whose id is not configured never gets this far — see the callers.
 const whenReady = (ready, fn, tries = 120) => {
   if (typeof window === 'undefined') return
   if (ready()) {
@@ -85,13 +83,6 @@ const fb = (event, params, eventId) => {
   whenReady(
     () => typeof window.fbq === 'function',
     () => (eventId ? window.fbq('track', event, params, { eventID: eventId }) : window.fbq('track', event, params)),
-  )
-}
-const tt = (event, params, eventId) => {
-  if (!TIKTOK_PIXEL_ID) return
-  whenReady(
-    () => !!(window.ttq && typeof window.ttq.track === 'function'),
-    () => (eventId ? window.ttq.track(event, params, { event_id: eventId }) : window.ttq.track(event, params)),
   )
 }
 // A custom Meta event (no standard name fits): `trackCustom`, the same guard, the same single call per action.
@@ -140,11 +131,6 @@ export const trackViewContent = ({ id, name, value }) => {
     value: v,
     currency: CURRENCY,
   })
-  tt('ViewContent', {
-    contents: id != null ? [{ content_id: String(id), content_name: name }] : [],
-    value: v,
-    currency: CURRENCY,
-  })
   ga('view_item', {
     currency: CURRENCY,
     value: v,
@@ -179,14 +165,6 @@ export const trackAddToCart = ({ id, name, value, quantity = 1 }) => {
     value: v,
     currency: CURRENCY,
   })
-  tt('AddToCart', {
-    contents:
-      id != null
-        ? [{ content_id: String(id), content_name: name, quantity: q, price: q ? v / q : v }]
-        : [],
-    value: v,
-    currency: CURRENCY,
-  })
   ga('add_to_cart', {
     currency: CURRENCY,
     value: v,
@@ -195,7 +173,7 @@ export const trackAddToCart = ({ id, name, value, quantity = 1 }) => {
 }
 
 // A line removed, or its quantity cut: `quantity` is what LEFT the cart and `value` its worth.
-// GA4 only — neither pixel has a standard event for it.
+// GA4 only — the Meta pixel has no standard event for it.
 export const trackRemoveFromCart = ({ id, name, value, quantity = 1 }) => {
   const q = Number(quantity) || 1
   const v = money(value)
@@ -230,16 +208,6 @@ export const trackInitiateCheckout = ({ value, contents = [], coupon = null }) =
       .filter((c) => c.id != null)
       .map((c) => ({ id: String(c.id), quantity: Number(c.quantity) || 1 })),
     ...(numItems ? { num_items: numItems } : {}),
-    value: v,
-    currency: CURRENCY,
-  })
-  tt('InitiateCheckout', {
-    contents: contents.map((c) => ({
-      content_id: c.id != null ? String(c.id) : undefined,
-      content_name: c.name,
-      quantity: Number(c.quantity) || 1,
-      price: Number(c.price) || 0,
-    })),
     value: v,
     currency: CURRENCY,
   })
@@ -290,14 +258,12 @@ const rememberPurchased = (key) => {
 // number ever leaves the page in an event — the code and the prize's key are the whole payload.
 export const trackSpin = ({ campaign = null } = {}) => {
   fbCustom('Spin', { ...(campaign ? { campaign } : {}) })
-  tt('Spin', { ...(campaign ? { campaign } : {}) })
   ga('spin', { ...(campaign ? { campaign } : {}) })
 }
 
 export const trackCouponWon = ({ code, prize = null, campaign = null }) => {
   const params = { coupon: String(code || ''), ...(prize ? { prize } : {}), ...(campaign ? { campaign } : {}) }
   fbCustom('CouponWon', params)
-  tt('CouponWon', params)
   ga('coupon_won', params)
 }
 
@@ -323,20 +289,6 @@ export const trackPurchase = ({ orderNumber, value, shipping = 0, contents = [],
         .map((c) => ({ id: String(c.id), quantity: Number(c.quantity) || 1 })),
       content_ids: contents.filter((c) => c.id != null).map((c) => String(c.id)),
       ...(numItems ? { num_items: numItems } : {}),
-      value: v,
-      currency: CURRENCY,
-    },
-    eventId,
-  )
-  tt(
-    'CompletePayment',
-    {
-      contents: contents.map((c) => ({
-        content_id: c.id != null ? String(c.id) : undefined,
-        content_name: c.name,
-        quantity: Number(c.quantity) || 1,
-        price: Number(c.price) || 0,
-      })),
       value: v,
       currency: CURRENCY,
     },
