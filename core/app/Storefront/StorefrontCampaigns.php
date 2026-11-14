@@ -7,6 +7,8 @@ namespace App\Storefront;
 use App\Domain\Campaigns\CampaignPrices;
 use App\Domain\Campaigns\Campaigns;
 use App\Domain\Wheel\Wheel;
+use App\Domain\Wheel\WheelPrizes;
+use App\Support\Coerce;
 use App\Support\Val;
 use App\Transform\Row;
 use Illuminate\Support\Carbon;
@@ -94,9 +96,30 @@ final class StorefrontCampaigns
         // the resolved storefront row (no query); the dashboard's switch flushes that row.
         $wheel = Wheel::settingsFrom($this->ctx->storefront->getAttribute('settings'));
         // the round's key too (2026-11-08): the button says "your code" only for a spin of THIS round
-        $out['wheel'] = ['enabled' => $wheel['enabled'], 'campaign' => $wheel['campaign']];
+        $out['wheel'] = ['enabled' => $wheel['enabled'], 'campaign' => $wheel['campaign'], 'colors' => $wheel['enabled'] ? $this->wheelColors() : []];
 
         return $out;
+    }
+
+    /**
+     * The colours of the wheel's segments, in the order /spin draws them (WheelPrizes::segments — drawable prizes only),
+     * for the floating button's small copy of the wheel (2026-11-13). Held a minute in the storefront's `campaign` slot;
+     * the dashboard's wheel screens flush the storefront, so a recoloured prize reaches the button at once. Read only
+     * while the wheel is on: a shop with it off pays no query.
+     *
+     * @return list<string>
+     */
+    private function wheelColors(): array
+    {
+        /** @var list<string> */
+        return $this->cache->remember($this->ctx->id(), 'campaign', 'wheel-colors', self::TTL, function (): array {
+            $out = [];
+            foreach (WheelPrizes::segments($this->ctx->id()) as $segment) {
+                $out[] = Coerce::str($segment['color']);
+            }
+
+            return $out;
+        });
     }
 
     /**

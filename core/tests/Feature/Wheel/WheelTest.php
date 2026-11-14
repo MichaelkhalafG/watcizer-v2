@@ -681,6 +681,27 @@ it('shows the admin the editor with the new types, the categories and the gift l
     expect(Wheel::enabled(1))->toBeTrue();
 });
 
+it('gives the floating button the wheel\'s colours in the campaigns answer: the segments\' own, in /spin\'s order, a dashboard recolour at once, none while off', function () {
+    $colors = fn (): array => T::arr(getJson('/api/v2/watchizer/campaigns')->assertOk()->json('data.wheel.colors'));
+    expect($colors())->toBe(array_column(WheelPrizes::segments(1), 'color'))->and(count($colors()))->toBeGreaterThan(1);
+
+    // the answer above is now held in the cache; the prize editor's save must reach the button without waiting for it
+    actingAs(Staff::admin());
+    $gift = whProduct(1, 900.0, 'wallets');
+    $segments = [
+        ['label_en' => 'Free shipping', 'label_ar' => 'شحن مجاني', 'type' => 'free_shipping', 'odds' => 40, 'color' => '#102030'],
+        ['label_en' => '20% off wallets', 'label_ar' => 'خصم ٢٠٪ على المحافظ', 'type' => 'percent_discount', 'value' => 20, 'odds' => 30, 'color' => '#405060', 'cap' => 300, 'scope_category_id' => whCategory('wallets')],
+        ['label_en' => 'Better luck', 'label_ar' => 'حظًا أوفر', 'type' => 'none', 'odds' => 20, 'color' => '#708090'],
+        ['label_en' => 'A gift', 'label_ar' => 'هدية', 'type' => 'gift', 'odds' => 10, 'color' => '#A0B0C0', 'gift_product_ids' => (string) $gift['id']],
+    ];
+    put('/manage/storefronts/1/wheel/prizes', ['segments' => $segments, 'ttl_hours' => 24, 'min_order' => null])->assertSessionHasNoErrors()->assertRedirect();
+    expect($colors())->toBe(['#102030', '#405060', '#708090', '#A0B0C0']);
+
+    post('/manage/storefronts/1/wheel/switch', ['enabled' => 0])->assertRedirect();
+    $off = T::arr(getJson('/api/v2/watchizer/campaigns')->assertOk()->json('data.wheel'));
+    expect($off['enabled'])->toBeFalse()->and($off['colors'])->toBe([]);
+});
+
 it('writes the spin under the storefront of its path, never the other', function () {
     $phone1 = whPhone();
     postJson('/api/v2/watchizer/wheel/spin', ['phone' => $phone1])->assertOk();
