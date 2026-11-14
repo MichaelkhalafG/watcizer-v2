@@ -1731,6 +1731,8 @@ return [
         'state' => 'Pickup status',
         'all_states' => 'All pickup statuses',
         'no_shipping' => 'Pick up in store — no shipping, no address.',
+        // Part 5 (2026-11-14): the settlement export's store column
+        'settlement_store' => 'Pickup store',
     ],
 
     'placement' => [

@@ -95,6 +95,16 @@ it('builds a hashed Purchase from the order: value, contents, the browser signal
     expect(T::str($json))->not->toContain('example.com');
 });
 
+it('says "in store" on a PICKUP order\'s Purchase, and nothing new on a delivery\'s (click & collect)', function () {
+    $orderId = capiOrder();
+    $custom = fn (): array => T::arr(T::arr(app(MetaConversions::class)->purchaseEvent($orderId))['custom_data']);
+    expect(array_key_exists('delivery_category', $custom()))->toBeFalse();
+
+    DB::table('orders')->where('id', $orderId)->update(['fulfilment' => 'pickup']);
+    expect($custom()['delivery_category'] ?? null)->toBe('in_store')
+        ->and($custom()['value'])->toEqual(1500.0);
+});
+
 it('enqueues ONE Purchase per order, and none while the token is empty', function () {
     $orderId = capiOrder();
     $meta = app(MetaConversions::class);

@@ -273,7 +273,10 @@ export const purchaseEventId = (orderNumber) => `purchase-${orderNumber}`
 // InitiateCheckout reported, or the funnel shows every order growing by its delivery cost
 // between the two steps; `shipping` rides beside it for GA4, which has a field for it.
 // The caller decides WHEN: cash on the confirmation page; card on the paid landing only.
-export const trackPurchase = ({ orderNumber, value, shipping = 0, contents = [], coupon = null }) => {
+// `pickup` (click & collect, 2026-11-14): a pick-up-in-store order says so in each tool's own field — Meta's
+// `delivery_category: in_store` (the server's Conversions API purchase carries the same) and GA4's `shipping_tier`. A
+// delivery order sends exactly what it sent before.
+export const trackPurchase = ({ orderNumber, value, shipping = 0, contents = [], coupon = null, pickup = false }) => {
   const key = orderNumber != null ? String(orderNumber) : ''
   if (key && alreadyPurchased(key)) return false
   if (key) rememberPurchased(key)
@@ -291,6 +294,7 @@ export const trackPurchase = ({ orderNumber, value, shipping = 0, contents = [],
       ...(numItems ? { num_items: numItems } : {}),
       value: v,
       currency: CURRENCY,
+      ...(pickup ? { delivery_category: 'in_store' } : {}),
     },
     eventId,
   )
@@ -299,6 +303,7 @@ export const trackPurchase = ({ orderNumber, value, shipping = 0, contents = [],
     currency: CURRENCY,
     value: v,
     shipping: money(shipping),
+    ...(pickup ? { shipping_tier: 'pickup' } : {}),
     ...(coupon ? { coupon: String(coupon) } : {}),
     items: gaItems(contents),
   })
@@ -313,12 +318,12 @@ export const trackPurchase = ({ orderNumber, value, shipping = 0, contents = [],
 // does not survive every such return. One slot: the next checkout overwrites it, and a
 // snapshot nobody came back for is harmless — the landing fires only for ITS order number.
 const PENDING_KEY = 'wz_pending_purchase'
-export const savePendingPurchase = ({ orderNumber, value, shipping = 0, contents = [], coupon = null }) => {
+export const savePendingPurchase = ({ orderNumber, value, shipping = 0, contents = [], coupon = null, pickup = false }) => {
   if (orderNumber == null) return
   try {
     localStorage.setItem(
       PENDING_KEY,
-      JSON.stringify({ orderNumber: String(orderNumber), value: money(value), shipping: money(shipping), contents, coupon, at: Date.now() }),
+      JSON.stringify({ orderNumber: String(orderNumber), value: money(value), shipping: money(shipping), contents, coupon, pickup: Boolean(pickup), at: Date.now() }),
     )
   } catch {
     // storage unavailable: the server's Conversions API purchase still counts the sale for Meta

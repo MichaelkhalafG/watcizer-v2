@@ -603,6 +603,12 @@ final class OrderController
              */
             ->leftJoin('promotion_order_discounts as pod', 'pod.order_id', '=', 'o.id')
             ->addSelect(['pod.amount as discount_amount', 'pod.promotion_rule_id as discount_rule'])
+            /*
+             * Delivery or pickup, and the store (click & collect, 2026-11-14). `order_pickups.order_id` is UNIQUE, so the
+             * join cannot multiply the attempt rows, for the same reason as the discount's.
+             */
+            ->leftJoin('order_pickups as opk', 'opk.order_id', '=', 'o.id')
+            ->addSelect(['o.fulfilment', 'opk.store_name_en as pickup_store_en', 'opk.store_name_ar as pickup_store_ar'])
             ->orderBy('ps.created_at')->orderBy('ps.id');
 
         if ($from !== null && $from !== '') {
@@ -681,7 +687,13 @@ final class OrderController
              */
             ['key' => 'discount', 'label' => ManageText::t('orders.discount', 'الخصم'), 'value' => null],
             ['key' => 'discount_rule', 'label' => ManageText::t('orders.settlement_discount_rule', 'رقم عرض الخصم'), 'value' => null],
+            // click & collect (2026-11-14): appended, never inserted — a spreadsheet built on this file reads by position
+            ['key' => 'fulfilment', 'label' => ManageText::t('pickup.fulfilment', 'الاستلام'), 'value' => null],
+            ['key' => 'pickup_store', 'label' => ManageText::t('pickup.settlement_store', 'فرع الاستلام'), 'value' => null],
         ];
+        $english = app()->getLocale() === 'en';
+        $delivery = ManageText::t('pickup.delivery', 'توصيل');
+        $pickupWord = ManageText::t('pickup.pickup', 'استلام من الفرع');
 
         /*
          * Chunked through a generator: a settlement export must not hold a year of attempts in
@@ -689,7 +701,7 @@ final class OrderController
          *
          * @return iterable<int, array<string, mixed>>
          */
-        $rows = (function () use ($query): iterable {
+        $rows = (function () use ($query, $english, $delivery, $pickupWord): iterable {
             foreach ($query->orderBy('ps.id')->cursor() as $raw) {
                 $row = Row::cast($raw);
                 $minor = Row::nint($row, 'amount_cents');
@@ -716,6 +728,8 @@ final class OrderController
                     // every order that carried no discount, which is nearly all of them.
                     'discount' => Row::nmoney($row, 'discount_amount') ?? '',
                     'discount_rule' => ($ruleId = Row::nint($row, 'discount_rule')) === null ? '' : (string) $ruleId,
+                    'fulfilment' => Row::nstr($row, 'fulfilment') === 'pickup' ? $pickupWord : $delivery,
+                    'pickup_store' => Row::nstr($row, $english ? 'pickup_store_en' : 'pickup_store_ar') ?? '',
                 ];
             }
         })();

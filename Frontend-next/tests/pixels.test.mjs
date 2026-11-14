@@ -133,6 +133,31 @@ describe('purchase: once per order, the same id as the server event', () => {
   })
 })
 
+describe('purchase: a pick-up-in-store order says so (click & collect, 2026-11-14)', () => {
+  const pickupOrder = { orderNumber: 'WZ-2026-000125', value: 1290, shipping: 0, contents: [{ id: 25694, name: 'Wallet', quantity: 1, price: 1290 }], pickup: true }
+
+  it("Meta's delivery_category is in_store and GA4's shipping_tier is pickup — the same event id as the server's", async () => {
+    const { px, gtag, fbq, track } = await load()
+    px.trackPurchase(pickupOrder)
+    expect(fbq).toHaveBeenCalledWith('track', 'Purchase', expect.objectContaining({ delivery_category: 'in_store', value: 1290 }), { eventID: 'purchase-WZ-2026-000125' })
+    expect(gtag).toHaveBeenCalledWith('event', 'purchase', expect.objectContaining({ transaction_id: 'WZ-2026-000125', shipping: 0, shipping_tier: 'pickup' }))
+    expect(track).not.toHaveBeenCalled()
+  })
+
+  it('a delivery order carries neither field', async () => {
+    const { px, gtag, fbq } = await load()
+    px.trackPurchase({ ...pickupOrder, orderNumber: 'WZ-2026-000126', pickup: false })
+    expect(fbq.mock.calls[0][2]).not.toHaveProperty('delivery_category')
+    expect(gtag.mock.calls[0][2]).not.toHaveProperty('shipping_tier')
+  })
+
+  it('the card hand-off keeps the pickup mark for the landing', async () => {
+    const { px } = await load()
+    px.savePendingPurchase({ ...pickupOrder, orderNumber: 'WZ-2026-000127' })
+    expect(px.takePendingPurchase()).toMatchObject({ orderNumber: 'WZ-2026-000127', pickup: true })
+  })
+})
+
 describe('the card hand-off', () => {
   it('what Checkout saves, the landing takes — once', async () => {
     const { px } = await load()
