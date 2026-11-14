@@ -4,7 +4,7 @@ import { useUIStore } from '../../Store/uiStore'
 import { useToastStore } from '../../Store/toastStore'
 import { setCouponNotice, setStoredCoupon } from '../../lib/coupon'
 
-// A FRIEND'S INVITE LINK (2026-11-09 evening, WATCHIZER ONLY): the winner's share message carries the shop's address with
+// A FRIEND'S INVITE LINK (2026-11-09 evening; both shops, a twin since 2026-11-14): the winner's share message carries the shop's address with
 // `?invite=FRIEND-XXXX-XXXX`. On landing the code is kept as the typed coupon (src/lib/coupon.js), the visitor is told
 // so in a toast, and the parameter is taken off the address (a reload or a share of the page does not re-apply it). A
 // `?coupon=` parameter does the same for any code. Mounted once, in the header (every shop page). Nothing on the server.

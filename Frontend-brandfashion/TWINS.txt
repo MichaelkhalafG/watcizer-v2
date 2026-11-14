@@ -395,3 +395,26 @@ src/Components/Account/WheelTab.jsx
 src/Components/Account/WheelTab.css
 # 2026-11-12: src/lib/siteAddress.js exists in Frontend-brandfashion ONLY — the shop's one site-address literal (switch plan §3 item 1); not a twin.
 DIVERGED 2026-11-11 middleware.js — Brand Fashion only (D-3, D-17): the canonical host is www (SITE_CANONICAL_HOST; Watchizer keeps www → apex), and the old WordPress shop's URLs are answered here — old-looking paths asked of core's redirect map (one 301), WordPress internals 410.
+# 2026-11-14 (the wheel on Brand Fashion; the TikTok pixel removed from both shops): TWELVE NEW TWINS - "Spin the wheel" is no
+# longer Watchizer only (this supersedes the 2026-11-07 note above). The page, the wheel, the floating button (the small wheel in the
+# dashboard's colours, the medium label by default, CSS-only motion), the invite-link reader, the rules, the UTM keeper, the route
+# group app/(spin)/ (its own shell, noindex, never in a sitemap) and tests/wheel.test.mjs are ONE set of files for both shops.
+# NOT twins, on purpose: src/content/wheelBrand.js (like campaignPages.js) - each shop's name, its mark on /spin, the hub's letters,
+# the floating button's fallback palette and the page's title and description; and public/og-spin.jpg - each shop's own link
+# preview. Each shop's campaign, prizes, rules, codes and spins come from core per storefront (the dashboard's wheel screens).
+# The button is mounted from each shop's own Header.jsx; Brand Fashion's Login.jsx and Register.jsx (diverged long ago) now go back
+# to the page that sent the visitor (takeAuthReturn), as Watchizer's do. Changed on both sides, identically, and still twins (no
+# TikTok): app/analytics.jsx, src/scripts/pixels.js, src/PageViews/Checkout/OrderConfirmation.jsx, tests/pixels.test.mjs,
+# tests/coupon.test.mjs; src/lib/env.js (diverged) lost its TikTok reader on both sides.
+app/(spin)/layout.jsx
+app/(spin)/spin/page.jsx
+src/Components/Wheel/Backdrop.jsx
+src/Components/Wheel/Confetti.jsx
+src/Components/Wheel/InviteFromLink.jsx
+src/Components/Wheel/SpinPage.jsx
+src/Components/Wheel/SpinWheel.jsx
+src/Components/Wheel/WheelFloat.jsx
+src/Components/Wheel/wheel.css
+src/lib/wheel.js
+src/lib/utm.js
+tests/wheel.test.mjs

@@ -10,6 +10,7 @@ import { useUIStore } from '../../../Store/uiStore'
 import { useToastStore } from '../../../Store/toastStore'
 import AuthShell from '../../../Components/Auth/AuthShell'
 import SocialButtons from '../../../Components/Auth/SocialButtons'
+import { takeAuthReturn } from '../../../lib/authReturn'
 import '../auth.css'
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -99,7 +100,7 @@ function Register() {
           t('Account created! Please verify your email.', 'تم إنشاء الحساب! يرجى تأكيد بريدك الإلكتروني.'),
           'success',
         )
-        router.replace('/')
+        router.replace(takeAuthReturn('/')) // back to the page that sent us (the wheel), else home
       } catch (err) {
         const status = err.response?.status
         if (status === 422 && err.response.data?.errors) {

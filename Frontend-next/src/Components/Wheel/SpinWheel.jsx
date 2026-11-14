@@ -1,10 +1,11 @@
 'use client'
 import { useEffect, useRef, useState } from 'react'
 import { segmentAt, segmentLabel } from '../../lib/wheel'
+import { WHEEL_BRAND } from '../../content/wheelBrand'
 
-// THE WHEEL ITSELF (2026-11-07; in colour since 2026-11-08, WATCHIZER ONLY): an SVG of N segments, each in the colour
+// THE WHEEL ITSELF (2026-11-07; in colour since 2026-11-08; both shops, a twin since 2026-11-14): an SVG of N segments, each in the colour
 // the team gave it on the dashboard, lit from the top-left (one sheen over the disc) and sunk at the rim (one shade),
-// a gold rim with a ring of lamps that chase while the disc turns, a gold hub with the W, and a gold pointer at the top
+// a gold rim with a ring of lamps that chase while the disc turns, a gold hub with the shop's letters (wheelBrand.js hub), and a gold pointer at the top
 // that TICKS as each separator passes under it. The parent sets `rotation` (degrees) and `phase`; the turn is one CSS
 // transition on the disc (wheel.css), so the browser composites it. The pointer reads the disc's live angle each frame
 // while it turns and nudges when the segment changes.
@@ -152,7 +153,7 @@ export default function SpinWheel({ segments, rotation = 0, lang = 'en', phase =
           <circle cx={CX} cy={CY} r="36" fill="url(#wzHubGold)" />
           <circle cx={CX} cy={CY} r="28" fill="#2a0f45" stroke="#fff0b0" strokeWidth="1.2" />
           <text x={CX} y={CY + 10} textAnchor="middle" className="wz-wheel__hub">
-            W
+            {WHEEL_BRAND.hub}
           </text>
         </svg>
       </div>

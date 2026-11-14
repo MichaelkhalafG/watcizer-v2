@@ -7,6 +7,8 @@ import './Header.css'
 import SearchBox from './SearchBox/SearchBox'
 import Nav from './Nav/Nav'
 import CampaignNav from '../Promo/CampaignNav'
+import WheelFloat from '../Wheel/WheelFloat'
+import InviteFromLink from '../Wheel/InviteFromLink'
 import NavProgress from '../NavProgress/NavProgress'
 import MegaDrawer from './MegaMenu/MegaDrawer'
 import { useSwitchLanguage } from '../../Hooks/useSwitchLanguage'
@@ -216,6 +218,11 @@ function Header() {
           countdown, in one slim row. Nothing is drawn without a live campaign (Part 2, 2026-11-05). */}
       {/* phones: the Hot Deals switch is a pill fixed in the thumb's corner (the review of 2026-11-05) */}
       <CampaignNav variant="float" />
+      {/* "Spin & win" (2026-11-14, as on Watchizer): the small wheel linking to /spin in the same corner, above the pill, only
+          while THIS shop's wheel is switched on on the dashboard (the campaigns answer's wheel.enabled) */}
+      <WheelFloat />
+      {/* a friend's invite link (?invite=FRIEND-…) readies the code for the checkout */}
+      <InviteFromLink />
       {/* the line across the top from a click to the new page (item 19): an answer within one frame */}
       <Suspense fallback={null}>
         <NavProgress />

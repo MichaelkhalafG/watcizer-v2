@@ -1,9 +1,10 @@
 /*
- * "Spin the wheel" — /spin and the floating button (2026-11-07; the carnival version of 2026-11-08, WATCHIZER ONLY).
+ * "Spin the wheel" — /spin and the floating button (2026-11-07; the carnival version of 2026-11-08). A TWIN since 2026-11-14:
+ * the same page in both shops; what is each shop's own lives in src/content/wheelBrand.js (name, mark, hub letters, palette).
  *
  * THE SKY: a festive violet (#4C1A9A) lit from above by a brighter violet and from below by magenta, with gold rays
  * turning slowly behind the wheel and gold motes rising — happy and rewarding, never dark or moody. The gold the shop
- * is known for carries the headline (a gradient through the letters), the rim and the button; the Watchizer mark sits
+ * is known for carries the headline (a gradient through the letters), the rim and the button; the shop's mark sits
  * at the top in white; the segments are the team's own colours. One centred column on a phone; from 900 px the words,
  * the form and the legend on one side and the wheel on the other, both centred on the screen — nothing to scroll
  * (2026-11-09). The rhythm is three gaps, not one: tight inside the words, generous around the wheel.
@@ -297,7 +298,13 @@
    The page measures the disc (SpinPage) and sets `--gx`, `--gy` (its centre in viewport pixels) and `--gs` (its width)
    on the layer. Three circles, each centred there with the `translate` property so the ring can turn with `transform`:
    a soft gold glow (what the disc's box-shadow used to be), the turning ring of light (what the halo used to be), and
-   the landing flash in the prize's colour. Fixed + clipped by the viewport: never a hard edge, never part of layout. */
+   the landing flash in the prize's colour. Fixed + clipped by the viewport: never a hard edge, never part of layout.
+   NO LAYOUT PROPERTY EVER CHANGES (2026-11-14): every circle has a FIXED size (its factor of a 400 px disc) at the
+   layer's corner; `translate` carries it to the disc's centre and `scale: var(--gk)` (the disc's width / 400, set by
+   SpinPage beside --gx/--gy) gives it the disc's size. A fixed box whose left/top OR width/height changes is a LAYOUT
+   SHIFT to the browser — measured 0.20-0.22 CLS on load (the first measure moves and resizes the glow from its default)
+   and 0.5-1.1 more as a phone scrolls and the wheel turns, on BOTH shops; translate and scale are not, and draw the
+   same circles. `--gs` stays only for the shadow's offset under the disc, inside its translate. */
 .sp-glow {
   position: fixed;
   inset: 0;
@@ -307,6 +314,7 @@
   --gx: 50vw;
   --gy: 50vh;
   --gs: 300px;
+  --gk: 0.75; /* 300 / 400: the same default size as --gs */
   --prize: #f0c75e;
 }
 .sp-glow__soft,
@@ -314,27 +322,28 @@
 .sp-glow__flash,
 .sp-glow__shadow {
   position: absolute;
-  left: var(--gx);
-  top: var(--gy);
-  translate: -50% -50%;
+  left: 0;
+  top: 0;
+  translate: calc(var(--gx) - 50%) calc(var(--gy) - 50%);
+  scale: var(--gk);
   border-radius: 50%;
   pointer-events: none;
 }
 .sp-glow__soft {
-  width: calc(var(--gs) * 1.7);
-  height: calc(var(--gs) * 1.7);
+  width: 680px; /* 1.7 x the 400 px disc */
+  height: 680px;
   background: radial-gradient(circle, rgba(255, 240, 176, 0.42) 0%, rgba(255, 240, 176, 0.14) 36%, transparent 62%);
 }
 .sp-glow__shadow {
-  width: calc(var(--gs) * 1.1);
-  height: calc(var(--gs) * 0.5);
-  top: calc(var(--gy) + var(--gs) * 0.46);
+  width: 440px; /* 1.1 x 400 */
+  height: 200px; /* 0.5 x 400 */
+  translate: calc(var(--gx) - 50%) calc(var(--gy) + var(--gs) * 0.46 - 50%);
   border-radius: 50%;
   background: radial-gradient(ellipse, rgba(20, 5, 40, 0.75) 0%, rgba(20, 5, 40, 0.3) 45%, transparent 70%);
 }
 .sp-glow__ring {
-  width: calc(var(--gs) * 1.32);
-  height: calc(var(--gs) * 1.32);
+  width: 528px; /* 1.32 x 400 */
+  height: 528px;
   background: conic-gradient(from 0deg, transparent 0 18%, rgba(255, 240, 176, 0.5) 27%, transparent 36%, transparent 58%, rgba(255, 255, 255, 0.3) 67%, transparent 76%);
   -webkit-mask: radial-gradient(circle, transparent 56%, #000 60%, #000 74%, transparent 80%);
   mask: radial-gradient(circle, transparent 56%, #000 60%, #000 74%, transparent 80%);
@@ -344,8 +353,8 @@
   animation-duration: 2.4s;
 }
 .sp-glow__flash {
-  width: calc(var(--gs) * 1.6);
-  height: calc(var(--gs) * 1.6);
+  width: 640px; /* 1.6 x 400 */
+  height: 640px;
   background: radial-gradient(circle, color-mix(in srgb, var(--prize) 60%, transparent), transparent 60%);
   opacity: 0;
 }

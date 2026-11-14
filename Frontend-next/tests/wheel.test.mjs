@@ -27,8 +27,9 @@ import {
   writeSpin,
 } from '../src/lib/wheel'
 import { keepUtm, readUtm, utmFromSearch } from '../src/lib/utm'
+import { WHEEL_BRAND } from '../src/content/wheelBrand'
 
-// "Spin the wheel" — the page's pure rules (2026-11-07, WATCHIZER ONLY). Nothing here decides a prize: the server
+// "Spin the wheel" — the page's pure rules (2026-11-07; both shops, a twin since 2026-11-14). Nothing here decides a prize: the server
 // does; these hold the arithmetic of the turn, the phone's shape, what the browser remembers and the UTM tags.
 
 const mem = () => {
@@ -222,11 +223,13 @@ describe('the kinds of result', () => {
   it('builds the invite link, the message and the share targets by device', () => {
     const link = inviteLink('https://watchizereg.com', 'FRIEND-AAAA-BBBB', 'ar')
     expect(link).toBe('https://watchizereg.com/ar/?invite=FRIEND-AAAA-BBBB')
-    const msg = inviteMessage('FRIEND-AAAA-BBBB', '15', link, 'en')
+    const msg = inviteMessage('FRIEND-AAAA-BBBB', '15', link, 'en', WHEEL_BRAND.name)
+    expect(msg).toContain(`inviting you to ${WHEEL_BRAND.name}:`)
     expect(msg).toContain('FRIEND-AAAA-BBBB')
     expect(msg).toContain('15% off')
     expect(msg).toContain(link)
-    expect(inviteMessage('FRIEND-AAAA-BBBB', '15', link, 'ar')).toContain('١٥٪'.replace('١٥', '15'))
+    expect(inviteMessage('FRIEND-AAAA-BBBB', '15', link, 'ar', WHEEL_BRAND.name)).toContain('١٥٪'.replace('١٥', '15'))
+    expect(inviteMessage('FRIEND-AAAA-BBBB', '15', link, 'ar', WHEEL_BRAND.name)).toContain(WHEEL_BRAND.name)
     const phone = shareTargets(msg, link, true)
     expect(phone.whatsapp.href).toBe(`https://wa.me/?text=${encodeURIComponent(msg)}`)
     expect(phone.whatsapp.copyFirst).toBe(false)
