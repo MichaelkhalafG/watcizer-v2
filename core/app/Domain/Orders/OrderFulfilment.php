@@ -8,6 +8,7 @@ use App\Domain\Activity\ActivityLog;
 use App\Domain\Inventory\Actor;
 use App\Domain\Inventory\InventoryService;
 use App\Domain\Notifications\OrderMailer;
+use App\Domain\Pickup\PickupLifecycle;
 use App\Domain\Wheel\WheelReferrals;
 use App\Support\ManageText;
 use App\Transform\Row;
@@ -91,6 +92,13 @@ final class OrderFulfilment
      */
     public const UNCANCELLABLE = ['delivered', 'completed', 'cancelled'];
 
+    /**
+     * The forward moves a PICKUP order does not make by this door: it is collected at the store instead (2026-11-14).
+     *
+     * @var list<string>
+     */
+    public const PICKUP_SKIPS = ['shipped', 'delivered'];
+
     public function __construct(
         private readonly InventoryService $inventory,
         private readonly OrderMailer $mailer,
@@ -109,6 +117,16 @@ final class OrderFulfilment
         $allowed = self::FULFILMENT_TRANSITIONS[$from] ?? [];
         if (! in_array($to, $allowed, true)) {
             throw new RuntimeException(self::refusal($from, $to, $allowed));
+        }
+        /*
+         * A PICKUP order (2026-11-14) is never shipped: it is made ready at its store and handed over against its code
+         * (PickupLifecycle), which is what moves it to `delivered`. `shipped` would e-mail "on its way to you".
+         */
+        if (Row::nstr($order, 'fulfilment') === 'pickup' && in_array($to, self::PICKUP_SKIPS, true)) {
+            throw new RuntimeException(ManageText::t(
+                'orders.pickup_not_shipped',
+                'هذا طلب استلام من الفرع: لا يُشحن. استخدم «جاهز للاستلام» ثم «تم الاستلام».',
+            ));
         }
 
         DB::table('orders')->where('id', $orderId)->update(['status' => $to, 'updated_at' => now()]);
@@ -228,6 +246,8 @@ final class OrderFulfilment
             if ($claimed > 0) {
                 // a cancelled friend's order earns the inviter nothing (the wheel, 2026-11-09)
                 WheelReferrals::onOrderStatus($orderId, 'cancelled');
+                // a pickup reservation closes with its order (an expired one keeps `expired`) — 2026-11-14
+                PickupLifecycle::closeForCancelledOrder($orderId);
             }
 
             if ($claimed === 0) {
@@ -315,10 +335,15 @@ final class OrderFulfilment
      *
      * @return array{advance: list<string>, may_cancel: bool}
      */
-    public static function options(string $status): array
+    public static function options(string $status, string $fulfilment = 'delivery'): array
     {
+        $advance = self::FULFILMENT_TRANSITIONS[$status] ?? [];
+        if ($fulfilment === 'pickup') {
+            $advance = array_values(array_diff($advance, self::PICKUP_SKIPS));
+        }
+
         return [
-            'advance' => self::FULFILMENT_TRANSITIONS[$status] ?? [],
+            'advance' => $advance,
             'may_cancel' => ! in_array($status, self::UNCANCELLABLE, true),
         ];
     }
@@ -366,7 +391,7 @@ final class OrderFulfilment
     private static function require(int $orderId): \stdClass
     {
         $order = DB::table('orders')->where('id', $orderId)
-            ->first(['id', 'status', 'storefront_id', 'order_number', 'total_price_for_order']);
+            ->first(['id', 'status', 'storefront_id', 'order_number', 'total_price_for_order', 'fulfilment']);
 
         if (! is_object($order)) {
             throw new RuntimeException("Order {$orderId} does not exist.");

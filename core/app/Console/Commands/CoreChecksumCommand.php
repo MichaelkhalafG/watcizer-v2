@@ -161,6 +161,12 @@ final class CoreChecksumCommand extends Command
          */
         'storefront_wheel_spins', 'storefront_wheel_prizes', 'storefront_wheel_referrals',
         /*
+         * Since 2026-11-14 (click & collect): `storefront_pickup_stores` — the stores the team authors per storefront; and
+         * `order_pickups` — each pickup order's reservation: the store as the customer was told, the code, the promised
+         * ready window and every step's time. A rebuild must not erase a promise made to a customer.
+         */
+        'storefront_pickup_stores', 'order_pickups',
+        /*
          * The operator's own dashboard preferences (M1m, wave 4D).
          *
          * Small, and on the list for the same reason as everything above it: a human typed it and

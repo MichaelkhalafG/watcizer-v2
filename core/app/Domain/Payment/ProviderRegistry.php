@@ -32,6 +32,7 @@ final class ProviderRegistry
             MyFatoorahProvider::KEY => new MyFatoorahProvider,
             OfflineProvider::COD => new OfflineProvider(OfflineProvider::COD),
             OfflineProvider::WHATSAPP => new OfflineProvider(OfflineProvider::WHATSAPP),
+            OfflineProvider::STORE => new OfflineProvider(OfflineProvider::STORE),
         ]);
     }
 

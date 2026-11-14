@@ -7,6 +7,7 @@ import {
     Circle,
     CreditCard,
     Disc3,
+    MapPin,
     FileText,
     FolderTree,
     Gift,
@@ -67,6 +68,7 @@ const ICONS: Record<string, ComponentType<{ className?: string }>> = {
     Users,
     CreditCard,
     Disc3,
+    MapPin,
 };
 
 function NavIcon({ name, className }: { name: string; className?: string }) {

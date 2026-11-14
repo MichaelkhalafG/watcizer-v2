@@ -172,6 +172,8 @@ final class Navigation
                     // per-storefront question — so this link carries the segment like the catalog
                     // ones do, and the scope middleware checks the grant behind it.
                     self::item('payments', ManageText::t('payments.title', 'وسائل الدفع'), 'CreditCard', Role::MANAGE_PAYMENTS, route: 'manage.payments.index', params: ['storefront' => $storefrontId]),
+                    // "Pick up in store" (click & collect, 2026-11-14): the switch, the terms and the stores of this storefront.
+                    self::item('pickup', ManageText::t('pickup.title', 'الاستلام من الفرع'), 'MapPin', Role::MANAGE_STOREFRONTS, route: 'manage.pickup.index', params: ['storefront' => $storefrontId]),
                     // The weekly "new picks for you" e-mail: pause, audience, runs (2026-10-01).
                     self::item('reengagement', ManageText::t('reengagement.title', 'رسائل العودة'), 'Mail', Role::MANAGE_STOREFRONTS, route: 'manage.reengagement.index', params: ['storefront' => $storefrontId]),
                     /*

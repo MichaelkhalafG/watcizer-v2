@@ -61,10 +61,17 @@ final class CouponStatus
     /** The cart holds an item at a live campaign price (Hot Deals / Flash Sale): one offer per order (2026-11-10). */
     public const ON_OFFER = 'on_offer';
 
+    /**
+     * A free-shipping code on a PICKUP order (2026-11-14, Michael: refused with a clear message): there is no delivery fee
+     * to take off, so the code is not spent — it stays for a delivery order.
+     */
+    public const PICKUP_NO_DELIVERY = 'pickup_no_delivery';
+
     /** @var list<string> */
     public const ALL = [self::APPLIED, self::INVALID, self::EXPIRED, self::NOT_STARTED, self::NO_ELIGIBLE_ITEMS,
         self::MINIMUM_NOT_REACHED, self::USAGE_LIMIT, self::CUSTOMER_LIMIT, self::NOT_BEST, self::PHONE_MISMATCH, self::WHEEL_USED,
-        self::INVITE_OWN, self::INVITE_NOT_FIRST, self::INVITE_USED, self::INVITE_INACTIVE, self::GIFT_OUT_OF_STOCK, self::ON_OFFER];
+        self::INVITE_OWN, self::INVITE_NOT_FIRST, self::INVITE_USED, self::INVITE_INACTIVE, self::GIFT_OUT_OF_STOCK, self::ON_OFFER,
+        self::PICKUP_NO_DELIVERY];
 
     /**
      * @param  float|null  $minimum  the minimum order, for `minimum_not_reached`
@@ -106,6 +113,10 @@ final class CouponStatus
             // the Latin names isolated (LRI-PDI) and unbroken (no-break spaces): the brackets sit right on an Arabic page
             self::ON_OFFER => ['en' => 'Discount codes can\'t be combined with items already on offer (Hot Deals / Flash Sale).', 'ar' => "لا يمكن استخدام كود الخصم مع منتجات عليها عرض (\u{2066}Hot\u{A0}Deals / Flash\u{A0}Sale\u{2069})."],
             self::EXPIRED => ['en' => 'This code has expired.', 'ar' => 'انتهت صلاحية هذا الكود.'],
+            self::PICKUP_NO_DELIVERY => [
+                'en' => 'This is a free-delivery code, and a pickup order has no delivery fee. Keep the code for a delivery order — it was not used.',
+                'ar' => 'هذا كود توصيل مجاني، وطلب الاستلام من الفرع بدون رسوم توصيل. احتفظ بالكود لطلب بتوصيل — لم يُستخدم.',
+            ],
             self::NOT_STARTED => ['en' => 'This code is not active yet. Try again when the offer starts.', 'ar' => 'هذا الكود لم يبدأ بعد. جرّبه عند بداية العرض.'],
             self::NO_ELIGIBLE_ITEMS => $needsEn !== null && $needsAr !== null
                 ? ['en' => $needsEn, 'ar' => $needsAr]

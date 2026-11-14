@@ -9,6 +9,7 @@ use App\Domain\Inventory\Actor;
 use App\Domain\Inventory\InventoryService;
 use App\Domain\Notifications\OrderMailer;
 use App\Domain\Payment\CallbackPolicy;
+use App\Domain\Pickup\PickupLifecycle;
 use App\Transform\Row;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
@@ -125,6 +126,8 @@ final class UnpaidOrders
             if ($claimed === 0) {
                 return false;
             }
+            // an unpaid card PICKUP closes its reservation with the order (2026-11-14)
+            PickupLifecycle::closeForCancelledOrder($orderId);
 
             $order = DB::table('orders')->where('id', $orderId)->first(['order_number', 'storefront_id']);
             $storefrontId = $order === null ? null : Row::nint($order, 'storefront_id');

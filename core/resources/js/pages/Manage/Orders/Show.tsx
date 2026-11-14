@@ -21,6 +21,7 @@ import { Ltr, Name, Num } from "@/components/ui/bidi";
 import { useT } from "@/lib/i18n";
 import { methodLabel, providerLabel } from "@/lib/labels";
 import { ColourChip, type StoredColour } from "@/components/manage/ColourChip";
+import { PickupPanel, type PickupInfo } from "@/components/manage/PickupPanel";
 import {
     ProductPeekDialog,
     type Peek,
@@ -239,6 +240,8 @@ interface Props {
     notifications: Notification[];
     /** What the domain says may happen next — never computed here (see OrderFulfilment). */
     options: { advance: string[]; may_cancel: boolean };
+    /** A pickup order's store, code, clock and steps (click & collect) — null for a delivery. */
+    pickup: PickupInfo | null;
     /** Payment callbacks that need a human decision (🔴-1). Open ones first. */
     findings: Finding[];
     abilities: {
@@ -477,6 +480,7 @@ export default function OrderShow({
     movements,
     notifications,
     options,
+    pickup,
     findings,
     abilities,
 }: Props) {
@@ -704,6 +708,16 @@ export default function OrderShow({
                 ) : null}
                 {errors.cancel ? (
                     <Alert tone="error">{errors.cancel}</Alert>
+                ) : null}
+
+                {pickup !== null ? (
+                    <PickupPanel
+                        orderId={order.id}
+                        orderNumber={order.order_number}
+                        email={order.customer.email}
+                        pickup={pickup}
+                        canFulfil={abilities.fulfil}
+                    />
                 ) : null}
 
                 {/* `orders.storefront_id` is new this wave and NULL on every order that predates it.
@@ -1132,7 +1146,14 @@ export default function OrderShow({
                             </CardTitle>
                         </CardHeader>
                         <CardContent className="divide-y divide-border">
-                            {address === null ? (
+                            {address === null && pickup !== null ? (
+                                <p className="py-2 text-sm text-muted-foreground">
+                                    {t(
+                                        "pickup.no_shipping",
+                                        "استلام من الفرع — لا شحن ولا عنوان.",
+                                    )}
+                                </p>
+                            ) : address === null ? (
                                 <p className="py-2 text-sm text-muted-foreground">
                                     {t(
                                         "orders.no_address",

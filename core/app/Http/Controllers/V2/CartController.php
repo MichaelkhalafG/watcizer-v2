@@ -36,7 +36,7 @@ class CartController extends Controller
     {
         [$userId, $token] = $this->identity($request);
 
-        return $this->respond($carts->payload($carts->find($userId, $token), self::coupon($request), $userId, self::phone($request)), $userId === null ? $token : null);
+        return $this->respond($carts->payload($carts->find($userId, $token), self::coupon($request), $userId, self::phone($request), self::pickup($request)), $userId === null ? $token : null);
     }
 
     public function store(Request $request, StorefrontCart $carts): JsonResponse
@@ -64,7 +64,7 @@ class CartController extends Controller
             return $this->refuse($refusal, $userId === null ? $token : null);
         }
 
-        return $this->respond($carts->payload($cart, self::coupon($request), $userId, self::phone($request)), $userId === null ? $token : null);
+        return $this->respond($carts->payload($cart, self::coupon($request), $userId, self::phone($request), self::pickup($request)), $userId === null ? $token : null);
     }
 
     public function update(Request $request, StorefrontCart $carts, int $item): JsonResponse
@@ -80,7 +80,7 @@ class CartController extends Controller
             return $this->refuse($refusal, $userId === null ? $token : null);
         }
 
-        return $this->respond($carts->payload($cart, self::coupon($request), $userId, self::phone($request)), $userId === null ? $token : null);
+        return $this->respond($carts->payload($cart, self::coupon($request), $userId, self::phone($request), self::pickup($request)), $userId === null ? $token : null);
     }
 
     public function destroy(Request $request, StorefrontCart $carts, int $item): JsonResponse
@@ -91,7 +91,7 @@ class CartController extends Controller
             return $this->refuse('not_found', $userId === null ? $token : null);
         }
 
-        return $this->respond($carts->payload($cart, self::coupon($request), $userId, self::phone($request)), $userId === null ? $token : null);
+        return $this->respond($carts->payload($cart, self::coupon($request), $userId, self::phone($request), self::pickup($request)), $userId === null ? $token : null);
     }
 
     /** @return array{0: ?int, 1: ?string} the signed-in customer's id, or the guest token (either may be absent) */
@@ -148,5 +148,15 @@ class CartController extends Controller
         $phone = $request->query('phone');
 
         return is_string($phone) && trim($phone) !== '' && strlen(trim($phone)) <= 24 ? trim($phone) : null;
+    }
+
+    /**
+     * The checkout page has chosen PICK UP IN STORE (`?fulfilment=pickup`, 2026-11-14), for the preview alone: a typed
+     * free-shipping code is then refused with its own sentence before the order is placed. The order path reads the
+     * fulfilment from the order's own body.
+     */
+    private static function pickup(Request $request): bool
+    {
+        return $request->query('fulfilment') === 'pickup';
     }
 }

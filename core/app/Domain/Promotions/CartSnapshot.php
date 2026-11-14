@@ -37,6 +37,7 @@ final readonly class CartSnapshot
      * @param  string  $paymentMethod  cash | paymob | whatsapp
      * @param  string|null  $code  the coupon code the shopper typed (M1u), or null
      * @param  list<string>  $customerKeys  who is buying, for per-customer limits: u:<id>, e:<email>, p:<phone>
+     * @param  bool  $pickup  a PICKUP order (2026-11-14): no delivery fee — a typed free-shipping code is refused, not spent
      */
     public function __construct(
         public int $storefrontId,
@@ -46,6 +47,7 @@ final readonly class CartSnapshot
         public string $paymentMethod,
         public ?string $code = null,
         public array $customerKeys = [],
+        public bool $pickup = false,
     ) {}
 
     /** Total units of one product across every line, whatever its variant or bucket. */

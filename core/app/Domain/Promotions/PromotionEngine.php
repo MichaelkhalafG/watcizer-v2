@@ -161,6 +161,13 @@ final class PromotionEngine
             }
 
             $money = $this->moneyOf($rule, $grant['money'], $cart, $scopes, []);
+            if ($isTypedCode && $cart->pickup && $money['discount'] <= 0.0 && $money['free_shipping_possible'] && $grant['rewards'] === []) {
+                // a free-shipping code on a PICKUP order (2026-11-14): nothing to take off — refused with its own sentence,
+                // and not spent (no grant, so no redemption): the shopper keeps it for a delivery order
+                $refusedCode = CouponStatus::PICKUP_NO_DELIVERY;
+
+                continue;
+            }
             if ($isTypedCode && $money['discount'] <= 0.0 && $money['free_shipping_possible']) {
                 // A TYPED free-shipping code on a cart whose delivery is not yet known (the cart page prices before a
                 // city is chosen, 2026-11-08): the shopper reads "applied", the checkout prices the delivery, and an

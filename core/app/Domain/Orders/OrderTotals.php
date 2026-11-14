@@ -75,7 +75,7 @@ final readonly class OrderTotals
 
     public static function of(int $orderId): ?self
     {
-        $order = DB::table('orders')->where('id', $orderId)->first(['total_price_for_order', 'address_id', 'free_shipping_over']);
+        $order = DB::table('orders')->where('id', $orderId)->first(['total_price_for_order', 'address_id', 'free_shipping_over', 'fulfilment']);
         if ($order === null) {
             return null;
         }
@@ -124,7 +124,8 @@ final readonly class OrderTotals
 
         $expected = null;
         $addressId = Row::nint($order, 'address_id');
-        if ($freeShipping) {
+        if ($freeShipping || Row::nstr($order, 'fulfilment') === 'pickup') {
+            // a PICKUP order (2026-11-14) is collected from a store: no delivery, nothing missing
             $expected = 0.0;
         } elseif ($addressId !== null) {
             $cost = DB::table('addresses as a')->join('shipping_cities as c', 'c.id', '=', 'a.shipping_city_id')

@@ -91,6 +91,8 @@ export function providerLabel(t: Translator, provider: string | null): string {
             return t('payments.method_cod', 'دفع عند الاستلام');
         case 'whatsapp':
             return t('payments.method_whatsapp', 'واتساب');
+        case 'store':
+            return t('payments.method_store', 'الدفع في الفرع');
         case 'offline':
             return t('payments.provider_offline', 'بدون مزوّد إلكتروني');
         default:
@@ -143,6 +145,8 @@ export function methodLabel(t: Translator, method: string | null): string {
             return t('payments.method_online', 'دفع إلكتروني');
         case 'whatsapp':
             return t('payments.method_whatsapp', 'واتساب');
+        case 'store':
+            return t('payments.method_store', 'الدفع في الفرع');
         case 'paymob':
             /*
              * `orders.payment_method` is the LEGACY chosen-method column, and the comment that used

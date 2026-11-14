@@ -138,7 +138,7 @@ final class CompatCheckout
     public function placeOrder(
         ?int $userId,
         ?string $guestToken,
-        int $addressId,
+        ?int $addressId,
         float $total,
         string $paymentMethod,
         ?string $note,
@@ -152,11 +152,17 @@ final class CompatCheckout
          * promotion" is the shape that costs nothing.
          */
         ?PromotionOutcome $promotion = null,
+        /*
+         * `delivery` (every order until 2026-11-14, and the default) or `pickup` — a pickup order has no address
+         * (`$addressId` null) and its reservation is written beside it (App\Domain\Pickup\PickupCheckout::record).
+         */
+        string $fulfilment = 'delivery',
     ): int {
         $now = now();
         $orderId = (int) DB::table('orders')->insertGetId([
             'user_id' => $userId,
             'address_id' => $addressId,
+            'fulfilment' => $fulfilment,
             /*
              * The storefront this layer is pinned to (`config('compat.storefront_id')`, injected
              * above). It was already being handed to `commitOrder()` below, so the LEDGER has

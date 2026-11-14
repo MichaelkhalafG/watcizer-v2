@@ -418,6 +418,8 @@ final class PaymentSettingsController
     private const METHOD_KEYS = [
         'card', 'meeza', 'valu', 'tamara', 'wallet', 'cagg', 'bank_installment', 'apple_pay', 'kiosk',
         'souhoola', 'aman', 'halan', 'sympl', 'forsa', 'premium', 'contact', 'fawry_code', 'cod', 'whatsapp',
+        // pay at the store, for a pickup order (click & collect, 2026-11-14)
+        'store',
     ];
 
     /**

@@ -8,11 +8,15 @@ use App\Domain\Access\Roles;
 use App\Domain\Inventory\Actor;
 use App\Domain\Inventory\InventoryService;
 use App\Domain\Notifications\OrderMailer;
+use App\Domain\Notifications\PickupWhatsApp;
 use App\Domain\Orders\OrderCustomer;
 use App\Domain\Orders\OrderFulfilment;
 use App\Domain\Orders\OrderTotals;
 use App\Domain\Orders\ProductPeek;
 use App\Domain\Payment\CallbackPolicy;
+use App\Domain\Pickup\Pickup;
+use App\Domain\Pickup\PickupCheckout;
+use App\Domain\Pickup\PickupLifecycle;
 use App\Domain\Promotions\PromotionDiscounts;
 use App\Models\User;
 use App\Support\Coerce;
@@ -85,6 +89,8 @@ final class OrderController
         $storefronts = self::storefrontOptions();
         $providers = self::distinct('paid_via_provider');
         $methods = self::distinct('paid_via_method');
+        // click & collect (2026-11-14): delivery or pickup, which store, and where the pickup stands
+        $pickupStores = self::pickupStoreOptions();
 
         $table = TableQuery::for($request)
             ->sortable(['o.created_at', 'o.total_price_for_order', 'o.status', 'o.order_number'], default: 'o.created_at', direction: 'desc')
@@ -101,8 +107,11 @@ final class OrderController
                 // every date the operator picks.
                 'from' => null,
                 'to' => null,
+                'fulfilment' => ['delivery', 'pickup'],
+                'pickup_store' => array_map(fn (array $o): string => $o['value'], $pickupStores),
+                'pickup_state' => self::PICKUP_STATES,
             ])
-            ->virtual(['storefront_id', 'status', 'provider', 'method', 'from', 'to'])
+            ->virtual(['storefront_id', 'status', 'provider', 'method', 'from', 'to', 'fulfilment', 'pickup_store', 'pickup_state'])
             /*
              * ── THE ONE EXPORT THAT CARRIES PERSONAL DATA ──────────────────────────────────
              *
@@ -140,6 +149,7 @@ final class OrderController
                 'phone' => ManageText::t('common.phone', 'الهاتف'),
                 'items' => ManageText::t('orders.item_count', 'عدد الأصناف'),
                 'storefront' => ManageText::t('common.storefront', 'المتجر'),
+                'fulfilment_label' => ManageText::t('pickup.fulfilment', 'الاستلام'),
                 'last_attempt' => [ManageText::t('orders.last_attempt', 'آخر محاولة دفع'), fn (array $row): string => Coerce::str(
                     Coerce::arr($row['last_attempt'] ?? null)['status'] ?? null
                 )],
@@ -147,10 +157,14 @@ final class OrderController
 
         $query = DB::table('orders as o')
             ->leftJoin('storefronts as s', 's.id', '=', 'o.storefront_id')
+            // one row per order at most (order_pickups.order_id is UNIQUE), so the join never multiplies the queue
+            ->leftJoin('order_pickups as p', 'p.order_id', '=', 'o.id')
             ->select([
                 'o.id', 'o.order_number', 'o.status', 'o.total_price_for_order', 'o.payment_method',
                 'o.paid_via_provider', 'o.paid_via_method', 'o.guest_name', 'o.guest_phone',
-                'o.storefront_id', 'o.created_at', 's.name as storefront_name',
+                'o.storefront_id', 'o.created_at', 's.name as storefront_name', 'o.fulfilment',
+                'p.status as pickup_status', 'p.store_name_en as pickup_store_en', 'p.store_name_ar as pickup_store_ar',
+                'p.expires_at as pickup_expires_at', 'p.reserved_at as pickup_reserved_at', 'p.ready_max_days as pickup_max_days',
             ]);
 
         // 🟠-3: a SCOPED grant sees only its own storefronts' orders, constrained in the QUERY.
@@ -194,6 +208,11 @@ final class OrderController
                 // from the list rather than only from the detail.
                 'last_attempt' => $extras['attempts'][$id] ?? null,
                 'url' => route('manage.orders.show', ['order' => $id]),
+                // click & collect: the badge ("Pickup · Arkadia Mall", its state) — null for a delivery
+                'pickup' => self::pickupBadge($row),
+                'fulfilment_label' => Row::nstr($row, 'pickup_status') === null
+                    ? ManageText::t('pickup.delivery', 'توصيل')
+                    : ManageText::t('pickup.pickup_at', 'استلام · :store', ['store' => Row::str($row, 'pickup_store_ar')]),
             ];
         };
 
@@ -224,6 +243,11 @@ final class OrderController
                 ),
                 'providers' => $providers,
                 'methods' => $methods,
+                'pickup_stores' => $pickupStores,
+                'pickup_states' => array_map(
+                    fn (string $s): array => ['value' => $s, 'label' => self::pickupStateLabel($s)],
+                    self::PICKUP_STATES,
+                ),
             ],
             'abilities' => [
                 'fulfil' => Gate::allows(Role::MANAGE_ORDER_FULFILMENT),
@@ -253,7 +277,7 @@ final class OrderController
                 'o.id', 'o.order_number', 'o.status', 'o.total_price_for_order', 'o.payment_method',
                 'o.paid_via_provider', 'o.paid_via_method', 'o.note', 'o.guest_name', 'o.guest_email',
                 'o.guest_phone', 'o.user_id', 'o.address_id', 'o.storefront_id', 'o.created_at',
-                'o.updated_at', 's.name as storefront_name',
+                'o.updated_at', 's.name as storefront_name', 'o.fulfilment',
             ]);
 
         // 404, never 403: a 403 would confirm the order exists (§3.11.14).
@@ -332,7 +356,9 @@ final class OrderController
              * the same split as findings: per-order here, a loud list there.
              */
             'notifications' => OrderMailer::forOrder($order),
-            'options' => OrderFulfilment::options($status),
+            'options' => OrderFulfilment::options($status, Row::str($orderRow, 'fulfilment')),
+            // click & collect (2026-11-14): the store, the code, the clock, the actions, the WhatsApp message — null for a delivery
+            'pickup' => self::pickupPanel($order, $status, $customer),
             // The callbacks that need a human (🔴-1). On the ORDER screen because that is where
             // someone can actually judge one; `php artisan payments:findings` is the queue view,
             // because a finding that only lives on one order's page is one nobody goes looking for.
@@ -415,6 +441,88 @@ final class OrderController
         }
 
         return back()->with('status', ManageText::t('orders.status_updated', 'تم تحديث حالة الطلب.'));
+    }
+
+    /** Pickup: the order is at its store — start the hold clock and e-mail the customer. */
+    public function pickupReady(Request $request, int $order, PickupLifecycle $pickups): RedirectResponse
+    {
+        self::requireInScope($order);
+        try {
+            $until = $pickups->ready($order, self::actor($request));
+        } catch (RuntimeException $e) {
+            throw ValidationException::withMessages(['pickup' => $e->getMessage()]);
+        }
+
+        return back()->with('status', ManageText::t('pickup.ready_done', 'الطلب جاهز للاستلام حتى :until. أُرسل بريد للعميل.', [
+            'until' => PickupLifecycle::cairo($until) ?? $until,
+        ]));
+    }
+
+    /** Pickup: the one extension, on the customer's request. */
+    public function pickupExtend(Request $request, int $order, PickupLifecycle $pickups): RedirectResponse
+    {
+        self::requireInScope($order);
+        try {
+            $until = $pickups->extend($order, self::actor($request));
+        } catch (RuntimeException $e) {
+            throw ValidationException::withMessages(['pickup' => $e->getMessage()]);
+        }
+
+        return back()->with('status', ManageText::t('pickup.extend_done', 'تم تمديد الحجز حتى :until. أُرسل بريد للعميل.', [
+            'until' => PickupLifecycle::cairo($until) ?? $until,
+        ]));
+    }
+
+    /** Pickup: handed over against the code — the order becomes delivered. */
+    public function pickupCollect(Request $request, int $order, PickupLifecycle $pickups): RedirectResponse
+    {
+        self::requireInScope($order);
+        $data = Coerce::arr($request->validate(['code' => ['required', 'string', 'regex:/^[0-9]{4}$/']], [
+            'code.regex' => ManageText::t('pickup.code_format', 'كود الاستلام ٤ أرقام.'),
+        ]));
+        try {
+            $pickups->collect($order, Coerce::str($data['code']), self::actor($request));
+        } catch (RuntimeException $e) {
+            throw ValidationException::withMessages(['code' => $e->getMessage()]);
+        }
+
+        return back()->with('status', ManageText::t('pickup.collect_done', 'تم تسليم الطلب للعميل. حالته الآن: تم التوصيل.'));
+    }
+
+    /** Pickup: the printable slip the store keeps with the parcel. */
+    public function pickupSlip(int $order): \Illuminate\Contracts\View\View
+    {
+        self::requireInScope($order);
+        $row = DB::table('orders as o')->leftJoin('storefronts as s', 's.id', '=', 'o.storefront_id')
+            ->where('o.id', $order)->first(['o.id', 'o.order_number', 'o.status', 'o.created_at', 'o.note', 's.name as storefront_name']);
+        abort_if(! is_object($row), 404);
+        $pickup = PickupLifecycle::row($order);
+        abort_if($pickup === null, 404);
+        $orderRow = Row::cast($row);
+        $customer = OrderCustomer::of($order);
+        $facts = PickupCheckout::facts($order);
+        abort_if($facts === null, 404);
+        $items = self::items($order);
+
+        return view('manage.pickup-slip', [
+            'number' => Row::str($orderRow, 'order_number'),
+            'storefront' => Row::nstr($orderRow, 'storefront_name'),
+            'placed' => Row::nstr($orderRow, 'created_at'),
+            'note' => Row::nstr($orderRow, 'note'),
+            'customer' => ['name' => $customer?->name, 'phone' => $customer?->phone],
+            'pickup' => $facts,
+            'status' => PickupLifecycle::label($facts['status']),
+            'readyAt' => PickupLifecycle::cairo($facts['ready_at']),
+            'collectBy' => PickupLifecycle::cairo($facts['expires_at']),
+            'items' => array_map(fn (array $i): array => [
+                'title' => Coerce::str($i['title'] ?? ''),
+                'variant' => Coerce::nstr($i['variant'] ?? null),
+                'quantity' => Coerce::int($i['quantity'] ?? 0),
+                'total' => Coerce::str($i['total_price'] ?? '0'),
+            ], $items),
+            'totals' => self::totals($orderRow, $items),
+            'printed' => PickupLifecycle::cairo(now()->toDateTimeString()),
+        ]);
     }
 
     /**
@@ -714,6 +822,16 @@ final class OrderController
         if ($status !== null && in_array($status, OrderFulfilment::STATUSES, true)) {
             $query->where('o.status', $status);
         }
+
+        $fulfilment = Coerce::nstr($filters['fulfilment'] ?? null);
+        if ($fulfilment !== null) {
+            $query->where('o.fulfilment', $fulfilment);
+        }
+        $pickupStore = Coerce::nint($filters['pickup_store'] ?? null);
+        if ($pickupStore !== null) {
+            $query->where('p.store_id', $pickupStore);
+        }
+        self::applyPickupState($query, Coerce::nstr($filters['pickup_state'] ?? null));
 
         $from = Coerce::nstr($filters['from'] ?? null);
         if ($from !== null && $from !== '') {
@@ -1327,6 +1445,143 @@ final class OrderController
         usort($out, fn (array $a, array $b): int => strcmp($a['value'], $b['value']));
 
         return $out;
+    }
+
+    /**
+     * Where a pickup stands, for the queue's filter — the plan's per-store view: reserved, late (still reserved past
+     * the slowest promised day), ready, expiring today (Cairo), overdue (ready and past its collect-by time), collected,
+     * expired.
+     */
+    private const PICKUP_STATES = ['reserved', 'late', 'ready', 'expiring_today', 'overdue', 'collected', 'expired'];
+
+    private static function pickupStateLabel(string $state): string
+    {
+        return match ($state) {
+            'late' => ManageText::t('pickup.state_late', 'متأخر التجهيز'),
+            'expiring_today' => ManageText::t('pickup.state_expiring_today', 'ينتهي اليوم'),
+            'overdue' => ManageText::t('pickup.state_overdue', 'تجاوز موعد الاستلام'),
+            default => PickupLifecycle::label($state),
+        };
+    }
+
+    private static function applyPickupState(Builder $query, ?string $state): void
+    {
+        $now = now()->toDateTimeString();
+        match ($state) {
+            null => null,
+            'reserved', 'ready', 'collected', 'expired' => $query->where('p.status', $state),
+            // the same bound as PickupLifecycle::lateSince(): the promised business days, plus two calendar days per five
+            'late' => $query->where('p.status', 'reserved')
+                ->whereRaw('DATE_ADD(p.reserved_at, INTERVAL (p.ready_max_days + FLOOR((p.ready_max_days + 4) / 5) * 2) DAY) < ?', [$now]),
+            'expiring_today' => $query->where('p.status', 'ready')->where('p.expires_at', '>=', $now)
+                ->where('p.expires_at', '<=', now('Africa/Cairo')->endOfDay()->timezone(config()->string('app.timezone'))->toDateTimeString()),
+            'overdue' => $query->where('p.status', 'ready')->where('p.expires_at', '<', $now),
+            default => null,
+        };
+    }
+
+    /**
+     * Every pickup store the acting grant may see, as filter options ("Arkadia Mall — Watchizer").
+     *
+     * @return list<array{value: string, label: string}>
+     */
+    private static function pickupStoreOptions(): array
+    {
+        $query = DB::table('storefront_pickup_stores as ps')->join('storefronts as s', 's.id', '=', 'ps.storefront_id')
+            ->orderBy('ps.storefront_id')->orderBy('ps.position');
+        $scope = self::storefrontScope();
+        if ($scope !== null) {
+            $query->whereIn('ps.storefront_id', $scope === [] ? [0] : $scope);
+        }
+        $out = [];
+        foreach ($query->get(['ps.id', 'ps.name_ar', 's.name as storefront']) as $raw) {
+            $row = Row::cast($raw);
+            $out[] = ['value' => (string) Row::int($row, 'id'), 'label' => Row::str($row, 'name_ar').' — '.Row::str($row, 'storefront')];
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return array{status: string, label: string, store_en: string, store_ar: string, overdue: bool, late: bool}|null
+     */
+    private static function pickupBadge(\stdClass $row): ?array
+    {
+        $status = Row::nstr($row, 'pickup_status');
+        if ($status === null) {
+            return null;
+        }
+        $shape = new \stdClass;
+        $shape->status = $status;
+        $shape->expires_at = Row::nstr($row, 'pickup_expires_at');
+        $shape->reserved_at = Row::nstr($row, 'pickup_reserved_at');
+        $shape->ready_max_days = Row::nint($row, 'pickup_max_days') ?? 0;
+        $shape->extended_at = null;
+        $options = PickupLifecycle::options($shape, Row::str($row, 'status'));
+
+        return [
+            'status' => $status,
+            'label' => PickupLifecycle::label($status),
+            'store_en' => Row::str($row, 'pickup_store_en'),
+            'store_ar' => Row::str($row, 'pickup_store_ar'),
+            'overdue' => $options['overdue'],
+            'late' => $options['late'],
+        ];
+    }
+
+    /**
+     * The order page's pickup panel.
+     *
+     * @return array<string, mixed>|null
+     */
+    private static function pickupPanel(int $orderId, string $orderStatus, ?OrderCustomer $customer): ?array
+    {
+        $row = PickupLifecycle::row($orderId);
+        $facts = PickupCheckout::facts($orderId);
+        if ($row === null || $facts === null) {
+            return null;
+        }
+        $options = PickupLifecycle::options($row, $orderStatus);
+        $storefrontId = Row::int($row, 'storefront_id');
+        $settings = Pickup::settings($storefrontId);
+        $who = static function (?int $id): ?string {
+            if ($id === null) {
+                return null;
+            }
+            // first + last name, else the e-mail — the activity log's own rule for naming a person
+            $user = DB::table('users')->where('id', $id)->first(['first_name', 'last_name', 'email']);
+            if (! is_object($user)) {
+                return '#'.$id;
+            }
+            $u = Row::cast($user);
+            $name = trim((Row::nstr($u, 'first_name') ?? '').' '.(Row::nstr($u, 'last_name') ?? ''));
+
+            return $name !== '' ? $name : (Row::nstr($u, 'email') ?? '#'.$id);
+        };
+
+        return [
+            'status' => $facts['status'],
+            'status_label' => PickupLifecycle::label($facts['status']),
+            'code' => $facts['code'],
+            'pay_at_store' => $facts['pay_at_store'],
+            'store' => $facts['store'],
+            'ready_sentence' => $facts['ready']['sentence'],
+            'reserved_at' => PickupLifecycle::cairo(Row::nstr($row, 'reserved_at')),
+            'ready_at' => PickupLifecycle::cairo($facts['ready_at']),
+            'ready_by' => $who(Row::nint($row, 'ready_by')),
+            'expires_at' => PickupLifecycle::cairo($facts['expires_at']),
+            'extended_at' => PickupLifecycle::cairo(Row::nstr($row, 'extended_at')),
+            'extended_by' => $who(Row::nint($row, 'extended_by')),
+            'collected_at' => PickupLifecycle::cairo(Row::nstr($row, 'collected_at')),
+            'collected_by' => $who(Row::nint($row, 'collected_by')),
+            'hold_hours' => $settings['hold_hours'],
+            'extend_hours' => $settings['extend_hours'],
+            'actions' => ['ready' => $options['ready'], 'extend' => $options['extend'], 'collect' => $options['collect']],
+            'overdue' => $options['overdue'],
+            'late' => $options['late'],
+            'whatsapp_url' => PickupWhatsApp::url($orderId, $customer?->phone, $customer?->name),
+            'slip_url' => route('manage.orders.pickup.slip', ['order' => $orderId]),
+        ];
     }
 
     private static function actor(Request $request): Actor
