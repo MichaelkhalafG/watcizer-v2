@@ -200,7 +200,8 @@ export const slimCampaigns = (body) => ({
   // on the server and in the browser's hydration render alike, so the two cannot disagree (usePromo, 2026-11-07)
   now: body?.now ?? null,
   // the wheel's switch rides with the campaigns (2026-11-07): the floating "Spin & win" button reads it, no request of its own
-  wheel: body?.wheel && typeof body.wheel === 'object' ? { enabled: body.wheel.enabled === true, campaign: typeof body.wheel.campaign === 'string' ? body.wheel.campaign : null } : null,
+  // + the segments' colours (2026-11-13): the floating button draws a small copy of the wheel in them
+  wheel: body?.wheel && typeof body.wheel === 'object' ? { enabled: body.wheel.enabled === true, campaign: typeof body.wheel.campaign === 'string' ? body.wheel.campaign : null, colors: Array.isArray(body.wheel.colors) ? body.wheel.colors.filter((c) => typeof c === 'string') : [] } : null,
   hot_deals: slimCampaign(body?.hot_deals),
   flash_sale: slimCampaign(body?.flash_sale),
   // the next scheduled start (core, 2026-11-06): the browser asks again at that second (usePromo.useCampaignStart)

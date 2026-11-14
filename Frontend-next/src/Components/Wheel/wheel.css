@@ -1419,60 +1419,111 @@
   }
 }
 
-/* ── the floating button ──────────────────────────────────────────────────────────────────────────── */
+/* ── the floating button (redrawn 2026-11-13) ─────────────────────────────────────────────────────────
+   A label over a small turning wheel. Every motion is a transform or an opacity on its own HTML layer, so the
+   compositor runs it, and there are THREE of them, as the old button had (measured 2026-11-13: each running animation
+   costs the page's main thread a little even when it is compositor-only): the wheel's turn — slow, about 8 s a turn,
+   with a fast extra turn every 6 s (the tease) in the same keyframes — the label's bob, and the ring's pulse. The hub,
+   the pointer and "GO" are a separate, still drawing on top.
+   Two label sizes, both well under the reference's: --md (about 70 % of it beside the wheel) and --sm (about 60 %). */
 .wz-wfloat {
   position: relative;
   display: inline-block;
+  --wf-wheel: 56px;
 }
 .wz-wfloat__btn {
   position: relative;
-  display: inline-flex;
+  display: flex;
+  flex-direction: column;
   align-items: center;
-  height: 48px;
-  min-width: 48px;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 240, 176, 0.7);
-  background: linear-gradient(180deg, #5a1f9c, #2a0f45);
-  color: #fff0b0;
   text-decoration: none;
-  box-shadow: 0 10px 24px -10px rgba(20, 5, 40, 0.8);
-  overflow: hidden;
+  -webkit-tap-highlight-color: transparent;
 }
-.wz-wfloat__btn::after {
-  content: '';
-  position: absolute;
-  inset: -40% auto -40% -60%;
-  width: 40%;
-  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.24), transparent);
-  transform: skewX(-20deg);
-  animation: wz-wfloat-shine 7s 2s ease-in-out infinite;
-  pointer-events: none;
+.wz-wfloat--md {
+  --wf-small: 13px;
+  --wf-big: 18px;
+  --wf-stroke: 3px;
+}
+.wz-wfloat--sm {
+  --wf-small: 11px;
+  --wf-big: 15px;
+  --wf-stroke: 2.4px;
+}
+.wz-wfloat__label {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-block-end: -1px;
+  font-family: var(--font-el-messiri), Georgia, serif;
+  font-weight: 700;
+  line-height: 0.98;
+  white-space: nowrap;
+  color: #ffe9a8;
+  -webkit-text-stroke: var(--wf-stroke) #3b1166;
+  paint-order: stroke fill;
+  text-shadow: 0 2px 4px rgba(20, 5, 40, 0.45);
+  animation: wz-wf-bob 2.6s ease-in-out infinite;
+  will-change: transform;
+}
+.wz-wfloat__small {
+  font-size: var(--wf-small);
+  letter-spacing: 0.02em;
+}
+.wz-wfloat__big {
+  font-size: var(--wf-big);
+  letter-spacing: 0.03em;
+}
+.wz-wfloat[lang='ar'] .wz-wfloat__label {
+  line-height: 1.08;
+  letter-spacing: 0;
+}
+.wz-wfloat__wheel {
+  position: relative;
+  display: block;
+  width: var(--wf-wheel);
+  height: var(--wf-wheel);
+  border-radius: 50%;
+  box-shadow: 0 8px 18px -8px rgba(20, 5, 40, 0.75);
 }
 .wz-wfloat__ring {
   position: absolute;
-  inset: -1px;
-  border-radius: inherit;
-  border: 1px solid rgba(255, 240, 176, 0.85);
-  animation: wz-wfloat-pulse 2.8s ease-out infinite;
+  inset: 0;
+  border-radius: 50%;
+  box-shadow:
+    0 0 0 2px rgba(241, 223, 174, 0.9),
+    0 0 12px 2px rgba(240, 199, 94, 0.55);
+  animation: wz-wf-pulse 2.4s ease-out infinite;
+  will-change: transform, opacity;
   pointer-events: none;
 }
-.wz-wfloat__disc {
-  display: grid;
-  place-items: center;
-  width: 46px;
-  height: 46px;
-  flex: none;
+.wz-wfloat__turn {
+  position: absolute;
+  inset: 0;
+  display: block;
+  will-change: transform;
+  animation: wz-wf-turn 6s linear infinite;
 }
-.wz-wfloat__disc svg {
-  animation: wz-wfloat-turn 16s linear infinite;
+.wz-wfloat__disc,
+.wz-wfloat__hub {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
-.wz-wfloat__label {
-  display: none;
+.wz-wfloat__hub {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+}
+.wz-wfloat__go {
+  fill: #f1dfae;
+  font-family: var(--font-el-messiri), Georgia, serif;
+  font-size: 10px;
+  font-weight: 700;
 }
 .wz-wfloat__close {
   position: absolute;
-  top: -5px;
-  inset-inline-start: -5px;
+  inset-block-end: calc(var(--wf-wheel) - 14px);
+  inset-inline-start: -6px;
   width: 18px;
   height: 18px;
   padding: 0;
@@ -1491,55 +1542,60 @@
   position: absolute;
   inset: -7px;
 }
-@keyframes wz-wfloat-turn {
-  to {
-    transform: rotate(360deg);
+/* slow for 82 % of the cycle (216 deg in 4.9 s, about 8 s a turn), then the tease: a fast turn and a half that ends at
+   720 deg — where it began — so the loop has no seam */
+@keyframes wz-wf-turn {
+  0% {
+    transform: rotate(0deg);
   }
-}
-@keyframes wz-wfloat-shine {
-  0%,
-  70% {
-    transform: translateX(-120%) skewX(-20deg);
+  82% {
+    transform: rotate(216deg);
+    animation-timing-function: cubic-bezier(0.35, 0, 0.15, 1);
   }
   100% {
-    transform: translateX(520%) skewX(-20deg);
+    transform: rotate(720deg);
   }
 }
-@keyframes wz-wfloat-pulse {
+@keyframes wz-wf-bob {
+  0%,
+  55%,
+  100% {
+    transform: translateY(0);
+  }
+  25% {
+    transform: translateY(-3px);
+  }
+  40% {
+    transform: translateY(0.5px);
+  }
+}
+@keyframes wz-wf-pulse {
   0% {
     transform: scale(1);
     opacity: 0.9;
   }
   70%,
   100% {
-    transform: scale(1.45);
+    transform: scale(1.35);
     opacity: 0;
   }
 }
 @media (min-width: 769px) {
-  .wz-wfloat__label {
-    display: block;
-    max-width: 0;
-    padding-inline-end: 0;
-    overflow: hidden;
-    white-space: nowrap;
-    opacity: 0;
-    font-size: 13px;
-    font-weight: 700;
-    transition:
-      max-width 0.32s ease,
-      opacity 0.25s ease,
-      padding 0.32s ease;
+  .wz-wfloat {
+    --wf-wheel: 64px;
   }
-  .wz-wfloat__btn:hover .wz-wfloat__label,
-  .wz-wfloat__btn:focus-visible .wz-wfloat__label {
-    max-width: 240px;
-    padding-inline-end: 16px;
-    opacity: 1;
+  .wz-wfloat--md {
+    --wf-small: 14px;
+    --wf-big: 20px;
+  }
+  .wz-wfloat--sm {
+    --wf-small: 12px;
+    --wf-big: 17px;
   }
   .wz-wfloat__btn:focus-visible {
     outline: 2px solid #fff0b0;
-    outline-offset: 2px;
+    outline-offset: 3px;
+    border-radius: 12px;
   }
 }
 
@@ -1572,10 +1628,13 @@
   .sp-reveal__prize,
   .sp-reveal__prize-sub,
   .sp-reveal--card .sp-card,
-  .wz-wfloat__disc svg,
-  .wz-wfloat__btn::after,
+  .wz-wfloat__turn,
+  .wz-wfloat__label,
   .wz-wfloat__ring {
     animation: none;
+  }
+  .wz-wfloat__ring {
+    opacity: 0.6;
   }
   .sp-reveal--burst .sp-card {
     opacity: 1;
