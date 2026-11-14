@@ -34,7 +34,7 @@ function ChipPicture({ own, fallback, name }) {
 const CategoryTiles = ({ menu: menuFromPage = null }) => {
   // The lookup tables only — not the catalogue (C-1 stage 2).
   const { data: tables, isFetching } = useTables()
-  const { language } = useUIStore()
+  const language = useUIStore((s) => s.language)
   const router = useRouter()
   // THE MENU COMES FROM THE PAGE'S OWN SERVER RENDER (`menu`, 2026-11-07; before, from the query cache). The header's
   // menu component creates the menu query — empty — before this page's HydrationBoundary could fill it, so the

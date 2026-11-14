@@ -227,7 +227,7 @@ const withSignIn = (t, google) => ({
 })
 
 export default function TrustPage({ page }) {
-  const { language } = useUIStore()
+  const language = useUIStore((s) => s.language)
   const ar = language === 'ar'
   const def = TRUST_PAGES[page]
   const google = useGoogleSignIn({ enabled: page === 'privacy' })
@@ -251,7 +251,7 @@ export default function TrustPage({ page }) {
 // <details> — readable without JavaScript, every answer in the HTML a search engine reads. The text is the storefront's
 // own src/content/faq.js.
 export function TrustFaq() {
-  const { language } = useUIStore()
+  const language = useUIStore((s) => s.language)
   const ar = language === 'ar'
   const t = FAQ[ar ? 'ar' : 'en']
   return (

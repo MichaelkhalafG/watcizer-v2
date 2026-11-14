@@ -23,7 +23,7 @@ const Criterion = ({ met, label }) => (
 )
 
 function Register() {
-  const { language } = useUIStore()
+  const language = useUIStore((s) => s.language)
   const isRTL = language === 'ar'
   const t = (en, ar) => (isRTL ? ar : en)
   const router = useRouter()

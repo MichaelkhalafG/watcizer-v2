@@ -69,7 +69,7 @@ function Header() {
   }, [cart])
   const { data: tables = {} } = useTables()
   const { data: nav } = useNav()
-  const { language } = useUIStore()
+  const language = useUIStore((s) => s.language)
   const hasOffers = useHasOffers()
   // /x ↔ /ar/x (S-AR stage 1): the switch moves to the same page in the other language.
   const setLanguage = useSwitchLanguage()

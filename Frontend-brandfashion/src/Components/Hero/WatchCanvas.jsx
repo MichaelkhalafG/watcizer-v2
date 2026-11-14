@@ -270,7 +270,7 @@ const HeroFallback = (
 export default function WatchCanvas({ onReady }) {
   // OrbitControls stay disabled until the intro animation finishes.
   const [introComplete, setIntroComplete] = useState(false)
-  const { language } = useUIStore()
+  const language = useUIStore((s) => s.language)
   const modelX = modelOffsetX(language === 'ar')
   // Canvas stays transparent (dark hero shows through) until the model is ready,
   // then fades in — so loading time never shows a spinner or affects LCP/CLS.

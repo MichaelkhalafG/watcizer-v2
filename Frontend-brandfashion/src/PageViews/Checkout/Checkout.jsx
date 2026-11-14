@@ -225,7 +225,7 @@ function Checkout() {
   const setShippingid = useShippingStore((s) => s.setShippingid)
   const setShipping = useShippingStore((s) => s.setShipping)
   const setShippingName = useShippingStore((s) => s.setShippingName)
-  const { language } = useUIStore()
+  const language = useUIStore((s) => s.language)
   const isRTL = language === 'ar'
   // stable, because the method rows' memo (and the effect that picks the first row) depend on it
   const t = useCallback((en, ar) => (isRTL ? ar : en), [isRTL])

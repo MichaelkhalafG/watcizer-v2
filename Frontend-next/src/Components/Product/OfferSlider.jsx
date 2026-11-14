@@ -8,7 +8,7 @@ import './ProductSlider.css'
 
 const OfferSlider = ({ products = [], text = {}, loading = false }) => {
   const router = useRouter()
-  const { language } = useUIStore()
+  const language = useUIStore((s) => s.language)
 
   const title =
     language === 'ar' ? text.title?.ar || text.title?.en || '' : text.title?.en || text.title?.ar || ''

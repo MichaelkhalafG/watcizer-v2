@@ -11,7 +11,7 @@ const pick = (pair, lang) => (pair?.[lang] || pair?.[lang === 'ar' ? 'en' : 'ar'
 // Watchizer's watch articles will be shared here (decision C-7) — an article with no cover gets its aisle-tint card
 // with the title set large instead of no picture, and the empty list points somewhere.
 export default function BlogsClient({ blogs = [] }) {
-  const { language } = useUIStore()
+  const language = useUIStore((s) => s.language)
   const ar = language === 'ar'
   const date = (iso) =>
     iso ? new Date(iso.replace(' ', 'T')).toLocaleDateString(ar ? 'ar-EG' : 'en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : ''

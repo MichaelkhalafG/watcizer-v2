@@ -9,7 +9,7 @@ import './auth.css'
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 function ForgotPassword() {
-  const { language } = useUIStore()
+  const language = useUIStore((s) => s.language)
   const isRTL = language === 'ar'
   const t = (en, ar) => (isRTL ? ar : en)
 

@@ -18,7 +18,7 @@ const SHOW_AFTER = 500 // px scrolled before the button appears
 
 function BackToTop() {
   const [visible, setVisible] = useState(false)
-  const { language } = useUIStore()
+  const language = useUIStore((s) => s.language)
   const isRTL = language === 'ar'
   const ticking = useRef(false)
 

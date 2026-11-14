@@ -213,7 +213,7 @@ function Cart() {
   const setShipping = useShippingStore((s) => s.setShipping)
   const setShippingName = useShippingStore((s) => s.setShippingName)
   const { data: offers = [] } = useOffers()
-  const { language } = useUIStore()
+  const language = useUIStore((s) => s.language)
   const isRTL = language === 'ar'
   const t = (en, ar) => (isRTL ? ar : en)
   const router = useRouter()

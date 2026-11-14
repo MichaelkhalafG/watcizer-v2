@@ -30,7 +30,7 @@ function FeaturedBanner({ products, loading = false }) {
   // Broken-image guard: swap the current slide's image for the inline placeholder
   // once next/image reports a load error (reset whenever the slide changes).
   const [imgBroken, setImgBroken] = useState(false)
-  const { language } = useUIStore()
+  const language = useUIStore((s) => s.language)
   const router = useRouter()
   const isRTL = language === 'ar'
   const livePriceMap = useLivePrices()

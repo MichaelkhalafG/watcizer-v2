@@ -20,7 +20,7 @@ import { GoogleIcon, MicrosoftIcon } from './SocialIcons'
 // project's credentials are in core's .env the login and register pages offer e-mail and password alone, not a
 // button that answers "Could not start social sign-in". The divider moved in from Login / Register for that reason.
 export default function SocialButtons({ onError }) {
-  const { language } = useUIStore()
+  const language = useUIStore((s) => s.language)
   const isRTL = language === 'ar'
   const [busy, setBusy] = useState('')
   const google = useGoogleSignIn()

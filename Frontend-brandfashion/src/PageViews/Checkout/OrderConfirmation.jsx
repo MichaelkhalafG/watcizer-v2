@@ -55,7 +55,7 @@ const deliveryWindow = (price) => {
 const CARD_STATUSES = ['paid', 'failed', 'pending']
 
 function OrderConfirmation() {
-  const { language } = useUIStore()
+  const language = useUIStore((s) => s.language)
   const isRTL = language === 'ar'
   const t = (en, ar) => (isRTL ? ar : en)
   const router = useRouter()

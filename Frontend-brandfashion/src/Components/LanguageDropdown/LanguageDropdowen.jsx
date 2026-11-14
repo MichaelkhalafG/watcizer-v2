@@ -8,7 +8,7 @@ import './LanguageDropdowen.css'
 // Two languages only → a single button that shows the OTHER language and
 // switches to it on one click. No dropdown, no dialog.
 export default function LanguageDropdown() {
-  const { language } = useUIStore()
+  const language = useUIStore((s) => s.language)
   // /x ↔ /ar/x (S-AR stage 1): the switch moves to the same page in the other language.
   const setLanguage = useSwitchLanguage()
 

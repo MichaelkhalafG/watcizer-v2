@@ -71,7 +71,7 @@ const KIND_TITLES = {
 export default function HomeClient({ initialHome = null }) {
   const { data: home, isFetching, isError, refetch } = useHome(initialHome)
   const { data: tables } = useTables()
-  const { language } = useUIStore()
+  const language = useUIStore((s) => s.language)
   const router = useRouter()
   const isRTL = language === 'ar'
 

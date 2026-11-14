@@ -10,7 +10,7 @@ import './ProductSlider.css'
 // 2026-10-02) has no listing behind it to view.
 const ProductSlider = ({ gradeproducts = [], text = {}, moreid, href, loading = false, viewAll = true }) => {
   const router = useRouter()
-  const { language } = useUIStore()
+  const language = useUIStore((s) => s.language)
 
   const title =
     language === 'ar' ? text.title?.ar || text.title?.en || '' : text.title?.en || text.title?.ar || ''

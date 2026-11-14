@@ -17,15 +17,20 @@ import { createStore, useStore } from 'zustand'
 // NOTE: filters/gradesFilters/offersFilters are seeded with the SAME shapes
 // MyProvider used (not the spec's bare {} / []), because consumers access
 // filters.categories.length, filters.price[0], etc. — bare defaults would crash.
+// The shopper's language preference, read by middleware.js and the root layout on the next request. One writer,
+// used by the store and by the language switch (which navigates instead of re-rendering — useSwitchLanguage.js).
+export function writeLanguageCookie(lang) {
+  if (typeof document === 'undefined') return
+  document.cookie = `wz-lang=${lang === 'ar' ? 'ar' : 'en'};path=/;max-age=${60 * 60 * 24 * 365};SameSite=Lax`
+}
+
 const initializer = (language) => (set) => ({
   language,
   // Persist language to a COOKIE (not localStorage) so the server can read it on the next request
   // (middleware.js → the root layout) and render that language on the first paint.
   setLanguage: (lang) => {
     set({ language: lang })
-    if (typeof document !== 'undefined') {
-      document.cookie = `wz-lang=${lang};path=/;max-age=${60 * 60 * 24 * 365};SameSite=Lax`
-    }
+    writeLanguageCookie(lang)
   },
 
   currentPage: 1,

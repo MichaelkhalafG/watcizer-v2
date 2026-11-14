@@ -81,7 +81,7 @@ class StageBoundary extends Component {
 
 /** @param {{ data?: { price: { final: number, amount: number, hasSale: boolean }, stock: { total: number, inStock: boolean }, facts: Array<{ en: string, ar: string }>, productPath: string } | null }} props */
 export default function GrandPrixBanner({ data = null }) {
-  const { language } = useUIStore()
+  const language = useUIStore((s) => s.language)
   const lang = language === 'ar' ? 'ar' : 'en'
   const isRTL = lang === 'ar'
   const t = COPY[lang].home

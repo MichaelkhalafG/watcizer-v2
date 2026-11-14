@@ -104,7 +104,7 @@ export default function HomeClient({ initialHome = null, campaign = null, menu =
   }, [menu, queryClient])
   const { data: home, isFetching, isError, refetch } = useHome(initialHome)
   const { data: tables } = useTables()
-  const { language } = useUIStore()
+  const language = useUIStore((s) => s.language)
   const router = useRouter()
   const isRTL = language === 'ar'
   const hotDeals = useHotDealsMode()

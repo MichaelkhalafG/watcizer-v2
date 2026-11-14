@@ -32,7 +32,7 @@ const STR = {
 const SOCIAL_ICON = { whatsapp: FaWhatsapp, instagram: FaInstagram, facebook: FaFacebook }
 
 function Footer() {
-  const { language } = useUIStore()
+  const language = useUIStore((s) => s.language)
   const lang = language === 'ar' ? 'ar' : 'en'
   const isRTL = lang === 'ar'
   const t = STR[lang]

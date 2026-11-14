@@ -24,7 +24,7 @@ export default function Recover() {
   const params = useSearchParams()
   const token = params.get('t') || ''
   const router = useRouter()
-  const { language } = useUIStore()
+  const language = useUIStore((s) => s.language)
   const ar = language === 'ar'
   const t = (en, arText) => (ar ? arText : en)
   const { cart, addItem } = useCart()

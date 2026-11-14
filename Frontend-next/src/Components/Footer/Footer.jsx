@@ -15,7 +15,7 @@ const logo = '/logo.webp'
 const WHATSAPP_URL = 'https://wa.me/201274550956'
 
 function Footer() {
-  const { language } = useUIStore()
+  const language = useUIStore((s) => s.language)
   const router = useRouter()
   const isRTL = language === 'ar'
   const t = (en, ar) => (isRTL ? ar : en)

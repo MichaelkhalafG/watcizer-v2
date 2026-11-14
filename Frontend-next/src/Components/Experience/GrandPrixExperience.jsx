@@ -107,7 +107,7 @@ function Poster({ alt, eager }) {
 }
 
 export default function GrandPrixExperience({ model, fontClass = '' }) {
-  const { language } = useUIStore()
+  const language = useUIStore((s) => s.language)
   const lang = language === 'ar' ? 'ar' : 'en'
   const isRTL = lang === 'ar'
   const t = COPY[lang]

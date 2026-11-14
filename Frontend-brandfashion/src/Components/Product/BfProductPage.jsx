@@ -86,7 +86,7 @@ const categoryHref = (path) => {
 }
 
 export default function BfProductPage({ detail, related }) {
-  const { language } = useUIStore()
+  const language = useUIStore((s) => s.language)
   const lang = language === 'ar' ? 'ar' : 'en'
   const t = STR[lang]
   const isRTL = lang === 'ar'

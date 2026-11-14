@@ -18,7 +18,7 @@ const MIN_LETTERS = 2
 // `/listing?q=` runs, so "View all results (N)" is exactly what the listing then shows. It used to
 // search the whole downloaded catalogue in the browser.
 function SearchBox() {
-  const { language } = useUIStore()
+  const language = useUIStore((s) => s.language)
   const livePriceMap = useLivePrices()
   const [searchTerm, setSearchTerm] = useState('')
   const [debounced, setDebounced] = useState('')

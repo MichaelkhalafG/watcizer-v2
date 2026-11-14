@@ -8,7 +8,7 @@ const pick = (pair, lang) => (pair?.[lang] || pair?.[lang === 'ar' ? 'en' : 'ar'
 // The articles list (2026-10-01): this storefront's published articles from core, newest first, in
 // the shopper's language (the other one when an article has only one).
 export default function BlogsClient({ blogs = [] }) {
-  const { language } = useUIStore()
+  const language = useUIStore((s) => s.language)
   const ar = language === 'ar'
   const date = (iso) =>
     iso ? new Date(iso.replace(' ', 'T')).toLocaleDateString(ar ? 'ar-EG' : 'en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : ''

@@ -1,5 +1,5 @@
 'use client'
-import { useMemo, useState } from 'react'
+import { useDeferredValue, useMemo, useState } from 'react'
 import Link from '../../LocaleLink'
 import { useUIStore } from '../../../Store/uiStore'
 import { useLivePrices, useMenu } from '../../../Hooks/queries/usePromo'
@@ -38,7 +38,11 @@ export default function MegaDrawer({ active = false, hrefs = {}, omit = [], onNa
   const to = useMemo(() => ({ ...DEFAULT_HREFS, ...hrefs }), [hrefs])
   const [openKey, setOpenKey] = useState(null)
   const [asked, setAsked] = useState(false)
-  if (active && !asked) setAsked(true)
+  // Built from a DEFERRED copy of `active` (2026-11-13, the INP pass): the tap that opens the drawer renders and paints
+  // the slide at once, and the menu (its rows, pictures and the request) is built right after, in a render React can
+  // interrupt — it used to be built inside the tap.
+  const ready = useDeferredValue(active)
+  if (ready && !asked) setAsked(true)
   // The menu's data is in the page (item 36), so the drawer has it the moment it opens; its rows — and their
   // pictures — are built only then (the performance pass: a CLOSED drawer rendered every row on every phone load,
   // and its "lazy" pictures loaded anyway because the closed drawer sits just off the screen).

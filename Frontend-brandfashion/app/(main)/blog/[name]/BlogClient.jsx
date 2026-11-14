@@ -14,7 +14,7 @@ const pick = (pair, lang) => (pair?.[lang] || pair?.[lang === 'ar' ? 'en' : 'ar'
 // Markdown editor, 2026-10-02) goes through MarkdownBody, safe by construction; an older 'text'
 // article keeps ArticleBody, so it looks exactly as it did.
 export default function BlogClient({ blog }) {
-  const { language } = useUIStore()
+  const language = useUIStore((s) => s.language)
   const ar = language === 'ar'
   // The language the TEXT is actually in (an Arabic-only article reads right-to-left on /en too).
   const bodyLang = blog.body?.[language] ? language : ar ? 'en' : 'ar'

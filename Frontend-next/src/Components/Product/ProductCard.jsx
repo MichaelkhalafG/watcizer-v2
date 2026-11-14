@@ -6,8 +6,7 @@ import { useUIStore } from '../../Store/uiStore'
 import { getImageUrl, PLACEHOLDER_IMG } from '../../utils/imageUrl'
 import { pictureSources, hasRenditions, SIZES, CARD_MAX } from '../../utils/picture'
 import { productUrl } from '../../utils/productUrl'
-import useCart from '../../Hooks/useCart'
-import { refusedAddMessage } from '../../Store/cartStore'
+import { cartStore, refusedAddMessage } from '../../Store/cartStore'
 import { useToastStore } from '../../Store/toastStore'
 import { useLivePrices, useProductOffer } from '../../Hooks/queries/usePromo'
 import { liveFields } from '../../lib/campaign'
@@ -20,12 +19,14 @@ const NEW_WINDOW_MS = 30 * 24 * 60 * 60 * 1000
 // its photos are the page's largest paint — they load at once instead of waiting to be found "near the screen", and
 // the very first is asked for before everything else. Every other card stays lazy.
 const ProductCard = ({ product, showBrand = true, showRating = true, eager = false, first = false }) => {
-  const { language } = useUIStore()
+  const language = useUIStore((s) => s.language)
   // in a live Hot Deals / Flash Sale campaign (item 41): the card takes that offer's look; null the second it ends
   const offer = useProductOffer(product?.id)
   const livePriceMap = useLivePrices()
   const offerLang = language === 'ar' ? 'ar' : 'en'
-  const { addItem } = useCart()
+  // the store's own add, NOT useCart(): that hook subscribes to the whole cart, so every card re-rendered on every
+  // cart change (one add = every card on the page, measured 2026-11-13: the INP of an add from a card)
+  const addItem = cartStore.addItem
   const showToast = useToastStore((s) => s.showToast)
   const [added, setAdded] = useState(false)
   const [pending, setPending] = useState(false)

@@ -1,11 +1,11 @@
 'use client'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import Link from '@/src/Components/LocaleLink'
 import { PLACEHOLDER_IMG } from '@/src/utils/imageUrl'
 import { pictureSources, optimized, optimizedSet, SIZES, CARD_MAX } from '@/src/utils/picture'
 import { txt, money, cardColours, cardVariants, isNewProduct } from '@/src/lib/cardData'
-import useCart, { getItemKey } from '@/src/Hooks/useCart'
-import { refusedAddMessage } from '@/src/Store/cartStore'
+import { getItemKey } from '@/src/Hooks/useCart'
+import { cartStore, refusedAddMessage } from '@/src/Store/cartStore'
 import { useToastStore } from '@/src/Store/toastStore'
 import { useLivePrices, useProductOffer } from '@/src/Hooks/queries/usePromo'
 import { livePrice } from '@/src/lib/campaign'
@@ -84,11 +84,18 @@ export default function BfProductCard({
 }) {
   // The stepper IS the cart line (2026-10-19): it shows the cart's quantity for this product and every tap
   // writes it. It used to be a local number — after the first add, + and − changed the card and not the cart.
-  const { cart, addItem, updateQuantity } = useCart()
+  // ...but only THIS card's line (2026-11-13): useCart() subscribed every card to the whole cart, so one add re-rendered
+  // every card on the page. The store hands back the same line object until that line changes.
+  const pid = product?.id ?? null
+  const line = useSyncExternalStore(
+    cartStore.subscribe,
+    () => (pid === null ? null : (cartStore.getSnapshot()?.cart_item || []).find((i) => i.product_id === pid && !i.variant_id) ?? null),
+    () => null,
+  )
+  const { addItem, updateQuantity } = cartStore
   // in a live Hot Deals / Flash Sale campaign (item 41): the card takes that offer's look; null the second it ends
   const offer = useProductOffer(product?.id)
   const showToast = useToastStore((s) => s.showToast)
-  const line = product ? (cart?.cart_item || []).find((i) => i.product_id === product.id && !i.variant_id) : null
   const qty = line?.quantity ?? 0
   const [broken, setBroken] = useState(false)
   const variants = useMemo(() => cardVariants(product), [product])

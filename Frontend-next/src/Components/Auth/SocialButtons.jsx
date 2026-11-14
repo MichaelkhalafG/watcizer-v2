@@ -14,7 +14,7 @@ import { GoogleIcon, MicrosoftIcon } from './SocialIcons'
 // victim's browser into the attacker's account — see src/lib/socialNonce.js for
 // the full argument. Core will not start a flow without one.
 export default function SocialButtons({ onError }) {
-  const { language } = useUIStore()
+  const language = useUIStore((s) => s.language)
   const isRTL = language === 'ar'
   const [busy, setBusy] = useState('')
 

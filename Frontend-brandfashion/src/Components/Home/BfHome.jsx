@@ -72,7 +72,7 @@ const label = (item, key, language) =>
   item?.translations?.find((x) => x.locale === language)?.[key] ?? item?.translations?.find((x) => x.locale === 'en')?.[key] ?? item?.[key] ?? ''
 
 export default function BfHome({ home, meta }) {
-  const { language } = useUIStore()
+  const language = useUIStore((s) => s.language)
   const lang = language === 'ar' ? 'ar' : 'en'
   const t = STR[lang]
   const isRTL = lang === 'ar'

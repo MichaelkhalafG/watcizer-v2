@@ -2,8 +2,7 @@
 import { memo } from 'react'
 import { useUIStore } from '../../Store/uiStore'
 import { useToastStore } from '../../Store/toastStore'
-import useCart from '../../Hooks/useCart'
-import { refusedAddMessage } from '../../Store/cartStore'
+import { cartStore, refusedAddMessage } from '../../Store/cartStore'
 import { localizeHref } from '../../utils/localePath'
 import { productUrl } from '../../utils/productUrl'
 import { fromLegacyCard } from '../../lib/cardData'
@@ -19,8 +18,10 @@ import BfProductCard from './BfProductCard'
  * and the card's own additions (hover photo, descriptive colours as text, the picker) are Brand Fashion's.
  */
 const ProductCard = ({ product, showRating = true, eager = false, first = false }) => {
-  const { language } = useUIStore()
-  const { addItem } = useCart()
+  const language = useUIStore((s) => s.language)
+  // the store's own add, NOT useCart(): that hook subscribes to the whole cart, so every card re-rendered on every
+  // cart change (one add = every card on the page, measured 2026-11-13: the INP of an add from a card)
+  const addItem = cartStore.addItem
   const showToast = useToastStore((s) => s.showToast)
   if (!product) return null
   const lang = language === 'ar' ? 'ar' : 'en'

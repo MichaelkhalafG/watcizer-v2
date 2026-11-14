@@ -8,7 +8,7 @@ const logo = '/wordmark.svg'
 
 // Split-screen luxury auth layout: dark brand panel (left) + form (right).
 export default function AuthShell({ title, subtitle, children }) {
-  const { language } = useUIStore()
+  const language = useUIStore((s) => s.language)
   const isRTL = language === 'ar'
 
   return (

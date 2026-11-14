@@ -23,7 +23,7 @@ export default function AuthCallback() {
   const params = useSearchParams()
   const router = useRouter()
   const login = useAuthStore((s) => s.login)
-  const { language } = useUIStore()
+  const language = useUIStore((s) => s.language)
   const isRTL = language === 'ar'
   const [failed, setFailed] = useState(false)
   const ran = useRef(false)

@@ -16,7 +16,7 @@ import './Cart.css'
 // user interacts. No MUI.
 function CartModal({ open, onClose, cart }) {
   const { data: offers = [] } = useOffers()
-  const { language } = useUIStore()
+  const language = useUIStore((s) => s.language)
   const isRTL = language === 'ar'
   const t = (en, ar) => (isRTL ? ar : en)
   const router = useRouter()

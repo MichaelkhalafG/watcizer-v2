@@ -132,7 +132,7 @@ function ProductDetailClient({ param, isOffer = false, productPayload = null, v2
   const { data: tablesData } = useTables()
   const tables = useMemo(() => tablesData ?? {}, [tablesData])
   const { data: offers = [] } = useOffers()
-  const { language } = useUIStore()
+  const language = useUIStore((s) => s.language)
   // This page's product, in the shopper's language (the server sent its raw card).
   const pageCards = useCardsOf(productPayload, language)
   const isRTL = language === 'ar'

@@ -634,7 +634,7 @@ function AddressesTab({ t, isRTL }) {
   const setShippingid = useShippingStore((s) => s.setShippingid)
   const setShipping = useShippingStore((s) => s.setShipping)
   const setShippingName = useShippingStore((s) => s.setShippingName)
-  const { language } = useUIStore()
+  const language = useUIStore((s) => s.language)
   const showToast = useToastStore((s) => s.showToast)
 
   const [addresses, setAddresses] = useState(null)
@@ -976,7 +976,7 @@ const EmptyState = ({ icon, title, cta, onCta }) => (
 //  Account (shell)
 // =============================================================================
 function Account() {
-  const { language } = useUIStore()
+  const language = useUIStore((s) => s.language)
   const isRTL = language === 'ar'
   const user = useAuthStore((s) => s.user)
   const logout = useAuthStore((s) => s.logout)

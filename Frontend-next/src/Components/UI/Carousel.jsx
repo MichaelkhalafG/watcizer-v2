@@ -22,7 +22,7 @@ function Carousel({
   // at a time, instead of gliding to wherever the drag ended — which left the last item cut in half.
   snap = false,
 }) {
-  const { language } = useUIStore()
+  const language = useUIStore((s) => s.language)
   const isRTL = language === 'ar'
 
   const [emblaRef, emblaApi] = useEmblaCarousel({

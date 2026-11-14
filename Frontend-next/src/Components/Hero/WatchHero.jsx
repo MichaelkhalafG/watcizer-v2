@@ -33,7 +33,7 @@ class HeroCanvasBoundary extends Component {
 
 const WatchHero = () => {
   const router = useRouter()
-  const { language } = useUIStore()
+  const language = useUIStore((s) => s.language)
   const isRTL = language === 'ar'
 
   // Defer the heavy 3D (three.js + Draco GLB) until AFTER first paint so it never

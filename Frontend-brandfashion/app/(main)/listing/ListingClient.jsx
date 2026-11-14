@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
+import { startTransition, useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { usePathname, useSearchParams } from 'next/navigation'
 import { useRouter } from '@/src/Hooks/useLocaleRouter'
 import { FiSliders, FiX, FiChevronDown, FiSearch, FiChevronLeft, FiChevronRight } from 'react-icons/fi'
@@ -76,6 +76,17 @@ export default function ListingClient({ seedParams = null }) {
   // second copy of the whole sidebar — about 330 elements — and it was rendered, sent and hydrated on every listing
   // page, on a computer too, where the drawer is never opened. It is built by the tap that opens it, and stays.
   const [drawerBuilt, setDrawerBuilt] = useState(false)
+  // The desktop sidebar on a phone (2026-11-13, the INP pass): CSS hides it below 769 px, but React still rendered it
+  // again on every filter change — a second full facet list behind the drawer's. It is in the server HTML (a computer
+  // needs it at once) and is dropped after mount when the screen is a phone's, in a render that yields.
+  const [asideOn, setAsideOn] = useState(true)
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 769px)')
+    const apply = () => startTransition(() => setAsideOn(mq.matches))
+    apply()
+    mq.addEventListener('change', apply)
+    return () => mq.removeEventListener('change', apply)
+  }, [])
 
   // Hydration flag: false during SSR + the first client render (so both agree),
   // then true — handing the source of truth to the client store.
@@ -373,7 +384,7 @@ export default function ListingClient({ seedParams = null }) {
         {/* Body: sidebar + content */}
         <div className="wz-listing-body">
           <aside className="wz-listing-aside">
-            <SideBar facets={facets} />
+            {asideOn ? <SideBar facets={facets} /> : null}
           </aside>
 
           <div className="wz-listing-main">
