@@ -970,7 +970,10 @@ export default function OrderShow({
                     </Alert>
                 ) : null}
 
-                <div className="grid gap-6 lg:grid-cols-3">
+                {/* `min-w-0` on every card: a grid item is as wide as its content by default, so a card holding a
+                    table stretched the whole page past a phone's width (677 px on a 390 px screen, every order type,
+                    2026-11-14). The table now scrolls inside its own box, as the Table component intends. */}
+                <div className="grid gap-6 lg:grid-cols-3 [&>*]:min-w-0">
                     <Card>
                         <CardHeader>
                             <CardTitle>
@@ -1360,7 +1363,10 @@ export default function OrderShow({
                     </CardContent>
                 </Card>
 
-                <div className="grid gap-6 lg:grid-cols-2">
+                {/* `min-w-0` on every card: a grid item is as wide as its content by default, so a card holding a
+                    table stretched the whole page past a phone's width (677 px on a 390 px screen, every order type,
+                    2026-11-14). The table now scrolls inside its own box, as the Table component intends. */}
+                <div className="grid gap-6 lg:grid-cols-2 [&>*]:min-w-0">
                     <Card>
                         <CardHeader>
                             <CardTitle>
