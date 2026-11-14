@@ -12,7 +12,7 @@ import useCart, { getItemKey } from '../../Hooks/useCart'
 import useFreeShipping from '../../Hooks/useFreeShipping'
 import usePromotion from '../../Hooks/usePromotion'
 import CouponBox from '../../Components/Cart/CouponBox'
-import { discountLabel, payable } from '../../lib/coupon'
+import { discountLabel, payable, rewardTitle } from '../../lib/coupon'
 import { shippingCharged } from '../../lib/freeShipping'
 import { cartStore } from '../../Store/cartStore'
 import BfRail from '../../Components/Listing/BfRail'
@@ -465,6 +465,16 @@ function Cart() {
                   <span>−{fmt(promotion.discount)}</span>
                 </div>
               ) : null}
+              {/* a gift a code grants (a wheel prize, 2026-11-14 as on Watchizer): a line at no charge */}
+              {promotion.rewards.map((reward) => (
+                <div className="wz-cart-row wz-cart-discount wz-cart-gift" key={`gift-${reward.product_id}`}>
+                  <span>
+                    {t('Gift', 'هدية')}: {rewardTitle(reward, isRTL)}
+                    {reward.quantity > 1 ? ` × ${reward.quantity}` : ''}
+                  </span>
+                  <span>{t('Free', 'مجانًا')}</span>
+                </div>
+              ))}
 
               <CouponBox isRTL={isRTL} />
 

@@ -25,7 +25,7 @@ import { cartStore } from '../../Store/cartStore'
 import useFreeShipping from '../../Hooks/useFreeShipping'
 import usePromotion from '../../Hooks/usePromotion'
 import CouponBox from '../../Components/Cart/CouponBox'
-import { discountLabel, payable, setStoredCoupon, storedCoupon } from '../../lib/coupon'
+import { discountLabel, payable, rewardTitle, setCouponPhone, setStoredCoupon, storedCoupon } from '../../lib/coupon'
 import { freeShippingOf, shippingCharged } from '../../lib/freeShipping'
 import { txt, money } from '../../lib/cardData'
 import { STOREFRONT_CODE } from '../../lib/env'
@@ -174,6 +174,16 @@ const OrderSummary = memo(function OrderSummary({
           <span className="v">−{fmt(promotion.discount)}</span>
         </div>
       ) : null}
+      {/* a gift a code grants (a wheel prize, 2026-11-14 as on Watchizer): a line at no charge */}
+      {promotion.rewards.map((reward) => (
+        <div className="wz-checkout-line is-save wz-checkout-gift" key={`gift-${reward.product_id}`}>
+          <span>
+            {t('Gift', 'هدية')}: {rewardTitle(reward, isRTL)}
+            {reward.quantity > 1 ? ` × ${reward.quantity}` : ''}
+          </span>
+          <span className="v">{t('Free', 'مجانًا')}</span>
+        </div>
+      ))}
 
       <CouponBox isRTL={isRTL} />
 
@@ -265,6 +275,18 @@ function Checkout() {
   const [street, setStreet] = useState('')
   const [apartment, setApartment] = useState('')
   const [phone, setPhone] = useState('')
+  // A WHEEL CODE IS BOUND TO A PHONE (2026-11-14, as on Watchizer since 2026-11-07): the number typed here rides with the
+  // cart request while a code is kept, so core can answer "not this number" and the coupon field can say so BEFORE the
+  // order is placed; a change of number re-reads the cart. Cleared when the page is left.
+  useEffect(() => {
+    setCouponPhone(isValidEgPhone(phone) ? phone.trim() : '')
+    if (!storedCoupon()) return undefined
+    const id = setTimeout(() => {
+      cartStore.fetchCart()
+    }, 450)
+    return () => clearTimeout(id)
+  }, [phone])
+  useEffect(() => () => setCouponPhone(''), [])
   // The chosen row of core's v2 list (posted as `payment_method_id`) and what core calls its kind
   // (`payment_method`: cash for cod, whatsapp, card for every online row). Nothing is chosen until the
   // list has arrived; then the first usable row is.
