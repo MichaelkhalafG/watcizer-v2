@@ -44,6 +44,8 @@ function Header() {
   // comes from TanStack Query — not the catalogue (C-1 stage 2).
   const { cart } = useCart()
   const shipping = useShippingStore((s) => s.shipping)
+  // a pickup chosen on the checkout has no delivery fee: the running total must not add the governorate's (2026-11-14)
+  const pickup = useShippingStore((s) => s.pickup)
   // the same total the cart screen shows (M1u, 2026-10-30): free delivery over the threshold, the promotion taken off
   const promotion = usePromotion()
   const cartSubtotal = (Array.isArray(cart?.cart_item) ? cart.cart_item : []).reduce((sum, item) => sum + (parseFloat(item.piece_price) || 0) * (parseInt(item.quantity, 10) || 0), 0)
@@ -60,9 +62,9 @@ function Header() {
       return total + piecePrice * quantity
     }, 0)
     // Empty cart → total is 0 (do NOT add the default shipping fee to nothing).
-    const total = (count > 0 ? payable(subtotal, promotion.discount, freeShipping.free ? 0 : parseFloat(shipping || 0)) : 0).toFixed(2)
+    const total = (count > 0 ? payable(subtotal, promotion.discount, freeShipping.free || pickup ? 0 : parseFloat(shipping || 0)) : 0).toFixed(2)
     return { productsCount: count, total_cart_price: total }
-  }, [cart, shipping, promotion.discount, freeShipping.free])
+  }, [cart, shipping, promotion.discount, freeShipping.free, pickup])
   const { data: tables = {} } = useTables()
   const { data: nav } = useNav()
   const language = useUIStore((s) => s.language)
