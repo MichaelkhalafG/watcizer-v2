@@ -95,8 +95,13 @@ export default function Analytics() {
     <>
       {META_PIXEL_IDS.length > 0 ? (
         <>
+          {/* autoConfig OFF for every pixel, BEFORE its init (Michael, 2026-11-13, the INP pass): Meta's automatic events
+              (SubscribedButtonClick, page metadata) put a click listener on the document that scanned the page on EVERY tap,
+              50-260 ms per tap on a 4x-throttled phone. Our own events (PageView here; ViewContent, AddToCart,
+              InitiateCheckout, Purchase from src/scripts/pixels.js; the server's Conversions API) are explicit calls and
+              do not depend on it. */}
           <Script id="fb-pixel" strategy="afterInteractive">
-            {`!function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');if(!window.__wzMetaInit){window.__wzMetaInit=1;${JSON.stringify(META_PIXEL_IDS)}.forEach(function(id){fbq('init',id)});fbq('track','PageView');}`}
+            {`!function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');if(!window.__wzMetaInit){window.__wzMetaInit=1;${JSON.stringify(META_PIXEL_IDS)}.forEach(function(id){fbq('set','autoConfig',false,id);fbq('init',id)});fbq('track','PageView');}`}
           </Script>
           {/* Fallback for browsers with JavaScript off — one beacon per pixel, because a beacon
               URL carries exactly one id. Same 1x1 <img> Meta's own snippet uses, deliberately NOT
