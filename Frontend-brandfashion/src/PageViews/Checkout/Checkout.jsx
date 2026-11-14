@@ -8,6 +8,7 @@ import {
   FiChevronDown,
   FiCreditCard,
   FiLock,
+  FiMapPin,
   FiPhone,
   FiRefreshCw,
   FiShield,
@@ -15,6 +16,10 @@ import {
   FiUser,
 } from 'react-icons/fi'
 import { usePaymentMethods } from '../../Hooks/queries/usePaymentMethods'
+import { useQueryClient } from '@tanstack/react-query'
+import usePickup from '../../Hooks/queries/usePickup'
+import PickupChoice from '../../Components/Checkout/PickupChoice'
+import { inLang, readyWindowFor } from '../../lib/pickup'
 import { useUIStore } from '../../Store/uiStore'
 import { useAuthStore } from '../../Store/authStore'
 import { useShippingStore } from '../../Store/shippingStore'
@@ -25,7 +30,7 @@ import { cartStore } from '../../Store/cartStore'
 import useFreeShipping from '../../Hooks/useFreeShipping'
 import usePromotion from '../../Hooks/usePromotion'
 import CouponBox from '../../Components/Cart/CouponBox'
-import { discountLabel, payable, rewardTitle, setCouponPhone, setStoredCoupon, storedCoupon } from '../../lib/coupon'
+import { discountLabel, payable, rewardTitle, setCouponFulfilment, setCouponPhone, setStoredCoupon, storedCoupon } from '../../lib/coupon'
 import { freeShippingOf, shippingCharged } from '../../lib/freeShipping'
 import { txt, money } from '../../lib/cardData'
 import { STOREFRONT_CODE } from '../../lib/env'
@@ -54,7 +59,9 @@ const isValidEgPhone = (v) => /^01\d{9}$/.test(String(v || '').trim())
 // The list comes from core (usePaymentMethods). Cash is always offered and is not driven by it;
 // offline keys are skipped if a row for them exists. The icon and the one-line note are the
 // storefront's, by method KEY — the label is the merchant's, from the dashboard.
-const KIND = { cod: 'cash', whatsapp: 'whatsapp' }   // what core's `payment_method` calls an offline row; anything else is 'card'
+const KIND = { cod: 'cash', whatsapp: 'whatsapp', store: 'cash' }
+// a pickup's ways to pay (click & collect, 2026-11-14): never cash on delivery or WhatsApp; pay at the store on a pickup only
+const DELIVERY_ONLY = ['cod', 'whatsapp']   // what core's `payment_method` calls an offline row; anything else is 'card'
 const METHOD_ICON = {
   card: FiCreditCard,
   bank_installment: FiCalendar,
@@ -62,8 +69,10 @@ const METHOD_ICON = {
   valu: FiCalendar,
   wallet: FiSmartphone,
   apple_pay: FiSmartphone,
+  store: FiMapPin,
 }
 const METHOD_NOTE = {
+  store: ['Pay when you collect your order at the store', 'ادفع عند استلام طلبك من الفرع'],
   cod: ['Pay when you receive your order', 'ادفع عند استلام طلبك'],
   whatsapp: ['We confirm the order and the payment with you on WhatsApp', 'نؤكد معك الطلب والدفع على واتساب'],
   card: ['Visa / Mastercard / Meeza', 'فيزا / ماستركارد / ميزة'],
@@ -80,6 +89,7 @@ const FIELD_TEXT = {
   address_line: ['Enter your street address', 'أدخل عنوانك بالتفصيل'],
   shipping_city_id: ['Choose your governorate', 'اختر المحافظة'],
   address_id: ['Choose one of your addresses', 'اختر أحد عناوينك'],
+  pickup_store_id: ['Choose a store', 'اختر الفرع'],
 }
 const egp = (n) => Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 })
 
@@ -107,6 +117,7 @@ const OrderSummary = memo(function OrderSummary({
   processing,
   onPlace,
   isRTL,
+  pickupStore = null,
 }) {
   const promotion = usePromotion()
   const t = (en, ar) => (isRTL ? ar : en)
@@ -151,15 +162,26 @@ const OrderSummary = memo(function OrderSummary({
         <span className="v">{fmt(subtotal)}</span>
       </div>
 
-      <div className="wz-checkout-line">
-        <span>
-          {t('Shipping', 'الشحن')}
-          {shippingName ? ` · ${shippingName}` : ''}
-        </span>
-        <span className="v">
-          {shipsFree ? t('Free', 'مجاني') : shippingCost > 0 ? fmt(shippingCost) : t('Choose a governorate', 'اختر المحافظة')}
-        </span>
-      </div>
+      {pickupStore !== null ? (
+        // a pickup (click & collect, 2026-11-14): no delivery, the store it waits at
+        <div className="wz-checkout-line">
+          <span>
+            {t('Pick up in store', 'استلام من الفرع')}
+            {pickupStore ? ` · ${pickupStore}` : ''}
+          </span>
+          <span className="v">{t('Free', 'مجاني')}</span>
+        </div>
+      ) : (
+        <div className="wz-checkout-line">
+          <span>
+            {t('Shipping', 'الشحن')}
+            {shippingName ? ` · ${shippingName}` : ''}
+          </span>
+          <span className="v">
+            {shipsFree ? t('Free', 'مجاني') : shippingCost > 0 ? fmt(shippingCost) : t('Choose a governorate', 'اختر المحافظة')}
+          </span>
+        </div>
+      )}
 
       {savings > 0 && (
         <div className="wz-checkout-line is-save">
@@ -227,7 +249,7 @@ const OrderSummary = memo(function OrderSummary({
   )
 })
 
-function Checkout() {
+function Checkout({ initialPickup = null, initialFulfilment = 'delivery' }) {
   // Server data from TanStack Query; shipping selection from Zustand, the derived
   // city-price list from the shared shipping query.
   const shippingPrices = useShippingPrices()
@@ -256,6 +278,35 @@ function Checkout() {
 
   const { cart, clearCart } = useCart()
   const items = useMemo(() => cart?.cart_item || [], [cart])
+
+  // ── Delivery or pickup (click & collect, 2026-11-14) — as on Watchizer ───
+  // Offered only while core says this shop does it (usePickup — the server render's own read first, so nothing moves
+  // when the browser's lands). Chosen here, or already from the cart's "pick up in store instead" (?fulfilment=pickup).
+  const pickup = usePickup(initialPickup)
+  const queryClient = useQueryClient()
+  const [fulfilment, setFulfilment] = useState(initialFulfilment === 'pickup' ? 'pickup' : 'delivery')
+  const isPickup = pickup.enabled && fulfilment === 'pickup'
+  const [storeId, setStoreId] = useState(null)
+  // one store: nothing to choose; a store that left the list is no longer chosen
+  const chosenStore = useMemo(() => {
+    const id = storeId ?? (pickup.stores.length === 1 ? pickup.stores[0].id : null)
+    return pickup.stores.find((st) => st.id === id) || null
+  }, [pickup, storeId])
+  const ready = useMemo(() => readyWindowFor(items, pickup.windows), [items, pickup])
+  const pickupAsked = useRef(false)
+  useEffect(() => {
+    setCouponFulfilment(isPickup)
+    if (!isPickup && !pickupAsked.current) return
+    pickupAsked.current = true
+    if (storedCoupon()) cartStore.fetchCart()
+  }, [isPickup])
+  useEffect(() => () => setCouponFulfilment(false), [])
+  // …and the page's other totals (Watchizer's header) leave out the delivery fee while a pickup is chosen
+  const setPickupChosen = useShippingStore((s) => s.setPickup)
+  useEffect(() => {
+    setPickupChosen(isPickup)
+  }, [isPickup, setPickupChosen])
+  useEffect(() => () => setPickupChosen(false), [setPickupChosen])
   const lang = isRTL ? 'ar' : 'en'
   const fmt = useCallback((v) => money(Math.round(Number(v) || 0), lang), [lang])
 
@@ -346,6 +397,14 @@ function Checkout() {
 
   // Whether the address form (inline fields) is active.
   const useInline = isGuest || useNewAddress || (isLoggedIn && addresses.length === 0)
+
+  // A pickup needs the phone typed (there is no address to carry it): a signed-in shopper's saved number fills it.
+  useEffect(() => {
+    if (!isPickup || phone || addresses.length === 0) return
+    const saved = String(addresses.find((a) => a.id === selectedAddressId)?.phone_number_one || addresses[0]?.phone_number_one || '')
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- a one-time fill from the saved addresses
+    if (isValidEgPhone(saved)) setPhone(saved)
+  }, [isPickup, phone, addresses, selectedAddressId])
 
   // ── Governorate dropdown ─────────────────────────────────────────────────
   const onGovChange = useCallback(
@@ -464,8 +523,9 @@ function Checkout() {
 
   // free over the storefront's threshold (core's cart answer, 2026-10-29); the governorate's price otherwise
   const freeShipping = useFreeShipping(subtotal)
-  const shippingCost = activeCity ? shippingCharged(activeCity.Price, freeShipping) : 0
-  const shippingName = activeCity ? (isRTL ? activeCity.GovernorateAr : activeCity.GovernorateEn) : ''
+  // a pickup has no delivery at all (core charges none)
+  const shippingCost = !isPickup && activeCity ? shippingCharged(activeCity.Price, freeShipping) : 0
+  const shippingName = isPickup ? inLang(chosenStore?.name, isRTL) : activeCity ? (isRTL ? activeCity.GovernorateAr : activeCity.GovernorateEn) : ''
   const total = subtotal + shippingCost
   const payTotal = payable(subtotal, promotion.discount, shippingCost)
 
@@ -473,17 +533,20 @@ function Checkout() {
     () =>
       (onlineList || [])
         .filter((m) => m.method !== 'apple_pay' || canApplePay)
+        // a pickup: no cash on delivery, no WhatsApp; a delivery: no pay at the store (core refuses each)
+        .filter((m) => (isPickup ? !DELIVERY_ONLY.includes(m.method) : m.method !== 'store'))
         .map((m) => ({ ...m, kind: KIND[m.method] || 'card', reason: limitReason(m, total, t) })),
-    [onlineList, canApplePay, total, t],
+    [onlineList, canApplePay, total, t, isPickup],
   )
   // The first usable row is chosen once the list arrives (and again if the chosen one disappears).
   useEffect(() => {
     if (methodId != null && offered.some((m) => m.id === methodId)) return
-    const first = offered.find((m) => !m.reason)
+    // on a pickup, pay at the store first when the shop offers it (the cash-on-delivery row's place)
+    const first = (isPickup && offered.find((m) => m.method === 'store' && !m.reason)) || offered.find((m) => !m.reason)
     // eslint-disable-next-line react-hooks/set-state-in-effect -- the list is only known after it loads
     setMethodId(first ? first.id : null)
     setPaymentMethod(first ? first.kind : null)
-  }, [offered, methodId])
+  }, [offered, methodId, isPickup])
   // A chosen method the order has since outgrown (or that disappeared): nothing counts as
   // selected, so the shopper picks again instead of meeting a refusal after pressing the button.
   const chosenOnline = methodId == null ? null : offered.find((m) => m.id === methodId)
@@ -493,7 +556,10 @@ function Checkout() {
   const canSubmit = useMemo(() => {
     if (items.length === 0) return false
     if (!paymentMethod || choiceLost) return false
-    if (useInline) {
+    if (isPickup) {
+      if (!chosenStore) return false
+      if (!isValidEgPhone(phone)) return false
+    } else if (useInline) {
       if (!shippingid) return false
       if (!street.trim()) return false
       if (!isValidEgPhone(phone)) return false
@@ -509,6 +575,8 @@ function Checkout() {
     items.length,
     paymentMethod,
     choiceLost,
+    isPickup,
+    chosenStore,
     useInline,
     shippingid,
     street,
@@ -541,7 +609,7 @@ function Checkout() {
     // the server's, and the chosen row's id is checked (this shop's, switched on, inside its limits)
     // before anything is written.
     // the delivery core will charge, from the cart answer the store holds now: the total sent is core's total
-    const sentShipping = activeCity ? shippingCharged(activeCity.Price, freeShippingOf(cartStore.getExtraSnapshot()?.totals?.shipping?.free_over, subtotal)) : 0
+    const sentShipping = !isPickup && activeCity ? shippingCharged(activeCity.Price, freeShippingOf(cartStore.getExtraSnapshot()?.totals?.shipping?.free_over, subtotal)) : 0
     const sentTotal = subtotal + sentShipping
     const body = {
       payment_method: paymentMethod,
@@ -552,7 +620,12 @@ function Checkout() {
       ...(storedCoupon() ? { coupon: storedCoupon() } : {}),
     }
 
-    if (useInline) {
+    if (isPickup) {
+      // a pickup (click & collect): the store, the phone; no address — core checks the store is this shop's and open
+      body.fulfilment = 'pickup'
+      body.pickup_store_id = chosenStore.id
+      body.phone = phone.trim()
+    } else if (useInline) {
       body.address_line = street.trim() + (apartment.trim() ? `, ${apartment.trim()}` : '')
       body.shipping_city_id = Number(shippingid)
       body.phone = phone.trim()
@@ -594,6 +667,8 @@ function Checkout() {
             value: payable(subtotal, promotion.discount, 0),
             shipping: sentShipping,
             coupon: couponApplied,
+            // a pickup paid online (click & collect): the landing's Purchase says "in store"
+            pickup: isPickup,
             contents: items.map((i) => ({ id: i.product?.content_id ?? i.product_id ?? null, name: txt(i.product?.title, 'en') || txt(i.product?.title, lang), quantity: i.quantity, price: Number(i.piece_price) })),
           })
           window.location.href = data.redirect_url
@@ -632,6 +707,8 @@ function Checkout() {
           shippingName,
           shippingPrice: sentShipping,
           paymentMethod,
+          // a pickup: the store, the code and the window core recorded (click & collect)
+          ...(isPickup && data.pickup ? { pickup: data.pickup, holdHours: pickup.hold_hours } : {}),
         })
         router.push('/order-confirmation')
         return
@@ -649,6 +726,10 @@ function Checkout() {
         }
         setErrors(map)
         setBanner(t('Please check the highlighted fields.', 'يرجى مراجعة الحقول المظللة.'))
+      } else if (status === 422 && String(b.error || '').startsWith('pickup_')) {
+        // pickup off, the store switched off, or this phone's pay-at-store limit: nothing was written
+        setBanner(b.messages?.[lang] || t('Pick up in store is not available for this order.', 'الاستلام من الفرع غير متاح لهذا الطلب.'))
+        queryClient.invalidateQueries({ queryKey: ['pickup'] })
       } else if (status === 422 && b.error === 'coupon') {
         setStoredCoupon('')
         await cartStore.fetchCart()
@@ -692,7 +773,7 @@ function Checkout() {
     canSubmit, items, paymentMethod, methodId, refetchMethods, notes, useInline, street,
     apartment, shippingid, phone, selectedAddressId, isGuest, firstName, lastName, email,
     isRTL, lang, fmt, cleanupAfterOrder, router, setOrderData, shippingName, activeCity, user, t,
-    subtotal, promotion, payTotal, couponApplied,
+    subtotal, promotion, payTotal, couponApplied, isPickup, chosenStore, pickup.hold_hours, queryClient,
   ])
 
   const handleSignOut = useCallback(() => {
@@ -701,6 +782,35 @@ function Checkout() {
   }, [logout, router])
 
   const err = (k) => errors[k]?.[0]
+
+  // the phone field — the address form's, and a pickup's own (the order has no address to carry it)
+  const phoneField = (
+    <div className="wz-checkout-field">
+      <label className="wz-checkout-label">
+        {t('Phone', 'رقم الهاتف')}<span className="req">*</span>
+      </label>
+      <div className="wz-checkout-phone">
+        <span className="wz-checkout-flag">🇪🇬</span>
+        <input
+          className={`wz-checkout-input${err('phone') || (phone && !isValidEgPhone(phone)) ? ' is-error' : ''}`}
+          value={phone}
+          onChange={(e) => setPhone(e.target.value.replace(/[^\d]/g, '').slice(0, 11))}
+          placeholder="01XXXXXXXXX"
+          inputMode="numeric"
+          autoComplete="tel"
+        />
+      </div>
+      {phone && !isValidEgPhone(phone) && (
+        <span className="wz-checkout-err">
+          {t('Enter a valid 11-digit number starting with 01', 'أدخل رقمًا صحيحًا من 11 رقمًا يبدأ بـ 01')}
+        </span>
+      )}
+      {err('phone') && <span className="wz-checkout-err">{err('phone')}</span>}
+    </div>
+  )
+  const deliveryNote = activeCity
+    ? `${isRTL ? activeCity.GovernorateAr : activeCity.GovernorateEn} · ${freeShipping.free ? t('Free', 'مجاني') : fmt(shippingCharged(activeCity.Price, freeShipping))}`
+    : t('Delivery fee by governorate', 'رسوم التوصيل حسب المحافظة')
 
   // ── Empty cart guard ─────────────────────────────────────────────────────
   if (items.length === 0) {
@@ -824,15 +934,46 @@ function Checkout() {
               )}
             </section>
 
-            {/* SECTION 2 — SHIPPING */}
+            {/* SECTION 2 — SHIPPING, or delivery or pickup when the shop offers pickup (click & collect, 2026-11-14) */}
             <section className="wz-checkout-section">
               <div className="wz-checkout-sechead">
-                <span className="wz-checkout-sectitle">{t('Shipping', 'عنوان الشحن')}</span>
+                <span className="wz-checkout-sectitle">
+                  {pickup.enabled ? t('Delivery or pickup', 'التوصيل أو الاستلام') : t('Shipping', 'عنوان الشحن')}
+                </span>
                 <span className="wz-checkout-secnum">02</span>
               </div>
 
+              {pickup.enabled ? (
+                <PickupChoice
+                  pickup={pickup}
+                  isPickup={isPickup}
+                  onChoose={setFulfilment}
+                  storeId={chosenStore?.id ?? null}
+                  onStore={(id) => {
+                    setStoreId(id)
+                    setErrors((p) => ({ ...p, pickup_store_id: undefined }))
+                  }}
+                  ready={ready}
+                  deliveryNote={deliveryNote}
+                  isRTL={isRTL}
+                  error={err('pickup_store_id')}
+                />
+              ) : null}
+
+              {isPickup ? (
+                <>
+                  {phoneField}
+                  <p className="wz-checkout-hint">
+                    {t(
+                      `We e-mail you when it is ready, and hold it for ${pickup.hold_hours} hours. Bring your order number and pickup code.`,
+                      `نراسلك بالبريد عندما يصبح جاهزًا، ونحتفظ به لك ${pickup.hold_hours} ساعة. أحضر رقم الطلب وكود الاستلام.`,
+                    )}
+                  </p>
+                </>
+              ) : null}
+
               {/* Saved addresses (logged-in) */}
-              {isLoggedIn && addresses.length > 0 && !useNewAddress && (
+              {!isPickup && isLoggedIn && addresses.length > 0 && !useNewAddress && (
                 <>
                   {addresses.map((a) => (
                     <label
@@ -861,7 +1002,7 @@ function Checkout() {
               )}
 
               {/* Address form (guest / new address) */}
-              {useInline && (
+              {!isPickup && useInline && (
                 <>
                   <div className="wz-checkout-field">
                     <label className="wz-checkout-label">
@@ -911,28 +1052,7 @@ function Checkout() {
                     />
                   </div>
 
-                  <div className="wz-checkout-field">
-                    <label className="wz-checkout-label">
-                      {t('Phone', 'رقم الهاتف')}<span className="req">*</span>
-                    </label>
-                    <div className="wz-checkout-phone">
-                      <span className="wz-checkout-flag">🇪🇬</span>
-                      <input
-                        className={`wz-checkout-input${err('phone') || (phone && !isValidEgPhone(phone)) ? ' is-error' : ''}`}
-                        value={phone}
-                        onChange={(e) => setPhone(e.target.value.replace(/[^\d]/g, '').slice(0, 11))}
-                        placeholder="01XXXXXXXXX"
-                        inputMode="numeric"
-                        autoComplete="tel"
-                      />
-                    </div>
-                    {phone && !isValidEgPhone(phone) && (
-                      <span className="wz-checkout-err">
-                        {t('Enter a valid 11-digit number starting with 01', 'أدخل رقمًا صحيحًا من 11 رقمًا يبدأ بـ 01')}
-                      </span>
-                    )}
-                    {err('phone') && <span className="wz-checkout-err">{err('phone')}</span>}
-                  </div>
+                  {phoneField}
 
                   {isLoggedIn && addresses.length > 0 && (
                     <button type="button" className="wz-checkout-linkbtn" onClick={() => setUseNewAddress(false)}>
@@ -1043,6 +1163,7 @@ function Checkout() {
             canSubmit={canSubmit}
             processing={processing}
             onPlace={placeOrder}
+            pickupStore={isPickup ? inLang(chosenStore?.name, isRTL) : null}
           />
         </div>
       </div>

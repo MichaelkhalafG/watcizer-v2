@@ -418,3 +418,15 @@ src/Components/Wheel/wheel.css
 src/lib/wheel.js
 src/lib/utm.js
 tests/wheel.test.mjs
+# 2026-11-14 (click & collect, "Reserve online, pick up in store", both shops): FOUR NEW TWINS - core's GET v2/{code}/pickup read
+# defensively (src/lib/pickup.js), its hook with the server render's read as the first answer (src/Hooks/queries/usePickup.js), the
+# checkout's "Delivery or pickup" block drawn with the checkout's own rows so each shop's Checkout.css dresses it
+# (src/Components/Checkout/PickupChoice.jsx), and tests/pickup.test.mjs. Changed on both sides, identically, and still twins:
+# src/lib/serverV2.js (getServerV2Pickup), src/lib/coupon.js (the cart preview asked as a pickup), OrderConfirmation.jsx (the pickup
+# code and the store), TrustSignals.jsx + ProductDetailClient.jsx (the product page's pickup row), app/(main)/(shop)/cart/page.jsx and
+# app/(main)/(shop)/checkout/page.jsx (now server pages handing the read over). The diverged Checkout.jsx, Cart.jsx, their CSS and
+# Brand Fashion's BfProductPage.jsx and product page took the same behaviour, each in its own file.
+src/lib/pickup.js
+src/Hooks/queries/usePickup.js
+src/Components/Checkout/PickupChoice.jsx
+tests/pickup.test.mjs

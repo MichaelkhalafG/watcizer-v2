@@ -1,5 +1,5 @@
 import { notFound } from 'next/navigation'
-import { getServerV2Product, getServerV2Related } from '@/src/lib/serverV2'
+import { getServerV2Pickup, getServerV2Product, getServerV2Related } from '@/src/lib/serverV2'
 import { requestLang, localePath, SITE } from '@/src/lib/requestLang'
 import { txt } from '@/src/lib/cardData'
 import BfProductPage from '@/src/Components/Product/BfProductPage'
@@ -43,6 +43,8 @@ export async function generateMetadata({ params }) {
 export default async function ProductPage({ params }) {
   const { slug, detail, related } = await load(params)
   if (!detail) notFound()
+  // pick up in store (click & collect, 2026-11-14): held 30 s, never the page's failure
+  const pickup = await getServerV2Pickup().then((body) => body || null, () => null)
   const { urlLang } = await requestLang()
   const p = detail.product
   const path = `/product/${slug}`
@@ -79,7 +81,7 @@ export default async function ProductPage({ params }) {
     <>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: safeJsonLd(productLd) }} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: safeJsonLd(breadcrumbLd) }} />
-      <BfProductPage detail={detail} related={related} />
+      <BfProductPage detail={detail} related={related} pickup={pickup} />
     </>
   )
 }

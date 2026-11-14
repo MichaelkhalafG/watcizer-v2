@@ -19,6 +19,7 @@ import BfRail from '@/src/Components/Listing/BfRail'
 import StockAlertForm from './StockAlertForm'
 import { useProductOffer } from '@/src/Hooks/queries/usePromo'
 import { OfferNote, offerClass } from '@/src/Components/Promo/OfferStrip'
+import { pickupFrom, storeNames } from '@/src/lib/pickup'
 import './BfProductPage.css'
 
 /*
@@ -60,6 +61,7 @@ const STR = {
     home: 'Home', inStock: 'In stock', onlyLeft: (n) => `Only ${n} left`, soldOut: 'Sold out', add: 'Add to cart', notify: 'Notify me when it’s back',
     notifySize: 'Notify me for this size', chooseBoth: 'Choose a colour and size', chooseColour: 'Choose a colour', chooseSize: 'Choose a size',
     vat: 'Incl. VAT', colour: 'Colour', size: 'Size', promises: ['Delivery across Egypt — EGP 100–300 by governorate', 'Cash on delivery', 'Returns: the customer pays return shipping'],
+    pickup: (stores) => `Free pickup in store — ${stores}`,
     attributes: 'Details', description: 'Description', ratings: 'Ratings', brand: 'Brand', family: 'Type', category: 'Category', gender: 'Gender', colours: 'Colours', features: 'Features',
     goesWith: 'Goes with this', similar: 'Similar', seeAll: 'See all', was: 'was', added: 'Added to cart', notified: 'We’ll let you know when it’s back',
     families: { watch: 'Watch', bag: 'Bag', wallet: 'Wallet', fashion: 'Fashion', electronics: 'Electronics', perfume: 'Perfume' },
@@ -68,6 +70,7 @@ const STR = {
     home: 'الرئيسية', inStock: 'متوفر', onlyLeft: (n) => `باقي ${n} فقط`, soldOut: 'نفد', add: 'أضف إلى السلة', notify: 'نبّهني عند توفره',
     notifySize: 'نبّهني لهذا المقاس', chooseBoth: 'اختر اللون والمقاس', chooseColour: 'اختر اللون', chooseSize: 'اختر المقاس',
     vat: 'شامل الضريبة', colour: 'اللون', size: 'المقاس', promises: ['التوصيل لجميع المحافظات — من 100 إلى 300 ج.م حسب المحافظة', 'الدفع عند الاستلام', 'الإرجاع: العميل يتحمّل شحن الإرجاع'],
+    pickup: (stores) => `استلام مجاني من الفرع — ${stores}`,
     attributes: 'التفاصيل', description: 'الوصف', ratings: 'التقييمات', brand: 'العلامة', family: 'الصنف', category: 'الفئة', gender: 'الجنس', colours: 'الألوان', features: 'المميزات',
     goesWith: 'يناسبه', similar: 'مشابه', seeAll: 'عرض الكل', was: 'كان', added: 'أُضيف إلى السلة', notified: 'سنخبرك عند توفره',
     families: { watch: 'ساعة', bag: 'حقيبة', wallet: 'محفظة', fashion: 'أزياء', electronics: 'إلكترونيات', perfume: 'عطر' },
@@ -85,11 +88,12 @@ const categoryHref = (path) => {
   return segments.length > 1 ? `/subtypes/${segments[segments.length - 1]}` : `/category/${segments[0]}`
 }
 
-export default function BfProductPage({ detail, related }) {
+export default function BfProductPage({ detail, related, pickup = null }) {
   const language = useUIStore((s) => s.language)
   const lang = language === 'ar' ? 'ar' : 'en'
   const t = STR[lang]
   const isRTL = lang === 'ar'
+  const pickupInfo = useMemo(() => pickupFrom(pickup), [pickup])
   const p = detail.product
   // THE PRODUCT IS IN A LIVE HOT DEALS / FLASH SALE CAMPAIGN (item 42, 2026-11-05): the page takes that offer's theme
   // — its badge and countdown near the price, the buy buttons and accents in its colours — and gives it back the
@@ -428,6 +432,8 @@ export default function BfProductPage({ detail, related }) {
 
             <ul className="bf-buy__promises">
               {t.promises.map((line) => <li key={line}>{line}</li>)}
+              {/* pick up in store (click & collect, 2026-11-14): only while the shop offers it — the page's server read */}
+              {pickupInfo.enabled ? <li>{t.pickup(storeNames(pickupInfo, isRTL))}</li> : null}
             </ul>
 
             {rows.length ? (

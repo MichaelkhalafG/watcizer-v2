@@ -17,6 +17,7 @@ import useCart, { getItemKey } from '../../Hooks/useCart'
 import { refusedAddMessage } from '../../Store/cartStore'
 import ProductSlider from './ProductSlider'
 import TrustSignals from '../Merchandising/TrustSignals'
+import { pickupFrom } from '../../lib/pickup'
 import BackToTop from '../BackToTop/BackToTop'
 import { specRowsIn } from '../../lib/v2Product'
 import { defaultColorId, galleryFor, swatchFor } from '../../lib/variantGallery'
@@ -125,7 +126,7 @@ function FinishRow({ label, colors, isRTL }) {
 // product from v2. Their presence is also what says the server already has the FULL record, so the browser
 // does not fetch it again — v2's detail payload is the superset of what `products/{id}` returned. Absent on
 // the two OFFER routes, which are still on compat and behave exactly as before.
-function ProductDetailClient({ param, isOffer = false, productPayload = null, v2Specs = null, v2Product = null }) {
+function ProductDetailClient({ param, isOffer = false, productPayload = null, v2Specs = null, v2Product = null, pickup = null }) {
   const router = useRouter()
 
   // Server data from the shared TanStack Query cache.
@@ -1549,6 +1550,8 @@ function ProductDetailClient({ param, isOffer = false, productPayload = null, v2
               stockLeft={inStock ? maxStock : null}
               isRTL={isRTL}
               isFashion={isFashion}
+              // pick up in store (click & collect): the page's server read, so the row is in the first paint
+              pickup={isOffer ? null : pickupFrom(pickup)}
             />
           </div>
         </div>

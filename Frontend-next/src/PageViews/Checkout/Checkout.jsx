@@ -8,6 +8,7 @@ import {
   FiChevronDown,
   FiCreditCard,
   FiLock,
+  FiMapPin,
   FiPhone,
   FiRefreshCw,
   FiShield,
@@ -15,6 +16,10 @@ import {
   FiUser,
 } from 'react-icons/fi'
 import { usePaymentMethods } from '../../Hooks/queries/usePaymentMethods'
+import { useQueryClient } from '@tanstack/react-query'
+import usePickup from '../../Hooks/queries/usePickup'
+import PickupChoice from '../../Components/Checkout/PickupChoice'
+import { inLang, readyWindowFor } from '../../lib/pickup'
 import { useUIStore } from '../../Store/uiStore'
 import { useAuthStore } from '../../Store/authStore'
 import { useShippingStore } from '../../Store/shippingStore'
@@ -25,7 +30,7 @@ import { cartStore } from '../../Store/cartStore'
 import useFreeShipping from '../../Hooks/useFreeShipping'
 import usePromotion from '../../Hooks/usePromotion'
 import CouponBox from '../../Components/Cart/CouponBox'
-import { discountLabel, payable, rewardTitle, setCouponPhone, setStoredCoupon, storedCoupon } from '../../lib/coupon'
+import { discountLabel, payable, rewardTitle, setCouponFulfilment, setCouponPhone, setStoredCoupon, storedCoupon } from '../../lib/coupon'
 import { freeShippingOf, shippingCharged } from '../../lib/freeShipping'
 import { handleImgError, PLACEHOLDER_IMG } from '../../utils/imageUrl'
 import { STOREFRONT_CODE } from '../../lib/env'
@@ -54,8 +59,11 @@ const METHOD_ICON = {
   valu: FiCalendar,
   wallet: FiSmartphone,
   apple_pay: FiSmartphone,
+  store: FiMapPin,
 }
 const METHOD_NOTE = {
+  // pay at the store (click & collect, 2026-11-14): offered on a pickup only
+  store: ['Pay when you collect your order at the store', 'ادفع عند استلام طلبك من الفرع'],
   card: ['Visa / Mastercard / Meeza', 'فيزا / ماستركارد / ميزة'],
   wallet: ['Vodafone Cash, Orange, Etisalat and other mobile wallets', 'فودافون كاش وأورانج واتصالات وباقي المحافظ'],
   bank_installment: ['Split the amount on your bank credit card', 'قسّط المبلغ على بطاقة البنك الائتمانية'],
@@ -85,6 +93,7 @@ const FIELD_TEXT = {
   address_line: ['Enter your street address', 'أدخل عنوانك بالتفصيل'],
   shipping_city_id: ['Choose your governorate', 'اختر المحافظة'],
   address_id: ['Choose one of your addresses', 'اختر أحد عناوينك'],
+  pickup_store_id: ['Choose a store', 'اختر الفرع'],
 }
 // a v2 card's title is `{ en, ar }`; the line's own card is what names it now, never a compat card by id
 const titleOf = (title, isRTL) =>
@@ -114,6 +123,7 @@ const OrderSummary = memo(function OrderSummary({
   processing,
   onPlace,
   isRTL,
+  pickupStore = null,
 }) {
   const promotion = usePromotion()
   const t = (en, ar) => (isRTL ? ar : en)
@@ -155,15 +165,26 @@ const OrderSummary = memo(function OrderSummary({
         <span className="v">{fmt(subtotal)} {currency}</span>
       </div>
 
-      <div className="wz-checkout-line">
-        <span>
-          {t('Shipping', 'الشحن')}
-          {shippingName ? ` · ${shippingName}` : ''}
-        </span>
-        <span className="v">
-          {shipsFree ? t('Free', 'مجاني') : shippingCost > 0 ? `${fmt(shippingCost)} ${currency}` : '—'}
-        </span>
-      </div>
+      {pickupStore !== null ? (
+        // a pickup (click & collect, 2026-11-14): no delivery, the store it waits at
+        <div className="wz-checkout-line">
+          <span>
+            {t('Pick up in store', 'استلام من الفرع')}
+            {pickupStore ? ` · ${pickupStore}` : ''}
+          </span>
+          <span className="v">{t('Free', 'مجاني')}</span>
+        </div>
+      ) : (
+        <div className="wz-checkout-line">
+          <span>
+            {t('Shipping', 'الشحن')}
+            {shippingName ? ` · ${shippingName}` : ''}
+          </span>
+          <span className="v">
+            {shipsFree ? t('Free', 'مجاني') : shippingCost > 0 ? `${fmt(shippingCost)} ${currency}` : '—'}
+          </span>
+        </div>
+      )}
 
       {savings > 0 && (
         <div className="wz-checkout-line is-save">
@@ -229,7 +250,7 @@ const OrderSummary = memo(function OrderSummary({
   )
 })
 
-function Checkout() {
+function Checkout({ initialPickup = null, initialFulfilment = 'delivery' }) {
   // Server data from TanStack Query; shipping selection from Zustand, the derived
   // city-price list from the shared shipping query.
   const shippingPrices = useShippingPrices()
@@ -257,6 +278,36 @@ function Checkout() {
 
   const { cart, clearCart, reconcile } = useCart()
   const items = cart?.cart_item || []
+
+  // ── Delivery or pickup (click & collect, 2026-11-14) ─────────────────────
+  // Offered only while core says this shop does it (usePickup — the server render's own read first, so nothing moves
+  // when the browser's lands). Chosen here, or already from the cart's "pick up in store instead" (?fulfilment=pickup).
+  const pickup = usePickup(initialPickup)
+  const queryClient = useQueryClient()
+  const [fulfilment, setFulfilment] = useState(initialFulfilment === 'pickup' ? 'pickup' : 'delivery')
+  const isPickup = pickup.enabled && fulfilment === 'pickup'
+  const [storeId, setStoreId] = useState(null)
+  // one store: nothing to choose; a store that left the list is no longer chosen
+  const chosenStore = useMemo(() => {
+    const id = storeId ?? (pickup.stores.length === 1 ? pickup.stores[0].id : null)
+    return pickup.stores.find((st) => st.id === id) || null
+  }, [pickup, storeId])
+  const ready = useMemo(() => readyWindowFor(items, pickup.windows), [items, pickup])
+  // the cart's preview is asked as a pickup while one is chosen (a free-delivery code is refused, not spent)
+  const pickupAsked = useRef(false)
+  useEffect(() => {
+    setCouponFulfilment(isPickup)
+    if (!isPickup && !pickupAsked.current) return
+    pickupAsked.current = true
+    if (storedCoupon()) cartStore.fetchCart()
+  }, [isPickup])
+  useEffect(() => () => setCouponFulfilment(false), [])
+  // …and the page's other totals (Watchizer's header) leave out the delivery fee while a pickup is chosen
+  const setPickupChosen = useShippingStore((s) => s.setPickup)
+  useEffect(() => {
+    setPickupChosen(isPickup)
+  }, [isPickup, setPickupChosen])
+  useEffect(() => () => setPickupChosen(false), [setPickupChosen])
   // Every line carries its own v2 card (`product`) and variant since slice 3 — the page used to ask compat
   // for the cards by id. A line without one (an optimistic row whose sync has not landed) shows '—'.
 
@@ -346,6 +397,14 @@ function Checkout() {
 
   // Whether the address form (inline fields) is active.
   const useInline = isGuest || useNewAddress || (isLoggedIn && addresses.length === 0)
+
+  // A pickup needs the phone typed (there is no address to carry it): a signed-in shopper's saved number fills it.
+  useEffect(() => {
+    if (!isPickup || phone || addresses.length === 0) return
+    const saved = String(addresses.find((a) => a.id === selectedAddressId)?.phone_number_one || addresses[0]?.phone_number_one || '')
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- a one-time fill from the saved addresses
+    if (isValidEgPhone(saved)) setPhone(saved)
+  }, [isPickup, phone, addresses, selectedAddressId])
 
   // ── Governorate dropdown ─────────────────────────────────────────────────
   const onGovChange = useCallback(
@@ -464,8 +523,9 @@ function Checkout() {
 
   // free over the storefront's threshold (core's cart answer, 2026-10-29); the governorate's price otherwise
   const freeShipping = useFreeShipping(subtotal)
-  const shippingCost = activeCity ? shippingCharged(activeCity.Price, freeShipping) : 0
-  const shippingName = activeCity ? (isRTL ? activeCity.GovernorateAr : activeCity.GovernorateEn) : ''
+  // a pickup has no delivery at all (core charges none)
+  const shippingCost = !isPickup && activeCity ? shippingCharged(activeCity.Price, freeShipping) : 0
+  const shippingName = isPickup ? inLang(chosenStore?.name, isRTL) : activeCity ? (isRTL ? activeCity.GovernorateAr : activeCity.GovernorateEn) : ''
   const total = subtotal + shippingCost
   const payTotal = payable(subtotal, promotion.discount, shippingCost)
 
@@ -474,9 +534,33 @@ function Checkout() {
       (onlineList || [])
         .filter((m) => !OFFLINE_KEYS.includes(m.method))
         .filter((m) => m.method !== 'apple_pay' || canApplePay)
-        .map((m) => ({ ...m, reason: limitReason(m, total, t) })),
-    [onlineList, canApplePay, total, t],
+        // pay at the store: on a pickup only (core refuses it on a delivery)
+        .filter((m) => m.method !== 'store' || isPickup)
+        .map((m) => ({ ...m, kind: m.method === 'store' ? 'cash' : 'card', reason: limitReason(m, total, t) })),
+    [onlineList, canApplePay, total, t, isPickup],
   )
+  // Cash on delivery is not a pickup's: choosing pickup moves the choice to "pay at the store" when the shop offers it
+  // (nothing chosen otherwise); going back to delivery returns to cash on delivery from it.
+  useEffect(() => {
+    if (isPickup && paymentMethod === 'cash' && methodId == null) {
+      const store = onlineMethods.find((m) => m.method === 'store' && !m.reason)
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- follows the shopper's delivery choice
+      setPaymentMethod(store ? 'cash' : null)
+      setMethodId(store ? store.id : null)
+    } else if (!isPickup && paymentMethod === 'cash' && methodId != null) {
+      setMethodId(null)
+    } else if (!isPickup && paymentMethod === null) {
+      setPaymentMethod('cash')
+    } else if (isPickup && paymentMethod === null && methodId == null) {
+      const store = onlineMethods.find((m) => m.method === 'store' && !m.reason)
+      if (store) {
+        setPaymentMethod('cash')
+        setMethodId(store.id)
+      }
+    }
+  }, [isPickup, onlineMethods, paymentMethod, methodId])
+  // pay at the store (a pickup only): its own row in the list above the online ones
+  const storeRow = onlineMethods.find((m) => m.method === 'store') || null
   // A chosen method the order has since outgrown (or that disappeared): nothing counts as
   // selected, so the shopper picks again instead of meeting a refusal after pressing the button.
   const chosenOnline = methodId == null ? null : onlineMethods.find((m) => m.id === methodId)
@@ -486,7 +570,10 @@ function Checkout() {
   const canSubmit = useMemo(() => {
     if (items.length === 0) return false
     if (!paymentMethod || choiceLost) return false
-    if (useInline) {
+    if (isPickup) {
+      if (!chosenStore) return false
+      if (!isValidEgPhone(phone)) return false
+    } else if (useInline) {
       if (!shippingid) return false
       if (!street.trim()) return false
       if (!isValidEgPhone(phone)) return false
@@ -502,6 +589,8 @@ function Checkout() {
     items.length,
     paymentMethod,
     choiceLost,
+    isPickup,
+    chosenStore,
     useInline,
     shippingid,
     street,
@@ -550,7 +639,7 @@ function Checkout() {
 
     // the delivery core will charge, from the cart answer the reconcile above just stored (the threshold may only
     // be known now): the total sent is the total core computes, so free shipping never meets a mismatch
-    const sentShipping = activeCity ? shippingCharged(activeCity.Price, freeShippingOf(cartStore.getExtraSnapshot()?.totals?.shipping?.free_over, subtotal)) : 0
+    const sentShipping = !isPickup && activeCity ? shippingCharged(activeCity.Price, freeShippingOf(cartStore.getExtraSnapshot()?.totals?.shipping?.free_over, subtotal)) : 0
     const sentTotal = subtotal + sentShipping
     const body = {
       payment_method: paymentMethod, // 'cash' | 'card' (core maps card→paymob)
@@ -564,7 +653,12 @@ function Checkout() {
       ...(storedCoupon() ? { coupon: storedCoupon() } : {}),
     }
 
-    if (useInline) {
+    if (isPickup) {
+      // a pickup (click & collect): the store, the phone; no address — core checks the store is this shop's and open
+      body.fulfilment = 'pickup'
+      body.pickup_store_id = chosenStore.id
+      body.phone = phone.trim()
+    } else if (useInline) {
       body.address_line = street.trim() + (apartment.trim() ? `, ${apartment.trim()}` : '')
       body.shipping_city_id = Number(shippingid)
       body.phone = phone.trim()
@@ -607,6 +701,8 @@ function Checkout() {
             value: payable(subtotal, promotion.discount, 0),
             shipping: sentShipping,
             coupon: couponApplied,
+            // a pickup paid online (click & collect): the landing's Purchase says "in store"
+            pickup: isPickup,
             contents: items.map((i) => ({ id: i.product_id ?? i.offer_id ?? null, name: titleOf(i.product?.title, false), quantity: i.quantity, price: Number(i.piece_price) })),
           })
           window.location.href = data.redirect_url
@@ -643,6 +739,8 @@ function Checkout() {
           shippingName,
           shippingPrice: sentShipping,
           paymentMethod,
+          // a pickup: the store, the code and the window core recorded (click & collect)
+          ...(isPickup && data.pickup ? { pickup: data.pickup, holdHours: pickup.hold_hours } : {}),
         })
         router.push('/order-confirmation')
         return
@@ -660,6 +758,10 @@ function Checkout() {
         }
         setErrors(map)
         setBanner(t('Please check the highlighted fields.', 'يرجى مراجعة الحقول المظللة.'))
+      } else if (status === 422 && String(b.error || '').startsWith('pickup_')) {
+        // pickup off, the store switched off, or this phone's pay-at-store limit: nothing was written
+        setBanner(b.messages?.[isRTL ? 'ar' : 'en'] || t('Pick up in store is not available for this order.', 'الاستلام من الفرع غير متاح لهذا الطلب.'))
+        queryClient.invalidateQueries({ queryKey: ['pickup'] })
       } else if (status === 422 && b.error === 'coupon') {
         setStoredCoupon('')
         await cartStore.fetchCart()
@@ -709,7 +811,7 @@ function Checkout() {
     canSubmit, items, paymentMethod, methodId, refetchMethods, notes, useInline, street,
     apartment, shippingid, phone, selectedAddressId, isGuest, firstName, lastName, email,
     isRTL, cleanupAfterOrder, router, setOrderData, shippingName, activeCity, user, t,
-    subtotal, promotion, payTotal, couponApplied, reconcile,
+    subtotal, promotion, payTotal, couponApplied, reconcile, isPickup, chosenStore, pickup.hold_hours, queryClient,
   ])
 
   const handleSignOut = useCallback(() => {
@@ -718,6 +820,35 @@ function Checkout() {
   }, [logout, router])
 
   const err = (k) => errors[k]?.[0]
+
+  // the phone field — the address form's, and a pickup's own (the order has no address to carry it)
+  const phoneField = (
+    <div className="wz-checkout-field">
+      <label className="wz-checkout-label">
+        {t('Phone', 'رقم الهاتف')}<span className="req">*</span>
+      </label>
+      <div className="wz-checkout-phone">
+        <span className="wz-checkout-flag">🇪🇬</span>
+        <input
+          className={`wz-checkout-input${err('phone') || (phone && !isValidEgPhone(phone)) ? ' is-error' : ''}`}
+          value={phone}
+          onChange={(e) => setPhone(e.target.value.replace(/[^\d]/g, '').slice(0, 11))}
+          placeholder="01XXXXXXXXX"
+          inputMode="numeric"
+          autoComplete="tel"
+        />
+      </div>
+      {phone && !isValidEgPhone(phone) && (
+        <span className="wz-checkout-err">
+          {t('Enter a valid 11-digit number starting with 01', 'أدخل رقمًا صحيحًا من 11 رقمًا يبدأ بـ 01')}
+        </span>
+      )}
+      {err('phone') && <span className="wz-checkout-err">{err('phone')}</span>}
+    </div>
+  )
+  const deliveryNote = activeCity
+    ? `${isRTL ? activeCity.GovernorateAr : activeCity.GovernorateEn} · ${freeShipping.free ? t('Free', 'مجاني') : `${egp(shippingCharged(activeCity.Price, freeShipping))} ${t('EGP', 'ج.م')}`}`
+    : t('Delivery fee by governorate', 'رسوم التوصيل حسب المحافظة')
 
   // ── Empty cart guard ─────────────────────────────────────────────────────
   if (items.length === 0) {
@@ -823,15 +954,46 @@ function Checkout() {
               )}
             </section>
 
-            {/* SECTION 2 — SHIPPING */}
+            {/* SECTION 2 — SHIPPING, or delivery or pickup when the shop offers pickup (click & collect, 2026-11-14) */}
             <section className="wz-checkout-section">
               <div className="wz-checkout-sechead">
-                <span className="wz-checkout-sectitle">{t('Shipping', 'عنوان الشحن')}</span>
+                <span className="wz-checkout-sectitle">
+                  {pickup.enabled ? t('Delivery or pickup', 'التوصيل أو الاستلام') : t('Shipping', 'عنوان الشحن')}
+                </span>
                 <span className="wz-checkout-secnum">02</span>
               </div>
 
+              {pickup.enabled ? (
+                <PickupChoice
+                  pickup={pickup}
+                  isPickup={isPickup}
+                  onChoose={setFulfilment}
+                  storeId={chosenStore?.id ?? null}
+                  onStore={(id) => {
+                    setStoreId(id)
+                    setErrors((p) => ({ ...p, pickup_store_id: undefined }))
+                  }}
+                  ready={ready}
+                  deliveryNote={deliveryNote}
+                  isRTL={isRTL}
+                  error={err('pickup_store_id')}
+                />
+              ) : null}
+
+              {isPickup ? (
+                <>
+                  {phoneField}
+                  <p className="wz-checkout-hint">
+                    {t(
+                      `We e-mail you when it is ready, and hold it for ${pickup.hold_hours} hours. Bring your order number and pickup code.`,
+                      `نراسلك بالبريد عندما يصبح جاهزًا، ونحتفظ به لك ${Number(pickup.hold_hours).toLocaleString('ar-EG')} ساعة. أحضر رقم الطلب وكود الاستلام.`,
+                    )}
+                  </p>
+                </>
+              ) : null}
+
               {/* Saved addresses (logged-in) */}
-              {isLoggedIn && addresses.length > 0 && !useNewAddress && (
+              {!isPickup && isLoggedIn && addresses.length > 0 && !useNewAddress && (
                 <>
                   {addresses.map((a) => (
                     <label
@@ -860,7 +1022,7 @@ function Checkout() {
               )}
 
               {/* Address form (guest / new address) */}
-              {useInline && (
+              {!isPickup && useInline && (
                 <>
                   <div className="wz-checkout-field">
                     <label className="wz-checkout-label">
@@ -910,28 +1072,7 @@ function Checkout() {
                     />
                   </div>
 
-                  <div className="wz-checkout-field">
-                    <label className="wz-checkout-label">
-                      {t('Phone', 'رقم الهاتف')}<span className="req">*</span>
-                    </label>
-                    <div className="wz-checkout-phone">
-                      <span className="wz-checkout-flag">🇪🇬</span>
-                      <input
-                        className={`wz-checkout-input${err('phone') || (phone && !isValidEgPhone(phone)) ? ' is-error' : ''}`}
-                        value={phone}
-                        onChange={(e) => setPhone(e.target.value.replace(/[^\d]/g, '').slice(0, 11))}
-                        placeholder="01XXXXXXXXX"
-                        inputMode="numeric"
-                        autoComplete="tel"
-                      />
-                    </div>
-                    {phone && !isValidEgPhone(phone) && (
-                      <span className="wz-checkout-err">
-                        {t('Enter a valid 11-digit number starting with 01', 'أدخل رقمًا صحيحًا من 11 رقمًا يبدأ بـ 01')}
-                      </span>
-                    )}
-                    {err('phone') && <span className="wz-checkout-err">{err('phone')}</span>}
-                  </div>
+                  {phoneField}
 
                   {isLoggedIn && addresses.length > 0 && (
                     <button type="button" className="wz-checkout-linkbtn" onClick={() => setUseNewAddress(false)}>
@@ -950,13 +1091,49 @@ function Checkout() {
               </div>
 
               <div className="wz-checkout-pay">
-                <label className={`wz-checkout-payopt${paymentMethod === 'cash' ? ' is-active' : ''}`}>
+                {/* A PICKUP's offline row is "pay at the store" — core's row, drawn whatever the online switch says (it takes
+                    no card); cash on delivery is a delivery's own row. */}
+                {isPickup ? (
+                  storeRow ? (
+                    <label className={`wz-checkout-payopt${methodId === storeRow.id ? ' is-active' : ''}${storeRow.reason ? ' is-disabled' : ''}`}>
+                      <input
+                        type="radio"
+                        name="payment"
+                        value={`method-${storeRow.id}`}
+                        style={{ display: 'none' }}
+                        disabled={Boolean(storeRow.reason)}
+                        checked={methodId === storeRow.id}
+                        onChange={() => {
+                          if (storeRow.reason) return
+                          setPaymentMethod('cash')
+                          setMethodId(storeRow.id)
+                        }}
+                      />
+                      <span className="wz-checkout-dot" />
+                      <div className="wz-checkout-payopt-main">
+                        <div className="wz-checkout-payopt-title">
+                          {(isRTL ? storeRow.label?.ar : storeRow.label?.en) || storeRow.label?.ar}
+                          {badgeOf.get('store') ? null : (
+                            <span className="wz-checkout-cards">
+                              <FiMapPin />
+                            </span>
+                          )}
+                        </div>
+                        <div className="wz-checkout-payopt-note">
+                          {storeRow.reason || t(METHOD_NOTE.store[0], METHOD_NOTE.store[1])}
+                        </div>
+                      </div>
+                      {badgeOf.get('store') ? <MethodBadge badge={badgeOf.get('store')} name={storeRow.label?.[isRTL ? 'ar' : 'en'] || ''} /> : null}
+                    </label>
+                  ) : null
+                ) : (
+                <label className={`wz-checkout-payopt${paymentMethod === 'cash' && methodId == null ? ' is-active' : ''}`}>
                   <input
                     type="radio"
                     name="payment"
                     value="cash"
                     style={{ display: 'none' }}
-                    checked={paymentMethod === 'cash'}
+                    checked={paymentMethod === 'cash' && methodId == null}
                     onChange={() => {
                       setPaymentMethod('cash')
                       setMethodId(null)
@@ -971,17 +1148,18 @@ function Checkout() {
                   </div>
                   {badgeOf.get('cod') ? <MethodBadge badge={badgeOf.get('cod')} name={t('Cash on Delivery', 'الدفع عند الاستلام')} /> : null}
                 </label>
+                )}
 
                 {/* Core's list once it has loaded. While it loads, if it fails, or with online payment
                     switched off for the build, the one "Pay Online" option as before — posted as
                     plain "card", which core routes to its card row. */}
                 {PAYMOB_ENABLED && onlineList && !onlineListFailed ? (
-                  onlineMethods.map((m) => {
+                  onlineMethods.filter((m) => m.method !== 'store').map((m) => {
                     const Icon = METHOD_ICON[m.method] || FiCreditCard
                     const note = METHOD_NOTE[m.method]
                     const badge = badgeOf.get(m.method)
                     const name = isRTL ? m.label?.ar : m.label?.en || m.label?.ar
-                    const active = paymentMethod === 'card' && methodId === m.id
+                    const active = paymentMethod === m.kind && methodId === m.id
                     return (
                       <label
                         key={m.id}
@@ -996,7 +1174,7 @@ function Checkout() {
                           checked={active}
                           onChange={() => {
                             if (m.reason) return
-                            setPaymentMethod('card')
+                            setPaymentMethod(m.kind)
                             setMethodId(m.id)
                           }}
                         />
@@ -1088,6 +1266,7 @@ function Checkout() {
             canSubmit={canSubmit}
             processing={processing}
             onPlace={placeOrder}
+            pickupStore={isPickup ? inLang(chosenStore?.name, isRTL) : null}
           />
         </div>
       </div>

@@ -10,6 +10,7 @@ import { useToastStore } from '../../Store/toastStore'
 import { useOrderConfirmStore } from '../../Store/orderConfirmStore'
 import useCart from '../../Hooks/useCart'
 import http from '../../Context/api'
+import { inLang } from '../../lib/pickup'
 import './Checkout.css'
 
 // Delivery window from the governorate shipping tier (cost ≈ distance).
@@ -90,6 +91,9 @@ function OrderConfirmation() {
     paymentMethod = 'cash',
     // the coupon code the order used (M1u), for the Purchase event
     coupon = null,
+    // a pickup (click & collect, 2026-11-14): the store, the code and the window core recorded; null for a delivery
+    pickup = null,
+    holdHours = 48,
   } = state || {}
 
   const [days] = useState(() => deliveryWindow(shippingPrice))
@@ -172,8 +176,10 @@ function OrderConfirmation() {
       })),
       // the code the order used (M1u), in GA4's own field
       coupon: coupon || null,
+      // a pickup (click & collect): Meta's "in store", GA4's shipping tier
+      pickup: Boolean(pickup),
     })
-  }, [orderNumber, total, subtotal, items, paymentMethod, shippingPrice, coupon])
+  }, [orderNumber, total, subtotal, items, paymentMethod, shippingPrice, coupon, pickup])
 
   if (cardStatus) {
     return <CardLanding status={cardStatus} orderNumber={cardOrder} t={t} isRTL={isRTL} router={router} />
@@ -214,6 +220,52 @@ function OrderConfirmation() {
               </div>
             )}
 
+            {pickup ? (
+              <div className="wz-oc-pickup">
+                <div className="wz-oc-number">
+                  <span>{t('Pickup code', 'كود الاستلام')}</span>
+                  <b dir="ltr">{pickup.code}</b>
+                </div>
+                <p className="wz-oc-meta">
+                  {email && (
+                    <>
+                      {t('Confirmation email sent to', 'تم إرسال تأكيد إلى')} <b>{email}</b>
+                      <br />
+                    </>
+                  )}
+                  {t('Pick up at', 'الاستلام من')} <b>{inLang(pickup.store?.name, isRTL)}</b>
+                  <br />
+                  {inLang(pickup.store?.address, isRTL)}
+                  <br />
+                  {inLang(pickup.store?.hours, isRTL) ? (
+                    <>
+                      {inLang(pickup.store?.hours, isRTL)}
+                      <br />
+                    </>
+                  ) : null}
+                  <b>{inLang(pickup.ready?.sentence, isRTL)}</b>
+                  <br />
+                  {t(
+                    `We e-mail you when it is ready, and hold it for ${holdHours} hours. Bring your order number and this code.`,
+                    `نراسلك بالبريد عندما يصبح جاهزًا، ونحتفظ به لك ${fmt(holdHours)} ساعة. أحضر رقم الطلب وهذا الكود.`,
+                  )}
+                  {pickup.pay_at_store ? (
+                    <>
+                      <br />
+                      {t('You pay at the store when you collect it.', 'تدفع في الفرع عند الاستلام.')}
+                    </>
+                  ) : null}
+                  {pickup.store?.map_url ? (
+                    <>
+                      <br />
+                      <a href={pickup.store.map_url} target="_blank" rel="noopener noreferrer">
+                        {t('Open in Maps', 'افتح الخريطة')}
+                      </a>
+                    </>
+                  ) : null}
+                </p>
+              </div>
+            ) : (
             <p className="wz-oc-meta">
               {email && (
                 <>
@@ -232,6 +284,7 @@ function OrderConfirmation() {
                 {days[0]}–{days[1]} {t('business days', 'أيام عمل')}
               </b>
             </p>
+            )}
           </>
         ) : (
           <p className="wz-oc-meta">
@@ -337,7 +390,7 @@ function CardLanding({ status, orderNumber, t, isRTL, router }) {
   useEffect(() => {
     const pending = takePendingPurchase()
     if (status !== 'paid' || !pending || !orderNumber || pending.orderNumber !== String(orderNumber)) return
-    trackPurchase({ orderNumber, value: pending.value, shipping: pending.shipping, contents: pending.contents || [], coupon: pending.coupon || null })
+    trackPurchase({ orderNumber, value: pending.value, shipping: pending.shipping, contents: pending.contents || [], coupon: pending.coupon || null, pickup: Boolean(pending.pickup) })
   }, [status, orderNumber])
   const { clearCart } = useCart()
   useEffect(() => {

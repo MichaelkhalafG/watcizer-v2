@@ -8,6 +8,7 @@ use App\Domain\Promotions\CouponStatus;
 use App\Domain\Promotions\PromotionMoney;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Database\Query\JoinClause;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Tests\Support\PromotionFixture;
 use Tests\Support\T;
@@ -183,6 +184,17 @@ it('caps pay-at-store like cash on delivery, and a phone holds at most two OPEN 
     // once one is collected, the phone may reserve again
     DB::table('order_pickups')->where('order_id', DB::table('orders')->where('order_number', $first)->value('id'))->update(['status' => 'collected']);
     $place()->assertCreated();
+});
+
+it('advertises "pay at the store" among the ways to pay only while the shop offers pickup', function () {
+    $methods = fn (): array => array_column(T::arr(getJson('/api/v2/brandfashion/payment-badges')->assertOk()->json('data')), 'method');
+    DB::table('storefront_payment_methods as m')->join('storefront_payment_providers as p', 'p.id', '=', 'm.storefront_payment_provider_id')
+        ->where('p.storefront_id', 2)->where('m.method', 'store')->update(['m.is_enabled' => true]);
+    Cache::flush();
+    expect($methods())->not->toContain('store');
+    pkcSetup();
+    Cache::flush();
+    expect($methods())->toContain('store');
 });
 
 it('refuses a free-shipping code on a pickup with its own sentence and does not spend it; a money code applies', function () {

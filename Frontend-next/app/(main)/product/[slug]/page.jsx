@@ -1,6 +1,6 @@
 import { notFound, permanentRedirect } from 'next/navigation'
 import { getServerProductCard, fetchProductByName, localizedProduct, getServerTables, getServerNav } from '@/src/lib/serverCatalog'
-import { getServerV2Product } from '@/src/lib/serverV2'
+import { getServerV2Pickup, getServerV2Product } from '@/src/lib/serverV2'
 import { fromV2Product } from '@/src/lib/v2Product'
 import { transformProductData } from '@/src/utils/transformProduct'
 import { requestLang, localePath } from '@/src/lib/requestLang'
@@ -158,6 +158,8 @@ export default async function ProductPage({ params }) {
   if (!resolved) await notFoundOrBrand(slug, urlLang)
 
   const { product, ratings, tables, payload } = resolved
+  // pick up in store (click & collect, 2026-11-14): held 30 s, never the page's failure
+  const pickup = await getServerV2Pickup().then((body) => body || null, () => null)
   const { canonicalPath, productLd, breadcrumbLd } = buildProductSeo(product, {
     ratings,
     tables,
@@ -197,6 +199,7 @@ export default async function ProductPage({ params }) {
         productPayload={payload}
         v2Specs={resolved.specs ?? null}
         v2Product={resolved.v2Product ?? null}
+        pickup={pickup}
       />
     </>
   )

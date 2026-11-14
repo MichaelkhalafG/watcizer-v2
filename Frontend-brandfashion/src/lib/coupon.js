@@ -16,6 +16,19 @@ export function setCouponPhone(phone) {
   checkoutPhone = String(phone ?? '').trim()
 }
 
+// PICK UP IN STORE (click & collect, 2026-11-14): while the checkout has "pick up in store" chosen, the cart's preview
+// is asked as a pickup, so a free-delivery code is answered "nothing to waive on a pickup" before the order is placed
+// (core refuses it and does not spend it). Memory only, like the phone; never sent without a kept code.
+let checkoutPickup = false
+export function setCouponFulfilment(pickup) {
+  checkoutPickup = Boolean(pickup)
+}
+
+const extras = () => ({
+  ...(checkoutPhone ? { phone: checkoutPhone } : {}),
+  ...(checkoutPickup ? { fulfilment: 'pickup' } : {}),
+})
+
 // A tiny store over the kept code and the last refusal, so the coupon field and the screens read them with
 // useSyncExternalStore instead of copying them into React state.
 const listeners = new Set()
@@ -64,14 +77,15 @@ export function setStoredCoupon(code) {
 export function couponParams() {
   const code = storedCoupon()
   if (!code) return {}
-  return checkoutPhone ? { coupon: code, phone: checkoutPhone } : { coupon: code }
+  return { coupon: code, ...extras() }
 }
 
 /** `?coupon=…` for a cart request, or '' when no code is kept. */
 export function couponQuery() {
   const code = storedCoupon()
   if (!code) return ''
-  return `?coupon=${encodeURIComponent(code)}${checkoutPhone ? `&phone=${encodeURIComponent(checkoutPhone)}` : ''}`
+  const more = Object.entries(extras()).map(([k, v]) => `&${k}=${encodeURIComponent(v)}`).join('')
+  return `?coupon=${encodeURIComponent(code)}${more}`
 }
 
 /**

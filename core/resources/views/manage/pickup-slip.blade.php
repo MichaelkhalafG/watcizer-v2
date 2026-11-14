@@ -49,7 +49,7 @@
         <div>
             <div class="muted">العميل · Customer</div>
             <div style="font-size:15px;font-weight:600;"><bdi>{{ $customer['name'] ?? '—' }}</bdi></div>
-            <div class="num">{{ $customer['phone'] ?? '—' }}</div>
+            <div><span class="num">{{ $customer['phone'] ?? '—' }}</span></div>
             <div class="muted" style="margin-top:6px;">تحقق من آخر أرقام هاتف العميل قبل التسليم · Check the last digits of the customer's phone</div>
         </div>
         <div class="box">
@@ -59,10 +59,10 @@
     </div>
 
     <div class="row section">
-        <div><span class="muted">الحالة · Status:</span> {{ $status }}</div>
-        <div><span class="muted">تاريخ الطلب · Placed:</span> <span class="num">{{ $placed }}</span></div>
-        @if($readyAt)<div><span class="muted">جاهز منذ · Ready:</span> <span class="num">{{ $readyAt }}</span></div>@endif
-        @if($collectBy)<div><span class="muted">يُستلم قبل · Collect by:</span> <span class="num">{{ $collectBy }}</span></div>@endif
+        <div><span class="muted"><bdi>الحالة · Status</bdi>:</span> {{ $status }}</div>
+        <div><span class="muted"><bdi>تاريخ الطلب · Placed</bdi>:</span> <span class="num">{{ $placed }}</span></div>
+        @if($readyAt)<div><span class="muted"><bdi>جاهز منذ · Ready</bdi>:</span> <span class="num">{{ $readyAt }}</span></div>@endif
+        @if($collectBy)<div><span class="muted"><bdi>يُستلم قبل · Collect by</bdi>:</span> <span class="num">{{ $collectBy }}</span></div>@endif
     </div>
 
     <table>
@@ -90,7 +90,7 @@
     </div>
 
     @if($note)
-    <div class="section"><span class="muted">ملاحظة العميل · Note:</span> <bdi>{{ $note }}</bdi></div>
+    <div class="section"><span class="muted"><bdi>ملاحظة العميل · Note</bdi>:</span> <bdi>{{ $note }}</bdi></div>
     @endif
 
     <div class="sign">
@@ -98,7 +98,7 @@
         <div>الموظف · Staff</div>
         <div>التاريخ · Date</div>
     </div>
-    <div class="muted" style="margin-top:14px;font-size:11px;">طُبع · Printed <span class="num">{{ $printed }}</span></div>
+    <div class="muted" style="margin-top:14px;font-size:11px;"><bdi>طُبع · Printed</bdi> <span class="num">{{ $printed }}</span></div>
 </div>
 </body>
 </html>

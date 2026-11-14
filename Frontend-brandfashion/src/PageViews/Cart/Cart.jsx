@@ -14,6 +14,8 @@ import usePromotion from '../../Hooks/usePromotion'
 import CouponBox from '../../Components/Cart/CouponBox'
 import { discountLabel, payable, rewardTitle } from '../../lib/coupon'
 import { shippingCharged } from '../../lib/freeShipping'
+import usePickup from '../../Hooks/queries/usePickup'
+import { storeNames } from '../../lib/pickup'
 import { cartStore } from '../../Store/cartStore'
 import BfRail from '../../Components/Listing/BfRail'
 import { txt, money } from '../../lib/cardData'
@@ -172,7 +174,9 @@ const useNewIn = (enabled) =>
   })
 
 // ── Page ──────────────────────────────────────────────────────────────────
-function Cart() {
+function Cart({ initialPickup = null }) {
+  // pick up in store (click & collect, 2026-11-14): offered under Checkout while no governorate is chosen
+  const pickup = usePickup(initialPickup)
   const shippingPrices = useShippingPrices()
   const shippingid = useShippingStore((s) => s.shippingid)
   const setShippingid = useShippingStore((s) => s.setShippingid)
@@ -308,7 +312,8 @@ function Cart() {
 
   // The checkout step never fails silently (Watchizer, 2026-09-28): core judges the cart as it stands, and
   // any line it refuses is named next to the button.
-  const goToCheckout = useCallback(async () => {
+  // `dest`: where to go once the cart checks out — the checkout, or the checkout opened on pickup (a click passes an event)
+  const goToCheckout = useCallback(async (dest) => {
     if (processing) return
     setProcessing(true)
     setCheckoutBlock(null)
@@ -327,7 +332,7 @@ function Cart() {
       return
     }
     cartStore.acknowledgePrices()
-    navigate('/checkout')
+    navigate(typeof dest === 'string' ? dest : '/checkout')
   }, [processing, validateCart, navigate, reasonText, lang])
 
   const inCart = useMemo(() => new Set(items.map((i) => i.product_id)), [items])
@@ -526,6 +531,18 @@ function Cart() {
               {!citySelected && !anyUnavailable && (
                 <p className="wz-cart-select-hint">{t('Choose your governorate to continue', 'اختر محافظتك للمتابعة')}</p>
               )}
+              {/* pick up in store instead (click & collect, 2026-11-14): no governorate needed — checkout opens on pickup. Shown
+                  whatever the governorate: Watchizer pre-selects the first one as soon as the list loads */}
+              {pickup.enabled ? (
+                <p className="wz-cart-pickup">
+                  {t('Or ', 'أو ')}
+                  <button type="button" onClick={() => goToCheckout('/checkout?fulfilment=pickup')} disabled={processing || anyUnavailable}>
+                    {t('pick up in store for free', 'استلم من الفرع مجانًا')}
+                  </button>
+                  {' · '}
+                  {storeNames(pickup, isRTL)}
+                </p>
+              ) : null}
 
               <ul className="wz-cart-trust">
                 <li><FiLock aria-hidden="true" /> {t('Secure checkout', 'دفع آمن')}</li>

@@ -15,6 +15,7 @@ use App\Storefront\StorefrontIdentity;
 use App\Storefront\StorefrontUrls;
 use App\Transform\Row;
 use Illuminate\Database\Query\JoinClause;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use stdClass;
 
@@ -139,7 +140,7 @@ final class OrderEmailData
             // when a READY pickup must be collected by, on the Cairo clock the customer reads (null before ready)
             'pickupCollectBy' => $pickup === null || $pickup['expires_at'] === null ? null : [
                 'en' => PickupLifecycle::cairo($pickup['expires_at'], 'l j M Y, H:i'),
-                'ar' => PickupLifecycle::cairo($pickup['expires_at'], 'Y-m-d H:i'),
+                'ar' => self::arabicTime($pickup['expires_at']),
             ],
             'paymentEn' => $pickup !== null && $pickup['pay_at_store'] ? 'Pay at the store' : self::paymentLabel($paymentMethod, 'en'),
             'paymentAr' => $pickup !== null && $pickup['pay_at_store'] ? 'الدفع في الفرع' : self::paymentLabel($paymentMethod, 'ar'),
@@ -380,6 +381,12 @@ final class OrderEmailData
     private static function hexes(?string $stored): array
     {
         return array_values(array_filter(array_map('trim', explode('/', $stored ?? '')), fn (string $h): bool => $h !== ''));
+    }
+
+    /** A time on the app clock, in Arabic as the customer reads it on the Cairo clock: "الثلاثاء 17 نوفمبر 2026، 18:22". */
+    private static function arabicTime(string $time): string
+    {
+        return Carbon::parse($time, config()->string('app.timezone'))->timezone('Africa/Cairo')->settings(['locale' => 'ar'])->translatedFormat('l j F Y، H:i');
     }
 
     private static function createdAt(?string $timestamp): string

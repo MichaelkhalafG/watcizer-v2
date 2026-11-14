@@ -1,5 +1,6 @@
 import PropTypes from 'prop-types'
 import { trustSignals } from '../../config/trust.config'
+import { storeNames } from '../../lib/pickup'
 import './TrustSignals.css'
 
 // A label is `{ en, ar }` (2026-10-19: every label printed English on Arabic pages); a bare string is
@@ -15,6 +16,8 @@ const GLYPHS = {
   '✓': 'M12 3 4.5 6v5.5c0 4.5 3.2 8.4 7.5 9.5 4.3-1.1 7.5-5 7.5-9.5V6zM8.8 12.2l2.3 2.3 4.2-4.6',
   '🔒': 'M6.5 11V8a5.5 5.5 0 0 1 11 0v3M5 11h14v10H5zM12 15v2.5',
   '💬': 'M21 12a8.5 8.5 0 0 1-12.6 7.4L3 21l1.7-5.2A8.5 8.5 0 1 1 21 12z',
+  // pick up in store (click & collect, 2026-11-14)
+  '📍': 'M12 21s-7-6.1-7-11.4a7 7 0 0 1 14 0C19 14.9 12 21 12 21zM12 12.2a2.6 2.6 0 1 0 0-5.2 2.6 2.6 0 0 0 0 5.2z',
 }
 
 function Glyph({ icon }) {
@@ -87,6 +90,27 @@ ReturnsSignal.propTypes = {
   isRTL: PropTypes.bool,
 }
 
+// PDP pickup row (click & collect, 2026-11-14): only while the shop offers it — core's answer, read by the page's server
+// render — with the stores beneath it, in the returns row's two-line form.
+function PickupSignal({ pickup, isRTL }) {
+  return (
+    <div className="wz-trust-returns">
+      <span className="wz-trust-item">
+        <span className="wz-trust-item-icon" aria-hidden="true">
+          <Glyph icon="📍" />
+        </span>
+        <span>{isRTL ? 'استلام مجاني من الفرع' : 'Free pickup in store'}</span>
+      </span>
+      <small className="wz-trust-note">{storeNames(pickup, isRTL)}</small>
+    </div>
+  )
+}
+
+PickupSignal.propTypes = {
+  pickup: PropTypes.shape({ stores: PropTypes.array }).isRequired,
+  isRTL: PropTypes.bool,
+}
+
 // Live "social proof" row — rating stars + review count, and a low-stock urgency
 // pill. Only rendered when the caller passes real data (e.g. the PDP), so cart /
 // checkout, which span multiple items, never show a misleading single-item stat.
@@ -136,7 +160,7 @@ LiveSignals.propTypes = {
 // row on top — the PDP passes real product data; cart/checkout omit them.
 // Styled with dedicated wz-trust-* classes (no Bootstrap). Responsive: collapses
 // to a vertical stack on mobile via the .wz-trust--row media query.
-function TrustSignals({ variant = 'pdp', rating = 0, reviewCount = 0, stockLeft = null, isRTL = false, isFashion = false }) {
+function TrustSignals({ variant = 'pdp', rating = 0, reviewCount = 0, stockLeft = null, isRTL = false, isFashion = false, pickup = null }) {
   const { returns, guarantee, secure, whatsapp, payments } = trustSignals
 
   const live = (
@@ -169,6 +193,7 @@ function TrustSignals({ variant = 'pdp', rating = 0, reviewCount = 0, stockLeft 
     <div className="wz-trust wz-trust--framed wz-trust--pdp">
       {live}
       <ReturnsSignal isFashion={isFashion} isRTL={isRTL} />
+      {pickup?.enabled ? <PickupSignal pickup={pickup} isRTL={isRTL} /> : null}
       <Signal {...guarantee} isRTL={isRTL} />
       <Signal {...secure} isRTL={isRTL} />
       <Signal {...whatsapp} isRTL={isRTL} />
@@ -190,6 +215,7 @@ TrustSignals.propTypes = {
   stockLeft: PropTypes.number,
   isRTL: PropTypes.bool,
   isFashion: PropTypes.bool,
+  pickup: PropTypes.shape({ enabled: PropTypes.bool, stores: PropTypes.array }),
 }
 
 export default TrustSignals

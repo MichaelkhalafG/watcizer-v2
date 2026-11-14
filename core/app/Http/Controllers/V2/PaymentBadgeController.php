@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers\V2;
 
+use App\Domain\Payment\OfflineProvider;
 use App\Domain\Payment\PaymentBadges;
+use App\Domain\Pickup\Pickup;
 use App\Http\Controllers\Controller;
 use App\Storefront\StorefrontContext;
 use Illuminate\Http\JsonResponse;
@@ -22,10 +24,13 @@ class PaymentBadgeController extends Controller
 {
     public function index(StorefrontContext $ctx, PaymentBadges $badges): JsonResponse
     {
-        $data = array_map(
+        // "Pay at the store" is a way to pay a PICKUP only (click & collect, 2026-11-14): never advertised while the shop's
+        // pickup switch is off, even with the method enabled on the Payments screen
+        $pickup = Pickup::enabled($ctx->id());
+        $data = array_values(array_map(
             fn (array $badge): array => ['method' => $badge['method'], 'label' => $badge['label'], 'image' => $badge['image']],
-            $badges->forStorefront($ctx->id()),
-        );
+            array_filter($badges->forStorefront($ctx->id()), fn (array $badge): bool => $pickup || $badge['method'] !== OfflineProvider::STORE),
+        ));
 
         return response()->json(['data' => $data], 200, ['Cache-Control' => 'private, max-age=60'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     }
