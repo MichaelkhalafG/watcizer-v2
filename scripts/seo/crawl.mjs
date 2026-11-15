@@ -15,6 +15,9 @@
 // language rendered in headless Chrome to compare with the server HTML; 0 = off), --blog=50 (WordPress
 // posts per language), --gap=550 (ms between requests), --out=<dir>, --bot-ua (send spoofed crawler user agents
 // once per site — off by default: the host's edge 403s a fake Googlebot and briefly blocks the machine).
+// --local=watchizer=http://127.0.0.1:3010,brandfashion=http://127.0.0.1:3011 (2026-11-14): crawl a LOCAL copy of a
+// shop. Every URL keeps its real address (the sitemaps, canonicals and hreflang name production's host, and the
+// report compares them as such); only the request goes to the local server, with the path and query kept.
 //
 // Output (default: new branding/docs/seo/crawls/<stamp>/ — gitignored, competitor data never enters the
 // public repo): pages-<site>.jsonl (one record per fetched page), summary.json, report.md.
@@ -51,8 +54,26 @@ const OUT = path.resolve(arg.out || path.join(HERE, '../../new branding/docs/seo
 fs.mkdirSync(OUT, { recursive: true })
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+// --local: a shop's real origin (apex and www) -> the local server that answers for it
+const LOCAL = new Map()
+for (const pair of (arg.local || '').split(',').filter(Boolean)) {
+  const at = pair.indexOf('=')
+  const name = pair.slice(0, at)
+  const origin = pair.slice(at + 1).replace(/\/$/, '')
+  const base = PROFILES[name]?.base
+  if (!base || !/^https?:\/\//.test(origin)) throw new Error(`--local: unknown site or origin in "${pair}"`)
+  const host = new URL(base).host.replace(/^www\./, '')
+  for (const h of [host, `www.${host}`]) LOCAL.set(`https://${h}`, origin)
+}
+const toLocal = (url) => {
+  if (!LOCAL.size) return url
+  const u = new URL(url)
+  const local = LOCAL.get(u.origin)
+  return local ? local + u.pathname + u.search : url
+}
 let last = 0
 async function get(url, headers = {}) {
+  url = toLocal(url)
   const wait = last + OPT.gap - Date.now()
   if (wait > 0) await sleep(wait)
   last = Date.now()
@@ -589,7 +610,7 @@ async function renderCompare(site, recs) {
   const pick = []
   for (const t of want) for (const lang of ['en', 'ar']) pick.push(...recs.filter((r) => r.template === t && r.lang === lang && r.status === 200).slice(0, OPT.render))
   for (const r of pick) {
-    const { html, ms } = await b.render(r.url)
+    const { html, ms } = await b.render(toLocal(r.url))
     const rr = analyze(site, r.url, { status: 200, body: html, headers: { 'content-type': 'text/html' } }, r)
     const cmp = (a, c) => ({ server: a, rendered: c, same: JSON.stringify(a) === JSON.stringify(c) })
     out.push({
