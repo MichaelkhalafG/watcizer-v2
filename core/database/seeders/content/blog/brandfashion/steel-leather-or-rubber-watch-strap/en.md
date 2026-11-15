@@ -5,7 +5,7 @@ meta_description: How a steel bracelet, a leather strap and a rubber strap diffe
 target_query: leather vs steel watch strap
 sources:
   - Brand Fashion's business facts (the client, 2026-10-29): bracelet sizing free within the warranty; warranty up to 3 years depending on the watch; stores and hours
-  - Brand Fashion's customer-service number as its pages show it today: 01283888490
+  - Brand Fashion's customer-service number as its pages show it today: 01014179820
   - The site's own pages (verified 200 on michaelkhalaf.com, 2026-10-29): /category/watches, /subtypes/dress, /subtypes/sport, /subtypes/casual, /subtypes/belts, /contact-us
 ---
 Two watches with the same case and dial can look like completely different watches, and the reason is almost always the strap. It decides how dressy the watch looks, how it feels on a hot afternoon, and how much care it asks of you. Here is how the three most common choices compare, and how to pick the right one.
@@ -67,4 +67,4 @@ A strap is not a life sentence. Many watches on a leather strap can move to anot
 
 ## Try them on
 
-The best way to choose is to feel each one on your own wrist. You can see our [watches](/category/watches) in every style — [dress](/subtypes/dress), [sport](/subtypes/sport) and [casual](/subtypes/casual) — at our stores, every day from 10:00 to midnight. Every watch comes with a warranty of up to 3 years, depending on the watch, and bracelet sizing is free within the warranty. Questions? Call us on 01283888490 or use the [contact page](/contact-us).
+The best way to choose is to feel each one on your own wrist. You can see our [watches](/category/watches) in every style — [dress](/subtypes/dress), [sport](/subtypes/sport) and [casual](/subtypes/casual) — at our stores, every day from 10:00 to midnight. Every watch comes with a warranty of up to 3 years, depending on the watch, and bracelet sizing is free within the warranty. Questions? Call us on 01014179820 or use the [contact page](/contact-us).

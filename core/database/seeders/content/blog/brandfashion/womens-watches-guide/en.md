@@ -5,7 +5,7 @@ meta_description: The main styles of women's watches, how to choose the size and
 target_query: women's watches
 sources:
   - Brand Fashion's business facts (the client, 2026-10-29): warranty up to 3 years depending on the watch; bracelet sizing free within the warranty; exchange within 14 days in the original unopened state with the seals intact; delivery to every governorate within 24 hours; all payment methods and instalments with most banks; stores and hours
-  - Brand Fashion's customer-service number as its pages show it today: 01283888490
+  - Brand Fashion's customer-service number as its pages show it today: 01014179820
   - The site's own pages (verified 200 on michaelkhalaf.com, 2026-10-29 and 2026-10-30): /listing?gender=Women, /subtypes/dress, /subtypes/casual, /subtypes/bracelets, /subtypes/bags, /brand/michael-kors, /contact-us
 ---
 A watch on a woman's wrist does two jobs at once: it tells the time, and it is jewellery. That is why choosing one feels personal — it has to suit the way you dress, the jewellery you already love, and the occasions you will wear it for. Here is a simple guide to the styles, the sizes, and the small details that make a watch look like yours.
@@ -65,4 +65,4 @@ Every watch we sell comes with a warranty of **up to 3 years, depending on the w
 
 ## Find yours
 
-Browse our [women's watches](/listing?gender=Women), or start with a brand you love, such as [Michael Kors](/brand/michael-kors). You are welcome to try them on at our stores every day from 10:00 to midnight, or ask us on 01283888490 or through the [contact page](/contact-us).
+Browse our [women's watches](/listing?gender=Women), or start with a brand you love, such as [Michael Kors](/brand/michael-kors). You are welcome to try them on at our stores every day from 10:00 to midnight, or ask us on 01014179820 or through the [contact page](/contact-us).

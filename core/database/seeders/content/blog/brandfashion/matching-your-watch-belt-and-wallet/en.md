@@ -5,7 +5,7 @@ meta_description: Simple rules for matching your watch, belt, wallet and bag —
 target_query: how to match watch and belt
 sources:
   - Brand Fashion's business facts (the client, 2026-10-29): warranty up to 3 years depending on the watch; delivery to every governorate within 24 hours, free over EGP 10,000; exchange within 14 days in the original unopened state with the seals intact; stores and hours
-  - Brand Fashion's customer-service number as its pages show it today: 01283888490
+  - Brand Fashion's customer-service number as its pages show it today: 01014179820
   - The site's own pages (verified 200 on michaelkhalaf.com, 2026-10-29): /category/watches, /category/fashion, /subtypes/belts, /subtypes/wallets, /subtypes/bags, /subtypes/dress, /subtypes/casual, /contact-us
 ---
 The watch is usually the first thing people notice on your wrist, but it rarely works alone. A belt, a wallet, a bag and your shoes all sit in the same picture. When they agree with each other, the whole outfit looks considered — even if it took you thirty seconds. When they clash, even a beautiful watch looks like an afterthought. The good news is that a few simple rules do almost all the work.
@@ -72,4 +72,4 @@ Add a dress watch on leather when you need one for formal occasions, and a casua
 
 ## Shop the whole look in one place
 
-At Brand Fashion you can find the [watch](/category/watches), the [belt](/subtypes/belts), the [wallet](/subtypes/wallets) and the [bag](/subtypes/bags) together — and see how they work side by side in our stores, every day from 10:00 to midnight. Every watch comes with a warranty of up to 3 years, depending on the watch. We deliver to every governorate within 24 hours, and orders over EGP 10,000 ship free. Not sure what goes with what? Call us on 01283888490 or write through the [contact page](/contact-us).
+At Brand Fashion you can find the [watch](/category/watches), the [belt](/subtypes/belts), the [wallet](/subtypes/wallets) and the [bag](/subtypes/bags) together — and see how they work side by side in our stores, every day from 10:00 to midnight. Every watch comes with a warranty of up to 3 years, depending on the watch. We deliver to every governorate within 24 hours, and orders over EGP 10,000 ship free. Not sure what goes with what? Call us on 01014179820 or write through the [contact page](/contact-us).

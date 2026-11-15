@@ -5,7 +5,7 @@ meta_description: How to choose a watch someone will actually wear — their sty
 target_query: watch as a gift
 sources:
   - Brand Fashion's business facts (the client, 2026-10-29): warranty up to 3 years depending on the watch, with a warranty card and sales invoice; brand box and catalogue; return and exchange within 14 days in the original unopened state with the seals intact, return shipping paid by the customer; delivery to every governorate within 24 hours, free over EGP 10,000; all payment methods and instalments with most banks; stores and hours
-  - Brand Fashion's customer-service number as its pages show it today: 01283888490 (Michael, 2026-10-29: each storefront keeps the number it shows)
+  - Brand Fashion's customer-service number as its pages show it today: 01014179820 (Michael, 2026-10-29: each storefront keeps the number it shows)
   - The site's own pages (verified 200 on michaelkhalaf.com, the temporary domain, 2026-10-29): /category/watches, /subtypes/dress, /subtypes/sport, /subtypes/casual, /brand/michael-kors, /brand/tissot, /contact-us
 ---
 A watch is one of the few gifts that is worn every day and kept for years. That is exactly what makes choosing one feel like a risk: you want it to be theirs, not yours. The good news is that a few simple questions take most of the guesswork out of it.
@@ -67,4 +67,4 @@ A good watch does not have to be the most expensive one. Decide what you want to
 
 ## Ready to choose?
 
-Browse [all our watches](/category/watches), or start with a brand they already like, such as [Michael Kors](/brand/michael-kors) or [Tissot](/brand/tissot). We deliver to every governorate within 24 hours, so a gift chosen today can be in their hands tomorrow. Still unsure? Our team is happy to help on 01283888490, or through the [contact page](/contact-us) — and you are welcome to see the watches in person at our stores, every day from 10:00 to midnight.
+Browse [all our watches](/category/watches), or start with a brand they already like, such as [Michael Kors](/brand/michael-kors) or [Tissot](/brand/tissot). We deliver to every governorate within 24 hours, so a gift chosen today can be in their hands tomorrow. Still unsure? Our team is happy to help on 01014179820, or through the [contact page](/contact-us) — and you are welcome to see the watches in person at our stores, every day from 10:00 to midnight.

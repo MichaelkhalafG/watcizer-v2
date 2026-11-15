@@ -7,7 +7,7 @@ sources:
   - Brand Fashion's business facts (the client, 2026-10-29): delivery to every governorate within 24 hours, cost varies, free shipping over EGP 10,000; all payment methods and instalments with most banks; returns and exchange within 14 days in the original unopened state with the seals intact, return shipping paid by the customer, refund after inspection by the same payment method; warranty up to 3 years depending on the watch, warranty card and sales invoice; proof of originality by serial number, stamps, brand box and catalogue; stores (Heliopolis, 90 El Thawra Street; Arcadia Mall, second floor) open daily 10:00–24:00
   - What Brand Fashion sells, as its About page states it: watches for men and women, bags, wallets, belts, jewellery, perfumes and a small range of electronics
   - Service (the client, 2026-10-29): within the warranty, battery replacement and bracelet sizing free; other work paid; a watch not bought from the store, a fee depending on the fault
-  - Brand Fashion's customer-service number and Instagram as its pages show them today: 01283888490, @brand_fashion_eg
+  - Brand Fashion's customer-service number and Instagram as its pages show them today: 01014179820, @brand_fashion_eg
   - The site's own pages (verified 200 on michaelkhalaf.com, 2026-10-29): /category/watches, /category/fashion, /subtypes/bags, /subtypes/wallets, /subtypes/belts, /subtypes/bracelets, /about-us, /contact-us
 ---
 Before you order from a shop for the first time, you want to know the practical things: what they sell, how quickly it arrives, how you pay, and what happens if it is not right. This page answers all of it in one place, so you can shop with Brand Fashion knowing exactly what to expect.
@@ -53,7 +53,7 @@ You can browse online, then come and see the piece before you decide — or the 
 
 ## Talk to us
 
-Our customer service team is on **01283888490**, by phone and WhatsApp, and you can also write to us through the [contact page](/contact-us). On Instagram we are **@brand_fashion_eg**. If your question is about an order, have your order number ready: you will find it in your confirmation e-mail.
+Our customer service team is on **01014179820**, by phone and WhatsApp, and you can also write to us through the [contact page](/contact-us). On Instagram we are **@brand_fashion_eg**. If your question is about an order, have your order number ready: you will find it in your confirmation e-mail.
 
 ## Before you order: a short checklist
 

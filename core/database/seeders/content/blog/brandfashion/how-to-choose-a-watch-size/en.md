@@ -5,7 +5,7 @@ meta_description: How to measure your wrist, what case diameter, lug width and t
 target_query: what watch size should i get
 sources:
   - Brand Fashion's business facts (the client, 2026-10-29): bracelet sizing free within the warranty; exchange within 14 days in the original unopened state with the seals intact; stores and hours
-  - Brand Fashion's customer-service number as its pages show it today: 01283888490
+  - Brand Fashion's customer-service number as its pages show it today: 01014179820
   - The site's own pages (verified 200 on michaelkhalaf.com, 2026-10-29): /category/watches, /subtypes/dress, /subtypes/sport, /contact-us
   - The size guidance below is a rule of thumb, not a standard: watches are sized by the case diameter in millimetres, and how a size looks depends on the wrist, the case shape and the dial.
 ---
@@ -73,4 +73,4 @@ Choosing a size for a gift is easier than it sounds. If the person already wears
 
 ## Not sure? See it on your wrist
 
-Nothing replaces trying a watch on. You are welcome at our stores every day from 10:00 to midnight. If you buy online and the size is not right, you can **exchange the watch within 14 days**, as long as it is in its original, unopened state with the seals intact — so check the size against this guide before you open the seals. Browse [all our watches](/category/watches), or ask us on 01283888490 or through the [contact page](/contact-us).
+Nothing replaces trying a watch on. You are welcome at our stores every day from 10:00 to midnight. If you buy online and the size is not right, you can **exchange the watch within 14 days**, as long as it is in its original, unopened state with the seals intact — so check the size against this guide before you open the seals. Browse [all our watches](/category/watches), or ask us on 01014179820 or through the [contact page](/contact-us).
