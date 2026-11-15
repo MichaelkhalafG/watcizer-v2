@@ -28,6 +28,7 @@ import CategoryTiles from '@/src/Components/Merchandising/CategoryTiles'
 import { getImageUrl } from '@/src/utils/imageUrl'
 import { productUrl } from '@/src/utils/productUrl'
 import { buildListingParams } from '@/src/utils/listingParams'
+import { brandPageOf, categoryPageOf } from '@/src/lib/menuLinks'
 
 // The 3D hero is drawn only in `three_d` mode, so its code (three.js) is not in the home page's first bundle while
 // the shop is on the campaign banner.
@@ -171,12 +172,12 @@ export default function HomeClient({ initialHome = null, campaign = null, menu =
           const brand = tables?.brands?.find((b) => b.id === rail.target)
           const name = brand ? nameIn(brand, 'brand_name', language) : ''
           title = { en: name, ar: name }
-          href = `/listing?${buildListingParams({ brands: [rail.target] }, {}, tables).toString()}`
+          href = brandPageOf(rail.target, tables) || `/listing?${buildListingParams({ brands: [rail.target] }, {}, tables).toString()}`
         } else if (rail.kind === 'category_type') {
           const category = tables?.categoryTypes?.find((c) => c.id === rail.target)
           const name = category ? nameIn(category, 'category_type_name', language) : ''
           title = { en: name, ar: name }
-          href = `/listing?${buildListingParams({ categories: [rail.target] }, {}, tables).toString()}`
+          href = categoryPageOf(rail.target, tables) || `/listing?${buildListingParams({ categories: [rail.target] }, {}, tables).toString()}`
         } else if (rail.kind === 'newest') {
           href = '/listing?sort=newest'
         } else if (rail.kind === 'best_value') {
@@ -282,7 +283,7 @@ export default function HomeClient({ initialHome = null, campaign = null, menu =
 
   const handleBrandClick = useCallback(
     (brandId) => {
-      router.push(`/listing?${buildListingParams({ brands: [brandId] }, {}, tables).toString()}`)
+      router.push(brandPageOf(brandId, tables) || `/listing?${buildListingParams({ brands: [brandId] }, {}, tables).toString()}`)
     },
     [router, tables],
   )

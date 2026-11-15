@@ -36,6 +36,7 @@ import { trackInitiateCheckout, savePendingPurchase } from '../../scripts/pixels
 import { useOrderConfirmStore } from '../../Store/orderConfirmStore'
 import PaymentBadges, { MethodBadge, usePaymentBadgeOf } from '../../Components/Promo/PaymentBadges'
 import './Checkout.css'
+import { INSPECT_LONG } from '../../content/inspection'
 
 // Paymob availability comes from lib/env (NEXT_PUBLIC_PAYMOB_ENABLED), the Next
 // replacement for Vite's import.meta.env.VITE_PAYMOB_ENABLED.
@@ -966,7 +967,8 @@ function Checkout() {
                   <div className="wz-checkout-payopt-main">
                     <div className="wz-checkout-payopt-title">{t('Cash on Delivery', 'الدفع عند الاستلام')}</div>
                     <div className="wz-checkout-payopt-note">
-                      {t('Pay when you receive your order', 'ادفع عند استلام طلبك')}
+                      {/* inspection before payment (2026-11-14, the client): content/inspection.js, the same words everywhere */}
+                      {t(INSPECT_LONG.en, INSPECT_LONG.ar)}
                     </div>
                   </div>
                   {badgeOf.get('cod') ? <MethodBadge badge={badgeOf.get('cod')} name={t('Cash on Delivery', 'الدفع عند الاستلام')} /> : null}

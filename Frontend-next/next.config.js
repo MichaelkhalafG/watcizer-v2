@@ -115,6 +115,15 @@ const nextConfig = {
       { source: '/product/rolex-yacht-master-ii-44-white-dial-watch-for-men', destination: '/brand/rolex', permanent: true },
       { source: '/product/rolex-cosmograph-daytona-40-gold-white-dial-watch-for-men', destination: '/brand/rolex', permanent: true },
       { source: '/product/rolex-sky-dweller-42-black-dial-watch-for-men', destination: '/brand/rolex', permanent: true },
+      // Search Console, 2026-11-14 (SEO Phase 1): four more old URLs whose model number names exactly one product the
+      // live site sells (126334, 1514085, 1514159; each target checked 200 and self-canonical on the live site that
+      // day). The two raw titles below were a 404 ("BOSS ..." starts with no brand slug; the Arabic title names no brand
+      // in Latin letters), and "Hugo Boss Watch For Men 1514159" went to the brand page; each now reaches its product.
+      // The Arabic source reads "Hugo Boss watch for men 1514159".
+      { source: '/product/rolex-datejust-126334-white-dial-41mm-watch-for-men', destination: '/product/rolex-datejust-41mm-126334-dlc-pvd-automatic-watch-for-men', permanent: true },
+      { source: "/product/BOSS%20Analog%20Black%20Dial%20Men's%20Watch-1514085", destination: '/product/hugo-boss-1514085-taper-black-dial-silver-case-black-strap-chronograph', permanent: true },
+      { source: '/product/Hugo%20Boss%20Watch%20For%20Men%201514159', destination: '/product/hugo-boss-avery-1514159-green-dial-silver-watch', permanent: true },
+      { source: '/product/%D8%B3%D8%A7%D8%B9%D8%A9%20%D9%87%D9%88%D8%AC%D9%88%20%D8%A8%D9%88%D8%B3%20%D9%84%D9%84%D8%B1%D8%AC%D8%A7%D9%84%201514159', destination: '/product/hugo-boss-avery-1514159-green-dial-silver-watch', permanent: true },
     ])
   },
   images: {

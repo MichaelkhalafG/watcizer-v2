@@ -7,6 +7,7 @@ import { livePrice, money, payOf, txt } from '../../../lib/campaign'
 import { Chevron, GridIcon } from '../../Promo/icons'
 import { megaBus } from './megaBus'
 import { warmMenuImages } from '../../../lib/menuData'
+import { menuChildHref, nodeSlug } from '../../../lib/menuLinks'
 import SalePane from './SalePane'
 import './megaMenu.css'
 
@@ -97,9 +98,12 @@ export const STR = {
   },
 }
 
+// A node's page is the slug of its ENGLISH name (src/lib/menuLinks.js, 2026-11-14): the node's own slug 404'd for
+// `audio` and redirected for `chargers`. Each shop's Nav and Header pass `child` with the lookup tables, which also
+// sends a tile with no page of its own to its category.
 export const DEFAULT_HREFS = {
-  category: (c) => `/category/${c.slug}`,
-  child: (c) => `/subtypes/${c.slug}`,
+  category: (c) => `/category/${nodeSlug(c)}`,
+  child: (c, parent) => menuChildHref(c, parent, null),
   brand: (b) => `/brand/${b.slug}`,
   product: (p) => `/product/${p.slug}`,
   gender: () => '/listing',

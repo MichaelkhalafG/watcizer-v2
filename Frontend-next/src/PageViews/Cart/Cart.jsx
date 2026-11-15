@@ -531,7 +531,8 @@ function Cart() {
       <div className="wz-cartpage" dir={isRTL ? 'rtl' : 'ltr'}>
         <div className="wz-cart-empty">
           <FiShoppingBag className="wz-cart-empty-icon" />
-          <h2>{t('Your cart is empty', 'سلة التسوق فارغة')}</h2>
+          {/* the page's one H1 (2026-11-14, SEO Phase 1 item 8; the full cart has its own); styled exactly as before */}
+          <h1>{t('Your cart is empty', 'سلة التسوق فارغة')}</h1>
           <p>{t('Discover luxury timepieces', 'اكتشف الساعات الفاخرة')}</p>
           <button className="wz-cart-checkout" onClick={() => navigate('/listing')}>
             {t('EXPLORE COLLECTION', 'تصفّح المجموعة')}

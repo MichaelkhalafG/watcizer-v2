@@ -9,8 +9,8 @@ import { getServerV2ProductForHome } from '@/src/lib/serverV2'
 import { bannerModel } from '@/src/lib/experienceSpecs'
 import { PRODUCT_SLUG } from '@/src/content/grandPrix1513477'
 import { requestLang, alternatesFor, localePath, SITE } from '@/src/lib/requestLang'
-// the shop's real accounts, from the one place the contact page reads them (2026-10-19)
-import { FACEBOOK, INSTAGRAM, TIKTOK } from '@/src/content/trustPages'
+import { shopGraph } from '@/src/lib/shopSchema'
+import { getServerShippingFees } from '@/src/lib/serverV2'
 // the proposed title and meta behind the home headline switch (off: null, and HOME_TEXT stands)
 import { PROPOSED_HOME_META } from '@/src/content/homeHeadline'
 
@@ -53,7 +53,6 @@ export async function generateMetadata() {
       url,
       siteName: 'Watchizer',
       type: 'website',
-      locale: t.locale,
       images: [
         {
           url: 'https://watchizereg.com/og-image.jpg',
@@ -72,82 +71,25 @@ export async function generateMetadata() {
   }
 }
 
-// The two branches, worded as the CONTACT PAGE reads them (2026-10-19, the developer's instruction: this markup
-// named one address and there are two). English, because this one object is emitted on both the English and the
-// Arabic home and every other field of it is English — the street used to be Arabic ("اركديا مول . كورنيش النيل .
-// امتداد ماسبيرو", a spelling and a punctuation the contact page does not use) on an otherwise English node.
-const ARKADIA = {
-  '@type': 'PostalAddress',
-  streetAddress: 'Arkadia Mall, Corniche El Nil, Maspero extension',
-  addressLocality: 'Cairo',
-  addressRegion: 'Cairo Governorate',
-  addressCountry: 'EG',
-}
-// Only what the contact page states: no region, and no opening hours — the Heliopolis branch's are not known.
-const HELIOPOLIS = {
-  '@type': 'PostalAddress',
-  streetAddress: '90 El-Thawra Street',
-  addressLocality: 'Heliopolis',
-  addressCountry: 'EG',
-}
-
-// Organization/Store schema — emitted here (was App.jsx global) so it is in the
-// homepage's initial HTML.
-const storeJsonLd = {
-  '@context': 'https://schema.org/',
-  '@type': 'Store',
-  name: 'Watchizer - Luxury Watches & Accessories',
-  url: 'https://watchizereg.com',
-  logo: 'https://watchizereg.com/logo.svg',
-  image: 'https://watchizereg.com/og-image.jpg',
-  description:
-    'Discover a premium collection of luxury watches and fashion accessories at Watchizer. Shop exclusive timepieces with elegant designs and unbeatable prices in Egypt.',
-  // `address` stays the Arkadia branch: it is the one this `geo` and these opening hours belong to, and a
-  // LocalBusiness's primary address is what Google reads. `location` names both branches.
-  address: ARKADIA,
-  location: [
-    { '@type': 'Place', name: 'Arkadia Mall branch', address: ARKADIA },
-    { '@type': 'Place', name: 'Heliopolis branch', address: HELIOPOLIS },
-  ],
-  geo: { '@type': 'GeoCoordinates', latitude: 30.0444, longitude: 31.2357 },
-  openingHoursSpecification: [
-    {
-      '@type': 'OpeningHoursSpecification',
-      dayOfWeek: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
-      opens: '10:00',
-      // the client's hours (Michael, 2026-10-29): every day 10:00 to midnight, written 23:59 (Google's form)
-      closes: '23:59',
-    },
-  ],
-  // The accounts the site actually links (2026-10-19, the developer). This used to name a different pair — a bare
-  // `/watchizer` vanity name on each network — which matched neither the header, the footer nor the contact page.
-  // Imported, never retyped, so the markup and the site stay the same two accounts.
-  sameAs: [FACEBOOK, INSTAGRAM, TIKTOK],
-  contactPoint: {
-    '@type': 'ContactPoint',
-    telephone: '+201551096234',
-    contactType: 'customer service',
-    areaServed: 'EG',
-    availableLanguage: ['English', 'Arabic'],
-  },
-}
-
 // The rails and their cards come from core's `catalog/home` (C-1 stage 4 slice C) — not the whole
 // catalogue. null on failure: the client shows its retry instead of rails.
 export default async function HomePage() {
-  const [home, campaign, menu] = await Promise.all([
+  const { urlLang } = await requestLang()
+  const [home, campaign, menu, fees] = await Promise.all([
     getServerHome(),
     // never the home's failure: a product that cannot be read leaves the banner without price, stock and facts
     getServerV2ProductForHome(PRODUCT_SLUG).then((page) => (page ? bannerModel(page) : null), () => null),
     // nor is the menu: without it the category row draws each category's own picture and the browser fills the rest
     getServerV2Menu().then((body) => slimMenu(body?.data || null), () => null),
+    // the dashboard's delivery fees, for the shipping policy in the structured data — never the home's failure
+    getServerShippingFees().catch(() => null),
   ])
   return (
     <>
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: safeJsonLd(storeJsonLd) }}
-      />
+      {/* THE SHOP (2026-11-14, SEO Phase 1): Organization + OnlineStore with its return and shipping policies, the two
+          stores as its physical places, and the WebSite — src/lib/shopGraph via shopSchema.js; the fees from the
+          dashboard. It replaces a single Store node whose geo was never verified. */}
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: safeJsonLd(shopGraph(urlLang, fees)) }} />
       {/* The home's category row draws each category's picture from the menu (the fallback rule, item 35), so THIS
           page carries the menu — slimmed — in its server render, AS A PROP (2026-11-07): a HydrationBoundary here
           never reached the row's server render, because the header's menu component had created the query (empty)

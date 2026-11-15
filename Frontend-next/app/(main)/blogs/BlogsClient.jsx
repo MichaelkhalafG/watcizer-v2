@@ -1,13 +1,15 @@
 'use client'
 import Link from '@/src/Components/LocaleLink'
 import { useUIStore } from '@/src/Store/uiStore'
+import { blogPath } from '@/src/lib/blogPath'
 import '@/src/Components/Blog/blog.css'
 
 const pick = (pair, lang) => (pair?.[lang] || pair?.[lang === 'ar' ? 'en' : 'ar'] || '').trim()
 
 // The articles list (2026-10-01): this storefront's published articles from core, newest first, in
 // the shopper's language (the other one when an article has only one).
-export default function BlogsClient({ blogs = [] }) {
+// `heading` / `lead` (2026-11-14, SEO Phase 3): an archive's own (src/lib/blogTopics.js); an empty lead is none.
+export default function BlogsClient({ blogs = [], heading = null, lead = null }) {
   const language = useUIStore((s) => s.language)
   const ar = language === 'ar'
   const date = (iso) =>
@@ -15,18 +17,21 @@ export default function BlogsClient({ blogs = [] }) {
 
   return (
     <main className="wz-blogs" dir={ar ? 'rtl' : 'ltr'}>
-      <h1 className="wz-blogs__title">{ar ? 'مقالات ودليل الساعات' : 'Watch guides & articles'}</h1>
-      <p className="wz-blogs__lead">
-        {ar
-          ? 'كل ما تحتاج معرفته قبل أن تختار ساعتك وبعد أن تقتنيها.'
-          : 'What to know before you choose a watch, and after you own one.'}
-      </p>
+      <h1 className="wz-blogs__title">{heading || (ar ? 'مقالات ودليل الساعات' : 'Watch guides & articles')}</h1>
+      {lead === '' ? null : (
+        <p className="wz-blogs__lead">
+          {lead ||
+            (ar
+              ? 'كل ما تحتاج معرفته قبل أن تختار ساعتك وبعد أن تقتنيها.'
+              : 'What to know before you choose a watch, and after you own one.')}
+        </p>
+      )}
       {blogs.length === 0 ? (
         <p className="wz-blogs__empty">{ar ? 'لا توجد مقالات بعد.' : 'No articles yet.'}</p>
       ) : (
         <div className="wz-blogs__grid">
           {blogs.map((b) => (
-            <Link key={b.slug} href={`/blog/${b.slug}`} className="wz-blogs__card">
+            <Link key={b.slug} href={blogPath(b, language)} className="wz-blogs__card">
               {b.cover ? <img className="wz-blogs__cover" src={b.cover} alt="" loading="lazy" /> : null}
               <div className="wz-blogs__body">
                 <span className="wz-blogs__date">{date(b.published_at)}</span>

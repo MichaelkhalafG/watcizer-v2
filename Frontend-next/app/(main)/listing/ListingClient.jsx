@@ -1,6 +1,7 @@
 'use client'
 import { startTransition, useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { usePathname, useSearchParams } from 'next/navigation'
+import { barePath, localizeHref } from '@/src/utils/localePath'
 import { useRouter } from '@/src/Hooks/useLocaleRouter'
 import { FiSliders, FiX, FiChevronDown, FiSearch, FiChevronLeft, FiChevronRight } from 'react-icons/fi'
 import { useTables } from '@/src/Hooks/queries/useTables'
@@ -54,7 +55,10 @@ function pageList(current, total) {
 // the URL/seed directly, so the server HTML already reflects ?brands=… . After
 // mount the Zustand store (written by SideBar/SmartSuggestions) takes over — the
 // URL→store effect seeds the store to match, so the two agree with no flash.
-export default function ListingClient({ seedParams = null }) {
+// `heading` (2026-11-14): a page that names itself — the Original watches collection — sets its H1, { en, ar }
+// `lead` (2026-11-14, SEO Phase 2): what a brand, category or landing page shows between its H1 and the products — its
+// intro and, on a brand page, the links to its landing pages (FacetLead); server-rendered by the page, passed through
+export default function ListingClient({ seedParams = null, heading = null, lead = null }) {
   const { data: tables = {} } = useTables()
   const {
     language,
@@ -117,7 +121,7 @@ export default function ListingClient({ seedParams = null }) {
     if (seededRef.current === seedParams) return
     seededRef.current = seedParams
     setFilters(seed.filters)
-    setCurrentPage(1)
+    setCurrentPage(seed.page || 1)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seedParams, tablesReady, syncUrl])
 
@@ -204,6 +208,20 @@ export default function ListingClient({ seedParams = null }) {
       window.scrollTo({ top: 0, behavior: 'smooth' })
     },
     [totalPages, currentPage, setCurrentPage],
+  )
+
+  // A page's own address (2026-11-14, item 6): the listing's address and query with ?page=N (page 1 without it), in the
+  // page's language. On a facet route (/brand/x) the query is the page alone — the route reads nothing else.
+  const pageHref = useCallback(
+    (p) => {
+      const params = new URLSearchParams(syncUrl ? urlSearchParams.toString() : '')
+      if (p > 1) params.set('page', String(p))
+      else params.delete('page')
+      const qs = params.toString()
+      const bare = barePath(pathname || '/')
+      return localizeHref(qs ? `${bare}?${qs}` : bare, language)
+    },
+    [syncUrl, urlSearchParams, pathname, language],
   )
 
   // ── Active filter tags ──
@@ -308,13 +326,14 @@ export default function ListingClient({ seedParams = null }) {
 
   // ── Breadcrumb label ──
   const crumb = useMemo(() => {
+    if (heading) return heading[isRTL ? 'ar' : 'en'] || heading.en
     if ((filters.categories || []).length === 1) return nameMap.categories[filters.categories[0]]
     if ((filters.subTypes || []).length === 1) return nameMap.subTypes[filters.subTypes[0]]
     if ((filters.brands || []).length === 1) return nameMap.brands[filters.brands[0]]
     // /grade/{g} printed "All Products" (found 2026-10-08): the grade had no branch here.
     if ((filters.grades || []).length === 1 && nameMap.grades[filters.grades[0]]) return nameMap.grades[filters.grades[0]]
     return isRTL ? 'كل المنتجات' : 'All Products'
-  }, [filters, nameMap, isRTL])
+  }, [filters, nameMap, isRTL, heading])
 
   // GA4 view_item_list (2026-10-22): once per result set — the page, the sort, the filters — the cards in the
   // order they are drawn (the first 50). Keyed by the ids: the array is a new object on every render.
@@ -352,6 +371,7 @@ export default function ListingClient({ seedParams = null }) {
 
         {/* Page heading (SEO H1) — reflects the active category/brand/subtype context */}
         <h1 className="wz-listing-h1">{crumb}</h1>
+        {lead}
 
         {/* Smart suggestions */}
         <SmartSuggestions facets={facets} />
@@ -470,19 +490,33 @@ export default function ListingClient({ seedParams = null }) {
                   ))}
                 </div>
 
-                {/* Pagination */}
+                {/* Pagination — real links (2026-11-14, SEO Phase 1 item 6): every page number is an <a href> to that page's own
+                    address (?page=N; page 1 the bare address), so a crawler reaches every product of a listing; a click
+                    still turns the page in place, without a reload. The arrows at either end are plain text when there
+                    is nowhere to go. */}
                 {totalPages > 1 && (
-                  <div className="wz-pager">
-                    <button
-                      className="wz-pager-btn wz-pager-edge"
-                      disabled={currentPage <= 1}
-                      onClick={() => goToPage(currentPage - 1)}
-                      /* the name stays: on a phone the word is hidden and the button is an arrow (Lighthouse: button-name) */
-                      aria-label={isRTL ? 'السابق' : 'Previous'}
-                    >
-                      {isRTL ? <FiChevronRight /> : <FiChevronLeft />}
-                      <span>{isRTL ? 'السابق' : 'Prev'}</span>
-                    </button>
+                  <nav className="wz-pager" aria-label={isRTL ? 'الصفحات' : 'Pages'}>
+                    {currentPage > 1 ? (
+                      <a
+                        className="wz-pager-btn wz-pager-edge"
+                        href={pageHref(currentPage - 1)}
+                        rel="prev"
+                        onClick={(e) => {
+                          e.preventDefault()
+                          goToPage(currentPage - 1)
+                        }}
+                        /* the name stays: on a phone the word is hidden and the button is an arrow (Lighthouse: button-name) */
+                        aria-label={isRTL ? 'السابق' : 'Previous'}
+                      >
+                        {isRTL ? <FiChevronRight /> : <FiChevronLeft />}
+                        <span>{isRTL ? 'السابق' : 'Prev'}</span>
+                      </a>
+                    ) : (
+                      <span className="wz-pager-btn wz-pager-edge" aria-disabled="true" aria-label={isRTL ? 'السابق' : 'Previous'}>
+                        {isRTL ? <FiChevronRight /> : <FiChevronLeft />}
+                        <span>{isRTL ? 'السابق' : 'Prev'}</span>
+                      </span>
+                    )}
 
                     {pageList(currentPage, totalPages).map((p, i) =>
                       p === '…' ? (
@@ -490,26 +524,42 @@ export default function ListingClient({ seedParams = null }) {
                           …
                         </span>
                       ) : (
-                        <button
+                        <a
                           key={p}
                           className={`wz-pager-num${p === currentPage ? ' is-active' : ''}`}
-                          onClick={() => goToPage(p)}
+                          href={pageHref(p)}
+                          aria-current={p === currentPage ? 'page' : undefined}
+                          onClick={(e) => {
+                            e.preventDefault()
+                            goToPage(p)
+                          }}
                         >
                           {p}
-                        </button>
+                        </a>
                       ),
                     )}
 
-                    <button
-                      className="wz-pager-btn wz-pager-edge"
-                      disabled={currentPage >= totalPages}
-                      onClick={() => goToPage(currentPage + 1)}
-                      aria-label={isRTL ? 'التالي' : 'Next'}
-                    >
-                      <span>{isRTL ? 'التالي' : 'Next'}</span>
-                      {isRTL ? <FiChevronLeft /> : <FiChevronRight />}
-                    </button>
-                  </div>
+                    {currentPage < totalPages ? (
+                      <a
+                        className="wz-pager-btn wz-pager-edge"
+                        href={pageHref(currentPage + 1)}
+                        rel="next"
+                        onClick={(e) => {
+                          e.preventDefault()
+                          goToPage(currentPage + 1)
+                        }}
+                        aria-label={isRTL ? 'التالي' : 'Next'}
+                      >
+                        <span>{isRTL ? 'التالي' : 'Next'}</span>
+                        {isRTL ? <FiChevronLeft /> : <FiChevronRight />}
+                      </a>
+                    ) : (
+                      <span className="wz-pager-btn wz-pager-edge" aria-disabled="true" aria-label={isRTL ? 'التالي' : 'Next'}>
+                        <span>{isRTL ? 'التالي' : 'Next'}</span>
+                        {isRTL ? <FiChevronLeft /> : <FiChevronRight />}
+                      </span>
+                    )}
+                  </nav>
                 )}
               </>
             )}

@@ -42,7 +42,6 @@ export async function generateMetadata() {
       url: alternates.canonical,
       siteName: 'Watchizer',
       type: 'website',
-      locale: t.locale,
       images: [{ url: `${SITE}/og-spin.jpg`, width: 1200, height: 630, alt: t.alt }],
     },
     twitter: { card: 'summary_large_image', title: t.title, description: t.description, images: [`${SITE}/og-spin.jpg`] },

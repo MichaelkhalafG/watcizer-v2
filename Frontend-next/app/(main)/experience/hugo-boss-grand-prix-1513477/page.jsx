@@ -74,7 +74,6 @@ export async function generateMetadata() {
       siteName: 'Watchizer',
       images: [{ url: image }],
     },
-    other: { 'og:type': 'product' },
     twitter: { card: 'summary_large_image', title: t.metaTitle, description: t.metaDescription, images: [image] },
   }
 }
@@ -100,6 +99,8 @@ export default async function ExperiencePage() {
 
   return (
     <>
+      {/* og:type as a PROPERTY (2026-11-14); React hoists it into <head> */}
+      <meta property="og:type" content="product" />
       {seo ? <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: safeJsonLd(seo.productLd) }} /> : null}
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: safeJsonLd(breadcrumbLd) }} />
       {/* the first model and the studio map start downloading with the page's scripts, at low priority (after the

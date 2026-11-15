@@ -33,6 +33,7 @@ import { useUIStore } from '../../../Store/uiStore'
 import { getImageUrl } from '../../../utils/imageUrl'
 import { buildListingParams } from '../../../utils/listingParams'
 import { brandSlug, categorySlug, subTypeSlug } from '../../../utils/slugs'
+import { menuChildHref, nodeSlug } from '../../../lib/menuLinks'
 import { subTypesByName } from '../../../utils/subTypeGroups'
 import MegaMenu from '../MegaMenu/MegaMenu'
 import { megaBus, megaItemProps } from '../MegaMenu/megaBus'
@@ -362,9 +363,10 @@ function Nav() {
               trigger={false}
               onNavigate={closeMenus}
               hrefs={{
+                child: (c, parent) => menuChildHref(c, parent, tables),
                 gender: (g) => hrefFor({ genders: [g.name?.en] }),
                 genderChild: (g, child) => {
-                  const st = (tables?.subTypes || []).find((s) => subTypeSlug(s) === child.slug)
+                  const st = (tables?.subTypes || []).find((s) => subTypeSlug(s) === nodeSlug(child))
                   return hrefFor(st ? { genders: [g.name?.en], subTypes: [st.id] } : { genders: [g.name?.en] })
                 },
                 sale: () => offersHref(),

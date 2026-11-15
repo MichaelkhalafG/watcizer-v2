@@ -18,7 +18,7 @@ import InviteFromLink from '../Wheel/InviteFromLink'
 import NavProgress from '../NavProgress/NavProgress'
 import { useHotDealsMode } from '../../Hooks/queries/usePromo'
 import MegaDrawer from './MegaMenu/MegaDrawer'
-import { useSwitchLanguage } from '../../Hooks/useSwitchLanguage'
+import LanguageLink from '../LanguageDropdown/LanguageLink'
 import { useUIStore } from '../../Store/uiStore'
 import { useAuthStore } from '../../Store/authStore'
 import { useShippingStore } from '../../Store/shippingStore'
@@ -30,6 +30,7 @@ import { useTables } from '../../Hooks/queries/useTables'
 import { useNav } from '../../Hooks/queries/useNav'
 import { buildListingParams } from '../../utils/listingParams'
 import { subTypeSlug } from '../../utils/slugs'
+import { menuChildHref, nodeSlug } from '../../lib/menuLinks'
 import { subTypesByName } from '../../utils/subTypeGroups'
 import { getImageUrl } from '../../utils/imageUrl'
 import { FaFacebookF, FaInstagram, FaTiktok } from 'react-icons/fa'
@@ -67,7 +68,6 @@ function Header() {
   const { data: nav } = useNav()
   const language = useUIStore((s) => s.language)
   // /x ↔ /ar/x (S-AR stage 1): the switch moves to the same page in the other language.
-  const setLanguage = useSwitchLanguage()
   const { userId: user_id, user } = useAuthStore()
   const router = useRouter()
   const pathname = usePathname()
@@ -180,9 +180,11 @@ function Header() {
       return qs ? `/listing?${qs}` : '/listing'
     }
     return {
+      // a tile's page by its English name, checked against the tables (src/lib/menuLinks.js, 2026-11-14)
+      child: (c, parent) => menuChildHref(c, parent, tables),
       gender: (g) => listing({ genders: [g.name?.en] }),
       genderChild: (g, child) => {
-        const st = (tables?.subTypes || []).find((x) => subTypeSlug(x) === child.slug)
+        const st = (tables?.subTypes || []).find((x) => subTypeSlug(x) === nodeSlug(child))
         return listing(st ? { genders: [g.name?.en], subTypes: [st.id] } : { genders: [g.name?.en] })
       },
     }
@@ -308,21 +310,14 @@ function Header() {
         <div className="wz-actions">
           {/* ── Language: EN | ع (each letter its own button) ── */}
           <div className="wz-act-lang">
-            <button
-              type="button"
-              className={`wz-act-lang__btn${language === 'en' ? ' is-active' : ''}`}
-              onClick={() => setLanguage('en')}
-            >
+            {/* real links to this page in each language (2026-11-14, LanguageLink): crawlers follow them */}
+            <LanguageLink lang="en" className={`wz-act-lang__btn${language === 'en' ? ' is-active' : ''}`}>
               EN
-            </button>
+            </LanguageLink>
             <span className="wz-act-lang__pipe">|</span>
-            <button
-              type="button"
-              className={`wz-act-lang__btn${language === 'ar' ? ' is-active' : ''}`}
-              onClick={() => setLanguage('ar')}
-            >
+            <LanguageLink lang="ar" className={`wz-act-lang__btn${language === 'ar' ? ' is-active' : ''}`}>
               ع
-            </button>
+            </LanguageLink>
           </div>
 
           <span className="wz-act-sep" aria-hidden="true" />
@@ -574,27 +569,13 @@ function Header() {
 
         <div className="wz-drawer-foot">
           <div className="wz-act-lang">
-            <button
-              type="button"
-              className={`wz-act-lang__btn${language === 'en' ? ' is-active' : ''}`}
-              onClick={() => {
-                setLanguage('en')
-                closeDrawer()
-              }}
-            >
+            <LanguageLink lang="en" className={`wz-act-lang__btn${language === 'en' ? ' is-active' : ''}`} onNavigate={closeDrawer}>
               EN
-            </button>
+            </LanguageLink>
             <span className="wz-act-lang__pipe">|</span>
-            <button
-              type="button"
-              className={`wz-act-lang__btn${language === 'ar' ? ' is-active' : ''}`}
-              onClick={() => {
-                setLanguage('ar')
-                closeDrawer()
-              }}
-            >
+            <LanguageLink lang="ar" className={`wz-act-lang__btn${language === 'ar' ? ' is-active' : ''}`} onNavigate={closeDrawer}>
               ع
-            </button>
+            </LanguageLink>
           </div>
           {/* Developer credit — bilingual, always shown in both languages */}
           <p className="wz-drawer-credit" dir="ltr">

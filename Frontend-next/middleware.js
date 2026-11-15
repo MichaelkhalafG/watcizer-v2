@@ -7,9 +7,8 @@ import { NextResponse } from 'next/server'
 //                  and hreflang name the /ar URL (x-wz-url-lang: ar). Visiting one also makes Arabic
 //                  the shopper's preference (the wz-lang cookie), so the bare links inside the page
 //                  keep showing Arabic.
-//   bare URLs    → unchanged: the wz-lang cookie decides what a person sees (today's behaviour),
-//                  while the metadata is always the English page's — Google has no cookie, so it
-//                  sees English there and Arabic under /ar.
+//   bare URLs    → English, always (2026-11-14: the address decides the language). The wz-lang cookie only sends
+//                  a visitor who chose Arabic from the bare home page to /ar (see the end of this function).
 //
 // Both headers are ALWAYS overwritten here, so a client cannot send its own.
 const YEAR = 60 * 60 * 24 * 365
@@ -29,6 +28,9 @@ export function middleware(request) {
     return NextResponse.redirect(url, 301)
   }
   const headers = new Headers(request.headers)
+  // THE 404 MONITOR (SEO Phase 1, 2026-11-14): the address as it was asked for (with its /ar), for app/not-found.jsx to
+  // report to core. Always overwritten here, like the language headers, so a client cannot send its own.
+  headers.set('x-wz-path', pathname)
   const arabic = pathname === '/ar' || pathname.startsWith('/ar/')
 
   if (arabic) {
@@ -43,7 +45,19 @@ export function middleware(request) {
     return response
   }
 
-  headers.set('x-wz-lang', request.cookies.get('wz-lang')?.value === 'ar' ? 'ar' : 'en')
+  // THE ADDRESS DECIDES THE LANGUAGE (Michael, 2026-11-14): a bare URL is English — body, title, canonical, hreflang and
+  // structured data alike — whatever cookie the visitor holds. It used to show the Arabic body under the English title to
+  // anyone holding wz-lang=ar. The cookie (the language the visitor chose last) now does ONE thing: a visitor who chose
+  // Arabic and opens the bare HOME page is sent to /ar — a 302, never cached, and never for a crawler (it carries no cookie).
+  if (pathname === '/' && request.cookies.get('wz-lang')?.value === 'ar') {
+    const url = request.nextUrl.clone()
+    url.pathname = '/ar'
+    const response = NextResponse.redirect(url, 302)
+    response.headers.set('Cache-Control', 'private, no-store')
+    response.headers.set('Vary', 'Cookie')
+    return response
+  }
+  headers.set('x-wz-lang', 'en')
   headers.set('x-wz-url-lang', 'en')
   return NextResponse.next({ request: { headers } })
 }

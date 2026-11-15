@@ -21,9 +21,12 @@ export const TRUST_UPDATED = '2026-10-19'
 
 import { FACEBOOK, INSTAGRAM, TIKTOK } from './social'
 
-const PHONE = '01551096234'
-const TEL = 'tel:+201551096234'
-const WHATSAPP = 'https://wa.me/201551096234'
+// the shop's number, typed once in ./contact.js (2026-11-14, the client's team: 01551096234, unchanged)
+import { PHONE, PHONE_INTL, TEL, WHATSAPP } from './contact'
+import { INSPECT_FULL } from './inspection'
+// the stores' Google Maps links (2026-11-14, the client's team): the About and warranty pages link them, STORES_LD names them
+const MAP_ARKADIA = 'https://maps.app.goo.gl/jA9owX6N3L6bCpXP8'
+const MAP_HELIOPOLIS = 'https://maps.app.goo.gl/c5wtDgsmLEP398ht7'
 const EMAIL = 'watchizer303@gmail.com'
 const MAILTO = `mailto:${EMAIL}`
 // The shop's accounts. 2026-10-01 kept these apart from the home page's `sameAs`, which carried a different pair — a
@@ -41,18 +44,23 @@ export const TRUST_PAGES = {
     en: {
       title: 'About Watchizer',
       metaTitle: 'About us | Watchizer',
-      description: 'Watchizer is an online shop for watches and accessories in Egypt, delivering to 27 governorates.',
-      lead: 'Watchizer is an online shop for watches and accessories in Egypt. We sell watches for men and women, along with bags, wallets, belts, jewellery and a small range of electronics, and we deliver to 27 governorates.',
-      store: 'Shop at watchizereg.com in English or Arabic, or visit our store at Arkadia Mall, Corniche El Nil, Maspero extension, Cairo. It is open every day, 10:00–24:00.',
-      service: "We confirm every order with you before it ships. You can pay in cash when it arrives, or online by card. If anything isn't right, our customer service team is on [WhatsApp](" + WHATSAPP + ') every day.',
+      description: 'Watchizer has sold watches and accessories in Egypt since 2013, online and in two stores in Cairo, delivering to 27 governorates.',
+      lead: 'Watchizer has sold watches and accessories in Egypt since 2013, online and in two stores in Cairo. We sell watches for men and women, along with bags, wallets, belts, jewellery and a small range of electronics, and we deliver to 27 governorates.',
+      store: `Shop at watchizereg.com in English or Arabic, or visit one of our two stores, open every day 10:00–24:00: [Arkadia Mall](${MAP_ARKADIA}), 2nd floor, Corniche El Nil, Maspero extension, next to the Fairmont, Cairo, and [90 El-Thawra Street](${MAP_HELIOPOLIS}), Heliopolis. Call or WhatsApp us on [${PHONE}](${TEL}).`,
+      // the shop's followers (settings.public.followers, a dashboard setting): {followers} is the rounded figure; no figure, no line
+      followers: `{followers} people follow Watchizer on [Facebook](${FACEBOOK}), [Instagram](${INSTAGRAM}) and [TikTok](${TIKTOK}).`,
+      policies: 'How we work: the [warranty](/warranty), [shipping and delivery](/shipping), [returns and exchanges](/returns), and the [questions we are asked most](/faq).',
+      service: "We confirm every order with you before it ships. You can pay in cash when it arrives, or online by card. " + INSPECT_FULL.en + " If anything isn't right, our customer service team is on [WhatsApp](" + WHATSAPP + ') every day.',
     },
     ar: {
       title: 'من نحن',
       metaTitle: 'من نحن | Watchizer',
-      description: 'واتشايزر متجر إلكتروني للساعات والإكسسوارات في مصر، ونوصّل إلى ٢٧ محافظة.',
-      lead: 'واتشايزر متجر إلكتروني للساعات والإكسسوارات في مصر. نبيع ساعات رجالية ونسائية، إلى جانب الحقائب والمحافظ والأحزمة والمجوهرات ومجموعة صغيرة من الإلكترونيات، ونوصّل إلى ٢٧ محافظة.',
-      store: 'تسوّق على watchizereg.com بالعربية أو الإنجليزية، أو زر متجرنا في أركاديا مول، كورنيش النيل، امتداد ماسبيرو، القاهرة. المتجر مفتوح يومياً من ١٠ صباحاً حتى منتصف الليل.',
-      service: 'نؤكد كل طلب معك قبل شحنه. يمكنك الدفع نقداً عند الاستلام، أو بالبطاقة أونلاين. وإن كان هناك أي خطأ، فريق خدمة العملاء متاح على [واتساب](' + WHATSAPP + ') يومياً.',
+      description: 'تبيع واتشايزر الساعات والإكسسوارات في مصر منذ ٢٠١٣، أونلاين وفي متجرين في القاهرة، ونوصّل إلى ٢٧ محافظة.',
+      lead: 'تبيع واتشايزر الساعات والإكسسوارات في مصر منذ ٢٠١٣، أونلاين وفي متجرين في القاهرة. نبيع ساعات رجالية ونسائية، إلى جانب الحقائب والمحافظ والأحزمة والمجوهرات ومجموعة صغيرة من الإلكترونيات، ونوصّل إلى ٢٧ محافظة.',
+      store: `تسوّق على watchizereg.com بالعربية أو الإنجليزية، أو زر أحد متجرينا، المفتوحين يومياً من ١٠ صباحاً حتى منتصف الليل: [أركاديا مول](${MAP_ARKADIA})، الدور الثاني، كورنيش النيل، امتداد ماسبيرو، بجوار فندق فيرمونت، القاهرة، و[٩٠ شارع الثورة](${MAP_HELIOPOLIS})، مصر الجديدة. اتصل بنا أو راسلنا على واتساب: [${PHONE}](${TEL}).`,
+      followers: `يتابع واتشايزر {followers} شخص على [فيسبوك](${FACEBOOK}) و[إنستجرام](${INSTAGRAM}) و[تيك توك](${TIKTOK}).`,
+      policies: 'كيف نعمل: [الضمان](/warranty)، و[الشحن والتوصيل](/shipping)، و[الإرجاع والاستبدال](/returns)، و[الأسئلة الشائعة](/faq).',
+      service: 'نؤكد كل طلب معك قبل شحنه. يمكنك الدفع نقداً عند الاستلام، أو بالبطاقة أونلاين. ' + INSPECT_FULL.ar + ' وإن كان هناك أي خطأ، فريق خدمة العملاء متاح على [واتساب](' + WHATSAPP + ') يومياً.',
     },
   },
 
@@ -80,7 +88,7 @@ export const TRUST_PAGES = {
         { icon: 'tiktok', label: 'TikTok', value: '@watchizer_eg', href: TIKTOK, ltr: true },
       ],
       stores: [
-        { label: 'Arkadia Mall branch', address: 'Arkadia Mall, Corniche El Nil, Maspero extension, Cairo.', hours: true },
+        { label: 'Arkadia Mall branch', address: 'Arkadia Mall, 2nd floor, Corniche El Nil, Maspero extension, next to the Fairmont, Cairo.', hours: true },
         { label: 'Heliopolis branch', address: '90 El-Thawra Street, Heliopolis.', hours: true },
       ],
       note: "If your question is about an order, have your order number ready. You'll find it in your confirmation email and under [*My Orders*](/account?tab=orders).",
@@ -101,7 +109,7 @@ export const TRUST_PAGES = {
         { icon: 'tiktok', label: 'تيك توك', value: '@watchizer_eg', href: TIKTOK, ltr: true },
       ],
       stores: [
-        { label: 'فرع أركاديا مول', address: 'أركاديا مول، كورنيش النيل، امتداد ماسبيرو، القاهرة.', hours: true },
+        { label: 'فرع أركاديا مول', address: 'أركاديا مول، الدور الثاني، كورنيش النيل، امتداد ماسبيرو، بجوار فندق فيرمونت، القاهرة.', hours: true },
         { label: 'فرع مصر الجديدة', address: '٩٠ شارع الثورة، مصر الجديدة.', hours: true },
       ],
       note: 'إن كان سؤالك عن طلب، جهّز رقم الطلب. تجده في رسالة التأكيد وفي [«طلباتي»](/account?tab=orders).',
@@ -206,6 +214,7 @@ export const TRUST_PAGES = {
             { p: 'You can pay:' },
             { ul: ['cash on delivery;', 'by card online through Paymob;', 'with the other Paymob methods shown at checkout.'] },
             { p: 'Some methods apply only above or below a certain order amount; checkout shows what is available for your order.' },
+            { p: INSPECT_FULL.en },
           ],
         },
         {
@@ -219,8 +228,10 @@ export const TRUST_PAGES = {
         {
           title: 'Exchanges and returns',
           blocks: [
-            { ul: ['**Watches:** return within 4 days of delivery, or exchange within 14 days.', '**Fashion items:** exchange or return within 4 days of delivery.'] },
-            { p: `The item must be unused and in its original packaging. To start an exchange or return, message customer service on [WhatsApp](${WHATSAPP}) with your order number, and we'll arrange it with you.` },
+            // the returns policy of 2026-11-14 (approved by the client): 14 days to return or exchange, every product; the shop
+            // pays the return shipping; the refund by the original method, within 24 hours of the item reaching us
+            { ul: ['**Return:** within 14 days of delivery — watches and fashion items alike.', '**Exchange:** within 14 days of delivery.'] },
+            { p: `Watches, bags and accessories must be unused, in their original packaging with their tags; perfumes must be sealed and unopened. We pay the return shipping. Your refund is made by the payment method you used, as fast as possible and within 24 hours of the item reaching us. To start an exchange or return, message customer service on [WhatsApp](${WHATSAPP}) with your order number, and we'll arrange it with you.` },
           ],
         },
         /*
@@ -256,6 +267,7 @@ export const TRUST_PAGES = {
             { p: 'يمكنك الدفع:' },
             { ul: ['نقداً عند الاستلام؛', 'بالبطاقة أونلاين عبر Paymob؛', 'بوسائل Paymob الأخرى المعروضة عند إتمام الطلب.'] },
             { p: 'بعض الوسائل متاحة فقط فوق أو تحت قيمة معينة للطلب، وتعرض صفحة إتمام الطلب المتاح لطلبك.' },
+            { p: INSPECT_FULL.ar },
           ],
         },
         {
@@ -269,8 +281,8 @@ export const TRUST_PAGES = {
         {
           title: 'الاستبدال والإرجاع',
           blocks: [
-            { ul: ['**الساعات:** الإرجاع خلال ٤ أيام من الاستلام، أو الاستبدال خلال ١٤ يوماً.', '**منتجات الأزياء:** الاستبدال أو الإرجاع خلال ٤ أيام من الاستلام.'] },
-            { p: `يجب أن يكون المنتج غير مستخدم وفي عبوته الأصلية. لبدء الاستبدال أو الإرجاع، راسل خدمة العملاء على [واتساب](${WHATSAPP}) برقم طلبك، وسنرتب الأمر معك.` },
+            { ul: ['**الإرجاع:** خلال ١٤ يوماً من الاستلام — للساعات ومنتجات الأزياء على حد سواء.', '**الاستبدال:** خلال ١٤ يوماً من الاستلام.'] },
+            { p: `يجب أن تكون الساعات والشنط والإكسسوارات غير مستخدمة، في عبوتها الأصلية ومعها بطاقاتها؛ أما العطور فيجب أن تكون مغلقة لم تُفتح. نتحمّل نحن شحن الإرجاع، ويُرد المبلغ بوسيلة الدفع نفسها التي استخدمتها في أسرع وقت، وخلال ٢٤ ساعة من وصول المنتج إلينا. لبدء الاستبدال أو الإرجاع، راسل خدمة العملاء على [واتساب](${WHATSAPP}) برقم طلبك، وسنرتب الأمر معك.` },
           ],
         },
         {
@@ -286,6 +298,271 @@ export const TRUST_PAGES = {
       ],
     },
   },
+  // ── WARRANTY, SHIPPING, RETURNS (SEO Phase 1, 2026-11-14) ────────────────────────────────────────────────────────────
+  // Michael's trust-pages input of 2026-11-14 (new branding/docs/seo/TRUST_PAGES_INPUT_2026-11-14.md): state plainly and
+  // ONLY what is true. Every sentence below is one the shop already states — the FAQ (the client's facts of 2026-10-29),
+  // the terms above (the returns policy of 2026-11-14, delivery, payment) and core's warranty rule
+  // (App\Storefront\Warranty) — gathered on one page each, in the same words where they exist. Who gives the warranty (2026-11-14, the client): the brand AGENT for most watches, the STORE for a few — per watch on its product page, never an agent company named. What it covers and excludes: the common terms of the manufacturers' published warranties (Fossil Group, Movado Group; sources in new branding/docs/seo/WARRANTY_2026-11-14.md); no repair time promised (no official source gives one).
+  // NOT stated, for want of the facts (waiting for Michael): how long a repair takes, and what the warranty excludes
+  // beyond accidents. Delivery: "24 hours", the brief's BUSINESS FACT 5 (the FAQ and /llms.txt say the same); the
+  // terms' older Express 2–5 / Market 4–7 business days are Michael's to align.
+  warranty: {
+    path: '/warranty',
+    en: {
+      title: 'Warranty',
+      metaTitle: 'Watch warranty | Watchizer',
+      description: "Up to 3 years by watch, the brand agent's or the store's, on the movement against manufacturing defects, with free battery changes and bracelet sizing.",
+      intro: 'What the warranty on a watch from Watchizer covers, how long it lasts, and how to use it.',
+      sections: [
+        { title: 'Who gives it', blocks: [{ p: "Most of our watches carry their **brand agent's warranty**; a few carry Watchizer's own **store warranty**. Each watch's product page and warranty card say which, and for how long. Either way, you start at one of our stores or on WhatsApp." }] },
+        {
+          title: 'How long it lasts',
+          blocks: [
+            { p: '**Up to 3 years, depending on the watch.** The length for each watch is on its product page and on its warranty card.' },
+            { p: 'Other items — bags, wallets, belts, jewellery, perfumes and electronics — carry a warranty only when their product page states one.' },
+          ],
+        },
+        {
+          title: 'What it covers',
+          blocks: [
+            { p: 'Manufacturing defects in materials and workmanship of the **movement and its parts** (for most brands: the movement, the hands and the dial), under normal use.' },
+            { p: 'Within the warranty, our stores also **replace the battery and size the bracelet free of charge**.' },
+          ],
+        },
+        {
+          title: 'What it does not cover',
+          blocks: [
+            { ul: ['The battery itself, the strap or bracelet, the glass (crystal), and the case and its plating.', "Water damage when the watch's water-resistance rating and care instructions were not followed.", 'Damage from accidents, misuse or lack of care, and normal wear such as scratches.', "A watch opened or repaired by anyone other than the brand's approved service."] },
+            { p: 'Work outside the warranty is done for a fee, quoted before we start.' },
+          ],
+        },
+        { title: 'How long a repair takes', blocks: [{ p: 'It depends on the watch and on whether parts are needed, so we do not promise a fixed time. We keep you informed at every step, and tell you as soon as your watch is ready.' }] },
+        {
+          title: 'How to use it',
+          blocks: [
+            { p: 'Bring the watch to one of our stores with its **warranty card and invoice**:' },
+            { ul: [`[Arkadia Mall](${MAP_ARKADIA}), 2nd floor, Corniche El Nil, Maspero extension, next to the Fairmont, Cairo;`, `[90 El-Thawra Street](${MAP_HELIOPOLIS}), Heliopolis.`] },
+            { p: `Both are open every day, 10:00–24:00. If you cannot come to a store, message customer service on [WhatsApp](${WHATSAPP}) with your order number.` },
+          ],
+        },
+      ],
+    },
+    ar: {
+      title: 'الضمان',
+      metaTitle: 'ضمان الساعات | Watchizer',
+      description: 'حتى ٣ سنوات حسب الساعة، ضمان الوكيل أو ضمان المتجر، على الماكينة ضد عيوب التصنيع، مع تغيير البطارية وضبط مقاس السوار مجاناً.',
+      intro: 'ما يغطيه ضمان الساعة من واتشايزر، ومدته، وكيف تستفيد منه.',
+      sections: [
+        { title: 'من يقدّم الضمان', blocks: [{ p: 'تحمل معظم ساعاتنا **ضمان وكيل الماركة**، وبعضها يحمل **ضمان المتجر** من واتشايزر. وتوضح صفحة كل ساعة وبطاقة ضمانها أي الضمانين لها ومدته. وفي الحالتين تبدأ من أحد متجرينا أو على واتساب.' }] },
+        {
+          title: 'مدة الضمان',
+          blocks: [
+            { p: '**حتى ٣ سنوات حسب الساعة.** ومدة كل ساعة مذكورة في صفحتها وفي بطاقة ضمانها.' },
+            { p: 'أما المنتجات الأخرى — الحقائب والمحافظ والأحزمة والمجوهرات والعطور والإلكترونيات — فلها ضمان فقط إذا ذكرته صفحتها.' },
+          ],
+        },
+        {
+          title: 'ما يغطيه الضمان',
+          blocks: [
+            { p: 'عيوب التصنيع في المواد والصنعة في **الماكينة وأجزائها** (لدى معظم الماركات: الماكينة والعقارب والمينا)، مع الاستخدام الطبيعي.' },
+            { p: 'وخلال فترة الضمان، **نغيّر البطارية ونضبط مقاس السوار مجاناً** في متجرينا.' },
+          ],
+        },
+        {
+          title: 'ما لا يغطيه الضمان',
+          blocks: [
+            { ul: ['البطارية نفسها، والسوار، والزجاج (الكريستال)، والعلبة وطلاؤها.', 'أضرار الماء إذا لم تُراعَ درجة مقاومة الساعة للماء وتعليمات العناية بها.', 'أضرار الحوادث أو سوء الاستخدام أو قلة العناية، والاستهلاك الطبيعي مثل الخدوش.', 'الساعة التي فتحها أو أصلحها غير مركز صيانة معتمد.'] },
+            { p: 'الأعمال خارج الضمان تتم بمقابل، نخبرك به قبل أن نبدأ.' },
+          ],
+        },
+        { title: 'مدة الإصلاح', blocks: [{ p: 'تختلف حسب الساعة وحسب الحاجة إلى قطع غيار، لذلك لا نعد بمدة محددة. نبقيك على اطلاع في كل خطوة، ونخبرك فور أن تصبح ساعتك جاهزة.' }] },
+        {
+          title: 'كيف تستفيد منه',
+          blocks: [
+            { p: 'أحضر الساعة إلى أحد متجرينا ومعها **بطاقة الضمان والفاتورة**:' },
+            { ul: [`[أركاديا مول](${MAP_ARKADIA})، الدور الثاني، كورنيش النيل، امتداد ماسبيرو، بجوار فندق فيرمونت، القاهرة؛`, `[٩٠ شارع الثورة](${MAP_HELIOPOLIS})، مصر الجديدة.`] },
+            { p: `المتجران مفتوحان يومياً من ١٠ صباحاً حتى منتصف الليل. وإن لم تتمكن من الحضور، راسل خدمة العملاء على [واتساب](${WHATSAPP}) برقم طلبك.` },
+          ],
+        },
+      ],
+    },
+  },
+
+  shipping: {
+    path: '/shipping',
+    en: {
+      title: 'Shipping and delivery',
+      metaTitle: 'Shipping and delivery in Egypt | Watchizer',
+      description: 'Delivery to all 27 governorates of Egypt within 24 hours. The fee depends on the governorate and shows before you pay.',
+      intro: 'Where we deliver, how long it takes, what it costs and how you pay.',
+      sections: [
+        { title: 'Where we deliver', blocks: [{ p: 'To all 27 governorates of Egypt.' }] },
+        { title: 'How long it takes', blocks: [{ p: 'We deliver to every governorate **within 24 hours**.' }] },
+        { title: 'What it costs', blocks: [{ p: 'The fee depends on your governorate. The cart shows it before you pay, as soon as you choose where to deliver.' }] },
+        { title: 'Before it ships', blocks: [{ p: 'We confirm every order with you before it ships.' }] },
+        {
+          title: 'Paying',
+          blocks: [
+            { p: 'You can pay in cash when the order arrives, or online by card. Checkout shows the methods available for your order.' },
+            { p: INSPECT_FULL.en },
+          ],
+        },
+        { title: 'Returns', blocks: [{ p: 'You have 14 days to return or exchange an item, and we pay the return shipping: see [returns and exchanges](/returns).' }] },
+      ],
+    },
+    ar: {
+      title: 'الشحن والتوصيل',
+      metaTitle: 'الشحن والتوصيل في مصر | Watchizer',
+      description: 'نوصّل إلى ٢٧ محافظة في مصر خلال ٢٤ ساعة. الرسوم حسب المحافظة وتظهر قبل الدفع.',
+      intro: 'أين نوصّل، وكم يستغرق التوصيل، وكم يكلّف، وكيف تدفع.',
+      sections: [
+        { title: 'أين نوصّل', blocks: [{ p: 'إلى ٢٧ محافظة في مصر.' }] },
+        { title: 'مدة التوصيل', blocks: [{ p: 'نوصّل إلى كل المحافظات **خلال ٢٤ ساعة**.' }] },
+        { title: 'التكلفة', blocks: [{ p: 'تختلف رسوم التوصيل حسب محافظتك، وتظهر في السلة قبل الدفع بمجرد اختيار مكان التوصيل.' }] },
+        { title: 'قبل الشحن', blocks: [{ p: 'نؤكد كل طلب معك قبل شحنه.' }] },
+        {
+          title: 'الدفع',
+          blocks: [
+            { p: 'يمكنك الدفع نقداً عند الاستلام، أو بالبطاقة أونلاين. وتعرض صفحة إتمام الطلب الوسائل المتاحة لطلبك.' },
+            { p: INSPECT_FULL.ar },
+          ],
+        },
+        { title: 'الإرجاع', blocks: [{ p: 'لديك ١٤ يوماً لإرجاع المنتج أو استبداله، ونتحمّل نحن شحن الإرجاع: اقرأ [الإرجاع والاستبدال](/returns).' }] },
+      ],
+    },
+  },
+
+  returns: {
+    path: '/returns',
+    en: {
+      title: 'Returns and exchanges',
+      metaTitle: 'Returns and exchanges | Watchizer',
+      description: 'Return or exchange any item within 14 days of delivery. We pay the return shipping and refund within 24 hours of the item reaching us.',
+      intro: 'Our returns policy, for watches and fashion items alike.',
+      sections: [
+        { title: 'How long you have', blocks: [{ ul: ['**Return:** within 14 days of delivery — watches and fashion items alike.', '**Exchange:** within 14 days of delivery.'] }] },
+        { title: 'The condition of the item', blocks: [{ p: 'Watches, bags and accessories must be unused, in their original packaging with their tags; perfumes must be sealed and unopened.' }] },
+        { title: 'Return shipping', blocks: [{ p: '**We pay the return shipping.**' }] },
+        { title: 'Your refund', blocks: [{ p: 'Your refund is made by the payment method you used, as fast as possible and within 24 hours of the item reaching us.' }] },
+        { title: 'How to start', blocks: [{ p: `Message customer service on [WhatsApp](${WHATSAPP}) with your order number, and we'll arrange it with you.` }] },
+      ],
+    },
+    ar: {
+      title: 'الإرجاع والاستبدال',
+      metaTitle: 'الإرجاع والاستبدال | Watchizer',
+      description: 'أرجع أو استبدل أي منتج خلال ١٤ يوماً من الاستلام. نتحمّل نحن شحن الإرجاع، ويُرد المبلغ خلال ٢٤ ساعة من وصول المنتج إلينا.',
+      intro: 'سياسة الإرجاع لدينا، للساعات ومنتجات الأزياء على حد سواء.',
+      sections: [
+        { title: 'المدة المتاحة', blocks: [{ ul: ['**الإرجاع:** خلال ١٤ يوماً من الاستلام — للساعات ومنتجات الأزياء على حد سواء.', '**الاستبدال:** خلال ١٤ يوماً من الاستلام.'] }] },
+        { title: 'حالة المنتج', blocks: [{ p: 'يجب أن تكون الساعات والشنط والإكسسوارات غير مستخدمة، في عبوتها الأصلية ومعها بطاقاتها؛ أما العطور فيجب أن تكون مغلقة لم تُفتح.' }] },
+        { title: 'شحن الإرجاع', blocks: [{ p: '**نتحمّل نحن شحن الإرجاع.**' }] },
+        { title: 'استرداد المبلغ', blocks: [{ p: 'يُرد المبلغ بوسيلة الدفع نفسها التي استخدمتها في أسرع وقت، وخلال ٢٤ ساعة من وصول المنتج إلينا.' }] },
+        { title: 'كيف تبدأ', blocks: [{ p: `راسل خدمة العملاء على [واتساب](${WHATSAPP}) برقم طلبك، وسنرتّب الأمر معك.` }] },
+      ],
+    },
+  },
+  // ── THE TEAM (AUTHOR) PAGE AND THE EDITORIAL POLICY (SEO Phase 3, 2026-11-14) ─────────────────────────────────────────
+  // The brief's BUSINESS FACTS 8 and 10: articles are signed by the shop's team, never a person (no invented names); the
+  // author page says who we are, what we sell, how products are checked, how articles are written and checked, and how
+  // to reach us. NOTHING here claims human review or editing: articles are written with the help of AI tools, product
+  // facts are checked AUTOMATICALLY against the live catalogue, other facts come from cited sources. Every fact is one
+  // the shop already states (the About page, the inspection rule, the warranty page).
+  team: {
+    path: '/team',
+    en: {
+      title: 'Watchizer Team',
+      metaTitle: 'Watchizer Team | Watchizer',
+      description: 'Who writes the Watchizer guides: the Watchizer shop team, selling watches and accessories in Egypt since 2013, online and in two Cairo stores.',
+      intro: 'The articles and buying guides on watchizereg.com are signed "Watchizer Team": the shop itself, not one person.',
+      sections: [
+        { title: 'Who we are', blocks: [{ p: `Watchizer has sold watches and accessories in Egypt since 2013, online and in two stores in Cairo: [Arkadia Mall](${MAP_ARKADIA}) and [90 El-Thawra Street](${MAP_HELIOPOLIS}), Heliopolis.` }] },
+        { title: 'What we sell', blocks: [{ p: 'We sell watches for men and women, along with bags, wallets, belts, jewellery and a small range of electronics, and we deliver to 27 governorates. [See everything we carry](/listing).' }] },
+        { title: 'How your order is checked', blocks: [{ p: 'We confirm every order with you before it ships. ' + INSPECT_FULL.en + ' The warranty on each watch is stated on its product page and its warranty card ([our warranty](/warranty)).' }] },
+        {
+          title: 'How our articles are written',
+          blocks: [
+            { p: 'Our articles are written by the shop team with the help of AI tools.' },
+            { p: 'Product facts (model numbers, prices, how many models we carry, what is available) come from our live catalogue and are checked against it automatically before an article is published. Other facts come from the sources each article lists at its end.' },
+            { p: 'The product lists inside an article are live: they show what we carry today. Read [our editorial policy](/editorial-policy).' },
+          ],
+        },
+        { title: 'Contact us', blocks: [{ p: `Call or WhatsApp us on [${PHONE}](${TEL}), or email [${EMAIL}](${MAILTO}).` }] },
+      ],
+    },
+    ar: {
+      title: 'فريق واتشايزر',
+      metaTitle: 'فريق واتشايزر | Watchizer',
+      description: 'من يكتب أدلة واتشايزر: فريق متجر واتشايزر، الذي يبيع الساعات والإكسسوارات في مصر منذ ٢٠١٣، أونلاين وفي متجرين في القاهرة.',
+      intro: 'المقالات وأدلة الشراء على watchizereg.com موقّعة باسم "فريق واتشايزر": المتجر نفسه، لا شخص بعينه.',
+      sections: [
+        { title: 'من نحن', blocks: [{ p: `تبيع واتشايزر الساعات والإكسسوارات في مصر منذ ٢٠١٣، أونلاين وفي متجرين في القاهرة: [أركاديا مول](${MAP_ARKADIA}) و[٩٠ شارع الثورة](${MAP_HELIOPOLIS})، مصر الجديدة.` }] },
+        { title: 'ماذا نبيع', blocks: [{ p: 'نبيع ساعات رجالية ونسائية، إلى جانب الحقائب والمحافظ والأحزمة والمجوهرات ومجموعة صغيرة من الإلكترونيات، ونوصّل إلى ٢٧ محافظة. [شاهد كل ما نعرضه](/listing).' }] },
+        { title: 'كيف يُراجَع طلبك', blocks: [{ p: 'نؤكد كل طلب معك قبل شحنه. ' + INSPECT_FULL.ar + ' ومدة الضمان على كل ساعة مذكورة في صفحتها وفي بطاقة ضمانها ([الضمان](/warranty)).' }] },
+        {
+          title: 'كيف نكتب مقالاتنا',
+          blocks: [
+            { p: 'يكتب مقالاتنا فريق المتجر بمساعدة أدوات الذكاء الاصطناعي.' },
+            { p: 'معلومات المنتجات (أرقام الموديلات، والأسعار، وعدد الموديلات المتاحة لدينا، وما هو متوفر) مأخوذة من كتالوجنا المباشر، وتُطابَق معه آلياً قبل نشر أي مقال. أما المعلومات الأخرى فمصدرها المراجع التي يذكرها كل مقال في آخره.' },
+            { p: 'قوائم المنتجات داخل المقال مباشرة: تعرض ما لدينا اليوم. اقرأ [سياستنا التحريرية](/editorial-policy).' },
+          ],
+        },
+        { title: 'تواصل معنا', blocks: [{ p: `اتصل بنا أو راسلنا على واتساب: [${PHONE}](${TEL})، أو على البريد [${EMAIL}](${MAILTO}).` }] },
+      ],
+    },
+  },
+  editorial: {
+    path: '/editorial-policy',
+    en: {
+      title: 'Editorial policy',
+      metaTitle: 'Editorial policy | Watchizer',
+      description: 'How the Watchizer articles are written, how their product facts are checked against our live catalogue, and how they are kept up to date.',
+      intro: 'How the articles and buying guides on watchizereg.com are written, checked and kept up to date.',
+      sections: [
+        { title: 'Who writes them', blocks: [{ p: 'The shop team writes them with the help of AI tools, and they are signed "[Watchizer Team](/team)". We never invent an author.' }] },
+        {
+          title: 'How product facts are checked',
+          blocks: [
+            { p: 'Every model number and price an article names, and every count it gives, is checked automatically against our live catalogue before the article is published. An article that does not pass is not published.' },
+            { p: 'Product lists inside an article are live: they show the products we carry today, available ones first. An item that is out of stock stays in the list, marked "currently unavailable", with a button to be told when it is back.' },
+          ],
+        },
+        { title: 'Where other facts come from', blocks: [{ p: "Facts that do not come from our catalogue, such as a brand's history or how a movement works, come from the sources listed at the end of each article." }] },
+        {
+          title: 'How articles are kept up to date',
+          blocks: [
+            { p: 'When the catalogue changes in a way that matters to an article (models added or gone, prices moving), its product lists and figures update by themselves, and its "Last updated" date changes. A product going out of stock and back is not such a change.' },
+            { p: 'An article whose text names a model we no longer carry, or a price that no longer matches, is flagged and rewritten, and the new version passes the same checks before it replaces the old one.' },
+          ],
+        },
+        { title: 'Tell us about a mistake', blocks: [{ p: `Message us on [WhatsApp](${WHATSAPP}) with the article's address.` }] },
+      ],
+    },
+    ar: {
+      title: 'السياسة التحريرية',
+      metaTitle: 'السياسة التحريرية | Watchizer',
+      description: 'كيف تُكتب مقالات واتشايزر، وكيف تُطابَق معلومات منتجاتها مع كتالوجنا المباشر، وكيف تبقى محدّثة.',
+      intro: 'كيف تُكتب المقالات وأدلة الشراء على watchizereg.com، وكيف تُراجَع آلياً، وكيف تبقى محدّثة.',
+      sections: [
+        { title: 'من يكتبها', blocks: [{ p: 'يكتبها فريق المتجر بمساعدة أدوات الذكاء الاصطناعي، وتُنشر باسم "[فريق واتشايزر](/team)". لا نخترع اسم كاتب أبداً.' }] },
+        {
+          title: 'كيف تُطابَق معلومات المنتجات',
+          blocks: [
+            { p: 'كل رقم موديل وكل سعر يذكره المقال، وكل عدد يورده، يُطابَق آلياً مع كتالوجنا المباشر قبل النشر. والمقال الذي لا يجتاز هذه المطابقة لا يُنشر.' },
+            { p: 'قوائم المنتجات داخل المقال مباشرة: تعرض ما لدينا اليوم، والمتوفر أولاً. والمنتج غير المتوفر يبقى في القائمة مع علامة "غير متوفر حاليًا" وزر لإبلاغك عند عودته.' },
+          ],
+        },
+        { title: 'مصدر المعلومات الأخرى', blocks: [{ p: 'المعلومات التي لا تأتي من كتالوجنا، مثل تاريخ علامة تجارية أو طريقة عمل الماكينة، مصدرها المراجع المذكورة في آخر كل مقال.' }] },
+        {
+          title: 'كيف تبقى المقالات محدّثة',
+          blocks: [
+            { p: 'حين يتغير الكتالوج تغيراً يهم المقال (موديلات تُضاف أو تختفي، أو أسعار تتحرك)، تتحدّث قوائم المنتجات والأرقام فيه تلقائياً، ويتغير تاريخ "آخر تحديث". أما نفاد منتج ثم عودته فليس تغييراً من هذا النوع.' },
+            { p: 'والمقال الذي يذكر نصه موديلاً لم يعد لدينا، أو سعراً لم يعد صحيحاً، يُعلَّم ويُعاد كتابته، وتجتاز النسخة الجديدة المطابقة نفسها قبل أن تحل محل القديمة.' },
+          ],
+        },
+        { title: 'أخبرنا عن خطأ', blocks: [{ p: `راسلنا على [واتساب](${WHATSAPP}) مع رابط المقال.` }] },
+      ],
+    },
+  },
 }
 
 /*
@@ -297,8 +574,12 @@ export const TRUST_PAGES = {
  * No geo coordinates: none has been verified for either branch.
  */
 export const STORES_LD = {
+  // since 2013 (Michael, 2026-11-14): the Organization's foundingDate, and the About page's "since 2013"
+  founded: '2013',
   name: 'Watchizer',
-  phone: '+201551096234',
+  // one line on what the shop sells, for /llms.txt (2026-11-14) — no claim about the products
+  summary: 'An online shop and two stores in Cairo selling watches and fashion accessories (bags, wallets, belts, perfumes, jewellery and electronics accessories), in English and Arabic.',
+  phone: PHONE_INTL,
   whatsapp: WHATSAPP,
   email: EMAIL,
   logo: '/logo.svg',
@@ -307,13 +588,16 @@ export const STORES_LD = {
     {
       key: 'arkadia',
       name: 'Watchizer — Arkadia Mall',
-      address: { streetAddress: 'Arkadia Mall, Corniche El Nil, Maspero extension', addressLocality: 'Cairo', addressCountry: 'EG' },
+      address: { streetAddress: 'Arkadia Mall, 2nd floor, Corniche El Nil, Maspero extension, next to the Fairmont', addressLocality: 'Cairo', addressCountry: 'EG' },
+      // each store's Google Maps link (2026-11-14, the client's team), as the store's hasMap
+      map: MAP_ARKADIA,
       hours: { days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'], opens: '10:00', closes: '23:59' },
     },
     {
       key: 'heliopolis',
       name: 'Watchizer — Heliopolis',
       address: { streetAddress: '90 El-Thawra Street', addressLocality: 'Heliopolis', addressRegion: 'Cairo', addressCountry: 'EG' },
+      map: MAP_HELIOPOLIS,
       hours: { days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'], opens: '10:00', closes: '23:59' },
     },
   ],

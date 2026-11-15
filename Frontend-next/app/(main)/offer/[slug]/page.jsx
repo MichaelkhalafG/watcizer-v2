@@ -1,7 +1,9 @@
-import { notFound, permanentRedirect } from 'next/navigation'
+import { permanentRedirect } from 'next/navigation'
+import { reportedNotFound } from '@/src/lib/notFoundReport'
 import { QueryClient, dehydrate, HydrationBoundary } from '@tanstack/react-query'
 import { getServerProductCard, getServerOffers, findOfferInCatalog } from '@/src/lib/serverCatalog'
 import { buildOfferSeo } from '@/src/lib/detailSeo'
+import { getServerShippingFees } from '@/src/lib/serverV2'
 import { requestLang, localePath } from '@/src/lib/requestLang'
 import ProductDetailClient from '@/src/Components/Product/ProductDetailClient'
 import { safeJsonLd } from '@/src/lib/safeJsonLd'
@@ -34,17 +36,19 @@ export async function generateMetadata({ params }) {
   // status at 200. Offer resolution is already strict (findOfferInCatalog matches
   // an exact slug or numeric id — there's no fuzzy by-name fallback like products).
   const resolved = await resolveOffer(slug)
-  if (!resolved) notFound()
+  if (!resolved) await reportedNotFound()
   return buildOfferSeo(resolved.offer, resolved.offerProduct).metadata
 }
 
 export default async function OfferPage({ params }) {
   const { slug } = await params
   const resolved = await resolveOffer(slug)
-  if (!resolved) notFound()
+  if (!resolved) await reportedNotFound()
 
   const { offer, offerProduct } = resolved
-  const { canonicalPath, productLd, breadcrumbLd } = buildOfferSeo(offer, offerProduct)
+  // the dashboard's delivery fees, for the offer's shipping details — never the page's failure
+  const fees = await getServerShippingFees().catch(() => null)
+  const { canonicalPath, productLd, breadcrumbLd } = buildOfferSeo(offer, offerProduct, fees)
 
   // Canonical redirect: non-canonical URL (numeric id, raw name) → /offer/{slug}.
   if (canonicalPath && canonicalPath !== `/offer/${slug}`) {
@@ -68,6 +72,8 @@ export default async function OfferPage({ params }) {
 
   return (
     <HydrationBoundary state={dehydrate(qc)}>
+      {/* og:type as a PROPERTY (2026-11-14): Next's typed openGraph refuses 'product'; React hoists this into <head> */}
+      <meta property="og:type" content="product" />
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: safeJsonLd(productLd) }}

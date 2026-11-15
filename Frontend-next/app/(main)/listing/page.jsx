@@ -1,3 +1,4 @@
+import { notFound } from 'next/navigation'
 import { QueryClient, dehydrate, HydrationBoundary } from '@tanstack/react-query'
 import { listingRequest, packListing } from '@/src/lib/listingRequest'
 import { getServerTables, getServerListing } from '@/src/lib/serverCatalog'
@@ -40,6 +41,11 @@ async function loadContext(searchParams) {
 export async function generateMetadata({ searchParams }) {
   const { tables, filters, listing, query } = await loadContext(searchParams)
   const { urlLang } = await requestLang()
+  // A FILTER COMBINATION WITH NO RESULTS IS A 404 (2026-11-14, SEO Phase 1 item 6, Google's faceted-navigation guidance):
+  // only when core ANSWERED zero for a listing that carries filters or a search — an outage never 404s, and the bare
+  // /listing never does. Here, in generateMetadata, because it runs before the page streams (the status is still open).
+  const summary = listingSummary(listing, tables)
+  if (query && summary.answered && summary.total === 0) notFound()
   // `query` decides indexability: any listing-relevant parameter makes the page noindex, follow.
   return listingMetadata({ tables, ...listingSummary(listing, tables), filters, pathname: '/listing', query, lang: urlLang })
 }

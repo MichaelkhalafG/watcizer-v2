@@ -1,10 +1,12 @@
-import { notFound, permanentRedirect } from 'next/navigation'
+import { permanentRedirect } from 'next/navigation'
+import { reportedNotFound } from '@/src/lib/notFoundReport'
 import { getServerProductCard, fetchProductByName, localizedProduct, getServerTables, getServerNav } from '@/src/lib/serverCatalog'
-import { getServerV2Product } from '@/src/lib/serverV2'
+import { getServerV2Product, getServerShippingFees } from '@/src/lib/serverV2'
 import { fromV2Product } from '@/src/lib/v2Product'
 import { transformProductData } from '@/src/utils/transformProduct'
 import { requestLang, localePath } from '@/src/lib/requestLang'
 import { buildProductSeo } from '@/src/lib/detailSeo'
+import VerifiedReviews from '@/src/Components/Reviews/VerifiedReviews'
 import { toSlug, brandSlug } from '@/src/utils/slugs'
 import ProductDetailClient from '@/src/Components/Product/ProductDetailClient'
 import { safeJsonLd } from '@/src/lib/safeJsonLd'
@@ -128,7 +130,7 @@ async function notFoundOrBrand(param, urlLang) {
     }
     if (best) permanentRedirect(localePath(`/brand/${best}`, urlLang))
   }
-  notFound()
+  await reportedNotFound()
 }
 
 export async function generateMetadata({ params }) {
@@ -148,6 +150,8 @@ export async function generateMetadata({ params }) {
     lang: urlLang,
     localized: localizedProduct(resolved, urlLang),
     meta: resolved.payload?.meta,
+    // the catalogue's record, for the title and description built from it (2026-11-14)
+    v2: resolved.v2Product ?? null,
   }).metadata
 }
 
@@ -158,12 +162,16 @@ export default async function ProductPage({ params }) {
   if (!resolved) await notFoundOrBrand(slug, urlLang)
 
   const { product, ratings, tables, payload } = resolved
-  const { canonicalPath, productLd, breadcrumbLd } = buildProductSeo(product, {
+  // the dashboard's delivery fees, for the offer's shipping details — never the page's failure
+  const fees = await getServerShippingFees().catch(() => null)
+  const { canonicalPath, productLd, breadcrumbLd, exposure } = buildProductSeo(product, {
     ratings,
     tables,
     lang: urlLang,
     localized: localizedProduct(resolved, urlLang),
     meta: payload?.meta,
+    v2: resolved.v2Product ?? null,
+    fees,
   })
 
   // Canonical redirect (replaces ProductDetail's client-side <Navigate>): any
@@ -180,12 +188,18 @@ export default async function ProductPage({ params }) {
   // SEO is unaffected.
   return (
     <>
+      {/* og:type as a PROPERTY (2026-11-14): Next's typed openGraph refuses 'product' and its `other` key writes
+          name="og:type", which Facebook and link previews do not read. React hoists this tag into <head>. */}
+      <meta property="og:type" content="product" />
       {/* Product + BreadcrumbList structured data — in the initial HTML so
           scrapers see it without executing JS (the core SEO deliverable). */}
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: safeJsonLd(productLd) }}
-      />
+      {/* none for a product kept from search engines (2026-11-14, core's SearchExposure) */}
+      {productLd ? (
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: safeJsonLd(productLd) }}
+        />
+      ) : null}
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: safeJsonLd(breadcrumbLd) }}
@@ -197,7 +211,10 @@ export default async function ProductPage({ params }) {
         productPayload={payload}
         v2Specs={resolved.specs ?? null}
         v2Product={resolved.v2Product ?? null}
+        searchClass={exposure}
       />
+      {/* the approved verified reviews, in the server HTML (SEO Phase 5, 2026-11-14); nothing when there are none */}
+      <VerifiedReviews reviews={resolved.v2Product?.reviews} lang={urlLang} />
     </>
   )
 }

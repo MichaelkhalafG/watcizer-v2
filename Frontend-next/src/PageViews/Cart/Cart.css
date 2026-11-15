@@ -451,7 +451,7 @@
   color: rgba(0, 0, 0, 0.16);
   margin-bottom: 8px;
 }
-.wz-cart-empty h2 {
+.wz-cart-empty h1 {
   margin: 0;
   font-family: var(--wz-serif);
   font-size: 1.4rem;

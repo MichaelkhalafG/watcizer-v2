@@ -250,6 +250,17 @@
   margin-top: 36px;
 }
 
+/* the page links (2026-11-14): <a> now, the same look as the buttons they replaced */
+a.wz-pager-num,
+a.wz-pager-btn {
+  text-decoration: none;
+  color: inherit;
+}
+span.wz-pager-btn[aria-disabled="true"] {
+  opacity: 0.4;
+  cursor: default;
+}
+
 .wz-pager-num,
 .wz-pager-btn {
   display: inline-flex;

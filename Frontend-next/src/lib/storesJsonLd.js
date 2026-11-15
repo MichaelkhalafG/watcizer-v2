@@ -23,6 +23,8 @@ export function storesJsonLd(lang = 'en') {
         logo: `${SITE}${STORES_LD.logo}`,
         email: STORES_LD.email,
         sameAs: STORES_LD.sameAs,
+        // since 2013 (Michael, 2026-11-14) — the About page says the same
+        ...(STORES_LD.founded ? { foundingDate: STORES_LD.founded } : {}),
         contactPoint: [
           {
             '@type': 'ContactPoint',
@@ -44,6 +46,7 @@ export function storesJsonLd(lang = 'en') {
         telephone: STORES_LD.phone,
         parentOrganization: { '@id': org },
         address: { '@type': 'PostalAddress', ...s.address },
+        ...(s.map ? { hasMap: s.map } : {}),   // the store's Google Maps link (2026-11-14)
         ...(s.hours
           ? { openingHoursSpecification: [{ '@type': 'OpeningHoursSpecification', dayOfWeek: s.hours.days, opens: s.hours.opens, closes: s.hours.closes }] }
           : {}),

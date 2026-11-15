@@ -9,10 +9,9 @@ import { barePath, localePath } from '../utils/localePath'
 //
 // A FULL navigation, not a store update + router.push (2026-11-13, the INP pass). Setting the store's language re-rendered
 // the whole page in the other language and direction INSIDE the tap — 1.7 s of React work on a 4x-throttled phone, the
-// slowest interaction on the shop (2.0-2.9 s to the next paint). The server already renders the chosen language on the
-// first paint (middleware.js reads the URL, then this cookie), so the tap now only writes the cookie and leaves; the
-// cookie is written FIRST because a bare URL takes its language from it. Same target URL as before; where the address
-// does not change (a page without a language prefix) the reload is what applies the new cookie.
+// slowest interaction on the shop (2.0-2.9 s to the next paint). The server renders the language of the ADDRESS on the
+// first paint (middleware.js; since 2026-11-14 a bare URL is always English), so the tap writes the cookie — which now
+// only sends the visitor from the bare home page to /ar next time — and leaves for the same page in the other language.
 export function useSwitchLanguage() {
   return useCallback((next) => {
     const lang = next === 'ar' ? 'ar' : 'en'

@@ -1821,3 +1821,6 @@ html[data-hot-deals='on'] .wz-strip {
 html[data-hot-deals='on'] .Nav {
   background: var(--pm-fire-bar);
 }
+
+/* the language switch is a link since 2026-11-14 (LanguageLink): drawn as the button was */
+a.wz-act-lang__btn { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }

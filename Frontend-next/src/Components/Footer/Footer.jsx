@@ -42,6 +42,10 @@ function Footer() {
     { label: t('About us', 'من نحن'), to: '/about-us' },
     { label: t('Contact us', 'تواصل معنا'), to: '/contact-us' },
     { label: t('FAQ', 'الأسئلة الشائعة'), to: '/faq' },
+    // the policy pages of 2026-11-14 (SEO Phase 1)
+    { label: t('Warranty', 'الضمان'), to: '/warranty' },
+    { label: t('Shipping and delivery', 'الشحن والتوصيل'), to: '/shipping' },
+    { label: t('Returns and exchanges', 'الإرجاع والاستبدال'), to: '/returns' },
     { label: t('Privacy policy', 'سياسة الخصوصية'), to: '/privacy-policy' },
     { label: t('Terms and conditions', 'الشروط والأحكام'), to: '/terms-and-conditions' },
   ]

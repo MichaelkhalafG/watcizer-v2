@@ -32,3 +32,7 @@ export const getServerBlog = cache(async (slug) => {
 
 // A text field in `lang`, the other language when that one is empty.
 export const inLang = (pair, lang) => (pair?.[lang] || pair?.[lang === 'ar' ? 'en' : 'ar'] || '').trim()
+// The page's OWN language only (2026-11-14) — for the meta title and description: an empty English meta title must fall
+// to the English title, never to the Arabic meta title (the local re-crawl found three Brand Fashion articles whose
+// English pages carried an Arabic <title>).
+export const ownLang = (pair, lang) => (pair?.[lang] || '').trim()

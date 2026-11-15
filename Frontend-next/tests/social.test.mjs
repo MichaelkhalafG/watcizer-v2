@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { FACEBOOK, INSTAGRAM, TIKTOK } from '../src/content/social.js'
 import { STORES_LD, TRUST_PAGES } from '../src/content/trustPages.js'
+import { shopGraph } from '../src/lib/shopSchema.js'
 
 const read = (path) => readFileSync(new URL(path, import.meta.url), 'utf8')
 
@@ -14,11 +15,14 @@ describe('Watchizer social accounts', () => {
     expect(TIKTOK).toBe('https://www.tiktok.com/@watchizer_eg')
   })
 
+  // Rewritten 2026-11-14 (SEO Phase 1): the home page no longer types its own Store node — it emits the shop graph
+  // (src/lib/shopSchema.js), whose Organization reads STORES_LD. Asked of the graph itself, not of the import line.
   it('are what the structured data declares as sameAs — the stores block and the home page alike', () => {
     expect(STORES_LD.sameAs).toEqual([FACEBOOK, INSTAGRAM, TIKTOK])
     const home = read('../app/(main)/page.jsx')
-    expect(home).toContain("import { FACEBOOK, INSTAGRAM, TIKTOK } from '@/src/content/trustPages'")
-    expect(home).toContain('sameAs: [FACEBOOK, INSTAGRAM, TIKTOK]')
+    expect(home).toContain('shopGraph(urlLang, fees)')
+    const org = shopGraph('en', null)['@graph'].find((n) => Array.isArray(n['@type']) && n['@type'].includes('Organization'))
+    expect(org.sameAs).toEqual([FACEBOOK, INSTAGRAM, TIKTOK])
   })
 
   it('are on the contact page in both languages, with the handle a visitor can read', () => {

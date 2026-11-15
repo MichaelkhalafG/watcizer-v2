@@ -41,11 +41,13 @@ import http from '../../Context/api'
 import { STOREFRONT_CODE } from '../../lib/env'
 import { getImageUrl, handleImgError } from '../../utils/imageUrl'
 import { productUrl } from '../../utils/productUrl'
+import { WHATSAPP_DIGITS } from '../../content/contact'
 import './Account.css'
 
-// Store WhatsApp support line (same number used in the order-confirmation
-// email) — used for the "Track Order" action since there is no tracking page.
-const SUPPORT_WHATSAPP = '201283888490'
+// The shop's WhatsApp support line — used for the "Track Order" action since there is no tracking page. Each shop's
+// own (content/contact.js, 2026-11-14): this twin had Brand Fashion's old number typed in, so Watchizer's account page
+// sent its customers to Brand Fashion's WhatsApp.
+const SUPPORT_WHATSAPP = WHATSAPP_DIGITS
 
 // No 'wishlist' tab (batch 1, 2026-09-26): the wishlist was deleted in Phase 0 (G6) and its
 // endpoints with it. An old `?tab=wishlist` link lands on the default tab.

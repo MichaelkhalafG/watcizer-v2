@@ -3,6 +3,7 @@ import serverHttp from './serverFetch'
 import { coreRead, heldValue, MISS, HOLD } from './coreRead'
 import { campaignHoldRules } from './campaign'
 import { STOREFRONT_CODE } from './env'
+import { feesOf } from './shopSchema'
 
 // SERVER-ONLY v2 reads — a TWIN since 2026-10-23, when Watchizer's product page followed Brand Fashion here
 // (V2-READ-HALF; Brand Fashion piloted it on 2026-10-17). Same `coreRead` discipline as serverCatalog.js: a
@@ -60,6 +61,11 @@ export const getServerV2Wheel = memo('v2:wheel', async () => (await serverHttp.g
 /** v2 home: the rails with cards, the deals band, the category entries, the banner. */
 // The menu (item 36, 2026-11-05): the same for every visitor, so one read per five minutes serves every page render.
 export const getServerV2Menu = memo('v2:menu', async () => (await serverHttp.get(`v2/${STOREFRONT_CODE}/menu`)).data)
+
+// The dashboard's delivery fee per governorate (2026-11-14, SEO Phase 1): the lowest and highest above 0, for the
+// structured data's shipping policy (src/lib/shopSchema.js) — five minutes, like the menu. Callers treat a failure as
+// "no shipping markup", never as an invented fee.
+export const getServerShippingFees = memo('shipping:fees', async () => feesOf((await serverHttp.get('show_shipping_city')).data))
 
 // THE HOME'S WINDOW, NOT THE MENU'S (2026-11-06): this read kept the default lifetime — five minutes as the answer
 // and up to ten while being refreshed — so a card on Brand Fashion's home could be ten minutes old. It is the
