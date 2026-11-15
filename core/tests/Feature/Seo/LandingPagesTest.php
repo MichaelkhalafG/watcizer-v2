@@ -1,5 +1,6 @@
 <?php
 
+use App\Domain\Inventory\StockWriteGuard;
 use App\Domain\Seo\LandingPages;
 use App\Storefront\StorefrontCache;
 use Illuminate\Support\Facades\DB;
@@ -60,14 +61,27 @@ it('makes a page only where it has 6+ LIVE products and narrows the brand page, 
     expect(array_column(T::arr(getJson('/api/v2/brandfashion/products?brand='.$b['slug'])->json('meta.landings')), 'path'))
         ->toContain('/brand/'.$b['slug'].'/men', '/brand/'.$b['slug'].'/bags');
 
-    // both languages passed the gate → indexable, and in the sitemap
+    // both languages passed the gate, but nothing is in stock → still not indexable (Michael, 2026-11-15: 3 in stock)
     foreach (['en', 'ar'] as $locale) {
         DB::table('core_seo_texts')->insert(['storefront_id' => 2, 'subject_type' => 'landing', 'subject_key' => $b['slug'].'/men',
             'locale' => $locale, 'description' => 'x', 'gate_status' => 'passed', 'created_at' => now(), 'updated_at' => now()]);
     }
     app(StorefrontCache::class)->flush(2);
-    expect(app(LandingPages::class)->find(2, $b['slug'].'/men')['indexable'] ?? null)->toBeTrue()
+    expect(app(LandingPages::class)->find(2, $b['slug'].'/men'))->toMatchArray(['in_stock' => 0, 'indexable' => false]);
+
+    // 3 of the 8 watches in stock → indexable, and in the sitemap
+    $watches = DB::table('catalog_products')->where('brand_id', $b['id'])->where('family', 'watch')->orderBy('id')->pluck('id')->all();
+    StockWriteGuard::allow(fn () => DB::table('catalog_products')->whereIn('id', array_slice($watches, 0, 3))->update(['stock_express' => 1, 'in_stock' => 1]));
+    app(StorefrontCache::class)->flush(2);
+    expect(app(LandingPages::class)->find(2, $b['slug'].'/men'))->toMatchArray(['in_stock' => 3, 'indexable' => true])
         ->and(getJson('/api/v2/brandfashion/products?brand='.$b['slug'].'&gender=Men')->json('meta.landing.indexable'))->toBeTrue();
+
+    // one sells out → 2 in stock → noindex again, on its own; the page itself stays (8 LIVE products)
+    StockWriteGuard::allow(fn () => DB::table('catalog_products')->where('id', $watches[0])->update(['stock_express' => 0, 'in_stock' => 0]));
+    app(StorefrontCache::class)->flush(2);
+    expect(app(LandingPages::class)->find(2, $b['slug'].'/men'))->toMatchArray(['products' => 8, 'in_stock' => 2, 'indexable' => false]);
+    StockWriteGuard::allow(fn () => DB::table('catalog_products')->where('id', $watches[0])->update(['stock_express' => 1, 'in_stock' => 1]));
+    app(StorefrontCache::class)->flush(2);
 
     // one language held → not indexable again
     DB::table('core_seo_texts')->where('subject_key', $b['slug'].'/men')->where('locale', 'ar')->update(['gate_status' => 'held']);

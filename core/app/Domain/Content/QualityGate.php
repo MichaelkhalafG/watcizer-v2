@@ -12,6 +12,7 @@ use App\Storefront\AuthorizedDealer;
 use App\Storefront\ProductCards;
 use App\Support\Coerce;
 use App\Transform\Row;
+use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -258,6 +259,188 @@ final class QualityGate
         return preg_match('/^(key points|in short|at a glance|أهم النقاط|النقاط الرئيسية|باختصار|خلاصة سريعة)/iu', trim($heading)) === 1;
     }
 
+    /**
+     * Check both languages of one PRODUCT's long description (Michael, 2026-11-15: written from the record's facts, EN
+     * and AR). The shared rules of every text (banned phrases, statements the shops never make, authorized-dealer claims
+     * for the product's brand only, the shop's return / delivery / warranty facts), then the product profile:
+     *  - the length, from the thin-description line up (config content_gate.profiles.product.chars);
+     *  - every fact it states is the RECORD's: a case size in mm, a water rating, a warranty length, a model code —
+     *    each must be this product's own value, and a fact the record does not hold is held, never assumed;
+     *  - no price (prices change; the page shows the live one);
+     *  - no other catalogue brand named (a description copied from another brand's product is the fault this catches);
+     *  - English and Arabic state the same facts.
+     *
+     * @param  array{description: string}|null  $en
+     * @param  array{description: string}|null  $ar
+     * @return array{en: array{passed: bool, reasons: list<string>, stats: array<string, int>}, ar: array{passed: bool, reasons: list<string>, stats: array<string, int>}}
+     */
+    public function checkProduct(int $storefrontId, int $productId, ?array $en, ?array $ar): array
+    {
+        $record = self::productRecord($productId);
+        [$minChars, $maxChars] = array_map(fn ($v): int => Coerce::int($v), array_values(Coerce::arr(config('content_gate.profiles.product.chars', [300, 1600]))) + [300, 1600]);
+        $scope = ['brand_id' => $record['brand_id']];
+        $out = [];
+        $facts = [];
+        foreach (['en' => $en, 'ar' => $ar] as $locale => $text) {
+            $body = trim(strip_tags((string) ($text['description'] ?? '')));
+            if ($text === null || $body === '') {
+                $out[$locale] = ['passed' => false, 'reasons' => ['no text in this language'], 'stats' => []];
+
+                continue;
+            }
+            $reasons = [];
+            $chars = mb_strlen($body);
+            if ($chars < $minChars || $chars > $maxChars) {
+                $reasons[] = sprintf('the description is %d characters (%d–%d)', $chars, $minChars, $maxChars);
+            }
+            $this->language($reasons, $body, $locale);
+            $this->dealerClaims($reasons, $storefrontId, $body, $scope);
+            $this->businessFacts($reasons, $body, $locale);
+            $facts[$locale] = $this->productFacts($reasons, $body, $locale, $record);
+            $out[$locale] = ['passed' => $reasons === [], 'reasons' => $reasons, 'stats' => ['chars' => $chars]];
+        }
+        if (isset($facts['en'], $facts['ar']) && $facts['en'] !== $facts['ar']) {
+            $msg = sprintf('English and Arabic state different facts (EN: %s; AR: %s)', implode(', ', $facts['en']) ?: 'none', implode(', ', $facts['ar']) ?: 'none');
+            foreach (['en', 'ar'] as $l) {
+                $out[$l]['reasons'][] = $msg;
+                $out[$l]['passed'] = false;
+            }
+        }
+
+        return ['en' => $out['en'], 'ar' => $out['ar']];
+    }
+
+    /**
+     * What a product description may state, from the record.
+     *
+     * @return array{brand_id: int|null, codes: list<string>, case_mm: float|null, water_m: int|null, warranty_years: int|null, other_brands: array{en: list<string>, ar: list<string>}}
+     */
+    private static function productRecord(int $productId): array
+    {
+        $p = DB::table('catalog_products as p')->leftJoin('catalog_brands as b', 'b.id', '=', 'p.brand_id')
+            ->where('p.id', $productId)->first(['p.brand_id', 'p.sku', 'p.model_number', 'p.warranty_years', 'b.default_warranty_years']);
+        if ($p === null) {
+            throw new \RuntimeException("product {$productId} does not exist");
+        }
+        $w = DB::table('catalog_product_watch_specs as w')->leftJoin('catalog_units as u', 'u.id', '=', 'w.water_resistance_unit_id')
+            ->where('w.product_id', $productId)->first(['w.case_size', 'w.water_resistance', 'u.code as water_unit']);
+        $codes = [];
+        foreach (['sku', 'model_number'] as $col) {
+            $c = Row::nstr($p, $col);
+            if ($c !== null && trim($c) !== '') {
+                $codes[] = strtoupper((string) preg_replace('/[\s\x{00A0}\x{200B}-]+/u', '', $c));
+            }
+        }
+        $case = $w === null ? null : Row::nstr($w, 'case_size');
+        $water = $w === null ? null : Row::nstr($w, 'water_resistance');
+        $waterUnit = $w === null ? null : Row::nstr($w, 'water_unit');
+        $waterM = null;
+        if ($water !== null && (float) $water > 0) {
+            // atm and bar are 10 m each; 'metre' and the legacy 'm' are metres
+            $waterM = (int) round((float) $water * (in_array($waterUnit, ['atm', 'bar'], true) ? 10 : 1));
+        }
+        $brandId = Row::nint($p, 'brand_id');
+        $others = ['en' => [], 'ar' => []];
+        foreach (DB::table('catalog_brand_translations as t')->join('catalog_brands as b', 'b.id', '=', 't.brand_id')
+            ->where('b.slug', '<>', 'generic')->where('t.brand_id', '<>', $brandId ?? 0)->get(['t.locale', 't.name']) as $t) {
+            $name = trim(Row::str($t, 'name'));
+            $locale = Row::str($t, 'locale');
+            if (mb_strlen($name) >= 4 && isset($others[$locale])) {
+                $others[$locale][] = $name;
+            }
+        }
+
+        return [
+            'brand_id' => $brandId,
+            'codes' => array_values(array_unique($codes)),
+            'case_mm' => $case !== null && (float) $case > 0 ? (float) $case : null,
+            'water_m' => $waterM,
+            'warranty_years' => Row::nint($p, 'warranty_years') ?? Row::nint($p, 'default_warranty_years'),
+            'other_brands' => $others,
+        ];
+    }
+
+    /**
+     * The facts a product description states, each checked against the record. Returns them normalised and sorted, for
+     * the EN/AR comparison.
+     *
+     * @param  list<string>  $reasons
+     * @param  array{brand_id: int|null, codes: list<string>, case_mm: float|null, water_m: int|null, warranty_years: int|null, other_brands: array{en: list<string>, ar: list<string>}}  $record
+     * @return list<string>
+     */
+    private function productFacts(array &$reasons, string $text, string $locale, array $record): array
+    {
+        $t = Words::westernDigits($text);
+        $found = [];
+        // a case size: "42 mm", "42mm", «42 مم» / «42 ملم»
+        preg_match_all('/\b(\d{2}(?:\.\d)?)\s*(?:mm\b|مم|ملم)/u', $t, $m);
+        foreach ($m[1] as $v) {
+            $found[] = 'case '.$v.' mm';
+            if ($record['case_mm'] === null || abs((float) $v - $record['case_mm']) > 0.05) {
+                $reasons[] = 'a case size the record does not hold: '.$v.' mm';
+            }
+        }
+        // a water rating: "50 m", "5 ATM", "10 bar", «50 متر» / «5 ATM» (never "mm")
+        preg_match_all('/\b(\d{1,4})\s*(m\b|metres?\b|meters?\b|atm\b|bar\b|متر|مترًا|مترا)/iu', $t, $m, PREG_SET_ORDER);
+        foreach ($m as $hit) {
+            $metres = (int) $hit[1] * (in_array(mb_strtolower($hit[2]), ['atm', 'bar'], true) ? 10 : 1);
+            $found[] = 'water '.$metres.' m';
+            if ($record['water_m'] === null || $metres !== $record['water_m']) {
+                $reasons[] = 'a water rating the record does not hold: '.$hit[0];
+            }
+        }
+        // a warranty length: "2-year warranty", "warranty of 2 years", «ضمان لمدة سنتين» / «ضمان 2 سنة»
+        $years = [];
+        if (preg_match_all('/\b(\d)[\s-]*years?\b[^.\n]{0,12}?\bwarranty\b|\bwarranty\b[^.\n]{0,30}?\b(\d)[\s-]*years?\b/i', $t, $wm, PREG_SET_ORDER) !== false) {
+            foreach ($wm as $hit) {
+                $years[] = (int) (($hit[1] ?? '') !== '' ? $hit[1] : ($hit[2] ?? 0));
+            }
+        }
+        if (preg_match_all('/ضمان[^.\n]{0,30}?(\d)\s*(?:سنة|سنوات|عام|أعوام)/u', $t, $wm) !== false) {
+            foreach ($wm[1] as $v) {
+                $years[] = (int) $v;
+            }
+        }
+        if (preg_match('/ضمان[^.\n]{0,30}?(سنتين|سنتان|عامين)/u', $t) === 1) {
+            $years[] = 2;
+        }
+        if (preg_match('/ضمان[^.\n]{0,30}?(لمدة سنة|سنة واحدة|عام واحد)/u', $t) === 1) {
+            $years[] = 1;
+        }
+        foreach (array_unique($years) as $y) {
+            $found[] = 'warranty '.$y.' years';
+            if ($record['warranty_years'] === null || $y !== $record['warranty_years']) {
+                $reasons[] = 'a warranty length the record does not hold: '.$y.' years';
+            }
+        }
+        // a model code: only this product's own
+        preg_match_all('/\b(?=[A-Z0-9-]*\d{4})[A-Z]{0,5}-?\d[A-Z0-9-]{3,14}\b/', $t, $mm);
+        foreach (array_unique($mm[0]) as $code) {
+            if (preg_match('/^(1[6-9]|20)\d\d$/', $code) === 1) {
+                continue;                                           // a year
+            }
+            $norm = strtoupper((string) preg_replace('/[\s\x{00A0}\x{200B}-]+/u', '', $code));
+            $found[] = 'model '.$norm;
+            if (! in_array($norm, $record['codes'], true)) {
+                $reasons[] = 'a model code that is not this product\'s: '.$code;
+            }
+        }
+        // no price, ever
+        if (preg_match('/(?:EGP|LE|E£)\s?\d|\d[\d,٬.]*\s?(?:EGP|LE|جنيه|ج\.م)/u', $t, $pm) === 1) {
+            $reasons[] = 'a price in a product description (the page shows the live one): "'.mb_substr($pm[0], 0, 30).'"';
+        }
+        // no other brand
+        foreach ($record['other_brands'][$locale] ?? [] as $name) {
+            if (preg_match('/(?<![\p{L}])'.preg_quote($name, '/').'(?![\p{L}])/iu', $text) === 1) {
+                $reasons[] = 'names another brand: '.$name;
+            }
+        }
+        $found = array_values(array_unique($found));
+        sort($found);
+
+        return $found;
+    }
+
     // ── the rules ───────────────────────────────────────────────────────────────────────────────────────────────
 
     /**
@@ -384,10 +567,18 @@ final class QualityGate
         $models = array_values(array_unique(array_filter($mm[0], fn (string $m): bool => ! preg_match('/^(1[6-9]|20)\d\d$/', $m) && ! preg_match('/^\d{1,3}(,\d{3})+$/', $m))));
         sort($models);
         if ($models !== []) {
-            $norm = fn (string $s): string => strtoupper((string) preg_replace('/[\s-]+/', '', $s));
+            $norm = fn (string $s): string => strtoupper((string) preg_replace('/[\s\x{00A0}\x{200B}-]+/u', '', $s));
             $known = [];
-            foreach ($this->live($storefrontId)->whereNotNull('p.model_number')->pluck('p.model_number') as $mn) {
-                $known[$norm(Coerce::str($mn))] = true;
+            // the code lives in `sku` since the item-4 merge (2026-09-19; v2 sends it as the model number); `model_number`
+            // still holds the older rows' — either one makes a model LIVE
+            foreach ($this->live($storefrontId)->where(fn (Builder $w) => $w->whereNotNull('p.sku')->orWhereNotNull('p.model_number'))
+                ->get(['p.sku', 'p.model_number']) as $r) {
+                foreach (['sku', 'model_number'] as $col) {
+                    $code = Row::nstr($r, $col);
+                    if ($code !== null && trim($code) !== '') {
+                        $known[$norm($code)] = true;
+                    }
+                }
             }
             foreach ($models as $m) {
                 if (! isset($known[$norm($m)])) {

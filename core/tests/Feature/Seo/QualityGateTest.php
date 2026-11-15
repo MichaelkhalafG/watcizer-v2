@@ -1,7 +1,12 @@
 <?php
 
+use App\Domain\Content\DataBlocks;
 use App\Domain\Content\QualityGate;
 use App\Domain\Content\SitePaths;
+use App\Storefront\StorefrontCache;
+use Illuminate\Support\Facades\DB;
+use Tests\Support\CatalogFixture;
+use Tests\Support\T;
 
 /*
  * THE AUTOMATED QUALITY GATE (SEO Phases 2 and 4, 2026-11-14). A page text that meets every rule passes in both
@@ -82,4 +87,28 @@ it('accepts an external fact cited to an approved source, and holds English and 
     $r = qgCheck(qgText('en', "\n\nMost cost about 2,500 a piece."), qgText('ar', "\n\nيبلغ سعر أغلبها نحو ٣٬٥٠٠ للقطعة."));
     expect(implode(' | ', $r['en']['reasons']))->toContain('English and Arabic name different')
         ->and($r['ar']['passed'])->toBeFalse();
+});
+
+it('treats a model code held only in sku as LIVE, for the gate and for a compare block (the item-4 merge, 2026-11-15)', function () {
+    $code = 'QG'.random_int(10000, 99999);
+    $id = CatalogFixture::product('watch', 2500.0);
+    DB::table('catalog_products')->where('id', $id)->update(['sku' => $code, 'model_number' => null, 'search_class' => null]);
+    CatalogFixture::onStorefront($id, true, 2);
+    app(StorefrontCache::class)->flush(2);
+
+    // the gate: the code is not "a model number the shop does not have LIVE"
+    $r = qgCheck(qgText('en', "\n\nThe {$code} is a watch we stock."), qgText('ar', "\n\nالساعة {$code} من مجموعتنا."));
+    expect(implode(' | ', [...$r['en']['reasons'], ...$r['ar']['reasons']]))->not->toContain('does not have LIVE')
+        ->and($r['en']['passed'])->toBeTrue();
+    // and a code no product carries is still held
+    $held = qgCheck(qgText('en', "\n\nThe ZZ00000 is a watch."), qgText('ar', "\n\nالساعة ZZ00000."));
+    expect(implode(' | ', $held['en']['reasons']))->toContain('does not have LIVE');
+
+    // a compare block finds it by sku and shows that code on its card; an unknown code stays missing
+    $blocks = DataBlocks::parse("{{compare models={$code},ZZ00000}}");
+    $block = T::arr(DataBlocks::resolveAll(2, $blocks)[$blocks[0]['token']]);
+    $items = T::arr($block['items']);
+    expect($block['missing'])->toBe(['ZZ00000'])
+        ->and(array_column($items, 'id'))->toBe([$id])
+        ->and(T::arr($items[0])['model'])->toBe($code);
 });

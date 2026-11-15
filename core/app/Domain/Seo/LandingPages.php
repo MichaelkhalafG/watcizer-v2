@@ -21,8 +21,10 @@ use Illuminate\Support\Facades\DB;
  *   - and it NARROWS its parent: a brand whose products are all men's has no `/men` page (it would be the brand page
  *     twice); a `/bags/women` page needs fewer products than both `/bags` and `/women`.
  * A page is INDEXABLE only once its own copy (page text `landing`, keyed `brand/family/gender`) has passed the quality
- * gate in both languages; until then it is served with noindex and left out of the sitemaps. Both follow the catalogue
- * on their own: a page that drops under 6 leaves, one that reaches 6 appears.
+ * gate in both languages AND at least MIN_IN_STOCK (3) of its products are in stock (Michael, 2026-11-15: a page people
+ * cannot buy from is not one to send searchers to); until then it is served with noindex and left out of the sitemaps.
+ * All of it follows the catalogue on its own, both ways: a page that drops under 6 leaves, one that reaches 6 appears;
+ * one whose stock falls under 3 goes noindex, and is indexed again when 3 are back (the next catalog:warm).
  *
  * The list is built from three grouped queries over the storefront's placements (never a query per page), cached under
  * the storefront's build lock with the last good copy served meanwhile, and warmed by catalog:warm.
@@ -30,6 +32,9 @@ use Illuminate\Support\Facades\DB;
 final class LandingPages
 {
     public const MIN_LIVE = 6;
+
+    /** In-stock products a page with passed copy needs before it is indexed. */
+    public const MIN_IN_STOCK = 3;
 
     /** catalog_products.family → the address segment. Only these families get landing pages. */
     public const FAMILIES = ['watch' => 'watches', 'bag' => 'bags', 'wallet' => 'wallets', 'perfume' => 'perfumes'];
@@ -39,11 +44,11 @@ final class LandingPages
     /**
      * The storefront's landing pages, keyed by their key (`tommy-hilfiger/men`, `guess/bags/women`).
      *
-     * @return array<string, array{key: string, path: string, brand: string, brand_id: int, family: ?string, gender: ?string, gender_id: ?int, products: int, indexable: bool}>
+     * @return array<string, array{key: string, path: string, brand: string, brand_id: int, family: ?string, gender: ?string, gender_id: ?int, products: int, in_stock: int, indexable: bool}>
      */
     public function all(int $storefrontId): array
     {
-        /** @var array<string, array{key: string, path: string, brand: string, brand_id: int, family: ?string, gender: ?string, gender_id: ?int, products: int, indexable: bool}> */
+        /** @var array<string, array{key: string, path: string, brand: string, brand_id: int, family: ?string, gender: ?string, gender_id: ?int, products: int, in_stock: int, indexable: bool}> */
         return $this->cache->rememberGuarded($storefrontId, 'landing_pages', '', config()->integer('storefront.ttl.count'),
             fn (): array => $this->build($storefrontId));
     }
@@ -51,7 +56,7 @@ final class LandingPages
     /**
      * One landing page by key, or null when the storefront has no such page (now).
      *
-     * @return array{key: string, path: string, brand: string, brand_id: int, family: ?string, gender: ?string, gender_id: ?int, products: int, indexable: bool}|null
+     * @return array{key: string, path: string, brand: string, brand_id: int, family: ?string, gender: ?string, gender_id: ?int, products: int, in_stock: int, indexable: bool}|null
      */
     public function find(int $storefrontId, string $key): ?array
     {
@@ -61,7 +66,7 @@ final class LandingPages
     /**
      * The landing pages of one brand, in key order.
      *
-     * @return list<array{key: string, path: string, brand: string, brand_id: int, family: ?string, gender: ?string, gender_id: ?int, products: int, indexable: bool}>
+     * @return list<array{key: string, path: string, brand: string, brand_id: int, family: ?string, gender: ?string, gender_id: ?int, products: int, in_stock: int, indexable: bool}>
      */
     public function ofBrand(int $storefrontId, string $brandSlug): array
     {
@@ -73,7 +78,7 @@ final class LandingPages
         return implode('/', array_filter([$brand, $family, $gender], fn (?string $s): bool => $s !== null && $s !== ''));
     }
 
-    /** @return array<string, array{key: string, path: string, brand: string, brand_id: int, family: ?string, gender: ?string, gender_id: ?int, products: int, indexable: bool}> */
+    /** @return array<string, array{key: string, path: string, brand: string, brand_id: int, family: ?string, gender: ?string, gender_id: ?int, products: int, in_stock: int, indexable: bool}> */
     private function build(int $storefrontId): array
     {
         $genders = [];
@@ -90,28 +95,38 @@ final class LandingPages
         $families = array_keys(self::FAMILIES);
 
         $byBrand = [];
+        $byBrand = [];
         foreach ($live()->groupBy('p.brand_id')->selectRaw('p.brand_id AS b, COUNT(*) AS n')->get() as $r) {
             $byBrand[Row::int($r, 'b')] = Row::int($r, 'n');
         }
+        // the page counts come with their in-stock part (s), from the same grouped queries
         $byFamily = [];
-        foreach ($live()->whereIn('p.family', $families)->groupBy('p.brand_id', 'p.family')->selectRaw('p.brand_id AS b, p.family AS f, COUNT(*) AS n')->get() as $r) {
+        $stockFamily = [];
+        foreach ($live()->whereIn('p.family', $families)->groupBy('p.brand_id', 'p.family')
+            ->selectRaw('p.brand_id AS b, p.family AS f, COUNT(*) AS n, SUM(p.in_stock = 1) AS s')->get() as $r) {
             $byFamily[Row::int($r, 'b')][Row::str($r, 'f')] = Row::int($r, 'n');
+            $stockFamily[Row::int($r, 'b')][Row::str($r, 'f')] = Row::int($r, 's');
         }
         $byGender = [];
+        $stockGender = [];
         $byBoth = [];
+        $stockBoth = [];
         foreach ($live()->join('catalog_product_gender as pg', 'pg.product_id', '=', 'sp.product_id')
-            ->groupBy('p.brand_id', 'p.family', 'pg.gender_id')->selectRaw('p.brand_id AS b, p.family AS f, pg.gender_id AS g, COUNT(*) AS n')->get() as $r) {
+            ->groupBy('p.brand_id', 'p.family', 'pg.gender_id')
+            ->selectRaw('p.brand_id AS b, p.family AS f, pg.gender_id AS g, COUNT(*) AS n, SUM(p.in_stock = 1) AS s')->get() as $r) {
             $b = Row::int($r, 'b');
             $g = Row::int($r, 'g');
             $byGender[$b][$g] = ($byGender[$b][$g] ?? 0) + Row::int($r, 'n');
+            $stockGender[$b][$g] = ($stockGender[$b][$g] ?? 0) + Row::int($r, 's');
             if (in_array(Row::str($r, 'f'), $families, true)) {
                 $byBoth[$b][Row::str($r, 'f')][$g] = Row::int($r, 'n');
+                $stockBoth[$b][Row::str($r, 'f')][$g] = Row::int($r, 's');
             }
         }
 
         $passed = $this->passedKeys($storefrontId);
         $out = [];
-        $add = function (int $brandId, ?string $family, ?int $genderId, int $n) use (&$out, $brands, $genders, $passed): void {
+        $add = function (int $brandId, ?string $family, ?int $genderId, int $n, int $inStock) use (&$out, $brands, $genders, $passed): void {
             $brand = $brands[$brandId] ?? null;
             $gender = $genderId === null ? null : ($genders[$genderId] ?? null);
             if ($brand === null || ($genderId !== null && $gender === null)) {
@@ -121,24 +136,25 @@ final class LandingPages
             $key = self::key($brand, $familySlug, $gender);
             $out[$key] = [
                 'key' => $key, 'path' => '/brand/'.$key, 'brand' => $brand, 'brand_id' => $brandId, 'family' => $familySlug,
-                'gender' => $gender, 'gender_id' => $genderId, 'products' => $n, 'indexable' => isset($passed[$key]),
+                'gender' => $gender, 'gender_id' => $genderId, 'products' => $n, 'in_stock' => $inStock,
+                'indexable' => isset($passed[$key]) && $inStock >= self::MIN_IN_STOCK,
             ];
         };
         foreach ($byBrand as $b => $total) {
             foreach ($byGender[$b] ?? [] as $g => $n) {
                 if ($n >= self::MIN_LIVE && $n < $total) {
-                    $add($b, null, $g, $n);
+                    $add($b, null, $g, $n, $stockGender[$b][$g] ?? 0);
                 }
             }
             foreach ($byFamily[$b] ?? [] as $f => $n) {
                 if ($n >= self::MIN_LIVE && $n < $total) {
-                    $add($b, $f, null, $n);
+                    $add($b, $f, null, $n, $stockFamily[$b][$f] ?? 0);
                 }
             }
             foreach ($byBoth[$b] ?? [] as $f => $byG) {
                 foreach ($byG as $g => $n) {
                     if ($n >= self::MIN_LIVE && $n < ($byFamily[$b][$f] ?? 0) && $n < ($byGender[$b][$g] ?? 0)) {
-                        $add($b, $f, $g, $n);
+                        $add($b, $f, $g, $n, $stockBoth[$b][$f][$g] ?? 0);
                     }
                 }
             }

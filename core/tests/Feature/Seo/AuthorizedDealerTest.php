@@ -13,6 +13,8 @@ use function Pest\Laravel\getJson;
  * AUTHORIZED DEALER, PER BRAND AND PER SHOP (Michael, 2026-11-14): off by default; on only for the brands switched on;
  * never on a product the hide-from-search rule matches; the quality gate refuses the claim for any other brand.
  */
+
+/** @param  list<string>  $slugs  the brands this shop is an authorized dealer of */
 function setDealers(int $sf, array $slugs): void
 {
     $settings = T::arr(json_decode(T::str(DB::table('storefronts')->where('id', $sf)->value('settings') ?? '{}'), true) ?: []);

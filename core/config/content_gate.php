@@ -39,6 +39,11 @@ return [
             'links_per_100_words' => 1.0,
             'title_chars_en' => 60,
         ],
+        // a product's long description (Michael, 2026-11-15: written from the record's facts, EN + AR, through the gate):
+        // from the thin-description line (catalog.thin_description_chars) up; every fact it states is the record's own
+        'product' => [
+            'chars' => [300, 1600],
+        ],
     ],
 
     // Arabic minimums are this share of the English ones (words)

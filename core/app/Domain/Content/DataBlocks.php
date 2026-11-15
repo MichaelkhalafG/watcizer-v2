@@ -224,11 +224,20 @@ final class DataBlocks
     private static function byModels(int $sf, string $kind, array $args): array
     {
         $models = array_values(array_filter(array_map(fn (string $m): string => strtoupper(trim($m)), explode(',', $args['models'] ?? $args['model'] ?? ''))));
+        // a model is found by `sku` (the one code column since the item-4 merge, what v2 sends as the model number) or by
+        // the older rows' `model_number`
+        $byCode = fn (Builder $q, array $codes): Builder => $q->where(fn (Builder $w) => $w->whereIn(DB::raw('UPPER(p.sku)'), $codes)->orWhereIn(DB::raw('UPPER(p.model_number)'), $codes));
         if ($kind === 'compare') {
-            $rows = self::live($sf)->whereIn(DB::raw('UPPER(p.model_number)'), $models)->get([...ProductCards::columns(), 'p.model_number'])->all();
+            $rows = $byCode(self::live($sf), $models)->get([...ProductCards::columns(), 'p.sku', 'p.model_number'])->all();
             $byModel = [];
             foreach ($rows as $r) {
-                $byModel[strtoupper(Row::str(Row::cast($r), 'model_number'))] ??= $r;
+                $c = Row::cast($r);
+                foreach (['sku', 'model_number'] as $col) {
+                    $code = strtoupper(trim(Row::nstr($c, $col) ?? ''));
+                    if ($code !== '' && in_array($code, $models, true)) {
+                        $byModel[$code] ??= $r;
+                    }
+                }
             }
             $ordered = array_values(array_filter(array_map(fn (string $m) => $byModel[$m] ?? null, $models)));
 
@@ -236,7 +245,7 @@ final class DataBlocks
                 'models' => $models, 'missing' => array_values(array_diff($models, array_keys($byModel))), 'items' => self::cards($ordered)];
         }
         $model = $models[0] ?? '';
-        $found = $model === '' ? null : self::live($sf)->where(DB::raw('UPPER(p.model_number)'), $model)->first(['p.id', 'p.brand_id', 'p.family', 'p.in_stock']);
+        $found = $model === '' ? null : $byCode(self::live($sf), [$model])->first(['p.id', 'p.brand_id', 'p.family', 'p.in_stock']);
         $of = $found === null ? null : Row::cast($found);
         if ($of === null) {
             return ['kind' => $kind, 'model' => $model, 'missing' => [$model], 'total' => 0, 'available' => 0, 'model_in_stock' => false, 'items' => []];
@@ -263,7 +272,9 @@ final class DataBlocks
         if ($rows === []) {
             return [];
         }
-        $models = DB::table('catalog_products')->whereIn('id', array_map(fn ($r): int => Row::int(Row::cast($r), 'product_id'), $rows))->pluck('model_number', 'id')->all();
+        // the code a card shows: `sku` first (what the product page shows), the older `model_number` otherwise
+        $models = DB::table('catalog_products')->whereIn('id', array_map(fn ($r): int => Row::int(Row::cast($r), 'product_id'), $rows))
+            ->selectRaw("id, COALESCE(NULLIF(TRIM(sku), ''), model_number) AS code")->pluck('code', 'id')->all();
         $out = [];
         foreach (app(ProductCards::class)->build(array_map(fn ($r) => Row::cast($r), $rows)) as $card) {
             $id = Coerce::int($card['id'] ?? 0);
