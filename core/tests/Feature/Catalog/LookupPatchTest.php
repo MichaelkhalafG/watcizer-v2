@@ -61,6 +61,11 @@ function lookupSubject(string $type): ?array
             if ((is_string($field['type'] ?? null) ? $field['type'] : 'string') !== $type) {
                 continue;
             }
+            // a NULLABLE integer (2026-11-14: a brand's default warranty) keeps an empty value empty on the full-replace
+            // path too — the integer clause below is about the columns that store 0, so it is not their subject
+            if ($type === 'integer' && ($field['nullable'] ?? false) === true) {
+                continue;
+            }
             $id = DB::table($def['master'])->orderBy('id')->value('id');
             if ($id !== null) {
                 return ['list' => $key, 'column' => $column, 'id' => T::int($id)];

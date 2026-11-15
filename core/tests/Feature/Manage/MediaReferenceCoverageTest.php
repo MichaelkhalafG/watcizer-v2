@@ -81,6 +81,14 @@ it('lists EVERY media-shaped column in the shared schema, on both sides', functi
             }
         }
     }
+    // JSON lists of paths (the review photos, 2026-11-14) are read entry by entry by the list scan.
+    foreach (MediaPruneCommand::JSON_LIST_COLUMNS as $tables) {
+        foreach ($tables as $table => $columns) {
+            foreach ($columns as $column) {
+                $listed["{$table}.{$column}"] = true;
+            }
+        }
+    }
     // Long-text columns are covered by the inline scan rather than the column scan; either counts.
     foreach (MediaPruneCommand::INLINE_TEXT_COLUMNS as $tables) {
         foreach ($tables as $table => $columns) {

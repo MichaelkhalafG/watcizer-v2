@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Storefront;
 
 use App\Compat\CompatCategories;
+use App\Domain\Catalog\SearchExposure;
 use App\Support\Val;
 use App\Transform\Row;
 use Illuminate\Database\Query\Builder;
@@ -90,6 +91,28 @@ final class StorefrontMenu
                 }
                 $subIds[] = $childId;
                 $children[] = self::entry($child, $legacy);
+            }
+            // ORIGINAL WATCHES (Michael, 2026-11-14): the first item under Watches, with its own page — a tile like the
+            // others (the section's picture, its count), shown once it is not thin (compat.thin_listing_min)
+            if (Val::str($node, 'slug') === 'watches') {
+                $n = SearchExposure::onlyOriginalWatches($this->cards->base())->count();
+                if ($n >= config()->integer('compat.thin_listing_min', 3)) {
+                    array_unshift($children, [
+                        'id' => SearchExposure::ORIGINAL_WATCHES['slug'],
+                        'slug' => SearchExposure::ORIGINAL_WATCHES['slug'],
+                        'name' => SearchExposure::ORIGINAL_WATCHES['name'],
+                        'path' => Val::str($node, 'path').'/'.SearchExposure::ORIGINAL_WATCHES['slug'],
+                        'depth' => 2,
+                        // a tile's every key (the menu's contract), none of them a category's: no legacy id
+                        'legacy_id' => null,
+                        // its own page: the storefronts link a tile that carries `href` there (menuLinks.js)
+                        'href' => '/'.SearchExposure::ORIGINAL_WATCHES['slug'],
+                        'collection' => SearchExposure::ORIGINAL_WATCHES['slug'],
+                        'count' => $n,
+                        'image' => $node['image'] ?? null,
+                        'image_source' => $node['image_source'] ?? null,
+                    ]);
+                }
             }
             $subtree = $this->tree->subtreeIds($id);
             $categories[] = self::entry($node, $legacy) + [

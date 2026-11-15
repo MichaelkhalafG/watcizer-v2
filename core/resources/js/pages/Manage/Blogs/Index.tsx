@@ -28,6 +28,19 @@ interface Row {
     updated_at: string | null;
     /** Whether it COULD be published — the same rule the writer enforces on the server. */
     has_body: boolean;
+    /** SEO Phase 3 (2026-11-14): draft, checked, scheduled, published or held — and when it goes live (Cairo time). */
+    status: string;
+    publish_at: string | null;
+    /** why it is held, failed to publish, or needs an update */
+    problems: string[];
+}
+
+/** Per shop (SEO Phase 5): publishing paused, the days of articles queued, the safety net's latest alerts. */
+interface Publishing {
+    storefront: string;
+    paused: boolean;
+    queue_days: number;
+    alerts: Array<{ reason: string; message: string; at: string; paused: boolean }>;
 }
 
 /**
@@ -48,9 +61,11 @@ interface Row {
 export default function BlogsIndex({
     rows: allRows,
     storefront_note,
+    publishing = [],
 }: {
     rows: Row[];
     storefront_note: string;
+    publishing?: Publishing[];
 }) {
     const t = useT();
     const locale = useLocale();
@@ -87,6 +102,30 @@ export default function BlogsIndex({
             <Alert tone="info" title={t("blogs.served_title", "أين تظهر المقالات")}>
                 {storefront_note}
             </Alert>
+
+            {/* SEO Phase 5 (2026-11-14): a paused shop, and the safety net's alerts (a held batch, a short queue, a search fall) */}
+            {publishing
+                .filter((p) => p.paused || p.alerts.length > 0)
+                .map((p) => (
+                    <Alert
+                        key={p.storefront}
+                        tone={p.paused ? "error" : "warning"}
+                        title={
+                            p.paused
+                                ? t("blogs.publishing_paused", ":shop: النشر التلقائي متوقف", { shop: p.storefront })
+                                : t("blogs.publishing_alert", ":shop: تنبيه النشر التلقائي", { shop: p.storefront })
+                        }
+                    >
+                        <p>{t("blogs.queue_days", "المقالات المجدولة تكفي :days يوماً.", { days: p.queue_days })}</p>
+                        <ul className="list-disc ps-5">
+                            {p.alerts.map((a) => (
+                                <li key={a.at + a.reason}>
+                                    <span dir="auto">{a.message}</span>
+                                </li>
+                            ))}
+                        </ul>
+                    </Alert>
+                ))}
 
             {errors.is_published ? (
                 <Alert tone="error" title={t("common.action_failed", "تعذّر تنفيذ العملية")}>
@@ -190,7 +229,20 @@ export default function BlogsIndex({
                                                 })}
                                             </span>
                                         )}
+                                        {row.status === "scheduled" && row.publish_at ? (
+                                            <Badge variant="outline">{t("blogs.scheduled_for", "مجدول: :date (بتوقيت القاهرة)", { date: row.publish_at })}</Badge>
+                                        ) : null}
+                                        {row.status === "held" ? <Badge variant="destructive">{t("blogs.held", "موقوف")}</Badge> : null}
                                     </div>
+                                    {row.problems.length > 0 ? (
+                                        <ul className="list-disc ps-5 text-xs text-destructive">
+                                            {row.problems.slice(0, 5).map((p) => (
+                                                <li key={p}>
+                                                    <span dir="auto">{p}</span>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    ) : null}
                                 </div>
 
                                 <div className="flex items-center gap-3">

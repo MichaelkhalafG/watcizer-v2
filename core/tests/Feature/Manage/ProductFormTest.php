@@ -680,3 +680,57 @@ it('moves non-watch main colours to band, keeps an existing primary, and leaves 
         ->and(DB::table('catalog_product_color')->where('product_id', $bag)->where('role', 'main')->count())->toBe(0)
         ->and(DB::table('catalog_product_color')->where('product_id', $watch)->where('role', 'main')->count())->toBe(1);
 });
+
+it('marks a meta title the operator TYPED, and not one the SEO button filled (2026-11-14, D7)', function () {
+    // The storefronts build a product's <title> from the catalogue and keep a meta title only when a person wrote it.
+    // The form says per language which it was: typing sets `meta_title_by_hand`, the SEO button clears it.
+    $productId = CatalogFixture::product();
+    $byHand = fn (string $locale): int => T::int(DB::table('catalog_product_translations')
+        ->where('product_id', $productId)->where('locale', $locale)->value('meta_title_by_hand'));
+
+    actingAs(Staff::admin())->put("/manage/storefronts/1/products/{$productId}", productPayload([
+        'meta_title' => ['ar' => 'ساعة اختبار | العلامة', 'en' => 'Test watch | Brand'],
+        'meta_title_by_hand' => ['ar' => false, 'en' => false],        // the button's words
+    ]))->assertRedirect();
+    expect($byHand('en'))->toBe(0)->and($byHand('ar'))->toBe(0);
+
+    actingAs(Staff::admin())->put("/manage/storefronts/1/products/{$productId}", productPayload([
+        'meta_title' => ['ar' => 'ساعة اختبار | العلامة', 'en' => 'The team wrote this title'],
+        'meta_title_by_hand' => ['ar' => false, 'en' => true],         // the English one typed
+    ]))->assertRedirect();
+    expect($byHand('en'))->toBe(1)->and($byHand('ar'))->toBe(0);
+
+    // the same text saved again by the button's state leaves the mark where it was: nothing moved
+    actingAs(Staff::admin())->put("/manage/storefronts/1/products/{$productId}", productPayload([
+        'meta_title' => ['ar' => 'ساعة اختبار | العلامة', 'en' => 'The team wrote this title'],
+        'meta_title_by_hand' => ['ar' => false, 'en' => false],
+    ]))->assertRedirect();
+    expect($byHand('en'))->toBe(1);
+});
+
+it('keeps what each photo shows, refuses a view it does not know, and hands both to the storefronts (2026-11-14)', function () {
+    // SEO Phase 1 item 9: the storefronts write a photo's alt text from its view when the team typed none
+    $productId = CatalogFixture::product('watch');
+    CatalogFixture::onStorefront($productId, true, 2);
+
+    actingAs(Staff::admin())->put("/manage/storefronts/1/products/{$productId}", productPayload([
+        'images' => [
+            ['path' => 'Product_image/front.webp', 'is_cover' => true, 'view' => 'front'],
+            ['path' => 'Product_image/wrist.webp', 'is_cover' => false, 'view' => 'wrist', 'alt_en' => 'On a wrist, steel bracelet'],
+            ['path' => 'Product_image/plain.webp', 'is_cover' => false],
+        ],
+    ]))->assertRedirect();
+
+    $views = DB::table('catalog_product_images')->where('product_id', $productId)->orderBy('sort')->pluck('view')->all();
+    expect($views)->toBe(['front', 'wrist', null]);
+
+    actingAs(Staff::admin())->put("/manage/storefronts/1/products/{$productId}", productPayload([
+        'images' => [['path' => 'Product_image/front.webp', 'is_cover' => true, 'view' => 'selfie']],
+    ]))->assertSessionHasErrors('images.0.view');
+
+    $slug = T::str(DB::table('storefront_product')->where('storefront_id', 2)->where('product_id', $productId)->value('slug'));
+    app(\App\Storefront\StorefrontCache::class)->flush(2);
+    $images = T::arr(\Pest\Laravel\getJson('/api/v2/brandfashion/products/'.$slug)->assertOk()->json('product.images'));
+    expect(array_map(fn (mixed $i): mixed => T::arr($i)['view'] ?? null, $images))->toBe(['front', 'wrist', null])
+        ->and(T::arr($images[1])['alt_text'] ?? null)->toBe(['en' => 'On a wrist, steel bracelet']);
+});

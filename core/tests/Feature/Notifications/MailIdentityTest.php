@@ -68,10 +68,10 @@ it('renders a Brand Fashion order mail with NOTHING of Watchizer in it, and vice
     [$fashion, $watchizer] = str_contains($rendered[0], 'brandfashion-mail-wordmark') ? [$rendered[0], $rendered[1]] : [$rendered[1], $rendered[0]];
 
     expect(substr_count($fashion, 'Watchizer'))->toBe(0)
-        ->and($fashion)->toContain(Shops::api('brandfashion').'/assets/brand/brandfashion-mail-wordmark@2x.png', 'wa.me/201283888490', 'Brand Fashion', Shops::site('brandfashion').'/order-list')
+        ->and($fashion)->toContain(Shops::api('brandfashion').'/assets/brand/brandfashion-mail-wordmark@2x.png', 'wa.me/201014179820', 'Brand Fashion', Shops::site('brandfashion').'/order-list')
         ->and($fashion)->not->toContain('watchizereg', '201551096234')
         ->and($watchizer)->toContain('https://api.watchizereg.test/assets/brand/watchizer-mail-wordmark@2x.png', 'wa.me/201551096234', 'https://watchizereg.test/order-list')
-        ->and($watchizer)->not->toContain('brandfashion', '201283888490');
+        ->and($watchizer)->not->toContain('brandfashion', '201014179820');
 
     // The subject follows the row too.
     Mail::assertSent(OrderConfirmation::class, fn (OrderConfirmation $m) => $m->hasSubject('✅ تم استلام طلبك — Brand Fashion | Order #'.PaymentFixture::orderNumber($fashionOrder).' Confirmed'));
@@ -147,6 +147,6 @@ it('gives the password-reset mail the identity of the shop it was asked for on',
     $identity = StorefrontIdentity::for(2);
     $html = (new CustomerPasswordReset(Shops::site('brandfashion').'/reset-password?token=t&email=e', 'Sara', 60, $identity))->render();
 
-    expect($html)->toContain('brandfashion-mail-wordmark@2x.png', 'wa.me/201283888490', 'reset your Brand Fashion password')
+    expect($html)->toContain('brandfashion-mail-wordmark@2x.png', 'wa.me/201014179820', 'reset your Brand Fashion password')
         ->and(substr_count($html, 'Watchizer'))->toBe(0);
 });

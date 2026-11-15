@@ -3,7 +3,7 @@ import { useCallback, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
+import { Input, Select } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { useT } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
@@ -17,6 +17,8 @@ export interface GalleryImage {
     is_cover: boolean;
     alt_ar: string;
     alt_en: string;
+    /** What the photo shows (2026-11-14, config catalog.image_views); '' = not chosen. */
+    view: string;
     width: number | null;
     height: number | null;
     renditions: Record<string, Record<string, string>>;
@@ -48,10 +50,16 @@ export function ImageGallery({
     images,
     onChange,
     disabled = false,
+    views = [],
+    nameHint = '',
 }: {
     images: GalleryImage[];
     onChange: (images: GalleryImage[]) => void;
     disabled?: boolean;
+    /** What a photo can show (the server's config catalog.image_views), for the shop's alt text. */
+    views?: Array<{ value: string; label: string }>;
+    /** Words for a NEW upload's file name (brand, model number, title): `hugo-boss-1513477-…-<date>-<id>.webp`. */
+    nameHint?: string;
 }) {
     const t = useT();
     const input = useRef<HTMLInputElement>(null);
@@ -68,6 +76,10 @@ export function ImageGallery({
                 const body = new FormData();
                 body.append('type', 'product_gallery');
                 body.append('file', file);
+                // a descriptive file name for the new photo (2026-11-14); Arabic-only words fall back to the old name
+                if (nameHint.trim() !== '') {
+                    body.append('name', nameHint);
+                }
 
                 try {
                     const response = await fetch('/manage/media', {
@@ -106,6 +118,7 @@ export function ImageGallery({
                         is_cover: false,
                         alt_ar: '',
                         alt_en: '',
+                        view: '',
                         width: stored.width,
                         height: stored.height,
                         renditions: stored.renditions ?? {},
@@ -126,7 +139,7 @@ export function ImageGallery({
                 onChange(next);
             }
         },
-        [images, onChange, t],
+        [images, onChange, t, nameHint],
     );
 
     const move = (index: number, delta: number) => {
@@ -151,6 +164,8 @@ export function ImageGallery({
 
     const setAlt = (index: number, locale: 'ar' | 'en', value: string) =>
         onChange(images.map((image, i) => (i === index ? { ...image, [`alt_${locale}`]: value } : image)));
+    const setView = (index: number, value: string) =>
+        onChange(images.map((image, i) => (i === index ? { ...image, view: value } : image)));
 
     return (
         <Card>
@@ -262,6 +277,27 @@ export function ImageGallery({
                                         />
                                     </label>
                                 </div>
+                                {/* What the photo shows (SEO Phase 1, 2026-11-14): the shop writes the photo's
+                                    description from it — "Hugo Boss 1513477, on the wrist" — when the alt text
+                                    above is empty. One choice, the same in both languages. */}
+                                {views.length > 0 ? (
+                                    <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+                                        {t('gallery.view', 'ماذا تُظهر الصورة')}
+                                        <Select
+                                            aria-label={t('gallery.view_for_image', 'ماذا تُظهر الصورة :number', { number: index + 1 })}
+                                            value={image.view ?? ''}
+                                            disabled={disabled}
+                                            onChange={(event) => setView(index, event.target.value)}
+                                        >
+                                            <option value="">{t('gallery.view_none', 'لم يُحدَّد')}</option>
+                                            {views.map((view) => (
+                                                <option key={view.value} value={view.value}>
+                                                    {view.label}
+                                                </option>
+                                            ))}
+                                        </Select>
+                                    </label>
+                                ) : null}
                             </div>
 
                             <div className="flex items-center gap-1">

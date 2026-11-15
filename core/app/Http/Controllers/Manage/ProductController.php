@@ -14,6 +14,7 @@ use App\Domain\Catalog\PreSwitch;
 use App\Domain\Catalog\ProductIndexer;
 use App\Domain\Catalog\ProductSearch;
 use App\Domain\Catalog\ProductWriter;
+use App\Domain\Catalog\SearchExposure;
 use App\Domain\Catalog\SpecBlocks;
 use App\Domain\Catalog\VariantWriter;
 use App\Domain\Notifications\StockAlerts;
@@ -157,7 +158,13 @@ final class ProductController
                     // stored — a marker that cannot go stale while somebody fixes the data), and
                     // the Arabic titles a machine wrote, so the team can work through them.
                     // …and M1s: an image that exists but did not process cleanly.
-                    'missing_data', 'machine_ar', 'image_problem'],
+                    'missing_data', 'machine_ar', 'image_problem',
+                    // SEO Phase 1 (2026-11-14): a description too short to describe the product, in either
+                    // language — the brief's "flag products with thin descriptions in the dashboard"
+                    'thin_description',
+                    // SEO Phase 1 (2026-11-14, SearchExposure): kept from search engines (hidden), or a matched Rolex
+                    // (restricted) — the switch, else the rule
+                    'search_hidden', 'search_restricted'],
             ])
             // …and declared VIRTUAL, because neither is a column: `category` is a whole branch of
             // the tree and `flag` is four different predicates. `listQuery()` applies them.
@@ -1243,6 +1250,24 @@ final class ProductController
                 }
             }),
             'machine_ar' => $query->where('ar.is_machine', 1),
+            'search_hidden' => $query->whereRaw(SearchExposure::effectiveSql('p').' = ?', [SearchExposure::HIDDEN]),
+            'search_restricted' => $query->whereRaw(SearchExposure::effectiveSql('p').' = ?', [SearchExposure::RESTRICTED]),
+            /*
+             * A THIN DESCRIPTION (SEO Phase 1, 2026-11-14): the short and the long description together, tags
+             * removed, under `catalog.thin_description_chars` characters (300, about 50 English words) in
+             * English OR in Arabic — a missing translation is thin too. Measured on the copy that day: 2,081
+             * English and 4,552 Arabic texts of active products under the line. Derived, never stored, like the
+             * flags above: it clears itself the moment somebody writes the description.
+             */
+            'thin_description' => $query->where(function (Builder $inner): void {
+                $min = config()->integer('catalog.thin_description_chars', 300);
+                foreach (['en', 'ar'] as $alias) {
+                    $inner->orWhereRaw(
+                        "CHAR_LENGTH(TRIM(REGEXP_REPLACE(CONCAT_WS(' ', COALESCE({$alias}.short_description, ''), COALESCE({$alias}.long_description, '')), '<[^>]+>', ' '))) < ?",
+                        [$min],
+                    );
+                }
+            }),
             /*
              * ── A supplier code two products carry (2026-10-05) ─────────────────────────────
              *
@@ -1572,6 +1597,17 @@ final class ProductController
         return [
             'storefront' => ['id' => $storefront->id, 'code' => $storefront->code, 'name' => $storefront->name],
             'storefronts' => self::storefrontOptions(),
+            // what the RULE says of this product and why (2026-11-14, SearchExposure) — beside the switch on the SEO tab
+            'search_rule' => $productId === null ? null : [
+                'class' => Row::nstr($product, 'search_class'),
+                'reasons' => app(SearchExposure::class)->reasonsFor($productId),
+            ],
+            // what a photo can show (2026-11-14): the gallery's choice per image, labels through the seam
+            'image_views' => array_map(
+                fn (string $key, mixed $label): array => ['value' => $key, 'label' => ManageText::t('gallery.view_'.$key, is_string($label) ? $label : $key)],
+                array_keys(config()->array('catalog.image_views', [])),
+                array_values(config()->array('catalog.image_views', [])),
+            ),
             // M1w: the History tab — the product's log rows and every stock movement, newest first
             'history' => $productId === null ? [] : ProductHistory::for($productId),
             'product' => $product === null ? null : [
@@ -1589,9 +1625,18 @@ final class ProductController
                 'currency' => Row::str($product, 'currency'),
                 'low_stock_threshold' => Row::int($product, 'low_stock_threshold'),
                 'warranty_years' => self::idString(Row::nint($product, 'warranty_years')),
+                'warranty_provider' => Row::nstr($product, 'warranty_provider') ?? '',
                 'is_active' => Row::bool($product, 'is_active'),
                 'search_keywords' => Row::nstr($product, 'search_keywords') ?? '',
                 'translations' => self::translations($productId),
+                // "Search engines" (2026-11-14): the switch as the form shows it
+                'search_override' => match (Row::nint($product, 'search_override')) {
+                    0 => 'hide',
+                    1 => 'show',
+                    default => 'auto',
+                },
+                // per language: was the stored meta title typed by a person (2026-11-14, D7)?
+                'meta_title_by_hand' => self::metaTitleByHand($productId),
                 'specs' => $specs,
                 'images' => self::images($productId),
                 'feature_ids' => self::pivotIds('catalog_product_feature', 'feature_id', $productId),
@@ -1735,6 +1780,7 @@ final class ProductController
             'currency' => ['required', 'string', 'size:3'],
             'low_stock_threshold' => ['nullable', 'integer', 'min:0', 'max:65535'],
             'warranty_years' => ['nullable', 'integer', 'min:0', 'max:255'],
+            'warranty_provider' => ['nullable', 'string', 'in:agent,store'],
             'is_active' => ['required', 'boolean'],
             'search_keywords' => ['nullable', 'string', 'max:65535'],
 
@@ -1754,6 +1800,12 @@ final class ProductController
             'meta_title.en' => ['nullable', 'string', 'max:255'],
             'meta_description.ar' => ['nullable', 'string', 'max:255'],
             'meta_description.en' => ['nullable', 'string', 'max:255'],
+            // "Search engines" (2026-11-14, SearchExposure): follow the rule, or always hide / show
+            'search_override' => ['nullable', 'string', Rule::in(['auto', 'hide', 'show'])],
+            // per language: the meta title was typed, not filled by the SEO button (2026-11-14, D7)
+            'meta_title_by_hand' => ['nullable', 'array'],
+            'meta_title_by_hand.ar' => ['nullable', 'boolean'],
+            'meta_title_by_hand.en' => ['nullable', 'boolean'],
 
             'images' => ['nullable', 'array', 'max:40'],
             'images.*.id' => ['nullable', 'integer'],
@@ -1761,6 +1813,8 @@ final class ProductController
             'images.*.is_cover' => ['nullable', 'boolean'],
             'images.*.alt_ar' => ['nullable', 'string', 'max:255'],
             'images.*.alt_en' => ['nullable', 'string', 'max:255'],
+            // what the photo shows (2026-11-14): one of config catalog.image_views, or nothing
+            'images.*.view' => ['nullable', 'string', Rule::in(array_keys(config()->array('catalog.image_views', [])))],
             'images.*.width' => ['nullable', 'integer'],
             'images.*.height' => ['nullable', 'integer'],
             'images.*.renditions' => ['nullable', 'array'],
@@ -2262,6 +2316,7 @@ final class ProductController
             'currency' => Row::str($product, 'currency'),
             'low_stock_threshold' => Row::int($product, 'low_stock_threshold'),
             'warranty_years' => Row::nint($product, 'warranty_years'),
+            'warranty_provider' => Row::nstr($product, 'warranty_provider'),
             'is_active' => Row::bool($product, 'is_active'),
             'search_keywords' => Row::nstr($product, 'search_keywords'),
             'specs' => self::currentSpecs($productId, $family),
@@ -2308,6 +2363,25 @@ final class ProductController
         return Coerce::arr($decoded);
     }
 
+    /**
+     * Per language: was the stored meta title typed by a person (2026-11-14, D7)? The form shows it as it is and
+     * sends it back; typing sets it, the SEO button clears it.
+     *
+     * @return array{ar: bool, en: bool}
+     */
+    private static function metaTitleByHand(int $productId): array
+    {
+        $out = ['ar' => false, 'en' => false];
+        foreach (DB::table('catalog_product_translations')->where('product_id', $productId)->get(['locale', 'meta_title_by_hand']) as $row) {
+            $locale = Row::str($row, 'locale');
+            if ($locale === 'ar' || $locale === 'en') {
+                $out[$locale] = Row::int($row, 'meta_title_by_hand') === 1;
+            }
+        }
+
+        return $out;
+    }
+
     /** @return array<string, array<string, string>> column => locale => value */
     private static function translations(int $productId): array
     {
@@ -2337,7 +2411,7 @@ final class ProductController
         $rows = DB::table('catalog_product_images')
             ->where('product_id', $productId)
             ->orderByDesc('is_cover')->orderBy('sort')->orderBy('id')
-            ->get(['id', 'path', 'is_cover', 'sort', 'alt_ar', 'alt_en', 'width', 'height', 'renditions']);
+            ->get(['id', 'path', 'is_cover', 'sort', 'alt_ar', 'alt_en', 'view', 'width', 'height', 'renditions']);
 
         $out = [];
         foreach ($rows as $row) {
@@ -2351,6 +2425,7 @@ final class ProductController
                 'is_cover' => Row::bool($image, 'is_cover'),
                 'alt_ar' => Row::nstr($image, 'alt_ar') ?? '',
                 'alt_en' => Row::nstr($image, 'alt_en') ?? '',
+                'view' => Row::nstr($image, 'view') ?? '',
                 'width' => Row::nint($image, 'width'),
                 'height' => Row::nint($image, 'height'),
                 'renditions' => $renditions === null ? [] : Coerce::arr(json_decode($renditions, true)),

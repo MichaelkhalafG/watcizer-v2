@@ -213,7 +213,13 @@ it('has no NULL branch left in the payment callback, and knows every v2 write ro
     expect($writes)->toBe([
         'api/v2/{storefront}/cart/items',
         'api/v2/{storefront}/cart/items/{item}',
+        // the 404 monitor's report (SEO Phase 1, 2026-11-14): recorded under the PATH's storefront, proved in NotFoundTest ›
+        // "records a server's report under the shop of its path"
+        'api/v2/{storefront}/not-found',
         'api/v2/{storefront}/orders',
+        // a verified review (SEO Phase 5, 2026-11-14): saved only for a review link of the PATH's storefront, proved in
+        // ReviewsTest › "takes a review only through a link of the path's own shop"
+        'api/v2/{storefront}/reviews',
         // the wheel's claim (2026-11-10): writes only a spin of the PATH's storefront (Wheel::claim → spinByPhone with the path's
         // id), proved in WheelTest › "saves any code to an account" (claimed and listed through /api/v2/watchizer)
         'api/v2/{storefront}/wheel/claim',

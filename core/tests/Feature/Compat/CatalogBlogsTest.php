@@ -55,7 +55,9 @@ it('returns one published article by slug, and 404s a draft or another storefron
 
     $blog = T::arr(withHeaders(['Api-Code' => BLOGS_KEY])->getJson('/api/catalog/blog?slug=shown')->assertOk()->json('blog'));
     // Changed deliberately (2026-10-02, the Markdown editor): `format` says how to read `body`.
-    expect(array_keys($blog))->toBe(['slug', 'cover', 'published_at', 'format', 'title', 'body', 'meta_title', 'meta_description'])
+    // Changed deliberately (2026-11-14, SEO Phase 3): what the article is about, when it really changed, its live data
+    // blocks and its related articles.
+    expect(array_keys($blog))->toBe(['slug', 'cover', 'published_at', 'slug_ar', 'modified_at', 'topic', 'brand', 'family', 'tags', 'format', 'title', 'body', 'meta_title', 'meta_description', 'blocks', 'related'])
         ->and($blog['format'])->toBe('markdown')
         ->and(T::arr($blog['meta_title'])['en'])->toBe('Meta shown');
 

@@ -64,6 +64,23 @@ final class CatalogWarmer
     }
 
     /**
+     * Each active storefront's sitemaps, built where they are not cached (2026-11-14, SEO Phase 1): a sitemap costs
+     * seconds over a growing catalogue, and this keeps that cost out of Google's request. A cached one costs nothing.
+     *
+     * @param  list<int>  $only
+     * @return array<int, array<string, int>> storefront id => language => ms
+     */
+    public function warmSitemaps(array $only = []): array
+    {
+        $took = [];
+        foreach ($this->treeStorefronts($only) as $id) {
+            $took[$id] = (new CompatServices($this->cache, $this->inventory, CompatStorefront::pinned($id)))->localeSitemap->warm();
+        }
+
+        return $took;
+    }
+
+    /**
      * Only the storefronts `activeStorefronts()` allows, out of these.
      *
      * @param  list<int>  $ids

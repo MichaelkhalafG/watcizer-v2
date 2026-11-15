@@ -68,6 +68,13 @@ return [
             'widths' => [320, 480, 640, 960],
             'thumbnails' => [160, 320],
         ],
+        // a customer's photo with a verified review (SEO Phase 5, 2026-11-14): not padded, shown small under the review
+        'review' => [
+            'folder' => 'Review',
+            'master' => ['width' => 1200, 'height' => 1200, 'quality' => 80, 'pad_square' => false],
+            'widths' => [320, 640],
+            'thumbnails' => [160],
+        ],
         'brand' => [
             'folder' => 'Brand',
             'master' => ['width' => 400, 'height' => 400, 'quality' => 85, 'pad_square' => false],

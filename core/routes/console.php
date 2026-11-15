@@ -140,3 +140,34 @@ Schedule::command('feeds:meta')->hourlyAt(40)->withoutOverlapping();
 | columns. Hourly at :45, after the Meta run, without overlapping. A storefront with no token: nothing.
 */
 Schedule::command('feeds:google')->hourlyAt(45)->withoutOverlapping();
+
+/*
+| IndexNow (SEO Phase 1, 2026-11-14): the addresses product, article and page-text saves queued, sent in batches every ten
+| minutes. Nothing is sent until INDEXNOW_ENABLED=true (after go-live); until then the queue only fills.
+*/
+Schedule::command('indexnow:flush')->everyTenMinutes()->withoutOverlapping();
+
+// THE 404 MONITOR (SEO Phase 1, 2026-11-14): paths nobody asked for in 90 days leave the dashboard's list.
+Schedule::command('seo:prune-not-found')->dailyAt('04:20')->withoutOverlapping();
+
+// THE QUALITY GATE over page texts (SEO Phase 2, 2026-11-14): a landing page is indexed only once its copy passed in both
+// languages; a saved text loses its verdict and is checked again here within the hour.
+Schedule::command('seo:gate')->hourlyAt(25)->withoutOverlapping();
+
+// THE BLOG ENGINE (SEO Phase 3, 2026-11-14): scheduled articles go live when their time (UTC) comes, unless the shop's
+// publishing is paused on the dashboard; failures are retried the next run and held after five.
+Schedule::command('blog:publish-due')->everyTenMinutes()->withoutOverlapping();
+// LIVING ARTICLES (SEO Phase 3): every night the articles' data blocks are re-resolved; a real change dates and announces
+// the article (at most 20 a shop a night), stale prose is flagged needs-update. 04:40, after the backup and the prunes.
+Schedule::command('blog:refresh-blocks')->dailyAt('04:40')->withoutOverlapping();
+
+// VERIFIED REVIEWS (SEO Phase 5): the review links of orders delivered a few days ago; e-mailed only while
+// REVIEW_REQUESTS_ENABLED is on (the team can always send a link on WhatsApp from the Reviews screen).
+Schedule::command('reviews:request')->dailyAt('09:00')->withoutOverlapping();
+
+// SEO MEASUREMENT AND SAFETY (SEO Phase 5): the daily safety check of automatic publishing (a short queue alerts; a sharp
+// search fall pauses, once Search Console is connected) and the weekly report of every shop, Mondays.
+Schedule::command('blog:safety')->dailyAt('08:30')->withoutOverlapping();
+Schedule::command('seo:weekly-report')->weeklyOn(1, '07:00')->withoutOverlapping();
+// ARTICLES WEEK BY WEEK (Michael, 2026-11-14): on day 6 of a publishing week, a reminder when next week is not written.
+Schedule::command('blog:week reminder')->timezone('Africa/Cairo')->dailyAt('09:00')->withoutOverlapping();

@@ -4,10 +4,15 @@ declare(strict_types=1);
 
 namespace App\Domain\Content;
 
+use App\Compat\CatalogWarmer;
+use App\Compat\CompatLocaleSitemap;
+use App\Domain\Seo\IndexNow;
 use App\Support\Coerce;
 use App\Support\LegacySlug;
 use App\Support\ManageText;
+use App\Transform\Row;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
@@ -57,6 +62,8 @@ final class BlogWriter
                 'nullable', 'string', 'max:191',
                 Rule::unique('core_blogs', 'slug')->ignore($ignoreId),
             ],
+            // the Arabic address (SEO Phase 3, 2026-11-14) — optional: made from the Arabic title until first published
+            'slug_ar' => ['nullable', 'string', 'max:191'],
             'cover_path' => ['nullable', 'string', 'max:255'],
             'is_published' => ['required', 'boolean'],
             // Which storefront shows it (M2b, 2026-10-01): articles are per storefront.
@@ -109,7 +116,7 @@ final class BlogWriter
 
         $slug = self::slugFor($data, $titles, $id);
 
-        return DB::transaction(function () use ($id, $data, $titles, $bodies, $published, $slug): int {
+        $savedId = DB::transaction(function () use ($id, $data, $titles, $bodies, $published, $slug): int {
             $row = [
                 'slug' => $slug,
                 'storefront_id' => Coerce::int($data['storefront_id'] ?? null, 1),
@@ -117,6 +124,28 @@ final class BlogWriter
                 'body_format' => 'markdown',
                 'updated_at' => now(),
             ];
+
+            /*
+             * SEO Phase 3 (2026-11-14): the status follows the switch (a scheduled or held article saved as a draft keeps
+             * its status — the queue is the publisher's); the Arabic slug is typed, or made from the Arabic title while the
+             * article has never been published, and then never changes (BUSINESS FACTS 9: stable once published).
+             */
+            $sf = Coerce::int($data['storefront_id'] ?? null, 1);
+            $typedAr = trim(Coerce::str($data['slug_ar'] ?? null));
+            $before = $id === null ? null : DB::table('core_blogs')->where('id', $id)->first(['status', 'slug_ar', 'published_at']);
+            $everPublished = $before !== null && Row::nstr(Row::cast($before), 'published_at') !== null;
+            $storedAr = $before === null ? null : Row::nstr(Row::cast($before), 'slug_ar');
+            if ($typedAr !== '') {
+                $row['slug_ar'] = ArabicSlug::unique($sf, $typedAr, $id);
+            } elseif (($storedAr === null || $storedAr === '') && ! $everPublished && $titles['ar'] !== '') {
+                $row['slug_ar'] = ArabicSlug::unique($sf, $titles['ar'], $id) ?: null;
+            }
+            $was = $before === null ? 'draft' : Row::str(Row::cast($before), 'status');
+            $row['status'] = $published ? 'published' : (in_array($was, ['scheduled', 'held', 'checked'], true) ? $was : 'draft');
+            // a REAL change of a published article's words is its dateModified (a re-save of the same text is not)
+            if ($id !== null && $everPublished && $published && self::wordsChanged($id, $titles, $bodies)) {
+                $row['modified_at'] = now();
+            }
 
             if ($id === null) {
                 $row['created_at'] = now();
@@ -156,12 +185,20 @@ final class BlogWriter
 
             return $id;
         });
+        self::sitemapsChanged($savedId);
+
+        return $savedId;
     }
 
     /** Delete an article and its translations. The cascade is the foreign key's. */
     public function delete(int $id): void
     {
+        $storefrontId = DB::table('core_blogs')->where('id', $id)->value('storefront_id');
+        $slug = DB::table('core_blogs')->where('id', $id)->value('slug');
         DB::table('core_blogs')->where('id', $id)->delete();
+        if (is_numeric($storefrontId)) {
+            self::rebuildSitemaps((int) $storefrontId, is_string($slug) ? $slug : null);
+        }
     }
 
     /**
@@ -200,11 +237,68 @@ final class BlogWriter
                 $current === null => now(),
                 default => $current,
             },
+            // the blog engine's status follows the switch (2026-11-14, SEO Phase 3)
+            'status' => $published ? 'published' : 'draft',
             'updated_at' => now(),
         ]);
+        self::sitemapsChanged($id);
+    }
+
+    /** An article went live or changed outside a dashboard save (the publishing job, the nightly refresh): sitemaps, IndexNow. */
+    public static function articleChanged(int $id): void
+    {
+        self::sitemapsChanged($id);
     }
 
     // ── internals ────────────────────────────────────────────────────────────────────────────
+
+    /**
+     * @param  array{ar: string, en: string}  $titles
+     * @param  array{ar: string, en: string}  $bodies
+     */
+    private static function wordsChanged(int $id, array $titles, array $bodies): bool
+    {
+        foreach (DB::table('core_blog_translations')->where('blog_id', $id)->get(['locale', 'title', 'body']) as $raw) {
+            $r = Row::cast($raw);
+            $l = Row::str($r, 'locale') === 'ar' ? 'ar' : 'en';
+            if (trim(Row::nstr($r, 'title') ?? '') !== $titles[$l] || trim(Row::nstr($r, 'body') ?? '') !== trim($bodies[$l])) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** The article's shop, read before a change that may remove the row. */
+    private static function sitemapsChanged(int $id): void
+    {
+        $storefrontId = DB::table('core_blogs')->where('id', $id)->value('storefront_id');
+        $slug = DB::table('core_blogs')->where('id', $id)->value('slug');
+        $slugAr = DB::table('core_blogs')->where('id', $id)->value('slug_ar');
+        if (is_numeric($storefrontId)) {
+            self::rebuildSitemaps((int) $storefrontId, is_string($slug) ? $slug : null, is_string($slugAr) && $slugAr !== '' ? $slugAr : null);
+        }
+    }
+
+    /**
+     * The shop lists its articles in its sitemaps, which are cached since 2026-11-14 and never rebuilt by a public request
+     * while a last good copy exists. So the WRITE rebuilds them, here — an admin's save or the publishing job, never a
+     * shopper's or a crawler's request. A failure is logged and never fails the article: catalog:warm builds them within
+     * five minutes anyway.
+     */
+    private static function rebuildSitemaps(int $storefrontId, ?string $slug = null, ?string $slugAr = null): void
+    {
+        // IndexNow (2026-11-14): the article and the blog index, both languages — queued, sent after go-live; the Arabic
+        // page at its Arabic slug, percent-encoded (SEO Phase 3)
+        app(IndexNow::class)->queue($storefrontId, $slug === null ? ['/blogs'] : ['/blogs', '/blog/'.$slug], 'article changed',
+            $slug !== null && $slugAr !== null ? ['/blog/'.$slug => '/blog/'.rawurlencode($slugAr)] : []);
+        CompatLocaleSitemap::forget($storefrontId);
+        try {
+            app(CatalogWarmer::class)->warmSitemaps([$storefrontId]);
+        } catch (\Throwable $e) {
+            Log::warning('sitemap rebuild after an article change failed', ['storefront' => $storefrontId, 'error' => $e->getMessage()]);
+        }
+    }
 
     /**
      * Both locales of one translated field, as strings.

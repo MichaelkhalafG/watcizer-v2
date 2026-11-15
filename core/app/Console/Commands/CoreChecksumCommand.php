@@ -243,6 +243,12 @@ final class CoreChecksumCommand extends Command
          */
         'core_customer_seen', 'core_price_watch', 'core_marketing_optouts',
         'core_reengagement_settings', 'core_reengagement_runs', 'core_reengagement_sends',
+        /*
+         * Verified reviews (SEO Phase 5, 2026-11-14): the request per delivered order (its hashed link) and what the
+         * customer wrote, with the photos and the team's approval. Written by customers and the team; no transform can
+         * regenerate a word of it.
+         */
+        'review_requests', 'product_reviews',
     ];
 
     /**

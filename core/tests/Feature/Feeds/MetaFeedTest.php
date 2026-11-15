@@ -1,6 +1,7 @@
 <?php
 
 use App\Compat\CompatCart;
+use App\Domain\Catalog\SearchExposure;
 use App\Domain\Inventory\StockWriteGuard;
 use App\Feeds\MetaFeed;
 use Illuminate\Console\Scheduling\Schedule;
@@ -117,13 +118,31 @@ it('writes every visible Watchizer product once, and nothing that is hidden, ina
     $rows = feedRows();
     $expected = DB::table('catalog_products as p')
         ->join('storefront_product as sp', fn (JoinClause $j) => $j->on('sp.product_id', '=', 'p.id')->where('sp.storefront_id', 1)->where('sp.is_visible', 1))
-        ->where('p.is_active', 1)->whereNull('p.deleted_at')->count();
+        ->where('p.is_active', 1)->whereNull('p.deleted_at')
+        // Rewritten 2026-11-14: minus every product kept from search engines and every matched Rolex (SearchExposure:
+        // hidden and restricted) — they stay on sale and leave both catalogues
+        ->whereRaw('COALESCE('.SearchExposure::effectiveSql('p').", '') NOT IN (?, ?)", [SearchExposure::HIDDEN, SearchExposure::RESTRICTED])
+        ->count();
 
     expect(array_key_exists($visible, $rows))->toBeTrue()
         ->and(array_key_exists($hidden, $rows))->toBeFalse()
         ->and(array_key_exists($inactive, $rows))->toBeFalse()
         ->and(array_key_exists($elsewhere, $rows))->toBeFalse()
         ->and(count($rows))->toBe($expected);
+});
+
+it('leaves out a product kept from search engines and a matched Rolex, and the switch brings one back (2026-11-14)', function () {
+    $kept = feedProduct();
+    $rolexLike = feedProduct();
+    $shown = feedProduct();
+    DB::table('catalog_products')->where('id', $kept)->update(['search_class' => SearchExposure::HIDDEN]);
+    DB::table('catalog_products')->where('id', $rolexLike)->update(['search_class' => SearchExposure::RESTRICTED]);
+    DB::table('catalog_products')->where('id', $shown)->update(['search_class' => SearchExposure::HIDDEN, 'search_override' => 1]);
+
+    $rows = feedRows();
+    expect(array_key_exists($kept, $rows))->toBeFalse()
+        ->and(array_key_exists($rolexLike, $rows))->toBeFalse()
+        ->and(array_key_exists($shown, $rows))->toBeTrue();
 });
 
 it('states availability per product by the shop rule, and which stock makes it buyable', function () {

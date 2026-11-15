@@ -66,7 +66,7 @@ final class CompatServices
         $this->detail = new CompatProductDetail($this->names, $this->categories, $this->products, $this->storefrontId);
         $this->sitemap = new CompatSitemap($this->names, $this->categories, $this->products, $this->storefrontId);
         $this->blogs = new CompatBlogs($this->storefrontId);
-        $this->localeSitemap = new CompatLocaleSitemap($this->listing, $this->names, $this->categories, $this->products, $this->blogs, $this->storefrontId);
+        $this->localeSitemap = new CompatLocaleSitemap($this->listing, $this->names, $this->categories, $this->products, $this->blogs, $this->storefrontId, $cache);
         $this->cart = new CompatCart($this->storefrontId);
         $this->checkout = new CompatCheckout($this->cart, $inventory, $this->storefrontId);
         $this->account = new CompatAccount;

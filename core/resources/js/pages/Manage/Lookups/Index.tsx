@@ -19,7 +19,8 @@ import { cn } from '@/lib/utils';
 import type { PreSwitchState, SharedProps } from '@/types';
 import { ExportLink } from '@/components/table/ExportLink';
 
-type ExtraField = { label: string; type: 'string' | 'integer' | 'boolean' | 'hex' | 'slug' | 'image'; required?: boolean; default?: unknown; media_type?: string };
+// `placeholder` (2026-11-14): what an EMPTY box means — a brand's warranty box shows the shop's default (1)
+type ExtraField = { label: string; type: 'string' | 'integer' | 'boolean' | 'hex' | 'slug' | 'image'; required?: boolean; default?: unknown; media_type?: string; placeholder?: string };
 
 interface Row {
     id: number;
@@ -490,6 +491,7 @@ function ExtraCell({
             className="min-w-[7rem]"
             type={field.type === 'integer' ? 'number' : 'text'}
             aria-label={field.label}
+            placeholder={field.placeholder}
             value={String(value)}
             onChange={(event) => onChange(event.target.value)}
         />

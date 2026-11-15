@@ -959,6 +959,27 @@ export default function ProductsIndex({
                                     "رقم موديل مكرر",
                                 )}
                             </option>
+                            {/* SEO Phase 1 (2026-11-14): a description too short to describe the
+                                product, in English or in Arabic (config catalog.thin_description_chars). */}
+                            <option value="thin_description">
+                                {t(
+                                    "products.thin_description_filter",
+                                    "وصف قصير يحتاج إلى إثراء",
+                                )}
+                            </option>
+                            {/* SEO Phase 1 (2026-11-14, SearchExposure): the switch, else the rule */}
+                            <option value="search_hidden">
+                                {t(
+                                    "products.search_hidden_filter",
+                                    "مخفي عن محركات البحث",
+                                )}
+                            </option>
+                            <option value="search_restricted">
+                                {t(
+                                    "products.search_restricted_filter",
+                                    "رولكس خارج القوائم والكتالوجات",
+                                )}
+                            </option>
                         </Select>
                     </>
                 )}

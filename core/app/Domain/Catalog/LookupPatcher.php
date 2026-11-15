@@ -189,6 +189,12 @@ final class LookupPatcher
                 default => Coerce::nstr($raw),
             };
 
+            // the range a column declares (2026-11-14): the form's validator holds it, and a patcher has none
+            if ($type === 'integer' && is_int($to)
+                && ($to < Coerce::int($field['min'] ?? null, -32768) || $to > Coerce::int($field['max'] ?? null, 32767))) {
+                throw new RuntimeException("[extra.{$column}] is out of its range.");
+            }
+
             if ($type === 'slug' && $to === '') {
                 throw new RuntimeException("[extra.{$column}] cannot be emptied: a slug is a URL.");
             }

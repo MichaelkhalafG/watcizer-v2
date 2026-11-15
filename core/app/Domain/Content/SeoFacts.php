@@ -8,17 +8,10 @@ declare(strict_types=1);
 
 namespace App\Domain\Content;
 
-use App\Models\Storefront\Storefront;
-use App\Storefront\CacheTags;
-use App\Storefront\CategoryTree;
-use App\Storefront\Lookups;
+use App\Storefront\BoundStorefront;
 use App\Storefront\ProductListing;
-use App\Storefront\StorefrontCache;
-use App\Storefront\StorefrontContext;
 use App\Storefront\StorefrontHost;
-use App\Storefront\StorefrontUrls;
 use App\Support\Coerce;
-use RuntimeException;
 
 /**
  * The "in numbers" section of a brand or category page text (the twelve updates, Part 6.2, 2026-11-05; rebuilt on
@@ -252,41 +245,7 @@ final class SeoFacts
      */
     private static function listing(string $storefrontCode, array $input): array
     {
-        $storefront = Storefront::query()->where('code', $storefrontCode)->first();
-        if (! $storefront instanceof Storefront) {
-            throw new RuntimeException("No storefront with the code {$storefrontCode}.");
-        }
-        $id = (int) $storefront->id;
-
-        $classes = [StorefrontContext::class, CacheTags::class, Lookups::class, CategoryTree::class];
-        $before = [];
-        foreach ($classes as $class) {
-            $before[$class] = app()->bound($class) ? app($class) : null;
-        }
-        $assetBefore = config('storefront.request_asset_base');
-
-        $tags = new CacheTags;
-        $tags->storefront($id);
-        $context = new StorefrontContext($storefront, 'en', $tags);
-        $cache = app(StorefrontCache::class);
-        app()->instance(StorefrontContext::class, $context);
-        app()->instance(CacheTags::class, $tags);
-        app()->instance(Lookups::class, new Lookups($cache, $context));
-        app()->instance(CategoryTree::class, new CategoryTree($cache, $context));
-        config(['storefront.request_asset_base' => StorefrontUrls::assetBase($id)]);
-
-        try {
-            return app()->make(ProductListing::class)->run($input, '/api/v2/'.$storefrontCode.'/products') ?? [];
-        } finally {
-            foreach ($classes as $class) {
-                if ($before[$class] === null) {
-                    app()->forgetInstance($class);
-                } else {
-                    app()->instance($class, $before[$class]);
-                }
-            }
-            config(['storefront.request_asset_base' => $assetBefore]);
-        }
+        return BoundStorefront::run($storefrontCode, fn (): array => app()->make(ProductListing::class)->run($input, '/api/v2/'.$storefrontCode.'/products') ?? []);
     }
 
     /**

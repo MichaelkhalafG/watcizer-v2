@@ -176,6 +176,11 @@ it('names EVERY table the dashboard authors, in order, so adding one is a delibe
          */
         'core_customer_seen', 'core_price_watch', 'core_marketing_optouts',
         'core_reengagement_settings', 'core_reengagement_runs', 'core_reengagement_sends',
+        /*
+         * Verified reviews (SEO Phase 5, 2026-11-14): `review_requests` and `product_reviews`. Customers wrote them; a
+         * rebuild that dropped them would delete every review and the link of every request still open.
+         */
+        'review_requests', 'product_reviews',
     ]);
 
     foreach (CoreChecksumCommand::DASHBOARD_TABLES as $table) {

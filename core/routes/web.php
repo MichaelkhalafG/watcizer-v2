@@ -29,6 +29,8 @@ use App\Http\Controllers\Manage\ProductVariantController;
 use App\Http\Controllers\Manage\ProfileController;
 use App\Http\Controllers\Manage\PromotionController;
 use App\Http\Controllers\Manage\ReEngagementController;
+use App\Http\Controllers\Manage\NotFoundController;
+use App\Http\Controllers\Manage\ReviewController;
 use App\Http\Controllers\Manage\SeoTextController;
 use App\Http\Controllers\Manage\ShippingController;
 use App\Http\Controllers\Manage\StorefrontController;
@@ -276,6 +278,15 @@ Route::prefix('manage')->name('manage.')->group(function (): void {
             Route::put('storefronts/{storefront}/page-texts', [SeoTextController::class, 'update'])->name('page_texts.update');
             // one page's text as the parts its layout draws — read-only, for the edit form (item 43 B)
             Route::get('storefronts/{storefront}/page-texts/structure', [SeoTextController::class, 'structure'])->name('page_texts.structure');
+            // PAGES NOT FOUND (SEO Phase 1, 2026-11-14): the addresses the shop answered 404 for, reported by its server.
+            Route::get('storefronts/{storefront}/not-found', [NotFoundController::class, 'index'])->name('not_found.index');
+            Route::put('storefronts/{storefront}/not-found/{entry}', [NotFoundController::class, 'update'])
+                ->whereNumber('entry')->name('not_found.update');
+            // VERIFIED REVIEWS (SEO Phase 5, 2026-11-14): approve or reject what customers wrote; a fresh link for WhatsApp.
+            Route::get('storefronts/{storefront}/reviews', [ReviewController::class, 'index'])->name('reviews.index');
+            Route::put('storefronts/{storefront}/reviews/{review}', [ReviewController::class, 'update'])->whereNumber('review')->name('reviews.update');
+            Route::post('storefronts/{storefront}/reviews/requests/{reviewRequest}/whatsapp', [ReviewController::class, 'whatsapp'])
+                ->whereNumber('reviewRequest')->name('reviews.whatsapp');
         });
 
         /*

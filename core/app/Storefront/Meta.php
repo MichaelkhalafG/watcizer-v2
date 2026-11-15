@@ -2,8 +2,10 @@
 
 namespace App\Storefront;
 
+use App\Domain\Catalog\SearchExposure;
 use App\Domain\Content\BannerImage;
 use App\Domain\Content\BannerWriter;
+use App\Domain\Seo\IndexNow;
 use App\Transform\Row;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
@@ -61,6 +63,12 @@ final class Meta
             ],
             'tree' => $this->tree->nested(),
             'banners' => $this->banners(),
+            // what search engines and AI are told of each brand (2026-11-14, SearchExposure): the brands whose visible
+            // products are ALL kept from search (hidden), and those whose indexable ones are all a matched Rolex
+            // (restricted) — /llms.txt names neither, and any "original" grouping leaves both out
+            'search' => SearchExposure::brands($this->ctx->id()),
+            // the IndexNow key the storefront serves at /indexnow-key.txt (2026-11-14) — public by the protocol's design
+            'indexnow_key' => IndexNow::key($this->ctx->id()),
         ];
     }
 

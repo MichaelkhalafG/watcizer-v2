@@ -41,7 +41,7 @@ it('reads each shop\'s identity from its own row, and puts the wordmark on its o
     expect($f->brandName)->toBe('Brand Fashion')
         ->and($f->wordmarkUrl())->toBe(Shops::api('brandfashion').'/assets/brand/brandfashion-mail-wordmark@2x.png')
         // Two numbers, two roles (BF handover D22): the customer-service one differs, the developer's does not.
-        ->and($f->whatsappSupport)->toBe('201283888490')
+        ->and($f->whatsappSupport)->toBe('201014179820')
         ->and($f->whatsappDeveloper)->toBe($w->whatsappDeveloper)
         ->and($f->copyright)->toContain('Brand Fashion');
 
@@ -57,7 +57,7 @@ it('hands every template the same four keys, from the row', function () {
 
     expect(array_keys($data))->toBe(['brandName', 'wordmarkUrl', 'whatsappUrl', 'copyright'])
         ->and($data['brandName'])->toBe('Brand Fashion')
-        ->and($data['whatsappUrl'])->toContain('wa.me/201283888490');
+        ->and($data['whatsappUrl'])->toContain('wa.me/201014179820');
 });
 
 it('is a NAMED failure for a storefront with no identity, no wordmark file, or no name — never another shop\'s', function () {

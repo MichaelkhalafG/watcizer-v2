@@ -270,6 +270,32 @@ final class MediaAudit
             }
         }
 
+        // …the JSON lists of paths (the review photos), every entry…
+        foreach (MediaPruneCommand::JSON_LIST_COLUMNS as $tables) {
+            $schema = 'clean';                                      // every list column is core's (the default connection)
+            $connection = null;
+            foreach ($tables as $table => $columns) {
+                foreach ($columns as $column) {
+                    try {
+                        $values = DB::connection($connection)->table($table)->whereNotNull($column)->pluck($column);
+                    } catch (Throwable $e) {
+                        $this->warnings[] = "list scan: cannot read {$schema}.{$table}.{$column} — ".$e->getMessage();
+                        $this->scanFailed = true;
+
+                        continue;
+                    }
+                    foreach ($values as $value) {
+                        $list = is_string($value) ? json_decode($value, true) : null;
+                        foreach (is_array($list) ? $list : [] as $path) {
+                            if (is_string($path) && trim($path) !== '') {
+                                $referenced[basename(trim($path))] = true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // …and anything embedded in long text, which a column scan cannot see.
         foreach (MediaPruneCommand::INLINE_TEXT_COLUMNS as $schema => $tables) {
             $connection = $schema === 'legacy' ? 'legacy' : null;

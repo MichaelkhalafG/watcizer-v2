@@ -7,6 +7,7 @@ namespace App\Domain\Catalog;
 use App\Support\Coerce;
 use App\Support\ManageText;
 use App\Transform\Row;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 use stdClass;
@@ -417,6 +418,11 @@ final class ProductPatcher
 
             if ($write === []) {
                 continue;
+            }
+            // the meta title written by hand (2026-11-14, D7; ProductWriter::writeTranslations has the rule): it moves
+            // only with the meta title — on for a signed-in person's text, off otherwise. Not a diff field: a marker.
+            if (array_key_exists('meta_title', $write)) {
+                $write['meta_title_by_hand'] = $write['meta_title'] !== null && Auth::check() ? 1 : 0;
             }
 
             if (! is_object($existing)) {

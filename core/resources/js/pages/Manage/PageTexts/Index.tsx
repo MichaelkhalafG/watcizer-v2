@@ -28,12 +28,17 @@ import { LayoutPreview, StructuredFields, toPayload, type Structure } from './St
 type Locale = 'ar' | 'en';
 
 interface Texts {
+    /** the words above the products (2026-11-14, SEO Phase 2) */
+    intro: string;
     description: string;
     meta_description: string;
+    /** the quality gate's verdict on this language: 'passed', 'held', or null (never checked, or changed since) */
+    gate?: string | null;
+    gate_reasons?: string[];
 }
 
 interface Subject {
-    type: 'brand' | 'category';
+    type: 'brand' | 'category' | 'landing';
     key: string;
     name: string;
     products?: number;
@@ -54,7 +59,7 @@ const LOCALES: Locale[] = ['ar', 'en'];
 
 // The address the storefront serves the page at: a top-level category under /category, a sub-type under /subtypes.
 function pathOf(subject: Subject): string {
-    if (subject.type === 'brand') {
+    if (subject.type === 'brand' || subject.type === 'landing') {
         return `/brand/${subject.key}`;
     }
     const segments = subject.key.split('/');
@@ -63,12 +68,14 @@ function pathOf(subject: Subject): string {
 }
 
 function filled(subject: Subject): boolean {
-    return LOCALES.some((l) => subject.texts[l].description.trim() !== '' || subject.texts[l].meta_description.trim() !== '');
+    return LOCALES.some(
+        (l) => (subject.texts[l].intro ?? '').trim() !== '' || subject.texts[l].description.trim() !== '' || subject.texts[l].meta_description.trim() !== '',
+    );
 }
 
 export default function PageTextsIndex({ storefront, subjects, meta_limit, notice, assetBase }: Props) {
     const t = useT();
-    const [tab, setTab] = useState<'brand' | 'category'>('brand');
+    const [tab, setTab] = useState<'brand' | 'category' | 'landing'>('brand');
     const [term, setTerm] = useQueryTerm();
     const [editing, setEditing] = useState<string | null>(null);
 
@@ -112,6 +119,18 @@ export default function PageTextsIndex({ storefront, subjects, meta_limit, notic
                     >
                         {t('page_texts.tab_categories', 'التصنيفات')}
                     </Button>
+                    <Button
+                        size="sm"
+                        role="tab"
+                        aria-selected={tab === 'landing'}
+                        variant={tab === 'landing' ? 'default' : 'outline'}
+                        onClick={() => {
+                            setTab('landing');
+                            setEditing(null);
+                        }}
+                    >
+                        {t('page_texts.tab_landings', 'صفحات الهبوط')}
+                    </Button>
                 </div>
             </div>
 
@@ -128,7 +147,13 @@ export default function PageTextsIndex({ storefront, subjects, meta_limit, notic
                 <Table>
                     <TableHeader>
                         <TableRow>
-                            <TableHead>{tab === 'brand' ? t('page_texts.tab_brands', 'الماركات') : t('page_texts.tab_categories', 'التصنيفات')}</TableHead>
+                            <TableHead>
+                                {tab === 'brand'
+                                    ? t('page_texts.tab_brands', 'الماركات')
+                                    : tab === 'landing'
+                                      ? t('page_texts.tab_landings', 'صفحات الهبوط')
+                                      : t('page_texts.tab_categories', 'التصنيفات')}
+                            </TableHead>
                             <TableHead>{t('page_texts.view_page', 'عنوان الصفحة')}</TableHead>
                             <TableHead />
                             <TableHead className="w-[9rem]" align="end">{t('common.actions', 'إجراءات')}</TableHead>
@@ -171,6 +196,7 @@ export default function PageTextsIndex({ storefront, subjects, meta_limit, notic
                                         ) : (
                                             <span className="text-xs text-muted-foreground">{t('page_texts.empty', 'لا يوجد نص بعد')}</span>
                                         )}
+                                        <GateBadge subject={subject} />
                                     </TableCell>
                                     <TableCell align="end">
                                         <Button variant="outline" size="sm" onClick={() => setEditing(id)}>
@@ -184,6 +210,28 @@ export default function PageTextsIndex({ storefront, subjects, meta_limit, notic
                 </Table>
             </div>
         </ManageLayout>
+    );
+}
+
+/** The quality gate's verdict on a page's text (2026-11-14): passed in both languages, held in one, or not checked yet. */
+function GateBadge({ subject }: { subject: Subject }) {
+    const t = useT();
+    const gates = LOCALES.map((l) => subject.texts[l].gate ?? null);
+    if (gates.every((g) => g === null)) {
+        return null;
+    }
+    if (gates.every((g) => g === 'passed')) {
+        return (
+            <Badge variant="success" className="ms-2">
+                {t('page_texts.gate_passed', 'اجتاز الفحص')}
+            </Badge>
+        );
+    }
+
+    return (
+        <Badge variant="warning" className="ms-2">
+            {t('page_texts.gate_held', 'موقوف — انظر الأسباب')}
+        </Badge>
     );
 }
 
@@ -205,7 +253,7 @@ function TextForm({
     const [processing, setProcessing] = useState(false);
     const [errors, setErrors] = useState<Record<string, string>>({});
 
-    const set = (locale: Locale, field: keyof Texts, value: string) =>
+    const set = (locale: Locale, field: 'intro' | 'description' | 'meta_description', value: string) =>
         setData((d) => ({ ...d, [locale]: { ...d[locale], [field]: value } }));
 
     /*
@@ -247,10 +295,15 @@ function TextForm({
                 ? {
                       type: subject.type,
                       key: subject.key,
-                      ar: { meta_description: data.ar.meta_description, structure: toPayload(parts.ar) },
-                      en: { meta_description: data.en.meta_description, structure: toPayload(parts.en) },
+                      ar: { intro: data.ar.intro, meta_description: data.ar.meta_description, structure: toPayload(parts.ar) },
+                      en: { intro: data.en.intro, meta_description: data.en.meta_description, structure: toPayload(parts.en) },
                   }
-                : { type: subject.type, key: subject.key, ar: { ...data.ar }, en: { ...data.en } },
+                : {
+                      type: subject.type,
+                      key: subject.key,
+                      ar: { intro: data.ar.intro, description: data.ar.description, meta_description: data.ar.meta_description },
+                      en: { intro: data.en.intro, description: data.en.description, meta_description: data.en.meta_description },
+                  },
             {
                 preserveScroll: true,
                 onStart: () => setProcessing(true),
@@ -330,6 +383,30 @@ function TextForm({
                         <legend className="mb-1 text-sm font-medium">
                             {locale === 'ar' ? t('page_texts.lang_ar', 'العربية') : t('page_texts.lang_en', 'الإنجليزية')}
                         </legend>
+                        <label className="text-xs text-muted-foreground" htmlFor={`intro_${locale}`}>
+                            {t('page_texts.intro', 'المقدمة القصيرة (تظهر فوق المنتجات، ٦٠–٩٠ كلمة)')}
+                        </label>
+                        <textarea
+                            id={`intro_${locale}`}
+                            dir={dir}
+                            rows={3}
+                            className="rounded-md border px-3 py-2 text-sm"
+                            value={data[locale].intro ?? ''}
+                            onChange={(e) => set(locale, 'intro', e.target.value)}
+                        />
+                        {errors[`${locale}.intro`] && <p className="text-xs text-destructive">{errors[`${locale}.intro`]}</p>}
+                        {(subject.texts[locale].gate_reasons ?? []).length > 0 && subject.texts[locale].gate === 'held' && (
+                            <div className="rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900">
+                                <p className="font-medium">{t('page_texts.gate_reasons', 'لماذا أوقفه الفحص الآلي:')}</p>
+                                <ul className="ms-4 list-disc">
+                                    {(subject.texts[locale].gate_reasons ?? []).map((r) => (
+                                        <li key={r}>
+                                            <span dir="auto">{r}</span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                        )}
                         <label className="text-xs text-muted-foreground" htmlFor={`meta_${locale}`}>
                             {t('page_texts.meta', 'الوصف المختصر (يظهر في نتائج جوجل)')}
                         </label>

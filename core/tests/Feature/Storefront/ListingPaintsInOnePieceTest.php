@@ -14,7 +14,10 @@
  *     swapped in later (an empty grid first).
  *  2. The desktop footer is hidden on phones by CSS, not by useMediaQuery — which is false on the
  *     server, so the footer popped in after hydration wherever the content was not there yet.
- *  3. /listing's loading skeleton is built from the listing's own classes, so it has the page's shape.
+ *  3. /listing's loading skeleton is built from the listing's own classes, so it has the page's shape. REWRITTEN
+ *     2026-11-14 (SEO Phase 1): a route-level loading.jsx IS a Suspense boundary around the whole page — the server
+ *     sent the skeleton in <main> and the real grid later in a hidden <div id="S:0">, so a crawler that runs no
+ *     script read 0 words there (the 2026-11-13 crawl). The skeleton is gone from both apps; rule 3 is now its absence.
  *
  * After: CLS 0.0003 (/listing) and 0.0025 (/brand/rolex) on desktop; both paint whole on a phone.
  */
@@ -42,10 +45,11 @@ it('puts the desktop footer in the server HTML and hides it on phones with CSS',
         ->toBe(1, 'Footer.css must hide .wz-desktop-footer below 768 px');
 });
 
-it('draws the loading skeleton from the listing\'s own frame', function () {
-    $loading = listingSource('app/(main)/listing/loading.jsx');
-    foreach (['wz-listing-inner', 'wz-listing-body', 'wz-listing-main', 'wz-toolbar', 'wz-listing-grid', 'wz-skel-card'] as $class) {
-        expect(str_contains($loading, "className=\"{$class}\""))->toBeTrue("loading.jsx lacks the page's {$class}");
+it('has no route-level loading skeleton for the listing pages, in either app — it would send the grid out of order', function () {
+    foreach (['Frontend-next', 'Frontend-brandfashion'] as $app) {
+        foreach (['listing', 'brand/[brand]', 'category/[category]', 'subtypes/[subtype]', 'grade/[grade]'] as $route) {
+            expect(is_file(base_path("../{$app}/app/(main)/{$route}/loading.jsx")))
+                ->toBeFalse("{$app}/app/(main)/{$route}/loading.jsx is back: the page would stream its grid in a hidden block");
+        }
     }
-    expect(str_contains($loading, 'gridTemplateColumns'))->toBeFalse('a hard-coded grid in loading.jsx has no phone layout');
 });

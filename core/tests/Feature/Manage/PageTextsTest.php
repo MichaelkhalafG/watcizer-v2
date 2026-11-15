@@ -158,13 +158,16 @@ it('writes every prepared text in the target shape, and names no payment method 
                 $text = T::str(T::arr(T::arr($byLocale)[$locale] ?? null)['description'] ?? '');
                 $texts++;
                 $where = "{$file} {$key} {$locale}";
-                if (preg_match_all('/^## /mu', $text) < 2) {
+                // 2026-11-14 (seo:strip-originality): the four brands whose products are all hidden or restricted lost their
+                // "every one is original" section and its bullets - one section and no bullet list is their shape now
+                $stripped = $file === 'brands' && in_array($key, ['rolex', 'patek-philippe', 'audemars-piguet', 'hublot'], true);
+                if (! $stripped && preg_match_all('/^## /mu', $text) < 2) {
                     $failures[] = "{$where}: fewer than two sections";
                 }
                 if (substr_count($text, '{facts}') !== 1) {
                     $failures[] = "{$where}: the facts token is not there exactly once";
                 }
-                if (preg_match_all('/^- /mu', $text) < 3) {
+                if (! $stripped && preg_match_all('/^- /mu', $text) < 3) {
                     $failures[] = "{$where}: fewer than three bullets";
                 }
                 if (preg_match_all('/^### .*[?؟]$/mu', $text) < 4) {

@@ -4,7 +4,9 @@ namespace App\Storefront;
 
 use App\Domain\Campaigns\CampaignPrices;
 use App\Domain\Campaigns\Campaigns;
+use App\Domain\Catalog\SearchExposure;
 use App\Domain\Content\SeoTexts;
+use App\Domain\Seo\LandingPages;
 use App\Support\ArabicSearch;
 use App\Support\Coerce;
 use App\Support\Val;
@@ -36,6 +38,9 @@ use Illuminate\Support\Facades\DB;
  */
 final class ProductListing
 {
+    /** The named collections a listing may be (2026-11-14). */
+    public const COLLECTIONS = ['original-watches'];
+
     public const SORTS = ['position', 'newest', 'price_asc', 'price_desc', 'rating', 'featured', 'available'];
 
     /** The facet sections `facets=1` counts, in the order the sidebar shows them (spec §10.2). */
@@ -159,6 +164,8 @@ final class ProductListing
             'category_ids' => array_map(fn (array $n): int => Val::int($n, 'id'), $nodes),
             'brand' => self::strList($input['brand'] ?? null),
             'gender' => $this->genderIds($input['gender'] ?? null),
+            // the product family (2026-11-14, SEO Phase 2's landing pages: /brand/guess/bags is brand + family `bag`)
+            'family' => array_values(array_intersect(self::strList($input['family'] ?? null), array_keys(LandingPages::FAMILIES))),
             // `color` is kept as the ANY-ROLE filter it has been since v2's listing shipped, so a caller that
             // sends it keeps working; the two role-scoped keys below are what the sidebars now send.
             'color' => self::intList($input['color'] ?? null),
@@ -175,6 +182,8 @@ final class ProductListing
             'on_sale' => self::bool($input['on_sale'] ?? null),
             'min_discount' => self::minDiscount($input['min_discount'] ?? null),
             'q' => self::str($input['q'] ?? null),
+            // a named collection (2026-11-14): `original-watches` — see applyFilters(); an unknown name is no filter
+            'collection' => in_array(self::str($input['collection'] ?? null), self::COLLECTIONS, true) ? self::str($input['collection'] ?? null) : null,
         ];
         /*
          * `campaign` (Part 2, 2026-11-05): the products of the LIVE campaign of that presentation. Resolved to its
@@ -208,6 +217,13 @@ final class ProductListing
 
             return DB::query()->fromSub($inner, 'bounded')->count();
         });
+        // How many of them search engines may index (2026-11-14, SearchExposure): a brand or category page whose
+        // indexable products fall under the thin-listing minimum is noindex, like a page with too few products at all.
+        $indexable = $this->cache->remember($this->ctx->id(), 'count', $hash.':indexable', config()->integer('storefront.ttl.count'), function () use ($query, $cap): int {
+            $inner = (clone $query)->whereRaw('COALESCE('.SearchExposure::effectiveSql('p').", '') <> ?", [SearchExposure::HIDDEN])->selectRaw('1')->limit($cap);
+
+            return DB::query()->fromSub($inner, 'bounded')->count();
+        });
         $facets = null;
         if (self::bool($input['facets'] ?? null) === true) {
             /** @var array<string, mixed> $facets */
@@ -238,13 +254,19 @@ final class ProductListing
                 'per_page' => $perPage,
                 'total' => min($total, $cap),
                 'total_capped' => $total >= $cap,
+                'indexable_total' => min($indexable, $cap),
                 'last_page' => $lastPage,
                 'sort' => $sort,
                 'locale' => $this->ctx->locale,
                 'filters' => $filters,
                 'category' => $node === null ? null : CategoryTree::ref($node),
                 // the brand or category page's own introduction and meta description, both languages (M1y)
-                'context' => $this->context($nodes, $filters['brand']),
+                'context' => $this->context($nodes, $filters['brand'], $filters['gender'], $filters['family']),
+                // a LANDING page (2026-11-14, SEO Phase 2): its key, and whether search engines may index it (its copy
+                // passed the quality gate in both languages and it has 6+ LIVE products) — null for any other listing
+                'landing' => $this->landing($nodes, $filters['brand'], $filters['gender'], $filters['family']),
+                // on a BRAND page: its landing pages (gender / family), for the shop's real links to them — [] otherwise
+                'landings' => $this->brandLandings($nodes, $filters['brand'], $filters['gender'], $filters['family']),
             ],
             'links' => [
                 'self' => $link($page),
@@ -265,10 +287,19 @@ final class ProductListing
      *
      * @param  list<array<string, mixed>>  $nodes
      * @param  list<string>  $brands
+     * @param  list<int>  $genders
+     * @param  list<string>  $families
      * @return array<string, mixed>|null
      */
-    private function context(array $nodes, array $brands): ?array
+    private function context(array $nodes, array $brands, array $genders = [], array $families = []): ?array
     {
+        $landing = $this->landingKey($nodes, $brands, $genders, $families);
+        if ($landing !== null) {
+            return $this->pageText('landing', $landing);
+        }
+        if ($genders !== [] || $families !== []) {
+            return null;                                       // a filtered view of a brand that is not a landing page
+        }
         if (count($nodes) === 1 && $brands === []) {
             return $this->pageText('category', Val::str($nodes[0], 'path'));
         }
@@ -283,6 +314,84 @@ final class ProductListing
         }
 
         return null;
+    }
+
+    /**
+     * The landing key this listing IS (2026-11-14): exactly one brand, no category, and one gender and/or one family —
+     * `tommy-hilfiger/men`, `guess/bags`, `guess/bags/women`. Null for anything else.
+     *
+     * @param  list<array<string, mixed>>  $nodes
+     * @param  list<string>  $brands
+     * @param  list<int>  $genders
+     * @param  list<string>  $families
+     */
+    private function landingKey(array $nodes, array $brands, array $genders, array $families): ?string
+    {
+        if ($nodes !== [] || count($brands) !== 1 || count($genders) > 1 || count($families) > 1 || ($genders === [] && $families === [])) {
+            return null;
+        }
+        $slug = $brands[0];
+        if (ctype_digit($slug)) {
+            $ref = $this->lookups->ref('brands', (int) $slug);
+            $slug = is_string($ref['slug'] ?? null) ? $ref['slug'] : null;
+        }
+        $gender = null;
+        if ($genders !== []) {
+            foreach ($this->lookups->list('genders') as $row) {
+                if (Val::int($row, 'id') === $genders[0]) {
+                    $name = is_array($row['name'] ?? null) ? ($row['name']['en'] ?? null) : null;
+                    $gender = is_string($name) ? strtolower(trim($name)) : null;
+                }
+            }
+            if ($gender === null) {
+                return null;
+            }
+        }
+
+        return $slug === null ? null : LandingPages::key($slug, $families === [] ? null : LandingPages::FAMILIES[$families[0]], $gender);
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $nodes
+     * @param  list<string>  $brands
+     * @param  list<int>  $genders
+     * @param  list<string>  $families
+     * @return array{key: string, exists: bool, indexable: bool}|null
+     */
+    private function landing(array $nodes, array $brands, array $genders, array $families): ?array
+    {
+        $key = $this->landingKey($nodes, $brands, $genders, $families);
+        if ($key === null) {
+            return null;
+        }
+        $page = app(LandingPages::class)->find($this->ctx->id(), $key);
+
+        return ['key' => $key, 'exists' => $page !== null, 'indexable' => $page !== null && $page['indexable']];
+    }
+
+    /**
+     * A brand page's landing pages (exactly one brand, nothing else): path, family and gender of each — the shop links them
+     * whether or not they are indexable yet (a page with no passed copy is noindex, follow; the link is still real).
+     *
+     * @param  list<array<string, mixed>>  $nodes
+     * @param  list<string>  $brands
+     * @param  list<int>  $genders
+     * @param  list<string>  $families
+     * @return list<array{path: string, family: ?string, gender: ?string, products: int}>
+     */
+    private function brandLandings(array $nodes, array $brands, array $genders, array $families): array
+    {
+        if ($nodes !== [] || count($brands) !== 1 || $genders !== [] || $families !== []) {
+            return [];
+        }
+        $slug = $brands[0];
+        if (ctype_digit($slug)) {
+            $ref = $this->lookups->ref('brands', (int) $slug);
+            $slug = is_string($ref['slug'] ?? null) ? $ref['slug'] : '';
+        }
+
+        return array_map(fn (array $p): array => ['path' => $p['path'], 'family' => $p['family'], 'gender' => $p['gender'], 'products' => $p['products']],
+            app(LandingPages::class)->ofBrand($this->ctx->id(), $slug));
     }
 
     /** @return array<string, mixed>|null */
@@ -314,6 +423,15 @@ final class ProductListing
      */
     private function applyFilters(Builder $query, array $f, bool $indexed, ?string $except = null): void
     {
+        /*
+         * ORIGINAL WATCHES (Michael, 2026-11-14): the watches the hide-from-search rule leaves alone — never a
+         * hidden product, never a matched Rolex (restricted), never a brand that names no maker (config
+         * `catalog.original_watches.exclude_brands`: Generic). Like the category, it is what the page IS: always
+         * applies, facets included.
+         */
+        if (($f['collection'] ?? null) === SearchExposure::ORIGINAL_WATCHES['slug']) {
+            SearchExposure::onlyOriginalWatches($query);
+        }
         // The live campaign's selection (see run()): always applies, like the category — it is what the page IS.
         $campaignIds = $f['campaign_ids'] ?? null;
         if (is_array($campaignIds)) {
@@ -338,6 +456,11 @@ final class ProductListing
             // adapter, whose filter state is ids; an id the lookup does not know matches nothing, like an unknown slug.
             $ids = array_values(array_filter(array_map(fn (string $s) => ctype_digit($s) ? ($this->lookups->ref('brands', (int) $s) === null ? null : (int) $s) : $this->lookups->brandIdBySlug($s), $brands), fn (?int $i) => $i !== null));
             $query->whereIn('p.brand_id', $ids === [] ? [-1] : $ids);
+        }
+        /** @var list<string> $families */
+        $families = $f['family'] ?? [];
+        if ($families !== []) {
+            $query->whereIn('p.family', $families);
         }
         /** @var list<int> $genders */
         $genders = $f['gender'];

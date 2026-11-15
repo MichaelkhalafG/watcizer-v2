@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Manage;
 
 use App\Domain\Activity\ActivityLog;
+use App\Domain\Content\BlogPublisher;
+use App\Domain\Content\BlogSafety;
 use App\Domain\Content\BlogWriter;
 use App\Storefront\ImageUrl;
 use App\Support\Coerce;
@@ -12,6 +14,7 @@ use App\Transform\Row;
 use Illuminate\Database\Query\JoinClause;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -49,6 +52,9 @@ final class BlogController
     {
         return Inertia::render('Manage/Blogs/Index', [
             'rows' => self::rows(),
+            // SEO Phase 5 (2026-11-14): per shop, whether publishing is paused, the days of articles queued, and the
+            // safety net's latest alerts (BlogSafety)
+            'publishing' => self::publishing(),
             /*
              * The one thing this screen owes an operator that it cannot do anything about: an
              * article published here does not yet appear on the storefront, because no read
@@ -185,6 +191,7 @@ final class BlogController
                 ->leftJoin('storefronts as s', 's.id', '=', 'b.storefront_id')
                 ->get([
                     'b.id', 'b.slug', 'b.cover_path', 'b.published_at', 'b.updated_at', 's.name as storefront_name',
+                    'b.status', 'b.publish_at', 'b.gate_report', 'b.publish_error', 'b.needs_update_reasons',
                     'ar.title as title_ar', 'en.title as title_en',
                     'ar.body as body_ar', 'en.body as body_en',
                 ]) as $raw
@@ -211,10 +218,62 @@ final class BlogController
                  * the server; this only stops the operator finding out by being told no.
                  */
                 'has_body' => (Row::nstr($row, 'body_ar') ?? '') !== '' || (Row::nstr($row, 'body_en') ?? '') !== '',
+                // SEO Phase 3 (2026-11-14): where the article is in the queue — its status, when it goes live (Cairo
+                // time; stored in UTC), and why it is held, failed to publish, or needs an update
+                'status' => Row::nstr($row, 'status') ?? ($publishedAt !== null ? 'published' : 'draft'),
+                'publish_at' => self::cairo(Row::nstr($row, 'publish_at')),
+                'problems' => self::problems($row),
             ];
         }
 
         return $out;
+    }
+
+    /** @return list<array{storefront: string, paused: bool, queue_days: float, alerts: list<array{reason: string, message: string, at: string, paused: bool}>}> */
+    private static function publishing(): array
+    {
+        $queues = BlogPublisher::queueDays();
+        $out = [];
+        foreach (DB::table('storefronts')->where('is_active', 1)->orderBy('id')->get(['id', 'name']) as $raw) {
+            $r = Row::cast($raw);
+            $id = Row::int($r, 'id');
+            $out[] = ['storefront' => Row::str($r, 'name'), 'paused' => BlogPublisher::paused($id), 'queue_days' => $queues[$id] ?? 0.0, 'alerts' => BlogSafety::alerts($id)];
+        }
+
+        return $out;
+    }
+
+    private static function cairo(?string $db): ?string
+    {
+        return $db === null ? null : Carbon::parse($db, config()->string('app.timezone'))->setTimezone('Africa/Cairo')->format('Y-m-d H:i');
+    }
+
+    /**
+     * The reasons an article needs attention, in the order an operator acts on them: failed to publish, held by the
+     * quality gate, its text no longer matches the catalogue.
+     *
+     * @return list<string>
+     */
+    private static function problems(\stdClass $row): array
+    {
+        $out = [];
+        $error = Row::nstr($row, 'publish_error');
+        if ($error !== null && $error !== '') {
+            $out[] = $error;
+        }
+        foreach (['gate_report', 'needs_update_reasons'] as $col) {
+            $decoded = json_decode(Row::nstr($row, $col) ?? '[]', true);
+            if ($col === 'gate_report' && is_array($decoded)) {
+                $decoded = array_merge(...array_map(fn ($l): array => Coerce::arr(Coerce::arr($l)['reasons'] ?? []), array_values($decoded)));
+            }
+            foreach (is_array($decoded) ? $decoded : [] as $reason) {
+                if (is_string($reason) && $reason !== '') {
+                    $out[] = $reason;
+                }
+            }
+        }
+
+        return array_values(array_unique($out));
     }
 
     /**

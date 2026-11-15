@@ -2,6 +2,7 @@
 
 namespace App\Compat;
 
+use App\Domain\Catalog\SearchExposure;
 use App\Storefront\StorefrontUrls;
 use App\Support\Val;
 use App\Transform\Row;
@@ -93,6 +94,11 @@ final class CompatProductDetail
 
         $specs = Row::nstr($row, 'specs');
         $extra = $specs === null ? null : json_decode($specs, true);
+        // a lookup's raw id is never a value a page can print (2026-11-14, SEO Phase 1 item 7: "Material id 2" on 904
+        // products): v2's detail names the material; this legacy-shaped copy just leaves the number out
+        if (is_array($extra)) {
+            unset($extra['material_id']);
+        }
 
         $product = [
             'id' => $id,
@@ -199,6 +205,9 @@ final class CompatProductDetail
             'model_name' => $en['model_name'] ?? null,
             'model_name_ar' => $ar['model_name'] ?? null,
             'extra_attributes' => $extra,
+            // NEW KEY (2026-11-14), beside the legacy ones: `hidden` / `restricted` / null (SearchExposure — the switch,
+            // else the rule). Watchizer's product page reads it on the compat ladder as it does v2's `search`.
+            'search_class' => SearchExposure::effective($row),
         ];
 
         return ['product' => $product, 'related' => $this->related($id, $brandId, $subLegacyId)];

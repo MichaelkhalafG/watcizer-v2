@@ -21,6 +21,9 @@ use Tests\Support\T;
  * The storefront has no test runner, so the guard lives in the suite that runs on every change.
  */
 
+/** Filter keys only v2's listing reads (ProductListing), each proved in its own test. */
+const V2_ONLY_FILTER_KEYS = ['family'];
+
 function storefrontFile(string $relative): string
 {
     $path = base_path('../Frontend-next/'.$relative);
@@ -76,7 +79,9 @@ it('reads every filter key the storefront can set', function () {
 
     // The reset object alone lists thirteen; a parse that found fewer would pass for the wrong reason.
     expect(count($keys))->toBeGreaterThanOrEqual(13)
-        ->and(array_values(array_diff($keys, CompatListing::FILTERS)))->toBe([]);
+        // `family` (2026-11-14, SEO Phase 2's landing pages) is read by v2's ProductListing — the listing the storefront
+        // asks since the v2 move (src/lib/listingRequest.js → v2Listing.js) — not by compat's; LandingPagesTest proves it
+        ->and(array_values(array_diff($keys, [...CompatListing::FILTERS, ...V2_ONLY_FILTER_KEYS])))->toBe([]);
 });
 
 it('narrows by category — every category type, not only Watches and Fashion', function () {

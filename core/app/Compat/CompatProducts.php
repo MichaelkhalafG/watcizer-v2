@@ -2,6 +2,7 @@
 
 namespace App\Compat;
 
+use App\Storefront\Warranty;
 use App\Transform\Row;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Database\Query\JoinClause;
@@ -54,6 +55,8 @@ final class CompatProducts
             'p.id', 'p.brand_id', 'p.grade_id', 'p.model_number', 'p.warranty_years', 'p.rating_avg', 'p.rating_count',
             'p.selling_price', 'p.sale_price', 'p.stock_express', 'p.stock_market', 'p.search_keywords', 'p.is_active',
             'p.specs', 'p.family', 'p.created_at', 'p.updated_at', 'sp.slug AS storefront_slug',
+            // what search engines and AI are shown of it (2026-11-14, SearchExposure)
+            'p.search_class', 'p.search_override',
         ];
         foreach (self::WATCH_MAP as $legacy => $clean) {
             $select[] = "ws.$clean AS ws_$legacy";
@@ -68,6 +71,8 @@ final class CompatProducts
             ->whereNull('p.deleted_at')
             ->select($select)
             ->selectRaw('(SELECT ci.path FROM catalog_product_images ci WHERE ci.product_id = p.id AND ci.is_cover = 1 ORDER BY ci.sort, ci.id LIMIT 1) AS cover_path')
+            // the brand's default watch warranty, for Warranty::years() (2026-11-14) — on this row, never a second read
+            ->selectRaw(Warranty::BRAND_SUBSELECT)
             // The cover's recorded renditions (2026-10-22), for the card's `image_srcset`: the same row the
             // path comes from, so the two can never name different files.
             ->selectRaw('(SELECT ci.renditions FROM catalog_product_images ci WHERE ci.product_id = p.id AND ci.is_cover = 1 ORDER BY ci.sort, ci.id LIMIT 1) AS cover_renditions');
@@ -151,10 +156,13 @@ final class CompatProducts
         return null;
     }
 
-    /** Legacy `warranty_years` is varchar: "1", "3" or null; clean is tinyint. */
+    /**
+     * Legacy `warranty_years` is varchar: "1", "3" or null; clean is tinyint. Since 2026-11-14 it is the warranty the
+     * product CARRIES (App\Storefront\Warranty): its own, else a watch's brand default, else a watch's 1 year.
+     */
     public static function warranty(stdClass $row): ?string
     {
-        $v = Row::nint($row, 'warranty_years');
+        $v = Warranty::years(Row::nint($row, 'warranty_years'), Row::nint($row, 'brand_warranty_years'), Row::nstr($row, 'family'));
 
         return $v === null ? null : (string) $v;
     }

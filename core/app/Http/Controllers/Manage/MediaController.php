@@ -75,6 +75,8 @@ final class MediaController
         try {
             $request->validate([
                 'type' => ['required', 'string', Rule::in(MediaStore::types())],
+                // words for a descriptive file name (2026-11-14: the product gallery sends brand, model number, title)
+                'name' => ['nullable', 'string', 'max:200'],
                 'file' => [
                     'required', 'file',
                     'mimes:'.implode(',', MediaStore::allowedMimes()),
@@ -106,7 +108,8 @@ final class MediaController
         }
 
         try {
-            $stored = $store->store($file, $request->string('type')->toString());
+            $name = $request->string('name')->toString();
+            $stored = $store->store($file, $request->string('type')->toString(), $name === '' ? null : $name);
         } catch (UnreadableUpload $e) {
             /*
              * The FILE is the problem, not the server (review 🟡-5). `mimes:` passed — the name

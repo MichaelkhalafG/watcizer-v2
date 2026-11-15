@@ -31,7 +31,7 @@ final class StorefrontIdentityFixture
         'brandfashion' => [
             'mail_wordmark' => 'assets/brand/brandfashion-mail-wordmark@2x.png',
             'mail_wordmark_1x' => 'assets/brand/brandfashion-mail-wordmark.png',
-            'whatsapp_support' => '201283888490',
+            'whatsapp_support' => '201014179820',
             'whatsapp_developer' => '201274550956',
             // The entity name is PARKED (developer, 2026-10-13: the client is asked for the legal
             // name); this is the shape, set by SQL afterwards.

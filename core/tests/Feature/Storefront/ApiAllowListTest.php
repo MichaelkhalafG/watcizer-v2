@@ -58,6 +58,8 @@ function storefrontCalls(): array
                     $path = '/api/'.ltrim((string) preg_replace_callback('/\$\{([^}]*)\}/', fn (array $p): string => match (true) {
                         str_contains($p[1], 'STOREFRONT_CODE') => $code,
                         str_contains($p[1], 'provider') => 'google',
+                        // a review link's token (SEO Phase 5, 2026-11-14): the route takes exactly 40 letters and digits
+                        str_contains($p[1], 'token') => str_repeat('a', 40),
                         default => '1',
                     }, $raw), '/');
                     // Apache's REQUEST_URI carries no query string, and routes match the path alone.

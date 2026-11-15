@@ -47,6 +47,11 @@ return [
     // (`StorefrontUrls::apiHost()`, W7); `COMPAT_SITEMAP_IMAGE_HOST` is retired.
     'sitemap_domain' => 'https://watchizereg.com',
 
+    // A brand / category / sub-type / grade page with FEWER visible products than this is thin (SEO Phase 1 item 5,
+    // 2026-11-14): left out of the sitemaps here, and `noindex, follow` on the shop (its listingWords.js
+    // THIN_LISTING_MIN — the same number). Visible = LIVE: in stock or not. Automatic both ways as products come and go.
+    'thin_listing_min' => 3,
+
     /*
     | Locale of the appended translated attributes (`brand_name`, `product_title`, …) on the
     | cached compat payloads. The legacy host negotiates a locale from Accept-Language on every

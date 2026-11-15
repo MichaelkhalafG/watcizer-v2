@@ -118,6 +118,21 @@ final class MediaPruneCommand extends Command
     ];
 
     /**
+     * Columns holding a JSON LIST of media paths (`["Review/x.webp", …]`) — every entry is a reference.
+     *
+     * The customers' review photos (SEO Phase 5, 2026-11-14): `Review` is a declared folder, so the prune scans it, and
+     * `product_reviews.photos` is a JSON list a column scan reads as one string — without this line every review photo
+     * would have been an "orphan" the day it was uploaded.
+     *
+     * @var array<string, array<string, list<string>>>
+     */
+    public const JSON_LIST_COLUMNS = [
+        'clean' => [
+            'product_reviews' => ['photos'],
+        ],
+    ];
+
+    /**
      * Long-text columns that may EMBED an image reference (a `<img src="…/Uploads_Images/…">`
      * pasted into a description by the content team).
      *

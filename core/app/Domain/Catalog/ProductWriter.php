@@ -8,6 +8,7 @@ use App\Storefront\StorefrontCache;
 use App\Support\Coerce;
 use App\Support\ManageText;
 use App\Transform\Row;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
@@ -45,7 +46,9 @@ final class ProductWriter
     public const COLUMNS = [
         'family', 'brand_id', 'grade_id', 'wa_code', 'sku', 'hs_code',
         'purchase_price', 'selling_price', 'sale_price', 'currency', 'low_stock_threshold',
-        'warranty_years', 'is_active', 'search_keywords', 'specs',
+        'warranty_years', 'warranty_provider', 'is_active', 'search_keywords', 'specs',
+        // the dashboard's "Search engines" switch (2026-11-14, SearchExposure): NULL follow the rule, 0 hide, 1 show
+        'search_override',
     ];
 
     /** Translated columns of `catalog_product_translations` the form edits. */
@@ -227,7 +230,7 @@ final class ProductWriter
     private const AUDITED_COLUMNS = [
         'family', 'brand_id', 'grade_id', 'wa_code', 'sku', 'hs_code',
         'purchase_price', 'selling_price', 'sale_price', 'currency',
-        'low_stock_threshold', 'warranty_years', 'is_active', 'search_keywords', 'specs',
+        'low_stock_threshold', 'warranty_years', 'warranty_provider', 'is_active', 'search_keywords', 'specs', 'search_override',
     ];
 
     /**
@@ -526,9 +529,17 @@ final class ProductWriter
              */
             'low_stock_threshold' => Coerce::int($data['low_stock_threshold'] ?? null, 0),
             'warranty_years' => Coerce::nint($data['warranty_years'] ?? null),
+            // who gives it (2026-11-14): 'agent' | 'store', empty = the brand's
+            'warranty_provider' => in_array($data['warranty_provider'] ?? null, ['agent', 'store'], true) ? $data['warranty_provider'] : null,
             'is_active' => Coerce::bool($data['is_active'] ?? null),
             'search_keywords' => Coerce::nstr($data['search_keywords'] ?? null),
             'specs' => self::specsColumn($family, $data),
+            // "Search engines" (2026-11-14): `auto` follows the rule, `hide` and `show` always win (SearchExposure)
+            'search_override' => match (Coerce::nstr($data['search_override'] ?? null)) {
+                'hide' => 0,
+                'show' => 1,
+                default => null,
+            },
         ];
     }
 
@@ -615,7 +626,22 @@ final class ProductWriter
              */
             $stored = DB::table('catalog_product_translations')
                 ->where('product_id', $productId)->where('locale', $locale)
-                ->first(array_merge(self::TRANSLATED, ['is_machine']));
+                ->first(array_merge(self::TRANSLATED, ['is_machine', 'meta_title_by_hand']));
+
+            /*
+             * A META TITLE WRITTEN BY HAND (2026-11-14, D7): the storefronts build a product's <title> from the
+             * catalogue unless a PERSON wrote this one. It moves only when the meta title moves: on for a signed-in
+             * person's text, off for an empty one or for any other writer (an artisan import, a command).
+             */
+            // The product form says per language whether the text was TYPED or filled by its SEO button
+            // (`meta_title_by_hand`); the button's words are the generator's, not a person's. A caller that does not
+            // say (an import, the API) counts a signed-in person's change as typed.
+            $declared = Coerce::arr($data['meta_title_by_hand'] ?? null);
+            $typed = array_key_exists($locale, $declared) ? Coerce::bool($declared[$locale]) : true;
+            $metaMoved = $stored === null || Coerce::nstr($stored->meta_title ?? null) !== ($values['meta_title'] ?? null);
+            $byHand = $metaMoved
+                ? (($values['meta_title'] ?? null) !== null && Auth::check() && $typed ? 1 : 0)
+                : (Coerce::int($stored->meta_title_by_hand ?? 0) === 1 ? 1 : 0);
 
             $unchanged = $stored !== null;
             if ($stored !== null) {
@@ -634,8 +660,8 @@ final class ProductWriter
                     // Nothing moved: preserve the badge exactly as it was, including when it is
                     // already 0. Writing the stored value back rather than omitting the column
                     // keeps this one statement the single writer of the row.
-                    ? $values + ['is_machine' => Coerce::int($stored->is_machine ?? 0) === 1 ? 1 : 0]
-                    : $values + ['is_machine' => 0],
+                    ? $values + ['is_machine' => Coerce::int($stored->is_machine ?? 0) === 1 ? 1 : 0, 'meta_title_by_hand' => $byHand]
+                    : $values + ['is_machine' => 0, 'meta_title_by_hand' => $byHand],
             );
         }
 
@@ -785,6 +811,8 @@ final class ProductWriter
                 'sort' => Coerce::int($index),
                 'alt_ar' => Coerce::nstr($image['alt_ar'] ?? null),
                 'alt_en' => Coerce::nstr($image['alt_en'] ?? null),
+                // what the photo shows (2026-11-14); the controller holds it to config catalog.image_views
+                'view' => Coerce::nstr($image['view'] ?? null),
                 'renditions' => $renditions === [] ? null : (json_encode($renditions) ?: null),
                 'width' => Coerce::nint($image['width'] ?? null),
                 'height' => Coerce::nint($image['height'] ?? null),
@@ -812,6 +840,7 @@ final class ProductWriter
                 'sort' => $index,
                 'alt_ar' => $image['alt_ar'],
                 'alt_en' => $image['alt_en'],
+                'view' => $image['view'],
                 'width' => $image['width'],
                 'height' => $image['height'],
                 'updated_at' => now(),

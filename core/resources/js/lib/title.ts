@@ -77,3 +77,12 @@ export function titleOrCode(pair: TitlePair | null | undefined, locale: string, 
 
     return missing ? code : text;
 }
+
+/**
+ * The name a FILE is named from (2026-11-14, SEO Phase 1: a product photo's file name) — the English one, because a file
+ * name is ASCII; empty when there is none (the code and the brand still name the file). Not a name shown to a reader,
+ * so it is chosen here, in the seam, and nowhere else.
+ */
+export function fileNameTitle(pair: TitlePair | null | undefined): string {
+    return (pair?.en ?? '').trim();
+}

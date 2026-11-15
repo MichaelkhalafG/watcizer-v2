@@ -3,6 +3,7 @@
 namespace App\Storefront;
 
 use App\Domain\Campaigns\CampaignPrices;
+use App\Domain\Catalog\SearchExposure;
 use App\Support\Val;
 use App\Transform\Row;
 use Illuminate\Database\Query\Builder;
@@ -64,8 +65,19 @@ final class ProductCards
             default => DB::table('storefront_product as sp')->join('catalog_products as p', 'p.id', '=', 'sp.product_id'),
         };
 
+        return self::visibleOn($query, $sf);
+    }
+
+    /**
+     * The ONE rule for "this product's page answers on this storefront" (`sp` = storefront_product, `p` = catalog_products):
+     * placed on the storefront, visible, published (no date or a past one), active, not deleted. v2's product page
+     * (ProductDetail::bySlug, through base()) and a storefront's sitemap (CompatLocaleSitemap, 2026-11-14 — Brand
+     * Fashion's listed ~4,000 product URLs its pages 404 on) both ask it, so the two cannot disagree again.
+     */
+    public static function visibleOn(Builder $query, int $storefrontId): Builder
+    {
         return $query
-            ->where('sp.storefront_id', $sf)
+            ->where('sp.storefront_id', $storefrontId)
             ->where('sp.is_visible', 1)
             ->where(function (Builder $q): void {
                 $q->whereNull('sp.published_at')->orWhere('sp.published_at', '<=', now());
@@ -81,6 +93,8 @@ final class ProductCards
             'sp.product_id', 'sp.slug', 'sp.is_featured', 'sp.sort_order', 'sp.effective_price', 'sp.effective_sale_price',
             'p.family', 'p.brand_id', 'p.grade_id', 'p.stock_express', 'p.stock_market', 'p.in_stock', 'p.rating_avg',
             'p.rating_count', 'p.created_at', 'p.updated_at',
+            // what search engines and AI are shown of it (2026-11-14, SearchExposure)
+            'p.search_class', 'p.search_override',
         ];
     }
 
@@ -147,6 +161,9 @@ final class ProductCards
             'rating' => ['avg' => Row::nfloat($row, 'rating_avg'), 'count' => Row::int($row, 'rating_count')],
             'is_featured' => Row::bool($row, 'is_featured'),
             'sort_order' => Row::int($row, 'sort_order'),
+            // `hidden` / `restricted` / null (2026-11-14, SearchExposure): the switch, else the rule. Pages, lists and
+            // structured data read it; nothing a shopper sees changes
+            'search' => SearchExposure::effective($row),
             'created_at' => self::ts(Row::nstr($row, 'created_at')),
             'updated_at' => self::ts(Row::nstr($row, 'updated_at')),
         ];

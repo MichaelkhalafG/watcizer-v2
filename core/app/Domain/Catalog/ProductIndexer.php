@@ -2,6 +2,7 @@
 
 namespace App\Domain\Catalog;
 
+use App\Domain\Seo\IndexNow;
 use App\Support\ArabicSearch;
 use Illuminate\Support\Facades\DB;
 
@@ -83,6 +84,11 @@ final class ProductIndexer
                 ['body' => $body],
             );
         }
+
+        // what search engines and AI are shown of it (2026-11-14): the title, the brand or the price may have changed
+        app(SearchExposure::class)->refresh($productId);
+        // and the IndexNow engines are told its page changed (queued; sent after go-live)
+        app(IndexNow::class)->queueProduct($productId);
     }
 
     /**

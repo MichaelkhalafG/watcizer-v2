@@ -3,11 +3,14 @@
 namespace App\Http\Controllers\Manage;
 
 use App\Domain\Activity\ActivityLog;
+use App\Domain\Content\BlogPublisher;
 use App\Domain\Notifications\StorefrontMailer;
 use App\Domain\Promotions\PromotionRules;
+use App\Domain\Seo\SeoReport;
 use App\Domain\Shipping\FreeShipping;
 use App\Models\Storefront\Storefront;
 use App\Models\Storefront\StorefrontMailbox;
+use App\Storefront\AuthorizedDealer;
 use App\Storefront\StorefrontCache;
 use App\Storefront\StorefrontHasNoHost;
 use App\Storefront\StorefrontSettingsForm;
@@ -16,6 +19,8 @@ use App\Support\Coerce;
 use App\Support\ManageText;
 use App\Support\Table\TableQuery;
 use App\Transform\Row;
+use Illuminate\Database\Query\Builder;
+use Illuminate\Database\Query\JoinClause;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -127,6 +132,15 @@ final class StorefrontController
                 'money_rewards' => PromotionRules::moneyRewardsEnabled($storefront->id),
                 // free shipping over this amount (EGP); null = off. Absent in settings → the default 10,000 (FreeShipping)
                 'free_shipping_over' => FreeShipping::threshold((int) $storefront->id),
+                // the shop's followers, for its About page (2026-11-14); null = not shown
+                'followers' => self::followersOf($storefront->settings),
+                // the articles' auto-publishing paused (SEO Phase 3, 2026-11-14; settings.blog.paused, BlogPublisher)
+                'blog_paused' => BlogPublisher::paused((int) $storefront->id),
+                // where the weekly SEO report and the day-6 article reminder go (Michael, 2026-11-14)
+                'report_email' => SeoReport::reportEmail((int) $storefront->id) ?? '',
+                // AUTHORIZED DEALER per brand (Michael, 2026-11-14): the brands switched on, and the brands to choose from
+                'authorized_brands' => AuthorizedDealer::brands((int) $storefront->id),
+                'brand_options' => self::liveBrands((int) $storefront->id),
                 /*
                  * ── The three sections that were SQL-only until 2026-10-13 (§4.1; backlog
                  *    SF-SETTINGS-SCREEN reverses SF-URL-SETTINGS) ──────────────────────────────
@@ -167,6 +181,11 @@ final class StorefrontController
             // `sometimes`: a caller that does not send it (the tests that drive the old form) leaves it as it is.
             // Empty or 0 switches free shipping off.
             'free_shipping_over' => ['sometimes', 'nullable', 'numeric', 'min:0', 'max:10000000'],
+            'followers' => ['sometimes', 'nullable', 'integer', 'min:0', 'max:1000000000'],
+            'blog_paused' => ['sometimes', 'boolean'],
+            'report_email' => ['sometimes', 'nullable', 'email:rfc', 'max:191'],
+            'authorized_brands' => ['sometimes', 'array'],
+            'authorized_brands.*' => ['string', 'max:191', Rule::exists('catalog_brands', 'slug')],
         ] + StorefrontSettingsForm::rules());
 
         $locales = self::stringList($request->input('locales'));
@@ -220,9 +239,17 @@ final class StorefrontController
              * whole object would silently drop anything another feature has put there.
              */
             'settings' => StorefrontSettingsForm::merge(
-                self::withFreeShipping(
-                    self::withMoneyRewards($storefront->settings, $request->boolean('money_rewards')),
-                    $request->has('free_shipping_over') ? $request->input('free_shipping_over') : false,
+                self::withBlogPaused(
+                    self::withFollowers(
+                        self::withFreeShipping(
+                            self::withMoneyRewards($storefront->settings, $request->boolean('money_rewards')),
+                            $request->has('free_shipping_over') ? $request->input('free_shipping_over') : false,
+                        ),
+                        $request->has('followers') ? $request->input('followers') : false,
+                    ),
+                    $request->has('blog_paused') ? $request->boolean('blog_paused') : null,
+                    $request->has('report_email') ? trim($request->string('report_email')->toString()) : null,
+                    $request->has('authorized_brands') ? array_values(array_map(fn ($s): string => Coerce::str($s), Coerce::arr($request->input('authorized_brands')))) : null,
                 ),
                 $urls,
                 $identity,
@@ -444,6 +471,10 @@ final class StorefrontController
             'is_active' => Row::bool($row, 'is_active'),
             // free shipping over this amount, or "off" — what customers are charged, so a change is in the log
             'free_shipping_over' => $freeOver === null ? 'off' : number_format($freeOver, 2, '.', ''),
+            'followers' => self::followersOf(Storefront::query()->find($id)?->settings),
+            'blog_paused' => BlogPublisher::paused($id),
+            'report_email' => SeoReport::reportEmail($id) ?? '',
+            'authorized_brands' => implode(', ', AuthorizedDealer::brands($id)),
             'money_rewards' => PromotionRules::moneyRewardsEnabled($id),
             // §4.1 (2026-10-13): the three sections the screen gained. Flat `section.key` names, so
             // "who changed the WhatsApp number" has an answer; the mailbox password is `password`,
@@ -483,6 +514,117 @@ final class StorefrontController
         }
 
         return $out;
+    }
+
+    /**
+     * The shop's followers (`settings.public.followers`, 2026-11-14): a whole number, or null when not set. `public` is
+     * the section v2 meta sends to the storefront as its `settings` (App\Storefront\Meta).
+     *
+     * @param  array<string, mixed>|null  $settings
+     */
+    private static function followersOf(?array $settings): ?int
+    {
+        $value = Coerce::arr(Coerce::arr($settings ?? [])['public'] ?? null)['followers'] ?? null;
+
+        return is_int($value) && $value > 0 ? $value : null;
+    }
+
+    /**
+     * The brands with a visible, active product on this shop, by name — the authorized-dealer switches' choices.
+     *
+     * @return list<array{slug: string, name: string}>
+     */
+    private static function liveBrands(int $storefrontId): array
+    {
+        $out = [];
+        foreach (DB::table('catalog_brands as b')->join('catalog_brand_translations as t', fn (JoinClause $j) => $j->on('t.brand_id', '=', 'b.id')->where('t.locale', '=', 'en'))
+            ->whereExists(fn (Builder $q) => $q->select(DB::raw(1))->from('catalog_products as p')->join('storefront_product as sp', 'sp.product_id', '=', 'p.id')
+                ->whereColumn('p.brand_id', 'b.id')->where('sp.storefront_id', $storefrontId)->where('sp.is_visible', 1)->where('p.is_active', 1)->whereNull('p.deleted_at'))
+            ->orderBy('t.name')->get(['b.slug', 't.name']) as $raw) {
+            $r = Row::cast($raw);
+            $out[] = ['slug' => Row::str($r, 'slug'), 'name' => Row::str($r, 'name')];
+        }
+
+        return $out;
+    }
+
+    /**
+     * `settings` with `blog.paused` set or removed (SEO Phase 3). `null` = the field was not sent: nothing changes.
+     *
+     * @param  array<string, mixed>  $settings
+     * @return array<string, mixed>
+     */
+    /**
+     * @param  array<string, mixed>  $settings
+     * @param  list<string>|null  $authorized
+     * @return array<string, mixed>
+     */
+    private static function withBlogPaused(array $settings, ?bool $paused, ?string $reportEmail = null, ?array $authorized = null): array
+    {
+        if ($authorized !== null) {
+            $public = Coerce::arr($settings['public'] ?? null);
+            $list = array_values(array_unique(array_filter($authorized, fn (string $s): bool => $s !== '')));
+            if ($list === []) {
+                unset($public['authorized_brands']);
+            } else {
+                sort($list);
+                $public['authorized_brands'] = $list;
+            }
+            $settings['public'] = $public;
+        }
+        if ($reportEmail !== null) {
+            $seo = Coerce::arr($settings['seo'] ?? null);
+            if ($reportEmail === '') {
+                unset($seo['report_email']);
+            } else {
+                $seo['report_email'] = $reportEmail;
+            }
+            if ($seo === []) {
+                unset($settings['seo']);
+            } else {
+                $settings['seo'] = $seo;
+            }
+        }
+        if ($paused === null) {
+            return $settings;
+        }
+        $bag = Coerce::arr($settings['blog'] ?? null);
+        if ($paused) {
+            $bag['paused'] = true;
+        } else {
+            unset($bag['paused']);
+        }
+        if ($bag === []) {
+            unset($settings['blog']);
+        } else {
+            $settings['blog'] = $bag;
+        }
+
+        return $settings;
+    }
+
+    /**
+     * `settings` with `public.followers` set (a positive whole number) or removed (empty or 0), the rest left alone.
+     * `false` = the field was not sent: nothing changes.
+     *
+     * @param  array<string, mixed>  $settings
+     * @return array<string, mixed>
+     */
+    private static function withFollowers(array $settings, mixed $value): array
+    {
+        if ($value === false) {
+            return $settings;
+        }
+        $bag = Coerce::arr($settings['public'] ?? null);
+        $n = is_numeric($value) ? (int) $value : 0;
+        if ($n > 0) {
+            $bag['followers'] = $n;
+        } else {
+            unset($bag['followers']);
+        }
+        $settings['public'] = $bag;
+
+        return $settings;
     }
 
     /**

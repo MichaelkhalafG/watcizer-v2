@@ -60,7 +60,7 @@ it('shows the three sections with the stored values, the derived URLs, and NEVER
 
     $page->assertInertia(fn (AssertableInertia $p) => $p
         ->component('Manage/Storefronts/Edit')
-        ->where('storefront.identity.whatsapp_support', '201283888490')
+        ->where('storefront.identity.whatsapp_support', '201014179820')
         ->where('storefront.identity.mail_wordmark_exists', true)
         ->where('storefront.derived_urls.api_host', Shops::api('brandfashion'))
         ->where('storefront.urls.api_host', '')
@@ -78,7 +78,7 @@ it('saves all three sections, and the shop sees them AT ONCE — the cache is cl
     $fashion = Shops::id('brandfashion');
     // Prime every cache a reader uses, so a stale answer would be visible.
     expect(StorefrontUrls::apiHost($fashion))->toBe(Shops::api('brandfashion'))
-        ->and(StorefrontIdentity::for($fashion)->whatsappSupport)->toBe('201283888490')
+        ->and(StorefrontIdentity::for($fashion)->whatsappSupport)->toBe('201014179820')
         ->and(StorefrontMailer::mailbox($fashion)->fromAddress())->toBe('no-reply@brandfashion.test');
 
     actingAs(Staff::admin())->put("/manage/storefronts/{$fashion}", settingsBody($fashion, [
@@ -139,7 +139,7 @@ it('refuses UP FRONT what the readers would refuse at send time: no host, bad UR
 
     // Nothing was written by a refused save.
     expect(T::str(DB::table('storefronts')->where('id', $fashion)->value('settings')))->toBe($before)
-        ->and(StorefrontIdentity::for($fashion)->whatsappSupport)->toBe('201283888490');
+        ->and(StorefrontIdentity::for($fashion)->whatsappSupport)->toBe('201014179820');
 });
 
 it('still accepts the pre-§4.1 form — a body without the three sections changes none of them', function () {
@@ -148,7 +148,7 @@ it('still accepts the pre-§4.1 form — a body without the three sections chang
         'name' => 'Brand Fashion', 'domain' => Shops::domain('brandfashion'), 'locales' => ['ar', 'en'], 'default_locale' => 'en',
         'currency' => 'EGP', 'is_active' => true, 'money_rewards' => false,
     ])->assertSessionHasNoErrors();
-    expect(StorefrontIdentity::for($fashion)->whatsappSupport)->toBe('201283888490')
+    expect(StorefrontIdentity::for($fashion)->whatsappSupport)->toBe('201014179820')
         ->and(StorefrontMailer::mailbox($fashion)->fromAddress())->toBe('no-reply@brandfashion.test');
 });
 
@@ -179,4 +179,28 @@ it('creates the mailbox row for a storefront that has none, and reports what a r
         ->and($row->orderRecipients())->toBe(['team@brandfashion.test', 'owner@brandfashion.test']);
     actingAs(Staff::admin())->get("/manage/storefronts/{$fashion}/edit")
         ->assertInertia(fn (AssertableInertia $p) => $p->where('storefront.mailbox.exists', true)->where('storefront.mailbox.missing', ['host', 'password']));
+});
+
+it('saves the shop\'s followers for its About page, sends them in v2 meta, logs the change, and clears them when emptied (2026-11-14)', function () {
+    $fashion = Shops::id('brandfashion');
+    // a copy of production's data holds a mailbox password encrypted under production's key, which every save reads:
+    // store a suite-only one under this key first (inside the test's transaction)
+    DB::table('storefront_mailboxes')->where('storefront_id', $fashion)->update(['credentials' => Illuminate\Support\Facades\Crypt::encryptString(T::str(json_encode(['password' => 'suite-only'])))]);
+    // and a copy that already holds a figure (the deploy's followers step) starts without one, so the save is a change
+    $settings = T::arr(json_decode(T::str(DB::table('storefronts')->where('id', $fashion)->value('settings') ?? '{}'), true) ?: []);
+    $public = T::arr($settings['public'] ?? []);
+    unset($public['followers']);
+    $settings['public'] = $public;
+    DB::table('storefronts')->where('id', $fashion)->update(['settings' => json_encode($settings)]);
+    actingAs(Staff::admin())->put("/manage/storefronts/{$fashion}", settingsBody($fashion, ['followers' => '800000']))->assertSessionHasNoErrors();
+
+    expect(T::arr(T::arr(json_decode(T::str(DB::table('storefronts')->where('id', $fashion)->value('settings')), true))['public'] ?? null)['followers'] ?? null)->toBe(800000);
+    actingAs(Staff::admin())->get("/manage/storefronts/{$fashion}/edit")->assertInertia(fn (AssertableInertia $p) => $p->where('storefront.followers', 800000));
+    app(App\Storefront\StorefrontCache::class)->flush($fashion);
+    expect(Pest\Laravel\getJson('/api/v2/brandfashion/meta')->assertOk()->json('storefront.settings.followers'))->toBe(800000);
+    expect(DB::table('core_activity_log')->where('subject_type', 'storefronts')->where('subject_id', $fashion)->orderByDesc('id')->value('changes'))->toContain('followers');
+
+    actingAs(Staff::admin())->put("/manage/storefronts/{$fashion}", settingsBody($fashion, ['followers' => '']))->assertSessionHasNoErrors();
+    expect(T::arr(T::arr(json_decode(T::str(DB::table('storefronts')->where('id', $fashion)->value('settings')), true))['public'] ?? null))->not->toHaveKey('followers');
+    actingAs(Staff::admin())->put("/manage/storefronts/{$fashion}", settingsBody($fashion, ['followers' => '-5']))->assertSessionHasErrors('followers');
 });

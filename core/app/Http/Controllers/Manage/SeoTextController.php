@@ -8,6 +8,7 @@ use App\Console\Commands\SeoSeedTextsCommand;
 use App\Domain\Content\SeoFacts;
 use App\Domain\Content\SeoTexts;
 use App\Domain\Content\SeoTextStructure;
+use App\Domain\Seo\LandingPages;
 use App\Models\Storefront\Storefront;
 use App\Models\Storefront\StorefrontCategory;
 use App\Storefront\CategoryTree;
@@ -55,6 +56,11 @@ final class SeoTextController
         }
         foreach (self::categories($sf) as $category) {
             $subjects[] = $category + ['type' => 'category', 'texts' => self::textsOf($texts, 'category', $category['key'])];
+        }
+        // LANDING PAGES (SEO Phase 2, 2026-11-14): brand × gender / family pages the storefront has now (6+ LIVE products);
+        // each shows the quality gate's verdict per language — indexed only once both passed
+        foreach (self::landings($sf) as $landing) {
+            $subjects[] = $landing + ['type' => 'landing', 'texts' => self::textsOf($texts, 'landing', $landing['key'])];
         }
 
         return Inertia::render('Manage/PageTexts/Index', [
@@ -201,7 +207,7 @@ final class SeoTextController
         if (! in_array($type, SeoTexts::TYPES, true)) {
             return null;
         }
-        foreach ($type === 'brand' ? self::brands($sf) : self::categories($sf) as $candidate) {
+        foreach (self::candidates($sf, $type) as $candidate) {
             if ($candidate['key'] === $key) {
                 return ['key' => $candidate['key'], 'name' => $candidate['name'], 'names' => $candidate['names']];
             }
@@ -234,6 +240,9 @@ final class SeoTextController
             '*.structure.faq.body' => ['nullable', 'string', 'max:12000'],
             // Markdown since 2026-11-05 (Part 6.1): sections, lists and a questions block make a text several times
             // the length of the two paragraphs this field held; the column is TEXT.
+            // the words above the products (2026-11-14, SEO Phase 2): 60–90 words by the quality gate's rule
+            'en.intro' => ['nullable', 'string', 'max:2000'],
+            'ar.intro' => ['nullable', 'string', 'max:2000'],
             'en.description' => ['nullable', 'string', 'max:20000'],
             'en.meta_description' => ['nullable', 'string', 'max:320'],
             'ar.description' => ['nullable', 'string', 'max:20000'],
@@ -244,7 +253,7 @@ final class SeoTextController
 
         // Only a page the storefront actually has: a key typed by hand would be a text no page ever shows.
         $subject = null;
-        foreach ($type === 'brand' ? self::brands($sf) : self::categories($sf) as $candidate) {
+        foreach (self::candidates($sf, $type) as $candidate) {
             if ($candidate['key'] === $key) {
                 $subject = $candidate;
             }
@@ -258,7 +267,7 @@ final class SeoTextController
         $byLocale = [];
         foreach (SeoTexts::LOCALES as $locale) {
             $fields = Coerce::arr($data[$locale] ?? []);
-            if (is_array($fields['structure'] ?? null)) {
+            if (is_array($fields['structure'] ?? null) && $type !== 'landing') {
                 $code = (string) $storefront->code;
                 $generated ??= SeoFacts::section($code, $type, $key, SeoSeedTextsCommand::SHOP_NAMES[$code] ?? ['en' => (string) $storefront->name, 'ar' => (string) $storefront->name], $subject['names']);
                 $stored ??= self::textsOf(SeoTexts::all($sf), $type, $key);
@@ -267,12 +276,48 @@ final class SeoTextController
             $byLocale[$locale] = [
                 'description' => Coerce::nstr($fields['description'] ?? null),
                 'meta_description' => Coerce::nstr($fields['meta_description'] ?? null),
-            ];
+            ] + (array_key_exists('intro', $fields) ? ['intro' => Coerce::nstr($fields['intro'])] : []);
         }
         SeoTexts::save($sf, $type, $key, $byLocale, Coerce::nint(Auth::id()), $subject['name'].' ('.$key.')');
         $this->cache->flush($sf);
 
         return back()->with('status', ManageText::t('page_texts.saved', 'تم حفظ نص الصفحة.'));
+    }
+
+    /**
+     * The pages of one type the storefront has.
+     *
+     * @return list<array{key: string, name: string, names: array{en: string, ar: string}}>
+     */
+    private static function candidates(int $sf, string $type): array
+    {
+        return match ($type) {
+            'brand' => self::brands($sf),
+            'landing' => self::landings($sf),
+            default => self::categories($sf),
+        };
+    }
+
+    /**
+     * The storefront's landing pages (App\Domain\Seo\LandingPages), named "<brand> — <segments>" in both languages.
+     *
+     * @return list<array{key: string, name: string, products: int, names: array{en: string, ar: string}}>
+     */
+    public static function landings(int $storefrontId): array
+    {
+        $brands = [];
+        foreach (self::brands($storefrontId) as $b) {
+            $brands[$b['key']] = $b['names'];
+        }
+        $out = [];
+        foreach (app(LandingPages::class)->all($storefrontId) as $page) {
+            $names = $brands[$page['brand']] ?? ['en' => $page['brand'], 'ar' => $page['brand']];
+            $tail = implode(' / ', array_filter([$page['family'], $page['gender']]));
+            $out[] = ['key' => $page['key'], 'name' => $names['en'].' — '.$tail, 'products' => $page['products'],
+                'names' => ['en' => $names['en'].' — '.$tail, 'ar' => $names['ar'].' — '.$tail]];
+        }
+
+        return $out;
     }
 
     /**
@@ -360,15 +405,21 @@ final class SeoTextController
     }
 
     /**
-     * @param  array<string, array<string, array<string, array{description: string|null, meta_description: string|null}>>>  $texts
-     * @return array<string, array{description: string, meta_description: string}>
+     * @param  array<string, array<string, array<string, array{intro: string|null, description: string|null, meta_description: string|null, gate: string|null, gate_reasons: list<string>}>>>  $texts
+     * @return array<string, array{intro: string, description: string, meta_description: string, gate: string|null, gate_reasons: list<string>}>
      */
     private static function textsOf(array $texts, string $type, string $key): array
     {
         $out = [];
         foreach (SeoTexts::LOCALES as $locale) {
             $row = $texts[$type][$key][$locale] ?? null;
-            $out[$locale] = ['description' => $row['description'] ?? '', 'meta_description' => $row['meta_description'] ?? ''];
+            $out[$locale] = [
+                'intro' => $row['intro'] ?? '',
+                'description' => $row['description'] ?? '',
+                'meta_description' => $row['meta_description'] ?? '',
+                'gate' => $row['gate'] ?? null,
+                'gate_reasons' => $row['gate_reasons'] ?? [],
+            ];
         }
 
         return $out;

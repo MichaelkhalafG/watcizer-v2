@@ -47,6 +47,8 @@ function everyExportUrl(): array
         'promotions' => '/manage/promotions?export=csv',
         'storefronts' => '/manage/storefronts?export=csv',
         'banners' => '/manage/storefronts/1/banners?export=csv',
+        // the 404 monitor (SEO Phase 1, 2026-11-14)
+        'pages not found' => '/manage/storefronts/1/not-found?export=csv',
         // Prepared-list screens, through `TableExport::wanted()`.
         'categories' => '/manage/storefronts/1/categories?export=csv',
         'lookups' => '/manage/lookups/brands?export=csv',

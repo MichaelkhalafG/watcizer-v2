@@ -277,5 +277,36 @@ it('declares one folder per type, and they are the legacy folders', function () 
      * `MediaPruneCommand::REFERENCE_COLUMNS` (MediaReferenceCoverageTest would not let the table exist without it), so
      * the pictures in use are safe from the moment the scan can see the folder.
      */
-    expect($folders)->toBe(['Product', 'Product_image', 'Brand', 'Payment', 'Category_type', 'Banner_home', 'User']);
+    /*
+     * `Review` JOINED 2026-11-14 (SEO Phase 5, verified reviews): the customers' review photos, a new folder of its own.
+     * `product_reviews.photos` is a JSON list of paths: MediaPruneCommand::JSON_LIST_COLUMNS reads every entry as a
+     * reference (ReviewsTest proves an uploaded photo is one), so the scan never takes a live review photo for an orphan.
+     */
+    expect($folders)->toBe(['Product', 'Product_image', 'Review', 'Brand', 'Payment', 'Category_type', 'Banner_home', 'User']);
+});
+
+it('names a new upload after what it shows when the gallery sends words, and keeps the old scheme otherwise (2026-11-14)', function () {
+    // SEO Phase 1 item 9: brand, model number and title in the file's address; NEW uploads only, nothing is renamed
+    $named = app(MediaStore::class)->store(fakeUpload(), 'product', 'Hugo Boss 1513477 Grand Prix Men’s Chronograph Watch');
+    $arabic = app(MediaStore::class)->store(fakeUpload(), 'product', 'ساعة هوجو بوس');
+    try {
+        expect($named['file'])->toMatch('/^hugo-boss-1513477-grand-prix-mens-chronograph-watch-\d{4}-\d{2}-\d{2}-[0-9a-f]+\.webp$/')
+            ->and(file_exists(MediaStore::directory('Product').'/'.$named['file']))->toBeTrue()
+            // Arabic words slugify to nothing: the legacy name, as before
+            ->and($arabic['file'])->toMatch('/^\d{10}_\d{4}-\d{2}-\d{2}_[0-9a-f]+\.webp$/');
+    } finally {
+        forgetStored($named);
+        forgetStored($arabic);
+    }
+
+    $response = actingAs(Staff::dataEntry())
+        ->postJson('/manage/media', ['type' => 'product_gallery', 'file' => fakeUpload(600, 600), 'name' => 'Guess GW0571G1 Headline']);
+    $response->assertCreated();
+    /** @var array<string, mixed> $stored */
+    $stored = $response->json();
+    try {
+        expect(T::str($stored['file'] ?? ''))->toStartWith('guess-gw0571g1-headline-');
+    } finally {
+        forgetStored($stored);
+    }
 });

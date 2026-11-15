@@ -2,6 +2,8 @@
 
 namespace App\Storefront;
 
+use App\Domain\Catalog\SearchExposure;
+use App\Domain\Reviews\Reviews;
 use App\Support\Val;
 use App\Transform\Row;
 use Illuminate\Support\Facades\DB;
@@ -55,7 +57,8 @@ final class ProductDetail
          * The storefront gains by it: the model line on a product page used to appear for 295
          * products and now appears for 6,858.
          */
-        $row = $this->cards->base()->select(array_merge(ProductCards::columns(), ['p.sku', 'p.warranty_years', 'p.specs']))->where('sp.slug', $slug)->first();
+        $row = $this->cards->base()->select(array_merge(ProductCards::columns(), ['p.sku', 'p.warranty_years', 'p.warranty_provider', 'p.specs']))
+            ->selectRaw(Warranty::BRAND_SUBSELECT)->where('sp.slug', $slug)->first();
         if ($row === null) {
             return null;
         }
@@ -79,7 +82,7 @@ final class ProductDetail
     private function build(stdClass $row): array
     {
         $productId = Row::int($row, 'product_id');
-        $translations = $this->cards->translations([$productId], ['title', 'short_description', 'long_description', 'model_name', 'country', 'stone', 'meta_title', 'meta_description']);
+        $translations = $this->cards->translations([$productId], ['title', 'short_description', 'long_description', 'model_name', 'country', 'stone', 'meta_title', 'meta_title_by_hand', 'meta_description']);
         $tr = $translations[$productId] ?? [];
         $images2 = $this->cards->images([$productId]);
         $primary = $this->cards->primaryPlacements([$productId]);
@@ -92,9 +95,13 @@ final class ProductDetail
         // listing index and the header menu carry none of it (the L8 memory path).
         $images = [];
         $imageIdsByVariant = [];
-        foreach (DB::table('catalog_product_images')->select(['id', 'variant_id', 'path', 'is_cover', 'sort', 'width', 'height', 'alt_en', 'alt_ar', 'renditions'])->where('product_id', $productId)->orderByDesc('is_cover')->orderBy('sort')->orderBy('id')->get() as $img) {
+        foreach (DB::table('catalog_product_images')->select(['id', 'variant_id', 'path', 'is_cover', 'sort', 'width', 'height', 'alt_en', 'alt_ar', 'view', 'renditions'])->where('product_id', $productId)->orderByDesc('is_cover')->orderBy('sort')->orderBy('id')->get() as $img) {
             $variantId = Row::nint($img, 'variant_id');
-            $images[] = ['id' => Row::int($img, 'id'), 'is_cover' => Row::bool($img, 'is_cover'), 'variant_id' => $variantId] + ProductCards::image($img);
+            // + the team's alt text PER LANGUAGE and what the photo shows (2026-11-14, SEO Phase 1 item 9): the storefronts
+            // write each photo's alt from them; the card's single `alt` (Arabic, else English) is kept as it was
+            $images[] = ['id' => Row::int($img, 'id'), 'is_cover' => Row::bool($img, 'is_cover'), 'variant_id' => $variantId]
+                + ProductCards::image($img)
+                + ['alt_text' => array_filter(['en' => Row::nstr($img, 'alt_en'), 'ar' => Row::nstr($img, 'alt_ar')], fn (?string $v): bool => $v !== null && $v !== ''), 'view' => Row::nstr($img, 'view')];
             if ($variantId !== null) {
                 $imageIdsByVariant[$variantId][] = Row::int($img, 'id');
             }
@@ -158,9 +165,13 @@ final class ProductDetail
             // and renaming it would be a breaking change to a contract this merge has no business
             // touching. Only where the value comes FROM has changed.
             'model_number' => Row::nstr($row, 'sku'),
-            'warranty_years' => Row::nint($row, 'warranty_years'),
+            // the warranty the product CARRIES (2026-11-14): its own, else a watch's brand default, else a watch's 1 year
+            'warranty_years' => $warrantyYears = Warranty::years(Row::nint($row, 'warranty_years'), Row::nint($row, 'brand_warranty_years'), Row::nstr($row, 'family')),
+            // who gives it (Michael, 2026-11-14): 'agent' | 'store' | null — a product the hide-from-search rule matches is 'store'
+            'warranty_provider' => Warranty::provider(Row::nstr($row, 'warranty_provider'), Row::nbool($row, 'brand_warranty_by_store'),
+                Row::nstr($row, 'family'), SearchExposure::effective($row), $warrantyYears),
             'images' => $images,
-            'specs' => array_merge($ws === null ? [] : $this->watchSpecs($ws), is_array($family) ? self::familySpecs($family) : []),
+            'specs' => array_merge($ws === null ? [] : $this->watchSpecs($ws), is_array($family) ? $this->familySpecs($family) : []),
             'attributes' => [
                 'features' => array_values(array_filter(array_map(fn (int $i) => $this->lookups->ref('features', $i), $pivots['features']))),
                 'genders' => array_values(array_filter(array_map(fn (int $i) => $this->lookups->ref('genders', $i), $pivots['genders']))),
@@ -173,7 +184,17 @@ final class ProductDetail
             // asks the shopper to choose between options that leave out what they are looking at.
             // Null when no active row carries that colour (or the product has no colour rows).
             'base_variant_id' => $baseVariantId,
-            'meta' => ['title' => $tr['meta_title'] ?? [], 'description' => $tr['meta_description'] ?? []],
+            // AUTHORIZED DEALER (Michael, 2026-11-14): the brand is on this shop's list AND the hide-from-search rule does not match
+            'authorized_dealer' => AuthorizedDealer::forProduct($this->ctx->id(), DB::table('catalog_brands')->where('id', Row::int($row, 'brand_id'))->value('slug'), SearchExposure::effective($row)),
+            // VERIFIED REVIEWS (SEO Phase 5, 2026-11-14): the approved ones only — their count and average, the latest ten
+            'reviews' => Reviews::approvedFor($this->ctx->id(), $productId, 10),
+            'meta' => [
+                'title' => $tr['meta_title'] ?? [],
+                'description' => $tr['meta_description'] ?? [],
+                // per language, true when a PERSON wrote that meta title (2026-11-14, D7): the storefronts keep it
+                // instead of the title they build from the catalogue
+                'title_by_hand' => array_map(fn (string $v): bool => $v === '1', $tr['meta_title_by_hand'] ?? []),
+            ],
         ]);
 
         $related = $this->related($productId, $primary, Row::int($row, 'brand_id'));
@@ -386,6 +407,7 @@ final class ProductDetail
         'depth_cm' => ['en' => 'Depth', 'ar' => 'العمق', 'unit' => 'cm'],
         'strap_length_cm' => ['en' => 'Strap Length', 'ar' => 'طول الحزام', 'unit' => 'cm'],
         'bag_strap_type' => ['en' => 'Strap Type', 'ar' => 'نوع الحزام'],
+        'bag_type' => ['en' => 'Bag Type', 'ar' => 'نوع الحقيبة'],   // 2026-11-14: printed "Bag type" in both languages
         'bag_compartments' => ['en' => 'Compartments', 'ar' => 'الأقسام'],
         'laptop_compartment' => ['en' => 'Laptop Compartment', 'ar' => 'جيب لابتوب', 'bool' => true],
         'waterproof' => ['en' => 'Waterproof', 'ar' => 'مقاوم للماء', 'bool' => true],
@@ -403,11 +425,25 @@ final class ProductDetail
      * @param  array<mixed>  $family
      * @return list<array<string, mixed>>
      */
-    private static function familySpecs(array $family): array
+    private function familySpecs(array $family): array
     {
         $rows = [];
         foreach ($family as $key => $value) {
             if (! is_string($key) || $value === null || $value === '' || is_array($value)) {
+                continue;
+            }
+            /*
+             * A family spec that is a LOOKUP's id (2026-11-14, SEO Phase 1 item 7): `material_id` — 904 active products —
+             * printed "Material id 2". It is the material, named in both languages like the watch specs' materials;
+             * an id that names no material is left out rather than printed as a number.
+             */
+            if ($key === 'material_id') {
+                $ref = is_numeric($value) ? $this->lookups->ref('materials', (int) $value) : null;
+                if ($ref !== null) {
+                    // served under its stored key, as every family spec is (FamilySpecLabelsTest), named for a reader
+                    $rows[] = ['key' => 'material_id', 'label' => ['ar' => 'الخامة', 'en' => 'Material'], 'value' => $ref, 'unit' => null];
+                }
+
                 continue;
             }
             $declared = self::FAMILY_SPEC_LABELS[$key] ?? null;

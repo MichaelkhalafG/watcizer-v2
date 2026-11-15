@@ -39,6 +39,12 @@ final class StorefrontCache
         // 2026-10-30 (M1y): a brand or category page's own text, both languages (ProductListing::context). Written only by
         // the dashboard's Page texts screen and seo:seed-texts, and both flush the storefront after the write.
         'page_text' => ['PageTextChanged'],
+        // 2026-11-14 (SEO Phase 2): the landing pages a storefront has — brand × gender / family with 6+ LIVE indexable
+        // products, and whether each one's copy passed the quality gate (App\Domain\Seo\LandingPages); warmed by catalog:warm.
+        'landing_pages' => ['ProductUpdated', 'StorefrontProductChanged', 'PlacementChanged', 'LookupChanged', 'PageTextChanged'],
+        // 2026-11-14 (SEO Phase 3): an article's live data blocks resolved (App\Domain\Content\DataBlocks) — cards, LIVE
+        // counts, price ranges; guarded, warmed by catalog:warm for the newest articles.
+        'blog_blocks' => ['ProductUpdated', 'StockChanged', 'StorefrontProductChanged', 'PlacementChanged', 'LookupChanged', 'BlogChanged'],
         // 2026-11-05 (Part 4): the mega menu (StorefrontMenu) — per top-level category its sub-categories with a picture,
         // its most-stocked brands and one featured product; the same for each gender. Everything a listing index is
         // staled by, plus the tree's own events.
@@ -61,6 +67,10 @@ final class StorefrontCache
         'compat_nav' => ['ProductUpdated', 'StockChanged', 'StorefrontProductChanged', 'PlacementChanged', 'LookupChanged'],
         // The listing index (C-1 stage 3), built leanly since L8, plus the brand names in compat_meta.
         'compat_listing' => ['ProductUpdated', 'StockChanged', 'StorefrontProductChanged', 'PlacementChanged', 'LookupChanged'],
+        // 2026-11-14 (SEO Phase 1): a shop's sitemap per language (CompatLocaleSitemap), guarded and warmed by catalog:warm.
+        // Products, slugs, placements, facet names and articles. A `compat_` family, so a campaign starting does not
+        // re-key it (a sitemap carries no price).
+        'compat_locale_sitemap' => ['ProductUpdated', 'StorefrontProductChanged', 'PlacementChanged', 'LookupChanged', 'CategoryTreeChanged', 'BlogChanged'],
     ];
 
     /**

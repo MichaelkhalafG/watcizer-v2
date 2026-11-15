@@ -143,6 +143,8 @@ const ORDER_MAIL_OWN_LINKS = [
     'payment-expired-admin.blade.php' => ['telUrl', 'waUrl'],
     // the shop's "customer charged, order does not show it" alert (2026-11-05): the same two buttons
     'payment-alert-admin.blade.php' => ['telUrl', 'waUrl'],
+    // the verified-review request (SEO Phase 5, 2026-11-14): one button to the shop's own review page, pinned below
+    'review-request.blade.php' => ['url'],
 ];
 
 it('every ORDER mail template links only variables the order builder declares', function () {
@@ -213,6 +215,13 @@ it('the expired-order mails build their own links from the order, never from the
     }
 
     expect($calls)->toBe([]);
+});
+
+it('the review request links to the review page on the storefront site of the order, never the serving host', function () {
+    $source = (string) file_get_contents(app_path('Domain/Reviews/Reviews.php'));
+
+    expect($source)->toContain('return rtrim(StorefrontUrls::frontend($storefrontId), \'/\').\'/review/\'.$token;')
+        ->and($source)->toContain('new ReviewRequestMail(self::pageUrl($sf, $token)');
 });
 
 it('the two CUSTOMER mails hang their link on the storefront, or on an allow-listed API path', function () {

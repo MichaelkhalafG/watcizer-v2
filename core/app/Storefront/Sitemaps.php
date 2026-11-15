@@ -2,8 +2,10 @@
 
 namespace App\Storefront;
 
+use App\Domain\Catalog\SearchExposure;
 use App\Support\Val;
 use App\Transform\Row;
+use Illuminate\Database\Query\Builder;
 
 /**
  * Per-storefront, per-locale sitemaps (CLEAN_CORE_STUDY §6.4): the index lists
@@ -37,12 +39,19 @@ final class Sitemaps
         return $locale === $this->ctx->defaultLocale() ? '' : '/'.$locale;
     }
 
+    /** The visible products a sitemap may list: not one kept from search engines (2026-11-14, SearchExposure). */
+    private function indexable(): Builder
+    {
+        return $this->cards->base()->whereRaw('COALESCE('.SearchExposure::effectiveSql('p').", '') <> ?", [SearchExposure::HIDDEN]);
+    }
+
     public function index(string $apiBase): string
     {
         $chunk = config()->integer('storefront.sitemap.chunk');
-        $count = $this->cards->base()->count();
+        // never a product kept from search engines (2026-11-14, SearchExposure) — the same base for the count and the list
+        $count = $this->indexable()->count();
         $chunks = max(1, (int) ceil($count / $chunk));
-        $lastmod = $this->cards->base()->selectRaw('MAX(GREATEST(p.updated_at, sp.updated_at)) AS m')->value('m');
+        $lastmod = $this->indexable()->selectRaw('MAX(GREATEST(p.updated_at, sp.updated_at)) AS m')->value('m');
         $lastmod = is_string($lastmod) ? ProductCards::ts($lastmod) : null;
 
         $entries = [];
@@ -84,7 +93,7 @@ final class Sitemaps
     private function products(string $locale, int $n): ?string
     {
         $chunk = config()->integer('storefront.sitemap.chunk');
-        $rows = $this->cards->base()
+        $rows = $this->indexable()
             ->select(['sp.product_id', 'sp.slug', 'p.updated_at AS p_updated', 'sp.updated_at AS sp_updated'])
             ->selectRaw('(SELECT ci.path FROM catalog_product_images ci WHERE ci.product_id = p.id AND ci.is_cover = 1 ORDER BY ci.sort, ci.id LIMIT 1) AS cover_path')
             ->selectRaw('(SELECT MAX(ci.updated_at) FROM catalog_product_images ci WHERE ci.product_id = p.id AND ci.is_cover = 1) AS cover_updated')

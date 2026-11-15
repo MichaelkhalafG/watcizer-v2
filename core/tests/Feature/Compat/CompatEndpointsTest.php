@@ -165,7 +165,9 @@ it('serves products/{id} and by-name with the legacy ProductResource keys and th
     $res = compat("products/{$id}")->assertOk();
     $product = arr($res->json('product'));
     $keys = array_keys($product);
-    expect($keys)->toHaveCount(99)->and($keys[0])->toBe('id')->and(end($keys))->toBe('extra_attributes')
+    // 99 legacy keys ending at `extra_attributes`, then ONE new key (2026-11-14, SEO Phase 1): `search_class`, what search
+    // engines are shown of the product (SearchExposure), which Watchizer's product page reads on the compat ladder
+    expect($keys)->toHaveCount(100)->and($keys[0])->toBe('id')->and($keys[98])->toBe('extra_attributes')->and(end($keys))->toBe('search_class')
         ->and($product)->not->toHaveKeys(['purchase_price', 'wa_code', 'hs_code', 'sku_unique']);
     foreach (arr($res->json('related')) as $r) {
         expect(array_keys(arr($r)))->toHaveCount(31)->and(arr($r))->not->toHaveKey('purchase_price');

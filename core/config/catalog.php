@@ -239,6 +239,15 @@ return [
                 'slug' => ['label' => 'الرابط', 'type' => 'slug'],
                 'logo_path' => ['label' => 'الشعار', 'type' => 'image', 'media_type' => 'brand'],
                 'is_active' => ['label' => 'مفعّلة', 'type' => 'boolean', 'default' => true],
+                // The brand's default WATCH warranty in years (2026-11-14): empty = the shop's default (`warranty`
+                // below); a watch's own warranty wins; not applied to anything that is not a watch.
+                'default_warranty_years' => [
+                    'label' => 'ضمان الساعات (سنوات)', 'type' => 'integer', 'nullable' => true, 'min' => 0, 'max' => 10,
+                    'placeholder' => '1',
+                ],
+                // WHO GIVES the watch warranty (Michael, 2026-11-14): off = the brand agent's (most brands), on = the store's;
+                // a product can say otherwise on its own form; a product the hide-from-search rule matches is always the store's
+                'warranty_by_store' => ['label' => 'ضمان ساعاتها من المتجر (لا الوكيل)', 'type' => 'boolean', 'default' => false],
             ],
             'usage' => [['catalog_products', 'brand_id']],
         ],
@@ -361,6 +370,53 @@ return [
             'extra' => [],
             'usage' => [['catalog_products', 'grade_id']],
         ],
+    ],
+
+    // The warranty a WATCH carries when neither the watch nor its brand records one (Michael, 2026-11-14): 1 year.
+    // Read only by App\Storefront\Warranty; a brand's own default is its `default_warranty_years` (the lookup above).
+    'warranty' => [
+        'watch_default_years' => 1,
+    ],
+
+    // A product description under this many characters (short + long, tags removed) in either language is THIN:
+    // the products list's "thin description" filter (SEO Phase 1, 2026-11-14). About 50 English words.
+    'thin_description_chars' => 300,
+
+    // What search engines and AI are shown of a product (Michael, 2026-11-14; App\Domain\Catalog\SearchExposure has
+    // the rule). Brand SLUGS as the catalogue spells them (Hermès is `herms` on Brand Fashion). A matched product of a
+    // `restricted_brands` brand stays indexable but makes no brand or authenticity claim; every other match is hidden.
+    'search_exposure' => [
+        'watch_maisons' => ['rolex', 'patek-philippe', 'hublot', 'audemars-piguet', 'richard-mille', 'cartier', 'omega',
+            'vacheron-constantin', 'jaeger-lecoultre', 'breitling', 'iwc', 'franck-muller'],
+        'watch_maison_below' => 100000,
+        'fashion_maisons' => ['louis-vuitton', 'chanel', 'hermes', 'herms', 'dior', 'christian-dior'],
+        'fashion_maison_below' => 10000,
+        'restricted_brands' => ['rolex'],
+        // a brand's WATCHES only, below a price no genuine one has (Michael, 2026-11-14: Gucci watches below EGP 20,000;
+        // Gucci's perfumes, sunglasses and other items stay outside the rule)
+        'watch_only_below' => ['gucci' => 20000],
+    ],
+
+    // The "Original watches" collection (Michael, 2026-11-14): the watches the rule leaves alone, minus these brands —
+    // Generic names no maker.
+    'original_watches' => [
+        'exclude_brands' => ['generic'],
+    ],
+
+    // What a product photo shows (SEO Phase 1 item 9, 2026-11-14): chosen per image in the gallery; the storefronts
+    // write the photo's alt text from it unless the team typed one. Labels are FALLBACKS (the seam keys them
+    // `gallery.view_<key>`); the storefronts carry their own words for the alt text.
+    'image_views' => [
+        'front' => 'من الأمام',
+        'side' => 'من الجانب',
+        'back' => 'من الخلف',
+        'dial' => 'الميناء عن قرب',
+        'clasp' => 'القفل',
+        'wrist' => 'على المعصم',
+        'worn' => 'أثناء الارتداء',
+        'box' => 'العلبة والأوراق',
+        'inside' => 'من الداخل',
+        'detail' => 'تفصيلة',
     ],
 
     // Product list page size. 25 fits a laptop screen without scrolling the header away.

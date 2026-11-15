@@ -110,7 +110,8 @@ final class LookupWriter
             $base = $required ? ['required'] : ['nullable'];
 
             $rules['extra.'.$column] = match ($type) {
-                'integer' => [...$base, 'integer', 'min:-32768', 'max:32767'],
+                // a column may narrow the range (a brand's warranty: 0–10 years); the default fits a SMALLINT
+                'integer' => [...$base, 'integer', 'min:'.Coerce::int($field['min'] ?? null, -32768), 'max:'.Coerce::int($field['max'] ?? null, 32767)],
                 'boolean' => ['nullable', 'boolean'],
                 'hex' => [...$base, 'string', 'regex:/^#[0-9A-Fa-f]{6}$/'],
                 'slug' => [
@@ -426,7 +427,9 @@ final class LookupWriter
             $value = $extra[$column] ?? null;
 
             $row[$column] = match ($type) {
-                'integer' => Coerce::nint($value) ?? ($isCreate ? Coerce::int($field['default'] ?? null) : 0),
+                // `nullable` (2026-11-14, a brand's default warranty): empty STAYS empty — there, empty means "the
+                // shop's default" and 0 means "none", so storing an empty box as 0 would change what it says
+                'integer' => Coerce::nint($value) ?? (($field['nullable'] ?? false) === true ? null : ($isCreate ? Coerce::int($field['default'] ?? null) : 0)),
                 'boolean' => Coerce::bool($value, Coerce::bool($field['default'] ?? null)),
                 // Stored upper-case, as the transform stores it (deviation D-07): CSS does not
                 // care, but a mixed-case column makes two identical colours look different.

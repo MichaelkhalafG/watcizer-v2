@@ -24,6 +24,7 @@ use App\Http\Controllers\V2\CategoryController;
 use App\Http\Controllers\V2\HomeController;
 use App\Http\Controllers\V2\MenuController;
 use App\Http\Controllers\V2\MetaController;
+use App\Http\Controllers\V2\NotFoundController;
 use App\Http\Controllers\V2\OfferController;
 use App\Http\Controllers\V2\OrderController;
 use App\Http\Controllers\V2\PaymentBadgeController;
@@ -31,6 +32,7 @@ use App\Http\Controllers\V2\PaymentMethodController;
 use App\Http\Controllers\V2\ProductController;
 use App\Http\Controllers\V2\RedirectController;
 use App\Http\Controllers\V2\RelatedController;
+use App\Http\Controllers\V2\ReviewController;
 use App\Http\Controllers\V2\SitemapController;
 use App\Http\Controllers\V2\WheelController;
 use Illuminate\Support\Facades\Route;
@@ -77,6 +79,13 @@ Route::prefix('v2/{storefront}')->middleware('storefront')->where(['storefront' 
     // The REDIRECT reader (2026-11-11, D-17): an old URL → its new one, from `storefront_redirects`. Asked by the
     // storefront app's middleware for old-looking paths only. Not under http.cache: the map is re-run on switch day.
     Route::get('redirect', [RedirectController::class, 'show']);
+    // THE 404 MONITOR (SEO Phase 1, 2026-11-14): a shop's SERVER reports a page it answered 404 for — refused without the
+    // storefront server key, so no browser can write the dashboard's list (NotFoundController).
+    Route::post('not-found', [NotFoundController::class, 'store']);
+    // VERIFIED REVIEWS (SEO Phase 5, 2026-11-14): the products behind a review link of THIS shop, and a review saved
+    // pending for the team's approval (ReviewController). Throttled per address like the old rating form (`rating`).
+    Route::get('reviews/request/{token}', [ReviewController::class, 'request'])->where('token', '[A-Za-z0-9]{40}')->middleware('throttle:wheel-spin');
+    Route::post('reviews', [ReviewController::class, 'store'])->middleware('throttle:rating');
 
     // SPIN THE WHEEL (2026-11-07): the segments and the switch, a spin (the prize is decided HERE), and the spin a phone
     // already made. Under /api/v2/, so the API host's allow-list (runbook §4.1.1) and ApiAllowListTest are unchanged.

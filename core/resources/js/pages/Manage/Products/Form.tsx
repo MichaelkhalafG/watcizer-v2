@@ -20,6 +20,7 @@ import {
     TextareaField,
 } from "@/components/form/TextField";
 import { SwitchField } from "@/components/form/SwitchField";
+import { Select } from "@/components/ui/input";
 import {
     TranslatedField,
     type Translations,
@@ -51,7 +52,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { useLocale, useT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
-import { titleOrCode } from "@/lib/title";
+import { fileNameTitle, titleOrCode } from "@/lib/title";
 import {
     DESCRIPTION_EM,
     estimateEm,
@@ -103,6 +104,8 @@ interface ProductFormData {
     currency: string;
     low_stock_threshold: number | string;
     warranty_years: string;
+    /** who gives the warranty (2026-11-14): 'agent' | 'store', '' = the brand's */
+    warranty_provider: string;
     is_active: boolean;
     search_keywords: string;
 
@@ -114,6 +117,14 @@ interface ProductFormData {
     stone: Pair;
     meta_title: Pair;
     meta_description: Pair;
+    /*
+     * Per language: the meta title was TYPED here (2026-11-14, D7). The storefronts build a product's <title> from
+     * the catalogue, and keep a meta title only when a person wrote it; a title the SEO button filled is the
+     * generator's, so it does not count. Typing in the box sets it; the button clears it.
+     */
+    meta_title_by_hand: { ar: boolean; en: boolean };
+    /** "Search engines" (2026-11-14, SearchExposure): `auto` follows the rule; `hide` and `show` always win. */
+    search_override: "auto" | "hide" | "show";
 
     specs: SpecValues;
     images: GalleryImage[];
@@ -197,9 +208,15 @@ interface ProductPayload {
     currency: string;
     low_stock_threshold: number;
     warranty_years: string;
+    /** who gives the warranty (2026-11-14): 'agent' | 'store', '' = the brand's */
+    warranty_provider: string;
     is_active: boolean;
     search_keywords: string;
     translations: Record<string, Pair>;
+    /** Per language: was the stored meta title TYPED (true) or filled by the generator button (false)? */
+    meta_title_by_hand?: { ar: boolean; en: boolean };
+    /** "Search engines" (2026-11-14): follow the rule, or always hide / show. */
+    search_override?: "auto" | "hide" | "show";
     specs: SpecValues;
     images: GalleryImage[];
     feature_ids: number[];
@@ -213,6 +230,10 @@ interface ProductPayload {
 interface Props {
     storefront: { id: number; code: string; name: string };
     storefronts: Option[];
+    /** What a photo can show (2026-11-14): the gallery's choice per image. */
+    image_views?: Array<{ value: string; label: string }>;
+    /** What the hide-from-search RULE says of this product, and why (2026-11-14). Null on a new product. */
+    search_rule?: { class: string | null; reasons: string[] } | null;
     product: ProductPayload | null;
     /** One section per ACTIVE storefront, in id order. */
     sections: StorefrontSection[];
@@ -278,6 +299,8 @@ const EMPTY_PAIR: Pair = { ar: "", en: "" };
 export default function ProductForm({
     storefront,
     storefronts,
+    image_views = [],
+    search_rule = null,
     product,
     sections,
     slug_lock,
@@ -357,6 +380,7 @@ export default function ProductForm({
             fields: [
                 "specs",
                 "warranty_years",
+                "warranty_provider",
                 "feature_ids",
                 "gender_ids",
                 "colors",
@@ -485,6 +509,7 @@ export default function ProductForm({
         // the low-stock alert cover 97.5% of the shop.
         low_stock_threshold: product?.low_stock_threshold ?? 0,
         warranty_years: product?.warranty_years ?? "",
+        warranty_provider: product?.warranty_provider ?? "",
         is_active: product?.is_active ?? true,
         search_keywords: product?.search_keywords ?? "",
 
@@ -496,6 +521,8 @@ export default function ProductForm({
         country: product?.translations.country ?? EMPTY_PAIR,
         stone: product?.translations.stone ?? EMPTY_PAIR,
         meta_title: product?.translations.meta_title ?? EMPTY_PAIR,
+        meta_title_by_hand: product?.meta_title_by_hand ?? { ar: false, en: false },
+        search_override: product?.search_override ?? "auto",
         meta_description: product?.translations.meta_description ?? EMPTY_PAIR,
 
         specs: product?.specs ?? {},
@@ -733,6 +760,8 @@ export default function ProductForm({
     const writeSeo = () => {
         const next = generateSeo(seoInput());
         setPair("meta_title", next.meta_title);
+        // the generator's words, not a person's (D7): the storefronts build their own title instead
+        form.setData("meta_title_by_hand", { ar: false, en: false });
         setPair("meta_description", next.meta_description);
         form.setData("search_keywords", next.search_keywords);
     };
@@ -1528,12 +1557,31 @@ export default function ProductForm({
                                 dir="ltr"
                                 type="number"
                                 error={errors.warranty_years ?? null}
+                                // what an EMPTY box means since 2026-11-14 (App\Storefront\Warranty): a watch
+                                // carries its brand's default, else one year; 0 states no warranty
+                                hint={t(
+                                    "products.warranty_years_hint",
+                                    "اتركه فارغًا لتأخذ الساعة ضمان الماركة (سنة إن لم تحدد الماركة ضمانًا). اكتب ٠ لمنتج بدون ضمان.",
+                                )}
+                                placeholder={shownFamily.family === "watch" ? "1" : undefined}
                                 value={String(form.data.warranty_years ?? "")}
                                 onChange={(value) =>
                                     form.setData("warranty_years", value)
                                 }
                             />
                         }
+                    />
+                    {/* who gives the warranty (Michael, 2026-11-14): the brand's answer unless this product says otherwise */}
+                    <SelectField
+                        label={t("products.warranty_provider", "من يقدّم الضمان")}
+                        placeholder={t("products.warranty_provider_brand", "حسب الماركة")}
+                        error={errors.warranty_provider ?? null}
+                        value={form.data.warranty_provider}
+                        options={[
+                            { value: "agent", label: t("products.warranty_provider_agent", "ضمان وكيل الماركة") },
+                            { value: "store", label: t("products.warranty_provider_store", "ضمان المتجر") },
+                        ]}
+                        onChange={(value) => form.setData("warranty_provider", value)}
                     />
 
                     {/* ── attributes ──────────────────────────────────────────────────────── */}
@@ -1593,6 +1641,12 @@ export default function ProductForm({
                     <ImageGallery
                         images={form.data.images}
                         onChange={(images) => form.setData("images", images)}
+                        views={image_views}
+                        nameHint={[
+                            brand_names[form.data.brand_id]?.en ?? "",
+                            form.data.sku,
+                            fileNameTitle(form.data.title),
+                        ].join(" ")}
                     />
                 </TabPanel>
 
@@ -1693,6 +1747,46 @@ export default function ProductForm({
                             ) : null}
                         </CardHeader>
                         <CardContent className="space-y-5">
+                            {/* ── Search engines (SEO Phase 1, 2026-11-14) ─────────────────────────
+                                What search engines and AI are shown of this product. The product stays on
+                                sale whatever is chosen. `auto` follows the rule (Copy / Style / Inspired
+                                by …, luxury maisons at prices no genuine one has); the two others always
+                                win over it, both ways. */}
+                            <div className="grid gap-1 text-sm">
+                                <label className="font-medium" htmlFor="search_override">
+                                    {t("products.search_engines", "محركات البحث")}
+                                </label>
+                                <Select
+                                    id="search_override"
+                                    className="max-w-sm"
+                                    value={form.data.search_override}
+                                    onChange={(event) =>
+                                        form.setData(
+                                            "search_override",
+                                            event.target.value as "auto" | "hide" | "show",
+                                        )
+                                    }
+                                >
+                                    <option value="auto">{t("products.search_auto", "اتبع القاعدة")}</option>
+                                    <option value="show">{t("products.search_show", "اظهر دائمًا")}</option>
+                                    <option value="hide">{t("products.search_hide", "إخفاء عن محركات البحث")}</option>
+                                </Select>
+                                {search_rule ? (
+                                    <p className="text-xs text-muted-foreground">
+                                        {search_rule.class === "hidden"
+                                            ? t("products.search_rule_hidden", "القاعدة تُخفي هذا المنتج عن محركات البحث والذكاء الاصطناعي، ويبقى معروضًا للبيع.")
+                                            : search_rule.class === "restricted"
+                                              ? t("products.search_rule_restricted", "القاعدة تُبقي ساعة رولكس هذه في نتائج البحث، لكن خارج القوائم والكتالوجات والذكاء الاصطناعي، بلا اسم ماركة ولا ادعاء أصالة.")
+                                              : t("products.search_rule_none", "القاعدة لا تشمل هذا المنتج: يظهر بشكل عادي.")}
+                                        {search_rule.reasons.length > 0
+                                            ? " " + t("products.search_rule_why", "السبب: :reasons", { reasons: search_rule.reasons.join(t("common.list_separator", "، ")) })
+                                            : ""}
+                                    </p>
+                                ) : null}
+                                <p className="text-xs text-muted-foreground">
+                                    {t("products.search_hint", "الاختيار هنا يغلب القاعدة دائمًا، في الاتجاهين. والمنتج يبقى معروضًا للبيع أيًّا كان الاختيار.")}
+                                </p>
+                            </div>
                             <div className="grid gap-5 lg:grid-cols-2">
                                 <TranslatedField
                                     label={t(
@@ -1701,9 +1795,16 @@ export default function ProductForm({
                                     )}
                                     name="meta_title"
                                     value={pair("meta_title")}
-                                    onChange={(value) =>
-                                        setPair("meta_title", value)
-                                    }
+                                    onChange={(value) => {
+                                        // typed by a person, per language (D7): only the language whose text moved
+                                        const before = pair("meta_title");
+                                        const typed = form.data.meta_title_by_hand;
+                                        setPair("meta_title", value);
+                                        form.setData("meta_title_by_hand", {
+                                            ar: (value.ar ?? "") !== (before.ar ?? "") ? true : typed.ar,
+                                            en: (value.en ?? "") !== (before.en ?? "") ? true : typed.en,
+                                        });
+                                    }}
                                     errors={errors}
                                 />
                                 <TranslatedField

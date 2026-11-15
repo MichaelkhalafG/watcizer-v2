@@ -22,6 +22,7 @@ class ProductController extends Controller
             'category' => 'nullable|string|max:500',
             'brand' => 'nullable|string|max:500',    // slugs and/or numeric ids, comma-separated (ids since 2026-10-17)
             'gender' => 'nullable|string|max:100',   // ids and/or English names, comma-separated (names since 2026-10-17)
+            'family' => 'nullable|string|max:100',   // watch, bag, wallet, perfume (2026-11-14, SEO Phase 2's landing pages)
             // `color` filters a colour in ANY role and is kept for callers that already send it; `dial_color`
             // and `band_color` are the two role-scoped sections the sidebars send (2026-10-23). A key that is
             // not validated here is DROPPED, which is how the watch-spec filters silently matched everything
@@ -44,6 +45,8 @@ class ProductController extends Controller
             // 2026-11-05 (Part 2): only the products of the LIVE campaign of this presentation — the campaign page and
             // the Hot Deals mode. No live campaign = an empty list, never the whole catalogue.
             'campaign' => 'nullable|in:hot_deals,flash_sale',
+            // 2026-11-14: a named collection — the Original watches page (ProductListing::applyFilters)
+            'collection' => 'nullable|in:'.implode(',', ProductListing::COLLECTIONS),
             'facets' => 'nullable|in:0,1,true,false',   // 2026-10-17: per-result facet counts + price bounds, opt-in (ProductListing::facets)
             'q' => 'nullable|string|max:120',
             'sort' => 'nullable|in:'.implode(',', ProductListing::SORTS),

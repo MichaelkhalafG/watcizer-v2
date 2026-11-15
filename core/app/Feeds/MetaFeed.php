@@ -7,9 +7,11 @@ use App\Compat\CompatCategories;
 use App\Compat\CompatServices;
 use App\Compat\CompatStorefront;
 use App\Compat\LegacyJson;
+use App\Domain\Catalog\SearchExposure;
 use App\Domain\Inventory\InventoryService;
 use App\Storefront\ContentIds;
 use App\Storefront\StorefrontCache;
+use App\Support\Coerce;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
@@ -255,6 +257,11 @@ final class MetaFeed
 
         // The index: ids in the shop's order, the product-page slug, the category and brand ids.
         $excluded = array_flip($cfg['exclude']);
+        // never a product kept from search engines, nor a Rolex the rule matched (2026-11-14, SearchExposure: hidden
+        // and restricted) — the Meta catalogue and Google Merchant Center read this same list
+        $excluded += array_flip(array_map(fn (mixed $id): int => Coerce::int($id), DB::table('catalog_products as p')
+            ->whereRaw(SearchExposure::effectiveSql('p').' IN (?, ?)', [SearchExposure::HIDDEN, SearchExposure::RESTRICTED])
+            ->pluck('p.id')->all()));
         $index = [];
         foreach ($svc->listing->entries() as $e) {
             if (! isset($excluded[$e['id']])) {

@@ -62,6 +62,15 @@ interface StorefrontForm {
     money_rewards: boolean;
     /** Free shipping when the goods reach this amount (EGP); null = off (FreeShipping, 2026-10-29). */
     free_shipping_over: number | null;
+    /** The shop's followers across its social accounts, shown on its About page (2026-11-14); null = not shown. */
+    followers: number | null;
+    /** The articles' auto-publishing paused for this shop (SEO Phase 3, 2026-11-14). */
+    blog_paused: boolean;
+    /** where the weekly SEO report and the day-6 article reminder go (2026-11-14) */
+    report_email: string;
+    /** AUTHORIZED DEALER per brand (2026-11-14): the brand slugs switched on, and the shop's brands to choose from */
+    authorized_brands: string[];
+    brand_options: Array<{ slug: string; name: string }>;
     urls: StorefrontUrls;
     /** What the shop uses today for each URL — the override or the derived value. */
     derived_urls: StorefrontUrls;
@@ -101,6 +110,11 @@ export default function StorefrontEdit({ storefront, locale_options }: { storefr
         money_rewards: storefront.money_rewards,
         // a string for the field; empty (or 0) is "off" on the server
         free_shipping_over: storefront.free_shipping_over === null ? '' : String(storefront.free_shipping_over),
+        // a string for the field; empty is "not shown"
+        followers: storefront.followers === null ? '' : String(storefront.followers),
+        blog_paused: storefront.blog_paused,
+        report_email: storefront.report_email,
+        authorized_brands: storefront.authorized_brands,
         urls: {
             frontend: storefront.urls.frontend,
             payment_return: storefront.urls.payment_return,
@@ -559,6 +573,100 @@ export default function StorefrontEdit({ storefront, locale_options }: { storefr
                             hint={t(
                                 'storefronts.edit_free_shipping_hint',
                                 'الطلبات التي تبلغ قيمة منتجاتها هذا المبلغ تُشحن مجانًا على هذا المتجر، بالأسعار المحصَّلة وقبل أي عرض. ٠ أو فارغ يوقفه. رقم العميل: ١٠٬٠٠٠.',
+                            )}
+                        />
+                    </CardContent>
+                </Card>
+
+                {/*
+                 * The shop's public figures (2026-11-14, SEO Phase 1): what its About page states about it. Kept
+                 * here so the team corrects a number without a developer — settings.public, sent in v2 meta.
+                 */}
+                <Card>
+                    <CardHeader>
+                        <CardTitle>{t('storefronts.edit_public_section', 'أرقام المتجر المعروضة')}</CardTitle>
+                    </CardHeader>
+                    <CardContent className="grid gap-5 sm:grid-cols-2">
+                        <TextField
+                            label={t('storefronts.edit_followers', 'عدد المتابعين على حسابات التواصل')}
+                            type="number"
+                            inputMode="numeric"
+                            min={0}
+                            step="1"
+                            dir="ltr"
+                            value={form.data.followers}
+                            onChange={(value) => form.setData('followers', value)}
+                            error={errors.followers ?? null}
+                            hint={t(
+                                'storefronts.edit_followers_hint',
+                                'المجموع على فيسبوك وإنستجرام وتيك توك، ويظهر في صفحة «من نحن» مقرّبًا (مثلاً 900000 تظهر «أكثر من 900 ألف»). فارغ: لا يظهر.',
+                            )}
+                        />
+                    </CardContent>
+                </Card>
+
+                {/* AUTHORIZED DEALER per brand (Michael, 2026-11-14): OFF by default; ON only for brands the client confirmed. */}
+                <Card>
+                    <CardHeader>
+                        <CardTitle>{t('storefronts.edit_dealer_section', 'وكيل معتمد لهذه الماركات')}</CardTitle>
+                    </CardHeader>
+                    <CardContent className="grid gap-3">
+                        <p className="text-xs text-muted-foreground">
+                            {t(
+                                'storefronts.edit_dealer_hint',
+                                'فعّل الماركة فقط إذا كان المتجر وكيلاً معتمداً لها فعلاً. تظهر عبارة «وكيل معتمد» في صفحات الماركة ومنتجاتها وصفحة «من نحن» والضمان ومقالاتها — ولا تظهر أبداً على منتج مستبعد من محركات البحث.',
+                            )}
+                        </p>
+                        <div className="grid gap-2 sm:grid-cols-3">
+                            {storefront.brand_options.map((b) => (
+                                <label key={b.slug} className="flex items-center gap-2 text-sm">
+                                    <Checkbox
+                                        checked={form.data.authorized_brands.includes(b.slug)}
+                                        onCheckedChange={(value) =>
+                                            form.setData(
+                                                'authorized_brands',
+                                                value === true
+                                                    ? [...form.data.authorized_brands.filter((s) => s !== b.slug), b.slug]
+                                                    : form.data.authorized_brands.filter((s) => s !== b.slug),
+                                            )
+                                        }
+                                    />
+                                    <span dir="auto">{b.name}</span>
+                                </label>
+                            ))}
+                        </div>
+                        {errors.authorized_brands ? <p className="text-xs text-destructive">{errors.authorized_brands}</p> : null}
+                    </CardContent>
+                </Card>
+
+                {/* The articles' auto-publishing (SEO Phase 3, 2026-11-14): one switch per shop stops the queue. */}
+                <Card>
+                    <CardHeader>
+                        <CardTitle>{t('storefronts.edit_blog_section', 'نشر المقالات التلقائي')}</CardTitle>
+                    </CardHeader>
+                    <CardContent className="grid gap-3">
+                        <SwitchField
+                            label={t('storefronts.edit_blog_paused', 'إيقاف النشر التلقائي مؤقتًا')}
+                            checked={form.data.blog_paused}
+                            onChange={(checked) => form.setData('blog_paused', checked)}
+                            error={errors.blog_paused ?? null}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                            {t(
+                                'storefronts.edit_blog_paused_hint',
+                                'المقالات المجدولة تنتظر ولا تُنشر حتى تعيد التشغيل؛ ما فات موعده يُنشر عند إعادة التشغيل.',
+                            )}
+                        </p>
+                        <TextField
+                            label={t('storefronts.edit_report_email', 'بريد تقرير SEO الأسبوعي وتذكير المقالات')}
+                            type="email"
+                            dir="ltr"
+                            value={form.data.report_email}
+                            onChange={(value) => form.setData('report_email', value)}
+                            error={errors.report_email ?? null}
+                            hint={t(
+                                'storefronts.edit_report_email_hint',
+                                'يصله تقرير SEO كل اثنين، وتذكير في اليوم السادس من كل أسبوع نشر إذا لم تُكتب مقالات الأسبوع التالي. فارغ: لا يُرسل شيء.',
                             )}
                         />
                     </CardContent>

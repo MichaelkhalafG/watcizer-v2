@@ -2,6 +2,7 @@
 
 namespace App\Domain\Media;
 
+use App\Support\LegacySlug;
 use Illuminate\Http\UploadedFile;
 use InvalidArgumentException;
 use RuntimeException;
@@ -36,9 +37,9 @@ final class MediaStore
      *
      * @return array{file: string, folder: string, url: string, width: int, height: int, bytes: int, renditions: array<int, array<string, string>>, skipped: list<string>}
      */
-    public function store(UploadedFile $file, string $type): array
+    public function store(UploadedFile $file, string $type, ?string $nameHint = null): array
     {
-        return $this->storePath($file->getRealPath() ?: $file->getPathname(), $type);
+        return $this->storePath($file->getRealPath() ?: $file->getPathname(), $type, $nameHint);
     }
 
     /**
@@ -53,7 +54,7 @@ final class MediaStore
      *
      * @return array{file: string, folder: string, url: string, width: int, height: int, bytes: int, renditions: array<int, array<string, string>>, skipped: list<string>}
      */
-    public function storePath(string $sourcePath, string $type): array
+    public function storePath(string $sourcePath, string $type, ?string $nameHint = null): array
     {
         $config = self::typeConfig($type);
         $folder = $config['folder'];
@@ -68,7 +69,7 @@ final class MediaStore
         $name = '';
         $absolute = '';
         for ($try = 0; $try < 20; $try++) {
-            $name = self::filename();
+            $name = self::filename($nameHint);
             $absolute = $directory.'/'.$name;
             $claim = @fopen($absolute, 'x');
             if ($claim !== false) {
@@ -203,9 +204,25 @@ final class MediaStore
         return $out;
     }
 
-    /** The legacy naming scheme, unchanged: `ImageService::filename()`. */
-    private static function filename(): string
+    /**
+     * The file's name. Without a hint, the legacy scheme, unchanged (`<unix>_<Y-m-d>_<uniqid>.webp`).
+     *
+     * WITH one (SEO Phase 1 item 9, 2026-11-14 — the product gallery sends the brand, the model number and the English
+     * title): a descriptive name, `hugo-boss-1513477-grand-prix-chronograph-2026-11-14-<uniqid>.webp`, so a photo's
+     * address says what it shows. Latin letters and digits only, at most 60 characters of words; the date and the
+     * uniqid keep it unique (the name is claimed atomically above). A hint that slugifies to nothing (Arabic only)
+     * falls back to the legacy name. NEW uploads only: no stored file is renamed, so every old address keeps working.
+     * The legacy Blade dashboard that shared this naming is retired, which was the only reason to keep one scheme.
+     */
+    private static function filename(?string $nameHint = null): string
     {
+        $words = $nameHint === null ? '' : LegacySlug::make($nameHint);
+        if ($words !== '') {
+            $words = rtrim(mb_substr($words, 0, 60), '-');
+
+            return $words.'-'.date('Y-m-d').'-'.uniqid().'.webp';
+        }
+
         return time().'_'.date('Y-m-d').'_'.uniqid().'.webp';
     }
 }
