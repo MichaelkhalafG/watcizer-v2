@@ -22,6 +22,12 @@ Schedule::command('inventory:reconcile-cancellations')->everyMinute()->withoutOv
 */
 Schedule::command('orders:expire-unpaid')->everyMinute()->withoutOverlapping();
 
+/*
+| Pickup reservations (click & collect, 2026-11-14): a pay-at-the-store pickup not collected by its collect-by time is
+| released and its stock returned. Claimed per row, so it is idempotent. Same cron entry.
+*/
+Schedule::command('orders:expire-pickups')->everyFiveMinutes()->withoutOverlapping();
+
 // The Morabaa connector does not exist yet, so the outbox is drained by a no-op consumer to keep
 // the table bounded (study §4.2). The `mail` channel is deliberately never drained.
 Schedule::command('integration:drain --channel=morabaa')->hourly()->withoutOverlapping();

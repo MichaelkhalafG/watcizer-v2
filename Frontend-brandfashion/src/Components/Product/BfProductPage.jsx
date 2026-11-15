@@ -24,6 +24,7 @@ import { useShipping } from '@/src/Hooks/queries/useShipping'
 import { warrantyText } from '@/src/lib/v2Product'
 import { imageAlt } from '@/src/lib/productWords'
 import { INSPECT_SHORT } from '@/src/content/inspection'
+import { pickupFrom, storeNames } from '@/src/lib/pickup'
 import './BfProductPage.css'
 
 /*
@@ -65,6 +66,7 @@ const STR = {
     home: 'Home', inStock: 'In stock', onlyLeft: (n) => `Only ${n} left`, soldOut: 'Sold out', add: 'Add to cart', notify: 'Notify me when it’s back',
     notifySize: 'Notify me for this size', chooseBoth: 'Choose a colour and size', chooseColour: 'Choose a colour', chooseSize: 'Choose a size',
     vat: 'Incl. VAT', colour: 'Colour', size: 'Size', promises: ['Delivery within 24 hours to every governorate', INSPECT_SHORT.en, 'Free returns within 14 days — return shipping on us'], deliveryFees: (lo, hi) => `Delivery within 24 hours — EGP ${lo === hi ? lo : `${lo}–${hi}`} by governorate`,
+    pickup: (stores) => `Free pickup in store — ${stores}`,
     attributes: 'Details', description: 'Description', ratings: 'Ratings', brand: 'Brand', family: 'Type', category: 'Category', gender: 'Gender', colours: 'Colours', features: 'Features', warranty: 'Warranty',
     goesWith: 'Goes with this', similar: 'Similar', seeAll: 'See all', was: 'was', added: 'Added to cart', notified: 'We’ll let you know when it’s back',
     families: { watch: 'Watch', bag: 'Bag', wallet: 'Wallet', fashion: 'Fashion', electronics: 'Electronics', perfume: 'Perfume' },
@@ -73,6 +75,7 @@ const STR = {
     home: 'الرئيسية', inStock: 'متوفر', onlyLeft: (n) => `باقي ${n} فقط`, soldOut: 'نفد', add: 'أضف إلى السلة', notify: 'نبّهني عند توفره',
     notifySize: 'نبّهني لهذا المقاس', chooseBoth: 'اختر اللون والمقاس', chooseColour: 'اختر اللون', chooseSize: 'اختر المقاس',
     vat: 'شامل الضريبة', colour: 'اللون', size: 'المقاس', promises: ['توصيل خلال ٢٤ ساعة لكل المحافظات', INSPECT_SHORT.ar, 'إرجاع مجاني خلال ١٤ يوماً — شحن الإرجاع علينا'], deliveryFees: (lo, hi) => (lo === hi ? `توصيل خلال ٢٤ ساعة — ${lo} ج.م` : `توصيل خلال ٢٤ ساعة — من ${lo} إلى ${hi} ج.م حسب المحافظة`),
+    pickup: (stores) => `استلام مجاني من الفرع — ${stores}`,
     attributes: 'التفاصيل', description: 'الوصف', ratings: 'التقييمات', brand: 'العلامة', family: 'الصنف', category: 'الفئة', gender: 'الجنس', colours: 'الألوان', features: 'المميزات', warranty: 'الضمان',
     goesWith: 'يناسبه', similar: 'مشابه', seeAll: 'عرض الكل', was: 'كان', added: 'أُضيف إلى السلة', notified: 'سنخبرك عند توفره',
     families: { watch: 'ساعة', bag: 'حقيبة', wallet: 'محفظة', fashion: 'أزياء', electronics: 'إلكترونيات', perfume: 'عطر' },
@@ -84,7 +87,7 @@ const LOW_STOCK = 3
 // A category's page (found by the link crawl of 2026-11-05; corrected 2026-11-14): only the first two levels have one —
 // src/lib/categoryHref.js. A deeper crumb is shown as text, and "See all" goes to the nearest level that has a page.
 
-export default function BfProductPage({ detail, related }) {
+export default function BfProductPage({ detail, related, pickup = null }) {
   const language = useUIStore((s) => s.language)
   const lang = language === 'ar' ? 'ar' : 'en'
   const t = STR[lang]
@@ -96,6 +99,7 @@ export default function BfProductPage({ detail, related }) {
   const fees = (cities || []).map((c) => Number(c?.shipping_cost)).filter((n) => Number.isFinite(n) && n > 0)
   const promises = fees.length ? [t.deliveryFees(Math.min(...fees), Math.max(...fees)), ...t.promises.slice(1)] : t.promises
   const isRTL = lang === 'ar'
+  const pickupInfo = useMemo(() => pickupFrom(pickup), [pickup])
   const p = detail.product
   // THE PRODUCT IS IN A LIVE HOT DEALS / FLASH SALE CAMPAIGN (item 42, 2026-11-05): the page takes that offer's theme
   // — its badge and countdown near the price, the buy buttons and accents in its colours — and gives it back the
@@ -443,6 +447,8 @@ export default function BfProductPage({ detail, related }) {
 
             <ul className="bf-buy__promises">
               {promises.map((line) => <li key={line}>{line}</li>)}
+              {/* pick up in store (click & collect, 2026-11-14): only while the shop offers it — the page's server read */}
+              {pickupInfo.enabled ? <li>{t.pickup(storeNames(pickupInfo, isRTL))}</li> : null}
             </ul>
 
             {rows.length ? (

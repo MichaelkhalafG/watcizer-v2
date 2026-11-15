@@ -471,3 +471,38 @@ tests/reviews.test.mjs
 # 2026-11-14 (authorized dealer per brand, Michael): TWO NEW TWINS - src/lib/dealers.js (the sentence from v2 meta settings.authorized_brands) and tests/dealers.test.mjs. FacetLead.jsx, collectionListing.jsx, ProductDetailClient.jsx, about-us and warranty routes, llms.txt stay twins; TrustPage.jsx and facetListing.jsx stay split, both sides gained the same lines; BfProductPage.jsx is Brand Fashion's own.
 src/lib/dealers.js
 tests/dealers.test.mjs
+# 2026-11-14 (the wheel on Brand Fashion; the TikTok pixel removed from both shops): TWELVE NEW TWINS - "Spin the wheel" is no
+# longer Watchizer only (this supersedes the 2026-11-07 note above). The page, the wheel, the floating button (the small wheel in the
+# dashboard's colours, the medium label by default, CSS-only motion), the invite-link reader, the rules, the UTM keeper, the route
+# group app/(spin)/ (its own shell, noindex, never in a sitemap) and tests/wheel.test.mjs are ONE set of files for both shops.
+# NOT twins, on purpose: src/content/wheelBrand.js (like campaignPages.js) - each shop's name, its mark on /spin, the hub's letters,
+# the floating button's fallback palette and the page's title and description; and public/og-spin.jpg - each shop's own link
+# preview. Each shop's campaign, prizes, rules, codes and spins come from core per storefront (the dashboard's wheel screens).
+# The button is mounted from each shop's own Header.jsx; Brand Fashion's Login.jsx and Register.jsx (diverged long ago) now go back
+# to the page that sent the visitor (takeAuthReturn), as Watchizer's do. Changed on both sides, identically, and still twins (no
+# TikTok): app/analytics.jsx, src/scripts/pixels.js, src/PageViews/Checkout/OrderConfirmation.jsx, tests/pixels.test.mjs,
+# tests/coupon.test.mjs; src/lib/env.js (diverged) lost its TikTok reader on both sides.
+app/(spin)/layout.jsx
+app/(spin)/spin/page.jsx
+src/Components/Wheel/Backdrop.jsx
+src/Components/Wheel/Confetti.jsx
+src/Components/Wheel/InviteFromLink.jsx
+src/Components/Wheel/SpinPage.jsx
+src/Components/Wheel/SpinWheel.jsx
+src/Components/Wheel/WheelFloat.jsx
+src/Components/Wheel/wheel.css
+src/lib/wheel.js
+src/lib/utm.js
+tests/wheel.test.mjs
+# 2026-11-14 (click & collect, "Reserve online, pick up in store", both shops): FOUR NEW TWINS - core's GET v2/{code}/pickup read
+# defensively (src/lib/pickup.js), its hook with the server render's read as the first answer (src/Hooks/queries/usePickup.js), the
+# checkout's "Delivery or pickup" block drawn with the checkout's own rows so each shop's Checkout.css dresses it
+# (src/Components/Checkout/PickupChoice.jsx), and tests/pickup.test.mjs. Changed on both sides, identically, and still twins:
+# src/lib/serverV2.js (getServerV2Pickup), src/lib/coupon.js (the cart preview asked as a pickup), OrderConfirmation.jsx (the pickup
+# code and the store), TrustSignals.jsx + ProductDetailClient.jsx (the product page's pickup row), app/(main)/(shop)/cart/page.jsx and
+# app/(main)/(shop)/checkout/page.jsx (now server pages handing the read over). The diverged Checkout.jsx, Cart.jsx, their CSS and
+# Brand Fashion's BfProductPage.jsx and product page took the same behaviour, each in its own file.
+src/lib/pickup.js
+src/Hooks/queries/usePickup.js
+src/Components/Checkout/PickupChoice.jsx
+tests/pickup.test.mjs

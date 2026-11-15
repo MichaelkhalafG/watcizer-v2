@@ -327,7 +327,7 @@ final class MetaConversions
         $order = DB::table('orders as o')
             ->leftJoin('storefronts as s', 's.id', '=', 'o.storefront_id')
             ->where('o.id', $orderId)
-            ->first(['o.order_number', 'o.total_price_for_order', 'o.user_id', 'o.storefront_id', 's.domain', 's.currency']);
+            ->first(['o.order_number', 'o.total_price_for_order', 'o.user_id', 'o.storefront_id', 's.domain', 's.currency', 'o.fulfilment']);
         if ($order === null) {
             return null;
         }
@@ -382,6 +382,9 @@ final class MetaConversions
                 'content_ids' => array_map(fn (array $c): string => $c['id'], $contents),
                 'contents' => $contents,
                 'num_items' => array_sum(array_map(fn (array $c): int => $c['quantity'], $contents)),
+                // a PICKUP order (click & collect, 2026-11-14): Meta's own field, as the browser's Purchase carries it —
+                // a delivery order sends nothing new
+                ...(Row::nstr($order, 'fulfilment') === 'pickup' ? ['delivery_category' => 'in_store'] : []),
             ],
         ];
     }

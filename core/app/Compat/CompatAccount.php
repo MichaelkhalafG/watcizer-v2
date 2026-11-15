@@ -39,7 +39,11 @@ final class CompatAccount
         $addressIds = [];
         foreach ($orders as $order) {
             $orderIds[] = Row::int($order, 'id');
-            $addressIds[Row::int($order, 'address_id')] = true;
+            // a PICKUP order has no address (2026-11-14)
+            $addressId = Row::nint($order, 'address_id');
+            if ($addressId !== null) {
+                $addressIds[$addressId] = true;
+            }
         }
 
         /** @var array<int, list<array<string, mixed>>> $itemsByOrder */
@@ -79,7 +83,7 @@ final class CompatAccount
                 'guest_email' => Row::nstr($order, 'guest_email'),
                 'guest_token' => Row::nstr($order, 'guest_token'),
                 'guest_phone' => Row::nstr($order, 'guest_phone'),
-                'address_id' => Row::int($order, 'address_id'),
+                'address_id' => Row::nint($order, 'address_id'),
                 'total_price_for_order' => Row::money($order, 'total_price_for_order'),
                 'status' => Row::str($order, 'status'),
                 'payment_method' => Row::str($order, 'payment_method'),
@@ -91,7 +95,7 @@ final class CompatAccount
                 'created_at' => LegacyJson::ts(Row::nstr($order, 'created_at')),
                 'updated_at' => LegacyJson::ts(Row::nstr($order, 'updated_at')),
                 'order_item' => $itemsByOrder[$id] ?? [],
-                'address' => $addresses[Row::int($order, 'address_id')] ?? null,
+                'address' => $addresses[Row::nint($order, 'address_id') ?? 0] ?? null,
             ];
         }
 

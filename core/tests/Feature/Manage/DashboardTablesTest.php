@@ -113,6 +113,8 @@ it('names EVERY table the dashboard authors, in order, so adding one is a delibe
         // Since 2026-11-07: the wheel's spins — a shopper's code and the order that used it; nothing can rebuild them.
         // Since 2026-11-08: the wheel's prizes — typed on the dashboard.
         'storefront_wheel_spins', 'storefront_wheel_prizes', 'storefront_wheel_referrals',
+        // Since 2026-11-14 (click & collect): the stores the team authors, and each pickup order's reservation.
+        'storefront_pickup_stores', 'order_pickups',
         'core_user_preferences',
         'core_activity_log',
         // Articles join the list in item 14 (2026-09-18). Core-owned because the legacy

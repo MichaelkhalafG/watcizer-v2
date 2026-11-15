@@ -69,6 +69,17 @@ function sweepScreens(): array
         ),
     ];
 
+    /*
+     * Routes whose id must point at a particular KIND of row: the pickup slip exists only for a pickup order
+     * (click & collect, 2026-11-14) and is a 404 for a delivery — so it is opened on the first pickup order, or
+     * skipped when the database holds none.
+     *
+     * @var array<string, array<string, string>> $perRoute
+     */
+    $perRoute = [
+        'manage.orders.pickup.slip' => ['order' => (string) T::int(DB::table('order_pickups')->orderBy('order_id')->value('order_id') ?? 0)],
+    ];
+
     $out = [];
     foreach (Route::getRoutes()->getRoutes() as $route) {
         $name = (string) $route->getName();
@@ -89,7 +100,7 @@ function sweepScreens(): array
             // `parameterNames()` is typed loosely; a name that is not a string cannot match a
             // placeholder in the URI anyway, so it is the same "cannot fill this" case.
             $parameter = T::str($rawParameter);
-            $value = T::str($fill[$parameter] ?? '');
+            $value = T::str($perRoute[$name][$parameter] ?? $fill[$parameter] ?? '');
 
             // '' and '0' both mean "there is no such row to point at" — an empty table, or an id
             // that came back null. The route is skipped rather than opened with a nonsense id.

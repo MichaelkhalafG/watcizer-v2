@@ -9,6 +9,25 @@ cannot get past tonight; every item is a known, named state. Pick batches from i
 
 ---
 
+## ▶ 2026-11-14 — branch bf-wheel: TikTok removed, the wheel on Brand Fashion (record: BF_WHEEL_20261114.md)
+
+- **The TikTok pixel is gone from both shops** (no TikTok ads): script, init, every event, `NEXT_PUBLIC_TIKTOK_PIXEL_ID`.
+  CLOSES **TIKTOK-ENV-GATE** (no key to forget) and the TikTok third of **BF-ANALYTICS-OWN**; D2's "GA4 or TikTok" is
+  GA4 only now. Delete `NEXT_PUBLIC_TIKTOK_PIXEL_ID` from both shops' hPanel environments after the deploy. Core never
+  had TikTok server events. The share-to-TikTok button on /spin and the TikTok profile links stay (they are not the pixel).
+- **"Spin the wheel" is a twin** (TWINS.txt 2026-11-14): Brand Fashion has /spin, the floating launcher and the invite
+  link; each shop's name, mark, hub letters, fallback palette, page words and link preview in its own
+  `src/content/wheelBrand.js` and `public/og-spin.jpg`. **Brand Fashion's wheel stays OFF until switched on from the
+  dashboard**. Its prizes stay the copy of Watchizer's list the wheel migration seeded (Michael's decision, 2026-11-14).
+- **FIXED, Brand Fashion: a typed code was never priced in the cart.** BF's own cartStore (diverged 2026-10-19) read the
+  cart without the kept code, so the coupon box never said applied or refused and no total showed the discount; only the
+  order priced it. Every BF code was affected (BR10, SATIN10), not only the wheel's. Its cart calls now carry
+  `couponParams()` as the twin v2Cart.js does for Watchizer; the checkout passes the typed phone (a wheel code's
+  binding) and lists a gift a code grants, as Watchizer's does.
+- **FIXED, both shops: /spin shifted its layout.** The glow layer behind the wheel was placed with left/top and sized
+  with width/height from the measured disc: CLS 0.20-0.29 on load and 1.06-1.13 by the end of a spin on a phone
+  (measured on both shops). Now translate + scale: 0.006 on load, 0.014-0.020 at the end; the same pixels.
+
 ## ▶ 2026-11-12 — FIX LATER: the dashboard's typed times are UTC, the team types Cairo times (2 hours off)
 
 Found on 2026-11-12, when production refused a script on its time zone:

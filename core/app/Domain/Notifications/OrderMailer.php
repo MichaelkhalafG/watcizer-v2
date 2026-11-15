@@ -11,6 +11,7 @@ use App\Mail\OrderStatusUpdate;
 use App\Mail\PaymentAlertAdmin;
 use App\Mail\PaymentExpired;
 use App\Mail\PaymentExpiredAdmin;
+use App\Mail\PickupUpdate;
 use App\Storefront\StorefrontHasNoHost;
 use App\Storefront\StorefrontHasNoIdentity;
 use App\Support\Coerce;
@@ -97,6 +98,17 @@ final class OrderMailer
     public const EVENT_PAYMENT_ALERT = 'order.payment_alert';
 
     public const KIND_PAYMENT_ALERT = 'payment_alert_admin';
+
+    /**
+     * A PICKUP order is ready at its store, or its hold was extended (click & collect, 2026-11-14). The event word
+     * travels on the row (`pickup_event`); collected and expired are told by the status mail, which reads the
+     * pickup row. One row per (order, event): a pickup is made ready once and extended once.
+     */
+    public const KIND_PICKUP = 'pickup_update';
+
+    public const PICKUP_READY = 'ready';
+
+    public const PICKUP_EXTENDED = 'extended';
 
     public const REASON_EXPIRED = 'expired';
 
@@ -278,6 +290,30 @@ final class OrderMailer
     }
 
     /**
+     * The customer is told their pickup is ready, or that its hold was extended.
+     *
+     * @return list<int>
+     */
+    public function pickupChanged(int $orderId, string $event): array
+    {
+        $id = $this->enqueueCustomer(
+            'order.pickup.'.$event,
+            self::KIND_PICKUP,
+            $orderId,
+            'pickup:'.$event,
+            ['pickup_event' => $event],
+        );
+
+        return $id === null ? [] : [$id];
+    }
+
+    /** Enqueue and attempt in one call. */
+    public function pickupChangedNow(int $orderId, string $event): void
+    {
+        $this->flush($this->pickupChanged($orderId, $event));
+    }
+
+    /**
      * Attempt delivery of the rows an enqueue just wrote.
      *
      * Two reasons this does nothing but return:
@@ -396,6 +432,10 @@ final class OrderMailer
         if (is_string($payload['reason'] ?? null)) {
             $data['reason'] = $payload['reason'];
         }
+        // …which pickup step a pickup mail announces (ready / extended).
+        if (is_string($payload['pickup_event'] ?? null)) {
+            $data['pickupEvent'] = $payload['pickup_event'];
+        }
         // …and what a payment alert is about (the finding, why the order could not come back).
         if (is_array($payload['alert'] ?? null)) {
             $data['alert'] = $payload['alert'];
@@ -497,6 +537,7 @@ final class OrderMailer
             self::KIND_EXPIRED => 'لم يكتمل الدفع — رابط استعادة الطلب (للعميل)',
             self::KIND_EXPIRED_ADMIN => 'طلب بطاقة لم يُدفع — للمتابعة (للإدارة)',
             self::KIND_PAYMENT_ALERT => 'دفعة تحتاج مراجعة — تنبيه (للإدارة)',
+            self::KIND_PICKUP => 'الاستلام من الفرع — جاهز / تمديد (للعميل)',
             default => $kind,
         };
     }
@@ -743,6 +784,7 @@ final class OrderMailer
             self::KIND_EXPIRED => new PaymentExpired($data),
             self::KIND_EXPIRED_ADMIN => new PaymentExpiredAdmin($data),
             self::KIND_PAYMENT_ALERT => new PaymentAlertAdmin($data),
+            self::KIND_PICKUP => new PickupUpdate($data),
             default => null,
         };
     }

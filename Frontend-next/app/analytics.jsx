@@ -2,10 +2,12 @@
 import Script from 'next/script'
 import { useEffect } from 'react'
 import { usePathname } from 'next/navigation'
-import { META_PIXEL_IDS, GA4_MEASUREMENT_ID, TIKTOK_PIXEL_ID } from '@/src/lib/env'
+import { META_PIXEL_IDS, GA4_MEASUREMENT_ID } from '@/src/lib/env'
 
 /*
- * ── Meta (Facebook) + TikTok pixels ────────────────────────────────────────────────────────────
+ * ── Meta (Facebook) pixel ──────────────────────────────────────────────────────────────────────
+ *
+ * (2026-11-14: the TikTok pixel that sat beside it is removed from both shops — no TikTok ads. See src/scripts/pixels.js.)
  *
  * The snippet Meta hands you is written for a page that reloads on every navigation. Pasted into
  * a Next.js layout it is wrong in three ways, and each is fixed here rather than worked around:
@@ -81,10 +83,9 @@ function PageViewOnRoute() {
     }
     if (lastPath === pathname) return
     lastPath = pathname
-    // Both stubs queue calls made before their library finishes loading, so an early
+    // The stub queues calls made before its library finishes loading, so an early
     // call is delayed, never dropped.
     window.fbq?.('track', 'PageView')
-    window.ttq?.page?.()
   }, [pathname])
 
   return null
@@ -133,16 +134,6 @@ export default function Analytics() {
             {`window.dataLayer=window.dataLayer||[];window.gtag=function(){dataLayer.push(arguments)};if(!window.__wzGa4Init){window.__wzGa4Init=1;gtag('js',new Date());gtag('config',${JSON.stringify(GA4_MEASUREMENT_ID)});}`}
           </Script>
         </>
-      ) : null}
-
-      {/* TikTok (2026-10-14): the id comes from NEXT_PUBLIC_TIKTOK_PIXEL_ID like the two above, and
-          nothing is rendered without it. It used to be a literal in this template — the one way a
-          copied storefront fires into another shop's pixel. The page event helper still guards on
-          `window.ttq`, so without the script it is a no-op. */}
-      {TIKTOK_PIXEL_ID ? (
-        <Script id="tiktok-pixel" strategy="lazyOnload">
-          {`!function(w,d,t){w.TiktokAnalyticsObject=t;var ttq=w[t]=w[t]||[];ttq.methods=['page','track','identify','instances','debug','on','off','once','ready','alias','group','enableCookie','disableCookie','holdConsent','revokeConsent','grantConsent'];ttq.setAndDefer=function(t,e){t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}};for(var i=0;i<ttq.methods.length;i++)ttq.setAndDefer(ttq,ttq.methods[i]);ttq.instance=function(t){for(var e=ttq._i[t]||[],n=0;n<ttq.methods.length;n++)ttq.setAndDefer(e,ttq.methods[n]);return e};ttq.load=function(e,n){var r='https://analytics.tiktok.com/i18n/pixel/events.js';ttq._i=ttq._i||{};ttq._i[e]=[];ttq._i[e]._u=r;ttq._t=ttq._t||{};ttq._t[e]=+new Date;ttq._o=ttq._o||{};ttq._o[e]=n||{};n=document.createElement('script');n.type='text/javascript';n.async=!0;n.src=r+'?sdkid='+e+'&lib='+t;e=document.getElementsByTagName('script')[0];e.parentNode.insertBefore(n,e)};ttq.page();ttq.load(${JSON.stringify(TIKTOK_PIXEL_ID)})}(window,document,'ttq');`}
-        </Script>
       ) : null}
 
       <PageViewOnRoute />

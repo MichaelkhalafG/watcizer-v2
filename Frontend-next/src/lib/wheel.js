@@ -1,8 +1,8 @@
 /*
- * "Spin the wheel" — the pure rules of the page (2026-11-07; the client's prize kinds since 2026-11-09, WATCHIZER
- * ONLY). Tested in tests/wheel.test.mjs.
+ * "Spin the wheel" — the pure rules of the page (2026-11-07; the client's prize kinds since 2026-11-09; both shops, a
+ * twin since 2026-11-14). Tested in tests/wheel.test.mjs.
  *
- * Nothing here decides a prize: the SERVER does (core, POST /api/v2/watchizer/wheel/spin) and the page only turns
+ * Nothing here decides a prize: the SERVER does (core, POST /api/v2/{storefront}/wheel/spin) and the page only turns
  * the wheel to the segment it is told. What lives here is the arithmetic of that turn, the phone's shape and its
  * masking, the code's time left, the words a segment and a result carry (short on the disc, whole on the card), the
  * conditions a won code is read with, and the small things the browser remembers: the spin it made (so the page
@@ -194,11 +194,11 @@ export function inviteLink(origin, code, lang) {
   return `${origin}${lang === 'ar' ? '/ar' : ''}/?invite=${encodeURIComponent(code)}`
 }
 
-/** One short message in the page's language, with the code and the link. */
-export function inviteMessage(code, percent, link, lang) {
+/** One short message in the page's language, with the shop's name (src/content/wheelBrand.js), the code and the link. */
+export function inviteMessage(code, percent, link, lang, shop) {
   return lang === 'ar'
-    ? `أدعوك إلى Watchizer: استخدم كودي ${code} لخصم ${percent}٪ على أول طلب لك — ${link}`
-    : `I'm inviting you to Watchizer: use my code ${code} for ${percent}% off your first order — ${link}`
+    ? `أدعوك إلى ${shop}: استخدم كودي ${code} لخصم ${percent}٪ على أول طلب لك — ${link}`
+    : `I'm inviting you to ${shop}: use my code ${code} for ${percent}% off your first order — ${link}`
 }
 
 /**

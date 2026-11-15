@@ -6,12 +6,16 @@ namespace App\Domain\Notifications;
 
 use App\Domain\Orders\OrderCustomer;
 use App\Domain\Orders\OrderTotals;
+use App\Domain\Pickup\Pickup;
+use App\Domain\Pickup\PickupCheckout;
+use App\Domain\Pickup\PickupLifecycle;
 use App\Storefront\ImageUrl;
 use App\Storefront\StorefrontHasNoIdentity;
 use App\Storefront\StorefrontIdentity;
 use App\Storefront\StorefrontUrls;
 use App\Transform\Row;
 use Illuminate\Database\Query\JoinClause;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use stdClass;
 
@@ -85,6 +89,7 @@ final class OrderEmailData
 
         $customer = OrderCustomer::of($orderId);
         $address = self::address(Row::nint($order, 'address_id'));
+        $pickup = PickupCheckout::facts($orderId);
 
         /*
          * The totals block comes from OrderTotals — the same answer the dashboard shows. The old
@@ -129,8 +134,16 @@ final class OrderEmailData
             'moneyDecimals' => $totals === null ? 0 : self::moneyDecimals($totals),
             'note' => Row::nstr($order, 'note'),
 
-            'paymentEn' => self::paymentLabel($paymentMethod, 'en'),
-            'paymentAr' => self::paymentLabel($paymentMethod, 'ar'),
+            // a PICKUP order (2026-11-14): the store, the code, the ready window — null for a delivery
+            'pickup' => $pickup,
+            'pickupHoldHours' => $pickup === null ? null : Pickup::settings(Row::int($order, 'storefront_id'))['hold_hours'],
+            // when a READY pickup must be collected by, on the Cairo clock the customer reads (null before ready)
+            'pickupCollectBy' => $pickup === null || $pickup['expires_at'] === null ? null : [
+                'en' => PickupLifecycle::cairo($pickup['expires_at'], 'l j M Y, H:i'),
+                'ar' => self::arabicTime($pickup['expires_at']),
+            ],
+            'paymentEn' => $pickup !== null && $pickup['pay_at_store'] ? 'Pay at the store' : self::paymentLabel($paymentMethod, 'en'),
+            'paymentAr' => $pickup !== null && $pickup['pay_at_store'] ? 'الدفع في الفرع' : self::paymentLabel($paymentMethod, 'ar'),
             'paymentStatus' => self::paymentStatusLabel($orderId, $paymentMethod),
 
             // Branding + links, all from the ORDER'S OWN STOREFRONT row (W2, 2026-10-13): the name,
@@ -141,6 +154,8 @@ final class OrderEmailData
             // number and the copyright, and `watchizereg.com` when the order had no domain.
             ...$identity->viewData(),
             'trackUrl' => self::trackUrl($storefrontId),
+            // the shop's front page — "order again" after a pickup reservation expired
+            'shopUrl' => StorefrontUrls::frontend($storefrontId),
             'dashboardUrl' => self::dashboardUrlFor(Row::int($order, 'id')),
             // W3 (2026-10-13): which storefront's MAILBOX the message leaves from. Not a template
             // key; the mailer reads it. Every mailable receives it and none renders it.
@@ -160,6 +175,8 @@ final class OrderEmailData
             'orderNumber', 'orderId', 'createdAt', 'status', 'statusEn', 'statusAr',
             'customerName', 'customerEmail', 'customerPhone', 'isGuest',
             'addressLine', 'cityEn', 'cityAr',
+            // 2026-11-14 (click & collect): a pickup order's store, code and ready window (null for a delivery), and the hold
+            'pickup', 'pickupHoldHours', 'pickupCollectBy', 'shopUrl',
             'items', 'subtotal', 'discount', 'promotion', 'promotionName', 'freeShipping', 'shippingCost', 'total', 'moneyDecimals', 'note',
             'paymentEn', 'paymentAr', 'paymentStatus',
             'brandName', 'copyright', 'whatsappUrl', 'trackUrl', 'dashboardUrl',
@@ -364,6 +381,12 @@ final class OrderEmailData
     private static function hexes(?string $stored): array
     {
         return array_values(array_filter(array_map('trim', explode('/', $stored ?? '')), fn (string $h): bool => $h !== ''));
+    }
+
+    /** A time on the app clock, in Arabic as the customer reads it on the Cairo clock: "الثلاثاء 17 نوفمبر 2026، 18:22". */
+    private static function arabicTime(string $time): string
+    {
+        return Carbon::parse($time, config()->string('app.timezone'))->timezone('Africa/Cairo')->settings(['locale' => 'ar'])->translatedFormat('l j F Y، H:i');
     }
 
     private static function createdAt(?string $timestamp): string

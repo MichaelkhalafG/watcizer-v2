@@ -13,7 +13,10 @@ use App\Domain\Notifications\OrderMailer;
 use App\Domain\Orders\OrderCustomer;
 use App\Domain\Orders\UnpaidOrders;
 use App\Domain\Payment\CheckoutMethods;
+use App\Domain\Payment\OfflineProvider;
 use App\Domain\Payment\PaymentInitiator;
+use App\Domain\Pickup\PickupCheckout;
+use App\Domain\Pickup\PickupLifecycle;
 use App\Domain\Promotions\CartLine;
 use App\Domain\Promotions\CartSnapshot;
 use App\Domain\Promotions\CouponStatus;
@@ -71,6 +74,7 @@ final class StorefrontCheckout
         private readonly PromotionSkips $skips,
         private readonly OrderMailer $mailer,
         private readonly PaymentInitiator $initiator,
+        private readonly PickupCheckout $pickups,
     ) {}
 
     /**
@@ -97,6 +101,26 @@ final class StorefrontCheckout
             return ['status' => 422, 'body' => ['error' => $refusal['code'], 'messages' => $refusal['messages']]];
         }
         $paymentMethod = $legacyMethod === 'card' ? 'paymob' : $legacyMethod;
+
+        /*
+         * PICK UP IN STORE (2026-11-14): the switch, the store, the contact phone, a payment that suits a pickup and the
+         * open pay-at-store limit are all checked HERE, before anything is written. A delivery may never name the
+         * pay-at-store row.
+         */
+        $pickup = ($data['fulfilment'] ?? null) === 'pickup';
+        $pickupPlan = null;
+        if ($pickup) {
+            $prepared = $this->pickups->prepare($storefrontId, $data, $legacyMethod, $postedMethodId);
+            if (isset($prepared['refusal'])) {
+                return $prepared['refusal'];
+            }
+            $pickupPlan = $prepared;
+            $addressId = null;
+        } elseif ($this->methods->methodOf($storefrontId, $postedMethodId) === OfflineProvider::STORE) {
+            $u = CheckoutMethods::unavailable();
+
+            return ['status' => 422, 'body' => ['error' => $u['code'], 'messages' => $u['messages']]];
+        }
 
         $cart = $this->carts->find($userId, $guestToken);
         /*
@@ -150,14 +174,14 @@ final class StorefrontCheckout
             // The shopper's own unpaid card orders on this storefront give their units back first (as on compat).
             $this->unpaid->supersedeFor($userId, $userId === null ? $guestToken : null, $storefrontId);
 
-            if ($addressId === null) {
+            if ($pickupPlan === null && $addressId === null) {
                 $addressId = $this->createAddress($userId, $guestToken, $data);
             }
             // free shipping over the storefront's threshold (FreeShipping): waived BEFORE the guard, on the goods at
-            // the prices charged — the storefront shows and sends the same number
+            // the prices charged — the storefront shows and sends the same number. A PICKUP order has no delivery at all.
             $freeOver = FreeShipping::threshold($storefrontId);
-            $waived = FreeShipping::applies($freeOver, $subtotal);
-            $shipping = $waived ? 0.0 : $this->shippingCost($addressId);
+            $waived = $pickupPlan === null && FreeShipping::applies($freeOver, $subtotal);
+            $shipping = $pickupPlan !== null || $waived || $addressId === null ? 0.0 : $this->shippingCost($addressId);
             $serverTotal = round($subtotal + $shipping, 2);
             if (abs($clientTotal - $serverTotal) > 0.01) {
                 self::unwindTo($outer);
@@ -168,7 +192,7 @@ final class StorefrontCheckout
             $coupon = self::str($data['coupon'] ?? null);
             $promotion = $this->evaluatePromotions($storefrontId, $priced, $subtotal, $shipping, $paymentMethod, $coupon,
                 PromotionDiscounts::customerKeys($userId, self::str($data['guest_email'] ?? null),
-                    self::str($data['guest_phone'] ?? null) ?? self::str($data['phone'] ?? null)));
+                    self::str($data['guest_phone'] ?? null) ?? self::str($data['phone'] ?? null)), $pickupPlan !== null);
             if ($coupon !== null && ($promotion->coupon['status'] ?? null) !== CouponStatus::APPLIED) {
                 /*
                  * A typed code that does not apply STOPS the order (M1u): the shopper was shown a discount in the
@@ -195,10 +219,15 @@ final class StorefrontCheckout
                 self::str($data['note'] ?? null),
                 self::str($data['guest_name'] ?? null),
                 self::str($data['guest_email'] ?? null),
-                self::str($data['guest_phone'] ?? null) ?? self::str($data['phone'] ?? null),
+                $pickupPlan !== null ? $pickupPlan['phone'] : (self::str($data['guest_phone'] ?? null) ?? self::str($data['phone'] ?? null)),
                 $priced,
                 $promotion,
+                $pickupPlan !== null ? 'pickup' : 'delivery',
             );
+            if ($pickupPlan !== null) {
+                $this->pickups->record($orderId, $storefrontId, $pickupPlan['store'], $pickupPlan['settings'], $priced,
+                    $pickupPlan['phone'], $pickupPlan['pay_at_store']);
+            }
             PromotionDiscounts::record($orderId, $promotion);
             if ($waived) {
                 // the order says WHY its delivery was free, so OrderTotals shows "free", not an unexplained gap
@@ -230,7 +259,12 @@ final class StorefrontCheckout
             'status' => $order === null ? null : Row::str($order, 'status'),
             'total' => $order === null ? $serverTotal : (float) Row::money($order, 'total_price_for_order'),
             'payment_method' => $paymentMethod,
+            'fulfilment' => $pickupPlan !== null ? 'pickup' : 'delivery',
         ];
+        if ($pickupPlan !== null) {
+            // what the confirmation shows: the store, the code, the ready window, how it is paid
+            $body['pickup'] = PickupCheckout::facts($orderId);
+        }
         if ($paymentMethod === 'paymob') {
             return $this->startPayment($request, $storefrontId, $orderId, $addressId, $postedMethodId ?? $legacyMethod, $body);
         }
@@ -246,7 +280,7 @@ final class StorefrontCheckout
      * @param  array<string, mixed>  $body
      * @return array{status: int, body: array<string, mixed>}
      */
-    private function startPayment(Request $request, int $storefrontId, int $orderId, int $addressId, string $postedMethod, array $body): array
+    private function startPayment(Request $request, int $storefrontId, int $orderId, ?int $addressId, string $postedMethod, array $body): array
     {
         try {
             $started = $this->initiator->initiate(
@@ -277,6 +311,8 @@ final class StorefrontCheckout
     {
         $this->inventory->releaseOrder($orderId, 'payment_failed', Actor::system(), $storefrontId);
         DB::table('orders')->where('id', $orderId)->update(['status' => 'cancelled', 'updated_at' => now()]);
+        // a pickup whose card payment never started closes its reservation too (2026-11-14)
+        PickupLifecycle::closeForCancelledOrder($orderId);
     }
 
     /**
@@ -284,7 +320,7 @@ final class StorefrontCheckout
      * @param  list<string>  $customerKeys  who is buying, for a promotion's per-customer limit (M1u)
      */
     private function evaluatePromotions(int $storefrontId, array $priced, float $subtotal, float $shipping, string $paymentMethod,
-        ?string $coupon = null, array $customerKeys = []): PromotionOutcome
+        ?string $coupon = null, array $customerKeys = [], bool $pickup = false): PromotionOutcome
     {
         $lines = [];
         foreach ($priced as $line) {
@@ -306,6 +342,7 @@ final class StorefrontCheckout
             paymentMethod: $paymentMethod,
             code: $coupon,
             customerKeys: $customerKeys,
+            pickup: $pickup,
         ));
     }
 
@@ -347,11 +384,13 @@ final class StorefrontCheckout
      *
      * @return array<string, string>
      */
-    private function billing(int $orderId, int $addressId): array
+    private function billing(int $orderId, ?int $addressId): array
     {
         $customer = OrderCustomer::of($orderId);
         $parts = explode(' ', $customer->name ?? 'Guest User', 2);
-        $address = DB::table('addresses')->where('id', $addressId)->first();
+        $address = $addressId === null ? null : DB::table('addresses')->where('id', $addressId)->first();
+        // a PICKUP order (2026-11-14) has no address: the provider's record names the store it is collected from
+        $pickup = $addressId === null ? PickupCheckout::facts($orderId) : null;
         /*
          * The governorate's English name, exactly as compat's `billingData()` sends it (2026-10-21, the
          * per-method parity check before Watchizer's checkout moved). This sent 'Cairo' for every order — the
@@ -371,7 +410,7 @@ final class StorefrontCheckout
         return [
             'first_name' => $parts[0] !== '' ? $parts[0] : 'Guest',
             'last_name' => $parts[1] ?? 'User',
-            'street' => $address === null ? 'N/A' : (Row::nstr(Row::cast($address), 'address_line') ?? 'N/A'),
+            'street' => $address === null ? ($pickup !== null ? 'Pickup: '.$pickup['store']['name']['en'] : 'N/A') : (Row::nstr(Row::cast($address), 'address_line') ?? 'N/A'),
             'phone_number' => $customer->phone ?? '01000000000',
             'city' => $city,
             'country' => 'Egypt',

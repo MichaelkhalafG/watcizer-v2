@@ -34,6 +34,7 @@ use App\Http\Controllers\V2\RedirectController;
 use App\Http\Controllers\V2\RelatedController;
 use App\Http\Controllers\V2\ReviewController;
 use App\Http\Controllers\V2\SitemapController;
+use App\Http\Controllers\V2\PickupController;
 use App\Http\Controllers\V2\WheelController;
 use Illuminate\Support\Facades\Route;
 
@@ -98,6 +99,8 @@ Route::prefix('v2/{storefront}')->middleware('storefront')->where(['storefront' 
     // round's spin of their phone (an invite is activated by it); the account page lists every spin saved to it
     Route::post('wheel/claim', [WheelController::class, 'claim'])->middleware('throttle:wheel-spin');
     Route::get('wheel/mine', [WheelController::class, 'mine']);
+    // PICK UP IN STORE (2026-11-14): the switch, the active stores and the ready windows, for the checkout page. Read-only.
+    Route::get('pickup', [PickupController::class, 'show']);
     // B7 S1 (round 5, 2026-10-18): the v2 CART of the storefront in the path — variant-aware, beside compat's cart and
     // never through it. Never cached (CartController): one shopper's cart is never served to another.
     Route::get('cart', [CartController::class, 'show']);

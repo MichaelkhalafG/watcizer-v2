@@ -13,13 +13,14 @@ import { trackCouponWon, trackSpin } from '../../scripts/pixels'
 import { conditionLines, dayOf, deviceId, headline, inviteLink, inviteMessage, isEgyptianMobile, kindOf, maskPhone, normalizePhone, readSpin, shareTargets, targetRotation, timeLeft, two, writeSpin } from '../../lib/wheel'
 import { keepUtm, readUtm } from '../../lib/utm'
 import { setAuthReturn } from '../../lib/authReturn'
+import { WHEEL_BRAND } from '../../content/wheelBrand'
 import SpinWheel from './SpinWheel'
 import Backdrop from './Backdrop'
 import './wheel.css'
 
 // THE SPIN PAGE (2026-11-07; the carnival version of 2026-11-08; the client's prizes and the design pass of 2026-11-09;
-// Michael's review the same evening, WATCHIZER ONLY) — /spin and /ar/spin, a landing page for ads, in its own shell (no
-// header, no footer): the brand's mark at its own proportions, a small "Home" pill, a gold headline and an honest line
+// Michael's review the same evening; BOTH SHOPS, a twin since 2026-11-14) — /spin and /ar/spin, a landing page for ads, in its own shell (no
+// header, no footer): the shop's mark at its own proportions (src/content/wheelBrand.js, each shop's own), a small "Home" pill, a gold headline and an honest line
 // (not every spin wins), the wheel in the team's colours on a festive violet sky, the phone field and one gold button,
 // the prizes as a legend. On a phone one centred column; on a computer the words and the form on one side and the wheel
 // on the other, nothing to scroll. Three states:
@@ -216,6 +217,8 @@ export default function SpinPage({ wheel }) {
       glow.style.setProperty('--gx', `${(r.left + r.width / 2).toFixed(1)}px`)
       glow.style.setProperty('--gy', `${(r.top + r.height / 2).toFixed(1)}px`)
       glow.style.setProperty('--gs', `${r.width.toFixed(1)}px`)
+      // the size as a FACTOR of the circles' fixed 400 px base (wheel.css): a scale, never a width — no layout shift
+      glow.style.setProperty('--gk', (r.width / 400).toFixed(4))
     }
     const ask = () => {
       if (!frame) frame = requestAnimationFrame(measure)
@@ -419,7 +422,7 @@ export default function SpinPage({ wheel }) {
   const lines = spin ? conditionLines(spin, lang) : []
   const origin = typeof window !== 'undefined' ? window.location.origin : ''
   const link = inviteActive ? inviteLink(origin, spin.invite.code, lang) : ''
-  const message = inviteActive ? inviteMessage(spin.invite.code, percentText, link, lang) : ''
+  const message = inviteActive ? inviteMessage(spin.invite.code, percentText, link, lang, WHEEL_BRAND.name) : ''
   const canSheet = typeof navigator !== 'undefined' && typeof navigator.share === 'function'
   const targets = inviteActive ? shareTargets(message, link, typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) : null
 
@@ -462,8 +465,14 @@ export default function SpinPage({ wheel }) {
 
       <div className="sp-frame">
         <div className="sp-brand">
-          {/* the mark at its own proportions (1265×851): width and height agree, the CSS sets the width only */}
-          <Image src="/logo.webp" alt="Watchizer" width={120} height={81} priority />
+          {/* the shop's mark at its own proportions (src/content/wheelBrand.js): width and height agree, the CSS sets the
+              width only and draws it white. An SVG is drawn as the file, never through next/image (GHSA-2464-fhr4-w9xw). */}
+          {WHEEL_BRAND.logo.svg ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={WHEEL_BRAND.logo.src} alt={WHEEL_BRAND.name} width={WHEEL_BRAND.logo.width} height={WHEEL_BRAND.logo.height} fetchPriority="high" decoding="async" />
+          ) : (
+            <Image src={WHEEL_BRAND.logo.src} alt={WHEEL_BRAND.name} width={WHEEL_BRAND.logo.width} height={WHEEL_BRAND.logo.height} priority />
+          )}
         </div>
 
         {state === 'ended' ? (

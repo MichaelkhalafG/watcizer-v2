@@ -33,6 +33,36 @@
         'completed'  => 'تم اكتمال طلبك. شكراً لتسوقك من '.$brandName.'!',
         'cancelled'  => 'تم إلغاء طلبك. إذا كان هذا عن طريق الخطأ، يرجى التواصل معنا.',
     ][$status] ?? 'تم تحديث حالة طلبك.';
+
+    // A PICKUP order (click & collect, 2026-11-14): nothing is delivered — it is prepared, collected, or released.
+    $pickupExpired = false;
+    if (!empty($pickup)) {
+        $storeEn = $pickup['store']['name']['en'];
+        $storeAr = $pickup['store']['name']['ar'];
+        $pickupExpired = $status === 'cancelled' && $pickup['status'] === 'expired';
+        $messageEn = [
+            'processing' => 'Good news — your order is being prepared for pickup at '.$storeEn.'. We will e-mail you when it is ready.',
+            'delivered'  => 'You collected your order from '.$storeEn.'. Thank you — we hope you love it!',
+            'cancelled'  => $pickupExpired
+                ? 'Your order was not collected from '.$storeEn.' in time, so the reservation was released and the item is back on sale. You are welcome to order it again.'
+                : 'Your pickup order has been cancelled. If this is a mistake, please contact us.',
+        ][$status] ?? $messageEn;
+        $messageAr = [
+            'processing' => 'خبر سعيد — جاري تجهيز طلبك للاستلام من فرع '.$storeAr.'. سنراسلك عندما يصبح جاهزًا.',
+            'delivered'  => 'استلمت طلبك من فرع '.$storeAr.'. شكرًا لك — نتمنى أن ينال إعجابك!',
+            'cancelled'  => $pickupExpired
+                ? 'لم يُستلم طلبك من فرع '.$storeAr.' في الموعد، فأُلغي الحجز وعاد المنتج للبيع. يسعدنا أن تطلبه مرة أخرى.'
+                : 'تم إلغاء طلب الاستلام من الفرع. إذا كان هذا عن طريق الخطأ، يرجى التواصل معنا.',
+        ][$status] ?? $messageAr;
+        if ($status === 'delivered') {
+            $statusEn = 'Collected';
+            $statusAr = 'تم الاستلام';
+        }
+        if ($pickupExpired) {
+            $statusEn = 'Reservation released';
+            $statusAr = 'انتهى الحجز';
+        }
+    }
 @endphp
 <body style="margin:0;padding:0;background:#f5f5f5;-webkit-text-size-adjust:100%;">
 <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:#f5f5f5;padding:28px 14px;font-family:'Segoe UI',Tahoma,Arial,sans-serif;">
@@ -85,7 +115,11 @@
 
     {{-- CTA --}}
     <tr><td style="padding:24px 32px 30px;text-align:center;">
+        @if($pickupExpired && !empty($shopUrl))
+        <a href="{{ $shopUrl }}" style="display:inline-block;background:#111;color:#fff;text-decoration:none;padding:14px 40px;border-radius:6px;font-size:12px;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;">Order Again &middot; <span dir="rtl">اطلب مرة أخرى</span></a>
+        @else
         <a href="{{ $trackUrl }}" style="display:inline-block;background:#111;color:#fff;text-decoration:none;padding:14px 40px;border-radius:6px;font-size:12px;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;">Track Your Order</a>
+        @endif
     </td></tr>
 
     @include('emails.partials.footer')

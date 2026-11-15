@@ -58,6 +58,13 @@ export const getServerV2Campaigns = memo('v2:campaigns', async () => (await serv
  */
 export const getServerV2Wheel = memo('v2:wheel', async () => (await serverHttp.get(`v2/${STOREFRONT_CODE}/wheel`)).data, 30_000, 120_000)
 
+/**
+ * "Pick up in store" (click & collect, 2026-11-14): the switch, the stores, the hold and the ready windows — for the
+ * checkout and the product page, so the choice and the "pick up in store" line are in the server HTML instead of
+ * arriving later and pushing the page down. Held 30 s like the wheel; the browser asks again itself (usePickup).
+ */
+export const getServerV2Pickup = memo('v2:pickup', async () => (await serverHttp.get(`v2/${STOREFRONT_CODE}/pickup`)).data, 30_000, 120_000)
+
 /** v2 home: the rails with cards, the deals band, the category entries, the banner. */
 // The menu (item 36, 2026-11-05): the same for every visitor, so one read per five minutes serves every page render.
 export const getServerV2Menu = memo('v2:menu', async () => (await serverHttp.get(`v2/${STOREFRONT_CODE}/menu`)).data)

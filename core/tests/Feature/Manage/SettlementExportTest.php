@@ -71,6 +71,8 @@ it('writes exactly the agreed columns, in order', function () {
     expect($header)->toBe([
         'Date', 'Order number', 'Payment provider', 'Payment method', 'Transaction number',
         'Amount', 'Status', 'Gift promotions', 'Discount', 'Discount promotion ID',
+        // click & collect (2026-11-14): delivery or pickup, and the store
+        'Delivery or pickup', 'Pickup store',
     ]);
 });
 

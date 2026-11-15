@@ -84,7 +84,7 @@ describe('GA4 carries the code and the discount in its own fields', () => {
     vi.resetModules()
     vi.stubEnv('NEXT_PUBLIC_GA4_MEASUREMENT_ID', 'G-TEST12345')
     const gtag = vi.fn()
-    globalThis.window = { gtag, fbq: vi.fn(), ttq: { track: vi.fn() } }
+    globalThis.window = { gtag, fbq: vi.fn() }
     const px = await import('../src/scripts/pixels')
 
     px.trackInitiateCheckout({ value: 6000, coupon: 'Black1000', contents: [{ id: 41, quantity: 2, price: 4000, discount: 1000 }] })
@@ -103,7 +103,7 @@ describe('GA4 carries the code and the discount in its own fields', () => {
     vi.resetModules()
     vi.stubEnv('NEXT_PUBLIC_GA4_MEASUREMENT_ID', 'G-TEST12345')
     const gtag = vi.fn()
-    globalThis.window = { gtag, fbq: vi.fn(), ttq: { track: vi.fn() } }
+    globalThis.window = { gtag, fbq: vi.fn() }
     const px = await import('../src/scripts/pixels')
     px.trackInitiateCheckout({ value: 100, contents: [{ id: 1, quantity: 1, price: 100 }] })
     expect(gtag.mock.calls[0][2]).not.toHaveProperty('coupon')

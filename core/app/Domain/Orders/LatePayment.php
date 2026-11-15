@@ -10,6 +10,7 @@ use App\Domain\Inventory\InsufficientOfferStock;
 use App\Domain\Inventory\InsufficientStock;
 use App\Domain\Inventory\InventoryService;
 use App\Domain\Inventory\StockTarget;
+use App\Domain\Pickup\PickupLifecycle;
 use App\Transform\Row;
 use Illuminate\Database\Query\JoinClause;
 use Illuminate\Support\Facades\DB;
@@ -186,6 +187,8 @@ final class LatePayment
                     'paid_via_method' => $method,
                     'updated_at' => now(),
                 ]);
+                // a reinstated PICKUP is reserved again, its code unchanged (2026-11-14)
+                PickupLifecycle::reopenForReinstatedOrder($orderId);
 
                 ActivityLog::record(
                     'orders',

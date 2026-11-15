@@ -1,6 +1,7 @@
 import http from '../Context/api'
 import { trackAddToCart, trackRemoveFromCart } from '../scripts/pixels'
 import { API_BASE, STOREFRONT_CODE } from '../lib/env'
+import { couponParams } from '../lib/coupon'
 import { useAuthStore } from './authStore'
 
 // ── Brand Fashion's cart is core's v2 cart (DIVERGED 2026-10-19, B7) ───────────────────────────
@@ -156,9 +157,13 @@ const applyPayload = (payload) => {
 }
 
 // One v2 write or read. It never rejects: { ok, status, code, message, data }.
+// Every call carries the kept code (2026-11-14, src/lib/coupon.js couponParams — `?coupon=…[&phone=…]`, what the twin
+// v2Cart.js sends for Watchizer): core prices the typed code — a discount code or a wheel code — in EVERY cart answer, so
+// the coupon box can say applied or refused and every total on the page carries the discount. Before this the cart was
+// read without it: the box never answered, the page showed no discount, and only the order itself priced the code.
 const send = (method, path, body) =>
   http
-    .request({ method, url: `${V2}/${path}`, data: body, headers: { Accept: 'application/json' } })
+    .request({ method, url: `${V2}/${path}`, data: body, params: couponParams(), headers: { Accept: 'application/json' } })
     .then((res) => ({ ok: true, status: res.status, code: null, message: null, data: res.data?.data ?? null }))
     .catch((err) => {
       const code = err?.response?.data?.error ?? null

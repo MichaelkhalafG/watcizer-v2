@@ -122,7 +122,9 @@ it('keeps last_error out of the order screen props entirely', function () {
 
     expect($body)->not->toContain('orders@watchizereg.com')
         ->and($body)->not->toContain('smtp.hostinger.com')
-        ->and($body)->not->toContain(':465')
+        // the host's port as the planted error writes it ("…hostinger.com:465"): a bare ':465' also matches any record
+        // id starting 465 in the page's JSON ("id":4651) and failed the suite at random (2026-11-15)
+        ->and($body)->not->toContain('.com:465')
         ->and($body)->not->toContain('last_error');
 
     /*

@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useRef } from 'react'
 
-// THE CELEBRATION (2026-11-07; over the whole screen since 2026-11-08; paced since 2026-11-09 evening, WATCHIZER ONLY):
+// THE CELEBRATION (2026-11-07; over the whole screen since 2026-11-08; paced since 2026-11-09 evening; a twin since 2026-11-14):
 // ONE big burst at the result — two hundred and forty flakes in the won segment's colour, the brand's golds, pink and
 // white, thrown up from the centre and falling for three seconds — then a SMALL one (sixty flakes) every nine seconds,
 // and nothing at all after half a minute (Michael: the repeats pulled the eye off the code). One canvas FIXED to the

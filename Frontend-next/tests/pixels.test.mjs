@@ -1,9 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-// The analytics events (2026-10-22): what each helper hands GA4 (gtag), the Meta pixel (fbq) and the TikTok
-// pixel (ttq), that a purchase is reported ONCE per order even across a reload, that the card hand-off round-trips,
-// and that a storefront with no id configured sends NOTHING. The three vendor globals are spies on a stub
-// `window`; localStorage is a Map. The module is re-imported per test because it reads the ids at import.
+// The analytics events (2026-10-22): what each helper hands GA4 (gtag) and the Meta pixel (fbq), that a purchase is
+// reported ONCE per order even across a reload, that the card hand-off round-trips, and that a storefront with no id
+// configured sends NOTHING. The vendor globals are spies on a stub `window`; localStorage is a Map. The module is
+// re-imported per test because it reads the ids at import.
+//
+// TikTok (2026-11-14): the pixel is removed from both shops. A `ttq` spy stays on the stub window and a TikTok key
+// stays in the stubbed environment — the one an hPanel may still carry — so every test below also proves that
+// nothing is ever handed to TikTok, whatever the environment says.
 
 const store = new Map()
 const localStorageStub = {
@@ -13,6 +17,7 @@ const localStorageStub = {
 }
 Object.defineProperty(globalThis, 'localStorage', { value: localStorageStub, configurable: true, writable: true })
 
+// the last key is a LEFTOVER: no code reads it any more (2026-11-14)
 const ids = { NEXT_PUBLIC_GA4_MEASUREMENT_ID: 'G-TEST12345', NEXT_PUBLIC_META_PIXEL_ID: '1614877760150035', NEXT_PUBLIC_TIKTOK_PIXEL_ID: 'CTEST000ABC' }
 
 async function load(env = ids) {
@@ -43,7 +48,7 @@ describe('each helper hands every platform its native event, in EGP', () => {
       items: [{ item_id: '440', item_name: 'Tommy Hilfiger 1791631', price: 3090, quantity: 1 }],
     })
     expect(fbq).toHaveBeenCalledWith('track', 'ViewContent', expect.objectContaining({ content_ids: ['440'], value: 3090, currency: 'EGP' }))
-    expect(track).toHaveBeenCalledWith('ViewContent', expect.objectContaining({ value: 3090, currency: 'EGP' }))
+    expect(track).not.toHaveBeenCalled()
   })
 
   it('add_to_cart · AddToCart carries the value of THIS action and the unit price', async () => {
@@ -73,7 +78,7 @@ describe('each helper hands every platform its native event, in EGP', () => {
     px.trackInitiateCheckout({ value: 4000, contents: [{ id: 1, name: 'A', quantity: 1, price: 1000 }, { id: 2, name: 'B', quantity: 3, price: 1000 }] })
     expect(gtag).toHaveBeenCalledWith('event', 'begin_checkout', expect.objectContaining({ currency: 'EGP', value: 4000 }))
     expect(fbq).toHaveBeenCalledWith('track', 'InitiateCheckout', expect.objectContaining({ num_items: 4, value: 4000 }))
-    expect(track).toHaveBeenCalledWith('InitiateCheckout', expect.objectContaining({ value: 4000 }))
+    expect(track).not.toHaveBeenCalled()
   })
 
   it('view_item_list: the first 50, in order, with their index', async () => {
@@ -93,7 +98,7 @@ describe('each helper hands every platform its native event, in EGP', () => {
 describe('purchase: once per order, the same id as the server event', () => {
   const order = { orderNumber: 'WZ-2026-000123', value: 3090, shipping: 60, contents: [{ id: 440, name: 'Tommy', quantity: 1, price: 3090 }] }
 
-  it('GA4 gets transaction_id, value, shipping and the items; Meta and TikTok get the event id', async () => {
+  it('GA4 gets transaction_id, value, shipping and the items; Meta gets the event id; TikTok gets nothing', async () => {
     const { px, gtag, fbq, track } = await load()
     expect(px.trackPurchase(order)).toBe(true)
     expect(gtag).toHaveBeenCalledWith('event', 'purchase', {
@@ -104,7 +109,7 @@ describe('purchase: once per order, the same id as the server event', () => {
       items: [{ item_id: '440', item_name: 'Tommy', price: 3090, quantity: 1 }],
     })
     expect(fbq).toHaveBeenCalledWith('track', 'Purchase', expect.objectContaining({ value: 3090, currency: 'EGP', num_items: 1 }), { eventID: 'purchase-WZ-2026-000123' })
-    expect(track).toHaveBeenCalledWith('CompletePayment', expect.objectContaining({ value: 3090 }), { event_id: 'purchase-WZ-2026-000123' })
+    expect(track).not.toHaveBeenCalled()
     expect(px.purchaseEventId('WZ-2026-000123')).toBe('purchase-WZ-2026-000123')
   })
 
@@ -114,7 +119,7 @@ describe('purchase: once per order, the same id as the server event', () => {
     expect(px.trackPurchase(order)).toBe(false)
     expect(gtag).toHaveBeenCalledTimes(1)
     expect(fbq).toHaveBeenCalledTimes(1)
-    expect(track).toHaveBeenCalledTimes(1)
+    expect(track).not.toHaveBeenCalled()
   })
 
   it('a reload (a fresh module, the same storage) still sends nothing', async () => {
@@ -125,6 +130,31 @@ describe('purchase: once per order, the same id as the server event', () => {
     expect(again.px.trackPurchase(order)).toBe(false)
     expect(again.gtag).not.toHaveBeenCalled()
     expect(again.fbq).not.toHaveBeenCalled()
+  })
+})
+
+describe('purchase: a pick-up-in-store order says so (click & collect, 2026-11-14)', () => {
+  const pickupOrder = { orderNumber: 'WZ-2026-000125', value: 1290, shipping: 0, contents: [{ id: 25694, name: 'Wallet', quantity: 1, price: 1290 }], pickup: true }
+
+  it("Meta's delivery_category is in_store and GA4's shipping_tier is pickup — the same event id as the server's", async () => {
+    const { px, gtag, fbq, track } = await load()
+    px.trackPurchase(pickupOrder)
+    expect(fbq).toHaveBeenCalledWith('track', 'Purchase', expect.objectContaining({ delivery_category: 'in_store', value: 1290 }), { eventID: 'purchase-WZ-2026-000125' })
+    expect(gtag).toHaveBeenCalledWith('event', 'purchase', expect.objectContaining({ transaction_id: 'WZ-2026-000125', shipping: 0, shipping_tier: 'pickup' }))
+    expect(track).not.toHaveBeenCalled()
+  })
+
+  it('a delivery order carries neither field', async () => {
+    const { px, gtag, fbq } = await load()
+    px.trackPurchase({ ...pickupOrder, orderNumber: 'WZ-2026-000126', pickup: false })
+    expect(fbq.mock.calls[0][2]).not.toHaveProperty('delivery_category')
+    expect(gtag.mock.calls[0][2]).not.toHaveProperty('shipping_tier')
+  })
+
+  it('the card hand-off keeps the pickup mark for the landing', async () => {
+    const { px } = await load()
+    px.savePendingPurchase({ ...pickupOrder, orderNumber: 'WZ-2026-000127' })
+    expect(px.takePendingPurchase()).toMatchObject({ orderNumber: 'WZ-2026-000127', pickup: true })
   })
 })
 
@@ -155,7 +185,7 @@ describe('a vendor global that is not there yet', () => {
     delete globalThis.window.gtag
     px.trackViewContent({ id: 1, name: 'A', value: 10 })
     expect(fbq).toHaveBeenCalledTimes(1)
-    expect(track).toHaveBeenCalledTimes(1)
+    expect(track).not.toHaveBeenCalled()
     expect(gtag).not.toHaveBeenCalled()
     vi.advanceTimersByTime(600)
     globalThis.window.gtag = gtag
@@ -179,5 +209,33 @@ describe('a storefront with NO id configured (Brand Fashion today)', () => {
     expect(fbq).not.toHaveBeenCalled()
     expect(track).not.toHaveBeenCalled()
     expect(vi.getTimerCount()).toBe(0)
+  })
+})
+
+describe('no TikTok anywhere (2026-11-14)', () => {
+  it('the wheel events and every e-commerce helper reach Meta and GA4 only', async () => {
+    const { px, gtag, fbq, track } = await load()
+    px.trackViewContent({ id: 1, name: 'A', value: 10 })
+    px.trackAddToCart({ id: 1, name: 'A', value: 10 })
+    px.trackInitiateCheckout({ value: 10, contents: [{ id: 1, quantity: 1, price: 10 }] })
+    px.trackPurchase({ orderNumber: 'WZ-9', value: 10, contents: [{ id: 1, quantity: 1, price: 10 }] })
+    px.trackSpin({ campaign: 'round-1' })
+    px.trackCouponWon({ code: 'SPIN-AAAA-BBBB', prize: 'Free shipping', campaign: 'round-1' })
+    expect(fbq).toHaveBeenCalledWith('trackCustom', 'Spin', { campaign: 'round-1' })
+    expect(gtag).toHaveBeenCalledWith('event', 'coupon_won', expect.objectContaining({ coupon: 'SPIN-AAAA-BBBB' }))
+    expect(track).not.toHaveBeenCalled()
+  })
+
+  it('the pixel bootstrap, the helpers and the env reader name no TikTok', async () => {
+    const { readFileSync } = await import('node:fs')
+    const hits = []
+    for (const f of ['../app/analytics.jsx', '../src/scripts/pixels.js', '../src/lib/env.js']) {
+      const src = readFileSync(new URL(f, import.meta.url), 'utf8')
+      // the comments that record the removal say "TikTok"; code would say ttq, the env key or the vendor's host
+      for (const needle of ['ttq', 'TIKTOK_PIXEL_ID =', 'process.env.NEXT_PUBLIC_TIKTOK', 'analytics.tiktok.com', 'TiktokAnalyticsObject']) {
+        if (src.includes(needle)) hits.push(`${f}: ${needle}`)
+      }
+    }
+    expect(hits).toEqual([])
   })
 })

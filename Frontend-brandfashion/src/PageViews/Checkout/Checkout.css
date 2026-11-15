@@ -843,3 +843,14 @@
   color: var(--tr-chip-ink, #111111);
   font-size: 16px;
 }
+/* ── Delivery or pickup (click & collect, 2026-11-14) ──────────────────────────
+   The rows are the payment options' own (.wz-checkout-payopt, Brand Fashion's skin above); only what they lack is here. */
+.wz-pickup-modes { margin-bottom: 18px; }
+.wz-pickup-radio { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.wz-checkout-payopt:has(.wz-pickup-radio:focus-visible) { outline: 2px solid var(--wz-focus-ring); outline-offset: 2px; }
+.wz-pickup-stores { margin-bottom: 18px; }
+.wz-pickup-stores > .wz-checkout-label { margin-bottom: 10px; }
+.wz-pickup-map { flex-shrink: 0; align-self: center; color: var(--wz-ink); font-size: var(--bf-small); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+/* the confirmation: the code in the order number's box, the store under it */
+.wz-oc-pickup .wz-oc-number b { letter-spacing: 0.3em; }
+.wz-oc-pickup .wz-oc-meta a { color: var(--wz-ink); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }

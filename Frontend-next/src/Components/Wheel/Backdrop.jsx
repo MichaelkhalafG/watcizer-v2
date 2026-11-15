@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useRef } from 'react'
 
-// THE LIVING SKY OF /spin (2026-11-08, WATCHIZER ONLY; the carnival version). Fixed to the viewport, behind everything:
+// THE LIVING SKY OF /spin (2026-11-08, the carnival version; both shops, a twin since 2026-11-14). Fixed to the viewport, behind everything:
 //
 //   the sky        a violet-to-magenta gradient with two soft clouds of colour that drift on CSS transforms, and a
 //                  sunburst of gold rays turning slowly behind the wheel (one conic gradient, one rotation)

@@ -36,6 +36,7 @@ use App\Http\Controllers\Manage\ShippingController;
 use App\Http\Controllers\Manage\StorefrontController;
 use App\Http\Controllers\Manage\UnitController;
 use App\Http\Controllers\Manage\UserRoleController;
+use App\Http\Controllers\Manage\PickupController;
 use App\Http\Controllers\Manage\WheelController;
 use App\Http\Middleware\EnsureDashboardAccess;
 use App\Http\Middleware\EnsureStorefrontScope;
@@ -345,6 +346,9 @@ Route::prefix('manage')->name('manage.')->group(function (): void {
             Route::get('orders', [OrderController::class, 'index'])->name('orders.index');
             Route::get('orders/{order}', [OrderController::class, 'show'])
                 ->where('order', '[0-9]+')->name('orders.show');
+            // click & collect (2026-11-14): the printable slip the store keeps with a pickup parcel
+            Route::get('orders/{order}/pickup/slip', [OrderController::class, 'pickupSlip'])
+                ->where('order', '[0-9]+')->name('orders.pickup.slip');
 
             /*
             | CUSTOMERS -- the people who BUY, read-only (wave 4D).
@@ -385,6 +389,19 @@ Route::prefix('manage')->name('manage.')->group(function (): void {
         Route::put('orders/{order}/status', [OrderController::class, 'advance'])
             ->where('order', '[0-9]+')
             ->middleware('can:'.Role::MANAGE_ORDER_FULFILMENT)->name('orders.advance');
+
+        // Pickup (click & collect, 2026-11-14): ready, the one extension, and the hand-over against the code are
+        // FORWARD moves of the shop floor, so they take the fulfilment ability; none returns stock. Expiry is the
+        // scheduled orders:expire-pickups, and a team cancel is the ordinary cancel route below.
+        Route::post('orders/{order}/pickup/ready', [OrderController::class, 'pickupReady'])
+            ->where('order', '[0-9]+')
+            ->middleware('can:'.Role::MANAGE_ORDER_FULFILMENT)->name('orders.pickup.ready');
+        Route::post('orders/{order}/pickup/extend', [OrderController::class, 'pickupExtend'])
+            ->where('order', '[0-9]+')
+            ->middleware('can:'.Role::MANAGE_ORDER_FULFILMENT)->name('orders.pickup.extend');
+        Route::post('orders/{order}/pickup/collect', [OrderController::class, 'pickupCollect'])
+            ->where('order', '[0-9]+')
+            ->middleware('can:'.Role::MANAGE_ORDER_FULFILMENT)->name('orders.pickup.collect');
 
         // Cancel: money and stock. Admin only, and the stock return goes through
         // InventoryService inside OrderFulfilment::cancel() -- never a column write.
@@ -520,6 +537,20 @@ Route::prefix('manage')->name('manage.')->group(function (): void {
             Route::put('storefronts/{storefront}/wheel/prizes', [WheelController::class, 'prizes'])->name('wheel.prizes');
             // a new round (2026-11-08): everybody may spin again; the old round's codes keep their terms
             Route::post('storefronts/{storefront}/wheel/round', [WheelController::class, 'round'])->name('wheel.round');
+        });
+
+        /*
+        | PICK UP IN STORE (click & collect, 2026-11-14): the switch, the terms and the stores of one storefront. Under the
+        | storefronts ability — the stores and the switch are the shop's own configuration — and scoped to the storefront.
+        */
+        Route::middleware([
+            'can:'.Role::MANAGE_STOREFRONTS,
+            EnsureStorefrontScope::with(Role::MANAGE_STOREFRONTS),
+        ])->group(function (): void {
+            Route::get('storefronts/{storefront}/pickup', [PickupController::class, 'index'])->name('pickup.index');
+            Route::post('storefronts/{storefront}/pickup/switch', [PickupController::class, 'toggle'])->name('pickup.switch');
+            Route::put('storefronts/{storefront}/pickup/terms', [PickupController::class, 'terms'])->name('pickup.terms');
+            Route::put('storefronts/{storefront}/pickup/stores', [PickupController::class, 'stores'])->name('pickup.stores');
         });
 
         Route::middleware(['can:'.Role::MANAGE_PROMOTIONS])->group(function (): void {

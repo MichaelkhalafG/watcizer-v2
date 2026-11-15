@@ -814,3 +814,47 @@
   color: var(--tr-chip-ink, #111111);
   font-size: 16px;
 }
+/* ── Delivery or pickup (click & collect, 2026-11-14) ──────────────────────────
+   The rows are the payment options' own (.wz-checkout-payopt); only what they lack is here. */
+.wz-pickup-modes {
+  margin-bottom: 18px;
+}
+/* the radio stays in the page (keyboard, screen reader), drawn by the row's dot */
+.wz-pickup-radio {
+  position: absolute;
+  opacity: 0;
+  inline-size: 1px;
+  block-size: 1px;
+  margin: 0;
+  pointer-events: none;
+}
+.wz-checkout-payopt:has(.wz-pickup-radio) {
+  position: relative;
+}
+.wz-checkout-payopt:has(.wz-pickup-radio:focus-visible) {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+.wz-pickup-stores {
+  margin-bottom: 18px;
+}
+.wz-pickup-stores > .wz-checkout-label {
+  margin-bottom: 10px;
+}
+.wz-pickup-map {
+  flex-shrink: 0;
+  align-self: center;
+  color: var(--gold);
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+/* the confirmation: the code in the order number's box, the store under it */
+.wz-oc-pickup .wz-oc-number b {
+  letter-spacing: 0.3em;
+}
+.wz-oc-pickup .wz-oc-meta a {
+  color: var(--gold);
+  font-weight: 600;
+}

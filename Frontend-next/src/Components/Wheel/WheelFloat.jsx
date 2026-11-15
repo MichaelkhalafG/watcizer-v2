@@ -5,9 +5,10 @@ import { useUIStore } from '../../Store/uiStore'
 import { useCampaigns } from '../../Hooks/queries/usePromo'
 import { FloatingSlot } from '../Floating/FloatingStack'
 import { SPIN_PATH, dismissFloat, isFloatDismissed, kindOf, readSpin } from '../../lib/wheel'
+import { WHEEL_BRAND } from '../../content/wheelBrand'
 import './wheel.css'
 
-// THE WHEEL'S FLOATING BUTTON (2026-11-07; redrawn 2026-11-13, WATCHIZER ONLY): a LINK to /spin (no modal) in the
+// THE WHEEL'S FLOATING BUTTON (2026-11-07; redrawn 2026-11-13; both shops, a twin since 2026-11-14): a LINK to /spin (no modal) in the
 // page's floating corner above the Hot Deals pill. A small copy of OUR wheel — the dashboard's segment colours, a gold
 // rim with pegs, a pointer at the top and a still hub that says GO — turning slowly with a short faster "tease" every
 // few seconds, under a two-line label ("SPIN TO / WIN", "لف / واكسب") kept small beside the wheel. Every motion is a
@@ -29,8 +30,9 @@ const STR = {
   },
 }
 
-// the shop's palette — the client's seven wheel colours — for a wheel the answer does not describe, or a colour it lacks
-const DISC = ['#0F9D6E', '#1F4FD8', '#6B7280', '#C8102E', '#7B3FE4', '#E0457B', '#F28C28']
+// the SHOP's palette (src/content/wheelBrand.js — Watchizer: the client's seven wheel colours; Brand Fashion: its own) for
+// a wheel the answer does not describe, or a colour it lacks
+const DISC = WHEEL_BRAND.palette
 const HEX = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i
 
 /** The segments' colours, in the wheel's order: the dashboard's when the answer carries them, the palette otherwise. */

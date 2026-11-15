@@ -1,7 +1,7 @@
 import { permanentRedirect } from 'next/navigation'
 import { reportedNotFound } from '@/src/lib/notFoundReport'
 import { getServerProductCard, fetchProductByName, localizedProduct, getServerTables, getServerNav } from '@/src/lib/serverCatalog'
-import { getServerV2Product, getServerShippingFees } from '@/src/lib/serverV2'
+import { getServerV2Pickup, getServerV2Product, getServerShippingFees } from '@/src/lib/serverV2'
 import { fromV2Product } from '@/src/lib/v2Product'
 import { transformProductData } from '@/src/utils/transformProduct'
 import { requestLang, localePath } from '@/src/lib/requestLang'
@@ -164,6 +164,8 @@ export default async function ProductPage({ params }) {
   const { product, ratings, tables, payload } = resolved
   // the dashboard's delivery fees, for the offer's shipping details — never the page's failure
   const fees = await getServerShippingFees().catch(() => null)
+  // pick up in store (click & collect, 2026-11-14): held 30 s, never the page's failure
+  const pickup = await getServerV2Pickup().then((body) => body || null, () => null)
   const { canonicalPath, productLd, breadcrumbLd, exposure } = buildProductSeo(product, {
     ratings,
     tables,
@@ -212,6 +214,7 @@ export default async function ProductPage({ params }) {
         v2Specs={resolved.specs ?? null}
         v2Product={resolved.v2Product ?? null}
         searchClass={exposure}
+        pickup={pickup}
       />
       {/* the approved verified reviews, in the server HTML (SEO Phase 5, 2026-11-14); nothing when there are none */}
       <VerifiedReviews reviews={resolved.v2Product?.reviews} lang={urlLang} />

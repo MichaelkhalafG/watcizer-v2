@@ -31,6 +31,8 @@ import { trustSignals } from '../../config/trust.config'
 import { getImageUrl, handleImgError, PLACEHOLDER_IMG } from '../../utils/imageUrl'
 import { productUrl, offerUrl } from '../../utils/productUrl'
 import PaymentBadges from '../../Components/Promo/PaymentBadges'
+import usePickup from '../../Hooks/queries/usePickup'
+import { storeNames } from '../../lib/pickup'
 import './Cart.css'
 import { finishBackground } from '../../utils/finish'
 
@@ -204,7 +206,9 @@ const CartItem = memo(function CartItem({
 })
 
 // ── Page ───────────────────────────────────────────────────────────────────
-function Cart() {
+function Cart({ initialPickup = null }) {
+  // pick up in store (click & collect, 2026-11-14): offered under Checkout while no governorate is chosen
+  const pickup = usePickup(initialPickup)
   // Server data from TanStack Query; shipping selection from Zustand + the derived
   // city-price list from the query.
   const shippingPrices = useShippingPrices()
@@ -451,7 +455,8 @@ function Cart() {
   // The checkout step NEVER fails silently (2026-09-28). It used to scroll to the top and return
   // when core said the cart was not valid — core's reasons were never shown, the button just went
   // back to "CHECKOUT", on every tap. Now the reasons are shown next to the button, per line.
-  const goToCheckout = useCallback(async () => {
+  // `dest`: where to go once the cart checks out — the checkout, or the checkout opened on pickup (a click passes an event)
+  const goToCheckout = useCallback(async (dest) => {
     if (processing) return
     setProcessing(true)
     setCheckoutBlock(null)
@@ -522,7 +527,7 @@ function Cart() {
     setProcessing(false)
     // the prices on this page are now the prices the shopper has seen: "Price updated" clears
     cartStore.acknowledgePrices()
-    navigate('/checkout')
+    navigate(typeof dest === 'string' ? dest : '/checkout')
   }, [processing, validateCart, navigate, resolve, reasonText, reconcile, priceOf, items, isRTL])
 
   // ── Empty ──
@@ -759,6 +764,18 @@ function Cart() {
               {!citySelected && (
                 <p className="wz-cart-select-hint">{t('Please select your city', 'يرجى اختيار مدينتك')}</p>
               )}
+              {/* pick up in store instead (click & collect, 2026-11-14): no governorate needed — checkout opens on pickup. Shown
+                  whatever the governorate: Watchizer pre-selects the first one as soon as the list loads */}
+              {pickup.enabled ? (
+                <p className="wz-cart-pickup">
+                  {t('Or ', 'أو ')}
+                  <button type="button" onClick={() => goToCheckout('/checkout?fulfilment=pickup')} disabled={processing || anyUnavailable}>
+                    {t('pick up in store for free', 'استلم من الفرع مجانًا')}
+                  </button>
+                  {' · '}
+                  {storeNames(pickup, isRTL)}
+                </p>
+              ) : null}
 
               <ul className="wz-cart-trust">
                 <li><FiLock /> {t('Secure checkout', 'دفع آمن')}</li>

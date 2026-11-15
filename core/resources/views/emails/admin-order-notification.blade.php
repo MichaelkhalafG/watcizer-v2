@@ -50,7 +50,13 @@
 
     {{-- Shipping --}}
     <tr><td style="padding:18px 32px 0;">
-        <p style="font-size:10px;text-transform:uppercase;letter-spacing:0.2em;font-weight:700;color:#888;margin:0 0 8px;border-bottom:2px solid #eee;padding-bottom:5px;">Shipping Address</p>
+        <p style="font-size:10px;text-transform:uppercase;letter-spacing:0.2em;font-weight:700;color:#888;margin:0 0 8px;border-bottom:2px solid #eee;padding-bottom:5px;">@if(!empty($pickup)) PICKUP IN STORE @else Shipping Address @endif</p>
+                @if(!empty($pickup))
+                <p style="margin:4px 0;"><strong style="color:#111;">Store:</strong> {{ $pickup['store']['name']['en'] }} · {{ $pickup['store']['name']['ar'] }}</p>
+                <p style="margin:4px 0;"><strong style="color:#111;">Pickup code:</strong> {{ $pickup['code'] }}</p>
+                <p style="margin:4px 0;"><strong style="color:#111;">Ready window:</strong> {{ $pickup['ready']['sentence']['en'] }} ({{ $pickup['ready']['kind'] }})</p>
+                <p style="margin:4px 0;"><strong style="color:#111;">Payment:</strong> {{ $pickup['pay_at_store'] ? 'At the store, on collection' : 'Online' }}</p>
+                @endif
         <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:#f8f8f8;border-radius:8px;">
             <tr><td style="padding:12px 16px;font-size:13px;color:#333;">
                 <p style="margin:4px 0;"><strong style="color:#111;">Address:</strong> {{ $addressLine ?: '—' }}</p>

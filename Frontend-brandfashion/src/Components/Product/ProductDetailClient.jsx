@@ -17,6 +17,7 @@ import useCart, { getItemKey } from '../../Hooks/useCart'
 import { refusedAddMessage } from '../../Store/cartStore'
 import ProductSlider from './ProductSlider'
 import TrustSignals from '../Merchandising/TrustSignals'
+import { pickupFrom } from '../../lib/pickup'
 import BackToTop from '../BackToTop/BackToTop'
 import { specRowsIn, warrantyText } from '../../lib/v2Product'
 import { DEALER_LABEL } from '../../lib/dealers'
@@ -129,8 +130,9 @@ function FinishRow({ label, colors, isRTL }) {
 // does not fetch it again — v2's detail payload is the superset of what `products/{id}` returned. Absent on
 // the two OFFER routes, which are still on compat and behave exactly as before.
 // `searchClass` (2026-11-14, core's SearchExposure): `hidden` / `restricted` / null — a matched product's page carries no
-// authenticity badge or wording; every other product keeps them
-function ProductDetailClient({ param, isOffer = false, productPayload = null, v2Specs = null, v2Product = null, searchClass = null }) {
+// authenticity badge or wording; every other product keeps them. `pickup` (click & collect, 2026-11-14): the page's
+// server read of the shop's pickup offer.
+function ProductDetailClient({ param, isOffer = false, productPayload = null, v2Specs = null, v2Product = null, searchClass = null, pickup = null }) {
   const router = useRouter()
 
   // Server data from the shared TanStack Query cache.
@@ -1563,6 +1565,8 @@ function ProductDetailClient({ param, isOffer = false, productPayload = null, v2
               isRTL={isRTL}
               isFashion={isFashion}
               authenticity={!(searchClass ?? v2Product?.search)}
+              // pick up in store (click & collect): the page's server read, so the row is in the first paint
+              pickup={isOffer ? null : pickupFrom(pickup)}
             />
           </div>
         </div>

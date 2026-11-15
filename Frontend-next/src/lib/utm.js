@@ -1,5 +1,5 @@
 /*
- * THE VISIT'S UTM TAGS, kept for the session (2026-11-07, WATCHIZER). An ad link lands with `utm_source`,
+ * THE VISIT'S UTM TAGS, kept for the session (2026-11-07; a twin since 2026-11-14). An ad link lands with `utm_source`,
  * `utm_medium`, `utm_campaign`, `utm_content`; a client-side navigation drops the query string, and until today
  * nothing in the storefront kept them (GA4 attributes the visit on its own, by its cookie). The wheel records which
  * ad brought a spin, so the FIRST tags of the session are remembered here and sent with the spin — first touch wins:

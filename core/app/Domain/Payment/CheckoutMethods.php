@@ -103,10 +103,12 @@ final class CheckoutMethods
                 continue;
             }
             $agrees = match ($legacy) {
-                'cash' => $row['method'] === OfflineProvider::COD,
+                // a cash order is paid on delivery OR at the store (a pickup order, 2026-11-14) — StorefrontCheckout
+                // decides which of the two its fulfilment may name
+                'cash' => in_array($row['method'], [OfflineProvider::COD, OfflineProvider::STORE], true),
                 'whatsapp' => $row['method'] === OfflineProvider::WHATSAPP,
                 'card', 'paymob' => ! $row['offline']
-                    && ! in_array($row['method'], [OfflineProvider::COD, OfflineProvider::WHATSAPP], true),
+                    && ! in_array($row['method'], OfflineProvider::KEYS, true),
                 default => false,
             };
 
@@ -117,6 +119,25 @@ final class CheckoutMethods
     }
 
     /**
+     * The METHOD of a posted row this storefront offers (`cod`, `store`, `card`, …), or null for an unknown, disabled or
+     * another shop's row. The pickup rules read it (2026-11-14): pay at the store only for pickup, never for delivery.
+     */
+    public function methodOf(int $storefrontId, ?string $postedId): ?string
+    {
+        $id = $postedId !== null && ctype_digit(trim($postedId)) ? (int) trim($postedId) : null;
+        if ($id === null) {
+            return null;
+        }
+        foreach ($this->rows($storefrontId) as $row) {
+            if ($row['id'] === $id) {
+                return $row['method'];
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Whether this storefront has ANY live ONLINE contract — enabled, implemented, credentials
      * complete — whatever the provider (A2, 2026-10-12; this asked for Paymob by name). Without one
      * a card order is refused before it is written: no global account exists to fall through to.
@@ -124,7 +145,7 @@ final class CheckoutMethods
     public function onlineLive(int $storefrontId): bool
     {
         $ids = DB::table('storefront_payment_providers')->where('storefront_id', $storefrontId)
-            ->whereNotIn('provider', [OfflineProvider::COD, OfflineProvider::WHATSAPP])->pluck('id')->all();
+            ->whereNotIn('provider', OfflineProvider::KEYS)->pluck('id')->all();
         foreach ($ids as $id) {
             if (is_numeric($id) && $this->contractLive((int) $id)) {
                 return true;
@@ -168,7 +189,7 @@ final class CheckoutMethods
                 'icon' => $row['icon'],
                 'min_total' => self::amount($settings[$row['id']]['min_total'] ?? null),
                 'max_total' => self::amount($settings[$row['id']]['max_total'] ?? null),
-                'offline' => in_array($full['provider'], [OfflineProvider::COD, OfflineProvider::WHATSAPP], true),
+                'offline' => in_array($full['provider'], OfflineProvider::KEYS, true),
             ];
         }
 
@@ -239,7 +260,7 @@ final class CheckoutMethods
     }
 
     /** @return array{code: string, messages: array{ar: string, en: string}} */
-    private static function unavailable(): array
+    public static function unavailable(): array
     {
         return ['code' => self::UNAVAILABLE, 'messages' => [
             'ar' => 'طريقة الدفع هذه غير متاحة حاليًا. لم يُسجَّل طلبك ولم يُخصم أي مبلغ — اختر طريقة دفع أخرى وأكمل الطلب.', // i18n-exempt: SHOPPER-facing checkout text, returned beside its own English ('en') and chosen by the storefront's language — not dashboard text; both halves asserted in CheckoutMethodsTest

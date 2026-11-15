@@ -715,6 +715,55 @@ it('writes the spin under the storefront of its path, never the other', function
     expect(T::int(DB::table(Wheel::TABLE)->where('phone_key', substr($phone, -10))->value('storefront_id')))->toBe(2);
 });
 
+it('keeps each shop to its own wheel (2026-11-14, the wheel on Brand Fashion): one spin per phone in EACH shop, a code only in the shop that issued it, each floating button in its own colours', function () {
+    PromotionFixture::moneyRewards(true, 2);
+    Wheel::setEnabled(2, true);
+    whSeed(2);
+    $bfColors = ['#E2210F', '#111111', '#F0B429', '#6B3FD6', '#15713C', '#767676', '#D0182E'];
+    $segments = [];
+    foreach (WheelPrizes::forStorefront(2) as $i => $prize) {
+        $segments[] = ['label_en' => $prize['label_en'], 'label_ar' => $prize['label_ar'], 'type' => $prize['type'], 'value' => $prize['value'], 'odds' => $prize['odds'],
+            'color' => $bfColors[$i], 'cap' => $prize['cap'], 'scope_category_id' => $prize['scope_category_id'], 'min_quantity' => $prize['min_quantity'],
+            'apply_mode' => $prize['apply_mode'], 'gift_product_ids' => $prize['gift_product_ids']];
+    }
+    WheelPrizeWriter::save(2, $segments, ['ttl_hours' => Wheel::DEFAULT_TTL_HOURS, 'min_order' => null], null);
+    app(StorefrontCache::class)->forgetStorefront(2, T::str(DB::table('storefronts')->where('id', 2)->value('code')));
+
+    // the same phone: a spin in each shop (roll 1 = the first segment, free shipping, in both)
+    $phone = whPhone();
+    $wz = whSpin($phone, roll: 1);
+    $bfResult = Wheel::spin(2, $phone, null, '203.0.113.8', [], 'en', 1);
+    expect($bfResult['status'])->toBe('new');
+    $bf = Wheel::present($bfResult['spin'], null, $bfResult['index']);
+    expect(whCode($bf))->not->toBe(whCode($wz))
+        ->and(Wheel::spinByCode(2, whCode($wz)))->toBeNull()
+        ->and(Wheel::spinByCode(1, whCode($bf)))->toBeNull()
+        ->and(Wheel::spinByCode(2, whCode($bf)))->not->toBeNull();
+
+    // the engine: each code applies in its own shop's cart and is an invalid code in the other's
+    $engine = app(PromotionEngine::class);
+    $watch = whProduct(0, 5000.0);
+    $cart = fn (int $storefrontId, string $code): CartSnapshot => new CartSnapshot(storefrontId: $storefrontId,
+        lines: [new CartLine(productId: $watch['id'], variantId: null, offerId: null, quantity: 1, unitPrice: $watch['price'], typeStock: 'Express')],
+        subtotal: $watch['price'], shippingCost: WH_CITY_COST, paymentMethod: 'cash', code: $code, customerKeys: PromotionDiscounts::customerKeys(null, null, $phone));
+    expect($engine->evaluate($cart(1, whCode($wz)))->coupon['status'] ?? null)->toBe(CouponStatus::APPLIED)
+        ->and($engine->evaluate($cart(2, whCode($bf)))->coupon['status'] ?? null)->toBe(CouponStatus::APPLIED);
+    $cross = $engine->evaluate($cart(2, whCode($wz)));
+    expect($cross->coupon['status'] ?? null)->toBe(CouponStatus::INVALID)->and($cross->freeShipping)->toBeFalse()
+        ->and($engine->evaluate($cart(1, whCode($bf)))->coupon['status'] ?? null)->toBe(CouponStatus::INVALID);
+
+    // the lookup by phone answers each shop's own spin
+    $lookup = fn (string $shop): string => T::str(getJson("/api/v2/{$shop}/wheel/spin?phone={$phone}", ['Host' => Shops::domain($shop)])->assertOk()->json('data.spin.code'));
+    expect($lookup('brandfashion'))->toBe(whCode($bf))->and($lookup('watchizer'))->toBe(whCode($wz));
+
+    // each shop's floating button: its own segments' colours
+    $colors = fn (string $shop): array => T::arr(getJson("/api/v2/{$shop}/campaigns", ['Host' => Shops::domain($shop)])->assertOk()->json('data.wheel.colors'));
+    expect($colors('brandfashion'))->toBe(array_column(WheelPrizes::segments(2), 'color'))
+        ->and($colors('brandfashion')[0])->toBe('#E2210F')
+        ->and($colors('watchizer'))->toBe(array_column(WheelPrizes::segments(1), 'color'))
+        ->and($colors('watchizer')[0])->toBe('#0F9D6E');
+});
+
 // ── the prize editor ────────────────────────────────────────────────────────────────────────────────────
 
 it('saves the segments with their scopes and gift lists, activity-logged; a spin after the save uses the new odds and terms; an old code keeps its terms', function () {

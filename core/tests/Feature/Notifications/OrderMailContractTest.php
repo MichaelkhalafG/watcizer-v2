@@ -199,8 +199,9 @@ it('hands the templates every key they can read', function () {
     ];
     // Added deliberately 2026-09-26 (OrderTotals): the promotion gets its own line, free shipping
     // reads as free, and every figure shares one decimals setting so the column adds up. And
-    // 2026-10-13 (W2): the storefront's wordmark image.
-    $added = ['promotion', 'promotionName', 'freeShipping', 'moneyDecimals', 'wordmarkUrl', 'storefrontId'];
+    // 2026-10-13 (W2): the storefront's wordmark image. And 2026-11-14 (click & collect): a pickup order's store, code and
+    // window (null for a delivery), and how long it is held.
+    $added = ['promotion', 'promotionName', 'freeShipping', 'moneyDecimals', 'wordmarkUrl', 'storefrontId', 'pickup', 'pickupHoldHours', 'pickupCollectBy', 'shopUrl'];
     expect(OrderEmailData::keys())->toEqualCanonicalizing([...$legacyKeys, ...$added]);
 });
 

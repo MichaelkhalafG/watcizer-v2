@@ -1,5 +1,5 @@
 import { reportedNotFound } from '@/src/lib/notFoundReport'
-import { getServerV2Product, getServerV2Related, getServerShippingFees } from '@/src/lib/serverV2'
+import { getServerV2Pickup, getServerV2Product, getServerV2Related, getServerShippingFees } from '@/src/lib/serverV2'
 import { offerShippingDetails, offerReturnPolicy, offerWarranty } from '@/src/lib/shopSchema'
 import { requestLang, localePath, SITE } from '@/src/lib/requestLang'
 import { txt } from '@/src/lib/cardData'
@@ -63,6 +63,8 @@ export async function generateMetadata({ params }) {
 export default async function ProductPage({ params }) {
   const { slug, detail, related } = await load(params)
   if (!detail) await reportedNotFound()
+  // pick up in store (click & collect, 2026-11-14): held 30 s, never the page's failure
+  const pickup = await getServerV2Pickup().then((body) => body || null, () => null)
   const { urlLang } = await requestLang()
   const p = detail.product
   const path = `/product/${slug}`
@@ -118,7 +120,7 @@ export default async function ProductPage({ params }) {
       {/* none for a product kept from search engines (2026-11-14, core's SearchExposure) */}
       {p.search === 'hidden' ? null : <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: safeJsonLd(productLd) }} />}
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: safeJsonLd(breadcrumbLd) }} />
-      <BfProductPage detail={detail} related={related} />
+      <BfProductPage detail={detail} related={related} pickup={pickup} />
       {/* the approved verified reviews, in the server HTML (SEO Phase 5, 2026-11-14) */}
       <VerifiedReviews reviews={p.reviews} lang={urlLang} />
     </>

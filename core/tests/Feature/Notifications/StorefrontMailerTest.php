@@ -19,6 +19,7 @@ use App\Mail\OrderStatusUpdate;
 use App\Mail\PaymentAlertAdmin;
 use App\Mail\PaymentExpired;
 use App\Mail\PaymentExpiredAdmin;
+use App\Mail\PickupUpdate;
 use App\Mail\ReEngagementMail;
 use App\Mail\ReEngagementPreviewMail;
 use App\Mail\ReviewRequestMail;
@@ -263,7 +264,7 @@ it('the drain report reads per storefront, and the mailbox command never prints 
 
 // ── §0(b), the developer's number (2026-10-13 brief) ─────────────────────────────────────────────
 
-it('renders the DEVELOPER\'S WhatsApp number in NONE of the thirteen mail templates, for either shop', function () {
+it('renders the DEVELOPER\'S WhatsApp number in NONE of the fourteen mail templates, for either shop', function () {
     /*
      * Two numbers, two roles (BF handover D22): `whatsapp_support` (customer service) is what a
      * customer may reach from a mail; `whatsapp_developer` is the storefront's header/footer only
@@ -283,6 +284,13 @@ it('renders the DEVELOPER\'S WhatsApp number in NONE of the thirteen mail templa
         $expiredData = (OrderEmailData::for($orderId) ?? []) + ['reason' => OrderMailer::REASON_DECLINED];
         $card = ['name' => 'A product', 'price' => 100.0, 'image' => null, 'url' => 'https://example.test/p/1'];
         $reengage = ['email' => 'c@example.test', 'storefront_id' => $storefrontId, 'products' => [$card, $card, $card]];
+        // click & collect (2026-11-14): a pickup's facts as PickupCheckout::facts() gives them, with the shop's own number
+        $store = ['name' => ['en' => 'Arkadia Mall', 'ar' => 'أركاديا مول'], 'address' => ['en' => 'Corniche El Nil', 'ar' => 'كورنيش النيل'],
+            'hours' => ['en' => 'Every day', 'ar' => 'يوميًا'], 'map_url' => 'https://maps.app.goo.gl/x', 'phone' => '01551096234', 'whatsapp' => '201551096234'];
+        $pickupData = $data + ['pickupEvent' => 'ready', 'pickupCollectBy' => ['en' => 'Monday 16 Nov 2026, 18:00', 'ar' => '2026-11-16 18:00'], 'pickup' => [
+            'status' => 'ready', 'code' => '4821', 'pay_at_store' => true, 'store' => $store,
+            'ready' => ['kind' => 'express', 'min' => 1, 'max' => 2, 'sentence' => ['en' => 'Ready for pickup in 1–2 business days', 'ar' => 'جاهز للاستلام خلال ١–٢ يوم عمل']],
+            'ready_at' => '2026-11-14 18:00:00', 'expires_at' => '2026-11-16 18:00:00']];
 
         /** @var list<Mailable> $mailables */
         $mailables = [
@@ -302,6 +310,8 @@ it('renders the DEVELOPER\'S WhatsApp number in NONE of the thirteen mail templa
             new ReviewRequestMail('https://example.test/review/tok', ['A product'], $identity),
             // the wheel's invite reward (2026-11-09): the shop's own layout, its own footer
             new WheelReferralReward('SPIN-AAAA-BBBB', 15.0, Carbon::now()->addDays(2), 'ar', $identity),
+            // a pickup is ready at its store (click & collect, 2026-11-14)
+            new PickupUpdate($pickupData),
         ];
         foreach ($mailables as $mailable) {
             $html = $mailable->render();
@@ -310,10 +320,11 @@ it('renders the DEVELOPER\'S WhatsApp number in NONE of the thirteen mail templa
         }
     }
 
-    // Thirteen templates, two shops: 28 renders (the stock alert in both languages), 0 developer numbers.
+    // Fourteen templates, two shops: 30 renders (the stock alert in both languages), 0 developer numbers. (2026-11-15:
+    // the review request of the SEO run and the pickup update of click & collect each added one.)
     $templates = glob(resource_path('views/emails/*.blade.php')) ?: [];
     $templates = array_values(array_filter($templates, fn (string $f): bool => ! str_contains($f, DIRECTORY_SEPARATOR.'partials'.DIRECTORY_SEPARATOR) && ! str_starts_with(basename($f), '_')));
-    expect($rendered)->toHaveCount(28)->and(count($templates))->toBe(13);
+    expect($rendered)->toHaveCount(30)->and(count($templates))->toBe(14);
     $hits = [];
     foreach ($rendered as $key => $html) {
         $n = substr_count($html, $developer) + substr_count($html, '01274550956');

@@ -1,4 +1,4 @@
-import { Link } from "@inertiajs/react";
+import { Link, usePage } from "@inertiajs/react";
 
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -8,7 +8,7 @@ import { Name, Num } from "@/components/ui/bidi";
 import { DataTable, type Column } from "@/components/table/DataTable";
 import { DateRangeFilter } from "@/components/table/DateRangeFilter";
 import ManageLayout from "@/layouts/ManageLayout";
-import type { TablePayload } from "@/types";
+import type { SharedProps, TablePayload } from "@/types";
 import { useT } from "@/lib/i18n";
 import { methodLabel, providerLabel } from "@/lib/labels";
 
@@ -52,6 +52,15 @@ interface OrderRow {
         success: boolean;
     } | null;
     url: string;
+    /** Click & collect: the pickup badge ("Pickup · Arkadia Mall", its state) — null for a delivery. */
+    pickup: {
+        status: string;
+        label: string;
+        store_en: string;
+        store_ar: string;
+        overdue: boolean;
+        late: boolean;
+    } | null;
 }
 
 interface Option {
@@ -66,6 +75,9 @@ interface Props {
         statuses: Option[];
         providers: Option[];
         methods: Option[];
+        /** Click & collect: the stores (all shops in scope) and where a pickup stands. */
+        pickup_stores: Option[];
+        pickup_states: Option[];
     };
     abilities: { fulfil: boolean; cancel: boolean; settle: boolean };
     /**
@@ -139,6 +151,7 @@ export default function OrdersIndex({
     money_alerts,
 }: Props) {
     const t = useT();
+    const { locale } = usePage<SharedProps>().props;
     const columns: Array<Column<OrderRow>> = [
         {
             key: "o.order_number",
@@ -181,6 +194,37 @@ export default function OrdersIndex({
                     <Badge variant={STATUS_TONE[row.status] ?? "neutral"}>
                         {row.status_label}
                     </Badge>
+                    {/* Click & collect: which store, and where the pickup stands. */}
+                    {row.pickup !== null ? (
+                        <Badge
+                            variant={
+                                row.pickup.overdue
+                                    ? "destructive"
+                                    : row.pickup.late
+                                      ? "warning"
+                                      : "outline"
+                            }
+                            title={row.pickup.label}
+                        >
+                            {t("pickup.badge", "استلام · :store", {
+                                store:
+                                    locale === "en"
+                                        ? row.pickup.store_en
+                                        : row.pickup.store_ar,
+                            })}
+                            {row.pickup.status === "ready" ||
+                            row.pickup.overdue ||
+                            row.pickup.late
+                                ? ` · ${
+                                      row.pickup.overdue
+                                          ? t("pickup.state_overdue", "تجاوز موعد الاستلام")
+                                          : row.pickup.late
+                                            ? t("pickup.state_late", "متأخر التجهيز")
+                                            : row.pickup.label
+                                  }`
+                                : ""}
+                        </Badge>
+                    ) : null}
                     {/* A paid order still sitting in `pending` is the thing worth seeing early. */}
                     {row.last_attempt && !row.last_attempt.success ? (
                         <Badge
@@ -426,6 +470,64 @@ export default function OrdersIndex({
                             {filters.methods.map((option) => (
                                 <option key={option.value} value={option.value}>
                                     {methodLabel(t, option.value)}
+                                </option>
+                            ))}
+                        </Select>
+
+                        {/* Click & collect: delivery or pickup, the store, and where the pickup stands. */}
+                        <Select
+                            className="w-full sm:w-40"
+                            aria-label={t("pickup.fulfilment", "الاستلام")}
+                            value={current.fulfilment ?? ""}
+                            onChange={(event) =>
+                                setFilter("fulfilment", event.target.value || null)
+                            }
+                        >
+                            <option value="">
+                                {t("pickup.all_fulfilment", "توصيل واستلام")}
+                            </option>
+                            <option value="delivery">
+                                {t("pickup.delivery", "توصيل")}
+                            </option>
+                            <option value="pickup">
+                                {t("pickup.pickup", "استلام من الفرع")}
+                            </option>
+                        </Select>
+
+                        {filters.pickup_stores.length > 0 ? (
+                            <Select
+                                className="w-full sm:w-56"
+                                aria-label={t("pickup.store", "الفرع")}
+                                value={current.pickup_store ?? ""}
+                                onChange={(event) =>
+                                    setFilter("pickup_store", event.target.value || null)
+                                }
+                            >
+                                <option value="">
+                                    {t("pickup.all_stores", "كل الفروع")}
+                                </option>
+                                {filters.pickup_stores.map((option) => (
+                                    <option key={option.value} value={option.value}>
+                                        {option.label}
+                                    </option>
+                                ))}
+                            </Select>
+                        ) : null}
+
+                        <Select
+                            className="w-full sm:w-48"
+                            aria-label={t("pickup.state", "حالة الاستلام")}
+                            value={current.pickup_state ?? ""}
+                            onChange={(event) =>
+                                setFilter("pickup_state", event.target.value || null)
+                            }
+                        >
+                            <option value="">
+                                {t("pickup.all_states", "كل حالات الاستلام")}
+                            </option>
+                            {filters.pickup_states.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                    {option.label}
                                 </option>
                             ))}
                         </Select>

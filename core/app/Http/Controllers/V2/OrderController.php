@@ -23,6 +23,8 @@ use Illuminate\Validation\ValidationException;
  * `payment_method_id` (a v2 method id, optional for cash), and either `address_id` — which must be the buyer's own
  * (the account's, or one this guest session created; a foreign id and a missing one answer the same) — or a new
  * address (`address_line`, `shipping_city_id`, `phone`); `note`, `guest_name`, `guest_phone`, `guest_email`.
+ * PICK UP IN STORE (2026-11-14): `fulfilment` = `pickup` with `pickup_store_id` and the contact `phone` — no address
+ * (its fields are excluded); the rules of a pickup are App\Domain\Pickup\PickupCheckout's.
  *
  * Never cached. Throttled on its own limiter (`v2-order`, the same numbers as compat's `add-order`), so Brand
  * Fashion's orders never spend Watchizer's per-IP allowance.
@@ -40,7 +42,9 @@ class OrderController extends Controller
 
         try {
             $data = Validator::make($request->all(), [
-                'address_id' => ['required_without:address_line', 'nullable', 'integer',
+                'fulfilment' => 'nullable|in:delivery,pickup',
+                'pickup_store_id' => 'exclude_unless:fulfilment,pickup|required|integer',
+                'address_id' => ['exclude_if:fulfilment,pickup', 'required_without:address_line', 'nullable', 'integer',
                     Rule::exists('addresses', 'id')->where(function (Builder $query) use ($userId, $guestToken): void {
                         if ($userId !== null) {
                             $query->where('user_id', $userId);
@@ -49,9 +53,9 @@ class OrderController extends Controller
                         }
                     }),
                 ],
-                'address_line' => 'required_without:address_id|nullable|string|min:3|max:500',
-                'shipping_city_id' => 'required_without:address_id|nullable|integer|exists:shipping_cities,id',
-                'phone' => 'required_without:address_id|nullable|string|min:7|max:20',
+                'address_line' => 'exclude_if:fulfilment,pickup|required_without:address_id|nullable|string|min:3|max:500',
+                'shipping_city_id' => 'exclude_if:fulfilment,pickup|required_without:address_id|nullable|integer|exists:shipping_cities,id',
+                'phone' => 'required_if:fulfilment,pickup|required_without:address_id|nullable|string|min:7|max:20',
                 'total' => 'required|numeric|min:0',
                 'payment_method' => 'required|in:cash,card,paymob,whatsapp',
                 'payment_method_id' => 'nullable',
@@ -79,6 +83,8 @@ class OrderController extends Controller
             'guest_phone' => Val::nstr($data, 'guest_phone'),
             'guest_email' => Val::nstr($data, 'guest_email'),
             'coupon' => Val::nstr($data, 'coupon'),
+            'fulfilment' => Val::nstr($data, 'fulfilment') ?? 'delivery',
+            'pickup_store_id' => Val::nint($data, 'pickup_store_id'),
         ];
         $result = $checkout->place($request, $userId, $guestToken, Val::nint($data, 'address_id'), $fields);
 

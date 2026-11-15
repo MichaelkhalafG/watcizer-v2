@@ -7,7 +7,8 @@ namespace App\Domain\Payment;
 use RuntimeException;
 
 /**
- * Cash on delivery and the WhatsApp flow, as PROVIDERS with no credentials (study §3.9.1).
+ * Cash on delivery, the WhatsApp flow and — since 2026-11-14 (click & collect) — PAY AT THE STORE for a pickup order, as
+ * PROVIDERS with no credentials (study §3.9.1).
  *
  * They are modelled this way on purpose: cash gets the same enable/disable, the same per-locale
  * label, the same icon and the same position in the merged list as a card method, instead of a
@@ -25,10 +26,16 @@ final class OfflineProvider implements PaymentProvider
 
     public const WHATSAPP = 'whatsapp';
 
+    /** Paid at the counter when a PICKUP order is collected (2026-11-14). Offered only for pickup, capped like COD. */
+    public const STORE = 'store';
+
+    /** @var list<string> */
+    public const KEYS = [self::COD, self::WHATSAPP, self::STORE];
+
     public function __construct(private readonly string $key)
     {
-        if (! in_array($key, [self::COD, self::WHATSAPP], true)) {
-            throw new RuntimeException("OfflineProvider serves cod and whatsapp, not [{$key}].");
+        if (! in_array($key, self::KEYS, true)) {
+            throw new RuntimeException("OfflineProvider serves cod, whatsapp and store, not [{$key}].");
         }
     }
 

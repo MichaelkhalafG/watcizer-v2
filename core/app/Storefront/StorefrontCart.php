@@ -228,7 +228,7 @@ final class StorefrontCart
      *                              checkout can show "Gift: …, free" before the order; the order path adds the line itself at EGP 0.
      * @return array{discount: float, applied: list<array<string, mixed>>, lines: list<array{item_id: int, amount: float}>, coupon: array<string, mixed>|null, rewards: list<array{product_id: int, quantity: int, title: array{en: string|null, ar: string|null}}>}
      */
-    private function promotionPreview(array $lines, array $itemIds, float $subtotal, ?string $coupon, ?int $userId, ?string $phone = null): array
+    private function promotionPreview(array $lines, array $itemIds, float $subtotal, ?string $coupon, ?int $userId, ?string $phone = null, bool $pickup = false): array
     {
         $none = ['discount' => 0.0, 'applied' => [], 'lines' => [], 'coupon' => null, 'rewards' => []];
         $settings = $this->ctx->storefront->getAttribute('settings');
@@ -245,6 +245,8 @@ final class StorefrontCart
             code: $coupon,
             // the phone only when the checkout page sends the one it has typed (a wheel code's binding, 2026-11-07)
             customerKeys: PromotionDiscounts::customerKeys($userId, null, $phone),
+            // the checkout chose pick up in store (2026-11-14): a free-shipping code is refused, not shown as applied
+            pickup: $pickup,
         ));
         $goods = [];
         foreach ($outcome->lines as $line) {
@@ -314,12 +316,12 @@ final class StorefrontCart
      *
      * @return array{id: int|null, items: list<array<string, mixed>>, totals: array{count: int, subtotal: float, currency: string, shipping: array{free_over: float|null, free: bool, remaining: float|null}}}
      */
-    public function payload(?stdClass $cart, ?string $coupon = null, ?int $userId = null, ?string $phone = null): array
+    public function payload(?stdClass $cart, ?string $coupon = null, ?int $userId = null, ?string $phone = null, bool $pickup = false): array
     {
         $currency = $this->cards->currency();
         if ($cart === null) {
             return ['id' => null, 'items' => [], 'totals' => ['count' => 0, 'subtotal' => 0.0, 'currency' => $currency, 'shipping' => FreeShipping::summaryFor($this->freeOver(), 0.0),
-                'promotion' => $this->promotionPreview([], [], 0.0, $coupon, $userId, $phone)]];
+                'promotion' => $this->promotionPreview([], [], 0.0, $coupon, $userId, $phone, $pickup)]];
         }
         $rows = [];
         foreach (DB::table('cart_items')->where('cart_id', Row::int($cart, 'id'))->whereNull('offer_id')->orderBy('id')
@@ -403,7 +405,7 @@ final class StorefrontCart
             // `shipping`: the storefront's free-shipping threshold, whether THIS cart ships free, how much more it needs
             'totals' => ['count' => $count, 'subtotal' => round($subtotal, 2), 'currency' => $currency, 'shipping' => FreeShipping::summaryFor($this->freeOver(), round($subtotal, 2)),
                 // `promotion`: what core would take off these lines today (M1u) — the page SHOWS it; the checkout recomputes it
-                'promotion' => $this->promotionPreview($promoLines, $promoItemIds, round($subtotal, 2), $coupon, $userId, $phone)],
+                'promotion' => $this->promotionPreview($promoLines, $promoItemIds, round($subtotal, 2), $coupon, $userId, $phone, $pickup)],
         ];
     }
 

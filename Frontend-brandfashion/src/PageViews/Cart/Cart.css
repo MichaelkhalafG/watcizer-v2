@@ -599,6 +599,29 @@
   font-size: 11px;
   color: var(--wz-danger);
 }
+/* pick up in store instead (click & collect, 2026-11-14): one quiet line under Checkout */
+.wz-cart-pickup {
+  margin: 8px 0 0;
+  text-align: center;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--wz-ink);
+}
+.wz-cart-pickup button {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  font-weight: 700;
+  color: var(--wz-ink);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.wz-cart-pickup button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
 
 /* ── Suggestions band ─────────────────────────── */
 .wz-cart-suggest {

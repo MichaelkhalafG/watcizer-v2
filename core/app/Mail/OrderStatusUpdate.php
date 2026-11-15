@@ -22,6 +22,14 @@ final class OrderStatusUpdate extends Mailable
     {
         $number = is_scalar($this->data['orderNumber'] ?? null) ? (string) $this->data['orderNumber'] : '';
         $statusAr = is_scalar($this->data['statusAr'] ?? null) ? (string) $this->data['statusAr'] : '';
+        // a PICKUP order is collected, not delivered, and an expired one was released (2026-11-14) — as the body says
+        $pickup = is_array($this->data['pickup'] ?? null) ? $this->data['pickup'] : null;
+        $status = $this->data['status'] ?? null;
+        if ($pickup !== null && $status === 'delivered') {
+            $statusAr = 'تم الاستلام';
+        } elseif ($pickup !== null && $status === 'cancelled' && ($pickup['status'] ?? null) === 'expired') {
+            $statusAr = 'انتهى الحجز';
+        }
 
         // The legacy subject, byte for byte.
         return $this
