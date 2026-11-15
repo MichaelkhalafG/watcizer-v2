@@ -4,6 +4,7 @@ namespace App\Storefront;
 
 use App\Domain\Catalog\SearchExposure;
 use App\Domain\Reviews\Reviews;
+use App\Support\Coerce;
 use App\Support\Val;
 use App\Transform\Row;
 use Illuminate\Support\Facades\DB;
@@ -185,7 +186,7 @@ final class ProductDetail
             // Null when no active row carries that colour (or the product has no colour rows).
             'base_variant_id' => $baseVariantId,
             // AUTHORIZED DEALER (Michael, 2026-11-14): the brand is on this shop's list AND the hide-from-search rule does not match
-            'authorized_dealer' => AuthorizedDealer::forProduct($this->ctx->id(), DB::table('catalog_brands')->where('id', Row::int($row, 'brand_id'))->value('slug'), SearchExposure::effective($row)),
+            'authorized_dealer' => AuthorizedDealer::forProduct($this->ctx->id(), Coerce::nstr(DB::table('catalog_brands')->where('id', Row::int($row, 'brand_id'))->value('slug')), SearchExposure::effective($row)),
             // VERIFIED REVIEWS (SEO Phase 5, 2026-11-14): the approved ones only — their count and average, the latest ten
             'reviews' => Reviews::approvedFor($this->ctx->id(), $productId, 10),
             'meta' => [
