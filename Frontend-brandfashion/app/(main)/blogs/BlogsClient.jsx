@@ -1,6 +1,7 @@
 'use client'
 import Link from '@/src/Components/LocaleLink'
 import { useUIStore } from '@/src/Store/uiStore'
+import { blogPath } from '@/src/lib/blogPath'
 import '@/src/Components/Blog/blog.css'
 
 const pick = (pair, lang) => (pair?.[lang] || pair?.[lang === 'ar' ? 'en' : 'ar'] || '').trim()
@@ -10,7 +11,8 @@ const pick = (pair, lang) => (pair?.[lang] || pair?.[lang === 'ar' ? 'en' : 'ar'
 // Brand Fashion (DIVERGED 2026-10-19, B8 / spec §10.8): a NEUTRAL heading — the shop sells more than watches, and
 // Watchizer's watch articles will be shared here (decision C-7) — an article with no cover gets its aisle-tint card
 // with the title set large instead of no picture, and the empty list points somewhere.
-export default function BlogsClient({ blogs = [] }) {
+// `heading` / `lead` (2026-11-14, SEO Phase 3): an archive's own (src/lib/blogTopics.js); an empty lead is none.
+export default function BlogsClient({ blogs = [], heading = null, lead = null }) {
   const language = useUIStore((s) => s.language)
   const ar = language === 'ar'
   const date = (iso) =>
@@ -18,10 +20,12 @@ export default function BlogsClient({ blogs = [] }) {
 
   return (
     <main className="wz-blogs" dir={ar ? 'rtl' : 'ltr'}>
-      <h1 className="wz-blogs__title">{ar ? 'أدلة ومقالات' : 'Guides & articles'}</h1>
-      <p className="wz-blogs__lead">
-        {ar ? 'كيف تختار ما تشتريه، وكيف تعتني به بعد ذلك.' : 'How to choose what you buy, and how to look after it.'}
-      </p>
+      <h1 className="wz-blogs__title">{heading || (ar ? 'أدلة ومقالات' : 'Guides & articles')}</h1>
+      {lead === '' ? null : (
+        <p className="wz-blogs__lead">
+          {lead || (ar ? 'كيف تختار ما تشتريه، وكيف تعتني به بعد ذلك.' : 'How to choose what you buy, and how to look after it.')}
+        </p>
+      )}
       {blogs.length === 0 ? (
         <p className="wz-blogs__empty">
           {ar ? 'لا توجد مقالات بعد. ' : 'No articles yet. '}
@@ -32,7 +36,7 @@ export default function BlogsClient({ blogs = [] }) {
       ) : (
         <div className="wz-blogs__grid">
           {blogs.map((b) => (
-            <Link key={b.slug} href={`/blog/${b.slug}`} className={`wz-blogs__card${b.cover ? '' : ' bf-blogs__card--nocover'}`}>
+            <Link key={b.slug} href={blogPath(b, language)} className={`wz-blogs__card${b.cover ? '' : ' bf-blogs__card--nocover'}`}>
               {b.cover ? (
                 // eslint-disable-next-line @next/next/no-img-element -- absolute asset-host URL
                 <img className="wz-blogs__cover" src={b.cover} alt="" loading="lazy" />

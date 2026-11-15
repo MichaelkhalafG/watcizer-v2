@@ -22,8 +22,6 @@ export const metadata = {
   title: 'Brand Fashion',
   description:
     'اكتشف أفخم الساعات والإكسسوارات في Brand Fashion. تسوق الآن أرقى الساعات الفاخرة بتصاميم أنيقة وجودة عالمية بأسعار تنافسية.',
-  keywords:
-    "luxury watches, men's watches, women's watches, branded watches, best watch store Egypt, online watch shop, Rolex, Omega, TAG Heuer, Swiss watches, ساعات فاخرة, ساعات رجالي, ساعات نسائية, متجر ساعات في مصر",
   authors: [{ name: 'Brand Fashion' }],
   robots: 'index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1',
   alternates: { canonical: SITE },
@@ -53,14 +51,12 @@ export const metadata = {
     ],
     url: SITE,
     siteName: 'Brand Fashion',
-    locale: 'ar_EG',
   },
+  // The card type only (2026-11-14, SEO Phase 1 item 7): a title, description and image here were the SAME on every
+  // page — an Arabic line about luxury watches on an English bag page. Without them X reads each page's own og:
+  // tags; the product page sets its own twitter tags.
   twitter: {
     card: 'summary_large_image',
-    title: 'Brand Fashion',
-    description:
-      'تسوق أحدث موديلات الساعات الفاخرة والإكسسوارات الراقية بأفضل الأسعار فقط على Brand Fashion.',
-    images: [`${SITE}/og-image.jpg`],
   },
 }
 
@@ -86,7 +82,7 @@ try {
 
 export default async function RootLayout({ children }) {
   if (ASSET_ORIGIN) ReactDOM.preconnect(ASSET_ORIGIN)
-  // The request's language (S-AR stage 1): Arabic under /ar/, else the wz-lang cookie
+  // The request's language (S-AR stage 1): Arabic under /ar/, else English — the address decides (2026-11-14)
   // (middleware.js). It sets <html lang/dir> AND starts the per-request UI store in that language,
   // so the page's server HTML is already in it — Arabic pages exist for Google, and there is no
   // English flash or hydration mismatch. <HtmlDirSync/> keeps <html> in sync on later toggles.
@@ -98,6 +94,10 @@ export default async function RootLayout({ children }) {
   return (
     <html lang={lang} dir={dir} className={elMessiriClass}>
       <body>
+        {/* og:locale from the ADDRESS (2026-11-14): one tag on every page — a page's own openGraph replaced the
+            layout's, so most templates had none and the English blog index said ar_EG. React hoists both into <head>. */}
+        <meta property="og:locale" content={lang === 'ar' ? 'ar_EG' : 'en_US'} />
+        <meta property="og:locale:alternate" content={lang === 'ar' ? 'en_US' : 'ar_EG'} />
         <Providers language={lang}>
           {children}
           {/* Global chrome (all routes incl. auth) that does NOT read the catalog.

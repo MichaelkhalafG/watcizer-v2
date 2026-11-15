@@ -1,0 +1,209 @@
+/* The article page's Phase 3 parts (SEO Phase 3, 2026-11-14) — a TWIN: breadcrumbs, byline and dates, the table of
+   contents, the live data blocks, the related articles, the editorial-policy line. Tokens with fallbacks, so both
+   shops' palettes apply. */
+.wz-article__crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--wz-muted, rgba(0, 0, 0, 0.45));
+  margin: 0 0 12px;
+}
+.wz-article__crumbs a {
+  color: inherit;
+}
+.wz-article__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  font-size: 13px;
+  color: var(--wz-muted, rgba(0, 0, 0, 0.55));
+  margin: 0 0 20px;
+}
+.wz-article__meta a {
+  color: var(--wz-ink, #111);
+  text-decoration: underline;
+}
+.wz-toc {
+  border: 1px solid var(--wz-line-strong, rgba(0, 0, 0, 0.12));
+  border-radius: 10px;
+  padding: 14px 18px;
+  margin: 0 0 28px;
+  background: var(--wz-bone, #f8f6f3);
+  max-width: 720px;
+}
+.wz-toc__title {
+  margin: 0 0 8px;
+  font-weight: 600;
+  font-size: 14px;
+}
+.wz-toc ol {
+  margin: 0;
+  padding-inline-start: 20px;
+  display: grid;
+  gap: 4px;
+  font-size: 14px;
+}
+.wz-toc a {
+  color: inherit;
+}
+.wz-article-body h2[id] {
+  scroll-margin-top: 96px;
+}
+
+/* the live data blocks */
+.wz-dblock {
+  margin: 24px 0 32px;
+}
+.wz-dblock__heading {
+  font-weight: 600;
+  margin: 0 0 10px;
+}
+.wz-dblock__grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 16px;
+}
+.wz-dblock__card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid var(--wz-line, rgba(0, 0, 0, 0.06));
+  border-radius: 10px;
+  padding: 10px;
+  background: #fff;
+  min-width: 0;
+}
+.wz-dblock__link {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: inherit;
+  text-decoration: none;
+}
+.wz-dblock__link img {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1 / 1;
+  object-fit: contain;
+  background: var(--wz-bone, #f8f6f3);
+  border-radius: 6px;
+}
+.wz-dblock__card.is-out img {
+  opacity: 0.6;
+}
+.wz-dblock__badge {
+  position: absolute;
+  inset-inline-start: 6px;
+  top: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--wz-charcoal, #262626);
+  color: #fff;
+}
+.wz-dblock__brand {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--wz-muted, rgba(0, 0, 0, 0.45));
+}
+.wz-dblock__title {
+  font-size: 13px;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.wz-dblock__price {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.wz-dblock__price s {
+  color: var(--wz-muted, rgba(0, 0, 0, 0.45));
+  font-size: 12px;
+}
+.wz-dblock__cta {
+  margin-top: auto;
+  font-size: 12px;
+  text-align: center;
+  padding: 7px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--wz-ink, #111);
+  color: var(--wz-ink, #111);
+  text-decoration: none;
+}
+.wz-dblock__cta.is-notify {
+  border-style: dashed;
+}
+.wz-dblock__count {
+  font-size: 13px;
+  color: var(--wz-muted, rgba(0, 0, 0, 0.55));
+  margin: 10px 0 0;
+}
+.wz-dblock--compare {
+  overflow-x: auto;
+}
+.wz-dblock--compare table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.wz-dblock--compare th,
+.wz-dblock--compare td {
+  border-bottom: 1px solid var(--wz-line-strong, rgba(0, 0, 0, 0.12));
+  padding: 8px 10px;
+  text-align: start;
+}
+
+/* related articles and the editorial-policy line */
+.wz-related {
+  margin: 40px 0 0;
+  padding-top: 20px;
+  border-top: 1px solid var(--wz-line-strong, rgba(0, 0, 0, 0.12));
+}
+.wz-related h2 {
+  font-size: 20px;
+  margin: 0 0 10px;
+}
+.wz-related ul {
+  margin: 0;
+  padding-inline-start: 20px;
+  display: grid;
+  gap: 6px;
+}
+.wz-article__policy {
+  margin: 28px 0 0;
+  font-size: 13px;
+  color: var(--wz-muted, rgba(0, 0, 0, 0.55));
+}
+.wz-article__policy a {
+  text-decoration: underline;
+}
+
+/* the archives' pages (/blogs/brand/…, /blogs/topic/…) */
+.wz-blogs__pager {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 0;
+}
+.wz-blogs__pager a {
+  min-width: 36px;
+  text-align: center;
+  padding: 6px 10px;
+  border: 1px solid var(--wz-line-strong, rgba(0, 0, 0, 0.12));
+  border-radius: 6px;
+  color: inherit;
+  text-decoration: none;
+}
+.wz-blogs__pager a[aria-current='page'] {
+  background: var(--wz-ink, #111);
+  color: #fff;
+}

@@ -14,6 +14,7 @@ import { useUIStore } from '@/src/Store/uiStore'
 import CategoryTiles from '@/src/Components/Merchandising/CategoryTiles'
 import { getImageUrl } from '@/src/utils/imageUrl'
 import { buildListingParams } from '@/src/utils/listingParams'
+import { brandPageOf, categoryPageOf } from '@/src/lib/menuLinks'
 
 // A home rail is drawn only with at least this many products (item 14, 2026-10-23). Four is one full row of
 // cards at desktop width: below it the band is mostly empty under its own heading. See the rails memo.
@@ -123,12 +124,12 @@ export default function HomeClient({ initialHome = null }) {
           const brand = tables?.brands?.find((b) => b.id === rail.target)
           const name = brand ? nameIn(brand, 'brand_name', language) : ''
           title = { en: name, ar: name }
-          href = `/listing?${buildListingParams({ brands: [rail.target] }, {}, tables).toString()}`
+          href = brandPageOf(rail.target, tables) || `/listing?${buildListingParams({ brands: [rail.target] }, {}, tables).toString()}`
         } else if (rail.kind === 'category_type') {
           const category = tables?.categoryTypes?.find((c) => c.id === rail.target)
           const name = category ? nameIn(category, 'category_type_name', language) : ''
           title = { en: name, ar: name }
-          href = `/listing?${buildListingParams({ categories: [rail.target] }, {}, tables).toString()}`
+          href = categoryPageOf(rail.target, tables) || `/listing?${buildListingParams({ categories: [rail.target] }, {}, tables).toString()}`
         } else if (rail.kind === 'newest') {
           href = '/listing?sort=newest'
         }
@@ -170,7 +171,7 @@ export default function HomeClient({ initialHome = null }) {
 
   const handleBrandClick = useCallback(
     (brandId) => {
-      router.push(`/listing?${buildListingParams({ brands: [brandId] }, {}, tables).toString()}`)
+      router.push(brandPageOf(brandId, tables) || `/listing?${buildListingParams({ brands: [brandId] }, {}, tables).toString()}`)
     },
     [router, tables],
   )

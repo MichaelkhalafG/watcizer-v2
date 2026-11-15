@@ -33,7 +33,8 @@ const unitText = (unit, lang) => {
 /** A v2 spec value in one language: a localized object, or a scalar that is the same in both. */
 const specValue = (value, lang) => {
   if (value === null || value === undefined) return ''
-  if (typeof value === 'object') return value[lang] ?? value.en ?? ''
+  // a localized text {en, ar}, or a lookup's reference {id, name: {en, ar}} (2026-11-14: a bag's material)
+  if (typeof value === 'object') return value[lang] ?? value.en ?? value.name?.[lang] ?? value.name?.en ?? ''
   // Core serves a flag as a word per locale since 2026-10-23. This branch is for a core that predates that,
   // so a rolled-back deploy prints Yes rather than the literal "true".
   if (typeof value === 'boolean') return value ? (lang === 'ar' ? 'نعم' : 'Yes') : lang === 'ar' ? 'لا' : 'No'
@@ -113,8 +114,27 @@ export function specRowsIn(specs, lang, product = null) {
   }
   add(isAr ? 'بلد المنشأ' : 'Country', refText(product.country, l))
   add(isAr ? 'الحجر' : 'Stone', refText(product.stone, l))
-  if (product.warranty_years) add(isAr ? 'الضمان' : 'Warranty', `${product.warranty_years} ${isAr ? 'سنة' : 'yrs'}`)
+  if (warrantyText(product.warranty_years, isAr)) add(isAr ? 'الضمان' : 'Warranty', warrantyText(product.warranty_years, isAr, product.warranty_provider))
   return out
+}
+
+/**
+ * A warranty length as a reader says it (2026-11-14): "1 year" / "3 years", «سنة واحدة» / «سنتان» / «٣ سنوات» — the
+ * table said "1 yrs". '' for none (null, 0 or not a number): core sends the warranty the product CARRIES
+ * (App\Storefront\Warranty — its own, else a watch's brand default, else a watch's one year), and 0 is "no warranty".
+ */
+export function warrantyText(years, isAr, provider = null) {
+  const n = Number(years)
+  if (!Number.isFinite(n) || n <= 0) return ''
+  const length = !isAr ? (n === 1 ? '1 year' : `${n} years`) : n === 1 ? 'سنة واحدة' : n === 2 ? 'سنتان' : n <= 10 ? `${n} سنوات` : `${n} سنة`
+  // who gives it (Michael, 2026-11-14; core's Warranty::provider): the brand agent's or the store's — never an agent's name
+  const by = WARRANTY_BY[provider]?.[isAr ? 'ar' : 'en']
+  return by ? `${length}, ${by}` : length
+}
+
+export const WARRANTY_BY = {
+  agent: { en: "the brand agent's warranty", ar: 'ضمان وكيل الماركة' },
+  store: { en: "the store's warranty", ar: 'ضمان المتجر' },
 }
 
 /**

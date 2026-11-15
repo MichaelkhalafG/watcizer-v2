@@ -12,6 +12,8 @@ import { fromSlug, brandSlug, subTypeSlug, categorySlug, toSlug } from '../utils
 import { buildListingParams } from '../utils/listingParams'
 import { transformProductData } from '../utils/transformProduct'
 import { localePath } from '../utils/localePath'
+import { familiesOf, listingTitle, listingDescription, THIN_LISTING_MIN } from './listingWords'
+import { landingName, landingSegments } from './landing'
 import { SITE } from './siteAddress'
 
 export const SEO_DOMAIN = SITE   // ONE literal in ./siteAddress
@@ -43,6 +45,13 @@ export function listingQuery(search) {
 
 const NOINDEX_FOLLOW = { index: false, follow: true }
 
+// "Rolex Watches | Watchizer" → "Rolex Watches — page 2 | Watchizer" (2026-11-14, item 6)
+const withPage = (title, page, ar) => {
+  const word = ar ? `صفحة ${page.toLocaleString('ar-EG')}` : `page ${page}`
+  const at = title.lastIndexOf(' | ')
+  return at < 0 ? `${title} — ${word}` : `${title.slice(0, at)} — ${word}${title.slice(at)}`
+}
+
 // english table name (→ flat column → any) for a lookup item
 const nameEn = (item, key) =>
   item?.translations?.find((t) => t.locale === 'en')?.[key] ?? item?.[key] ?? ''
@@ -70,7 +79,10 @@ export function resolveFacetFilters(tables = {}, facet = {}) {
   let matched = false
   let ok = true
 
-  const { brand, subType, category, grade, suptype } = facet
+  const { brand, subType, category, grade, suptype, family, gender } = facet
+  // a LANDING page's narrowing (2026-11-14): one family and/or one gender, on a brand (src/lib/landing.js)
+  if (family !== undefined) filters.family = family
+  if (gender !== undefined) filters.genders = [gender]
 
   if (brand !== undefined) {
     const b = fromSlug(brand, tables.brands, brandSlug)
@@ -150,7 +162,7 @@ export function listingCrumb(tables = {}, filters = {}, lang = 'en') {
   }
   if (one(filters.brands)) {
     const b = tables.brands?.find((i) => i.id === filters.brands[0])
-    if (b) return nameIn(b, 'brand_name', lang)
+    if (b) return landingName(nameIn(b, 'brand_name', lang), filters, lang)
   }
   if (one(filters.grades)) {
     const g = tables.grades?.find((i) => i.id === filters.grades[0])
@@ -171,7 +183,15 @@ export function listingSummary(listing, tables = {}) {
   const answered = listing != null && Number.isFinite(Number(listing.total))
   // the page's own text from the dashboard, both languages, when it has one (M1y, core's `meta.context`)
   const context = listing?.v2?.meta?.context || null
-  return { total: Number(listing?.total) || 0, image: first?.image || null, answered, context }
+  // the families the page holds (core's facets for the same request) — what its title may say (listingWords.js)
+  // the thin rule counts what search engines may index (2026-11-14, core's `indexable_total`: a brand whose products are
+  // all kept from search goes noindex like an empty one); a core that predates it answers the total, as before
+  const indexable = Number(listing?.v2?.meta?.indexable_total)
+  const total = Number.isFinite(indexable) ? indexable : Number(listing?.total) || 0
+  // a landing page's key and whether it may be indexed; a brand page's landing pages (2026-11-14, SEO Phase 2)
+  const landing = listing?.v2?.meta?.landing || null
+  const landings = listing?.v2?.meta?.landings || []
+  return { total, image: first?.image || null, answered, context, families: familiesOf(listing), landing, landings }
 }
 
 // The page's own clean path, from the RESOLVED entity's slug — so /brand/Rolex and /brand/rol (both
@@ -181,7 +201,8 @@ export function cleanPath(kind, tables, filters, pathname) {
   const find = (list, id) => (id == null ? null : (list || []).find((i) => i.id === id) || null)
   if (kind === 'brand') {
     const b = find(tables.brands, one(filters.brands))
-    if (b) return `/brand/${brandSlug(b)}`
+    // a landing page's own address (2026-11-14): the brand's, then its family and gender segments
+    if (b) return ['/brand', brandSlug(b), ...landingSegments(filters)].join('/')
   } else if (kind === 'category') {
     const c = find(tables.categoryTypes, one(filters.categories))
     if (c) return `/category/${categorySlug(c)}`
@@ -214,24 +235,27 @@ export function facetRedirectPath(pathname, clean) {
 
 // Robots + canonical path for a listing page (the rules above). `query` is listingQuery() of /listing's
 // search string ('' on the facet routes, which ignore their query string).
-function indexing({ pathname, query, tables, filters, total, answered }) {
+function indexing({ pathname, query, tables, filters, total, answered, landing = null }) {
   const kind = pathname.split('/')[1] || ''
   if (kind === 'listing') {
     return query ? { robots: NOINDEX_FOLLOW, path: `/listing?${query}` } : { robots: undefined, path: '/listing' }
   }
   const path = cleanPath(kind, tables, filters, pathname)
   if (!['brand', 'category', 'subtypes', 'grade'].includes(kind)) return { robots: NOINDEX_FOLLOW, path } // /[suptype]/[brand]
-  // Empty → noindex ONLY when core answered. If core failed, nothing is added (the layout's index).
-  if (answered && total === 0) return { robots: NOINDEX_FOLLOW, path }
+  // THIN → noindex, follow (2026-11-14, item 5: fewer than THIN_LISTING_MIN LIVE products — it was "empty"), ONLY when
+  // core answered: if core failed, nothing is added (the layout's index). Core's sitemap leaves the same pages out.
+  if (answered && total < THIN_LISTING_MIN) return { robots: NOINDEX_FOLLOW, path }
+  // a LANDING page is indexable only once core says so (its copy passed the quality gate in both languages and it
+  // holds 6+ LIVE products — `meta.landing`); until then, and if core did not answer, noindex, follow
+  if (kind === 'brand' && landingSegments(filters).length > 0 && !landing?.indexable) return { robots: NOINDEX_FOLLOW, path }
   return { robots: undefined, path }
 }
 
 // Next `metadata` object mirroring old Listing's <Helmet> (title / description /
 // canonical + OG / Twitter). `pathname` is the clean self-canonical path.
-export function listingMetadata({ tables = {}, total = 0, image = null, answered = false, context = null, filters = {}, pathname = '/listing', query = '', lang = 'en' }) {
+export function listingMetadata({ tables = {}, total = 0, image = null, answered = false, context = null, families = { known: false, top: [], second: [] }, filters = {}, pathname = '/listing', query = '', page = 1, landing = null, lang = 'en' }) {
   const ar = lang === 'ar'
   const crumb = listingCrumb(tables, filters, lang)
-  const resultCount = total
 
   const brandId = (filters.brands || []).length === 1 ? filters.brands[0] : null
   const catId = (filters.categories || []).length === 1 ? filters.categories[0] : null
@@ -248,36 +272,38 @@ export function listingMetadata({ tables = {}, total = 0, image = null, answered
   const subName = subId && tables.subTypes?.find((i) => i.id === subId)
   const gradeName = gradeId && tables.grades?.find((i) => i.id === gradeId)
 
+  // The words come from the page's own products (src/lib/listingWords.js, 2026-11-14): "Watches" only where every
+  // product is a watch; the families the page holds otherwise; no count and no "luxury watches" in the fallback.
+  const SHOP = 'Brand Fashion'
   let title
-  if (activeCount === 1 && brandName) {
-    title = ar
-      ? `ساعات ${nameIn(brandName, 'brand_name', lang)} في مصر | Brand Fashion`
-      : `${nameEn(brandName, 'brand_name')} Watches in Egypt | Brand Fashion`
+  const landingOf = landingSegments(filters).length > 0 && brandName
+  if (landingOf) {
+    // a landing page (2026-11-14): "Guess Women's Bags in Egypt" / «حقائب Guess للنساء في مصر»
+    const name = landingName(ar ? nameIn(brandName, 'brand_name', lang) : nameEn(brandName, 'brand_name'), filters, lang)
+    title = ar ? `${name} في مصر | ${SHOP}` : `${name} in Egypt | ${SHOP}`
+  } else if (activeCount === 1 && brandName) {
+    title = listingTitle({ kind: 'brand', name: ar ? nameIn(brandName, 'brand_name', lang) : nameEn(brandName, 'brand_name'), families, lang, shop: SHOP })
   } else if (activeCount === 1 && catName) {
-    title = `${nameIn(catName, 'category_type_name', lang)} | Brand Fashion`
+    title = listingTitle({ kind: 'category', name: nameIn(catName, 'category_type_name', lang), families, lang, shop: SHOP })
   } else if (activeCount === 1 && subName) {
-    title = ar
-      ? `ساعات ${nameIn(subName, 'sub_type_name', lang)} | Brand Fashion`
-      : `${nameEn(subName, 'sub_type_name')} Watches | Brand Fashion`
+    title = listingTitle({ kind: 'subtype', name: ar ? nameIn(subName, 'sub_type_name', lang) : nameEn(subName, 'sub_type_name'), families, lang, shop: SHOP })
   } else if (activeCount === 1 && gradeName) {
-    title = ar
-      ? `ساعات ${nameIn(gradeName, 'grade_name', lang)} | Brand Fashion`
-      : `${nameEn(gradeName, 'grade_name')} Watches | Brand Fashion`
+    title = listingTitle({ kind: 'grade', name: ar ? nameIn(gradeName, 'grade_name', lang) : nameEn(gradeName, 'grade_name'), families, lang, shop: SHOP })
   } else {
-    title = ar ? 'تسوّق كل الساعات والإكسسوارات الفاخرة | Brand Fashion' : 'Shop All Luxury Watches & Accessories | Brand Fashion'
+    title = ar ? 'ساعات وحقائب وعطور وإكسسوارات | Brand Fashion' : 'Watches, Bags, Perfumes & Accessories | Brand Fashion'
   }
 
-  // The meta description written for this brand or category page in the dashboard wins (M1y); the templated
-  // sentence stays the fallback for every page nobody has written one for.
+  // The meta description written for this brand or category page in the dashboard wins (M1y); the fallback is a
+  // sentence true of every product (listingDescription).
   const written = context?.[lang]?.meta_description
-  const description = written
-    ? written
-    : ar
-    ? `تصفّح ${resultCount} من ${crumb} في Brand Fashion — ساعات وإكسسوارات فاخرة بتصاميم راقية وأسعار لا تُقاوم في مصر.`
-    : `Browse ${resultCount} ${crumb} at Brand Fashion — luxury watches and accessories with premium designs and unbeatable prices in Egypt.`
+  const description = written || listingDescription({ crumb, lang, shop: SHOP })
   // Self-canonical in the URL's language, with hreflang to the other (S-AR stage 1) — built from the
   // page's clean path (resolved slug), and noindex where the indexing rules say so.
-  const { robots, path } = indexing({ pathname, query, tables, filters, total, answered })
+  // page 2+ says so in its title, before the shop's name, so no two pages of one listing share a title
+  if (page > 1) title = withPage(title, page, ar)
+  const { robots, path: own } = indexing({ pathname, query, tables, filters, total, answered, landing })
+  // page 2+ of a facet page (?page=N, 2026-11-14 item 6): its OWN canonical and hreflang, never page 1's
+  const path = page > 1 && !own.includes('?') ? `${own}?page=${page}` : own
   const [pathOnly, search] = path.split('?')
   const withQuery = (p) => (search ? `${p}?${search}` : p)
   const canonical = `${SEO_DOMAIN}${withQuery(localePath(pathOnly, lang))}`
@@ -317,6 +343,21 @@ export function listingMetadata({ tables = {}, total = 0, image = null, answered
 // BreadcrumbList JSON-LD: Home → active facet crumb (english-canonical).
 export function listingBreadcrumbLd({ tables = {}, filters = {}, pathname = '/listing', lang = 'en' }) {
   const crumb = listingCrumb(tables, filters, lang)
+  // a landing page (2026-11-14): Home › the brand › the landing page
+  const segs = landingSegments(filters)
+  const b = (filters.brands || []).length === 1 ? tables.brands?.find((i) => i.id === filters.brands[0]) : null
+  if (segs.length > 0 && b) {
+    const brandPath = `/brand/${brandSlug(b)}`
+    return {
+      '@context': 'https://schema.org/',
+      '@type': 'BreadcrumbList',
+      itemListElement: [
+        { '@type': 'ListItem', position: 1, name: lang === 'ar' ? 'الرئيسية' : 'Home', item: `${SEO_DOMAIN}${localePath('/', lang)}` },
+        { '@type': 'ListItem', position: 2, name: nameIn(b, 'brand_name', lang), item: `${SEO_DOMAIN}${localePath(brandPath, lang)}` },
+        { '@type': 'ListItem', position: 3, name: crumb, item: `${SEO_DOMAIN}${localePath(pathname, lang)}` },
+      ],
+    }
+  }
   return {
     '@context': 'https://schema.org/',
     '@type': 'BreadcrumbList',

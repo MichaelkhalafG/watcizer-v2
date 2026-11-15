@@ -146,8 +146,9 @@ const nextConfig = {
        * legacy host was switched off on 2026-09-29, deleted, and no longer resolves, so the entry
        * went with it (2026-10-12, C3-delete code half).
        */
-      { protocol: 'https', hostname: 'api.michaelkhalaf.com', pathname: '/Uploads_Images/**' },   // Brand Fashion's asset host (2026-10-14)
-      { protocol: 'https', hostname: 'api.brandfashionegy.com', pathname: '/Uploads_Images/**' }, // its real one (switch plan §3 item 3, added BEFORE the switch; keep the old one until §8.4)
+      // api.michaelkhalaf.com removed 2026-11-14: the pre-switch asset host, retired (the domain answers 410); no stored
+      // image names it
+      { protocol: 'https', hostname: 'api.brandfashionegy.com', pathname: '/Uploads_Images/**' }, // its real one (switch plan §3 item 3; the old one removed 2026-11-14)
       { protocol: 'https', hostname: 'api.watchizereg.com', pathname: '/Uploads_Images/**' },     // kept until measured unused on this app
       ...(process.env.NODE_ENV === 'production'
         ? []

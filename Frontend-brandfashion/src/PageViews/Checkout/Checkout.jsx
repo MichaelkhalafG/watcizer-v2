@@ -33,6 +33,7 @@ import { trackInitiateCheckout, savePendingPurchase } from '../../scripts/pixels
 import { useOrderConfirmStore } from '../../Store/orderConfirmStore'
 import PaymentBadges, { MethodBadge, usePaymentBadgeOf } from '../../Components/Promo/PaymentBadges'
 import './Checkout.css'
+import { INSPECT_LONG } from '@/src/content/inspection'
 
 /*
  * Brand Fashion's checkout (DIVERGED 2026-10-19, B7) — Watchizer's page and flow, on core's v2 routes:
@@ -64,7 +65,8 @@ const METHOD_ICON = {
   apple_pay: FiSmartphone,
 }
 const METHOD_NOTE = {
-  cod: ['Pay when you receive your order', 'ادفع عند استلام طلبك'],
+  // inspection before payment (2026-11-14, the client): content/inspection.js, the same words everywhere
+  cod: [INSPECT_LONG.en, INSPECT_LONG.ar],
   whatsapp: ['We confirm the order and the payment with you on WhatsApp', 'نؤكد معك الطلب والدفع على واتساب'],
   card: ['Visa / Mastercard / Meeza', 'فيزا / ماستركارد / ميزة'],
   wallet: ['Vodafone Cash, Orange, Etisalat and other mobile wallets', 'فودافون كاش وأورانج واتصالات وباقي المحافظ'],
@@ -207,7 +209,7 @@ const OrderSummary = memo(function OrderSummary({
 
       <ul className="wz-checkout-trust">
         <li><FiLock size={14} /> {t('Secure checkout', 'دفع آمن')}</li>
-        <li><FiRefreshCw size={14} /> {t('Returns within 4 days of delivery', 'الإرجاع خلال 4 أيام من الاستلام')}</li>
+        <li><FiRefreshCw size={14} /> {t('Free returns within 14 days of delivery', 'إرجاع مجاني خلال ١٤ يوماً من الاستلام')}</li>
         <li><FiShield size={14} /> {t('100% authentic', 'أصلي 100%')}</li>
         <li><FiPhone size={14} /> {t('WhatsApp support', 'دعم واتساب')}</li>
       </ul>

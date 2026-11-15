@@ -79,6 +79,19 @@ describe('the old shop URLs', () => {
     expect(asked).toEqual([])
   })
 
+  it('sends a bare old base (no row in the map) to the whole catalogue in one 301 (2026-11-14: an article linked /product-category)', async () => {
+    stubCore()
+    for (const p of ['/product-category', '/product-category/', '/brand-category', '/product-tag/']) {
+      const r = await run(`https://www.brandfashionegy.com${p}`)
+      expect(r.status).toBe(301)
+      expect(r.headers.get('location')).toBe('https://www.brandfashionegy.com/listing')
+    }
+    const ar = await run('https://www.brandfashionegy.com/product-category/?lang=ar')
+    expect(ar.headers.get('location')).toBe('https://www.brandfashionegy.com/ar/listing')
+    // a base WITH a rest is still the map's business: no row and no slash → the page as it is
+    expect((await run('https://www.brandfashionegy.com/product-category/men')).headers.get('location')).toBeNull()
+  })
+
   it('serves the page as it is when core is down', async () => {
     vi.stubGlobal('fetch', async () => {
       throw new Error('down')

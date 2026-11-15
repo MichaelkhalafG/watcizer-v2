@@ -37,6 +37,9 @@ const CANONICAL_HOST = (process.env.SITE_CANONICAL_HOST || '').toLowerCase()
 // would have done), anything else is served as it is. WordPress internals answer 410 Gone here, without asking core.
 const LEGACY_BASES = /^\/(product-category|brand-category|gender-category|collection|product-tag)(\/|$)/
 const LEGACY_POST_CATEGORY = /^\/category\/(blog|uncategorized)\/?$/
+// A bare old base — WordPress's index of every category, brand, collection or tag (2026-11-14: an imported article links
+// /product-category, which the map has no row for, and answered 404): the whole catalogue.
+const LEGACY_BASE_INDEX = /^\/(product-category|brand-category|gender-category|collection|product-tag)\/?$/
 const WP_GONE = /^\/(wp-admin|wp-includes|wp-json|wp-login\.php|xmlrpc\.php|wp-cron\.php|wp-signup\.php|wp-trackback\.php|feed|comments\/feed)(\/|$)|^\/wp-content\/(?!uploads\/)/
 const ORIGIN = (process.env.LARAVEL_ORIGIN || '').replace(/\/$/, '')
 const SERVER_KEY = process.env.STOREFRONT_SERVER_KEY || ''
@@ -114,6 +117,7 @@ export async function middleware(request) {
   if (slash || lang || LEGACY_BASES.test(pathname) || LEGACY_POST_CATEGORY.test(pathname) || pathname.startsWith('/wp-content/uploads/')) {
     const to = await lookup(pathname)
     if (to) return NextResponse.redirect(target(request, to, lang === 'ar'), 301)
+    if (LEGACY_BASE_INDEX.test(pathname)) return NextResponse.redirect(onThisHost(request, lang === 'ar' ? '/ar/listing' : '/listing', ''), 301)
     if (slash || lang) {
       const params = new URLSearchParams(searchParams)
       params.delete('lang')
@@ -125,6 +129,9 @@ export async function middleware(request) {
   }
 
   const headers = new Headers(request.headers)
+  // THE 404 MONITOR (SEO Phase 1, 2026-11-14): the address as it was asked for (with its /ar), for app/not-found.jsx to
+  // report to core. Always overwritten here, like the language headers, so a client cannot send its own.
+  headers.set('x-wz-path', pathname)
   const arabic = pathname === '/ar' || pathname.startsWith('/ar/')
 
   if (arabic) {
@@ -139,7 +146,18 @@ export async function middleware(request) {
     return response
   }
 
-  headers.set('x-wz-lang', request.cookies.get('wz-lang')?.value === 'ar' ? 'ar' : 'en')
+  // THE ADDRESS DECIDES THE LANGUAGE (Michael, 2026-11-14): a bare URL is English — body, title, canonical, hreflang and
+  // structured data alike — whatever cookie the visitor holds. It used to show the Arabic body under the English title to
+  // anyone holding wz-lang=ar. The cookie (the language the visitor chose last) now does ONE thing: a visitor who chose
+  // Arabic and opens the bare HOME page is sent to /ar — a 302, never cached, and never for a crawler (it carries no cookie).
+  if (pathname === '/' && request.cookies.get('wz-lang')?.value === 'ar') {
+    const url = onThisHost(request, '/ar', request.nextUrl.search)
+    const response = NextResponse.redirect(url, 302)
+    response.headers.set('Cache-Control', 'private, no-store')
+    response.headers.set('Vary', 'Cookie')
+    return response
+  }
+  headers.set('x-wz-lang', 'en')
   headers.set('x-wz-url-lang', 'en')
   return NextResponse.next({ request: { headers } })
 }

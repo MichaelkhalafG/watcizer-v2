@@ -95,7 +95,6 @@ app/(main)/desktop-footer.jsx
 app/(main)/grade/[grade]/page.jsx
 app/(main)/layout.jsx
 app/(main)/listing/Listing.css
-app/(main)/listing/loading.jsx
 app/(main)/offer/[slug]/page.jsx
 app/(main)/order-confirmation/page.jsx
 app/(main)/privacy-policy/page.jsx
@@ -395,3 +394,80 @@ src/Components/Account/WheelTab.jsx
 src/Components/Account/WheelTab.css
 # 2026-11-12: src/lib/siteAddress.js exists in Frontend-brandfashion ONLY — the shop's one site-address literal (switch plan §3 item 1); not a twin.
 DIVERGED 2026-11-11 middleware.js — Brand Fashion only (D-3, D-17): the canonical host is www (SITE_CANONICAL_HOST; Watchizer keeps www → apex), and the old WordPress shop's URLs are answered here — old-looking paths asked of core's redirect map (one 301), WordPress internals 410.
+# 2026-11-14 (SEO Phase 1): app/(main)/listing/loading.jsx DELETED on both sides, so off this list. Its skeleton put /listing inside a Suspense boundary: the grid arrived out of order in a hidden <div id="S:0"> swapped in by a script, so a crawler that runs no script saw eight grey cards and no product (the 2026-11-13 crawl: 0 words in <main>). The page now renders in one piece, like every facet page.
+# 2026-11-14 (SEO Phase 1 + Search Console): FOUR NEW TWINS - the shop directory in the server HTML (SiteDirectory.jsx + .css, a server component mounted in app/(main)/desktop-footer.jsx) and the menu-link rule both menus and the directory share (src/lib/menuLinks.js + its test): a node's page is the slug of its English name, checked against the tables.
+src/lib/menuLinks.js
+src/Components/Footer/SiteDirectory.jsx
+src/Components/Footer/SiteDirectory.css
+tests/menuLinks.test.mjs
+# 2026-11-14 (SEO Phase 1, items 4 and 5): TWO NEW TWINS - a listing page's title and fallback description in words true of its products (core's facets for the same request), and the thin-listing number (src/lib/listingWords.js + its test). listingSeo.js stays diverged (each shop passes its own name). tests/languageByAddress.test.mjs exists in BOTH apps but is NOT a twin: each tests its own middleware.
+src/lib/listingWords.js
+tests/listingWords.test.mjs
+# 2026-11-14 (SEO Phase 1 item 2): TWO NEW TWINS - the shop as structured data (src/lib/shopSchema.js: Organization + OnlineStore, the two stores, WebSite, the return and shipping policies at organization and offer level) and its test. serverV2.js (already a twin) gained getServerShippingFees on both sides.
+src/lib/shopSchema.js
+tests/shopSchema.test.mjs
+# 2026-11-14 (SEO Phase 1 item 6): tests/robotsRules.test.mjs is a NEW TWIN - the crawl rules of public/robots.txt (filters, sorts and searches closed; pagination and clean pages open). The two robots.txt files differ only in their Sitemap line and are not twins.
+tests/robotsRules.test.mjs
+# 2026-11-14 (SEO Phase 1 item 12): app/llms.txt/route.js is a NEW TWIN - /llms.txt from each shop's own facts (STORES_LD), menu and delivery fees.
+app/llms.txt/route.js
+# 2026-11-14 (SEO Phase 1 item 3): TWO NEW TWINS - a product's <title> and meta description from the catalogue (src/lib/productWords.js: brand + model name + model number + gender + type; a description per family within 155 characters; Copy/Style products left as they are) and its test. Each shop's product page calls it with its own name.
+src/lib/productWords.js
+tests/productWords.test.mjs
+# 2026-11-14 (the client's contact details): src/content/contact.js and tests/contactDetails.test.mjs exist in BOTH apps but are NOT twins - each shop's own number (and, on Brand Fashion, its accounts), under the same export names so the twin src/PageViews/Account/Account.jsx can import them (it had Brand Fashion's old number typed in, on both sides). Account.jsx, shopSchema.js and storesJsonLd.js stay twins (hasMap added on both sides).
+# 2026-11-14 (inspection before payment, the client's): TWO NEW TWINS - the approved sentences, typed once (src/content/inspection.js), and the test that every place carries them. TrustSignals.jsx and app/llms.txt/route.js stay twins (an inspect row; an Inspection line).
+src/content/inspection.js
+tests/inspection.test.mjs
+# 2026-11-14 (the Original watches page, Michael's): FOUR NEW TWINS - its words (src/content/originalWatches.js), the page module (src/lib/collectionListing.jsx), the route (app/(main)/original-watches/page.jsx) and its test. menuLinks.js and v2Listing.js stay twins (a tile's own href; the collection key); listingParams.js and ListingClient.jsx stay diverged (the collection key; a `heading` prop on both sides).
+src/content/originalWatches.js
+src/lib/collectionListing.jsx
+app/(main)/original-watches/page.jsx
+tests/originalWatches.test.mjs
+# 2026-11-14 (language links, SEO Phase 1): src/Components/LanguageDropdown/LanguageLink.jsx is NEW and a twin - the language switch is a real link (href, hreflang, lang) to the same page in the other language, so a crawler follows it; the click still writes the language cookie. Both headers and LanguageDropdowen.jsx use it.
+src/Components/LanguageDropdown/LanguageLink.jsx
+# 2026-11-14 (IndexNow, SEO Phase 1): app/indexnow-key.txt/route.js is NEW and a twin - serves the shop key core derives (meta indexnow_key), the keyLocation core sends to the engines.
+app/indexnow-key.txt/route.js
+# 2026-11-14 (the 404 monitor, SEO Phase 1): TWO NEW TWINS - the report the 404 page sends to core (src/lib/notFoundReport.js; only with the storefront server key) and its test. middleware.js stays diverged and app/not-found.jsx stays split; both gained the same lines (the x-wz-path header; the report call).
+src/lib/notFoundReport.js
+tests/notFoundReport.test.mjs
+# 2026-11-14 (the warranty, shipping and returns pages, SEO Phase 1): FIVE NEW TWINS - the three routes (the words are each shop's own, in src/content/trustPages.js, which stays split), the follower figure rounded for the About page (src/lib/followers.js), and the test. app/(main)/about-us/page.jsx, src/lib/storesJsonLd.js and app/llms.txt/route.js stay twins (the followers from v2 meta; foundingDate; the three links). TrustPage.jsx and Footer.jsx stay split; both gained the same changes.
+app/(main)/warranty/page.jsx
+app/(main)/shipping/page.jsx
+app/(main)/returns/page.jsx
+src/lib/followers.js
+tests/trustPolicyPages.test.mjs
+# 2026-11-14 (a production build of Watchizer failed): src/lib/siteAddress.js now exists in BOTH apps, still NOT a twin (each shop's own address). shopSchema.js (a twin) imports SITE from it and localePath from src/utils/localePath instead of src/lib/requestLang, which imports next/headers and reached the client bundle through detailSeo (Watchizer's hero product page).
+# 2026-11-14 (the local re-crawl): tests/blogMeta.test.mjs is NEW and a twin - an article's meta title and description in its page's own language (src/lib/serverBlogs.js ownLang, a twin). app/(main)/blog/[name]/page.jsx stays split; both sides gained the same change.
+tests/blogMeta.test.mjs
+# 2026-11-14 (crawlable pagination, SEO Phase 1 item 6): tests/pagination.test.mjs is NEW and a twin. ListingClient.jsx, Listing.css, facetListing.jsx, listingSeo.js and the brand/category routes stay split; subtypes and grade stay twins; every side gained the same change.
+tests/pagination.test.mjs
+# 2026-11-14 (SEO Phase 2, landing pages): SEVEN NEW TWINS - src/lib/landing.js, the two routes app/(main)/brand/[brand]/[a]/page.jsx and app/(main)/brand/[brand]/[a]/[b]/page.jsx, src/Components/FacetIntro/FacetLead.jsx and .css (the intro above the products and the brand page's links to its landing pages) and tests/landing.test.mjs. v2Listing.js stays a twin (the family key); listingParams.js, listingSeo.js, facetListing.jsx and ListingClient.jsx stay split, every side changed the same way.
+src/lib/landing.js
+app/(main)/brand/[brand]/[a]/page.jsx
+app/(main)/brand/[brand]/[a]/[b]/page.jsx
+src/Components/FacetIntro/FacetLead.jsx
+src/Components/FacetIntro/FacetLead.css
+tests/landing.test.mjs
+# 2026-11-14 (SEO Phase 3, the blog engine): NINE NEW TWINS - the live data blocks placed in the article (src/lib/dataBlocks.js) and drawn (src/Components/Blog/DataBlock.jsx), the article's two addresses (src/lib/blogPath.js), the RSS feed per language (src/lib/blogFeed.js and app/(main)/blog/feed/route.js), the article page's styles (src/Components/Blog/article.css), the team (author) and editorial-policy routes, and tests/articleEngine.test.mjs. app/(main)/blog/[name]/page.jsx BECOMES a twin (the shop's name now comes from src/lib/siteAddress.js SHOP_NAME, which stays each shop's own); BlogClient.jsx and src/lib/markdown.js stay twins (the byline, dates, contents, blocks, related articles; heading anchors). src/content/trustPages.js stays split (each shop's own words for the two new pages); BlogsClient.jsx stays diverged, both sides link an article by blogPath().
+src/lib/dataBlocks.js
+src/Components/Blog/DataBlock.jsx
+src/lib/blogPath.js
+src/lib/blogFeed.js
+app/(main)/blog/feed/route.js
+src/Components/Blog/article.css
+app/(main)/team/page.jsx
+app/(main)/editorial-policy/page.jsx
+app/(main)/blog/[name]/page.jsx
+tests/articleEngine.test.mjs
+# 2026-11-14 (SEO Phase 3, the archives): TWO NEW TWINS - the article archives by brand and by topic (app/(main)/blogs/[kind]/[value]/page.jsx) and their rules (src/lib/blogTopics.js: the topics, indexable from 3 articles, 24 a page). FacetLead.jsx stays a twin (a brand page shows its latest articles); facetListing.jsx stays split, both sides gained the same lines; BlogsClient.jsx stays diverged, both take a heading and a lead.
+src/lib/blogTopics.js
+app/(main)/blogs/[kind]/[value]/page.jsx
+# 2026-11-14 (SEO Phase 5, verified reviews): SIX NEW TWINS - the review page a delivered order's link opens (app/(main)/review/[token]/page.jsx and its form ReviewForm.jsx), the product's approved reviews under it (src/Components/Reviews/VerifiedReviews.jsx and .css), their markup (src/lib/reviewsLd.js) and tests/reviews.test.mjs. src/lib/detailSeo.js stays split (Watchizer's product markup takes the reviews inline); the product routes stay split, both render VerifiedReviews.
+src/lib/reviewsLd.js
+src/Components/Reviews/VerifiedReviews.jsx
+src/Components/Reviews/VerifiedReviews.css
+app/(main)/review/[token]/page.jsx
+app/(main)/review/[token]/ReviewForm.jsx
+tests/reviews.test.mjs
+# 2026-11-14 (authorized dealer per brand, Michael): TWO NEW TWINS - src/lib/dealers.js (the sentence from v2 meta settings.authorized_brands) and tests/dealers.test.mjs. FacetLead.jsx, collectionListing.jsx, ProductDetailClient.jsx, about-us and warranty routes, llms.txt stay twins; TrustPage.jsx and facetListing.jsx stay split, both sides gained the same lines; BfProductPage.jsx is Brand Fashion's own.
+src/lib/dealers.js
+tests/dealers.test.mjs

@@ -1,0 +1,49 @@
+/* Above the products of a brand, category or landing page (SEO Phase 2, 2026-11-14). A twin; each shop's colours come
+   from its own tokens (the same --fi-* tokens FacetIntro uses), with neutral fallbacks. */
+.wz-facet-lead {
+  margin: 4px 0 18px;
+  max-width: 920px;
+}
+
+.wz-facet-lead__intro {
+  margin: 0 0 12px;
+  font-size: 15px;
+  line-height: 1.65;
+  color: var(--fi-ink, #333);
+}
+
+.wz-facet-lead__links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.wz-facet-lead__label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fi-muted, #666);
+}
+
+.wz-facet-lead__links ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wz-facet-lead__link {
+  display: inline-block;
+  padding: 6px 14px;
+  border: 1px solid var(--fi-line, #ddd);
+  border-radius: 999px;
+  font-size: 13px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.wz-facet-lead__link:hover {
+  border-color: currentColor;
+}

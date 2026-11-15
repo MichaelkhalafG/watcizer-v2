@@ -33,3 +33,6 @@
   outline: 2px solid var(--wz-gold);
   outline-offset: 2px;
 }
+
+/* a link since 2026-11-14 (LanguageLink) */
+a.wz-lang-toggle { text-decoration: none; }

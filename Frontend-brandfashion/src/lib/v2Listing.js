@@ -72,6 +72,10 @@ export function v2ListingRequest({ filters = {}, q = '', sort = 'default', page 
   const p = new URLSearchParams()
   const categories = categoryPaths(filters, tables)
   if (categories.length) p.set('category', categories.join(','))
+  // a named collection (2026-11-14: `original-watches`, core's ProductListing) — the page it is, like a category
+  if (filters.collection) p.set('collection', String(filters.collection))
+  // a landing page's family (2026-11-14: watch, bag, wallet, perfume — core's ProductListing)
+  if (filters.family) p.set('family', String(filters.family))
   const list = (key, values) => {
     const v = [...new Set((values || []).filter((x) => x !== '' && x != null))]
     if (v.length) p.set(key, v.join(','))

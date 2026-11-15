@@ -229,7 +229,9 @@ export default function BfProductCard({
               className={`bf-card__img hl-cut__img ${isPhoto ? 'is-photo' : 'is-placeholder'}`}
               src={isPhoto && !coverSources.avif && !coverSources.webp ? optimized(src) : src}
               srcSet={isPhoto && !coverSources.avif && !coverSources.webp ? optimizedSet(src) : undefined}
-              alt=""
+              // the product's name, as Watchizer's cards say it (2026-11-14, SEO Phase 1 item 9: 0 of 2,219 card images on
+              // the brand, category, sub-type and grade pages had any); the placeholder and the hover copy stay silent
+              alt={isPhoto ? title : ''}
               loading={eager ? 'eager' : 'lazy'}
               fetchPriority={first ? 'high' : undefined}
               decoding="async"

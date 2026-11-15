@@ -28,7 +28,50 @@ Disallow: /ar/auth/
 Disallow: /search
 Disallow: /Search
 
-# Allow filtered listings (important for SEO)
-# /listing?brand=rolex, /listing?category=fashion, /listing?offers=true
+# FILTERED AND SORTED LISTINGS ARE NOT FOR INDEXING (2026-11-14, SEO Phase 1 item 6, Google's faceted-navigation
+# guidance). Every filter, sort and search parameter of a listing, in both its forms, so a crawler spends its time on
+# the clean pages (/brand/..., /category/..., /subtypes/..., /grade/...) that the site links instead. Pagination
+# (page=) stays crawlable. The pages themselves also say noindex, follow.
+# Every crawler is welcome under the one group above (Googlebot, Bingbot, Applebot, OAI-SearchBot, ChatGPT-User,
+# PerplexityBot, Google-Extended): a crawler obeys only the most specific group naming it, so a group of its own
+# would drop the private paths for it.
+Disallow: /*?brand=
+Disallow: /*&brand=
+Disallow: /*?subType=
+Disallow: /*&subType=
+Disallow: /*?category=
+Disallow: /*&category=
+Disallow: /*?gender=
+Disallow: /*&gender=
+Disallow: /*?dialColor=
+Disallow: /*&dialColor=
+Disallow: /*?bandColor=
+Disallow: /*&bandColor=
+Disallow: /*?material=
+Disallow: /*&material=
+Disallow: /*?movement=
+Disallow: /*&movement=
+Disallow: /*?shape=
+Disallow: /*&shape=
+Disallow: /*?displayType=
+Disallow: /*&displayType=
+Disallow: /*?grade=
+Disallow: /*&grade=
+Disallow: /*?offers=
+Disallow: /*&offers=
+Disallow: /*?sale=
+Disallow: /*&sale=
+Disallow: /*?discount=
+Disallow: /*&discount=
+Disallow: /*?inStock=
+Disallow: /*&inStock=
+Disallow: /*?minPrice=
+Disallow: /*&minPrice=
+Disallow: /*?maxPrice=
+Disallow: /*&maxPrice=
+Disallow: /*?q=
+Disallow: /*&q=
+Disallow: /*?sort=
+Disallow: /*&sort=
 
 Sitemap: https://www.brandfashionegy.com/sitemap.xml

@@ -9,7 +9,6 @@ import Nav from './Nav/Nav'
 import CampaignNav from '../Promo/CampaignNav'
 import NavProgress from '../NavProgress/NavProgress'
 import MegaDrawer from './MegaMenu/MegaDrawer'
-import { useSwitchLanguage } from '../../Hooks/useSwitchLanguage'
 import { useUIStore } from '../../Store/uiStore'
 import { useAuthStore } from '../../Store/authStore'
 import useCart from '../../Hooks/useCart'
@@ -18,8 +17,10 @@ import { useNav } from '../../Hooks/queries/useNav'
 import { useHasOffers } from '../../Hooks/queries/useRunningOffers'
 import { buildListingParams } from '../../utils/listingParams'
 import { subTypeSlug } from '../../utils/slugs'
+import { menuChildHref, nodeSlug } from '../../lib/menuLinks'
 import { subTypesByName } from '../../utils/subTypeGroups'
 import { getImageUrl } from '../../utils/imageUrl'
+import LanguageLink from '../LanguageDropdown/LanguageLink'
 
 /*
  * The Brand Fashion header — spec v2.10 §10.1 item 1 ("Header 56 phone / 64 desktop: logo, search, cart.
@@ -72,7 +73,6 @@ function Header() {
   const language = useUIStore((s) => s.language)
   const hasOffers = useHasOffers()
   // /x ↔ /ar/x (S-AR stage 1): the switch moves to the same page in the other language.
-  const setLanguage = useSwitchLanguage()
   const { userId: user_id, user } = useAuthStore()
   const router = useRouter()
   const isRTL = language === 'ar'
@@ -142,9 +142,11 @@ function Header() {
       return qs ? `/listing?${qs}` : '/listing'
     }
     return {
+      // a tile's page by its English name, checked against the tables (src/lib/menuLinks.js, 2026-11-14)
+      child: (c, parent) => menuChildHref(c, parent, tables),
       gender: (g) => listing({ genders: [g.name?.en] }),
       genderChild: (g, child) => {
-        const st = (tables?.subTypes || []).find((x) => subTypeSlug(x) === child.slug)
+        const st = (tables?.subTypes || []).find((x) => subTypeSlug(x) === nodeSlug(child))
         return listing(st ? { genders: [g.name?.en], subTypes: [st.id] } : { genders: [g.name?.en] })
       },
     }
@@ -176,13 +178,14 @@ function Header() {
 
   const langSwitch = (extra) => (
     <div className="wz-act-lang" role="group" aria-label="Language">
-      <button type="button" className={`wz-act-lang__btn${language === 'en' ? ' is-active' : ''}`} lang="en" onClick={() => { setLanguage('en'); extra?.() }} aria-pressed={language === 'en'}>
+      {/* real links to this page in each language (2026-11-14, LanguageLink): crawlers follow them */}
+      <LanguageLink lang="en" className={`wz-act-lang__btn${language === 'en' ? ' is-active' : ''}`} onNavigate={extra} aria-current={language === 'en' ? 'true' : undefined}>
         EN
-      </button>
+      </LanguageLink>
       <span className="wz-act-lang__pipe" aria-hidden="true">|</span>
-      <button type="button" className={`wz-act-lang__btn${language === 'ar' ? ' is-active' : ''}`} lang="ar" onClick={() => { setLanguage('ar'); extra?.() }} aria-pressed={language === 'ar'}>
+      <LanguageLink lang="ar" className={`wz-act-lang__btn${language === 'ar' ? ' is-active' : ''}`} onNavigate={extra} aria-current={language === 'ar' ? 'true' : undefined}>
         ع
-      </button>
+      </LanguageLink>
     </div>
   )
 

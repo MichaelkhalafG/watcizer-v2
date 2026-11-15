@@ -18,6 +18,20 @@ import Markdown from 'react-markdown'
 // team previews is what the shop shows. BlogMarkdownSafeTest renders a hostile corpus through BOTH
 // and requires identical, harmless output — change one, change the other.
 
+/** SEO Phase 3 (2026-11-14): a heading's anchor: lower case, letters and digits of any script, hyphens. Stable for the same words. */
+export function headingId(text) {
+  return (
+    String(text || '')
+      .replace(/[*_`[\]()]/g, '')
+      .trim()
+      .toLowerCase()
+      .replace(/[ً-ٰٟ]/g, '')
+      .replace(/[^\p{L}\p{N}]+/gu, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 80) || 'section'
+  )
+}
+
 export const ALLOWED = ['p', 'br', 'strong', 'em', 'h2', 'h3', 'h4', 'ul', 'ol', 'li', 'blockquote', 'a', 'img', 'hr', 'code', 'pre']
 const LINK_SCHEMES = /^(https?:|mailto:|tel:)/i
 const UPLOADS = /^\/Uploads_Images\/[A-Za-z0-9._\-/]+$/
@@ -47,11 +61,31 @@ export function markdownToPlain(text) {
     .trim()
 }
 
+const textOf = (node) =>
+  typeof node === 'string' || typeof node === 'number'
+    ? String(node)
+    : Array.isArray(node)
+      ? node.map(textOf).join('')
+      : node?.props?.children !== undefined
+        ? textOf(node.props.children)
+        : ''
+
 // `internalHref` lets the page localise its own links (D7: an internal link keeps the page's language);
 // the default leaves them as written, which is what the dashboard's preview does.
-export function MarkdownBody({ text, assetBase, className = 'wz-article-body', internalHref = (h) => h }) {
+// `headingIds` (SEO Phase 3, 2026-11-14): a Map shared by the article's segments — each H2 gets the anchor the table of
+// contents links to (dataBlocks.js tableOfContents: the same words, the same -2/-3 for a repeat). Without it, nothing
+// changes (the dashboard's preview and BlogMarkdownSafeTest's corpus render as before).
+export function MarkdownBody({ text, assetBase, className = 'wz-article-body', internalHref = (h) => h, headingIds = null }) {
+  const anchored = (children) => {
+    if (!headingIds) return null
+    const base = headingId(textOf(children))
+    const n = (headingIds.get(base) || 0) + 1
+    headingIds.set(base, n)
+    return n === 1 ? base : `${base}-${n}`
+  }
   const components = {
-    h1: ({ children }) => createElement('h2', null, children),
+    h1: ({ children }) => createElement('h2', headingIds ? { id: anchored(children) } : null, children),
+    ...(headingIds ? { h2: ({ children }) => createElement('h2', { id: anchored(children) }, children) } : {}),
     a: ({ href, children }) => {
       const safe = safeHref(href)
       if (!safe) return createElement('span', null, children)

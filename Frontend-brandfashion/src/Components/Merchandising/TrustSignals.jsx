@@ -65,7 +65,7 @@ Signal.propTypes = {
 
 // PDP returns row: a product-type-aware, bilingual returns policy (same icon/row
 // styling as the other signals) with a small muted condition note beneath it.
-// Fashion items are exchange/return within 4 days; watches add a 14-day exchange.
+// Since 2026-11-14 every product: 14-day free returns and a 14-day exchange (trust.config.js).
 function ReturnsSignal({ isFashion, isRTL }) {
   const { icon, policy, condition } = trustSignals.returns
   const p = isFashion ? policy.fashion : policy.watch
@@ -136,8 +136,10 @@ LiveSignals.propTypes = {
 // row on top — the PDP passes real product data; cart/checkout omit them.
 // Styled with dedicated wz-trust-* classes (no Bootstrap). Responsive: collapses
 // to a vertical stack on mobile via the .wz-trust--row media query.
-function TrustSignals({ variant = 'pdp', rating = 0, reviewCount = 0, stockLeft = null, isRTL = false, isFashion = false }) {
-  const { returns, guarantee, secure, whatsapp, payments } = trustSignals
+// `authenticity` (2026-11-14, Michael): false on a product the hide-from-search rule matched — its page carries no
+// "Authenticity Guarantee"; every other product keeps it.
+function TrustSignals({ variant = 'pdp', rating = 0, reviewCount = 0, stockLeft = null, isRTL = false, isFashion = false, authenticity = true }) {
+  const { returns, guarantee, secure, whatsapp, payments, inspect } = trustSignals
 
   const live = (
     <LiveSignals rating={rating} reviewCount={reviewCount} stockLeft={stockLeft} isRTL={isRTL} />
@@ -148,6 +150,7 @@ function TrustSignals({ variant = 'pdp', rating = 0, reviewCount = 0, stockLeft 
       <div className="wz-trust wz-trust--row">
         {live}
         <Signal {...returns} isRTL={isRTL} />
+        <Signal {...inspect} isRTL={isRTL} />
         <Signal {...secure} isRTL={isRTL} />
       </div>
     )
@@ -158,6 +161,7 @@ function TrustSignals({ variant = 'pdp', rating = 0, reviewCount = 0, stockLeft 
       <div className="wz-trust wz-trust--row wz-trust--framed">
         {live}
         <Signal {...returns} isRTL={isRTL} />
+        <Signal {...inspect} isRTL={isRTL} />
         <Signal {...secure} isRTL={isRTL} />
         <Signal {...whatsapp} isRTL={isRTL} />
       </div>
@@ -169,7 +173,8 @@ function TrustSignals({ variant = 'pdp', rating = 0, reviewCount = 0, stockLeft 
     <div className="wz-trust wz-trust--framed wz-trust--pdp">
       {live}
       <ReturnsSignal isFashion={isFashion} isRTL={isRTL} />
-      <Signal {...guarantee} isRTL={isRTL} />
+      <Signal {...inspect} isRTL={isRTL} />
+      {authenticity ? <Signal {...guarantee} isRTL={isRTL} /> : null}
       <Signal {...secure} isRTL={isRTL} />
       <Signal {...whatsapp} isRTL={isRTL} />
       <div className="wz-trust-payments">
@@ -190,6 +195,7 @@ TrustSignals.propTypes = {
   stockLeft: PropTypes.number,
   isRTL: PropTypes.bool,
   isFashion: PropTypes.bool,
+  authenticity: PropTypes.bool,
 }
 
 export default TrustSignals

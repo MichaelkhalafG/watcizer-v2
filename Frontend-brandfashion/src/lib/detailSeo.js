@@ -2,6 +2,7 @@ import { productUrl, offerUrl } from '../utils/productUrl'
 import { buildListingParams } from '../utils/listingParams'
 import { localePath } from '../utils/localePath'
 import { SITE } from './siteAddress'
+import { offerShippingDetails, offerReturnPolicy } from './shopSchema'
 
 // Server-side SEO for the product/offer detail pages. Produces BOTH the Next
 // `metadata` object (→ generateMetadata, replacing the old <Helmet>) and the
@@ -41,7 +42,6 @@ const toMetadata = ({ title, seoDesc, canonicalUrl, ogTitle, ogImage, languages 
     siteName: 'Brand Fashion',
     images: [{ url: ogImage }],
   },
-  other: { 'og:type': 'product' },
   twitter: {
     card: 'summary_large_image',
     title: ogTitle,
@@ -58,7 +58,7 @@ const toMetadata = ({ title, seoDesc, canonicalUrl, ogTitle, ogImage, languages 
 // below are the fallback, unchanged.
 const META_TITLE_MIN = 20
 
-export function buildProductSeo(product, { ratings = [], tables = null, lang = 'en', localized = null, meta = null } = {}) {
+export function buildProductSeo(product, { ratings = [], tables = null, lang = 'en', localized = null, meta = null, v2 = null } = {}) {
   const ar = lang === 'ar'
   const text = (ar && localized) || product
   const name = (ar ? text.product_title : null) || product.name || product.product_title || product.name_en || ''
@@ -123,12 +123,26 @@ export function buildProductSeo(product, { ratings = [], tables = null, lang = '
       : `${name}${brand ? ` – ${brand}` : ''} | Brand Fashion`
   const ogImage = images[0] || `${SEO_DOMAIN}/og-image.jpg`
 
-  // Live review count/avg for aggregateRating (only emitted when reviews exist).
+  // Live review count/avg for aggregateRating (only emitted when reviews exist). SEO Phase 5 (2026-11-14): on the v2
+  // record, the shop's APPROVED VERIFIED reviews (core's product_reviews, from delivered orders, approved on the
+  // dashboard) are the source — real reviews only — with up to five of them as Review markup.
+  const verified = v2?.reviews && Number(v2.reviews.count) > 0 ? v2.reviews : null
   const productRatings = (ratings || []).filter((r) => r.product_id === product.id)
-  const reviewCount = productRatings.length
-  const avgRating = reviewCount
-    ? productRatings.reduce((a, r) => a + Number(r.rating || 0), 0) / reviewCount
-    : Number(product.rating || product.average_rating || 0)
+  const reviewCount = verified ? Number(verified.count) : productRatings.length
+  const avgRating = verified
+    ? Number(verified.average || 0)
+    : reviewCount
+      ? productRatings.reduce((a, r) => a + Number(r.rating || 0), 0) / reviewCount
+      : Number(product.rating || product.average_rating || 0)
+  const reviewLd = verified
+    ? (verified.items || []).slice(0, 5).map((r) => ({
+        '@type': 'Review',
+        reviewRating: { '@type': 'Rating', ratingValue: r.rating, bestRating: 5 },
+        author: { '@type': 'Person', name: r.name },
+        ...(r.date ? { datePublished: r.date } : {}),
+        reviewBody: r.body,
+      }))
+    : []
 
   const brandHref =
     brand && product.brand_id && tables
@@ -160,6 +174,7 @@ export function buildProductSeo(product, { ratings = [], tables = null, lang = '
             ratingValue: Number(avgRating).toFixed(1),
             reviewCount,
           },
+          ...(reviewLd.length ? { review: reviewLd } : {}),
         }
       : {}),
   }
@@ -183,7 +198,7 @@ export function buildProductSeo(product, { ratings = [], tables = null, lang = '
 }
 
 // ── Offer ──────────────────────────────────────────────────────────────────
-export function buildOfferSeo(offer, offerProduct = null) {
+export function buildOfferSeo(offer, offerProduct = null, fees = null) {
   const name = offer.offer_name_en || offer.name_en || offer.name || ''
   const images = productImages(offer, offerProduct)
   const price = Number(offer.selling_price || 0)
@@ -220,6 +235,11 @@ export function buildOfferSeo(offer, offerProduct = null) {
       price: priceNow,
       availability: inStock ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock',
       url: canonicalUrl,
+      // the offer's condition, delivery and return policy (2026-11-14, SEO Phase 1 — Search Console: "missing
+      // shippingDetails / hasMerchantReturnPolicy"); the shipping only when the dashboard's fees were read
+      itemCondition: 'https://schema.org/NewCondition',
+      ...(offerShippingDetails(fees) ? { shippingDetails: offerShippingDetails(fees) } : {}),
+      hasMerchantReturnPolicy: offerReturnPolicy(),
     },
     ...(reviewCount > 0
       ? {

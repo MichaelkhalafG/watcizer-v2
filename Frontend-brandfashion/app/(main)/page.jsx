@@ -1,6 +1,7 @@
 import BfHome from '@/src/Components/Home/BfHome'
 import { safeJsonLd } from '@/src/lib/safeJsonLd'
-import { getServerV2Home, getServerV2Meta } from '@/src/lib/serverV2'
+import { getServerV2Home, getServerV2Meta, getServerShippingFees } from '@/src/lib/serverV2'
+import { shopGraph } from '@/src/lib/shopSchema'
 import { slimV2Home } from '@/src/lib/homeData'
 import { requestLang, alternatesFor, localePath, SITE } from '@/src/lib/requestLang'
 
@@ -45,7 +46,6 @@ export async function generateMetadata() {
       url,
       siteName: 'Brand Fashion',
       type: 'website',
-      locale: t.locale,
       images: [
         {
           url: `${SITE}/og-image.jpg`,
@@ -62,26 +62,6 @@ export async function generateMetadata() {
       images: [`${SITE}/og-image.jpg`],
     },
   }
-}
-
-// Organization/Store schema — emitted here (was App.jsx global) so it is in the
-// homepage's initial HTML.
-const storeJsonLd = {
-  '@context': 'https://schema.org/',
-  '@type': 'Store',
-  name: 'Brand Fashion',
-  url: SITE,
-  logo: `${SITE}/logo.svg`,
-  image: `${SITE}/og-image.jpg`,
-  description:
-    'Discover a premium collection of luxury watches and fashion accessories at Brand Fashion. Shop exclusive timepieces with elegant designs and unbeatable prices in Egypt.',
-  contactPoint: {
-    '@type': 'ContactPoint',
-    telephone: '+201283888490',
-    contactType: 'customer service',
-    areaServed: 'EG',
-    availableLanguage: ['English', 'Arabic'],
-  },
 }
 
 // The rails and their cards come from core's `catalog/home` (C-1 stage 4 slice C) — not the whole
@@ -101,12 +81,15 @@ export default async function HomePage() {
   } catch {
     // no brand strip
   }
+  const { urlLang } = await requestLang()
+  // the dashboard's delivery fees, for the shipping policy in the structured data — never the home's failure
+  const fees = await getServerShippingFees().catch(() => null)
   return (
     <>
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: safeJsonLd(storeJsonLd) }}
-      />
+      {/* THE SHOP (2026-11-14, SEO Phase 1): Organization + OnlineStore with its return and shipping policies, the two
+          stores as its physical places, and the WebSite (src/lib/shopSchema.js). It replaces a single Store node with
+          a description about watches only. */}
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: safeJsonLd(shopGraph(urlLang, fees)) }} />
       {/* the sliders' cards cut to what a card reads (src/lib/homeData.js) */}
       <BfHome home={slimV2Home(home)} meta={meta} />
     </>

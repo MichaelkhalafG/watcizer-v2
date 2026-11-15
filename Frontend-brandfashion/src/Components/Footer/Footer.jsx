@@ -2,7 +2,7 @@
 import { memo } from 'react'
 import './Footer.css'
 import Link from '@/src/Components/LocaleLink'
-import { FaWhatsapp, FaInstagram, FaFacebook } from 'react-icons/fa'
+import { FaWhatsapp, FaInstagram, FaFacebook, FaTiktok } from 'react-icons/fa'
 import { useUIStore } from '../../Store/uiStore'
 import { useTables } from '../../Hooks/queries/useTables'
 import { useNav } from '../../Hooks/queries/useNav'
@@ -29,7 +29,8 @@ const STR = {
   en: { categories: 'Categories', brands: 'Brands', pages: 'Pages', account: 'Account', all: 'All products', sale: 'Sale', offers: 'Offers', newest: 'New this week', blog: 'Blog', profile: 'My account', orders: 'My orders', cart: 'Cart', signIn: 'Sign in', follow: 'Follow us', rights: 'All rights reserved' },
   ar: { categories: 'الفئات', brands: 'العلامات التجارية', pages: 'الصفحات', account: 'الحساب', all: 'كل المنتجات', sale: 'تخفيضات', offers: 'العروض', newest: 'جديد هذا الأسبوع', blog: 'المدونة', profile: 'حسابي', orders: 'طلباتي', cart: 'السلة', signIn: 'تسجيل الدخول', follow: 'تابعنا', rights: 'جميع الحقوق محفوظة' },
 }
-const SOCIAL_ICON = { whatsapp: FaWhatsapp, instagram: FaInstagram, facebook: FaFacebook }
+// TikTok added 2026-11-14 (the shop's account), drawn like the others
+const SOCIAL_ICON = { whatsapp: FaWhatsapp, instagram: FaInstagram, facebook: FaFacebook, tiktok: FaTiktok }
 
 function Footer() {
   const language = useUIStore((s) => s.language)
@@ -55,6 +56,10 @@ function Footer() {
     ['/about-us', TRUST_PAGES.about?.[lang]?.title],
     ['/contact-us', TRUST_PAGES.contact?.[lang]?.title],
     ['/faq', FAQ[lang]?.title],
+    // the policy pages of 2026-11-14 (SEO Phase 1)
+    ['/warranty', TRUST_PAGES.warranty?.[lang]?.title],
+    ['/shipping', TRUST_PAGES.shipping?.[lang]?.title],
+    ['/returns', TRUST_PAGES.returns?.[lang]?.title],
     ['/blogs', t.blog],
     ['/privacy-policy', TRUST_PAGES.privacy?.[lang]?.title],
     ['/terms-and-conditions', TRUST_PAGES.terms?.[lang]?.title],
@@ -73,7 +78,7 @@ function Footer() {
               {social.map((c) => {
                 const Icon = SOCIAL_ICON[c.icon]
                 return (
-                  <a key={c.icon} className="bf-foot__social-btn" href={c.href} target="_blank" rel="noopener noreferrer" aria-label={c.label}>
+                  <a key={c.href} className="bf-foot__social-btn" href={c.href} target="_blank" rel="noopener noreferrer" aria-label={c.label}>
                     <Icon aria-hidden="true" />
                   </a>
                 )

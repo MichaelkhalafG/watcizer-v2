@@ -1,4 +1,5 @@
 import Footer from '@/src/Components/Footer/Footer'
+import SiteDirectory from '@/src/Components/Footer/SiteDirectory'
 
 // Desktop-only footer — mirrors Frontend App.jsx (`isDesktop ? <Footer/> : null`).
 //
@@ -10,6 +11,8 @@ import Footer from '@/src/Components/Footer/Footer'
 export default function DesktopFooter() {
   return (
     <div className="wz-desktop-footer">
+      {/* every category, sub-category and brand as plain links in the server HTML (2026-11-14, SEO Phase 1) */}
+      <SiteDirectory />
       <Footer />
     </div>
   )

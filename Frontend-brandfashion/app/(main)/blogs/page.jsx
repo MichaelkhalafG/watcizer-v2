@@ -1,5 +1,5 @@
 import { getServerBlogs } from '@/src/lib/serverBlogs'
-import { requestLang, alternatesFor } from '@/src/lib/requestLang'
+import { requestLang, alternatesFor, localePath, SITE } from '@/src/lib/requestLang'
 import BlogsClient from './BlogsClient'
 
 // ISR: the article list in the initial HTML for SEO, revalidated every 10 minutes — a newly
@@ -25,7 +25,8 @@ export async function generateMetadata() {
   return {
     title: t.title,
     description: t.description,
-    alternates: alternatesFor('/blogs', urlLang),
+    // the RSS feed of this language (SEO Phase 3, 2026-11-14)
+    alternates: { ...alternatesFor('/blogs', urlLang), types: { 'application/rss+xml': `${SITE}${localePath('/blog/feed', urlLang)}` } },
     // An EMPTY articles page is not worth indexing (S9); it becomes indexable with its first article.
     ...(blogs.length === 0 ? { robots: { index: false, follow: true } } : {}),
   }

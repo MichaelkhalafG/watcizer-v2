@@ -247,3 +247,6 @@
    The bar carries `pm-fireground`, so the lit switch on it turns white-hot. */
 html[data-hot-deals='on'] .wz-header { background: var(--pm-fire-bar); --hdr-line: rgba(255, 255, 255, 0.3); }
 html[data-hot-deals='on'] .wz-header :focus-visible { box-shadow: 0 0 0 2px var(--pm-fire-3); }
+
+/* the language switch is a link since 2026-11-14 (LanguageLink): drawn as the button was */
+a.wz-act-lang__btn { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }

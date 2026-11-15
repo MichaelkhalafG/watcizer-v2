@@ -519,7 +519,7 @@ function Cart() {
 
               <ul className="wz-cart-trust">
                 <li><FiLock aria-hidden="true" /> {t('Secure checkout', 'دفع آمن')}</li>
-                <li><FiRefreshCw aria-hidden="true" /> {t('Returns within 4 days of delivery', 'الإرجاع خلال 4 أيام من الاستلام')}</li>
+                <li><FiRefreshCw aria-hidden="true" /> {t('Free returns within 14 days of delivery', 'إرجاع مجاني خلال ١٤ يوماً من الاستلام')}</li>
                 <li><FiCheck aria-hidden="true" /> {t('100% authentic guarantee', 'أصالة مضمونة 100%')}</li>
               </ul>
 

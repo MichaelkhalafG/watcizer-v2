@@ -1,10 +1,11 @@
 'use client'
-import { FiCheckCircle, FiMail, FiMapPin, FiPhone } from 'react-icons/fi'
-import { FaFacebook, FaInstagram, FaWhatsapp } from 'react-icons/fa'
+import { FiBookOpen, FiCheckCircle, FiMail, FiMapPin, FiPhone, FiUsers } from 'react-icons/fi'
+import { FaFacebook, FaInstagram, FaTiktok, FaWhatsapp } from 'react-icons/fa'
 import Link from '@/src/Components/LocaleLink'
 import { useUIStore } from '@/src/Store/uiStore'
 import { TRUST_PAGES, TRUST_UPDATED } from '@/src/content/trustPages'
 import { FAQ } from '@/src/content/faq'
+import { followersText } from '@/src/lib/followers'
 import { useGoogleSignIn } from '@/src/Hooks/queries/useSocialProviders'
 // The home sections' label-over-title header (.wz-section-header / .wz-section-title), reused as is.
 import '@/src/Components/Home/home.css'
@@ -88,7 +89,8 @@ function TrustHero({ title, updated }) {
   )
 }
 
-const ICONS = { phone: FiPhone, whatsapp: FaWhatsapp, mail: FiMail, facebook: FaFacebook, instagram: FaInstagram }
+// TikTok added 2026-11-14 (the shop's account), drawn like the others
+const ICONS = { phone: FiPhone, whatsapp: FaWhatsapp, mail: FiMail, facebook: FaFacebook, instagram: FaInstagram, tiktok: FaTiktok }
 
 function ContactPage({ t }) {
   return (
@@ -147,7 +149,7 @@ function ContactPage({ t }) {
   )
 }
 
-function AboutPage({ t }) {
+function AboutPage({ t, followers }) {
   return (
     <>
       <section className="wz-trust-section">
@@ -172,6 +174,23 @@ function AboutPage({ t }) {
             </span>
             <p>{inline(t.service)}</p>
           </article>
+          {/* the shop's followers (a dashboard setting, 2026-11-14): no figure, no card */}
+          {followers && t.followers ? (
+            <article className="wz-about-card">
+              <span className="wz-contact-card__icon" aria-hidden="true">
+                <FiUsers />
+              </span>
+              <p>{inline(t.followers.replace('{followers}', followers))}</p>
+            </article>
+          ) : null}
+          {t.policies ? (
+            <article className="wz-about-card">
+              <span className="wz-contact-card__icon" aria-hidden="true">
+                <FiBookOpen />
+              </span>
+              <p>{inline(t.policies)}</p>
+            </article>
+          ) : null}
         </div>
       </section>
     </>
@@ -226,7 +245,9 @@ const withSignIn = (t, google) => ({
   })),
 })
 
-export default function TrustPage({ page }) {
+// `followers`: the shop's follower total from v2 meta (settings.public.followers), for the About page only.
+// `dealers` (2026-11-14): the authorized-dealer sentence from v2 meta, About and the warranty page only; '' = none.
+export default function TrustPage({ page, followers = null, dealers = '' }) {
   const language = useUIStore((s) => s.language)
   const ar = language === 'ar'
   const def = TRUST_PAGES[page]
@@ -241,8 +262,15 @@ export default function TrustPage({ page }) {
     <main className={`wz-trust wz-trust--${page}`} dir={ar ? 'rtl' : 'ltr'}>
       <TrustHero title={t.title} updated={updated} />
       {page === 'contact' ? <ContactPage t={t} /> : null}
-      {page === 'about' ? <AboutPage t={t} /> : null}
-      {page === 'privacy' || page === 'terms' ? <LegalPage t={t} ar={ar} /> : null}
+      {page === 'about' ? <AboutPage t={t} followers={followersText(followers, ar ? 'ar' : 'en')} /> : null}
+      {/* the policies as numbered sections: privacy, terms, and since 2026-11-14 the warranty, shipping and returns */}
+      {dealers && (page === 'about' || page === 'warranty') ? (
+        <p className="wz-trust-dealers" dir={ar ? 'rtl' : 'ltr'} style={{ maxWidth: 960, margin: '0 auto 16px', padding: '0 16px', fontWeight: 600 }}>
+          {dealers}
+          {page === 'warranty' ? (ar ? ' وساعاتها تحمل ضمان وكيل الماركة.' : " Their watches carry the brand agent's warranty.") : ''}
+        </p>
+      ) : null}
+      {t.sections ? <LegalPage t={t} ar={ar} /> : null}
     </main>
   )
 }

@@ -305,6 +305,9 @@ export default function BfHome({ home, meta }) {
 
   return (
     <div className="bf-home" dir={dir} lang={lang}>
+      {/* THE PAGE'S ONE H1 (2026-11-14, SEO Phase 1 item 8): the home had none. What the shop sells, in the page's language;
+          read by screen readers and crawlers, not drawn (the hero is the visible heading). No claim about the products. */}
+      <h1 className="wz-sr-only">{lang === 'ar' ? 'ساعات وحقائب وعطور وإكسسوارات في مصر — براند فاشون' : 'Watches, Bags, Perfumes and Accessories in Egypt — Brand Fashion'}</h1>
       {/* band 1: hero + the category row */}
       <section className="bf-open" aria-label={t.home}>
         {threeD ? (

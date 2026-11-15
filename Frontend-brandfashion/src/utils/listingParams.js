@@ -59,6 +59,10 @@ export function buildListingParams(filters = {}, extra = {}, tables = null) {
   // section — v2's `min_discount`) and in-stock only (the deals band's "See all": 30 %+ and in stock).
   if (filters.sale && DISCOUNTS.includes(Number(filters.discount))) p.set('discount', String(filters.discount))
   if (filters.inStock) p.set('inStock', '1')
+  // a named collection (2026-11-14): the Original watches page's seed
+  if (filters.collection) p.set('collection', String(filters.collection))
+  // a landing page's family (2026-11-14, SEO Phase 2: /brand/guess/bags is brand + family `bag`)
+  if (filters.family) p.set('family', String(filters.family))
 
   const price = filters.price || [0, PRICE_MAX]
   if (Number(price[0]) > 0) p.set('minPrice', price[0])
@@ -102,6 +106,8 @@ export function parseListingParams(searchParams, tables = null) {
       sale: ['1', 'true'].includes(searchParams.get('sale') || '') || discount > 0,
       discount,
       inStock: ['1', 'true'].includes(searchParams.get('inStock') || ''),
+      collection: searchParams.get('collection') || null,
+      family: searchParams.get('family') || null,
       price: [
         Number(searchParams.get('minPrice') || 0),
         Number(searchParams.get('maxPrice') || PRICE_MAX),

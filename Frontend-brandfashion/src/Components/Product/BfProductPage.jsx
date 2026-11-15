@@ -19,6 +19,11 @@ import BfRail from '@/src/Components/Listing/BfRail'
 import StockAlertForm from './StockAlertForm'
 import { useProductOffer } from '@/src/Hooks/queries/usePromo'
 import { OfferNote, offerClass } from '@/src/Components/Promo/OfferStrip'
+import { categoryPage, nearestCategoryPage } from '@/src/lib/categoryHref'
+import { useShipping } from '@/src/Hooks/queries/useShipping'
+import { warrantyText } from '@/src/lib/v2Product'
+import { imageAlt } from '@/src/lib/productWords'
+import { INSPECT_SHORT } from '@/src/content/inspection'
 import './BfProductPage.css'
 
 /*
@@ -59,16 +64,16 @@ const STR = {
   en: {
     home: 'Home', inStock: 'In stock', onlyLeft: (n) => `Only ${n} left`, soldOut: 'Sold out', add: 'Add to cart', notify: 'Notify me when it’s back',
     notifySize: 'Notify me for this size', chooseBoth: 'Choose a colour and size', chooseColour: 'Choose a colour', chooseSize: 'Choose a size',
-    vat: 'Incl. VAT', colour: 'Colour', size: 'Size', promises: ['Delivery across Egypt — EGP 100–300 by governorate', 'Cash on delivery', 'Returns: the customer pays return shipping'],
-    attributes: 'Details', description: 'Description', ratings: 'Ratings', brand: 'Brand', family: 'Type', category: 'Category', gender: 'Gender', colours: 'Colours', features: 'Features',
+    vat: 'Incl. VAT', colour: 'Colour', size: 'Size', promises: ['Delivery within 24 hours to every governorate', INSPECT_SHORT.en, 'Free returns within 14 days — return shipping on us'], deliveryFees: (lo, hi) => `Delivery within 24 hours — EGP ${lo === hi ? lo : `${lo}–${hi}`} by governorate`,
+    attributes: 'Details', description: 'Description', ratings: 'Ratings', brand: 'Brand', family: 'Type', category: 'Category', gender: 'Gender', colours: 'Colours', features: 'Features', warranty: 'Warranty',
     goesWith: 'Goes with this', similar: 'Similar', seeAll: 'See all', was: 'was', added: 'Added to cart', notified: 'We’ll let you know when it’s back',
     families: { watch: 'Watch', bag: 'Bag', wallet: 'Wallet', fashion: 'Fashion', electronics: 'Electronics', perfume: 'Perfume' },
   },
   ar: {
     home: 'الرئيسية', inStock: 'متوفر', onlyLeft: (n) => `باقي ${n} فقط`, soldOut: 'نفد', add: 'أضف إلى السلة', notify: 'نبّهني عند توفره',
     notifySize: 'نبّهني لهذا المقاس', chooseBoth: 'اختر اللون والمقاس', chooseColour: 'اختر اللون', chooseSize: 'اختر المقاس',
-    vat: 'شامل الضريبة', colour: 'اللون', size: 'المقاس', promises: ['التوصيل لجميع المحافظات — من 100 إلى 300 ج.م حسب المحافظة', 'الدفع عند الاستلام', 'الإرجاع: العميل يتحمّل شحن الإرجاع'],
-    attributes: 'التفاصيل', description: 'الوصف', ratings: 'التقييمات', brand: 'العلامة', family: 'الصنف', category: 'الفئة', gender: 'الجنس', colours: 'الألوان', features: 'المميزات',
+    vat: 'شامل الضريبة', colour: 'اللون', size: 'المقاس', promises: ['توصيل خلال ٢٤ ساعة لكل المحافظات', INSPECT_SHORT.ar, 'إرجاع مجاني خلال ١٤ يوماً — شحن الإرجاع علينا'], deliveryFees: (lo, hi) => (lo === hi ? `توصيل خلال ٢٤ ساعة — ${lo} ج.م` : `توصيل خلال ٢٤ ساعة — من ${lo} إلى ${hi} ج.م حسب المحافظة`),
+    attributes: 'التفاصيل', description: 'الوصف', ratings: 'التقييمات', brand: 'العلامة', family: 'الصنف', category: 'الفئة', gender: 'الجنس', colours: 'الألوان', features: 'المميزات', warranty: 'الضمان',
     goesWith: 'يناسبه', similar: 'مشابه', seeAll: 'عرض الكل', was: 'كان', added: 'أُضيف إلى السلة', notified: 'سنخبرك عند توفره',
     families: { watch: 'ساعة', bag: 'حقيبة', wallet: 'محفظة', fashion: 'أزياء', electronics: 'إلكترونيات', perfume: 'عطر' },
   },
@@ -76,19 +81,20 @@ const STR = {
 
 const LOW_STOCK = 3
 
-// A category's page (found by the link crawl of 2026-11-05): a category's `path` is a slug PATH (`fashion/bags`), and
-// the routes are one segment each — a top-level category at /category/{slug}, a sub-category at /subtypes/{slug}.
-// These three links built /category/{path}, so every sub-category link on a product page answered 404.
-const categoryHref = (path) => {
-  const segments = String(path || '').split('/').filter(Boolean)
-  if (!segments.length) return '/listing'
-  return segments.length > 1 ? `/subtypes/${segments[segments.length - 1]}` : `/category/${segments[0]}`
-}
+// A category's page (found by the link crawl of 2026-11-05; corrected 2026-11-14): only the first two levels have one —
+// src/lib/categoryHref.js. A deeper crumb is shown as text, and "See all" goes to the nearest level that has a page.
 
 export default function BfProductPage({ detail, related }) {
   const language = useUIStore((s) => s.language)
   const lang = language === 'ar' ? 'ar' : 'en'
   const t = STR[lang]
+  // THE DELIVERY FEES FROM THE DASHBOARD (2026-11-14): the line said "EGP 100–300", typed by hand; the shop's own
+  // per-governorate fees decide it now. A fee of 0 (free delivery to that governorate — the Shipping screen allows it;
+  // none is 0 today) is left out of the range, so the line never reads as free shipping. Until they
+  // load — and in the server HTML — the line names no amount.
+  const { data: cities } = useShipping()
+  const fees = (cities || []).map((c) => Number(c?.shipping_cost)).filter((n) => Number.isFinite(n) && n > 0)
+  const promises = fees.length ? [t.deliveryFees(Math.min(...fees), Math.max(...fees)), ...t.promises.slice(1)] : t.promises
   const isRTL = lang === 'ar'
   const p = detail.product
   // THE PRODUCT IS IN A LIVE HOT DEALS / FLASH SALE CAMPAIGN (item 42, 2026-11-05): the page takes that offer's theme
@@ -267,11 +273,16 @@ export default function BfProductPage({ detail, related }) {
   const allColours = [...(attrs.colors?.dial || []), ...(multiColour ? [] : [...(attrs.colors?.band || []), ...(attrs.colors?.main || [])])].filter((c, i, a) => a.findIndex((y) => y.id === c.id) === i)
   if (allColours.length) pivotRows.push({ k: t.colours, colours: allColours })
   if (Array.isArray(attrs.features) && attrs.features.length) pivotRows.push({ k: t.features, v: attrs.features.map((f) => txt(f.name, lang)).join(isRTL ? '، ' : ', ') })
+  // the warranty core says the product carries (2026-11-14): its own, else a watch's brand default, else a watch's one year
+  if (warrantyText(p.warranty_years, isRTL)) pivotRows.push({ k: t.warranty, v: warrantyText(p.warranty_years, isRTL, p.warranty_provider) })
+  // authorized dealer for this brand on this shop (core: never on a product kept from search engines), 2026-11-14
+  if (p.authorized_dealer) pivotRows.push({ k: isRTL ? 'البائع' : 'Seller', v: isRTL ? 'وكيل معتمد' : 'Authorized dealer' })
   // a spec value is a number (with a unit), a lookup ref ({id, name}), a flag or a string — never an object on screen
   const specValue = (sp) => {
     const v = sp.value
     if (v == null || v === '') return null
-    if (typeof v === 'object') return txt(v, lang) || txt(v.name, lang) || null   // a lookup value is served as {en, ar}
+    // a localized text {en, ar}, or a lookup's reference {id, name} — its NAME, never its id (2026-11-14: "Material 2")
+    if (typeof v === 'object') return (v.name ? txt(v.name, lang) : txt(v, lang)) || null
     if (typeof v === 'boolean') return v ? (isRTL ? 'نعم' : 'Yes') : (isRTL ? 'لا' : 'No')
     return `${v}${sp.unit ? ` ${txt(sp.unit.name, lang)}` : ''}`
   }
@@ -292,7 +303,7 @@ export default function BfProductPage({ detail, related }) {
           {crumbs.map((c) => (
             <span key={c.id}>
               <span aria-hidden="true">/ </span>
-              <a href={localizeHref(categoryHref(c.path), lang)}>{txt(c.name, lang)}</a>
+              {categoryPage(c.path) ? <a href={localizeHref(categoryPage(c.path), lang)}>{txt(c.name, lang)}</a> : <span>{txt(c.name, lang)}</span>}
             </span>
           ))}
         </nav>
@@ -312,7 +323,11 @@ export default function BfProductPage({ detail, related }) {
                       {sourcesOf(img).webp ? <source type="image/webp" srcSet={sourcesOf(img).webp} sizes={SIZES.galleryMain} /> : null}
                       <img
                         src={img.src}
-                        alt={i === 0 ? txt(p.title, lang) : ''}
+                        // each photo's own alt text (2026-11-14, SEO Phase 1 item 9; productWords.js imageAlt) — it was the
+                        // title on the first and "" on every other; and its size, so the space is held before it loads
+                        // (the CSS still draws it at 100%)
+                        alt={img.id != null ? imageAlt(p, img, i, images.length, lang) : txt(p.title, lang)}
+                        {...(img.width && img.height ? { width: img.width, height: img.height } : {})}
                         loading={i === 0 ? 'eager' : 'lazy'}
                         decoding="async"
                         draggable={false}
@@ -427,7 +442,7 @@ export default function BfProductPage({ detail, related }) {
             </div>
 
             <ul className="bf-buy__promises">
-              {t.promises.map((line) => <li key={line}>{line}</li>)}
+              {promises.map((line) => <li key={line}>{line}</li>)}
             </ul>
 
             {rows.length ? (
@@ -462,8 +477,8 @@ export default function BfProductPage({ detail, related }) {
         </div>
 
         <div className="bf-pdp__rails">
-          <BfRail title={t.goesWith} cards={addons} lang={lang} seeAllHref={addons[0]?.primary_category?.path ? categoryHref(addons[0].primary_category.path) : '/listing'} />
-          <BfRail title={t.similar} cards={similar} lang={lang} seeAllHref={p.primary_category?.path ? categoryHref(p.primary_category.path) : '/listing'} />
+          <BfRail title={t.goesWith} cards={addons} lang={lang} seeAllHref={nearestCategoryPage(addons[0]?.primary_category?.path)} />
+          <BfRail title={t.similar} cards={similar} lang={lang} seeAllHref={nearestCategoryPage(p.primary_category?.path)} />
         </div>
         {/* the end of the product: once it is on screen the sticky bar leaves (it never covers the footer) */}
         <div className="bf-pdp__end" ref={endRef} aria-hidden="true" />

@@ -17,7 +17,8 @@ import { useOfferLeft } from '../../Hooks/queries/usePromo'
 // eight digits, not the card around them, and no strip starts a timer of its own.
 //
 // The time is drawn in fixed cells (tabular digits, the width of "00:00:00"), so a changing digit moves nothing;
-// before the browser's clock is known it reads as dashes of the same width.
+// before the browser's clock is known the same cells are EMPTY (2026-11-14, SEO Phase 1 item 7: the server HTML said
+// "Hot deal ends in --:--:--" to every crawler) — the width is the cells', so nothing moves when the digits arrive.
 
 const TEXT = {
   en: { flash: 'Flash sale', hot: 'Hot deal', ends: 'ends in', left: (t) => `ends in ${t}` },
@@ -40,12 +41,12 @@ function Mark({ kind }) {
 
 function Time({ offer, label }) {
   const left = useOfferLeft(offer)
-  const text = left == null ? '--:--:--' : clockText(left)
+  const text = left == null ? null : clockText(left)
   return (
-    <span className="pm-offer__time" dir="ltr" role="timer" aria-label={label(left == null ? '' : text)} suppressHydrationWarning>
-      {text.split('').map((ch, i) => (
+    <span className="pm-offer__time" dir="ltr" role="timer" aria-label={text == null ? undefined : label(text)} suppressHydrationWarning>
+      {(text ?? '00:00:00').split('').map((ch, i) => (
         <span key={i} className={ch === ':' ? 'pm-offer__sep' : 'pm-offer__digit'} aria-hidden="true" suppressHydrationWarning>
-          {ch}
+          {text == null ? '' : ch}
         </span>
       ))}
     </span>

@@ -18,7 +18,9 @@ import { refusedAddMessage } from '../../Store/cartStore'
 import ProductSlider from './ProductSlider'
 import TrustSignals from '../Merchandising/TrustSignals'
 import BackToTop from '../BackToTop/BackToTop'
-import { specRowsIn } from '../../lib/v2Product'
+import { specRowsIn, warrantyText } from '../../lib/v2Product'
+import { DEALER_LABEL } from '../../lib/dealers'
+import { imageAlt } from '../../lib/productWords'
 import { defaultColorId, galleryFor, swatchFor } from '../../lib/variantGallery'
 import useGalleryKeys, { imagePosition } from '../../Hooks/useGalleryKeys'
 import { trackViewContent } from '../../scripts/pixels'
@@ -27,6 +29,7 @@ import { getImageUrl, PLACEHOLDER_IMG } from '../../utils/imageUrl'
 import { pictureSources, hasRenditions, SIZES } from '../../utils/picture'
 import { toSlug } from '../../utils/slugs'
 import { buildListingParams } from '../../utils/listingParams'
+import { brandPageOf } from '../../lib/menuLinks'
 import http from '../../Context/api'
 import StockAlertForm from './StockAlertForm'
 import { useLivePrices, useProductOffer } from '../../Hooks/queries/usePromo'
@@ -125,7 +128,9 @@ function FinishRow({ label, colors, isRTL }) {
 // product from v2. Their presence is also what says the server already has the FULL record, so the browser
 // does not fetch it again — v2's detail payload is the superset of what `products/{id}` returned. Absent on
 // the two OFFER routes, which are still on compat and behave exactly as before.
-function ProductDetailClient({ param, isOffer = false, productPayload = null, v2Specs = null, v2Product = null }) {
+// `searchClass` (2026-11-14, core's SearchExposure): `hidden` / `restricted` / null — a matched product's page carries no
+// authenticity badge or wording; every other product keeps them
+function ProductDetailClient({ param, isOffer = false, productPayload = null, v2Specs = null, v2Product = null, searchClass = null }) {
   const router = useRouter()
 
   // Server data from the shared TanStack Query cache.
@@ -459,6 +464,19 @@ function ProductDetailClient({ param, isOffer = false, productPayload = null, v2
     return uniq.length ? uniq : [catalogImg || PLACEHOLDER_IMG]
   }, [item, offerProduct, isOffer, catalogImg, hasColourAxis, variantColorId, v2Product, variantRows])
 
+  // EACH photo's alt text (2026-11-14, SEO Phase 1 item 9; productWords.js imageAlt): the team's, else the name and
+  // what the photo shows, else its colour, else "photo 2 of 5" — found by the photo's address, which is v2's own
+  // `src` on a v2 page. A page without v2's record (the compat ladder, an offer) keeps the old words.
+  const altOf = useMemo(() => {
+    const list = !isOffer && Array.isArray(v2Product?.images) ? v2Product.images : []
+    const byUrl = new Map()
+    list.forEach((im, i) => {
+      const url = getImageUrl(im?.src)
+      if (url && !byUrl.has(url)) byUrl.set(url, imageAlt(v2Product, im, i, list.length, isRTL ? 'ar' : 'en'))
+    })
+    return (url, i) => byUrl.get(url) || (i ? `${name} - image ${i + 1}` : name)
+  }, [isOffer, v2Product, isRTL, name])
+
   // The RECORDED renditions of a gallery url (2026-10-22): the transform keys each gallery row's `srcset` by
   // its url and carries the cover's as `image_srcset`. A url with none gets no <picture> — the plain image,
   // as before. Nothing here derives a URL from a filename.
@@ -682,7 +700,8 @@ function ProductDetailClient({ param, isOffer = false, productPayload = null, v2
   const brandHref = useMemo(() => {
     if (isOffer) return '/offers'
     if (!product?.brand_id) return null
-    return `/listing?${buildListingParams({ brands: [product.brand_id] }, {}, tables).toString()}`
+    // the brand's own page, never the filtered listing (2026-11-14)
+    return brandPageOf(product.brand_id, tables) || `/listing?${buildListingParams({ brands: [product.brand_id] }, {}, tables).toString()}`
   }, [isOffer, product, tables])
 
   const brandLogo = useMemo(() => {
@@ -767,11 +786,8 @@ function ProductDetailClient({ param, isOffer = false, productPayload = null, v2
       add('Closure', 'الإغلاق', pick('band_closure'))
       add('Country', 'بلد المنشأ', pick('country'))
       add('Stone', 'الحجر', pick('stone'))
-      add(
-        'Warranty',
-        'الضمان',
-        it.warranty_years ? `${it.warranty_years} ${isRTL ? 'سنة' : 'yrs'}` : '',
-      )
+      add('Warranty', 'الضمان', warrantyText(it.warranty_years, isRTL, it.warranty_provider))
+    if (it.authorized_dealer) add('Seller', 'البائع', isRTL ? DEALER_LABEL.ar : DEALER_LABEL.en)
       // Structured extra specs (bag/wallet/perfume/electronics + dimensions) →
       // readable rows. Known keys get friendly bilingual labels; anything else
       // falls back to a humanized key.
@@ -827,11 +843,8 @@ function ProductDetailClient({ param, isOffer = false, productPayload = null, v2
     add('Interchangeable Dial', 'ميناء قابل للتبديل', boolLabel(it.interchangeable_dial))
     add('Interchangeable Strap', 'سوار قابل للتبديل', boolLabel(it.interchangeable_strap))
     add('Watch Box', 'علبة الساعة', boolLabel(it.watch_box))
-    add(
-      'Warranty',
-      'الضمان',
-      it.warranty_years ? `${it.warranty_years} ${isRTL ? 'سنة' : 'yrs'}` : '',
-    )
+    add('Warranty', 'الضمان', warrantyText(it.warranty_years, isRTL, it.warranty_provider))
+    if (it.authorized_dealer) add('Seller', 'البائع', isRTL ? DEALER_LABEL.ar : DEALER_LABEL.en)
     add('Country', 'بلد المنشأ', pick('country'))
     add('Stone', 'الحجر', pick('stone'))
     return rows
@@ -1215,7 +1228,7 @@ function ProductDetailClient({ param, isOffer = false, productPayload = null, v2
                 <ImageZoom
                   key={images[activeImg]}
                   src={images[activeImg]}
-                  alt={name}
+                  alt={altOf(images[activeImg], activeImg)}
                   width={600}
                   height={600}
                   zoomScale={2.5}
@@ -1236,10 +1249,10 @@ function ProductDetailClient({ param, isOffer = false, productPayload = null, v2
                       onClick={() => setActiveImg(i)}
                       aria-label={`Image ${i + 1}`}
                     >
-                      {picture(img, SIZES.thumb, { alt: `${name} - image ${i + 1}`, width: 48, height: 48, loading: 'lazy', decoding: 'async', onError: handleGalleryImgError }) ?? (
+                      {picture(img, SIZES.thumb, { alt: altOf(img, i), width: 48, height: 48, loading: 'lazy', decoding: 'async', onError: handleGalleryImgError }) ?? (
                         <Image
                           src={img}
-                          alt={`${name} - image ${i + 1}`}
+                          alt={altOf(img, i)}
                           width={48}
                           height={48}
                           quality={70}
@@ -1264,10 +1277,10 @@ function ProductDetailClient({ param, isOffer = false, productPayload = null, v2
                       slideRefs.current[i] = el
                     }}
                   >
-                    {picture(img, SIZES.galleryMain, { alt: `${name} - image ${i + 1}`, width: 600, height: 600, loading: i === 0 ? 'eager' : 'lazy', decoding: 'async', className: 'wz-pd-slide-img', onError: handleGalleryImgError }) ?? (
+                    {picture(img, SIZES.galleryMain, { alt: altOf(img, i), width: 600, height: 600, loading: i === 0 ? 'eager' : 'lazy', decoding: 'async', className: 'wz-pd-slide-img', onError: handleGalleryImgError }) ?? (
                       <Image
                         src={img}
-                        alt={`${name} - image ${i + 1}`}
+                        alt={altOf(img, i)}
                         width={600}
                         height={600}
                         quality={80}
@@ -1549,12 +1562,16 @@ function ProductDetailClient({ param, isOffer = false, productPayload = null, v2
               stockLeft={inStock ? maxStock : null}
               isRTL={isRTL}
               isFashion={isFashion}
+              authenticity={!(searchClass ?? v2Product?.search)}
             />
           </div>
         </div>
 
         {/* ── Specifications ── open under a plain heading on desktop; the phone's own closed
-            section. Both render (SSR-safe, no hydration flip); ProductDetail.css shows one. */}
+            section. Both render (SSR-safe, no hydration flip); ProductDetail.css shows one.
+            The TABLE is in the HTML once (2026-11-14, SEO Phase 1 item 7: every product page served
+            it twice): the phone's section starts closed, so its rows are drawn when it is opened —
+            nothing is on screen before that, so nothing moves. */}
         {specs.length > 0 && (
           <>
             <section className="wz-pd-section wz-pd-specs wz-pd-specs--desktop" aria-labelledby="wz-pd-specs-title">
@@ -1572,7 +1589,7 @@ function ProductDetailClient({ param, isOffer = false, productPayload = null, v2
               open={specsOpen}
               onToggle={() => toggleSection('specs')}
             >
-              {specGrid}
+              {specsOpen ? specGrid : null}
             </Disclosure>
           </>
         )}

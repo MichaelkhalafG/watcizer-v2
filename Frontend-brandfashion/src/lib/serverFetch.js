@@ -22,4 +22,7 @@ serverHttp.interceptors.request.use((config) => {
   return config
 })
 
+// whether this server HAS the key (2026-11-14, the 404 monitor reports only then) — the key itself stays in this file
+export const HAS_SERVER_KEY = SERVER_KEY !== ''
+
 export default serverHttp

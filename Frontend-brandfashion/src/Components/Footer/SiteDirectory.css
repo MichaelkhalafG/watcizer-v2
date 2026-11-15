@@ -1,0 +1,46 @@
+/* The shop's directory above the footer (SiteDirectory.jsx, 2026-11-14). A TWIN: it takes the page's own text colour
+   and font, so it reads as part of either shop's footer area without tokens of its own. */
+.wz-dir {
+  border-top: 1px solid rgba(127, 127, 127, 0.25);
+  padding: 28px 16px 20px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.wz-dir__inner {
+  max-width: 1280px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 20px 28px;
+}
+.wz-dir__col--brands {
+  grid-column: 1 / -1;
+}
+.wz-dir__head {
+  display: block;
+  margin: 0 0 6px;
+  font-weight: 600;
+  font-size: 14px;
+  color: inherit;
+  text-decoration: none;
+}
+.wz-dir__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.wz-dir__list--brands {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+}
+.wz-dir a {
+  color: inherit;
+  opacity: 0.8;
+  text-decoration: none;
+}
+.wz-dir a:hover,
+.wz-dir a:focus-visible {
+  opacity: 1;
+  text-decoration: underline;
+}

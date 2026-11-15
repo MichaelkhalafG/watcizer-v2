@@ -1,4 +1,5 @@
-import { notFound, permanentRedirect } from 'next/navigation'
+import { permanentRedirect } from 'next/navigation'
+import { reportedNotFound } from '@/src/lib/notFoundReport'
 import { getServerProductCard, fetchProductByName } from '@/src/lib/serverCatalog'
 import { productUrl } from '@/src/utils/productUrl'
 import { requestLang, localePath } from '@/src/lib/requestLang'
@@ -26,7 +27,7 @@ export default async function ProductByIdPage({ params }) {
   }
   // 404 only when core said "no such product" to both lookups; a failure reaches the error page (5xx).
   if (!product && failure) throw failure
-  if (!product) notFound()
+  if (!product) await reportedNotFound()
 
   // /ar/products/{id} → /ar/product/{slug} (S-AR stage 1).
   permanentRedirect(localePath(productUrl(product), (await requestLang()).urlLang))
