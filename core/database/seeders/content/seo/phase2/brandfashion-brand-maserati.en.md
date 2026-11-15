@@ -12,7 +12,7 @@ Knowing the words makes the range easier to read. **Velocità** means speed, and
 
 ## Size: 44 mm and its neighbours
 
-The most common case size in our Maserati range is 44 millimetres, followed by 45 and 42 mm. A 44 mm watch is confident without being oversized on an average man's wrist. If your wrist measures under about 17 centimetres, a 42 mm Epoca or Royale will look better balanced; above 18 centimetres, a 45 mm chronograph wears naturally. Leather straps make any size look a little smaller than a steel bracelet, because they sit closer to the wrist. The [men's Maserati watches page](/brand/maserati/watches/men) shows every model with its size.
+The most common case size in our Maserati range is 44 millimetres, followed by 45 and 42 mm. A 44 mm watch is confident without being oversized on an average man's wrist. If your wrist measures under about 17 centimetres, a 42 mm Epoca or Royale will look better balanced; above 18 centimetres, a 45 mm chronograph wears naturally. Leather straps make any size look a little smaller than a steel bracelet, because they sit closer to the wrist. The [Maserati watches page](/brand/maserati/watches) shows every model with its size.
 
 ## Quartz chronograph or automatic
 
