@@ -1,5 +1,6 @@
 import { SITE, localePath } from './requestLang'
 import { STORES_LD } from '../content/trustPages'
+import { familyLd } from './shopSchema'
 
 /*
  * The shop and its branches as structured data (Part 3 task 5, 2026-10-29): one Organization (the customer-service
@@ -25,6 +26,8 @@ export function storesJsonLd(lang = 'en') {
         sameAs: STORES_LD.sameAs,
         // since 2013 (Michael, 2026-11-14) — the About page says the same
         ...(STORES_LD.founded ? { foundingDate: STORES_LD.founded } : {}),
+        // the owner and the sister shop (2026-11-17)
+        ...familyLd(org),
         contactPoint: [
           {
             '@type': 'ContactPoint',

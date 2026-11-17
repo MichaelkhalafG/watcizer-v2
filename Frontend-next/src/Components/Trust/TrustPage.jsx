@@ -1,5 +1,5 @@
 'use client'
-import { FiBookOpen, FiCheckCircle, FiMail, FiMapPin, FiPhone, FiUsers } from 'react-icons/fi'
+import { FiBookOpen, FiCheckCircle, FiLink, FiMail, FiMapPin, FiPhone, FiUsers } from 'react-icons/fi'
 import { FaFacebook, FaInstagram, FaTiktok, FaWhatsapp } from 'react-icons/fa'
 import Link from '@/src/Components/LocaleLink'
 import { useUIStore } from '@/src/Store/uiStore'
@@ -166,6 +166,15 @@ function AboutPage({ t, followers }) {
             </span>
             <p>{inline(t.store)}</p>
           </article>
+          {/* the sister shop and the owner (2026-11-17): one plain paragraph, a link to the other shop */}
+          {t.family ? (
+            <article className="wz-about-card">
+              <span className="wz-contact-card__icon" aria-hidden="true">
+                <FiLink />
+              </span>
+              <p>{inline(t.family)}</p>
+            </article>
+          ) : null}
           <article className="wz-about-card">
             <span className="wz-contact-card__icon" aria-hidden="true">
               <FiCheckCircle />

@@ -10,6 +10,18 @@
   }
 }
 
+/* the footer area's ground (2026-11-17): the directory above the footer and the phone's footer row take these
+   (SiteDirectory.css, a twin) — the same black and white as the footer itself */
+.wz-site-foot {
+  --foot-bg: #0a0a0a;
+  --foot-fg: #fff;
+  --foot-line: rgba(255, 255, 255, 0.08);
+}
+.wz-foot__contact {
+  margin: 0;
+  max-width: 260px;
+}
+
 .wz-foot {
   --foot-gold: #c8a45c;
   position: relative;

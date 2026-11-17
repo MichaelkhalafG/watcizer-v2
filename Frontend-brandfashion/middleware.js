@@ -41,6 +41,14 @@ const LEGACY_POST_CATEGORY = /^\/category\/(blog|uncategorized)\/?$/
 // /product-category, which the map has no row for, and answered 404): the whole catalogue.
 const LEGACY_BASE_INDEX = /^\/(product-category|brand-category|gender-category|collection|product-tag)\/?$/
 const WP_GONE = /^\/(wp-admin|wp-includes|wp-json|wp-login\.php|xmlrpc\.php|wp-cron\.php|wp-signup\.php|wp-trackback\.php|feed|comments\/feed)(\/|$)|^\/wp-content\/(?!uploads\/)/
+// THE OLD SHOP'S QUERY PARAMETERS AND PRODUCT FEEDS (2026-11-17, Michael). WooCommerce and its wishlist plugin put
+// their actions in the query (?add-to-wishlist=123, ?add-to-cart=123, ?orderby=price, ?paged=2, …), and every such
+// address of a product, a category or a brand was crawled. None of these names is a parameter of this app. They are
+// dropped and the address goes on as if it had been asked for without them: the old-path map first (a product's old
+// page → its new one), else the same path, clean — ONE 301. WordPress's comment feed of a product, /product/<slug>/feed,
+// is the product: the map is asked for /product/<slug>.
+const WOO_PARAM = /^(add-to-wishlist|remove_from_wishlist|wishlist_id|wishlist-action|add-to-cart|added-to-cart|remove_item|removed_item|undo_item|_wpnonce|wc-ajax|wc-api|variation_id|product_id|orderby|paged|min_price|max_price|rating_filter|post_type|yith_wcwl_[a-z_]*|attribute_[a-z0-9_-]*|filter_[a-z0-9_-]*|query_type_[a-z0-9_-]*)$/i
+const PRODUCT_FEED = /^(\/product\/[^/]+)\/feed\/?$/
 const ORIGIN = (process.env.LARAVEL_ORIGIN || '').replace(/\/$/, '')
 const SERVER_KEY = process.env.STOREFRONT_SERVER_KEY || ''
 
@@ -113,6 +121,20 @@ export async function middleware(request) {
   if (WP_GONE.test(pathname) || (pathname === '/' && searchParams.has('p'))) return gone()
 
   const lang = searchParams.get('lang')
+  const woo = [...searchParams.keys()].some((k) => WOO_PARAM.test(k))
+  const feed = PRODUCT_FEED.exec(pathname)
+  if (woo || feed) {
+    const params = new URLSearchParams(searchParams)
+    for (const k of [...params.keys()]) if (WOO_PARAM.test(k) || k === 'lang') params.delete(k)
+    const query = params.toString()
+    const old = feed ? feed[1] : pathname
+    const to = await lookup(old)
+    if (to) return NextResponse.redirect(target(request, to, lang === 'ar'), 301)
+    if (LEGACY_BASE_INDEX.test(old)) return NextResponse.redirect(onThisHost(request, lang === 'ar' ? '/ar/listing' : '/listing', ''), 301)
+    const bare = old.replace(/\/+$/, '') || '/'
+    const path = lang === 'ar' && !bare.startsWith('/ar') ? (bare === '/' ? '/ar' : `/ar${bare}`) : bare
+    return NextResponse.redirect(onThisHost(request, path, query ? `?${query}` : ''), 301)
+  }
   const slash = pathname.length > 1 && pathname.endsWith('/')
   if (slash || lang || LEGACY_BASES.test(pathname) || LEGACY_POST_CATEGORY.test(pathname) || pathname.startsWith('/wp-content/uploads/')) {
     const to = await lookup(pathname)

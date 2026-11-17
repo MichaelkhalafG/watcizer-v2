@@ -506,3 +506,15 @@ src/lib/pickup.js
 src/Hooks/queries/usePickup.js
 src/Components/Checkout/PickupChoice.jsx
 tests/pickup.test.mjs
+# 2026-11-17 (the footer directory restyled as part of the footer, the shop's number on every page): TWO NEW TWINS - the
+# directory's phone toggle (src/Components/Footer/DirectoryToggle.jsx) and the number line (src/Components/Footer/FootContact.jsx, which
+# reads each shop's own src/content/contact.js). Changed on both sides, identically, and still twins: SiteDirectory.jsx + .css,
+# app/(main)/desktop-footer.jsx, src/lib/menuLinks.js (calmCase, footerDirectoryOf) and tests/menuLinks.test.mjs. Footer.jsx and
+# Footer.css stay split; both gained the number and the footer area's colours.
+src/Components/Footer/DirectoryToggle.jsx
+src/Components/Footer/FootContact.jsx
+# 2026-11-17 (the default share picture on the information pages): TWO NEW TWINS - src/lib/defaultOg.js (withDefaultOg: the shop card
+# public/og-image.jpg when a page sets openGraph without a picture) and tests/defaultOg.test.mjs. Changed on both sides and still twins:
+# src/content/trustMetadata.js, the faq, hot-deals and flash-sale pages, src/lib/collectionListing.jsx.
+src/lib/defaultOg.js
+tests/defaultOg.test.mjs

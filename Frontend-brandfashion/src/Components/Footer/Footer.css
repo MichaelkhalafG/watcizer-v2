@@ -7,7 +7,12 @@
   .wz-desktop-footer { display: none; }
 }
 
-.bf-foot { background: var(--wz-ink); color: var(--wz-on-ink); margin-block-start: 48px; }
+/* the footer area's ground (2026-11-17): the directory above the footer and the phone's footer row take these
+   (SiteDirectory.css, a twin) — the footer's own ink; the space above the area moved here from .bf-foot */
+.wz-site-foot { --foot-bg: var(--wz-ink); --foot-fg: var(--wz-on-ink); --foot-line: rgba(255, 255, 255, 0.14); margin-block-start: 48px; }
+.wz-site-foot :focus-visible { outline-color: var(--wz-focus-ring-on-ink); }
+.bf-foot { background: var(--wz-ink); color: var(--wz-on-ink); }
+.bf-foot__contact { margin: 0; color: rgba(255, 255, 255, 0.86); }
 .bf-foot a { color: inherit; text-decoration: none; }
 .bf-foot :focus-visible { outline: 2px solid var(--wz-focus-ring-on-ink); outline-offset: 2px; box-shadow: 0 0 0 2px var(--wz-ink); }
 

@@ -3,6 +3,7 @@ import { CAMPAIGN_META } from '@/src/content/campaignPages'
 import { requestLang, alternatesFor } from '@/src/lib/requestLang'
 import { getServerV2Menu } from '@/src/lib/serverV2'
 import { idleMenu } from '@/src/lib/menuData'
+import { withDefaultOg } from '@/src/lib/defaultOg'
 
 // /hot-deals and /ar/hot-deals — the Hot Deals page (Part 2.2, 2026-11-05). A TWIN.
 //
@@ -22,12 +23,13 @@ export async function generateMetadata() {
   const { urlLang } = await requestLang()
   const meta = CAMPAIGN_META.hot_deals
   const t = meta[urlLang] ?? meta.en
-  return {
+  // the shop's share picture (2026-11-17): this openGraph replaces the root layout's, picture and all
+  return withDefaultOg({
     title: t.title,
     description: t.description,
     alternates: alternatesFor(meta.path, urlLang),
     openGraph: { title: t.title, description: t.description, type: 'website' },
-  }
+  })
 }
 
 export default async function Page() {

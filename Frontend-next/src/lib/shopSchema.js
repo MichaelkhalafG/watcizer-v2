@@ -94,6 +94,22 @@ export function offerShippingDetails(fees) {
 }
 
 /**
+ * THE OWNER AND THE SISTER SHOP (Michael, 2026-11-17; the client approves saying it): both shops' Organization names
+ * Elegance as its parentOrganization, and Elegance lists both shops as its subOrganization — the sister shop by the
+ * same @id its own site gives its Organization (`{site}/#organization`), so the two graphs join. Elegance has a NAME
+ * ONLY: its domain serves the API, not a public page. Nothing when trustPages.js names no parent.
+ */
+export function familyLd(org) {
+  if (!STORES_LD.parent) return {}
+  const sister = STORES_LD.sister?.url
+    ? [{ '@type': 'Organization', '@id': `${STORES_LD.sister.url}/#organization`, name: STORES_LD.sister.name, url: STORES_LD.sister.url }]
+    : []
+  return {
+    parentOrganization: { '@type': 'Organization', name: STORES_LD.parent, subOrganization: [{ '@id': org }, ...sister] },
+  }
+}
+
+/**
  * The home page's graph: the shop (Organization + OnlineStore) with its policies, its two stores as physical places of
  * it, and the WebSite (name and url only — no SearchAction: Google retired the sitelinks search box, and /search stays
  * unindexed).
@@ -122,6 +138,7 @@ export function shopGraph(lang = 'en', fees = null) {
         hasMerchantReturnPolicy: returnPolicy(),
         ...(shipping ? { hasShippingService: shipping } : {}),
         department: STORES_LD.stores.map((s) => ({ '@id': `${SITE}/#store-${s.key}` })),
+        ...familyLd(org),
       },
       ...STORES_LD.stores.map((s) => ({
         '@type': 'Store',

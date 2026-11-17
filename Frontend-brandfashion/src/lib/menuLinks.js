@@ -72,3 +72,28 @@ export function categoryPageOf(id, tables) {
   const slug = c ? categorySlug(c) : ''
   return slug ? `/category/${slug}` : null
 }
+
+// A category name as the footer directory shows it (2026-11-17): the data's own name, with one casing for all - a
+// word typed all in capitals and four letters or longer becomes a capital and small letters ("SOCKS" -> "Socks"); a
+// short one stays (GMT); a name typed all in lower case gets its capitals (displayName's rule). Arabic is untouched.
+export function calmCase(name) {
+  const s = String(name || '').trim()
+  if (!s || /[^\x00-\x7F]/.test(s)) return s
+  const lowered = s === s.toLowerCase() ? s.replace(/\b([a-z])/g, (m) => m.toUpperCase()) : s
+  return lowered.replace(/\b([A-Z])([A-Z]{3,})\b/g, (m, a, b) => a + b.toLowerCase())
+}
+
+// THE FOOTER DIRECTORY (Michael, 2026-11-17): the categories of directoryOf, and as brands ONLY core's
+// `directory_brands` - every brand whose page may be indexed and that the search-exposure rules leave alone (no
+// Generic, no Rolex, no brand whose products are all kept from search), computed by core from the data. A core that
+// predates the list sends none, and the block then shows no brands rather than a hand-typed or unfiltered list.
+export function footerDirectoryOf(menu, tables) {
+  const { categories } = directoryOf(menu, tables)
+  const brands = []
+  for (const b of Array.isArray(menu?.directory_brands) ? menu.directory_brands : []) {
+    if (!b?.slug) continue
+    const href = `/brand/${b.slug}`
+    if (!brands.some((x) => x.href === href)) brands.push({ href, name: b.name, id: b.id ?? null })
+  }
+  return { categories, brands }
+}

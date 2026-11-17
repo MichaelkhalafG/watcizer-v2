@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { nodeSlug, subTypePage, categoryTypePage, menuChildHref, directoryOf, brandPageOf, categoryPageOf } from '../src/lib/menuLinks'
+import { nodeSlug, subTypePage, categoryTypePage, menuChildHref, directoryOf, brandPageOf, categoryPageOf, calmCase, footerDirectoryOf } from '../src/lib/menuLinks'
 
 /*
  * THE MENU AS LINKS THAT ANSWER (2026-11-14). A node's page is the slug of its English name, the facet routes' rule.
@@ -78,5 +78,33 @@ describe('a brand or category page from its table id', () => {
   it('is null for an unknown id or no tables', () => {
     expect(brandPageOf(999, t)).toBeNull()
     expect(categoryPageOf(1, null)).toBeNull()
+  })
+})
+
+// THE FOOTER DIRECTORY (2026-11-17): one casing from the data's names, and core's directory brands only
+describe('calmCase', () => {
+  it('gives a word typed in capitals a capital and small letters, keeps short ones and Arabic', () => {
+    expect(calmCase('SOCKS')).toBe('Socks')
+    expect(calmCase('TOURBILLON WATCHES')).toBe('Tourbillon Watches')
+    expect(calmCase('GMT')).toBe('GMT')
+    expect(calmCase('Accessories & Spare Parts')).toBe('Accessories & Spare Parts')
+    expect(calmCase('perfumes')).toBe('Perfumes')
+    expect(calmCase('جوارب')).toBe('جوارب')
+  })
+})
+
+describe('footerDirectoryOf', () => {
+  const menu = {
+    categories: [{ slug: 'watches', name: { en: 'Watches', ar: 'ساعات' }, count: 9, children: [node('gmt', 'GMT')] }],
+    brands: [{ id: 1, slug: 'rolex', name: { en: 'Rolex' }, count: 200 }, { id: 2, slug: 'guess', name: { en: 'Guess' }, count: 40 }],
+    directory_brands: [{ id: 2, slug: 'guess', name: { en: 'Guess' } }, { id: 3, slug: 'tissot', name: { en: 'Tissot' } }],
+  }
+  it("lists core's directory brands, never the menu's own brand list", () => {
+    const { categories, brands } = footerDirectoryOf(menu, tables)
+    expect(brands.map((b) => b.href)).toEqual(['/brand/guess', '/brand/tissot'])
+    expect(categories.map((c) => c.href)).toEqual(['/category/watches'])
+  })
+  it('shows no brand at all when core sends no directory list', () => {
+    expect(footerDirectoryOf({ ...menu, directory_brands: undefined }, tables).brands).toEqual([])
   })
 })

@@ -37,6 +37,9 @@ export const TRUST_PAGES = {
       description: "Learn more about Brand Fashion, Egypt's top destination for original watches, accessories, and fashion items. Order now for fast delivery.",
       lead: 'Brand Fashion has sold watches, bags and accessories in Egypt since 2013, online and in two stores in Cairo. We sell watches for men and women, along with bags, wallets, belts, jewellery and perfumes, and a small range of electronics, and we deliver to 27 governorates.',
       store: `Shop here in English or Arabic, or visit one of our two stores, open every day 10:00–24:00: [Arkadia Mall](${MAP_ARKADIA}), 2nd floor, Corniche El Nil, Maspero extension, next to the Fairmont, Cairo, and [90 El-Thawra Street](${MAP_HELIOPOLIS}), Heliopolis. Call or WhatsApp us on [${PHONE}](${TEL}).`,
+      // sister stores (Michael, 2026-11-17; the client approves saying it): owned by Elegance, the two branches shared, each
+      // shop with its own number and catalogue — only the three names, nothing else about the owners
+      family: 'Brand Fashion and Watchizer are sister stores, both owned by Elegance. They share the two branches, Arkadia Mall and Heliopolis; each shop has its own phone number and its own catalogue. Visit Watchizer at [watchizereg.com](https://watchizereg.com).',
       // the shop's followers (settings.public.followers, a dashboard setting): {followers} is the rounded figure; no figure, no line
       followers: `{followers} people follow Brand Fashion on [Facebook](${FACEBOOK}), [Instagram](${INSTAGRAM}) and [TikTok](${TIKTOK}).`,
       policies: 'How we work: the [warranty](/warranty), [shipping and delivery](/shipping), [returns and exchanges](/returns), and the [questions we are asked most](/faq).',
@@ -48,6 +51,7 @@ export const TRUST_PAGES = {
       description: 'براند فاشون متجر إلكتروني للساعات والحقائب والإكسسوارات في مصر، ونوصّل إلى ٢٧ محافظة.',
       lead: 'تبيع براند فاشون الساعات والحقائب والإكسسوارات في مصر منذ ٢٠١٣، أونلاين وفي متجرين في القاهرة. نبيع ساعات رجالية ونسائية، إلى جانب الحقائب والمحافظ والأحزمة والمجوهرات والعطور ومجموعة صغيرة من الإلكترونيات، ونوصّل إلى ٢٧ محافظة.',
       store: `تسوّق هنا بالعربية أو الإنجليزية، أو زر أحد متجرينا، المفتوحين يومياً من ١٠ صباحاً حتى منتصف الليل: [أركاديا مول](${MAP_ARKADIA})، الدور الثاني، كورنيش النيل، امتداد ماسبيرو، بجوار فندق فيرمونت، القاهرة، و[٩٠ شارع الثورة](${MAP_HELIOPOLIS})، مصر الجديدة. اتصل بنا أو راسلنا على واتساب: [${PHONE}](${TEL}).`,
+      family: 'براند فاشون وواتشايزر متجران شقيقان تملكهما شركة Elegance، ويتشاركان الفرعين، أركاديا مول ومصر الجديدة؛ ولكل متجر رقم هاتفه الخاص وتشكيلته الخاصة. زر واتشايزر على [watchizereg.com](https://watchizereg.com).',
       followers: `يتابع براند فاشون {followers} شخص على [فيسبوك](${FACEBOOK}) و[إنستجرام](${INSTAGRAM}) و[تيك توك](${TIKTOK}).`,
       policies: 'كيف نعمل: [الضمان](/warranty)، و[الشحن والتوصيل](/shipping)، و[الإرجاع والاستبدال](/returns)، و[الأسئلة الشائعة](/faq).',
       service: 'نؤكد كل طلب معك قبل شحنه، وتدفع نقداً عند الاستلام. ' + INSPECT_FULL.ar + ' وإن كان هناك أي خطأ، فريق خدمة العملاء متاح على [واتساب](' + WHATSAPP + ').',
@@ -563,12 +567,17 @@ export const STORES_LD = {
   whatsapp: WHATSAPP,
   email: EMAIL,
   logo: '/logo.svg',
+  // the company that owns both shops, and the sister shop (2026-11-17): Organization.parentOrganization in the structured
+  // data, one line in /llms.txt. Elegance has a name only: its domain serves the API, not a page.
+  parent: 'Elegance',
+  sister: { name: 'Watchizer', url: 'https://watchizereg.com' },
+  family: 'Brand Fashion and Watchizer are sister stores owned by Elegance: they share the Arkadia Mall and Heliopolis branches, each shop with its own phone number and its own catalogue. Watchizer: https://watchizereg.com',
   sameAs: [FACEBOOK, INSTAGRAM, INSTAGRAM_WEB, TIKTOK],
   stores: [
     {
       key: 'arkadia',
       name: 'Brand Fashion — Arkadia Mall',
-      address: { streetAddress: 'Arkadia Mall, 2nd floor, Corniche El Nil, Maspero extension, next to the Fairmont', addressLocality: 'Cairo', addressCountry: 'EG' },
+      address: { streetAddress: 'Arkadia Mall, 2nd floor, Corniche El Nil, Maspero extension, next to the Fairmont', addressLocality: 'Cairo', addressRegion: 'Cairo', addressCountry: 'EG' },
       map: MAP_ARKADIA,
       hours: { days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'], opens: '10:00', closes: '23:59' },
     },

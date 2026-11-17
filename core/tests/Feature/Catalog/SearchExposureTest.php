@@ -146,3 +146,35 @@ it('lists ORIGINAL WATCHES only: never a hidden product, a matched Rolex or a Ge
 
     expect((string) get(Shops::api('brandfashion').'/sitemaps/en.xml')->assertOk()->getContent())->toContain('/original-watches<');
 });
+
+it('lists in the footer directory only brands with an indexable page the rules leave alone — no Generic, no Rolex, no all-hidden brand', function () {
+    // a brand of its own per kind, three visible products each (compat.thin_listing_min), on Brand Fashion
+    $first = [];
+    foreach (['dirtest-open' => [15000, 'Dirtest open watch'], 'patek-philippe' => [4200, 'Patek Philippe dirtest'], 'rolex' => [250000, 'Rolex dirtest Datejust'], 'generic' => [900, 'Generic dirtest chronograph']] as $brand => [$price, $title]) {
+        for ($i = 1; $i <= 3; $i++) {
+            $id = exposureProduct($brand, $price, $title.' '.$i);
+            $first[$brand] ??= $id;
+            CatalogFixture::onStorefront($id, true, 2);
+        }
+    }
+    // a fourth brand with only two such products: a thin page, not linked
+    foreach ([1, 2] as $i) {
+        CatalogFixture::onStorefront(exposureProduct('dirtest-thin', 15000, 'Dirtest thin watch '.$i), true, 2);
+    }
+    app(StorefrontCache::class)->flush(2);
+    expect(exposureClass($first['patek-philippe'] ?? 0))->toBe('hidden')
+        ->and(exposureClass($first['rolex'] ?? 0))->toBeNull(); // a genuine-priced Rolex: open by the rule, left out by name
+
+    $menu = T::arr(getJson('/api/v2/brandfashion/menu')->assertOk()->json());
+    $menu = T::arr($menu['data'] ?? $menu);
+    $slugs = collect(T::arr($menu['directory_brands'] ?? []))->map(fn (mixed $b): string => T::str(T::arr($b)['slug'] ?? ''))->all();
+
+    expect($slugs)->toContain('dirtest-open')
+        ->and($slugs)->not->toContain('patek-philippe')
+        ->and($slugs)->not->toContain('rolex')
+        ->and($slugs)->not->toContain('generic')
+        ->and($slugs)->not->toContain('dirtest-thin');
+    // each brand once, and the main menu keeps its own brand list beside it
+    expect(count($slugs))->toBe(count(array_unique($slugs)))
+        ->and(T::arr($menu['brands'] ?? []))->not->toBeEmpty();
+});

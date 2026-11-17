@@ -2,6 +2,7 @@ import { TrustFaq } from '@/src/Components/Trust/TrustPage'
 import { FAQ } from '@/src/content/faq'
 import { safeJsonLd } from '@/src/lib/safeJsonLd'
 import { requestLang, alternatesFor } from '@/src/lib/requestLang'
+import { withDefaultOg } from '@/src/lib/defaultOg'
 
 // /faq and /ar/faq — the questions and answers (SEO item 5, 2026-10-30). The text is the storefront's own
 // src/content/faq.js; this page is a twin. Metadata and the FAQPage JSON-LD follow the URL's language (S-AR), the
@@ -17,12 +18,13 @@ const plain = (text) =>
 export async function generateMetadata() {
   const { urlLang } = await requestLang()
   const t = FAQ[urlLang]
-  return {
+  // the shop's share picture (2026-11-17): this openGraph replaces the root layout's, picture and all
+  return withDefaultOg({
     title: t.metaTitle,
     description: t.description,
     alternates: alternatesFor(FAQ.path, urlLang),
     openGraph: { title: t.metaTitle, description: t.description, type: 'website' },
-  }
+  })
 }
 
 export default async function Page() {

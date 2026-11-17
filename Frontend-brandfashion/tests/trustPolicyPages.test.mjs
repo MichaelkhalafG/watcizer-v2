@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest'
 import { STORES_LD, TRUST_PAGES } from '../src/content/trustPages.js'
 import { FAQ } from '../src/content/faq.js'
 import { followersText } from '../src/lib/followers.js'
+import { shopGraph } from '../src/lib/shopSchema.js'
+import { storesJsonLd } from '../src/lib/storesJsonLd.js'
 
 /*
  * THE WARRANTY, SHIPPING AND RETURNS PAGES, AND WHO WE ARE (SEO Phase 1, 2026-11-14; Michael's trust-pages input). A
@@ -34,6 +36,8 @@ describe('the policy pages', () => {
       expect(text, key).not.toMatch(/10,000|١٠٬٠٠٠|ships? free|شحنها مجاني|مجاناً للطلبات/)
       expect(text, key).not.toMatch(/authori[sz]ed|official (dealer|retailer|distributor)|وكيل معتمد|موزع معتمد|الوكيل المعتمد/i)
       for (const [, href] of text.matchAll(/\]\((https?:[^)\s]+)\)/g)) {
+        // the About page links the sister shop's home page (2026-11-17), and only that page of it
+        if (key === 'about' && href === STORES_LD.sister?.url) continue
         expect(href, key).toMatch(/^https:\/\/(maps\.app\.goo\.gl\/|wa\.me\/|api\.whatsapp\.com\/|www\.facebook\.com\/|www\.instagram\.com\/|instagram\.com\/|www\.tiktok\.com\/)/)
       }
     }
@@ -83,3 +87,32 @@ describe('who we are', () => {
     expect(followersText(null, 'en')).toBeNull()
   })
 })
+
+// SISTER STORES (Michael, 2026-11-17): owned by Elegance, the two branches shared, each with its own number and catalogue
+describe('the sister shop and the owner', () => {
+  it('are said on the About page in both languages, with a link to the other shop', () => {
+    for (const lang of ['en', 'ar']) {
+      const f = TRUST_PAGES.about[lang].family
+      expect(f, lang).toContain('Elegance')
+      expect(f, lang).toContain(`](${STORES_LD.sister.url})`)
+      expect(f, lang).not.toMatch(/dispute|complaint|court|lawsuit|نزاع|شكوى|قضية|محكمة/i)
+    }
+    expect(STORES_LD.family).toMatch(/sister stores owned by Elegance/)
+  })
+
+  it("name Elegance (a name only, no url) as both graphs' parent, with both shops as its sub-organizations", () => {
+    for (const graph of [shopGraph('en')['@graph'], storesJsonLd('en')['@graph']]) {
+      const org = graph.find((n) => n['@id']?.endsWith('/#organization'))
+      expect(org.parentOrganization.name).toBe('Elegance')
+      expect(org.parentOrganization.url).toBeUndefined()
+      const subs = org.parentOrganization.subOrganization.map((s) => s['@id'])
+      expect(subs).toEqual([org['@id'], `${STORES_LD.sister.url}/#organization`])
+    }
+  })
+
+  it('give the two shared branches the same address parts', () => {
+    const [a, h] = STORES_LD.stores
+    expect(Object.keys(a.address).sort()).toEqual(Object.keys(h.address).sort())
+  })
+})
+

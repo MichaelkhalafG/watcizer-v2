@@ -23,6 +23,7 @@ const MAP = {
   '/product-category/men/men-watches/': '/category/watches',
   '/sale/': '/listing?sale=1',
   '/product/old-slug-copy/': '/product/old-slug',
+  '/product/old-slug-copy': '/product/old-slug',
   '/wp-content/uploads/2024/02/x.jpg': 'https://api.brandfashionegy.com/Uploads_Images/Product/1.webp',
 }
 
@@ -114,3 +115,43 @@ describe('the canonical host (D-3)', () => {
     expect(r.headers.get('location')).toBeNull()
   })
 })
+
+// THE OLD SHOP'S QUERY PARAMETERS AND PRODUCT FEEDS (2026-11-17)
+describe("WooCommerce's query parameters and a product's feed", () => {
+  it('sends ?add-to-wishlist= on an old product page to the new product, the parameter gone, in ONE 301', async () => {
+    stubCore()
+    const r = await run('https://www.brandfashionegy.com/product/old-slug-copy/?add-to-wishlist=4411')
+    expect(r.status).toBe(301)
+    expect(r.headers.get('location')).toBe('https://www.brandfashionegy.com/product/old-slug')
+  })
+
+  it('drops every WooCommerce parameter and keeps the others, on a path the map does not know', async () => {
+    stubCore()
+    const r = await run('https://www.brandfashionegy.com/product/new-slug?add-to-cart=12&orderby=price&_wpnonce=ab&yith_wcwl_add=1&q=x')
+    expect(r.status).toBe(301)
+    expect(r.headers.get('location')).toBe('https://www.brandfashionegy.com/product/new-slug?q=x')
+  })
+
+  it('sends /product/<slug>/feed to the product', async () => {
+    stubCore()
+    const r = await run('https://www.brandfashionegy.com/product/old-slug-copy/feed/')
+    expect(r.status).toBe(301)
+    expect(r.headers.get('location')).toBe('https://www.brandfashionegy.com/product/old-slug')
+    expect(asked).toEqual(['/product/old-slug-copy'])
+    const bare = await run('https://www.brandfashionegy.com/product/unknown-slug/feed')
+    expect(bare.headers.get('location')).toBe('https://www.brandfashionegy.com/product/unknown-slug')
+  })
+
+  it('keeps the Arabic of ?lang=ar while dropping the WooCommerce parameter', async () => {
+    stubCore()
+    const r = await run('https://www.brandfashionegy.com/product/new-slug/?add-to-wishlist=9&lang=ar')
+    expect(r.headers.get('location')).toBe('https://www.brandfashionegy.com/ar/product/new-slug')
+  })
+
+  it("leaves the app's own parameters alone", async () => {
+    stubCore()
+    const r = await run('https://www.brandfashionegy.com/listing?sort=newest&page=2')
+    expect(r.status).toBe(200)
+  })
+})
+

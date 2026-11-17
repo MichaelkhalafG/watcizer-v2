@@ -9,6 +9,7 @@ import { FACEBOOK, INSTAGRAM, TIKTOK } from '@/src/content/social'
 import { useUIStore } from '../../Store/uiStore'
 import LanguageDropdown from '../LanguageDropdown/LanguageDropdowen'
 import PaymentBadges from '../Promo/PaymentBadges'
+import FootContact from './FootContact'
 
 const logo = '/logo.webp'
 
@@ -70,6 +71,8 @@ function Footer() {
               'وجهتك الأولى للساعات الفاخرة الأصلية في مصر',
             )}
           </p>
+          {/* the shop's own number as text, with its call and WhatsApp links (2026-11-17) — never the developer's */}
+          <FootContact lang={isRTL ? 'ar' : 'en'} className="wz-foot__contact" />
           <div className="wz-foot__social">
             {/* The shop's accounts come from content/trustPages.js (2026-11-05) — the one place they are typed. */}
             <a href={FACEBOOK} target="_blank" rel="noopener noreferrer" aria-label="Facebook" className="wz-foot__social-btn">

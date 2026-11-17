@@ -13,6 +13,7 @@ import { ORIGINAL_WATCHES, ORIGINAL_WATCHES_PATH } from '../content/originalWatc
 import { getServerV2Meta } from './serverV2'
 import { dealerBrands, dealerSentence } from './dealers'
 import { SHOP_NAME } from './siteAddress'
+import { withDefaultOg } from './defaultOg'
 
 // THE ORIGINAL WATCHES PAGE (Michael, 2026-11-14). A TWIN. The existing listing — the same grid, filters, sorting and
 // pages — over core's `collection=original-watches`: the watches the hide-from-search rule leaves alone (never a
@@ -41,7 +42,8 @@ export async function originalWatchesMetadata() {
   const lang = urlLang === 'ar' ? 'ar' : 'en'
   const { total, answered } = listingSummary(listing, tables)
   const c = ORIGINAL_WATCHES
-  return {
+  // the shop's share picture (2026-11-17): this openGraph replaces the root layout's, picture and all
+  return withDefaultOg({
     title: c.title[lang],
     description: c.meta[lang],
     alternates: {
@@ -50,7 +52,7 @@ export async function originalWatchesMetadata() {
     },
     openGraph: { title: c.title[lang], description: c.meta[lang], url: urlOf(ORIGINAL_WATCHES_PATH, lang) },
     ...(answered && total < THIN_LISTING_MIN ? { robots: { index: false, follow: true } } : {}),
-  }
+  })
 }
 
 export async function OriginalWatchesPage() {

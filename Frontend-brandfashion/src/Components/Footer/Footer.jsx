@@ -11,6 +11,7 @@ import { brandSlug, categorySlug } from '../../utils/slugs'
 import { TRUST_PAGES } from '../../content/trustPages'
 import { FAQ } from '../../content/faq'
 import PaymentBadges from '../Promo/PaymentBadges'
+import FootContact from './FootContact'
 
 /*
  * The Brand Fashion footer — spec v2.10 §10.8 ("categories, brands, main pages, social. No newsletter field"),
@@ -73,6 +74,8 @@ function Footer() {
             {/* No SVG goes through next/image (2026-10-30, GHSA-2464-fhr4-w9xw): next/image already served it unoptimised, as the file. */}
             <img src="/logo-lockup-white.svg" alt="Brand Fashion" width={96} height={70} loading="lazy" decoding="async" />
           </Link>
+          {/* the shop's own number as text, with its call and WhatsApp links (2026-11-17) — never the developer's */}
+          <FootContact lang={lang} className="bf-foot__contact" />
           {social.length ? (
             <div className="bf-foot__social" aria-label={t.follow}>
               {social.map((c) => {

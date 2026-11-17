@@ -34,6 +34,7 @@ use Illuminate\Support\Facades\DB;
  *                 hold products of that gender (count and picture OF THAT GENDER), its brands and a
  *                 featured product — the reference's "Men" panel.
  *   brands[]      the storefront's brands, most products first.
+ *   directory_brands[]  the footer directory's brands: indexable pages the search-exposure rules leave alone, by name.
  *   sale          how many in-stock products carry a valid discount and the largest of them, or null
  *                 when none does — so "On sale" is an entry only while something is.
  *
@@ -127,8 +128,61 @@ final class StorefrontMenu
             'categories' => $categories,
             'genders' => $this->genders($nodes, $subIds, $legacy),
             'brands' => $this->brands($this->cards->base(), self::BRANDS_ALL),
+            'directory_brands' => $this->directoryBrands(),
             'sale' => $this->sale($nodes, $legacy),
         ];
+    }
+
+    /**
+     * THE FOOTER DIRECTORY'S BRANDS (Michael, 2026-11-17): every brand whose page search engines may index AND that
+     * makes no claim the search-exposure rules keep back. Computed from the data, never a list typed here:
+     *  - at least `compat.thin_listing_min` visible products that the rules leave alone ({@see SearchExposure}: neither
+     *    `hidden` nor `restricted`) - so a brand whose products are all kept from search (Patek Philippe, Hublot,
+     *    Audemars Piguet, Louis Vuitton below their price lines), and a brand whose pieces are all a matched Rolex, are
+     *    out on their own;
+     *  - never a brand of `catalog.search_exposure.restricted_brands` (Rolex) nor one that names no maker
+     *    (`catalog.original_watches.exclude_brands`: Generic);
+     *  - active brands only, ordered by name. No cap: the block exists so every such brand page is linked.
+     * The main menu's `brands` (the 30 most stocked) is not this list and does not change.
+     *
+     * @return list<array{id: int, slug: string, name: mixed}>
+     */
+    private function directoryBrands(): array
+    {
+        $min = config()->integer('compat.thin_listing_min', 3);
+        $left = array_merge(
+            config()->array('catalog.search_exposure.restricted_brands', []),
+            config()->array('catalog.original_watches.exclude_brands', []),
+        );
+        $rows = $this->cards->base()
+            ->selectRaw('p.brand_id, SUM('.SearchExposure::effectiveSql('p').' IS NULL) AS open_n')
+            ->groupBy('p.brand_id')
+            ->get();
+        $out = [];
+        foreach ($rows as $raw) {
+            if (Row::int($raw, 'open_n') < $min) {
+                continue;
+            }
+            $brand = $this->lookups->get('brands', Row::nint($raw, 'brand_id'));
+            if ($brand === null || ($brand['is_active'] ?? true) !== true || in_array($brand['slug'] ?? '', $left, true)) {
+                continue;
+            }
+            $out[] = ['id' => Val::int($brand, 'id'), 'slug' => Val::str($brand, 'slug'), 'name' => $brand['name'] ?? null];
+        }
+        usort($out, fn (array $x, array $y): int => strcasecmp(self::enName($x['name']), self::enName($y['name'])));
+
+        return $out;
+    }
+
+    private static function enName(mixed $name): string
+    {
+        if (is_array($name)) {
+            $en = $name['en'] ?? '';
+
+            return is_string($en) ? $en : '';
+        }
+
+        return is_string($name) ? $name : '';
     }
 
     /**

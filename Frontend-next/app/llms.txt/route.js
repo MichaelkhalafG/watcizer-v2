@@ -41,6 +41,8 @@ export async function GET() {
   p(`- Customer service: ${STORES_LD.phone} (phone and WhatsApp), ${STORES_LD.email}`)
   for (const s of STORES_LD.stores) p(`- Store: ${[s.address.streetAddress, s.address.addressLocality].filter(Boolean).join(', ')}, Egypt`)
   if (STORES_LD.sameAs?.length) p(`- Social: ${STORES_LD.sameAs.join(', ')}`)
+  // the sister shop and the owner (2026-11-17), one line
+  if (STORES_LD.family) p(`- Sister store: ${STORES_LD.family}`)
   p()
   p('## Ordering')
   p(`- Delivery: to every governorate of Egypt within 24 hours${fees ? `; the fee depends on the governorate (EGP ${fees.min}–${fees.max}) and is shown at checkout` : '; the fee depends on the governorate and is shown at checkout'}.`)
