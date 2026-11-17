@@ -23,6 +23,9 @@ interface BlogPayload {
     storefront_id: number;
     cover_path: string | null;
     cover_url: string | null;
+    /** who chose the hero picture (2026-11-17): the rule ("auto") or the team ("dashboard"); null = none yet */
+    hero_source: "auto" | "dashboard" | null;
+    hero_product: { id: number; title: string } | null;
     body_format: "text" | "markdown";
     is_published: boolean;
     published_at: string | null;
@@ -77,6 +80,7 @@ export default function BlogForm({
         slug: blog?.slug ?? "",
         storefront_id: String(blog?.storefront_id ?? storefronts[0]?.value ?? "1"),
         cover_path: blog?.cover_path ?? "",
+        hero_product: "",
         is_published: blog?.is_published ?? false,
         title: blog?.title ?? EMPTY,
         body: blog?.body ?? EMPTY,
@@ -185,6 +189,29 @@ export default function BlogForm({
                                     image === null ? "" : `${image.folder}/${image.file}`,
                                 )
                             }
+                        />
+                        {/* THE HERO PICTURE (2026-11-17): chosen automatically from an in-stock product that matches the
+                            article, never one kept from search; the team may upload a cover or name a product instead. */}
+                        <p className="text-sm text-muted-foreground">
+                            {blog?.hero_source === "dashboard"
+                                ? t("blogs.hero_team", "اختارها الفريق")
+                                : blog?.hero_source === "auto"
+                                  ? t("blogs.hero_auto", "اختيرت تلقائيًا: صورة منتج متوفر يطابق المقال")
+                                  : t("blogs.hero_none", "لا توجد صورة بعد: تُختار تلقائيًا عند الحفظ")}
+                            {blog?.hero_product?.title
+                                ? ` · ${t("blogs.hero_shows", "تظهر في الصورة: :name").replace(":name", blog.hero_product.title)}`
+                                : ""}
+                        </p>
+                        <TextField
+                            label={t("blogs.hero_product", "استخدام صورة منتج")}
+                            hint={t(
+                                "blogs.hero_product_hint",
+                                "اكتب كود المنتج (أو رقمه) لاستخدام صورته غلافًا للمقال. اترك الحقل فارغًا لإبقاء الغلاف كما هو. احذف الغلاف لتُختار صورة تلقائيًا من جديد.",
+                            )}
+                            dir="ltr"
+                            value={form.data.hero_product}
+                            onChange={(value) => form.setData("hero_product", value)}
+                            error={errors.hero_product}
                         />
                     </CardContent>
                 </Card>
