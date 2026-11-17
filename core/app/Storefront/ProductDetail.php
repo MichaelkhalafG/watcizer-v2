@@ -189,6 +189,12 @@ final class ProductDetail
             'authorized_dealer' => AuthorizedDealer::forProduct($this->ctx->id(), Coerce::nstr(DB::table('catalog_brands')->where('id', Row::int($row, 'brand_id'))->value('slug')), SearchExposure::effective($row)),
             // VERIFIED REVIEWS (SEO Phase 5, 2026-11-14): the approved ones only — their count and average, the latest ten
             'reviews' => Reviews::approvedFor($this->ctx->id(), $productId, 10),
+            // THE REVIEW FORM on the product page (2026-11-17): the invisible check's PUBLIC site key (empty until it is
+            // set in core's .env) and the shop's Google review buttons, shown after a review
+            'review_form' => [
+                'turnstile_site_key' => Coerce::str(config('reviews.turnstile.site_key')),
+                'google' => Reviews::googleLinks($this->ctx->id()),
+            ],
             'meta' => [
                 'title' => $tr['meta_title'] ?? [],
                 'description' => $tr['meta_description'] ?? [],

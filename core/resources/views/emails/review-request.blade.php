@@ -46,6 +46,19 @@
         </p>
     </td></tr>
 
+    {{-- The shop's Google review buttons (2026-11-17): one per branch, to everyone, whatever they think of the order. --}}
+    @if (! empty($google))
+    <tr><td style="padding:0 32px 30px;text-align:center;">
+        <p style="margin:0 0 12px;font-size:14px;color:#111;line-height:1.7;" dir="rtl">ويسعدنا أيضًا رأيك على جوجل</p>
+        <p style="margin:0 0 12px;font-size:12px;color:rgba(0,0,0,0.55);" dir="ltr">You can also review us on Google</p>
+        @foreach ($google as $g)
+            <a href="{{ $g['url'] }}" style="display:inline-block;margin:4px;padding:10px 18px;border:1px solid #111;color:#111;text-decoration:none;border-radius:8px;font-size:14px;">
+                {{ $g['name']['ar'] }} · {{ $g['name']['en'] }} — Google
+            </a>
+        @endforeach
+    </td></tr>
+    @endif
+
     @include('emails.partials.footer')
 
 </table>

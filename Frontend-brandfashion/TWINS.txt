@@ -521,3 +521,7 @@ tests/defaultOg.test.mjs
 # 2026-11-17 (the article page as a magazine, the hero picture): TWO NEW TWINS - src/lib/blogHero.js (one reading of core's stored hero for the page, og:image and the Article markup) and tests/blogHero.test.mjs. Changed on both sides and still twins: app/(main)/blog/[name]/BlogClient.jsx and page.jsx, src/Components/Blog/article.css (the magazine styles, which outrank each shop's own blog.css).
 src/lib/blogHero.js
 tests/blogHero.test.mjs
+# 2026-11-17 (reviews from everyone): THREE NEW TWINS - the invisible check (src/lib/turnstile.js), the product page's review form (src/Components/Reviews/ProductReviewForm.jsx, mounted in both diverged product pages) and the Google review buttons (src/Components/Reviews/GoogleReviewButtons.jsx). Changed on both sides and still twins: VerifiedReviews.jsx + .css (the Verified buyer mark), the review page and its form (live at once, the Google buttons, /review/<branch> sends to the branch's Google page).
+src/lib/turnstile.js
+src/Components/Reviews/ProductReviewForm.jsx
+src/Components/Reviews/GoogleReviewButtons.jsx

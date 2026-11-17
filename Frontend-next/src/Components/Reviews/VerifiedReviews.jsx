@@ -1,8 +1,9 @@
 import './VerifiedReviews.css'
 
-// THE PRODUCT'S VERIFIED REVIEWS (SEO Phase 5, 2026-11-14) — a TWIN, server-rendered under the product. Only the reviews
-// the team approved on the dashboard, each written from the review link of a DELIVERED order (a verified purchase);
-// the newest ten, with their photos. Nothing at all when there are none.
+// THE PRODUCT'S REVIEWS (SEO Phase 5, 2026-11-14; since 2026-11-17 from everyone) — a TWIN, server-rendered under the
+// product. The reviews that are live (published at once unless the team held one for a link or a phone number, or hid
+// it); the newest ten, with their photos. A review whose writer bought and received this product says so: "Verified
+// buyer". Nothing at all when there are none (the form to write one is ProductReviewForm, below it).
 const stars = (n) => '★'.repeat(Math.max(0, Math.min(5, n))) + '☆'.repeat(Math.max(0, 5 - n))
 
 export default function VerifiedReviews({ reviews, lang = 'en' }) {
@@ -20,7 +21,7 @@ export default function VerifiedReviews({ reviews, lang = 'en' }) {
         {ar ? `${avg} من 5 · ${count} تقييم` : `${avg} out of 5 · ${count} ${count === 1 ? 'review' : 'reviews'}`}
       </p>
       <p className="wz-reviews__note">
-        {ar ? 'كل تقييم من عميل استلم طلبه (شراء مؤكد).' : 'Every review is from a customer who received their order (verified purchase).'}
+        {ar ? '«مشتري موثّق»: كاتب التقييم اشترى هذا المنتج واستلمه.' : '"Verified buyer": the writer bought and received this product.'}
       </p>
       <ul className="wz-reviews__list">
         {(reviews.items || []).map((r) => (
@@ -30,6 +31,7 @@ export default function VerifiedReviews({ reviews, lang = 'en' }) {
                 {stars(r.rating)}
               </span>
               <strong dir="auto">{r.name}</strong>
+              {r.verified ? <span className="wz-reviews__verified">{ar ? 'مشتري موثّق' : 'Verified buyer'}</span> : null}
               {r.date ? <time dateTime={r.date}>{r.date}</time> : null}
             </p>
             <p className="wz-reviews__body" dir="auto">

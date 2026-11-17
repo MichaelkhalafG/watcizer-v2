@@ -286,6 +286,8 @@ Route::prefix('manage')->name('manage.')->group(function (): void {
             // VERIFIED REVIEWS (SEO Phase 5, 2026-11-14): approve or reject what customers wrote; a fresh link for WhatsApp.
             Route::get('storefronts/{storefront}/reviews', [ReviewController::class, 'index'])->name('reviews.index');
             Route::put('storefronts/{storefront}/reviews/{review}', [ReviewController::class, 'update'])->whereNumber('review')->name('reviews.update');
+            // the branches' Google review links, in-store addresses and WhatsApp messages (2026-11-17)
+            Route::put('storefronts/{storefront}/reviews-branches', [ReviewController::class, 'branchesSave'])->name('reviews.branches');
             Route::post('storefronts/{storefront}/reviews/requests/{reviewRequest}/whatsapp', [ReviewController::class, 'whatsapp'])
                 ->whereNumber('reviewRequest')->name('reviews.whatsapp');
         });

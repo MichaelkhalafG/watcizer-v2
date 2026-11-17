@@ -33,6 +33,13 @@ use Throwable;
  *     photos, the name to show). Each review is VERIFIED by construction (a delivered order) and saved PENDING.
  *  3. APPROVE — the team approves or rejects on the dashboard (logged). Only APPROVED reviews are shown on the product
  *     page and feed its aggregateRating and Review markup; the shop's summary (count, average) is the approved ones.
+ *
+ * SINCE 2026-11-17 (Michael's decisions): a review is LIVE AT ONCE (approved) unless a spam signal holds it (a link or a
+ * phone number: pending, held_reason) — never by its stars; the team hides any review (rejected), and approves a held
+ * one. Reviews also come from the product page without a login ({@see GuestReviews}); each review says whether its
+ * writer bought and received the product (`verified` — always true for one written from a delivery's link). The
+ * shop's Google review links per branch (storefront_pickup_stores.google_review_url) follow every review, and each
+ * branch's /review/<key> counts its scans ({@see self::scan()}).
  */
 final class Reviews
 {
@@ -90,7 +97,7 @@ final class Reviews
             $sf = Row::int($r, 'storefront_id');
             $token = Str::random(40);
             try {
-                StorefrontMailer::send($sf, $email, new ReviewRequestMail(self::pageUrl($sf, $token), self::productNames($sf, Row::int($r, 'order_id')), StorefrontIdentity::for($sf)));
+                StorefrontMailer::send($sf, $email, new ReviewRequestMail(self::pageUrl($sf, $token), self::productNames($sf, Row::int($r, 'order_id')), StorefrontIdentity::for($sf), self::googleLinks($sf)));
                 DB::table('review_requests')->where('id', Row::int($r, 'id'))->update(['token_hash' => hash('sha256', $token), 'sent_at' => now()]);
                 $out['sent']++;
             } catch (Throwable $e) {
@@ -172,14 +179,24 @@ final class Reviews
             $saved = app(MediaStore::class)->store($file, 'review', 'review-'.$request['order_id'].'-'.$productId);
             $stored[] = trim($saved['folder'], '/').'/'.$saved['file'];                 // a path like the catalogue's (ImageUrl::srcFor)
         }
-        DB::table('product_reviews')->insert([
+        // live at once unless its words or name carry a link or a phone number (2026-11-17); a delivery's link is a verified buyer
+        $held = GuestReviews::holdReason($body.' '.$name);
+        $row = [
             'storefront_id' => $storefrontId, 'product_id' => $productId, 'order_id' => $request['order_id'], 'request_id' => $request['request_id'],
             'author_name' => mb_substr(trim($name), 0, 60), 'rating' => max(1, min(5, $rating)), 'body' => trim($body),
-            'photos' => $stored === [] ? null : json_encode($stored), 'locale' => $locale === 'en' ? 'en' : 'ar', 'status' => 'pending',
+            'photos' => $stored === [] ? null : json_encode($stored), 'locale' => $locale === 'en' ? 'en' : 'ar',
+            'status' => $held === null ? 'approved' : 'pending',
             'created_at' => now(), 'updated_at' => now(),
-        ]);
+        ];
+        if (self::guestReady()) {
+            $row += ['source' => 'request', 'verified' => true, 'held_reason' => $held];
+        }
+        DB::table('product_reviews')->insert($row);
+        if ($held === null) {
+            app(StorefrontCache::class)->flush($storefrontId);
+        }
 
-        return 'saved';
+        return $held === null ? 'saved' : 'held';
     }
 
     /** Approve or reject (the dashboard). Returns false for a review that is not there. */
@@ -202,7 +219,7 @@ final class Reviews
      * The APPROVED reviews of a product on a shop, newest first, and their count and average — for the product page and
      * its structured data.
      *
-     * @return array{count: int, average: ?float, items: list<array{id: int, name: string, rating: int, body: string, photos: list<string>, locale: string, date: string}>}
+     * @return array{count: int, average: ?float, items: list<array{id: int, name: string, rating: int, body: string, photos: list<string>, locale: string, date: string, verified: bool}>}
      */
     public static function approvedFor(int $storefrontId, int $productId, int $limit = 10): array
     {
@@ -217,6 +234,8 @@ final class Reviews
                 'id' => Row::int($r, 'id'), 'name' => Row::str($r, 'author_name'), 'rating' => Row::int($r, 'rating'), 'body' => Row::str($r, 'body'),
                 'photos' => is_array($photos) ? array_values(array_map(fn (string $p): string => ImageUrl::srcFor($storefrontId, $p), array_filter($photos, 'is_string'))) : [],
                 'locale' => Row::str($r, 'locale'), 'date' => substr(Row::str($r, 'created_at'), 0, 10),
+                // a verified buyer: a delivery's link, or an e-mail with a delivered order of this product (2026-11-17)
+                'verified' => property_exists($r, 'verified') ? (bool) Row::int($r, 'verified') : Row::nint($r, 'order_id') !== null,
             ];
         }
 
@@ -235,6 +254,65 @@ final class Reviews
         $count = (clone $q)->count();
 
         return ['count' => $count, 'average' => $count === 0 ? null : round(Coerce::float((clone $q)->avg('rating')), 1)];
+    }
+
+    /** Whether the 2026-11-18 columns exist (the guest_reviews migration has run): code that writes them asks first. */
+    public static function guestReady(): bool
+    {
+        return self::$guestReady ??= DB::getSchemaBuilder()->hasColumn('product_reviews', 'source');
+    }
+
+    private static ?bool $guestReady = null;
+
+    /**
+     * THE SHOP'S GOOGLE REVIEW BUTTONS (Michael, 2026-11-17): one per ACTIVE branch with a google_review_url, in the
+     * branches' order — shown to everyone after a review on the site and in the review e-mail, whatever the stars. No
+     * incentive and no gating, ever.
+     *
+     * @return list<array{key: ?string, name: array{en: string, ar: string}, url: string}>
+     */
+    public static function googleLinks(int $storefrontId): array
+    {
+        if (! DB::getSchemaBuilder()->hasColumn('storefront_pickup_stores', 'google_review_url')) {
+            return [];
+        }
+        $out = [];
+        foreach (DB::table('storefront_pickup_stores')->where('storefront_id', $storefrontId)->where('is_active', true)
+            ->whereNotNull('google_review_url')->where('google_review_url', '<>', '')->orderBy('position')->orderBy('id')
+            ->get(['review_key', 'name_en', 'name_ar', 'google_review_url']) as $raw) {
+            $r = Row::cast($raw);
+            $out[] = ['key' => Row::nstr($r, 'review_key'), 'name' => ['en' => Row::str($r, 'name_en'), 'ar' => Row::str($r, 'name_ar')], 'url' => Row::str($r, 'google_review_url')];
+        }
+
+        return $out;
+    }
+
+    /**
+     * A branch's in-store review address (/review/<key>): its Google review link, or null (no such branch on this shop,
+     * switched off, or no link). With $count, the scan is counted (one row per branch per day).
+     */
+    public static function scan(int $storefrontId, string $key, bool $count = true): ?string
+    {
+        if (preg_match('/^[a-z0-9-]{2,32}$/', $key) !== 1 || ! DB::getSchemaBuilder()->hasColumn('storefront_pickup_stores', 'review_key')) {
+            return null;
+        }
+        $store = DB::table('storefront_pickup_stores')->where('storefront_id', $storefrontId)->where('review_key', $key)->where('is_active', true)
+            ->first(['id', 'google_review_url']);
+        if ($store === null) {
+            return null;
+        }
+        $s = Row::cast($store);
+        $url = Row::nstr($s, 'google_review_url');
+        if ($url === null || $url === '') {
+            return null;
+        }
+        if ($count) {
+            $day = now()->timezone('Africa/Cairo')->toDateString();
+            DB::statement('INSERT INTO storefront_review_scans (store_id, day, scans, created_at, updated_at) VALUES (?, ?, 1, NOW(), NOW())
+                ON DUPLICATE KEY UPDATE scans = scans + 1, updated_at = NOW()', [Row::int($s, 'id'), $day]);
+        }
+
+        return $url;
     }
 
     /** @return list<array{id: int, slug: string, title: array{en: string, ar: string}, image: ?string}> */

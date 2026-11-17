@@ -1,19 +1,22 @@
 'use client'
 import { useState } from 'react'
 import { API_BASE, STOREFRONT_CODE } from '@/src/lib/env'
+import GoogleReviewButtons from '@/src/Components/Reviews/GoogleReviewButtons'
 
 // ONE product's review form on the review page (SEO Phase 5, 2026-11-14) — a TWIN. Stars, words, the name to show and
-// up to three photos, sent as one multipart POST to core (POST /api/v2/{shop}/reviews), which saves it PENDING for the
-// team's approval. A product already reviewed from this order shows as done.
+// up to three photos, sent as one multipart POST to core (POST /api/v2/{shop}/reviews). Since 2026-11-17 it is LIVE at
+// once (held for the team only when it carries a link or a phone number), and the thanks carry the shop's Google review
+// buttons (`google`, the page's). A product already reviewed from this order shows as done.
 const MAX_PHOTOS = 3
 
-export default function ReviewForm({ token, product, lang = 'en' }) {
+export default function ReviewForm({ token, product, lang = 'en', google = [] }) {
   const ar = lang === 'ar'
   const [rating, setRating] = useState(0)
   const [body, setBody] = useState('')
   const [name, setName] = useState('')
   const [photos, setPhotos] = useState([])
   const [state, setState] = useState(product.reviewed ? 'done' : 'idle')
+  const [held, setHeld] = useState(false)
   const [error, setError] = useState('')
   const title = (ar ? product.title?.ar : product.title?.en) || product.title?.en || product.title?.ar || ''
 
@@ -24,7 +27,16 @@ export default function ReviewForm({ token, product, lang = 'en' }) {
           {product.image ? <img src={product.image} alt="" /> : null}
           <strong>{title}</strong>
         </div>
-        <p className="wz-review-form__done">{ar ? 'شكراً! وصلنا تقييمك لهذا المنتج.' : 'Thank you! We have your review of this product.'}</p>
+        <p className="wz-review-form__done">
+          {held
+            ? ar
+              ? 'شكرًا! وصلنا تقييمك، ويظهر بعد مراجعة سريعة من فريقنا.'
+              : 'Thank you! We have your review; it shows after a quick check by our team.'
+            : ar
+              ? 'شكرًا! تم نشر تقييمك لهذا المنتج.'
+              : 'Thank you! Your review of this product is published.'}
+        </p>
+        <GoogleReviewButtons google={google} lang={lang} />
       </div>
     )
   }
@@ -46,7 +58,12 @@ export default function ReviewForm({ token, product, lang = 'en' }) {
     setState('sending')
     try {
       const res = await fetch(`${API_BASE.replace(/\/$/, '')}/v2/${STOREFRONT_CODE}/reviews`, { method: 'POST', body: form, headers: { Accept: 'application/json' } })
-      if (res.status === 201 || res.status === 409) return setState('done')
+      if (res.status === 201) {
+        const data = await res.json().catch(() => ({}))
+        setHeld(data?.status === 'held')
+        return setState('done')
+      }
+      if (res.status === 409) return setState('done')
       setState('idle')
       setError(
         res.status === 422

@@ -75,7 +75,8 @@ it('never asks for an order placed before go-live, nor any order while go-live i
     expect(Reviews::requestDue(false)['created'])->toBe(0);
 });
 
-it("takes a review only through a link of the path's own shop, once per product, and holds it for approval", function () {
+// Changed deliberately (Michael, 2026-11-17): a review is LIVE at once; held only for a link or a phone number.
+it("takes a review only through a link of the path's own shop, once per product, live at once and a verified buyer", function () {
     $o = deliveredOrder(1);
     Reviews::requestDue(false);
     $requestId = T::int(DB::table('review_requests')->where('order_id', $o['order'])->value('id'));
@@ -92,22 +93,27 @@ it("takes a review only through a link of the path's own shop, once per product,
     postJson('/api/v2/watchizer/reviews', $body)->assertStatus(409);
 
     $row = T::row(DB::table('product_reviews')->where('order_id', $o['order'])->first());
-    expect($row->status)->toBe('pending')
+    expect($row->status)->toBe('approved')
+        ->and(T::int($row->verified))->toBe(1)
+        ->and($row->source)->toBe('request')
         ->and(T::int($row->storefront_id))->toBe(1)
         ->and(count(T::arr(json_decode(T::str($row->photos), true))))->toBe(1);
     // the photo is a REFERENCE to the media prune: `Review` is a scanned folder, so an unlisted photo would be deleted
     $photo = basename(T::str(T::arr(json_decode(T::str($row->photos), true))[0]));
     expect(app(MediaAudit::class)->referencedFiles())->toHaveKey($photo);
-    // nothing shows until approved
-    app(StorefrontCache::class)->flush(1);
-    expect(T::arr(getJson("/api/v2/watchizer/products/{$o['slug']}")->assertOk()->json('product.reviews'))['count'])->toBe(0);
+    // live on the product page at once, marked a verified buyer
+    $reviews = T::arr(getJson("/api/v2/watchizer/products/{$o['slug']}")->assertOk()->json('product.reviews'));
+    expect($reviews['count'])->toBe(1)
+        ->and(T::arr(T::arr($reviews['items'])[0])['verified'])->toBeTrue();
 });
 
-it('shows a review on the product page once the team approves it (logged), and never a rejected one', function () {
+it('holds a review with a link for the team, shows it once approved (logged), and never a hidden one', function () {
     $o = deliveredOrder(1);
     Reviews::requestDue(false);
     $token = T::str(Reviews::reissue(1, T::int(DB::table('review_requests')->where('order_id', $o['order'])->value('id'))));
-    expect(Reviews::submit(1, $token, $o['product'], 4, 'Good watch, the strap is comfortable.', 'Ahmed', 'ar'))->toBe('saved');
+    // a link in the words holds it (Michael, 2026-11-17): the team decides
+    expect(Reviews::submit(1, $token, $o['product'], 4, 'Good watch, see more at www.example.com', 'Ahmed', 'ar'))->toBe('held');
+    expect(T::arr(getJson("/api/v2/watchizer/products/{$o['slug']}")->assertOk()->json('product.reviews'))['count'])->toBe(0);
     $id = T::int(DB::table('product_reviews')->value('id'));
 
     actingAs(Staff::admin())->get('/manage/storefronts/1/reviews')->assertOk()

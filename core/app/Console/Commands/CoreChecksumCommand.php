@@ -255,6 +255,8 @@ final class CoreChecksumCommand extends Command
          * regenerate a word of it.
          */
         'review_requests', 'product_reviews',
+        // the scans of each branch's in-store review address (2026-11-17): counted from visitors, no other source
+        'storefront_review_scans',
     ];
 
     /**

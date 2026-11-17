@@ -87,6 +87,10 @@ Route::prefix('v2/{storefront}')->middleware('storefront')->where(['storefront' 
     // pending for the team's approval (ReviewController). Throttled per address like the old rating form (`rating`).
     Route::get('reviews/request/{token}', [ReviewController::class, 'request'])->where('token', '[A-Za-z0-9]{40}')->middleware('throttle:wheel-spin');
     Route::post('reviews', [ReviewController::class, 'store'])->middleware('throttle:rating');
+    // REVIEWS FROM EVERYONE (2026-11-17): a review from a product page without a login (Turnstile, limits per e-mail,
+    // device and address, held for a link or a phone number), and a branch's in-store address, which counts its scans
+    Route::post('reviews/guest', [ReviewController::class, 'guest'])->middleware('throttle:rating');
+    Route::get('review-link/{key}', [ReviewController::class, 'link'])->where('key', '[a-z0-9-]{2,32}')->middleware('throttle:wheel-spin');
 
     // SPIN THE WHEEL (2026-11-07): the segments and the switch, a spin (the prize is decided HERE), and the spin a phone
     // already made. Under /api/v2/, so the API host's allow-list (runbook §4.1.1) and ApiAllowListTest are unchanged.

@@ -26,4 +26,22 @@ return [
     'photo_max_kb' => 8192,
     'body_min' => 10,
     'body_max' => 2000,
+
+    /*
+    | REVIEWS FROM EVERYONE (Michael, 2026-11-17): a review written on a product page, without logging in, is LIVE at once
+    | and protected in the background — Cloudflare Turnstile (invisible), limits per e-mail, per device and per address,
+    | and a review holding a link or a phone number waits for the team. Never held for its stars.
+    |
+    | TURNSTILE_SITE_KEY / TURNSTILE_SECRET_KEY: one invisible widget for both shops' domains (Michael creates it and puts
+    | both in core's .env). The site key is public: core hands it to the product page. Until both are set the check is
+    | skipped (and logged once a day): the limits and the hold rules still apply.
+    */
+    'turnstile' => [
+        'site_key' => (string) env('TURNSTILE_SITE_KEY', ''),
+        'secret_key' => (string) env('TURNSTILE_SECRET_KEY', ''),
+        'verify_url' => 'https://challenges.cloudflare.com/turnstile/v0/siteverify',
+        'timeout' => 5,
+    ],
+    // reviews per e-mail per day, per device per hour, per address per hour
+    'guest_limits' => ['email_per_day' => 3, 'device_per_hour' => 5, 'ip_per_hour' => 10],
 ];
