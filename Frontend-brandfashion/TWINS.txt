@@ -525,3 +525,5 @@ tests/blogHero.test.mjs
 src/lib/turnstile.js
 src/Components/Reviews/ProductReviewForm.jsx
 src/Components/Reviews/GoogleReviewButtons.jsx
+# 2026-11-17 (the public product feed): ONE NEW TWIN - app/feeds/products.json/route.js (core's feeds:public file, served at /feeds/products.json). app/llms.txt/route.js stays a twin (the Products section links it).
+app/feeds/products.json/route.js

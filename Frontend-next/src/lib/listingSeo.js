@@ -13,7 +13,7 @@ import { buildListingParams } from '../utils/listingParams'
 import { transformProductData } from '../utils/transformProduct'
 import { localePath } from '../utils/localePath'
 import { familiesOf, listingTitle, listingDescription, THIN_LISTING_MIN } from './listingWords'
-import { landingName, landingSegments } from './landing'
+import { landingName, landingSegments, watchLandingFilters } from './landing'
 
 export const SEO_DOMAIN = 'https://watchizereg.com'
 const PRICE_MAX = 99999999
@@ -79,6 +79,8 @@ export function resolveFacetFilters(tables = {}, facet = {}) {
   // a LANDING page's narrowing (2026-11-14): one family and/or one gender, on a brand (src/lib/landing.js)
   if (family !== undefined) filters.family = family
   if (gender !== undefined) filters.genders = [gender]
+  // a dial-colour or strap page of a brand's watches (2026-11-17): the colour / material must be one of the tables'
+  if (!watchLandingFilters(filters, tables, facet)) ok = false
 
   if (brand !== undefined) {
     const b = fromSlug(brand, tables.brands, brandSlug)

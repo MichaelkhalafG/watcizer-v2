@@ -261,12 +261,12 @@ final class ProductListing
                 'filters' => $filters,
                 'category' => $node === null ? null : CategoryTree::ref($node),
                 // the brand or category page's own introduction and meta description, both languages (M1y)
-                'context' => $this->context($nodes, $filters['brand'], $filters['gender'], $filters['family']),
+                'context' => $this->context($nodes, $filters['brand'], $filters['gender'], $filters['family'], $filters['dial_color'], $filters['material']),
                 // a LANDING page (2026-11-14, SEO Phase 2): its key, and whether search engines may index it (its copy
                 // passed the quality gate in both languages and it has 6+ LIVE products) — null for any other listing
-                'landing' => $this->landing($nodes, $filters['brand'], $filters['gender'], $filters['family']),
+                'landing' => $this->landing($nodes, $filters['brand'], $filters['gender'], $filters['family'], $filters['dial_color'], $filters['material']),
                 // on a BRAND page: its landing pages (gender / family), for the shop's real links to them — [] otherwise
-                'landings' => $this->brandLandings($nodes, $filters['brand'], $filters['gender'], $filters['family']),
+                'landings' => $this->brandLandings($nodes, $filters['brand'], $filters['gender'], $filters['family'], $filters['dial_color'], $filters['material']),
             ],
             'links' => [
                 'self' => $link($page),
@@ -289,15 +289,17 @@ final class ProductListing
      * @param  list<string>  $brands
      * @param  list<int>  $genders
      * @param  list<string>  $families
+     * @param  list<int>  $dial
+     * @param  list<int>  $material
      * @return array<string, mixed>|null
      */
-    private function context(array $nodes, array $brands, array $genders = [], array $families = []): ?array
+    private function context(array $nodes, array $brands, array $genders = [], array $families = [], array $dial = [], array $material = []): ?array
     {
-        $landing = $this->landingKey($nodes, $brands, $genders, $families);
+        $landing = $this->landingKey($nodes, $brands, $genders, $families, $dial, $material);
         if ($landing !== null) {
             return $this->pageText('landing', $landing);
         }
-        if ($genders !== [] || $families !== []) {
+        if ($genders !== [] || $families !== [] || $dial !== [] || $material !== []) {
             return null;                                       // a filtered view of a brand that is not a landing page
         }
         if (count($nodes) === 1 && $brands === []) {
@@ -318,15 +320,22 @@ final class ProductListing
 
     /**
      * The landing key this listing IS (2026-11-14): exactly one brand, no category, and one gender and/or one family —
-     * `tommy-hilfiger/men`, `guess/bags`, `guess/bags/women`. Null for anything else.
+     * `tommy-hilfiger/men`, `guess/bags`, `guess/bags/women`. Since 2026-11-17 also a brand's watches with ONE dial colour
+     * or ONE strap material and nothing else — `tommy-hilfiger/watches/blue-dial`, `guess/watches/leather-strap` — when
+     * that colour / material has a page (LandingPages). Null for anything else.
      *
      * @param  list<array<string, mixed>>  $nodes
      * @param  list<string>  $brands
      * @param  list<int>  $genders
      * @param  list<string>  $families
+     * @param  list<int>  $dial
+     * @param  list<int>  $material
      */
-    private function landingKey(array $nodes, array $brands, array $genders, array $families): ?string
+    private function landingKey(array $nodes, array $brands, array $genders, array $families, array $dial = [], array $material = []): ?string
     {
+        if ($dial !== [] || $material !== []) {
+            return $this->watchLandingKey($nodes, $brands, $genders, $families, $dial, $material);
+        }
         if ($nodes !== [] || count($brands) !== 1 || count($genders) > 1 || count($families) > 1 || ($genders === [] && $families === [])) {
             return null;
         }
@@ -352,15 +361,54 @@ final class ProductListing
     }
 
     /**
+     * A brand's watches by ONE dial colour or ONE strap material (2026-11-17): the page's key when it is one the brand has
+     * (LandingPages), null otherwise — a filtered view, never a landing page.
+     *
      * @param  list<array<string, mixed>>  $nodes
      * @param  list<string>  $brands
      * @param  list<int>  $genders
      * @param  list<string>  $families
+     * @param  list<int>  $dial
+     * @param  list<int>  $material
+     */
+    private function watchLandingKey(array $nodes, array $brands, array $genders, array $families, array $dial, array $material): ?string
+    {
+        if ($nodes !== [] || count($brands) !== 1 || $genders !== [] || $families !== ['watch'] || count($dial) + count($material) !== 1) {
+            return null;
+        }
+        $slug = $brands[0];
+        if (ctype_digit($slug)) {
+            $ref = $this->lookups->ref('brands', (int) $slug);
+            $slug = is_string($ref['slug'] ?? null) ? $ref['slug'] : null;
+        }
+        if ($slug === null) {
+            return null;
+        }
+        foreach (app(LandingPages::class)->ofBrand($this->ctx->id(), $slug) as $page) {
+            $id = $dial !== [] ? $dial[0] : $material[0];
+            $name = $dial !== [] ? DB::table('catalog_color_translations')->where('color_id', $id)->where('locale', 'en')->value('name')
+                : DB::table('catalog_material_translations')->where('material_id', $id)->where('locale', 'en')->value('name');
+            $want = is_string($name) ? LandingPages::slug($name) : '';
+            if ($want !== '' && (($dial !== [] && $page['dial'] === $want) || ($material !== [] && $page['strap'] === $want))) {
+                return $page['key'];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $nodes
+     * @param  list<string>  $brands
+     * @param  list<int>  $genders
+     * @param  list<string>  $families
+     * @param  list<int>  $dial
+     * @param  list<int>  $material
      * @return array{key: string, exists: bool, indexable: bool}|null
      */
-    private function landing(array $nodes, array $brands, array $genders, array $families): ?array
+    private function landing(array $nodes, array $brands, array $genders, array $families, array $dial = [], array $material = []): ?array
     {
-        $key = $this->landingKey($nodes, $brands, $genders, $families);
+        $key = $this->landingKey($nodes, $brands, $genders, $families, $dial, $material);
         if ($key === null) {
             return null;
         }
@@ -377,11 +425,13 @@ final class ProductListing
      * @param  list<string>  $brands
      * @param  list<int>  $genders
      * @param  list<string>  $families
-     * @return list<array{path: string, family: ?string, gender: ?string, products: int}>
+     * @param  list<int>  $dial
+     * @param  list<int>  $material
+     * @return list<array{path: string, family: ?string, gender: ?string, dial: ?string, strap: ?string, name: ?array{en: string, ar: string}, products: int}>
      */
-    private function brandLandings(array $nodes, array $brands, array $genders, array $families): array
+    private function brandLandings(array $nodes, array $brands, array $genders, array $families, array $dial = [], array $material = []): array
     {
-        if ($nodes !== [] || count($brands) !== 1 || $genders !== [] || $families !== []) {
+        if ($nodes !== [] || count($brands) !== 1 || $genders !== [] || $families !== [] || $dial !== [] || $material !== []) {
             return [];
         }
         $slug = $brands[0];
@@ -390,7 +440,7 @@ final class ProductListing
             $slug = is_string($ref['slug'] ?? null) ? $ref['slug'] : '';
         }
 
-        return array_map(fn (array $p): array => ['path' => $p['path'], 'family' => $p['family'], 'gender' => $p['gender'], 'products' => $p['products']],
+        return array_map(fn (array $p): array => ['path' => $p['path'], 'family' => $p['family'], 'gender' => $p['gender'], 'dial' => $p['dial'], 'strap' => $p['strap'], 'name' => $p['name'], 'products' => $p['products']],
             app(LandingPages::class)->ofBrand($this->ctx->id(), $slug));
     }
 

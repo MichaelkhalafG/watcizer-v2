@@ -33,6 +33,7 @@ use App\Http\Controllers\V2\ProductController;
 use App\Http\Controllers\V2\RedirectController;
 use App\Http\Controllers\V2\RelatedController;
 use App\Http\Controllers\V2\ReviewController;
+use App\Http\Controllers\V2\FeedController;
 use App\Http\Controllers\V2\SitemapController;
 use App\Http\Controllers\V2\PickupController;
 use App\Http\Controllers\V2\WheelController;
@@ -60,6 +61,8 @@ Route::prefix('v2/{storefront}')->middleware(['storefront', 'http.cache'])->wher
     // The mega menu's data (Part 4, 2026-11-05): categories with picture tiles, popular brands, a featured product.
     Route::get('menu', [MenuController::class, 'show']);
     Route::get('sitemap.xml', [SitemapController::class, 'index']);
+    // THE PUBLIC PRODUCT FEED (2026-11-17): the file feeds:public wrote, served; each shop serves it at /feeds/products.json
+    Route::get('feed', [FeedController::class, 'show']);
     Route::get('sitemaps/{locale}/{file}.xml', [SitemapController::class, 'chunk'])->where(['locale' => '[a-z]{2}', 'file' => '[a-z0-9\-]+']);
 });
 

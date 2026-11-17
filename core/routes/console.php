@@ -146,6 +146,8 @@ Schedule::command('feeds:meta')->hourlyAt(40)->withoutOverlapping();
 | columns. Hourly at :45, after the Meta run, without overlapping. A storefront with no token: nothing.
 */
 Schedule::command('feeds:google')->hourlyAt(45)->withoutOverlapping();
+// THE PUBLIC PRODUCT FEED (2026-11-17): read-only data for assistants, every active shop, linked from /llms.txt
+Schedule::command('feeds:public')->hourlyAt(50)->withoutOverlapping();
 
 /*
 | IndexNow (SEO Phase 1, 2026-11-14): the addresses product, article and page-text saves queued, sent in batches every ten

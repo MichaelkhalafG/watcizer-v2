@@ -120,3 +120,39 @@ it('lists the landing pages on the dashboard\'s Page texts screen, saves one wit
     Pest\Laravel\actingAs($admin)->put('/manage/storefronts/2/page-texts', ['type' => 'landing', 'key' => $b['slug'].'/kids'] + $body)
         ->assertSessionHasErrors('key');                                       // not a page the shop has
 });
+
+it("makes a brand's watches page per dial colour and per strap material by the same rules, and the listing knows it", function () {
+    $slug = 'lp-watch-'.bin2hex(random_bytes(3));
+    $brand = T::int(DB::table('catalog_brands')->insertGetId(['slug' => $slug, 'is_active' => 1, 'created_at' => now(), 'updated_at' => now()]));
+    DB::table('catalog_brand_translations')->insert([['brand_id' => $brand, 'locale' => 'en', 'name' => 'LP Watch '.$brand], ['brand_id' => $brand, 'locale' => 'ar', 'name' => 'ساعات '.$brand]]);
+    $color = fn (string $en): int => T::int(DB::table('catalog_color_translations')->where('locale', 'en')->where('name', $en)->value('color_id'));
+    $material = fn (string $en): int => T::int(DB::table('catalog_material_translations')->where('locale', 'en')->where('name', $en)->value('material_id'));
+    // 10 watches: 6 blue dials and 4 black; 7 on leather straps and 3 on steel bracelets
+    for ($i = 0; $i < 10; $i++) {
+        $id = CatalogFixture::product('watch', 2000.0 + $i);
+        DB::table('catalog_products')->where('id', $id)->update(['brand_id' => $brand, 'search_class' => null, 'search_override' => null]);
+        DB::table('catalog_product_color')->where('product_id', $id)->delete();
+        DB::table('catalog_product_color')->insert(['product_id' => $id, 'color_id' => $i < 6 ? $color('Blue') : $color('Black'), 'role' => 'dial', 'position' => 0]);
+        DB::table('catalog_product_watch_specs')->where('product_id', $id)->delete();
+        DB::table('catalog_product_watch_specs')->insert(['product_id' => $id, 'band_material_id' => $i < 7 ? $material('Leather') : $material('Stainless Steel'), 'case_material_id' => $material('Stainless Steel')]);
+        CatalogFixture::onStorefront($id, true, 2);
+    }
+    app(StorefrontCache::class)->flush(2);
+    $keys = array_column(app(LandingPages::class)->ofBrand(2, $slug), 'key');
+    // 6 blue (a page), 4 black (too few); leather 7 (a page); steel is a case material too, never a strap page
+    expect($keys)->toContain($slug.'/watches/blue-dial', $slug.'/watches/leather-strap')
+        ->and($keys)->not->toContain($slug.'/watches/black-dial', $slug.'/watches/stainless-steel-strap');
+    $page = T::arr(app(LandingPages::class)->find(2, $slug.'/watches/blue-dial'));
+    expect($page['dial'])->toBe('blue')->and(T::arr($page['name'])['en'])->toBe('Blue')->and($page['products'])->toBe(6)->and($page['indexable'])->toBeFalse();
+
+    // the listing for brand + watches + that one dial colour IS the page; with a gender too it is a filtered view
+    $res = getJson('/api/v2/brandfashion/products?brand='.$slug.'&family=watch&dial_color='.$color('Blue'))->assertOk();
+    expect($res->json('meta.landing'))->toBe(['key' => $slug.'/watches/blue-dial', 'exists' => true, 'indexable' => false])
+        ->and($res->json('meta.total'))->toBe(6);
+    expect(getJson('/api/v2/brandfashion/products?brand='.$slug.'&family=watch&material='.$material('Leather'))->json('meta.landing.key'))->toBe($slug.'/watches/leather-strap')
+        ->and(getJson('/api/v2/brandfashion/products?brand='.$slug.'&family=watch&gender=Men&dial_color='.$color('Blue'))->json('meta.landing'))->toBeNull();
+    // the brand page links them, with their names
+    $landings = T::arr(getJson('/api/v2/brandfashion/products?brand='.$slug)->json('meta.landings'));
+    expect(array_column($landings, 'path'))->toContain('/brand/'.$slug.'/watches/blue-dial');
+    expect(LandingPages::slug('Rose Gold'))->toBe('rose-gold')->and(LandingPages::slug("Men's Mesh Steel"))->toBe('mens-mesh-steel');
+});

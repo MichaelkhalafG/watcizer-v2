@@ -74,6 +74,10 @@ export async function GET() {
   p()
   p('## Articles')
   p(`- ${SITE}/blogs`)
+  // THE PRODUCT FEED (2026-11-17): every product shown to search engines with its price and stock, hourly, as JSON
+  p()
+  p('## Products')
+  p(`- Product feed (JSON, every product with its brand, page, price in EGP and stock; updated hourly): ${SITE}/feeds/products.json`)
   return new Response(L.join('\n') + '\n', {
     headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'public, max-age=3600' },
   })

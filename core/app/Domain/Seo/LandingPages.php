@@ -9,6 +9,7 @@ use App\Storefront\ProductCards;
 use App\Storefront\StorefrontCache;
 use App\Support\Coerce;
 use App\Transform\Row;
+use Illuminate\Database\Query\JoinClause;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -28,6 +29,15 @@ use Illuminate\Support\Facades\DB;
  *
  * The list is built from three grouped queries over the storefront's placements (never a query per page), cached under
  * the storefront's build lock with the last good copy served meanwhile, and warmed by catalog:warm.
+ *
+ * BY DIAL COLOUR AND BY STRAP (Michael, 2026-11-17; the 2026-11-16 comparison's structural gap): a brand's watches by
+ * their dial colour — `/brand/tommy-hilfiger/watches/blue-dial` — and by their strap — `/brand/guess/watches/leather-strap`
+ * — by the SAME rules: 6+ LIVE products that narrow the brand's watches page, indexable once their copy passed the gate
+ * in both languages and 3 are in stock. Counted with the listing's own filters (the dial colour role; the material
+ * filter, band or case), which is why a strap page exists only for a STRAP material (STRAP_MATERIALS — leather,
+ * silicone, rubber, nylon, mesh steel: never a case's material, so "band or case" is the band). The address segment is
+ * the colour's / material's English name as the shop slugs it (src/utils/slugs.js toSlug), so both sides agree.
+ * Lines (a brand's collections) have no field in the catalogue and get no pages.
  */
 final class LandingPages
 {
@@ -39,16 +49,36 @@ final class LandingPages
     /** catalog_products.family → the address segment. Only these families get landing pages. */
     public const FAMILIES = ['watch' => 'watches', 'bag' => 'bags', 'wallet' => 'wallets', 'perfume' => 'perfumes'];
 
+    /** The materials a watch's STRAP page may be about (their English names' slugs): never a case's material. */
+    public const STRAP_MATERIALS = ['leather', 'silicone', 'rubber', 'nylon', 'mesh-steel'];
+
+    /** The address segment's ending for each kind (blue-dial, leather-strap). */
+    public const DIAL_SUFFIX = '-dial';
+
+    public const STRAP_SUFFIX = '-strap';
+
+    /** A name as the shop slugs it (src/utils/slugs.js toSlug) — the colour's and the material's address segment. */
+    public static function slug(string $name): string
+    {
+        $s = mb_strtolower(trim($name));
+        $s = (string) preg_replace("/['’`&]/u", '', $s);
+        $s = (string) preg_replace('/[^a-z0-9\s-]/', '', $s);
+        $s = (string) preg_replace('/\s+/', '-', $s);
+        $s = (string) preg_replace('/-+/', '-', $s);
+
+        return trim($s, '-');
+    }
+
     public function __construct(private readonly StorefrontCache $cache) {}
 
     /**
      * The storefront's landing pages, keyed by their key (`tommy-hilfiger/men`, `guess/bags/women`).
      *
-     * @return array<string, array{key: string, path: string, brand: string, brand_id: int, family: ?string, gender: ?string, gender_id: ?int, products: int, in_stock: int, indexable: bool}>
+     * @return array<string, array{key: string, path: string, brand: string, brand_id: int, family: ?string, gender: ?string, gender_id: ?int, dial: ?string, strap: ?string, name: ?array{en: string, ar: string}, products: int, in_stock: int, indexable: bool}>
      */
     public function all(int $storefrontId): array
     {
-        /** @var array<string, array{key: string, path: string, brand: string, brand_id: int, family: ?string, gender: ?string, gender_id: ?int, products: int, in_stock: int, indexable: bool}> */
+        /** @var array<string, array{key: string, path: string, brand: string, brand_id: int, family: ?string, gender: ?string, gender_id: ?int, dial: ?string, strap: ?string, name: ?array{en: string, ar: string}, products: int, in_stock: int, indexable: bool}> */
         return $this->cache->rememberGuarded($storefrontId, 'landing_pages', '', config()->integer('storefront.ttl.count'),
             fn (): array => $this->build($storefrontId));
     }
@@ -56,7 +86,7 @@ final class LandingPages
     /**
      * One landing page by key, or null when the storefront has no such page (now).
      *
-     * @return array{key: string, path: string, brand: string, brand_id: int, family: ?string, gender: ?string, gender_id: ?int, products: int, in_stock: int, indexable: bool}|null
+     * @return array{key: string, path: string, brand: string, brand_id: int, family: ?string, gender: ?string, gender_id: ?int, dial: ?string, strap: ?string, name: ?array{en: string, ar: string}, products: int, in_stock: int, indexable: bool}|null
      */
     public function find(int $storefrontId, string $key): ?array
     {
@@ -66,7 +96,7 @@ final class LandingPages
     /**
      * The landing pages of one brand, in key order.
      *
-     * @return list<array{key: string, path: string, brand: string, brand_id: int, family: ?string, gender: ?string, gender_id: ?int, products: int, in_stock: int, indexable: bool}>
+     * @return list<array{key: string, path: string, brand: string, brand_id: int, family: ?string, gender: ?string, gender_id: ?int, dial: ?string, strap: ?string, name: ?array{en: string, ar: string}, products: int, in_stock: int, indexable: bool}>
      */
     public function ofBrand(int $storefrontId, string $brandSlug): array
     {
@@ -78,7 +108,7 @@ final class LandingPages
         return implode('/', array_filter([$brand, $family, $gender], fn (?string $s): bool => $s !== null && $s !== ''));
     }
 
-    /** @return array<string, array{key: string, path: string, brand: string, brand_id: int, family: ?string, gender: ?string, gender_id: ?int, products: int, in_stock: int, indexable: bool}> */
+    /** @return array<string, array{key: string, path: string, brand: string, brand_id: int, family: ?string, gender: ?string, gender_id: ?int, dial: ?string, strap: ?string, name: ?array{en: string, ar: string}, products: int, in_stock: int, indexable: bool}> */
     private function build(int $storefrontId): array
     {
         $genders = [];
@@ -124,6 +154,29 @@ final class LandingPages
             }
         }
 
+        // BY DIAL COLOUR AND BY STRAP (2026-11-17): the brand's watches, counted with the listing's own filters
+        $byDial = [];
+        $stockDial = [];
+        foreach ($live()->where('p.family', 'watch')->join('catalog_product_color as pc', fn (JoinClause $j) => $j->on('pc.product_id', '=', 'sp.product_id')->where('pc.role', '=', 'dial'))
+            ->groupBy('p.brand_id', 'pc.color_id')->selectRaw('p.brand_id AS b, pc.color_id AS c, COUNT(DISTINCT sp.product_id) AS n, COUNT(DISTINCT CASE WHEN p.in_stock = 1 THEN sp.product_id END) AS s')->get() as $r) {
+            $byDial[Row::int($r, 'b')][Row::int($r, 'c')] = Row::int($r, 'n');
+            $stockDial[Row::int($r, 'b')][Row::int($r, 'c')] = Row::int($r, 's');
+        }
+        $colorNames = self::names('catalog_color_translations', 'color_id');
+        $materialNames = self::names('catalog_material_translations', 'material_id');
+        $strapIds = array_keys(array_filter($materialNames, fn (array $n): bool => in_array(self::slug($n['en']), self::STRAP_MATERIALS, true)));
+        $byStrap = [];
+        $stockStrap = [];
+        if ($strapIds !== []) {
+            foreach ($live()->where('p.family', 'watch')->join('catalog_product_watch_specs as ws', 'ws.product_id', '=', 'sp.product_id')
+                ->join('catalog_materials as m', fn (JoinClause $j) => $j->on('m.id', '=', 'ws.band_material_id')->orOn('m.id', '=', 'ws.case_material_id'))
+                ->whereIn('m.id', $strapIds)
+                ->groupBy('p.brand_id', 'm.id')->selectRaw('p.brand_id AS b, m.id AS m, COUNT(DISTINCT sp.product_id) AS n, COUNT(DISTINCT CASE WHEN p.in_stock = 1 THEN sp.product_id END) AS s')->get() as $r) {
+                $byStrap[Row::int($r, 'b')][Row::int($r, 'm')] = Row::int($r, 'n');
+                $stockStrap[Row::int($r, 'b')][Row::int($r, 'm')] = Row::int($r, 's');
+            }
+        }
+
         $passed = $this->passedKeys($storefrontId);
         $out = [];
         $add = function (int $brandId, ?string $family, ?int $genderId, int $n, int $inStock) use (&$out, $brands, $genders, $passed): void {
@@ -136,7 +189,22 @@ final class LandingPages
             $key = self::key($brand, $familySlug, $gender);
             $out[$key] = [
                 'key' => $key, 'path' => '/brand/'.$key, 'brand' => $brand, 'brand_id' => $brandId, 'family' => $familySlug,
-                'gender' => $gender, 'gender_id' => $genderId, 'products' => $n, 'in_stock' => $inStock,
+                'gender' => $gender, 'gender_id' => $genderId, 'dial' => null, 'strap' => null, 'name' => null, 'products' => $n, 'in_stock' => $inStock,
+                'indexable' => isset($passed[$key]) && $inStock >= self::MIN_IN_STOCK,
+            ];
+        };
+        // a dial-colour or strap page of a brand's watches: `kind` dial|strap, the colour's / material's slug and names
+        /** @param array{en: string, ar: string} $name */
+        $addWatch = function (int $brandId, string $kind, string $slug, array $name, int $n, int $inStock) use (&$out, $brands, $passed): void {
+            $brand = $brands[$brandId] ?? null;
+            if ($brand === null || $slug === '') {
+                return;
+            }
+            $key = self::key($brand, self::FAMILIES['watch'], $slug.($kind === 'dial' ? self::DIAL_SUFFIX : self::STRAP_SUFFIX));
+            $out[$key] = [
+                'key' => $key, 'path' => '/brand/'.$key, 'brand' => $brand, 'brand_id' => $brandId, 'family' => self::FAMILIES['watch'],
+                'gender' => null, 'gender_id' => null, 'dial' => $kind === 'dial' ? $slug : null, 'strap' => $kind === 'strap' ? $slug : null,
+                'name' => $name, 'products' => $n, 'in_stock' => $inStock,
                 'indexable' => isset($passed[$key]) && $inStock >= self::MIN_IN_STOCK,
             ];
         };
@@ -151,6 +219,17 @@ final class LandingPages
                     $add($b, $f, null, $n, $stockFamily[$b][$f] ?? 0);
                 }
             }
+            $watches = $byFamily[$b]['watch'] ?? 0;
+            foreach ($byDial[$b] ?? [] as $c => $n) {
+                if ($n >= self::MIN_LIVE && $n < $watches && isset($colorNames[$c])) {
+                    $addWatch($b, 'dial', self::slug($colorNames[$c]['en']), $colorNames[$c], $n, $stockDial[$b][$c] ?? 0);
+                }
+            }
+            foreach ($byStrap[$b] ?? [] as $m => $n) {
+                if ($n >= self::MIN_LIVE && $n < $watches && isset($materialNames[$m])) {
+                    $addWatch($b, 'strap', self::slug($materialNames[$m]['en']), $materialNames[$m], $n, $stockStrap[$b][$m] ?? 0);
+                }
+            }
             foreach ($byBoth[$b] ?? [] as $f => $byG) {
                 foreach ($byG as $g => $n) {
                     if ($n >= self::MIN_LIVE && $n < ($byFamily[$b][$f] ?? 0) && $n < ($byGender[$b][$g] ?? 0)) {
@@ -160,6 +239,33 @@ final class LandingPages
             }
         }
         ksort($out);
+
+        /** @var array<string, array{key: string, path: string, brand: string, brand_id: int, family: ?string, gender: ?string, gender_id: ?int, dial: ?string, strap: ?string, name: ?array{en: string, ar: string}, products: int, in_stock: int, indexable: bool}> $out */
+        return $out;
+    }
+
+    /**
+     * A lookup's names in both languages, by id (the colours', the materials').
+     *
+     * @return array<int, array{en: string, ar: string}>
+     */
+    private static function names(string $table, string $fk): array
+    {
+        $en = [];
+        $ar = [];
+        foreach (DB::table($table)->whereIn('locale', ['en', 'ar'])->get([$fk, 'locale', 'name']) as $r) {
+            if (Row::str($r, 'locale') === 'en') {
+                $en[Row::int($r, $fk)] = trim(Row::str($r, 'name'));
+            } else {
+                $ar[Row::int($r, $fk)] = trim(Row::str($r, 'name'));
+            }
+        }
+        $out = [];
+        foreach ($en as $id => $name) {
+            if ($name !== '') {
+                $out[$id] = ['en' => $name, 'ar' => ($ar[$id] ?? '') !== '' ? $ar[$id] : $name];
+            }
+        }
 
         return $out;
     }

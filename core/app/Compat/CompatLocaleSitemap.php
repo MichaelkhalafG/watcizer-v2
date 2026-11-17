@@ -364,6 +364,45 @@ final class CompatLocaleSitemap
     }
 
     /**
+     * Every product page this shop lists in its sitemap, by product id: its path (`/product/<slug>`) exactly as the
+     * sitemap writes it — the storefront's own slug, or Watchizer's English-title slug from the listing index; never a
+     * product kept from search engines; a twin once. Read by the public product feed (App\Feeds\PublicFeed, 2026-11-17)
+     * so its links and the sitemap's never disagree.
+     *
+     * @return array<int, string>
+     */
+    public function productPaths(): array
+    {
+        $out = [];
+        $seen = [];
+        if ($this->routesByStorefrontSlug()) {
+            $rows = ProductCards::visibleOn(DB::table('storefront_product as sp')->join('catalog_products as p', 'p.id', '=', 'sp.product_id'), $this->storefrontId)
+                ->where('sp.slug', '<>', '')
+                ->whereRaw('COALESCE('.SearchExposure::effectiveSql('p').", '') <> ?", [SearchExposure::HIDDEN])
+                ->orderBy('sp.product_id')->get(['sp.product_id', 'sp.slug']);
+            foreach ($rows as $r) {
+                $slug = Row::str($r, 'slug');
+                if (! isset($seen[$slug])) {
+                    $seen[$slug] = true;
+                    $out[Row::int($r, 'product_id')] = '/product/'.rawurlencode($slug);
+                }
+            }
+
+            return $out;
+        }
+        $hidden = array_flip(self::hiddenIds());
+        foreach ($this->listing->entries() as $e) {
+            if (isset($hidden[$e['id']]) || $e['slug'] === '' || isset($seen[$e['slug']])) {
+                continue;
+            }
+            $seen[$e['slug']] = true;
+            $out[$e['id']] = '/product/'.$e['slug'];
+        }
+
+        return $out;
+    }
+
+    /**
      * The products kept from search engines (2026-11-14, SearchExposure: the switch, else the rule).
      *
      * @return list<int>
