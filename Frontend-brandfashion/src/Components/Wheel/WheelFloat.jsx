@@ -95,15 +95,17 @@ export default function WheelFloat() {
 
   if (!enabled || dismissed) return null
 
-  const label = mine ? t[mine] : t.spin
   const [small, big] = t.lines[mine || 'spin']
+  const label = mine ? t[mine] : t.spin
   return (
     <FloatingSlot name="wheel" order={10}>
       <div className="wz-wfloat" dir={lang === 'ar' ? 'rtl' : 'ltr'} lang={lang}>
-        <Link className={`wz-wfloat__btn wz-wfloat--md${mine ? ' is-mine' : ''}`} href={SPIN_PATH} prefetch={false} aria-label={label} title={label}>
-          <span className="wz-wfloat__label" aria-hidden="true">
-            <span className="wz-wfloat__small">{small}</span>
-            <span className="wz-wfloat__big">{big}</span>
+        {/* named by the words it shows plus the action, sr-only (2026-11-17, Lighthouse label-content-name-mismatch: an
+            aria-label that left out "SPIN TO WIN" failed voice control) — the wheel drawing stays hidden */}
+        <Link className={`wz-wfloat__btn wz-wfloat--md${mine ? ' is-mine' : ''}`} href={SPIN_PATH} prefetch={false} title={label}>
+          <span className="wz-wfloat__label">
+            <span className="wz-wfloat__small">{small}</span> <span className="wz-wfloat__big">{big}</span>
+            <span className="wz-sr-only">: {label}</span>
           </span>
           <span className="wz-wfloat__wheel" aria-hidden="true">
             <span className="wz-wfloat__ring" />

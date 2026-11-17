@@ -1531,10 +1531,11 @@
 }
 .wz-wfloat__close {
   position: absolute;
-  inset-block-end: calc(var(--wf-wheel) - 14px);
-  inset-inline-start: -6px;
-  width: 18px;
-  height: 18px;
+  inset-block-end: calc(var(--wf-wheel) - 17px);
+  inset-inline-start: -9px;
+  /* 24 px: Lighthouse target-size (2026-11-17); the ::before below widens the finger's area further */
+  width: 24px;
+  height: 24px;
   padding: 0;
   border-radius: 50%;
   border: 1px solid rgba(255, 240, 176, 0.7);

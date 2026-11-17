@@ -493,7 +493,8 @@ export default function ListingClient({ seedParams = null, heading = null, lead 
                 {/* Pagination — real links (2026-11-14, SEO Phase 1 item 6): every page number is an <a href> to that page's own
                     address (?page=N; page 1 the bare address), so a crawler reaches every product of a listing; a click
                     still turns the page in place, without a reload. The arrows at either end are plain text when there
-                    is nowhere to go. */}
+                    is nowhere to go — and hidden from screen readers then (2026-11-17, Lighthouse aria-prohibited-attr: a
+                    span may not carry a name; a dead end is not a control). */}
                 {totalPages > 1 && (
                   <nav className="wz-pager" aria-label={isRTL ? 'الصفحات' : 'Pages'}>
                     {currentPage > 1 ? (
@@ -512,7 +513,7 @@ export default function ListingClient({ seedParams = null, heading = null, lead 
                         <span>{isRTL ? 'السابق' : 'Prev'}</span>
                       </a>
                     ) : (
-                      <span className="wz-pager-btn wz-pager-edge" aria-disabled="true" aria-label={isRTL ? 'السابق' : 'Previous'}>
+                      <span className="wz-pager-btn wz-pager-edge" aria-hidden="true">
                         {isRTL ? <FiChevronRight /> : <FiChevronLeft />}
                         <span>{isRTL ? 'السابق' : 'Prev'}</span>
                       </span>
@@ -554,7 +555,7 @@ export default function ListingClient({ seedParams = null, heading = null, lead 
                         {isRTL ? <FiChevronLeft /> : <FiChevronRight />}
                       </a>
                     ) : (
-                      <span className="wz-pager-btn wz-pager-edge" aria-disabled="true" aria-label={isRTL ? 'التالي' : 'Next'}>
+                      <span className="wz-pager-btn wz-pager-edge" aria-hidden="true">
                         <span>{isRTL ? 'التالي' : 'Next'}</span>
                         {isRTL ? <FiChevronLeft /> : <FiChevronRight />}
                       </span>

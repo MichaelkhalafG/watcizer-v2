@@ -182,8 +182,6 @@ export default function BfProductCard({
     radios[next].focus()
   }
 
-  // §7.4: brand, title, price, "was" old price, state — one sentence, the pills inside it
-  const name = [brand, title, now, was ? `${t.was} ${was}` : null, soldOut ? t.soldOut : badge === 'new' ? t.isNew : null].filter(Boolean).join(', ')
 
   const rating = product.rating ?? {}
   const showStars = showRating && Number(rating.count) >= 10
@@ -215,7 +213,9 @@ export default function BfProductCard({
 
   return (
     <article className={`bf-card ${density === 'compact' ? 'bf-card--compact' : ''} ${soldOut ? 'is-sold-out' : ''} ${hasPicker ? 'has-picker' : ''} ${engaged ? 'is-engaged' : ''}${offerClass(offer)}`} dir={dir} lang={lang} data-family={product.family}>
-      <Link className="bf-card__link" href={link} aria-label={name}>
+      {/* named by its own text (2026-11-17, Lighthouse label-content-name-mismatch): an aria-label that left out the colours
+          and the discount failed; the words a screen reader needs and the eye does not — "was", the badge — are sr-only */}
+      <Link className="bf-card__link" href={link}>
         {/* `cut_mask` (the home's blended sliders only, 2026-11-05): the mask of this photo's white studio background.
             The photo is drawn as it is; the mask lets the slider's colour show where the white was (homeZone.css). */}
         <div className={`bf-card__tile${product.cut_mask && isPhoto ? ' hl-cut' : ''}`} style={product.cut_mask && isPhoto ? { '--cut': `url("${product.cut_mask}")` } : undefined} aria-hidden="true">
@@ -261,7 +261,8 @@ export default function BfProductCard({
           ) : null}
           {badge ? <span className={`bf-card__badge bf-card__badge--${badge}`}>{badge === 'sold-out' ? t.soldOut : t.isNew}</span> : null}
         </div>
-        <div className="bf-card__body" aria-hidden="true">
+        <div className="bf-card__body">
+          {soldOut || badge === 'new' ? <span className="wz-sr-only">{soldOut ? t.soldOut : t.isNew}, </span> : null}
           <div className="bf-card__brand">{brand}</div>
           <h3 className="bf-card__title">{title}</h3>
           <div className="bf-card__colours">
@@ -277,7 +278,12 @@ export default function BfProductCard({
           <div className="bf-card__price">
             <span className="bf-card__now">{now}</span>
             <span className="bf-card__old">
-              {was ? <s className="bf-card__was">{was}</s> : null}
+              {was ? (
+                <s className="bf-card__was">
+                  <span className="wz-sr-only">{t.was} </span>
+                  {was}
+                </s>
+              ) : null}
               {pct != null ? <span className="bf-card__pct">−{pct}%</span> : null}
             </span>
           </div>
