@@ -332,7 +332,7 @@ final class MediaBackfillRenditionsCommand extends Command
     private function types(): array
     {
         $requested = [];
-        foreach ($this->option('type') as $type) {
+        foreach ((array) $this->option('type') as $type) {
             if (is_string($type) && $type !== '') {
                 $requested[] = $type;
             }

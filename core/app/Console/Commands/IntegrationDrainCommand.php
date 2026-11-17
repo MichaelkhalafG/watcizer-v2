@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Domain\Notifications\OrderMailer;
+use App\Support\Coerce;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 
@@ -31,7 +32,7 @@ final class IntegrationDrainCommand extends Command
 
     public function handle(): int
     {
-        $channel = (string) $this->option('channel');
+        $channel = Coerce::str($this->option('channel'));
         if ($channel === OrderMailer::CHANNEL) {
             $this->error('The `mail` channel is order e-mail: a pending row is a message somebody is waiting for and a sent row is the record that it went out. Use `php artisan mail:drain` (and `mail:drain --report`).');
 

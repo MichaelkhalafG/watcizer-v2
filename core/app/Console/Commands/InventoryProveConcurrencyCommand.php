@@ -6,6 +6,7 @@ use App\Domain\Inventory\Actor;
 use App\Domain\Inventory\InventoryService;
 use App\Domain\Inventory\StockTarget;
 use App\Listeners\EnqueueStockChangedOutbox;
+use App\Support\Coerce;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -44,7 +45,7 @@ final class InventoryProveConcurrencyCommand extends Command
     {
         $stock = max(1, self::intOption($this->option('stock')));
         $workers = max($stock + 1, self::intOption($this->option('workers')));
-        $bucket = (string) $this->option('bucket');
+        $bucket = Coerce::str($this->option('bucket'));
         $column = InventoryService::columns()[$bucket] ?? null;
         if ($column === null) {
             $this->error("--bucket must be express or market (got [{$bucket}]).");

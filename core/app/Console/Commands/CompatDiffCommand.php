@@ -9,6 +9,7 @@ use App\Compat\Diff\DiffReport;
 use App\Compat\Diff\DiffRunner;
 use App\Compat\Diff\Probe;
 use App\Models\Storefront\StorefrontMailbox;
+use App\Support\Coerce;
 use App\Support\WriteTarget;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -291,8 +292,8 @@ class CompatDiffCommand extends Command
     private function refuseIfTargetIsRemote(): bool
     {
         $remote = WriteTarget::remote([
-            'legacy' => $this->option('legacy'),
-            'compat' => $this->option('compat'),
+            'legacy' => Coerce::nstr($this->option('legacy')),
+            'compat' => Coerce::nstr($this->option('compat')),
         ]);
 
         if ($remote === []) {

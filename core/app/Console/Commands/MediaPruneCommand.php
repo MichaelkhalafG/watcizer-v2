@@ -258,7 +258,7 @@ final class MediaPruneCommand extends Command
     {
         // `--type=*` always hands back an array (possibly empty), so no is_array() dance.
         $requested = [];
-        foreach ($this->option('type') as $type) {
+        foreach ((array) $this->option('type') as $type) {
             if (is_string($type) && $type !== '') {
                 $requested[] = $type;
             }

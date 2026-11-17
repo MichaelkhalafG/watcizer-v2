@@ -6,6 +6,7 @@ use App\Domain\Inventory\Actor;
 use App\Domain\Inventory\InsufficientStock;
 use App\Domain\Inventory\InventoryService;
 use App\Domain\Inventory\StockTarget;
+use App\Support\Coerce;
 use Illuminate\Console\Command;
 use Throwable;
 
@@ -66,7 +67,7 @@ final class InventoryRaceWorkerCommand extends Command
                 // stay legal (review 🟠-3).
                 $movement = $inventory->set(
                     self::target($this),
-                    (string) $this->argument('bucket'),
+                    Coerce::str($this->argument('bucket')),
                     (int) $absolute,
                     'manual',
                     null,
@@ -82,7 +83,7 @@ final class InventoryRaceWorkerCommand extends Command
 
             $inventory->adjust(
                 self::target($this),
-                (string) $this->argument('bucket'),
+                Coerce::str($this->argument('bucket')),
                 -(int) $this->argument('qty'),
                 'order',
                 null,

@@ -6,6 +6,7 @@ namespace App\Console\Commands;
 
 use App\Domain\Notifications\StorefrontMailer;
 use App\Models\Storefront\StorefrontMailbox;
+use App\Support\Coerce;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 
@@ -47,7 +48,7 @@ final class MailboxCommand extends Command
 
     public function handle(): int
     {
-        $code = (string) $this->argument('code');
+        $code = Coerce::str($this->argument('code'));
         $storefrontId = DB::table('storefronts')->where('code', $code)->value('id');
         if (! is_numeric($storefrontId)) {
             $this->error("no storefront with code [{$code}]");

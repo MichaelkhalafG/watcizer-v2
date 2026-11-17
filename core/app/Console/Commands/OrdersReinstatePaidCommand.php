@@ -8,6 +8,7 @@ use App\Domain\Inventory\Actor;
 use App\Domain\Notifications\OrderMailer;
 use App\Domain\Orders\LatePayment;
 use App\Domain\Payment\CallbackPolicy;
+use App\Support\Coerce;
 use App\Transform\Row;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -210,7 +211,7 @@ final class OrdersReinstatePaidCommand extends Command
     /** The order's id from `000092` (+ `--storefront`) or `#12166`; prints why when it cannot tell. */
     private function resolveOrder(): ?int
     {
-        $given = trim($this->argument('order'));
+        $given = Coerce::str($this->argument('order'));
         if ($given === '') {
             $this->error('Name the order: its number (000092) or #id.');
 

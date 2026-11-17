@@ -44,7 +44,7 @@ final class SeoStripOriginalityCommand extends Command
         // per run: Artisan reuses one command object within a process (a second call counted the first's changes)
         $this->changed = 0;
         $apply = (bool) $this->option('apply');
-        $only = array_map('intval', (array) $this->option('storefront'));
+        $only = array_map(fn (mixed $v): int => Coerce::int($v), (array) $this->option('storefront'));
         $storefronts = DB::table('storefronts')->where('is_active', 1)->orderBy('id')->pluck('id')->map(fn (mixed $id): int => Coerce::int($id))->all();
         if ($only !== []) {
             $storefronts = array_values(array_intersect($storefronts, $only));

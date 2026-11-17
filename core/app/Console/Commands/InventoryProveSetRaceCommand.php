@@ -6,6 +6,7 @@ use App\Domain\Inventory\Actor;
 use App\Domain\Inventory\InventoryService;
 use App\Domain\Inventory\StockTarget;
 use App\Listeners\EnqueueStockChangedOutbox;
+use App\Support\Coerce;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -49,7 +50,7 @@ final class InventoryProveSetRaceCommand extends Command
     {
         $workers = max(2, self::intOption($this->option('workers')));
         $stock = max($workers, self::intOption($this->option('stock')));
-        $bucket = (string) $this->option('bucket');
+        $bucket = Coerce::str($this->option('bucket'));
         $column = InventoryService::columns()[$bucket] ?? null;
         if ($column === null) {
             $this->error("--bucket must be express or market (got [{$bucket}]).");

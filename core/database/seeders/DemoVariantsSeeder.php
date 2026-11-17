@@ -520,6 +520,6 @@ final class DemoVariantsSeeder extends Seeder
 
     private function say(string $line): void
     {
-        $this->command->line($line);
+        $this->command?->line($line);
     }
 }

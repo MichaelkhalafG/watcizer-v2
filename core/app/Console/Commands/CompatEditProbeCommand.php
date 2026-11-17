@@ -78,8 +78,8 @@ final class CompatEditProbeCommand extends Command
 
     public function handle(HttpKernel $kernel): int
     {
-        $legacy = rtrim((string) $this->option('legacy'), '/');
-        $compat = rtrim((string) $this->option('compat'), '/');
+        $legacy = rtrim(Coerce::str($this->option('legacy')), '/');
+        $compat = rtrim(Coerce::str($this->option('compat')), '/');
         if ($legacy === '' || $compat === '') {
             $this->error('--legacy and --compat are both required: this probe is only meaningful over real HTTP.');
 

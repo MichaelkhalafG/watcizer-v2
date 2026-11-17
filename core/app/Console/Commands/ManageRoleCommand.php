@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Domain\Access\Role;
 use App\Domain\Access\Roles;
 use App\Models\User;
+use App\Support\Coerce;
 use Illuminate\Console\Command;
 
 /**
@@ -38,7 +39,7 @@ final class ManageRoleCommand extends Command
 
     public function handle(Roles $roles): int
     {
-        $action = (string) $this->argument('action');
+        $action = Coerce::str($this->argument('action'));
 
         return match ($action) {
             'list' => $this->listGrants($roles),

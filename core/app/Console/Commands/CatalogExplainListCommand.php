@@ -365,7 +365,7 @@ final class CatalogExplainListCommand extends Command
                 $this->statements[] = [
                     'sql' => $event->sql,
                     'bindings' => array_values($event->bindings),
-                    'time' => $event->time,
+                    'time' => $event->time ?? 0.0,
                 ];
             });
             $this->listening = true;

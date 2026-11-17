@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Domain\Content\WeeklyBatch;
+use App\Support\Coerce;
 use Illuminate\Console\Command;
 
 /**
@@ -24,7 +25,7 @@ final class BlogWeekCommands extends Command
 
             return self::SUCCESS;
         }
-        $shops = $this->option('shop') ? [(string) $this->option('shop')] : ['watchizer', 'brandfashion'];
+        $shops = $this->option('shop') ? [Coerce::str($this->option('shop'))] : ['watchizer', 'brandfashion'];
         foreach ($shops as $shop) {
             $this->info($shop);
             foreach (WeeklyBatch::nextTopics($shop, max(1, (int) $this->option('n'))) as $t) {

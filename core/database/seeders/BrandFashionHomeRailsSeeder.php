@@ -320,6 +320,6 @@ final class BrandFashionHomeRailsSeeder extends Seeder
 
     private function say(string $line): void
     {
-        $this->command->getOutput()->writeln($line);
+        $this->command?->getOutput()->writeln($line);
     }
 }
