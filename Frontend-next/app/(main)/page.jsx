@@ -1,6 +1,6 @@
 import HomeClient from './HomeClient'
 import { getServerV2Menu } from '@/src/lib/serverV2'
-import { slimMenu } from '@/src/lib/menuData'
+import { tilesMenu } from '@/src/lib/menuData'
 import { slimCompatHome } from '@/src/lib/homeData'
 import { safeJsonLd } from '@/src/lib/safeJsonLd'
 import { getServerHome } from '@/src/lib/serverCatalog'
@@ -80,7 +80,9 @@ export default async function HomePage() {
     // never the home's failure: a product that cannot be read leaves the banner without price, stock and facts
     getServerV2ProductForHome(PRODUCT_SLUG).then((page) => (page ? bannerModel(page) : null), () => null),
     // nor is the menu: without it the category row draws each category's own picture and the browser fills the rest
-    getServerV2Menu().then((body) => slimMenu(body?.data || null), () => null),
+    // only what the row reads (2026-11-17, the home's LCP): each sub-category's slug and picture — 45 KB of the page's
+    // data was the whole menu, carried to seed the header's; the header now asks for it once after load, as on every page
+    getServerV2Menu().then((body) => tilesMenu(body?.data || null), () => null),
     // the dashboard's delivery fees, for the shipping policy in the structured data — never the home's failure
     getServerShippingFees().catch(() => null),
   ])

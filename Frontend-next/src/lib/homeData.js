@@ -15,10 +15,13 @@
 // The widest a card's photo is ever drawn is 320 CSS px (picture.js, SIZES), 640 on a 2× screen: a wider rendition
 // in a card's list is never chosen. A list with nothing at or under the cap is left as it is.
 const CARD_MAX = 640
-export const trimSrcset = (list, max = CARD_MAX) => {
+// …and no card asks for less than the 320 rung (src/utils/picture.js CARD_MIN, 2026-11-17): the 160 rung is never sent
+const CARD_MIN = 320
+export const trimSrcset = (list, max = CARD_MAX, min = CARD_MIN) => {
   if (!Array.isArray(list)) return list
   const kept = list.filter((s) => !(Number(s?.width) > max))
-  return kept.length ? kept : list
+  const floor = kept.filter((s) => !(Number(s?.width) < min))
+  return floor.length ? floor : kept.length ? kept : list
 }
 
 // ── compat (`catalog/home`, Watchizer): raw product rows, transformed in the browser by transformProductData ──

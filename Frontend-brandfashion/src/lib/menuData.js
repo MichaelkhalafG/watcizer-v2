@@ -114,3 +114,15 @@ export function warmMenuImages(menu, scope = 'first') {
   }
   for (let k = 0; k < (scope === 'first' ? 6 : 4); k++) next()
 }
+
+// THE HOME'S CATEGORY ROW'S SLICE of the menu (2026-11-17, the home's LCP): each top category's sub-categories with their
+// slug and picture — all CategoryTiles reads. Marked `tiles`, so it never stands in for the whole menu in the cache.
+export function tilesMenu(menu) {
+  if (!menu) return null
+  return {
+    tiles: true,
+    categories: (menu.categories || []).map((top) => ({
+      children: (top.children || []).map((c) => ({ slug: c.slug, image: c.image?.src ? { src: c.image.src } : null })),
+    })),
+  }
+}

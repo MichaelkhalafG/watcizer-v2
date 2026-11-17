@@ -88,11 +88,15 @@ describe("a card's cap and a banner's widths", () => {
     { src: `${host}/m-${w}.webp`, width: w, format: 'webp' },
   ])
 
-  it('leaves the 960 px rendition out of a card, and nothing else', () => {
+  // Changed deliberately (2026-11-17, the home's LCP): a card also leaves out the 160 rung no card is drawn small enough
+  // to choose (CARD_MIN); a list with nothing at 320 or more keeps it
+  it('leaves the 960 px and the 160 px renditions out of a card, and nothing else', () => {
     const s = pictureSources(ladder, CARD_MAX)
-    expect(s.widths).toEqual([160, 320, 480, 640])
-    expect(s.avif.split(', ')).toHaveLength(4)
+    expect(s.widths).toEqual([320, 480, 640])
+    expect(s.avif.split(', ')).toHaveLength(3)
     expect(s.webp).not.toContain('960w')
+    expect(s.webp).not.toContain('160w')
+    expect(pictureSources(ladder.filter((r) => r.width === 160), CARD_MAX).widths).toEqual([160])
     // without a cap the list is whole, as the gallery reads it
     expect(pictureSources(ladder).widths).toEqual([160, 320, 480, 640, 960])
   })

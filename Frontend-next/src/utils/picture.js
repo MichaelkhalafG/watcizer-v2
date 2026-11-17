@@ -17,6 +17,13 @@ export const RENDITION_FORMATS = ['avif', 'webp']
 export const CARD_MAX = 640
 
 /**
+ * The narrowest a CARD can use (2026-11-17, the home's LCP): no card is drawn under 134 CSS px, so even a 1× screen asks
+ * for 160+ and takes the 320 rung; the 160 rung of a card's list was 25 % of every card's srcset bytes, twice (the HTML
+ * and the page's data), for a file no screen chose. Kept only when a list has nothing at or above it.
+ */
+export const CARD_MIN = 320
+
+/**
  * Group a recorded srcset list by format, smallest width first.
  * `max` (the performance pass, 2026-11-05): leave out the renditions wider than this — a card passes CARD_MAX, so
  * its markup does not carry a 960 px file no card can choose. A list with nothing at or under `max` is kept whole.
@@ -24,9 +31,11 @@ export const CARD_MAX = 640
  * @param {number} [max]
  * @returns {{ avif: string|null, webp: string|null, widths: number[] }}
  */
-export function pictureSources(list, max = Infinity) {
+export function pictureSources(list, max = Infinity, min = max === CARD_MAX ? CARD_MIN : 0) {
   const out = { avif: null, webp: null, widths: [] }
   if (!Array.isArray(list) || list.length === 0) return out
+  // a card's list starts at CARD_MIN when it has a rung there (see CARD_MIN)
+  if (min > 0 && list.some((r) => Number(r?.width) >= min && Number(r?.width) <= max)) list = list.filter((r) => !(Number(r?.width) < min))
   const byFormat = { avif: [], webp: [] }
   const widths = new Set()
   for (const r of list) {

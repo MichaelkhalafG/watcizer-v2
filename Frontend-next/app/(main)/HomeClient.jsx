@@ -99,7 +99,8 @@ export default function HomeClient({ initialHome = null, campaign = null, menu =
   // the first hover without a request of its own. A cache that already holds the menu is left alone.
   const queryClient = useQueryClient()
   useEffect(() => {
-    if (menu && queryClient.getQueryState(['menu', STOREFRONT_CODE])?.data === undefined) {
+    // only a WHOLE menu seeds the header's cache (2026-11-17: the home now carries the row's slice alone, `tiles`)
+    if (menu && !menu.tiles && queryClient.getQueryState(['menu', STOREFRONT_CODE])?.data === undefined) {
       queryClient.setQueryData(['menu', STOREFRONT_CODE], menu)
     }
   }, [menu, queryClient])
