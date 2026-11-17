@@ -205,7 +205,8 @@ it('keeps a category\'s OWN image, and shows NOTHING once the team deletes the p
 
 it('serves the mega menu from the storefront\'s own facts: tiles, brands, a featured product, genders, sale', function () {
     $menu = mnMenu();
-    expect(array_keys($menu))->toBe(['categories', 'genders', 'brands', 'sale']);
+    // directory_brands (2026-11-17): the footer directory's brands, proved in SearchExposureTest
+    expect(array_keys($menu))->toBe(['categories', 'genders', 'brands', 'directory_brands', 'sale']);
 
     $categories = T::rows($menu['categories']);
     expect($categories)->not->toBe([]);

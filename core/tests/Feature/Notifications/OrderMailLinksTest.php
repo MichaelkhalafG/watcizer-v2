@@ -144,7 +144,9 @@ const ORDER_MAIL_OWN_LINKS = [
     // the shop's "customer charged, order does not show it" alert (2026-11-05): the same two buttons
     'payment-alert-admin.blade.php' => ['telUrl', 'waUrl'],
     // the verified-review request (SEO Phase 5, 2026-11-14): one button to the shop's own review page, pinned below
-    'review-request.blade.php' => ['url'],
+    // and since 2026-11-17 the shop's Google review buttons, `$g` of the `$google` list the mailable hands it
+    // (Reviews::googleLinks: only https Google links saved on the dashboard, checked by its own validation)
+    'review-request.blade.php' => ['url', 'g'],
 ];
 
 it('every ORDER mail template links only variables the order builder declares', function () {

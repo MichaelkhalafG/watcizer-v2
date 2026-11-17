@@ -53,6 +53,12 @@ final class ReviewBranchesCommand extends Command
         return 'https://search.google.com/local/writereview?placeid='.$place;
     }
 
+    /** The backup table's CREATE, public so a test can make it on another connection first (Tests\Support\SideDdl). */
+    public static function backupDdl(): string
+    {
+        return 'CREATE TABLE IF NOT EXISTS '.self::BACKUP.' (store_id BIGINT UNSIGNED NOT NULL PRIMARY KEY, google_review_url VARCHAR(500) NULL, review_key VARCHAR(32) NULL, whatsapp_review_template TEXT NULL, created_at TIMESTAMP NULL)';
+    }
+
     public function handle(): int
     {
         if (! DB::getSchemaBuilder()->hasColumn('storefront_pickup_stores', 'review_key')) {
@@ -65,7 +71,7 @@ final class ReviewBranchesCommand extends Command
         }
         $apply = (bool) $this->option('apply');
         if ($apply && ! DB::getSchemaBuilder()->hasTable(self::BACKUP)) {
-            DB::statement('CREATE TABLE '.self::BACKUP.' (store_id BIGINT UNSIGNED NOT NULL PRIMARY KEY, google_review_url VARCHAR(500) NULL, review_key VARCHAR(32) NULL, whatsapp_review_template TEXT NULL, created_at TIMESTAMP NULL)');
+            DB::statement(self::backupDdl());
         }
         $set = 0;
         $problems = 0;
@@ -79,7 +85,8 @@ final class ReviewBranchesCommand extends Command
 
                 continue;
             }
-            $r = Row::cast($rows->first());
+            $first = $rows->first();
+            $r = Row::cast(is_object($first) ? $first : (object) []);
             $id = Row::int($r, 'id');
             $want = ['google_review_url' => self::googleUrl($b['place']), 'review_key' => $b['key'], 'whatsapp_review_template' => $b['template']];
             $changes = [];

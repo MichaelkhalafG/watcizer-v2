@@ -183,6 +183,8 @@ it('names EVERY table the dashboard authors, in order, so adding one is a delibe
          * rebuild that dropped them would delete every review and the link of every request still open.
          */
         'review_requests', 'product_reviews',
+        // each branch's in-store review scans (2026-11-17, release part 3)
+        'storefront_review_scans',
     ]);
 
     foreach (CoreChecksumCommand::DASHBOARD_TABLES as $table) {

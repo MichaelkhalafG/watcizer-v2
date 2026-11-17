@@ -60,6 +60,9 @@ function storefrontCalls(): array
                         str_contains($p[1], 'provider') => 'google',
                         // a review link's token (SEO Phase 5, 2026-11-14): the route takes exactly 40 letters and digits
                         str_contains($p[1], 'token') => str_repeat('a', 40),
+                        // a branch's in-store review address (2026-11-17): the route takes 2 to 32 lowercase letters,
+                        // digits and hyphens, like the seeded `arkadia`
+                        $p[1] === 'key' => 'arkadia',
                         default => '1',
                     }, $raw), '/');
                     // Apache's REQUEST_URI carries no query string, and routes match the path alone.

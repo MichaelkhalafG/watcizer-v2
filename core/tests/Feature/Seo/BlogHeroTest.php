@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Tests\Support\CatalogFixture;
 use Tests\Support\Shops;
+use Tests\Support\SideDdl;
 use Tests\Support\T;
 
 use function Pest\Laravel\withHeaders;
@@ -146,6 +147,9 @@ it('stores a cover path in one form and never doubles the upload folder', functi
 });
 
 it('runs blog:heroes as a dry run by default, backs up and undoes with --apply / --undo', function () {
+    // first, before anything is read: else the command's CREATE commits this test's transaction (or, made on the
+    // side, the snapshot predates the table and MariaDB answers 1412)
+    SideDdl::run(BlogHeroesCommand::backupDdl(), freshSnapshot: true);
     $p = heroProduct('herotest-four', 'Herotest Four Field');
     $brand = T::int(DB::table('catalog_products')->where('id', $p)->value('brand_id'));
     $id = heroArticle('herotest-four-field-watch', $brand);

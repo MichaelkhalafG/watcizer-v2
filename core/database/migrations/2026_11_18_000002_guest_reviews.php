@@ -46,16 +46,15 @@ return new class extends Migration
                 $t->unique(['storefront_id', 'review_key'], 'pickup_stores_review_key_unique');
             });
         }
-        if (! Schema::hasTable('storefront_review_scans')) {
-            Schema::create('storefront_review_scans', function (Blueprint $t): void {
-                $t->id();
-                $t->unsignedBigInteger('store_id');
-                $t->date('day');
-                $t->unsignedInteger('scans')->default(0);
-                $t->timestamps();
-                $t->unique(['store_id', 'day'], 'review_scans_store_day_unique');
-            });
-        }
+        // a dashboard table survives the clean-side drop, so its creation must survive the migrate (RebuildSurvivesTest)
+        Schema::hasTable('storefront_review_scans') or Schema::create('storefront_review_scans', function (Blueprint $t): void {
+            $t->id();
+            $t->unsignedBigInteger('store_id');
+            $t->date('day');
+            $t->unsignedInteger('scans')->default(0);
+            $t->timestamps();
+            $t->unique(['store_id', 'day'], 'review_scans_store_day_unique');
+        });
     }
 
     public function down(): void

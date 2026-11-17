@@ -108,7 +108,13 @@ final class BlogHeroesCommand extends Command
         if (DB::getSchemaBuilder()->hasTable(self::BACKUP)) {
             return;
         }
-        DB::statement('CREATE TABLE '.self::BACKUP.' (blog_id BIGINT UNSIGNED NOT NULL PRIMARY KEY, cover_path VARCHAR(255) NULL, hero_image_id BIGINT UNSIGNED NULL, hero_source VARCHAR(16) NULL, hero_picked_at TIMESTAMP NULL, alt_en VARCHAR(255) NULL, alt_ar VARCHAR(255) NULL, created_at TIMESTAMP NULL)');
+        DB::statement(self::backupDdl());
+    }
+
+    /** The backup table's CREATE, public so a test can make it on another connection first (Tests\Support\SideDdl). */
+    public static function backupDdl(): string
+    {
+        return 'CREATE TABLE IF NOT EXISTS '.self::BACKUP.' (blog_id BIGINT UNSIGNED NOT NULL PRIMARY KEY, cover_path VARCHAR(255) NULL, hero_image_id BIGINT UNSIGNED NULL, hero_source VARCHAR(16) NULL, hero_picked_at TIMESTAMP NULL, alt_en VARCHAR(255) NULL, alt_ar VARCHAR(255) NULL, created_at TIMESTAMP NULL)';
     }
 
     /** The article as it is now, once (INSERT IGNORE: a later run never overwrites the first backup). */

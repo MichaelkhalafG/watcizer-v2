@@ -9,7 +9,8 @@ import { Ltr } from '@/components/ui/bidi';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input, Select, Textarea } from '@/components/ui/input';
-import { useT } from '@/lib/i18n';
+import { useLocale, useT } from '@/lib/i18n';
+import { localisedTitle } from '@/lib/title';
 import type { TablePayload } from '@/types';
 
 /**
@@ -78,6 +79,7 @@ function xsrf(): string {
 
 export default function ReviewsIndex({ storefront, status, counts, summary, emails_on, table, requests, branches }: Props) {
     const t = useT();
+    const locale = useLocale();
     const [rows, setRows] = useState<Branch[]>(branches);
     const [copied, setCopied] = useState<number | null>(null);
     const setBranch = (id: number, patch: Partial<Branch>) => setRows((prev) => prev.map((b) => (b.id === id ? { ...b, ...patch } : b)));
@@ -240,7 +242,7 @@ export default function ReviewsIndex({ storefront, status, counts, summary, emai
                     {rows.map((b) => (
                         <div key={b.id} className="space-y-3 rounded border p-3">
                             <p className="flex flex-wrap items-center gap-2 text-sm font-medium">
-                                <span dir="auto">{b.name.ar}</span>
+                                <span dir="auto">{localisedTitle(b.name, locale).text}</span>
                                 {b.is_active ? null : <Badge variant="neutral">{t('reviews.branch_off', 'الفرع موقوف')}</Badge>}
                                 <span className="text-xs text-muted-foreground">
                                     {t('reviews.scans', 'مرات المسح: :n في آخر 30 يومًا (:total إجمالًا)', { n: b.scans_30_days, total: b.scans_total })}

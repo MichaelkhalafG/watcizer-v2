@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\RateLimiter;
 use Tests\Support\CatalogFixture;
+use Tests\Support\SideDdl;
 use Tests\Support\Staff;
 use Tests\Support\T;
 
@@ -65,6 +66,21 @@ it('publishes a guest review at once — a one-star review too — and shows it 
         ->and(strlen(T::str($row->email_hash)))->toBe(64);
     $reviews = T::arr(getJson("/api/v2/watchizer/products/{$p['slug']}")->assertOk()->json('product.reviews'));
     expect($reviews['count'])->toBe(1);
+});
+
+it('writes a guest review under the storefront of its path, never the other shop', function () {
+    // the tripwire in OrderStorefrontTest names this route only because of this proof
+    $both = CatalogFixture::product('watch', 2500.0);
+    CatalogFixture::onStorefront($both, true, 1);
+    CatalogFixture::onStorefront($both, true, 2);
+    $watchizerOnly = guestProduct();
+    app(StorefrontCache::class)->flush(2);
+
+    postJson('/api/v2/brandfashion/reviews/guest', guestBody($both))->assertCreated();
+    expect(DB::table('product_reviews')->where('product_id', $both)->pluck('storefront_id')->map(fn ($v) => T::int($v))->all())->toBe([2]);
+
+    postJson('/api/v2/brandfashion/reviews/guest', guestBody($watchizerOnly['id']))->assertNotFound();
+    expect(DB::table('product_reviews')->where('product_id', $watchizerOnly['id'])->count())->toBe(0);
 });
 
 it('holds a review with a link or a phone number for the team, whatever its stars', function () {
@@ -139,6 +155,7 @@ it('checks Turnstile when its keys are set: a failed check is refused, an unreac
 });
 
 it("sets the branches' Google links by stable key, shows the buttons, and counts each branch's in-store scans", function () {
+    SideDdl::run(ReviewBranchesCommand::backupDdl());     // else the command's CREATE commits this test's transaction
     Artisan::call('reviews:branches', ['--apply' => true]);
     $links = Reviews::googleLinks(2);
     expect(array_column($links, 'key'))->toBe(['arkadia', 'heliopolis'])

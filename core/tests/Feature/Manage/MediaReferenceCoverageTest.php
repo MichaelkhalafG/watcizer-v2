@@ -36,7 +36,15 @@ const NOT_MEDIA = [
     // URL paths for the A-17 twin redirects, not files on disk.
     'storefront_redirects.from_path',
     'storefront_redirects.to_path',
+    // An article picture's ALT TEXT in each language (2026-11-17), words for a screen reader, not a file.
+    'core_blog_translations.cover_alt',
 ];
+
+/**
+ * A deploy's backup snapshot (`bk_…`, `bf_bak_…`): a copy of rows as they were before a release step, read only by
+ * that step's undo. It holds no reference of its own, and a test database keeps the (empty) table a command test made.
+ */
+const SNAPSHOT_TABLE = '/^(bk_|bf_bak_)/';
 
 /**
  * Every media-shaped column in the shared schema: name matches, type is string-ish.
@@ -60,7 +68,7 @@ function mediaShapedColumns(): array
         $row = T::row($raw);
         $table = Row::str($row, 't');
         $column = Row::str($row, 'c');
-        if (in_array("{$table}.{$column}", NOT_MEDIA, true)) {
+        if (in_array("{$table}.{$column}", NOT_MEDIA, true) || preg_match(SNAPSHOT_TABLE, $table) === 1) {
             continue;
         }
         $out[$table][] = $column;

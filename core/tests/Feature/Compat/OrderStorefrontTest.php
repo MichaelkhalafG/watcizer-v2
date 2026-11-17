@@ -220,6 +220,9 @@ it('has no NULL branch left in the payment callback, and knows every v2 write ro
         // a verified review (SEO Phase 5, 2026-11-14): saved only for a review link of the PATH's storefront, proved in
         // ReviewsTest › "takes a review only through a link of the path's own shop"
         'api/v2/{storefront}/reviews',
+        // a guest review from the product page (2026-11-17): saved under the PATH's storefront and refused for a product
+        // that is not on it, proved in GuestReviewsTest › "writes a guest review under the storefront of its path"
+        'api/v2/{storefront}/reviews/guest',
         // the wheel's claim (2026-11-10): writes only a spin of the PATH's storefront (Wheel::claim → spinByPhone with the path's
         // id), proved in WheelTest › "saves any code to an account" (claimed and listed through /api/v2/watchizer)
         'api/v2/{storefront}/wheel/claim',
