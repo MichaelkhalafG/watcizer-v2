@@ -9,6 +9,7 @@ import { blogPath, decodedSlug } from '@/src/lib/blogPath'
 import { faqOf, listedBlocks } from '@/src/lib/dataBlocks'
 import { TRUST_PAGES } from '@/src/content/trustPages'
 import { SHOP_NAME } from '@/src/lib/siteAddress'
+import { heroShareImage } from '@/src/lib/blogHero'
 
 const SHOP = SHOP_NAME
 
@@ -54,6 +55,8 @@ export async function generateMetadata({ params }) {
   const description = ownLang(blog.meta_description, urlLang) || plain(inLang(blog.body, urlLang), 160, blog.format)
   const u = urls(blog)
   const canonical = urlLang === 'ar' ? u.ar : u.en
+  // the article's hero picture (2026-11-17): the same one the page draws and its Article markup names, with its alt
+  const share = heroShareImage(blog, urlLang)
   return {
     title,
     description,
@@ -66,9 +69,9 @@ export async function generateMetadata({ params }) {
       siteName: SHOP,
       publishedTime: blog.published_at,
       modifiedTime: blog.modified_at || blog.published_at,
-      ...(blog.cover ? { images: [{ url: blog.cover }] } : {}),
+      ...(share ? { images: [share] } : {}),
     },
-    twitter: { card: 'summary_large_image', title, description, ...(blog.cover ? { images: [blog.cover] } : {}) },
+    twitter: { card: 'summary_large_image', title, description, ...(share ? { images: [{ url: share.url, alt: share.alt }] } : {}) },
   }
 }
 
@@ -84,6 +87,7 @@ export default async function BlogPage({ params }) {
   const headline = inLang(blog.title, urlLang)
   const blocks = blog.format === 'markdown' ? listedBlocks(text, blog.blocks || {}) : []
   const firstImage = blocks.flatMap((b) => b.block.items || []).find((i) => i.image?.src)?.image?.src
+  const share = heroShareImage(blog, urlLang)
   const faq = blog.format === 'markdown' ? faqOf(text) : []
   const graph = [
     {
@@ -92,7 +96,12 @@ export default async function BlogPage({ params }) {
       headline,
       description: ownLang(blog.meta_description, urlLang) || plain(text, 200, blog.format),
       inLanguage: urlLang,
-      ...(blog.cover || firstImage ? { image: blog.cover || firstImage } : {}),
+      // the hero picture as an ImageObject with its size and caption (2026-11-17), else the first product block's photo
+      ...(share
+        ? { image: { '@type': 'ImageObject', url: share.url, ...(share.width ? { width: share.width } : {}), ...(share.height ? { height: share.height } : {}), caption: share.alt } }
+        : firstImage
+          ? { image: firstImage }
+          : {}),
       datePublished: blog.published_at,
       dateModified: blog.modified_at || blog.published_at,
       // the shop's team, never a person (BUSINESS FACTS 8): an Organization with its author page

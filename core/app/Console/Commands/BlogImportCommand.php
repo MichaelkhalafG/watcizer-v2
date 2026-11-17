@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Domain\Content\ArabicSlug;
+use App\Domain\Content\BlogHero;
 use App\Domain\Content\BlogSafety;
 use App\Domain\Content\QualityGate;
 use App\Support\Coerce;
@@ -147,7 +148,9 @@ final class BlogImportCommand extends Command
             // written directly, not through BlogWriter::save: an unpublished article is in no sitemap, so the sixty
             // sitemap rebuilds a batch would cost through the writer are skipped (the publisher rebuilds on publication)
             $id = DB::transaction(function () use ($id, $sf, $row, $en, $ar): int {
-                $fields = ['storefront_id' => $sf, 'slug' => $row['slug'], 'cover_path' => ($en['meta']['cover'] ?? '') ?: null, 'body_format' => 'markdown', 'updated_at' => now(),
+                // the hero picture is the rule's, picked below (BlogHero, 2026-11-17) — never the article file's `cover:`, which
+                // named a path the address doubled; an article that already has a hero keeps it
+                $fields = ['storefront_id' => $sf, 'slug' => $row['slug'], 'body_format' => 'markdown', 'updated_at' => now(),
                     'slug_ar' => ArabicSlug::unique($sf, ($ar['meta']['slug'] ?? '') ?: ($ar['meta']['title'] ?? ''), $id) ?: null];
                 if ($id === null) {
                     $id = (int) DB::table('core_blogs')->insertGetId($fields + ['created_at' => now(), 'published_at' => null]);
@@ -172,6 +175,10 @@ final class BlogImportCommand extends Command
                 'publish_attempts' => 0,
                 'publish_error' => null,
             ]);
+            // a new article gets its hero by the same rule as every other (in stock, visible, not kept from search)
+            if (BlogHero::ready()) {
+                app(BlogHero::class)->ensure($id);
+            }
         }
         // the safety net (SEO Phase 5): too large a share held → this shop's publishing pauses, and the team is told
         if (BlogSafety::afterImport($sf, count($passed), count($held))) {

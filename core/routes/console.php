@@ -166,6 +166,9 @@ Schedule::command('blog:publish-due')->everyTenMinutes()->withoutOverlapping();
 // LIVING ARTICLES (SEO Phase 3): every night the articles' data blocks are re-resolved; a real change dates and announces
 // the article (at most 20 a shop a night), stale prose is flagged needs-update. 04:40, after the backup and the prunes.
 Schedule::command('blog:refresh-blocks')->dailyAt('04:40')->withoutOverlapping();
+// THE HEROES (2026-11-17): an article without a picture, or whose automatic hero's product has since been kept from
+// search or removed, gets one by the rule (BlogHero); the team's choices and every valid hero are left as they are.
+Schedule::command('blog:heroes --apply')->dailyAt('04:55')->withoutOverlapping();
 
 // VERIFIED REVIEWS (SEO Phase 5): the review links of orders delivered a few days ago; e-mailed only while
 // REVIEW_REQUESTS_ENABLED is on (the team can always send a link on WhatsApp from the Reviews screen).

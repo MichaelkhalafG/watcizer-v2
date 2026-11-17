@@ -6,6 +6,7 @@ namespace App\Compat;
 
 use App\Domain\Content\DataBlocks;
 use App\Storefront\ImageUrl;
+use App\Storefront\StorefrontUrls;
 use App\Support\Coerce;
 use App\Transform\Row;
 use Illuminate\Database\Query\Builder;
@@ -36,6 +37,7 @@ final class CompatBlogs
             $out[] = [
                 'slug' => Row::str($row, 'slug'),
                 'cover' => $this->cover(Row::nstr($row, 'cover_path')),
+                'hero' => $this->hero(Row::nstr($row, 'cover_path'), $tr),
                 'published_at' => self::iso(Row::str($row, 'published_at')),
                 ...self::about($row),
                 'title' => ['en' => $tr['en']['title'], 'ar' => $tr['ar']['title']],
@@ -63,6 +65,8 @@ final class CompatBlogs
         return [
             'slug' => Row::str($row, 'slug'),
             'cover' => $this->cover(Row::nstr($row, 'cover_path')),
+            // the hero picture (2026-11-17): its renditions, size and alt text per language, and the product it shows
+            'hero' => $this->hero(Row::nstr($row, 'cover_path'), $tr),
             'published_at' => self::iso(Row::str($row, 'published_at')),
             ...self::about($row),
             // How to read `body` (M2d): 'text' (plain paragraphs, "## ", "- " — written before the
@@ -150,10 +154,10 @@ final class CompatBlogs
         return DB::table('core_blogs as b')->where('b.storefront_id', $this->storefrontId)->whereNotNull('b.published_at')->where('b.published_at', '<=', now());
     }
 
-    /** @return array{en: array{title: string, body: string, meta_title: string, meta_description: string}, ar: array{title: string, body: string, meta_title: string, meta_description: string}} */
+    /** @return array{en: array{title: string, body: string, meta_title: string, meta_description: string, cover_alt: string}, ar: array{title: string, body: string, meta_title: string, meta_description: string, cover_alt: string}} */
     private static function translations(int $blogId): array
     {
-        $empty = ['title' => '', 'body' => '', 'meta_title' => '', 'meta_description' => ''];
+        $empty = ['title' => '', 'body' => '', 'meta_title' => '', 'meta_description' => '', 'cover_alt' => ''];
         $out = ['en' => $empty, 'ar' => $empty];
         foreach (DB::table('core_blog_translations')->where('blog_id', $blogId)->whereIn('locale', ['en', 'ar'])->get() as $raw) {
             $row = Row::cast($raw);
@@ -163,6 +167,7 @@ final class CompatBlogs
                 'body' => Row::nstr($row, 'body') ?? '',
                 'meta_title' => Row::nstr($row, 'meta_title') ?? '',
                 'meta_description' => Row::nstr($row, 'meta_description') ?? '',
+                'cover_alt' => property_exists($row, 'cover_alt') ? (Row::nstr($row, 'cover_alt') ?? '') : '',
             ];
         }
 
@@ -205,6 +210,60 @@ final class CompatBlogs
     /** The cover on THIS storefront's image host (COMPAT-ASSET-HOST, 2026-10-14); the default shop's expression is unchanged. */
     private function cover(?string $path): ?string
     {
-        return $path === null || $path === '' ? null : ImageUrl::srcFor($this->storefrontId, $path);
+        $path = self::stored($path);
+
+        return $path === null ? null : ImageUrl::srcFor($this->storefrontId, $path);
+    }
+
+    /**
+     * A cover path in its one stored form (2026-11-17): "Product_image/x.webp". The SEO article files stored
+     * "/Uploads_Images/Product_image/x.webp", and the address doubled the folder (every hero showed only its alt text);
+     * the blog_hero migration rewrote the rows, and this keeps any row written the old way from breaking again.
+     */
+    public static function stored(?string $path): ?string
+    {
+        $p = ltrim((string) preg_replace('#^/?Uploads_Images/#', '', trim((string) $path)), '/');
+
+        return $p === '' ? null : $p;
+    }
+
+    /**
+     * THE HERO PICTURE (2026-11-17): the cover as a picture the page can size — its renditions (the catalogue photo's
+     * own, when the cover is one), its size, its alt text in both languages (the product's titles, else the article's),
+     * and the product it shows on THIS storefront (its page, for the caption). Null without a cover.
+     *
+     * @param  array{en: array{title: string, cover_alt: string}, ar: array{title: string, cover_alt: string}}  $tr
+     * @return array{src: string, srcset: list<array{src: string, width: int, format: string}>, width: ?int, height: ?int, alt: array{en: string, ar: string}, product: ?array{slug: string, title: array{en: string, ar: string}}}|null
+     */
+    private function hero(?string $path, array $tr): ?array
+    {
+        $path = self::stored($path);
+        if ($path === null) {
+            return null;
+        }
+        $img = DB::table('catalog_product_images')->where('path', $path)->orderBy('id')->first(['product_id', 'width', 'height', 'renditions']);
+        $img = $img === null ? null : Row::cast($img);
+        $renditions = $img === null ? null : json_decode(Row::nstr($img, 'renditions') ?? 'null', true);
+        $base = $this->storefrontId === config()->integer('compat.storefront_id') ? null : StorefrontUrls::assetBase($this->storefrontId);
+        $object = ImageUrl::object($path, $img === null ? null : Row::nint($img, 'width'), $img === null ? null : Row::nint($img, 'height'), null, is_array($renditions) ? $renditions : null, $base);
+        $alt = fn (string $l): string => $tr[$l]['cover_alt'] !== '' ? $tr[$l]['cover_alt'] : $tr[$l]['title'];
+        $product = null;
+        if ($img !== null) {
+            $pid = Row::int($img, 'product_id');
+            $slug = DB::table('storefront_product')->where('storefront_id', $this->storefrontId)->where('product_id', $pid)->where('is_visible', 1)->value('slug');
+            if (is_string($slug) && $slug !== '') {
+                $names = DB::table('catalog_product_translations')->where('product_id', $pid)->whereIn('locale', ['en', 'ar'])->pluck('title', 'locale')->all();
+                $product = ['slug' => $slug, 'title' => ['en' => Coerce::str($names['en'] ?? ''), 'ar' => Coerce::str($names['ar'] ?? '')]];
+            }
+        }
+
+        return [
+            'src' => $object['src'],
+            'srcset' => $object['srcset'],
+            'width' => $object['width'],
+            'height' => $object['height'],
+            'alt' => ['en' => $alt('en'), 'ar' => $alt('ar')],
+            'product' => $product,
+        ];
     }
 }

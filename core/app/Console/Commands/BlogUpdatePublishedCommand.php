@@ -130,7 +130,10 @@ final class BlogUpdatePublishedCommand extends Command
             $id = $p['id'];
             $storedAr = Coerce::str(DB::table('core_blogs')->where('id', $id)->value('slug_ar'));
             $typedAr = $storedAr !== '' ? $storedAr : (ArabicSlug::unique($sf, ($p['ar']['meta']['slug'] ?? '') ?: ($p['ar']['meta']['title'] ?? ''), $id) ?: '');
-            $cover = Coerce::str($p['en']['meta']['cover'] ?? '') ?: Coerce::str(DB::table('core_blogs')->where('id', $id)->value('cover_path'));
+            // the article's own hero stays (2026-11-17: picked by the rule or chosen by the team); the file's cover only
+            // for an article that has none yet
+            $stored = Coerce::str(DB::table('core_blogs')->where('id', $id)->value('cover_path'));
+            $cover = $stored !== '' ? $stored : Coerce::str($p['en']['meta']['cover'] ?? '');
             $en = self::text($p['en']);
             $ar = self::text($p['ar']);
             $writer->save($id, [

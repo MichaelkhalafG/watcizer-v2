@@ -307,6 +307,17 @@ final class BlogController
         }
 
         $cover = Row::nstr($blog, 'cover_path');
+        // the hero picture (2026-11-17): who chose it, and the product it shows
+        $heroSource = property_exists($blog, 'hero_source') ? Row::nstr($blog, 'hero_source') : null;
+        $heroImage = property_exists($blog, 'hero_image_id') ? Row::nint($blog, 'hero_image_id') : null;
+        $heroProduct = null;
+        if ($heroImage !== null) {
+            $pid = DB::table('catalog_product_images')->where('id', $heroImage)->value('product_id');
+            if (is_numeric($pid)) {
+                $name = DB::table('catalog_product_translations')->where('product_id', (int) $pid)->where('locale', 'en')->value('title');
+                $heroProduct = ['id' => (int) $pid, 'title' => is_string($name) ? $name : ''];
+            }
+        }
 
         return [
             'id' => Row::int($blog, 'id'),
@@ -314,6 +325,8 @@ final class BlogController
             'storefront_id' => Row::int($blog, 'storefront_id'),
             'cover_path' => $cover,
             'cover_url' => $cover === null ? null : ImageUrl::src($cover),
+            'hero_source' => $heroSource,
+            'hero_product' => $heroProduct,
             // 'text' for an article written before the Markdown editor (M2d), 'markdown' after.
             'body_format' => Row::nstr($blog, 'body_format') === 'markdown' ? 'markdown' : 'text',
             'is_published' => Row::nstr($blog, 'published_at') !== null,

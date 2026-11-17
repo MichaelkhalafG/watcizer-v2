@@ -518,3 +518,6 @@ src/Components/Footer/FootContact.jsx
 # src/content/trustMetadata.js, the faq, hot-deals and flash-sale pages, src/lib/collectionListing.jsx.
 src/lib/defaultOg.js
 tests/defaultOg.test.mjs
+# 2026-11-17 (the article page as a magazine, the hero picture): TWO NEW TWINS - src/lib/blogHero.js (one reading of core's stored hero for the page, og:image and the Article markup) and tests/blogHero.test.mjs. Changed on both sides and still twins: app/(main)/blog/[name]/BlogClient.jsx and page.jsx, src/Components/Blog/article.css (the magazine styles, which outrank each shop's own blog.css).
+src/lib/blogHero.js
+tests/blogHero.test.mjs

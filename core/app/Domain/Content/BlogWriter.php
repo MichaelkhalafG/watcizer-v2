@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Domain\Content;
 
 use App\Compat\CatalogWarmer;
+use App\Compat\CompatBlogs;
 use App\Compat\CompatLocaleSitemap;
 use App\Domain\Seo\IndexNow;
 use App\Support\Coerce;
@@ -65,6 +66,8 @@ final class BlogWriter
             // the Arabic address (SEO Phase 3, 2026-11-14) — optional: made from the Arabic title until first published
             'slug_ar' => ['nullable', 'string', 'max:191'],
             'cover_path' => ['nullable', 'string', 'max:255'],
+            // the hero picture from a product (2026-11-17): its code (wa_code, import key or id); the photo is its cover
+            'hero_product' => ['nullable', 'string', 'max:64'],
             'is_published' => ['required', 'boolean'],
             // Which storefront shows it (M2b, 2026-10-01): articles are per storefront.
             'storefront_id' => ['required', 'integer', 'exists:storefronts,id'],
@@ -116,14 +119,46 @@ final class BlogWriter
 
         $slug = self::slugFor($data, $titles, $id);
 
-        $savedId = DB::transaction(function () use ($id, $data, $titles, $bodies, $published, $slug): int {
+        /*
+         * THE HERO PICTURE (2026-11-17). A product named in the form is checked BEFORE anything is written — the same
+         * rule as the automatic pick: visible on the article's shop, not kept from search. An uploaded or changed cover
+         * is the team's choice (hero_source = dashboard), which the rule never replaces; an emptied cover hands the
+         * article back to the rule, which picks again after the save.
+         */
+        $heroPick = null;
+        $heroCode = trim(Coerce::str($data['hero_product'] ?? null));
+        if ($heroCode !== '' && BlogHero::ready()) {
+            $heroPick = app(BlogHero::class)->productPick(Coerce::int($data['storefront_id'] ?? null, 1), $heroCode);
+            if (is_string($heroPick)) {
+                throw ValidationException::withMessages(['hero_product' => match ($heroPick) {
+                    'kept-from-search' => ManageText::t('blogs.hero_kept', 'هذا المنتج محجوب عن محركات البحث، فلا تُستخدم صورته في مقال. اختر منتجًا آخر.'),
+                    'not-on-shop' => ManageText::t('blogs.hero_not_on_shop', 'هذا المنتج غير ظاهر على متجر هذا المقال.'),
+                    'no-photo' => ManageText::t('blogs.hero_no_photo', 'هذا المنتج بلا صورة.'),
+                    default => ManageText::t('blogs.hero_not_found', 'لا يوجد منتج بهذا الكود.'),
+                }]);
+            }
+        }
+        $cover = CompatBlogs::stored(Coerce::nstr($data['cover_path'] ?? null));
+
+        $savedId = DB::transaction(function () use ($id, $data, $titles, $bodies, $published, $slug, $cover): int {
             $row = [
                 'slug' => $slug,
                 'storefront_id' => Coerce::int($data['storefront_id'] ?? null, 1),
-                'cover_path' => Coerce::nstr($data['cover_path'] ?? null),
+                'cover_path' => $cover,
                 'body_format' => 'markdown',
                 'updated_at' => now(),
             ];
+            if (BlogHero::ready()) {
+                $storedCover = $id === null ? null : CompatBlogs::stored(Coerce::nstr(DB::table('core_blogs')->where('id', $id)->value('cover_path')));
+                if ($cover === null && $storedCover !== null) {
+                    // emptied: back to the rule
+                    $row += ['hero_image_id' => null, 'hero_source' => null, 'hero_picked_at' => null];
+                } elseif ($cover !== null && $cover !== $storedCover) {
+                    // a cover the team uploaded or typed: theirs; a catalogue photo keeps its image row
+                    $image = DB::table('catalog_product_images')->where('path', $cover)->orderBy('id')->value('id');
+                    $row += ['hero_image_id' => is_numeric($image) ? (int) $image : null, 'hero_source' => BlogHero::DASHBOARD, 'hero_picked_at' => now()];
+                }
+            }
 
             /*
              * SEO Phase 3 (2026-11-14): the status follows the switch (a scheduled or held article saved as a draft keeps
@@ -185,6 +220,10 @@ final class BlogWriter
 
             return $id;
         });
+        if (BlogHero::ready()) {
+            // the team's product, or the rule's picture for an article that has none (a new one, an emptied cover)
+            is_array($heroPick) ? app(BlogHero::class)->save($savedId, $heroPick, BlogHero::DASHBOARD) : app(BlogHero::class)->ensure($savedId);
+        }
         self::sitemapsChanged($savedId);
 
         return $savedId;
