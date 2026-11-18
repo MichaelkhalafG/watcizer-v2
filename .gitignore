@@ -79,3 +79,8 @@ graphify-out/
 # deploy archives
 *.tar.gz
 exclude.txt
+
+# Search Console exports, a database inventory with business figures, and working screenshots (2026-11-18): local only
+core/docs/gsc/
+core/docs/seo/seo-probe-*.txt
+screenshots/
