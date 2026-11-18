@@ -1,4 +1,5 @@
 import { productUrl, offerUrl } from '../utils/productUrl'
+import { reviewsLd } from './reviewsLd'
 import { buildListingParams } from '../utils/listingParams'
 import { localePath } from '../utils/localePath'
 import { brandPageOf } from './menuLinks'
@@ -59,7 +60,7 @@ const toMetadata = ({ title, seoDesc, canonicalUrl, ogTitle, ogImage, languages 
 // below are the fallback, unchanged.
 const META_TITLE_MIN = 20
 
-export function buildProductSeo(product, { ratings = [], tables = null, lang = 'en', localized = null, meta = null, v2 = null, fees = null } = {}) {
+export function buildProductSeo(product, { tables = null, lang = 'en', localized = null, meta = null, v2 = null, fees = null } = {}) {
   const ar = lang === 'ar'
   // WHAT SEARCH ENGINES AND AI ARE SHOWN of it (2026-11-14, core's SearchExposure — the dashboard's switch, else the
   // rule): `hidden` = noindex,follow and no Product structured data; `restricted` (a matched Rolex) = indexable, but
@@ -143,26 +144,9 @@ export function buildProductSeo(product, { ratings = [], tables = null, lang = '
       : `${name}${brand ? ` – ${brand}` : ''} | Watchizer`)
   const ogImage = images[0] || `${SEO_DOMAIN}/og-image.jpg`
 
-  // Live review count/avg for aggregateRating (only emitted when reviews exist). SEO Phase 5 (2026-11-14): on the v2
-  // record, the shop's APPROVED VERIFIED reviews (core's product_reviews, from delivered orders, approved on the
-  // dashboard) are the source — real reviews only — with up to five of them as Review markup.
-  const verified = v2?.reviews && Number(v2.reviews.count) > 0 ? v2.reviews : null
-  const productRatings = (ratings || []).filter((r) => r.product_id === product.id)
-  const reviewCount = verified ? Number(verified.count) : productRatings.length
-  const avgRating = verified
-    ? Number(verified.average || 0)
-    : reviewCount
-      ? productRatings.reduce((a, r) => a + Number(r.rating || 0), 0) / reviewCount
-      : Number(product.rating || product.average_rating || 0)
-  const reviewLd = verified
-    ? (verified.items || []).slice(0, 5).map((r) => ({
-        '@type': 'Review',
-        reviewRating: { '@type': 'Rating', ratingValue: r.rating, bestRating: 5 },
-        author: { '@type': 'Person', name: r.name },
-        ...(r.date ? { datePublished: r.date } : {}),
-        reviewBody: r.body,
-      }))
-    : []
+  // THE REVIEW MARKUP (2026-11-19, Michael): only from the reviews the page shows — core's approved product_reviews, the
+  // Reviews tab's list (reviewsLd, the same twin Brand Fashion uses). Nothing at all when the product has none: no
+  // fallback to the older logged-in ratings and none to the product's own rating field, never an empty or zero rating.
 
   // the brand's own page, never the filtered listing (2026-11-14: every product's BreadcrumbList named /listing?brand=…)
   const brandHref =
@@ -203,16 +187,7 @@ export function buildProductSeo(product, { ratings = [], tables = null, lang = '
       hasMerchantReturnPolicy: offerReturnPolicy(),
       ...(offerWarranty(product.warranty_years ?? v2?.warranty_years) ? { warranty: offerWarranty(product.warranty_years ?? v2?.warranty_years, v2?.warranty_provider ?? null) } : {}),   // the warranty core says it carries (2026-11-14)
     },
-    ...(reviewCount > 0
-      ? {
-          aggregateRating: {
-            '@type': 'AggregateRating',
-            ratingValue: Number(avgRating).toFixed(1),
-            reviewCount,
-          },
-          ...(reviewLd.length ? { review: reviewLd } : {}),
-        }
-      : {}),
+    ...reviewsLd(v2?.reviews),
   }
 
   const breadcrumbLd = {

@@ -36,6 +36,9 @@ import StockAlertForm from './StockAlertForm'
 import { useLivePrices, useProductOffer } from '../../Hooks/queries/usePromo'
 import { liveFields, liveVariantPrice, rowPrice } from '../../lib/campaign'
 import { OfferNote, offerClass } from '../Promo/OfferStrip'
+import ProductTabs from './ProductTabs'
+import ReviewStarLine from '../Reviews/ReviewStarLine'
+import ReviewsPanel from '../Reviews/ReviewsPanel'
 import './ProductDetail.css'
 
 // Lightweight star rating (no MUI). Read-only by default; pass onSelect to make
@@ -885,7 +888,10 @@ function ProductDetailClient({ param, isOffer = false, productPayload = null, v2
   const [ratings, setRatings] = useState([])
   const [newReview, setNewReview] = useState({ value: 0, comment: '' })
   const fetchRatings = useCallback(() => {
-    const itemId = isOffer ? offer?.id : product?.id
+    // the older logged-in ratings serve the OFFER page only since 2026-11-19: a product page shows its reviews from core
+    // (v2Product.reviews, the Reviews tab); the product_ratings rows stay in the database, untouched
+    if (!isOffer) return
+    const itemId = offer?.id
     if (!itemId) return
     const endpoint = isOffer ? '/all_offer_rating' : '/all_product_rating'
     const key = isOffer ? 'offer_id' : 'product_id'
@@ -893,10 +899,34 @@ function ProductDetailClient({ param, isOffer = false, productPayload = null, v2
       .get(endpoint)
       .then((res) => setRatings((res.data || []).filter((r) => r[key] === itemId)))
       .catch(() => setRatings([]))
-  }, [isOffer, offer?.id, product?.id])
+  }, [isOffer, offer?.id])
   useEffect(() => {
     fetchRatings()
   }, [fetchRatings])
+
+  // ── The product's tabs and its reviews (2026-11-19) ──
+  // Description / Specifications / Reviews under the product's info; the star line under the name opens Reviews.
+  // `#reviews` in the address opens it too (on load and when the hash changes). Products only — an offer page keeps its
+  // own sections and its older ratings.
+  const v2Reviews = isOffer ? null : v2Product?.reviews ?? { count: 0, average: null, items: [] }
+  const [activeTab, setActiveTab] = useState(null)
+  const openReviews = useCallback((e) => {
+    if (e?.preventDefault) e.preventDefault()
+    setActiveTab('reviews')
+    if (typeof window !== 'undefined') {
+      if (window.location.hash !== '#reviews') window.history.replaceState(null, '', '#reviews')
+      requestAnimationFrame(() => document.getElementById('reviews')?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
+    }
+  }, [])
+  useEffect(() => {
+    if (isOffer) return undefined
+    const onHash = () => {
+      if (window.location.hash === '#reviews') openReviews()
+    }
+    onHash()
+    window.addEventListener('hashchange', onHash)
+    return () => window.removeEventListener('hashchange', onHash)
+  }, [isOffer, openReviews])
 
   const avgRating = ratings.length
     ? ratings.reduce((a, r) => a + Number(r.rating || 0), 0) / ratings.length
@@ -1194,6 +1224,7 @@ function ProductDetailClient({ param, isOffer = false, productPayload = null, v2
         <div className="wz-pd-mobile-summary" dir={isRTL ? 'rtl' : 'ltr'}>
           {brandLabel && <p className="wz-pd-ms-brand">{brandLabel}</p>}
           <h1 className="wz-pd-ms-name">{name}</h1>
+          {v2Reviews ? <ReviewStarLine reviews={v2Reviews} lang={isRTL ? 'ar' : 'en'} onOpen={openReviews} /> : null}
           <div className="wz-pd-ms-price">
             <span className={hasSale ? 'wz-pd-ms-sale' : 'wz-pd-ms-regular'}>
               {fmt(finalPrice)} {currency}
@@ -1331,8 +1362,11 @@ function ProductDetailClient({ param, isOffer = false, productPayload = null, v2
                 </span>
               ))}
             <h2 className="wz-pd-name wz-pd-hide-mobile">{name}</h2>
+            {v2Reviews ? (
+              <ReviewStarLine reviews={v2Reviews} lang={isRTL ? 'ar' : 'en'} onOpen={openReviews} className="wz-pd-hide-mobile" />
+            ) : null}
 
-            {avgRating > 0 && (
+            {isOffer && avgRating > 0 && (
               <div className="wz-pd-rating" aria-label={`${avgRating.toFixed(1)} / 5`}>
                 <span
                   className="wz-pd-stars"
@@ -1559,8 +1593,9 @@ function ProductDetailClient({ param, isOffer = false, productPayload = null, v2
             {/* Trust badges + live social proof / low-stock urgency */}
             <TrustSignals
               variant="pdp"
-              rating={avgRating}
-              reviewCount={reviewCount}
+              // a product's rating is the star line under its name (2026-11-19): not repeated here
+              rating={isOffer ? avgRating : 0}
+              reviewCount={isOffer ? reviewCount : 0}
               stockLeft={inStock ? maxStock : null}
               isRTL={isRTL}
               isFashion={isFashion}
@@ -1571,6 +1606,36 @@ function ProductDetailClient({ param, isOffer = false, productPayload = null, v2
           </div>
         </div>
 
+        {/* ── The product's tabs (2026-11-19): Description / Specifications / Reviews, on every width. Every
+            panel is in the HTML (the hidden ones carry `hidden`); #reviews and the star line open Reviews. */}
+        {!isOffer && (() => {
+          const lang = isRTL ? 'ar' : 'en'
+          const reviewTotal = Number(v2Reviews?.count || 0)
+          const tabs = [
+            ...(description
+              ? [{ id: 'desc', label: isRTL ? 'الوصف' : 'Description', panel: <div className="wz-pd-desc-content" dangerouslySetInnerHTML={{ __html: descHtml }} /> }]
+              : []),
+            ...(specs.length > 0 ? [{ id: 'specs', label: isRTL ? 'المواصفات' : 'Specifications', panel: specGrid }] : []),
+            {
+              id: 'reviews',
+              label: `${isRTL ? 'التقييمات' : 'Reviews'}${reviewTotal > 0 ? ` (${reviewTotal})` : ''}`,
+              panel: <ReviewsPanel reviews={v2Reviews} form={v2Product?.review_form} productId={v2Product?.id ?? product?.id} lang={lang} />,
+            },
+          ]
+          return (
+            <ProductTabs
+              id="reviews"
+              tabs={tabs}
+              active={activeTab && tabs.some((t) => t.id === activeTab) ? activeTab : tabs[0].id}
+              onChange={setActiveTab}
+              isRTL={isRTL}
+              label={isRTL ? 'تفاصيل المنتج' : 'Product details'}
+            />
+          )
+        })()}
+
+        {/* ── OFFER PAGES keep their sections and older ratings (2026-11-19) ── */}
+        {isOffer && (<>
         {/* ── Specifications ── open under a plain heading on desktop; the phone's own closed
             section. Both render (SSR-safe, no hydration flip); ProductDetail.css shows one.
             The TABLE is in the HTML once (2026-11-14, SEO Phase 1 item 7: every product page served
@@ -1686,6 +1751,7 @@ function ProductDetailClient({ param, isOffer = false, productPayload = null, v2
           )}
           </div>
         </Disclosure>
+        </>)}
       </div>
 
       {/* ── Related (full-width band) ── */}

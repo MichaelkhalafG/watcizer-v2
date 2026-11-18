@@ -7,8 +7,6 @@ import BfProductPage from '@/src/Components/Product/BfProductPage'
 import { safeJsonLd } from '@/src/lib/safeJsonLd'
 import { categoryPage } from '@/src/lib/categoryHref'
 import { productName, productDescription, productMaterial } from '@/src/lib/productWords'
-import VerifiedReviews from '@/src/Components/Reviews/VerifiedReviews'
-import ProductReviewForm from '@/src/Components/Reviews/ProductReviewForm'
 import { reviewsLd } from '@/src/lib/reviewsLd'
 
 // B5 — Brand Fashion's product page (spec v2.9 §10.3), on v2 `products/{slug}` + `products/{slug}/related`
@@ -122,10 +120,7 @@ export default async function ProductPage({ params }) {
       {p.search === 'hidden' ? null : <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: safeJsonLd(productLd) }} />}
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: safeJsonLd(breadcrumbLd) }} />
       <BfProductPage detail={detail} related={related} pickup={pickup} />
-      {/* the approved verified reviews, in the server HTML (SEO Phase 5, 2026-11-14) */}
-      <VerifiedReviews reviews={p.reviews} lang={urlLang} />
-      {/* write a review without logging in (2026-11-17): live at once, Turnstile and limits in the background */}
-      <ProductReviewForm productId={p.id} lang={urlLang} form={p.review_form} />
+      {/* the reviews and the form to write one are BfProductPage's Reviews tab since 2026-11-19 (in the server HTML there) */}
     </>
   )
 }

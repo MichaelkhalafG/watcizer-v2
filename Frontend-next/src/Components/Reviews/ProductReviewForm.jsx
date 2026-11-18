@@ -1,7 +1,7 @@
 'use client'
 import { useRef, useState } from 'react'
-import { API_BASE, STOREFRONT_CODE } from '@/src/lib/env'
-import { deviceId, loadTurnstile, turnstileToken } from '@/src/lib/turnstile'
+import { API_BASE, STOREFRONT_CODE } from '../../lib/env'
+import { deviceId, loadTurnstile, turnstileToken } from '../../lib/turnstile'
 import GoogleReviewButtons from './GoogleReviewButtons'
 
 // WRITE A REVIEW, FROM THE PRODUCT PAGE (Michael's decisions, 2026-11-17). A TWIN, under the product's reviews.

@@ -13,7 +13,9 @@ import { PLACEHOLDER_IMG } from '@/src/utils/imageUrl'
 import { pictureSources, SIZES } from '@/src/utils/picture'
 import useGalleryKeys, { imagePosition } from '@/src/Hooks/useGalleryKeys'
 import { colourCount, defaultColorId, galleryFor, swatchFor } from '@/src/lib/variantGallery'
-import Disclosure from '@/src/Components/UI/Disclosure'
+import ProductTabs from './ProductTabs'
+import ReviewStarLine from '@/src/Components/Reviews/ReviewStarLine'
+import ReviewsPanel from '@/src/Components/Reviews/ReviewsPanel'
 import { localizeHref } from '@/src/utils/localePath'
 import BfRail from '@/src/Components/Listing/BfRail'
 import StockAlertForm from './StockAlertForm'
@@ -67,7 +69,7 @@ const STR = {
     notifySize: 'Notify me for this size', chooseBoth: 'Choose a colour and size', chooseColour: 'Choose a colour', chooseSize: 'Choose a size',
     vat: 'Incl. VAT', colour: 'Colour', size: 'Size', promises: ['Delivery within 24 hours to every governorate', INSPECT_SHORT.en, 'Free returns within 14 days — return shipping on us'], deliveryFees: (lo, hi) => `Delivery within 24 hours — EGP ${lo === hi ? lo : `${lo}–${hi}`} by governorate`,
     pickup: (stores) => `Free pickup in store — ${stores}`,
-    attributes: 'Details', description: 'Description', ratings: 'Ratings', brand: 'Brand', family: 'Type', category: 'Category', gender: 'Gender', colours: 'Colours', features: 'Features', warranty: 'Warranty',
+    attributes: 'Details', description: 'Description', ratings: 'Reviews', brand: 'Brand', family: 'Type', category: 'Category', gender: 'Gender', colours: 'Colours', features: 'Features', warranty: 'Warranty',
     goesWith: 'Goes with this', similar: 'Similar', seeAll: 'See all', was: 'was', added: 'Added to cart', notified: 'We’ll let you know when it’s back',
     families: { watch: 'Watch', bag: 'Bag', wallet: 'Wallet', fashion: 'Fashion', electronics: 'Electronics', perfume: 'Perfume' },
   },
@@ -260,8 +262,23 @@ export default function BfProductPage({ detail, related, pickup = null }) {
     setZoom({ x: clamp(((e.clientX - r.left) / r.width) * 100), y: clamp(((e.clientY - r.top) / r.height) * 100) })
   }
   const onZoomLeave = () => setZoom(null)
-  // the description (2026-10-22): closed until opened, served regardless — the twin Disclosure in this page's dress
-  const [descOpen, setDescOpen] = useState(false)
+  // the product's tabs (2026-11-19): Description / Specifications / Reviews under the product, on every width; the star
+  // line under the name and #reviews in the address open Reviews
+  const [activeTab, setActiveTab] = useState(null)
+  const openReviews = (e) => {
+    if (e?.preventDefault) e.preventDefault()
+    setActiveTab('reviews')
+    if (window.location.hash !== '#reviews') window.history.replaceState(null, '', '#reviews')
+    requestAnimationFrame(() => document.getElementById('reviews')?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
+  }
+  useEffect(() => {
+    const onHash = () => {
+      if (window.location.hash === '#reviews') openReviews()
+    }
+    onHash()
+    window.addEventListener('hashchange', onHash)
+    return () => window.removeEventListener('hashchange', onHash)
+  }, [])
 
   // ── attributes (§11.4): specs first, else the pivots, else nothing
   const specs = Array.isArray(p.specs) ? p.specs : []
@@ -294,7 +311,9 @@ export default function BfProductPage({ detail, related, pickup = null }) {
   const rows = specRows.length ? [...specRows, ...pivotRows] : pivotRows
 
   const description = txt(p.long_description, lang) || txt(p.short_description, lang)
-  const rating = p.rating || {}
+  // the product's approved reviews from core (2026-11-19): the only source of the star line, the tab and the markup —
+  // the product's older `rating` field is no longer read
+  const reviews = p.reviews ?? { count: 0, average: null, items: [] }
   const addons = related?.addons || []
   const similar = related?.similar || []
   const crumbs = Array.isArray(p.breadcrumb) ? p.breadcrumb : []
@@ -366,6 +385,7 @@ export default function BfProductPage({ detail, related, pickup = null }) {
           <div className="bf-pdp__buy">
             <div className="bf-buy__brand">{txt(p.brand?.name, lang)}</div>
             <h1 className="bf-buy__title">{txt(p.title, lang)}</h1>
+            <ReviewStarLine reviews={reviews} lang={lang} onOpen={openReviews} />
             <OfferNote offer={liveOffer} lang={lang} />
             <div className="bf-buy__price">
               <span className="bf-buy__now">{now}</span>
@@ -450,37 +470,48 @@ export default function BfProductPage({ detail, related, pickup = null }) {
               {/* pick up in store (click & collect, 2026-11-14): only while the shop offers it — the page's server read */}
               {pickupInfo.enabled ? <li>{t.pickup(storeNames(pickupInfo, isRTL))}</li> : null}
             </ul>
-
-            {rows.length ? (
-              <section className="bf-attrs" aria-label={t.attributes}>
-                <h2 className="bf-attrs__title">{t.attributes}</h2>
-                <dl className="bf-attrs__grid">
-                  {rows.map((r, i) => (
-                    <div className="bf-attrs__row" key={`${r.k}-${i}`}>
-                      <dt>{r.k}</dt>
-                      <dd>
-                        {r.colours ? r.colours.map((c) => <span key={c.id} title={txt(c.name, lang)}><span className="bf-attrs__dot" style={{ background: c.hex }} /> {txt(c.name, lang)}</span>) : r.v}
-                      </dd>
-                    </div>
-                  ))}
-                </dl>
-              </section>
-            ) : null}
-
-            {description ? (
-              <Disclosure id="bf-desc" as="h2" className="bf-desc" headClassName="bf-desc__title" label={t.description} open={descOpen} onToggle={() => setDescOpen((o) => !o)}>
-                <div className="bf-desc__text">{description}</div>
-              </Disclosure>
-            ) : null}
-
-            {Number(rating.count) > 0 ? (
-              <section className="bf-ratings" aria-label={t.ratings}>
-                <h2 className="bf-ratings__title">{t.ratings}</h2>
-                ★ {Number(rating.avg).toFixed(1)} ({rating.count})
-              </section>
-            ) : null}
           </div>
         </div>
+
+        {(() => {
+          const total = Number(reviews.count || 0)
+          const tabs = [
+            ...(description ? [{ id: 'desc', label: t.description, panel: <div className="bf-desc__text">{description}</div> }] : []),
+            ...(rows.length
+              ? [{
+                  id: 'specs',
+                  label: isRTL ? 'المواصفات' : 'Specifications',
+                  panel: (
+                    <dl className="bf-attrs__grid">
+                      {rows.map((r, i) => (
+                        <div className="bf-attrs__row" key={`${r.k}-${i}`}>
+                          <dt>{r.k}</dt>
+                          <dd>
+                            {r.colours ? r.colours.map((c) => <span key={c.id} title={txt(c.name, lang)}><span className="bf-attrs__dot" style={{ background: c.hex }} /> {txt(c.name, lang)}</span>) : r.v}
+                          </dd>
+                        </div>
+                      ))}
+                    </dl>
+                  ),
+                }]
+              : []),
+            {
+              id: 'reviews',
+              label: `${t.ratings}${total > 0 ? ` (${total})` : ''}`,
+              panel: <ReviewsPanel reviews={reviews} form={p.review_form} productId={p.id} lang={lang} />,
+            },
+          ]
+          return (
+            <ProductTabs
+              id="reviews"
+              tabs={tabs}
+              active={activeTab && tabs.some((x) => x.id === activeTab) ? activeTab : tabs[0].id}
+              onChange={setActiveTab}
+              isRTL={isRTL}
+              label={isRTL ? 'تفاصيل المنتج' : 'Product details'}
+            />
+          )
+        })()}
 
         <div className="bf-pdp__rails">
           <BfRail title={t.goesWith} cards={addons} lang={lang} seeAllHref={nearestCategoryPage(addons[0]?.primary_category?.path)} />

@@ -527,3 +527,11 @@ src/Components/Reviews/ProductReviewForm.jsx
 src/Components/Reviews/GoogleReviewButtons.jsx
 # 2026-11-17 (the public product feed): ONE NEW TWIN - app/feeds/products.json/route.js (core's feeds:public file, served at /feeds/products.json). app/llms.txt/route.js stays a twin (the Products section links it).
 app/feeds/products.json/route.js
+# 2026-11-19 (the product page's reviews, Part 1): SEVEN NEW TWINS - the tab set (src/Components/Product/ProductTabs.jsx + .css: Description / Specifications / Reviews, every panel in the HTML), the star line under the name (src/Components/Reviews/ReviewStarLine.jsx), the Reviews tab (src/Components/Reviews/ReviewsPanel.jsx + .css: the bars, the list, Show more from core's products/{id}/reviews, the form), the words (src/lib/reviewWords.js, the Arabic counts) and tests/productTabs.test.mjs. Changed on both sides and still twins: VerifiedReviews.jsx (now only the list), ProductReviewForm.jsx (relative imports), ProductDetailClient.jsx (the tabs on Watchizer's product page; an offer page keeps its sections and the older ratings). Watchizer's detailSeo.js (split) rates only from the approved reviews (tests/detailSeoReviews.test.mjs, Watchizer only); both product pages lost the list and form below the related products; Brand Fashion's BfProductPage.jsx took the same tabs in its own file.
+src/Components/Product/ProductTabs.jsx
+src/Components/Product/ProductTabs.css
+src/Components/Reviews/ReviewStarLine.jsx
+src/Components/Reviews/ReviewsPanel.jsx
+src/Components/Reviews/ReviewsPanel.css
+src/lib/reviewWords.js
+tests/productTabs.test.mjs

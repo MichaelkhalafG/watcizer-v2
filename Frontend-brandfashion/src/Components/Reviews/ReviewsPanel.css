@@ -1,0 +1,144 @@
+/* The star line under the product's name and the Reviews tab (2026-11-19) — a TWIN. Logical properties only (inline /
+   block, start / end), so the Arabic page needs no overrides. */
+
+/* the line holds its height from the first paint: drawn from the product's payload, never added later */
+.wz-starline {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-block-size: 24px;
+  margin-block: 6px 2px;
+  font-size: 14px;
+  line-height: 1.4;
+  color: inherit;
+  text-decoration: none;
+}
+.wz-starline:hover .wz-starline__text,
+.wz-starline:focus-visible .wz-starline__text {
+  text-decoration: underline;
+}
+.wz-starline:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+/* five stars filled to the average: a gold part over a grey part, no images */
+.wz-starline__stars {
+  --wz-star-pct: 0%;
+  display: inline-block;
+  font-size: 16px;
+  letter-spacing: 2px;
+  line-height: 1;
+  background: linear-gradient(90deg, var(--wz-gold, #c8a45c) var(--wz-star-pct), #d9d9d9 var(--wz-star-pct));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+[dir='rtl'] .wz-starline__stars {
+  background: linear-gradient(270deg, var(--wz-gold, #c8a45c) var(--wz-star-pct), #d9d9d9 var(--wz-star-pct));
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+.wz-starline__stars.is-empty {
+  --wz-star-pct: 0%;
+}
+.wz-starline__text {
+  font-weight: 500;
+}
+
+/* ── the Reviews tab ── */
+.wz-revtab {
+  display: grid;
+  gap: 16px;
+}
+.wz-revtab__summary {
+  display: grid;
+  grid-template-columns: minmax(150px, 220px) minmax(0, 420px);
+  gap: 16px 32px;
+  align-items: center;
+}
+.wz-revtab__score {
+  display: grid;
+  justify-items: start;
+  gap: 4px;
+}
+.wz-revtab__avg {
+  font-size: 40px;
+  font-weight: 700;
+  line-height: 1;
+}
+.wz-revtab__based {
+  font-size: 13px;
+  color: var(--wz-muted, rgba(0, 0, 0, 0.6));
+}
+.wz-revtab__bars {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.wz-revtab__bar {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) 32px;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+}
+.wz-revtab__bar-track {
+  block-size: 8px;
+  border-radius: 999px;
+  background: #ececec;
+  overflow: hidden;
+}
+.wz-revtab__bar-fill {
+  display: block;
+  block-size: 100%;
+  border-radius: inherit;
+  background: var(--wz-gold, #c8a45c);
+}
+.wz-revtab__bar-count {
+  text-align: end;
+  color: var(--wz-muted, rgba(0, 0, 0, 0.6));
+}
+.wz-revtab__none {
+  margin: 0;
+  font-size: 15px;
+}
+.wz-revtab__more {
+  justify-self: start;
+  padding: 10px 18px;
+  border: 1px solid currentColor;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.wz-revtab__more:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+.wz-revtab__error {
+  margin: 0;
+  color: #b42318;
+  font-size: 14px;
+}
+/* inside the tab the list and the form use the panel's width, not their old page-wide box */
+.wz-revtab .wz-reviews {
+  max-width: none;
+  margin: 0;
+  padding: 0;
+}
+.wz-revtab .wz-review-form__open {
+  justify-self: start;
+}
+
+@media (max-width: 640px) {
+  .wz-revtab__summary {
+    grid-template-columns: 1fr;
+  }
+  .wz-revtab__avg {
+    font-size: 32px;
+  }
+}

@@ -6,8 +6,6 @@ import { fromV2Product } from '@/src/lib/v2Product'
 import { transformProductData } from '@/src/utils/transformProduct'
 import { requestLang, localePath } from '@/src/lib/requestLang'
 import { buildProductSeo } from '@/src/lib/detailSeo'
-import VerifiedReviews from '@/src/Components/Reviews/VerifiedReviews'
-import ProductReviewForm from '@/src/Components/Reviews/ProductReviewForm'
 import { toSlug, brandSlug } from '@/src/utils/slugs'
 import ProductDetailClient from '@/src/Components/Product/ProductDetailClient'
 import { safeJsonLd } from '@/src/lib/safeJsonLd'
@@ -217,10 +215,8 @@ export default async function ProductPage({ params }) {
         searchClass={exposure}
         pickup={pickup}
       />
-      {/* the approved verified reviews, in the server HTML (SEO Phase 5, 2026-11-14); nothing when there are none */}
-      <VerifiedReviews reviews={resolved.v2Product?.reviews} lang={urlLang} />
-      {/* write a review without logging in (2026-11-17): live at once, Turnstile and limits in the background */}
-      <ProductReviewForm productId={resolved.v2Product?.id} lang={urlLang} form={resolved.v2Product?.review_form} />
+      {/* the reviews and the form to write one are the Reviews tab of ProductDetailClient since 2026-11-19 (the list in
+          the server HTML there; nothing below the related products any more) */}
     </>
   )
 }

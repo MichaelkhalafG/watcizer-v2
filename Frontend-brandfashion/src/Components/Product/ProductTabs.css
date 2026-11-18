@@ -1,0 +1,61 @@
+/* The product's tabs (2026-11-19) — a TWIN. Logical properties only, so the Arabic page needs no overrides. On a phone
+   the three labels scroll sideways if they do not fit (never wrap under each other, never push the page wider). */
+.wz-tabs {
+  margin-block: 32px 8px;
+  scroll-margin-block-start: 96px; /* #reviews lands below the sticky header */
+}
+.wz-tabs__list {
+  display: flex;
+  gap: 4px;
+  border-block-end: 1px solid var(--wz-line, rgba(0, 0, 0, 0.12));
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.wz-tabs__list::-webkit-scrollbar {
+  display: none;
+}
+.wz-tabs__tab {
+  flex: 0 0 auto;
+  padding: 12px 18px;
+  border: 0;
+  border-block-end: 3px solid transparent;
+  margin-block-end: -1px;
+  background: transparent;
+  color: var(--wz-muted, rgba(0, 0, 0, 0.6));
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.wz-tabs__tab.is-active {
+  color: inherit;
+  border-block-end-color: currentColor;
+}
+.wz-tabs__tab:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: -4px;
+  border-radius: 4px;
+}
+.wz-tabs__panel {
+  padding-block: 20px 8px;
+}
+.wz-tabs__panel:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 4px;
+  border-radius: 4px;
+}
+.wz-tabs__panel[hidden] {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  .wz-tabs {
+    margin-block: 24px 4px;
+    scroll-margin-block-start: 72px;
+  }
+  .wz-tabs__tab {
+    padding: 12px 14px;
+    font-size: 14px;
+  }
+}
