@@ -59,9 +59,11 @@ it('offers every key asked of Paymob, and keeps the ones that were already there
 
     $keys = Props::of(actingAs(Staff::admin())->get('/manage/storefronts/1/payments')->assertOk())['method_keys'] ?? null;
 
+    // 'meeza' came with MyFatoorah (Brand Fashion's hosted page) and 'store' with click & collect (2026-11-14); the list
+    // was not updated with them then (found 2026-11-18, when the payment tests were run on a copy of the dev database)
     expect($keys)->toBe([
-        'card', 'valu', 'tamara', 'wallet', 'cagg', 'bank_installment', 'apple_pay', 'kiosk',
-        'souhoola', 'aman', 'halan', 'sympl', 'forsa', 'premium', 'contact', 'fawry_code', 'cod', 'whatsapp',
+        'card', 'meeza', 'valu', 'tamara', 'wallet', 'cagg', 'bank_installment', 'apple_pay', 'kiosk',
+        'souhoola', 'aman', 'halan', 'sympl', 'forsa', 'premium', 'contact', 'fawry_code', 'cod', 'whatsapp', 'store',
     ]);
 });
 
