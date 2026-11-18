@@ -62,7 +62,7 @@ class CatalogLoadDescriptionsCommand extends Command
             DB::statement(self::backupDdl());
         }
         $thin = Coerce::int(config('catalog.thin_description_chars', 300));
-        $counts = ['written' => 0, 'would write' => 0, 'held' => 0, 'stop-row' => 0, 'kept (team text)' => 0];
+        $counts = ['written' => 0, 'would write' => 0, 'held' => 0, 'stop-row' => 0, 'kept (team text)' => 0, 'hidden (skipped)' => 0];
         foreach ($lines as $n => $d) {
             $found = $this->resolve($d);
             if (is_string($found)) {
@@ -74,8 +74,11 @@ class CatalogLoadDescriptionsCommand extends Command
             $id = $found;
             $sf = Coerce::int(DB::table('storefront_product')->where('product_id', $id)->where('is_visible', 1)->orderBy('storefront_id')->value('storefront_id'));
             if ($sf === 0) {
-                $counts['stop-row']++;
-                $this->line(sprintf('  STOP-ROW line %d (%s): on no shop', $n + 1, $d['wa_code']));
+                // the product is the right one but no shop shows it (the team hid it): nothing to describe for now, and
+                // not an identity problem, so it is listed and skipped, never a stop-row (the 2026-11-18 rehearsal: 44 of
+                // the 48 were hidden on Brand Fashion after the list was made)
+                $counts['hidden (skipped)']++;
+                $this->line(sprintf('  HIDDEN line %d (%s): visible on no shop - skipped', $n + 1, $d['wa_code']));
 
                 continue;
             }

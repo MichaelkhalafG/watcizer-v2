@@ -114,3 +114,19 @@ it('holds a pair whose facts are not the record\'s, in both languages', function
         ->and(DB::table('catalog_product_translations')->where('product_id', $id)->where('locale', 'en')->value('long_description'))->toBe('Thin.');
     @unlink($path);
 });
+
+it('skips a product no shop shows, without a stop-row, and writes the rest', function () {
+    SideDdl::run(CatalogLoadDescriptionsCommand::backupDdl(), freshSnapshot: true);
+    [$id, $wa, $brand, $model] = ldWatch();
+    [$id2, $wa2, $brand2, $model2] = ldWatch();
+    DB::table('storefront_product')->where('product_id', $id2)->update(['is_visible' => 0]);
+    $path = ldFile(ldLine($wa, $brand, $model).ldLine($wa2, $brand2, $model2));
+    expect(Artisan::call('catalog:load-descriptions', ['file' => $path, '--apply' => true]))->toBe(0);
+    $out = Artisan::output();
+    expect($out)->toContain('HIDDEN line 2 ('.$wa2.'): visible on no shop - skipped')
+        ->and($out)->toMatch('/stop-row\s+0/')
+        ->and($out)->toMatch('/hidden \(skipped\)\s+1/')
+        ->and(T::str(DB::table('catalog_product_translations')->where('product_id', $id)->where('locale', 'en')->value('long_description')))->toContain("the {$model}, has a clean dial")
+        ->and(DB::table('catalog_product_translations')->where('product_id', $id2)->where('locale', 'en')->value('long_description'))->toBe('Thin.');
+    @unlink($path);
+});
