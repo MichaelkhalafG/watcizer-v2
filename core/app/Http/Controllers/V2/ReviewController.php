@@ -12,6 +12,7 @@ use App\Support\Coerce;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
 
 /**
  * VERIFIED REVIEWS on the storefront (SEO Phase 5, 2026-11-14; {@see Reviews}).
@@ -101,5 +102,24 @@ final class ReviewController extends Controller
         return $url === null
             ? response()->json(['message' => 'No such branch.'], 404, ['Cache-Control' => 'no-store'])
             : response()->json(['data' => ['url' => $url]], 200, ['Cache-Control' => 'no-store'], JSON_UNESCAPED_SLASHES);
+    }
+
+    /**
+     * One page of a product's approved reviews (2026-11-19: the Reviews tab's "Show more" on the product page). Only for a
+     * product this shop shows; page 1 is in the product's own payload, so the tab asks for page 2 onwards. Read only.
+     */
+    public function forProduct(Request $request, StorefrontContext $ctx, int $product): JsonResponse
+    {
+        $shown = DB::table('storefront_product as sp')->join('catalog_products as p', 'p.id', '=', 'sp.product_id')
+            ->where('sp.storefront_id', $ctx->id())->where('sp.product_id', $product)->where('sp.is_visible', true)
+            ->where('p.is_active', true)->whereNull('p.deleted_at')->exists();
+        if (! $shown) {
+            return response()->json(['message' => 'Not found'], 404);
+        }
+
+        return response()->json(
+            ['data' => Reviews::approvedPage($ctx->id(), $product, Coerce::int($request->query('page', '2')))],
+            200, [], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES,
+        );
     }
 }

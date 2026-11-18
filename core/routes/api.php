@@ -94,6 +94,8 @@ Route::prefix('v2/{storefront}')->middleware('storefront')->where(['storefront' 
     // device and address, held for a link or a phone number), and a branch's in-store address, which counts its scans
     Route::post('reviews/guest', [ReviewController::class, 'guest'])->middleware('throttle:rating');
     Route::get('review-link/{key}', [ReviewController::class, 'link'])->where('key', '[a-z0-9-]{2,32}')->middleware('throttle:wheel-spin');
+    // the Reviews tab's "Show more" (2026-11-19): one page of a product's approved reviews, read only
+    Route::get('products/{product}/reviews', [ReviewController::class, 'forProduct'])->whereNumber('product');
 
     // SPIN THE WHEEL (2026-11-07): the segments and the switch, a spin (the prize is decided HERE), and the spin a phone
     // already made. Under /api/v2/, so the API host's allow-list (runbook §4.1.1) and ApiAllowListTest are unchanged.

@@ -215,31 +215,75 @@ final class Reviews
         return true;
     }
 
+    /** How many reviews one page of a product's list holds (the product page's first page and every "Show more"). */
+    public const PAGE_SIZE = 10;
+
     /**
      * The APPROVED reviews of a product on a shop, newest first, and their count and average — for the product page and
-     * its structured data.
+     * its structured data. Since 2026-11-19 also the count per star (`breakdown`, keys 5 to 1, every key present), for the
+     * Reviews tab's bars.
      *
-     * @return array{count: int, average: ?float, items: list<array{id: int, name: string, rating: int, body: string, photos: list<string>, locale: string, date: string, verified: bool}>}
+     * @return array{count: int, average: ?float, breakdown: array<int, int>, items: list<array{id: int, name: string, rating: int, body: string, photos: list<string>, locale: string, date: string, verified: bool}>}
      */
-    public static function approvedFor(int $storefrontId, int $productId, int $limit = 10): array
+    public static function approvedFor(int $storefrontId, int $productId, int $limit = self::PAGE_SIZE): array
     {
-        $q = DB::table('product_reviews')->where('storefront_id', $storefrontId)->where('product_id', $productId)->where('status', 'approved');
+        $q = self::approvedQuery($storefrontId, $productId);
         $count = (clone $q)->count();
         $avg = $count === 0 ? null : round(Coerce::float((clone $q)->avg('rating')), 1);
+        $breakdown = [5 => 0, 4 => 0, 3 => 0, 2 => 0, 1 => 0];
+        if ($count > 0) {
+            foreach ((clone $q)->selectRaw('rating, COUNT(*) AS n')->groupBy('rating')->get() as $raw) {
+                $r = Row::cast($raw);
+                $stars = Row::int($r, 'rating');
+                if (isset($breakdown[$stars])) {
+                    $breakdown[$stars] = Row::int($r, 'n');
+                }
+            }
+        }
         $items = [];
         foreach ($q->orderByDesc('created_at')->orderByDesc('id')->limit($limit)->get() as $raw) {
-            $r = Row::cast($raw);
-            $photos = json_decode(Row::nstr($r, 'photos') ?? '[]', true);
-            $items[] = [
-                'id' => Row::int($r, 'id'), 'name' => Row::str($r, 'author_name'), 'rating' => Row::int($r, 'rating'), 'body' => Row::str($r, 'body'),
-                'photos' => is_array($photos) ? array_values(array_map(fn (string $p): string => ImageUrl::srcFor($storefrontId, $p), array_filter($photos, 'is_string'))) : [],
-                'locale' => Row::str($r, 'locale'), 'date' => substr(Row::str($r, 'created_at'), 0, 10),
-                // a verified buyer: a delivery's link, or an e-mail with a delivered order of this product (2026-11-17)
-                'verified' => property_exists($r, 'verified') ? (bool) Row::int($r, 'verified') : Row::nint($r, 'order_id') !== null,
-            ];
+            $items[] = self::itemOf($storefrontId, Row::cast($raw));
         }
 
-        return ['count' => $count, 'average' => $avg, 'items' => $items];
+        return ['count' => $count, 'average' => $avg, 'breakdown' => $breakdown, 'items' => $items];
+    }
+
+    /**
+     * One page of a product's approved reviews, newest first (2026-11-19: the Reviews tab's "Show more"). Page 1 is what
+     * the product page already carries; the shopper asks for page 2 onwards.
+     *
+     * @return array{items: list<array{id: int, name: string, rating: int, body: string, photos: list<string>, locale: string, date: string, verified: bool}>, page: int, has_more: bool}
+     */
+    public static function approvedPage(int $storefrontId, int $productId, int $page): array
+    {
+        $page = max(1, $page);
+        $rows = self::approvedQuery($storefrontId, $productId)->orderByDesc('created_at')->orderByDesc('id')
+            ->offset(($page - 1) * self::PAGE_SIZE)->limit(self::PAGE_SIZE + 1)->get();
+        $items = [];
+        foreach ($rows->take(self::PAGE_SIZE) as $raw) {
+            $items[] = self::itemOf($storefrontId, Row::cast($raw));
+        }
+
+        return ['items' => $items, 'page' => $page, 'has_more' => $rows->count() > self::PAGE_SIZE];
+    }
+
+    private static function approvedQuery(int $storefrontId, int $productId): Builder
+    {
+        return DB::table('product_reviews')->where('storefront_id', $storefrontId)->where('product_id', $productId)->where('status', 'approved');
+    }
+
+    /** @return array{id: int, name: string, rating: int, body: string, photos: list<string>, locale: string, date: string, verified: bool} */
+    private static function itemOf(int $storefrontId, \stdClass $r): array
+    {
+        $photos = json_decode(Row::nstr($r, 'photos') ?? '[]', true);
+
+        return [
+            'id' => Row::int($r, 'id'), 'name' => Row::str($r, 'author_name'), 'rating' => Row::int($r, 'rating'), 'body' => Row::str($r, 'body'),
+            'photos' => is_array($photos) ? array_values(array_map(fn (string $p): string => ImageUrl::srcFor($storefrontId, $p), array_filter($photos, 'is_string'))) : [],
+            'locale' => Row::str($r, 'locale'), 'date' => substr(Row::str($r, 'created_at'), 0, 10),
+            // a verified buyer: a delivery's link, or an e-mail with a delivered order of this product (2026-11-17)
+            'verified' => property_exists($r, 'verified') ? (bool) Row::int($r, 'verified') : Row::nint($r, 'order_id') !== null,
+        ];
     }
 
     /**
