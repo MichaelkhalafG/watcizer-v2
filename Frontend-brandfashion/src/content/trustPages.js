@@ -14,7 +14,7 @@
 
 // The date shown as "Last updated" on the privacy policy and the terms. Set it to the day the
 // pages are first published (deploy day), and again whenever their text changes.
-export const TRUST_UPDATED = '2026-10-19'
+export const TRUST_UPDATED = '2026-11-18'
 
 // the number and the accounts are typed once, in ./contact.js (2026-11-14: 01014179820 replaced the old number)
 import { PHONE, PHONE_INTL, TEL, WHATSAPP, INSTAGRAM, INSTAGRAM_WEB, TIKTOK, FACEBOOK } from './contact'
@@ -145,7 +145,7 @@ export const TRUST_PAGES = {
           title: 'Who we share it with',
           blocks: [
             { p: 'Only what each one needs:' },
-            { ul: ['our delivery partner: your name, address and phone number;', 'Meta: advert measurement, as above;', 'our email provider.'] },
+            { ul: ['our delivery partner: your name, address and phone number;', 'Meta: advert measurement, as above;', 'Cloudflare: Turnstile, an invisible check that protects our review form from automated reviews ([Turnstile Privacy Addendum](https://www.cloudflare.com/turnstile-privacy-policy/));', 'our email provider.'] },
             { p: 'We do not sell your data.' },
           ],
         },
@@ -181,7 +181,7 @@ export const TRUST_PAGES = {
           title: 'مع من نشاركها',
           blocks: [
             { p: 'فقط ما يحتاجه كل طرف:' },
-            { ul: ['شريك التوصيل: الاسم والعنوان ورقم الهاتف؛', 'ميتا: قياس الإعلانات كما سبق؛', 'مزوّد البريد الإلكتروني.'] },
+            { ul: ['شريك التوصيل: الاسم والعنوان ورقم الهاتف؛', 'ميتا: قياس الإعلانات كما سبق؛', 'Cloudflare: خدمة Turnstile، فحص غير مرئي يحمي نموذج التقييمات من التقييمات الآلية ([ملحق خصوصية Turnstile](https://www.cloudflare.com/turnstile-privacy-policy/))؛', 'مزوّد البريد الإلكتروني.'] },
             { p: 'لا نبيع بياناتك.' },
           ],
         },
