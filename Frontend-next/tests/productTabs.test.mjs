@@ -9,7 +9,7 @@ import { reviewsCount, starsWord, REVIEW_WORDS } from '../src/lib/reviewWords.js
 import { reviewsLd } from '../src/lib/reviewsLd.js'
 
 /*
- * THE PRODUCT PAGE'S TABS AND REVIEWS (2026-11-19) — a twin. Description / Specifications / Reviews as a real tab set,
+ * THE PRODUCT PAGE'S TABS AND REVIEWS (2026-11-18) — a twin. Description / Specifications / Reviews as a real tab set,
  * every panel in the server HTML; the star line under the name; the Reviews tab with its bars, list, "Show more" and
  * form; the review markup only from the reviews the page shows.
  */
@@ -24,7 +24,7 @@ const approved = {
   count: 12,
   average: 4.5,
   breakdown: { 5: 8, 4: 3, 3: 1, 2: 0, 1: 0 },
-  items: Array.from({ length: 10 }, (_, i) => ({ id: i + 1, name: `N${i}`, rating: 5, body: 'Lovely watch.', date: '2026-11-19', photos: [], verified: i === 0 })),
+  items: Array.from({ length: 10 }, (_, i) => ({ id: i + 1, name: `N${i}`, rating: 5, body: 'Lovely watch.', date: '2026-11-18', photos: [], verified: i === 0 })),
 }
 
 describe('the tabs', () => {

@@ -105,7 +105,7 @@ final class ReviewController extends Controller
     }
 
     /**
-     * One page of a product's approved reviews (2026-11-19: the Reviews tab's "Show more" on the product page). Only for a
+     * One page of a product's approved reviews (2026-11-18: the Reviews tab's "Show more" on the product page). Only for a
      * product this shop shows; page 1 is in the product's own payload, so the tab asks for page 2 onwards. Read only.
      */
     public function forProduct(Request $request, StorefrontContext $ctx, int $product): JsonResponse

@@ -2,7 +2,7 @@
 import { useRef } from 'react'
 import './ProductTabs.css'
 
-// THE PRODUCT'S TABS (2026-11-19) — a TWIN. Description / Specifications / Reviews under the product's info, on every
+// THE PRODUCT'S TABS (2026-11-18) — a TWIN. Description / Specifications / Reviews under the product's info, on every
 // width. A real tab set: a tablist of buttons, each controlling its panel; the chosen tab is the only one in the tab
 // order, the arrows move between tabs (reversed in Arabic, so "next" is always the reading direction), Home and End go
 // to the ends. Every panel is in the HTML from the start (search engines and the review markup read it); the hidden

@@ -6,7 +6,7 @@ import VerifiedReviews from './VerifiedReviews'
 import ProductReviewForm from './ProductReviewForm'
 import './ReviewsPanel.css'
 
-// THE REVIEWS TAB (2026-11-19) — a TWIN. The average and the bars per star (5 to 1), the list with the "Verified buyer"
+// THE REVIEWS TAB (2026-11-18) — a TWIN. The average and the bars per star (5 to 1), the list with the "Verified buyer"
 // badge, "Show more" when the product has more than its first page, and the existing guest form (Turnstile, the limits
 // and the link/phone hold are unchanged; its script loads only when the form opens). The first page comes with the
 // product (in the server HTML, so the review markup matches what is on the page); later pages are fetched on demand

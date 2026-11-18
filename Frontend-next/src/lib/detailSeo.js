@@ -144,7 +144,7 @@ export function buildProductSeo(product, { tables = null, lang = 'en', localized
       : `${name}${brand ? ` – ${brand}` : ''} | Watchizer`)
   const ogImage = images[0] || `${SEO_DOMAIN}/og-image.jpg`
 
-  // THE REVIEW MARKUP (2026-11-19, Michael): only from the reviews the page shows — core's approved product_reviews, the
+  // THE REVIEW MARKUP (2026-11-18, Michael): only from the reviews the page shows — core's approved product_reviews, the
   // Reviews tab's list (reviewsLd, the same twin Brand Fashion uses). Nothing at all when the product has none: no
   // fallback to the older logged-in ratings and none to the product's own rating field, never an empty or zero rating.
 

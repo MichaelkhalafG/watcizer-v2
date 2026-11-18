@@ -1,4 +1,4 @@
-/* The product's tabs (2026-11-19) — a TWIN. Logical properties only, so the Arabic page needs no overrides. On a phone
+/* The product's tabs (2026-11-18) — a TWIN. Logical properties only, so the Arabic page needs no overrides. On a phone
    the three labels scroll sideways if they do not fit (never wrap under each other, never push the page wider). */
 .wz-tabs {
   margin-block: 32px 8px;

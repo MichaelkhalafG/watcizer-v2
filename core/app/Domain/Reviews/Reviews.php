@@ -220,7 +220,7 @@ final class Reviews
 
     /**
      * The APPROVED reviews of a product on a shop, newest first, and their count and average — for the product page and
-     * its structured data. Since 2026-11-19 also the count per star (`breakdown`, keys 5 to 1, every key present), for the
+     * its structured data. Since 2026-11-18 also the count per star (`breakdown`, keys 5 to 1, every key present), for the
      * Reviews tab's bars.
      *
      * @return array{count: int, average: ?float, breakdown: array<int, int>, items: list<array{id: int, name: string, rating: int, body: string, photos: list<string>, locale: string, date: string, verified: bool}>}
@@ -249,7 +249,7 @@ final class Reviews
     }
 
     /**
-     * One page of a product's approved reviews, newest first (2026-11-19: the Reviews tab's "Show more"). Page 1 is what
+     * One page of a product's approved reviews, newest first (2026-11-18: the Reviews tab's "Show more"). Page 1 is what
      * the product page already carries; the shopper asks for page 2 onwards.
      *
      * @return array{items: list<array{id: int, name: string, rating: int, body: string, photos: list<string>, locale: string, date: string, verified: bool}>, page: int, has_more: bool}

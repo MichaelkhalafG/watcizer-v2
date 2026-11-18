@@ -3,7 +3,7 @@ import { buildProductSeo } from '../src/lib/detailSeo.js'
 
 /*
  * WATCHIZER ONLY (detailSeo.js is split): the product markup's rating comes only from core's approved reviews, the ones
- * the Reviews tab shows (2026-11-19). The product's own `rating` field and the older logged-in ratings no longer count.
+ * the Reviews tab shows (2026-11-18). The product's own `rating` field and the older logged-in ratings no longer count.
  */
 const product = { id: 7, name: 'A watch', name_en: 'A watch', price: 1000, rating: 4.8, average_rating: 4.8, stock: 3, images: [] }
 const ld = (v2) => buildProductSeo(product, { lang: 'en', v2, ratings: [{ product_id: 7, rating: 5 }] }).productLd

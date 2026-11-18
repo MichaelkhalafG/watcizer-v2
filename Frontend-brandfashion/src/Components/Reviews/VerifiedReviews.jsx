@@ -1,6 +1,6 @@
 import './VerifiedReviews.css'
 
-// THE LIST OF A PRODUCT'S REVIEWS (SEO Phase 5, 2026-11-14; since 2026-11-17 from everyone) — a TWIN. Since 2026-11-19
+// THE LIST OF A PRODUCT'S REVIEWS (SEO Phase 5, 2026-11-14; since 2026-11-17 from everyone) — a TWIN. Since 2026-11-18
 // only the list: the Reviews tab (ReviewsPanel.jsx) draws the summary, the bars, "Show more" and the form around it. The
 // reviews that are live (published at once unless the team held one for a link or a phone number, or hid it), with
 // their photos. A review whose writer bought and received this product says so: "Verified buyer".

@@ -262,7 +262,7 @@ export default function BfProductPage({ detail, related, pickup = null }) {
     setZoom({ x: clamp(((e.clientX - r.left) / r.width) * 100), y: clamp(((e.clientY - r.top) / r.height) * 100) })
   }
   const onZoomLeave = () => setZoom(null)
-  // the product's tabs (2026-11-19): Description / Specifications / Reviews under the product, on every width; the star
+  // the product's tabs (2026-11-18): Description / Specifications / Reviews under the product, on every width; the star
   // line under the name and #reviews in the address open Reviews
   const [activeTab, setActiveTab] = useState(null)
   const openReviews = (e) => {
@@ -311,7 +311,7 @@ export default function BfProductPage({ detail, related, pickup = null }) {
   const rows = specRows.length ? [...specRows, ...pivotRows] : pivotRows
 
   const description = txt(p.long_description, lang) || txt(p.short_description, lang)
-  // the product's approved reviews from core (2026-11-19): the only source of the star line, the tab and the markup —
+  // the product's approved reviews from core (2026-11-18): the only source of the star line, the tab and the markup —
   // the product's older `rating` field is no longer read
   const reviews = p.reviews ?? { count: 0, average: null, items: [] }
   const addons = related?.addons || []

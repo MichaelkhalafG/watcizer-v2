@@ -888,7 +888,7 @@ function ProductDetailClient({ param, isOffer = false, productPayload = null, v2
   const [ratings, setRatings] = useState([])
   const [newReview, setNewReview] = useState({ value: 0, comment: '' })
   const fetchRatings = useCallback(() => {
-    // the older logged-in ratings serve the OFFER page only since 2026-11-19: a product page shows its reviews from core
+    // the older logged-in ratings serve the OFFER page only since 2026-11-18: a product page shows its reviews from core
     // (v2Product.reviews, the Reviews tab); the product_ratings rows stay in the database, untouched
     if (!isOffer) return
     const itemId = offer?.id
@@ -904,7 +904,7 @@ function ProductDetailClient({ param, isOffer = false, productPayload = null, v2
     fetchRatings()
   }, [fetchRatings])
 
-  // ── The product's tabs and its reviews (2026-11-19) ──
+  // ── The product's tabs and its reviews (2026-11-18) ──
   // Description / Specifications / Reviews under the product's info; the star line under the name opens Reviews.
   // `#reviews` in the address opens it too (on load and when the hash changes). Products only — an offer page keeps its
   // own sections and its older ratings.
@@ -1593,7 +1593,7 @@ function ProductDetailClient({ param, isOffer = false, productPayload = null, v2
             {/* Trust badges + live social proof / low-stock urgency */}
             <TrustSignals
               variant="pdp"
-              // a product's rating is the star line under its name (2026-11-19): not repeated here
+              // a product's rating is the star line under its name (2026-11-18): not repeated here
               rating={isOffer ? avgRating : 0}
               reviewCount={isOffer ? reviewCount : 0}
               stockLeft={inStock ? maxStock : null}
@@ -1606,7 +1606,7 @@ function ProductDetailClient({ param, isOffer = false, productPayload = null, v2
           </div>
         </div>
 
-        {/* ── The product's tabs (2026-11-19): Description / Specifications / Reviews, on every width. Every
+        {/* ── The product's tabs (2026-11-18): Description / Specifications / Reviews, on every width. Every
             panel is in the HTML (the hidden ones carry `hidden`); #reviews and the star line open Reviews. */}
         {!isOffer && (() => {
           const lang = isRTL ? 'ar' : 'en'
@@ -1634,7 +1634,7 @@ function ProductDetailClient({ param, isOffer = false, productPayload = null, v2
           )
         })()}
 
-        {/* ── OFFER PAGES keep their sections and older ratings (2026-11-19) ── */}
+        {/* ── OFFER PAGES keep their sections and older ratings (2026-11-18) ── */}
         {isOffer && (<>
         {/* ── Specifications ── open under a plain heading on desktop; the phone's own closed
             section. Both render (SSR-safe, no hydration flip); ProductDetail.css shows one.

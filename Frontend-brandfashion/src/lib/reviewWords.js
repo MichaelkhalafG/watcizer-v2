@@ -1,4 +1,4 @@
-// THE WORDS OF A PRODUCT'S REVIEWS (2026-11-19) — a TWIN. The count in a sentence, in English and in Arabic (whose
+// THE WORDS OF A PRODUCT'S REVIEWS (2026-11-18) — a TWIN. The count in a sentence, in English and in Arabic (whose
 // noun changes with the number: one, two, three to ten, eleven and more), and the lines the star line and the Reviews
 // tab say. Latin digits in both languages, as everywhere on the shop.
 

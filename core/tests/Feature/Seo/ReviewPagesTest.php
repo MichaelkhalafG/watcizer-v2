@@ -8,7 +8,7 @@ use Tests\Support\T;
 use function Pest\Laravel\getJson;
 
 /*
- * THE PRODUCT PAGE'S REVIEWS TAB (2026-11-19): the first page and the bars per star come with the product; "Show more"
+ * THE PRODUCT PAGE'S REVIEWS TAB (2026-11-18): the first page and the bars per star come with the product; "Show more"
  * reads the next pages from products/{id}/reviews, read only. Approved reviews of this shop only; a product the shop
  * does not show answers 404.
  */

@@ -215,7 +215,7 @@ export default async function ProductPage({ params }) {
         searchClass={exposure}
         pickup={pickup}
       />
-      {/* the reviews and the form to write one are the Reviews tab of ProductDetailClient since 2026-11-19 (the list in
+      {/* the reviews and the form to write one are the Reviews tab of ProductDetailClient since 2026-11-18 (the list in
           the server HTML there; nothing below the related products any more) */}
     </>
   )

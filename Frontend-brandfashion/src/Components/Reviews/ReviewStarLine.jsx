@@ -1,7 +1,7 @@
 import { averageLine, reviewsCount, REVIEW_WORDS } from '../../lib/reviewWords'
 import './ReviewsPanel.css'
 
-// THE STAR LINE UNDER THE PRODUCT'S NAME (2026-11-19) — a TWIN. The average and the count of the product's approved
+// THE STAR LINE UNDER THE PRODUCT'S NAME (2026-11-18) — a TWIN. The average and the count of the product's approved
 // reviews, a link to the Reviews tab; with none yet, "Be the first to review". Drawn from the product's own payload, so
 // it is in the first HTML and holds its height from the start (no layout shift). `onOpen` opens the tab and scrolls to it.
 export default function ReviewStarLine({ reviews, lang = 'en', onOpen, className = '' }) {

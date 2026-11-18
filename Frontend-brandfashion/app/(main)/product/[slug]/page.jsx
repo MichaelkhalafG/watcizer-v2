@@ -120,7 +120,7 @@ export default async function ProductPage({ params }) {
       {p.search === 'hidden' ? null : <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: safeJsonLd(productLd) }} />}
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: safeJsonLd(breadcrumbLd) }} />
       <BfProductPage detail={detail} related={related} pickup={pickup} />
-      {/* the reviews and the form to write one are BfProductPage's Reviews tab since 2026-11-19 (in the server HTML there) */}
+      {/* the reviews and the form to write one are BfProductPage's Reviews tab since 2026-11-18 (in the server HTML there) */}
     </>
   )
 }
