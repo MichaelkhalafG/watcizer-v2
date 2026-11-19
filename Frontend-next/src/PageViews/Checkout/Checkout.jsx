@@ -30,7 +30,7 @@ import { cartStore } from '../../Store/cartStore'
 import useFreeShipping from '../../Hooks/useFreeShipping'
 import usePromotion from '../../Hooks/usePromotion'
 import CouponBox from '../../Components/Cart/CouponBox'
-import { discountLabel, payable, rewardTitle, setCouponFulfilment, setCouponPhone, setStoredCoupon, storedCoupon } from '../../lib/coupon'
+import { discountLabel, orderCoupon, payable, promotionOf, rewardTitle, setCouponFulfilment, setCouponPhone, setStoredCoupon, storedCoupon } from '../../lib/coupon'
 import { freeShippingOf, shippingCharged } from '../../lib/freeShipping'
 import { handleImgError, PLACEHOLDER_IMG } from '../../utils/imageUrl'
 import { STOREFRONT_CODE } from '../../lib/env'
@@ -604,9 +604,10 @@ function Checkout({ initialPickup = null, initialFulfilment = 'delivery' }) {
   ])
 
   // ── Cleanup (replaces the old localStorage.clear() bug) ──────────────────
-  const cleanupAfterOrder = useCallback(() => {
+  const cleanupAfterOrder = useCallback((keepCoupon = false) => {
     clearCart()
-    setStoredCoupon('')
+    // a code the order went without (it waits for another item) stays kept for a later order
+    if (!keepCoupon) setStoredCoupon('')
     if (isGuest) localStorage.removeItem('wz_guest_token')
     // Language, shipping cache, banners etc. are deliberately preserved.
   }, [clearCart, isGuest])
@@ -642,6 +643,10 @@ function Checkout({ initialPickup = null, initialFulfilment = 'delivery' }) {
     // be known now): the total sent is the total core computes, so free shipping never meets a mismatch
     const sentShipping = !isPickup && activeCity ? shippingCharged(activeCity.Price, freeShippingOf(cartStore.getExtraSnapshot()?.totals?.shipping?.free_over, subtotal)) : 0
     const sentTotal = subtotal + sentShipping
+    // the code this order carries, from the cart answer the reconcile above just stored: one waiting for another item
+    // (a wallet with no watch) stays out, so the order goes through at full price and the code stays kept
+    const sentCoupon = orderCoupon(storedCoupon(), promotionOf(cartStore.getExtraSnapshot()?.totals).coupon)
+    const keptForLater = sentCoupon === null && storedCoupon() !== null
     const body = {
       payment_method: paymentMethod, // 'cash' | 'card' (core maps card→paymob)
       // Which online method: core checks it (this shop's, switched on, inside its limits) before
@@ -651,7 +656,7 @@ function Checkout({ initialPickup = null, initialFulfilment = 'delivery' }) {
       // the client's total, checked against the server's: a price or a fee that moved is a refusal, never a charge
       total: sentTotal,
       // the code the cart showed (M1u): core prices it again, and refuses the order if it no longer applies
-      ...(storedCoupon() ? { coupon: storedCoupon() } : {}),
+      ...(sentCoupon ? { coupon: sentCoupon } : {}),
     }
 
     if (isPickup) {
@@ -721,7 +726,7 @@ function Checkout({ initialPickup = null, initialFulfilment = 'delivery' }) {
             price: Number(i.piece_price),
           }
         })
-        cleanupAfterOrder()
+        cleanupAfterOrder(keptForLater)
         // Next's router.push can't carry navigation state, so hand the order to
         // the confirmation page via the Zustand store (see orderConfirmStore).
         setOrderData({

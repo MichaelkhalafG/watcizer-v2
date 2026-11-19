@@ -166,6 +166,18 @@ export function isHeldRefusal(coupon) {
   return status === 'no_eligible_items' && !!wheelOf(coupon)
 }
 
+/**
+ * The code an ORDER carries (Michael, 19 Nov, option 2): the kept code - unless core's latest cart answer says it is
+ * waiting for another item (needs_qualifier, e.g. a wallet with no watch). Then the order goes without it, at full
+ * price, and the code stays kept for a later order. Every other answer sends the code, and core decides at order time.
+ */
+export function orderCoupon(code, coupon) {
+  const kept = String(code ?? '').trim()
+  if (kept === '') return null
+  const waiting = Boolean(coupon) && coupon.status === 'needs_qualifier' && String(coupon.code ?? '').toLowerCase() === kept.toLowerCase()
+  return waiting ? null : kept
+}
+
 /** The words beside the discount line: the rule's own label in the page's language, else a plain one. */
 export function discountLabel(applied, isRTL) {
   const labels = (applied || [])

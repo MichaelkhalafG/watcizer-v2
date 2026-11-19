@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { couponMessage, couponQuery, discountLabel, isHeldRefusal, payable, promotionOf, rewardTitle, setStoredCoupon, storedCoupon, subscribeCoupon, wheelNote } from '../src/lib/coupon'
+import { couponMessage, couponQuery, discountLabel, isHeldRefusal, orderCoupon, payable, promotionOf, rewardTitle, setStoredCoupon, storedCoupon, subscribeCoupon, wheelNote } from '../src/lib/coupon'
 
 // The coupon on the storefront (M1u, 2026-10-30): the kept code, the cart answer's promotion read defensively, the
 // words shown, the amount shown to pay — and the GA4 events carrying the code and the per-unit discount in GA4's own
@@ -141,5 +141,20 @@ describe("the wheel's kinds on a code (2026-11-09)", () => {
     expect(isHeldRefusal({ status: 'on_offer' })).toBe(false)
     expect(isHeldRefusal({ status: 'on_offer', wheel: w })).toBe(false)
     expect(isHeldRefusal(null)).toBe(false)
+  })
+
+  it('leaves a code that waits for another item out of the order, and sends every other one (option 2, 19 Nov)', () => {
+    // a wallet with no watch: the order goes at full price, the code stays kept
+    expect(orderCoupon('SPIN-AB12-CD34', { code: 'SPIN-AB12-CD34', status: 'needs_qualifier' })).toBe(null)
+    expect(orderCoupon('spin-ab12-cd34', { code: 'SPIN-AB12-CD34', status: 'needs_qualifier' })).toBe(null)
+    // applied, or any other refusal: sent, and core decides at order time
+    expect(orderCoupon('SPIN-AB12-CD34', { code: 'SPIN-AB12-CD34', status: 'applied' })).toBe('SPIN-AB12-CD34')
+    for (const status of ['phone_mismatch', 'no_eligible_items', 'expired', 'not_first_order']) expect(orderCoupon('SPIN-AB12-CD34', { code: 'SPIN-AB12-CD34', status })).toBe('SPIN-AB12-CD34')
+    // the answer is about ANOTHER code (an older answer), or there is none yet: sent
+    expect(orderCoupon('SPIN-AB12-CD34', { code: 'OTHER', status: 'needs_qualifier' })).toBe('SPIN-AB12-CD34')
+    expect(orderCoupon('SPIN-AB12-CD34', null)).toBe('SPIN-AB12-CD34')
+    // no code kept: nothing
+    expect(orderCoupon('', null)).toBe(null)
+    expect(orderCoupon(null, { code: 'X', status: 'applied' })).toBe(null)
   })
 })
