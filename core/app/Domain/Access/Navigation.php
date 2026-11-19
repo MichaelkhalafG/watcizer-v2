@@ -145,8 +145,8 @@ final class Navigation
                     self::item('page_texts', ManageText::t('page_texts.title', 'نصوص الصفحات'), 'FileText', Role::MANAGE_LEGACY_CONTENT, route: 'manage.page_texts.index', params: ['storefront' => $storefrontId]),
                     // The addresses the shop answered "page not found" for (SEO Phase 1, 2026-11-14).
                     self::item('not_found', ManageText::t('not_found.title', 'صفحات غير موجودة'), 'FileX', Role::MANAGE_LEGACY_CONTENT, route: 'manage.not_found.index', params: ['storefront' => $storefrontId]),
-                    // Verified reviews waiting for approval (SEO Phase 5, 2026-11-14).
-                    self::item('reviews', ManageText::t('reviews.title', 'التقييمات'), 'Star', Role::MANAGE_LEGACY_CONTENT, route: 'manage.reviews.index', params: ['storefront' => $storefrontId]),
+                    // Reviews (SEO Phase 5, 2026-11-14): one page for every shop since 2026-11-19, a shop filter inside.
+                    self::item('reviews', ManageText::t('reviews.title', 'التقييمات'), 'Star', Role::MANAGE_LEGACY_CONTENT, route: 'manage.reviews.hub'),
                     /*
                      * Promotions — OPEN since 2026-11-04 (Part 1, 1.6).
                      *

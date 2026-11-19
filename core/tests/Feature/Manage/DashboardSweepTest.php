@@ -142,6 +142,10 @@ it('opens every dashboard screen as an ADMIN, in both languages', function () {
              * ordinary this line is what asks whether they meant to.
              */
             $expected = $name === 'manage.media.prune' ? [200, 403] : [200];
+            // the old per-shop Reviews address REDIRECTS to the one Reviews page since 2026-11-19 (named, as above)
+            if ($name === 'manage.reviews.index') {
+                $expected = [302];
+            }
 
             if (! in_array($status, $expected, true)) {
                 $broken[] = "[{$locale}] {$name} ({$uri}) => {$status}";
@@ -167,7 +171,9 @@ it('opens every dashboard screen as DATA-ENTRY, with a refusal or a page but nev
 
         foreach ($screens as $name => $uri) {
             $status = actingAs($entry)->get($uri)->getStatusCode();
-            if (! in_array($status, [200, 403, 404], true)) {
+            // the old per-shop Reviews address redirects to the one Reviews page (2026-11-19)
+            $allowed = $name === 'manage.reviews.index' ? [302, 403, 404] : [200, 403, 404];
+            if (! in_array($status, $allowed, true)) {
                 $broken[] = "[{$locale}] {$name} ({$uri}) => {$status}";
             }
         }

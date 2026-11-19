@@ -116,7 +116,9 @@ it('holds a review with a link for the team, shows it once approved (logged), an
     expect(T::arr(getJson("/api/v2/watchizer/products/{$o['slug']}")->assertOk()->json('product.reviews'))['count'])->toBe(0);
     $id = T::int(DB::table('product_reviews')->value('id'));
 
-    actingAs(Staff::admin())->get('/manage/storefronts/1/reviews')->assertOk()
+    // since 2026-11-19 the one Reviews page for every shop (the old address redirects there); the held filter finds it
+    actingAs(Staff::admin())->get('/manage/storefronts/1/reviews')->assertRedirect();
+    actingAs(Staff::admin())->get('/manage/reviews?filters[shop]=1&filters[status]=held')->assertOk()
         ->assertInertia(fn (AssertableInertia $p) => $p->component('Manage/Reviews/Index')->where('table.data.0.id', $id));
     actingAs(Staff::admin())->put("/manage/storefronts/1/reviews/{$id}", ['status' => 'approved'])->assertSessionHasNoErrors();
     expect(DB::table('core_activity_log')->where('subject_type', 'product_reviews')->where('subject_id', $id)->count())->toBe(1);

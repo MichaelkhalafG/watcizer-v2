@@ -308,6 +308,12 @@ Route::prefix('manage')->name('manage.')->group(function (): void {
         | to explain away one that was never true.
         */
         Route::middleware('can:'.Role::MANAGE_LEGACY_CONTENT)->group(function (): void {
+            // REVIEWS, ONE PAGE FOR EVERY SHOP (2026-11-19): the shops are filtered per user inside (Roles::can per shop);
+            // the moderation and the branches' save stay on the per-shop routes, under EnsureStorefrontScope
+            Route::get('reviews', [ReviewController::class, 'hub'])->name('reviews.hub');
+            Route::get('reviews/email-preview', [ReviewController::class, 'emailPreview'])->name('reviews.email_preview');
+            Route::post('reviews/email-test', [ReviewController::class, 'emailTest'])->middleware('throttle:5,1')->name('reviews.email_test');
+
             Route::get('blogs', [BlogController::class, 'index'])->name('blogs.index');
             Route::get('blogs/create', [BlogController::class, 'create'])->name('blogs.create');
             Route::post('blogs', [BlogController::class, 'store'])->name('blogs.store');

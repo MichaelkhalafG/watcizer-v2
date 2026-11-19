@@ -5,7 +5,8 @@
     "scripts": {
         "build": "vite build",
         "dev": "vite",
-        "typecheck": "tsc --noEmit"
+        "typecheck": "tsc --noEmit",
+        "test:js": "node --test resources/js/lib/*.test.ts"
     },
     "devDependencies": {
         "@inertiajs/react": "^2.0.0",
@@ -37,6 +38,7 @@
         "vite": "^6.0.11"
     },
     "dependencies": {
+        "qrcode-generator": "2.0.4",
         "react-markdown": "10.1.0"
     }
 }
