@@ -764,7 +764,8 @@ function Checkout({ initialPickup = null, initialFulfilment = 'delivery' }) {
         setBanner(b.messages?.[isRTL ? 'ar' : 'en'] || t('Pick up in store is not available for this order.', 'الاستلام من الفرع غير متاح لهذا الطلب.'))
         queryClient.invalidateQueries({ queryKey: ['pickup'] })
       } else if (status === 422 && b.error === 'coupon') {
-        setStoredCoupon('')
+        // an offer waiting for another item keeps its code (the cart says what to add); any other refusal drops it
+        if (b.status !== 'needs_qualifier') setStoredCoupon('')
         await cartStore.fetchCart()
         setBanner(b.messages?.[isRTL ? 'ar' : 'en'] || t('This code no longer applies. Review your order.', 'هذا الكود لم يعد ينطبق. راجع طلبك.'))
       } else if (status === 422 && b.messages) {

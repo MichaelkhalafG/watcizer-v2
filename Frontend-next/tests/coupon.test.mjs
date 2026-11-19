@@ -132,6 +132,10 @@ describe("the wheel's kinds on a code (2026-11-09)", () => {
     for (const status of ['phone_mismatch', 'invite_own', 'invite_not_first', 'invite_used']) expect(isHeldRefusal({ status, wheel: w })).toBe(true)
     expect(isHeldRefusal({ status: 'no_eligible_items', wheel: w })).toBe(true)
     expect(isHeldRefusal({ status: 'no_eligible_items' })).toBe(false)
+    // an offer waiting for another item (a wallet without a watch, 2026-11-19) keeps its code, wheel or not
+    expect(isHeldRefusal({ status: 'needs_qualifier' })).toBe(true)
+    expect(isHeldRefusal({ status: 'needs_qualifier', wheel: w })).toBe(true)
+    expect(isHeldRefusal({ status: 'not_first_order', wheel: w })).toBe(false)
     for (const status of ['invalid', 'expired', 'wheel_used', 'gift_out_of_stock', 'not_best', 'minimum_not_reached']) expect(isHeldRefusal({ status, wheel: w })).toBe(false)
     // one offer per order (2026-11-10): a code refused because the cart holds a campaign item is FORGOTTEN, never held
     expect(isHeldRefusal({ status: 'on_offer' })).toBe(false)
