@@ -18,7 +18,7 @@ import { useT } from "@/lib/i18n";
  */
 
 export type ScopeRole = "target" | "qualify" | "exclude";
-export type ScopeDimension = "brand" | "category" | "sub_type" | "grade" | "family";
+export type ScopeDimension = "brand" | "category" | "sub_type" | "grade" | "family" | "product";
 
 export interface ScopeRow {
     role: ScopeRole;
@@ -28,18 +28,18 @@ export interface ScopeRow {
 }
 
 export interface ScopeOptions {
-    brands: { id: number; label: string }[];
-    grades: { id: number; label: string }[];
+    brands: { id: number; label: string; ar?: string | null; en?: string | null }[];
+    grades: { id: number; label: string; ar?: string | null; en?: string | null }[];
     families: { value: string; label: string }[];
-    categories: { id: number; storefront_id: number; label: string }[];
-    sub_types: { id: number; storefront_id: number; label: string }[];
+    categories: { id: number; storefront_id: number; label: string; slug?: string; ar?: string | null; en?: string | null }[];
+    sub_types: { id: number; storefront_id: number; label: string; slug?: string; ar?: string | null; en?: string | null }[];
 }
 
 export interface CouponData {
     code: string;
     label_en: string;
     label_ar: string;
-    apply_per: "order" | "item";
+    apply_per: "order" | "item" | "cheapest" | "paired";
     max_discount: string;
     min_order_amount: string;
     usage_limit: string;
@@ -79,7 +79,7 @@ export function couponDefaults(rule: CouponRule | null): CouponData {
         code: text(rule?.code),
         label_en: text(rule?.label_en),
         label_ar: text(rule?.label_ar),
-        apply_per: rule?.apply_per === "item" ? "item" : "order",
+        apply_per: rule?.apply_per === "item" || rule?.apply_per === "cheapest" || rule?.apply_per === "paired" ? rule.apply_per : "order",
         max_discount: text(rule?.max_discount),
         min_order_amount: text(rule?.min_order_amount),
         usage_limit: text(rule?.usage_limit),
@@ -144,10 +144,15 @@ export function CouponFields({ data, errors, setField, options, storefronts, red
                         <Select
                             id="coupon-apply_per"
                             value={data.apply_per}
-                            onChange={(event) => setField("apply_per", event.target.value === "item" ? "item" : "order")}
+                            onChange={(event) => {
+                                const v = event.target.value;
+                                setField("apply_per", v === "item" || v === "cheapest" || v === "paired" ? v : "order");
+                            }}
                         >
                             <option value="order">{t("promotions.apply_per_order", "مرة واحدة على الطلب")}</option>
                             <option value="item">{t("promotions.apply_per_item", "على كل قطعة مشمولة")}</option>
+                            <option value="cheapest">{t("promotions.apply_per_cheapest", "على أرخص قطعة مشمولة")}</option>
+                            <option value="paired">{t("promotions.apply_per_paired", "قطعة واحدة مع كل قطعة من الشرط")}</option>
                         </Select>
                         <p className="text-xs text-muted-foreground">
                             {t("promotions.apply_per_hint", "«على كل قطعة»: خصم ١٬٠٠٠ على ساعتين = ٢٬٠٠٠.")}
@@ -288,7 +293,11 @@ function ScopePicker({
     const labelOf = (scope: ScopeRow): string => {
         const dimension = dimensions.find((d) => d.key === scope.dimension);
         const key = scope.dimension === "family" ? scope.value : String(scope.value_id);
-        return `${dimension?.label ?? scope.dimension}: ${dimension?.choices.find((c) => c.value === key)?.label ?? key ?? ""}`;
+        // a category may sit at any level (Wallets is under another): look in both lists before showing the bare id
+        const anyLevel = scope.dimension === "category" || scope.dimension === "sub_type"
+            ? [...options.categories, ...options.sub_types].find((c) => String(c.id) === key)?.label
+            : undefined;
+        return `${dimension?.label ?? scope.dimension}: ${dimension?.choices.find((c) => c.value === key)?.label ?? anyLevel ?? key ?? ""}`;
     };
 
     return (

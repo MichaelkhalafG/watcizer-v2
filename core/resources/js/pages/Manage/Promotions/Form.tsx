@@ -14,6 +14,8 @@ import {
     type CouponRule,
     type ScopeOptions,
 } from "@/components/manage/promotions/CouponFields";
+import { OfferBuilderPanel, type BuilderData } from "@/components/manage/promotions/OfferBuilderPanel";
+import type { FormPatch } from "@/lib/offerBuilder";
 import ManageLayout from "@/layouts/ManageLayout";
 import { Ltr } from "@/components/ui/bidi";
 import { useT } from "@/lib/i18n";
@@ -117,6 +119,10 @@ interface Rule extends CouponRule {
     conditions: ConditionRow[];
     rewards: RewardRow[];
     state: RuleState;
+    /** The offer builder (2026-11-19). */
+    max_units?: number | null;
+    on_wheel?: boolean;
+    product_labels?: Record<string, string>;
 }
 
 interface PreviewStockRow {
@@ -146,6 +152,11 @@ interface Preview {
     stock: PreviewStockRow[];
     skipped: { id: number; name: string; reason: string; label: string }[];
     notice: string;
+    /** What the shopper reads about the code, when the offer has one. */
+    coupon?: { status: string; messages: { en: string; ar: string } } | null;
+    /** Other running offers on the same items. */
+    overlaps?: string[];
+    line_discounts?: { index: number; amount: number }[];
 }
 
 interface Props {
@@ -329,7 +340,15 @@ export default function PromotionForm({
         rewards: rule?.rewards ?? [emptyReward()],
         // M1u: the code, the items, the limits (CouponFields)
         ...couponDefaults(rule),
+        // the offer builder (2026-11-19): a fixed maximum of discounted items; a new offer kept for the wheel
+        max_units: rule?.max_units === null || rule?.max_units === undefined ? "" : String(rule.max_units),
+        for_wheel: false,
     });
+    const [productLabels, setProductLabels] = useState<Record<string, string>>(rule?.product_labels ?? {});
+    // the detailed settings: closed for a new offer (the steps are enough), open on an existing one
+    const [detailsOpen, setDetailsOpen] = useState(rule !== null);
+    const [phone, setPhone] = useState("");
+    const patch = (next: FormPatch) => form.setData((data) => ({ ...data, ...(next as Partial<typeof data>) }));
 
     const [sample, setSample] = useState<SampleLine[]>([]);
     const [method, setMethod] = useState("cash");
@@ -385,6 +404,21 @@ export default function PromotionForm({
                     })),
                     conditions: form.data.conditions,
                     rewards: form.data.rewards,
+                    // the whole offer, as it will be saved (the builder's test cart)
+                    code: form.data.code,
+                    apply_per: form.data.apply_per,
+                    max_discount: form.data.max_discount || null,
+                    max_units: form.data.max_units || null,
+                    min_order_amount: form.data.min_order_amount || null,
+                    include_sale_items: form.data.include_sale_items,
+                    unit_floor: form.data.unit_floor || null,
+                    qualify_min_quantity: form.data.qualify_min_quantity || null,
+                    qualify_min_amount: form.data.qualify_min_amount || null,
+                    scopes: form.data.scopes,
+                    phone: phone || null,
+                    rule_id: rule?.id ?? null,
+                    starts_at: form.data.starts_at || null,
+                    ends_at: form.data.ends_at || null,
                 }),
             });
             const payload = (await response.json()) as Preview;
@@ -478,6 +512,35 @@ export default function PromotionForm({
                     </div>
                 ) : null}
 
+                {/* ── THE OFFER BUILDER: five steps, the templates, the sentence and the checks ─────────────── */}
+                <OfferBuilderPanel
+                    data={form.data as unknown as BuilderData}
+                    patch={patch}
+                    options={scope_options}
+                    storefronts={form.data.storefronts}
+                    productLabels={productLabels}
+                    onProductLabel={(id, title) => setProductLabels((labels) => ({ ...labels, [String(id)]: title }))}
+                    productPicker={(onPick) => (
+                        <ProductSearch
+                            storefrontId={storefrontId}
+                            label={t("promotions.scope_products", "أو منتجات بعينها")}
+                            onPick={(hit) => onPick(hit.id, hit.title)}
+                        />
+                    )}
+                    isNew={rule === null}
+                    onWheel={rule?.on_wheel === true}
+                    overlaps={preview?.overlaps ?? []}
+                    openDetails={() => setDetailsOpen(true)}
+                />
+
+                <details
+                    className="space-y-4 rounded-lg border p-3 [&[open]>summary]:mb-4"
+                    open={detailsOpen}
+                    onToggle={(event) => setDetailsOpen((event.currentTarget as HTMLDetailsElement).open)}
+                >
+                    <summary className="cursor-pointer text-sm font-semibold">
+                        {t("promotions.details_title", "كل الإعدادات (الاسم، الأولوية، المتاجر، الهدايا، الاستثناءات)")}
+                    </summary>
                 <div className="grid gap-4 lg:grid-cols-2">
                     {/* ── the rule ─────────────────────────────────────────────────────────── */}
                     <Card>
@@ -1115,6 +1178,7 @@ export default function PromotionForm({
                     storefronts={form.data.storefronts}
                     redemptions={rule?.redemptions}
                 />
+                </details>
 
                 {/* ── THE SAMPLE CART: both outcomes, before saving ────────────────────────── */}
                 <Card>
@@ -1186,6 +1250,12 @@ export default function PromotionForm({
                                         >
                                             {line.product.price} EGP
                                         </span>
+                                        {(() => {
+                                            const off = preview?.line_discounts?.find((d) => d.index === index)?.amount ?? 0;
+                                            return off > 0 ? (
+                                                <span className="text-xs text-success" dir="ltr">−{off} EGP</span>
+                                            ) : null;
+                                        })()}
                                         <Button
                                             type="button"
                                             variant="outline"
@@ -1236,6 +1306,12 @@ export default function PromotionForm({
                                     </option>
                                 </Select>
                             </div>
+                            <div className="space-y-1">
+                                <Label htmlFor="preview-phone">
+                                    {t("promotions.preview_phone", "رقم هاتف (لعرض أول طلب)")}
+                                </Label>
+                                <Input id="preview-phone" dir="ltr" inputMode="tel" className="w-44" value={phone} onChange={(event) => setPhone(event.target.value)} />
+                            </div>
                             <Button
                                 type="button"
                                 onClick={() => void runPreview()}
@@ -1246,6 +1322,14 @@ export default function PromotionForm({
                                     : t("promotions.try", "جرّب")}
                             </Button>
                         </div>
+
+                        {preview !== null && preview.coupon ? (
+                            <div className="rounded-md border bg-muted/30 p-3 text-sm" role="status">
+                                <p className="text-xs text-muted-foreground">{t("promotions.preview_coupon", "ما يقرؤه العميل عن الكود:")}</p>
+                                <p lang="ar"><bdi dir="rtl">{preview.coupon.messages.ar}</bdi></p>
+                                <p lang="en"><Ltr>{preview.coupon.messages.en}</Ltr></p>
+                            </div>
+                        ) : null}
 
                         {preview !== null ? (
                             <div className="grid gap-4 sm:grid-cols-2">

@@ -5,7 +5,7 @@ import { useState } from 'react';
 import ManageLayout from '@/layouts/ManageLayout';
 import { DataTable, type Column } from '@/components/table/DataTable';
 import { ProductName } from '@/components/manage/ProductName';
-import { Ltr } from '@/components/ui/bidi';
+import { Ltr, Name } from '@/components/ui/bidi';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input, Select, Textarea } from '@/components/ui/input';
@@ -477,7 +477,7 @@ function BranchesTab({ branches, shops, locale }: { branches: Branch[]; shops: S
                                                 <option value="A6">{t('reviews.qr_a6', 'A6 — بطاقة كاشير')}</option>
                                             </Select>
                                             <Select aria-label={t('reviews.qr_lang', 'لغة البطاقة')} className="w-32" value={c.lang} onChange={(e) => setCard((p) => ({ ...p, [b.id]: { ...c, lang: e.target.value as CardLang } }))}>
-                                                <option value="ar">العربية</option>
+                                                <option value="ar">العربية</option> {/* i18n-exempt: a language name is data, shown in its own language */}
                                                 <option value="en">English</option>
                                             </Select>
                                             <Button type="button" size="sm" disabled={!b.review_link || busy === b.id} onClick={() => void download(b, 'pdf')} data-qr="pdf">
@@ -497,8 +497,8 @@ function BranchesTab({ branches, shops, locale }: { branches: Branch[]; shops: S
                                         {b.whatsapp_review_template && b.review_link ? (
                                             <div className="space-y-2 rounded border bg-muted/30 p-2 text-sm">
                                                 <p className="text-xs text-muted-foreground">{t('reviews.whatsapp_ready', 'الرسالة كما تصل للعميل:')}</p>
-                                                <p className="whitespace-pre-line" dir="auto">
-                                                    {message(b)}
+                                                <p className="whitespace-pre-line">
+                                                    <Name>{message(b)}</Name>
                                                 </p>
                                                 <Button type="button" variant="outline" size="sm" onClick={() => void copy(`msg-${b.id}`, message(b))}>
                                                     <Copy className="h-4 w-4" />

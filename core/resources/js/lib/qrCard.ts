@@ -53,9 +53,9 @@ export const CARD_WORDS: Record<CardLang, { heading: string; line: string; hint:
         hint: 'Or open:',
     },
     ar: {
-        heading: 'كيف كانت زيارتك؟',
-        line: 'امسح الرمز واكتب لنا رأيك بصدق، يستغرق دقيقة.',
-        hint: 'أو افتح:',
+        heading: 'كيف كانت زيارتك؟', // i18n-exempt: CARD COPY: the printed card in the language chosen for it, not the dashboard language
+        line: 'امسح الرمز واكتب لنا رأيك بصدق، يستغرق دقيقة.', // i18n-exempt: CARD COPY: the printed card in the language chosen for it, not the dashboard language
+        hint: 'أو افتح:', // i18n-exempt: CARD COPY: the printed card in the language chosen for it, not the dashboard language
     },
 };
 

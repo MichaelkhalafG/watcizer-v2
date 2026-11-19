@@ -41,10 +41,10 @@ test('the words ask for an honest review in both languages: no incentive, no sta
     for (const lang of ['en', 'ar'] as const) {
         const all = Object.values(CARD_WORDS[lang]).join(' ');
         assert.ok(all.length > 10);
-        assert.doesNotMatch(all, /discount|coupon|gift|free|prize|win|5 stars|five stars|خصم|كوبون|هدية|مجان|جائزة|خمس نجوم/i);
+        assert.doesNotMatch(all, /discount|coupon|gift|free|prize|win|5 stars|five stars|خصم|كوبون|هدية|مجان|جائزة|خمس نجوم/i); // i18n-exempt: TEST DATA: the card words checked
     }
     assert.match(CARD_WORDS.en.line, /honest/);
-    assert.match(CARD_WORDS.ar.line, /بصدق/);
+    assert.match(CARD_WORDS.ar.line, /بصدق/); // i18n-exempt: TEST DATA: the card words checked
 });
 
 test('the files are named by shop, branch, card and language, in ASCII', () => {

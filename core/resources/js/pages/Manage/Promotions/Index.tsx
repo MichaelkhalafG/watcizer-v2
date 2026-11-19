@@ -57,6 +57,8 @@ interface Rule {
     /** How many orders the gift's stock would still cover, or null when there is nothing to count. */
     reward_stock: number | null;
     edit_url: string;
+    /** Kept for the wheel (2026-11-19): it runs only through the wheel, so it has no pause or end of its own. */
+    on_wheel?: boolean;
 }
 
 interface Props {
@@ -75,6 +77,9 @@ const TONE: Record<string, 'default' | 'neutral' | 'success' | 'warning' | 'dest
 
 export default function PromotionsIndex({ table, storefronts, stacking_notice }: Props) {
     const t = useT();
+    // one click each, no dialog: every action is logged, and each one is undone by its opposite (or by deleting the copy)
+    const act = (row: Rule, action: 'pause' | 'resume' | 'end' | 'duplicate') =>
+        router.post(`/manage/promotions/${row.id}/${action}`, {}, { preserveScroll: action !== 'duplicate' });
 
     const columns: Array<Column<Rule>> = [
         {
@@ -96,7 +101,7 @@ export default function PromotionsIndex({ table, storefronts, stacking_notice }:
             header: t('promotions.list_state', 'ماذا تفعل الآن'),
             cell: (row) => (
                 <div className="space-y-1">
-                    <Badge variant={TONE[row.tone] ?? 'outline'}>{row.label}</Badge>
+                    <Badge variant={TONE[row.tone] ?? 'outline'}>{row.on_wheel ? t('promotions.list_on_wheel', 'في عجلة الحظ') : row.label}</Badge>
 
                     {row.skips.stock > 0 ? (
                         <div className="text-xs text-destructive">
@@ -216,16 +221,29 @@ export default function PromotionsIndex({ table, storefronts, stacking_notice }:
                     emptyDescription={t('promotions.list_empty_description', 'أنشئ عرضًا ليظهر هنا مع حالته الفعلية.')}
                     filters={(setFilter, current) => (
                         <>
-                            <Select
-                                className="w-full sm:w-48"
-                                aria-label={t('common.status', 'الحالة')}
-                                value={current.is_active ?? ''}
-                                onChange={(event) => setFilter('is_active', event.target.value || null)}
-                            >
-                                <option value="">{t('common.all_statuses', 'كل الحالات')}</option>
-                                <option value="1">{t('promotions.list_active', 'مفعّلة')}</option>
-                                <option value="0">{t('promotions.list_suspended', 'موقوفة')}</option>
-                            </Select>
+                            <div className="flex flex-wrap gap-1" role="group" aria-label={t('common.status', 'الحالة')}>
+                                {(
+                                    [
+                                        ['', t('common.all_statuses', 'كل الحالات')],
+                                        ['active', t('promotions.status_active', 'تعمل الآن')],
+                                        ['scheduled', t('promotions.status_scheduled', 'مجدولة')],
+                                        ['ended', t('promotions.status_ended', 'انتهت')],
+                                        ['off', t('promotions.status_off', 'موقوفة')],
+                                        ['wheel', t('promotions.status_wheel', 'للعجلة')],
+                                    ] as const
+                                ).map(([value, label]) => (
+                                    <Button
+                                        key={value}
+                                        type="button"
+                                        size="sm"
+                                        variant={(current.status ?? '') === value ? 'default' : 'outline'}
+                                        aria-pressed={(current.status ?? '') === value}
+                                        onClick={() => setFilter('status', value || null)}
+                                    >
+                                        {label}
+                                    </Button>
+                                ))}
+                            </div>
 
                             <Select
                                 className="w-full sm:w-48"
@@ -243,9 +261,28 @@ export default function PromotionsIndex({ table, storefronts, stacking_notice }:
                         </>
                     )}
                     rowActions={(row) => (
-                        <Button variant="outline" size="sm" onClick={() => router.visit(row.edit_url)}>
-                            {t('common.edit', 'تعديل')}
-                        </Button>
+                        <div className="flex flex-wrap justify-end gap-1">
+                            <Button variant="outline" size="sm" onClick={() => router.visit(row.edit_url)}>
+                                {t('common.edit', 'تعديل')}
+                            </Button>
+                            {row.on_wheel ? null : row.is_active ? (
+                                <Button variant="outline" size="sm" onClick={() => act(row, 'pause')}>
+                                    {t('promotions.action_pause', 'إيقاف مؤقت')}
+                                </Button>
+                            ) : row.state !== 'expired' ? (
+                                <Button variant="outline" size="sm" onClick={() => act(row, 'resume')}>
+                                    {t('promotions.action_resume', 'تشغيل')}
+                                </Button>
+                            ) : null}
+                            {row.on_wheel || row.state === 'expired' ? null : (
+                                <Button variant="outline" size="sm" onClick={() => act(row, 'end')}>
+                                    {t('promotions.action_end', 'إنهاء الآن')}
+                                </Button>
+                            )}
+                            <Button variant="ghost" size="sm" onClick={() => act(row, 'duplicate')}>
+                                {t('promotions.action_duplicate', 'نسخ')}
+                            </Button>
+                        </div>
                     )}
                 />
             </div>

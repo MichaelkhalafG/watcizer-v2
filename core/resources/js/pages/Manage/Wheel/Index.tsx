@@ -88,6 +88,8 @@ interface Prize {
     apply_mode?: string;
     gift_product_ids?: number[];
     gift_available?: number[];
+    /** An offer built on the Promotions page and kept for the wheel (2026-11-19). */
+    offer_rule_id?: number | null;
 }
 
 /** A row as the editor holds it: every number a string, so an emptied box stays empty while the operator types. */
@@ -103,6 +105,7 @@ interface Segment {
     min_quantity: string;
     apply_mode: string;
     gift_product_ids: number[];
+    offer_rule_id: string;
 }
 
 interface Option {
@@ -114,6 +117,14 @@ interface Category {
     id: number;
     label: string;
     depth: number;
+}
+
+interface WheelOffer {
+    id: number;
+    name: string;
+    label_en: string | null;
+    label_ar: string | null;
+    edit_url: string;
 }
 
 interface GiftBrief {
@@ -136,6 +147,7 @@ interface Props {
     modes: string[];
     categories: Category[];
     gift_products: Record<string, GiftBrief>;
+    offers: WheelOffer[];
     referrals: { placed: number; delivered: number; cancelled: number };
     limits: { min: number; max: number; max_hours: number };
     fresh: Prize;
@@ -172,6 +184,7 @@ const toSegment = (p: Prize): Segment => ({
     min_quantity: asText(p.min_quantity ?? null),
     apply_mode: p.apply_mode ?? 'order',
     gift_product_ids: p.gift_product_ids ?? [],
+    offer_rule_id: asText(p.offer_rule_id ?? null),
 });
 
 interface SearchHit {
@@ -246,7 +259,7 @@ function GiftPicker({ ids, briefs, storefrontId, onChange, labels }: { ids: numb
     );
 }
 
-export default function WheelIndex({ storefront, storefronts, enabled, ttl_hours, min_order, round, round_started_at, by_round, prizes, types, modes, categories, gift_products, referrals, limits, fresh, totals, by_source, by_prize, spins, limit, spin_url }: Props) {
+export default function WheelIndex({ storefront, storefronts, enabled, ttl_hours, min_order, round, round_started_at, by_round, prizes, types, modes, categories, gift_products, offers, referrals, limits, fresh, totals, by_source, by_prize, spins, limit, spin_url }: Props) {
     const t = useT();
     const base = `/manage/storefronts/${storefront.id}/wheel`;
 
@@ -263,6 +276,7 @@ export default function WheelIndex({ storefront, storefronts, enabled, ttl_hours
         none: t('wheel.type_none', 'حظًا أوفر (بدون جائزة)'),
         referral: t('wheel.type_referral', 'ادعُ صديقًا (نسبة لكما)'),
         gift: t('wheel.type_gift', 'هدية مجانية (من قائمة)'),
+        offer: t('wheel.type_offer', 'عرض من صفحة العروض'),
     };
     const MODE: Record<string, string> = {
         order: t('wheel.mode_order', 'على كل قطعة مؤهلة'),
@@ -467,6 +481,8 @@ export default function WheelIndex({ storefront, storefronts, enabled, ttl_hours
                                 const isPercent = segment.type === 'percent_discount';
                                 const isReferral = segment.type === 'referral';
                                 const isGift = segment.type === 'gift';
+                                const isOffer = segment.type === 'offer';
+                                const offer = offers.find((o) => String(o.id) === segment.offer_rule_id) ?? null;
                                 const hasValue = isPercent || isReferral || segment.type === 'fixed_discount';
                                 const saved = prizes[i];
                                 const giftInStock = isGift && saved && saved.type === 'gift' ? (saved.gift_available ?? []).length : null;
@@ -514,6 +530,7 @@ export default function WheelIndex({ storefront, storefronts, enabled, ttl_hours
                                                         min_quantity: type === 'percent_discount' ? segment.min_quantity : '',
                                                         apply_mode: type === 'percent_discount' ? segment.apply_mode : 'order',
                                                         gift_product_ids: type === 'gift' ? segment.gift_product_ids : [],
+                                                        offer_rule_id: type === 'offer' ? segment.offer_rule_id : '',
                                                     });
                                                 }}
                                             >
@@ -623,6 +640,37 @@ export default function WheelIndex({ storefront, storefronts, enabled, ttl_hours
                                                     {err('scope_category_id') ? <p className="text-xs text-destructive">{err('scope_category_id')}</p> : null}
                                                     {err('min_quantity') ? <p className="text-xs text-destructive">{err('min_quantity')}</p> : null}
                                                     {err('apply_mode') ? <p className="text-xs text-destructive">{err('apply_mode')}</p> : null}
+                                                </div>
+                                            ) : isOffer ? (
+                                                <div className="space-y-1">
+                                                    <Select
+                                                        aria-label={t('wheel.col_offer', 'العرض')}
+                                                        aria-invalid={err('offer_rule_id') ? true : undefined}
+                                                        className="min-w-48"
+                                                        value={segment.offer_rule_id}
+                                                        onChange={(e) => {
+                                                            const picked = offers.find((o) => String(o.id) === e.target.value);
+                                                            // the offer's own words become the segment's, unless the operator already wrote some
+                                                            setSegment(i, {
+                                                                offer_rule_id: e.target.value,
+                                                                label_en: segment.label_en.trim() === '' && picked?.label_en ? picked.label_en.slice(0, 80) : segment.label_en,
+                                                                label_ar: segment.label_ar.trim() === '' && picked?.label_ar ? picked.label_ar.slice(0, 80) : segment.label_ar,
+                                                            });
+                                                        }}
+                                                    >
+                                                        <option value="">{t('wheel.offer_choose', 'اختر عرضًا…')}</option>
+                                                        {offers.map((o) => (
+                                                            <option key={o.id} value={String(o.id)}>
+                                                                {o.name}
+                                                            </option>
+                                                        ))}
+                                                    </Select>
+                                                    {offer !== null ? (
+                                                        <a className="block text-xs underline" href={offer.edit_url}>{t('wheel.offer_edit', 'افتح العرض في صفحة العروض')}</a>
+                                                    ) : (
+                                                        <a className="block max-w-56 text-xs underline" href="/manage/promotions/create">{t('wheel.offer_build', 'صمّم عرضًا واختر «جائزة في عجلة الحظ» في الخطوة 5')}</a>
+                                                    )}
+                                                    {err('offer_rule_id') ? <p className="text-xs text-destructive">{err('offer_rule_id')}</p> : null}
                                                 </div>
                                             ) : isGift ? (
                                                 <div className="space-y-1">
