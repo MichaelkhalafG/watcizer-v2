@@ -1,0 +1,349 @@
+/* The footer, one for every width (2026-11-19) — a TWIN. Its colours are each shop's own (Footer.css sets --foot-bg,
+   --foot-fg, --foot-muted, --foot-line, --foot-accent and --foot-max on .wz-site-foot). Logical properties only, so the
+   Arabic page needs no overrides. */
+.wz-site-foot {
+  margin-block-start: 48px;
+  background: var(--foot-bg, #0a0a0a);
+  color: var(--foot-fg, #fff);
+}
+.wz-sf {
+  max-width: var(--foot-max, 1240px);
+  margin-inline: auto;
+  padding: 48px 24px 0;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.wz-sf a {
+  color: inherit;
+  text-decoration: none;
+}
+.wz-sf :focus-visible {
+  outline: 2px solid var(--foot-focus, currentColor);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ── 1. the top row ── */
+.wz-sf__top {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.5fr) repeat(4, minmax(0, 1fr));
+  gap: 32px 28px;
+  padding-block-end: 36px;
+}
+.wz-sf__brand {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 14px;
+  min-width: 0;
+}
+.wz-sf__logo {
+  display: inline-flex;
+}
+.wz-sf__logo img {
+  display: block;
+  height: auto;
+  max-width: 140px;
+  filter: var(--foot-logo-filter, none);
+}
+.wz-sf__tagline {
+  margin: 0;
+  max-width: 300px;
+  color: var(--foot-muted, rgba(255, 255, 255, 0.72));
+}
+.wz-sf__contact {
+  margin: 0;
+  max-width: 300px;
+}
+.wz-sf__social {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.wz-sf__social-btn {
+  inline-size: 36px;
+  block-size: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  border: 1px solid var(--foot-line, rgba(255, 255, 255, 0.18));
+  transition: background 0.2s ease, color 0.2s ease;
+}
+.wz-sf__social-btn svg {
+  inline-size: 18px;
+  block-size: 18px;
+}
+@media (hover: hover) {
+  .wz-sf__social-btn:hover {
+    background: var(--foot-fg, #fff);
+    color: var(--foot-bg, #0a0a0a);
+  }
+  .wz-sf a.wz-sf__link:hover {
+    color: var(--foot-fg, #fff);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+}
+
+/* a column: the heading on a computer, the button on a phone */
+.wz-sf__sec {
+  min-width: 0;
+}
+.wz-sf__title {
+  margin: 0 0 12px;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--foot-fg, #fff);
+}
+.wz-sf__toggle {
+  display: none;
+}
+.wz-sf__links {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.wz-sf a.wz-sf__link {
+  display: inline-flex;
+  align-items: center;
+  min-block-size: 30px;
+  color: var(--foot-muted, rgba(255, 255, 255, 0.72));
+  overflow-wrap: anywhere;
+}
+
+/* the categories: each main category's sub-categories behind a closed expander */
+.wz-sf__cat-sum {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-block-size: 30px;
+  cursor: pointer;
+  list-style: none;
+  color: var(--foot-muted, rgba(255, 255, 255, 0.72));
+}
+.wz-sf__cat-sum::-webkit-details-marker {
+  display: none;
+}
+.wz-sf__cat[open] > .wz-sf__cat-sum {
+  color: var(--foot-fg, #fff);
+}
+.wz-sf__sub {
+  list-style: none;
+  margin: 0 0 6px;
+  padding-inline-start: 12px;
+  border-inline-start: 1px solid var(--foot-line, rgba(255, 255, 255, 0.14));
+}
+.wz-sf .wz-sf__sub a.wz-sf__link {
+  min-block-size: 28px;
+  font-size: 13px;
+}
+.wz-sf__chev {
+  inline-size: 8px;
+  block-size: 8px;
+  flex: none;
+  /* physical sides on purpose: a closed section's arrow points DOWN in both languages */
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg);
+  transition: transform 0.2s ease;
+  margin-block-start: -4px;
+}
+.wz-sf__cat[open] > .wz-sf__cat-sum .wz-sf__chev,
+.wz-sf__toggle[aria-expanded='true'] .wz-sf__chev {
+  transform: rotate(225deg);
+  margin-block-start: 4px;
+}
+
+/* ── 2. the brands row ── */
+.wz-sf__brands {
+  border-block-start: 1px solid var(--foot-line, rgba(255, 255, 255, 0.14));
+  padding-block: 20px;
+}
+.wz-sf__brands-title {
+  margin: 0 0 8px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--foot-fg, #fff);
+}
+.wz-sf__brand-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 18px;
+}
+.wz-sf .wz-sf__brand-list a.wz-sf__link {
+  font-size: 13px;
+  min-block-size: 28px;
+}
+
+/* ── 3. the ways to pay ── */
+.wz-sf__pay {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+  padding-block: 16px;
+  border-block-start: 1px solid var(--foot-line, rgba(255, 255, 255, 0.14));
+}
+.wz-sf__pay .pm-pay__title {
+  margin: 0;
+  opacity: 0.8;
+}
+
+/* ── 4. the bottom row ── */
+.wz-sf__bottom {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 20px;
+  padding-block: 16px 22px;
+  border-block-start: 1px solid var(--foot-line, rgba(255, 255, 255, 0.14));
+  font-size: 12px;
+  color: var(--foot-muted, rgba(255, 255, 255, 0.72));
+}
+.wz-sf__copy {
+  margin: 0;
+}
+/* a computer: the floating corner (the wheel's button) sits at the inline end, so the last row keeps that side clear */
+@media (min-width: 768px) {
+  .wz-sf__bottom {
+    padding-inline-end: 110px;
+  }
+}
+.wz-sf__credit {
+  flex-basis: 100%;
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.wz-sf__credit-sep {
+  opacity: 0.5;
+}
+.wz-sf__credit-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  color: var(--foot-fg, #fff);
+}
+.wz-sf__credit-name svg {
+  inline-size: 14px;
+  block-size: 14px;
+}
+
+/* a tablet: the brand block on its own row, the four columns two by two */
+@media (max-width: 1023.98px) {
+  .wz-sf__top {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .wz-sf__brand {
+    grid-column: 1 / -1;
+  }
+}
+
+/* a phone: the columns are closed sections that open on a tap; nothing wider than the screen; room at the end for the
+   floating corner (the wheel's button) so it never covers a link */
+@media (max-width: 767.98px) {
+  .wz-sf {
+    padding: 32px 16px 0;
+  }
+  .wz-sf__top {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+    padding-block-end: 20px;
+  }
+  .wz-sf__brand {
+    padding-block-end: 20px;
+  }
+  .wz-sf__sec {
+    border-block-start: 1px solid var(--foot-line, rgba(255, 255, 255, 0.14));
+  }
+  .wz-sf__title {
+    margin: 0;
+  }
+  .wz-sf__title-text {
+    display: none;
+  }
+  .wz-sf__toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    inline-size: 100%;
+    min-block-size: 48px;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    font-weight: 700;
+    text-align: start;
+    cursor: pointer;
+  }
+  .wz-sf__body {
+    display: none;
+    padding-block-end: 12px;
+  }
+  .wz-sf__body.is-open {
+    display: block;
+  }
+  .wz-sf a.wz-sf__link {
+    min-block-size: 40px;
+  }
+  .wz-sf .wz-sf__brand-list a.wz-sf__link,
+  .wz-sf .wz-sf__sub a.wz-sf__link {
+    min-block-size: 36px;
+  }
+  .wz-sf__bottom {
+    padding-block-end: calc(160px + env(safe-area-inset-bottom, 0px) + var(--pm-float-lift, 0px));
+  }
+}
+
+/* the customer-service line (FootContact, a twin): moved here from the directory's sheet on 2026-11-19 */
+.wz-foot-contact {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.wz-foot-contact__label {
+  opacity: 0.72;
+}
+.wz-foot-contact a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  color: inherit;
+  text-decoration: none;
+}
+.wz-foot-contact__num {
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  unicode-bidi: isolate;
+}
+.wz-foot-contact__wa svg {
+  width: 16px;
+  height: 16px;
+}
+.wz-foot-contact a:hover,
+.wz-foot-contact a:focus-visible {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}

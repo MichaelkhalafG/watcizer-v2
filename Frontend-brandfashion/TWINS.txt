@@ -397,8 +397,6 @@ DIVERGED 2026-11-11 middleware.js — Brand Fashion only (D-3, D-17): the canoni
 # 2026-11-14 (SEO Phase 1): app/(main)/listing/loading.jsx DELETED on both sides, so off this list. Its skeleton put /listing inside a Suspense boundary: the grid arrived out of order in a hidden <div id="S:0"> swapped in by a script, so a crawler that runs no script saw eight grey cards and no product (the 2026-11-13 crawl: 0 words in <main>). The page now renders in one piece, like every facet page.
 # 2026-11-14 (SEO Phase 1 + Search Console): FOUR NEW TWINS - the shop directory in the server HTML (SiteDirectory.jsx + .css, a server component mounted in app/(main)/desktop-footer.jsx) and the menu-link rule both menus and the directory share (src/lib/menuLinks.js + its test): a node's page is the slug of its English name, checked against the tables.
 src/lib/menuLinks.js
-src/Components/Footer/SiteDirectory.jsx
-src/Components/Footer/SiteDirectory.css
 tests/menuLinks.test.mjs
 # 2026-11-14 (SEO Phase 1, items 4 and 5): TWO NEW TWINS - a listing page's title and fallback description in words true of its products (core's facets for the same request), and the thin-listing number (src/lib/listingWords.js + its test). listingSeo.js stays diverged (each shop passes its own name). tests/languageByAddress.test.mjs exists in BOTH apps but is NOT a twin: each tests its own middleware.
 src/lib/listingWords.js
@@ -511,7 +509,6 @@ tests/pickup.test.mjs
 # reads each shop's own src/content/contact.js). Changed on both sides, identically, and still twins: SiteDirectory.jsx + .css,
 # app/(main)/desktop-footer.jsx, src/lib/menuLinks.js (calmCase, footerDirectoryOf) and tests/menuLinks.test.mjs. Footer.jsx and
 # Footer.css stay split; both gained the number and the footer area's colours.
-src/Components/Footer/DirectoryToggle.jsx
 src/Components/Footer/FootContact.jsx
 # 2026-11-17 (the default share picture on the information pages): TWO NEW TWINS - src/lib/defaultOg.js (withDefaultOg: the shop card
 # public/og-image.jpg when a page sets openGraph without a picture) and tests/defaultOg.test.mjs. Changed on both sides and still twins:
@@ -535,3 +532,8 @@ src/Components/Reviews/ReviewsPanel.jsx
 src/Components/Reviews/ReviewsPanel.css
 src/lib/reviewWords.js
 tests/productTabs.test.mjs
+# 2026-11-19 (the unified footer, part 2 of the three fixes): FOUR NEW TWINS - the footer itself (src/Components/Footer/SiteFooter.jsx, a server component: logo, tagline, the shop's number, social, Shop / Account / Support, the categories with their sub-categories behind closed expanders, the brands row, the ways to pay, the copyright, the language switch and the credit), its sheet (SiteFooter.css), a column (FootSection.jsx: a heading on a computer, a closed section on a phone) and tests/siteFooter.test.mjs. REMOVED on both sides, and from this list: SiteDirectory.jsx + .css and DirectoryToggle.jsx (their links are in SiteFooter now); Footer.jsx (split) is removed from both apps. Changed on both sides and still a twin: app/(main)/desktop-footer.jsx. Split, each shop's own: src/content/footer.js (logo, tagline, Shop links, social) and src/Components/Footer/Footer.css (the colours only); Brand Fashion only: src/Components/Footer/OffersFootLink.jsx (Offers while an offer runs).
+src/Components/Footer/SiteFooter.jsx
+src/Components/Footer/SiteFooter.css
+src/Components/Footer/FootSection.jsx
+tests/siteFooter.test.mjs

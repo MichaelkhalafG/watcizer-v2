@@ -38,14 +38,19 @@ describe('Watchizer social accounts', () => {
   })
 
   it('are imported, never typed, by the header and the footer — and no retired account is left anywhere', () => {
-    for (const file of ['../src/Components/Header/Header.jsx', '../src/Components/Footer/Footer.jsx']) {
-      const source = read(file)
-      expect(source).toContain("import { FACEBOOK, INSTAGRAM, TIKTOK } from '@/src/content/social'")
-      expect(source).toContain('href={FACEBOOK}')
-      expect(source).toContain('href={INSTAGRAM}')
-      expect(source).toContain('href={TIKTOK}')
-      expect(source).not.toMatch(/facebook\.com|instagram\.com|tiktok\.com/)
-    }
+    const header = read('../src/Components/Header/Header.jsx')
+    expect(header).toContain("import { FACEBOOK, INSTAGRAM, TIKTOK } from '@/src/content/social'")
+    expect(header).toContain('href={FACEBOOK}')
+    expect(header).toContain('href={INSTAGRAM}')
+    expect(header).toContain('href={TIKTOK}')
+    expect(header).not.toMatch(/facebook\.com|instagram\.com|tiktok\.com/)
+    // the footer's accounts (2026-11-19, the unified footer): this shop's src/content/footer.js, imported the same way
+    const footer = read('../src/content/footer.js')
+    expect(footer).toContain("import { FACEBOOK, INSTAGRAM, TIKTOK } from './social'")
+    expect(footer).toContain('href: FACEBOOK')
+    expect(footer).toContain('href: INSTAGRAM')
+    expect(footer).toContain('href: TIKTOK')
+    expect(footer).not.toMatch(/facebook\.com|instagram\.com|tiktok\.com/)
     for (const file of ['../src/content/trustPages.js', '../src/content/social.js', '../app/(main)/page.jsx']) {
       const source = read(file)
       expect(source).not.toContain('100076267296916')

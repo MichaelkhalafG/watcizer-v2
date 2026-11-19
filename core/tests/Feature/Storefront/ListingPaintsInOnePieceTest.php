@@ -37,12 +37,16 @@ it('renders the listing inline, not behind a Suspense boundary that empties the 
     }
 });
 
-it('puts the desktop footer in the server HTML and hides it on phones with CSS', function () {
-    $footer = listingSource('app/(main)/desktop-footer.jsx');
-    expect(str_contains($footer, 'useMediaQuery('))->toBeFalse('the footer is gated by useMediaQuery again (false on the server → it pops in)')
-        ->and(str_contains($footer, 'wz-desktop-footer'))->toBeTrue();
-    expect(preg_match('/@media \(max-width: 767\.98px\)\s*\{\s*\.wz-desktop-footer\s*\{\s*display: none;/', listingSource('src/Components/Footer/Footer.css')))
-        ->toBe(1, 'Footer.css must hide .wz-desktop-footer below 768 px');
+// Changed deliberately (Michael, 2026-11-19, the unified footer): ONE footer on every width, a server component, its
+// columns closed sections on a phone by CSS. The rule this test holds is unchanged: never gated in script.
+it('puts the footer in the server HTML on every width, never gated by useMediaQuery', function () {
+    foreach (['Frontend-next', 'Frontend-brandfashion'] as $app) {
+        $wrapper = str_replace("\r\n", "\n", (string) file_get_contents(base_path("../{$app}/app/(main)/desktop-footer.jsx")));
+        $footer = str_replace("\r\n", "\n", (string) file_get_contents(base_path("../{$app}/src/Components/Footer/SiteFooter.jsx")));
+        expect(str_contains($wrapper.$footer, 'useMediaQuery('))->toBeFalse("{$app}: the footer is gated by useMediaQuery again (false on the server → it pops in)")
+            ->and(str_contains($wrapper, '<SiteFooter />'))->toBeTrue()
+            ->and(str_contains($footer, "'use client'"))->toBeFalse("{$app}: the footer must stay a server component");
+    }
 });
 
 it('has no route-level loading skeleton for the listing pages, in either app — it would send the grid out of order', function () {
