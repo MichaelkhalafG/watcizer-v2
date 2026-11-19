@@ -67,11 +67,17 @@ final class CouponStatus
      */
     public const PICKUP_NO_DELIVERY = 'pickup_no_delivery';
 
+    /** The offer needs another item in the cart first — a watch for a wallet's discount (2026-11-19). The code is kept. */
+    public const NEEDS_QUALIFIER = 'needs_qualifier';
+
+    /** A first-order-only offer, and this account or phone number has ordered before (2026-11-19). */
+    public const NOT_FIRST_ORDER = 'not_first_order';
+
     /** @var list<string> */
     public const ALL = [self::APPLIED, self::INVALID, self::EXPIRED, self::NOT_STARTED, self::NO_ELIGIBLE_ITEMS,
         self::MINIMUM_NOT_REACHED, self::USAGE_LIMIT, self::CUSTOMER_LIMIT, self::NOT_BEST, self::PHONE_MISMATCH, self::WHEEL_USED,
         self::INVITE_OWN, self::INVITE_NOT_FIRST, self::INVITE_USED, self::INVITE_INACTIVE, self::GIFT_OUT_OF_STOCK, self::ON_OFFER,
-        self::PICKUP_NO_DELIVERY];
+        self::PICKUP_NO_DELIVERY, self::NEEDS_QUALIFIER, self::NOT_FIRST_ORDER];
 
     /**
      * @param  float|null  $minimum  the minimum order, for `minimum_not_reached`
@@ -118,6 +124,11 @@ final class CouponStatus
                 'ar' => 'هذا كود توصيل مجاني، وطلب الاستلام من الفرع بدون رسوم توصيل. احتفظ بالكود لطلب بتوصيل — لم يُستخدم.',
             ],
             self::NOT_STARTED => ['en' => 'This code is not active yet. Try again when the offer starts.', 'ar' => 'هذا الكود لم يبدأ بعد. جرّبه عند بداية العرض.'],
+            // the offer's own sentence (PromotionNeeds): what to add, and the offer it unlocks; the code is not used up
+            self::NEEDS_QUALIFIER => $needsEn !== null && $needsAr !== null
+                ? ['en' => $needsEn, 'ar' => $needsAr]
+                : ['en' => 'This offer needs another item in your cart first. Your code is kept.', 'ar' => 'هذا العرض يحتاج منتجًا آخر في سلتك أولًا. كودك محفوظ.'],
+            self::NOT_FIRST_ORDER => ['en' => 'This offer is for a first order only, and this account or phone number has ordered before.', 'ar' => 'هذا العرض لأول طلب فقط، وهذا الحساب أو رقم الهاتف طلب من قبل.'],
             self::NO_ELIGIBLE_ITEMS => $needsEn !== null && $needsAr !== null
                 ? ['en' => $needsEn, 'ar' => $needsAr]
                 : ['en' => 'None of the items in your cart are included in this offer.', 'ar' => 'لا يوجد في سلتك منتج يشمله هذا العرض.'],

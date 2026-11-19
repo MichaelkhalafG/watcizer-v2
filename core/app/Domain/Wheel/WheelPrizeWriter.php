@@ -48,14 +48,40 @@ final class WheelPrizeWriter
         $before = ['prizes' => WheelPrizes::forStorefront($storefrontId)] + Wheel::settings($storefrontId);
 
         DB::transaction(function () use ($storefrontId, $rows, $ttl, $minOrder): void {
-            DB::table(WheelPrizes::TABLE)->where('storefront_id', $storefrontId)->delete();
+            // a DIFFERENCE by position (2026-11-19, the Hot Deals lesson): a segment that is the same is not written, a
+            // changed one is updated in place (its id stays — a spin keeps its own snapshot of the terms either way), a
+            // new position is inserted, a removed one deleted
+            $existing = [];
+            foreach (DB::table(WheelPrizes::TABLE)->where('storefront_id', $storefrontId)->orderBy('position')->orderBy('id')->get() as $raw) {
+                $existing[Coerce::int($raw->position)][] = $raw;
+            }
             foreach ($rows as $position => $row) {
-                DB::table(WheelPrizes::TABLE)->insert($row + [
-                    'storefront_id' => $storefrontId,
-                    'position' => $position,
-                    'created_at' => now(),
-                    'updated_at' => now(),
-                ]);
+                $old = array_shift($existing[$position]);
+                if ($old === null) {
+                    DB::table(WheelPrizes::TABLE)->insert($row + ['storefront_id' => $storefrontId, 'position' => $position, 'created_at' => now(), 'updated_at' => now()]);
+
+                    continue;
+                }
+                $changed = [];
+                foreach ($row as $column => $value) {
+                    $was = property_exists($old, $column) ? $old->{$column} : null;
+                    $same = $was === null || $value === null ? $was === $value : (is_numeric($was) && is_numeric($value) ? abs((float) $was - (float) $value) < 0.000001 : self::text($was) === self::text($value));
+                    if (! $same) {
+                        $changed[$column] = $value;
+                    }
+                }
+                if ($changed !== []) {
+                    DB::table(WheelPrizes::TABLE)->where('id', Coerce::int($old->id))->update($changed + ['updated_at' => now()]);
+                }
+            }
+            $gone = [];
+            foreach ($existing as $left) {
+                foreach ($left as $raw) {
+                    $gone[] = Coerce::int($raw->id);
+                }
+            }
+            if ($gone !== []) {
+                DB::table(WheelPrizes::TABLE)->whereIn('id', $gone)->delete();
             }
             Wheel::setTerms($storefrontId, $ttl, $minOrder);
         });
@@ -91,6 +117,7 @@ final class WheelPrizeWriter
             $minQuantity = Coerce::nint($segment['min_quantity'] ?? null);
             $mode = trim(Coerce::str($segment['apply_mode'] ?? WheelPrizes::MODE_ORDER));
             $gifts = self::giftIds($segment['gift_product_ids'] ?? null);
+            $offer = Coerce::nint($segment['offer_rule_id'] ?? null);
 
             if (! in_array($type, WheelPrizes::TYPES, true)) {
                 $errors["segments.{$i}.type"] = ManageText::t('wheel.type_unknown', 'نوع الجائزة غير معروف.');
@@ -106,6 +133,18 @@ final class WheelPrizeWriter
             }
             if (preg_match('/^#[0-9A-F]{6}$/', $color) !== 1) {
                 $errors["segments.{$i}.color"] = ManageText::t('wheel.color_hex', 'اللون بصيغة #rrggbb.');
+            }
+
+            // a builder offer (2026-11-19): the segment carries no terms of its own, only the offer it gives
+            if ($type === 'offer') {
+                $template = $offer === null ? false : DB::table('promotion_rules as r')
+                    ->join('promotion_rule_storefront as rs', 'rs.promotion_rule_id', '=', 'r.id')
+                    ->where('r.id', $offer)->where('r.issuer', WheelPrizes::TEMPLATE_ISSUER)->where('rs.storefront_id', $storefrontId)->exists();
+                if (! $template) {
+                    $errors["segments.{$i}.offer_rule_id"] = ManageText::t('wheel.offer_unknown', 'اختر عرضًا من عروض العجلة المصممة لهذا المتجر.');
+                }
+            } else {
+                $offer = null;
             }
 
             if ($type === 'percent_discount' || $type === 'referral') {
@@ -177,7 +216,7 @@ final class WheelPrizeWriter
                 'min_quantity' => $minQuantity,
                 'apply_mode' => $mode,
                 'gift_product_ids' => $gifts === [] ? null : json_encode($gifts),
-            ];
+            ] + (\App\Domain\Promotions\PromotionRules::builderReady() ? ['offer_rule_id' => $offer] : []);
         }
 
         $total = WheelPrizes::oddsTotal($rows);
@@ -231,5 +270,11 @@ final class WheelPrizeWriter
         }
 
         return $out;
+    }
+
+    /** A value's exact text for a comparison: a scalar as PHP prints it, anything else as JSON. */
+    private static function text(mixed $value): string
+    {
+        return is_scalar($value) ? (string) $value : (string) json_encode($value);
     }
 }

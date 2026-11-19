@@ -28,8 +28,11 @@ final class PromotionMoney
     /** Off ONE unit — the cheapest eligible line's (the wheel's "10 % off the 2nd watch", 2026-11-09). */
     public const PER_CHEAPEST = 'cheapest';
 
+    /** One discounted unit for each QUALIFYING unit in the cart, the most expensive first (2026-11-19: a wallet per watch). */
+    public const PER_PAIRED = 'paired';
+
     /** @var list<string> */
-    public const PER = [self::PER_ORDER, self::PER_ITEM, self::PER_CHEAPEST];
+    public const PER = [self::PER_ORDER, self::PER_ITEM, self::PER_CHEAPEST, self::PER_PAIRED];
 
     /**
      * @param  array<int, array{unit: float, quantity: int}>  $lines  the ELIGIBLE lines, by cart index

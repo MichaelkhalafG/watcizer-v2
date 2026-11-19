@@ -15,6 +15,8 @@ use App\Domain\Promotions\PromotionRules;
 use App\Domain\Promotions\PromotionScopes;
 use App\Domain\Promotions\PromotionState;
 use App\Domain\Promotions\PromotionWriter;
+use App\Domain\Promotions\PromotionDiscounts;
+use App\Domain\Wheel\WheelPrizes;
 use App\Storefront\ImageUrl;
 use App\Support\Coerce;
 use App\Support\LocalisedName;
@@ -88,6 +90,8 @@ final class PromotionController
             ->filterable([
                 'is_active' => ['0', '1'],
                 'storefront_id' => null,
+                // the offer builder's list (2026-11-19): running, starting later, over, switched off, kept for the wheel
+                'status' => ['active', 'scheduled', 'ended', 'off', 'wheel'],
             ])
             /*
              * BOTH filters are VIRTUAL — declared here so the whitelist, the URL and the reset
@@ -100,7 +104,7 @@ final class PromotionController
              * it as `r.is_active`, and declaring one of the pair virtual and not the other is how
              * the next reader learns the wrong rule.
              */
-            ->virtual(['is_active', 'storefront_id'])
+            ->virtual(['is_active', 'storefront_id', 'status'])
             // M1x: the coupon code too — the word a customer reads out on the phone
             ->searchable(['r.name', 'r.code'])
             /*
@@ -125,7 +129,7 @@ final class PromotionController
             ], 'promotions');
 
         $query = DB::table('promotion_rules as r')
-            ->select(['r.id', 'r.name', 'r.priority', 'r.is_active', 'r.starts_at', 'r.ends_at', 'r.updated_at'])
+            ->select(['r.id', 'r.name', 'r.priority', 'r.is_active', 'r.starts_at', 'r.ends_at', 'r.updated_at', 'r.issuer'])
             /*
              * The wheel's prize rules are NOT listed here (2026-11-08). They are made by the wheel, one per set
              * of prize terms, reached only through a spin's code, and the team edits the prizes on the wheel's
@@ -133,7 +137,8 @@ final class PromotionController
              * rules to the engine and to the edit screen by id. The list also stays at its query budget: every
              * row costs its summary's reads, and a wheel with twelve prizes would add twelve rows nobody asked for.
              */
-            ->whereNull('r.issuer');
+            // the offers made for the wheel (2026-11-19) are listed too: they are the team's, edited here
+            ->where(fn (Builder $q) => $q->whereNull('r.issuer')->orWhere('r.issuer', WheelPrizes::TEMPLATE_ISSUER));
 
         $filters = $table->resolvedFilters();
 
@@ -141,6 +146,16 @@ final class PromotionController
         if ($active !== null) {
             $query->where('r.is_active', $active === '1' ? 1 : 0);
         }
+
+        $stamp = now()->format('Y-m-d H:i:s');
+        match (Coerce::nstr($filters['status'] ?? null)) {
+            'active' => $query->whereNull('r.issuer')->where('r.is_active', 1)->where('r.starts_at', '<=', $stamp)->where('r.ends_at', '>=', $stamp),
+            'scheduled' => $query->whereNull('r.issuer')->where('r.is_active', 1)->where('r.starts_at', '>', $stamp),
+            'ended' => $query->whereNull('r.issuer')->where('r.ends_at', '<', $stamp),
+            'off' => $query->whereNull('r.issuer')->where('r.is_active', 0)->where(fn (Builder $q) => $q->whereNull('r.ends_at')->orWhere('r.ends_at', '>=', $stamp)),
+            'wheel' => $query->where('r.issuer', WheelPrizes::TEMPLATE_ISSUER),
+            default => null,
+        };
 
         $storefrontId = Coerce::nint($filters['storefront_id'] ?? null);
         if ($storefrontId !== null) {
@@ -166,6 +181,8 @@ final class PromotionController
                 'summary' => self::summary($id),
                 // THE at-a-glance cell: state, label, tone, per-storefront visibility, skips.
                 ...PromotionState::of($row),
+                // kept for the wheel (2026-11-19): its state is the wheel's, not a window's
+                'on_wheel' => Row::nstr($row, 'issuer') === WheelPrizes::TEMPLATE_ISSUER,
                 'edit_url' => route('manage.promotions.edit', ['promotion' => $id]),
             ];
         };
@@ -212,7 +229,17 @@ final class PromotionController
     public function store(Request $request): RedirectResponse
     {
         $data = Coerce::arr($request->validate(self::rules()));
+        $forWheel = Coerce::bool($data['for_wheel'] ?? false);
+        if ($forWheel) {
+            // an offer for the wheel is copied at each spin: it never runs by itself (switched off, no code)
+            $data = ['is_active' => false, 'code' => null] + $data;
+            $data['is_active'] = false;
+            $data['code'] = null;
+        }
         $id = $this->writer->save($data, null, self::actorId($request));
+        if ($forWheel) {
+            DB::table('promotion_rules')->where('id', $id)->update(['issuer' => WheelPrizes::TEMPLATE_ISSUER]);
+        }
 
         // A promotion gives away stock and money, so who created it is an audit question.
         ActivityLog::record('promotion_rules', $id, ActivityLog::CREATED,
@@ -227,6 +254,11 @@ final class PromotionController
     {
         self::requireRule($promotion);
         $data = Coerce::arr($request->validate(self::rules()));
+        if (DB::table('promotion_rules')->where('id', $promotion)->value('issuer') === WheelPrizes::TEMPLATE_ISSUER) {
+            // a wheel offer stays one: switched off and without a code (the spin's own rule carries the code)
+            $data['is_active'] = false;
+            $data['code'] = null;
+        }
 
         /*
          * The rule's own columns before and after. Conditions and rewards live in child tables and
@@ -367,10 +399,35 @@ final class PromotionController
             'rewards.*.quantity' => ['nullable', 'integer', 'min:1'],
             // The preview previews the rule the admin is about to save, so it must keep the same
             // parameters the save keeps — otherwise it would answer about a different rule.
+            // Since 2026-11-19 the WHOLE offer (the builder's test cart): its scopes, pairing, cap, maximum, minimum,
+            // code — and a phone, for "first order only".
+            'code' => ['nullable', 'string', 'max:40'],
+            'apply_per' => ['nullable', 'string', Rule::in(PromotionMoney::PER)],
+            'max_discount' => ['nullable', 'numeric', 'min:0', 'max:9999999'],
+            'max_units' => ['nullable', 'integer', 'min:1', 'max:999'],
+            'min_order_amount' => ['nullable', 'numeric', 'min:0', 'max:9999999'],
+            'include_sale_items' => ['nullable', 'boolean'],
+            'unit_floor' => ['nullable', 'numeric', 'min:0', 'max:9999999'],
+            'qualify_min_quantity' => ['nullable', 'integer', 'min:1', 'max:999'],
+            'qualify_min_amount' => ['nullable', 'numeric', 'min:0', 'max:9999999'],
+            'scopes' => ['array', 'max:200'],
+            'scopes.*.role' => ['required', 'string', Rule::in(PromotionScopes::ROLES)],
+            'scopes.*.dimension' => ['required', 'string', Rule::in(PromotionScopes::DIMENSIONS)],
+            'scopes.*.value_id' => ['nullable', 'integer', 'min:1'],
+            'scopes.*.value' => ['nullable', 'string', 'max:32'],
+            'phone' => ['nullable', 'string', 'max:20'],
+            'rule_id' => ['nullable', 'integer'],
+            'starts_at' => ['nullable', 'date'],
+            'ends_at' => ['nullable', 'date'],
         ] + self::parameterRules()));
 
         $storefrontId = Coerce::int($data['storefront_id'] ?? null, 1);
-        $snapshot = $this->snapshotFrom($data, $storefrontId);
+        // a coded offer is previewed as the shopper meets it: with its code typed — a draft code of its own, so it never
+        // collides with the saved offer's
+        $typed = trim(Coerce::str($data['code'] ?? '')) === '' ? null : 'PREVIEW'.strtoupper(bin2hex(random_bytes(4)));
+        $data['code'] = $typed;
+        $snapshot = $this->snapshotFrom($data, $storefrontId, $typed);
+        $warnings = self::overlaps($data, $storefrontId, Coerce::nint($data['rule_id'] ?? null));
 
         /*
          * The draft is saved, evaluated and ROLLED BACK, all inside one transaction. A preview that
@@ -461,7 +518,130 @@ final class PromotionController
             'stock' => self::stockOutcome($outcome),
             'skipped' => self::skippedNames($outcome),
             'notice' => self::stackingNotice(),
+            // the coupon's own answer when the offer has a code (what the shopper would read)
+            'coupon' => $outcome->coupon === null ? null : ['status' => $outcome->coupon['status'], 'messages' => $outcome->coupon['messages']],
+            // other running offers on the same items (2026-11-19): a warning, never a refusal
+            'overlaps' => $warnings,
+            // what came off each test-cart line (index = the line's position in the request), for the builder's test cart
+            'line_discounts' => array_map(static fn (array $line): array => ['index' => $line['index'], 'amount' => round($line['amount'], 2)], $outcome->lines),
         ]);
+    }
+
+    /**
+     * Running offers (not the wheel's) whose items overlap this one's, in an overlapping window on a shared shop: names.
+     * Two offers "overlap" when either is on the whole cart, or both name the same category, brand or product.
+     *
+     * @param  array<string, mixed>  $data
+     * @return list<string>
+     */
+    private static function overlaps(array $data, int $storefrontId, ?int $ruleId): array
+    {
+        $mine = [];
+        foreach (Coerce::arr($data['scopes'] ?? []) as $scope) {
+            $scope = Coerce::arr($scope);
+            if (Coerce::str($scope['role'] ?? '') === PromotionScopes::ROLE_TARGET) {
+                $mine[Coerce::str($scope['dimension'] ?? '')][] = Coerce::str($scope['value_id'] ?? $scope['value'] ?? '');
+            }
+        }
+        $starts = Coerce::nstr($data['starts_at'] ?? null) ?? now()->format('Y-m-d H:i:s');
+        $ends = Coerce::nstr($data['ends_at'] ?? null) ?? '2099-12-31 23:59:59';
+        $others = DB::table('promotion_rules as r')
+            ->join('promotion_rule_storefront as rs', 'rs.promotion_rule_id', '=', 'r.id')
+            ->whereNull('r.issuer')->where('r.is_active', 1)->where('rs.storefront_id', $storefrontId)
+            ->where('r.ends_at', '>=', $starts)->where('r.starts_at', '<=', $ends)
+            ->when($ruleId !== null, fn ($q) => $q->where('r.id', '!=', $ruleId))
+            ->orderBy('r.name')->get(['r.id', 'r.name']);
+        $out = [];
+        foreach ($others as $raw) {
+            $other = Row::cast($raw);
+            $theirs = [];
+            foreach (DB::table('promotion_rule_scopes')->where('promotion_rule_id', Row::int($other, 'id'))->where('role', PromotionScopes::ROLE_TARGET)->get(['dimension', 'value_id', 'value']) as $s) {
+                $s = Row::cast($s);
+                $theirs[Row::str($s, 'dimension')][] = (string) (Row::nint($s, 'value_id') ?? Row::nstr($s, 'value') ?? '');
+            }
+            $hit = $mine === [] || $theirs === [];
+            foreach ($mine as $dimension => $values) {
+                $hit = $hit || array_intersect($values, $theirs[$dimension] ?? []) !== [];
+            }
+            if ($hit) {
+                $out[] = Row::str($other, 'name');
+            }
+        }
+
+        return $out;
+    }
+
+    // ── one click: pause, start again, duplicate, end now (the offer builder's list, 2026-11-19) ────────────────
+
+    public function pause(Request $request, int $promotion): RedirectResponse
+    {
+        return $this->switchTo($request, $promotion, false);
+    }
+
+    public function resume(Request $request, int $promotion): RedirectResponse
+    {
+        return $this->switchTo($request, $promotion, true);
+    }
+
+    private function switchTo(Request $request, int $promotion, bool $on): RedirectResponse
+    {
+        $rule = self::requireRule($promotion);
+        if (DB::table('promotion_rules')->where('id', $promotion)->value('issuer') !== null) {
+            return back()->withErrors(['offer' => ManageText::t('promotions.wheel_offer_no_switch', 'عرض العجلة يعمل من خلال العجلة نفسها، لا يُشغَّل أو يُوقف هنا.')]);
+        }
+        if ($on && (Row::nstr($rule, 'ends_at') === null || Row::str($rule, 'ends_at') < now()->format('Y-m-d H:i:s'))) {
+            return back()->withErrors(['offer' => ManageText::t('promotions.resume_needs_end', 'انتهى هذا العرض. غيّر تاريخ الانتهاء أولًا ثم شغّله.')]);
+        }
+        if (Row::bool($rule, 'is_active') !== $on) {
+            DB::table('promotion_rules')->where('id', $promotion)->update(['is_active' => $on, 'updated_by' => self::actorId($request), 'updated_at' => now()]);
+            ActivityLog::record('promotion_rules', $promotion, ActivityLog::UPDATED, ['is_active' => ! $on], ['is_active' => $on], label: Row::str($rule, 'name'));
+        }
+
+        return back()->with('status', $on ? ManageText::t('promotions.resumed', 'العرض يعمل الآن.') : ManageText::t('promotions.paused', 'تم إيقاف العرض مؤقتًا.'));
+    }
+
+    /** End an offer now: its end date becomes this minute (it stays in the list as ended). */
+    public function end(Request $request, int $promotion): RedirectResponse
+    {
+        $rule = self::requireRule($promotion);
+        if (DB::table('promotion_rules')->where('id', $promotion)->value('issuer') !== null) {
+            return back()->withErrors(['offer' => ManageText::t('promotions.wheel_offer_no_switch', 'عرض العجلة يعمل من خلال العجلة نفسها، لا يُشغَّل أو يُوقف هنا.')]);
+        }
+        // a second ago, so the offer reads as ended at once (the running window includes its end second)
+        $now = now()->subSecond()->format('Y-m-d H:i:s');
+        $starts = Row::nstr($rule, 'starts_at');
+        $update = ['ends_at' => $now, 'updated_by' => self::actorId($request), 'updated_at' => now()];
+        if ($starts === null || $starts > $now) {
+            $update['starts_at'] = $now;   // an offer that had not started ends without ever running
+        }
+        DB::table('promotion_rules')->where('id', $promotion)->update($update);
+        ActivityLog::record('promotion_rules', $promotion, ActivityLog::UPDATED, ['ends_at' => Row::nstr($rule, 'ends_at')], ['ends_at' => $now], label: Row::str($rule, 'name'));
+
+        return back()->with('status', ManageText::t('promotions.ended', 'انتهى العرض الآن.'));
+    }
+
+    /** A copy of an offer, switched off and without a code, named "(copy)"; the page opens on it. */
+    public function duplicate(Request $request, int $promotion): RedirectResponse
+    {
+        $rule = self::requireRule($promotion);
+        $payload = self::rulePayload($rule);
+        $issuer = DB::table('promotion_rules')->where('id', $promotion)->value('issuer');
+        $data = [
+            'name' => mb_substr(Row::str($rule, 'name'), 0, 110).' '.ManageText::t('promotions.copy_suffix', '(نسخة)'),
+            'is_active' => false,
+            'code' => null,
+            'conditions' => array_map(fn (mixed $c): array => array_intersect_key(Coerce::arr($c), array_flip(['type', 'product_id', 'variant_id', 'storefront_category_id', 'brand_id', 'quantity', 'amount', 'methods'])), Coerce::arr($payload['conditions'])),
+            'rewards' => array_map(fn (mixed $r): array => array_intersect_key(Coerce::arr($r), array_flip(['type', 'product_id', 'variant_id', 'quantity', 'amount'])), Coerce::arr($payload['rewards'])),
+        ] + array_intersect_key($payload, array_flip(['priority', 'starts_at', 'ends_at', 'label_en', 'label_ar', 'apply_per', 'max_discount', 'min_order_amount',
+            'usage_limit', 'usage_limit_per_customer', 'include_sale_items', 'stackable', 'unit_floor', 'qualify_min_quantity', 'qualify_min_amount', 'max_units', 'scopes', 'storefronts']));
+        $id = $this->writer->save($data, null, self::actorId($request));
+        if ($issuer === WheelPrizes::TEMPLATE_ISSUER) {
+            DB::table('promotion_rules')->where('id', $id)->update(['issuer' => WheelPrizes::TEMPLATE_ISSUER]);
+        }
+        ActivityLog::record('promotion_rules', $id, ActivityLog::CREATED, [], ['copied_from' => $promotion], label: Coerce::str($data['name']));
+
+        return redirect()->route('manage.promotions.edit', ['promotion' => $id])
+            ->with('status', ManageText::t('promotions.duplicated', 'تم إنشاء نسخة متوقفة من العرض. راجعها ثم شغّلها.'));
     }
 
     /**
@@ -578,7 +758,11 @@ final class PromotionController
             'unit_floor' => Row::nmoney($full, 'unit_floor'),
             'qualify_min_quantity' => Row::nint($full, 'qualify_min_quantity'),
             'qualify_min_amount' => Row::nmoney($full, 'qualify_min_amount'),
+            'max_units' => property_exists($full, 'max_units') ? Row::nint($full, 'max_units') : null,
+            'on_wheel' => Row::nstr($full, 'issuer') === WheelPrizes::TEMPLATE_ISSUER,
             'scopes' => $scopes,
+            // the names of chosen products, for the builder's chips and its sentence (other dimensions name themselves from scope_options)
+            'product_labels' => self::productLabels($scopes),
             'redemptions' => PromotionEngine::redemptions($id, null),
             'storefronts' => Coerce::intList(
                 DB::table('promotion_rule_storefront')->where('promotion_rule_id', $id)->pluck('storefront_id')
@@ -587,6 +771,24 @@ final class PromotionController
             'rewards' => $rewards,
             'state' => PromotionState::of($rule),
         ];
+    }
+
+    /**
+     * @param  array<int, mixed>  $scopes
+     * @return array<int, string> product id => its Arabic title (a JSON object on the page)
+     */
+    private static function productLabels(array $scopes): array
+    {
+        $out = [];
+        foreach ($scopes as $scope) {
+            $row = Coerce::arr($scope);
+            $id = Coerce::nint($row['value_id'] ?? null);
+            if (($row['dimension'] ?? null) === 'product' && $id !== null && ! isset($out[$id])) {
+                $out[$id] = Coerce::str(self::productBrief($id)['title'] ?? ('#'.$id));
+            }
+        }
+
+        return $out;
     }
 
     /** @return array<string, mixed>|null */
@@ -673,7 +875,7 @@ final class PromotionController
     /**
      * @param  array<string, mixed>  $data
      */
-    private function snapshotFrom(array $data, int $storefrontId): CartSnapshot
+    private function snapshotFrom(array $data, int $storefrontId, ?string $code = null): CartSnapshot
     {
         $lines = [];
         $subtotal = 0.0;
@@ -703,6 +905,8 @@ final class PromotionController
             // than inventing a city the admin did not choose.
             shippingCost: 0.0,
             paymentMethod: Coerce::str($data['payment_method'] ?? 'cash'),
+            code: $code,
+            customerKeys: PromotionDiscounts::customerKeys(null, null, Coerce::nstr($data['phone'] ?? null)),
         );
     }
 
@@ -836,7 +1040,7 @@ final class PromotionController
                 $row = Row::cast($raw);
                 $out[] = ['id' => Row::int($row, 'id'), 'label' => LocalisedName::pick(
                     Row::nstr($row, 'ar_name'), Row::nstr($row, 'en_name'), '#'.Row::int($row, 'id'),
-                )];
+                ), 'ar' => Row::nstr($row, 'ar_name') ?? Row::nstr($row, 'en_name'), 'en' => Row::nstr($row, 'en_name') ?? Row::nstr($row, 'ar_name')];
             }
 
             return $out;
@@ -857,7 +1061,9 @@ final class PromotionController
             $label = LocalisedName::pick(Row::nstr($row, 'ar_name'), Row::nstr($row, 'en_name'), Row::str($row, 'slug'))
                 .' — '.(Row::nstr($row, 'storefront') ?? '');
             $nodes[Row::int($row, 'depth') <= 1 ? 'categories' : 'sub_types'][] = [
-                'id' => Row::int($row, 'id'), 'storefront_id' => Row::int($row, 'storefront_id'), 'label' => $label,
+                'id' => Row::int($row, 'id'), 'storefront_id' => Row::int($row, 'storefront_id'), 'label' => $label, 'slug' => Row::str($row, 'slug'),
+                // both names, for the builder's sentence in both languages
+                'ar' => Row::nstr($row, 'ar_name') ?? Row::nstr($row, 'en_name'), 'en' => Row::nstr($row, 'en_name') ?? Row::nstr($row, 'ar_name'),
             ];
         }
 
@@ -905,6 +1111,9 @@ final class PromotionController
             'unit_floor' => ['nullable', 'numeric', 'min:0', 'max:9999999'],
             'qualify_min_quantity' => ['nullable', 'integer', 'min:1', 'max:999'],
             'qualify_min_amount' => ['nullable', 'numeric', 'min:0', 'max:9999999'],
+            // the offer builder (2026-11-19): a fixed maximum of discounted items per order; an offer kept for the wheel
+            'max_units' => ['nullable', 'integer', 'min:1', 'max:999'],
+            'for_wheel' => ['nullable', 'boolean'],
             'scopes' => ['array', 'max:200'],
             'scopes.*.role' => ['required', 'string', Rule::in(PromotionScopes::ROLES)],
             'scopes.*.dimension' => ['required', 'string', Rule::in(PromotionScopes::DIMENSIONS)],

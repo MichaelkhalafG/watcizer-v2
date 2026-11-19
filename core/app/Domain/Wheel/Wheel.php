@@ -8,6 +8,7 @@ use App\Domain\Activity\ActivityLog;
 use App\Domain\Promotions\CartSnapshot;
 use App\Domain\Promotions\CouponStatus;
 use App\Domain\Promotions\PromotionMoney;
+use App\Domain\Promotions\PromotionNeeds;
 use App\Domain\Promotions\PromotionScopes;
 use App\Domain\Promotions\PromotionWriter;
 use App\Support\Coerce;
@@ -277,6 +278,8 @@ final class Wheel
             Coerce::str($terms['label_en'] ?? ''), Coerce::str($terms['label_ar'] ?? ''),
             (string) (Coerce::nint($terms['scope_category_id'] ?? null) ?? ''), (string) (Coerce::nint($terms['min_quantity'] ?? null) ?? ''),
             Coerce::str($terms['apply_mode'] ?? WheelPrizes::MODE_ORDER), (string) (Coerce::nint($terms['gift_product_id'] ?? null) ?? ''),
+            // a builder offer (2026-11-19): its template and the template's content — an edited offer is a new rule
+            ...(isset($terms['offer_rule_id']) ? [(string) Coerce::int($terms['offer_rule_id']), Coerce::str($terms['offer_signature'] ?? '')] : []),
         ])), 0, 8));
 
         return strtoupper(self::ISSUER.'-'.preg_replace('/[^a-z0-9]+/i', '', $storefrontCode).'-'.$hash);
@@ -288,7 +291,7 @@ final class Wheel
      * `referral_reward` percentage.
      *
      * @param  array<string, mixed>  $prize  a row of {@see WheelPrizes::forStorefront()}
-     * @return array{type: string, value: float|null, cap: float|null, min_order: float|null, label_en: string, label_ar: string, scope_category_id: int|null, min_quantity: int|null, apply_mode: string, gift_product_id: int|null}
+     * @return array{type: string, value: float|null, cap: float|null, min_order: float|null, label_en: string, label_ar: string, scope_category_id: int|null, min_quantity: int|null, apply_mode: string, gift_product_id: int|null, offer_rule_id?: int|null, offer_signature?: string}
      */
     public static function termsOf(array $prize, ?float $minOrder, ?int $giftProductId = null): array
     {
@@ -305,7 +308,30 @@ final class Wheel
             'min_quantity' => $type === 'percent_discount' ? Coerce::nint($prize['min_quantity'] ?? null) : null,
             'apply_mode' => $type === 'percent_discount' ? Coerce::str($prize['apply_mode'] ?? WheelPrizes::MODE_ORDER) : WheelPrizes::MODE_ORDER,
             'gift_product_id' => $type === 'gift' ? $giftProductId : null,
-        ];
+        ] + ($type === 'offer' ? [
+            'offer_rule_id' => Coerce::nint($prize['offer_rule_id'] ?? null),
+            'offer_signature' => self::templateSignature(Coerce::nint($prize['offer_rule_id'] ?? null)),
+        ] : []);
+    }
+
+    /** The content of a builder offer's template, as one string: its rule, conditions, rewards and scopes. */
+    public static function templateSignature(?int $templateId): string
+    {
+        if ($templateId === null) {
+            return '';
+        }
+        $rule = (array) (DB::table('promotion_rules')->where('id', $templateId)->first() ?? []);
+        unset($rule['id'], $rule['name'], $rule['created_at'], $rule['updated_at'], $rule['created_by'], $rule['updated_by'], $rule['is_active'], $rule['starts_at'], $rule['ends_at']);
+        $children = [];
+        foreach (['promotion_rule_conditions' => ['type', 'product_id', 'variant_id', 'storefront_category_id', 'brand_id', 'quantity', 'amount', 'methods'],
+            'promotion_rule_rewards' => ['type', 'product_id', 'variant_id', 'amount', 'quantity'],
+            'promotion_rule_scopes' => ['role', 'dimension', 'value_id', 'value']] as $table => $fields) {
+            $rows = DB::table($table)->where('promotion_rule_id', $templateId)->get($fields)->map(fn ($r) => json_encode(array_values((array) $r)))->all();
+            sort($rows);
+            $children[$table] = $rows;
+        }
+
+        return sha1((string) json_encode([$rule, $children]));
     }
 
     /**
@@ -327,6 +353,9 @@ final class Wheel
         $existing = Coerce::nint(DB::table('promotion_rules')->where('code', $code)->value('id'));
         if ($existing !== null) {
             return $existing;
+        }
+        if ($ruleType === 'offer') {
+            return self::ruleFromTemplate($storefrontId, $terms, $code);
         }
 
         $value = Coerce::nfloat($terms['value'] ?? null);
@@ -378,6 +407,71 @@ final class Wheel
             'scopes' => $scopes,
         ], null, null);
         // the writer knows nothing of issuers (it is the dashboard's payload); the column is the wheel's mark
+        DB::table('promotion_rules')->where('id', $id)->update(['issuer' => self::ISSUER]);
+
+        return $id;
+    }
+
+    /**
+     * A template's child rows, in their order, as plain arrays (copied into the spin's own rule).
+     *
+     * @param  list<string>  $fields
+     * @return list<array<string, mixed>>
+     */
+    private static function templateRows(int $templateId, string $table, array $fields): array
+    {
+        $out = [];
+        foreach (DB::table($table)->where('promotion_rule_id', $templateId)->orderBy('id')->get($fields) as $row) {
+            $copy = [];
+            foreach ((array) $row as $column => $value) {
+                $copy[(string) $column] = $value;
+            }
+            $out[] = $copy;
+        }
+
+        return $out;
+    }
+
+    /**
+     * A builder offer won on the wheel (2026-11-19): the template's own rule — its conditions, rewards, scopes, pairing,
+     * cap and maximum — copied into the wheel's coded rule, with the wheel's label, window and minimum order. Through the
+     * dashboard's writer, so the same refusals hold.
+     *
+     * @param  array<string, mixed>  $terms
+     */
+    private static function ruleFromTemplate(int $storefrontId, array $terms, string $code): int
+    {
+        $templateId = Coerce::int($terms['offer_rule_id'] ?? null);
+        $t = DB::table('promotion_rules')->where('id', $templateId)->where('issuer', WheelPrizes::TEMPLATE_ISSUER)->first();
+        if ($t === null) {
+            throw ValidationException::withMessages(['offer_rule_id' => 'The wheel offer\'s template is gone.']);
+        }
+        $t = Row::cast($t);
+        $labelEn = Coerce::str($terms['label_en'] ?? '');
+        $labelAr = Coerce::str($terms['label_ar'] ?? '');
+        $id = app(PromotionWriter::class)->save([
+            'name' => 'Spin the wheel — '.$labelEn,
+            'code' => $code,
+            'label_en' => 'Spin the wheel: '.$labelEn,
+            'label_ar' => 'عجلة الحظ: '.$labelAr, // i18n-exempt: DATA — the rule's own Arabic label, stored on the row and shown to shoppers
+            'priority' => 0,
+            'is_active' => true,
+            'starts_at' => now()->subMinute()->format('Y-m-d H:i:s'),
+            'ends_at' => '2099-12-31 23:59:59',
+            'apply_per' => Row::nstr($t, 'apply_per') ?? PromotionMoney::PER_ORDER,
+            'max_discount' => Row::nmoney($t, 'max_discount'),
+            'min_order_amount' => Coerce::nfloat($terms['min_order'] ?? null) ?? Row::nmoney($t, 'min_order_amount'),
+            'qualify_min_quantity' => Row::nint($t, 'qualify_min_quantity'),
+            'qualify_min_amount' => Row::nmoney($t, 'qualify_min_amount'),
+            'max_units' => property_exists($t, 'max_units') ? Row::nint($t, 'max_units') : null,
+            'include_sale_items' => Row::bool($t, 'include_sale_items'),
+            'stackable' => false,
+            'unit_floor' => Row::nmoney($t, 'unit_floor') ?? 0,
+            'storefronts' => [$storefrontId],
+            'conditions' => self::templateRows($templateId, 'promotion_rule_conditions', ['type', 'product_id', 'variant_id', 'storefront_category_id', 'brand_id', 'quantity', 'amount', 'methods']),
+            'rewards' => self::templateRows($templateId, 'promotion_rule_rewards', ['type', 'product_id', 'variant_id', 'amount', 'quantity']),
+            'scopes' => self::templateRows($templateId, 'promotion_rule_scopes', ['role', 'dimension', 'value_id', 'value']),
+        ], null, null);
         DB::table('promotion_rules')->where('id', $id)->update(['issuer' => self::ISSUER]);
 
         return $id;
@@ -466,6 +560,8 @@ final class Wheel
                     'prize_min_quantity' => $terms['min_quantity'],
                     'prize_apply_mode' => $terms['apply_mode'],
                     'gift_product_id' => $giftProductId,
+                    // a builder offer's template, only when there is one (the column comes with the offer-builder migration)
+                    ...(isset($terms['offer_rule_id']) ? ['prize_offer_rule_id' => $terms['offer_rule_id']] : []),
                     'color' => Coerce::str($prize['color']),
                     'promotion_rule_id' => $ruleId,
                     'expires_at' => $now->copy()->addHours($type === 'referral' ? WheelPrizes::INVITE_DAYS * 24 : $settings['ttl_hours'])->format('Y-m-d H:i:s'),
@@ -679,6 +775,12 @@ final class Wheel
      */
     public static function needs(stdClass $spin): array
     {
+        if (Row::str($spin, 'prize_type') === 'offer' && Row::nint($spin, 'promotion_rule_id') !== null) {
+            // a builder offer says what it needs from its own rule ("add an item from Watches … 30% off a wallet …")
+            $needs = PromotionNeeds::forRule((int) Row::nint($spin, 'promotion_rule_id'), Row::str($spin, 'prize_label_en'), Row::str($spin, 'prize_label_ar'));
+
+            return ['en' => $needs['needs_en'], 'ar' => $needs['needs_ar']];
+        }
         $category = Row::nint($spin, 'prize_scope_category_id');
         if ($category === null || Row::str($spin, 'prize_type') !== 'percent_discount') {
             return ['en' => null, 'ar' => null];

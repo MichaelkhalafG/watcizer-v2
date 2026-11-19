@@ -152,6 +152,8 @@ final class WheelController
             'modes' => WheelPrizes::MODES,
             'categories' => self::categoryOptions($sf),
             'gift_products' => self::giftBriefs($sf, $prizes),
+            // the offers kept for the wheel on this shop (built on the Promotions page): id, name, edit link
+            'offers' => self::wheelOffers($sf),
             'referrals' => self::referralTotals($sf),
             'limits' => ['min' => WheelPrizes::MIN_SEGMENTS, 'max' => WheelPrizes::MAX_SEGMENTS, 'max_hours' => WheelPrizeWriter::MAX_HOURS],
             'fresh' => WheelPrizes::DEFAULTS[0],
@@ -164,6 +166,29 @@ final class WheelController
             'spin_url' => rtrim('https://'.(string) $storefront->domain, '/').'/spin',
             'now' => $now->format('Y-m-d H:i'),
         ]);
+    }
+
+    /**
+     * The offers this shop keeps for the wheel: built on the Promotions page, switched off there, copied at each spin.
+     *
+     * @return list<array{id: int, name: string, label_en: string|null, label_ar: string|null, edit_url: string}>
+     */
+    private static function wheelOffers(int $sf): array
+    {
+        $out = [];
+        foreach (DB::table('promotion_rules as r')
+            ->join('promotion_rule_storefront as rs', 'rs.promotion_rule_id', '=', 'r.id')
+            ->where('rs.storefront_id', $sf)->where('r.issuer', WheelPrizes::TEMPLATE_ISSUER)
+            ->orderByDesc('r.id')->get(['r.id', 'r.name', 'r.label_en', 'r.label_ar']) as $raw) {
+            $row = Row::cast($raw);
+            $out[] = [
+                'id' => Row::int($row, 'id'), 'name' => Row::str($row, 'name'),
+                'label_en' => Row::nstr($row, 'label_en'), 'label_ar' => Row::nstr($row, 'label_ar'),
+                'edit_url' => route('manage.promotions.edit', ['promotion' => Row::int($row, 'id')]),
+            ];
+        }
+
+        return $out;
     }
 
     /** The segments and the terms — one save, all or nothing; the refusals land on their fields. */
@@ -182,6 +207,8 @@ final class WheelController
             'segments.*.min_quantity' => ['nullable', 'integer'],
             'segments.*.apply_mode' => ['nullable', 'string', 'max:16'],
             'segments.*.gift_product_ids' => ['nullable'],
+            // an offer built on the Promotions page and kept for the wheel (2026-11-19)
+            'segments.*.offer_rule_id' => ['nullable', 'integer'],
             'ttl_hours' => ['nullable', 'integer'],
             'min_order' => ['nullable', 'numeric'],
         ]));

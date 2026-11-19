@@ -6,6 +6,7 @@ namespace App\Domain\Promotions;
 
 use App\Domain\Campaigns\CampaignPrices;
 use App\Domain\Wheel\Wheel;
+use App\Domain\Wheel\WheelReferrals;
 use App\Support\Coerce;
 use App\Transform\Row;
 use Illuminate\Database\Query\Builder;
@@ -122,6 +123,7 @@ final class PromotionEngine
         }
         $skipped = [];
         $refusedCode = null;            // the typed code's rule matched nothing / was refused — and why
+        $refusedRuleId = null;          // that rule, for the sentence a refusal words itself with (needs a watch …)
         $grants = [];
 
         foreach ($candidates as $rule) {
@@ -142,7 +144,8 @@ final class PromotionEngine
             $gate = $this->gate($rule, $cart, $scopes);
             if ($gate !== null || ! $this->matches($ruleId, $cart, $rule)) {
                 if ($isTypedCode) {
-                    $refusedCode = $gate ?? CouponStatus::NO_ELIGIBLE_ITEMS;
+                    $refusedCode = $gate ?? $this->conditionRefusal($ruleId, $cart);
+                    $refusedRuleId = $ruleId;
                 }
 
                 continue;                               // not a skip: the cart simply does not qualify
@@ -191,7 +194,7 @@ final class PromotionEngine
         }
 
         $refusal = $code === null ? null : self::withWheel($codeIsCandidate
-            ? self::coupon($code, $refusedCode ?? CouponStatus::NO_ELIGIBLE_ITEMS, null, $cart)
+            ? self::coupon($code, $refusedCode ?? CouponStatus::NO_ELIGIBLE_ITEMS, null, $cart, $refusedRuleId)
             : $this->couponRefusal($code, $cart->storefrontId, $now), $spin, $cart);
         if ($grants === []) {
             return new PromotionOutcome(skipped: self::skipReasons($skipped, null), coupon: $refusal);
@@ -349,9 +352,9 @@ final class PromotionEngine
                 }
             })
             ->orderByDesc('r.priority')->orderBy('r.id')
-            ->get(['r.id', 'r.priority', 'r.code', 'r.issuer', 'r.label_en', 'r.label_ar', 'r.apply_per', 'r.max_discount',
-                'r.min_order_amount', 'r.usage_limit', 'r.usage_limit_per_customer', 'r.include_sale_items',
-                'r.stackable', 'r.unit_floor', 'r.qualify_min_quantity', 'r.qualify_min_amount']);
+            // the whole row (2026-11-19): `max_units` is read only where the offer-builder migration has added it, so the
+            // code that lands a moment before that migration (or stays a moment after its rollback) still evaluates
+            ->get(['r.*']);
 
         $out = [];
         foreach ($rows as $row) {
@@ -380,7 +383,10 @@ final class PromotionEngine
             $within = $scopes->totalsWithin($qualify);
             if ($within['quantity'] < max(1, $minQuantity ?? 1)
                 || ($minAmount !== null && (float) $minAmount > $within['amount'] + 0.001)) {
-                return CouponStatus::NO_ELIGIBLE_ITEMS;
+                // the qualifying items are OTHER items than the discounted ones (2026-11-19): say what to add
+                $target = PromotionScopes::of($ruleId)[PromotionScopes::ROLE_TARGET] ?? [];
+
+                return $qualify !== [] && $qualify != $target ? CouponStatus::NEEDS_QUALIFIER : CouponStatus::NO_ELIGIBLE_ITEMS;
             }
         }
 
@@ -451,6 +457,18 @@ final class PromotionEngine
 
         $per = Row::nstr($rule, 'apply_per') ?? PromotionMoney::PER_ORDER;
         $per = in_array($per, PromotionMoney::PER, true) ? $per : PromotionMoney::PER_ORDER;
+        // HOW MANY units take the discount (2026-11-19): one per qualifying unit (pairing), and/or a fixed maximum;
+        // the most expensive units first. Nothing changes for a rule with neither.
+        $maxUnits = property_exists($rule, 'max_units') ? Row::nint($rule, 'max_units') : null;
+        $limit = $maxUnits !== null && $maxUnits > 0 ? $maxUnits : null;
+        if ($per === PromotionMoney::PER_PAIRED) {
+            $paired = $scopes->totalsWithin($ruleScopes[PromotionScopes::ROLE_QUALIFY] ?? [])['quantity'];
+            $limit = $limit === null ? $paired : min($limit, $paired);
+            $per = PromotionMoney::PER_ITEM;
+        }
+        if ($limit !== null && $per !== PromotionMoney::PER_CHEAPEST) {
+            $eligible = self::mostExpensiveUnits($eligible, $limit);
+        }
         $cap = Row::nmoney($rule, 'max_discount');
         $floor = (float) (Row::nmoney($rule, 'unit_floor') ?? '0');
 
@@ -517,6 +535,33 @@ final class PromotionEngine
     }
 
     /**
+     * The eligible lines cut to `$units` units, the most expensive units first (ties: the earlier line).
+     *
+     * @param  array<int, array{unit: float, quantity: int}>  $eligible
+     * @return array<int, array{unit: float, quantity: int}>
+     */
+    public static function mostExpensiveUnits(array $eligible, int $units): array
+    {
+        $order = array_keys($eligible);
+        usort($order, fn (int $a, int $b): int => [$eligible[$b]['unit'], $a] <=> [$eligible[$a]['unit'], $b]);
+        $out = [];
+        $left = max(0, $units);
+        foreach ($order as $index) {
+            if ($left <= 0) {
+                break;
+            }
+            $take = min($left, $eligible[$index]['quantity']);
+            if ($take > 0) {
+                $out[$index] = ['unit' => $eligible[$index]['unit'], 'quantity' => $take];
+                $left -= $take;
+            }
+        }
+        ksort($out);
+
+        return $out;
+    }
+
+    /**
      * @param  array<int, float>  $a
      * @param  array<int, float>  $b
      * @return array<int, float>
@@ -557,9 +602,17 @@ final class PromotionEngine
         return self::coupon($code, $status, Row::int($rule, 'id'), null);
     }
 
-    /** @return array{code: string, status: string, rule_id: int|null, messages: array{en: string, ar: string}} */
-    private static function coupon(string $code, string $status, ?int $ruleId, ?CartSnapshot $cart): array
+    /**
+     * @param  int|null  $factsRuleId  the rule a refusal words itself with (its qualifying items, its label); the
+     *                                 payload's own rule_id stays what it was
+     * @return array{code: string, status: string, rule_id: int|null, messages: array{en: string, ar: string}}
+     */
+    private static function coupon(string $code, string $status, ?int $ruleId, ?CartSnapshot $cart, ?int $factsRuleId = null): array
     {
+        if ($status === CouponStatus::NEEDS_QUALIFIER && ($factsRuleId ?? $ruleId) !== null) {
+            return ['code' => $code, 'status' => $status, 'rule_id' => $ruleId,
+                'messages' => CouponStatus::messages($status, null, PromotionNeeds::forRule((int) ($factsRuleId ?? $ruleId)))];
+        }
         $minimum = null;
         if ($status === CouponStatus::MINIMUM_NOT_REACHED && $ruleId !== null) {
             $value = DB::table('promotion_rules')->where('id', $ruleId)->value('min_order_amount');
@@ -588,7 +641,7 @@ final class PromotionEngine
         }
         $facts = Wheel::couponFacts($spin, $cart);
         $coupon['wheel'] = $facts;
-        if (in_array($coupon['status'], [CouponStatus::PHONE_MISMATCH, CouponStatus::WHEEL_USED, CouponStatus::NO_ELIGIBLE_ITEMS, CouponStatus::GIFT_OUT_OF_STOCK,
+        if (in_array($coupon['status'], [CouponStatus::PHONE_MISMATCH, CouponStatus::WHEEL_USED, CouponStatus::NO_ELIGIBLE_ITEMS, CouponStatus::NEEDS_QUALIFIER, CouponStatus::GIFT_OUT_OF_STOCK,
             CouponStatus::INVITE_OWN, CouponStatus::INVITE_NOT_FIRST, CouponStatus::INVITE_USED, CouponStatus::INVITE_INACTIVE, CouponStatus::EXPIRED], true)) {
             $coupon['messages'] = CouponStatus::messages($coupon['status'], null, $facts + ['order_number' => Wheel::usedBy($spin)['number'] ?? null]);
         }
@@ -648,12 +701,42 @@ final class PromotionEngine
         return DB::table('promotion_rule_scopes')->where('promotion_rule_id', Row::int($rule, 'id'))->exists();
     }
 
+    /** Why a coded rule's conditions did not hold, in the words a shopper can act on (2026-11-19). */
+    private function conditionRefusal(int $ruleId, CartSnapshot $cart): string
+    {
+        $firstOrder = DB::table('promotion_rule_conditions')->where('promotion_rule_id', $ruleId)->where('type', 'first_order')->exists();
+
+        return $firstOrder && ! self::isFirstOrder($cart) ? CouponStatus::NOT_FIRST_ORDER : CouponStatus::NO_ELIGIBLE_ITEMS;
+    }
+
+    /**
+     * FIRST ORDER ONLY (2026-11-19, Michael: by the account and by the phone number): no earlier order on this shop that
+     * stands (not cancelled) for the cart's account or its phone. A cart that names neither yet (a guest before the
+     * checkout's phone) holds — the checkout asks again with the phone, and the order is evaluated with it.
+     */
+    public static function isFirstOrder(CartSnapshot $cart): bool
+    {
+        foreach ($cart->customerKeys as $key) {
+            if (str_starts_with($key, 'u:')
+                && DB::table('orders')->where('storefront_id', $cart->storefrontId)->where('user_id', (int) substr($key, 2))
+                    ->where('status', '!=', 'cancelled')->exists()) {
+                return false;
+            }
+            if (str_starts_with($key, 'p:') && WheelReferrals::hasOrdered($cart->storefrontId, substr($key, 2))) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     private function conditionHolds(stdClass $condition, CartSnapshot $cart): bool
     {
         $type = Row::str($condition, 'type');
         $quantity = Row::nint($condition, 'quantity') ?? 0;
 
         return match ($type) {
+            'first_order' => self::isFirstOrder($cart),
             'cart_subtotal_min' => $cart->subtotal + 0.001 >= (float) (Row::nmoney($condition, 'amount') ?? '0'),
 
             'product_quantity_min' => $quantity > 0

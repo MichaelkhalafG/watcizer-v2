@@ -40,7 +40,8 @@ final class PromotionScopes
     public const ROLES = [self::ROLE_TARGET, self::ROLE_QUALIFY, self::ROLE_EXCLUDE];
 
     /** @var list<string> */
-    public const DIMENSIONS = ['brand', 'category', 'sub_type', 'grade', 'family'];
+    // `product` (2026-11-19, the offer builder's "chosen products"): the product id itself
+    public const DIMENSIONS = ['brand', 'category', 'sub_type', 'grade', 'family', 'product'];
 
     /** @var array<int, array{brand: int|null, grade: int|null, family: string|null, on_sale: bool, paths: list<string>}>|null */
     private ?array $facts = null;
@@ -102,6 +103,7 @@ final class PromotionScopes
                 'grade' => $facts['grade'] !== null && in_array($facts['grade'], $values, true),
                 'family' => $facts['family'] !== null && in_array($facts['family'], $values, true),
                 'category', 'sub_type' => $this->inAnyNode($facts['paths'], $values),
+                'product' => in_array($line->productId, $values, true),
                 default => false,
             };
             if (! $hit) {

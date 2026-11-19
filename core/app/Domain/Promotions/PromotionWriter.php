@@ -6,6 +6,7 @@ namespace App\Domain\Promotions;
 
 use App\Support\Coerce;
 use App\Support\ManageText;
+use App\Transform\Row;
 use Illuminate\Database\Query\JoinClause;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -80,17 +81,14 @@ final class PromotionWriter
         $this->assertSavable($data, $conditions, $rewards, $storefronts, $ruleId, $scopes);
 
         return DB::transaction(function () use ($data, $conditions, $rewards, $storefronts, $ruleId, $actorId, $scopes): int {
-            $row = [
+            $columns = [
                 'name' => trim(Coerce::str($data['name'] ?? '')),
                 'priority' => Coerce::int($data['priority'] ?? null),
                 'is_active' => Coerce::bool($data['is_active'] ?? null),
                 // a DRAFT may have no window yet (M1u); an active rule cannot (assertSavable)
                 'starts_at' => self::nullableText($data['starts_at'] ?? null),
                 'ends_at' => self::nullableText($data['ends_at'] ?? null),
-            ] + self::couponColumns($data) + [
-                'updated_by' => $actorId,
-                'updated_at' => now(),
-            ];
+            ] + self::couponColumns($data);
 
             if ($ruleId === null) {
                 /*
@@ -99,53 +97,108 @@ final class PromotionWriter
                  * is dashboard-owned and never dropped (§2.20), so a promotion written today
                  * survives switch night — which is why it is safe to author one now.
                  */
-                $row['created_by'] = $actorId;
-                $row['created_at'] = now();
-                $ruleId = (int) DB::table('promotion_rules')->insertGetId($row);
+                $ruleId = (int) DB::table('promotion_rules')->insertGetId($columns + [
+                    'created_by' => $actorId, 'updated_by' => $actorId, 'created_at' => now(), 'updated_at' => now(),
+                ]);
             } else {
-                DB::table('promotion_rules')->where('id', $ruleId)->update($row);
-                // Children are REPLACED, which is safe because they have no identity of their own:
-                // a condition is a line of the rule, not a thing an order can point at. The reward
-                // lines already granted point at the RULE, and that id never moves.
-                DB::table('promotion_rule_conditions')->where('promotion_rule_id', $ruleId)->delete();
-                DB::table('promotion_rule_rewards')->where('promotion_rule_id', $ruleId)->delete();
-                DB::table('promotion_rule_storefront')->where('promotion_rule_id', $ruleId)->delete();
-                DB::table('promotion_rule_scopes')->where('promotion_rule_id', $ruleId)->delete();
+                // the rule's row is written only when one of its columns changed (2026-11-19)
+                $stored = Row::cast(DB::table('promotion_rules')->where('id', $ruleId)->first(array_keys($columns)) ?? new \stdClass);
+                $changed = [];
+                foreach ($columns as $column => $value) {
+                    if (! self::sameValue(property_exists($stored, $column) ? $stored->{$column} : null, $value)) {
+                        $changed[$column] = $value;
+                    }
+                }
+                if ($changed !== []) {
+                    DB::table('promotion_rules')->where('id', $ruleId)->update($changed + ['updated_by' => $actorId, 'updated_at' => now()]);
+                }
             }
 
-            foreach ($scopes as $scope) {
-                DB::table('promotion_rule_scopes')->insert($scope + [
-                    'promotion_rule_id' => $ruleId,
-                    'created_at' => now(),
-                    'updated_at' => now(),
-                ]);
-            }
-
-            foreach ($conditions as $condition) {
-                DB::table('promotion_rule_conditions')->insert(self::conditionRow($condition) + [
-                    'promotion_rule_id' => $ruleId,
-                    'created_at' => now(),
-                    'updated_at' => now(),
-                ]);
-            }
-
-            foreach ($rewards as $reward) {
-                DB::table('promotion_rule_rewards')->insert(self::rewardRow($reward) + [
-                    'promotion_rule_id' => $ruleId,
-                    'created_at' => now(),
-                    'updated_at' => now(),
-                ]);
-            }
-
-            foreach (array_unique($storefronts) as $storefrontId) {
-                DB::table('promotion_rule_storefront')->insert([
-                    'promotion_rule_id' => $ruleId,
-                    'storefront_id' => $storefrontId,
-                ]);
-            }
+            /*
+             * The children as a DIFFERENCE (2026-11-19, the Hot Deals lesson): a line that is the same stays the same row,
+             * untouched; a removed line is deleted, a new line inserted. A child has no identity of its own (an order
+             * points at the RULE), so "the same" is its content.
+             */
+            $now = now();
+            self::syncChildren('promotion_rule_scopes', $ruleId, array_map(fn (array $scope): array => $scope, $scopes),
+                ['role', 'dimension', 'value_id', 'value'], ['created_at' => $now, 'updated_at' => $now]);
+            self::syncChildren('promotion_rule_conditions', $ruleId, array_map(fn (array $c): array => self::conditionRow($c), $conditions),
+                ['type', 'product_id', 'variant_id', 'storefront_category_id', 'brand_id', 'quantity', 'amount', 'methods'], ['created_at' => $now, 'updated_at' => $now]);
+            self::syncChildren('promotion_rule_rewards', $ruleId, array_map(fn (array $r): array => self::rewardRow($r), $rewards),
+                ['type', 'product_id', 'variant_id', 'amount', 'quantity'], ['created_at' => $now, 'updated_at' => $now]);
+            self::syncChildren('promotion_rule_storefront', $ruleId, array_map(fn (int $sf): array => ['storefront_id' => $sf], array_values(array_unique($storefronts))),
+                ['storefront_id'], []);
 
             return $ruleId;
         });
+    }
+
+    /**
+     * Make a rule's child rows equal `$wanted`, writing only the difference: rows already there with the same content
+     * are left alone; the rest are deleted; the missing ones are inserted.
+     *
+     * @param  list<array<string, mixed>>  $wanted
+     * @param  list<string>  $fields  the content that makes two rows the same
+     * @param  array<string, mixed>  $stamps  added to an inserted row
+     */
+    private static function syncChildren(string $table, int $ruleId, array $wanted, array $fields, array $stamps): void
+    {
+        $key = static function (array|\stdClass $row) use ($fields): string {
+            $row = (array) $row;
+            $parts = [];
+            foreach ($fields as $field) {
+                $value = $row[$field] ?? null;
+                $parts[] = $value === null ? "\0" : (is_numeric($value) ? (string) (0 + $value) : self::text($value));
+            }
+
+            return implode("\x1f", $parts);
+        };
+        $hasId = $table !== 'promotion_rule_storefront';
+        $existing = [];
+        foreach (DB::table($table)->where('promotion_rule_id', $ruleId)->get() as $row) {
+            $existing[$key($row)][] = $hasId ? Coerce::int($row->id) : Coerce::int($row->storefront_id);
+        }
+        $insert = [];
+        foreach ($wanted as $row) {
+            $k = $key($row);
+            if (($existing[$k] ?? []) !== []) {
+                array_shift($existing[$k]);          // the same line: kept as it is
+
+                continue;
+            }
+            $insert[] = $row + ['promotion_rule_id' => $ruleId] + $stamps;
+        }
+        $gone = array_merge(...array_values($existing ?: [[]]));
+        if ($gone !== []) {
+            $hasId
+                ? DB::table($table)->whereIn('id', $gone)->delete()
+                : DB::table($table)->where('promotion_rule_id', $ruleId)->whereIn('storefront_id', $gone)->delete();
+        }
+        foreach ($insert as $row) {
+            DB::table($table)->insert($row);
+        }
+    }
+
+    /** A stored column and a new value are the same (numbers by value, so "10.00" and 10 agree). */
+    private static function sameValue(mixed $stored, mixed $new): bool
+    {
+        if ($stored === null || $new === null) {
+            return $stored === $new;
+        }
+        if (is_bool($new)) {
+            return (bool) $stored === $new;
+        }
+        if (is_numeric($stored) && is_numeric($new)) {
+            return abs((float) $stored - (float) $new) < 0.000001;
+        }
+
+        return self::text($stored) === self::text($new);
+    }
+
+    /** A value's exact text for a comparison: a scalar as PHP prints it, anything else as JSON. */
+    private static function text(mixed $value): string
+    {
+        return is_scalar($value) ? (string) $value : (string) json_encode($value);
     }
 
     /**
@@ -343,6 +396,7 @@ final class PromotionWriter
                 : ($quantity < 1 ? 'quantity' : null),
             'brand_quantity_min' => ! $has('brand_id') ? 'brand_id' : ($quantity < 1 ? 'quantity' : null),
             'distinct_lines_min' => $quantity < 1 ? 'quantity' : null,
+            'first_order' => null,
             'payment_method_in' => PromotionRules::methods(Coerce::str($condition['methods'] ?? '')) === []
                 ? 'methods'
                 : null,
@@ -475,7 +529,7 @@ final class PromotionWriter
             'unit_floor' => $money($data['unit_floor'] ?? null) ?? '0.00',
             'qualify_min_quantity' => $count($data['qualify_min_quantity'] ?? null),
             'qualify_min_amount' => $money($data['qualify_min_amount'] ?? null),
-        ];
+        ] + (PromotionRules::builderReady() ? ['max_units' => $count($data['max_units'] ?? null)] : []);
     }
 
     /**
@@ -549,7 +603,12 @@ final class PromotionWriter
                 $errors[$field] = ManageText::t('promotions.amount_not_negative', 'المبلغ لا يكون أقل من صفر.');
             }
         }
-        foreach (['usage_limit', 'usage_limit_per_customer', 'qualify_min_quantity'] as $field) {
+        // ONE PER QUALIFYING ITEM (2026-11-19) counts the qualifying items: without them it would discount every unit
+        if (Coerce::str($data['apply_per'] ?? '') === PromotionMoney::PER_PAIRED
+            && array_filter($scopes, fn (array $scope): bool => Coerce::str($scope['role'] ?? '') === PromotionScopes::ROLE_QUALIFY) === []) {
+            $errors['apply_per'] = ManageText::t('promotions.paired_needs_qualify', '«واحد مع كل منتج مؤهِّل» يحتاج تحديد المنتج المؤهِّل (مثل: الساعات) في خطوة الشرط.');
+        }
+        foreach (['usage_limit', 'usage_limit_per_customer', 'qualify_min_quantity', 'max_units'] as $field) {
             $value = $data[$field] ?? null;
             if ($value !== null && $value !== '' && (Coerce::nint($value) ?? 0) < 1) {
                 $errors[$field] = ManageText::t('promotions.count_at_least_one', 'اكتب رقمًا من ١ فأكثر، أو اترك الخانة فارغة لعدم وجود حد.');
@@ -566,6 +625,7 @@ final class PromotionWriter
                 $dimension === 'family' => in_array(Coerce::nstr($scope['value'] ?? null), self::families(), true),
                 $dimension === 'brand' => $valueId !== null && DB::table('catalog_brands')->where('id', $valueId)->exists(),
                 $dimension === 'grade' => $valueId !== null && DB::table('catalog_grades')->where('id', $valueId)->exists(),
+                $dimension === 'product' => $valueId !== null && DB::table('catalog_products')->where('id', $valueId)->whereNull('deleted_at')->exists(),
                 default => $valueId !== null && DB::table('storefront_categories')->where('id', $valueId)->exists(),
             };
             if (! $exists) {

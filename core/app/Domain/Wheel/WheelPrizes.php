@@ -38,7 +38,12 @@ final class WheelPrizes
     public const TABLE = 'storefront_wheel_prizes';
 
     /** @var list<string> */
-    public const TYPES = ['percent_discount', 'fixed_discount', 'free_shipping', 'none', 'referral', 'gift'];
+    // `offer` (2026-11-19): an offer made with the offer builder — the segment points at its template rule
+    // (`offer_rule_id`, issuer `wheel_template`), and a won code copies it
+    public const TYPES = ['percent_discount', 'fixed_discount', 'free_shipping', 'none', 'referral', 'gift', 'offer'];
+
+    /** The issuer of a builder offer kept for the wheel: never applied by itself (inactive, no code), copied at a spin. */
+    public const TEMPLATE_ISSUER = 'wheel_template';
 
     public const MODE_ORDER = 'order';
 
@@ -112,6 +117,7 @@ final class WheelPrizes
                 'apply_mode' => in_array($mode, self::MODES, true) ? $mode : self::MODE_ORDER,
                 'gift_product_ids' => $gifts,
                 'gift_available' => $type === 'gift' ? self::inStock($storefrontId, $gifts) : [],
+                'offer_rule_id' => property_exists($row, 'offer_rule_id') ? Row::nint($row, 'offer_rule_id') : null,
             ];
         }
 
@@ -134,7 +140,15 @@ final class WheelPrizes
     /** @param  array<string, mixed>  $prize */
     public static function isUndrawable(array $prize): bool
     {
-        return Coerce::str($prize['type'] ?? '') === 'gift' && Coerce::arr($prize['gift_available'] ?? []) === [];
+        $type = Coerce::str($prize['type'] ?? '');
+        if ($type === 'offer') {
+            // an offer segment whose template is gone cannot pay out: not drawn, its odds spread over the others
+            $template = Coerce::nint($prize['offer_rule_id'] ?? null);
+
+            return $template === null || ! DB::table('promotion_rules')->where('id', $template)->where('issuer', self::TEMPLATE_ISSUER)->exists();
+        }
+
+        return $type === 'gift' && Coerce::arr($prize['gift_available'] ?? []) === [];
     }
 
     /**

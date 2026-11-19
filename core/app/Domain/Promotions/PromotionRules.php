@@ -38,6 +38,9 @@ final class PromotionRules
         'brand_quantity_min',
         'distinct_lines_min',
         'payment_method_in',
+        // 2026-11-19 (the offer builder): the buyer has no earlier order on this shop that stands, by the account and by
+        // the phone number (WheelReferrals::hasOrdered); no parameters
+        'first_order',
     ];
 
     /**
@@ -119,6 +122,24 @@ final class PromotionRules
     public const MONEY_REWARDS_KEY = 'money_rewards';
 
     /** Why a rule was not applied, as stored in `promotion_rule_skips.reason`. */
+    /**
+     * Whether the offer-builder migration has run (promotion_rules.max_units). The WRITER asks before it writes the
+     * column (a dashboard save in the moments between the code and the migration); the engine reads the column only
+     * when the row has it. Memoised per process.
+     */
+    public static function builderReady(): bool
+    {
+        return self::$builderReady ??= \Illuminate\Support\Facades\Schema::hasColumn('promotion_rules', 'max_units');
+    }
+
+    /** For tests that migrate in the middle of a process. */
+    public static function forgetBuilderReady(): void
+    {
+        self::$builderReady = null;
+    }
+
+    private static ?bool $builderReady = null;
+
     public const SKIP_OUT_OF_STOCK = 'reward_out_of_stock';
 
     public const SKIP_NOT_VISIBLE = 'reward_not_visible';
@@ -358,6 +379,7 @@ final class PromotionRules
             'brand_quantity_min' => ManageText::t('promotions.condition_brand_quantity_min', 'كمية من ماركة معيّنة لا تقل عن'),
             'distinct_lines_min' => ManageText::t('promotions.condition_distinct_lines_min', 'عدد المنتجات المختلفة في السلة لا يقل عن'),
             'payment_method_in' => ManageText::t('promotions.condition_payment_method_in', 'طريقة الدفع واحدة من'),
+            'first_order' => ManageText::t('promotions.condition_first_order', 'أول طلب فقط (بالحساب وبرقم الهاتف)'),
             default => $type,
         };
     }

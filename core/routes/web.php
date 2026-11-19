@@ -568,6 +568,11 @@ Route::prefix('manage')->name('manage.')->group(function (): void {
             // numeric-id route; both are POST/GET reads that write nothing permanent.
             Route::get('promotions/products', [PromotionController::class, 'search'])->name('promotions.products');
             Route::post('promotions/preview', [PromotionController::class, 'preview'])->name('promotions.preview');
+            // one click on the offers list (the offer builder, 2026-11-19): pause, start again, end now, duplicate
+            Route::post('promotions/{promotion}/pause', [PromotionController::class, 'pause'])->whereNumber('promotion')->name('promotions.pause');
+            Route::post('promotions/{promotion}/resume', [PromotionController::class, 'resume'])->whereNumber('promotion')->name('promotions.resume');
+            Route::post('promotions/{promotion}/end', [PromotionController::class, 'end'])->whereNumber('promotion')->name('promotions.end');
+            Route::post('promotions/{promotion}/duplicate', [PromotionController::class, 'duplicate'])->whereNumber('promotion')->name('promotions.duplicate');
             Route::post('promotions', [PromotionController::class, 'store'])->name('promotions.store');
             Route::get('promotions/{promotion}', [PromotionController::class, 'edit'])
                 ->where('promotion', '[0-9]+')->name('promotions.edit');
