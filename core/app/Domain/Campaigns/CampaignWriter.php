@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domain\Campaigns;
 
+use App\Support\Coerce;
 use App\Transform\Row;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
@@ -36,6 +37,14 @@ use InvalidArgumentException;
  * (`confirm_prices`), not refused, as the dashboard's price safeguard does: a campaign price under the purchase price,
  * and an extra percentage above {@see CampaignPrices::CONFIRM_PERCENT}. A product without an entry keeps its normal
  * price during the campaign. Every save forgets the cached price windows, so a change is live at once.
+ *
+ * ── An edit changes only what was edited (2026-11-19, the team's hot-deals report) ────────────────────────────────
+ *
+ * The confirmation is asked only for a price that is NEW or CHANGED in this save: a price already stored on the
+ * campaign was confirmed when it was saved, and asking again for every one of them on each edit put hundreds of
+ * names in front of the team and blocked the save. A product added is inserted, a product removed is deleted, and a
+ * kept row is written only when its price or its place in the order changed (removing a product shifts no other row;
+ * moving one renumbers the list).
  */
 final class CampaignWriter
 {
@@ -103,37 +112,86 @@ final class CampaignWriter
     }
 
     /**
-     * The picks, in order: new ones inserted, removed ones deleted, kept ones re-positioned. With `$prices` (not null) each pick's campaign price is set to its entry, or cleared.
+     * One stored price and one asked for are the same rule: the same mode and the same value to the cent.
+     *
+     * @param  array{mode: string, value: float}|null  $stored
+     * @param  array{mode: string, value: float}  $rule
+     */
+    private static function samePrice(?array $stored, array $rule): bool
+    {
+        return $stored !== null && $stored['mode'] === $rule['mode'] && self::cents($stored['value']) === self::cents($rule['value']);
+    }
+
+    private static function cents(float|string|null $value): ?string
+    {
+        return $value === null ? null : number_format((float) $value, 2, '.', '');
+    }
+
+    /**
+     * The picks, in order, written as a DIFFERENCE (2026-11-19): new ones inserted, removed ones deleted, and a kept
+     * one written only when its price changed or the order of the kept ones changed. While the kept rows keep their
+     * relative order and the new picks come after them, the stored positions stay as they are (a gap left by a removed
+     * product orders the same) and a new pick takes a position after the last one; a reorder renumbers. With `$prices`
+     * (not null) each pick's campaign price is set to its entry, or cleared.
      *
      * @param  list<int>  $productIds
      * @param  array<int, array{mode: string, value: float}>|null  $prices
      */
     private static function syncProducts(int $campaignId, array $productIds, ?array $prices = null): void
     {
+        /** @var array<int, array{id: int, position: int, mode: ?string, value: ?string}> $existing */
         $existing = [];
-        foreach (DB::table('storefront_campaign_products')->where('campaign_id', $campaignId)->get(['id', 'product_id']) as $raw) {
-            $existing[Row::int($raw, 'product_id')] = Row::int($raw, 'id');
+        foreach (DB::table('storefront_campaign_products')->where('campaign_id', $campaignId)->orderBy('position')->orderBy('id')
+            ->get(['id', 'product_id', 'position', 'price_mode', 'price_value']) as $raw) {
+            $existing[Row::int($raw, 'product_id')] = [
+                'id' => Row::int($raw, 'id'), 'position' => Row::int($raw, 'position'),
+                'mode' => Row::nstr($raw, 'price_mode'), 'value' => self::cents(Row::nstr($raw, 'price_value')),
+            ];
         }
 
-        foreach ($productIds as $position => $productId) {
-            $price = $prices === null ? [] : [
-                'price_mode' => isset($prices[$productId]) ? $prices[$productId]['mode'] : null,
-                'price_value' => isset($prices[$productId]) ? number_format($prices[$productId]['value'], 2, '.', '') : null,
-            ];
+        // the kept picks in the order asked, against their stored order; and whether every new pick comes after them
+        $kept = array_values(array_filter($productIds, fn (int $id): bool => isset($existing[$id])));
+        $storedOrder = array_values(array_filter(array_keys($existing), fn (int $id): bool => in_array($id, $productIds, true)));
+        $lastKept = -1;
+        $firstNew = null;
+        foreach ($productIds as $i => $id) {
+            if (isset($existing[$id])) {
+                $lastKept = $i;
+            } elseif ($firstNew === null) {
+                $firstNew = $i;
+            }
+        }
+        $renumber = $kept !== $storedOrder || ($firstNew !== null && $firstNew < $lastKept);
+        $next = $existing === [] ? 0 : max(array_column($existing, 'position')) + 1;
+
+        foreach ($productIds as $index => $productId) {
+            $mode = $prices !== null && isset($prices[$productId]) ? $prices[$productId]['mode'] : null;
+            $value = $prices !== null && isset($prices[$productId]) ? self::cents($prices[$productId]['value']) : null;
             if (isset($existing[$productId])) {
-                DB::table('storefront_campaign_products')->where('id', $existing[$productId])->update(['position' => $position, 'updated_at' => now()] + $price);
+                $row = $existing[$productId];
+                $change = [];
+                if ($renumber && $row['position'] !== $index) {
+                    $change['position'] = $index;
+                }
+                if ($prices !== null && ($row['mode'] !== $mode || $row['value'] !== $value)) {
+                    $change['price_mode'] = $mode;
+                    $change['price_value'] = $value;
+                }
+                if ($change !== []) {
+                    DB::table('storefront_campaign_products')->where('id', $row['id'])->update($change + ['updated_at' => now()]);
+                }
                 unset($existing[$productId]);
 
                 continue;
             }
             DB::table('storefront_campaign_products')->insert([
-                'campaign_id' => $campaignId, 'product_id' => $productId, 'position' => $position,
+                'campaign_id' => $campaignId, 'product_id' => $productId, 'position' => $renumber ? $index : $next++,
                 'created_at' => now(), 'updated_at' => now(),
-            ] + $price);
+            ] + ($prices === null ? [] : ['price_mode' => $mode, 'price_value' => $value]));
         }
 
         if ($existing !== []) {
-            DB::table('storefront_campaign_products')->whereIn('id', array_values($existing))->delete();
+            DB::table('storefront_campaign_products')->whereIn('id', array_column($existing, 'id'))->delete();
         }
     }
 
@@ -171,27 +229,34 @@ final class CampaignWriter
         if ($ids === [] || count($ids) > Campaigns::MAX_PRODUCTS || count(array_unique($ids)) !== count($ids)) {
             throw new InvalidArgumentException('product_ids');
         }
-        $placed = DB::table('storefront_product as sp')->join('catalog_products as p', 'p.id', '=', 'sp.product_id')
-            ->where('sp.storefront_id', $storefrontId)->whereNull('p.deleted_at')->whereIn('sp.product_id', $ids)->count();
-        if ($placed !== count($ids)) {
-            throw new InvalidArgumentException('product_ids.placed');
+        $placed = [];
+        foreach (DB::table('storefront_product as sp')->join('catalog_products as p', 'p.id', '=', 'sp.product_id')
+            ->where('sp.storefront_id', $storefrontId)->whereNull('p.deleted_at')->whereIn('sp.product_id', $ids)->pluck('sp.product_id') as $id) {
+            $placed[] = Coerce::int($id);
+        }
+        $missing = array_values(array_diff($ids, $placed));
+        if ($missing !== []) {
+            // which ones (2026-11-19): the dashboard names them, the first five and "show all"
+            throw new InvalidArgumentException('product_ids.placed:'.implode(',', $missing));
         }
 
         if ($data['is_active'] && self::overlapping($storefrontId, $campaignId, $data['presentation'], $data['starts_at'], $data['ends_at']) !== null) {
             throw new InvalidArgumentException('overlap');
         }
 
-        self::assertPrices($storefrontId, $ids, $data['prices'] ?? [], $data['confirm_prices'] ?? false);
+        self::assertPrices($storefrontId, $ids, $data['prices'] ?? [], $data['confirm_prices'] ?? false, $campaignId === null ? [] : self::prices($campaignId));
     }
 
     /**
      * The campaign prices' rules (the class docblock). Refusals name the product: `prices.<rule>:<product id>`;
-     * the confirmation names every product that needs it: `prices.confirm:<id>,<id>`.
+     * the confirmation names every NEW or CHANGED price that needs it: `prices.confirm:<id>,<id>` — a price stored on
+     * the campaign as it is (`$stored`) was confirmed when it was saved and is not asked about again.
      *
      * @param  list<int>  $productIds
      * @param  array<int, array{mode: string, value: float}>  $prices
+     * @param  array<int, array{mode: string, value: float}>  $stored
      */
-    private static function assertPrices(int $storefrontId, array $productIds, array $prices, bool $confirmed): void
+    private static function assertPrices(int $storefrontId, array $productIds, array $prices, bool $confirmed, array $stored = []): void
     {
         if ($prices === []) {
             return;
@@ -221,6 +286,9 @@ final class CampaignWriter
             $campaign = CampaignPrices::campaignPrice($rule['mode'], $rule['value'], $f['price'], $f['sale']);
             if ($campaign === null) {
                 throw new InvalidArgumentException('prices.not_lower:'.$productId);
+            }
+            if (self::samePrice($stored[$productId] ?? null, $rule)) {
+                continue;
             }
             if ($campaign < $f['purchase'] || ($rule['mode'] === CampaignPrices::MODE_PERCENT && $rule['value'] > CampaignPrices::CONFIRM_PERCENT)) {
                 $confirm[] = $productId;

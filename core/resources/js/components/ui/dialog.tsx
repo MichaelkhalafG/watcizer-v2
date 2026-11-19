@@ -45,6 +45,8 @@ const DialogContent = React.forwardRef<
                 className={cn(
                     "fixed start-1/2 top-1/2 z-50 w-full max-w-lg -translate-y-1/2 rtl:translate-x-1/2 ltr:-translate-x-1/2",
                     "rounded-lg border bg-background p-6 shadow-lg",
+                    // never taller than the screen (2026-11-19): a long text scrolls inside, the buttons stay reachable
+                    "max-h-[calc(100dvh-2rem)] overflow-y-auto",
                     "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
                     className,
                 )}

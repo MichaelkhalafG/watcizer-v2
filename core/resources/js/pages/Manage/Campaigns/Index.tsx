@@ -2,6 +2,7 @@ import { router, usePage } from '@inertiajs/react';
 import { useEffect, useState } from 'react';
 
 import { ConfirmAction } from '@/components/manage/ConfirmAction';
+import { NameList, namesFromError } from '@/components/manage/NameList';
 import ProductPicker from '@/components/manage/ProductPicker';
 import { Alert } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -234,7 +235,14 @@ export default function CampaignsIndex({ storefront, storefronts, campaigns, pre
                   return { id, row, fact, result, invalid, belowCost, deep };
               });
     const priceInvalid = priceRows.some((r) => r.invalid);
-    const priceWarnings = priceRows.filter((r) => !r.invalid && r.result !== null && (r.belowCost || r.deep));
+    // asked about only when NEW or CHANGED in this edit (2026-11-19): a price saved on the campaign was confirmed when it
+    // was saved — asking again for every one on each edit put hundreds of names in front of the team and blocked the save
+    const saved = (draft?.id != null ? campaigns.find((c) => c.id === draft.id)?.prices : undefined) ?? {};
+    const unchanged = (id: number, row: PriceRow) => {
+        const was = saved[String(id)];
+        return was !== undefined && row.mode === was.mode && row.value.trim() !== '' && Number(row.value).toFixed(2) === Number(was.value).toFixed(2);
+    };
+    const priceWarnings = priceRows.filter((r) => !r.invalid && r.result !== null && (r.belowCost || r.deep) && !unchanged(r.id, r.row));
     const setPrice = (id: number, patch: Partial<PriceRow>) =>
         draft &&
         setDraft({ ...draft, prices: { ...draft.prices, [String(id)]: { ...(draft.prices[String(id)] ?? { mode: '', value: '' }), ...patch } } });
@@ -270,6 +278,7 @@ export default function CampaignsIndex({ storefront, storefronts, campaigns, pre
                       : null;
 
     const listErrors = Object.entries(errors).filter(([key]) => key === 'product_ids' || key.startsWith('product_ids.'));
+    const listNames = namesFromError(errors.product_ids_names);
 
     return (
         <ManageLayout
@@ -387,6 +396,7 @@ export default function CampaignsIndex({ storefront, storefronts, campaigns, pre
                                         {message}
                                     </p>
                                 ))}
+                                <NameList names={listNames} />
                             </div>
 
                             {draft.product_ids.length > 0 ? (
@@ -398,7 +408,12 @@ export default function CampaignsIndex({ storefront, storefronts, campaigns, pre
                                             'اختياري لكل منتج: سعر للحملة، أو نسبة خصم إضافية على سعره الحالي. يسري في كل مكان من بداية الحملة إلى نهايتها، ثم يعود السعر العادي تلقائيًا. المنتج المتروك فارغًا يحتفظ بسعره العادي.',
                                         )}
                                     </p>
-                                    {errors.confirm_prices ? <Alert tone="warning">{errors.confirm_prices}</Alert> : null}
+                                    {errors.confirm_prices ? (
+                                        <Alert tone="warning">
+                                            <p>{errors.confirm_prices}</p>
+                                            <NameList names={namesFromError(errors.confirm_prices_names)} />
+                                        </Alert>
+                                    ) : null}
                                     <div className="overflow-x-auto rounded-md border">
                                         <Table>
                                             <TableHeader>
@@ -503,11 +518,18 @@ export default function CampaignsIndex({ storefront, storefronts, campaigns, pre
                             {priceWarnings.length > 0 && blocked === null ? (
                                 <ConfirmAction
                                     title={t('campaigns.price_confirm_title', 'حفظ أسعار الحملة هذه؟')}
-                                    consequence={t(
-                                        'campaigns.price_confirm_body',
-                                        'هذه الأسعار أقل من سعر الشراء أو بخصم إضافي أكثر من :pct%: :list. ستسري من بداية الحملة إلى نهايتها.',
-                                        { pct: confirm_percent, list: priceWarnings.map((r) => r.fact?.title ?? `#${r.id}`).join(t('campaigns.list_separator', '، ')) },
-                                    )}
+                                    consequence={
+                                        <div className="space-y-2">
+                                            <p>
+                                                {t(
+                                                    'campaigns.price_confirm_count',
+                                                    'أسعار جديدة أو معدّلة أقل من سعر الشراء أو بخصم إضافي أكثر من :pct%: :count. ستسري من بداية الحملة إلى نهايتها.',
+                                                    { pct: confirm_percent, count: priceWarnings.length },
+                                                )}
+                                            </p>
+                                            <NameList names={priceWarnings.map((r) => r.fact?.title ?? `#${r.id}`)} />
+                                        </div>
+                                    }
                                     confirmLabel={t('campaigns.price_confirm_save', 'تأكيد وحفظ')}
                                     trigger={<Button>{t('common.save', 'حفظ')}</Button>}
                                     onConfirm={() => submit(true)}

@@ -120,7 +120,8 @@ final class CampaignController
                 $sale = Row::nmoney($row, 'effective_sale_price') === null ? null : (float) Row::money($row, 'effective_sale_price');
                 $current = CampaignPrices::current($price, $sale);
                 $out[(string) Row::int($row, 'product_id')] = [
-                    'title' => Row::nstr($row, 'title_ar') ?? Row::nstr($row, 'title_en') ?? '#'.Row::int($row, 'product_id'),
+                    // in the dashboard's language (2026-11-19), the other one when it has none
+                    'title' => (app()->getLocale() === 'en' ? (Row::nstr($row, 'title_en') ?? Row::nstr($row, 'title_ar')) : (Row::nstr($row, 'title_ar') ?? Row::nstr($row, 'title_en'))) ?? '#'.Row::int($row, 'product_id'),
                     'code' => Row::nstr($row, 'wa_code'),
                     'selling' => $price,
                     'sale' => $current < $price ? $current : null,
@@ -192,6 +193,15 @@ final class CampaignController
             if (str_starts_with($e->getMessage(), 'prices.')) {
                 throw ValidationException::withMessages(self::priceErrors($e->getMessage()));
             }
+            // a refusal that names products (2026-11-19): a short sentence with the count, and the names as a list the page
+            // shows five of, with "show all" — never a wall of names
+            if (str_starts_with($e->getMessage(), 'product_ids.placed:')) {
+                $ids = self::idsIn(substr($e->getMessage(), strlen('product_ids.placed:')));
+                throw ValidationException::withMessages([
+                    'product_ids' => ManageText::t('campaigns.error_products_placed_n', 'منتجات غير معروضة في هذا المتجر أو محذوفة (:count). أزلها من القائمة ثم احفظ.', ['count' => count($ids)]),
+                    'product_ids_names' => self::namesJson($ids),
+                ]);
+            }
             $other = $e->getMessage() === 'overlap'
                 ? CampaignWriter::overlapping($storefrontId, $campaignId, $data['presentation'], $data['starts_at'], $data['ends_at'])
                 : null;
@@ -219,16 +229,50 @@ final class CampaignController
         $first = explode(',', $ids)[0];
 
         return match ($rule) {
-            'confirm' => ['confirm_prices' => ManageText::t(
-                'campaigns.price_confirm',
-                'بعض أسعار الحملة أقل من سعر الشراء أو بخصم إضافي أكثر من :pct%. راجعها ثم أكّد الحفظ.',
-                ['pct' => (int) CampaignPrices::CONFIRM_PERCENT],
-            ).' ['.$ids.']'],
+            // the count and the names as a list (2026-11-19); it was every product id in one line
+            'confirm' => [
+                'confirm_prices' => ManageText::t(
+                    'campaigns.price_confirm_n',
+                    'أسعار جديدة أو معدّلة أقل من سعر الشراء أو بخصم إضافي أكثر من :pct% (:count). راجعها ثم أكّد الحفظ.',
+                    ['pct' => (int) CampaignPrices::CONFIRM_PERCENT, 'count' => count(self::idsIn($ids))],
+                ),
+                'confirm_prices_names' => self::namesJson(self::idsIn($ids)),
+            ],
             'not_lower' => ["prices.{$first}" => ManageText::t('campaigns.price_not_lower', 'سعر الحملة يجب أن يكون أقل من السعر الحالي للمنتج.')],
             'value' => ["prices.{$first}" => ManageText::t('campaigns.price_value', 'القيمة أكبر من صفر؛ والنسبة الإضافية حتى :max%.', ['max' => (int) CampaignPrices::MAX_PERCENT])],
             'mode' => ["prices.{$first}" => ManageText::t('campaigns.price_mode', 'اختر: سعر الحملة أو نسبة خصم إضافية.')],
             default => ["prices.{$first}" => ManageText::t('campaigns.price_product', 'هذا المنتج ليس ضمن منتجات الحملة.')],
         };
+    }
+
+    /** @return list<int> */
+    private static function idsIn(string $csv): array
+    {
+        return array_values(array_filter(array_map('intval', explode(',', $csv)), fn (int $id): bool => $id > 0));
+    }
+
+    /**
+     * The products' names in the dashboard's language, in the order given, as a JSON list for the page's name list
+     * (the first five and "show all"). A product with no name is "#id".
+     *
+     * @param  list<int>  $ids
+     */
+    private static function namesJson(array $ids): string
+    {
+        $titles = [];
+        if ($ids !== []) {
+            $first = app()->getLocale() === 'en' ? 'en' : 'ar';
+            foreach (DB::table('catalog_product_translations')->whereIn('product_id', $ids)->whereIn('locale', ['ar', 'en'])
+                ->get(['product_id', 'locale', 'title']) as $raw) {
+                $id = Row::int($raw, 'product_id');
+                $title = trim(Row::nstr($raw, 'title') ?? '');
+                if ($title !== '' && (! isset($titles[$id]) || Row::str($raw, 'locale') === $first)) {
+                    $titles[$id] = $title;
+                }
+            }
+        }
+
+        return (string) json_encode(array_map(fn (int $id): string => $titles[$id] ?? '#'.$id, $ids), JSON_UNESCAPED_UNICODE);
     }
 
     /** @return array{name: string, presentation: string, starts_at: string, ends_at: string, is_active: bool, product_ids: list<int>, prices?: array<int, array{mode: string, value: float}>, confirm_prices: bool} */
