@@ -25,20 +25,97 @@ Nothing else in the route list changes (proved by a before/after `route:list`, �
 eleganceeg.com see the company page, with no way into the dashboard from it; they keep `/manage`. Every staff
 e-mail already links `/manage/...` (MANAGE_URL + path), never the bare root.
 
-## 2. Design (preview)
+## 2. Design - PREVIEW 2 (21 Nov, after Michael's feedback; preview 1 was "far too empty" and its wordmarks rejected)
 
-Concept: the hallmark - the stamp that certifies a watch case or a gold bar as genuine - for a group whose business
-is original goods. One bold element, the wordmark in a clipped double frame like an assay punch; the rest quiet.
-Palette: onyx #12100D (page), raised #1A1712 (plates), the family gold #C8A45C (Watchizer's own), champagne #E9DCC0,
-ivory #F2ECE1, taupe #A69D8E (7:1 on onyx). Type: Cormorant Garamond (Latin) and El Messiri (Arabic), the faces the
-shops already self-host under the SIL OFL, copied with their licences; no Google request. Layout: the hallmark
-centred, everything under it start-aligned in one column so Arabic mirrors; two brand plates cut with the
-hallmark's corners (stacked on a phone); contact as the address plus phone, e-mail and a map link; a plain footer.
-One load moment (the hallmark settles in, off with reduced motion). No all-caps labels, numbered markers or arrows.
+Preview: `checkpoints/2026-11-21_elegance/preview/v2/index-en.html` and `index-ar.html` (served locally at
+http://127.0.0.1:8090/v2/index-en.html); shots in `preview/shots/v2` (desktop 1440 and phone 390, EN and AR, each
+the full page stitched from real 900 / 844 px viewports); the signatures in `preview/wordmarks/index.html`.
 
-Wordmark: three options in direction.html - A Hallmark (recommended), B Signature, C Monogram - each in English and
-Arabic «إليجانس» with its favicon. The chosen one is drawn as OUTLINED PATHS (no font needed) for the header mark,
-`favicon.svg` (+ 32 and 180 px PNGs) and the 1200 x 630 share image.
+A luxury house's front, built from our own catalogue. The ground is warm onyx engraved with guilloché - the fine
+sunburst of a watch dial, drawn with a CSS gradient (no image); the photography sits in porcelain display cases (the
+products' white backgrounds disappear into the porcelain by a multiply blend, CSS only); gold is the family's own
+(#C8A45C) with gold-gradient buttons and frames. Sections, in order:
+
+1. Hero, the full screen: the signature written in (one CSS reveal, left to right; right to left in Arabic), the
+   line "Original watches and accessories", the approved about text, two buttons (Our brands, Contact us); beside it
+   an arched boutique window in porcelain with a gold double frame holding a Tory Burch bag, a Hugo Boss watch and a
+   Michael Kors bangle, and a slow light sweeping across the glass every few seconds.
+2. A ribbon of four facts between gold lozenges.
+3. Our brands: one large panel per shop, mirrored - a display case of five of its pieces, its logo, its story line,
+   three facts, and "Visit watchizereg.com" / "Visit brandfashionegy.com".
+4. The brands we carry: a porcelain tray of 19 names with their logos, each logo cleaned into one ink.
+5. Why shop with us: six commitments, each with an engraved gold line icon (inline SVG).
+6. Contact: a porcelain address card (the ink signature, the address, Open in Google Maps), the phone and e-mail,
+   both stores with their addresses, map links and hours.
+7. Footer: the signature, © 2026 Elegance, both shops.
+
+Motion, CSS only and off under prefers-reduced-motion: the signature reveal, the window's light sweep, a slow zoom of
+a product on hover. No JavaScript at all. Fonts as before (Cormorant Garamond, El Messiri, self-hosted, SIL OFL); the
+script faces are NOT downloaded by visitors - the signature is outlined paths.
+
+### The signature (three options; outlined to SVG with fontTools + HarfBuzz, no font needed)
+
+| Option | Latin | Arabic | Licence |
+|---|---|---|---|
+| 1 Signature (on the preview) | Mrs Saint Delafield - Sudtipos (Alejandro Paul) | Aref Ruqaa, a Ruqʿa hand - Abdullah Aref, Khaled Hosny, Hermann Zapf | SIL OFL 1.1, both |
+| 2 Copperplate | Pinyon Script - Nicole Fally | Amiri, a classical Naskh - Khaled Hosny, Sebastian Kosch | SIL OFL 1.1, both |
+| 3 Flourish | Monsieur La Doulaise - Sudtipos (Alejandro Paul) | Gulzar, a Nastaʿlīq hand - Borna Izadpanah, Fiona Ross, Alice Savoie, Simon Cozens | SIL OFL 1.1, both |
+
+The SIL Open Font License 1.1 allows commercial use. A logo set in an OFL font and converted to outlines is artwork,
+not the Font Software, so the licence's conditions (which govern redistributing or modifying the font itself) do not
+apply to it; the fonts were taken with their OFL.txt from the Google Fonts repository (`ofl/<family>/`). The chosen
+option becomes: the header and footer signature (champagne and gold), the ink version on the address card, the
+favicon (its script E, thickened slightly to hold at 32 px; SVG + 32 px and 180 px PNG) and the 1200 x 630 share image.
+
+### Every claim and its source (as published on 21 Nov; checkpoints/2026-11-21_elegance/facts has the page texts)
+
+| On the page | Source |
+|---|---|
+| Elegance: an Egyptian retail group for original watches and accessories, the company behind Watchizer and Brand Fashion | Michael's approved text (21 Nov); "Watchizer and Brand Fashion are sister stores, both owned by Elegance": watchizereg.com/about-us, brandfashionegy.com/about-us (EN and AR) |
+| "Original watches and accessories" (tagline, why-us title) | the approved text; both shops' "Original watches" / «ساعات أصلية» collection, linked in every footer (/original-watches) |
+| Selling watches and accessories in Egypt since 2013 | watchizereg.com/about-us ("since 2013"), brandfashionegy.com/about-us, and /ar/about-us («منذ ٢٠١٣») |
+| Two stores in Cairo: Arkadia Mall, 2nd floor, Corniche El Nil, Maspero extension, next to the Fairmont; 90 El-Thawra Street, Heliopolis; open every day 10:00–24:00 | both /about-us and both /warranty pages |
+| Delivery to all 27 governorates, within 24 hours | watchizereg.com/shipping, brandfashionegy.com/shipping |
+| Up to 3 years' warranty on watches; most carry their brand agent's warranty; the stores replace the battery and size the bracelet free within it | watchizereg.com/warranty, brandfashionegy.com/warranty |
+| Watchizer is an authorized dealer for Hugo Boss | watchizereg.com/about-us, watchizereg.com/warranty |
+| 900K+ follow Watchizer / 800K+ follow Brand Fashion on Facebook, Instagram and TikTok | the two /about-us pages |
+| Watchizer: cash on delivery or online by card / Brand Fashion: cash when the order arrives | watchizereg.com/shipping; brandfashionegy.com/shipping |
+| Inspect before you pay (cash on delivery, in front of the courier) | both /shipping and /about-us |
+| 14 days to return or exchange; we pay the return shipping | both /returns and /shipping |
+| Brand Fashion sells watches for men and women, bags, wallets, belts, jewellery and perfumes | brandfashionegy.com/about-us |
+| Each shop has its own catalogue and phone number; they share the two stores | both /about-us |
+| The office address, phone, e-mail | Michael (the brief) |
+| The map links | the same maps.app.goo.gl links both shops publish for the two stores |
+
+Nothing else is claimed: no numbers of products, no awards, no founding year for Elegance itself.
+
+### The photography (our own catalogue, as the live shops show it; trimmed, AVIF + WebP at 480 / 800 / 1200 px)
+
+Tory Burch bag (catalogue product 146), Pinko bag (185), Coach bag (217), Coach wallet (511), Just Cavalli watch
+(530): from our own uploads (Uploads_Images/Product), brands read from the catalogue. Hugo Boss 1513671 Legacy and
+1513674 Navigator, Emporio Armani AR11276, Michael Kors MK00006 and the Michael Kors ARK-BB052 bangle: the images the
+live home pages showed on 21 Nov (downloaded once from the shops' own image host, 21 files, one a second). Left out on
+purpose: a skeleton watch that is Patek Philippe and a Submariner-style Rolex (the hidden maisons), and the old local
+home banners (placeholders, or maisons' watches).
+
+### The brand wall (19 names)
+
+Tissot, Michael Kors, Tommy Hilfiger, Calvin Klein, Coach, Guess, Hugo Boss, Emporio Armani, Armani Exchange,
+Fossil, Lacoste, Diesel, Tory Burch, Just Cavalli, Pinko, Maserati, G-Shock, Seiko, Casio - brands both shops link
+from their home pages (21 Nov), with the logos the catalogue holds (catalog_brands.logo_path). Left out: the watch
+and fashion maisons that `config/catalog.php` search_exposure already keeps from making any brand claim (Rolex,
+Patek Philippe, Hublot, Audemars Piguet, Richard Mille, Cartier, Omega, Vacheron Constantin, Jaeger-LeCoultre,
+Breitling, IWC, Franck Muller, Louis Vuitton, Chanel, Hermès, Dior), Gucci (restricted watches), and the budget
+brands. The logo files carry a baked-in transparency checkerboard in several cases (Fossil, G-Shock, Guess, Michael
+Kors, Seiko, Tissot, Tommy Hilfiger, Armani Exchange): the build turns each into one ink with a clean white ground.
+Calvin Klein's catalogue logo file is damaged (squashed and garbled): its tile sets the name instead; worth
+re-uploading in the dashboard (Catalogue > Brands).
+
+### Weight (phone, first view)
+
+About 172 KB before text compression: the HTML 18 KB, the stylesheet 20 KB, the signature 10 KB, the Latin fonts
+101 KB (the Arabic page adds 22 KB), the three hero images 23 KB (AVIF, 480 px). Below the fold, lazily: the ten
+product images (about 210 KB at 800 px) and the 18 logos (40 KB). Lighthouse is measured on the bed before the deploy.
 
 ## 3. Content (EN / AR; nothing invented - each line below is a proposal for Michael to confirm)
 
@@ -119,12 +196,11 @@ The About pages: nothing to build. Since 6f03f40 (17 Nov, live) both shops' Abou
 shop in both languages (`rel="noopener noreferrer"`) and name Elegance as plain text, with no link to eleganceeg.com -
 checked on the four live pages on 21 Nov. Before shots will show it.
 
-## 7. Questions for Michael
+## 7. Questions for Michael (preview 2)
 
-1. The wordmark: A, B or C?
-2. The about line and the two brand lines in §3: as written, or your words? Anything to add (I added nothing you did
-   not give, except "Egypt" after Cairo)?
-3. The .htaccess robots rewrite (§4): approve the two lines?
-4. Outlining the wordmark needs a font tool on this machine: may I install fonttools into a throwaway Python
-   environment in the scratchpad (nothing in core, deleted after)?
-5. www.eleganceeg.com: same page with the canonical on eleganceeg.com, no redirect - fine?
+1. The signature: 1, 2 or 3?
+2. The brand wall's 19 names, and the products shown: as listed in §2, or changes?
+3. Anything in the page you want worded differently (every sentence and its source is in §2)?
+
+Answered on 21 Nov (preview 1): texts approved; the .htaccess robots lines, fonttools in a throwaway environment and
+www serving the same page with the canonical on eleganceeg.com approved.
