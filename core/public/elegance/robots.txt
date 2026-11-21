@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /$
+Allow: /ar$
+Allow: /elegance/
+Disallow: /
+
+Sitemap: https://eleganceeg.com/elegance/sitemap.xml

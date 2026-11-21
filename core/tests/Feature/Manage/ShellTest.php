@@ -154,6 +154,8 @@ it('exposes an ability map that matches the role, for hiding affordances only', 
         ->where('abilities.manage-payments', false));
 });
 
-it('redirects the old walking-skeleton root to the dashboard', function () {
-    actingAs(Staff::admin())->get('/')->assertRedirect('/manage');
+it('shows the company page at the root, even to staff - the dashboard is at /manage (2026-11-21)', function () {
+    // the root used to redirect to the dashboard; it is the Elegance page now, with no way into the dashboard from it
+    actingAs(Staff::admin())->get('/')->assertOk()->assertSee('Elegance')->assertDontSee('/manage');
+    actingAs(Staff::admin())->get('/manage')->assertOk();
 });

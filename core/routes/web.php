@@ -42,6 +42,8 @@ use App\Http\Middleware\EnsureDashboardAccess;
 use App\Http\Middleware\EnsureStorefrontScope;
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\SetDashboardLocale;
+use App\Http\Controllers\EleganceController;
+use App\Http\Middleware\EleganceHeaders;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
@@ -636,10 +638,6 @@ Route::prefix('manage')->name('manage.')->group(function (): void {
     });
 });
 
-// The wave-0 walking skeleton lived at `/`. It now redirects to the dashboard, so the host has one
-// front door and nothing renders an unauthenticated Inertia page by accident.
-Route::get('/', fn () => redirect()->route('manage.home'))->name('dashboard');
-
 // Legacy Watchizer sitemap contract (CLEAN_CORE_STUDY §3.3, §6.4): the Next.js rewrite fetches
 // `/en/sitemap.xml`; the bare path 302s to the negotiated locale exactly like the legacy host.
 // Not Inertia responses: the dashboard middleware would add `Vary: X-Inertia`, which the legacy host never sends.
@@ -652,6 +650,13 @@ $sitemapBare = [
     EncryptCookies::class, AddQueuedCookiesToResponse::class, StartSession::class,
     ShareErrorsFromSession::class, PreventRequestForgery::class,
 ];
+// THE ELEGANCE COMPANY PAGE (2026-11-21): `/` (English) and `/ar` (Arabic) on eleganceeg.com, where `/` used to redirect
+// to the dashboard. Static: the language is the route's default, nothing is read from the request, nothing is written.
+// No session, cookie or CSRF middleware (the same list the sitemaps drop), and the page's own security headers
+// (EleganceHeaders: CSP default-src 'none', no framing, no X-Powered-By). Staff reach the dashboard at /manage.
+Route::get('/', EleganceController::class)->defaults('locale', 'en')->withoutMiddleware($sitemapBare)->middleware(EleganceHeaders::class)->name('elegance');
+Route::get('/ar', EleganceController::class)->defaults('locale', 'ar')->withoutMiddleware($sitemapBare)->middleware(EleganceHeaders::class)->name('elegance.ar');
+
 Route::get('/sitemap.xml', [SitemapCompatController::class, 'redirect'])->withoutMiddleware($sitemapBare);
 Route::get('/{locale}/sitemap.xml', [SitemapCompatController::class, 'show'])->where('locale', '[a-z]{2}')->withoutMiddleware($sitemapBare);
 // The shop's sitemaps per language (S-AR stage 3): an index plus one urlset per language, served to

@@ -1159,6 +1159,11 @@ what §4.3 does and why it is a mandatory step rather than a suggestion.
     RewriteCond %{HTTP_HOST} ^(www\.)?eleganceeg\.com$ [NC]
     RewriteRule ^api(/|$) - [R=404,L]
 
+    # ── the dashboard host's robots.txt (2026-11-21): the Elegance page is indexable; every other host keeps the
+    #    shared robots.txt (Disallow: /). An internal rewrite to a static file: no PHP, no cookie.
+    RewriteCond %{HTTP_HOST} ^(www\.)?eleganceeg\.com$ [NC]
+    RewriteRule ^robots\.txt$ elegance/robots.txt [L]
+
     # ── any OTHER Host: /api closed. The DEFAULT ARM ───────────────────────────
     #
     # Without this, a Host that is neither of the two above matches no rule and

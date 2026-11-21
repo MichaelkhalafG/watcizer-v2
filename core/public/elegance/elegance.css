@@ -1,0 +1,254 @@
+/* Elegance - eleganceeg.com (2026-11-21). The company page: our own catalogue in porcelain display cases on a dark,
+   guilloché-engraved ground (the finish of a watch dial), the signature in gold. Static: no script anywhere, no inline
+   style, nothing from another host - it runs under CSP default-src 'none' with style, img and font from 'self'.
+   Motion is CSS only and off under prefers-reduced-motion. */
+
+@font-face { font-family: 'Cormorant Garamond'; src: url('fonts/cormorant-garamond-latin.woff2') format('woff2'); font-weight: 300 700; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Cormorant Garamond'; src: url('fonts/cormorant-garamond-latin-italic.woff2') format('woff2'); font-weight: 300 700; font-style: italic; font-display: swap; }
+@font-face { font-family: 'El Messiri'; src: url('fonts/el-messiri-arabic.woff2') format('woff2'); font-weight: 400 700; font-display: swap;
+  unicode-range: U+0600-06FF, U+0750-077F, U+0870-08FF, U+200C-200E, U+2010-2011, U+FB50-FDFF, U+FE70-FEFC; }
+@font-face { font-family: 'El Messiri'; src: url('fonts/el-messiri-latin.woff2') format('woff2'); font-weight: 400 700; font-display: swap;
+  unicode-range: U+0000-00FF, U+2000-206F; }
+
+:root {
+  --onyx: #12100d; --onyx-2: #19160f; --onyx-3: #221d16;
+  --gold: #c9a45e; --gold-hi: #e3c98d; --gold-lo: #8f7034;
+  --champagne: #e9dcc0; --ivory: #f2ece1; --taupe: #a69d8e;
+  --porcelain: #f4eee3; --porcelain-shade: #e4d9c6; --ink: #1d1913; --ink-soft: #5f5340;
+  --hair: rgba(201, 164, 94, 0.34); --hair-soft: rgba(201, 164, 94, 0.16); --hair-ink: rgba(143, 112, 52, 0.35);
+  --latin: 'Cormorant Garamond', Georgia, 'Times New Roman', serif;
+  --arabic: 'El Messiri', 'Segoe UI', Tahoma, sans-serif;
+  --display: var(--latin);
+  --max: 88rem;
+  --gutter: clamp(1rem, 2.5vw, 2rem);
+  --section: clamp(2.75rem, 5vw, 4.5rem);
+  /* guilloché: a sunburst of fine engraved rays */
+  --guilloche: repeating-conic-gradient(from 0deg at 50% 50%, rgba(227, 201, 141, 0.022) 0deg 0.35deg, transparent 0.35deg 1.4deg);
+  --porcelain-fill: radial-gradient(circle at 50% 32%, #fffdf8, var(--porcelain) 58%, var(--porcelain-shade));
+}
+html[lang='ar'] { --display: var(--arabic); }
+
+*, *::before, *::after { box-sizing: border-box; }
+html { background: var(--onyx); color: var(--ivory); -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
+body { margin: 0; font-family: var(--latin); font-size: 1.1875rem; line-height: 1.6; font-variant-numeric: lining-nums; overflow-x: hidden; }
+html[lang='ar'] body { font-family: var(--arabic); font-size: 1.0625rem; line-height: 1.9; }
+a { color: inherit; }
+:focus-visible { outline: 2px solid var(--gold-hi); outline-offset: 3px; }
+img { display: block; max-width: 100%; height: auto; }
+.wrap { width: min(100% - 2 * var(--gutter), var(--max)); margin-inline: auto; }
+.skip { position: absolute; inset-inline-start: 1rem; top: -5rem; padding: 0.6rem 1rem; background: var(--gold); color: var(--onyx); z-index: 9; }
+.skip:focus { top: 1rem; }
+bdi { unicode-bidi: isolate; }
+
+/* ── header, over the hero ─────────────────────────────────────────────────────────── */
+.top { position: absolute; inset-inline: 0; top: 0; z-index: 3; }
+.top .wrap { display: flex; align-items: center; gap: 1.75rem; padding-block: 1rem; }
+.top .sig { width: 9.5rem; }
+.top nav.sections { display: flex; gap: 1.5rem; margin-inline-start: auto; font-size: 1.0625rem; }
+.top nav.sections a, .lang a { text-decoration: none; color: var(--champagne); opacity: 0.84; padding-block: 0.25rem; border-block-end: 1px solid transparent; transition: opacity 160ms ease, border-color 160ms ease; }
+.top nav.sections a:hover, .lang a:hover { opacity: 1; border-color: var(--hair); }
+.lang { display: flex; gap: 0.9rem; font-size: 1rem; padding-inline-start: 1.5rem; border-inline-start: 1px solid var(--hair); }
+.lang a[aria-current='page'] { opacity: 1; border-color: var(--gold); }
+.lang .ar { font-family: var(--arabic); }
+.lang .en { font-family: var(--latin); }
+
+/* ── the hero: the first screen, full of content ───────────────────────────────────── */
+.hero { position: relative; min-height: 100svh; display: flex; flex-direction: column; justify-content: center; padding-block: 5.25rem 0; overflow: hidden; isolation: isolate;
+  background: radial-gradient(56rem 36rem at 70% 40%, rgba(201, 164, 94, 0.16), transparent 70%), radial-gradient(40rem 28rem at 8% 92%, rgba(143, 112, 52, 0.12), transparent 70%), var(--onyx); }
+.hero::before { content: ''; position: absolute; inset: -40%; background: var(--guilloche); z-index: -1; }
+.hero-grid { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr); gap: clamp(1.5rem, 4vw, 4rem); align-items: center; padding-block: 1rem 1.75rem; }
+.hero h1 { margin: 0; }
+.hero .signature { width: min(100%, 38rem); }
+.hero .tagline { margin: 0.75rem 0 0.75rem; font-style: italic; font-size: clamp(1.4rem, 2.2vw, 1.85rem); line-height: 1.25; color: var(--champagne); }
+html[lang='ar'] .hero .tagline { font-style: normal; font-weight: 500; }
+.hero .about { margin: 0 0 1.5rem; max-width: 34rem; font-size: 1.25rem; }
+html[lang='ar'] .hero .about { font-size: 1.125rem; }
+
+/* the two entry points: a card per shop */
+.entries { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; max-width: 36rem; }
+.entry { position: relative; display: grid; gap: 0.35rem; padding: 1rem 1.1rem 1.05rem; text-decoration: none; background: rgba(255, 253, 248, 0.035); border: 1px solid var(--hair); transition: border-color 200ms ease, background-color 200ms ease; }
+.entry:hover { border-color: var(--gold); background: rgba(201, 164, 94, 0.08); }
+.entry img { height: 2.4rem; width: auto; }
+.entry .what { color: var(--taupe); font-size: 1rem; line-height: 1.35; }
+.entry .go { color: var(--gold-hi); font-size: 1rem; }
+.entry .go bdi { font-family: var(--latin); }
+
+/* the boutique window: an arch in porcelain, a gold double frame, three linked pieces */
+.window { position: relative; aspect-ratio: 5 / 6; width: min(100%, 34rem); justify-self: end; border-radius: 50% 50% 0.5rem 0.5rem / 32% 32% 0.5rem 0.5rem;
+  background: radial-gradient(circle at 50% 30%, #fffdf8, var(--porcelain) 55%, var(--porcelain-shade)); box-shadow: 0 2.5rem 6rem rgba(0, 0, 0, 0.55); overflow: hidden; isolation: isolate; }
+.window::before { content: ''; position: absolute; inset: 0.7rem; border: 1px solid rgba(143, 112, 52, 0.55); border-radius: inherit; z-index: 2; pointer-events: none;
+  box-shadow: inset 0 0 0 0.3rem rgba(244, 238, 227, 0.6), inset 0 0 0 calc(0.3rem + 1px) rgba(143, 112, 52, 0.35); }
+.window .piece { position: absolute; display: block; mix-blend-mode: multiply; z-index: 1; }
+.window .piece img { width: 100%; }
+.window .p1 { width: 64%; inset-inline-start: 5%; top: 12%; }
+.window .p2 { width: 50%; inset-inline-end: 4%; top: 33%; }
+.window .p3 { width: 40%; inset-inline-start: 14%; bottom: 5%; }
+.window .label { position: absolute; inset-inline: 0; bottom: 0.9rem; z-index: 3; text-align: center; font-size: 0.9rem; font-style: italic; color: var(--ink-soft); }
+html[lang='ar'] .window .label { font-style: normal; }
+.window .glint { position: absolute; inset: 0; z-index: 2; pointer-events: none; background: linear-gradient(105deg, transparent 35%, rgba(255, 255, 255, 0.5) 50%, transparent 65%); transform: translateX(-120%); }
+
+/* the ribbon: four facts the shops publish, between gold lozenges */
+.ribbon { border-block: 1px solid var(--hair); background: linear-gradient(90deg, rgba(18, 16, 13, 0.6), var(--onyx-2), rgba(18, 16, 13, 0.6)); }
+.ribbon ul { list-style: none; margin-block: 0; margin-inline: auto; padding: 0.95rem 0; display: flex; flex-wrap: wrap; justify-content: center; gap: 0.5rem 1.25rem; font-style: italic; font-size: 1.15rem; color: var(--champagne); }
+html[lang='ar'] .ribbon ul { font-style: normal; font-size: 1.0625rem; }
+.ribbon li { display: flex; align-items: center; gap: 1.25rem; }
+.ribbon li + li::before { content: ''; flex: none; width: 0.42rem; height: 0.42rem; transform: rotate(45deg); background: var(--gold); }
+
+@media (prefers-reduced-motion: no-preference) {
+  .hero .signature { animation: write 2s cubic-bezier(0.55, 0, 0.25, 1) 0.15s both; }
+  html[dir='rtl'] .hero .signature { animation-name: write-rtl; }
+  @keyframes write { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+  @keyframes write-rtl { from { clip-path: inset(0 0 0 100%); } to { clip-path: inset(0 0 0 0); } }
+  .window .glint { animation: glint 9s ease-in-out 2.4s infinite; }
+  @keyframes glint { 0% { transform: translateX(-120%); } 22%, 100% { transform: translateX(120%); } }
+  .tile img, .cat img { transition: transform 600ms cubic-bezier(0.2, 0.7, 0.1, 1); }
+  .tile:hover img, .cat:hover img { transform: scale(1.05); }
+}
+
+/* ── sections ─────────────────────────────────────────────────────────────────────── */
+.section { position: relative; padding-block: var(--section); }
+.section-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0.5rem 2rem; margin-block-end: clamp(1.25rem, 2.5vw, 2rem); }
+.section-head h2 { margin: 0; font-family: var(--display); font-weight: 400; font-size: clamp(2rem, 3.6vw, 3rem); line-height: 1.1; color: var(--champagne); }
+html[lang='ar'] .section-head h2 { font-weight: 600; line-height: 1.4; font-size: clamp(1.75rem, 3vw, 2.4rem); }
+.section-head p { margin: 0; max-width: 40rem; color: var(--taupe); }
+.alt { background: var(--onyx-2); }
+.alt::before { content: ''; position: absolute; inset: 0; background: var(--guilloche); opacity: 0.55; pointer-events: none; }
+.alt > .wrap { position: relative; }
+
+/* the houses: the shop's own words beside a large display case of its pieces */
+.house { display: grid; grid-template-columns: minmax(0, 0.72fr) minmax(0, 1.28fr); gap: clamp(1.5rem, 3.5vw, 3.25rem); align-items: center; }
+.house.mirror { grid-template-columns: minmax(0, 1.28fr) minmax(0, 0.72fr); }
+.house.mirror .vitrine { order: -1; }
+.house .logo { height: 3.75rem; width: auto; margin-block-end: 1.1rem; }
+.house .logo.wide { height: 3rem; }
+.house .story { margin: 0 0 0.9rem; font-size: 1.3125rem; line-height: 1.5; color: var(--ivory); }
+html[lang='ar'] .house .story { font-size: 1.1875rem; line-height: 1.8; }
+.house .facts { list-style: none; margin: 0 0 1.1rem; padding: 0; color: var(--taupe); font-size: 1.0625rem; }
+.house .facts li { padding-block: 0.4rem; border-block-start: 1px solid var(--hair-soft); }
+.house .facts li:last-child { border-block-end: 1px solid var(--hair-soft); }
+.house h3 { margin: 0 0 0.5rem; font-family: var(--display); font-weight: 500; font-size: 1.125rem; color: var(--champagne); }
+.chips { list-style: none; margin: 0 0 1.25rem; padding: 0; display: flex; flex-wrap: wrap; gap: 0.45rem; }
+.chips a { display: inline-block; padding: 0.3rem 0.75rem; border: 1px solid var(--hair); text-decoration: none; font-size: 0.975rem; color: var(--champagne); transition: border-color 200ms ease, background-color 200ms ease; }
+.chips a:hover { border-color: var(--gold); background: rgba(201, 164, 94, 0.08); }
+
+.btn { display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.75rem 1.4rem; text-decoration: none; font-size: 1.0625rem; letter-spacing: 0.02em; color: var(--onyx);
+  background: linear-gradient(120deg, var(--gold-hi), var(--gold) 45%, var(--gold-lo)); transition: filter 200ms ease; }
+.btn:hover { filter: brightness(1.08); }
+.btn bdi { font-family: var(--latin); }
+
+/* the display case: one large piece (2 x 2) and six around it, every one a link to its own page */
+.vitrine { position: relative; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.55rem; padding: 0.55rem; background: linear-gradient(160deg, #2b241b, #15110c); border: 1px solid var(--hair); }
+.tile { position: relative; display: block; aspect-ratio: 1; overflow: hidden; background: var(--porcelain-fill); text-decoration: none; }
+.tile picture { display: block; height: 100%; }
+.tile img { mix-blend-mode: multiply; width: 100%; height: 100%; object-fit: contain; }
+.tile.big { grid-column: span 2; grid-row: span 2; }
+.tile.wide { grid-column: span 2; aspect-ratio: 2 / 1; }
+.tile .cap { position: absolute; inset-inline: 0; bottom: 0; padding: 0.3rem 0.6rem 0.35rem; font-size: 0.8125rem; line-height: 1.3; color: var(--ink); background: linear-gradient(transparent, rgba(244, 238, 227, 0.92) 40%);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: 0.92; }
+.tile.big .cap { font-size: 0.95rem; }
+.tile:hover .cap, .tile:focus-visible .cap { color: var(--gold-lo); }
+
+/* the categories: a photo per category, each to its page on the shop that sells it */
+.cats { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0.65rem; }
+.cat { position: relative; display: grid; grid-template-rows: auto auto; text-decoration: none; border: 1px solid var(--hair-soft); background: var(--onyx-3); transition: border-color 200ms ease; }
+.cat:hover { border-color: var(--gold); }
+.cat .photo { aspect-ratio: 1; overflow: hidden; background: var(--porcelain-fill); }
+.cat .photo picture { display: block; height: 100%; }
+.cat img { mix-blend-mode: multiply; width: 100%; height: 100%; object-fit: contain; }
+.cats li, .cat, .house > *, .hero-grid > *, .entries > * { min-width: 0; }
+.cat .name { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 0 0.5rem; padding: 0.55rem 0.75rem 0.6rem; }
+.cat strong { font-family: var(--display); font-weight: 500; font-size: 1.1875rem; color: var(--champagne); }
+html[lang='ar'] .cat strong { font-size: 1.0625rem; font-weight: 600; }
+.cat small { color: var(--taupe); font-size: 0.8125rem; }
+
+/* the brand wall: a porcelain tray, every logo in one ink, each to its brand page */
+.wall { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(8.45rem, 1fr)); background: var(--porcelain-fill);
+  border-block-start: 1px solid var(--hair-ink); border-inline-start: 1px solid var(--hair-ink); box-shadow: 0 1.5rem 4rem rgba(0, 0, 0, 0.45); }
+.wall li { border-block-end: 1px solid var(--hair-ink); border-inline-end: 1px solid var(--hair-ink); }
+.wall a, .wall .plain { display: grid; place-items: center; gap: 0.45rem; height: 100%; min-height: 7rem; padding: 1.1rem 0.75rem 0.85rem; text-decoration: none; transition: background-color 250ms ease; }
+.wall a:hover { background: rgba(201, 164, 94, 0.12); }
+.wall img { height: 2.4rem; width: auto; max-width: 100%; object-fit: contain; mix-blend-mode: multiply; opacity: 0.82; transition: opacity 250ms ease; }
+.wall a:hover img { opacity: 1; }
+.wall .typeset { font-family: var(--latin); font-weight: 600; font-size: 1.1rem; letter-spacing: 0.15em; white-space: nowrap; color: #2e2820; opacity: 0.85; line-height: 2.4rem; }
+.wall span { font-family: var(--latin); font-size: 0.9rem; color: var(--ink-soft); }
+
+/* why us: six commitments, an engraved line icon each */
+.why { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-block-start: 1px solid var(--hair); border-inline-start: 1px solid var(--hair); }
+.why li { display: grid; grid-template-columns: auto 1fr; gap: 0.25rem 1rem; padding: 1.4rem 1.5rem 1.5rem; border-block-end: 1px solid var(--hair); border-inline-end: 1px solid var(--hair); }
+.why svg { width: 2.4rem; height: 2.4rem; grid-row: span 2; }
+.why h3 { margin: 0; font-family: var(--display); font-weight: 500; font-size: 1.375rem; line-height: 1.25; color: var(--champagne); }
+html[lang='ar'] .why h3 { font-size: 1.1875rem; font-weight: 600; }
+.why p { margin: 0; color: var(--taupe); font-size: 1.0625rem; }
+
+/* contact: a porcelain address card and the ways to reach us */
+.contact { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: clamp(1.5rem, 3.5vw, 3rem); align-items: start; }
+.card { position: relative; padding: clamp(1.5rem, 3vw, 2.4rem); color: var(--ink); background: radial-gradient(circle at 30% 20%, #fffdf8, var(--porcelain) 60%, var(--porcelain-shade)); box-shadow: 0 1.5rem 4rem rgba(0, 0, 0, 0.5); }
+.card::before { content: ''; position: absolute; inset: 0.55rem; border: 1px solid rgba(143, 112, 52, 0.5); pointer-events: none; }
+.card .sig { width: 13rem; margin-block-end: 1rem; }
+.card address { font-style: normal; font-size: 1.375rem; line-height: 1.45; margin-block-end: 1.25rem; }
+html[lang='ar'] .card address { font-size: 1.25rem; line-height: 1.75; }
+.card .map { display: inline-block; padding: 0.6rem 1.15rem; border: 1px solid var(--gold-lo); color: var(--ink); text-decoration: none; transition: background-color 200ms ease, color 200ms ease; }
+.card .map:hover { background: var(--ink); color: var(--porcelain); }
+.reach { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1.5rem 2.5rem; }
+.reach dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 0.6rem 1.25rem; align-content: start; grid-column: 1 / -1; }
+.reach dt { color: var(--taupe); }
+.reach dd { margin: 0; font-size: 1.3125rem; color: var(--champagne); }
+.reach dd a { text-decoration: none; border-block-end: 1px solid var(--hair); }
+.reach dd a:hover { border-color: var(--gold); }
+.store { padding-block: 0.85rem; border-block-start: 1px solid var(--hair-soft); }
+.store h3 { margin: 0 0 0.2rem; font-family: var(--display); font-weight: 500; font-size: 1.25rem; color: var(--ivory); }
+.store p { margin: 0 0 0.35rem; color: var(--taupe); font-size: 1rem; line-height: 1.5; }
+.store a { color: var(--gold); font-size: 1rem; text-underline-offset: 0.25em; }
+.hours { grid-column: 1 / -1; margin: 0; color: var(--taupe); }
+
+/* footer */
+footer { border-block-start: 1px solid var(--hair); background: var(--onyx); }
+footer .wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem 2.5rem; padding-block: 1.75rem 2rem; color: var(--taupe); font-size: 1rem; }
+footer .sig { width: 9rem; }
+footer nav { display: flex; gap: 1.5rem; margin-inline-start: auto; }
+footer a { color: var(--taupe); text-underline-offset: 0.25em; }
+footer a:hover { color: var(--champagne); }
+
+/* tablets */
+@media (max-width: 64rem) {
+  .top nav.sections { display: none; }
+  .lang { margin-inline-start: auto; }
+  .hero { min-height: auto; padding-block: 4.75rem 0; }
+  .hero-grid { grid-template-columns: 1fr; }
+  .hero .signature { width: min(100%, 30rem); }
+  .window { justify-self: center; width: min(100%, 30rem); }
+  .house, .house.mirror { grid-template-columns: 1fr; }
+  .house.mirror .vitrine { order: 0; }
+  .cats { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .why { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .contact { grid-template-columns: 1fr; }
+}
+/* phones */
+@media (max-width: 40rem) {
+  body { font-size: 1.125rem; }
+  .top .sig { display: none; }
+  .lang { border-inline-start: 0; padding-inline-start: 0; }
+  .hero { padding-block: 3.75rem 0; }
+  .hero-grid { padding-block: 0.5rem 1.25rem; gap: 1.25rem; }
+  .entries { gap: 0.5rem; }
+  .entry { padding: 0.8rem 0.8rem 0.85rem; }
+  .entry img { height: 2rem; }
+  .entry .what, .entry .go { font-size: 0.9375rem; }
+  .ribbon ul { flex-direction: column; align-items: flex-start; gap: 0.3rem; padding-block: 0.85rem; }
+  .ribbon li::before, .ribbon li + li::before { content: ''; flex: none; width: 0.38rem; height: 0.38rem; transform: rotate(45deg); background: var(--gold); }
+  .ribbon li { gap: 0.8rem; }
+  .vitrine { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.4rem; padding: 0.4rem; }
+  .tile.wide { grid-column: span 2; }
+  .cats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.45rem; }
+  .cat .photo { aspect-ratio: 4 / 3; }
+  .cat .name { flex-direction: column; gap: 0; padding: 0.45rem 0.6rem 0.5rem; }
+  .wall { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .wall a, .wall .plain { min-height: 5.75rem; padding: 0.8rem 0.4rem 0.6rem; }
+  .wall img { height: 1.8rem; }
+  .wall .typeset { font-size: 0.85rem; letter-spacing: 0.08em; line-height: 1.8rem; }
+  .wall span { font-size: 0.8125rem; text-align: center; }
+  .why { grid-template-columns: 1fr; }
+  .why li { padding: 1.1rem 1.1rem 1.2rem; }
+  .reach { grid-template-columns: 1fr; }
+  footer nav { margin-inline-start: 0; }
+}
