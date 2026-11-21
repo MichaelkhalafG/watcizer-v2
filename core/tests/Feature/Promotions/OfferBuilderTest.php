@@ -22,7 +22,9 @@ use Illuminate\Routing\Middleware\ThrottleRequests;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
+use Inertia\Testing\AssertableInertia;
 use Tests\Support\PromotionFixture;
 use Tests\Support\SideDdl;
 use Tests\Support\Staff;
@@ -275,7 +277,7 @@ it('switches both wallet prizes in four passes: a dry run that changes nothing, 
             ->toEqual((object) ['issuer' => 'wheel_template', 'is_active' => 0, 'apply_per' => 'paired', 'max_discount' => '1500.00', 'code' => null]);
         // each offer on its own shop, aimed at that shop's own Wallets and Watches
         expect(DB::table('promotion_rule_storefront')->where('promotion_rule_id', $template)->pluck('storefront_id')->all())->toEqual([$sf]);
-        expect((float) DB::table('promotion_rule_rewards')->where('promotion_rule_id', $template)->value('amount'))->toBe((float) $percent[$sf]);
+        expect(T::float(DB::table('promotion_rule_rewards')->where('promotion_rule_id', $template)->value('amount')))->toBe((float) $percent[$sf]);
         $scopes = DB::table('promotion_rule_scopes')->where('promotion_rule_id', $template)->orderBy('role')->get(['role', 'value_id'])->map(fn ($r): array => (array) $r)->all();
         expect($scopes)->toEqual([
             ['role' => 'qualify', 'value_id' => WheelPrizes::seededCategory($sf, 'watches')],
@@ -344,7 +346,7 @@ it('works end to end on the wheel: the spin, the cart with and without the watch
     postJson('/api/v2/watchizer/cart/items', ['product_id' => $watchA['id'], 'bucket' => 'Express', 'quantity' => 1], ['X-Guest-Token' => $token])->assertOk();
     postJson('/api/v2/watchizer/cart/items', ['product_id' => $walletA['id'], 'bucket' => 'Express', 'quantity' => 1], ['X-Guest-Token' => $token])->assertOk();
     $cart = getJson('/api/v2/watchizer/cart?coupon='.$code.'&phone='.$phone, ['X-Guest-Token' => $token])->assertOk();
-    expect((float) T::arr($cart->json('data.totals.promotion'))['discount'])->toBe(600.0);
+    expect(T::float(T::arr($cart->json('data.totals.promotion'))['discount']))->toBe(600.0);
     $watchLine = collect(T::arr($cart->json('data.items')))->first(fn ($i) => T::int(T::arr(T::arr($i)['product'])['id']) === $watchA['id']);
     delete('/api/v2/watchizer/cart/items/'.T::int(T::arr($watchLine)['id']), [], ['X-Guest-Token' => $token, 'Accept' => 'application/json'])->assertOk();
     $body = ['address_line' => '12 Offer Street, Cairo', 'shipping_city_id' => obCity(), 'phone' => $phone, 'guest_name' => 'Offer Buyer',
@@ -392,18 +394,18 @@ it('writes only what changed: an unchanged save touches no row, a changed scope 
     $after = $scopes();
     expect(count($after))->toBe(2)
         ->and(collect($after)->firstWhere('role', 'target'))->toBe(collect($before)->firstWhere('role', 'target'))
-        ->and(collect($after)->firstWhere('role', 'qualify')['value_id'])->toBe($brand);
+        ->and(T::arr(collect($after)->firstWhere('role', 'qualify'))['value_id'])->toBe($brand);
 });
 
 it('keeps every wheel segment\'s id when the wheel is saved, and writes only the segments that changed', function () {
     $rows = fn (): array => DB::table('storefront_wheel_prizes')->where('storefront_id', 1)->orderBy('position')->get()->map(fn ($r): array => (array) $r)->all();
     $before = $rows();
-    $segments = array_map(fn (array $r): array => [
-        'label_en' => $r['label_en'], 'label_ar' => $r['label_ar'], 'type' => $r['type'], 'value' => $r['value'], 'odds' => $r['odds'], 'color' => $r['color'],
+    // the first segment's colour changes; every other field is saved as it is
+    $segments = array_map(fn (array $r, int $i): array => [
+        'label_en' => $r['label_en'], 'label_ar' => $r['label_ar'], 'type' => $r['type'], 'value' => $r['value'], 'odds' => $r['odds'], 'color' => $i === 0 ? '#123456' : $r['color'],
         'cap' => $r['cap'], 'scope_category_id' => $r['scope_category_id'], 'min_quantity' => $r['min_quantity'], 'apply_mode' => $r['apply_mode'],
         'gift_product_ids' => [], 'offer_rule_id' => $r['offer_rule_id'],
-    ], $before);
-    $segments[0]['color'] = '#123456';
+    ], $before, array_keys($before));
     WheelPrizeWriter::save(1, $segments, ['ttl_hours' => Wheel::DEFAULT_TTL_HOURS, 'min_order' => null], null);
     $after = $rows();
     expect(array_column($after, 'id'))->toBe(array_column($before, 'id'))
@@ -416,10 +418,10 @@ it('pauses, starts again, ends now and duplicates an offer in one click, and fil
     $id = obWalletRule('ONECLICK');
     post("/manage/promotions/{$id}/pause")->assertSessionHasNoErrors();
     expect(DB::table('promotion_rules')->where('id', $id)->value('is_active'))->toBe(0);
-    get('/manage/promotions?filters[status]=off')->assertOk()->assertInertia(fn ($p) => $p->where('table.data', fn ($rows) => collect($rows)->pluck('id')->contains($id)));
+    get('/manage/promotions?filters[status]=off')->assertOk()->assertInertia(fn (AssertableInertia $p) => $p->where('table.data', fn (Collection $rows) => $rows->pluck('id')->contains($id)));
     post("/manage/promotions/{$id}/resume")->assertSessionHasNoErrors();
     expect(DB::table('promotion_rules')->where('id', $id)->value('is_active'))->toBe(1);
-    get('/manage/promotions?filters[status]=active')->assertOk()->assertInertia(fn ($p) => $p->where('table.data', fn ($rows) => collect($rows)->pluck('id')->contains($id)));
+    get('/manage/promotions?filters[status]=active')->assertOk()->assertInertia(fn (AssertableInertia $p) => $p->where('table.data', fn (Collection $rows) => $rows->pluck('id')->contains($id)));
 
     post("/manage/promotions/{$id}/duplicate")->assertRedirect();
     $copy = DB::table('promotion_rules')->where('name', 'like', '30% off a wallet with any watch %')->orderByDesc('id')->first(['id', 'is_active', 'code', 'apply_per']);
@@ -429,6 +431,6 @@ it('pauses, starts again, ends now and duplicates an offer in one click, and fil
 
     post("/manage/promotions/{$id}/end")->assertSessionHasNoErrors();
     expect(T::str(DB::table('promotion_rules')->where('id', $id)->value('ends_at')))->toBeLessThanOrEqual(now()->format('Y-m-d H:i:s'));
-    get('/manage/promotions?filters[status]=ended')->assertOk()->assertInertia(fn ($p) => $p->where('table.data', fn ($rows) => collect($rows)->pluck('id')->contains($id)));
+    get('/manage/promotions?filters[status]=ended')->assertOk()->assertInertia(fn (AssertableInertia $p) => $p->where('table.data', fn (Collection $rows) => $rows->pluck('id')->contains($id)));
     expect(DB::table('core_activity_log')->where('subject_type', 'promotion_rules')->where('subject_id', $id)->count())->toBeGreaterThanOrEqual(3);
 });
