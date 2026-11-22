@@ -74,6 +74,13 @@
 <link rel="icon" href="/elegance/favicon.svg{{ $v }}" type="image/svg+xml">
 <link rel="icon" href="/elegance/favicon-32.png{{ $v }}" sizes="32x32" type="image/png">
 <link rel="apple-touch-icon" href="/elegance/apple-touch-icon.png{{ $v }}">
+{{-- the first screen's fonts, fetched with the stylesheet rather than after it, so the text rarely re-wraps after first paint --}}
+@if ($ar)
+<link rel="preload" href="/elegance/fonts/el-messiri-arabic.woff2" as="font" type="font/woff2" crossorigin>
+@else
+<link rel="preload" href="/elegance/fonts/cormorant-garamond-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/elegance/fonts/cormorant-garamond-latin-italic.woff2" as="font" type="font/woff2" crossorigin>
+@endif
 <link rel="stylesheet" href="/elegance/elegance.css{{ $v }}">
 <script type="application/ld+json">{!! json_encode($schema, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP) !!}</script>
 </head>

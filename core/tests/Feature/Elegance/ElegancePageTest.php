@@ -102,7 +102,7 @@ it('has no form, input, script, iframe, inline style or event handler, and nothi
                 expect(trim(explode(' ', trim($part))[0]))->toStartWith('/elegance/');
             }
         }
-        preg_match_all('#<link rel="(?:stylesheet|icon|apple-touch-icon)" href="([^"]+)"#', $html, $links);
+        preg_match_all('#<link rel="(?:stylesheet|icon|apple-touch-icon|preload)" href="([^"]+)"#', $html, $links);
         foreach ($links[1] as $href) {
             expect($href)->toStartWith('/elegance/');
         }

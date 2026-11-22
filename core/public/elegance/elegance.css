@@ -5,6 +5,10 @@
 
 @font-face { font-family: 'Cormorant Garamond'; src: url('fonts/cormorant-garamond-latin.woff2') format('woff2'); font-weight: 300 700; font-style: normal; font-display: swap; }
 @font-face { font-family: 'Cormorant Garamond'; src: url('fonts/cormorant-garamond-latin-italic.woff2') format('woff2'); font-weight: 300 700; font-style: italic; font-display: swap; }
+/* the fallback takes Cormorant's width (the page's own text measured: 88 % of Georgia upright, 78 % italic), so the lines
+   wrap the same before and after the web font arrives and nothing below them moves; El Messiri already matches Segoe UI */
+@font-face { font-family: 'Cormorant Fallback'; src: local('Georgia'); font-style: normal; size-adjust: 88.2%; }
+@font-face { font-family: 'Cormorant Fallback'; src: local('Georgia Italic'), local('Georgia-Italic'); font-style: italic; size-adjust: 78.2%; }
 @font-face { font-family: 'El Messiri'; src: url('fonts/el-messiri-arabic.woff2') format('woff2'); font-weight: 400 700; font-display: swap;
   unicode-range: U+0600-06FF, U+0750-077F, U+0870-08FF, U+200C-200E, U+2010-2011, U+FB50-FDFF, U+FE70-FEFC; }
 @font-face { font-family: 'El Messiri'; src: url('fonts/el-messiri-latin.woff2') format('woff2'); font-weight: 400 700; font-display: swap;
@@ -16,7 +20,7 @@
   --champagne: #e9dcc0; --ivory: #f2ece1; --taupe: #a69d8e;
   --porcelain: #f4eee3; --porcelain-shade: #e4d9c6; --ink: #1d1913; --ink-soft: #5f5340;
   --hair: rgba(201, 164, 94, 0.34); --hair-soft: rgba(201, 164, 94, 0.16); --hair-ink: rgba(143, 112, 52, 0.35);
-  --latin: 'Cormorant Garamond', Georgia, 'Times New Roman', serif;
+  --latin: 'Cormorant Garamond', 'Cormorant Fallback', Georgia, 'Times New Roman', serif;
   --arabic: 'El Messiri', 'Segoe UI', Tahoma, sans-serif;
   --display: var(--latin);
   --max: 88rem;
@@ -57,7 +61,9 @@ bdi { unicode-bidi: isolate; }
    font swap that re-wraps the ribbon cannot move it (Lighthouse measured 0.28 of layout shift when it was centred) */
 .hero { position: relative; display: flex; flex-direction: column; padding-block: 5.25rem 0; overflow: hidden; isolation: isolate;
   background: radial-gradient(56rem 36rem at 70% 40%, rgba(201, 164, 94, 0.16), transparent 70%), radial-gradient(40rem 28rem at 8% 92%, rgba(143, 112, 52, 0.12), transparent 70%), var(--onyx); }
-.hero::before { content: ''; position: absolute; inset: -40%; background: var(--guilloche); z-index: -1; }
+/* the engraved layer is anchored at the hero's own corner: sized as a share of the hero (inset: -40%) it MOVED whenever the
+   hero's height changed (the web font re-wrapping the ribbon), and counted as a 0.31 layout shift of the whole screen */
+.hero::before { content: ''; position: absolute; inset: 0; background: var(--guilloche); z-index: -1; }
 .hero-grid { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr); gap: clamp(1.5rem, 4vw, 4rem); align-items: center; padding-block: 1rem 1.75rem; min-height: calc(100svh - 9.25rem); }
 .hero h1 { margin: 0; }
 .hero .signature { width: min(100%, 38rem); }
@@ -71,7 +77,7 @@ html[lang='ar'] .hero .about { font-size: 1.125rem; }
 .entry { position: relative; display: grid; gap: 0.35rem; padding: 1rem 1.1rem 1.05rem; text-decoration: none; background: rgba(255, 253, 248, 0.035); border: 1px solid var(--hair); transition: border-color 200ms ease, background-color 200ms ease; }
 .entry:hover { border-color: var(--gold); background: rgba(201, 164, 94, 0.08); }
 .entry img { height: 2.4rem; width: auto; }
-.entry .what { color: var(--taupe); font-size: 1rem; line-height: 1.35; }
+.entry .what { color: var(--taupe); font-size: 1rem; line-height: 1.35; min-height: 2.7em; } /* two lines reserved: the font swap may wrap it either way */
 .entry .go { color: var(--gold-hi); font-size: 1rem; }
 .entry .go bdi { font-family: var(--latin); }
 
