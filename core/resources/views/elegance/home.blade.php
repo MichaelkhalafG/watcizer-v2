@@ -125,14 +125,16 @@
 
   @foreach (['watchizer', 'brandfashion'] as $n => $house)
     @php $h = $c['houses'][$house]; @endphp
-    <section class="section {{ $n === 1 ? 'alt' : '' }}" id="{{ $house }}" aria-label="{{ $t[$house] }}">
+    <section class="section {{ $n === 1 ? 'alt' : '' }}" id="{{ $house }}" aria-labelledby="{{ $house }}-h">
       <div class="wrap house {{ $n === 1 ? 'mirror' : '' }}">
         <div>
+          <h2 class="house-name" id="{{ $house }}-h">
           @if ($house === 'watchizer')
             <img class="logo" src="/elegance/watchizer.webp{{ $v }}" alt="{{ $t['watchizer'] }}" width="90" height="60" loading="lazy">
           @else
             <img class="logo wide" src="/elegance/brandfashion.svg{{ $v }}" alt="{{ $t['brandfashion'] }}" width="198" height="60" loading="lazy">
           @endif
+          </h2>
           <p class="story">{{ $t[$house.'_story'] }}</p>
           <ul class="facts">@foreach ($t[$house.'_facts'] as $fact)<li>{{ $fact }}</li>@endforeach</ul>
           <h3>{{ $t['shop_by'] }}</h3>
@@ -142,7 +144,7 @@
         <div class="vitrine">
           @foreach ($h['pieces'] as $i => $p)
             @php $cls = $i === 0 ? 'big' : ($i >= 5 ? 'wide' : ''); $sizes = $i === 0 ? '(max-width: 40rem) 92vw, (max-width: 64rem) 60vw, 34rem' : '(max-width: 40rem) 46vw, (max-width: 64rem) 30vw, 17rem'; @endphp
-            <a class="tile {{ $cls }}" href="{{ $p['url'] }}" {!! $ext !!}>{!! $img($p['key'], $p['widths'], $sizes, $p['caption']) !!}<span class="cap">{{ $p['caption'] }}</span></a>
+            <a class="tile {{ $cls }}" href="{{ $p['url'] }}" {!! $ext !!}>{!! $img($p['key'], $p['widths'], $sizes, '') !!}<span class="cap">{{ $p['caption'] }}</span></a>
           @endforeach
         </div>
       </div>

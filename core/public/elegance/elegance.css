@@ -53,10 +53,12 @@ bdi { unicode-bidi: isolate; }
 .lang .en { font-family: var(--latin); }
 
 /* ── the hero: the first screen, full of content ───────────────────────────────────── */
-.hero { position: relative; min-height: 100svh; display: flex; flex-direction: column; justify-content: center; padding-block: 5.25rem 0; overflow: hidden; isolation: isolate;
+/* the hero is NOT centred as a whole: the grid has its own height (the first screen less the header and the ribbon), so a
+   font swap that re-wraps the ribbon cannot move it (Lighthouse measured 0.28 of layout shift when it was centred) */
+.hero { position: relative; display: flex; flex-direction: column; padding-block: 5.25rem 0; overflow: hidden; isolation: isolate;
   background: radial-gradient(56rem 36rem at 70% 40%, rgba(201, 164, 94, 0.16), transparent 70%), radial-gradient(40rem 28rem at 8% 92%, rgba(143, 112, 52, 0.12), transparent 70%), var(--onyx); }
 .hero::before { content: ''; position: absolute; inset: -40%; background: var(--guilloche); z-index: -1; }
-.hero-grid { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr); gap: clamp(1.5rem, 4vw, 4rem); align-items: center; padding-block: 1rem 1.75rem; }
+.hero-grid { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr); gap: clamp(1.5rem, 4vw, 4rem); align-items: center; padding-block: 1rem 1.75rem; min-height: calc(100svh - 9.25rem); }
 .hero h1 { margin: 0; }
 .hero .signature { width: min(100%, 38rem); }
 .hero .tagline { margin: 0.75rem 0 0.75rem; font-style: italic; font-size: clamp(1.4rem, 2.2vw, 1.85rem); line-height: 1.25; color: var(--champagne); }
@@ -119,6 +121,7 @@ html[lang='ar'] .section-head h2 { font-weight: 600; line-height: 1.4; font-size
 .house { display: grid; grid-template-columns: minmax(0, 0.72fr) minmax(0, 1.28fr); gap: clamp(1.5rem, 3.5vw, 3.25rem); align-items: center; }
 .house.mirror { grid-template-columns: minmax(0, 1.28fr) minmax(0, 0.72fr); }
 .house.mirror .vitrine { order: -1; }
+.house-name { margin: 0; line-height: 0; }
 .house .logo { height: 3.75rem; width: auto; margin-block-end: 1.1rem; }
 .house .logo.wide { height: 3rem; }
 .house .story { margin: 0 0 0.9rem; font-size: 1.3125rem; line-height: 1.5; color: var(--ivory); }
@@ -213,8 +216,8 @@ footer a:hover { color: var(--champagne); }
 @media (max-width: 64rem) {
   .top nav.sections { display: none; }
   .lang { margin-inline-start: auto; }
-  .hero { min-height: auto; padding-block: 4.75rem 0; }
-  .hero-grid { grid-template-columns: 1fr; }
+  .hero { padding-block: 4.75rem 0; }
+  .hero-grid { grid-template-columns: 1fr; min-height: 0; }
   .hero .signature { width: min(100%, 30rem); }
   .window { justify-self: center; width: min(100%, 30rem); }
   .house, .house.mirror { grid-template-columns: 1fr; }
