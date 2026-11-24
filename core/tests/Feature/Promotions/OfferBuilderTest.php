@@ -320,6 +320,30 @@ it('stops the data step when the row is not what the guard expects, and writes n
     expect(Artisan::call('promotions:wallet-with-watch', ['--prize' => ["{$other}:30"]]))->toBe(1);
 });
 
+it('shows a builder offer on the wheel by what it gives: the segment and the won card carry its percentage and cap, never an empty value (2026-11-24)', function () {
+    $id = obSwitchRow4();
+    $segment = collect(WheelPrizes::segments(1))->firstWhere('id', $id);
+    expect($segment)->toBeArray();
+    expect(T::arr($segment)['type'])->toBe('offer')
+        ->and(T::arr($segment)['display_type'])->toBe('percent_discount')
+        ->and(T::arr($segment)['value'])->toBe(30.0)
+        ->and(T::arr($segment)['cap'])->toBe(1500.0);
+    // every other segment draws as its own type
+    foreach (WheelPrizes::segments(1) as $other) {
+        if ($other['id'] !== $id) {
+            expect($other['display_type'])->toBe($other['type']);
+        }
+    }
+    $phone = '010'.str_pad((string) random_int(0, 99999999), 8, '0', STR_PAD_LEFT);
+    $spin = Wheel::spin(1, $phone, null, '203.0.113.9', [], 'en', 70)['spin'];
+    $card = Wheel::present($spin);
+    $prize = T::arr($card['prize']);
+    expect($prize['type'])->toBe('offer')->and($prize['display_type'])->toBe('percent_discount')
+        ->and($prize['value'])->toBe(30.0)->and($prize['cap'])->toBe(1500.0);
+    // an offer with no money or shipping reward is drawn by its label: type offer, no value
+    expect(WheelPrizes::offerDisplay(null))->toBe(['type' => 'offer', 'value' => null, 'cap' => null]);
+});
+
 it('works end to end on the wheel: the spin, the cart with and without the watch, two watches and two wallets, and the server refusing the order once the watch is gone', function () {
     obSwitchRow4();
     $phone = '010'.str_pad((string) random_int(0, 99999999), 8, '0', STR_PAD_LEFT);

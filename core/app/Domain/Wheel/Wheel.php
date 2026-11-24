@@ -869,6 +869,13 @@ final class Wheel
         if ($type === 'gift') {
             $out['gift'] = self::giftOf(Row::nint($spin, 'gift_product_id'));
         }
+        // a builder offer: what its rule gives, so the reveal can say "30%" and the rest of the label (2026-11-24)
+        $display = $type === 'offer' ? WheelPrizes::offerDisplay(Row::nint($spin, 'promotion_rule_id')) : null;
+        $out['prize']['display_type'] = $display['type'] ?? $type;
+        if ($display !== null && $display['value'] !== null) {
+            $out['prize']['value'] = $display['value'];
+            $out['prize']['cap'] = $display['cap'];
+        }
         if ($type === 'referral') {
             $out['invite'] = WheelReferrals::summary($spin, $at);
         }

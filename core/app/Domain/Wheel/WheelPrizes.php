@@ -92,7 +92,7 @@ final class WheelPrizes
      * A storefront's prizes, in wheel order, each with its terms — and, for a gift, the products of its list that are
      * in stock on the storefront (`gift_available`), so the spin and the dashboard know what can be drawn.
      *
-     * @return list<array{id: int, position: int, label_en: string, label_ar: string, type: string, value: float|null, odds: int, color: string, cap: float|null, scope_category_id: int|null, min_quantity: int|null, apply_mode: string, gift_product_ids: list<int>, gift_available: list<int>}>
+     * @return list<array{id: int, position: int, label_en: string, label_ar: string, type: string, value: float|null, odds: int, color: string, cap: float|null, scope_category_id: int|null, min_quantity: int|null, apply_mode: string, gift_product_ids: list<int>, gift_available: list<int>, offer_rule_id: int|null}>
      */
     public static function forStorefront(int $storefrontId): array
     {
@@ -202,7 +202,7 @@ final class WheelPrizes
      * The segments as the storefront draws them — WITHOUT the odds, which are the shop's business, and with what a
      * shopper needs to read the prize (the type, the value, the colour, whether it can be drawn today).
      *
-     * @return list<array{id: int, label: array{en: string, ar: string}, type: string, value: float|null, color: string, cap: float|null}>
+     * @return list<array{id: int, label: array{en: string, ar: string}, type: string, display_type: string, value: float|null, color: string, cap: float|null}>
      */
     public static function segments(int $storefrontId): array
     {
@@ -213,17 +213,59 @@ final class WheelPrizes
             if (self::isUndrawable($prize)) {
                 continue;
             }
+            // a builder offer carries no value of its own: the disc reads what its offer gives (2026-11-24 - the live
+            // wallet offers showed an empty number on both shops). `display_type` is the type the disc draws.
+            $display = $prize['type'] === 'offer'
+                ? self::offerDisplay($prize['offer_rule_id'])
+                : ['type' => $prize['type'], 'value' => $prize['value'], 'cap' => $prize['cap']];
             $out[] = [
                 'id' => $prize['id'],
                 'label' => ['en' => $prize['label_en'], 'ar' => $prize['label_ar']],
                 'type' => $prize['type'],
-                'value' => $prize['value'],
+                'display_type' => $display['type'],
+                'value' => $display['value'],
                 'color' => $prize['color'],
-                'cap' => $prize['cap'],
+                'cap' => $display['cap'],
             ];
         }
 
         return $out;
+    }
+
+    /**
+     * What a builder offer (its template, or the rule a won code copied from it) GIVES, as the type the wheel draws it
+     * with: its percentage reward first, else its amount off, else free shipping, else a free product (a gift). The
+     * value is the reward's own amount; the cap is the rule's maximum discount. An offer with none of these (or none at
+     * all) is drawn by its label alone: type `offer`, no value.
+     *
+     * @return array{type: string, value: float|null, cap: float|null}
+     */
+    public static function offerDisplay(?int $ruleId): array
+    {
+        $none = ['type' => 'offer', 'value' => null, 'cap' => null];
+        if ($ruleId === null) {
+            return $none;
+        }
+        $rewards = DB::table('promotion_rule_rewards')->where('promotion_rule_id', $ruleId)->orderBy('id')->get(['type', 'amount']);
+        $cap = Coerce::nfloat(DB::table('promotion_rules')->where('id', $ruleId)->value('max_discount'));
+        foreach (['percent_discount', 'fixed_discount', 'free_shipping', 'free_product', 'free_variant'] as $want) {
+            foreach ($rewards as $raw) {
+                $reward = Row::cast($raw);
+                if (Row::str($reward, 'type') !== $want) {
+                    continue;
+                }
+                $amount = Row::nfloat($reward, 'amount');
+
+                return match ($want) {
+                    'percent_discount' => ['type' => 'percent_discount', 'value' => $amount, 'cap' => $cap !== null && $cap > 0 ? $cap : null],
+                    'fixed_discount' => ['type' => 'fixed_discount', 'value' => $amount, 'cap' => null],
+                    'free_shipping' => ['type' => 'free_shipping', 'value' => null, 'cap' => null],
+                    default => ['type' => 'gift', 'value' => null, 'cap' => null],
+                };
+            }
+        }
+
+        return $none;
     }
 
     /**

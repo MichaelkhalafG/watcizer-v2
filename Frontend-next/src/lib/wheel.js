@@ -129,9 +129,15 @@ function fit(text, max) {
  * the team's own label, shortened to what fits a seventh of a wheel ("10% off the 2nd watch" → 10% / 2ND WATCH;
  * "Free perfume gift" → GIFT / PERFUME; "Invite a friend: 15% for both" → 15% / INVITE).
  */
+/**
+ * The type a prize is DRAWN as: a builder offer by what it gives (core's `display_type`: its percentage, amount, free
+ * shipping or gift - 2026-11-24, the live wallet offers showed an empty number), every other prize by its own type.
+ */
+export const drawnType = (prize) => (prize?.type === 'offer' ? prize?.display_type || 'offer' : prize?.type)
+
 export function segmentLabel(segment, lang) {
   const ar = lang === 'ar'
-  const type = segment?.type
+  const type = drawnType(segment)
   const label = segment?.label?.[lang] ?? segment?.label?.en ?? ''
   const value = Number(segment?.value)
   const words = fit(wordsOf(label, lang), ar ? 14 : 12)
@@ -139,6 +145,8 @@ export function segmentLabel(segment, lang) {
   if (type === 'none') return { big: ar ? 'حظ' : 'LUCK', small: ar ? 'أوفر' : 'NEXT TIME' }
   if (type === 'gift') return { big: ar ? 'هدية' : 'GIFT', small: words || (ar ? 'مجانية' : 'FREE') }
   if (type === 'fixed_discount') return { big: value > 0 ? value.toLocaleString('en-US') : '', small: ar ? 'جنيه خصم' : 'EGP OFF' }
+  // an offer that gives none of the above: its own words, never an empty number
+  if (type === 'offer') return { big: ar ? 'عرض' : 'OFFER', small: words || (ar ? 'خاص' : 'FOR YOU') }
   return { big: value > 0 ? `${trimNumber(value)}%` : '', small: words || (ar ? 'خصم' : 'OFF') }
 }
 
@@ -153,7 +161,7 @@ const trimNumber = (n) => String(Number(n.toFixed(2)))
  */
 export function headline(spin, lang) {
   const ar = lang === 'ar'
-  const type = spin?.prize?.type
+  const type = drawnType(spin?.prize)
   const label = spin?.prize?.label?.[lang] ?? spin?.prize?.label?.en ?? ''
   const value = Number(spin?.prize?.value)
   if (type === 'referral' && value > 0) {

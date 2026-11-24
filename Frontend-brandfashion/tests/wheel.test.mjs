@@ -203,6 +203,17 @@ describe('the kinds of result', () => {
     expect(segmentLabel({ type: 'percent_discount', value: 7, label: { en: '7% off' } }, 'en')).toEqual({ big: '7%', small: 'OFF' })
     expect(segmentLabel({ type: 'fixed_discount', value: 150, label: { en: 'EGP 150 off' } }, 'en')).toEqual({ big: '150', small: 'EGP OFF' })
   })
+  it('draws a builder offer by what it gives, never an empty number (2026-11-24, the live wallet offers)', () => {
+    const wallet = { type: 'offer', display_type: 'percent_discount', value: 30, cap: 1500, label: { en: '30% off a wallet with any watch', ar: 'خصم 30% على محفظة مع أي ساعة' } }
+    expect(segmentLabel(wallet, 'en').big).toBe('30%')
+    expect(segmentLabel(wallet, 'ar').big).toBe('30%')
+    expect(headline({ prize: wallet }, 'en')).toEqual({ big: '30%', sub: 'off a wallet with any watch', words: false })
+    expect(segmentLabel({ type: 'offer', display_type: 'fixed_discount', value: 200, label: { en: 'EGP 200 off a belt' } }, 'en')).toEqual({ big: '200', small: 'EGP OFF' })
+    expect(segmentLabel({ type: 'offer', display_type: 'free_shipping', value: null, label: { en: 'Free shipping on bags' } }, 'en')).toEqual({ big: 'FREE', small: 'SHIPPING' })
+    // an offer core could not read (no display_type): its own words, not a blank
+    expect(segmentLabel({ type: 'offer', value: null, label: { en: 'Bundle deal' } }, 'en')).toEqual({ big: 'OFFER', small: 'BUNDLE DEAL' })
+    for (const l of [segmentLabel(wallet, 'en'), segmentLabel({ type: 'offer', label: { ar: 'عرض الحزمة' } }, 'ar')]) expect(l.big).not.toBe('')
+  })
   it('headlines a number alone with the label under it, or words at the smaller size', () => {
     expect(headline({ prize: PRIZES[1] }, 'en')).toEqual({ big: '10%', sub: 'off the 2nd watch', words: false })
     expect(headline({ prize: PRIZES[1] }, 'ar')).toEqual({ big: '10%', sub: 'على الساعة الثانية', words: false })
