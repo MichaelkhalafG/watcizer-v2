@@ -144,6 +144,9 @@ interface Props {
     by_round: Round[];
     prizes: Prize[];
     types: string[];
+    /** The types that take money off: disabled while the shop's money rewards are off (2026-11-24). */
+    money_types?: string[];
+    money_rewards?: boolean;
     modes: string[];
     categories: Category[];
     gift_products: Record<string, GiftBrief>;
@@ -259,7 +262,7 @@ function GiftPicker({ ids, briefs, storefrontId, onChange, labels }: { ids: numb
     );
 }
 
-export default function WheelIndex({ storefront, storefronts, enabled, ttl_hours, min_order, round, round_started_at, by_round, prizes, types, modes, categories, gift_products, offers, referrals, limits, fresh, totals, by_source, by_prize, spins, limit, spin_url }: Props) {
+export default function WheelIndex({ storefront, storefronts, enabled, ttl_hours, min_order, round, round_started_at, by_round, prizes, types, money_types = [], money_rewards = true, modes, categories, gift_products, offers, referrals, limits, fresh, totals, by_source, by_prize, spins, limit, spin_url }: Props) {
     const t = useT();
     const base = `/manage/storefronts/${storefront.id}/wheel`;
 
@@ -535,12 +538,15 @@ export default function WheelIndex({ storefront, storefronts, enabled, ttl_hours
                                                 }}
                                             >
                                                 {types.map((type) => (
-                                                    <option key={type} value={type}>
+                                                    <option key={type} value={type} disabled={!money_rewards && money_types.includes(type) && segment.type !== type}>
                                                         {TYPE[type] ?? type}
                                                     </option>
                                                 ))}
                                             </Select>
                                             {err('type') ? <p className="mt-1 text-xs text-destructive">{err('type')}</p> : null}
+                                            {!money_rewards && money_types.includes(segment.type) ? (
+                                                <p className="mt-1 max-w-56 text-xs text-destructive">{t('wheel.money_off', 'الخصومات المالية مغلقة في هذا المتجر (المتاجر ← الخصومات المالية)، فلا يمكن منح هذه الجائزة. افتحها، أو اختر شحنًا مجانيًا أو هدية أو «حظًا أوفر».')}</p>
+                                            ) : null}
                                             {segment.type === 'none' ? <p className="mt-1 max-w-44 text-xs text-muted-foreground">{t('wheel.none_hint', 'بدون كود وبدون جائزة. الرقم والجهاز أدارا العجلة لهذه الجولة.')}</p> : null}
                                             {isReferral ? <p className="mt-1 max-w-56 text-xs text-muted-foreground">{t('wheel.referral_hint', 'الفائز يحصل على كود دعوة (صالح 7 أيام). أول طلب لصديق به يأخذ هذه النسبة؛ وعند توصيله يحصل الفائز على النسبة نفسها كودًا خاصًا به (48 ساعة).')}</p> : null}
                                         </TableCell>

@@ -2939,6 +2939,7 @@ return [
 
     // "Spin the wheel" (2026-11-07) — the read-only dashboard page and its one switch.
     'wheel' => [
+        'money_off' => 'Money discounts are off on this shop (Storefronts → money rewards), so this prize cannot be given. Turn them on, or choose free shipping, a gift or better luck.',
         // the offer builder (2026-11-19)
         'col_offer' => 'Offer',
         'offer_build' => 'Build an offer and choose "A prize on the wheel" in step 5',

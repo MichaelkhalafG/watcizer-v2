@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Manage;
 
 use App\Domain\Activity\ActivityLog;
+use App\Domain\Promotions\PromotionRules;
 use App\Domain\Wheel\Wheel;
 use App\Domain\Wheel\WheelPrizes;
 use App\Domain\Wheel\WheelPrizeWriter;
@@ -149,6 +150,9 @@ final class WheelController
             'by_round' => array_values(array_map(fn (array $r): array => $r + ['discount_text' => number_format($r['discount'], 2, '.', ''), 'sales_text' => number_format($r['sales'], 2, '.', '')], $byRound)),
             'prizes' => $prizes,
             'types' => WheelPrizes::TYPES,
+            // the money prizes need the shop's money rewards on (2026-11-24): the screen disables them, with the reason
+            'money_types' => WheelPrizes::MONEY_TYPES,
+            'money_rewards' => PromotionRules::moneyRewardsEnabled($sf),
             'modes' => WheelPrizes::MODES,
             'categories' => self::categoryOptions($sf),
             'gift_products' => self::giftBriefs($sf, $prizes),

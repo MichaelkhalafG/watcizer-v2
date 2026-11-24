@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Domain\Wheel;
 
 use App\Domain\Activity\ActivityLog;
+use App\Domain\Promotions\PromotionRules;
 use App\Support\Coerce;
 use App\Support\ManageText;
 use Illuminate\Support\Facades\DB;
@@ -147,6 +148,15 @@ final class WheelPrizeWriter
                 $offer = null;
             }
 
+            // A prize that takes money off (a percentage, an amount, an invite, a builder offer that does) works only where
+            // the shop's money rewards are on (Storefronts → money rewards): with them off its rule cannot be made and the
+            // shopper who wins it is told the wheel has ended (2026-11-24, the wheel audit). Refused here, with the way out.
+            if (in_array($type, WheelPrizes::MONEY_TYPES, true) || ($type === 'offer' && $offer !== null && in_array(WheelPrizes::offerDisplay($offer)['type'], WheelPrizes::MONEY_TYPES, true))) {
+                if (! PromotionRules::moneyRewardsEnabled($storefrontId)) {
+                    $errors["segments.{$i}.type"] = ManageText::t('wheel.money_off', 'الخصومات المالية مغلقة في هذا المتجر (المتاجر ← الخصومات المالية)، فلا يمكن منح هذه الجائزة. افتحها، أو اختر شحنًا مجانيًا أو هدية أو «حظًا أوفر».');
+                }
+            }
+
             if ($type === 'percent_discount' || $type === 'referral') {
                 if ($value === null || $value <= 0 || $value > 100) {
                     $errors["segments.{$i}.value"] = ManageText::t('wheel.percent_range', 'النسبة المئوية من 1 إلى 100.');
@@ -216,7 +226,7 @@ final class WheelPrizeWriter
                 'min_quantity' => $minQuantity,
                 'apply_mode' => $mode,
                 'gift_product_ids' => $gifts === [] ? null : json_encode($gifts),
-            ] + (\App\Domain\Promotions\PromotionRules::builderReady() ? ['offer_rule_id' => $offer] : []);
+            ] + (PromotionRules::builderReady() ? ['offer_rule_id' => $offer] : []);
         }
 
         $total = WheelPrizes::oddsTotal($rows);

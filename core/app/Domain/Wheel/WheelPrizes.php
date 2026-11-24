@@ -42,6 +42,9 @@ final class WheelPrizes
     // (`offer_rule_id`, issuer `wheel_template`), and a won code copies it
     public const TYPES = ['percent_discount', 'fixed_discount', 'free_shipping', 'none', 'referral', 'gift', 'offer'];
 
+    /** The types that take money off an order: they work only where the shop's money rewards are on (2026-11-24). */
+    public const MONEY_TYPES = ['percent_discount', 'fixed_discount', 'referral'];
+
     /** The issuer of a builder offer kept for the wheel: never applied by itself (inactive, no code), copied at a spin. */
     public const TEMPLATE_ISSUER = 'wheel_template';
 
