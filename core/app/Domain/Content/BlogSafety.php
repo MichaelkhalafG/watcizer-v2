@@ -19,8 +19,11 @@ use Throwable;
  * THE SAFETY NET OF AUTOMATIC PUBLISHING (SEO Phase 4 item 5 and Phase 5 item 3, 2026-11-14) — `blog:safety`, daily.
  *
  *  - PAUSE + ALERT when more than `seo.safety.max_held_share` of an imported batch was held by the quality gate (checked
- *    by blog:import), or — once Search Console is connected — when the blog's impressions or its pages with impressions
- *    fall by more than `seo.safety.max_weekly_drop` week on week.
+ *    by blog:import), or — once Search Console is connected — on a REAL fall of the blog in search ({@see self::judge()},
+ *    Michael 2026-11-24: the old rule paused Watchizer twice on 12 → 7 pages): the earlier week had at least
+ *    `seo.safety.min_impressions` blog impressions and `seo.safety.min_pages` pages with impressions, and EITHER both
+ *    measures fell by more than `seo.safety.max_weekly_drop` this week, OR impressions fell by more than
+ *    `seo.safety.two_week_drop` two weeks in a row. A fall below that volume is an ALERT only ("watch"), never a pause.
  *  - ALERT (no pause) when a shop has fewer than `seo.safety.min_queue_days` days of scheduled articles left.
  *
  * An alert is shown on the dashboard's articles screen (`settings.blog.alerts`, the newest five) and e-mailed to the
@@ -45,10 +48,12 @@ final class BlogSafety
                 $found[] = sprintf('only %.1f days of scheduled articles left (at least %d wanted)', $queues[$sf] ?? 0.0, $min);
                 self::alert($sf, 'queue', end($found), false);
             }
-            $drop = self::searchDrop($sf);
-            if ($drop !== null) {
-                $found[] = $drop;
-                self::alert($sf, 'search_drop', $drop, true);
+            $verdict = self::searchDrop($sf);
+            if ($verdict !== null && $verdict['message'] !== null) {
+                $found[] = $verdict['message'];
+                $verdict['pause']
+                    ? self::alert($sf, 'search_drop', $verdict['message'], true)
+                    : self::alert($sf, 'search_watch', $verdict['message'], false);
             }
             $out[$sf] = $found;
         }
@@ -120,28 +125,73 @@ final class BlogSafety
         return $out;
     }
 
-    /** Search Console (when connected): the blog's impressions and pages with impressions, this week against last. */
-    private static function searchDrop(int $sf): ?string
+    /**
+     * Search Console (when connected): the blog's last three weeks, judged by {@see self::judge()}.
+     *
+     * @return array{pause: bool, message: string|null}|null
+     */
+    private static function searchDrop(int $sf): ?array
     {
         if (! SearchData::gscConnected()) {
             return null;
         }
         $site = StorefrontUrls::frontend($sf);
         $end = now()->subDays(3);                                                   // Search Console's data lags ~2 days
-        $now = SearchData::gsc($site, $end->copy()->subDays(6)->format('Y-m-d'), $end->format('Y-m-d'), '/blog/');
-        $was = SearchData::gsc($site, $end->copy()->subDays(13)->format('Y-m-d'), $end->copy()->subDays(7)->format('Y-m-d'), '/blog/');
-        if ($now === null || $was === null || $was['impressions'] < 100) {
-            return null;                                                            // too little to judge a fall
-        }
-        $max = Coerce::float(config('seo.safety.max_weekly_drop', 0.4));
-        $impressions = 1 - $now['impressions'] / max(1, $was['impressions']);
-        $pages = 1 - count($now['pages']) / max(1, count($was['pages']));
-        if ($impressions > $max || $pages > $max) {
-            return sprintf('blog impressions %d → %d, pages with impressions %d → %d week on week (more than a %d%% fall) — publishing paused',
-                $was['impressions'], $now['impressions'], count($was['pages']), count($now['pages']), (int) round($max * 100));
+        $weeks = [];
+        foreach ([14, 7, 0] as $back) {                                             // oldest first: two weeks ago, last week, this week
+            $to = $end->copy()->subDays($back);
+            $week = SearchData::gsc($site, $to->copy()->subDays(6)->format('Y-m-d'), $to->format('Y-m-d'), '/blog/');
+            if ($week === null) {
+                return null;
+            }
+            $weeks[] = ['impressions' => Coerce::int($week['impressions']), 'pages' => count(Coerce::arr($week['pages']))];
         }
 
-        return null;
+        return self::judge($weeks[0], $weeks[1], $weeks[2]);
+    }
+
+    /**
+     * THE RULE (Michael, 2026-11-24), on three weeks of the blog in search, oldest first, each {impressions, pages}:
+     *  - PAUSE when last week had the volume (`min_impressions` impressions and `min_pages` pages) and either BOTH this
+     *    week's impressions and pages fell by more than `max_weekly_drop`, or impressions fell by more than
+     *    `two_week_drop` this week AND last week (when two weeks ago had the volume too);
+     *  - WATCH (an alert, publishing goes on) when a measure fell by more than `max_weekly_drop` but the rule above does
+     *    not hold — too little volume to judge, or only one of the two measures fell;
+     *  - nothing otherwise.
+     *
+     * @param  array{impressions: int, pages: int}  $twoAgo
+     * @param  array{impressions: int, pages: int}  $last
+     * @param  array{impressions: int, pages: int}  $now
+     * @return array{pause: bool, message: string|null}
+     */
+    public static function judge(array $twoAgo, array $last, array $now): array
+    {
+        $max = Coerce::float(config('seo.safety.max_weekly_drop', 0.4));
+        $two = Coerce::float(config('seo.safety.two_week_drop', 0.25));
+        $minImpressions = Coerce::int(config('seo.safety.min_impressions', 1000));
+        $minPages = Coerce::int(config('seo.safety.min_pages', 20));
+        $fall = static fn (int $from, int $to): float => $from <= 0 ? 0.0 : 1 - $to / $from;
+        $volume = static fn (array $w): bool => $w['impressions'] >= $minImpressions && $w['pages'] >= $minPages;
+
+        $impressions = $fall($last['impressions'], $now['impressions']);
+        $pages = $fall($last['pages'], $now['pages']);
+        $before = $fall($twoAgo['impressions'], $last['impressions']);
+        $said = sprintf('blog impressions %d → %d → %d, pages with impressions %d → %d → %d over the last three weeks',
+            $twoAgo['impressions'], $last['impressions'], $now['impressions'], $twoAgo['pages'], $last['pages'], $now['pages']);
+
+        if ($volume($last) && $impressions > $max && $pages > $max) {
+            return ['pause' => true, 'message' => $said.sprintf(' (both fell by more than %d%% this week) — publishing paused', (int) round($max * 100))];
+        }
+        if ($volume($last) && $volume($twoAgo) && $impressions > $two && $before > $two) {
+            return ['pause' => true, 'message' => $said.sprintf(' (impressions fell by more than %d%% two weeks in a row) — publishing paused', (int) round($two * 100))];
+        }
+        if ($impressions > $max || $pages > $max) {
+            return ['pause' => false, 'message' => $said.' — a fall to watch, publishing continues ('.($volume($last)
+                ? 'only one measure fell'
+                : sprintf('under %d impressions and %d pages last week, too little to judge', $minImpressions, $minPages)).')'];
+        }
+
+        return ['pause' => false, 'message' => null];
     }
 
     /**

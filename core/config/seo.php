@@ -19,8 +19,14 @@ return [
     'safety' => [
         // a shop's publishing is PAUSED when more than this share of an imported batch is held by the quality gate
         'max_held_share' => (float) env('SEO_MAX_HELD_SHARE', 0.3),
-        // …or (Search Console connected) when the blog's impressions or indexed blog pages fall by more than this, week on week
+        // …or (Search Console connected) when the blog's impressions AND its pages with impressions fall by more than this in a week
         'max_weekly_drop' => (float) env('SEO_MAX_WEEKLY_DROP', 0.4),
+        // …but only a REAL fall pauses (Michael, 2026-11-24): last week had this much volume, and either BOTH measures fell by
+        // more than max_weekly_drop, or impressions fell by more than two_week_drop two weeks in a row; a smaller blog's
+        // fall is an alert only
+        'min_impressions' => 1000,
+        'min_pages' => 20,
+        'two_week_drop' => 0.25,
         // the queue alert: fewer days of scheduled articles than this (Michael, 2026-11-14: weekly batches — 2 days, not 30;
         // an EMPTY queue is not an error: publishing simply waits for the next batch)
         'min_queue_days' => 2,

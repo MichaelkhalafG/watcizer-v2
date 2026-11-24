@@ -102,3 +102,33 @@ it('e-mails the weekly report to the shop address when one is set', function () 
     @rmdir($dir);
     Mail::assertSent(App\Mail\SeoReportMail::class);
 });
+
+it('pauses publishing only on a real fall of the blog in search, and only alerts on a small blog (2026-11-24)', function () {
+    $w = fn (int $impressions, int $pages): array => ['impressions' => $impressions, 'pages' => $pages];
+    // the case that paused Watchizer twice: 12 → 7 pages on a small blog. A watch alert, never a pause
+    $small = BlogSafety::judge($w(300, 12), $w(300, 12), $w(150, 7));
+    expect($small['pause'])->toBeFalse()->and(T::str($small['message']))->toContain('publishing continues')->toContain('too little to judge');
+    // a big blog where only the pages fell: watch, not pause
+    $one = BlogSafety::judge($w(5000, 60), $w(5000, 60), $w(4800, 30));
+    expect($one['pause'])->toBeFalse()->and(T::str($one['message']))->toContain('only one measure fell');
+    // a big blog where BOTH fell by more than 40 % this week: pause
+    $both = BlogSafety::judge($w(5000, 60), $w(5000, 60), $w(2500, 30));
+    expect($both['pause'])->toBeTrue()->and(T::str($both['message']))->toContain('both fell')->toContain('publishing paused');
+    // impressions down 30 % two weeks in a row on a big blog: pause
+    $twice = BlogSafety::judge($w(5000, 60), $w(3400, 55), $w(2300, 50));
+    expect($twice['pause'])->toBeTrue()->and(T::str($twice['message']))->toContain('two weeks in a row');
+    // down 30 % once, flat before: nothing to say (under the 40 % watch line)
+    expect(BlogSafety::judge($w(3400, 55), $w(3400, 55), $w(2300, 50)))->toBe(['pause' => false, 'message' => null]);
+    // the volume floor is read from config
+    config(['seo.safety.min_impressions' => 100, 'seo.safety.min_pages' => 5]);
+    expect(BlogSafety::judge($w(300, 12), $w(300, 12), $w(150, 5))['pause'])->toBeTrue();
+});
+
+it('records a watch alert without pausing, and a pause alert with the switch', function () {
+    BlogSafety::alert(1, 'search_watch', 'a fall to watch', false);
+    $blog = T::arr(T::arr(json_decode(T::str(DB::table('storefronts')->where('id', 1)->value('settings')), true))['blog'] ?? []);
+    expect($blog['paused'] ?? false)->toBeFalse()->and(T::rows($blog['alerts'] ?? [])[0]['reason'])->toBe('search_watch');
+    BlogSafety::alert(1, 'search_drop', 'a real fall', true);
+    $blog = T::arr(T::arr(json_decode(T::str(DB::table('storefronts')->where('id', 1)->value('settings')), true))['blog'] ?? []);
+    expect($blog['paused'])->toBeTrue();
+});
