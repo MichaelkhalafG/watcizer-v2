@@ -124,6 +124,18 @@ const nextConfig = {
       { source: "/product/BOSS%20Analog%20Black%20Dial%20Men's%20Watch-1514085", destination: '/product/hugo-boss-1514085-taper-black-dial-silver-case-black-strap-chronograph', permanent: true },
       { source: '/product/Hugo%20Boss%20Watch%20For%20Men%201514159', destination: '/product/hugo-boss-avery-1514159-green-dial-silver-watch', permanent: true },
       { source: '/product/%D8%B3%D8%A7%D8%B9%D8%A9%20%D9%87%D9%88%D8%AC%D9%88%20%D8%A8%D9%88%D8%B3%20%D9%84%D9%84%D8%B1%D8%AC%D8%A7%D9%84%201514159', destination: '/product/hugo-boss-avery-1514159-green-dial-silver-watch', permanent: true },
+      // This week's 404s with search-engine demand (Michael, 2026-11-24): each to its closest LIVE page, every target checked
+      // 200, index and canonical-self on the live site that day; arabicToo() adds the /ar twin of each. Old /subtypes/ names
+      // of what are now top categories go to the category; audio is the earphones and headphones page; dress has no
+      // products (D23 of 18 Nov) so it goes to the classic watches - remove that line if the dress page is filled again.
+      { source: '/subtypes/watches', destination: '/category/watches', permanent: true },
+      { source: '/subtypes/electronics', destination: '/category/electronics', permanent: true },
+      { source: '/subtypes/fashion', destination: '/category/fashion', permanent: true },
+      { source: '/subtypes/audio', destination: '/subtypes/earphones-headphones', permanent: true },
+      { source: '/subtypes/dress', destination: '/subtypes/classic-watch', permanent: true },
+      { source: '/category/chronograph', destination: '/subtypes/chronograph', permanent: true },
+      // the Michael Kors Slim Runway MK4508 is not sold on this shop (no replacement of the same model): its brand page
+      { source: '/product/:slug(michael-kors-?mk4508|michael-kors-?mk4508-.*)', destination: '/brand/michael-kors', permanent: true },
     ])
   },
   images: {

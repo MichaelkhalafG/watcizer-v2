@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\V2;
 
+use App\Domain\Seo\OldImages;
 use App\Http\Controllers\Controller;
 use App\Models\Storefront\StorefrontRedirect;
 use App\Storefront\StorefrontContext;
@@ -40,7 +41,15 @@ final class RedirectController extends Controller
             ->where('from_hash', StorefrontRedirect::hashPath($path))
             ->first(['id', 'to_path', 'status']);
         if ($row === null) {
-            return response()->json(['data' => null], 404, $headers);
+            // an old WordPress image COPY (sized, scaled, edited, a WebP twin): where its original goes, when the map has
+            // the original (2026-11-24, OldImages); anything else stays a 404
+            $copy = OldImages::resolve($ctx->id(), $path);
+            if ($copy === null) {
+                return response()->json(['data' => null], 404, $headers);
+            }
+            DB::table('storefront_redirects')->where('id', $copy['id'])->update(['hits' => DB::raw('hits + 1'), 'last_hit_at' => now()]);
+
+            return response()->json(['data' => ['to' => $copy['to'], 'status' => $copy['status']]], 200, $headers, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         }
         $r = Row::cast($row);
         DB::table('storefront_redirects')->where('id', Row::int($r, 'id'))->update(['hits' => DB::raw('hits + 1'), 'last_hit_at' => now()]);

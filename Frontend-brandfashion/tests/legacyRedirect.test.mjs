@@ -155,3 +155,25 @@ describe("WooCommerce's query parameters and a product's feed", () => {
   })
 })
 
+describe('stray quotes after a product path (2026-11-24)', () => {
+  it('drops the quotes and sends the old address to its new page in ONE 301', async () => {
+    MAP['/product/tommy-hilfiger-mens-dark-green-dial-rubber-belt-1792121'] = '/product/tommy-hilfiger-watch-for-men-1792121'
+    stubCore()
+    for (const tail of ['/%22%22', '/""', '%22%22', '/%E2%80%9D%E2%80%9D', "/''"]) {
+      const r = await run(`https://www.brandfashionegy.com/product/tommy-hilfiger-mens-dark-green-dial-rubber-belt-1792121${tail}`)
+      expect(r.status).toBe(301)
+      expect(r.headers.get('location')).toBe('https://www.brandfashionegy.com/product/tommy-hilfiger-watch-for-men-1792121')
+    }
+  })
+
+  it('sends a current page with stray quotes to the clean path, and leaves an ordinary page alone', async () => {
+    stubCore()
+    const r = await run('https://www.brandfashionegy.com/product/new-slug/%22%22')
+    expect(r.status).toBe(301)
+    expect(r.headers.get('location')).toBe('https://www.brandfashionegy.com/product/new-slug')
+    asked.length = 0
+    const plain = await run('https://www.brandfashionegy.com/product/new-slug')
+    expect(plain.status).not.toBe(301)
+    expect(asked).toEqual([])
+  })
+})

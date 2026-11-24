@@ -49,6 +49,12 @@ const WP_GONE = /^\/(wp-admin|wp-includes|wp-json|wp-login\.php|xmlrpc\.php|wp-c
 // is the product: the map is asked for /product/<slug>.
 const WOO_PARAM = /^(add-to-wishlist|remove_from_wishlist|wishlist_id|wishlist-action|add-to-cart|added-to-cart|remove_item|removed_item|undo_item|_wpnonce|wc-ajax|wc-api|variation_id|product_id|orderby|paged|min_price|max_price|rating_filter|post_type|yith_wcwl_[a-z_]*|attribute_[a-z0-9_-]*|filter_[a-z0-9_-]*|query_type_[a-z0-9_-]*)$/i
 const PRODUCT_FEED = /^(\/product\/[^/]+)\/feed\/?$/
+// STRAY QUOTES (2026-11-24, Search Console: /product/tommy-hilfiger-mens-dark-green-dial-rubber-belt-1792121/"" was asked
+// 33 times). No page of this shop and no text in core writes such a link (searched: our code and every text column of the
+// catalogue); it is an outside page or an old crawl of the WordPress shop's markup. Whatever follows the last real path
+// segment - a slash and quotes, straight or curly, raw or percent-encoded - is dropped and the address goes on as the
+// clean one: the old-path map first, else the clean path - ONE 301.
+const STRAY_QUOTES = /(?:\/|%2F)?(?:"|'|%22|%27|%E2%80%9C|%E2%80%9D|%E2%80%98|%E2%80%99|“|”|‘|’)+\/?$/i
 const ORIGIN = (process.env.LARAVEL_ORIGIN || '').replace(/\/$/, '')
 const SERVER_KEY = process.env.STOREFRONT_SERVER_KEY || ''
 
@@ -134,6 +140,13 @@ export async function middleware(request) {
     const bare = old.replace(/\/+$/, '') || '/'
     const path = lang === 'ar' && !bare.startsWith('/ar') ? (bare === '/' ? '/ar' : `/ar${bare}`) : bare
     return NextResponse.redirect(onThisHost(request, path, query ? `?${query}` : ''), 301)
+  }
+  const quoted = pathname.length > 1 && STRAY_QUOTES.test(pathname)
+  if (quoted) {
+    const clean = pathname.replace(STRAY_QUOTES, '').replace(/\/+$/, '') || '/'
+    const to = (await lookup(clean)) || (await lookup(`${clean}/`))
+    if (to) return NextResponse.redirect(target(request, to, lang === 'ar'), 301)
+    return NextResponse.redirect(onThisHost(request, clean, request.nextUrl.search), 301)
   }
   const slash = pathname.length > 1 && pathname.endsWith('/')
   if (slash || lang || LEGACY_BASES.test(pathname) || LEGACY_POST_CATEGORY.test(pathname) || pathname.startsWith('/wp-content/uploads/')) {
