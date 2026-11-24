@@ -4,7 +4,7 @@ import { listingRequest, packListing } from '@/src/lib/listingRequest'
 import { getServerTables, getServerListing } from '@/src/lib/serverCatalog'
 import { requestLang } from '@/src/lib/requestLang'
 import { parseListingParams } from '@/src/utils/listingParams'
-import { objectToSearchParams, listingMetadata, listingSummary, listingBreadcrumbLd, listingQuery } from '@/src/lib/listingSeo'
+import { objectToSearchParams, listingMetadata, listingSummary, listingBreadcrumbLd, listingQuery, emptyListingIs404 } from '@/src/lib/listingSeo'
 import ListingClient from './ListingClient'
 import { safeJsonLd } from '@/src/lib/safeJsonLd'
 
@@ -39,13 +39,14 @@ async function loadContext(searchParams) {
 }
 
 export async function generateMetadata({ searchParams }) {
-  const { tables, filters, listing, query } = await loadContext(searchParams)
+  const { tables, filters, q, listing, query } = await loadContext(searchParams)
   const { urlLang } = await requestLang()
   // A FILTER COMBINATION WITH NO RESULTS IS A 404 (2026-11-14, SEO Phase 1 item 6, Google's faceted-navigation guidance):
   // only when core ANSWERED zero for a listing that carries filters or a search — an outage never 404s, and the bare
   // /listing never does. Here, in generateMetadata, because it runs before the page streams (the status is still open).
   const summary = listingSummary(listing, tables)
-  if (query && summary.answered && summary.total === 0) notFound()
+  // a customer's search is never a 404, and "no results" is counted on every product core found (2026-11-24)
+  if (emptyListingIs404({ query, q, summary })) notFound()
   // `query` decides indexability: any listing-relevant parameter makes the page noindex, follow.
   return listingMetadata({ tables, ...listingSummary(listing, tables), filters, pathname: '/listing', query, lang: urlLang })
 }

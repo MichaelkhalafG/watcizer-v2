@@ -186,10 +186,24 @@ export function listingSummary(listing, tables = {}) {
   // all kept from search goes noindex like an empty one); a core that predates it answers the total, as before
   const indexable = Number(listing?.v2?.meta?.indexable_total)
   const total = Number.isFinite(indexable) ? indexable : Number(listing?.total) || 0
+  // every product core found, whatever search engines may see of it (2026-11-24): what a CUSTOMER is shown, so what
+  // decides an empty page - a search for a brand kept from search engines (Hublot, Chanel) found its products and 404'd
+  const found = Number(listing?.total) || 0
   // a landing page's key and whether it may be indexed; a brand page's landing pages (2026-11-14, SEO Phase 2)
   const landing = listing?.v2?.meta?.landing || null
   const landings = listing?.v2?.meta?.landings || []
-  return { total, image: first?.image || null, answered, context, families: familiesOf(listing), landing, landings }
+  return { total, found, image: first?.image || null, answered, context, families: familiesOf(listing), landing, landings }
+}
+
+/**
+ * Whether an empty /listing answers 404 (2026-11-14, Google's faceted-navigation guidance; 2026-11-24, Michael: never a 404
+ * for a customer's SEARCH). Only a FILTER combination core answered with no product at all is a 404. A search with no
+ * result is a page that says so (200, and noindex like every listing with a query); an outage never 404s.
+ */
+export function emptyListingIs404({ query, q, summary }) {
+  if (!query || !summary?.answered) return false
+  if (typeof q === 'string' && q.trim() !== '') return false
+  return Number(summary.found ?? summary.total) === 0
 }
 
 // The page's own clean path, from the RESOLVED entity's slug — so /brand/Rolex and /brand/rol (both

@@ -465,14 +465,19 @@ export default function ListingClient({ seedParams = null, heading = null, lead 
             ) : resultCount === 0 ? (
               <div className="wz-empty">
                 <FiSearch className="wz-empty-icon" />
+                {/* a search with no result says so, in its own words (2026-11-24: a search is never a 404) */}
                 <h3 className="wz-empty-title">
-                  {isRTL ? 'لم يتم العثور على منتجات' : 'No products found'}
+                  {parsed.q
+                    ? isRTL ? `لا توجد نتائج لـ «${parsed.q}»` : `No results for “${parsed.q}”`
+                    : isRTL ? 'لم يتم العثور على منتجات' : 'No products found'}
                 </h3>
                 <p className="wz-empty-sub">
-                  {isRTL ? 'حاول تعديل الفلاتر' : 'Try adjusting your filters'}
+                  {parsed.q
+                    ? isRTL ? 'جرّب كلمة أخرى، أو تصفّح كل منتجات المتجر' : 'Try another word, or browse the whole shop'
+                    : isRTL ? 'حاول تعديل الفلاتر' : 'Try adjusting your filters'}
                 </p>
                 <button className="wz-empty-btn" onClick={clearAll}>
-                  {isRTL ? 'مسح كل الفلاتر' : 'Clear all filters'}
+                  {parsed.q ? (isRTL ? 'تصفّح كل المنتجات' : 'Browse all products') : isRTL ? 'مسح كل الفلاتر' : 'Clear all filters'}
                 </button>
               </div>
             ) : (
