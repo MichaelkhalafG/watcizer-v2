@@ -2174,7 +2174,7 @@ return [
         'slug_change_title' => 'This will change the product’s link on this storefront',
         'slug_hint' => 'Generated from the English title when left empty.',
         'slug_locked_pre_switch' => 'Changing product links is paused. If you need a link changed, ask the administrator.',
-        'sort_hint' => 'Lower comes first within the category.',
+        'sort_hint' => 'Every product is 1. Set 0 on a product to show it first (featured).',
         'storefront_option_inactive' => ':name (disabled)',
         'title' => 'Products',
         'unplaced' => 'No category',

@@ -2143,7 +2143,7 @@ function StorefrontFields({
                         min={0}
                         hint={t(
                             "products.sort_hint",
-                            "الأقل يظهر أولًا داخل التصنيف.",
+                            "كل منتج قيمته 1. ضع 0 على المنتج الذي تريده أن يظهر أولًا (مميّز).",
                         )}
                         error={error("sort_order")}
                         value={String(data.sort_order)}

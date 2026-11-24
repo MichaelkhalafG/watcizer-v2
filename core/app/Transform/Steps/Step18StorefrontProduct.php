@@ -111,7 +111,7 @@ final class Step18StorefrontProduct implements Step
                     'product_id' => $id,
                     'is_visible' => 1,
                     'is_featured' => 0,
-                    'sort_order' => 0,
+                    'sort_order' => 1,                                          // 0 is "featured, first" (2026-11-24)
                     'slug' => $plan->slug($id),
                     'price_override' => null,
                     'sale_price_override' => null,

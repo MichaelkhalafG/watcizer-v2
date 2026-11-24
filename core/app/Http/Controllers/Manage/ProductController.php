@@ -2107,7 +2107,7 @@ final class ProductController
             'primary_category_id' => $request->input('primary_category_id'),
             'is_visible' => $request->boolean('is_visible'),
             'is_featured' => $request->boolean('is_featured'),
-            'sort_order' => $request->input('sort_order', 0),
+            'sort_order' => $request->input('sort_order', 1),
             'slug' => $request->input('slug'),
         ]]]);
     }
@@ -2193,7 +2193,8 @@ final class ProductController
                 'placement' => [
                     'is_visible' => $row !== null && Row::bool($row, 'is_visible'),
                     'is_featured' => $row !== null && Row::bool($row, 'is_featured'),
-                    'sort_order' => $row === null ? 0 : Row::int($row, 'sort_order'),
+                    // a product not yet on this shop starts at 1 (2026-11-24: 0 is the team's "featured, first")
+                    'sort_order' => $row === null ? 1 : Row::int($row, 'sort_order'),
                     'slug' => $row === null ? '' : Row::str($row, 'slug'),
                     'category_ids' => $categoryIds,
                     'primary_category_id' => $productId === null ? null : self::primaryNodeOn($id, $productId),

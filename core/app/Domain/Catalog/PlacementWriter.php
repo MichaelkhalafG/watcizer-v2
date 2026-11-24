@@ -240,7 +240,8 @@ final class PlacementWriter
             $row = [
                 'is_visible' => $visible,
                 'is_featured' => (bool) ($data['is_featured'] ?? false),
-                'sort_order' => is_numeric($data['sort_order'] ?? null) ? (int) $data['sort_order'] : 0,
+                // 1 unless given: 0 is the team's "featured, first" (Michael, 2026-11-24)
+                'sort_order' => is_numeric($data['sort_order'] ?? null) ? (int) $data['sort_order'] : 1,
                 'slug' => $slug,
                 // `effective_*` mirror the catalog price: the override gate is OFF (AGENTS §2.4),
                 // so they are computed here and never taken from the request.
@@ -366,7 +367,8 @@ final class PlacementWriter
     public function sortInCategory(int $storefrontId, int $categoryId, array $orderedProductIds): int
     {
         return DB::transaction(function () use ($storefrontId, $categoryId, $orderedProductIds): int {
-            $sort = 0;
+            // from 1: a reorder never makes its first product a "featured" 0 (2026-11-24)
+            $sort = 1;
             $moved = 0;
             foreach ($orderedProductIds as $productId) {
                 $updated = DB::table('storefront_category_product')
