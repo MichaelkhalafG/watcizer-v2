@@ -3,6 +3,7 @@ import { getServerV2Pickup, getServerV2Product, getServerV2Related, getServerShi
 import { offerShippingDetails, offerReturnPolicy, offerWarranty } from '@/src/lib/shopSchema'
 import { requestLang, localePath, SITE } from '@/src/lib/requestLang'
 import { txt } from '@/src/lib/cardData'
+import { brandLd } from '@/src/lib/productBrand'
 import BfProductPage from '@/src/Components/Product/BfProductPage'
 import { safeJsonLd } from '@/src/lib/safeJsonLd'
 import { categoryPage } from '@/src/lib/categoryHref'
@@ -84,7 +85,7 @@ export default async function ProductPage({ params }) {
     color: colour,
     material: productMaterial(p, urlLang) || undefined,                               // what the spec table shows
     // a matched product (hidden or a restricted Rolex, 2026-11-14) names no brand in its structured data
-    brand: p.brand?.name && !p.search ? { '@type': 'Brand', name: txt(p.brand.name, 'en') } : undefined,
+    brand: brandLd(p),   // the maker; none for a matched product (hidden, restricted Rolex) or Generic - src/lib/productBrand.js
     offers: {
       '@type': 'Offer',
       url: `${SITE}${localePath(path, urlLang)}`,

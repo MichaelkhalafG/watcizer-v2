@@ -60,6 +60,9 @@ const toMetadata = ({ title, seoDesc, canonicalUrl, ogTitle, ogImage, languages 
 // below are the fallback, unchanged.
 const META_TITLE_MIN = 20
 
+/** A brand that names no maker: the catalogue's "Generic" (its Arabic name too). */
+export const GENERIC_BRAND = /^(generic|غير محدد)$/i
+
 export function buildProductSeo(product, { tables = null, lang = 'en', localized = null, meta = null, v2 = null, fees = null } = {}) {
   const ar = lang === 'ar'
   // WHAT SEARCH ENGINES AND AI ARE SHOWN of it (2026-11-14, core's SearchExposure — the dashboard's switch, else the
@@ -69,10 +72,14 @@ export function buildProductSeo(product, { tables = null, lang = 'en', localized
   const matched = exposure === 'hidden' || exposure === 'restricted'
   const text = (ar && localized) || product
   const name = (ar ? text.product_title : null) || product.name || product.product_title || product.name_en || ''
-  const brand =
-    typeof text.brand === 'string'
-      ? text.brand
-      : text.brand?.brand_name || text.brand?.name_en || text.brand_name || ''
+  // the brand's name from the page's own payload, else the product's (an Arabic payload may carry none - 2026-11-24:
+  // Merchant listings asked for the brand)
+  const brandOf = (t) =>
+    typeof t?.brand === 'string' ? t.brand : t?.brand?.brand_name || t?.brand?.name_en || t?.brand_name || t?.brand_string || ''
+  const brand = brandOf(text) || brandOf(product)
+  // the markup names no brand for a product whose brand is "Generic" (no maker named): Google asks not to send
+  // "Generic" as a brand (D12, 2026-11-24). The page's words and breadcrumbs keep it as they were.
+  const markupBrand = GENERIC_BRAND.test(String(brand).trim()) ? '' : brand
 
   const images = productImages(product)
   const price = Number(product.selling_price || 0)
@@ -165,7 +172,7 @@ export function buildProductSeo(product, { tables = null, lang = 'en', localized
     '@context': 'https://schema.org/',
     '@type': 'Product',
     name,
-    ...(brand ? { brand: { '@type': 'Brand', name: brand } } : {}),
+    ...(markupBrand ? { brand: { '@type': 'Brand', name: markupBrand } } : {}),
     ...(images.length ? { image: images } : {}),
     sku: String(product.id ?? ''),
     // the manufacturer's model number (2026-11-14): the sku stays the product id — the id the Merchant Center feed
