@@ -416,12 +416,27 @@ final class PromotionController
             'scopes.*.value_id' => ['nullable', 'integer', 'min:1'],
             'scopes.*.value' => ['nullable', 'string', 'max:32'],
             'phone' => ['nullable', 'string', 'max:20'],
+            // the code test (2026-11-24): SKUs pasted one per line ("SKU" or "SKU x2"), and an account's e-mail for the
+            // first-order rule and a code bound to an address
+            'skus' => ['nullable', 'string', 'max:2000'],
+            'account' => ['nullable', 'string', 'email', 'max:191'],
             'rule_id' => ['nullable', 'integer'],
             'starts_at' => ['nullable', 'date'],
             'ends_at' => ['nullable', 'date'],
         ] + self::parameterRules()));
 
         $storefrontId = Coerce::int($data['storefront_id'] ?? null, 1);
+        // the code test's pasted SKUs join the picked lines; what this shop does not sell is named back, never guessed
+        [$skuLines, $unknownSkus] = self::skuLines(Coerce::str($data['skus'] ?? ''), $storefrontId);
+        $data['lines'] = array_merge(Coerce::arr($data['lines'] ?? null), array_map(static fn (array $l): array => ['product_id' => $l['product_id'], 'quantity' => $l['quantity']], $skuLines));
+        if ($data['lines'] === []) {
+            return response()->json(['ok' => false, 'errors' => ['lines' => [ManageText::t('promotions.test_needs_product', 'أضف منتجًا واحدًا على الأقل إلى السلة التجريبية، بالبحث أو بلصق كود SKU.')]], 'unknown_skus' => $unknownSkus], 422);
+        }
+        $account = Coerce::nstr($data['account'] ?? null);
+        $account = $account === null ? null : mb_strtolower(trim($account));
+        $accountId = $account === null ? null : Coerce::nint(DB::table('users')->whereRaw('LOWER(email) = ?', [$account])->value('id'));
+        $data['account'] = $account;
+        $data['account_user_id'] = $accountId;
         // a coded offer is previewed as the shopper meets it: with its code typed — a draft code of its own, so it never
         // collides with the saved offer's
         $typed = trim(Coerce::str($data['code'] ?? '')) === '' ? null : 'PREVIEW'.strtoupper(bin2hex(random_bytes(4)));
@@ -524,6 +539,10 @@ final class PromotionController
             'overlaps' => $warnings,
             // what came off each test-cart line (index = the line's position in the request), for the builder's test cart
             'line_discounts' => array_map(static fn (array $line): array => ['index' => $line['index'], 'amount' => round($line['amount'], 2)], $outcome->lines),
+            // the code test: what the pasted SKUs became, what this shop does not sell, whether the account was found
+            'sku_lines' => $skuLines,
+            'unknown_skus' => $unknownSkus,
+            'account' => $account === null ? null : ['email' => $account, 'found' => $accountId !== null],
         ]);
     }
 
@@ -906,8 +925,64 @@ final class PromotionController
             shippingCost: 0.0,
             paymentMethod: Coerce::str($data['payment_method'] ?? 'cash'),
             code: $code,
-            customerKeys: PromotionDiscounts::customerKeys(null, null, Coerce::nstr($data['phone'] ?? null)),
+            customerKeys: PromotionDiscounts::customerKeys(Coerce::nint($data['account_user_id'] ?? null), Coerce::nstr($data['account'] ?? null), Coerce::nstr($data['phone'] ?? null)),
         );
+    }
+
+    /**
+     * The code test's pasted SKUs (2026-11-24): one per line or comma, "SKU", "SKU x2", "SKU*2" or "SKU 2". Each is
+     * matched EXACTLY (case aside) on the product's SKU or WhatsApp code, and must be shown on this shop; anything else
+     * comes back in the second list with its reason, so the operator reads "not on this shop" instead of a silent gap.
+     *
+     * @return array{0: list<array{sku: string, product_id: int, title: string, price: float, quantity: int}>, 1: list<array{sku: string, reason: string}>}
+     */
+    private static function skuLines(string $pasted, int $storefrontId): array
+    {
+        $found = [];
+        $unknown = [];
+        $locale = app()->getLocale() === 'en' ? 'en' : 'ar';
+        foreach (preg_split('/[\r\n,;]+/u', $pasted) ?: [] as $item) {
+            $item = trim($item);
+            if ($item === '') {
+                continue;
+            }
+            if (preg_match('/^(\S+?)(?:\s*[x\x{00D7}*]\s*|\s+)(\d{1,2})$/u', $item, $m) === 1) {
+                [$sku, $quantity] = [$m[1], max(1, min(99, (int) $m[2]))];
+            } else {
+                [$sku, $quantity] = [$item, 1];
+            }
+            if (count($found) + count($unknown) >= 50) {
+                $unknown[] = ['sku' => $sku, 'reason' => 'too_many'];
+
+                continue;
+            }
+            $product = DB::table('catalog_products')->whereNull('deleted_at')
+                ->where(fn ($q) => $q->whereRaw('LOWER(sku) = ?', [mb_strtolower($sku)])->orWhereRaw('LOWER(wa_code) = ?', [mb_strtolower($sku)]))
+                ->orderBy('id')->first(['id']);
+            if ($product === null) {
+                $unknown[] = ['sku' => $sku, 'reason' => 'not_found'];
+
+                continue;
+            }
+            $productId = Row::int(Row::cast($product), 'id');
+            $placed = DB::table('storefront_product')->where('storefront_id', $storefrontId)->where('product_id', $productId)->where('is_visible', 1)
+                ->first(['effective_price', 'effective_sale_price']);
+            if ($placed === null) {
+                $unknown[] = ['sku' => $sku, 'reason' => 'not_on_shop'];
+
+                continue;
+            }
+            $titles = DB::table('catalog_product_translations')->where('product_id', $productId)->pluck('title', 'locale')->all();
+            $found[] = [
+                'sku' => $sku,
+                'product_id' => $productId,
+                'title' => Coerce::str($titles[$locale] ?? $titles[$locale === 'en' ? 'ar' : 'en'] ?? ''),
+                'price' => CompatCart::catalogPrice(Row::money(Row::cast($placed), 'effective_price'), Row::nmoney(Row::cast($placed), 'effective_sale_price')),
+                'quantity' => $quantity,
+            ];
+        }
+
+        return [$found, $unknown];
     }
 
     /** A one-line description of what a rule does, for the list. */

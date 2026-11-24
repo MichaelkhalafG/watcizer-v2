@@ -18,7 +18,7 @@ import { OfferBuilderPanel, type BuilderData } from "@/components/manage/promoti
 import type { FormPatch } from "@/lib/offerBuilder";
 import ManageLayout from "@/layouts/ManageLayout";
 import { Ltr } from "@/components/ui/bidi";
-import { useT } from "@/lib/i18n";
+import { useLocale, useT } from "@/lib/i18n";
 import { bucketLabel } from "@/lib/labels";
 
 /**
@@ -135,7 +135,7 @@ interface PreviewStockRow {
 }
 
 interface Preview {
-    ok: boolean;
+    ok: true;
     applies: boolean;
     winner: "draft" | "other_rule" | null;
     customer: {
@@ -157,7 +157,31 @@ interface Preview {
     /** Other running offers on the same items. */
     overlaps?: string[];
     line_discounts?: { index: number; amount: number }[];
+    /** The code test (2026-11-24): what the pasted SKUs became, what the shop does not sell, the account looked up. */
+    sku_lines?: { sku: string; product_id: number; title: string; price: number; quantity: number }[];
+    unknown_skus?: UnknownSku[];
+    account?: { email: string; found: boolean } | null;
 }
+
+interface UnknownSku {
+    sku: string;
+    reason: "not_found" | "not_on_shop" | "too_many" | string;
+}
+
+/** The server REFUSED the test (a draft it cannot save yet, a cart with no product): its reasons, never a result. */
+interface PreviewRefusal {
+    ok: false;
+    errors: Record<string, string[]>;
+    unknown_skus?: UnknownSku[];
+}
+
+type PreviewAnswer = Preview | PreviewRefusal;
+
+/** A quantity the server accepts: a whole number from 1 to 99, whatever was typed (an emptied box is 1, not 0). */
+const testQuantity = (raw: string): number => {
+    const n = Math.trunc(Number(raw));
+    return Number.isFinite(n) && n >= 1 ? Math.min(99, n) : 1;
+};
 
 interface Props {
     rule: Rule | null;
@@ -325,6 +349,7 @@ export default function PromotionForm({
     scope_options,
 }: Props) {
     const t = useT();
+    const locale = useLocale();
     const form = useForm({
         name: rule?.name ?? "",
         priority: rule?.priority ?? 0,
@@ -352,8 +377,13 @@ export default function PromotionForm({
 
     const [sample, setSample] = useState<SampleLine[]>([]);
     const [method, setMethod] = useState("cash");
-    const [preview, setPreview] = useState<Preview | null>(null);
+    // what the server answered; `preview` is that answer only when it IS a preview (2026-11-24: a refusal used to be
+    // read as one, and the panel broke on its missing totals)
+    const [answer, setAnswer] = useState<PreviewAnswer | null>(null);
+    const preview: Preview | null = answer !== null && answer.ok ? answer : null;
     const [previewing, setPreviewing] = useState(false);
+    const [skus, setSkus] = useState("");
+    const [account, setAccount] = useState("");
 
     const storefrontId = form.data.storefronts[0] ?? storefronts[0]?.id ?? 1;
 
@@ -416,15 +446,27 @@ export default function PromotionForm({
                     qualify_min_amount: form.data.qualify_min_amount || null,
                     scopes: form.data.scopes,
                     phone: phone || null,
+                    skus: skus.trim() || null,
+                    account: account.trim() || null,
                     rule_id: rule?.id ?? null,
                     starts_at: form.data.starts_at || null,
                     ends_at: form.data.ends_at || null,
                 }),
             });
-            const payload = (await response.json()) as Preview;
-            setPreview(payload);
+            const payload = (await response.json().catch(() => null)) as { ok?: unknown; errors?: Record<string, string[]>; message?: string; unknown_skus?: UnknownSku[] } | null;
+            if (response.ok && payload !== null && payload.ok === true) {
+                setAnswer(payload as unknown as Preview);
+            } else {
+                // a refusal (422: the draft's own reasons, or Laravel's validation), or anything else, said in words
+                const errors = payload?.errors && typeof payload.errors === "object" ? payload.errors : {};
+                setAnswer({
+                    ok: false,
+                    errors: Object.keys(errors).length > 0 ? errors : { _: [payload?.message || t("promotions.test_failed", "تعذّرت التجربة الآن. أعد المحاولة بعد لحظة.")] },
+                    unknown_skus: payload?.unknown_skus ?? [],
+                });
+            }
         } catch {
-            setPreview(null);
+            setAnswer({ ok: false, errors: { _: [t("promotions.test_failed", "تعذّرت التجربة الآن. أعد المحاولة بعد لحظة.")] } });
         } finally {
             setPreviewing(false);
         }
@@ -1224,21 +1266,16 @@ export default function PromotionForm({
                                         </span>
                                         <Input
                                             type="number"
+                                            min={1}
+                                            max={99}
                                             className="w-20"
+                                            aria-label={t("promotions.test_quantity", "الكمية")}
                                             value={String(line.quantity)}
                                             onChange={(event) =>
                                                 setSample((lines) =>
                                                     lines.map((l, i) =>
                                                         i === index
-                                                            ? {
-                                                                  ...l,
-                                                                  quantity:
-                                                                      Number(
-                                                                          event
-                                                                              .target
-                                                                              .value,
-                                                                      ),
-                                                              }
+                                                            ? { ...l, quantity: testQuantity(event.target.value) }
                                                             : l,
                                                     ),
                                                 )
@@ -1312,16 +1349,98 @@ export default function PromotionForm({
                                 </Label>
                                 <Input id="preview-phone" dir="ltr" inputMode="tel" className="w-44" value={phone} onChange={(event) => setPhone(event.target.value)} />
                             </div>
+                            <div className="space-y-1">
+                                <Label htmlFor="preview-account">
+                                    {t("promotions.test_account", "أو بريد حساب العميل (اختياري)")}
+                                </Label>
+                                <Input id="preview-account" dir="ltr" type="email" className="w-56" value={account} onChange={(event) => setAccount(event.target.value)} />
+                            </div>
                             <Button
                                 type="button"
                                 onClick={() => void runPreview()}
-                                disabled={previewing || sample.length === 0}
+                                disabled={previewing || (sample.length === 0 && skus.trim() === "")}
                             >
                                 {previewing
                                     ? t("promotions.trying", "جاري التجربة…")
                                     : t("promotions.try", "جرّب")}
                             </Button>
                         </div>
+
+                        <div className="space-y-1">
+                            <Label htmlFor="preview-skus">
+                                {t("promotions.test_skus", "أو الصق أكواد SKU، كودًا في كل سطر (مثل ‎AR11015 x2‎)")}
+                            </Label>
+                            <textarea
+                                id="preview-skus"
+                                dir="ltr"
+                                rows={3}
+                                className="w-full max-w-md rounded-md border bg-background px-3 py-2 text-sm"
+                                value={skus}
+                                onChange={(event) => setSkus(event.target.value)}
+                            />
+                        </div>
+
+                        {answer !== null && !answer.ok ? (
+                            <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm" role="alert">
+                                <p className="font-medium">{t("promotions.test_refused", "لا يمكن تجربة العرض بعد:")}</p>
+                                <ul className="list-disc ps-5">
+                                    {Object.values(answer.errors).flat().map((message: string, index) => (
+                                        <li key={index}>{message}</li>
+                                    ))}
+                                </ul>
+                            </div>
+                        ) : null}
+
+                        {answer !== null && (answer.unknown_skus ?? []).length > 0 ? (
+                            <div className="rounded-md border p-3 text-sm" role="status">
+                                <p className="font-medium">{t("promotions.test_unknown_skus", "هذه الأكواد لم تدخل السلة التجريبية:")}</p>
+                                <ul className="list-disc ps-5">
+                                    {(answer.unknown_skus ?? []).map((u, index) => (
+                                        <li key={index}>
+                                            <Ltr>{u.sku}</Ltr>{" — "}
+                                            {u.reason === "not_on_shop"
+                                                ? t("promotions.test_sku_not_on_shop", "المنتج غير معروض في هذا المتجر")
+                                                : u.reason === "too_many"
+                                                  ? t("promotions.test_sku_too_many", "أكثر من 50 سطرًا؛ جرّب على دفعات")
+                                                  : t("promotions.test_sku_not_found", "لا يوجد منتج بهذا الكود")}
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                        ) : null}
+
+                        {preview !== null ? (
+                            <div className="rounded-md border bg-muted/30 p-3 text-sm" role="status">
+                                <p className="font-medium">
+                                    {preview.winner === "other_rule"
+                                        ? t("promotions.test_other_wins", "عرض آخر يفوز على هذه السلة، فلا يُطبَّق هذا العرض.")
+                                        : preview.applies
+                                          ? t("promotions.test_applies", "ينطبق: يدفع العميل :total ج.م بدل :before ج.م (خصم :discount ج.م).", {
+                                                total: preview.customer.total,
+                                                before: preview.customer.total_before,
+                                                discount: preview.customer.discount,
+                                            })
+                                          : t("promotions.test_not_applies", "لا ينطبق على هذه السلة: يدفع العميل :total ج.م.", { total: preview.customer.total })}
+                                </p>
+                                {preview.coupon && !preview.applies ? (
+                                    <p>
+                                        {t("promotions.test_why", "السبب كما يقرؤه العميل:")}{" "}
+                                        {locale === "en" ? <Ltr>{preview.coupon.messages.en}</Ltr> : <bdi dir="rtl">{preview.coupon.messages.ar}</bdi>}
+                                    </p>
+                                ) : null}
+                                {(preview.sku_lines ?? []).length > 0 ? (
+                                    <p className="text-xs text-muted-foreground">
+                                        {t("promotions.test_sku_lines", "من الأكواد الملصقة:")}{" "}
+                                        {(preview.sku_lines ?? []).map((l) => `${l.title} × ${l.quantity}`).join("، ")}
+                                    </p>
+                                ) : null}
+                                {preview.account && !preview.account.found ? (
+                                    <p className="text-xs text-muted-foreground">
+                                        {t("promotions.test_account_unknown", "لا يوجد حساب بهذا البريد؛ جُرّبت السلة كعميل زائر بهذا البريد.")}
+                                    </p>
+                                ) : null}
+                            </div>
+                        ) : null}
 
                         {preview !== null && preview.coupon ? (
                             <div className="rounded-md border bg-muted/30 p-3 text-sm" role="status">
