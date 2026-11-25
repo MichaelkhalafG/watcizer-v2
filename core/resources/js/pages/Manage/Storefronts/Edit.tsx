@@ -26,6 +26,8 @@ interface StorefrontIdentity {
     whatsapp_support: string;
     whatsapp_developer: string;
     copyright: string;
+    /** The shop's support e-mail (2026-11-25): the contact line of its e-mails. */
+    support_email?: string;
     mail_wordmark_exists: boolean;
     mail_wordmark_1x_exists: boolean;
 }
@@ -127,6 +129,7 @@ export default function StorefrontEdit({ storefront, locale_options }: { storefr
             whatsapp_support: storefront.identity.whatsapp_support,
             whatsapp_developer: storefront.identity.whatsapp_developer,
             copyright: storefront.identity.copyright,
+            support_email: storefront.identity.support_email ?? '',
         },
         mailbox: {
             is_enabled: storefront.mailbox.is_enabled,
@@ -359,6 +362,15 @@ export default function StorefrontEdit({ storefront, locale_options }: { storefr
                                 onChange={(value) => setIdentity('whatsapp_developer', value)}
                                 error={errors['identity.whatsapp_developer'] ?? null}
                                 hint={t('storefronts.identity_whatsapp_developer_hint', 'أرقام دولية بلا +. يظهر في رأس الموقع وتذييله فقط، ولا يظهر في أي رسالة بريد.')}
+                            />
+                            <TextField
+                                label={t('storefronts.identity_support_email', 'بريد خدمة العملاء')}
+                                dir="ltr"
+                                type="email"
+                                value={form.data.identity.support_email ?? ''}
+                                onChange={(value) => setIdentity('support_email', value)}
+                                error={errors['identity.support_email'] ?? null}
+                                hint={t('storefronts.identity_support_email_hint', 'يظهر في رسائل الطلبات وحملات البريد كطريقة للتواصل. اختياري.')}
                             />
                             <TextField
                                 label={t('storefronts.identity_copyright', 'سطر حقوق النشر')}

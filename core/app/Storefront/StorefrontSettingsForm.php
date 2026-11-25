@@ -39,7 +39,7 @@ final class StorefrontSettingsForm
 {
     public const URL_KEYS = ['frontend', 'payment_return', 'api_host', 'asset_base'];
 
-    public const IDENTITY_KEYS = ['mail_wordmark', 'mail_wordmark_1x', 'whatsapp_support', 'whatsapp_developer', 'copyright'];
+    public const IDENTITY_KEYS = ['mail_wordmark', 'mail_wordmark_1x', 'whatsapp_support', 'whatsapp_developer', 'copyright', 'support_email'];
 
     /** @return array<string, list<mixed>> Laravel rules for the three sections, all optional as a whole */
     public static function rules(): array
@@ -56,6 +56,8 @@ final class StorefrontSettingsForm
             'identity.whatsapp_support' => ['nullable', 'string', 'max:20'],
             'identity.whatsapp_developer' => ['nullable', 'string', 'max:20'],
             'identity.copyright' => ['nullable', 'string', 'max:200'],
+            // the shop's support e-mail (2026-11-25): the contact line of its e-mails; optional
+            'identity.support_email' => ['nullable', 'string', 'email', 'max:191'],
             'mailbox' => ['sometimes', 'array'],
             'mailbox.is_enabled' => ['nullable', 'boolean'],
             'mailbox.host' => ['nullable', 'string', 'max:255'],

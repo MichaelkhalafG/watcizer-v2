@@ -182,6 +182,8 @@ final class OrderEmailData
             'brandName', 'copyright', 'whatsappUrl', 'trackUrl', 'dashboardUrl',
             // W2 (2026-10-13): the storefront's wordmark image, on its own asset host.
             'wordmarkUrl',
+            // 2026-11-25: the shop's support e-mail, the footer's contact line (null when the shop has none).
+            'supportEmail',
             // W3 (2026-10-13): the storefront whose mailbox sends it (read by OrderMailer, not a view).
             'storefrontId',
         ];

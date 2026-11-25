@@ -2792,6 +2792,8 @@ return [
         'identity_whatsapp_support_hint' => 'International digits, no +. The number customers reach from an e-mail.',
         'identity_whatsapp_developer' => 'Developer WhatsApp (digits)',
         'identity_whatsapp_developer_hint' => 'International digits, no +. Shown in the site header and footer only — never in an e-mail.',
+        'identity_support_email' => 'Customer-service e-mail',
+        'identity_support_email_hint' => 'Shown in the order e-mails and the e-mail campaigns as a way to reach the shop. Optional.',
         'identity_copyright' => 'Copyright line',
         'mailbox_section' => 'Mailbox (outgoing e-mail)',
         'mailbox_intro' => 'The SMTP mailbox this shop’s e-mail leaves from, its daily budget, and the team addresses that receive the admin copy of every order. The shop never sends through another shop’s mailbox.',

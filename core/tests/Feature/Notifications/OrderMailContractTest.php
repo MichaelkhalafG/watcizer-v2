@@ -135,8 +135,9 @@ it('renders ONE template for both shops, differing only in what the storefront r
     // …and with the identity tokens swapped out, the two renders are the SAME document: the order
     // numbers differ, nothing else does.
     $normalise = fn (string $html, StorefrontIdentity $i, int $orderId): string => str_replace(
-        [$i->wordmarkUrl(), $i->whatsappSupport, $i->copyright, $i->brandName, StorefrontUrls::frontend($i->storefrontId), T::str(DB::table('orders')->where('id', $orderId)->value('order_number')), (string) $orderId],
-        ['{wordmark}', '{whatsapp}', '{copyright}', '{brand}', '{site}', '{number}', '{id}'],
+        // the shop's support e-mail (2026-11-25) is one more identity token, swapped first (it holds the shop's name)
+        [...($i->supportEmail === null ? [] : [$i->supportEmail]), $i->wordmarkUrl(), $i->whatsappSupport, $i->copyright, $i->brandName, StorefrontUrls::frontend($i->storefrontId), T::str(DB::table('orders')->where('id', $orderId)->value('order_number')), (string) $orderId],
+        [...($i->supportEmail === null ? [] : ['{support}']), '{wordmark}', '{whatsapp}', '{copyright}', '{brand}', '{site}', '{number}', '{id}'],
         $html,
     );
     expect($normalise($f, $fi, $fashion))->toBe($normalise($w, $wi, $watchizer));
@@ -200,8 +201,8 @@ it('hands the templates every key they can read', function () {
     // Added deliberately 2026-09-26 (OrderTotals): the promotion gets its own line, free shipping
     // reads as free, and every figure shares one decimals setting so the column adds up. And
     // 2026-10-13 (W2): the storefront's wordmark image. And 2026-11-14 (click & collect): a pickup order's store, code and
-    // window (null for a delivery), and how long it is held.
-    $added = ['promotion', 'promotionName', 'freeShipping', 'moneyDecimals', 'wordmarkUrl', 'storefrontId', 'pickup', 'pickupHoldHours', 'pickupCollectBy', 'shopUrl'];
+    // window (null for a delivery), and how long it is held. And 2026-11-25: the shop's support e-mail, the footer's contact line.
+    $added = ['promotion', 'promotionName', 'freeShipping', 'moneyDecimals', 'wordmarkUrl', 'storefrontId', 'pickup', 'pickupHoldHours', 'pickupCollectBy', 'shopUrl', 'supportEmail'];
     expect(OrderEmailData::keys())->toEqualCanonicalizing([...$legacyKeys, ...$added]);
 });
 

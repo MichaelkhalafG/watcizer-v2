@@ -39,6 +39,9 @@ final class StorefrontIdentity
         public readonly string $whatsappSupport,
         public readonly string $whatsappDeveloper,
         public readonly string $copyright,
+        // the shop's support e-mail (2026-11-25): the contact line of its e-mails; optional, so a shop without one
+        // still sends (the line is simply left out)
+        public readonly ?string $supportEmail = null,
     ) {}
 
     public static function for(int $storefrontId): self
@@ -76,7 +79,10 @@ final class StorefrontIdentity
             throw StorefrontHasNoIdentity::for($storefrontId, 'settings.identity.copyright is not set');
         }
 
-        return new self($storefrontId, trim($name), ltrim($wordmark, '/'), $wordmark1x === null ? null : ltrim($wordmark1x, '/'), $support, $developer, $copyright);
+        $email = self::str($identity, 'support_email');
+        $email = $email !== null && filter_var($email, FILTER_VALIDATE_EMAIL) !== false ? mb_strtolower($email) : null;
+
+        return new self($storefrontId, trim($name), ltrim($wordmark, '/'), $wordmark1x === null ? null : ltrim($wordmark1x, '/'), $support, $developer, $copyright, $email);
     }
 
     /** The wordmark's absolute URL, on THIS storefront's own asset host — never another shop's. */
@@ -104,6 +110,7 @@ final class StorefrontIdentity
             'wordmarkUrl' => $this->wordmarkUrl(),
             'whatsappUrl' => $this->whatsappSupportUrl(),
             'copyright' => $this->copyright,
+            'supportEmail' => $this->supportEmail,
         ];
     }
 

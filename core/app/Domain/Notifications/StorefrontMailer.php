@@ -4,7 +4,15 @@ declare(strict_types=1);
 
 namespace App\Domain\Notifications;
 
+use App\Mail\CampaignMail;
+use App\Mail\CartReminderMail;
+use App\Mail\OrderConfirmation;
+use App\Mail\OrderStatusUpdate;
+use App\Mail\PaymentExpired;
+use App\Mail\PickupUpdate;
 use App\Models\Storefront\StorefrontMailbox;
+use App\Storefront\StorefrontHasNoIdentity;
+use App\Storefront\StorefrontIdentity;
 use Illuminate\Mail\Mailable;
 use Illuminate\Mail\MailManager;
 use Illuminate\Support\Facades\Mail;
@@ -86,6 +94,15 @@ final class StorefrontMailer
     {
         $mailbox = self::mailbox($storefrontId);
         $mailable->from($mailbox->fromAddress(), $mailbox->fromName());
+        // A customer's reply reaches the shop's support address (Michael, 2026-11-25): order, abandoned-cart and campaign
+        // e-mails reply to it; the sender stays the shop's mailbox (SPF/DKIM are the sender's, untouched). A shop without
+        // a support address keeps no Reply-To, as before. The team's own mails (admin notices, reports) are not touched.
+        if (in_array($mailable::class, self::REPLY_TO_SUPPORT, true)) {
+            $support = self::supportEmail($storefrontId);
+            if ($support !== null) {
+                $mailable->replyTo($support, $mailbox->fromName());
+            }
+        }
         $mailable->withSymfonyMessage(function (Email $message) use ($storefrontId): void {
             $headers = $message->getHeaders();
             $headers->remove(self::STOREFRONT_HEADER);
@@ -93,6 +110,29 @@ final class StorefrontMailer
         });
 
         Mail::mailer(self::mailerFor($mailbox))->to($recipient)->send($mailable);
+    }
+
+    /**
+     * The customer e-mails whose replies go to the shop's support address (2026-11-25).
+     *
+     * @var list<class-string<Mailable>>
+     */
+    public const REPLY_TO_SUPPORT = [
+        OrderConfirmation::class,
+        OrderStatusUpdate::class,
+        PickupUpdate::class,
+        PaymentExpired::class,
+        CartReminderMail::class,
+        CampaignMail::class,
+    ];
+
+    private static function supportEmail(int $storefrontId): ?string
+    {
+        try {
+            return StorefrontIdentity::for($storefrontId)->supportEmail;
+        } catch (StorefrontHasNoIdentity) {
+            return null;                                  // the identity's own check parks such a message elsewhere
+        }
     }
 
     public static function mailerName(int $storefrontId): string

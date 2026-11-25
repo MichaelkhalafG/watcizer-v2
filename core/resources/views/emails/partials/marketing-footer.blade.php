@@ -15,6 +15,11 @@
         <a href="{{ $whatsappUrl }}" style="display:inline-block;text-decoration:none;color:#C8A45C;font-size:14px;font-weight:600;line-height:1.5;">
             <span style="font-size:16px;">&#128241;</span> واتساب · WhatsApp
         </a>
+        @if (! empty($supportEmail ?? null))
+        {{-- the shop's support e-mail (2026-11-25) --}}
+        <p style="margin:10px 0 0;font-size:12px;"><a href="mailto:{{ $supportEmail }}" style="color:#C8A45C;text-decoration:none;" dir="ltr">{{ $supportEmail }}</a></p>
+        <p style="margin:2px 0 0;font-size:11px;color:rgba(255,255,255,0.5);"><span dir="rtl">أو راسلنا على البريد</span> · Or e-mail us</p>
+        @endif
         <div style="height:1px;background:rgba(255,255,255,0.12);margin:18px auto 14px;max-width:220px;font-size:0;line-height:0;">&nbsp;</div>
         <p style="margin:0;font-size:11px;color:rgba(255,255,255,0.4);">{{ $copyright }}</p>
     </td>

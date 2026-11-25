@@ -13,6 +13,11 @@
             <span dir="rtl" style="font-family:'Segoe UI',Tahoma,Arial,sans-serif;">للاستعلام عن طلبك تواصل معنا على واتساب</span>
         </a>
         <p style="margin:6px 0 0;font-size:11px;color:rgba(255,255,255,0.5);">Contact us on WhatsApp for order inquiries</p>
+        @if (! empty($supportEmail ?? null))
+        {{-- the shop's support e-mail (2026-11-25) --}}
+        <p style="margin:10px 0 0;font-size:12px;"><a href="mailto:{{ $supportEmail }}" style="color:#C8A45C;text-decoration:none;" dir="ltr">{{ $supportEmail }}</a></p>
+        <p style="margin:2px 0 0;font-size:11px;color:rgba(255,255,255,0.5);"><span dir="rtl">أو راسلنا على البريد</span> · Or e-mail us</p>
+        @endif
 
         <div style="height:1px;background:rgba(255,255,255,0.12);margin:18px auto 14px;max-width:220px;font-size:0;line-height:0;">&nbsp;</div>
 
