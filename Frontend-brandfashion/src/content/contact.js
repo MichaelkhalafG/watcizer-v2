@@ -15,3 +15,8 @@ export const INSTAGRAM = 'https://www.instagram.com/brand_fashion_eg'
 export const INSTAGRAM_WEB = 'https://www.instagram.com/brand_fashion_web'
 export const TIKTOK = 'https://www.tiktok.com/@brand_fashion_egy'
 export const FACEBOOK = 'https://www.facebook.com/profile.php?id=61557499419226'
+
+// The shop's support e-mail (Michael, 2026-11-25): shown wherever the shop gives its contact details - the contact,
+// policy and FAQ pages, the footer, the Organization markup and /llms.txt - and in its e-mails. The phone is unchanged.
+export const EMAIL = 'brandfashion@eleganceeg.com'
+export const MAILTO = `mailto:${EMAIL}`

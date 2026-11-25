@@ -11,7 +11,7 @@
 // — **bold** and [label](href) — and the page strips them for the FAQPage JSON-LD.
 
 // the shop's number, typed once in ./contact.js (2026-11-14)
-import { PHONE, WHATSAPP } from './contact'
+import { EMAIL, MAILTO, PHONE, WHATSAPP } from './contact'
 import { INSPECT_FULL } from './inspection'
 
 export const FAQ = {
@@ -57,7 +57,7 @@ export const FAQ = {
         title: 'Stores and contact',
         items: [
           { q: 'Do you have stores?', a: 'Yes, two: at **Arkadia Mall**, 2nd floor, Corniche El Nil, Maspero extension, next to the Fairmont, Cairo, and at **90 El-Thawra Street, Heliopolis**. Both are open every day, 10:00–24:00.' },
-          { q: 'How can I reach customer service?', a: 'By phone or [WhatsApp](' + WHATSAPP + ') on **' + PHONE + '**, every day, 10:00–22:00, or through the [contact page](/contact-us).' },
+          { q: 'How can I reach customer service?', a: 'By phone or [WhatsApp](' + WHATSAPP + ') on **' + PHONE + '**, every day, 10:00–22:00, by e-mail at [' + EMAIL + '](' + MAILTO + '), or through the [contact page](/contact-us).' },
         ],
       },
     ],
@@ -103,7 +103,7 @@ export const FAQ = {
         title: 'المتاجر والتواصل',
         items: [
           { q: 'هل لديكم متاجر؟', a: 'نعم، فرعان: في **أركاديا مول**، الدور الثاني، كورنيش النيل، امتداد ماسبيرو، بجوار فندق فيرمونت، القاهرة، وفي **٩٠ شارع الثورة، مصر الجديدة**. وكلاهما مفتوح يومياً من ١٠ صباحاً حتى منتصف الليل.' },
-          { q: 'كيف أتواصل مع خدمة العملاء؟', a: 'بالهاتف أو [واتساب](' + WHATSAPP + ') على **' + PHONE + '**، يومياً من ١٠ صباحاً حتى ١٠ مساءً، أو من خلال [صفحة التواصل](/contact-us).' },
+          { q: 'كيف أتواصل مع خدمة العملاء؟', a: 'بالهاتف أو [واتساب](' + WHATSAPP + ') على **' + PHONE + '**، يومياً من ١٠ صباحاً حتى ١٠ مساءً، أو على البريد [' + EMAIL + '](' + MAILTO + ')، أو من خلال [صفحة التواصل](/contact-us).' },
         ],
       },
     ],

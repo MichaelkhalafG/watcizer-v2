@@ -22,13 +22,11 @@ export const TRUST_UPDATED = '2026-11-18'
 import { FACEBOOK, INSTAGRAM, TIKTOK } from './social'
 
 // the shop's number, typed once in ./contact.js (2026-11-14, the client's team: 01551096234, unchanged)
-import { PHONE, PHONE_INTL, TEL, WHATSAPP } from './contact'
+import { EMAIL, MAILTO, PHONE, PHONE_INTL, TEL, WHATSAPP } from './contact'
 import { INSPECT_FULL } from './inspection'
 // the stores' Google Maps links (2026-11-14, the client's team): the About and warranty pages link them, STORES_LD names them
 const MAP_ARKADIA = 'https://maps.app.goo.gl/jA9owX6N3L6bCpXP8'
 const MAP_HELIOPOLIS = 'https://maps.app.goo.gl/c5wtDgsmLEP398ht7'
-const EMAIL = 'watchizer303@gmail.com'
-const MAILTO = `mailto:${EMAIL}`
 // The shop's accounts. 2026-10-01 kept these apart from the home page's `sameAs`, which carried a different pair — a
 // bare `/watchizer` vanity name on each network, matching neither of these; 2026-10-19 (the developer): these
 // are the real accounts, and `app/(main)/page.jsx` now imports them rather than typing them a second time, so the
@@ -46,7 +44,7 @@ export const TRUST_PAGES = {
       metaTitle: 'About us | Watchizer',
       description: 'Watchizer has sold watches and accessories in Egypt since 2013, online and in two stores in Cairo, delivering to 27 governorates.',
       lead: 'Watchizer has sold watches and accessories in Egypt since 2013, online and in two stores in Cairo. We sell watches for men and women, along with bags, wallets, belts, jewellery and a small range of electronics, and we deliver to 27 governorates.',
-      store: `Shop at watchizereg.com in English or Arabic, or visit one of our two stores, open every day 10:00–24:00: [Arkadia Mall](${MAP_ARKADIA}), 2nd floor, Corniche El Nil, Maspero extension, next to the Fairmont, Cairo, and [90 El-Thawra Street](${MAP_HELIOPOLIS}), Heliopolis. Call or WhatsApp us on [${PHONE}](${TEL}).`,
+      store: `Shop at watchizereg.com in English or Arabic, or visit one of our two stores, open every day 10:00–24:00: [Arkadia Mall](${MAP_ARKADIA}), 2nd floor, Corniche El Nil, Maspero extension, next to the Fairmont, Cairo, and [90 El-Thawra Street](${MAP_HELIOPOLIS}), Heliopolis. Call or WhatsApp us on [${PHONE}](${TEL}), or e-mail [${EMAIL}](${MAILTO}).`,
       // sister stores (Michael, 2026-11-17; the client approves saying it): owned by Elegance, the two branches shared, each
       // shop with its own number and catalogue — only the three names, nothing else about the owners
       family: 'Watchizer and Brand Fashion are sister stores, both owned by Elegance. They share the two branches, Arkadia Mall and Heliopolis; each shop has its own phone number and its own catalogue. Visit Brand Fashion at [brandfashionegy.com](https://www.brandfashionegy.com).',
@@ -60,7 +58,7 @@ export const TRUST_PAGES = {
       metaTitle: 'من نحن | Watchizer',
       description: 'تبيع واتشايزر الساعات والإكسسوارات في مصر منذ ٢٠١٣، أونلاين وفي متجرين في القاهرة، ونوصّل إلى ٢٧ محافظة.',
       lead: 'تبيع واتشايزر الساعات والإكسسوارات في مصر منذ ٢٠١٣، أونلاين وفي متجرين في القاهرة. نبيع ساعات رجالية ونسائية، إلى جانب الحقائب والمحافظ والأحزمة والمجوهرات ومجموعة صغيرة من الإلكترونيات، ونوصّل إلى ٢٧ محافظة.',
-      store: `تسوّق على watchizereg.com بالعربية أو الإنجليزية، أو زر أحد متجرينا، المفتوحين يومياً من ١٠ صباحاً حتى منتصف الليل: [أركاديا مول](${MAP_ARKADIA})، الدور الثاني، كورنيش النيل، امتداد ماسبيرو، بجوار فندق فيرمونت، القاهرة، و[٩٠ شارع الثورة](${MAP_HELIOPOLIS})، مصر الجديدة. اتصل بنا أو راسلنا على واتساب: [${PHONE}](${TEL}).`,
+      store: `تسوّق على watchizereg.com بالعربية أو الإنجليزية، أو زر أحد متجرينا، المفتوحين يومياً من ١٠ صباحاً حتى منتصف الليل: [أركاديا مول](${MAP_ARKADIA})، الدور الثاني، كورنيش النيل، امتداد ماسبيرو، بجوار فندق فيرمونت، القاهرة، و[٩٠ شارع الثورة](${MAP_HELIOPOLIS})، مصر الجديدة. اتصل بنا أو راسلنا على واتساب: [${PHONE}](${TEL})، أو على البريد [${EMAIL}](${MAILTO}).`,
       family: 'واتشايزر وبراند فاشون متجران شقيقان تملكهما شركة Elegance، ويتشاركان الفرعين، أركاديا مول ومصر الجديدة؛ ولكل متجر رقم هاتفه الخاص وتشكيلته الخاصة. زر براند فاشون على [brandfashionegy.com](https://www.brandfashionegy.com).',
       followers: `يتابع واتشايزر {followers} شخص على [فيسبوك](${FACEBOOK}) و[إنستجرام](${INSTAGRAM}) و[تيك توك](${TIKTOK}).`,
       policies: 'كيف نعمل: [الضمان](/warranty)، و[الشحن والتوصيل](/shipping)، و[الإرجاع والاستبدال](/returns)، و[الأسئلة الشائعة](/faq).',
@@ -235,7 +233,7 @@ export const TRUST_PAGES = {
             // the returns policy of 2026-11-14 (approved by the client): 14 days to return or exchange, every product; the shop
             // pays the return shipping; the refund by the original method, within 24 hours of the item reaching us
             { ul: ['**Return:** within 14 days of delivery — watches and fashion items alike.', '**Exchange:** within 14 days of delivery.'] },
-            { p: `Watches, bags and accessories must be unused, in their original packaging with their tags; perfumes must be sealed and unopened. We pay the return shipping. Your refund is made by the payment method you used, as fast as possible and within 24 hours of the item reaching us. To start an exchange or return, message customer service on [WhatsApp](${WHATSAPP}) with your order number, and we'll arrange it with you.` },
+            { p: `Watches, bags and accessories must be unused, in their original packaging with their tags; perfumes must be sealed and unopened. We pay the return shipping. Your refund is made by the payment method you used, as fast as possible and within 24 hours of the item reaching us. To start an exchange or return, message customer service on [WhatsApp](${WHATSAPP}) or by e-mail at [${EMAIL}](${MAILTO}) with your order number, and we'll arrange it with you.` },
           ],
         },
         /*
@@ -248,7 +246,7 @@ export const TRUST_PAGES = {
         {
           title: 'Authenticity',
           blocks: [
-            { p: `Every product we sell is authentic. If you have any doubt about an item you received, message customer service on [WhatsApp](${WHATSAPP}) with your order number.` },
+            { p: `Every product we sell is authentic. If you have any doubt about an item you received, message customer service on [WhatsApp](${WHATSAPP}) or by e-mail at [${EMAIL}](${MAILTO}) with your order number.` },
           ],
         },
         { title: 'Warranty', blocks: [{ p: 'When a product page states a warranty, it applies as stated there. Contact customer service to use it.' }] },
@@ -286,13 +284,13 @@ export const TRUST_PAGES = {
           title: 'الاستبدال والإرجاع',
           blocks: [
             { ul: ['**الإرجاع:** خلال ١٤ يوماً من الاستلام — للساعات ومنتجات الأزياء على حد سواء.', '**الاستبدال:** خلال ١٤ يوماً من الاستلام.'] },
-            { p: `يجب أن تكون الساعات والشنط والإكسسوارات غير مستخدمة، في عبوتها الأصلية ومعها بطاقاتها؛ أما العطور فيجب أن تكون مغلقة لم تُفتح. نتحمّل نحن شحن الإرجاع، ويُرد المبلغ بوسيلة الدفع نفسها التي استخدمتها في أسرع وقت، وخلال ٢٤ ساعة من وصول المنتج إلينا. لبدء الاستبدال أو الإرجاع، راسل خدمة العملاء على [واتساب](${WHATSAPP}) برقم طلبك، وسنرتب الأمر معك.` },
+            { p: `يجب أن تكون الساعات والشنط والإكسسوارات غير مستخدمة، في عبوتها الأصلية ومعها بطاقاتها؛ أما العطور فيجب أن تكون مغلقة لم تُفتح. نتحمّل نحن شحن الإرجاع، ويُرد المبلغ بوسيلة الدفع نفسها التي استخدمتها في أسرع وقت، وخلال ٢٤ ساعة من وصول المنتج إلينا. لبدء الاستبدال أو الإرجاع، راسل خدمة العملاء على [واتساب](${WHATSAPP}) أو على البريد [${EMAIL}](${MAILTO}) برقم طلبك، وسنرتب الأمر معك.` },
           ],
         },
         {
           title: 'الأصالة',
           blocks: [
-            { p: `كل منتج نبيعه أصلي. إن كان لديك أي شك في منتج استلمته، راسل خدمة العملاء على [واتساب](${WHATSAPP}) برقم طلبك.` },
+            { p: `كل منتج نبيعه أصلي. إن كان لديك أي شك في منتج استلمته، راسل خدمة العملاء على [واتساب](${WHATSAPP}) أو على البريد [${EMAIL}](${MAILTO}) برقم طلبك.` },
           ],
         },
         { title: 'الضمان', blocks: [{ p: 'عندما تذكر صفحة المنتج ضماناً، فهو يسري كما هو مذكور فيها. تواصل مع خدمة العملاء للاستفادة منه.' }] },
@@ -346,7 +344,7 @@ export const TRUST_PAGES = {
           blocks: [
             { p: 'Bring the watch to one of our stores with its **warranty card and invoice**:' },
             { ul: [`[Arkadia Mall](${MAP_ARKADIA}), 2nd floor, Corniche El Nil, Maspero extension, next to the Fairmont, Cairo;`, `[90 El-Thawra Street](${MAP_HELIOPOLIS}), Heliopolis.`] },
-            { p: `Both are open every day, 10:00–24:00. If you cannot come to a store, message customer service on [WhatsApp](${WHATSAPP}) with your order number.` },
+            { p: `Both are open every day, 10:00–24:00. If you cannot come to a store, message customer service on [WhatsApp](${WHATSAPP}) or by e-mail at [${EMAIL}](${MAILTO}) with your order number.` },
           ],
         },
       ],
@@ -385,7 +383,7 @@ export const TRUST_PAGES = {
           blocks: [
             { p: 'أحضر الساعة إلى أحد متجرينا ومعها **بطاقة الضمان والفاتورة**:' },
             { ul: [`[أركاديا مول](${MAP_ARKADIA})، الدور الثاني، كورنيش النيل، امتداد ماسبيرو، بجوار فندق فيرمونت، القاهرة؛`, `[٩٠ شارع الثورة](${MAP_HELIOPOLIS})، مصر الجديدة.`] },
-            { p: `المتجران مفتوحان يومياً من ١٠ صباحاً حتى منتصف الليل. وإن لم تتمكن من الحضور، راسل خدمة العملاء على [واتساب](${WHATSAPP}) برقم طلبك.` },
+            { p: `المتجران مفتوحان يومياً من ١٠ صباحاً حتى منتصف الليل. وإن لم تتمكن من الحضور، راسل خدمة العملاء على [واتساب](${WHATSAPP}) أو على البريد [${EMAIL}](${MAILTO}) برقم طلبك.` },
           ],
         },
       ],
@@ -448,7 +446,7 @@ export const TRUST_PAGES = {
         { title: 'The condition of the item', blocks: [{ p: 'Watches, bags and accessories must be unused, in their original packaging with their tags; perfumes must be sealed and unopened.' }] },
         { title: 'Return shipping', blocks: [{ p: '**We pay the return shipping.**' }] },
         { title: 'Your refund', blocks: [{ p: 'Your refund is made by the payment method you used, as fast as possible and within 24 hours of the item reaching us.' }] },
-        { title: 'How to start', blocks: [{ p: `Message customer service on [WhatsApp](${WHATSAPP}) with your order number, and we'll arrange it with you.` }] },
+        { title: 'How to start', blocks: [{ p: `Message customer service on [WhatsApp](${WHATSAPP}) or by e-mail at [${EMAIL}](${MAILTO}) with your order number, and we'll arrange it with you.` }] },
       ],
     },
     ar: {
@@ -461,7 +459,7 @@ export const TRUST_PAGES = {
         { title: 'حالة المنتج', blocks: [{ p: 'يجب أن تكون الساعات والشنط والإكسسوارات غير مستخدمة، في عبوتها الأصلية ومعها بطاقاتها؛ أما العطور فيجب أن تكون مغلقة لم تُفتح.' }] },
         { title: 'شحن الإرجاع', blocks: [{ p: '**نتحمّل نحن شحن الإرجاع.**' }] },
         { title: 'استرداد المبلغ', blocks: [{ p: 'يُرد المبلغ بوسيلة الدفع نفسها التي استخدمتها في أسرع وقت، وخلال ٢٤ ساعة من وصول المنتج إلينا.' }] },
-        { title: 'كيف تبدأ', blocks: [{ p: `راسل خدمة العملاء على [واتساب](${WHATSAPP}) برقم طلبك، وسنرتّب الأمر معك.` }] },
+        { title: 'كيف تبدأ', blocks: [{ p: `راسل خدمة العملاء على [واتساب](${WHATSAPP}) أو على البريد [${EMAIL}](${MAILTO}) برقم طلبك، وسنرتّب الأمر معك.` }] },
       ],
     },
   },

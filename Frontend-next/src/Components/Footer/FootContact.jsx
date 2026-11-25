@@ -1,5 +1,5 @@
 import { FaWhatsapp } from 'react-icons/fa'
-import { PHONE, TEL, WHATSAPP } from '@/src/content/contact'
+import { EMAIL, MAILTO, PHONE, TEL, WHATSAPP } from '@/src/content/contact'
 
 // THE SHOP'S OWN NUMBER, AS TEXT, ON EVERY PAGE (Michael, 2026-11-17; the 2026-11-16 comparison: the shops that show
 // a number everywhere are the ones assistants and shoppers trust). A TWIN: each shop's src/content/contact.js holds
@@ -16,6 +16,9 @@ export default function FootContact({ lang = 'en', className = '' }) {
         <FaWhatsapp aria-hidden="true" />
         <span>{ar ? 'واتساب' : 'WhatsApp'}</span>
       </a>
+      {/* the support e-mail (2026-11-25) */}
+      <span className="wz-foot-contact__label">{ar ? 'أو البريد:' : 'or e-mail:'}</span>
+      <a className="wz-foot-contact__mail" href={MAILTO} dir="ltr">{EMAIL}</a>
     </p>
   )
 }
