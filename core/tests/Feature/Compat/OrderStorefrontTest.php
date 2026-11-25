@@ -213,6 +213,12 @@ it('has no NULL branch left in the payment callback, and knows every v2 write ro
     expect($writes)->toBe([
         'api/v2/{storefront}/cart/items',
         'api/v2/{storefront}/cart/items/{item}',
+        // the abandoned-cart e-mail's button (2026-11-25): reads a reminder of the PATH's storefront only and writes nothing,
+        // proved in CartReminderTest › "keeps each shop to its own carts"
+        'api/v2/{storefront}/cart/restore',
+        // a guest's checkout e-mail (2026-11-25): kept only on a cart of the PATH's storefront, proved in CartReminderTest ›
+        // "keeps each shop to its own carts"
+        'api/v2/{storefront}/checkout/contact',
         // the 404 monitor's report (SEO Phase 1, 2026-11-14): recorded under the PATH's storefront, proved in NotFoundTest ›
         // "records a server's report under the shop of its path"
         'api/v2/{storefront}/not-found',

@@ -224,3 +224,18 @@ it('keeps a guest\'s checkout e-mail on its cart, and restores the cart from the
     DB::table('core_cart_reminders')->where('id', $reminder)->update(['created_at' => now()->subDays(15)]);
     postJson($api.'/api/v2/watchizer/cart/restore', ['r' => $reminder, 's' => CartReminders::restoreSignature($reminder)])->assertNotFound();
 });
+
+it('keeps each shop to its own carts: a checkout e-mail and a cart link through the other shop\'s path write and give nothing', function () {
+    $token = (string) Str::uuid();
+    $cart = (int) DB::table('carts')->insertGetId(['user_id' => null, 'guest_token' => $token, 'storefront_id' => 1, 'created_at' => now(), 'updated_at' => now()]);
+    // Watchizer's cart through Brand Fashion's path: 204, and no row
+    postJson(Shops::api('brandfashion').'/api/v2/brandfashion/checkout/contact', ['email' => 'cross@example.test'], ['X-Guest-Token' => $token])->assertNoContent();
+    expect(DB::table('core_checkout_contacts')->where('cart_id', $cart)->exists())->toBeFalse();
+    // and through its own path, kept
+    postJson(Shops::api('watchizer').'/api/v2/watchizer/checkout/contact', ['email' => 'own@example.test'], ['X-Guest-Token' => $token])->assertNoContent();
+    expect(DB::table('core_checkout_contacts')->where('cart_id', $cart)->value('storefront_id'))->toBe(1);
+    // Watchizer's reminder link through Brand Fashion's path: 404
+    $reminder = (int) DB::table('core_cart_reminders')->insertGetId(['storefront_id' => 1, 'cart_id' => $cart, 'email' => 'own@example.test', 'status' => 'sent', 'created_at' => now(), 'updated_at' => now()]);
+    postJson(Shops::api('brandfashion').'/api/v2/brandfashion/cart/restore', ['r' => $reminder, 's' => CartReminders::restoreSignature($reminder)])->assertNotFound();
+    postJson(Shops::api('watchizer').'/api/v2/watchizer/cart/restore', ['r' => $reminder, 's' => CartReminders::restoreSignature($reminder)])->assertOk();
+});
