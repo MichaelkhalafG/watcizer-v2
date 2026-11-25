@@ -20,6 +20,7 @@ use App\Http\Controllers\V2\AccountController;
 use App\Http\Controllers\V2\AuthController;
 use App\Http\Controllers\V2\CampaignController;
 use App\Http\Controllers\V2\CartController;
+use App\Http\Controllers\V2\CartReminderController;
 use App\Http\Controllers\V2\CategoryController;
 use App\Http\Controllers\V2\HomeController;
 use App\Http\Controllers\V2\MenuController;
@@ -116,6 +117,10 @@ Route::prefix('v2/{storefront}')->middleware('storefront')->where(['storefront' 
     Route::post('cart/items', [CartController::class, 'store']);
     Route::patch('cart/items/{item}', [CartController::class, 'update'])->whereNumber('item');
     Route::delete('cart/items/{item}', [CartController::class, 'destroy'])->whereNumber('item');
+    // the abandoned-cart e-mail (2026-11-24): a guest's checkout e-mail on its cart, and the e-mail button's signed cart
+    // link; both throttled (`cart-reminder`), private, uncached (V2 CartReminderController)
+    Route::post('checkout/contact', [CartReminderController::class, 'contact'])->middleware('throttle:cart-reminder');
+    Route::post('cart/restore', [CartReminderController::class, 'restore'])->middleware('throttle:cart-reminder');
     // B7 S2 (round 6): the v2 CHECKOUT — the order from the shopper's v2 cart on the path's storefront, which it
     // always writes. Its own limiter (`v2-order`), never compat's `add-order`.
     Route::post('orders', [OrderController::class, 'store'])->middleware('throttle:v2-order');

@@ -180,6 +180,8 @@ final class Navigation
                     self::item('pickup', ManageText::t('pickup.title', 'الاستلام من الفرع'), 'MapPin', Role::MANAGE_STOREFRONTS, route: 'manage.pickup.index', params: ['storefront' => $storefrontId]),
                     // The weekly "new picks for you" e-mail: pause, audience, runs (2026-10-01).
                     self::item('reengagement', ManageText::t('reengagement.title', 'رسائل العودة'), 'Mail', Role::MANAGE_STOREFRONTS, route: 'manage.reengagement.index', params: ['storefront' => $storefrontId]),
+                    // the e-mail campaigns and the abandoned-cart e-mail (2026-11-24)
+                    self::item('mailcampaigns', ManageText::t('mailcampaigns.title', 'حملات البريد'), 'Send', Role::MANAGE_STOREFRONTS, route: 'manage.mailcampaigns.index', params: ['storefront' => $storefrontId]),
                     /*
                      * Media cleanup sits in SETTINGS, not in the catalogue (wave 4D, task C4).
                      * `manage-catalog` is data-entry's ability and this page deletes files the live

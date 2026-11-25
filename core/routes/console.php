@@ -55,6 +55,10 @@ Schedule::command('mail:drain --reclaim')->everyMinute()->withoutOverlapping();
 | the 03:00 backup.
 */
 Schedule::command('bulk-mail:drain')->everyFiveMinutes()->withoutOverlapping();
+// the abandoned-cart e-mail (2026-11-24): hourly; nothing happens on a shop whose switch is off (the default)
+Schedule::command('cart-reminders run')->hourlyAt(10)->withoutOverlapping();
+// the e-mail campaigns (2026-11-24): every five minutes, ONE throttled batch per shop into the bulk outbox
+Schedule::command('campaigns:dispatch')->everyFiveMinutes()->withoutOverlapping();
 Schedule::command('stock-alerts:prune')->dailyAt('03:20');
 
 /*

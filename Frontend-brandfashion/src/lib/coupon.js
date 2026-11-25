@@ -160,6 +160,8 @@ export function wheelNote(coupon, isRTL) {
 export function isHeldRefusal(coupon) {
   const status = coupon?.status
   if (status === 'phone_mismatch' || status === 'invite_own' || status === 'invite_not_first' || status === 'invite_used') return true
+  // a personal code (the abandoned-cart e-mail, a campaign - 2026-11-24) typed with another e-mail: put the right one in
+  if (status === 'email_mismatch') return true
   // the offer waits for another item (2026-11-19: "30% off a wallet with any watch" and a wallet alone): the code stays,
   // and adding the watch back applies it again
   if (status === 'needs_qualifier') return true

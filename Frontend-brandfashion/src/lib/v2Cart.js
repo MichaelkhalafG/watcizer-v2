@@ -153,3 +153,26 @@ export const v2CartRemove = async (lineId) => {
     return refused(err)
   }
 }
+
+/*
+ * THE ABANDONED-CART E-MAIL (2026-11-24). Both are quiet: neither throws, and neither tells the page anything it must act on.
+ *  - the address a GUEST typed at the checkout, kept on their cart so its reminder can reach them (a signed-in shopper's
+ *    cart uses the account's address);
+ *  - the e-mail button's signed link: the guest cart's token, or null.
+ */
+export const v2CheckoutContact = async (email) => {
+  try {
+    await http.post(`v2/${STOREFRONT_CODE}/checkout/contact`, { email })
+  } catch {
+    // nothing to tell the shopper: the order does not depend on it
+  }
+}
+
+export const v2CartRestore = async (r, s) => {
+  try {
+    const { data } = await http.post(`v2/${STOREFRONT_CODE}/cart/restore`, { r, s })
+    return data?.data ?? null
+  } catch {
+    return null
+  }
+}

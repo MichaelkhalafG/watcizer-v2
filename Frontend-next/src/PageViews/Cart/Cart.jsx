@@ -26,6 +26,7 @@ import CouponBox from '../../Components/Cart/CouponBox'
 import { discountLabel, payable, rewardTitle } from '../../lib/coupon'
 import { shippingCharged } from '../../lib/freeShipping'
 import { cartStore } from '../../Store/cartStore'
+import { restoreFromLink, withoutRestore } from '../../lib/cartRestore'
 import ProductSlider from '../../Components/Product/ProductSlider'
 import { trustSignals } from '../../config/trust.config'
 import { getImageUrl, handleImgError, PLACEHOLDER_IMG } from '../../utils/imageUrl'
@@ -225,6 +226,16 @@ function Cart({ initialPickup = null }) {
   // by wrapping router.push — stable identity so CartItem's memo isn't broken.
   const navigate = useCallback((to) => router.push(to), [router])
   const { userId } = useAuthStore()
+  // the abandoned-cart e-mail's button (2026-11-24): its signed link brings a guest's cart back on this browser, then
+  // leaves the address clean
+  useEffect(() => {
+    if (typeof window === 'undefined' || !new URLSearchParams(window.location.search).has('restore')) return
+    const loggedIn = !!useAuthStore.getState().userId
+    restoreFromLink(window.location.search, { loggedIn }).then((switched) => {
+      if (switched) cartStore.fetchCart()
+      window.history.replaceState(null, '', window.location.pathname + withoutRestore(window.location.search))
+    })
+  }, [])
   const { cart, updateQuantity, removeItem, undoRemove, validateCart, reconcile, lastRemoved, warnings } = useCart()
   // Only THIS cart's products, by id (C-1 stage 4) — the page used to embed the whole catalogue to
   // look up its own lines.

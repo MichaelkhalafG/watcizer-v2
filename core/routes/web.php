@@ -28,6 +28,7 @@ use App\Http\Controllers\Manage\ProductPickerController;
 use App\Http\Controllers\Manage\ProductVariantController;
 use App\Http\Controllers\Manage\ProfileController;
 use App\Http\Controllers\Manage\PromotionController;
+use App\Http\Controllers\Manage\MailCampaignController;
 use App\Http\Controllers\Manage\ReEngagementController;
 use App\Http\Controllers\Manage\NotFoundController;
 use App\Http\Controllers\Manage\ReviewController;
@@ -122,6 +123,20 @@ Route::prefix('manage')->name('manage.')->group(function (): void {
                 Route::post('storefronts/{storefront}/reengagement/replan', [ReEngagementController::class, 'replan'])->name('reengagement.replan');
                 // The products the team may pick for the next e-mail (R4) — the shared picker search.
                 Route::get('storefronts/{storefront}/reengagement/products', [ProductPickerController::class, 'search'])->name('reengagement.products');
+                // The e-mail campaigns and the abandoned-cart e-mail (2026-11-24, plan items 1 and 5): admin only, scoped.
+                Route::get('storefronts/{storefront}/mail-campaigns', [MailCampaignController::class, 'index'])->name('mailcampaigns.index');
+                Route::put('storefronts/{storefront}/mail-campaigns/reminder', [MailCampaignController::class, 'reminder'])->name('mailcampaigns.reminder');
+                Route::post('storefronts/{storefront}/mail-campaigns/reminder/test', [MailCampaignController::class, 'reminderTest'])->name('mailcampaigns.reminder.test');
+                Route::post('storefronts/{storefront}/mail-campaigns/count', [MailCampaignController::class, 'count'])->name('mailcampaigns.count');
+                Route::get('storefronts/{storefront}/mail-campaigns/template', [MailCampaignController::class, 'template'])->name('mailcampaigns.template');
+                Route::post('storefronts/{storefront}/mail-campaigns/upload', [MailCampaignController::class, 'upload'])->name('mailcampaigns.upload');
+                Route::get('storefronts/{storefront}/mail-campaigns/products', [ProductPickerController::class, 'search'])->name('mailcampaigns.products');
+                Route::post('storefronts/{storefront}/mail-campaigns', [MailCampaignController::class, 'store'])->name('mailcampaigns.store');
+                Route::put('storefronts/{storefront}/mail-campaigns/{campaign}', [MailCampaignController::class, 'update'])->whereNumber('campaign')->name('mailcampaigns.update');
+                Route::get('storefronts/{storefront}/mail-campaigns/{campaign}/preview', [MailCampaignController::class, 'preview'])->whereNumber('campaign')->name('mailcampaigns.preview');
+                Route::post('storefronts/{storefront}/mail-campaigns/{campaign}/test', [MailCampaignController::class, 'test'])->whereNumber('campaign')->name('mailcampaigns.test');
+                Route::post('storefronts/{storefront}/mail-campaigns/{campaign}/send', [MailCampaignController::class, 'send'])->whereNumber('campaign')->name('mailcampaigns.send');
+                Route::post('storefronts/{storefront}/mail-campaigns/{campaign}/cancel', [MailCampaignController::class, 'cancel'])->whereNumber('campaign')->name('mailcampaigns.cancel');
             });
         });
 

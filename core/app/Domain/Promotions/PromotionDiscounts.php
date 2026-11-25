@@ -97,6 +97,8 @@ final class PromotionDiscounts
             ]);
             // a wheel code (App\Domain\Wheel, 2026-11-07) remembers the order that used it; any other code is left alone
             Wheel::markUsed(is_string($rule['code']) ? $rule['code'] : null, $orderId);
+            // a personal code (2026-11-24) remembers its order too: single use
+            PersonalCodes::markUsed(is_string($rule['code']) ? $rule['code'] : null, $orderId, $storefrontId);
         }
 
         foreach ($outcome->lines as $line) {

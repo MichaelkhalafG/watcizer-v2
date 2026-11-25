@@ -257,6 +257,13 @@ final class CoreChecksumCommand extends Command
         'review_requests', 'product_reviews',
         // the scans of each branch's in-store review address (2026-11-17): counted from visitors, no other source
         'storefront_review_scans',
+        /*
+         * The abandoned-cart e-mail and the e-mail campaigns (2026-11-24): personal codes, unsubscribe links, the per-shop
+         * settings, the guests' checkout e-mails, the reminders sent, the campaigns with their recipients, and uploaded
+         * lists. Written by the team, the shops and their customers; no legacy source.
+         */
+        'core_personal_codes', 'core_unsubscribe_links', 'core_cart_reminder_settings', 'core_checkout_contacts', 'core_cart_reminders',
+        'core_email_campaigns', 'core_email_campaign_recipients', 'core_email_lists', 'core_email_list_rows',
     ];
 
     /**

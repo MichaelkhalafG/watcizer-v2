@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Domain\Notifications;
 
+use App\Domain\Campaigns\EmailCampaigns;
+use App\Mail\CampaignMail;
+use App\Mail\CartReminderMail;
 use App\Mail\ReEngagementMail;
 use App\Mail\ReEngagementPreviewMail;
 use App\Mail\StockAlertMail;
@@ -126,6 +129,12 @@ final class BulkMailer
                 ->where('s.id', is_int($payload['send_id'] ?? null) ? $payload['send_id'] : 0)->value('r.storefront_id');
         } elseif ($kind === ReEngagement::KIND.'_preview') {
             $value = DB::table('core_reengagement_runs')->where('id', is_int($payload['run_id'] ?? null) ? $payload['run_id'] : 0)->value('storefront_id');
+        } elseif ($kind === CartReminders::KIND) {
+            // the abandoned-cart e-mail and the campaigns (2026-11-24): read from their own rows, never from the payload alone
+            $value = DB::table('core_cart_reminders')->where('id', is_int($payload['reminder_id'] ?? null) ? $payload['reminder_id'] : 0)->value('storefront_id');
+        } elseif ($kind === EmailCampaigns::KIND) {
+            $value = DB::table('core_email_campaign_recipients as r')->join('core_email_campaigns as c', 'c.id', '=', 'r.campaign_id')
+                ->where('r.id', is_int($payload['recipient_id'] ?? null) ? $payload['recipient_id'] : 0)->value('c.storefront_id');
         }
 
         return is_numeric($value) ? (int) $value : 0;
@@ -181,6 +190,7 @@ final class BulkMailer
         try {
             StorefrontMailer::send($storefrontId, $recipient, $mailable);
             DB::table('integration_outbox')->where('id', $id)->update(['status' => OrderMailer::STATUS_SENT, 'processed_at' => now(), 'last_error' => null]);
+            self::afterSent($kind, $payload);
 
             return 'sent';
         } catch (StorefrontHasNoMailbox $e) {
@@ -224,9 +234,34 @@ final class BulkMailer
         return substr(hash_hmac('sha256', 'reengagement-unsubscribe:'.$sendId, config()->string('app.key')), 0, 40);
     }
 
+    /**
+     * The row behind a message that went out is marked sent (the abandoned-cart e-mail, a campaign's recipient).
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    private static function afterSent(string $kind, array $payload): void
+    {
+        if ($kind === CartReminders::KIND && is_int($payload['reminder_id'] ?? null)) {
+            CartReminders::markSent($payload['reminder_id']);
+        } elseif ($kind === EmailCampaigns::KIND && is_int($payload['recipient_id'] ?? null)) {
+            EmailCampaigns::markSent($payload['recipient_id']);
+        }
+    }
+
     /** @param  array<string, mixed>  $payload */
     private function mailable(string $kind, array $payload): ?Mailable
     {
+        if ($kind === CartReminders::KIND) {
+            $data = CartReminders::mailData(is_int($payload['reminder_id'] ?? null) ? $payload['reminder_id'] : 0, is_string($payload['last_activity'] ?? null) ? $payload['last_activity'] : now()->toDateTimeString());
+
+            return $data === null ? null : new CartReminderMail($data, StorefrontIdentity::for($data['storefront_id']));
+        }
+        if ($kind === EmailCampaigns::KIND) {
+            $data = EmailCampaigns::mailData(is_int($payload['recipient_id'] ?? null) ? $payload['recipient_id'] : 0);
+            $sf = is_int($data['storefront_id'] ?? null) ? $data['storefront_id'] : 0;
+
+            return $data === null ? null : new CampaignMail($data, StorefrontIdentity::for($sf));
+        }
         if ($kind === StockAlerts::KIND) {
             $data = app(StockAlerts::class)->mailData(is_int($payload['alert_id'] ?? null) ? $payload['alert_id'] : 0);
 

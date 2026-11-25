@@ -90,8 +90,10 @@ final class PromotionEngine
         $code = $code === '' ? null : $code;
         // a wheel code (App\Domain\Wheel, 2026-11-07) names a spin, and the spin names the prize rule it resolves to
         $spin = $code === null ? null : Wheel::spinByCode($cart->storefrontId, $code);
+        // a personal code (the abandoned-cart e-mail, a campaign - 2026-11-24) names its rule through its row, like a spin
+        $personal = $code === null || $spin !== null ? null : PersonalCodes::byCode($cart->storefrontId, $code);
 
-        $candidates = $this->candidates($cart->storefrontId, $now, $code, $spin);
+        $candidates = $this->candidates($cart->storefrontId, $now, $code, $spin, $personal);
         if ($candidates === []) {
             // The common case, and it must cost nothing: one indexed query, no second step.
             return new PromotionOutcome(coupon: $code === null ? null : self::withWheel($this->couponRefusal($code, $cart->storefrontId, $now), $spin, $cart));
@@ -106,7 +108,7 @@ final class PromotionEngine
          * at the order, and one that ends gives the code back. A product's regular sale price is NOT an offer.
          */
         if (self::holdsCampaignItem($cart, $now)) {
-            $codeKnown = $spin !== null;
+            $codeKnown = $spin !== null || $personal !== null;
             foreach ($candidates as $rule) {
                 $codeKnown = $codeKnown || Row::nstr($rule, 'code') !== null;
             }
@@ -131,6 +133,15 @@ final class PromotionEngine
             $ruleCode = Row::nstr($rule, 'code');
             $isTypedCode = $ruleCode !== null && $code !== null;
 
+            if ($personal !== null && $ruleId === Row::int($personal, 'promotion_rule_id')) {
+                // the personal code's own gates - used, expired, another customer's e-mail - before the rule's
+                $why = PersonalCodes::refusal($personal, $cart, $now);
+                if ($why !== null) {
+                    $refusedCode = $why;
+
+                    continue;
+                }
+            }
             if ($spin !== null && $ruleId === Row::int($spin, 'promotion_rule_id')) {
                 // the spin's own three gates — bound to its phone, 48 hours, one order — before the rule's
                 $why = Wheel::refusal($spin, $cart, $now);
@@ -241,7 +252,7 @@ final class PromotionEngine
             $appliedOut[] = [
                 'rule_id' => $g['id'],
                 // a wheel rule is reached through the SPIN's code, and that is the code the order records
-                'code' => Row::nstr($g['rule'], 'issuer') === Wheel::ISSUER ? $code : Row::nstr($g['rule'], 'code'),
+                'code' => in_array(Row::nstr($g['rule'], 'issuer'), [Wheel::ISSUER, PersonalCodes::ISSUER], true) ? $code : Row::nstr($g['rule'], 'code'),
                 'label_en' => Row::nstr($g['rule'], 'label_en'),
                 'label_ar' => Row::nstr($g['rule'], 'label_ar'),
                 'amount' => $g['money']['discount'],
@@ -329,7 +340,7 @@ final class PromotionEngine
      *
      * @return list<stdClass>
      */
-    private function candidates(int $storefrontId, \DateTimeInterface $now, ?string $code, ?stdClass $spin = null): array
+    private function candidates(int $storefrontId, \DateTimeInterface $now, ?string $code, ?stdClass $spin = null, ?stdClass $personal = null): array
     {
         $stamp = $now->format('Y-m-d H:i:s');
 
@@ -339,11 +350,14 @@ final class PromotionEngine
             ->where('r.is_active', 1)
             ->where('r.starts_at', '<=', $stamp)
             ->where('r.ends_at', '>=', $stamp)
-            ->where(function (Builder $q) use ($code, $spin): void {
+            ->where(function (Builder $q) use ($code, $spin, $personal): void {
                 $q->whereNull('r.code');
                 if ($spin !== null) {
                     // a wheel code names its prize rule through the spin (App\Domain\Wheel, 2026-11-07)
                     $q->orWhere('r.id', Row::int($spin, 'promotion_rule_id'));
+                } elseif ($personal !== null) {
+                    // a personal code names its rule through its row (PersonalCodes, 2026-11-24)
+                    $q->orWhere('r.id', Row::int($personal, 'promotion_rule_id'));
                 } elseif ($code !== null) {
                     // a typed code reaches a rule the TEAM typed; a wheel rule's own code typed by a shopper reaches nothing
                     $q->orWhere(function (Builder $typed) use ($code): void {

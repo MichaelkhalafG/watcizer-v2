@@ -70,6 +70,9 @@ final class CouponStatus
     /** The offer needs another item in the cart first — a watch for a wallet's discount (2026-11-19). The code is kept. */
     public const NEEDS_QUALIFIER = 'needs_qualifier';
 
+    /** A personal code (abandoned cart, campaign) and the order's e-mail is not the one it was sent to (2026-11-24). */
+    public const EMAIL_MISMATCH = 'email_mismatch';
+
     /** A first-order-only offer, and this account or phone number has ordered before (2026-11-19). */
     public const NOT_FIRST_ORDER = 'not_first_order';
 
@@ -77,7 +80,7 @@ final class CouponStatus
     public const ALL = [self::APPLIED, self::INVALID, self::EXPIRED, self::NOT_STARTED, self::NO_ELIGIBLE_ITEMS,
         self::MINIMUM_NOT_REACHED, self::USAGE_LIMIT, self::CUSTOMER_LIMIT, self::NOT_BEST, self::PHONE_MISMATCH, self::WHEEL_USED,
         self::INVITE_OWN, self::INVITE_NOT_FIRST, self::INVITE_USED, self::INVITE_INACTIVE, self::GIFT_OUT_OF_STOCK, self::ON_OFFER,
-        self::PICKUP_NO_DELIVERY, self::NEEDS_QUALIFIER, self::NOT_FIRST_ORDER];
+        self::PICKUP_NO_DELIVERY, self::NEEDS_QUALIFIER, self::NOT_FIRST_ORDER, self::EMAIL_MISMATCH];
 
     /**
      * @param  float|null  $minimum  the minimum order, for `minimum_not_reached`
@@ -119,6 +122,7 @@ final class CouponStatus
             // the Latin names isolated (LRI-PDI) and unbroken (no-break spaces): the brackets sit right on an Arabic page
             self::ON_OFFER => ['en' => 'Discount codes can\'t be combined with items already on offer (Hot Deals / Flash Sale).', 'ar' => "لا يمكن استخدام كود الخصم مع منتجات عليها عرض (\u{2066}Hot\u{A0}Deals / Flash\u{A0}Sale\u{2069})."],
             self::EXPIRED => ['en' => 'This code has expired.', 'ar' => 'انتهت صلاحية هذا الكود.'],
+            self::EMAIL_MISMATCH => ['en' => 'This code was sent to another e-mail address. Use the e-mail it was sent to in your order details, or remove the code.', 'ar' => 'هذا الكود أُرسل إلى بريد إلكتروني آخر. استخدم البريد الذي وصلك عليه في بيانات طلبك، أو أزل الكود.'],
             self::PICKUP_NO_DELIVERY => [
                 'en' => 'This is a free-delivery code, and a pickup order has no delivery fee. Keep the code for a delivery order — it was not used.',
                 'ar' => 'هذا كود توصيل مجاني، وطلب الاستلام من الفرع بدون رسوم توصيل. احتفظ بالكود لطلب بتوصيل — لم يُستخدم.',

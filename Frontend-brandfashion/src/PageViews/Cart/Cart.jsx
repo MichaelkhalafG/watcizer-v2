@@ -17,6 +17,8 @@ import { shippingCharged } from '../../lib/freeShipping'
 import usePickup from '../../Hooks/queries/usePickup'
 import { storeNames } from '../../lib/pickup'
 import { cartStore } from '../../Store/cartStore'
+import { useAuthStore } from '../../Store/authStore'
+import { restoreFromLink, withoutRestore } from '../../lib/cartRestore'
 import BfRail from '../../Components/Listing/BfRail'
 import { txt, money } from '../../lib/cardData'
 import { trackViewCart } from '../../scripts/pixels'
@@ -189,6 +191,16 @@ function Cart({ initialPickup = null }) {
   const router = useRouter()
   const navigate = useCallback((to) => router.push(to), [router])
   const { cart, updateQuantity, removeItem, undoRemove, validateCart, lastRemoved } = useCart()
+  // the abandoned-cart e-mail's button (2026-11-24): its signed link brings a guest's cart back on this browser, then
+  // leaves the address clean
+  useEffect(() => {
+    if (typeof window === 'undefined' || !new URLSearchParams(window.location.search).has('restore')) return
+    const loggedIn = !!useAuthStore.getState().userId
+    restoreFromLink(window.location.search, { loggedIn }).then((switched) => {
+      if (switched) cartStore.fetchCart()
+      window.history.replaceState(null, '', window.location.pathname + withoutRestore(window.location.search))
+    })
+  }, [])
 
   const [checked, setChecked] = useState(false)
   const [processing, setProcessing] = useState(false)

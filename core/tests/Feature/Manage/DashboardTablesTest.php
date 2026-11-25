@@ -185,6 +185,12 @@ it('names EVERY table the dashboard authors, in order, so adding one is a delibe
         'review_requests', 'product_reviews',
         // each branch's in-store review scans (2026-11-17, release part 3)
         'storefront_review_scans',
+        /*
+         * The abandoned-cart e-mail and the e-mail campaigns (2026-11-24): nine tables. Dropping `core_personal_codes`
+         * would let a used code work again; dropping the reminders would e-mail the same cart twice.
+         */
+        'core_personal_codes', 'core_unsubscribe_links', 'core_cart_reminder_settings', 'core_checkout_contacts', 'core_cart_reminders',
+        'core_email_campaigns', 'core_email_campaign_recipients', 'core_email_lists', 'core_email_list_rows',
     ]);
 
     foreach (CoreChecksumCommand::DASHBOARD_TABLES as $table) {

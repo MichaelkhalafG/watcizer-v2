@@ -130,6 +130,12 @@ class AppServiceProvider extends ServiceProvider
             Limit::perMinute(10)->by($request->ip() ?? 'unknown')->response(self::tooMany()),
             Limit::perHour(60)->by($request->ip() ?? 'unknown')->response(self::tooMany()),
         ]);
+        // the abandoned-cart e-mail's two routes (2026-11-24): a checkout types its address once or twice; a script listing
+        // addresses or trying links does not get far
+        RateLimiter::for('cart-reminder', fn (Request $request) => [
+            Limit::perMinute(10)->by($request->ip() ?? 'unknown')->response(self::tooMany()),
+            Limit::perHour(60)->by($request->ip() ?? 'unknown')->response(self::tooMany()),
+        ]);
         RateLimiter::for('stock-alert', fn (Request $request) => [
             Limit::perMinute(5)->by($request->ip() ?? 'unknown')->response(self::tooMany()),
             Limit::perHour(30)->by($request->ip() ?? 'unknown')->response(self::tooMany()),

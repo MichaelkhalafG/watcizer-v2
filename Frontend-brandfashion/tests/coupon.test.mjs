@@ -130,6 +130,8 @@ describe("the wheel's kinds on a code (2026-11-09)", () => {
   it('holds a code the shopper can put right here, forgets the rest', () => {
     const w = { phone_hint: '010•••••678' }
     for (const status of ['phone_mismatch', 'invite_own', 'invite_not_first', 'invite_used']) expect(isHeldRefusal({ status, wheel: w })).toBe(true)
+    // a personal code typed with another e-mail is kept, so the shopper can put the right e-mail in (2026-11-24)
+    expect(isHeldRefusal({ status: 'email_mismatch' })).toBe(true)
     expect(isHeldRefusal({ status: 'no_eligible_items', wheel: w })).toBe(true)
     expect(isHeldRefusal({ status: 'no_eligible_items' })).toBe(false)
     // an offer waiting for another item (a wallet without a watch, 2026-11-19) keeps its code, wheel or not

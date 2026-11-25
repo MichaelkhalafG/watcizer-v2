@@ -3,8 +3,11 @@
 namespace App\Http\Controllers\Compat;
 
 use App\Domain\Notifications\BulkMailer;
+use App\Domain\Notifications\MarketingLinks;
 use App\Domain\Notifications\ReEngagement;
 use App\Http\Controllers\Controller;
+use App\Storefront\StorefrontIdentity;
+use App\Storefront\StorefrontUrls;
 use App\Transform\Row;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
@@ -22,6 +25,11 @@ final class UnsubscribeController extends Controller
 {
     public function page(int $send, string $signature): Response
     {
+        // the abandoned-cart e-mail's and the campaigns' links (2026-11-24): the same path, their own signature
+        $link = self::valid($send, $signature) ? null : MarketingLinks::resolve($send, $signature);
+        if ($link !== null) {
+            return self::marketingPage($link['storefront_id'], $send, $signature, false);
+        }
         abort_unless(self::valid($send, $signature), 404);
 
         return response()->view('reengagement.unsubscribe', ['send' => $send, 'signature' => $signature, 'done' => false]);
@@ -29,6 +37,12 @@ final class UnsubscribeController extends Controller
 
     public function unsubscribe(int $send, string $signature): Response
     {
+        $link = self::valid($send, $signature) ? null : MarketingLinks::resolve($send, $signature);
+        if ($link !== null) {
+            ReEngagement::unsubscribe($link['storefront_id'], $link['email']);
+
+            return self::marketingPage($link['storefront_id'], $send, $signature, true);
+        }
         abort_unless(self::valid($send, $signature), 404);
         $raw = DB::table('core_reengagement_sends as s')->join('core_reengagement_runs as r', 'r.id', '=', 's.run_id')
             ->where('s.id', $send)->first(['s.email', 'r.storefront_id']);
@@ -37,6 +51,16 @@ final class UnsubscribeController extends Controller
         ReEngagement::unsubscribe(Row::int($row, 'storefront_id'), Row::str($row, 'email'));
 
         return response()->view('reengagement.unsubscribe', ['send' => $send, 'signature' => $signature, 'done' => true]);
+    }
+
+    /** The page of the new links: the shop's own name, Arabic and English, and a form that submits itself (one click). */
+    private static function marketingPage(int $storefrontId, int $send, string $signature, bool $done): Response
+    {
+        return response()->view('marketing.unsubscribe', [
+            'action' => url('/unsubscribe/'.$send.'/'.$signature),
+            'done' => $done,
+            'site' => StorefrontUrls::frontend($storefrontId),
+        ] + StorefrontIdentity::for($storefrontId)->viewData());
     }
 
     private static function valid(int $send, string $signature): bool

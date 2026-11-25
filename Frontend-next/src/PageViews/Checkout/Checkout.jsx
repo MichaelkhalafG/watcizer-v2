@@ -34,6 +34,7 @@ import { discountLabel, orderCoupon, payable, promotionOf, rewardTitle, setCoupo
 import { freeShippingOf, shippingCharged } from '../../lib/freeShipping'
 import { handleImgError, PLACEHOLDER_IMG } from '../../utils/imageUrl'
 import { STOREFRONT_CODE } from '../../lib/env'
+import { v2CheckoutContact } from '../../lib/v2Cart'
 import TrustSignals from '../../Components/Merchandising/TrustSignals'
 import { trustSignals } from '../../config/trust.config'
 import { PAYMOB_ENABLED } from '../../lib/env'
@@ -314,6 +315,15 @@ function Checkout({ initialPickup = null, initialFulfilment = 'delivery' }) {
 
   // ── Form state ───────────────────────────────────────────────────────────
   const [email, setEmail] = useState(user?.email || '')
+  // the abandoned-cart e-mail (2026-11-24): a guest's address is kept on their cart once it reads as one (a pause in the
+  // typing first); a signed-in shopper's cart uses the account's address
+  useEffect(() => {
+    if (!isGuest) return undefined
+    const value = email.trim()
+    if (!/^\S+@\S+\.\S+$/.test(value)) return undefined
+    const timer = setTimeout(() => v2CheckoutContact(value), 1200)
+    return () => clearTimeout(timer)
+  }, [email, isGuest])
   const [firstName, setFirstName] = useState(user?.first_name || '')
   const [lastName, setLastName] = useState(user?.last_name || '')
   // The session arrives after mount (the auth store starts logged-out so server and
