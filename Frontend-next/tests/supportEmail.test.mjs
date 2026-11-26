@@ -37,5 +37,5 @@ describe('the support e-mail', () => {
       const body = readFileSync(f, 'utf8')
       for (const old of ['watchizer303@gmail.com']) expect(body.includes(old), `${f} still names ${old}`).toBe(false)
     }
-  })
+  }, 30000) // it reads every file of src/ and app/: under a loaded machine the 5 s default is too short (26 Nov)
 })

@@ -352,6 +352,9 @@ export default function BfProductPage({ detail, related, pickup = null }) {
                         alt={img.id != null ? imageAlt(p, img, i, images.length, lang) : txt(p.title, lang)}
                         {...(img.width && img.height ? { width: img.width, height: img.height } : {})}
                         loading={i === 0 ? 'eager' : 'lazy'}
+                        // the first photo is the page's largest paint on both devices: fetched at high priority
+                        // (2026-11-26, Core Web Vitals: LCP over 4 s in the field)
+                        fetchPriority={i === 0 ? 'high' : undefined}
                         decoding="async"
                         draggable={false}
                         style={i === slide && zoom ? { transformOrigin: `${zoom.x}% ${zoom.y}%`, transform: 'scale(2.2)' } : undefined}

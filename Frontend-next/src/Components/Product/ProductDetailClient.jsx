@@ -1298,7 +1298,8 @@ function ProductDetailClient({ param, isOffer = false, productPayload = null, v2
               )}
             </div>
 
-            {/* MOBILE (< md): native scroll-snap carousel, no zoom/lightbox. */}
+            {/* MOBILE (< md): native scroll-snap carousel, no zoom/lightbox. The first slide is the phone's largest paint:
+                fetched at high priority (2026-11-26, Core Web Vitals), the others lazily. */}
             <div className="wz-pd-gallery-mobile">
               <div className="wz-pd-carousel" ref={carouselRef}>
                 {images.map((img, i) => (
@@ -1310,7 +1311,7 @@ function ProductDetailClient({ param, isOffer = false, productPayload = null, v2
                       slideRefs.current[i] = el
                     }}
                   >
-                    {picture(img, SIZES.galleryMain, { alt: altOf(img, i), width: 600, height: 600, loading: i === 0 ? 'eager' : 'lazy', decoding: 'async', className: 'wz-pd-slide-img', onError: handleGalleryImgError }) ?? (
+                    {picture(img, SIZES.galleryMain, { alt: altOf(img, i), width: 600, height: 600, loading: i === 0 ? 'eager' : 'lazy', fetchPriority: i === 0 ? 'high' : undefined, decoding: 'async', className: 'wz-pd-slide-img', onError: handleGalleryImgError }) ?? (
                       <Image
                         src={img}
                         alt={altOf(img, i)}
