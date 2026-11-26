@@ -34,3 +34,15 @@ it('closes filters, sorts and searches, and leaves pagination and the clean page
   const wrong = cases.filter(([u, exp]) => (allowed(u) ? 1 : 0) !== exp).map(([u]) => u)
   expect(wrong).toEqual([])
 })
+
+// 2026-11-26: the old shop's action links (WooCommerce's add-to-cart and wishlist) are closed; the clean product
+// page, and a product with an ordinary query, stay open
+it('closes the old shop\'s cart and wishlist action links, and only them', () => {
+  const actions = [
+    ['/product/x?add-to-wishlist=62994', 0], ['/product/x/?add-to-wishlist=1', 0], ['/product/x?add-to-cart=5', 0],
+    ['/product/x?foo=1&add-to-cart=5', 0], ['/product/x?wishlist_id=1', 0], ['/product/x?remove_item=a', 0],
+    ['/?wc-ajax=get_refreshed_fragments', 0], ['/product/x', 1], ['/product/x?utm_source=x', 1], ['/ar/product/x', 1],
+  ]
+  const wrong = actions.filter(([u, exp]) => (allowed(u) ? 1 : 0) !== exp).map(([u]) => u)
+  expect(wrong).toEqual([])
+})

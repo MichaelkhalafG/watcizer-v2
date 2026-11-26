@@ -74,4 +74,28 @@ Disallow: /*&q=
 Disallow: /*?sort=
 Disallow: /*&sort=
 
+# THE OLD SHOP'S ACTION LINKS (2026-11-26, Search Console: 67 "server errors" on Brand Fashion). WooCommerce wrote
+# an add-to-cart and an add-to-wishlist link on every product (?add-to-wishlist=123), and crawlers still ask for them
+# in bursts. The app answers each with one 301 to the clean page, but a burst trips the host's per-visitor limit,
+# which answers 429 (a server error to Google). They change nothing a reader sees: closed, as Google advises for
+# action URLs. The clean product and listing pages stay open.
+Disallow: /*?add-to-cart=
+Disallow: /*&add-to-cart=
+Disallow: /*?add-to-wishlist=
+Disallow: /*&add-to-wishlist=
+Disallow: /*?remove_from_wishlist=
+Disallow: /*&remove_from_wishlist=
+Disallow: /*?wishlist_id=
+Disallow: /*&wishlist_id=
+Disallow: /*?wishlist-action=
+Disallow: /*&wishlist-action=
+Disallow: /*?remove_item=
+Disallow: /*&remove_item=
+Disallow: /*?undo_item=
+Disallow: /*&undo_item=
+Disallow: /*?wc-ajax=
+Disallow: /*&wc-ajax=
+Disallow: /*?_wpnonce=
+Disallow: /*&_wpnonce=
+
 Sitemap: https://watchizereg.com/sitemap.xml
