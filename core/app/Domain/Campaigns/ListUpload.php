@@ -36,12 +36,12 @@ final class ListUpload
         $columns = ['email' => 0, 'name' => 1, 'phone' => 2];
         $first = array_map(fn (string $c): string => mb_strtolower(trim($c)), $lines[0] ?? []);
         $start = 0;
-        if (in_array('email', $first, true) || in_array('e-mail', $first, true) || in_array('البريد الإلكتروني', $first, true)) {
+        if (in_array('email', $first, true) || in_array('e-mail', $first, true) || in_array('البريد الإلكتروني', $first, true)) { // i18n-exempt: the column headers an uploaded sheet may carry, matched, never shown
             foreach ($first as $i => $name) {
                 $key = match ($name) {
-                    'email', 'e-mail', 'البريد الإلكتروني' => 'email',
-                    'name', 'الاسم' => 'name',
-                    'phone', 'mobile', 'الهاتف', 'الموبايل' => 'phone',
+                    'email', 'e-mail', 'البريد الإلكتروني' => 'email', // i18n-exempt: the column headers an uploaded sheet may carry, matched, never shown
+                    'name', 'الاسم' => 'name', // i18n-exempt: the column headers an uploaded sheet may carry, matched, never shown
+                    'phone', 'mobile', 'الهاتف', 'الموبايل' => 'phone', // i18n-exempt: the column headers an uploaded sheet may carry, matched, never shown
                     default => null,
                 };
                 if ($key !== null) {

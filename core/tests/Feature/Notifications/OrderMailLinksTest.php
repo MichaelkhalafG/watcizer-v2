@@ -116,6 +116,11 @@ const BULK_MAIL_LINKS = [
     'stock-alert.blade.php' => ['product', 'stopUrl'],
     'reengagement.blade.php' => ['p', 'unsubscribeUrl', 'whatsappUrl'],   // whatsappUrl: the storefront's own number (W2)
     'reengagement-preview.blade.php' => ['manageUrl', 'p'],
+    // the abandoned-cart reminder and the e-mail campaign (2026-11-24): the cart's products, its restore link, the
+    // shop's own page, and the marketing footer's one-click unsubscribe and the shop's own number
+    'cart-reminder.blade.php' => ['p', 'cartUrl'],
+    'campaign.blade.php' => ['p', 'shopUrl'],
+    'partials/marketing-footer.blade.php' => ['unsubscribeUrl', 'whatsappUrl'],
 ];
 
 it('every BULK mail template links only what its mailable hands it', function () {
@@ -273,7 +278,7 @@ function orderMailTemplates(): array
             // Not order mail: the two CustomerMail templates, and — since 2026-10-01 — the three BULK
             // templates (restock alert, re-engagement and its preview), whose links are pinned by the
             // test right below instead.
-            ['email-verification.blade.php', 'password-reset.blade.php', ...array_keys(BULK_MAIL_LINKS)],
+            ['email-verification.blade.php', 'password-reset.blade.php', ...array_map('basename', array_keys(BULK_MAIL_LINKS))],
             true,
         ),
     ));

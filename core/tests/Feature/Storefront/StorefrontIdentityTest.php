@@ -52,10 +52,11 @@ it('reads each shop\'s identity from its own row, and puts the wordmark on its o
     }
 });
 
-it('hands every template the same four keys, from the row', function () {
+it('hands every template the same five keys, from the row', function () {
     $data = StorefrontIdentity::for(shop('brandfashion'))->viewData();
 
-    expect(array_keys($data))->toBe(['brandName', 'wordmarkUrl', 'whatsappUrl', 'copyright'])
+    // 2026-11-25: the shop's support e-mail, the footer's contact line (null while the row has none)
+    expect(array_keys($data))->toBe(['brandName', 'wordmarkUrl', 'whatsappUrl', 'copyright', 'supportEmail'])
         ->and($data['brandName'])->toBe('Brand Fashion')
         ->and($data['whatsappUrl'])->toContain('wa.me/201014179820');
 });

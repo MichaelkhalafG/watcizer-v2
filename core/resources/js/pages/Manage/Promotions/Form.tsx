@@ -1431,7 +1431,7 @@ export default function PromotionForm({
                                 {(preview.sku_lines ?? []).length > 0 ? (
                                     <p className="text-xs text-muted-foreground">
                                         {t("promotions.test_sku_lines", "من الأكواد الملصقة:")}{" "}
-                                        {(preview.sku_lines ?? []).map((l) => `${l.title} × ${l.quantity}`).join("، ")}
+                                        {(preview.sku_lines ?? []).map((l) => `${l.title} × ${l.quantity}`).join(t("common.list_separator", "، "))}
                                     </p>
                                 ) : null}
                                 {preview.account && !preview.account.found ? (

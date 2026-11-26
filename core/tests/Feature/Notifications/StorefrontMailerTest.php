@@ -12,6 +12,8 @@ use App\Domain\Notifications\StockAlerts;
 use App\Domain\Notifications\StorefrontHasNoMailbox;
 use App\Domain\Notifications\StorefrontMailer;
 use App\Mail\AdminOrderNotification;
+use App\Mail\CampaignMail;
+use App\Mail\CartReminderMail;
 use App\Mail\CustomerEmailVerification;
 use App\Mail\CustomerPasswordReset;
 use App\Mail\OrderConfirmation;
@@ -312,6 +314,9 @@ it('renders the DEVELOPER\'S WhatsApp number in NONE of the fourteen mail templa
             new WheelReferralReward('SPIN-AAAA-BBBB', 15.0, Carbon::now()->addDays(2), 'ar', $identity),
             // a pickup is ready at its store (click & collect, 2026-11-14)
             new PickupUpdate($pickupData),
+            // the abandoned-cart reminder and the e-mail campaign (2026-11-24): the marketing footer
+            new CartReminderMail(['storefront_id' => $storefrontId, 'email' => 'c@example.test', 'products' => [], 'code' => null, 'cart_url' => 'https://example.test/cart?restore=1&s=x', 'unsubscribe_url' => 'https://example.test/unsubscribe'], $identity),
+            new CampaignMail(['storefront_id' => $storefrontId, 'email' => 'c@example.test', 'subject_ar' => 'جديد', 'subject_en' => 'New', 'body_ar' => 'نص', 'body_en' => 'Text', 'products' => [], 'code' => null, 'shop_url' => 'https://example.test', 'unsubscribe_url' => 'https://example.test/unsubscribe'], $identity),
         ];
         foreach ($mailables as $mailable) {
             $html = $mailable->render();
@@ -320,11 +325,12 @@ it('renders the DEVELOPER\'S WhatsApp number in NONE of the fourteen mail templa
         }
     }
 
-    // Fourteen templates, two shops: 30 renders (the stock alert in both languages), 0 developer numbers. (2026-11-15:
-    // the review request of the SEO run and the pickup update of click & collect each added one.)
+    // Sixteen templates, two shops: 34 renders (the stock alert in both languages), 0 developer numbers. (2026-11-15:
+    // the review request of the SEO run and the pickup update of click & collect each added one; 2026-11-24 the
+    // cart reminder and the campaign.)
     $templates = glob(resource_path('views/emails/*.blade.php')) ?: [];
     $templates = array_values(array_filter($templates, fn (string $f): bool => ! str_contains($f, DIRECTORY_SEPARATOR.'partials'.DIRECTORY_SEPARATOR) && ! str_starts_with(basename($f), '_')));
-    expect($rendered)->toHaveCount(30)->and(count($templates))->toBe(14);
+    expect($rendered)->toHaveCount(34)->and(count($templates))->toBe(16);
     $hits = [];
     foreach ($rendered as $key => $html) {
         $n = substr_count($html, $developer) + substr_count($html, '01274550956');
