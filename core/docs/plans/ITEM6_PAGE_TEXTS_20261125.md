@@ -80,3 +80,31 @@ No Search Console figure is in this file. The ranking by impressions is the one 
 1. Rank the qualifying pages by Search Console impressions (28 days, Pages), then by in-stock products.
 2. Write the first 12 per shop in that order (EN 800-1,200 words, AR 680-1,200, at least 4 sections, the FAQ answers in
    range), run seo:load-copy and seo:gate on the export's copy, and ship only what passes.
+
+## 26 Nov: the held list on the production export, and the ranking
+
+Michael (26 Nov): item 6 is OUT of the eight changes' deploy. The texts go out later as a separate data-only step with
+its own script, written in a fresh session. Nothing of item 6 is in core-20261125.tar.gz or the deploy script.
+
+Read on export-20261125 (scratch_reh_20261126, production's copy of 25 Nov): core_seo_texts holds 24 HELD pages (48
+texts): Watchizer 5 brands and 10 categories, Brand Fashion 4 brands and 5 categories.
+
+- Held brands, no copy by rule (D8 of 18 Nov: houses kept from search engines, or thin): audemars-piguet, hublot,
+  patek-philippe, rolex (both shops), just-cavalli (Watchizer).
+- Held categories that do not qualify (under 3 indexable products, or redirected): watches/skeleton,
+  watches/tourbillon, watches/dress (both shops), fashion/perfumes and fashion/socks (Watchizer).
+- THE PAGES TO WRITE, in rank order (Search Console 28 days to 25 Nov, Pages, the page and its /ar twin together;
+  then in-stock products):
+
+| Rank | Shop | Page | Impressions | In stock | Note |
+|---|---|---|---|---|---|
+| 1 | Brand Fashion | watches/diver (/subtypes/diver) | - | 20 | the shop's most-cited page in Bing's AI answers (Copilot), Michael 26 Nov: FIRST |
+| 2 | Watchizer | watches (/category/watches) | 506 | 1375 | the shop's top category page |
+| 3 | Watchizer | watches/casual (/subtypes/casual) | 84 | 153 | |
+| 4 | Watchizer | watches/automatic (/subtypes/automatic) | 27 | 57 | |
+| 5 | Watchizer | watches/diver (/subtypes/diver) | 3 | 20 | |
+| 6 | Watchizer | watches/gmt (/subtypes/gmt) | 0 | 7 | |
+| 7 | Brand Fashion | watches/gmt (/subtypes/gmt) | 0 | 7 | |
+
+Seven pages, fourteen texts: fewer than the plan's 24 (D17), because only these are held AND qualify. The passed pages
+keep their texts. Before writing, read the list again on the export of that day (a page can pass or change in between).
