@@ -4,9 +4,10 @@ import { NextRequest } from 'next/server'
 
 // BRAND FASHION'S SUBTYPE PAGES ARE NOT REDIRECTED (2026-11-26, Michael). /ar/subtypes/diver is the shop's most-cited
 // page in Bing's AI answers (Copilot). The /subtypes and /category redirects of 24 Nov belong to WATCHIZER's
-// next.config.js only: they move Watchizer addresses that answered 404. Here: Brand Fashion's own config redirects no
-// /subtypes or /category address (and none of Watchizer's six), and its middleware lets a subtype page through
-// untouched, without even asking core's map of old addresses.
+// next.config.js. Brand Fashion's config redirects EXACTLY two subtype addresses, which answered 404 and which our
+// own Electronics text linked (Bing's Site Scan, 2026-11-27): /subtypes/audio and /subtypes/watches and their /ar
+// twins, each to its right live page; no other /subtypes or /category address. Its middleware lets a live subtype
+// page through untouched, without even asking core's map of old addresses.
 
 const require = createRequire(import.meta.url)
 let middleware
@@ -23,13 +24,20 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-it("declares no redirect of a subtype or category address, and none of Watchizer's six", async () => {
+it('redirects exactly the two dead subtype addresses and their /ar twins, and no other subtype or category', async () => {
   const config = require('../next.config.js')
   const rules = typeof config.redirects === 'function' ? await config.redirects() : []
   const sources = rules.map((r) => r.source)
   expect(sources.length).toBeGreaterThan(0) // the config was read: a missing redirects() must not pass
-  expect(sources.filter((s) => /^\/(ar\/)?(subtypes|category)\b/.test(s))).toEqual([])
-  for (const watchizerOnly of ['/subtypes/watches', '/subtypes/electronics', '/subtypes/fashion', '/subtypes/audio', '/subtypes/dress', '/category/chronograph']) {
+  const facet = rules.filter((r) => /^\/(ar\/)?(subtypes|category)\b/.test(r.source)).map((r) => [r.source, r.destination, r.permanent])
+  expect(facet).toEqual([
+    ['/subtypes/audio', '/subtypes/earphones-headphones', true],
+    ['/ar/subtypes/audio', '/ar/subtypes/earphones-headphones', true],
+    ['/subtypes/watches', '/category/watches', true],
+    ['/ar/subtypes/watches', '/ar/category/watches', true],
+  ])
+  // Watchizer's other four stay Watchizer's: on this shop /subtypes/dress is a live page
+  for (const watchizerOnly of ['/subtypes/electronics', '/subtypes/fashion', '/subtypes/dress', '/category/chronograph']) {
     expect(sources).not.toContain(watchizerOnly)
   }
 })
@@ -39,7 +47,7 @@ it('lets the subtype pages through untouched, in both languages', async () => {
     asked.push(String(url))
     return new Response('{}', { status: 404 })
   })
-  for (const path of ['/ar/subtypes/diver', '/subtypes/diver', '/ar/subtypes/chronograph', '/category/watches']) {
+  for (const path of ['/ar/subtypes/diver', '/subtypes/diver', '/ar/subtypes/chronograph', '/subtypes/dress', '/subtypes/earphones-headphones', '/category/watches']) {
     const url = 'https://www.brandfashionegy.com' + path
     const r = await middleware(new NextRequest(url, { headers: { host: 'www.brandfashionegy.com' } }))
     expect([path, r.status]).toEqual([path, 200])
