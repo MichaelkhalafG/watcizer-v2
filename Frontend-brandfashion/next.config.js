@@ -118,8 +118,9 @@ const nextConfig = {
       // Bing's Site Scan (2026-11-27): two subtype addresses our own page texts link to (the Electronics category's
       // text, written for Watchizer's names) answer 404 here. Exactly these two, and their /ar twins; every live
       // subtype page of this shop (/subtypes/diver above all) is untouched (tests/subtypesUntouched.test.mjs).
-      { source: '/subtypes/audio', destination: '/subtypes/earphones-headphones', permanent: true },
-      { source: '/subtypes/watches', destination: '/category/watches', permanent: true },
+      // statusCode 301 (Michael asked for 301; Next's permanent: true answers 308)
+      { source: '/subtypes/audio', destination: '/subtypes/earphones-headphones', statusCode: 301 },
+      { source: '/subtypes/watches', destination: '/category/watches', statusCode: 301 },
     ])
   },
   images: {
